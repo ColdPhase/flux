@@ -58,6 +58,12 @@ async function writeSet(ws: string, side: 'A' | 'B') {
   ids[side] = { project: String(project.id), dm: String(dm.id), doc: String(doc.id), sketch: String(sketch.id), restricted: String(restricted.id) };
 }
 
+/**
+ * Plain words match any of the words in both workspaces (F-042, #1293): in the plain one by the BM25 index, in the encrypted one by the in-memory
+ * index without stems. A canary of several words (`canary followup <uuid>`) shares its first word with every other canary, so a test that wants
+ * that one object asks for exactly it: a quoted phrase, answered the same on both sides.
+ */
+const exactly = (words: string) => `"${words}"`;
 const flat = (parts: { text: string; match: boolean }[]) => parts.map((part) => (part.match ? `[${part.text}]` : part.text)).join('');
 /** What a result tells a reader, without ids and without the workspace's own name. */
 const shape = (item: SearchResult) => [item.kind, item.label, flat(item.title), item.snippet ? flat(item.snippet) : '', item.task ? `#${item.task.number} ${item.task.status}` : '',
@@ -98,10 +104,12 @@ before(async () => {
 describe('F-030 S2b: search in an encrypted workspace', () => {
   test('the same query finds the same results and marks in A as in B (parity)', async () => {
     const queries: Record<string, string | number>[] = [
-      { q: 'sensor' }, { q: 'sens' }, { q: 'SENSOR' }, { q: 'sensor lamp' }, { q: 'lamp camera' }, { q: '"sensor comparison"' }, { q: '"comparison sensor"' },
+      { q: 'sensor' }, { q: 'sens' }, { q: 'SENSOR' }, { q: 'sensor lamp' }, { q: 'lamp camera' }, { q: '"sensor" "lamp"' }, { q: '"sensor comparison"' }, { q: '"comparison sensor"' },
       { q: 'sensor -camera' }, { q: 'camera or privacy' }, { q: 'ensor' }, { q: 'omparison' }, { q: 'presentation' }, { q: 'present' }, { q: '#1' }, { q: 'workshop' },
       { q: 'the' }, { q: 'ultrasonic' }, { q: 'ultra' }, { q: 'zzzz' }, { q: 'sensor', type: 'doc' }, { q: 'sensor', type: 'message' }, { q: 'sensor', type: 'work' },
-      { q: 'lamp', type: 'sketch' }, { q: 'noisy', type: 'sketch' }, { q: 'pavilion' }, { q: 'roadmap pav' }, { q: 'field notes' }, { q: 'sunlight' },
+      { q: 'lamp', type: 'sketch' }, { q: 'noisy', type: 'sketch' }, { q: 'pavilion' }, { q: 'roadmap pav' }, { q: 'field notes' }, { q: '"field" "notes"' }, { q: 'sunlight' },
+      // Any of the words: one that is nowhere does not hide the others, and a word with a typo in a title still finds it.
+      { q: 'sensor zeppelin' }, { q: 'zeppelin camera' }, { q: 'camera privacy workshop' }, { q: 'sensor lamp camera zeppelin' }, { q: 'comparisn sensor' },
     ];
     for (const query of queries) {
       const [a, b] = [await search(ben, { ...query, place: `project:${ids.A.project}` }), await search(ben, { ...query, place: `project:${ids.B.project}` })];
@@ -116,6 +124,15 @@ describe('F-030 S2b: search in an encrypted workspace', () => {
     const number = [await search(ben, { q: '#1', place: `project:${ids.A.project}` }), await search(ben, { q: '#1', place: `project:${ids.B.project}` })];
     assert.equal(number[0]!.items[0]?.kind, 'work');
     assert.equal(number[1]!.items[0]?.kind, 'work');
+  });
+
+  test('several words rank the rarer word first, in A as in B', async () => {
+    // "sunlight" is in one thought and "lamp" in several objects: whichever side answers, the thought with the rare word leads.
+    for (const place of [ids.A.project, ids.B.project]) {
+      const answer = await search(ben, { q: 'lamp sunlight', place: `project:${place}` });
+      assert.ok(answer.items.length >= 3, 'every object with either word');
+      assert.match(flat(answer.items[0]!.title), /sunlight/, `the rare word first in ${place}`);
+    }
   });
 
   test('a page of results merges the plain and the encrypted source, and the cursor resumes across both', async () => {
@@ -139,25 +156,25 @@ describe('F-030 S2b: search in an encrypted workspace', () => {
   test('the index follows edits, deletions and access changes at once', async () => {
     const note = followup;
     const draft = await post(ada, `/api/v1/workspaces/${A}/sketches`, { title: note, scope: 'project', projectId: ids.A.project }, 201);
-    assert.equal((await search(ada, { q: note })).items.length, 1, 'a new map is found at once');
+    assert.equal((await search(ada, { q: exactly(note) })).items.length, 1, 'a new map is found at once');
     const renamed = canary('renamed').replace(/-/g, ' ');
     expectStatus(await ada.browser.request('PATCH', `/api/v1/sketches/${draft.id}`, { body: { title: renamed }, headers: { ...key(), 'if-match': `"${draft.version}"` } }), 200, 'rename');
-    assert.equal((await search(ada, { q: note })).items.length, 0, 'the old title is gone at once');
-    assert.equal((await search(ada, { q: renamed })).items.length, 1, 'the new one is found at once');
+    assert.equal((await search(ada, { q: exactly(note) })).items.length, 0, 'the old title is gone at once');
+    assert.equal((await search(ada, { q: exactly(renamed) })).items.length, 1, 'the new one is found at once');
     // A deleted thought leaves the index at once.
     const sketch = await post(ada, `/api/v1/workspaces/${A}/sketches`, { title: 'Scratch map', scope: 'project', projectId: ids.A.project }, 201);
     const thoughtText = canary('thought').replace(/-/g, ' ');
     const thought = await post(ada, `/api/v1/sketches/${sketch.id}/thoughts`, { text: thoughtText, x: 0, y: 0 }, 201);
-    assert.equal((await search(ada, { q: thoughtText })).items.length, 1);
+    assert.equal((await search(ada, { q: exactly(thoughtText) })).items.length, 1);
     expectStatus(await ada.browser.request('DELETE', `/api/v1/sketches/${sketch.id}/thoughts/${(thought.thought as { id: string }).id}`, { headers: { ...key(), 'if-match': `"${(thought.thought as { version: number }).version}"` } }), 204, 'delete thought');
-    assert.equal((await search(ada, { q: thoughtText })).items.length, 0, 'a deleted thought is gone at once');
+    assert.equal((await search(ada, { q: exactly(thoughtText) })).items.length, 0, 'a deleted thought is gone at once');
     // Access is decided on every request: a restricted project's content is invisible to Cy, then visible after a grant.
     const secret = closed;
     await post(ada, `/api/v1/projects/${ids.A.restricted}/conversations`, { body: secret, clientMessageId: randomUUID() }, 201);
-    assert.equal((await search(cy, { q: secret })).items.length, 0, 'a restricted project is hidden');
-    assert.equal((await search(ada, { q: secret })).items.length, 1);
+    assert.equal((await search(cy, { q: exactly(secret) })).items.length, 0, 'a restricted project is hidden');
+    assert.equal((await search(ada, { q: exactly(secret) })).items.length, 1);
     await grant(ada, ids.A.restricted, cy, 'contributor');
-    assert.equal((await search(cy, { q: secret })).items.length, 1, 'a grant applies to the next search');
+    assert.equal((await search(cy, { q: exactly(secret) })).items.length, 1, 'a grant applies to the next search');
   });
 
   test('hidden matches change neither the answer nor the postings the index reads', async () => {
@@ -187,12 +204,12 @@ describe('F-030 S2b: search in an encrypted workspace', () => {
       await open.query('UPDATE sketches SET title = $1 WHERE id = $2', [sealed.title, sketch.id]);
       assert.ok((await open.query('SELECT count(*)::int AS n FROM search_changes WHERE xid = pg_current_xact_id()')).rows[0].n >= 1, 'the open transaction logged its change');
       await post(ada, `/api/v1/projects/${ids.A.project}/conversations`, { body: `${later} message`, clientMessageId: randomUUID() }, 201);
-      await search(ben, { q: later }); // reads while the lower transaction is still open
+      await search(ben, { q: exactly(later) }); // reads while the lower transaction is still open
       await open.query('COMMIT');
     } finally { open.release(); }
     for (let round = 0; round < 3; round += 1) {
-      assert.equal((await search(ben, { q: renamed })).items.length, 1, `the renamed map is found (search ${round + 1})`);
-      assert.equal((await search(ben, { q: later })).items.length, 1, `the later message is found, once (search ${round + 1})`);
+      assert.equal((await search(ben, { q: exactly(renamed) })).items.length, 1, `the renamed map is found (search ${round + 1})`);
+      assert.equal((await search(ben, { q: exactly(later) })).items.length, 1, `the later message is found, once (search ${round + 1})`);
     }
   });
 
@@ -214,17 +231,17 @@ describe('F-030 S2b: search in an encrypted workspace', () => {
     };
     await set(rows[1]!.body, rows[0]!.body);
     const before = await builds();
-    const first = await owner.browser.request('GET', `/api/v1/search?q=${encodeURIComponent(word)}`);
+    const first = await owner.browser.request('GET', `/api/v1/search?q=${encodeURIComponent(exactly(word))}`);
     assert.equal(first.status, 500, 'the search fails; it does not answer from a partial index');
     assert.equal(first.text.includes(word.split(' ')[2]!), false, 'and says nothing of the content');
     assert.equal(await builds(), before + 1, 'one build was attempted');
-    for (let again = 0; again < 3; again += 1) assert.equal((await owner.browser.request('GET', `/api/v1/search?q=${encodeURIComponent(word)}`)).status, 500);
+    for (let again = 0; again < 3; again += 1) assert.equal((await owner.browser.request('GET', `/api/v1/search?q=${encodeURIComponent(exactly(word))}`)).status, 500);
     assert.equal(await builds(), before + 1, 'the failure is remembered: no build per search');
     // Restored, and after the lock and unlock (which drop the index and the memory of the failure), the search works again.
     await set(rows[0]!.body, rows[1]!.body);
     assert.equal((await lock(owner.browser, bad)).status, 200);
     assert.equal((await unlock(owner.browser, bad, { password: secret })).status, 200);
-    const healed = await owner.browser.request('GET', `/api/v1/search?q=${encodeURIComponent(word)}`);
+    const healed = await owner.browser.request('GET', `/api/v1/search?q=${encodeURIComponent(exactly(word))}`);
     assert.equal(healed.status, 200, healed.text);
     assert.equal((healed.json as SearchResponse).items.length, 2);
     assert.equal(await builds(), before + 2, 'one build for the working index');

@@ -40,6 +40,8 @@ export interface SearchPlan {
   after: SearchPosition | null;
   limit: number;
   reader: string;
+  /** Plain words (F-042, #1293): any of them matches. The encrypted workspaces' in-memory search follows it; the BM25 statement is chosen by the service. */
+  anyWord?: boolean;
 }
 
 export interface SearchRow {
@@ -89,7 +91,10 @@ export interface SearchWork {
 
 /** Rows only; the statement composes the audiences' conditions before ranking and limit. */
 export interface SearchRepository<C> {
+  /** The exact search: every word, the last as a prefix, the web search syntax (quotes, `or`, `-word`). */
   page(audiences: SearchAudience<C>[], plan: SearchPlan): Promise<SearchRow[]>;
+  /** The BM25 search (F-042): any of the words, Polish and English stems, accents folded, ranked by how rare the words are. Same audiences, filters and cursor. */
+  ranked(audiences: SearchAudience<C>[], plan: SearchPlan): Promise<SearchRow[]>;
   /** Test support: rows examined by the statement of a plan. */
   explain(audiences: SearchAudience<C>[], plan: SearchPlan): Promise<SearchWork>;
 }

@@ -564,7 +564,8 @@ asked / bilingual; [research](research/2026-11-ai-context-retrieval.md#answer-ac
 - **Access is decided at query time,** never stored in the index: the statement receives the audiences the caller may read
   now (the access policy's `memberFilter` / `visibleFilter`, and for an agent the spaces with AI on), as people's search does
   today, and the index applies them before ranking and the limit. A grant lost, a space's AI turned off, a person who left, a
-  removed, deleted or edited message: the very next query reflects it.
+  removed, deleted or edited message: the very next query reflects it. Nor does what the caller may not read take part in the order: see
+  the 2026-11-13 decision under the engineering choices of #1293.
 - **Licences.** `pg_search` is AGPL-3.0-or-later, which Flux (AGPL-3.0-only) may ship; its source is the release tag the
   Dockerfile names. PostgreSQL and `pgvector` are under the PostgreSQL Licence, OpenBLAS (a `pg_search` dependency) BSD-3-Clause.
 
@@ -581,6 +582,32 @@ asked / bilingual; [research](research/2026-11-ai-context-retrieval.md#answer-ac
 - **Where it reads** is a space (its conversations, not a task's discussion, which is the task's), a conversation or thread, a task's
   discussion (through the task's own read, its people) and a run's direct message; the id is checked in the agent's own company, so
   another company's or an encrypted workspace's space is not found, and the reach rules of search apply (C-12, C-37).
+
+**Engineering choices (#1293, people's search).**
+
+- **Plain words** (⌘K, the search API, an agent's `flux_search`) are answered by the BM25 statement: any of the words, Polish and English
+  stems, accents folded, ranked by rarity among the hits the caller may see with a word in a title counting double; the word being typed is also a prefix, and a title
+  tolerates one typo in a word of four letters or more. Quotes, `or` and `-word` ask for exactly what they say and stay on the exact
+  index (every word, no stems). The groups of the dialog, its keys and its one request per debounce are unchanged.
+- **No statistic of the whole index may influence what a caller sees** (founder decision, Hubert, 2026-11-13, on the review of #1326, which
+  found that hidden writes swapped two visible results; it applied to an agent's `flux_search` already on `main`). pg_search's score counts
+  how rare a word is over every row of the index, restricted spaces, other people's direct messages and other workspaces included, so it is
+  not used: pg_search only **matches** (constant-score clauses that say which word a hit holds and where, under the caller's audiences; the
+  caller's other filters apply after the scan, since pg_search scores a filter on one value by its rarity in the whole index) and the
+  order is BM25 computed in SQL over the visible hits: a word's document frequency, the number of documents and their average length are
+  counted among them and nothing else, a document's own length is `length(tsv)`, and the term frequency of a word is one. The same
+  statement serves the people's search and the agents' `flux_search`; `search-hidden-ranking.test.ts` pins it with writes in a restricted
+  space, another workspace and other people's direct messages. A word weighs 2 in a title and 1 in a body; a hit found only as the word
+  being typed or with a typo counts half the query words' average rarity; at most twelve words are looked up. The cost is a few more scans for each search and no index-wide statistic.
+- **The exact index is not dropped:** BM25's `|||` has no every-word or exclusion semantics, so removing the `keys` index would first
+  need those carried over; the drop is left until then (a follow-up inside F-042, not a decision to keep it).
+- **Encrypted spaces** also match any of the plain words (founder decision, Hubert, 2026-11-12, on #1326), ranked more simply and without
+  stems: their content is never in the BM25 index, so their in-memory index does it (`sealed-search.ts`): any of the words, the word being
+  typed also as a prefix, a title with a typo in a word of four letters or more, and a document ranks by the words it holds, a word that
+  is rarer among the audience's own documents weighing more and a word in the title more than one in the body. No stems and no accent
+  folding there, so a plain space can find a document by another form of a word that an encrypted one cannot; the two answer alike for
+  whole words, a prefix and quoted words or phrases. Quotes, `or` and `-word` stay exact in both. A position's score is squashed to
+  (0, 1) in the plain space so that its rows and the encrypted rows merge in one order.
 
 **Costs.** The database image is about 800 MB instead of the Alpine image's 300 MB (the Debian base about 150 MB more, the `pg_search` library 282 MB). The index is about 4 MiB per 10k short
 messages; a write costs about a quarter of a millisecond more (research). No new container, no new setting, no new polling.

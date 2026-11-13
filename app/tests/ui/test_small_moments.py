@@ -20,6 +20,9 @@ from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forward
 
 PASSWORD = "a quiet small moment"
 SWITCH = "Kreska in loading and empty screens"
+# Every animated part of one face: its animation's name and iteration count, sorted (#1342).
+MOTION = """face => [...face.querySelectorAll('*')].map((part) => getComputedStyle(part)).filter((style) => style.animationName !== 'none')
+  .map((style) => `${style.animationName} ${style.animationIterationCount}`).sort()"""
 EMAIL = f"ada.moments+{int(time.time() * 1000)}@example.test"
 KRESKA_ANIMATIONS = "document.getAnimations().filter(a => a.effect?.target?.closest?.('.kreska, .opening, .boot, .pull')).length"
 
@@ -381,6 +384,51 @@ class SmallMomentsJourney(unittest.TestCase):
         expect(page.get_by_text("Refreshing…")).to_be_visible()
         page.wait_for_timeout(1500)
         self.assertEqual(len(reads), 1, reads)
+
+    def test_12_each_moment_moves_as_drawn_and_reduced_motion_or_the_switch_stops_it(self) -> None:
+        """#1342: the empty Inbox's eyes settle into the smile once, the offline face's z drifts and it breathes (loops of an
+        ongoing state), and Settings → Appearance (Kreska in small moments off, or Reduce motion) leaves every face still."""
+        self.ensure_account()
+        page = self.page()
+        page.goto("/inbox")
+        face = page.locator(".nyq__clear .kreska")
+        expect(face).to_be_visible()
+        self.assertEqual(face.get_attribute("data-expression"), "done")
+        self.assertEqual(face.evaluate(MOTION), ["kreska-settle 1"])
+        page.goto(f"/projects/{self.ids['project']}")
+        expect(page.get_by_role("textbox").first).to_be_visible()
+        page.context.set_offline(True)
+        asleep = page.locator(".connection-line .kreska")
+        expect(asleep).to_have_attribute("data-expression", "asleep")
+        self.assertEqual(asleep.evaluate(MOTION), ["kreska-breathe infinite", "kreska-drift infinite"])
+        page.context.set_offline(False)
+        # A face that stays when the moments are off (an agent's state beside its name) answers to the same switch: a copy of the
+        # Settings row's face is given a state, so the switch is the real one and the rules are the built ones.
+        page.goto("/settings")
+        expect(page.get_by_role("switch", name=SWITCH)).to_be_visible()
+        expect(page.locator(".kreska").first).to_be_attached()
+        probe = """expression => { document.querySelector('[data-probe]')?.remove(); const face = document.querySelector('.kreska:not([data-probe])').cloneNode(true);
+          face.dataset.probe = ''; face.dataset.expression = expression; face.setAttribute('data-moves', ''); document.body.append(face);
+          return [...face.querySelectorAll('*')].map((part) => getComputedStyle(part)).filter((style) => style.animationName !== 'none')
+            .map((style) => `${style.animationName} ${style.animationIterationCount}`).sort(); }"""
+        self.assertEqual(page.evaluate(probe, "thinking"), ["kreska-wave infinite"])
+        self.assertEqual(page.evaluate(probe, "worried"), ["kreska-drop 1"])
+        for name in (SWITCH, "Reduce motion"):
+            with self.subTest(setting=name):
+                switch = page.get_by_role("switch", name=name)
+                before = switch.get_attribute("aria-checked")
+                switch.click()
+                expect(switch).not_to_have_attribute("aria-checked", before)
+                self.assertEqual(page.evaluate(probe, "thinking"), [], name)
+                self.assertEqual(page.evaluate(probe, "worried"), [], name)
+                switch.click()
+                expect(switch).to_have_attribute("aria-checked", before)
+                self.assertEqual(page.evaluate(probe, "thinking"), ["kreska-wave infinite"], name)
+        reduced = self.page(reduced=True)
+        reduced.goto("/settings")
+        expect(reduced.get_by_role("switch", name=SWITCH)).to_be_visible()
+        expect(reduced.locator(".kreska").first).to_be_attached()
+        self.assertEqual(reduced.evaluate(probe, "thinking"), [], "the system's reduced motion")
 
 
 if __name__ == "__main__":

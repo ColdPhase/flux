@@ -340,6 +340,112 @@ describe('search: one query across Flux, only what you may read', () => {
   });
 });
 
+describe('search: plain words are ranked by BM25, the web search syntax stays exact (#1293)', () => {
+  let ari: Person; // owner
+  let nia: Person; // contributor on the restricted space
+  let olek: Person; // member without a grant
+  let ws: Workspace;
+  let stacje: Project; // restricted
+  let notes: Project; // workspace-visible
+  let thread: Conversation;
+  const KALIBRACJA = 'Kalibracja czujników temperatury SHT45 jest zaplanowana na piątek.';
+
+  before(async () => {
+    [ari, nia, olek] = await Promise.all(['Ari Brzoza', 'Nia Lipa', 'Olek Mur'].map(person));
+    ws = await workspace(ari, 'Stacje pogodowe');
+    await addMember(ari, ws.id, nia, 'member');
+    await addMember(ari, ws.id, olek, 'member');
+    stacje = await createProject(ari, ws.id, 'Maszty i skrzynie', 'restricted');
+    await grant(ari, stacje.id, nia, 'contributor');
+    notes = await createProject(ari, ws.id, 'Ogólne', 'workspace');
+    thread = await conversation(nia, stacje.id, KALIBRACJA);
+    // "dach" is in thirty messages of the company and "wiatromierz" in one: the rare word ranks first.
+    await inBatches(30, (index) => say(nia, thread.id, `Dach budynku ${index + 1} jest sprawdzony.`));
+    await say(nia, thread.id, 'Wiatromierz stoi w skrzyni.');
+    await say(nia, thread.id, 'Barometr BMP390 jest w piwnicy.');
+    const open = await conversation(olek, notes.id, 'The humidity sensors were calibrated yesterday.');
+    await say(olek, open.id, 'Dach nad salą zebrań jest nowy.');
+  });
+
+  test('another form of a Polish word, the word without its accents and an English stem find the text and mark what matched', async () => {
+    const found = await search(nia, 'czujnik');
+    assert.deepEqual(titles(found), [KALIBRACJA]);
+    assert.deepEqual(found.items[0]!.title.filter((part) => part.match).map((part) => part.text), ['czujników'], 'the word it was found by is marked');
+    const accentless = await search(nia, 'czujnikow piatek');
+    assert.deepEqual(titles(accentless), [KALIBRACJA]);
+    assert.deepEqual(accentless.items[0]!.title.filter((part) => part.match).map((part) => part.text), ['czujników', 'piątek'], 'with its accents, as written');
+    assert.deepEqual(titles(await search(olek, 'sensor calibrate')), ['The humidity sensors were calibrated yesterday.']);
+    assert.deepEqual(titles(await search(nia, { q: 'czujnik', type: 'message' })), [KALIBRACJA]);
+  });
+
+  test('any of the words matches, and the rarer word ranks first', async () => {
+    // A word that is nowhere does not hide the one that is.
+    assert.deepEqual(titles(await search(nia, 'SHT45 zeppelin')), [KALIBRACJA]);
+    assert.equal(titles(await search(nia, 'barometr czujnik')).length, 2);
+    // Thirty messages have "dach" and one has "wiatromierz": the message with the rare word leads, the others follow.
+    const ranked = await search(nia, 'dach wiatromierz');
+    assert.equal(text(ranked.items[0]!.title), 'Wiatromierz stoi w skrzyni.');
+    assert.equal(ranked.items.length, 20, 'the page is full of the messages with the other word');
+    assert.ok(ranked.next, 'and says there are more');
+    assert.ok(ranked.items.slice(1).every((item) => /^Dach/.test(text(item.title))));
+  });
+
+  test('the word being typed is a prefix of what is indexed, with or without its accents', async () => {
+    for (const q of ['kalibr', 'kalibracj', 'czujn', 'piat', 'piąt', 'sht4'])
+      assert.deepEqual(titles(await search(nia, q)), [KALIBRACJA], q);
+    assert.deepEqual(titles(await search(nia, 'barometr bmp3')), ['Barometr BMP390 jest w piwnicy.']);
+    assert.deepEqual(titles(await search(nia, 'zzzy')), []);
+  });
+
+  test('quotes, or and -word ask for exactly what they say: every word, no stem', async () => {
+    assert.deepEqual(titles(await search(nia, '"czujnik"')), [], 'a quoted word is that word');
+    assert.deepEqual(titles(await search(nia, '"czujników"')), [KALIBRACJA]);
+    assert.deepEqual(titles(await search(nia, '"temperatury sht45"')), [KALIBRACJA]);
+    assert.deepEqual(titles(await search(nia, 'czujników -piątek')), []);
+    assert.deepEqual(titles(await search(nia, 'czujników -piwnicy')), [KALIBRACJA]);
+    assert.deepEqual(titles(await search(nia, 'czujnik or barometr')), ['Barometr BMP390 jest w piwnicy.'], 'or keeps the exact words');
+  });
+
+  test('only what the caller may read: a member outside the restricted space, and a space left, find nothing at the next search', async () => {
+    assert.deepEqual(await search(olek, 'czujnik'), { items: [], next: null });
+    assert.deepEqual(titles(await search(olek, 'dach wiatromierz')), ['Dach nad salą zebrań jest nowy.'], 'only the open space’s message');
+    const lena = await person('Lena Wierzba');
+    await addMember(ari, ws.id, lena, 'member');
+    await grant(ari, stacje.id, lena, 'contributor');
+    assert.deepEqual(titles(await search(lena, 'czujnik')), [KALIBRACJA]);
+    await removeFromSpace(ari, stacje.id, lena);
+    assert.deepEqual(await search(lena, 'czujnik'), { items: [], next: null }, 'a lost grant is reflected at once');
+    assert.deepEqual(titles(await search(lena, 'dach wiatromierz')), ['Dach nad salą zebrań jest nowy.'], 'the open space is still hers');
+  });
+
+  test('a direct message is found only by the people in it, and not after they leave it', async () => {
+    const direct = await dm(ari, ws.id, [nia]);
+    await dmSay(ari, direct.id, 'Sekretny kalibrator czujników dla Ni.');
+    assert.equal((await search(nia, 'kalibrator')).items.length, 1);
+    assert.equal((await search(ari, 'czujnik kalibrator')).items.filter((item) => item.kind === 'dm_message').length, 1);
+    assert.deepEqual((await search(olek, 'kalibrator czujnik')).items, [], 'not Olek');
+    expectStatus(await nia.browser.request('POST', `/api/v1/dms/${direct.id}/leave`), 204);
+    assert.equal((await search(nia, 'kalibrator')).items.length, 0, 'not after Nia left');
+    assert.equal((await search(ari, 'kalibrator')).items.length, 1);
+  });
+
+  test('an edit, a removal and a deletion are reflected at once', async () => {
+    const message = await say(nia, thread.id, 'Anemometr na dachu B wymaga wymiany łożyska.');
+    assert.deepEqual(titles(await search(nia, 'anemometr')), ['Anemometr na dachu B wymaga wymiany łożyska.']);
+    assert.deepEqual(titles(await search(nia, 'lozyska')), ['Anemometr na dachu B wymaga wymiany łożyska.'], 'accents folded');
+    json(await patch(nia, `/api/v1/conversations/${thread.id}/messages/${message.id}`, { body: 'Wiatrak na dachu B działa.' }), 200, 'edit');
+    assert.deepEqual(titles(await search(nia, 'anemometr')), [], 'the old words find nothing');
+    assert.deepEqual(titles(await search(nia, 'wiatrak')), ['Wiatrak na dachu B działa.']);
+    const response = await nia.browser.request('DELETE', `/api/v1/conversations/${thread.id}/messages/${message.id}`);
+    assert.ok(response.status === 200 || response.status === 204, response.text);
+    assert.deepEqual(titles(await search(nia, 'wiatrak')), [], 'a removed message is not found');
+    const gone = await say(nia, thread.id, 'Pluwiometr kalibrowany ręcznie.');
+    assert.equal((await search(nia, 'pluwiometr')).items.length, 1);
+    await pool.query('DELETE FROM project_messages WHERE id = $1', [gone.id]);
+    assert.deepEqual(await search(nia, 'pluwiometr'), { items: [], next: null }, 'a deleted row is not found');
+  });
+});
+
 describe('search: hidden matches never change the answer or the work', () => {
   test('hundreds of hidden matches give the same results, `more` and rows examined', async () => {
     const [ari, nia, olek] = await Promise.all(['Ari Hidden', 'Nia Hidden', 'Olek Hidden'].map(person));
@@ -357,7 +463,10 @@ describe('search: hidden matches never change the answer or the work', () => {
     await say(ari, openThread.id, 'The prototype review is on Thursday.');
     await say(nia, openThread.id, 'Prototype photos are in the shared folder.');
 
-    const query = { q: 'prototype', limit: 5 };
+    // `explain` describes the exact statement (quotes ask for exactly the word), which is what the work counts below measure; the BM25
+    // statement of plain words is held to the same privacy by the identical answers further down.
+    const query = { q: '"prototype"', limit: 5 };
+    const plain = { q: 'prototype', limit: 5 };
     const median = async () => {
       const samples: number[] = [];
       for (let i = 0; i < 9; i += 1) { const started = performance.now(); await search(olek, query); samples.push(performance.now() - started); }
@@ -370,6 +479,7 @@ describe('search: hidden matches never change the answer or the work', () => {
     const settle = async () => { await pool.query('VACUUM ANALYZE projects, dms, dm_participants, sketches'); await pool.query('ANALYZE search_documents'); };
     await settle();
     const baseline = await search(olek, query);
+    const plainBaseline = await search(olek, plain);
     const baselineWork = await explain(olek, query);
     const baselineBuffers = Math.min(baselineWork.searchBuffers, ...await Promise.all([0, 1, 2, 3].map(async () => (await explain(olek, query)).searchBuffers)));
     const baselineTime = await median();
@@ -385,6 +495,8 @@ describe('search: hidden matches never change the answer or the work', () => {
 
     const saturated = await search(olek, query);
     assert.deepEqual(saturated, baseline, 'identical answer and `next`');
+    assert.deepEqual(await search(olek, plain), plainBaseline, 'the BM25 answer of plain words is identical too, items and `next`');
+    assert.equal(plainBaseline.items.length, 2);
     assert.equal(saturated.next, null, 'hidden matches never make `more` true');
     const saturatedWork = await explain(olek, query);
     console.log(JSON.stringify({ search: 'saturation', before: baselineWork, after: saturatedWork, insider: { before: { rows: insiderBefore.rows, searchBuffers: insiderBefore.searchBuffers } } }));
@@ -414,6 +526,7 @@ describe('search: hidden matches never change the answer or the work', () => {
     const insider = await search(nia, query);
     assert.ok(insider.next, 'Nia has more pages');
     assert.equal(insider.items.length, 5);
+    assert.ok((await search(nia, plain)).next, 'and the BM25 statement gives her the same');
     // Only a very coarse wall-clock sanity bound: other test files run concurrently on the same
     // database, so timing is not the privacy evidence (the buffers above are).
     const saturatedTime = await median();
@@ -429,7 +542,7 @@ test('hidden work matches leave visible work results and indexed work identical'
   const hidden = await createProject(owner, ws.id, 'Restricted work', 'restricted');
   const marker = `workprivacyprobe${randomUUID().replaceAll('-', '')}`;
   const task = json<WorkItem>(await post(owner, `/api/v1/projects/${visible.id}/work`, { title: marker }), 201);
-  const query = { q: marker, type: 'work', limit: 5 };
+  const query = { q: `"${marker}"`, type: 'work', limit: 5 };
   await pool.query('ANALYZE search_documents, project_work_items');
   const before = await search(reader, query);
   const beforeWork = await explain(reader, query);

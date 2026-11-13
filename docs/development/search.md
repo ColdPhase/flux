@@ -3,9 +3,58 @@
 Foundation 8.12: a person knows something exists but not where or under which name. One search
 covers project messages, direct messages, docs and materials and every version of them, work items,
 decisions, sketches and their thoughts and people. It runs in PostgreSQL only
-(`tsvector`, GIN, `websearch_to_tsquery`, `ts_headline`, `pg_trgm`), in line with O-002: there is
-no separate search server. The #16 rule applies throughout: **access filtering happens before
+(a BM25 index from `pg_search`, `tsvector`, GIN, `websearch_to_tsquery`, `ts_headline`, `pg_trgm`), in line with O-002:
+there is no separate search server. The #16 rule applies throughout: **access filtering happens before
 ranking, limits and snippets.**
+
+## Two ways to match (F-042, #1293)
+
+| The query | Answered by | What it does |
+| --- | --- | --- |
+| Plain words (`sensor`, `czujnik piatek`, `#12`) | the BM25 index of migration 0065 (`searchRows(db).ranked`) | **Any** of the words matches, Polish and English stems, accents folded; ranked by how rare the words are **among the hits the reader may see**, a word in a title counting double. |
+| Quotes, `or` or `-word` (`"exact phrase"`, `sensor -lamp`) | the exact index below (`searchRows(db).page`) | Exactly what it says: every word, no stems, the web search syntax. |
+
+The service (`createSearchUseCases`) picks by `usesSearchSyntax(text)`; the cursor, the audiences, the filters (`type`, `place`,
+`author`), the one result per object and the task-number rule (`#12` first) are the same for both, and so is the answer's shape.
+
+- **pg_search matches; it does not rank.** Its own score (`pdb.score`) counts how rare a word is over the whole index, and the index
+  holds what the reader may not read: restricted spaces, other people's direct messages and every other workspace of the instance. A
+  writer in one visible place could then move the order of a reader's own results by writing a word in the hidden ones (the review
+  probe of #1326 swapped two visible messages with 40 hidden ones). So the statement (`rankedStatement` in
+  `packages/db/src/repositories/search.ts`) asks the index only which documents hold which word: every clause scores a constant
+  (`pdb.const`, a power of two), so a hit's score is a code of which word it holds and where, and the words share as few scans as a
+  score's bits allow (one for up to four words). The scan is filtered by the reader's audiences only (a set of audiences scores a
+  constant); the reader's filters (type, place, author, conversation, time) and the task lifecycle are applied to its rows after it,
+  because pg_search scores a filter on one value by that value's rarity over the whole index (`search-hidden-ranking.test.ts` holds it
+  with 24,000 hidden rows). The order is then **BM25 computed in SQL over the visible hits** (`cand`): a word's document frequency, the number of documents and their average length are counted over those hits and
+  nothing else; a document's own part is its length (`length(tsv)`, stored with the row) and where the word was found. The term
+  frequency of a word is one (the index says it matches, not how often). Each word adds `idf × weight × (k1 + 1) / (1 + k1 × (1 − b + b × length / average))`
+  with k1 1.2 and b 0.75; the weight is 2 for a whole word in the title and 1 in the body, and a hit found only as the word being typed
+  or with a typo in its title counts half the average rarity of the query's words. No statistic of the index, and no row the reader may not see, influences what they are shown or in which
+  order; `search-hidden-ranking.test.ts` holds it for the people's search and for the statement an agent's `flux_search` runs, with
+  writes in a restricted space, another workspace and other people's direct messages.
+- **The word being typed** is also looked up as a prefix: the index holds stems, so a scan adds `pdb.regex('<word>.*')` on the title and
+  the body fields (folded by `foldSearchWord`), and "sens" finds "sensors" and "kalibr" finds "kalibracja".
+- **A title tolerates a typo:** each plain word of four letters or more (at most six) also matches the title with one edit
+  (`pdb.fuzzy(1)`), as the trigram match did ("ensor", "omparison", "comparisn" find "Sensor comparison"). A task number
+  names one task, so it gets no typo.
+- **At most twelve words are looked up** (the first twelve and the word being typed), each a title and a body clause in each language;
+  a search of up to four words is one scan and runs in a few milliseconds, a longer one a scan for each further five words.
+- **The score** in a position is `rank / (rank + 10)`, in (0, 1) and in the same order, so that the rows of an encrypted space,
+  which the in-memory index ranks from 0 to 1.5, merge with them.
+- **Encrypted spaces** answer plain words the same way, without stems and accents (`plan.anyWord`, `sealed-search.ts`): their content is
+  never in the BM25 index, so the in-memory index matches any of the words, the typed word as a prefix and a title with a typo (four
+  letters or more), and ranks a document by the words it holds, each weighing the idf of its audience's own documents (rarer
+  weighs more) and a title word more than a body word. A plain space can therefore find a document by another form of a word that an
+  encrypted one cannot. `encryption-search-live.test.ts` holds both sides to the same set for plain words, a prefix, several words,
+  a typo and quoted words, and to the rare word first.
+- **Snippets and marks.** `ts_headline` picks the passage and marks the query words and their longer forms (`czujn:*` for
+  "czujnik"); `markSearchWords` (core) marks the rest in the text of the result: a longer form, the word without its
+  accents ("piatek" marks "piątek") and the word as far as it was typed. Both use the same stem rule (`searchWordStem`).
+- **`/api/v1/search/explain`** (test support) describes the exact statement, which is what its work counts were written for.
+- **The exact index stays.** Quotes, `or` and `-word` need every-word and exclusion semantics that `|||` does not give; the
+  `keys` index and its trigram and prefix terms are therefore not dropped by this change (a migration that drops them would have to
+  carry those semantics over to the BM25 index first).
 
 ## Index
 
@@ -48,10 +97,9 @@ contrib extension) and one table, `search_documents`. Each row is one searchable
   with kind `doc` and the version's state. Their audience is the project: draft is a state, not a
   second audience, as in [docs-wiki.md](docs-wiki.md). A result says "Doc · draft" or "Doc ·
   published" and opens the doc reader at the matched version.
-- **Language.** The `simple` configuration lowercases without stemming, so every language is
-  treated the same way. The last word also matches as a prefix while typing (`sens` finds
-  "sensor"), and titles and names also match by trigram similarity, which tolerates small typos
-  and missing letters anywhere in a word (`ensor` and `omparison` find "Sensor comparison").
+- **Language (exact index).** The `simple` configuration lowercases without stemming, so every language is
+  treated the same way. It answers only the web search syntax now; the stems, accents, prefix and typos of plain words are the BM25
+  statement's (above).
 - **Grammar limits, refused explicitly.** A query of only exclusions (`-lamp`) answers
   `400 QUERY_NEEDS_WORD`, and an exclusion together with `or` (`sensor or -lamp`, which would match
   everything without "lamp") answers `400 QUERY_UNSUPPORTED`. A quoted `"or"` is an ordinary word.
@@ -197,7 +245,10 @@ Direct messages were added this way (`dm_message`, audience `dm`), and docs (`do
   `search_documents` and its index were equal in every run; because writes anywhere can still add a
   level to the shared GIN entry tree or make a lookup follow a page split, the test compares the
   fewest buffers of several runs and allows an increase of at most one page per key lookup plus two
-  per scan. A control checks that the insider's rows and index row addresses do grow. Only a very coarse
+  per scan. A control checks that the insider's rows and index row addresses do grow (the exact statement, asked with quotes; the BM25 answer of plain words is
+  held identical too). Plain words are covered in their own group (#1293): another form of a Polish word, a word without its accents,
+  an English stem, any of the words, the rarer word first, a typed prefix, quotes, `or` and `-word` staying exact, a space the caller
+  cannot read or has left, a direct message, and an edit, a removal and a deletion at once. Only a very coarse
   wall-clock sanity bound remains, because other test files share the database; the insider sees
   the hidden rows with `more`.
 - `app/tests/ui/test_search.py` (in `./scripts/check_ui.sh`) covers Ctrl+K search as you type and

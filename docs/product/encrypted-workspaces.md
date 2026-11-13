@@ -1152,7 +1152,11 @@ an **encrypted index at rest, decrypted into RAM**:
   search) and when the process drops its keys.
 - **Query.** It accepts the same grammar and the same refusals (`QUERY_NEEDS_WORD`,
   `QUERY_UNSUPPORTED`, checked before either source), `simple`-style lowercasing without stemming, a prefix match on the last word,
-  title similarity, and websearch quotes (adjacent words), `or` and `-word`. The title match is the
+  title similarity, and websearch quotes (adjacent words), `or` and `-word`. **Plain words match any of the words** (F-042, #1293,
+  founder decision 2026-11-12), as in a plain space: the last word also as a prefix, a title with a typo in a word of four letters or
+  more (per word), and a document ranks by the words it holds, a word weighing its idf among the documents of the audience's own
+  partition (rarer weighs more) and a title word more than a body word; there are no stems and no accent folding in the in-RAM index.
+  Quotes, `or` and `-word` stay exact (every word). The title match is the
   operator the SQL path uses (`title %> query`, `word_similarity` at `pg_trgm.word_similarity_threshold`, 0.6; the earlier
   text said 0.3, which is the threshold of the other operator). It is the best share of the query's trigrams in a continuous
   extent of the title's trigrams, found through a trigram posting list so only titles that share enough trigrams are compared.

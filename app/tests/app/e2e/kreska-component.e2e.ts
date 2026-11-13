@@ -5,9 +5,23 @@ import { test } from 'node:test';
 import { chromium, webkit } from 'playwright';
 import { expressions, sizes, kreskaComponentFixture } from '../../../apps/web/scripts/kreska-component-fixture.js';
 
+const loop = (name: string, count = 1) => Array.from({ length: count }, () => `${name} infinite`);
+const once = (name: string, count = 1) => Array.from({ length: count }, () => `${name} 1`);
+/** Each expression's motion as ui.css draws it (final design §3, #1342): every animated part's name and iteration count, sorted. */
+const MOTION: Record<string, string[]> = {
+  idle: loop('kreska-blink-rare'), working: loop('kreska-blink'), thinking: loop('kreska-wave'), writing: once('kreska-pen'), reading: once('kreska-scan'),
+  waiting: once('kreska-look-down'), asking: once('kreska-lift'), looking: [...once('kreska-glance'), ...once('kreska-glance-brow')], loading: loop('kreska-dot', 3),
+  surprised: [...once('kreska-jump'), ...once('kreska-pop', 2)], done: once('kreska-settle'), wink: [...once('kreska-wink-open'), ...once('kreska-wink-shut')],
+  celebrate: [...once('kreska-settle'), ...once('kreska-sparkle')], hello: once('kreska-hello'), asleep: [...loop('kreska-breathe'), ...loop('kreska-drift')], worried: once('kreska-drop'),
+};
+/** At 20px or less only the loops that moved there before #1342. */
+const SMALL: Record<string, string[]> = { working: MOTION.working!, thinking: MOTION.thinking!, loading: MOTION.loading! };
+const motion = (face: Element) => [...face.querySelectorAll('*')].map((part) => getComputedStyle(part)).filter((style) => style.animationName !== 'none')
+  .map((style) => `${style.animationName} ${style.animationIterationCount}`).sort();
+
 // Actual React component and the application's built CSS, viewed separately from live-app journeys.
 // This verifies all 80 frames, sizing/weights and reduced motion; integration is tested elsewhere.
-test('all sixteen production Kreska expressions at five sizes retain static frames in Chromium and WebKit', async () => {
+test('all sixteen production Kreska expressions at five sizes retain static frames, and move as the design draws them, in Chromium and WebKit', async () => {
   const assets = join(process.cwd(), 'apps/web/dist/assets');
   const css = readdirSync(assets).filter((file) => file.endsWith('.css')).map((file) => readFileSync(join(assets, file), 'utf8')).join('\n');
   for (const engine of [chromium, webkit]) {
@@ -37,8 +51,23 @@ test('all sixteen production Kreska expressions at five sizes retain static fram
         if (evidence) { mkdirSync(evidence, { recursive: true }); await page.screenshot({ path: join(evidence, `339-kreska-80-frames-${engine.name()}-${scheme}.png`), fullPage: true }); }
         await page.emulateMedia({ reducedMotion: 'no-preference' });
         await page.waitForFunction(() => document.getAnimations().length > 0);
-        const animated = await page.evaluate(() => [...new Set(document.getAnimations().map((animation) => (animation.effect as KeyframeEffect).target?.closest('.kreska')?.getAttribute('data-expression')))].sort());
-        assert.deepEqual(animated, ['loading', 'thinking', 'working']);
+        // Each expression's own motion (#1342): one-shots play once, only the ongoing states loop. At 20px or less only the three
+        // loops that moved there before run, and a face without a state stays still.
+        for (const expression of expressions) {
+          for (const size of sizes) {
+            const moving = await page.locator(`[data-face="${expression}"] [data-size="${size}"] .kreska`).evaluate(motion);
+            assert.deepEqual(moving, size <= 20 ? (SMALL[expression] ?? []) : MOTION[expression], `${engine.name()} ${scheme}: ${expression} at ${size}px`);
+          }
+        }
+        await page.evaluate(() => { const plain = document.querySelector('[data-face="idle"] [data-size="48"] .kreska')!; plain.removeAttribute('data-moves'); });
+        assert.deepEqual(await page.locator('[data-face="idle"] [data-size="48"] .kreska').evaluate(motion), [], 'a face without a state stays still');
+        // Reduced motion in Settings → Appearance, and Kreska's small moments off, each leave every face its static frame.
+        for (const [attribute, value] of [['motion', 'reduce'], ['kreska', 'off']] as const) {
+          await page.evaluate(([name, setting]) => { document.documentElement.dataset[name] = setting; }, [attribute, value]);
+          const still = await page.locator('.kreska').evaluateAll((faces) => faces.flatMap((face) => [...face.querySelectorAll('*')]).filter((part) => getComputedStyle(part).animationName !== 'none').length);
+          assert.equal(still, 0, `${engine.name()} ${scheme}: data-${attribute}="${value}" stops every Kreska motion`);
+          await page.evaluate((name) => { delete document.documentElement.dataset[name]; }, attribute);
+        }
         await page.close();
       }
     } finally { await browser.close(); }
