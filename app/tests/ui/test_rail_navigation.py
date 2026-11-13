@@ -123,7 +123,7 @@ class RailNavigation(unittest.TestCase):
                 expect(page.get_by_role("dialog", name="Account", exact=True)).to_have_count(0)
                 expect(page).to_have_url(re.compile(r"/settings$"))
                 page.get_by_role("link", name=re.compile(r"^Account")).first.click()
-                expect(page.get_by_text(ids["email"])).to_be_visible()
+                expect(page.get_by_role("region", name="Signed in as").get_by_text(ids["email"])).to_be_visible()
                 for text200 in (False, True):
                     page.evaluate("large => document.documentElement.style.fontSize = large ? '200%' : ''", text200)
                     expect(account).to_be_visible()

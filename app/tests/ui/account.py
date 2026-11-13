@@ -22,6 +22,15 @@ def open_settings(page: Page, name: str | None = None) -> None:
     expect(page.get_by_role("heading", name="Account", exact=True)).to_be_visible()
 
 
+def back_to(page: Page, fragment: str, limit: int = 6) -> None:
+    """Back through the history until the address holds `fragment`: Settings and its Account section lie between a page and its sign-out."""
+    for _ in range(limit):
+        if fragment in page.url:
+            return
+        page.go_back()
+    assert fragment in page.url, page.url
+
+
 def sign_out_button(page: Page) -> Locator:
     """Settings › Account's one Sign out row (the other devices have their own, named after the device)."""
     return page.locator('form[action="/sign-out"] button')

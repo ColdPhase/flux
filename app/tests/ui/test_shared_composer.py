@@ -14,7 +14,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 
 from playwright.sync_api import expect, sync_playwright
-from account import open_settings, sign_out_button
+from account import back_to, open_settings, sign_out_button
 from create_window import submit_button
 from test_app_shell import ORIGIN, UPSTREAM, shot, start_forwarder
 
@@ -790,8 +790,7 @@ class SharedComposerJourney(unittest.TestCase):
                 self.assertEqual(self.record(page, project, task), persisted)
                 page.unroute("**/api/auth/sign-out", fail)
                 # Back in the conversation (past Settings, where Sign out is), the failed sign-out has kept the newest text.
-                page.go_back()
-                page.go_back()
+                back_to(page, "/conversations/")
                 expect(pane.get_by_label("Reply", exact=True)).to_have_value(newest)
                 self.assertEqual(self.record(page, project, task), persisted)
                 held = []

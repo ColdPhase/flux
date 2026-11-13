@@ -797,7 +797,7 @@ class AppShellJourney(unittest.TestCase):
         expect(page).to_have_url(f"{ORIGIN}/settings")
         page.get_by_role("link", name=re.compile(r"^Account")).first.click()
         expect(page.get_by_role("heading", name="Account", exact=True)).to_be_visible()
-        expect(page.get_by_text(EMAIL)).to_be_visible()
+        expect(page.get_by_role("region", name="Signed in as").get_by_text(EMAIL)).to_be_visible()
         shot(page, "desktop-1440-account-light")
         # The theme is Settings > Appearance, and it persists across a reload.
         page.goto("/settings/appearance")

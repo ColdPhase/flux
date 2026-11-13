@@ -310,7 +310,6 @@ class RouteChunksJourney(unittest.TestCase):
                     page.wait_for_timeout(200)
                 page.unroute(save_pattern, refuse_save)
                 self.assertTrue(refused, "the save was tried by itself and refused")
-                refused_id = refused[0]["clientCommandId"]
                 # Sign out from this tab without a document reload: the visit copy is retired.
                 sign_out(page)
                 expect(page).to_have_url(re.compile("/sign-in"))
@@ -329,17 +328,14 @@ class RouteChunksJourney(unittest.TestCase):
                 page.get_by_label("Password", exact=True).fill("a quiet route loading passphrase")
                 page.get_by_role("button", name="Sign in", exact=True).click()
                 expect(page.get_by_role("heading", name="Home", exact=True)).to_be_visible()
-                # Through the router, not a document load: a load would clear this tab's visit copies anyway.
-                with page.expect_response(lambda response: response.request.method == "POST" and response.url.endswith(f"/api/v1/docs/{doc['id']}/live/save"), timeout=30000) as saved:
-                    page.locator(".app__side").get_by_role("link", name=re.compile("^Chunk boundaries(?:, new activity)?$")).click()
-                    page.get_by_role("navigation", name="Space views").get_by_role("tab", name="Wiki", exact=True).click()
-                    page.locator(".wiki-page").get_by_role("heading", level=2).get_by_role("button").click()
-                    page.get_by_role("dialog", name=re.compile("^Pages in")).get_by_role("link", name=doc["title"], exact=True).click()
-                    expect(page.locator('[data-live-status="live"]')).to_be_visible()
-                    expect(page.get_by_text("A private copy from an earlier session is available.", exact=True)).to_have_count(0)
-                self.assertEqual(saved.value.status, 200)
-                self.assertNotEqual(saved.value.request.post_data_json["clientCommandId"], refused_id,
-                    "a visit copy retired by sign-out must not resume the refused Save")
+                # Through the router, not a document load: a load would clear this tab's visit copies anyway. (Signing out is a trip through Settings
+                # now (#1419), which leaves the page, so no refused Save is waiting any more: what is left to see is that no copy is offered.)
+                page.locator(".app__side").get_by_role("link", name=re.compile("^Chunk boundaries(?:, new activity)?$")).click()
+                page.get_by_role("navigation", name="Space views").get_by_role("tab", name="Wiki", exact=True).click()
+                page.locator(".wiki-page").get_by_role("heading", level=2).get_by_role("button").click()
+                page.get_by_role("dialog", name=re.compile("^Pages in")).get_by_role("link", name=doc["title"], exact=True).click()
+                expect(page.locator('[data-live-status="live"]')).to_be_visible()
+                expect(page.get_by_text("A private copy from an earlier session is available.", exact=True)).to_have_count(0)
                 # Sign-out revoked the shared session; the next engine starts from this fresh one (as test_14 does).
                 type(self).state = page.context.storage_state()
 
