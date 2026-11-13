@@ -81,7 +81,7 @@ class WorkflowShape(unittest.TestCase):
     def test_inputs_are_the_documented_ones(self):
         names = {m.group(1) for m in re.finditer(r"^      (\w+):$", "\n".join(top_level_block("on")), re.M)}
         self.assertTrue({"ref", "suite", "modules", "browser", "shards"} <= names, names)
-        self.assertEqual(re.findall(r"^          - (\w+)$", WORKFLOW, re.M), ["ui", "live", "api", "runtime", "chromium", "webkit"])
+        self.assertEqual(re.findall(r"^          - (\w+)$", WORKFLOW, re.M), ["ui", "live", "api", "runtime", "perf", "chromium", "webkit"])
 
     def test_token_is_read_only_everywhere(self):
         self.assertEqual([line.strip() for line in top_level_block("permissions") if line.strip()], ["contents: read"])
@@ -183,7 +183,8 @@ class PlanSteps(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertEqual(outputs["ref"], ref)
         for suite, modules in (("ui", "test_a test_b.Class.test_x"), ("live", "test_live_sessions"), ("api", "tests/app/search.test.ts"),
-                              ("runtime", "check_agent_runtime check_cli_runtime check_runtime_sandbox")):
+                              ("runtime", "check_agent_runtime check_cli_runtime check_runtime_sandbox"),
+                               ("perf", "v0.2.0 " + "a" * 40)):
             result, _ = self.validate(suite=suite, modules=modules)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
@@ -198,6 +199,8 @@ class PlanSteps(unittest.TestCase):
             {"suite": "api", "modules": "test_a"}, {"suite": "api", "modules": "tests/app/../x.test.ts"},
             {"suite": "api", "modules": "tests/app/a/b.test.ts"},
             {"suite": "runtime", "modules": "check_application"}, {"suite": "runtime", "modules": "check_agent_runtime.sh"},
+            {"suite": "perf", "modules": "v0.2.0"}, {"suite": "perf", "modules": "v0.2.0 main extra"}, {"suite": "perf", "modules": "v0.2.0 a..b"},
+            {"suite": "perf", "modules": "v0.2.0 -x"}, {"suite": "perf", "modules": "v0.2.0 main", "shards": "2"},
         ]
         for inputs in refused:
             result, outputs = self.validate(**inputs)
@@ -230,6 +233,16 @@ class PlanSteps(unittest.TestCase):
         self.assertEqual(json.loads(outputs["matrix"])["include"][0]["modules"], "tests/app/search.test.ts")
         result, _ = self.plan(suite="api", modules="tests/app/nothing.test.ts")
         self.assertNotEqual(result.returncode, 0)
+
+    def test_perf_plans_one_job_with_both_refs_when_the_commit_has_the_script(self):
+        result, _ = self.plan(suite="perf", modules="v0.2.0 main")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("scripts/perf_compare.sh", result.stdout)
+        (self.checkout / "scripts").mkdir()
+        (self.checkout / "scripts/perf_compare.sh").write_text("", encoding="utf-8")
+        result, outputs = self.plan(suite="perf", modules="v0.2.0 main")
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertEqual(json.loads(outputs["matrix"])["include"], [{"shard": 1, "shards": 1, "modules": "v0.2.0 main"}])
 
 
 class CollectStep(unittest.TestCase):
@@ -298,10 +311,10 @@ class RunStep(unittest.TestCase):
             subprocess.run(["git", "-C", str(checkout), "-c", "user.name=t", "-c", "user.email=t@example.test", "commit", "-q", "--allow-empty",
                             "-m", "x"], check=True)
             sha = subprocess.run(["git", "-C", str(checkout), "rev-parse", "HEAD"], check=True, capture_output=True, text=True).stdout.strip()
-            for name in ("check_ui.sh", "check_live_ui.sh", "check_application.sh", "check_agent_runtime.sh", "check_runtime_sandbox.sh"):
+            for name in ("check_ui.sh", "check_live_ui.sh", "check_application.sh", "check_agent_runtime.sh", "check_runtime_sandbox.sh", "perf_compare.sh"):
                 stub = checkout / "scripts" / name
                 stub.write_text(
-                    '#!/bin/sh\necho "$0 $* browser=${FLUX_UI_BROWSER:-} pattern=${FLUX_LIVE_UI_PATTERN:-} vapid=[${FLUX_VAPID_PUBLIC_KEY-unset}]"\n'
+                    '#!/bin/sh\necho "$0 $* browser=${FLUX_UI_BROWSER:-} pattern=${FLUX_LIVE_UI_PATTERN:-} vapid=[${FLUX_VAPID_PUBLIC_KEY-unset}] out=${FLUX_PERF_COMPARE_OUT:-}"\n'
                     'case "$*$FLUX_LIVE_UI_PATTERN" in *bad*) exit 1 ;; esac\n', encoding="utf-8")
                 stub.chmod(0o755)
             script = Path(tmp) / "step.sh"
@@ -338,6 +351,14 @@ class RunStep(unittest.TestCase):
         self.assertIn("ptrace_scope=", log)
         self.assertLess(log.index("check_runtime_sandbox.sh"), log.index("check_agent_runtime.sh"))
         self.assertIn("for each check", command)
+
+    def test_perf_compares_the_two_refs_into_the_result_artifact(self):
+        result, log, command = self.run_suite("perf", "v0.2.0 main")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertRegex(log, r"perf_compare\.sh v0\.2\.0 main .* out=.*/test-modules-result/perf")
+        self.assertEqual(command, "./scripts/perf_compare.sh v0.2.0 main\n")
+        result, _, _ = self.run_suite("perf", "v0.2.0 bad")
+        self.assertEqual(result.returncode, 1)
 
     def test_a_failing_ui_script_fails_the_step(self):
         result, _, _ = self.run_suite("ui", "test_bad")

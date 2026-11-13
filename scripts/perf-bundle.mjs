@@ -18,6 +18,7 @@ const size = (file) => {
 const sum = (items, key) => items.reduce((total, item) => total + item[key], 0);
 const kb = (bytes) => `${(bytes / 1024).toFixed(0)} KB`;
 const first = entry.map(size);
+const firstScreen = (files) => [...files].sort((a, b) => b.br - a.br).map((item) => `${item.file.replace('/assets/', '')} ${(item.br / 1024).toFixed(1)}`).join(', ');
 console.log(`First screen: ${first.length} files (${first.filter((item) => item.file.endsWith('.js')).length} JS, ${first.filter((item) => item.file.endsWith('.css')).length} CSS), ${kb(sum(first, 'raw'))} raw, ${kb(sum(first, 'br'))} brotli (target at most 250 KB brotli before content)`);
 
 const walk = (dir) => readdirSync(dir).flatMap((name) => {
@@ -30,3 +31,4 @@ const listed = JSON.parse(/const PRECACHE = (\[[^\]]*\])/.exec(sw)?.[1] ?? '[]')
 const cached = listed.filter((url) => /\.(js|css)$/.test(url)).map(size);
 console.log(`Service worker precache: ${listed.length} files, JS and CSS ${kb(sum(cached, 'br'))} brotli of ${all.length} built (${kb(sum(all.map(size), 'br'))} in all)`);
 console.log('Largest chunks (brotli): ' + all.map(size).sort((a, b) => b.br - a.br).slice(0, 6).map((item) => `${item.file.replace('/assets/', '')} ${kb(item.br)}${listed.includes(item.file) ? '' : ' (not precached)'}`).join(', '));
+console.log(`First-screen files (KB brotli): ${firstScreen(first)}`);

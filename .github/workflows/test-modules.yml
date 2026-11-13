@@ -3,6 +3,7 @@ name: Test modules
 # On demand only (founder direction, Hubert, 2026-11-12; docs/agents/ci-and-releases.md): targeted UI, live-session and API test
 # modules of an exact ref run on a GitHub runner instead of the contributor's host, split across shards. Started with
 # `scripts/ci_test.sh <ref> <suite> <browser> <modules...>`, which dispatches this workflow, waits and prints the result lines.
+# Suite `perf` compares two refs' performance on one runner (scripts/perf_compare.sh <base> <head>; modules are those two refs).
 # Never a PR check, never required, never started by a push, a PR or a schedule. The runner executes the tested ref's own scripts
 # (scripts/check_ui.sh, check_live_ui.sh, check_application.sh) exactly as they run locally, with a read-only token and no secrets.
 # Dispatch refs you have read: the candidate's scripts run on the runner.
@@ -14,7 +15,7 @@ on:
         required: true
         type: string
       suite:
-        description: ui runs scripts/check_ui.sh, live runs scripts/check_live_ui.sh (Chromium), api runs scripts/check_application.sh, runtime runs the named agent-runtime checks (scripts/<module>.sh)
+        description: ui runs scripts/check_ui.sh, live runs scripts/check_live_ui.sh (Chromium), api runs scripts/check_application.sh, runtime runs the named agent-runtime checks (scripts/<module>.sh), perf runs scripts/perf_compare.sh
         required: true
         type: choice
         options:
@@ -22,8 +23,9 @@ on:
           - live
           - api
           - runtime
+          - perf
       modules:
-        description: Space-separated, as the local script takes them. ui and live, test modules such as test_docs (ui also Module.Class.test_name); api, files such as tests/app/search.test.ts
+        description: Space-separated, as the local script takes them. ui and live, test modules such as test_docs (ui also Module.Class.test_name); api, files such as tests/app/search.test.ts; perf, the base and the head ref (v0.2.0 main)
         required: true
         type: string
       browser:
@@ -82,7 +84,7 @@ jobs:
           set -euo pipefail
           fail() { printf '::error::%s\n' "$1"; exit 1; }
           [[ "$INPUT_REF" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$ ]] && [[ "$INPUT_REF" != *..* ]] || fail 'ref must be a branch, tag or commit SHA (letters, digits, . _ / -).'
-          case "$INPUT_SUITE" in ui|live|api|runtime) ;; *) fail 'suite must be ui, live, api or runtime.' ;; esac
+          case "$INPUT_SUITE" in ui|live|api|runtime|perf) ;; *) fail 'suite must be ui, live, api, runtime or perf.' ;; esac
           case "$INPUT_BROWSER" in chromium|webkit) ;; *) fail 'browser must be chromium or webkit.' ;; esac
           if [ "$INPUT_SUITE" = live ] && [ "$INPUT_BROWSER" != chromium ]; then
             fail 'The live suite runs Chromium only (scripts/check_live_ui.sh has no engine choice).'
@@ -97,6 +99,10 @@ jobs:
           fi
           ui_target='^[A-Za-z0-9_]+(\.[A-Za-z0-9_]+){0,2}$'
           live_target='^[A-Za-z0-9_]+$'
+          if [ "$INPUT_SUITE" = perf ]; then
+            [ "${#named[@]}" -eq 2 ] || fail 'perf takes two refs: the base and the head.'
+            [ "$INPUT_SHARDS" = 1 ] || fail 'perf runs in one job (shards 1): both refs on the same runner.'
+          fi
           api_target='^tests/app/[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*\.ts$'
           # The agent runtime's own Docker checks, which need a host with kernel.yama.ptrace_scope >= 1 (a runner has it; #1437).
           runtime_target='^check_(agent_runtime|cli_runtime|runtime_sandbox)$'
@@ -106,6 +112,7 @@ jobs:
               live) [[ "$target" =~ $live_target ]] || fail "not a live test module (a file name under app/tests/ui/ without .py): $target" ;;
               api) [[ "$target" =~ $api_target ]] || fail "not an API test file under app/tests/app/: $target" ;;
               runtime) [[ "$target" =~ $runtime_target ]] || fail "not an agent-runtime check (check_agent_runtime, check_cli_runtime or check_runtime_sandbox): $target" ;;
+              perf) [[ "$target" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$ ]] && [[ "$target" != *..* ]] || fail "not a ref: $target" ;;
             esac
           done
           printf 'ref=%s\n' "$INPUT_REF" >> "$GITHUB_OUTPUT"
@@ -139,6 +146,7 @@ jobs:
           done
           for target in "${named[@]}"; do
             case "$INPUT_SUITE" in
+              perf) file="scripts/perf_compare.sh" ;;
               api) file="app/$target" ;;
               runtime) file="scripts/$target.sh" ;;
               *) file="app/tests/ui/${target%%.*}.py" ;;
@@ -167,7 +175,7 @@ jobs:
     name: ${{ inputs.suite }} shard ${{ matrix.shard }} of ${{ matrix.shards }}
     needs: plan
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 160
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
@@ -181,6 +189,8 @@ jobs:
 
       - name: Run the checks
         id: run
+        # A perf comparison builds and measures two refs (about 100 minutes); test modules keep their hour.
+        timeout-minutes: ${{ inputs.suite == 'perf' && 150 || 60 }}
         shell: bash
         env:
           SUITE: ${{ inputs.suite }}
@@ -233,6 +243,11 @@ jobs:
               done
               exit "$rc"
               ;;
+            perf)
+              # Both refs on this runner, back to back (scripts/perf_compare.sh); the data goes into the result artifact.
+              printf './scripts/perf_compare.sh %s\n' "${named[*]}" > "$out/command.txt"
+              FLUX_PERF_COMPARE_OUT="$RUNNER_TEMP/test-modules-result/perf" ./scripts/perf_compare.sh "${named[@]}" 2>&1 | tee "$out/run.log"
+              ;;
             *)
               echo "::error::unknown suite $SUITE"; exit 1
               ;;
@@ -273,7 +288,7 @@ jobs:
           : > "$keep/result.txt"
           if [ -f "$out/run.log" ]; then
             clean=$(sed -e 's/\x1b\[[0-9;]*[A-Za-z]//g' -e 's/\r//g' -e 's/`//g' "$out/run.log")
-            printf '%s\n' "$clean" | grep -E '^(Ran [0-9]+ tests? in [0-9.]+s|OK( \(.*\))?|FAILED \(.*\)|(FAIL|ERROR): .*|.* \.\.\. (FAIL|ERROR)|(ℹ|#) (tests|suites|pass|fail|cancelled|skipped|todo) [0-9]+|✖ .*|Named API test files only.*|=== live module .* ===|=== runtime check .* ===|kernel .*ptrace_scope.*|.*check (passed|FAILED).*|FAIL: .*|NETPROBE=.*|Sandbox check .*)$' > "$keep/result.txt"
+            printf '%s\n' "$clean" | grep -E '^(Ran [0-9]+ tests? in [0-9.]+s|OK( \(.*\))?|FAILED \(.*\)|(FAIL|ERROR): .*|.* \.\.\. (FAIL|ERROR)|(ℹ|#) (tests|suites|pass|fail|cancelled|skipped|todo) [0-9]+|✖ .*|Named API test files only.*|=== live module .* ===|=== runtime check .* ===|kernel .*ptrace_scope.*|.*check (passed|FAILED).*|FAIL: .*|NETPROBE=.*|Sandbox check .*|PERF .*)$' > "$keep/result.txt"
             if [ ! -s "$keep/result.txt" ]; then
               echo 'No test result lines were found; the last log lines:' > "$keep/result.txt"
               printf '%s\n' "$clean" | tail -n 25 >> "$keep/result.txt"

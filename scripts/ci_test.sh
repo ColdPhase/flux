@@ -3,13 +3,15 @@
 # docs/agents/ci-and-releases.md). It dispatches .github/workflows/test-modules.yml, waits for the run and prints
 # the result lines of every shard and how to download the screenshots. The exit code is the run's result.
 #
-#   scripts/ci_test.sh [--shards N] <ref> <ui|live|api> <chromium|webkit> <module>...
+#   scripts/ci_test.sh [--shards N] <ref> <ui|live|api|perf> <chromium|webkit> <module>...
 #
 # ref      a branch (an `origin/` prefix is dropped), a tag, HEAD or a commit SHA that is already pushed. It is resolved to
 #          a full SHA first, so the run tests exactly that commit and a moving branch cannot change it.
 # suite    ui   -> scripts/check_ui.sh <modules>           (test_docs, or Module.Class.test_name)
 #          live -> scripts/check_live_ui.sh per module     (test_live_sessions; Chromium only)
 #          api  -> scripts/check_application.sh <files>    (tests/app/search.test.ts)
+#          perf -> scripts/perf_compare.sh <base> <head>   (v0.2.0 <sha>: two refs measured on one runner, about 100 min;
+#                  the ref's scripts measure; FLUX_CI_WORKFLOW_REF must name a ref whose test-modules.yml has the suite)
 # browser  chromium or webkit (live is Chromium only; api ignores it, pass chromium)
 #
 # Environment: FLUX_CI_SHARDS (default 1; the same as --shards), FLUX_CI_WORKFLOW_REF (the ref the workflow definition
@@ -39,7 +41,7 @@ done
 [ "$#" -ge 4 ] || usage
 ref=$1 suite=$2 browser=$3
 shift 3
-case "$suite" in ui|live|api) ;; *) printf 'suite must be ui, live or api, not %s\n' "$suite" >&2; exit 2 ;; esac
+case "$suite" in ui|live|api|perf) ;; *) printf 'suite must be ui, live, api or perf, not %s\n' "$suite" >&2; exit 2 ;; esac
 case "$browser" in chromium|webkit) ;; *) printf 'browser must be chromium or webkit, not %s\n' "$browser" >&2; exit 2 ;; esac
 if [ "$suite" = live ] && [ "$browser" != chromium ]; then
   echo 'the live suite runs Chromium only' >&2
@@ -157,7 +159,7 @@ else
   errors=$(printf '%s\n' "$failed" | grep -F '##[error]' | cut -f3- | sed -e 's/^[^ ]* //' || true)
   if [ -n "$errors" ]; then printf '%s\n' "$errors"; else printf '%s\n' "$failed" | tail -n 30; fi
 fi
-if [ "$downloaded" = 1 ] && [ "$suite" != api ]; then
+if [ "$downloaded" = 1 ] && [ "$suite" != api ] && [ "$suite" != perf ]; then
   printf 'ci_test: screenshots: gh run download %s -R %s --pattern "screenshots-*" --dir %s\n' "$run_id" "$repo" "$out"
 fi
 printf 'ci_test: whole log: gh run view %s -R %s --log\n' "$run_id" "$repo"
