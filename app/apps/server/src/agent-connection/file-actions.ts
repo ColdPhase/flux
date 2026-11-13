@@ -111,7 +111,7 @@ async function attach(db: Database, input: { projectId: string; clientCommandId:
   if (facts.encrypted) refuse('This space is encrypted, so no file can be attached here.');
   if (!PICTURE_RUN_KINDS.has(facts.kind)) refuse('Only an answer to /ai in a space can carry a file.');
   if (facts.shownAt || facts.dismissedAt) refuse('The answer was already posted or put away, so no file can be added to it.');
-  const fileId = derivedUuid('flux.agent-file.v1', runId!, input.clientCommandId.toLowerCase());
+  const uploadId = derivedUuid('flux.agent-file.v1', runId!, input.clientCommandId.toLowerCase());
   const files = fileUseCases(db, current!.storage, current!.options);
   let staged: StagedFile | null = null;
   // The run's own call stages the file now, whatever the change will do: its scratch is gone once the run ends, and an owner's Approve finds it
@@ -133,7 +133,7 @@ async function attach(db: Database, input: { projectId: string; clientCommandId:
       body = Readable.from([bytes]);
       size = bytes.length;
     }
-    try { staged = await files.stage({ kind: 'human', id: claims.ownerUserId }, input.projectId, { uploadId: fileId, name }, body, size); }
+    try { staged = await files.stage({ kind: 'human', id: claims.ownerUserId }, input.projectId, { uploadId, name }, body, size); }
     catch (error) {
       body.destroy();
       if (error instanceof DomainError) refuse(error.message);
@@ -144,10 +144,13 @@ async function attach(db: Database, input: { projectId: string; clientCommandId:
   let waiting = false;
   try {
     const value = await nativeActionExecutor(db, claims)({ projectId: input.projectId, clientCommandId: input.clientCommandId, sources: input.sources, ...(kept ? { assistantCall: kept } : {}) }, OPERATION, null, { name, ...(input.path ? { path: input.path } : {}) } as AgentJsonValue, async ({ transaction }) => {
-      const [row] = await fileRows(transaction as DbExecutor).lockFiles([fileId]);
+      // The upload this call staged (its id is derived from the run and the call, so a retry and an owner's Approve find the same one).
+      const rows = fileRows(transaction as DbExecutor);
+      const upload = await rows.findUpload(input.projectId, { kind: 'human', id: claims.ownerUserId }, uploadId);
+      const [row] = upload ? await rows.lockFiles([upload.id]) : [];
       if (!row || row.state !== 'ready' || row.messageId !== null || row.uploader.id !== claims.ownerUserId) throw new DomainError(409, 'FILE_NOT_KEPT', 'The file was not kept; attach it again.');
       made = true;
-      return { value: { fileId, name: row.name, size: row.size }, postconditions: [] };
+      return { value: { fileId: row.id, name: row.name, size: row.size }, postconditions: [] };
     });
     if (isAssistantText(value)) {
       // Waiting for the owner's OK: the staged file waits with it (it goes after 7 days unless Approve attaches it).
