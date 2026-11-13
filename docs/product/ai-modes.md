@@ -151,7 +151,11 @@ not verify it. A paid hosting service run by the Flux project keeps plan sign-in
   the pinned catalog makes every model Flux offers `code_mode_only`, which hides MCP tools inside
   code mode's JavaScript `exec` tool, so Flux's copy gives them plain tools (`tool_mode: direct`)
   and no sub-agents, file edits, shell, tool search or experimental tools; everything else stays
-  the vendor's. Flux's tools need no approval in Codex (Flux decides what waits for the owner,
+  the vendor's. **The copy is cut down for each run** ([#1332](https://github.com/ColdPhase/flux/issues/1332)) to the
+  models the account's own `model/list` returns, read just before the run in a separate app-server
+  session that carries no catalog (a configured catalog is authoritative, so it would only echo
+  Flux's own), so a run can never be offered a model the account lacks; a run on a model outside the
+  cut ends as "the plan didn't accept it" before the CLI starts. Flux's tools need no approval in Codex (Flux decides what waits for the owner,
   AG-3, as with Claude Code's `dontAsk`), and Codex's `request_user_input` is off. A preflight reads
   the effective configuration, and the run's own JSONL is the authoritative check: any item other
   than a message, reasoning, an allowed Flux tool call, a call of Codex's own MCP resource readers
@@ -176,6 +180,24 @@ not verify it. A paid hosting service run by the Flux project keeps plan sign-in
   neither tool was offered. Flux records the queries and the search result entries (never an opened
   page), and the run's answer names its sources; it opens any page it found with `flux_read_web` like
   any other address.
+- **The plan's models are read from the CLI** (#1332, founder direction 2026-11-12; F-022 amended;
+  [CA-2](model-providers.md#ca-2--models)). The supervisor has one more request in its closed set,
+  `models` (the person's binding, the CLI and the supervisor's boot id), and answers with the
+  models the signed-in CLI itself offers: for Claude Code, the `models` of its headless
+  initialization answer (`claude -p --input-format stream-json --output-format stream-json
+  --restricted --tools "" --strict-mcp-config`, one `initialize` control request, no user message,
+  so no model call; the process ends once it answers); for Codex, `model/list` of the same
+  allowlisted app-server client, which may now send `initialize`, `config/read`,
+  `account/rateLimits/read` and `model/list` and nothing else (`command/exec` and every other
+  method are still refused before anything is written). Each answer is reduced in the slot to at
+  most 64 entries of an id the protocol accepts, a display name and a short note; hidden models
+  (Codex) and **Fable** (it can bill usage credits that Flux cannot see) are dropped there.
+  Nothing the CLI prints is logged. It is read when the person signs in and about every six hours
+  by the worker's reconciliation tick, one plan per tick, and it never waits behind a run nor holds
+  one up: the request takes the person's lane only when it is free and answers `busy` otherwise, a
+  run that finds only that read in the lane ends it (the read answers `busy`) and goes next, and the
+  worker keeps the last list. For Codex, only the models Flux's reviewed copy of the pinned catalog
+  holds are passed on (no run could use another).
 - **Codex's own MCP resource readers go through to Flux** (#1165, decided 2026-11-10). The pinned
   Codex offers the model `list_mcp_resources`, `list_mcp_resource_templates` and `read_mcp_resource`
   whenever an MCP server is configured, and no setting removes them (codex-rs at rust-v0.160.1, read

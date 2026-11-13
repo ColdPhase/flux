@@ -1,10 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
-import type { AgentRuntimeBindingState, AgentRuntimeClient, AgentRuntimeConnectionState, AgentRuntimeReleaseReason, AgentRuntimeSignInMethod } from '@flux/contracts';
+import type { AgentRuntimeBindingState, AgentRuntimeClient, AgentRuntimeConnectionState, AgentRuntimeReleaseReason, AgentRuntimeSignInMethod, PlanModelEntry } from '@flux/contracts';
 import type { Pool } from 'pg';
 import { holdingSessionLock } from '../session-lock.js';
 import { companyGuestSql } from './access.js';
+import { clearPlanModels, replacePlanModels } from './plan-models.js';
 import type * as schema from '../schema.js';
 import {
   currentRuntimeAuthOperation, markLoginConfirmedGone, markLoginPossible, runtimeAuthAdmissionLock, runtimeAuthOperations, settleRuntimeAuthOperation, RuntimeAuthSupersededError,
@@ -33,7 +34,11 @@ export interface RuntimeConnectionRow {
   client: AgentRuntimeClient; bindingId: string; state: AgentRuntimeConnectionState; signInMethod: AgentRuntimeSignInMethod | null;
   authMethod: string | null; plan: string | null; accountLabel: string | null; signedInAt: Date | null;
   accountChangedAt: Date | null; previousAccountLabel: string | null; signedOutAt: Date | null; signOutFailed: boolean | null;
+  /** Whether the CLI's models were read (#1332): `listed`, or `unavailable` (the last list stays); null while never tried. */
+  modelsStatus: 'listed' | 'unavailable' | null;
 }
+/** A signed-in plan whose model list is due to be read again (#1332): where its CLI runs. */
+export interface RuntimeModelsDue { bindingId: string; slot: string; client: AgentRuntimeClient }
 export interface RuntimeSignInRecord {
   operation: RuntimeAuthOperation;
   ownerUserId: string; bindingId: string; client: AgentRuntimeClient; method: AgentRuntimeSignInMethod | null; signedIn: boolean;
@@ -67,6 +72,8 @@ export interface AgentRuntimeRows {
   completeRelease(bindingId: string, logoutFailed: boolean): Promise<void>;
   dropStaleReservation(bindingId: string, olderThan: Date): Promise<boolean>;
   idleBindings(before: Date): Promise<RuntimeBindingRow[]>;
+  modelsDue(options: { clients: readonly AgentRuntimeClient[]; refreshBefore: Date; retryBefore: Date; limit: number }): Promise<RuntimeModelsDue[]>;
+  saveModels(bindingId: string, client: AgentRuntimeClient, read: readonly PlanModelEntry[] | null, at: Date): Promise<void>;
 }
 
 type Handle = Pick<NodePgDatabase<typeof schema>, 'execute' | 'transaction'>;
@@ -97,7 +104,7 @@ type ConnectionRecord = { client: AgentRuntimeClient; binding_id: string; state:
   auth_method: string | null; plan_label: string | null; account_label: string | null; signed_in_at: Date | string | null;
   account_changed_at: Date | string | null; previous_account_label: string | null; signed_out_at: Date | string | null; sign_out_failed: boolean | null;
   usage_left_percent: number | null; usage_window: 'five_hour' | 'weekly' | null; usage_resets_at: Date | string | null; usage_limit_reached: boolean;
-  usage_read_at: Date | string | null };
+  usage_read_at: Date | string | null; models_status: 'listed' | 'unavailable' | null };
 const maybeDate = (value: Date | string | null) => (value === null ? null : date(value));
 const connection = (row: ConnectionRecord): RuntimeConnectionRow => ({
   client: row.client, bindingId: row.binding_id, state: row.state, signInMethod: row.sign_in_method, authMethod: row.auth_method, plan: row.plan_label,
@@ -105,10 +112,11 @@ const connection = (row: ConnectionRecord): RuntimeConnectionRow => ({
   previousAccountLabel: row.previous_account_label, signedOutAt: maybeDate(row.signed_out_at), signOutFailed: row.sign_out_failed,
   usage: row.usage_read_at === null ? null : { leftPercent: row.usage_left_percent, window: row.usage_window, resetsAt: maybeDate(row.usage_resets_at),
     limitReached: row.usage_limit_reached, readAt: date(row.usage_read_at) },
+  modelsStatus: row.models_status,
 });
 const CONNECTION_COLUMNS = sql`client, binding_id, state, sign_in_method, auth_method, plan_label, account_label, signed_in_at,
   account_changed_at, previous_account_label, signed_out_at, sign_out_failed, usage_left_percent, usage_window, usage_resets_at,
-  usage_limit_reached, usage_read_at`;
+  usage_limit_reached, usage_read_at, models_status`;
 
 async function ownerLock(tx: Exec, ownerUserId: string) {
   await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`agent-runtime-owner:${ownerUserId}`}))`);
@@ -244,6 +252,8 @@ export function agentRuntimeStore(db: Handle): AgentRuntimeRows {
           : (before!.account_label ?? '') !== (record.facts.accountLabel ?? ''));
         const { authMethod, plan, accountLabel } = record.facts;
         const id = row?.id ?? randomUUID();
+        // A new sign-in or another account has other models: the list is read again (#1332).
+        const fresh = changed || row?.state !== 'signed_in';
         if (!row) {
           await tx.execute(sql`INSERT INTO agent_runtime_connections(id, owner_user_id, binding_id, client, state)
             VALUES (${id}, ${record.ownerUserId}, ${record.bindingId}, ${record.client}, 'signed_out')`);
@@ -253,8 +263,11 @@ export function agentRuntimeStore(db: Handle): AgentRuntimeRows {
           account_fingerprint = ${record.fingerprint},
           account_changed_at = CASE WHEN ${changed}::boolean THEN now() ELSE account_changed_at END,
           previous_account_label = CASE WHEN ${changed}::boolean THEN ${before?.account_label ?? null}::text ELSE previous_account_label END,
-          signed_out_at = NULL, sign_out_failed = NULL
+          signed_out_at = NULL, sign_out_failed = NULL,
+          models_status = CASE WHEN ${fresh}::boolean THEN NULL ELSE models_status END,
+          models_checked_at = CASE WHEN ${fresh}::boolean THEN NULL ELSE models_checked_at END
           WHERE id = ${id}`);
+        if (fresh) await clearPlanModels(tx, [id]);
         // The CLI's own status says a login exists; the history says so even if no console was claimed for it.
         await markLoginPossible(tx, record.bindingId, record.client);
         await settleRuntimeAuthOperation(tx, operation);
@@ -267,8 +280,9 @@ export function agentRuntimeStore(db: Handle): AgentRuntimeRows {
         if (operation.kind !== 'logout' || !await currentRuntimeAuthOperation(tx, operation)) return false;
         const { ownerUserId, bindingId, client } = operation;
         const updated = await tx.execute(sql`UPDATE agent_runtime_connections SET state = 'signed_out', signed_in_at = NULL,
-          signed_out_at = now(), sign_out_failed = ${failed}
+          signed_out_at = now(), sign_out_failed = ${failed}, models_status = NULL, models_checked_at = NULL
           WHERE owner_user_id = ${ownerUserId} AND client = ${client} AND binding_id = ${bindingId} AND revoked_at IS NULL RETURNING id`);
+        await clearPlanModels(tx, updated.rows.map((updatedRow) => (updatedRow as { id: string }).id));
         if (!updated.rows.length) {
           await tx.execute(sql`INSERT INTO agent_runtime_connections(id, owner_user_id, binding_id, client, state, signed_out_at, sign_out_failed)
             SELECT ${randomUUID()}::uuid, ${ownerUserId}::text, ${bindingId}::uuid, ${client}::text, 'signed_out', now(), ${failed}::boolean
@@ -329,6 +343,29 @@ export function agentRuntimeStore(db: Handle): AgentRuntimeRows {
       const dropped = await db.execute(sql`DELETE FROM agent_runtime_bindings
         WHERE id = ${bindingId} AND state = 'binding' AND created_at < ${olderThan.toISOString()}::timestamptz RETURNING id`);
       return dropped.rows.length > 0;
+    },
+
+    async modelsDue({ clients, refreshBefore, retryBefore, limit }) {
+      if (!clients.length) return [];
+      const rows = await db.execute<{ binding_id: string; slot: string; client: AgentRuntimeClient }>(sql`SELECT c.binding_id, b.slot, c.client
+        FROM agent_runtime_connections c JOIN agent_runtime_bindings b ON b.id = c.binding_id AND b.state = 'active'
+        WHERE c.state = 'signed_in' AND c.revoked_at IS NULL AND c.client IN (${sql.join(clients.map((client) => sql`${client}`), sql`, `)})
+          AND (c.models_checked_at IS NULL
+            OR c.models_checked_at < (CASE WHEN c.models_status = 'listed' THEN ${refreshBefore.toISOString()}::timestamptz ELSE ${retryBefore.toISOString()}::timestamptz END))
+        ORDER BY c.models_checked_at ASC NULLS FIRST, c.binding_id LIMIT ${limit}`);
+      return rows.rows.map((row) => ({ bindingId: row.binding_id, slot: row.slot, client: row.client }));
+    },
+
+    async saveModels(bindingId, client, read, at) {
+      await db.transaction(async (tx) => {
+        const current = await tx.execute<{ id: string }>(sql`SELECT id FROM agent_runtime_connections
+          WHERE binding_id = ${bindingId} AND client = ${client} AND state = 'signed_in' AND revoked_at IS NULL FOR UPDATE`);
+        const row = current.rows[0];
+        if (!row) return;
+        // The CLI could not be read: the last list stays and is tried again later.
+        if (read) await replacePlanModels(tx, row.id, read);
+        await tx.execute(sql`UPDATE agent_runtime_connections SET models_status = ${read ? 'listed' : 'unavailable'}, models_checked_at = ${at.toISOString()}::timestamptz WHERE id = ${row.id}`);
+      });
     },
 
     async idleBindings(before) {

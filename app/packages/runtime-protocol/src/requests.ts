@@ -8,7 +8,7 @@ export const CONSOLE_SIZE = { cols: { min: 20, max: 300 }, rows: { min: 5, max: 
 // a client and a method from fixed lists and carries only data. No request field is a command line, a
 // flag, a path or an environment value: the supervisor builds every command from a fixed template.
 
-export const SUPERVISOR_REQUESTS = ['bind', 'login', 'status', 'run', 'stop', 'logout', 'release'] as const;
+export const SUPERVISOR_REQUESTS = ['bind', 'login', 'status', 'models', 'run', 'stop', 'logout', 'release'] as const;
 export type SupervisorRequestKind = (typeof SUPERVISOR_REQUESTS)[number];
 
 export const REQUEST_LIMITS = {
@@ -36,6 +36,11 @@ export interface RunCaps { maxTurns: number; wallClockSeconds: number; idleSecon
 export type SupervisorRequest =
   | { kind: 'bind'; bindingId: string }
   | { kind: 'status'; bindingId?: string; client?: RuntimeClient; bootId?: string }
+  /**
+   * The models the signed-in CLI itself offers (#1332, F-022 amended): Claude Code's initialization answer, Codex's `model/list`. Read-only,
+   * and it never waits behind the person's other work: the supervisor answers `busy` when their lane is taken.
+   */
+  | { kind: 'models'; bindingId: string; bootId: string; client: RuntimeClient }
   /** Only through the sign-in console (console.ts): the supervisor runs the method's fixed command in a PTY. */
   | { kind: 'login'; bindingId: string; bootId: string; client: RuntimeClient; method: RuntimeLoginMethod; cols: number; rows: number }
   /**
@@ -63,6 +68,7 @@ type Fields = { required: Record<string, Check<unknown>>; optional?: Record<stri
 const SHAPES: Record<SupervisorRequestKind, Fields> = {
   bind: { required: { bindingId } },
   status: { required: {}, optional: { bindingId, client, bootId: str(UUID, 36) } },
+  models: { required: { bindingId, bootId: str(UUID, 36), client } },
   login: { required: { bindingId, bootId: str(UUID, 36), client, method: oneOf([...RUNTIME_LOGIN_METHODS.claude_code, ...RUNTIME_LOGIN_METHODS.codex]),
     cols: int(CONSOLE_SIZE.cols.min, CONSOLE_SIZE.cols.max), rows: int(CONSOLE_SIZE.rows.min, CONSOLE_SIZE.rows.max) } },
   run: { required: { bindingId, client, runId: str(UUID, 36), prompt: text(REQUEST_LIMITS.promptCharacters, 1), runToken: str(RUN_TOKEN, 12_300), tools: uniqueTools, caps },

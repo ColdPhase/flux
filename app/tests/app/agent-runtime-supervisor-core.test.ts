@@ -10,7 +10,7 @@ import { clearClientFiles, clearLeftovers, clearScratch, hasUnconfirmed, recordU
 import { runFixed } from '../../apps/runtime/src/supervisor/process.js';
 import { removeTreeScript, walkTree } from '../../apps/runtime/src/supervisor/tree.js';
 import { Lane } from '../../apps/runtime/src/supervisor/server.js';
-import { CODEX_FEATURE_REVIEW, CODEX_MODEL_CATALOG, CODEX_MODEL_REVIEW, codexRunOverrides, fluxCodexCatalog, LOGOUT_TEMPLATES, RUN_TEMPLATES, STATUS_TEMPLATES } from '../../apps/runtime/src/supervisor/templates.js';
+import { catalogForAccount, CLAUDE_MODELS_TEMPLATE, CODEX_FEATURE_REVIEW, CODEX_MODEL_CATALOG, CODEX_MODEL_REVIEW, codexListOverrides, codexRunOverrides, fluxCodexCatalog, LOGOUT_TEMPLATES, RUN_TEMPLATES, STATUS_TEMPLATES } from '../../apps/runtime/src/supervisor/templates.js';
 import { classifyCodexError, classifyError, CODEX_RESOURCE_READERS, codexResourceReader, codexSearchFound, effectiveConfigHolds, searchQuery, searchResultAddresses } from '../../apps/runtime/src/supervisor/run.js';
 import { APP_SERVER_METHODS, openAppServer, readRateLimits } from '../../apps/runtime/src/supervisor/app-server.js';
 import { claudeSignInReader, deviceSignInReader } from '../../apps/runtime/src/supervisor/device.js';
@@ -23,7 +23,7 @@ import { portOf, startTestSlot, type TestSlot } from './support/runtime-slot.js'
 const target = (slot: TestSlot) => ({ host: '127.0.0.1', port: portOf(slot.url), secret: slot.config.secret });
 type FixtureRequest<T> = T extends { bootId: string } ? Omit<T, 'bootId'> & { bootId?: string } : T;
 const call = (slot: TestSlot, request: FixtureRequest<SupervisorRequest>) => callSupervisor(target(slot),
-  ('client' in request && ['status', 'logout', 'login'].includes(request.kind) ? { bootId: slot.config.bootId, ...request } : request) as SupervisorRequest, { timeoutMs: 20_000 });
+  ('client' in request && ['status', 'models', 'logout', 'login'].includes(request.kind) ? { bootId: slot.config.bootId, ...request } : request) as SupervisorRequest, { timeoutMs: 20_000 });
 
 /** The client status of a successful status request, or a failed assertion. */
 function clientStatus(out: SupervisorCallOutcome): ClientStatus {
@@ -706,7 +706,33 @@ describe('Codex in the slot (F-022 T6, #281): its JSONL words, status, preflight
     for (const junk of [null, {}, { models: [] }, { models: [{}] }, { models: 'x' }]) assert.throws(() => fluxCodexCatalog(junk), /Not a Codex model catalog/);
   });
 
-  test('the app-server client sends only initialize, config/read and account/rateLimits/read; command/exec is refused before it is written', async () => {
+  test('#1332: a run\'s model catalog is the reviewed one cut down to what the account offers; the list session carries no catalog', () => {
+    const catalog = fluxCodexCatalog({ models: ['gpt-6.1-sol', 'gpt-6-astra', 'gpt-5.5'].map((slug) => ({ slug, tool_mode: 'code_mode_only', context_window: 272000 })) });
+    const cut = catalogForAccount(catalog, ['gpt-6.1-sol', 'gpt-6-luna']);
+    assert.deepEqual(cut?.models.map((model) => model.slug), ['gpt-6.1-sol'], 'a model the account lacks is gone, and a model Flux has no review for is not made up');
+    assert.deepEqual([cut?.models[0]?.tool_mode, cut?.models[0]?.context_window], ['direct', 272000], 'what is left keeps Flux\'s review and the vendor\'s settings');
+    assert.equal(catalogForAccount(catalog, ['gpt-6-luna']), null, 'none of the account\'s models is in it');
+    assert.equal(catalogForAccount(catalog, []), null);
+    assert.throws(() => catalogForAccount({ models: [] }, ['gpt-6.1-sol']), /Not a Codex model catalog/);
+    const own = codexRunOverrides(['flux_get_doc'], 'http://x:8080/mcp', 'brief', false, '/tmp/run-1/models.json');
+    assert.ok(own.includes(`model_catalog_json=${JSON.stringify('/tmp/run-1/models.json')}`), 'the run names its own catalog');
+    assert.ok(!own.includes(`model_catalog_json=${JSON.stringify(CODEX_MODEL_CATALOG)}`));
+    const listing = codexListOverrides().filter((value) => value !== '-c');
+    assert.ok(!listing.some((value) => value.startsWith('model_catalog_json')), 'the list session carries no catalog: it would only echo Flux\'s own');
+    assert.ok(listing.includes('features.plugins=false') && listing.includes('web_search="disabled"') && listing.includes('analytics.enabled=false'), 'but the reviewed features stay off, as in a run');
+    assert.ok(!listing.some((value) => value.startsWith('mcp_servers')), 'and no MCP server');
+    const config = { model_catalog_json: '/tmp/run-1/models.json' };
+    assert.equal(effectiveConfigHolds({ ...config }, ['t'], 'u', false, CODEX_MODEL_CATALOG), false, 'the preflight wants the catalog it was started with, not the image\'s whole copy');
+  });
+
+  test('#1332: Claude Code\'s models are read from its initialization answer with the run\'s tool restrictions and no prompt', () => {
+    assert.deepEqual(CLAUDE_MODELS_TEMPLATE.slice(0, 5), ['-p', '--input-format', 'stream-json', '--output-format', 'stream-json']);
+    for (const flag of ['--restricted', '--strict-mcp-config', '--disable-slash-commands', '--no-session-persistence']) assert.ok(CLAUDE_MODELS_TEMPLATE.includes(flag), flag);
+    assert.equal(CLAUDE_MODELS_TEMPLATE[CLAUDE_MODELS_TEMPLATE.indexOf('--tools') + 1], '', 'no built-in tool');
+    for (const flag of ['--mcp-config', '--allowedTools', '--model', '--append-system-prompt']) assert.ok(!CLAUDE_MODELS_TEMPLATE.includes(flag), `${flag} is a run's`);
+  });
+
+  test('the app-server client sends only initialize, config/read, account/rateLimits/read and model/list; command/exec is refused before it is written', async () => {
     const slot = await startTestSlot({ enabled: ['codex'] });
     try {
       const bindingId = randomUUID();
@@ -720,7 +746,7 @@ describe('Codex in the slot (F-022 T6, #281): its JSONL words, status, preflight
       session.close();
       const methods = (await calls(slot, bindingId, 'codex') as unknown as { event?: string; method?: string }[]).filter((entry) => entry.event === 'app_server').map((entry) => entry.method);
       assert.deepEqual(methods.filter((method) => method !== 'initialized'), ['initialize', 'config/read'], 'nothing else reached the app-server');
-      assert.deepEqual(APP_SERVER_METHODS, ['initialize', 'config/read', 'account/rateLimits/read']);
+      assert.deepEqual(APP_SERVER_METHODS, ['initialize', 'config/read', 'account/rateLimits/read', 'model/list']);
     } finally { await slot.close(); }
   });
 

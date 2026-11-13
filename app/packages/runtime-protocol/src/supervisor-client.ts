@@ -16,7 +16,7 @@ export interface SupervisorTarget { host: string; port?: number; secret: string 
 
 export const SUPERVISOR_TIMEOUTS_MS: Record<SupervisorRequest['kind'], number> = {
   // A run may use the largest wall clock a request can carry (#843), plus its stop grace and Codex's rate-limit read.
-  bind: 10_000, status: 30_000, login: 15 * 60_000, run: (RUN_CAP_BOUNDS.wallClockSeconds.max + 60) * 1000, stop: 10_000, logout: 60_000, release: 120_000,
+  bind: 10_000, status: 30_000, models: 40_000, login: 15 * 60_000, run: (RUN_CAP_BOUNDS.wallClockSeconds.max + 60) * 1000, stop: 10_000, logout: 60_000, release: 120_000,
 };
 
 const MAX_STEPS = 16;

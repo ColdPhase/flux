@@ -267,7 +267,7 @@ overrides = run[0]["overrides"]
 assert overrides["features"]["shell_tool"] is False and overrides["web_search"] == "disabled", overrides
 assert list(overrides["mcp_servers"]) == ["flux"] and overrides["mcp_servers"]["flux"]["required"] is True
 methods = [c.get("method") for c in calls if c.get("event") == "app_server" and c.get("method") != "initialized"]
-assert methods == ["initialize", "config/read", "initialize", "account/rateLimits/read"], methods
+assert methods == ["initialize", "model/list", "initialize", "config/read", "initialize", "account/rateLimits/read"], methods
 results = [c for c in calls if c.get("event") == "tool_result"]
 assert results and all(r["status"] == 200 and not r["isError"] for r in results), results
 print("Codex got the run token only in FLUX_RUN_TOKEN, every override, the preflight, and reached /mcp through runtime-egress")'

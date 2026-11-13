@@ -1,12 +1,13 @@
 import { spawn } from 'node:child_process';
-import { chmod, mkdir, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { FLUX_TOOL_NAME, INIT_NAME, SEARCH_FRAME_LIMITS, TEXT_FRAME_LIMITS, WEB_ADDRESS, type RunOutcome, type SupervisorRequest, type SupervisorResult } from '@flux/runtime-protocol';
 import { openAppServer, readRateLimits, readUsage, type UsageReading } from './app-server.js';
+import { readCodexModels } from './models.js';
 import { clearClientPaths, clearLeftovers, clearScratch } from './data.js';
 import type { Outcome, Send, SupervisorConfig } from './handlers.js';
 import { asPerson, endProcesses, type Person } from './process.js';
-import { CLAUDE_WEB_SEARCH_TOOL, cliEnvironment, CODEX_FEATURE_REVIEW, CODEX_MODEL_CATALOG, codexRunOverrides, RUN_TEMPLATES } from './templates.js';
+import { catalogForAccount, CLAUDE_WEB_SEARCH_TOOL, cliEnvironment, CODEX_FEATURE_REVIEW, CODEX_MODEL_CATALOG, codexRunOverrides, RUN_TEMPLATES } from './templates.js';
 
 // One run of the owner's CLI in their binding directory (F-022 AIM-3 "Run" and "Hardening", T5 #280).
 //
@@ -211,11 +212,11 @@ export function codexSearchFound(item: unknown): { results: string[]; queries: s
  * apps and plugins off (no `codex_apps` or plugin server, codex-rs `ext/mcp`), is also what keeps Codex's own resource readers, which no
  * setting removes, to Flux (#1165).
  */
-export function effectiveConfigHolds(config: unknown, tools: readonly string[], mcpUrl: string, webSearch = false): boolean {
+export function effectiveConfigHolds(config: unknown, tools: readonly string[], mcpUrl: string, webSearch = false, catalog: string = CODEX_MODEL_CATALOG): boolean {
   if (!isObject(config)) return false;
-  // #1127: Flux's reviewed model catalog (plain tools, no code mode or sub-agents) is the one in effect, and the Flux tools' approval is
-  // left to Flux (`default_tools_approval_mode`, checked with the server below).
-  if (config.model_catalog_json !== CODEX_MODEL_CATALOG) return false;
+  // #1127: Flux's reviewed model catalog (plain tools, no code mode or sub-agents), cut down to the account's models for this run (#1332), is
+  // the one in effect, and the Flux tools' approval is left to Flux (`default_tools_approval_mode`, checked with the server below).
+  if (config.model_catalog_json !== catalog) return false;
   const features = isObject(config.features) ? config.features : {};
   for (const [key, review] of Object.entries(CODEX_FEATURE_REVIEW)) if (review.action === 'off' && features[key] !== false) return false;
   if (config.web_search !== (webSearch ? 'cached' : 'disabled')) return false;
@@ -227,18 +228,34 @@ export function effectiveConfigHolds(config: unknown, tools: readonly string[], 
     && listed.length === tools.length && listed.every((tool, index) => tool === tools[index]);
 }
 
-async function codexPreflight(config: SupervisorConfig, dir: string, person: Person, request: RunRequest, mcpUrl: string): Promise<'ok' | 'local_tool' | 'crashed'> {
+async function codexPreflight(config: SupervisorConfig, dir: string, person: Person, request: RunRequest, mcpUrl: string, catalog: string): Promise<'ok' | 'local_tool' | 'crashed'> {
   let session;
   try {
     const webSearch = request.webSearch === true;
-    session = await openAppServer(config.cliPaths.codex, dir, config.egressHost, { timeoutMs: APP_SERVER_TIMEOUT_MS, overrides: codexRunOverrides(request.tools, mcpUrl, RUN_BRIEF, webSearch), person });
+    session = await openAppServer(config.cliPaths.codex, dir, config.egressHost, { timeoutMs: APP_SERVER_TIMEOUT_MS, overrides: codexRunOverrides(request.tools, mcpUrl, RUN_BRIEF, webSearch, catalog), person });
     const read = await session.request('config/read', {});
-    return effectiveConfigHolds(isObject(read) ? read.config : null, request.tools, mcpUrl, webSearch) ? 'ok' : 'local_tool';
+    return effectiveConfigHolds(isObject(read) ? read.config : null, request.tools, mcpUrl, webSearch, catalog) ? 'ok' : 'local_tool';
   } catch {
     return 'crashed';
   } finally {
     session?.close();
   }
+}
+
+/**
+ * Writes this run's model catalog (#1332): Flux's reviewed copy of the pinned catalog cut down to the models the account's own `model/list`
+ * returns right now, so the run cannot be offered a model the account lacks. `model_unavailable`: the run's model is not one of them (or none
+ * is), so the CLI is not started; `crashed`: the account's list or Flux's copy could not be read.
+ */
+async function writeRunCatalog(config: SupervisorConfig, dir: string, person: Person, path: string, model: string | undefined): Promise<'ok' | 'model_unavailable' | 'crashed'> {
+  const account = await readCodexModels(config, dir, person);
+  if (!account) return 'crashed';
+  let cut: ReturnType<typeof catalogForAccount>;
+  try { cut = catalogForAccount(JSON.parse(await readFile(config.codexCatalogPath ?? CODEX_MODEL_CATALOG, 'utf8')) as unknown, account.map((entry) => entry.id)); } catch { return 'crashed'; }
+  if (!cut || (model !== undefined && !cut.models.some((entry) => entry.slug === model))) return 'model_unavailable';
+  await writeFile(path, JSON.stringify(cut), { mode: 0o644 });
+  await chmod(path, 0o644);
+  return 'ok';
 }
 
 /**
@@ -285,12 +302,15 @@ export async function runCli(config: SupervisorConfig, request: RunRequest, dir:
   // The CLI's own search, with the web on (#1065): Claude Code's WebSearch, Codex's web search on OpenAI's cached index.
   const webSearch = request.webSearch === true;
   // The template by name, never by indexing with the request's value (CodeQL js/unvalidated-dynamic-method-call; the protocol checked it already).
-  const input = { tools: request.tools, caps: request.caps, mcpConfigPath, mcpUrl, brief: RUN_BRIEF, model: request.model, webSearch };
+  // Codex's model catalog for this run (#1332): written below, before the preflight, from the account's own list.
+  const catalogPath = join(runDir, 'models.json');
+  const input = { tools: request.tools, caps: request.caps, mcpConfigPath, mcpUrl, brief: RUN_BRIEF, model: request.model, webSearch, catalog: catalogPath };
   const argv = codex ? RUN_TEMPLATES.codex(input) : RUN_TEMPLATES.claude_code(input);
   if (codex) {
     let stopAsked = false;
     runs.set(request.runId, { bindingId: request.bindingId, stop: () => { stopAsked = true; } });
-    const preflight = await codexPreflight(config, dir, person, request, mcpUrl);
+    const catalog = await writeRunCatalog(config, dir, person, catalogPath, request.model);
+    const preflight = catalog === 'ok' ? await codexPreflight(config, dir, person, request, mcpUrl, catalogPath) : catalog;
     const early = stopAsked ? 'stopped' : preflight;
     if (early !== 'ok') {
       runs.delete(request.runId);
@@ -573,7 +593,7 @@ export async function runCli(config: SupervisorConfig, request: RunRequest, dir:
   });
   // Codex, step two: the plan's usage and, at a plan limit, the reset time from the allowlisted app-server, in the same lane.
   if (codex && result.outcome !== 'local_tool' && result.outcome !== 'stopped') {
-    const read = await codexRateLimits(config, dir, person, codexRunOverrides(request.tools, mcpUrl, RUN_BRIEF, webSearch));
+    const read = await codexRateLimits(config, dir, person, codexRunOverrides(request.tools, mcpUrl, RUN_BRIEF, webSearch, catalogPath));
     if (result.outcome === 'plan_limit') result.resetsAt = read.resetsAt;
     result.usage = read.usage;
   }

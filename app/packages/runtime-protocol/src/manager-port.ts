@@ -1,4 +1,4 @@
-import type { ClientStatus, StepOutcome } from './frames.js';
+import type { ClientStatus, PlanModel, StepOutcome } from './frames.js';
 import type { RuntimeManagerClient } from './manager-api.js';
 import { RUNTIME_CLIENTS, type RuntimeClient } from './names.js';
 
@@ -29,6 +29,13 @@ export function runtimeManagerPort(client: RuntimeManagerClient) {
       if (!answer.ok) return answer;
       if (answer.result.kind !== 'status' || !('client' in answer.result) || answer.result.client.client !== cli) return { ok: false, code: 'protocol' };
       return { ok: true, value: { ...answer.result.client, bootId: answer.bootId } };
+    },
+    /** The models the signed-in CLI offers the account (#1332), as the slot reduced them: at least one, never Fable or a hidden model. */
+    async models(slot: string, bindingId: string, cli: RuntimeClient, bootId: string): Promise<PortCall<{ models: PlanModel[]; bootId: string }>> {
+      const answer = await client.request(slot, { kind: 'models', bindingId, client: cli, bootId });
+      if (!answer.ok) return answer;
+      if (answer.result.kind !== 'models' || answer.result.client !== cli) return { ok: false, code: 'protocol' };
+      return { ok: true, value: { models: answer.result.models, bootId: answer.bootId } };
     },
     /** Sign out: the CLI's own logout first, then the supervisor deletes that CLI's files either way. */
     async logout(slot: string, bindingId: string, cli: RuntimeClient, bootId: string): Promise<PortCall<{ logout: StepOutcome; bootId: string }>> {
