@@ -4,6 +4,7 @@ import { ASSISTANT_CHANGE_LIMITS, assistantChangeWords, assistantWorkChangeArgs,
 import { agentExecutionRows, agentProjectObjectRows, assistantChangeRows, assistantRemovalRows, eventRepository, sketchRows, taskDiscussionRows, type AssistantChangeRow, type DbExecutor, loadActor, accessReader, type Database, type Transaction } from '@flux/db';
 import { ASSISTANT_REFUSALS, changedParagraphs, classifyAssistantChange, DomainError, fieldWords, principalKey, type UndoRecord, evaluateProject, redactSecrets, requireSpaceAi, SpaceAiOffError, WAITING_CHANGE_EVENT } from '@flux/core';
 import { nativeConversationsInEventSession } from '../conversation/store.js';
+import { agentFileStorage } from './file-storage.js';
 import { nativeDocsInEventSession } from '../docs/adapters.js';
 import { nativeMapRoomExists, prepareNativeMap } from '../editing/native-map-journal.js';
 import { nativeCapacityRefusal, nativeSketchInEventSession } from '../sketches/adapters.js';
@@ -393,7 +394,7 @@ function natives(tx: Transaction, session: ReturnType<typeof transactionEventSes
   commandId: string, operation: string, fingerprint: string, releases: Set<() => void>): NativeActions {
   return { work: nativeWorkInEventSession(tx, session),
     maps: nativeSketchInEventSession(tx, session, { prepared: live, commandId, operation: `native-agent:${operation}`, fingerprint, retainUntil: (release) => releases.add(release) }),
-    docs: nativeDocsInEventSession(tx, session), conversations: nativeConversationsInEventSession(tx, session),
+    docs: nativeDocsInEventSession(tx, session), conversations: nativeConversationsInEventSession(tx, session, agentFileStorage()),
     transaction: tx, events: session, agent: { kind: 'agent', id: runtime.agentId }, runtime,
     async mapCheckpoint(mapId) {
       const map = await sketchRows(tx).findSketch(mapId);
