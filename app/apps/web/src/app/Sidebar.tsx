@@ -73,14 +73,17 @@ function useScrollEdges(ref: RefObject<HTMLElement | null>, deps: readonly unkno
 
 /**
  * The place the person is in stays in view in a list that scrolls: a long list opens on it, and moving to it scrolls only as far as needed,
- * clear of the fades. It moves this list's own `scrollTop` and nothing else: `scrollIntoView` would also scroll the folding sidebar's
+ * clear of the fades, once for each place. It moves this list's own `scrollTop` and nothing else: `scrollIntoView` would also scroll the folding sidebar's
  * clipped frame sideways while it animates its width.
  */
 function useCurrentInView(ref: RefObject<HTMLElement | null>, key: string, deps: readonly unknown[]) {
+  // Once per place and list: a row that arrives later (a new message) never pulls back a list the person has scrolled themselves.
+  const shown = useRef<{ list: HTMLElement | null; key: string }>({ list: null, key: '' });
   useEffect(() => {
     const list = ref.current;
     const current = list?.querySelector<HTMLElement>('[aria-current="page"], .is-open');
-    if (!list || !current) return;
+    if (!list || !current || (shown.current.list === list && shown.current.key === key)) return;
+    shown.current = { list, key };
     const box = list.getBoundingClientRect();
     const at = current.getBoundingClientRect();
     if (at.top < box.top + 28) list.scrollTop += at.top - box.top - 28;
