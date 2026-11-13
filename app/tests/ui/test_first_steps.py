@@ -57,10 +57,18 @@ class FirstStepsJourney(unittest.TestCase):
         cls.ids["company"] = created.json()["id"]
         everyone = context.request.post(f"/api/v1/workspaces/{cls.ids['company']}/projects", data={"name": "Everyone", "visibility": "workspace"}, headers={"origin": ORIGIN})
         cls.ids["everyone"] = everyone.json()["id"] if everyone.status == 201 else ""
-        for key, role in (("gus", "member"), ("hal", "guest")):
-            added = context.request.post(f"/api/v1/workspaces/{cls.ids['company']}/members", data={"email": PEOPLE[key][1], "role": role}, headers={"origin": ORIGIN})
-            assert added.status == 201, added.text()
         context.close()
+
+    def add_people(self) -> None:
+        """Gus (member) and Hal (guest) join after Fia's first steps: someone else in the company ends her Invite people step."""
+        if self.ids.get("added"):
+            return
+        context = self.browser.new_context(base_url=ORIGIN, service_workers="block", storage_state=self.states["fia"])
+        self.addCleanup(context.close)
+        for key, role in (("gus", "member"), ("hal", "guest")):
+            added = context.request.post(f"/api/v1/workspaces/{self.ids['company']}/members", data={"email": PEOPLE[key][1], "role": role}, headers={"origin": ORIGIN})
+            self.assertEqual(added.status, 201, added.text())
+        self.ids["added"] = "1"
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -122,6 +130,7 @@ class FirstStepsJourney(unittest.TestCase):
         expect(page.get_by_role("dialog", name="Connect your AI")).to_be_visible()
 
     def test_02_a_new_member_writes_in_everyone_and_adds_a_photo(self) -> None:
+        self.add_people()
         for phone in (False, True):
             with self.subTest(phone=phone):
                 page = self.page("gus", phone=phone)
@@ -153,6 +162,7 @@ class FirstStepsJourney(unittest.TestCase):
         expect(page).to_have_url(re.compile(r"/settings/account$"))
 
     def test_03_hide_is_for_good_and_a_guest_gets_no_card(self) -> None:
+        self.add_people()
         page = self.page("gus")
         page.goto("/")
         card = self.card(page)

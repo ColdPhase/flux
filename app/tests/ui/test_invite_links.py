@@ -216,7 +216,7 @@ class InviteLinksJourney(unittest.TestCase):
         owner.get_by_role("button", name="Revoke link for Anyone with the link").click()
         # #763 FT-13: a revoked link can't come back, so Revoke asks once, in place.
         owner.get_by_role("group", name="Revoke link for Anyone with the link").get_by_role("button", name="Revoke link").click()
-        expect(owner.get_by_role("region", name="Invite with a link").get_by_role("status")).to_have_text("Invite link revoked. It no longer works.")
+        expect(owner.get_by_role("region", name="Invite people").get_by_role("status")).to_have_text("Invite link revoked. It no longer works.")
         self.assertEqual(self.pending(self.riverside), [])
         shot(owner, "invite-people-phone-390")
         visitor = self.page(None, phone=True)
