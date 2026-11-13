@@ -16,6 +16,7 @@ import { registerAgentQuestionActions } from './agent-questions.js';
 import { registerAgentCoworkActions } from './cowork-actions.js';
 import { registerAgentGithubActions } from './github-actions.js';
 import { registerAgentWebReads } from './web-reads.js';
+import { registerAgentWebSearch, type KeyWebSearcher } from './web-search.js';
 import { registerAgentPictureActions } from './picture-actions.js';
 import { registerAgentPictureViews } from './picture-views.js';
 import type { WebReader } from '../web-reads/reader.js';
@@ -73,7 +74,7 @@ function registerAgentProposal(tools: AgentToolRegistry, db: Database) {
  * digest and the check that the registrations are exactly the tool list. A request then gets a new server (the SDK
  * binds one to its transport and to nothing else) and the tools it may use, bound to its verified claims: see `AgentToolRegistry.bind`.
  */
-function serverFactory(db: Database, github: GithubActionProvider | null, webReader: WebReader | null, run: boolean, vectors?: QueryVectors) {
+function serverFactory(db: Database, github: GithubActionProvider | null, webReader: WebReader | null, run: boolean, vectors?: QueryVectors, searcher: KeyWebSearcher | null = null) {
   const manifest = createMcpManifest();
   const tools = agentToolRegistry(manifest, db, run);
   const playbook = registerAgentPlaybook(tools, db);
@@ -89,6 +90,8 @@ function serverFactory(db: Database, github: GithubActionProvider | null, webRea
   registerAgentCoworkActions(tools, db);
   registerAgentGithubActions(tools, db, github);
   registerAgentWebReads(tools, db, webReader);
+  // pi's web search (#1441): only with the web on, and only where this API can open a key.
+  registerAgentWebSearch(tools, db, webReader?.enabled ? searcher : null);
   registerAgentPictureActions(tools, db);
   registerAgentPictureViews(tools, db);
   registerAgentProposal(tools, db);
@@ -124,12 +127,13 @@ export interface FluxMcpTools {
  * (#160 AC-3); `webReader` reads web pages for flux_read_web (#918), or null when the install has none. Each kind of caller's
  * definitions are built when the first request of that kind arrives, and then serve every request.
  */
-export function createFluxMcpTools(db: Database, github: GithubActionProvider | null = null, webReader: WebReader | null = null, vectors?: QueryVectors): FluxMcpTools {
+export function createFluxMcpTools(db: Database, github: GithubActionProvider | null = null, webReader: WebReader | null = null, vectors?: QueryVectors,
+  searcher: KeyWebSearcher | null = null): FluxMcpTools {
   let client: ReturnType<typeof serverFactory> | undefined;
   let run: ReturnType<typeof serverFactory> | undefined;
   return { server(claims) {
     // A fresh server is bound to one verified bearer; each tool rechecks inside its transaction.
-    if (claims.run) return (run ??= serverFactory(db, github, webReader, true, vectors))(claims);
+    if (claims.run) return (run ??= serverFactory(db, github, webReader, true, vectors, searcher))(claims);
     return (client ??= serverFactory(db, github, webReader, false, vectors))(claims);
   } };
 }

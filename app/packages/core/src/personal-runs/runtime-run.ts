@@ -327,7 +327,7 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
 
       // The run token, minted by the authorization server for this run only (F-027 A2). It never reaches a
       // log or the database; it travels to the slot in the run request and to the CLI in FLUX_RUN_TOKEN only.
-      const grant = await tokens!.issue(run.id).catch(() => null);
+      const grant = await tokens!.issue(run.id, key ? { pi: true } : {}).catch(() => null);
       // A key run's model requests (#1441): their own token, which only the model gateway takes; the key stays in the worker.
       const modelToken = key && grant?.tools.length ? await key.gateway?.issue(run.id).catch(() => null) ?? null : null;
       if (!grant || !grant.tools.length || (key && !modelToken)) {

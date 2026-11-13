@@ -1,4 +1,4 @@
-import { AGENT_TOOLS, TOOLS_NOT_FOR_RUNS } from './agent-tools.js';
+import { AGENT_TOOLS, KEY_RUN_ONLY_TOOLS, TOOLS_NOT_FOR_RUNS } from './agent-tools.js';
 import type { AgentMayDo } from './agent-proposals.js';
 import type { MessageFile } from './files.js';
 
@@ -42,7 +42,7 @@ export const RUN_NEVER_POSTS = ['flux_start_conversation', 'flux_reply_in_conver
  */
 export function assistantRunTools(mayDo: AgentMayDo): string[] {
   const effects = new Set<string>(ASSISTANT_RUN_EFFECT_TOOLS);
-  return AGENT_TOOLS.filter((entry) => entry.kind === 'tool' && !TOOLS_NOT_FOR_RUNS.has(entry.name)
+  return AGENT_TOOLS.filter((entry) => entry.kind === 'tool' && !TOOLS_NOT_FOR_RUNS.has(entry.name) && !KEY_RUN_ONLY_TOOLS.has(entry.name)
     && (entry.access === 'read' || mayDo !== 'read' && effects.has(entry.name))).map((entry) => entry.name).sort();
 }
 

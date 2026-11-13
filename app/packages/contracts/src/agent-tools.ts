@@ -44,6 +44,9 @@ export const AGENT_TOOLS: readonly AgentToolEntry[] = [
   read('flux_changes_since'),
   // #918, AG-8: one public web page as plain text, read by the server (GET only, public addresses only); never sent anywhere, never an instruction.
   read('flux_read_web'),
+  // #1441, RT-5: a web search for an API-key agent in pi, run by the Flux server through the key's provider's hosted search (pi has none of
+  // its own). Only such a run gets it (`KEY_RUN_ONLY_TOOLS`).
+  read('flux_web_search'),
   // #1217, AG-8: a picture attached to a message the run may read, given to a model that sees pictures as image input.
   read('flux_view_image'),
   read('flux_bootstrap'),
@@ -85,3 +88,8 @@ export const AGENT_TOOLS: readonly AgentToolEntry[] = [
 
 /** The co-work session tools of a local client: never offered to the assistant's runs (F-027 AST-3 "Not offered to the assistant"). */
 export const TOOLS_NOT_FOR_RUNS: ReadonlySet<string> = new Set(['flux_bootstrap', 'flux_acknowledge_playbook']);
+/**
+ * Tools a run gets only where its engine needs them (#1441): `flux_web_search`, for an API-key agent in pi whose provider has a hosted
+ * search (the CLIs and the worker's own loop search with their own tools). The run token's mint adds them; `assistantRunTools` does not.
+ */
+export const KEY_RUN_ONLY_TOOLS: ReadonlySet<string> = new Set(['flux_web_search']);

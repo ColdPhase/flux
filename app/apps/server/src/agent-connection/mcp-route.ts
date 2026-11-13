@@ -7,6 +7,7 @@ import type { FluxAuth } from '../identity/auth.js';
 import type { Confirmation } from '../identity/confirmation.js';
 import { createFluxMcpTools, type FluxMcpTools } from './mcp-tools.js';
 import type { WebReader } from '../web-reads/reader.js';
+import type { KeyWebSearcher } from './web-search.js';
 import type { Provider as GithubActionProvider } from '../github/adapters.js';
 import { signInAgainMessage, type IdpStanding } from '../identity/standing.js';
 import { createAgentConnectionStore } from './store.js';
@@ -35,9 +36,9 @@ async function aiBlockedResponse(request: Request): Promise<Response> {
  */
 export function registerMcpRoute(app: FastifyInstance, db: Database, auth: FluxAuth, publicOrigin: string, testDeliveryGate = false,
   standing: { checker: Pick<IdpStanding, 'stands'>; label: string } | null = null, confirmation?: Confirmation, label = 'your identity provider',
-  github: GithubActionProvider | null = null, webReader: WebReader | null = null, vectors?: QueryVectors) {
+  github: GithubActionProvider | null = null, webReader: WebReader | null = null, vectors?: QueryVectors, searcher: KeyWebSearcher | null = null) {
   let mcpTools: Promise<FluxMcpTools> | undefined;
-  const tools = () => mcpTools ??= Promise.resolve().then(() => createFluxMcpTools(db, github, webReader, vectors));
+  const tools = () => mcpTools ??= Promise.resolve().then(() => createFluxMcpTools(db, github, webReader, vectors, searcher));
   const handleVerified = async (request: Request, token: Record<string, unknown>) => {
     const ownerUserId = token.flux_owner_user_id;
     const connectionId = token.flux_connection_id;

@@ -631,7 +631,8 @@ export type PersonalToolHost = (run: RunRecord, connection: PersonalConnection) 
  * `close` ends the token whatever the run does next. The token is never stored.
  */
 export interface PersonalRunTokenIssuer {
-  issue(runId: string): Promise<PersonalRunTokenGrant | null>;
+  /** `pi`: the run is an API-key run in pi (#1441), which gets Flux's web search where its provider has a hosted one. */
+  issue(runId: string, options?: { pi?: boolean }): Promise<PersonalRunTokenGrant | null>;
   close(runId: string): Promise<void>;
 }
 
