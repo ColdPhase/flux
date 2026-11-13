@@ -494,8 +494,8 @@ async function currentAuthority(tx: Transaction, claims: FluxMcpClaims, projectI
 }
 
 /**
- * A local client's line in a task's discussion written with flux_discuss_task (#868). That tool goes through the coordination executor,
- * since the agent's own talk about a task never waits, so this records, in the same transaction, the applied `conversation.reply` that
+ * A local client's line in a task's discussion written with flux_discuss_task (#868). That tool goes through the coordination executor
+ * (it waits only under Ask me first, #1419, and then this settles the owner's Approve), so this records, in the same transaction, the applied `conversation.reply` that
  * the change executor records for flux_reply_in_conversation into a task's discussion: the line shows in the discussion with its change
  * and its owner deletes it with no condition, whichever of the two tools wrote it (C-51, TA-3, #961). A command ID already used for
  * another change of this connection conflicts, and the line is not written.

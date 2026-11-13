@@ -20,6 +20,9 @@ let owner: Person;
 let jonas: Person;
 const envelope = (clientCommandId: string = randomUUID()) =>
   ({ projectId: f.projectId, runtimeSessionId: f.runtimeSessionId, clientCommandId, peerRequestClass: 'execute', sources: [] });
+/** The co-work tools' own fields: they take no sources (a release names its own). */
+const unitEnvelope = () => ({ projectId: f.projectId, runtimeSessionId: f.runtimeSessionId, clientCommandId: randomUUID(), peerRequestClass: 'execute' });
+const mustWait = (answer: Record<string, unknown> | null, what: string) => assert.ok(waits(answer), `${what}: ${JSON.stringify(answer?.result)}`);
 const setMayDo = async (mayDo: 'act' | 'ask') => expectStatus(await f.owner.request('PATCH', agentConnectionPath(f.connectionId), { body: { mayDo } }), 200);
 const waiting = async () => (await pool.query(`SELECT id, operation, tool, wait_reason, object_title FROM assistant_changes WHERE connection_id = $1 AND state = 'waiting' ORDER BY created_at, id`,
   [f.connectionId])).rows as { id: string; operation: string; tool: string; wait_reason: string; object_title: string }[];
@@ -97,13 +100,14 @@ describe('A former Only-read local client under Ask me first: its own work waits
     const outcome = toolValue(await f.tool('flux_create_doc', { ...envelope(), doc: { title: 'Lamp baseline', body: 'Four hours, measured twice.' } }));
     await setMayDo('ask');
     const item = await task('Measure the baseline again');
-    assert.ok(waits(await f.tool('flux_create_unit', { ...envelope(), taskId: item.id, unitKey: 'take', expectedTaskVersion: item.version,
-      assignmentConnectionId: f.connectionId, parent: null })), 'taking a task waits');
+    const take = await f.tool('flux_create_unit', { ...unitEnvelope(), taskId: item.id, unitKey: 'take', expectedTaskVersion: item.version,
+      assignmentConnectionId: f.connectionId, parent: null });
+    mustWait(take, 'taking a task waits');
     assert.equal(await count(`SELECT count(*)::int AS n FROM cowork_units WHERE work_id = $1`, [item.id]), 0);
     const taken = await approveWaiting(pool, f.owner, f.connectionId, 'cowork.unit.create') as { unitId: string; version: number };
     assert.equal((await unit(taken.unitId)).state, 'pending');
 
-    assert.ok(waits(await f.tool('flux_claim_unit', { ...envelope(), unitId: taken.unitId, expectedVersion: taken.version })), 'claiming waits');
+    mustWait(await f.tool('flux_claim_unit', { ...unitEnvelope(), unitId: taken.unitId, expectedVersion: taken.version }), 'claiming waits');
     assert.equal((await unit(taken.unitId)).state, 'pending');
     const [claimRow] = await waiting();
     assert.deepEqual([claimRow!.operation, claimRow!.object_title], ['cowork.claim', `#${(await pool.query('SELECT number FROM project_work_items WHERE id = $1', [item.id])).rows[0].number} Measure the baseline again`]);
@@ -112,18 +116,18 @@ describe('A former Only-read local client under Ask me first: its own work waits
     assert.equal(claimed.state, 'claimed');
     const fence = () => ({ unitId: taken.unitId, expectedVersion: claimed.version, generation: claimed.generation, leaseId: claimed.lease_id });
 
-    assert.ok(waits(await f.tool('flux_release_unit', { ...envelope(), ...fence(),
-      checkpoint: { summary: 'Measured once.', nextAction: 'Measure again.', blocker: null } })), 'pausing waits');
+    mustWait(await f.tool('flux_release_unit', { ...unitEnvelope(), ...fence(),
+      checkpoint: { summary: 'Measured once.', nextAction: 'Measure again.', blocker: null } }), 'pausing waits');
     assert.equal((await unit(taken.unitId)).state, 'claimed');
     await approveWaiting(pool, f.owner, f.connectionId, 'cowork.release');
     assert.equal((await unit(taken.unitId)).state, 'paused');
 
     const paused = await unit(taken.unitId);
-    assert.ok(waits(await f.tool('flux_claim_unit', { ...envelope(), unitId: taken.unitId, expectedVersion: paused.version })));
+    mustWait(await f.tool('flux_claim_unit', { ...unitEnvelope(), unitId: taken.unitId, expectedVersion: paused.version }), 'claiming again waits');
     await approveWaiting(pool, f.owner, f.connectionId, 'cowork.claim');
     const again = await unit(taken.unitId);
-    assert.ok(waits(await f.tool('flux_complete_unit', { ...envelope(), unitId: taken.unitId, expectedVersion: again.version, generation: again.generation,
-      leaseId: again.lease_id, outcome: { type: 'doc', id: outcome.docId, version: outcome.version } })), 'finishing waits');
+    mustWait(await f.tool('flux_complete_unit', { ...unitEnvelope(), unitId: taken.unitId, expectedVersion: again.version, generation: again.generation,
+      leaseId: again.lease_id, outcome: { type: 'doc', id: outcome.docId, version: outcome.version } }), 'finishing waits');
     assert.equal((await unit(taken.unitId)).state, 'claimed');
     await approveWaiting(pool, f.owner, f.connectionId, 'cowork.unit.complete');
     assert.equal((await unit(taken.unitId)).state, 'completed');
