@@ -92,7 +92,7 @@ export function ConnectAiWindow({ runtime, runtimeFailed, apiKeys, have, onClose
       {step.kind === 'choose' ? (
         <form onSubmit={(event) => { event.preventDefault(); if (selected) { if (selected === 'api_key') setStep({ kind: 'key' }); else if (selected === 'local_client') onLocalClient(); else void signIn(selected); } }}>
           <h2 className="cai-window__title">Connect your AI</h2>
-          <p className="cai-window__lead">Add a connection. You can have several, and each agent uses one. Flux adds no limits of its own.</p>
+          <p className="cai-window__lead">Connect the AI you pay for.</p>
           <div className="cai-window__choices" role="radiogroup" aria-label="What to connect">
             {choices.map((choice) => {
               const on = offered(choice.kind);

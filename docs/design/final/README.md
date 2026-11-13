@@ -828,7 +828,8 @@ Community garden sensors, Rain barrel monitor and Tool library.
   box around it: the face, who and where and when, the title (`--fs-xl`), its words, its actions, then who can accept it. Nothing in
   the list moves when another item opens. **In one column** (a tablet in portrait, the phone) the open item is the card that is
   expanded inside the list, and the others stay one row with their one quiet action, as the phone is drawn.
-  `J` and `K` move between items, and `A`, `E` and `S` act on the open one.
+  `J` and `K` move between items, and `A`, `E` and `S` act on the open one. The keys are shown in menus and on their buttons
+  (Accept's `A`), never as a legend under the list ([#1419](https://github.com/ColdPhase/flux/issues/1419) item 13).
 - **Not now is one button, with no menu** (S11, #1367). It puts the item off until tomorrow at 08:00 and offers Undo ("Not now.
   Back tomorrow morning"); the item returns then. There is no "Ask me again" menu, no "Next week", no "When #N is done" and no
   "Decline for good" on a decision: a decision waits until someone accepts it. A line under the list says how many are put off
@@ -1205,7 +1206,8 @@ the composer. The right-hand phone above shows the sheet.
 | ![Tasks board](screens/desktop-tasks.webp) | ![Task panel with agents](screens/desktop-task-agents.webp) |
 
 - **One control row** for Board and List: the Board / List switch, Mine, Search tasks and, on the
-  right, "+ Task". Mine includes tasks owned by your agents.
+  right, "+ Task". Mine includes tasks owned by your agents. The List updates live and has no Refresh; under it
+  are only Previous and Next when there is another page ([#1419](https://github.com/ColdPhase/flux/issues/1419) item 13).
 - **Four columns**, the four states: To do, Doing, Blocked and Done, each with its glyph and count.
   A card holds its title, its number, a due date when it has one, and its owner's face, an agent
   tag ("Planner · Ada's agent") or "No owner". Cards have no ⋯, and columns have no "+".
@@ -1513,6 +1515,8 @@ standard switch row in Settings › Notifications, and the rest of the page stay
   - the task's composer had no `/` menu: typing `/` there now opens the same menu with `/ai` and its
     two suggestions only (the task has no other slash commands), once the task has its first message;
     choosing a row keeps the words written around the `/`, as in the conversation's composer.
+  - a direct message's composer opens the same menu on `/` with `/ai` alone (a direct message has no
+    suggestions and no other slash command), so the composer behaves the same in every place ([#1419](https://github.com/ColdPhase/flux/issues/1419) item 11).
 - **An answer appears as it is written** ([#1248](https://github.com/ColdPhase/flux/issues/1248), founder pick
   2026-11-10). Not drawn as a screen; it is the `/ai` card and the agent's chat bubble above, in three moments, with no
   new screen, setting or button style:

@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import type { SearchResult } from '@flux/contracts';
 import { AskWhere } from '../assistant/AskWhere';
-import { useShellData, type WorkspaceSummary } from '../app/data';
+import { useShellData } from '../app/data';
 import { useShellActions } from '../app/shellContext';
 import { useFollow } from '../place/origin';
 import { Icon, MEDIA, Mascot, Spinner, useMediaQuery, type IconName } from '../ui';
@@ -12,7 +12,6 @@ import { placeOfPath, useRecentPlaces, type RecentPlace } from './recent';
 import { groupResults, ResultBody } from './ResultRow';
 import { useSearch } from './useSearch';
 import { UnsearchedSpaces } from '../encryption/LockedSpace';
-import { lockedLine } from '../encryption/state';
 import './search.css';
 
 /** Results listed at once. There is no second page: a longer list is narrowed by typing more words. */
@@ -22,8 +21,6 @@ type Option = { id: string; section: string } & (
   | { kind: 'result'; result: SearchResult }
   | { kind: 'place'; place: RecentPlace; label: string; side?: string; icon: IconName }
   | { kind: 'command'; label: string; icon: IconName; keys?: string[]; stays?: boolean; run: () => void }
-  /** An encrypted space that waits to be unlocked (F-030, #655): its content is not searched until it is unlocked. */
-  | { kind: 'locked'; space: WorkspaceSummary }
 );
 
 /**
@@ -72,7 +69,7 @@ function SearchBody({ onClose, userId, phone, assistantReady }: { onClose: () =>
   const openResult = useOpenResult();
   // The empty field lists the places the person opened (F-026 E02).
   const recentPlaces = useRecentPlaces(userId);
-  const { projects, lockedWorkspaces, directMessages } = useShellData();
+  const { projects, directMessages } = useShellData();
   const { toggleSidebar, sidebarHidden } = useShellActions();
   const location = useLocation();
   const here = location.pathname.match(/^\/projects\/([^/]+)/)?.[1];
@@ -113,13 +110,9 @@ function SearchBody({ onClose, userId, phone, assistantReady }: { onClose: () =>
   };
   const places = recentPlaces.filter((place) => place.key !== hereKey)
     .flatMap((place) => { const name = named(place); return name ? [{ place, ...name }] : []; }).slice(0, 4);
-  // Encrypted spaces that wait to be unlocked are listed, never searched: with no text all of them, with text those whose name matches.
-  const lockedOptions = (needle: string): Option[] => lockedWorkspaces
-    .filter((space) => !needle || space.name.toLowerCase().includes(needle.toLowerCase()))
-    .map((space) => ({ kind: 'locked' as const, section: 'Waiting to be unlocked', id: `locked-${space.id}`, space }));
+  // An encrypted space that waits to be unlocked is not searched and not listed here: the sidebar and Home say it waits (#1419 item 16).
   const emptyOptions: Option[] = [
     ...places.map(({ place, label, side, icon }): Option => ({ kind: 'place', section: 'Recent', id: `place-${place.key}`, place, label, side, icon })),
-    ...lockedOptions(''),
     { kind: 'command', section: 'Actions', id: 'action-inbox', label: 'Go to Inbox', icon: 'inbox', keys: ['G', 'I'], run: () => navigate('/inbox') },
     ...askMine,
     ...(phone ? [] : [
@@ -127,7 +120,7 @@ function SearchBody({ onClose, userId, phone, assistantReady }: { onClose: () =>
     ]),
   ];
   const results: Option[] = groupResults(shown).flatMap((group) => group.items.map((result): Option => ({ kind: 'result', section: group.label, id: result.id, result })));
-  const options: Option[] = text ? [...commands, ...results, ...lockedOptions(text)] : emptyOptions;
+  const options: Option[] = text ? [...commands, ...results] : emptyOptions;
   const current = Math.min(activeFor.text === text ? activeFor.index : 0, Math.max(options.length - 1, 0));
   const setActive = (index: number) => setActiveFor({ text, index });
   useEffect(() => {
@@ -137,7 +130,6 @@ function SearchBody({ onClose, userId, phone, assistantReady }: { onClose: () =>
   const choose = (option: Option | undefined) => {
     if (!option) return;
     if (option.kind === 'place') { onClose(); navigate(option.place.path); return; }
-    if (option.kind === 'locked') { onClose(); navigate(`/spaces/${option.space.id}`); return; }
     if (option.kind === 'command') { if (!option.stays) onClose(); option.run(); return; }
     onClose();
     void openResult(option.result);
@@ -164,8 +156,7 @@ function SearchBody({ onClose, userId, phone, assistantReady }: { onClose: () =>
             onMouseMove={() => { if (index !== current) setActive(index); }} onClick={() => choose(option)}>
             {option.kind === 'result' ? <ResultBody result={option.result} />
               : option.kind === 'place' ? <><Icon name={option.icon} size={15} className="jump__ric" /><span className="jump__rtext">{option.label}</span>{option.side ? <small className="jump__side">{option.side}</small> : null}</>
-              : option.kind === 'command' ? <><Icon name={option.icon} size={15} className="jump__ric" /><span className="jump__rtext">{option.label}</span>{option.keys ? <span className="jump__keys" aria-hidden="true">{option.keys.map((key) => <kbd key={key} className="jump__key">{key}</kbd>)}</span> : null}</>
-              : <><Icon name="lock" size={15} className="jump__ric" /><span className="jump__rtext">{option.space.name}</span><small className="jump__side">{lockedLine(option.space)}</small></>}
+              : <><Icon name={option.icon} size={15} className="jump__ric" /><span className="jump__rtext">{option.label}</span>{option.keys ? <span className="jump__keys" aria-hidden="true">{option.keys.map((key) => <kbd key={key} className="jump__key">{key}</kbd>)}</span> : null}</>}
           </li>
         )];
       })}
@@ -211,7 +202,7 @@ function SearchBody({ onClose, userId, phone, assistantReady }: { onClose: () =>
       <p className="ui-vh" id={statusId} role="status">{status}</p>
       <div className="jump__body">
         {phone && !text && !places.length ? <p className="jump__hint">{SEARCH_HINT}</p> : null}
-        {/* What was not searched (F-030; UI audit LK-3): a space that waits to be unlocked, or one too large to search in memory. */}
+        {/* What was not searched (F-030; UI audit LK-3): an encrypted space too large to search in memory. */}
         {text && state.status === 'ready' ? <UnsearchedSpaces tooLarge={state.answer.sealedUnavailable ?? []} /> : null}
         {list}{empty}{more}
       </div>

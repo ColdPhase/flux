@@ -181,7 +181,7 @@ class ConnectAiJourney(unittest.TestCase):
         page.goto("/settings/agents")
         expect(page.get_by_role("heading", level=2, name="AI", exact=True)).to_be_visible()
         connect, assistant, app = self.sections(page)
-        expect(connect).to_contain_text("Plans can run side by side. Each agent uses one.")
+        expect(connect).to_contain_text("Connect the AI you pay for.")  # plain words, not engineer's (#1419 item 15)
         expect(connect.get_by_role("button", name="Connect another")).to_have_count(0)
         connect.get_by_role("button", name="Connect AI", exact=True).click()
         window = page.get_by_role("dialog", name="Connect your AI")
@@ -252,7 +252,7 @@ class ConnectAiJourney(unittest.TestCase):
         connect, _, _ = self.sections(page)
         expect(connect.locator(".cai__empty")).to_contain_text("Nothing is connected yet.")
         expect(connect).not_to_contain_text("several connections")
-        self.assertEqual(connect.inner_text().count("Each agent uses one"), 1, "the rule is said once")
+        self.assertEqual(connect.inner_text().count("Connect the AI you pay for."), 1, "the lead is said once")
         listed = self.page("tom")
         self.stub_runtime(listed, runtime_signed_in({**CLAUDE, "state": "sign_in_again"}, None))
         listed.route(re.compile(r".*/api/v1/personal-assistant/model$"), lambda route: route.fulfill(

@@ -66,7 +66,7 @@ export function ConnectAi({ apiKeys, keys, keysFailed, onRetryKeys, onListed, cl
       <div className="cai__head">
         <div className="cai__title">
           <h3 className="sset-sub cai__h" id="connect-ai">Connect AI</h3>
-          <span className="cai__lead">Plans can run side by side. Each agent uses one.</span>
+          <span className="cai__lead">Connect the AI you pay for.</span>
         </div>
         {lines.length ? <Button variant="secondary" icon="plus" onClick={() => setWindowOpen(true)}>Connect another</Button> : null}
       </div>
