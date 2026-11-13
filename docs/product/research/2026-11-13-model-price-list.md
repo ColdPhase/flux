@@ -84,17 +84,29 @@ below what Anthropic bills, and other providers' cached input at the full price.
 
 ## Decision (agents, under the founder's #1465 rule)
 
-**LiteLLM's `model_prices_and_context_window.json`** is Flux's price list, for Anthropic, OpenAI and Gemini:
-the provider's own ids, the providers' own prices on every sampled model, all 54 previous rows, the long-prompt
-tiers in their own fields and an MIT licence. Flux takes, for each chat or Responses model of those three
-providers, the standard input and output price, raised to any `_above_<N>k_tokens` tier whose threshold is
-below Flux's largest server request (so Claude Haiku 5.5 is $0.50 / $2.50, as before), and nothing else
-(no batch, flex, priority, regional or cache fields).
+**LiteLLM's `model_prices_and_context_window.json`** is Flux's price list for Anthropic, OpenAI and Gemini. It
+has the providers' own ids, the providers' own prices on every sampled model, all 54 previous rows, the
+long-prompt tiers in their own fields and an MIT licence. For each chat or Responses model of those three
+providers, Flux takes the standard input and output price and each `_above_<N>k_tokens` tier (a prompt over N
+thousand tokens), and nothing else: no batch, flex, priority, regional or cache fields.
 
-OpenRouter and an OpenAI-compatible endpoint have no price in the list. Their models are priced by the owner,
-as today; for OpenRouter the price its list shows is filled in for the owner to confirm, and OpenRouter's
-reported cost reconciles each charge.
+**OpenRouter's own model list** prices OpenRouter's models (coordinator answer on
+[#1470](https://github.com/ColdPhase/flux/pull/1470), 2026-11-13: "the price of the place you pay"). An
+OpenRouter key pays OpenRouter's prices, the 10% above included, so for that key they are the primary source.
+Flux reads that list as the person's OpenRouter model list, not as a copy of OpenRouter's catalogue for
+other providers: at connect, when the form lists OpenRouter's models, and daily only while someone has an
+OpenRouter key. Its `overrides` (`min_prompt_tokens`) become long-prompt tiers.
 
-Rejected: OpenRouter's list as Flux's price list (its own resale prices, 10% above two providers' pages in the
-sample, an id translation that misses snapshots, and terms against automated copying); building and keeping a
-list in Flux (the founder rule).
+Flux keeps the long-prompt prices of both lists as tiers. A request is reserved at the tier of the longest
+prompt it can be and charged at the tier of its reported prompt length (coordinator answer on #1470). Folding
+the tier below 114,000 tokens into one price, as the old table did, would under-reserve a model gateway request,
+whose bound can pass 200,000 tokens.
+
+An OpenAI-compatible endpoint has no list. Its owner prices it.
+
+Rejected:
+
+- OpenRouter's list as the price list for Anthropic, OpenAI and Gemini keys. It has OpenRouter's own resale
+  prices, 10% above two providers' pages in the sample, needs an id translation that misses snapshots, and its
+  terms are against automated copying.
+- Building and keeping a list in Flux (the founder rule).

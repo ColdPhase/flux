@@ -101,27 +101,63 @@ export const AI_BASE_URL_MAX_LENGTH = 2048;
 export const AI_PRICE_MAX_MICROS_PER_MTOK = 1_000_000_000;
 
 /**
- * PROV-3: where a connection's price per 1M tokens comes from. A reservation needs a price before any response exists, so only Flux's
- * price list (refreshed daily from a maintained public list, #1465) or the owner sets it.
+ * PROV-3: where a connection's price per 1M tokens comes from. A reservation needs a price before any response exists, so only a price
+ * list of the place the key pays (#1465: LiteLLM's maintained file for Anthropic, OpenAI and Gemini; OpenRouter's own model list for
+ * OpenRouter), refreshed daily, or the owner sets it.
  */
 export type AiPriceSource = 'list' | 'owner';
 
-export interface AiPrice {
+/**
+ * A higher price from a prompt length on (#1465): a request whose prompt has at least `fromTokens` tokens (cache reads and writes
+ * included) is priced at it. Claude Haiku 5.5 over 100,000 tokens, OpenAI's models over 272,000, Gemini's Pro models over 200,000.
+ */
+export interface AiPriceTier {
+  fromTokens: number;
+  inputMicrosPerMTok: number;
+  outputMicrosPerMTok: number;
+}
+
+/** A price per 1M tokens, with the higher prices of long prompts where the list gives them. */
+export interface AiRate {
   /** Micro-dollars per 1M input tokens ($2/M is 2,000,000). */
   inputMicrosPerMTok: number;
   outputMicrosPerMTok: number;
+  /** Long-prompt prices, by `fromTokens` ascending; absent for a model with one price (and for every owner-entered price). */
+  tiers?: readonly AiPriceTier[];
+}
+
+export interface AiPrice extends AiRate {
   source: AiPriceSource;
-  /** The day Flux's price list was fetched (YYYY-MM-DD); null for an owner-entered price. */
+  /** The day the price list was fetched (YYYY-MM-DD); null for an owner-entered price. */
   checkedOn: string | null;
 }
 
-/** Prices per 1M tokens by model id. */
-export type AiModelPrices = Readonly<Record<string, { inputMicrosPerMTok: number; outputMicrosPerMTok: number }>>;
+/** At most this many long-prompt tiers per model. */
+export const AI_PRICE_MAX_TIERS = 8;
 
 /**
- * Flux's price list (#1465): the standard input and output prices of Anthropic's, OpenAI's and Gemini's models, read every day from
- * {@link AI_PRICE_LIST_URL} by the worker, and shipped with the release as fetched on its build day. It prices a model; it never decides
- * which models exist (#1218). A model it lacks (OpenRouter's, an OpenAI-compatible endpoint's, a new or unusual one) is priced by its owner.
+ * The price of a request whose prompt has `promptTokens` tokens: the highest of the base price and of every tier it reaches, so a
+ * request is priced at the tier it falls in, and never below its base (#1465).
+ */
+export function rateAt(price: AiRate, promptTokens: number): { inputMicrosPerMTok: number; outputMicrosPerMTok: number } {
+  let input = price.inputMicrosPerMTok;
+  let output = price.outputMicrosPerMTok;
+  for (const tier of price.tiers ?? []) {
+    if (promptTokens < tier.fromTokens) continue;
+    input = Math.max(input, tier.inputMicrosPerMTok);
+    output = Math.max(output, tier.outputMicrosPerMTok);
+  }
+  return { inputMicrosPerMTok: input, outputMicrosPerMTok: output };
+}
+
+/** Prices per 1M tokens by model id. */
+export type AiModelPrices = Readonly<Record<string, AiRate>>;
+
+/**
+ * A price list (#1465), read every day by the worker: LiteLLM's model price file ({@link AI_PRICE_LIST_URL}) for Anthropic's, OpenAI's
+ * and Gemini's models, shipped with the release as fetched on its build day; and OpenRouter's own model list for OpenRouter's, read
+ * while a person has an OpenRouter key. It prices a model; it never decides which models exist (#1218). A model no list prices (an
+ * OpenAI-compatible endpoint's, a new or unusual one) is priced by its owner.
  */
 export interface AiPriceList {
   /** The day the list was fetched (YYYY-MM-DD). */
@@ -131,31 +167,37 @@ export interface AiPriceList {
   prices: Partial<Record<AiProviderKind, AiModelPrices>>;
 }
 
-/** Flux's price list of one provider: what the Connect AI form and the model pickers price a model with. */
+/** The price list of one provider: what the Connect AI form, the model pickers and the runs price a model with. */
 export interface AiProviderPriceList {
   fetchedOn: string;
   prices: AiModelPrices;
 }
+
+/** Every provider's price list, as the stored lists give them. */
+export type AiPriceLists = Partial<Record<AiProviderKind, AiProviderPriceList>>;
 
 /**
  * The maintained public list Flux reads its prices from (#1465): LiteLLM's model price file (MIT licence), whose ids are the providers'
  * own and whose prices matched the providers' pricing pages on every sampled model (docs/product/research/2026-11-13-model-price-list.md).
  */
 export const AI_PRICE_LIST_URL = 'https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json';
-/** The worker's job that fetches Flux's price list (#1465): every day, and at start when the stored list is older than a day. */
+/** The worker's job that fetches the price lists (#1465): every day, and at start when a stored list is older than a day. */
 export const AI_PRICE_LIST_JOB = 'ai-price-list.refresh.v1';
-/** The providers whose prices Flux's list carries. */
+/** The providers whose prices LiteLLM's file gives Flux. */
 export const AI_PRICE_LIST_PROVIDERS = ['anthropic', 'openai', 'gemini'] as const satisfies readonly AiProviderKind[];
+/** Every provider with a price list: LiteLLM's three and OpenRouter, whose own model list states what an OpenRouter key pays. */
+export const AI_LISTED_PRICE_PROVIDERS = [...AI_PRICE_LIST_PROVIDERS, 'openrouter'] as const satisfies readonly AiProviderKind[];
 
-/** The price one provider's part of Flux's list gives a model, or null when the list does not know it. */
+/** The price one provider's list gives a model, or null when the list does not know it. */
 export function listPrice(list: AiProviderPriceList | null | undefined, model: string): AiPrice | null {
   if (!list || !Object.prototype.hasOwnProperty.call(list.prices, model)) return null;
   const row = list.prices[model]!;
-  return { inputMicrosPerMTok: row.inputMicrosPerMTok, outputMicrosPerMTok: row.outputMicrosPerMTok, source: 'list', checkedOn: list.fetchedOn };
+  return { inputMicrosPerMTok: row.inputMicrosPerMTok, outputMicrosPerMTok: row.outputMicrosPerMTok, ...(row.tiers?.length ? { tiers: row.tiers } : {}),
+    source: 'list', checkedOn: list.fetchedOn };
 }
 
 /**
- * The price a stored connection runs at (#1465): Flux's price list today when it knows the model, so a price that changed is used the
+ * The price a stored connection runs at (#1465): the price list of today when it knows the model, so a price that changed is used the
  * next day without anyone typing it; otherwise the price stored with the connection (the owner's, or the list's last one for a model
  * the list stopped carrying); null when there is neither.
  */
@@ -163,9 +205,17 @@ export function currentConnectionPrice(stored: AiPrice | null, model: string, li
   return listPrice(list, model) ?? stored;
 }
 
-/** One provider's part of the whole list. */
+/** One provider's part of a list. */
 export const providerPriceList = (list: AiPriceList | null | undefined, provider: AiProviderKind): AiProviderPriceList | null =>
   list ? { fetchedOn: list.fetchedOn, prices: list.prices[provider] ?? {} } : null;
+
+/** Every provider's part of the given lists; a provider in two lists takes the later one's. */
+export function priceListsOf(lists: readonly AiPriceList[]): AiPriceLists {
+  const out: AiPriceLists = {};
+  for (const list of [...lists].sort((a, b) => (a.fetchedOn < b.fetchedOn ? -1 : a.fetchedOn > b.fetchedOn ? 1 : 0)))
+    for (const [provider, prices] of Object.entries(list.prices) as [AiProviderKind, AiModelPrices][]) out[provider] = { fetchedOn: list.fetchedOn, prices };
+  return out;
+}
 
 const ANTHROPIC_PRICING = 'https://platform.claude.com/docs/en/about-claude/pricing';
 
@@ -192,10 +242,12 @@ export const PROMPT_CACHE_RATES: Partial<Record<AiProviderKind, { write: number;
 /**
  * The most one request can cost at `price` (PROV-3): maximum input tokens × input price + maximum
  * output tokens × output price, in micro-dollars, rounded up, and `webSearches` searches at `WEB_SEARCH_MICROS` each. A reservation
- * counts none (the searches of a request are not bounded, #1113); a charge counts the ones the provider reported.
+ * counts none (the searches of a request are not bounded, #1113); a charge counts the ones the provider reported. The price is the one
+ * of a prompt of `promptTokens` tokens (#1465: a long prompt's tier), by default `maxInputTokens`.
  */
-export function maxRequestMicros(price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'>, maxInputTokens: number, maxOutputTokens: number, webSearches = 0): number {
-  return Math.ceil((maxInputTokens * price.inputMicrosPerMTok + maxOutputTokens * price.outputMicrosPerMTok) / 1_000_000) + webSearches * WEB_SEARCH_MICROS;
+export function maxRequestMicros(price: AiRate, maxInputTokens: number, maxOutputTokens: number, webSearches = 0, promptTokens = maxInputTokens): number {
+  const rate = rateAt(price, promptTokens);
+  return Math.ceil((maxInputTokens * rate.inputMicrosPerMTok + maxOutputTokens * rate.outputMicrosPerMTok) / 1_000_000) + webSearches * WEB_SEARCH_MICROS;
 }
 
 /**
@@ -251,10 +303,10 @@ export interface AiListedModel {
   /** When the provider released it (ISO), where its list says; the newest comes first. */
   createdAt?: string | null;
   /**
-   * The provider's own listed price (OpenRouter), shown to the owner as a suggestion for the price
-   * they enter. It is never a price source by itself (PROV-3).
+   * The provider's own listed price (OpenRouter, with its long-prompt prices), which is what an OpenRouter key pays: the source of
+   * OpenRouter's price list (#1465). Null for a variable or missing price, and for every other provider.
    */
-  price: { inputMicrosPerMTok: number; outputMicrosPerMTok: number } | null;
+  price: AiRate | null;
 }
 
 export interface AiModelList {
@@ -269,8 +321,8 @@ export interface AiModelList {
   /** When the list was read (YYYY-MM-DD). */
   checkedOn: string;
   /**
-   * Flux's price list of this provider (#1465), so the form shows a model's price or asks for it; absent or null when Flux knows no
-   * price for any model of the provider (OpenRouter, an OpenAI-compatible endpoint).
+   * The price list of this provider (#1465), so the form shows a model's price or asks for it; absent or null when Flux knows no
+   * price for any model of the provider (an OpenAI-compatible endpoint).
    */
   priceList?: AiProviderPriceList | null;
 }

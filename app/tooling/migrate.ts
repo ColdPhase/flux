@@ -84,7 +84,7 @@ try {
   await boss.stop();
   // The price list this release ships (#1465): stored when the database has none or one fetched before it, so a server without internet
   // prices with it from its first start.
-  if (await aiPriceListRepository(db).store(shippedPriceList(), 'keep')) console.log(`Stored the shipped price list of ${shippedPriceList().fetchedOn}`);
+  if (await aiPriceListRepository(db).store('litellm', shippedPriceList(), 'keep')) console.log(`Stored the shipped price list of ${shippedPriceList().fetchedOn}`);
   console.log(`Flux schema ${FLUX_SCHEMA_VERSION} and pg-boss ready`);
 } catch (error) {
   // The refusal is a message for the operator, not a stack trace.

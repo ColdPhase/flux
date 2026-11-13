@@ -198,6 +198,9 @@ const server = http.createServer((request, response) => {
     if (request.method === 'GET' && url.pathname === '/openrouter/v1/models')
       return json(response, 200, { data: [
         { id: 'vendor/priced-model', pricing: { prompt: '0.000003', completion: '0.000015' } },
+        // A higher price from a prompt length on (#1465), as OpenRouter lists Gemini's and OpenAI's long-context prices.
+        { id: 'vendor/long-model', pricing: { prompt: '0.000002', completion: '0.00001', overrides: [{ min_prompt_tokens: 200000, prompt: '0.000004', completion: '0.000018' }] } },
+        { id: 'vendor/odd-tier-model', pricing: { prompt: '0.000002', completion: '0.00001', overrides: [{ min_prompt_tokens: 'many', prompt: '0.000004' }] } },
         { id: 'vendor/free-model:free', pricing: { prompt: '0', completion: '0' } },
         { id: 'openrouter/auto', pricing: { prompt: '-1', completion: '-1' } },
         { id: 'vendor/search-model:online', pricing: { prompt: '0.000001', completion: '0.000001' } },

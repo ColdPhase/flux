@@ -44,8 +44,8 @@ const system = [
   'search_vectors', 'search_vector_queue', 'search_vector_state',
   // C-63 (#1382): the files waiting for their text to be read; plain spaces only (an encrypted space's files get no job).
   'file_text_jobs',
-  // #1465: Flux's model price list, one row of public prices; nothing of any person or space.
-  'ai_price_list',
+  // #1465: the model price lists, public prices; nothing of any person or space.
+  'ai_price_lists',
 ] as const;
 const refused = [
   'github_bindings', 'github_deliveries', 'github_processing', 'github_rule_defaults', 'github_task_links',

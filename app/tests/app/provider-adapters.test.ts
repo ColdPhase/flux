@@ -281,8 +281,11 @@ describe('wire details beyond the shared contract', () => {
     assert.deepEqual(routed.models, [
       { id: 'openrouter/auto', family: 'openrouter', price: null },
       { id: 'vendor/free-model:free', family: 'vendor', price: { inputMicrosPerMTok: 0, outputMicrosPerMTok: 0 } },
+      { id: 'vendor/long-model', family: 'vendor', price: { inputMicrosPerMTok: 2_000_000, outputMicrosPerMTok: 10_000_000,
+        tiers: [{ fromTokens: 200_000, inputMicrosPerMTok: 4_000_000, outputMicrosPerMTok: 18_000_000 }] } },
+      { id: 'vendor/odd-tier-model', family: 'vendor', price: null },
       { id: 'vendor/priced-model', family: 'vendor', price: { inputMicrosPerMTok: 3_000_000, outputMicrosPerMTok: 15_000_000 } },
-    ], 'a variable price is unknown, and provider-hosted search variants are not offered');
+    ], 'a variable price or a malformed long-prompt price is unknown, and provider-hosted search variants are not offered');
     for (const listed of (await sent()).filter((item) => item.method === 'GET')) assert.equal(listed.key, null, 'no key is sent to list models');
     for (const provider of ['anthropic', 'openai', 'gemini'] as const) assert.equal((await listProviderModels(provider, null, { policy })).status, 'needs_key');
     assert.equal((await listProviderModels('openai_compatible', 'http://10.1.2.3:11434/v1', { policy })).status, 'refused');

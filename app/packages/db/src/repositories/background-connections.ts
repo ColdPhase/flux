@@ -1,6 +1,6 @@
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
-import { currentConnectionPrice, providerPriceList, type AiModelList, type AiPrice, type AiPriceList, type BackgroundComputeConnection } from '@flux/contracts';
-import { storedPriceList } from './ai-price-list.js';
+import { currentConnectionPrice, type AiModelList, type AiPrice, type AiPriceLists, type BackgroundComputeConnection } from '@flux/contracts';
+import { storedPriceLists } from './ai-price-list.js';
 import * as schema from '../schema.js';
 import type { createDatabase } from '../index.js';
 import { apiKeySpendToday } from './api-key-spend.js';
@@ -17,18 +17,18 @@ type ConnectionRow = typeof c.$inferSelect;
  * the key's model (#1465), else the stored price.
  */
 export function connectionPrice(row: Pick<ConnectionRow, 'provider' | 'model' | 'inputPriceMicrosPerMTok' | 'outputPriceMicrosPerMTok' | 'priceSource' | 'priceCheckedOn'>,
-  list: AiPriceList | null): AiPrice | null {
+  lists: AiPriceLists): AiPrice | null {
   const stored: AiPrice | null = row.priceSource === null || row.inputPriceMicrosPerMTok === null || row.outputPriceMicrosPerMTok === null ? null
     : { inputMicrosPerMTok: row.inputPriceMicrosPerMTok, outputMicrosPerMTok: row.outputPriceMicrosPerMTok, source: row.priceSource, checkedOn: row.priceCheckedOn };
-  return currentConnectionPrice(stored, row.model, providerPriceList(list, row.provider));
+  return currentConnectionPrice(stored, row.model, lists[row.provider]);
 }
 
-async function metadata(db: Pick<Database, 'execute'>, row: ConnectionRow, list: AiPriceList | null): Promise<BackgroundComputeConnection> {
+async function metadata(db: Pick<Database, 'execute'>, row: ConnectionRow, lists: AiPriceLists): Promise<BackgroundComputeConnection> {
   const spend = await apiKeySpendToday(db, row.id);
   return {
     id: row.id, ownerUserId: row.ownerUserId, name: row.name,
     provider: row.provider, model: row.model, baseUrl: row.baseUrl,
-    price: connectionPrice(row, list),
+    price: connectionPrice(row, lists),
     keyLastFour: row.keyLastFour, keyFingerprint: row.keyFingerprint,
     dailyBudgetCents: row.dailyBudgetCents, timeZone: row.timeZone,
     today: { spentMicros: spend?.chargedMicros ?? 0, resetsAt: (spend?.resetsAt ?? new Date()).toISOString() },
@@ -73,15 +73,15 @@ export function backgroundConnectionRepository(db: Database) {
           dailyBudgetCents: input.dailyBudgetCents, timeZone: input.timeZone,
           ...(input.modelList ? listingColumns(input.modelList, new Date(), null) : {}),
         }).returning();
-        return metadata(tx, row!, await storedPriceList(tx));
+        return metadata(tx, row!, await storedPriceLists(tx));
       });
     },
     /** A guest of the company sees none of their keys and changes none: they are kept, hidden and refused until they are a member again (AG-2, C-50). */
     async list(ownerUserId: string): Promise<BackgroundComputeConnection[]> {
       const rows = await db.select().from(c).where(and(eq(c.ownerUserId, ownerUserId), isNull(c.revokedAt), sql`NOT ${companyGuestSql(sql`${ownerUserId}`)}`))
         .orderBy(desc(c.createdAt), desc(c.id));
-      const list = rows.length ? await storedPriceList(db) : null;
-      return Promise.all(rows.map((row) => metadata(db, row, list)));
+      const lists = rows.length ? await storedPriceLists(db) : {};
+      return Promise.all(rows.map((row) => metadata(db, row, lists)));
     },
     /**
      * `guard` gets the models the owner's agents run on this key, read under the owner's assistant lock (the one a model change
@@ -104,7 +104,7 @@ export function backgroundConnectionRepository(db: Database) {
         }
         const [row] = await tx.update(c).set({ ...(change.name !== undefined ? { name: change.name } : {}),
           ...(change.dailyBudgetCents !== undefined ? { dailyBudgetCents: change.dailyBudgetCents } : {}) }).where(eq(c.id, connectionId)).returning();
-        return metadata(tx, row!, await storedPriceList(tx));
+        return metadata(tx, row!, await storedPriceLists(tx));
       });
     },
     /**

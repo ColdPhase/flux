@@ -169,19 +169,21 @@ describe('connection rules (F-020 PROV-1/PROV-3)', () => {
       assert.notEqual(baseUrlSyntaxProblem(value), null, value);
   });
 
-  test('PROV-3: a connection price comes only from Flux\'s price list or the owner; a reported cost only reconciles', () => {
-    // Flux's price list of a provider (#1465), as the server reads it from the stored list.
+  test('PROV-3: a connection price comes only from the price list of the place the key pays, or the owner; a reported cost only reconciles', () => {
+    // The price lists of the providers (#1465), as the server reads them: LiteLLM's for Anthropic and OpenAI, OpenRouter's own.
     const lists: Record<string, AiProviderPriceList | null> = {
       anthropic: { fetchedOn: '2026-11-13', prices: { 'claude-sonnet-5': { inputMicrosPerMTok: 2_000_000, outputMicrosPerMTok: 10_000_000 } } },
-      openai: { fetchedOn: '2026-11-13', prices: {} }, openrouter: null,
+      openai: { fetchedOn: '2026-11-13', prices: {} },
+      openrouter: { fetchedOn: '2026-11-13', prices: { 'vendor/listed': { inputMicrosPerMTok: 3_000_000, outputMicrosPerMTok: 15_000_000 } } },
     };
     const resolve = (provider: 'anthropic' | 'openrouter' | 'openai', model: string, ownerPrice?: { inputMicrosPerMTok: number; outputMicrosPerMTok: number }) =>
       resolveConnectionPrice({ model, ownerPrice, list: lists[provider] ?? null });
     assert.deepEqual(resolve('anthropic', 'claude-sonnet-5'), { inputMicrosPerMTok: 2_000_000, outputMicrosPerMTok: 10_000_000, source: 'list', checkedOn: '2026-11-13' });
     assert.deepEqual(resolve('openai', 'gpt-model', { inputMicrosPerMTok: 0, outputMicrosPerMTok: 0 }), { inputMicrosPerMTok: 0, outputMicrosPerMTok: 0, source: 'owner', checkedOn: null });
-    assert.deepEqual(resolve('openrouter', 'vendor/listed', { inputMicrosPerMTok: 3_000_000, outputMicrosPerMTok: 15_000_000 })?.source, 'owner',
-      'a model the provider lists with a price still takes the owner\'s price');
-    assert.equal(resolve('openrouter', 'vendor/listed'), null, 'a provider listing is never a price source; no price is never treated as free');
+    assert.deepEqual(resolve('openrouter', 'vendor/listed'), { inputMicrosPerMTok: 3_000_000, outputMicrosPerMTok: 15_000_000, source: 'list', checkedOn: '2026-11-13' },
+      'what OpenRouter lists is what its key pays');
+    assert.throws(() => resolve('openrouter', 'vendor/listed', { inputMicrosPerMTok: 1, outputMicrosPerMTok: 1 }), { code: 'AI_PRICE_ALREADY_KNOWN' });
+    assert.equal(resolve('openrouter', 'vendor/unlisted'), null, 'no price is never treated as free');
     assert.throws(() => resolve('anthropic', 'claude-sonnet-5', { inputMicrosPerMTok: 1, outputMicrosPerMTok: 1 }), { code: 'AI_PRICE_ALREADY_KNOWN' });
     // The reservation is the formula at the connection's price; a reported cost changes only the reconciled charge.
     const price = { inputMicrosPerMTok: 3_000_000, outputMicrosPerMTok: 15_000_000 };

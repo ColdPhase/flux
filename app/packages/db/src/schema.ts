@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { customType, pgTable, text, timestamp, date, uuid, integer, smallint, jsonb, boolean, bigserial, bigint, index, uniqueIndex, primaryKey, foreignKey, unique, check, type AnyPgColumn, type PgTableExtraConfigValue } from 'drizzle-orm/pg-core';
 import { AGENT_MAY_DO, AGENT_OPERATIONS, withoutInvisibleFormat, type AgentJsonValue, type AgentPostcondition, type CoWorkSourceRef } from '@flux/contracts';
-import { AI_PROVIDER_KINDS, ASSISTANT_RUN_END_REASONS, type AiProviderKind } from '@flux/contracts';
+import { AI_PROVIDER_KINDS, ASSISTANT_RUN_END_REASONS, type AiProviderKind, type AiRate } from '@flux/contracts';
 
 /**
  * The name of a person, an agent or a connection (#1347): plain text in the database, and cleaned of direction controls and invisible format
@@ -1363,12 +1363,12 @@ export const backgroundComputeConnections = pgTable('background_compute_connecti
   index('background_compute_connections_owner_idx').on(table.ownerUserId, table.createdAt, table.id),
 ]);
 
-/** Flux's price list (0081, #1465): one row, the last list fetched that passed every check. */
-export const aiPriceList = pgTable('ai_price_list', {
-  id: smallint('id').primaryKey().default(1),
+/** The model price lists (0081, #1465): one row per list, the last one fetched that passed every check. */
+export const aiPriceLists = pgTable('ai_price_lists', {
+  list: text('list', { enum: ['litellm', 'openrouter'] }).primaryKey(),
   fetchedOn: date('fetched_on', { mode: 'string' }).notNull(),
   source: text('source').notNull(),
-  prices: jsonb('prices').$type<Partial<Record<AiProviderKind, Record<string, { inputMicrosPerMTok: number; outputMicrosPerMTok: number }>>>>().notNull(),
+  prices: jsonb('prices').$type<Partial<Record<AiProviderKind, Record<string, AiRate>>>>().notNull(),
   storedAt: timestamp('stored_at', { withTimezone: true }).notNull().defaultNow(),
 });
 

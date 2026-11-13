@@ -1,4 +1,4 @@
-import { maxRequestMicros, PROMPT_CACHE_RATES, type AiPrice, type AiProviderKind } from '@flux/contracts';
+import { maxRequestMicros, PROMPT_CACHE_RATES, type AiProviderKind, type AiRate } from '@flux/contracts';
 import { boundedUsageMicros } from '../ai/price.js';
 import type { AdmittedRequest } from './admission.js';
 import type { GatewayUsage } from './usage.js';
@@ -6,7 +6,7 @@ import type { GatewayUsage } from './usage.js';
 // The money of one request through the model gateway (#1441, CA-3), with the prices and cache rules of a server run (PROV-3, #1410,
 // #1426): before it is sent, the most it can cost is held; after it, the reported usage is charged, never above what was held.
 
-type Price = Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'>;
+type Price = AiRate;
 
 /**
  * The most one request can cost: every input token it can be billed for, at the provider's cache-write rate where it has one (a
@@ -14,7 +14,8 @@ type Price = Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'>;
  */
 export function gatewayHoldMicros(price: Price, provider: AiProviderKind, request: Pick<AdmittedRequest, 'inputBoundTokens' | 'maxOutputTokens'>): number {
   const write = Math.max(1, PROMPT_CACHE_RATES[provider]?.write ?? 1);
-  return maxRequestMicros(price, Math.ceil(request.inputBoundTokens * write), request.maxOutputTokens);
+  // At the price of the longest prompt the request can be (#1465): a long prompt's tier when its bound reaches one.
+  return maxRequestMicros(price, Math.ceil(request.inputBoundTokens * write), request.maxOutputTokens, 0, request.inputBoundTokens);
 }
 
 export interface GatewayCharge {

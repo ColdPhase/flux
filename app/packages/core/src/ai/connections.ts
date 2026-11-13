@@ -35,7 +35,7 @@ export interface BackgroundConnectionProviders {
    * for providers listed with a key (Anthropic, OpenAI, Gemini): `needs_key` for the others. Absent: nothing is listed.
    */
   keyModels?(provider: AiProviderKind, apiKey: string): Promise<AiModelList>;
-  /** Flux's price list of a provider as it stands now (#1465); absent or null: Flux knows no price, and the owner enters it. */
+  /** The price list of a provider as it stands now (#1465); absent or null: Flux knows no price, and the owner enters it. */
   priceList?(provider: AiProviderKind): Promise<AiProviderPriceList | null>;
 }
 
@@ -119,7 +119,8 @@ export function backgroundConnectionUseCases(port: BackgroundConnectionPort, sea
         const refused = await providers.endpoints.check(baseUrl);
         if (refused) throw new InvalidInputError(`This endpoint cannot be used: ${refused}`, 'AI_ENDPOINT_REFUSED');
       }
-      // PROV-3: Flux's price list (#1465) or the owner's price; a provider's own listing is never a price source.
+      // PROV-3: the price list of the place the key pays (#1465: LiteLLM's for Anthropic, OpenAI and Gemini, OpenRouter's own list for
+      // OpenRouter), or the owner's price when no list knows the model.
       const list = await providers.priceList?.(input.provider) ?? null;
       const price = resolveConnectionPrice({ model, ownerPrice: input.price, list });
       assertBudgetFitsRequest(price, input.dailyBudgetCents, input.provider, model);

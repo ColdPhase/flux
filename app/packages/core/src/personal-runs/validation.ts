@@ -8,7 +8,7 @@ import {
   PERSONAL_RUN_LIMITS,
   personalRunMaxInputTokens,
   type AiConnectionRef,
-  type AiPrice,
+  type AiRate,
   type AssistantRunKind,
   type AssistantRunTarget,
   type AssistantSourceRef,
@@ -135,7 +135,7 @@ export function retryRequest(run: { kind: AssistantRunKind; prompt: string; targ
  * Micro-dollars of reported usage: the provider-reported cost when the response carries one,
  * otherwise the tokens at the connection's price (F-020 PROV-3).
  */
-export function costMicros(usage: PersonalComputeUsage, price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'>): number {
+export function costMicros(usage: PersonalComputeUsage, price: AiRate): number {
   return usageMicros(price, usage);
 }
 
@@ -143,7 +143,7 @@ export function costMicros(usage: PersonalComputeUsage, price: Pick<AiPrice, 'in
  * The charge of one run, never above its reservation (PROV-3, #192 B1): null when the reported
  * usage exceeds the run's token limits or its cost exceeds `reservedMicros`.
  */
-export function runChargeMicros(usage: PersonalComputeUsage, price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'>, reservedMicros: number): number | null {
+export function runChargeMicros(usage: PersonalComputeUsage, price: AiRate, reservedMicros: number): number | null {
   return boundedUsageMicros(price, usage, { maxInputTokens: PERSONAL_RUN_LIMITS.maxInputTokens, maxOutputTokens: PERSONAL_RUN_LIMITS.maxOutputTokens, reservedMicros });
 }
 
@@ -159,7 +159,7 @@ export function runTokensWithinLimits(usage: PersonalComputeUsage): boolean {
  * themselves are not reserved (#1113): their number is not limited, so each is charged as the provider reports it, within what the
  * run has left (`reconcileRequest`).
  */
-export function runReservationMicros(price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'> | null, tools = false, webSearch = false): number | null {
+export function runReservationMicros(price: AiRate | null, tools = false, webSearch = false): number | null {
   return requestReservationMicros(price, personalRunMaxInputTokens(tools, webSearch), PERSONAL_RUN_LIMITS.maxOutputTokens);
 }
 
@@ -169,7 +169,7 @@ export function runReservationMicros(price: Pick<AiPrice, 'inputMicrosPerMTok' |
  * still fits, so the day's spend stays within the budget. `'budget'`: not even one request fits what is left today; null
  * without a known price.
  */
-export function budgetedReservationMicros(price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'> | null, tools: boolean, leftMicros: number,
+export function budgetedReservationMicros(price: AiRate | null, tools: boolean, leftMicros: number,
   turns: number = PERSONAL_RUN_LIMITS.maxTurns, webSearch = false): number | 'budget' | null {
   const one = runReservationMicros(price, tools, webSearch);
   if (one === null) return null;

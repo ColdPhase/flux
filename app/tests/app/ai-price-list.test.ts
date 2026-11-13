@@ -2,20 +2,23 @@ import assert from 'node:assert/strict';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { after, before, describe, test } from 'node:test';
-import { AI_PRICE_LIST_PROVIDERS, AI_PRICE_MAX_MICROS_PER_MTOK, assistantApiPrice, currentConnectionPrice, listPrice, type AiPrice, type AiPriceList } from '@flux/contracts';
-import { isPriceList, parsePriceList, PRICE_LIST_LARGEST_PROMPT_TOKENS, shippedPriceList } from '@flux/core';
-import { aiPriceListRepository, storedPriceList, storedProviderPriceList } from '@flux/db';
+import { AI_PRICE_LIST_PROVIDERS, AI_PRICE_MAX_MICROS_PER_MTOK, assistantApiPrice, currentConnectionPrice, listPrice, maxRequestMicros, rateAt, type AiPrice,
+  type AiPriceList, type AiRate } from '@flux/contracts';
+import { boundedUsageMicros, gatewayChargeMicros, gatewayHoldMicros, isPriceList, openRouterPriceList, parsePriceList, runReservationMicros, shippedPriceList,
+  usageMicros } from '@flux/core';
+import { aiPriceListRepository, storedPriceLists, storedProviderPriceList } from '@flux/db';
 import { fetchPriceList, parsePrivateTargets, PUBLIC_ONLY } from '../../packages/agent-runtime/src/index.js';
 import { db } from './support/db.js';
 
-// Flux's price list (#1465): LiteLLM's model price file turned into Flux's prices, the daily fetch through the egress guard with its
-// bounds, the stored list that only a newer good list replaces, and a connection that runs at the list's price of today.
+// The price lists (#1465): LiteLLM's model price file and OpenRouter's own model list turned into Flux's prices with their long-prompt
+// tiers, the daily fetch through the egress guard with its bounds, the stored lists that only a newer good list replaces, a connection
+// that runs at the list's price of today, and a request reserved and charged at the tier its prompt falls in.
 
 /** A small file of LiteLLM's shape: one entry of each case the parser decides. */
 const FILE = {
   sample_spec: { litellm_provider: 'one of …', mode: 'one of …', input_cost_per_token: 0, output_cost_per_token: 0 },
   'claude-sonnet-5': { litellm_provider: 'anthropic', mode: 'chat', input_cost_per_token: 2e-6, output_cost_per_token: 1e-5, cache_read_input_token_cost: 2e-7 },
-  // A tier below Flux's largest request (114,000 tokens) is the price; one above it is not.
+  // Long-prompt tiers are kept with the price; batch, flex and priority fields are not read.
   'claude-haiku-5-5': { litellm_provider: 'anthropic', mode: 'chat', input_cost_per_token: 1e-7, output_cost_per_token: 5e-7,
     input_cost_per_token_above_100k_tokens: 5e-7, output_cost_per_token_above_100k_tokens: 2.5e-6, input_cost_per_token_above_100k_tokens_batches: 9e-5 },
   'gpt-6.1-sol': { litellm_provider: 'openai', mode: 'chat', input_cost_per_token: 2e-6, output_cost_per_token: 1e-5,
@@ -37,15 +40,21 @@ const FILE = {
 const price = (inputMicrosPerMTok: number, outputMicrosPerMTok: number) => ({ inputMicrosPerMTok, outputMicrosPerMTok });
 
 describe('reading LiteLLM\'s price file (#1465)', () => {
-  test('only Anthropic\'s, OpenAI\'s and Gemini\'s text models with sane prices, at the tier Flux\'s largest request reaches', () => {
-    assert.equal(PRICE_LIST_LARGEST_PROMPT_TOKENS, 114_000);
+  test('only Anthropic\'s, OpenAI\'s and Gemini\'s text models with sane prices, with their long-prompt tiers', () => {
     const list = parsePriceList(FILE, '2026-11-13', 'https://example.test/prices.json');
     assert.deepEqual(list, {
       fetchedOn: '2026-11-13', source: 'https://example.test/prices.json',
       prices: {
-        anthropic: { 'claude-haiku-5-5': price(500_000, 2_500_000), 'claude-sonnet-5': price(2_000_000, 10_000_000) },
-        openai: { 'gpt-5-pro': price(15_000_000, 120_000_000), 'gpt-6.1-sol': price(2_000_000, 10_000_000), 'gpt-free': price(0, 0) },
-        gemini: { 'gemini-3.1-pro-preview': price(2_000_000, 12_000_000) },
+        anthropic: {
+          'claude-haiku-5-5': { ...price(100_000, 500_000), tiers: [{ fromTokens: 100_001, ...price(500_000, 2_500_000) }] },
+          'claude-sonnet-5': price(2_000_000, 10_000_000),
+        },
+        openai: {
+          'gpt-5-pro': price(15_000_000, 120_000_000),
+          'gpt-6.1-sol': { ...price(2_000_000, 10_000_000), tiers: [{ fromTokens: 272_001, ...price(4_000_000, 15_000_000) }] },
+          'gpt-free': price(0, 0),
+        },
+        gemini: { 'gemini-3.1-pro-preview': { ...price(2_000_000, 12_000_000), tiers: [{ fromTokens: 200_001, ...price(4_000_000, 18_000_000) }] } },
       },
     });
     assert.ok(isPriceList(list));
@@ -70,7 +79,9 @@ describe('reading LiteLLM\'s price file (#1465)', () => {
       { ...good, prices: { openai: { 'gpt-6.1-sol': price(AI_PRICE_MAX_MICROS_PER_MTOK + 1, 10) } } },
       { ...good, prices: { openai: { 'gpt-6.1-sol': price(1.5, 10) } } },
       { ...good, prices: { openai: { 'bad id': price(1, 1) } } },
-      { ...good, prices: { openrouter: { 'vendor/model': price(1, 1) } } },
+      { ...good, prices: { openai_compatible: { 'llama3.1:8b': price(1, 1) } } },
+      { ...good, prices: { openai: { 'gpt-6.1-sol': { ...price(1, 1), tiers: [{ fromTokens: 0, ...price(1, 1) }] } } } },
+      { ...good, prices: { openai: { 'gpt-6.1-sol': { ...price(1, 1), tiers: [{ fromTokens: 10, ...price(-1, 1) }] } } } },
     ]) assert.equal(isPriceList(bad), false, JSON.stringify(bad));
   });
 
@@ -79,7 +90,8 @@ describe('reading LiteLLM\'s price file (#1465)', () => {
     assert.ok(isPriceList(shipped));
     assert.match(shipped.fetchedOn, /^\d{4}-\d{2}-\d{2}$/);
     for (const provider of AI_PRICE_LIST_PROVIDERS) assert.ok(Object.keys(shipped.prices[provider] ?? {}).length > 0, provider);
-    assert.equal(shipped.prices.openrouter, undefined, 'OpenRouter\'s models are priced by their owner');
+    assert.equal(shipped.prices.openrouter, undefined, 'OpenRouter\'s prices come from OpenRouter, read while someone has a key');
+    assert.deepEqual(shipped.prices.anthropic?.['claude-haiku-5-5']?.tiers?.[0]?.fromTokens, 100_001, 'Claude Haiku 5.5 over 100,000 tokens');
   });
 });
 
@@ -140,25 +152,80 @@ async function rolledBack(body: (tx: Parameters<Parameters<typeof db.transaction
 }
 
 describe('the stored list (#1465)', () => {
-  test('the migrator stored the shipped list; a newer good list replaces it, an older one never does', async () => {
-    const stored = await storedPriceList(db);
+  test('the migrator stored the shipped list; a newer good list replaces it, an older one never does; each list is kept apart', async () => {
+    const stored = await aiPriceListRepository(db).read('litellm');
     assert.ok(stored && isPriceList(stored));
     assert.ok(stored.fetchedOn >= shippedPriceList().fetchedOn, 'the shipped list or a newer one');
     await rolledBack(async (tx) => {
       const store = aiPriceListRepository(tx);
       const next: AiPriceList = { fetchedOn: '2099-01-02', source: 'test', prices: { anthropic: { 'claude-sonnet-5': price(3_000_000, 15_000_000) }, openai: {}, gemini: {} } };
-      assert.equal(await store.store(next), true);
+      assert.equal(await store.store('litellm', next), true);
       assert.deepEqual(await storedProviderPriceList(tx, 'anthropic'), { fetchedOn: '2099-01-02', prices: { 'claude-sonnet-5': price(3_000_000, 15_000_000) } });
-      assert.deepEqual(await storedProviderPriceList(tx, 'openrouter'), { fetchedOn: '2099-01-02', prices: {} });
       // The shipped list of an older release, stored again by its migrator, keeps the newer one; so does a list of an earlier day.
-      assert.equal(await store.store(shippedPriceList(), 'keep'), false);
-      assert.equal(await store.store({ ...next, fetchedOn: '2099-01-01' }), false);
-      assert.equal((await store.read())?.fetchedOn, '2099-01-02');
+      assert.equal(await store.store('litellm', shippedPriceList(), 'keep'), false);
+      assert.equal(await store.store('litellm', { ...next, fetchedOn: '2099-01-01' }), false);
+      assert.equal((await store.read('litellm'))?.fetchedOn, '2099-01-02');
       // The same day's list replaces it when fetched, and is kept when only shipped.
-      assert.equal(await store.store({ ...next, source: 'again' }, 'keep'), false);
-      assert.equal(await store.store({ ...next, source: 'again' }), true);
-      assert.equal((await store.read())?.source, 'again');
+      assert.equal(await store.store('litellm', { ...next, source: 'again' }, 'keep'), false);
+      assert.equal(await store.store('litellm', { ...next, source: 'again' }), true);
+      assert.equal((await store.read('litellm'))?.source, 'again');
+      // OpenRouter's own list is a list of its own: storing it changes nothing of LiteLLM's.
+      await store.store('openrouter', { fetchedOn: '2099-01-03', source: 'openrouter', prices: { openrouter: { 'vendor/model': price(1, 2) } } });
+      const lists = await storedPriceLists(tx);
+      assert.deepEqual(lists.openrouter, { fetchedOn: '2099-01-03', prices: { 'vendor/model': price(1, 2) } });
+      assert.equal(lists.anthropic?.fetchedOn, '2099-01-02');
+      assert.equal(await storedProviderPriceList(tx, 'openai_compatible'), null);
     });
+  });
+});
+
+describe('OpenRouter\'s prices are what an OpenRouter key pays (#1465)', () => {
+  test('its model list, read without a key, becomes its price list: listed prices with their long-prompt overrides; a variable one is none', () => {
+    const list = openRouterPriceList({ provider: 'openrouter', status: 'listed', checkedOn: '2026-11-13', models: [
+      { id: 'vendor/priced-model', family: 'vendor', price: price(3_000_000, 15_000_000) },
+      { id: 'vendor/long-model', family: 'vendor', price: { ...price(2_000_000, 10_000_000), tiers: [{ fromTokens: 200_000, ...price(4_000_000, 18_000_000) }] } },
+      { id: 'openrouter/auto', family: 'openrouter', price: null },
+    ] });
+    assert.deepEqual(list?.prices, { openrouter: {
+      'vendor/long-model': { ...price(2_000_000, 10_000_000), tiers: [{ fromTokens: 200_000, ...price(4_000_000, 18_000_000) }] },
+      'vendor/priced-model': price(3_000_000, 15_000_000),
+    } });
+    assert.equal(list?.fetchedOn, '2026-11-13');
+    assert.equal(openRouterPriceList({ provider: 'openrouter', status: 'unavailable', checkedOn: '2026-11-13', models: [] }), null);
+    assert.equal(openRouterPriceList({ provider: 'openai_compatible', status: 'listed', checkedOn: '2026-11-13', models: [{ id: 'x', family: 'x', price: price(1, 1) }] }), null);
+  });
+});
+
+describe('a request is reserved and charged at the tier its prompt falls in (#1465)', () => {
+  // Gemini 3.1 Pro: $2 / $12, and $4 / $18 for a prompt over 200,000 tokens.
+  const pro: AiRate = { ...price(2_000_000, 12_000_000), tiers: [{ fromTokens: 200_001, ...price(4_000_000, 18_000_000) }] };
+
+  test('the tier is the highest the prompt reaches, never below the base', () => {
+    assert.deepEqual(rateAt(pro, 200_000), price(2_000_000, 12_000_000));
+    assert.deepEqual(rateAt(pro, 200_001), price(4_000_000, 18_000_000));
+    assert.deepEqual(rateAt({ ...price(5, 5), tiers: [{ fromTokens: 10, ...price(1, 9) }] }, 10), price(5, 9), 'a lower tier price never lowers it');
+    assert.equal(maxRequestMicros(pro, 100_000, 1_000), 200_000 + 12_000);
+    assert.equal(maxRequestMicros(pro, 300_000, 1_000), 1_200_000 + 18_000);
+  });
+
+  test('a server run reserves its largest request (114,000 tokens) at Claude Haiku 5.5\'s over-100k price and charges a short one at the base', () => {
+    const haiku: AiRate = { ...price(100_000, 500_000), tiers: [{ fromTokens: 100_001, ...price(500_000, 2_500_000) }] };
+    assert.equal(runReservationMicros(haiku, true, true), Math.ceil((114_000 * 500_000 + 4_000 * 2_500_000) / 1_000_000));
+    assert.equal(usageMicros(haiku, { inputTokens: 20_000, outputTokens: 1_000 }), 2_000 + 500);
+    assert.equal(usageMicros(haiku, { inputTokens: 110_000, outputTokens: 1_000 }), 55_000 + 2_500);
+    // A cache read lowers what is billed, not the prompt's length: a 110,000-token prompt read from the cache is still over 100,000.
+    assert.equal(usageMicros(haiku, { inputTokens: 110_000, outputTokens: 0, cache: { readTokens: 100_000, writeTokens: 0, readRate: 0.1, writeRate: 1.25 } }),
+      Math.ceil((10_000 + 10_000) * 500_000 / 1_000_000));
+    assert.equal(boundedUsageMicros(haiku, { inputTokens: 110_000, outputTokens: 1_000 }, { maxInputTokens: 114_000, maxOutputTokens: 4_000, reservedMicros: 57_500 }), 57_500);
+  });
+
+  test('the gateway holds a long request at its tier and settles by the reported usage', () => {
+    const request = { inputBoundTokens: 300_000, maxOutputTokens: 10_000, cacheAsked: false };
+    const hold = gatewayHoldMicros(pro, 'gemini', request);
+    assert.equal(hold, 1_200_000 + 180_000, 'a request that may be 300,000 tokens is held at the over-200k price');
+    assert.deepEqual(gatewayChargeMicros(pro, 'gemini', request, hold, { inputTokens: 250_000, outputTokens: 1_000 }), { micros: 1_000_000 + 18_000, known: true });
+    assert.deepEqual(gatewayChargeMicros(pro, 'gemini', request, hold, { inputTokens: 50_000, outputTokens: 1_000 }), { micros: 100_000 + 12_000, known: true },
+      'a short one is charged at the base price');
   });
 });
 

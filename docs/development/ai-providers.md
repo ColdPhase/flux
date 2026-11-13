@@ -97,23 +97,31 @@ Anthropic was confirmed in O-007/O-008 and is unchanged.
 
 ## Prices, reservations and the input bound
 
-A connection's price per 1M tokens (micro-dollars) comes only from Flux's price list (source `list`, with the day the list was
-fetched) or from the owner (`owner`, zero allowed), because a reservation needs a price before any response exists (#1465,
-[CA-2](../product/model-providers.md#ca-2--models)). An owner price is refused when the list has the model. A price OpenRouter
-lists is shown in the form as the starting value of the owner's price, never stored as a source of its own. A connection without
+A connection's price per 1M tokens (micro-dollars) comes only from the price list of the place the key pays (source `list`, with
+the day the list was fetched: LiteLLM's for Anthropic, OpenAI and Gemini, OpenRouter's own for OpenRouter) or from the owner (`owner`,
+zero allowed), because a reservation needs a price before any response exists (#1465,
+[CA-2](../product/model-providers.md#ca-2--models)). An owner price is refused when a list has the model. A connection without
 a price can be saved but not used: the assistant state `unavailable` / `price_unknown`.
 
-How the list moves:
+A list price may carry long-prompt tiers (`AiPrice.tiers`, `{ fromTokens, inputMicrosPerMTok, outputMicrosPerMTok }`):
+`maxRequestMicros(price, input, output, searches, promptTokens)` prices at `rateAt(price, promptTokens)`, the highest price the
+prompt reaches. A reservation passes the longest prompt the request can be (a server run's bound; the gateway's `inputBoundTokens`),
+a charge (`usageMicros`) the reported `inputTokens`, the whole prompt with cache reads and writes, while the billed tokens keep their
+cache rates. An owner price has no tiers.
+
+How the lists move:
 
 | Piece | Where |
 | --- | --- |
-| Reading LiteLLM's file into Flux's prices (provider and mode filter, ids, bounds, prompt-length tier, whole-file refusal) | `parsePriceList`, `isPriceList` in `app/packages/core/src/ai/price-list.ts` |
-| The anonymous daily GET through the egress guard (16 MB, 30 s); test stacks ask `<FLUX_TEST_PROVIDER_LISTS>/price-list` | `fetchPriceList`, `priceListFetchOptions` in `app/packages/agent-runtime/src/price-list.ts` |
-| The job: daily at 04:17 UTC and at start when the stored list is a day old; retried 3 times 15 minutes apart; a failure keeps the last good list | `app/apps/worker/src/ai-keys/price-list.ts` (`ai-price-list.refresh.v1`) |
-| The stored list: one row, replaced only by a list fetched the same day or later | `ai_price_list` (migration 0081), `aiPriceListRepository` |
+| Reading LiteLLM's file into Flux's prices (provider and mode filter, ids, bounds, `_above_<N>k_tokens` tiers from N×1000+1 tokens, whole-file refusal) | `parsePriceList`, `isPriceList` in `app/packages/core/src/ai/price-list.ts` |
+| OpenRouter's prices: its keyless model list with `overrides` (`min_prompt_tokens`) as tiers; a variable or malformed price is none | `openRouterRate` in `app/packages/agent-runtime/src/model-list.ts`, `openRouterPriceList` in core |
+| The anonymous daily GET of LiteLLM's file through the egress guard (16 MB, 30 s); test stacks ask `<FLUX_TEST_PROVIDER_LISTS>/price-list` and `/openrouter/v1/models` | `fetchPriceList`, `priceListFetchOptions`, `keyListingOptions` in `app/packages/agent-runtime/src/` |
+| The job: daily at 04:17 UTC and at start when the stored LiteLLM list is a day old; OpenRouter's list too while anyone has an OpenRouter key; retried 3 times 15 minutes apart; a failure keeps the last good list | `app/apps/worker/src/ai-keys/price-list.ts` (`ai-price-list.refresh.v1`) |
+| OpenRouter's list read by the API: when the form lists OpenRouter's models, and at connect when the stored one is a day old | `priceList` in `app/apps/server/src/ai-keys/routes.ts` |
+| The stored lists: one row per list (`litellm`, `openrouter`), each replaced only by a list fetched the same day or later | `ai_price_lists` (migration 0081), `aiPriceListRepository`, `storedPriceLists` |
 | The shipped list: LiteLLM's entries for Anthropic, OpenAI and Gemini text models as fetched on the release's build day, stored by the migrator when the database has none or an older one | `scripts/update_price_list.py` writes `app/packages/core/src/ai/price-list-snapshot.ts`; `shippedPriceList()`; `app/tooling/migrate.ts` |
-| A stored connection's price: the list's price of today for its model, else the stored one | `currentConnectionPrice` (contracts), applied by `connectionPrice` in the connection repositories |
-| The Connect AI form's prices: `priceList` of the `POST /api/v1/ai-model-lists` answer | `app/apps/server/src/ai-keys/routes.ts`, `ConnectionFields.tsx` |
+| A stored connection's price: the list's price of today for its model, else the stored one (a stored price keeps no tiers) | `currentConnectionPrice` (contracts), applied by `connectionPrice` in the connection repositories |
+| The Connect AI form's prices: `priceList` of the `POST /api/v1/ai-model-lists` answer; OpenRouter's list is read when it is chosen | `app/apps/server/src/ai-keys/routes.ts`, `ConnectionFields.tsx` |
 
 A listed model the list does not price is still offered: its owner enters its price for that key
 (`PUT /api/v1/background-compute-connections/:id/model-price`, kept in `model_prices`); once the list prices it, the list's price

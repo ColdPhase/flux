@@ -141,13 +141,21 @@ describe('provider-neutral owner AI connections (#179)', () => {
 });
 
 describe('a key whose budget is below one request is refused when saved (#179 PROV-3)', () => {
-  test('a provider\'s own listing or reported cost is never a reservation price', async () => {
+  test('a reported cost is never a reservation price; OpenRouter\'s own listed price is the price an OpenRouter key pays (#1465)', async () => {
     const owner = await person('ai-budget-owner');
     // 64,000 × $30/M + 4,000 × $60/M = $2.16 per request, above this key's $0.20 daily budget: it would wait for a day that never comes.
     assert.equal(codeOf(await owner.browser.request('POST', path, { body: { ...consent, provider: 'openai', model: 'gpt-model',
       price: { inputMicrosPerMTok: 30_000_000, outputMicrosPerMTok: 60_000_000 }, apiKey: keys.openai, dailyBudgetCents: 20 } })), 'AI_BUDGET_TOO_SMALL');
-    // A model without a known price is saved without one; a runtime that needs a price will not use it.
-    assert.equal((expectStatus(await owner.browser.request('POST', path, { body: { ...consent, provider: 'openrouter', model: 'vendor/priced-model',
+    // OpenRouter's model list states what its key pays (#1465): read at connect, it prices the model with no owner entry, and an owner
+    // price for it is refused like any listed one.
+    const priced = (expectStatus(await owner.browser.request('POST', path, { body: { ...consent, provider: 'openrouter', model: 'vendor/priced-model',
+      apiKey: keys.openrouter } }), 201) as BackgroundComputeConnection).price;
+    assert.deepEqual([priced?.inputMicrosPerMTok, priced?.outputMicrosPerMTok, priced?.source], [3_000_000, 15_000_000, 'list']);
+    assert.match(priced?.checkedOn ?? '', /^\d{4}-\d{2}-\d{2}$/);
+    assert.equal(codeOf(await owner.browser.request('POST', path, { body: { ...consent, provider: 'openrouter', model: 'vendor/priced-model',
+      price: { inputMicrosPerMTok: 1, outputMicrosPerMTok: 1 }, apiKey: keys.openrouter } })), 'AI_PRICE_ALREADY_KNOWN');
+    // A model OpenRouter prices variably is saved without a price; a runtime that needs a price will not use it.
+    assert.equal((expectStatus(await owner.browser.request('POST', path, { body: { ...consent, provider: 'openrouter', model: 'openrouter/auto',
       apiKey: keys.openrouter } }), 201) as BackgroundComputeConnection).price, null);
   });
 });

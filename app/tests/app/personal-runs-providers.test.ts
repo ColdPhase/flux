@@ -209,7 +209,7 @@ describe('the assistant\'s model from any connection (F-027 AST-11, #854)', () =
     assert.deepEqual(choice.groups[0]!.options.map((option) => [option.id, option.name, option.note, option.callsTools]), [
       // By family, the family with the newest model first (#1218).
       ['claude-fable-5-2', 'Fable 5.2', 'Input $8, output $40 per 1M tokens', true],
-      ['claude-haiku-5-5', 'Haiku 5.5', 'Input $0.50, output $2.50 per 1M tokens', true],
+      ['claude-haiku-5-5', 'Haiku 5.5', 'Input $0.10, output $0.50 per 1M tokens', true],
       ['claude-sonnet-5-5', 'Sonnet 5.5', 'Input $2, output $10 per 1M tokens', true],
       ['claude-sonnet-5', 'Sonnet 5', 'Input $2, output $10 per 1M tokens', true],
       ['claude-opus-5-5', 'Opus 5.5', 'Input $4, output $20 per 1M tokens', true],

@@ -1,4 +1,4 @@
-import { maxRequestMicros, PERSONAL_RUN_LIMITS, personalRunMaxInputTokens, PROMPT_CACHE_RATES, type AiPrice } from '@flux/contracts';
+import { maxRequestMicros, PERSONAL_RUN_LIMITS, personalRunMaxInputTokens, PROMPT_CACHE_RATES, type AiRate } from '@flux/contracts';
 import { boundedInputTokens, conservativeTokenEstimate } from '../ai/estimate.js';
 import { boundedUsageMicros } from '../ai/price.js';
 import type {
@@ -106,7 +106,7 @@ export const emptyAccount = (): RunAccount => ({ micros: 0, inputTokens: 0, outp
  * any is out of its bounds.
  */
 export function reconcileRequest(account: RunAccount, usage: PersonalComputeUsage,
-  price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'>, reservedMicros: number, webSearch = false): boolean {
+  price: AiRate, reservedMicros: number, webSearch = false): boolean {
   const micros = boundedUsageMicros(price, usage, {
     maxInputTokens: webSearch ? Number.MAX_SAFE_INTEGER : personalRunMaxInputTokens(true), maxOutputTokens: PERSONAL_RUN_LIMITS.maxOutputTokens,
     maxWebSearches: webSearch ? Number.MAX_SAFE_INTEGER : 0, reservedMicros: reservedMicros - account.micros,
@@ -125,7 +125,7 @@ export function reconcileRequest(account: RunAccount, usage: PersonalComputeUsag
  * reports them, out of what is left; a request whose searches take the run above its reservation is a lost response, so the daily
  * budget is never passed, and the run is stopped here before any request that could not even carry its tokens.
  */
-export function nextRequestFits(account: RunAccount, price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'>, reservedMicros: number, webSearch = false,
+export function nextRequestFits(account: RunAccount, price: AiRate, reservedMicros: number, webSearch = false,
   cacheWriteRate = 1): boolean {
   // A request that asks for caching (#1410) may write every input token to the cache at its write rate: it fits only with that.
   const input = Math.ceil(personalRunMaxInputTokens(true, webSearch) * Math.max(1, cacheWriteRate));
@@ -154,7 +154,7 @@ export interface LoopOptions {
   session: PersonalToolSession;
   /** The fitted first request, with the tools. */
   first: PersonalComputeRequest;
-  price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'>;
+  price: AiRate;
   /** The run's reservation: the most it may cost. */
   reservedMicros: number;
   maxTurns: number;

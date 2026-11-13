@@ -12,14 +12,12 @@ import { listAiModels } from './api';
 //   and "Other model id…" for an id the list lacks. A refused key says so and Connect waits for another; a list that can't be
 //   read leaves the plain field with a note.
 // - OpenRouter and an OpenAI-compatible endpoint list without a key ("Show available models"), with the plain field as fallback.
+//   OpenRouter's list is read as soon as it is chosen: its prices are what an OpenRouter key pays (#1465).
 // No model list is written into Flux: the models are only ever the provider's own (founder direction, Hubert, 2026-11-12), and
 // Flux's price list only prices one.
-// A price comes from Flux's price list, which the server refreshes every day and sends with the model list (#1465); when it has no
-// price for the model, the owner enters it (PROV-3), for every provider alike. A price the provider lists (OpenRouter) is only offered
-// as the starting value of the owner's price. The key exists only in its password field and the request.
-
-/** USD per 1M tokens for an input field, from micro-dollars. */
-const usd = (micros: number) => String(micros / 1_000_000);
+// A price comes from the price list of the place the key pays, which the server refreshes every day and sends with the model list
+// (#1465: LiteLLM's for Anthropic, OpenAI and Gemini, OpenRouter's own); when no list prices the model, the owner enters it (PROV-3),
+// for every provider alike. The key exists only in its password field and the request.
 
 const perMillion = (micros: number) => `$${(micros / 1_000_000).toFixed(micros % 10_000 === 0 ? 2 : 4)}`;
 /** "$4", "$0.50": a short price for a dropdown option. */
@@ -34,8 +32,11 @@ export const checkedDay = (isoDay: string) => {
   return Number.isNaN(day.getTime()) ? isoDay : day.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
 };
 
-export function priceSourceText(price: AiPrice) {
-  return price.source === 'list' ? (price.checkedOn ? `Flux’s price list of ${checkedDay(price.checkedOn)}` : 'Flux’s price list') : 'Entered by you';
+/** "Flux’s price list of 13 Nov 2026", or "OpenRouter’s prices of 13 Nov 2026" for a key that pays OpenRouter (#1465). */
+export function priceSourceText(price: AiPrice, provider?: AiProviderKind) {
+  if (price.source === 'owner') return 'Entered by you';
+  const list = provider === 'openrouter' ? 'OpenRouter’s prices' : 'Flux’s price list';
+  return price.checkedOn ? `${list} of ${checkedDay(price.checkedOn)}` : list;
 }
 
 export const priceText = (price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'>) =>
@@ -92,7 +93,6 @@ export function ConnectionFields({ disabled, onKeyRefused, keyHelpId }: {
   const listed = list?.status === 'listed' ? list.models : null;
   const refused = list?.status === 'key_refused';
   useEffect(() => { onKeyRefused(refused); }, [refused, onKeyRefused]);
-  const listedPrice = listed?.find((entry) => entry.id === model)?.price ?? null;
   // Flux's prices of the provider come with its model list, read or not (#1465).
   const prices = list?.priceList ?? null;
   const known = provider && model ? listPrice(prices, model) : null;
@@ -104,6 +104,8 @@ export function ConnectionFields({ disabled, onKeyRefused, keyHelpId }: {
 
   function choose(next: AiProviderKind | '') {
     setProvider(next); setListing({ state: 'idle' }); setOther(false); listedKey.current = ''; setModel('');
+    // OpenRouter's models and prices are public: read as soon as it is chosen, so a model OpenRouter prices asks nothing (#1465).
+    if (next === 'openrouter') void read({}, next);
   }
 
   /**
@@ -120,12 +122,12 @@ export function ConnectionFields({ disabled, onKeyRefused, keyHelpId }: {
     }
   }
 
-  async function read(query: { apiKey?: string }) {
-    if (!provider) return;
+  async function read(query: { apiKey?: string }, kind: AiProviderKind | '' = provider) {
+    if (!kind) return;
     const ask = ++asked.current;
     setListing({ state: 'reading' });
     try {
-      const result = await readList(provider, query, ask);
+      const result = await readList(kind, query, ask);
       if (!result || ask !== asked.current) return;
       setListing({ state: 'done', list: result });
       if (result.status === 'listed' && result.models.length) {
@@ -199,15 +201,14 @@ export function ConnectionFields({ disabled, onKeyRefused, keyHelpId }: {
       <p className="background-settings__help" role="status">{status || (provider && !keyed && !dropdown ? 'Type the model id exactly as the provider names it.' : '')}</p>
     </div>
     {provider && model && !waitingForKey ? known
-      ? <p className="background-settings__help" data-testid="connection-price">Price: {priceText(known)} · {priceSourceText(known)}.</p>
-      // Remounted per model, so a listed price becomes the starting value of the owner's price.
+      ? <p className="background-settings__help" data-testid="connection-price">Price: {priceText(known)} · {priceSourceText(known, provider as AiProviderKind)}.</p>
+      // Remounted per model, so a price typed for one model is not kept for another.
       : <fieldset key={`${provider}:${model}`} className="background-settings__price" disabled={disabled}>
         <legend>Price per 1M tokens (USD)</legend>
         <p className="background-settings__help">Flux doesn’t know this model’s price yet. Enter it to use it with a daily budget: from your provider’s pricing, or 0 for a self-hosted server you pay for otherwise. Flux prices each request at it before sending, so your daily budget holds.</p>
-        {listedPrice ? <p className="background-settings__help" data-testid="listed-price">{info!.label} lists {priceText(listedPrice)} (read {list!.checkedOn}); it is filled in below for you to confirm.</p> : null}
         <div className="background-settings__limits">
-          <label>Input price<input name="inputPrice" type="number" min="0" max="1000" step="any" inputMode="decimal" defaultValue={listedPrice ? usd(listedPrice.inputMicrosPerMTok) : undefined} /></label>
-          <label>Output price<input name="outputPrice" type="number" min="0" max="1000" step="any" inputMode="decimal" defaultValue={listedPrice ? usd(listedPrice.outputMicrosPerMTok) : undefined} /></label>
+          <label>Input price<input name="inputPrice" type="number" min="0" max="1000" step="any" inputMode="decimal" /></label>
+          <label>Output price<input name="outputPrice" type="number" min="0" max="1000" step="any" inputMode="decimal" /></label>
         </div>
       </fieldset> : null}
   </>;
