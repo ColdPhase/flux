@@ -581,10 +581,12 @@ class LiveJourney(LiveBase):
         # "In call" fits the Call slot: its word is not cut and the views do not move (Spokój rule 7).
         self.assertEqual(in_call.evaluate("el => { const l = el.querySelector('.lv-entry__label'); return l.scrollWidth <= l.clientWidth + 0.5 && el.scrollWidth <= el.clientWidth + 0.5; }"), True)
         self.assertAlmostEqual(views_at(), before, delta=0.5, msg="the views keep their place while the call connects")
+        in_call.click()
         expect(kai.locator(".lv-pop__text")).to_have_text("Connecting to the call.")
         kai.keyboard.press("Escape")
         expect(bar.get_by_role("status").first).to_contain_text("Live", timeout=30000)
         expect(in_call.locator(".lv-dot")).to_be_visible()
+        self.assertTrue(in_call.evaluate("el => el.scrollWidth <= el.clientWidth + 0.5"), "In call with its dot fits the slot")
         self.assertAlmostEqual(views_at(), before, delta=0.5, msg="the views keep their place in the call")
         calls = [item for item in self.api(kai, "GET", f"/api/v1/projects/{pid}/live-sessions", status=200)["items"] if item["context"]["id"] == pid]
         self.assertEqual(len(calls), 1, "one call, not one per click")
