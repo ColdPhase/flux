@@ -166,7 +166,7 @@ class MyAgentsJourney(unittest.TestCase):
         shot(page, "my-agent-page-1440")
 
     def test_02b_the_agents_list_matches_its_render_and_the_first_agents_are_told_apart(self) -> None:
-        """#1377 (F-026 §7 Agents and AI): Assistant says what it is for before it has instructions, "What it may do" is a tag, a second new agent is
+        """#1377 (F-026 §7 Agents and AI): Assistant says what it is for before it has instructions, its Ask me first is a tag, a second new agent is
         Indigo (not another warm brown), and there is no "When someone assigns a task to me" (#1419)."""
         page = self.page()
         page.goto("/settings/agents")

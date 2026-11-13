@@ -53,7 +53,7 @@ async function keptOut(work: () => Promise<void>) {
   finally { await grant(scene.lead, scene.place.id, scene.owner, 'manager'); }
 }
 
-describe('What it may do, approvals, Undo and the Inbox (F-036 AG-3, AG-7, #855)', () => {
+describe('Ask me first, approvals, Undo and the Inbox (F-036 AG-3, AG-7, #855)', () => {
   before(async () => { scene = await assistantScene('wd'); });
   beforeEach(async () => { await scene.reset(); });
 

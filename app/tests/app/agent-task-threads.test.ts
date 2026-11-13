@@ -382,7 +382,7 @@ describe('the exchange through the real drain (#841, N1 to N3)', () => {
       conversationId: talk.conversationId!, prompt: `Task #${task.number}: Compare the two barrels`, clientRunId: randomUUID() }));
     assert.ok(started.started, JSON.stringify(started));
     await pool.query('UPDATE project_work_items SET owner_user_id = NULL, owner_agent_id = $2, version = version + 1 WHERE id = $1', [task.id, agents.jonas]);
-    // The run ends: the drain posts its report as Planner's line, and the task follows "What it may do" as after any report.
+    // The run ends: the drain posts its report as Planner's line, and the task follows Ask me first as after any report.
     await complete(started.run.id, 'The north barrel reads full at 92 cm.');
     await waitFor(async () => (await readTask(task.id)).owner?.kind !== 'agent' || (await readTask(task.id)).status === 'done', 'the run\'s end to be handled');
     const lines = await thread(task.id);

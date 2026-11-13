@@ -1,8 +1,8 @@
 """Browser tests for the assistant screen and its journeys (F-027 A7, #407; AST-10).
 
-The check_ui.sh stack has no agent runtime, so the owner's enablement, "What it may do" and answers are stubbed
+The check_ui.sh stack has no agent runtime, so the owner's enablement, Ask me first and answers are stubbed
 responses (as in test_assistant_runtime). This proves the words, the flow and the layout at both widths;
-tests/app/assistant-settings.test.ts proves "What it may do" against the real store.
+tests/app/assistant-settings.test.ts proves Ask me first against the real store.
 """
 
 from __future__ import annotations
@@ -123,7 +123,7 @@ class AssistantScreen(unittest.TestCase):
         return stub
 
     def stub_assistant(self, page: Page, *, enabled: bool = True, runtime: str = "signed_in") -> dict:
-        """Status, settings, the one "What it may do" PATCH and pause/resume, all in memory."""
+        """Status, settings, the one Ask me first PATCH and pause/resume, all in memory."""
         world = {"status": self.status(page, enabled=enabled, runtime=runtime), "patches": [], "pauses": [],
                  "agents": {"projectId": self.ids["project"], "connections": []},
                  "settings": {"workspaceId": self.ids["workspace"], "ownerUserId": ADA["id"], "agentId": self.ids["agent"], "connectionId": self.ids["agent"], "mayDo": "act",

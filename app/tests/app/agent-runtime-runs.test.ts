@@ -465,7 +465,7 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
     await runs.enable(human(owner), { agentId, connection: 'claude_plan', model: 'sonnet' });
   });
 
-  /** "What it may do" (F-036 AG-3), set by the owner on the assistant's connection. */
+  /** Ask me first (F-036 AG-3), set by the owner on the assistant's connection. */
   async function setMode(mayDo: 'act' | 'ask') {
     const current = await settings();
     if (current.mayDo !== mayDo)

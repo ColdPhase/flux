@@ -304,7 +304,7 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
       jwt({ disableSettingJwtHeader: true }),
       mcp({
         loginPage: '/login', consentPage: '/consent', resource,
-        // One scope: the client may stay connected until the person disconnects it. What it may do is not a scope. It acts with its
+        // One scope: the client may stay connected until the person disconnects it. Ask me first is not a scope. It acts with its
         // owner's rights and does what its Ask me first says, both read again at every call (#859).
         scopes: ['offline_access'],
         grantTypes: ['authorization_code', 'refresh_token'],

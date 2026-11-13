@@ -64,7 +64,7 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
   const PRIVATE_CANARY = `private-sketch-canary-${randomBytes(4).toString('hex')}`;
 
   const settings = () => agentSettings(owner, ws.id);
-  /** "What it may do" (F-036 AG-3), set by the owner in their own session. */
+  /** Ask me first (F-036 AG-3), set by the owner in their own session. */
   async function setMayDo(mayDo: AgentMayDo) {
     expectStatus(await owner.browser.request('PATCH', agentConnectionPath((await settings()).connectionId), { body: { mayDo } }), 200);
   }

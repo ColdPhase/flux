@@ -11,7 +11,7 @@ import { actionScene, agentConnection } from './support/mcp-actions.js';
 import { addMember, expectStatus, grant, person, type Person } from './support/people.js';
 import { text } from './support/assistant-scene.js';
 
-// F-036 AG-3 and mcp-cowork LC-2 (#859, #855 part 2): a local client acts with its owner's rights, under the same "What it may do" as
+// F-036 AG-3 and mcp-cowork LC-2 (#859, #855 part 2): a local client acts with its owner's rights, under the same Ask me first as
 // the assistant. Deleting and other people's things always wait, so does everything under Ask me first; only the owner approves, in their
 // own signed-in session; a client's token has no way to approve its own waiting change. Everything goes through the real `/mcp` route with
 // the client's own OAuth token, and every state is read back from the store.

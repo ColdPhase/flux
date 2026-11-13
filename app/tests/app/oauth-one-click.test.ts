@@ -11,7 +11,7 @@ import { password } from './support/people.js';
 
 // Signing in a local client is one click (#859, F-036 LC-1). These are the attacks on that click: nothing exists before Allow, Deny and a
 // look at the page make nothing, a signed request is bound to the session that reached the page, a person outside the company cannot
-// connect, and what the client is afterwards (rights, "What it may do", Disconnect) is the person's, never more. Everything goes through
+// connect, and what the client is afterwards (rights, Ask me first, Disconnect) is the person's, never more. Everything goes through
 // the real authorization, consent, token and `/mcp` routes.
 
 interface Owner { browser: Browser; userId: string; workspaceId: string; projectId: string }
