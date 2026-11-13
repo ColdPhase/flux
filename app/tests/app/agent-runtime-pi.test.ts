@@ -136,9 +136,11 @@ describe('API-key agents run in pi in the runtime (#1441)', () => {
     ]);
     const started = await ask('Make me a page');
     assert.equal(await processor.process(started.run.id), 'completed', await why(started.run.id));
-    const attached = gateway.requests[2]!.results[0] ?? '';
+    // Each request carries every tool result so far: the last is the newest.
+    const attached = gateway.requests[2]!.results.at(-1) ?? '';
     assert.doesNotMatch(attached, /Not attached|no working directory/i, attached);
-    assert.match(gateway.requests[3]!.results[0] ?? '', /Not attached/, 'nothing outside the scratch');
+    assert.match(attached, /notes\.html/, attached);
+    assert.match(gateway.requests[3]!.results.at(-1) ?? '', /Not attached/, 'nothing outside the scratch');
     const [change] = (await pool.query(`SELECT state FROM assistant_changes WHERE run_id = $1`, [started.run.id])).rows as { state: string }[];
     assert.ok(change, 'the attachment is the run\'s change, with its line and Undo');
     assert.deepEqual(await readdir(scratchRoot()), [], 'the scratch is gone after the run');
