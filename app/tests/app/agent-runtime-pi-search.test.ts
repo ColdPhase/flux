@@ -2,9 +2,10 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
 import { after, before, beforeEach, describe, test } from 'node:test';
-import { assistantRunTools, type Conversation, type Project, type Workspace } from '@flux/contracts';
+import { assistantRunTools, RUN_TOKEN_LIMITS, type Conversation, type Project, type Workspace } from '@flux/contracts';
+import { MODEL_GATEWAY_LIMITS } from '@flux/runtime-protocol';
 import {
-  createPersonalRunProcessor, KEY_SEARCH_SYSTEM, runReservationMicros, type AgentRuntimeConfig, type PersonalCompute, type PersonalComputeRequest, type PersonalComputeResult, type Principal,
+  createModelGateway, createPersonalRunProcessor, KEY_SEARCH_SYSTEM, runReservationMicros, type AgentRuntimeConfig, type PersonalCompute, type PersonalComputeRequest, type PersonalComputeResult, type Principal,
 } from '@flux/core';
 import { createManagerServer } from '../../apps/runtime/src/manager/server.js';
 import { buildApp } from '../../apps/server/src/app.js';
@@ -61,7 +62,7 @@ describe('an API-key agent in pi searches the web with Flux\'s flux_web_search (
     base = `http://127.0.0.1:${(app.server.address() as AddressInfo).port}`;
     closeApp = () => app.close();
     gateway = await startFakeGateway();
-    slot = await startTestSlot({ slot: `runtime-8${Math.floor(Math.random() * 90 + 10)}`, enabled: [], mcpUrl: `${base}/mcp`, ownTools: true, pi: { modelUrl: gateway.url } });
+    slot = await startTestSlot({ slot: `runtime-8${Math.floor(Math.random() * 90 + 10)}`, enabled: [], mcpUrl: `${base}/mcp`, ownTools: true, pi: { modelOrigin: gateway.url } });
     manager = createManagerServer({ secret: SECRET, slots: new Map([[slot.config.slot, { host: '127.0.0.1', port: portOf(slot.url), secret: slot.config.secret }]]), log: () => undefined });
     await new Promise<void>((done) => manager.listen(0, '127.0.0.1', done));
     config = { clients: [], keys: true, commercialTermsAgreedOn: null, idleDays: null, manager: { url: `http://127.0.0.1:${(manager.address() as AddressInfo).port}`, secret: SECRET } };
@@ -76,7 +77,8 @@ describe('an API-key agent in pi searches the web with Flux\'s flux_web_search (
     await pool.query(`INSERT INTO agent_runtime_bindings(id, owner_user_id, slot, state) VALUES ($1, $2, $3, 'binding')`, [randomUUID(), owner.id, slot.config.slot]);
     runs = personalRunUseCases(db, { queue: queue.factory, connections, providerEnabled: true, runtime: personalRuntimeAvailability(config, db) });
     processor = createPersonalRunProcessor({ uow: personalRunWorkerUnitOfWork(db), connections, compute: workerCompute,
-      runtime: managerPersonalRuntime(config, db), tokens: runTokenIssuer(db, base), stopPollMs: 50, runtimeCaps: { idleSeconds: 20, wallClockSeconds: 60, maxTurns: 10 } });
+      runtime: managerPersonalRuntime(config, db), tokens: runTokenIssuer(db, base), stopPollMs: 50,
+      gateway: createModelGateway({ uow: personalRunWorkerUnitOfWork(db), connections, limits: MODEL_GATEWAY_LIMITS, tokenLifetimeMs: RUN_TOKEN_LIMITS.lifetimeSeconds * 1000 }), runtimeCaps: { idleSeconds: 20, wallClockSeconds: 60, maxTurns: 10 } });
     connectionId = randomUUID();
     connections.connect(owner.id, connectionId);
     await runs.enable(human(owner), { agentId, connection: connectionId, model: 'claude-sonnet-5' });

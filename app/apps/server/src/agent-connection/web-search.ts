@@ -36,15 +36,12 @@ export function runMeter(db: Database): KeySearchMeter {
       if (!run.rows.length) return false;
       const spend = await apiKeySpendToday(tx, connection.id, undefined, { dailyBudgetCents: connection.dailyBudgetCents, timeZone: connection.timeZone });
       if (!spend || spend.chargedMicros + spend.reservedMicros + micros > budgetMicros) return false;
-      await tx.execute(sql`UPDATE personal_runs SET reserved_micros = reserved_micros + ${micros}, updated_at = now() WHERE id = ${runId}`);
+      await tx.execute(sql`UPDATE personal_runs SET reserved_micros = reserved_micros + ${micros}, reserved_at = COALESCE(reserved_at, now()), updated_at = now() WHERE id = ${runId}`);
       return true;
     }),
     async settle(runId, held, charged) {
-      // Charged: the hold becomes the charge, which stays counted until the run ends. Unknown: the hold stays counted, as a lost response's does.
-      await db.execute(charged === null
-        ? sql`UPDATE personal_runs SET cost_state = 'unknown', updated_at = now() WHERE id = ${runId}`
-        : sql`UPDATE personal_runs SET reserved_micros = GREATEST(0, reserved_micros - ${held} + ${charged}), charged_micros = charged_micros + ${charged},
-            updated_at = now() WHERE id = ${runId}`);
+      await db.execute(sql`UPDATE personal_runs SET reserved_micros = GREATEST(0, reserved_micros - ${held} + ${charged}), charged_micros = charged_micros + ${charged},
+        updated_at = now() WHERE id = ${runId}`);
     },
   };
 }

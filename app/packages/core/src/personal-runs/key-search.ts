@@ -21,12 +21,16 @@ export const KEY_SEARCH_LIMITS = { maxTokens: 1_500, query: WEB_SEARCH_BOUNDS.qu
 /** Whether a key run in pi gets `flux_web_search`: its provider has a hosted search for this model (Flux's table), and the web is on. */
 export const keySearchOffered = (provider: PersonalConnection['provider'], model: string, webReads: boolean) => webReads && aiModelSearchesWeb(provider, model);
 
-/** How the search meets the key's budget, on the run's own row: hold before, charge after (the model gateway's rule, #1441). */
+/**
+ * How the search meets the key's budget, on the run's own row, by the model gateway's rule (RT-4 "The model gateway", CA-3): the hold is
+ * added to `reserved_micros` before the request; after it, the charge is added to `charged_micros` and the rest of the hold released. A
+ * complete error answer of the provider is charged nothing; a lost answer, or one without usable usage, the whole hold.
+ */
 export interface KeySearchMeter {
   /** Holds `micros` on the run if they fit in what is left of the key's day; false: they do not (the budget). */
   hold(runId: string, connection: PersonalConnection, micros: number, budgetMicros: number): Promise<boolean>;
-  /** The request is done: the hold goes, and `charged` (null: unknown, the hold stays counted) is added to the run. */
-  settle(runId: string, held: number, charged: number | null): Promise<void>;
+  /** The request is done: `charged` (at most the hold) replaces the hold. */
+  settle(runId: string, held: number, charged: number): Promise<void>;
 }
 
 export type KeySearchOutcome =
@@ -41,7 +45,8 @@ export async function searchWithKey(compute: PersonalCompute, meter: KeySearchMe
   const held = runReservationMicros(connection.price, true, true);
   if (held === null) return { ok: false, reason: 'unavailable' };
   if (!(await meter.hold(runId, connection, held, centsToMicros(connection.dailyBudgetCents)))) return { ok: false, reason: 'budget' };
-  let charged: number | null = null;
+  // Until the provider's complete answer says otherwise, the request is charged all it held.
+  let charged = held;
   try {
     const result = await compute.dispatch({
       connection: { id: connection.id, keyRef: connection.keyRef, provider: connection.provider, baseUrl: connection.baseUrl },
@@ -52,7 +57,8 @@ export async function searchWithKey(compute: PersonalCompute, meter: KeySearchMe
       if (result.billed === 'none') charged = 0;
       return { ok: false, reason: result.reason === 'no_credits' ? 'unavailable' : 'failed' };
     }
-    charged = connection.price ? Math.min(costMicros(result.usage, connection.price), Number.MAX_SAFE_INTEGER) : null;
+    const cost = connection.price ? costMicros(result.usage, connection.price) : null;
+    if (cost !== null && Number.isSafeInteger(cost) && cost >= 0) charged = Math.min(cost, held);
     const found = boundedWebSearch(result.webSearch ?? { queries: [query], results: [], cited: [] });
     return { ok: true, text: result.text.slice(0, 16_000), found: { ...found, queries: found.queries.length ? found.queries : boundedWebSearch({ queries: [query], results: [], cited: [] }).queries } };
   } catch {
