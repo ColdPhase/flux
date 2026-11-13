@@ -138,12 +138,6 @@
         "photo-viewer__act"
       ]
     },
-    "segmented": {
-      "description": "An option of a segmented control that is not a radio group (a pressed pair).",
-      "classes": [
-        "doc-seg__b"
-      ]
-    },
     "canvas": {
       "description": "A tool of the map's canvas or its outline: the canvas has its own tool language.",
       "classes": [

@@ -164,7 +164,7 @@ live panel and the connection's permissions (#1238).
 - High-contrast mode (`forced-colors`) draws the edge and knob in `ButtonText` and an on switch in `Highlight`.
 
 **Segmented controls** (#1238) are one style: the Map / List switch, Board / List, What it may do, Model, Text size,
-the live stage and screen mode, access and Rendered / Markdown. (The space views, Conversation | Tasks | Map | Wiki, become underline
+the live stage and screen mode, and access. (The space views, Conversation | Tasks | Map | Wiki, become underline
 tabs under #1239; until then they read the same three tokens.) A selected state never rests on a 1.1:1 difference
 (WCAG 2.2 1.4.11 asks for 3:1 for a state a person needs to see; the design asks for this much at least, and adds an edge):
 - The track is `--seg` and the selected option is a raised pill, `--seg-on`, with a 1 px `--line2` edge and `--sh-raise`. In light that is
@@ -1735,7 +1735,8 @@ The renders are the approved mockups as drawn; where a later decision differs, f
   ⋯ on board cards and the phone's "+" in the Tasks header.
 - **Wiki:**
   - the pages column and the "On this page" column;
-  - Write / Preview / Both and raw Markdown editing;
+  - Write / Preview / Both and raw Markdown editing, and the History's Rendered / Markdown switch: History shows the changes
+    as the page reads, only (Hubert, 2026-11-13, [#1376](https://github.com/ColdPhase/flux/issues/1376));
   - version reasons and Draft / Published.
 - **Search:** filter chips, "All places" and the separate Search page.
 - **Settings:**
