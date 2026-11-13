@@ -20,7 +20,7 @@ const ai = [
   'agent_chat_messages', 'agent_chat_reads', 'agent_command_receipts', 'agent_connections',
   'agent_memory_items', 'agent_oauth_bindings', 'agent_playbook_acknowledgments',
   'agent_proposals', 'agent_questions', 'agent_runtime_auth_admission', 'agent_runtime_auth_operations', 'agent_runtime_bindings',
-  'agent_runtime_client_history', 'agent_runtime_connections', 'agent_runtime_console_nonces', 'agent_runtime_operator_statements',
+  'agent_runtime_client_history', 'agent_runtime_connections', 'agent_runtime_connection_models', 'agent_runtime_console_nonces', 'agent_runtime_operator_statements',
   'agent_runtime_sessions', 'agent_runtime_slots', 'agent_stops', 'agents', 'assistant_background_notes',
   'assistant_changes', 'assistant_job_runs', 'assistant_jobs',
   'agent_task_taking',
