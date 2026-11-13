@@ -80,7 +80,13 @@ services:
       FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS: ${FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS:-}
       FLUX_AGENT_RUNTIME_IDLE_DAYS: ${FLUX_AGENT_RUNTIME_IDLE_DAYS:-}
       FLUX_RUNTIME_MANAGER_SECRET: ${FLUX_RUNTIME_MANAGER_SECRET:-}
-    networks: [default, runtime-control]
+    # runtime-api: runtime-egress passes API-key runs' model requests to the worker's model gateway (#1441), which
+    # listens there only, under this alias.
+    networks:
+      default: {}
+      runtime-control: {}
+      runtime-api:
+        aliases: [worker-gateway]
   runtime-install:
     # One-shot: installs the pinned, signature-checked Claude Code into the tools volume when
     # FLUX_AGENT_RUNTIME includes claude_code; otherwise a no-op.
@@ -118,7 +124,8 @@ services:
         aliases: [runtime-manager-control]
       runtime-1: {}
   runtime-egress:
-    # The runtime's only way out: CONNECT to the enabled CLIs' documented hosts, and the API's /mcp only.
+    # The runtime's only way out: CONNECT to the enabled CLIs' documented hosts, the API's /mcp only, and the
+    # providers' model paths only, to the worker's model gateway (#1441), which alone holds API keys.
     <<: *runtime-hardening
     image: ghcr.io/coldphase/flux@sha256:RELEASE_DIGEST
     command: ["node", "apps/runtime/dist/egress/main.js"]
@@ -128,6 +135,7 @@ services:
     environment:
       FLUX_AGENT_RUNTIME: ${FLUX_AGENT_RUNTIME:-}
       FLUX_RUNTIME_EGRESS_API: api:8080
+      FLUX_RUNTIME_EGRESS_GATEWAY: worker-gateway:8095
     networks:
       runtime-api: {}
       runtime-egress-out: {}
@@ -154,7 +162,7 @@ networks:
   runtime-control:
     internal: true
     driver_opts: *runtime-network-opts
-  # API and runtime-egress only, for /mcp.
+  # API, worker and runtime-egress only: /mcp on the API, the model gateway on the worker (#1441).
   runtime-api:
     internal: true
     driver_opts: *runtime-network-opts

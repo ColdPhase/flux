@@ -1,0 +1,1 @@
+- On a wide window the Tasks board stays four columns of at most 420 px with one card per row instead of cards flowing sideways inside each state, and a short thread starts at the top of its panel ([#1379](https://github.com/ColdPhase/flux/issues/1379)).

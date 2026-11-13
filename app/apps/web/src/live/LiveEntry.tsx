@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import type { LiveSession, ProjectPerson } from '@flux/contracts';
-import { Avatar, Button, useLoopPause } from '../ui';
+import { Avatar, Button, Spinner, useLoopPause } from '../ui';
 import { useProjectShell } from '../project/data';
 import { anchorLabel, KIND_WORD, sameContext, type LiveAnchor } from './anchors';
 import { sessionAt, useLive, useLiveHere, useProjectSessions } from './LiveProvider';
@@ -78,15 +78,18 @@ export function LiveEntry({ variant = 'header', anchor: given, onAction }: {
   // Spokój rule 7: the header's Call keeps its place in every view. Where there is nothing to work on together
   // (nothing open to anchor a session, a session already joined, or still checking) it stays, and a click says why
   // (#763 sweep: a permanently greyed button read as broken).
-  const dimmed = (reason: string) => variant === 'more' ? (
-    <button type="button" role="menuitem" className="newmenu__item top__more-narrow" data-more-row aria-disabled="true" aria-describedby={noteId}>
-      <span>Call</span><span id={noteId} className="ui-vh">{reason}</span>
+  // While you are in the call the slot shows the call's state, "In call" with the live dot (a spinner while it connects), not a Call button again
+  // (#1378); it is the same quiet button and explains itself, so it starts nothing and the slot keeps its width.
+  const dimmed = (reason: string, mark?: 'in' | 'connecting') => variant === 'more' ? (
+    <button type="button" role="menuitem" className="newmenu__item top__more-narrow lv-now" data-more-row aria-disabled="true" aria-describedby={noteId}>
+      {mark ? mark === 'connecting' ? <Spinner /> : <LiveDot on /> : null}<span>{mark ? 'In call' : 'Call'}</span><span id={noteId} className="ui-vh">{reason}</span>
     </button>
   ) : variant === 'header' ? (
     <span className="lv-entry">
-      <Button ref={buttonRef} variant="quiet" icon="call" className="lv-entry__btn lv-entry__btn--why" aria-label="Call" aria-describedby={noteId}
+      <Button ref={buttonRef} variant="quiet" icon={mark ? undefined : 'call'} className="lv-entry__btn lv-entry__btn--why" aria-label={mark ? 'In call' : 'Call'} aria-describedby={noteId}
         aria-expanded={open} aria-haspopup="dialog" onClick={() => setOpen((value) => !value)}>
-        <span className="lv-entry__label">Call</span>
+        {mark ? mark === 'connecting' ? <Spinner /> : <LiveDot on /> : null}
+        <span className="lv-entry__label">{mark ? 'In call' : 'Call'}</span>
       </Button>
       <span id={noteId} className="ui-vh">{reason}</span>
       <Popover open={open} onClose={() => setOpen(false)} anchorRef={buttonRef} label="Call" className="lv-pop--narrow">
@@ -119,7 +122,7 @@ export function LiveEntry({ variant = 'header', anchor: given, onAction }: {
   }
 
   if (inSession) {
-    if (variant === 'header' || variant === 'more') return dimmed(busy ? 'Connecting to the call.' : 'You are in a live session.');
+    if (variant === 'header' || variant === 'more') return dimmed(busy ? 'Connecting to the call.' : 'You are in a live session.', busy ? 'connecting' : 'in');
     if (anchor && live.session && sameContext(live.session.context, anchor.context))
       return <p className="lv-inline-note lv-inline-note--on"><span className="lv-dot" aria-hidden="true" />You are in the live session for this {KIND_WORD[anchor.context.type]}.</p>;
     return null;

@@ -39,10 +39,12 @@ Flux's model gateway holds it and meters every request against the owner's budge
   in the runtime; off, to the worker's loop. No connection, run or person chooses, and nothing falls back from one to the other.
 - **pi has no sign-in.** A key run needs only the person's own place in the runtime (their directory and user id, RT-3), made the first
   time they need it; a plan sign-in, if they have one, shares it.
-- **The model gateway** (#1441): pi sends each model request to Flux's model route through the runtime egress (RT-4), in its provider's own
-  wire format (Anthropic Messages, OpenAI Responses, Chat Completions), with the run token as its credential. The gateway swaps it for the
-  sealed key, reserves the owner's daily budget before the request and charges the provider's usage after it on the run (CA-3, #854). A
-  refusal for the budget is final: pi does not retry it, and the run ends "budget" with nothing posted.
+- **The [model gateway](#the-model-gateway-1441)** (#1441): pi sends each model request in its provider's own wire format to the gateway
+  through `runtime-egress:8081`, with the run's own gateway token as its API key. The gateway swaps it for the sealed key, holds the
+  request's worst cost against the key's day before it and charges the provider's usage after it on the run (CA-3, #854). A refusal for
+  the budget (402 `flux_budget_exhausted`) or of an ended run (403) is final: pi does not retry it, and the run ends calmly ("budget" for
+  the day's money) with nothing posted. A key run keeps its engine `server` (the payer is the key); the gateway issues its token because
+  the run has a key (`connection_id`) and the worker runs it in pi.
 
 - Both reach Flux only through its MCP route, with a short-lived run token bound to the agent, its
   owner, the run and its place. The route lists exactly the run's tools and checks the owner's
@@ -52,6 +54,11 @@ Flux's model gateway holds it and meters every request against the owner's budge
 - Flux's brief is appended to the CLI's system prompt and never replaces it, so a run stays a
   Claude Code or Codex session.
 - Nothing falls back from one connection, engine or payer to another.
+- **An API key never enters the runtime** ([#1441](https://github.com/ColdPhase/flux/issues/1441), founder decision
+  2026-11-13). A run on an API key that works in the runtime reaches its provider only through Flux's
+  [model gateway](#the-model-gateway-1441): it holds a short-lived gateway token of its own, never the key, and the gateway, which
+  is the worker, swaps the token for the sealed key ([CA-4](model-providers.md#ca-4--key-custody-and-endpoints)) and meters every
+  request against the owner's daily budget ([CA-3](model-providers.md#ca-3--the-providers-limits-not-fluxs)).
 
 ## RT-2 — The unmodified CLI: no plan token, no impersonation
 
@@ -124,8 +131,8 @@ not verify it. A paid hosting service run by the Flux project keeps plan sign-in
     `claude.com`, `platform.claude.com`; Codex: `auth.openai.com`, `chatgpt.com`,
     `api.openai.com`); telemetry, feedback uploads and update checks are not allowed;
   - Flux's MCP route, and no other Flux path;
-  - Flux's model route (`/model`, #1441), for pi's model requests on an API key: the gateway holds the key, so the egress allows no
-    provider host for pi, and pi is given no proxy;
+  - for a run on an API key, the [model gateway](#the-model-gateway-1441) on `runtime-egress:8081`, which passes only the
+    providers' model requests on to the worker; the egress itself holds no key and reaches no provider for it;
   - nothing else. **Web reads are not through the egress** (#918): an agent reads a page with Flux's own tool `flux_read_web`, which the
     Flux server runs (GET only, public addresses only, the same guard as API base URLs and link cards:
     [CA-4](model-providers.md#ca-4--key-custody-and-endpoints)), so a CLI's own web tools stay off and the egress is not widened to
@@ -137,6 +144,56 @@ not verify it. A paid hosting service run by the Flux project keeps plan sign-in
     (`web_search="cached"`: no live page request), through the host the CLI already uses, so the egress
     does not change either ([RT-5](#rt-5--tools)).
 - The egress's request parser is size-bounded, minimal and fuzz-tested.
+
+### The model gateway (#1441)
+
+One way for every harness in the runtime to use an API key (founder decision, Hubert, 2026-11-13, #1441). The run gets a
+**gateway token**; the key stays in the worker, the only process that opens one
+([CA-4](model-providers.md#ca-4--key-custody-and-endpoints)). The harness talks plain HTTP to `runtime-egress` on port 8081
+(directly, not through the `CONNECT` proxy: `NO_PROXY=runtime-egress`); the egress passes the request on to the worker on the
+internal `runtime-api` network; the worker checks the token and the request, holds the money, opens the key, sends the request to
+the provider with the key in the provider's own header, passes the answer back as it arrives and charges what the provider reports.
+
+**The interface** (`app/packages/runtime-protocol/src/model-gateway.ts`). The harness is given, for the run's provider, a base URL and
+the token as its API key; it adds the provider's usual paths:
+
+| Provider | Base URL | The token goes in | Requests passed on (POST) |
+| --- | --- | --- | --- |
+| Anthropic | `http://runtime-egress:8081/anthropic` | `x-api-key` | `/v1/messages` |
+| OpenAI | `http://runtime-egress:8081/openai/v1` | `Authorization: Bearer` | `/chat/completions`, `/responses` |
+| OpenRouter | `http://runtime-egress:8081/openrouter/api/v1` | `Authorization: Bearer` | `/chat/completions` |
+| Google Gemini | `http://runtime-egress:8081/gemini` (native) or `…/gemini/v1beta/openai` (OpenAI-compatible) | `x-goog-api-key` or `Authorization: Bearer` | `/v1beta/models/<model>:generateContent`, `/v1beta/models/<model>:streamGenerateContent?alt=sse`, `/v1beta/openai/chat/completions` |
+| OpenAI-compatible endpoint | `http://runtime-egress:8081/openai_compatible` | `Authorization: Bearer` | `/chat/completions`, sent to the owner's base URL |
+
+- **The token** is `flux_mg_` and 43 URL-safe characters. The worker issues one when a run on an API key starts in the runtime and
+  stores only its SHA-256 on the run, with its expiry (the run's wall clock and five minutes). It works only for that run, only
+  while the run is working, and is closed when the run ends; an unknown, expired, closed or replayed one is refused. It may come in
+  any of the three headers above (two different values are refused), never in a query string. It is handed to the harness like the
+  MCP run token: in its own environment variable, never in a file, an argument or a log.
+- **What is passed on.** Only the paths above, to the run's own provider: the address comes from the connection (the provider's fixed
+  one, or the owner's base URL under the [base URL guard](model-providers.md#ca-4--key-custody-and-endpoints)), never from the request.
+  Only the content type, `accept`, `anthropic-version` and the `anthropic-beta` values that change no price or tool
+  (`interleaved-thinking-*`, `fine-grained-tool-streaming-*`, `token-efficient-tools-*`) go with it; Flux sends its own user agent.
+- **What a request may ask.** A JSON body of at most 16 MiB; the run's model (the body's `model`, or the path's on Gemini's native
+  API); at most 32,000 output tokens (a larger or missing bound is set to that); only the harness's own function tools (a provider's
+  hosted tools — web search, code execution, file search, connectors, computer use — are refused); one answer (`n` 1); no OpenAI
+  `background`, `previous_response_id` or `conversation`, whose cost cannot be bounded before it is sent. Streaming is allowed; a Chat
+  Completions stream is asked to report its usage (`stream_options.include_usage`), and OpenRouter its cost.
+- **Refusals** are JSON errors that a harness does not retry (`x-should-retry: false`), shaped like both vendors' errors:
+  `{"type":"error","error":{"type":"<code>","code":"<code>","message":"…"}}` — 401 `flux_token_invalid`, 402
+  `flux_budget_exhausted` (the key's day cannot hold the request), 403 `flux_run_ended` (stopped, ended, AI turned off, the connection
+  gone), 400 `flux_request_refused`, 404 `flux_not_found`, 413 `flux_request_too_large`, 429 `flux_run_busy`. After a 402 or 403 the
+  harness gets no further answer and stops; Flux ends the run calmly, as on a server run ("budget" for the day's money).
+- **Metering** ([CA-3](model-providers.md#ca-3--the-providers-limits-not-fluxs)). Before a request is sent, the most it can cost
+  (its body's bytes as input tokens plus 1,024, at the cache-write rate where the provider has one, and its output bound, at the run
+  model's price) is held on the run against what is left of the key's daily budget, with everything else on the key that day.
+  After it, the usage the provider reported (each wire format's own fields, streamed or whole) is charged with today's prices and
+  cache rules (#1410, #1426): cache writes at 1.25× and reads at 0.1× only when the request asked for caching (`cache_control`),
+  otherwise at the full price; counts that cannot be right count the input twice; OpenRouter's reported cost reconciles. A request
+  whose usage is missing, malformed, beyond its bounds or cut off by a broken stream is charged the whole of what it held. A
+  complete error answer of the provider (an HTTP error status) is charged nothing.
+- **Limits** (technical safety bounds, like #843's): 16 MiB a request, 32 MiB an answer, 10 minutes a request and 2 minutes without a
+  byte from the provider, 4 requests at once for one run, and the egress's per-source connection caps.
 
 ## RT-5 — Tools
 
@@ -221,15 +278,17 @@ shell and file tools, inside a sandbox that exists for one run; every engine can
   the queries and the addresses its answer names that a search returned, as an API-key run lists its
   searches and citations. Since any address opens (founder direction 2026-11-09), nothing waits for a
   search to be recorded.
-- **pi** (#1441, an API key) runs in JSON mode (`pi --mode json`), pinned at 1.5.2, started through Flux's launcher, which reads the run
-  token from the first line of standard input and sets it in pi's own process only (so it is in neither a file, an argument nor the
-  environment `/proc/<pid>/environ` shows to pi's own file tools); the rest of standard input is the request. Flags: `--no-session`,
+- **pi** (#1441, an API key) runs in JSON mode (`pi --mode json`), pinned at 1.5.2, started through Flux's launcher, which reads the run's two
+  tokens (the MCP run token and the gateway token) from the first line of standard input and sets them in pi's own process only (so they
+  are in neither a file, an argument nor the environment `/proc/<pid>/environ` shows to pi's own file tools); the rest of standard input
+  is the request. Flags: `--no-session`,
   `--no-extensions -e builtin:mcp` (every extension off but pi's own MCP support), `--no-skills`, `--no-prompt-templates`, `--no-themes`,
   `--no-context-files`, `--no-approve` (no project settings), `--offline`, and `--tools read,bash,edit,write,mcp__flux__*` (without
   Landlock, `mcp__flux__*` only), with `PI_OFFLINE`, `PI_SKIP_VERSION_CHECK` and `PI_TELEMETRY=0`. Its agent directory is made fresh in
   the person's place for each run and removed after it, holding only Flux's three files: settings (Flux's sandbox shell as its
-  `shellPath`, no retries of its own, SSE only, project trust never), the run's one model at the gateway (the key's provider's wire
-  format, its compatibility switches set rather than guessed from the address, the credential named `$FLUX_RUN_TOKEN`, never written),
+  `shellPath`, no retries of its own, SSE only, project trust never), the run's one model at the gateway (the provider's base URL from
+  `modelGatewayBaseUrl`, Gemini's OpenAI-compatible one; the key's provider's wire format, its compatibility switches set rather than
+  guessed from the address, the token named `$FLUX_MODEL_GATEWAY_TOKEN`, never written, and sent in the provider's usual header),
   and Flux as its only MCP server with the run token named the same way and its tools **exposed directly** (`exposure: direct`, so they are
   plain tools, not behind pi's tool search or codemode). Flux's brief is appended to pi's own prompt (`--append-system-prompt`). The
   read-back is pi's own system message: its `toolsAdded` must name exactly the run's Flux tools (`mcp__flux__<tool>`) and, with the

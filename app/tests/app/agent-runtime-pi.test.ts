@@ -5,8 +5,9 @@ import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { after, before, beforeEach, describe, test } from 'node:test';
 import { agentConnectionPath, assistantChangeActionPath, type Conversation, type Project, type Workspace } from '@flux/contracts';
-import { createPersonalRunProcessor, type AgentRuntimeConfig, type Principal } from '@flux/core';
-import { parseRuntimeEngines, parseSupervisorRequest } from '@flux/runtime-protocol';
+import { RUN_TOKEN_LIMITS } from '@flux/contracts';
+import { createModelGateway, createPersonalRunProcessor, type AgentRuntimeConfig, type Principal } from '@flux/core';
+import { MODEL_GATEWAY_LIMITS, parseModelGatewayUrl, parseRuntimeEngines, parseSupervisorRequest } from '@flux/runtime-protocol';
 import { createManagerServer } from '../../apps/runtime/src/manager/server.js';
 import { classifyPiError, gatewayProvider, piArgs, PI_OWN_TOOLS } from '../../apps/runtime/src/supervisor/pi.js';
 import { RUN_BRIEF_OWN_TOOLS } from '../../apps/runtime/src/supervisor/run.js';
@@ -50,7 +51,7 @@ describe('API-key agents run in pi in the runtime (#1441)', () => {
   before(async () => {
     gateway = await startFakeGateway();
     slot = await startTestSlot({ slot: `runtime-7${Math.floor(Math.random() * 90 + 10)}`, enabled: [], mcpUrl: `${apiUrl}/mcp`, ownTools: true,
-      pi: { modelUrl: gateway.url, diagnostics: (what) => { lastPi = what; } } });
+      pi: { modelOrigin: gateway.url, diagnostics: (what) => { lastPi = what; } } });
     manager = createManagerServer({ secret: SECRET, slots: new Map([[slot.config.slot, { host: '127.0.0.1', port: portOf(slot.url), secret: slot.config.secret }]]), log: () => undefined });
     await new Promise<void>((done) => manager.listen(0, '127.0.0.1', done));
     config = { clients: [], keys: true, commercialTermsAgreedOn: null, idleDays: null, manager: { url: `http://127.0.0.1:${(manager.address() as AddressInfo).port}`, secret: SECRET } };
@@ -66,7 +67,8 @@ describe('API-key agents run in pi in the runtime (#1441)', () => {
     await pool.query(`INSERT INTO agent_runtime_bindings(id, owner_user_id, slot, state) VALUES ($1, $2, $3, 'binding')`, [bindingId, owner.id, slot.config.slot]);
     runs = personalRunUseCases(db, { queue: queue.factory, connections, providerEnabled: true, runtime: personalRuntimeAvailability(config, db) });
     processor = createPersonalRunProcessor({ uow: personalRunWorkerUnitOfWork(db), connections, compute,
-      runtime: managerPersonalRuntime(config, db), tokens: runTokenIssuer(db, apiUrl), stopPollMs: 50, runtimeCaps: { idleSeconds: 20, wallClockSeconds: 60, maxTurns: 10 } });
+      runtime: managerPersonalRuntime(config, db), tokens: runTokenIssuer(db, apiUrl), stopPollMs: 50,
+      gateway: createModelGateway({ uow: personalRunWorkerUnitOfWork(db), connections, limits: MODEL_GATEWAY_LIMITS, tokenLifetimeMs: RUN_TOKEN_LIMITS.lifetimeSeconds * 1000 }), runtimeCaps: { idleSeconds: 20, wallClockSeconds: 60, maxTurns: 10 } });
     const connectionId = randomUUID();
     connections.connect(owner.id, connectionId);
     await runs.enable(human(owner), { agentId, connection: connectionId, model: 'claude-sonnet-5' });
@@ -99,12 +101,11 @@ describe('API-key agents run in pi in the runtime (#1441)', () => {
     assert.equal(compute.dispatched.length, 0, 'the worker\'s own loop was not used');
     assert.equal(gateway.requests.length, 3);
     const [first] = gateway.requests;
-    assert.equal(first!.path, '/model/v1/messages', 'the Anthropic key speaks Messages to the gateway');
+    assert.equal(first!.path, '/anthropic/v1/messages', 'the Anthropic key speaks Messages to the gateway, at its Anthropic base URL');
     assert.equal(first!.model, 'claude-sonnet-5');
-    const token = first!.authorization?.replace(/^Bearer /, '') ?? '';
-    assert.match(token, /^[\w-]+\.[\w-]+\.[\w-]+$/, 'the credential is the run token');
-    assert.equal(first!.apiKey, token, 'and never a provider key');
-    assert.ok(!gateway.requests.some((request) => /test-key-ref|sk-/.test(`${request.authorization} ${request.apiKey}`)));
+    assert.match(first!.apiKey ?? '', /^flux_mg_[\w-]{43}$/, 'the credential is the run\'s gateway token, in Anthropic\'s own header');
+    assert.ok(!gateway.requests.some((request) => /test-key-ref|sk-|\.ey/.test(`${request.authorization} ${request.apiKey}`)), 'never a key or the MCP run token');
+    assert.ok((await pool.query('SELECT gateway_token_hash FROM personal_runs WHERE id = $1', [started.run.id])).rows[0].gateway_token_hash === null, 'closed at the end');
     const fluxTools = first!.tools.filter((tool) => tool.startsWith('mcp__flux__'));
     assert.deepEqual(first!.tools.filter((tool) => !tool.startsWith('mcp__flux__')).sort(), [...PI_OWN_TOOLS].sort(), 'pi\'s own tools: read, bash, edit, write; nothing else');
     assert.ok(fluxTools.includes('mcp__flux__flux_list_contexts') && fluxTools.length > 3, JSON.stringify(fluxTools));
@@ -118,7 +119,7 @@ describe('API-key agents run in pi in the runtime (#1441)', () => {
   });
 
   test('the gateway\'s budget refusal ends the run at once, with one request and nothing posted', async () => {
-    gateway.script([{ status: 402, body: { type: 'error', error: { type: 'flux_budget', message: 'This key\'s daily budget is used up.' } } }]);
+    gateway.script([{ status: 402, body: { type: 'error', error: { type: 'flux_budget_exhausted', code: 'flux_budget_exhausted', message: 'The key\'s daily budget cannot hold this request; stop' } } }]);
     const started = await ask('Summarize the notes');
     assert.equal(await processor.process(started.run.id), 'cap_reached', await why(started.run.id));
     const stored = await row(started.run.id);
@@ -170,20 +171,24 @@ describe('pi\'s launcher templates and the protocol (#1441)', () => {
   });
 
   test('the gateway adapter: each provider\'s wire format below the gateway, the run token by name, no address-based guessing', () => {
-    assert.deepEqual([gatewayProvider('anthropic', 'http://egress:8080/model', 'm', true).baseUrl, gatewayProvider('openai', 'http://egress:8080/model/', 'm', false).baseUrl],
-      ['http://egress:8080/model', 'http://egress:8080/model/v1']);
-    assert.equal(gatewayProvider('openai', 'http://e/model', 'm', false).api, 'openai-responses');
+    const origin = 'http://runtime-egress:8081';
+    assert.deepEqual((['anthropic', 'openai', 'openrouter', 'gemini', 'openai_compatible'] as const).map((provider) => gatewayProvider(provider, origin, 'm', false).baseUrl),
+      [`${origin}/anthropic`, `${origin}/openai/v1`, `${origin}/openrouter/api/v1`, `${origin}/gemini/v1beta/openai`, `${origin}/openai_compatible`]);
+    // pi's own clients' paths below them are the gateway's (Anthropic's beta client adds `?beta=true`).
+    for (const path of ['/anthropic/v1/messages?beta=true', '/openai/v1/responses', '/openrouter/api/v1/chat/completions', '/gemini/v1beta/openai/chat/completions', '/openai_compatible/chat/completions'])
+      assert.ok(parseModelGatewayUrl(path), path);
+    assert.equal(gatewayProvider('openai', origin, 'm', false).api, 'openai-responses');
     for (const provider of ['openrouter', 'gemini', 'openai_compatible'] as const) {
-      const wire = gatewayProvider(provider, 'http://e/model', 'm', false);
+      const wire = gatewayProvider(provider, origin, 'm', false);
       assert.equal(wire.api, 'openai-completions');
       assert.equal((wire.compat as Record<string, unknown>).supportsDeveloperRole, false);
     }
-    assert.equal(gatewayProvider('anthropic', 'http://e/model', 'm', false).apiKey, '$FLUX_RUN_TOKEN', 'the token is named, never written');
-    assert.deepEqual(gatewayProvider('gemini', 'http://e/model', 'm', true).models[0]!.input, ['text', 'image']);
+    assert.equal(gatewayProvider('anthropic', origin, 'm', false).apiKey, '$FLUX_MODEL_GATEWAY_TOKEN', 'the token is named, never written');
+    assert.deepEqual(gatewayProvider('gemini', origin, 'm', true).models[0]!.input, ['text', 'image']);
   });
 
   test('pi\'s errors in Flux\'s categories', () => {
-    assert.equal(classifyPiError('402 {"type":"error","error":{"type":"flux_budget","message":"…"}}'), 'budget');
+    assert.equal(classifyPiError('402 {"type":"error","error":{"type":"flux_budget_exhausted","code":"flux_budget_exhausted","message":"…"}}'), 'budget');
     assert.equal(classifyPiError('400 Your credit balance is too low to access the Anthropic API'), 'credits');
     assert.equal(classifyPiError('400 prompt is too long: 210000 tokens > 200000 maximum'), 'input_too_large');
     assert.equal(classifyPiError('404 model_not_found'), 'model_unavailable');
@@ -193,11 +198,14 @@ describe('pi\'s launcher templates and the protocol (#1441)', () => {
   test('a run in pi needs its key\'s provider and model; a plan CLI\'s run takes neither key field', () => {
     const base = { bindingId: randomUUID(), runId: randomUUID(), prompt: 'hi', runToken: 'aa.bb.cc', tools: ['flux_list_contexts'],
       caps: { maxTurns: 5, wallClockSeconds: 60, idleSeconds: 10, maxAnswerBytes: 4096 } };
-    assert.equal(parseSupervisorRequest('run', { ...base, client: 'pi', model: 'anthropic/claude-haiku-5.5', provider: 'openrouter' }).ok, true);
-    assert.equal(parseSupervisorRequest('run', { ...base, client: 'pi', model: 'Qwen/Qwen3-32B:free', provider: 'openai_compatible', pictures: true }).ok, true);
-    assert.equal(parseSupervisorRequest('run', { ...base, client: 'pi', provider: 'openrouter' }).ok, false, 'no model');
-    assert.equal(parseSupervisorRequest('run', { ...base, client: 'pi', model: 'm' }).ok, false, 'no provider');
-    assert.equal(parseSupervisorRequest('run', { ...base, client: 'pi', model: '--flag', provider: 'openai' }).ok, false);
+    const modelToken = `flux_mg_${'a'.repeat(43)}`;
+    assert.equal(parseSupervisorRequest('run', { ...base, client: 'pi', model: 'anthropic/claude-haiku-5.5', provider: 'openrouter', modelToken }).ok, true);
+    assert.equal(parseSupervisorRequest('run', { ...base, client: 'pi', model: 'Qwen/Qwen3-32B:free', provider: 'openai_compatible', pictures: true, modelToken }).ok, true);
+    assert.equal(parseSupervisorRequest('run', { ...base, client: 'pi', model: 'm', provider: 'openai' }).ok, false, 'no gateway token');
+    assert.equal(parseSupervisorRequest('run', { ...base, client: 'pi', provider: 'openrouter', modelToken }).ok, false, 'no model');
+    assert.equal(parseSupervisorRequest('run', { ...base, client: 'pi', model: 'm', modelToken }).ok, false, 'no provider');
+    assert.equal(parseSupervisorRequest('run', { ...base, client: 'pi', model: '--flag', provider: 'openai', modelToken }).ok, false);
+    assert.equal(parseSupervisorRequest('run', { ...base, client: 'claude_code', model: 'sonnet', modelToken }).ok, false);
     assert.equal(parseSupervisorRequest('run', { ...base, client: 'claude_code', model: 'sonnet', provider: 'anthropic' }).ok, false);
     assert.equal(parseSupervisorRequest('run', { ...base, client: 'claude_code', model: 'Upper/Case' }).ok, false);
     assert.equal(parseSupervisorRequest('run', { ...base, client: 'claude_code', model: 'sonnet' }).ok, true);

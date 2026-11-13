@@ -276,6 +276,24 @@ export function personalRunRows(db: DbExecutor) {
       return rows.map(toRun);
     },
 
+    /** The model gateway (#1441): the run whose unexpired gateway token has this SHA-256, or null. */
+    async gatewayRunId(tokenHash: string): Promise<string | null> {
+      const [row] = await db.select({ id: r.id }).from(r).where(and(eq(r.gatewayTokenHash, tokenHash), sql`${r.gatewayTokenExpiresAt} > now()`));
+      return row?.id ?? null;
+    },
+
+    /** Stores a run's gateway token (its hash and expiry), replacing an earlier one; only while the run is in flight. */
+    async armGateway(runId: string, tokenHash: string, expiresAt: Date): Promise<boolean> {
+      const rows = await db.update(r).set({ gatewayTokenHash: tokenHash, gatewayTokenExpiresAt: expiresAt, updatedAt: new Date() })
+        .where(and(eq(r.id, runId), inArray(r.status, ['reading', 'dispatching']))).returning({ id: r.id });
+      return rows.length === 1;
+    },
+
+    /** Ends a run's gateway token: nothing finds the run by it again. */
+    async closeGateway(runId: string): Promise<void> {
+      await db.update(r).set({ gatewayTokenHash: null, gatewayTokenExpiresAt: null }).where(and(eq(r.id, runId), isNotNull(r.gatewayTokenHash)));
+    },
+
     async lockLane(ownerUserId: string) {
       await db.execute(sql`SELECT pg_advisory_xact_lock(hashtext('personal-run-lane'), hashtext(${ownerUserId}))`);
     },

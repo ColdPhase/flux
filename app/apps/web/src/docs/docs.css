@@ -5,6 +5,7 @@
 .doc-muted { font-size: var(--fs-sm); color: var(--t3); }
 .doc-notice { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin: 14px 0; padding: 8px 12px; border-radius: var(--r); background: var(--sub); font-size: var(--fs-sm); color: var(--t2); }
 .doc-notice svg { color: var(--t3); flex: none; }
+@media (pointer: coarse) { .doc-notice a, .doc-notice .ui-link { display: inline-flex; align-items: center; min-height: 44px; } }  /* a link is a 44 px target on touch (#1380) */
 .doc-notice a, .doc-notice .wiki-restore-link { color: var(--t1); font-weight: 500; text-decoration: underline; text-decoration-color: var(--line2); text-underline-offset: 3px; }
 .doc-error { margin-top: 10px; font-size: var(--fs-sm); color: var(--t1); }
 

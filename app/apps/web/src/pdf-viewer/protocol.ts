@@ -8,7 +8,8 @@ export const PDF_VIEWER_URL = '/pdf-viewer/index.html';
 export const PDF_FRAME = 'flux-pdf-viewer';
 
 /** Flux gives the viewer the file's bytes (read through the download route's access check) once the frame says it is ready. */
-export interface OpenMessage { frame: typeof PDF_FRAME; type: 'open'; bytes: ArrayBuffer }
+/** `page`: the page to scroll to once the pages are laid out (a search result, C-63); the first when it is absent. */
+export interface OpenMessage { frame: typeof PDF_FRAME; type: 'open'; bytes: ArrayBuffer; page?: number }
 export type ViewerMessage =
   | { frame: typeof PDF_FRAME; type: 'ready' }
   /** The first page is drawn. */

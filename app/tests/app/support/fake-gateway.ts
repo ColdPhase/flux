@@ -1,8 +1,8 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 
-// TEST ONLY (#1441): a scripted stand-in for Flux's model gateway as pi reaches it (`<base>/v1/messages`, Anthropic's Messages API,
-// streamed; `<base>/v1/chat/completions`, Chat Completions, streamed). It is never a model: each request takes the next step of the
+// TEST ONLY (#1441): a scripted stand-in for Flux's model gateway as pi reaches it (`/anthropic/v1/messages`, Anthropic's Messages API,
+// streamed; `…/chat/completions`, Chat Completions, streamed). It is never a model: each request takes the next step of the
 // script (call a tool, answer, or refuse with a status and body) and is recorded with its credential headers, the tools it offered and the
 // tool results it carried. Nothing here reaches a provider.
 
@@ -23,7 +23,7 @@ export interface GatewayRequest {
 }
 
 export interface FakeGateway {
-  /** The base URL pi is given (`modelUrl`): this server's `/model`. */
+  /** The origin pi is given (`modelOrigin`): the gateway's own paths below it (`/anthropic/v1/messages`, `/openai_compatible/chat/completions`). */
   url: string;
   requests: GatewayRequest[];
   script(steps: GatewayStep[]): void;
@@ -102,7 +102,7 @@ export async function startFakeGateway(): Promise<FakeGateway> {
   await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
   const { port } = server.address() as AddressInfo;
   return {
-    url: `http://127.0.0.1:${port}/model`,
+    url: `http://127.0.0.1:${port}`,
     requests,
     script(next) { steps = [...next]; requests.length = 0; },
     close: () => new Promise<void>((done) => server.close(() => done())),

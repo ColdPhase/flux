@@ -2,7 +2,8 @@ import { spawn } from 'node:child_process';
 import { access, chmod, constants, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
-  FLUX_TOOL_NAME, INIT_NAME, TEXT_FRAME_LIMITS, type KeyProvider, type RunOutcome, type SupervisorRequest, type SupervisorResult,
+  FLUX_TOOL_NAME, INIT_NAME, MODEL_GATEWAY_ORIGIN, MODEL_GATEWAY_TOKEN_ENV, modelGatewayBaseUrl, TEXT_FRAME_LIMITS, type KeyProvider, type RunOutcome,
+  type SupervisorRequest, type SupervisorResult,
 } from '@flux/runtime-protocol';
 import { asThem, clearLeftovers, removeAsThem } from './data.js';
 import type { Outcome, Send, SupervisorConfig } from './handlers.js';
@@ -46,26 +47,29 @@ export function piArgs(ownTools: boolean, brief: string, model: string): string[
   ];
 }
 
-/** The wire format pi speaks for each provider, and what it must not guess from the gateway's address (pi detects quirks by host). */
-const PROVIDER_API: Record<KeyProvider, { api: 'anthropic-messages' | 'openai-responses' | 'openai-completions'; path: string; compat?: Record<string, unknown> }> = {
-  anthropic: { api: 'anthropic-messages', path: '' },
-  openai: { api: 'openai-responses', path: '/v1' },
-  openrouter: { api: 'openai-completions', path: '/v1', compat: { thinkingFormat: 'openrouter', supportsStore: false, supportsDeveloperRole: false, maxTokensField: 'max_tokens' } },
-  gemini: { api: 'openai-completions', path: '/v1', compat: { supportsStore: false, supportsDeveloperRole: false, supportsReasoningEffort: false, maxTokensField: 'max_tokens' } },
-  openai_compatible: { api: 'openai-completions', path: '/v1', compat: { supportsStore: false, supportsDeveloperRole: false, supportsReasoningEffort: false, maxTokensField: 'max_tokens' } },
+/**
+ * The wire format pi speaks for each provider at the gateway, and what it must not guess from the gateway's address (pi detects quirks by
+ * host). Gemini through its OpenAI-compatible endpoint (`…/gemini/v1beta/openai`), as Flux's own adapter speaks to it.
+ */
+const PROVIDER_API: Record<KeyProvider, { api: 'anthropic-messages' | 'openai-responses' | 'openai-completions'; suffix?: string; compat?: Record<string, unknown> }> = {
+  anthropic: { api: 'anthropic-messages' },
+  openai: { api: 'openai-responses' },
+  openrouter: { api: 'openai-completions', compat: { thinkingFormat: 'openrouter', supportsStore: false, supportsDeveloperRole: false, maxTokensField: 'max_tokens' } },
+  gemini: { api: 'openai-completions', suffix: '/v1beta/openai', compat: { supportsStore: false, supportsDeveloperRole: false, supportsReasoningEffort: false, maxTokensField: 'max_tokens' } },
+  openai_compatible: { api: 'openai-completions', compat: { supportsStore: false, supportsDeveloperRole: false, supportsReasoningEffort: false, maxTokensField: 'max_tokens' } },
 };
 
 /**
- * THE adapter to Flux's model gateway (#1441 workstream 1): where pi sends a run's model requests, and how. The gateway is reached through
- * the runtime egress (`http://runtime-egress:8080/model`, like `/mcp`); it takes the run token as the credential (`Authorization: Bearer`,
- * and Anthropic's `x-api-key`, which pi sends too), swaps it for the sealed key, mirrors the provider's API below `/model` (`/v1/messages`,
- * `/v1/responses`, `/v1/chat/completions`), reserves the key's budget before each request and charges the provider's usage after it. A
- * refusal for the budget is a 402 whose body names `flux_budget` (`classifyPiError`).
+ * THE adapter to Flux's model gateway (#1441, RT-4 "The model gateway", `@flux/runtime-protocol` model-gateway.ts): the provider's base URL on
+ * `runtime-egress:8081` (`modelGatewayBaseUrl`), pi's own client paths below it, and the run's gateway token as pi's API key, named
+ * (`$FLUX_MODEL_GATEWAY_TOKEN`) and sent in the provider's usual header (Anthropic's `x-api-key`, `Authorization: Bearer` elsewhere). The
+ * gateway swaps it for the sealed key, holds the key's budget before each request and charges the provider's usage after it; it refuses
+ * with `flux_budget_exhausted` (402) or `flux_run_ended` (403), which pi does not retry (`classifyPiError`).
  */
-export function gatewayProvider(provider: KeyProvider, modelUrl: string, model: string, pictures: boolean) {
+export function gatewayProvider(provider: KeyProvider, origin: string, model: string, pictures: boolean) {
   const wire = PROVIDER_API[provider];
   return {
-    baseUrl: `${modelUrl.replace(/\/+$/, '')}${wire.path}`, api: wire.api, apiKey: '$FLUX_RUN_TOKEN', authHeader: true,
+    baseUrl: `${modelGatewayBaseUrl(provider, origin.replace(/\/+$/, ''))}${wire.suffix ?? ''}`, api: wire.api, apiKey: `$${MODEL_GATEWAY_TOKEN_ENV}`,
     ...(wire.compat ? { compat: wire.compat } : {}),
     models: [{ id: model, name: model, input: pictures ? ['text', 'image'] : ['text'], contextWindow: PI_MODEL_LIMITS.contextWindow, maxTokens: PI_MODEL_LIMITS.maxTokens }],
   };
@@ -93,7 +97,7 @@ export function piMcp(mcpUrl: string) {
  * `402 {"type":"error","error":{"type":"flux_budget",…}}`).
  */
 export function classifyPiError(text: string): RunOutcome {
-  if (/\bflux_budget\b/.test(text)) return 'budget';
+  if (/\bflux_budget/.test(text)) return 'budget';
   if (/\bflux_credits\b|credit balance is too low|insufficient_quota|insufficient credits|exceeded your current quota/i.test(text)) return 'credits';
   if (/prompt is too long|context_length_exceeded|maximum context length|context window|too many tokens/i.test(text)) return 'input_too_large';
   if (MODEL_NOT_ACCEPTED.test(text) || /\bnot_found_error\b.*\bmodel\b/i.test(text)) return 'model_unavailable';
@@ -125,7 +129,7 @@ export async function runPi(config: SupervisorConfig, request: PiRequest, dir: s
   const runs = runsOf(config);
   const crashed = (): Outcome => ({ result: { kind: 'run', runId: request.runId, outcome: 'crashed', answer: null, resetsAt: null, turns: 0 } });
   const mcpUrl = config.mcpUrl ?? `http://${config.egressHost}:8080/mcp`;
-  const modelUrl = config.modelUrl ?? `http://${config.egressHost}:8080/model`;
+  const modelOrigin = config.modelOrigin ?? MODEL_GATEWAY_ORIGIN;
   const sandbox: SandboxSetup | null = config.sandbox ?? null;
   const runDir = join(config.tmpDir, `run-${request.runId}`);
   await rm(runDir, { recursive: true, force: true });
@@ -140,7 +144,7 @@ export async function runPi(config: SupervisorConfig, request: PiRequest, dir: s
   // pi's own files hold no secret: the run token is named (`$FLUX_RUN_TOKEN`), never written.
   const files: Record<string, unknown> = {
     'settings.json': piSettings(request.model, ownTools ? sandbox!.shell : null),
-    'models.json': { providers: { flux: gatewayProvider(request.provider, modelUrl, request.model, request.pictures === true) } },
+    'models.json': { providers: { flux: gatewayProvider(request.provider, modelOrigin, request.model, request.pictures === true) } },
     'mcp.json': piMcp(mcpUrl),
   };
   for (const [name, value] of Object.entries(files)) { await writeFile(join(runDir, name), JSON.stringify(value)); await chmod(join(runDir, name), 0o644); }
@@ -159,6 +163,8 @@ export async function runPi(config: SupervisorConfig, request: PiRequest, dir: s
   const work = scratch ?? join(dir, 'tmp');
   const env: Record<string, string> = {
     PATH: '/usr/local/bin:/usr/bin:/bin', HOME: join(dir, 'home'), LANG: 'C.UTF-8', TMPDIR: work, NO_COLOR: '1',
+    // The gateway is plain HTTP on runtime-egress, never through its CONNECT proxy (RT-4); pi is given no proxy at all.
+    NO_PROXY: config.egressHost, no_proxy: config.egressHost,
     PI_CODING_AGENT_DIR: home, PI_OFFLINE: '1', PI_SKIP_VERSION_CHECK: '1', PI_TELEMETRY: '0',
     // Node's own compile cache would go to TMPDIR, the scratch: nothing but what the run makes belongs there.
     NODE_DISABLE_COMPILE_CACHE: '1',
@@ -306,8 +312,8 @@ export async function runPi(config: SupervisorConfig, request: PiRequest, dir: s
     let stderr = '';
     child.stderr.on('data', (chunk: Buffer) => { if (config.piDiagnostics && stderr.length < 64_000) stderr += chunk.toString('utf8'); });
     child.stdin.on('error', () => undefined);
-    // The run token on the first line, for the launcher only; then the request, which pi reads as its prompt.
-    child.stdin.end(`${JSON.stringify({ run: request.runToken })}\n${request.prompt}`);
+    // The run's two tokens on the first line, for the launcher only; then the request, which pi reads as its prompt.
+    child.stdin.end(`${JSON.stringify({ run: request.runToken, model: request.modelToken })}\n${request.prompt}`);
     const settle = (code: number | null) => {
       if (done) return;
       done = true;

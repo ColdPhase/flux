@@ -58,8 +58,6 @@ const paths = {
   leaf: <><path d="M3.25 12.75C3.25 7 6.75 3.5 12.75 3.25 12.5 9.25 9 12.75 3.25 12.75z" /><path d="M3.25 12.75l5.5-5.5" /></>,
   /** The personal assistant (#57): a filled four-point spark. */
   spark: <><path d="M8 2.5l1.3 3.2 3.2 1.3-3.2 1.3L8 11.5 6.7 8.3 3.5 7l3.2-1.3z" fill="currentColor" stroke="none" /><path d="M12.5 11l.5 1.5 1.5.5-1.5.5-.5 1.5-.5-1.5-1.5-.5 1.5-.5z" fill="currentColor" stroke="none" /></>,
-  /** Work objects (#101): a decision (rule). */
-  rule: <><path d="M8 2l5.5 3v6L8 14l-5.5-3V5z" /><path d="M5.75 8.1l1.6 1.6 3-3.2" /></>,
   flask: <><path d="M6.5 2.5h3M7 2.5v4L3.5 12.5a1 1 0 00.9 1.5h7.2a1 1 0 00.9-1.5L9 6.5v-4" /><path d="M5 10h6" /></>,
   /** Live sessions (#62): together, microphone, camera, screen, quiet, leave, zoom, show. */
   together: <><circle cx="5.25" cy="6" r="2" /><circle cx="10.75" cy="6" r="2" /><path d="M1.75 12.75c.4-1.9 1.75-3 3.5-3s3.1 1.1 3.5 3M7.25 12.75c.4-1.9 1.75-3 3.5-3s3.1 1.1 3.5 3" /></>,
@@ -78,10 +76,9 @@ const paths = {
   show: <><rect x="2" y="2.75" width="12" height="8.5" rx="1.5" /><path d="M5.5 13.5h5M6.5 5.5l3 1.5-3 1.5z" /></>,
   follow: <><path d="M3 3l4.25 10 1.5-4.25L13 7.25z" /></>,
   pulse: <path d="M1.75 8h2.5l1.5-3.5 2.5 7 1.75-5 1 1.5h3.25" />,
-  /** Tasks (#136): the Kanban and List views, "Mine" and an agent that owns a task. */
+  /** A decision, everywhere (Create's Decision, the Inbox, Home, the conversation; #1373) and a flag on a task. */
   flag: <><path d="M4 14V2.5" /><path d="M4 3h7.5l-1.75 2.75L11.5 8.5H4" /></>,
   grid: <><rect x="2.5" y="2.5" width="4.5" height="4.5" rx="1.25" /><rect x="9" y="2.5" width="4.5" height="4.5" rx="1.25" /><rect x="2.5" y="9" width="4.5" height="4.5" rx="1.25" /><rect x="9" y="9" width="4.5" height="4.5" rx="1.25" /></>,
-  board: <><rect x="2.25" y="2.5" width="3" height="11" rx="1" /><rect x="6.5" y="2.5" width="3" height="7" rx="1" /><rect x="10.75" y="2.5" width="3" height="9" rx="1" /></>,
   list: <><path d="M6 4.5h7.5M6 8h7.5M6 11.5h7.5" /><circle cx="3" cy="4.5" r=".8" fill="currentColor" stroke="none" /><circle cx="3" cy="8" r=".8" fill="currentColor" stroke="none" /><circle cx="3" cy="11.5" r=".8" fill="currentColor" stroke="none" /></>,
   person: <><circle cx="8" cy="5.25" r="2.5" /><path d="M3.25 13.5c.55-2.5 2.4-3.9 4.75-3.9s4.2 1.4 4.75 3.9" /></>,
   /** Message actions (F-026 S6): reply in a thread, make a task, cite, copy. */

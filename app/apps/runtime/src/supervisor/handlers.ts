@@ -40,8 +40,8 @@ export interface SupervisorConfig {
   pi?: boolean;
   /** Where pi and its launcher are (default: the image's, `PI_PATHS`); tests point them at the workspace's copy. */
   piPaths?: PiPaths;
-  /** Flux's model gateway as pi reaches it (default `http://<egress>:8080/model`, `gatewayProvider`); tests point it at a fake provider. */
-  modelUrl?: string;
+  /** Flux's model gateway as pi reaches it (default `MODEL_GATEWAY_ORIGIN`, runtime-egress:8081; `gatewayProvider`); tests point it at a fake. */
+  modelOrigin?: string;
   /** TEST ONLY: what pi printed on stderr and its MCP log, for a test that failed to say why. Never set by the runtime (main.ts). */
   piDiagnostics?: (what: { stderr: string; mcpLog: string; events: string[] }) => void;
   /** F-022 "Limits": the supervisor refuses a run while the binding directory exceeds this. */

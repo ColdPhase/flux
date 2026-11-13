@@ -34,9 +34,12 @@ function textChunk(body: string, version: number, offset: number, expected: numb
     throw new DomainError(400, 'VERSION_REQUIRED', 'A continuation needs the source version from the first page');
   if (expected !== undefined && version !== expected)
     throw new DomainError(409, 'SOURCE_VERSION_CONFLICT', 'The source changed; read it again from the first page');
-  const end = run ? runChunkEnd(body, offset) : Math.min(body.length, offset + TEXT_CHUNK);
+  const end = textPageEnd(body, offset, run);
   return { body: body.slice(offset, end), offset, totalLength: body.length, nextOffset: end < body.length ? end : null };
 }
+
+/** Where a page of text read from `offset` ends: 20,000 characters, or a run's smaller page (see {@link runChunkEnd}). */
+export const textPageEnd = (body: string, offset: number, run: boolean) => run ? runChunkEnd(body, offset) : Math.min(body.length, offset + TEXT_CHUNK);
 
 /** The end of a run's text page: at most 12,000 characters, shorter while its encoded size is over 12 KiB, never inside a surrogate pair. */
 function runChunkEnd(body: string, offset: number) {

@@ -206,9 +206,10 @@ const model = http.createServer((request, response) => {
 await new Promise((done) => model.listen(0, '127.0.0.1', done));
 const modelPort = model.address().port;
 config.pi = true;
-config.modelUrl = `http://127.0.0.1:${modelPort}/model`;
+config.modelOrigin = `http://127.0.0.1:${modelPort}`;
 const piRun = randomUUID();
 const piToken = token();
+const piModelToken = `flux_mg_${randomBytes(32).toString('base64url')}`;
 const piProbes = [
   ['pi\'s bash: the scratch, a clean environment', { tool: 'bash', args: { command: 'pwd; env | cut -d= -f1 | sort | tr "\\n" " "' } }],
   ['pi\'s bash: the person\'s and another person\'s files', { tool: 'bash', args: { command: `cat /data/${ada}/claude/.credentials.json /data/${bo}/claude/.credentials.json; ls /data/${ada}/pi` } }],
@@ -222,14 +223,14 @@ const piProbes = [
 ];
 modelSteps.push(...piProbes.map(([, step]) => step), { text: 'Done with pi.' });
 const piResult = await call({ kind: 'run', bindingId: ada, client: 'pi', runId: piRun, prompt: 'Probe.', runToken: piToken, tools: ['flux_list_contexts'], caps,
-  model: 'mock-model', provider: 'openai_compatible' });
+  model: 'mock-model', provider: 'openai_compatible', modelToken: piModelToken });
 record('pi\'s run completes', piResult.ok && piResult.result.outcome === 'completed' && piResult.result.answer === 'Done with pi.', JSON.stringify(piResult).slice(0, 400));
 const piOut = (index) => modelResults[index] ?? '';
 record(piProbes[0][0], piOut(0).split('\n')[0] === `/scratch/${piRun}` && !/FLUX_RUN_TOKEN|PI_|FLUX_SANDBOX_DIR/.test(piOut(0)), piOut(0));
 record(`refused: ${piProbes[1][0]}`, !/login-/.test(piOut(1)) && (piOut(1).match(/Permission denied/g) ?? []).length === 3, piOut(1));
 record(`refused: ${piProbes[2][0]}`, /Permission denied/.test(piOut(2)) && /^0$/m.test(piOut(2)), piOut(2));
 record(`${tcpRule ? 'refused' : 'NOT refused (kernel before Landlock ABI 4)'}: ${piProbes[3][0]}`, tcpRule ? /EACCES/.test(piOut(3)) && !piOut(3).includes('CONNECTED') : true, piOut(3));
-record(`${piProbes[4][0]} holds no run token (the launcher sets it after the start)`, !piOut(4).includes(piToken) && !/FLUX_RUN_TOKEN/.test(piOut(4)), piOut(4).slice(0, 300));
+record(`${piProbes[4][0]} holds neither token (the launcher sets them after the start)`, !piOut(4).includes(piToken) && !piOut(4).includes(piModelToken) && !/FLUX_RUN_TOKEN|FLUX_MODEL_GATEWAY_TOKEN/.test(piOut(4)), piOut(4).slice(0, 300));
 record(`refused: ${piProbes[5][0]}`, !/login-/.test(piOut(5)) && /EACCES|permission denied/i.test(piOut(5)), piOut(5));
 record(`refused: ${piProbes[6][0]}`, /EACCES|permission denied|read-only/i.test(piOut(6)) && !(await lstat('/tmp/pi-left.txt').catch(() => null)), piOut(6));
 record(piProbes[7][0], /Successfully wrote|wrote/i.test(piOut(7)), piOut(7));

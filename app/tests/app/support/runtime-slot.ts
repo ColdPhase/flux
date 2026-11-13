@@ -42,9 +42,9 @@ export async function startTestSlot(options: { slot?: string; enabled?: RuntimeC
   ownTools?: boolean;
   /**
    * #1441: API-key runs in the REAL pinned pi (the test image has it where the runtime does, /opt/flux-runtime/pi), started through the
-   * workspace's built launcher, with its model requests going to `modelUrl` (a fake gateway).
+   * workspace's built launcher, with its model requests going to `modelOrigin` (a fake gateway, at the real gateway's paths).
    */
-  pi?: { modelUrl: string; diagnostics?: SupervisorConfig['piDiagnostics'] } } = {}): Promise<TestSlot> {
+  pi?: { modelOrigin: string; diagnostics?: SupervisorConfig['piDiagnostics'] } } = {}): Promise<TestSlot> {
   const root = await mkdtemp(join(tmpdir(), 'flux-slot-'));
   const dataDir = join(root, 'data');
   const tmpDir = join(root, 'tmp');
@@ -88,7 +88,7 @@ export async function startTestSlot(options: { slot?: string; enabled?: RuntimeC
     ...(options.mcpUrl ? { mcpUrl: options.mcpUrl } : {}),
     ...options.console,
     sandbox,
-    ...(options.pi ? { pi: true, modelUrl: options.pi.modelUrl, ...(options.pi.diagnostics ? { piDiagnostics: options.pi.diagnostics } : {}), piPaths: { ...PI_PATHS, node: process.execPath, launcher: resolve('apps/runtime/dist/supervisor/pi-launch.js') } } : {}),
+    ...(options.pi ? { pi: true, modelOrigin: options.pi.modelOrigin, ...(options.pi.diagnostics ? { piDiagnostics: options.pi.diagnostics } : {}), piPaths: { ...PI_PATHS, node: process.execPath, launcher: resolve('apps/runtime/dist/supervisor/pi-launch.js') } } : {}),
   };
   const { server } = createSupervisorServer(config);
   await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));

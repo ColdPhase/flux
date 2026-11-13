@@ -29,14 +29,7 @@
 .tb-mode__b:hover { color: var(--t1); }
 .tb-mode__b[aria-checked="true"] { background: var(--seg-on); color: var(--t1); box-shadow: var(--sh-raise), inset 0 0 0 1px var(--line2); }
 @media (forced-colors: active) { .tb-mode__b[aria-checked="true"] { forced-color-adjust: none; background: Highlight; color: HighlightText; } }
-.tb-mine {
-  display: inline-flex; align-items: center; gap: 6px; min-height: var(--ctl); padding: 0 10px; border-radius: var(--r);
-  font-size: var(--fs-sm); font-weight: 500; color: var(--t2); white-space: nowrap; transition: var(--tr);
-}
-.tb-mine:hover { background: var(--hov); color: var(--t1); }
-.tb-mine { padding: 0 10px; border-radius: var(--r-pill); box-shadow: inset 0 0 0 1px var(--line); }
-.tb-mine svg { display: none; }
-.tb-mine[aria-pressed="true"] { background: var(--sub); color: var(--t1); box-shadow: inset 0 0 0 1px var(--line2); }
+/* Mine is the system's outline Button with the person icon, as drawn (#1373); pressed it takes the --t1 edge (ui.css). */
 .tb-add.ui-btn { gap: 6px; padding: 0 10px; font-size: var(--fs-sm); }
 
 /* ---------- What the board leaves to the List ---------- */
@@ -51,7 +44,8 @@
 .tb-note__x { flex: none; margin-left: auto; min-height: 24px; font-weight: 500; color: var(--t2); text-decoration: underline; text-underline-offset: 3px; }
 .tb-none { margin: 14px var(--space-page) 0; font-size: var(--fs-md); color: var(--t2); overflow-wrap: anywhere; }
 
-.tb-board { flex: 1; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; padding: 12px var(--space-page) 32px; align-items: start; }
+/* Four columns, one card wide each, at no more than 420 px: on a wide window the extra width is margin, never cards flowing sideways in a state (#1379). */
+.tb-board { flex: 1; display: grid; grid-template-columns: repeat(4, minmax(0, 420px)); justify-content: start; gap: 12px; padding: 12px var(--space-page) 32px; align-items: start; }
 .tb-col { display: flex; flex-direction: column; min-width: 0; }
 /* Every column header is as tall as the ones with a "+" button, so the three line up. */
 /* 40px = the 25px add button, the padding and the rule: a column without the button (Done, readers) lines up. */
@@ -69,7 +63,7 @@
 .tb-col__cards.is-over { background: color-mix(in srgb, var(--inv) 8%, var(--bg)); box-shadow: 0 0 0 2px var(--t1); }
 .tb-note--moving { background: color-mix(in srgb, var(--inv) 8%, var(--bg)); }
 .tb-note--moving svg { color: var(--t1); }
-.tb-col__list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); gap: 8px; align-content: start; margin: 0; padding: 0; list-style: none; }
+.tb-col__list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; align-content: start; margin: 0; padding: 0; list-style: none; }
 .tb-col__empty { padding: 14px 1px 18px; font-size: var(--fs-md); color: var(--t3); }
 /* A column holds more than its bounded first page: the List pages through the rest (#155). */
 .tb-col__more { display: block; min-height: 32px; margin: 4px 1px 8px; font-size: var(--fs-sm); text-align: left; }
@@ -143,7 +137,6 @@ html.tb-is-dragging, html.tb-is-dragging * { cursor: grabbing !important; user-s
 
 @media (pointer: coarse) {
   .tb-mode__b { min-height: 44px; min-width: 44px; }
-  .tb-mine { min-height: 44px; }
   .tb-search input { font-size: var(--fs-input-touch); }
   .tb-note__x { min-height: 44px; }
 }

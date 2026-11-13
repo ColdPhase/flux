@@ -13,7 +13,7 @@ export { announce as announceRunProgress } from './progress.js';
 export { LIVE_TEXT_MS, liveText, type LiveText } from './live-text.js';
 export { TEST_FIXTURE_API_KEY, TEST_FIXTURE_KEY_REF, testFixturePersonalConnections } from './test-fixture.js';
 export { apiModelAccount, connectionOnModel, defaultPick, keyListing, modelGroups, modelRetired, planModelRetired, runtimeModelAccount, runtimeModelFlag } from './model.js';
-export { createRuntimeRunProcessor, localToolInInit } from './runtime-run.js';
+export { createRuntimeRunProcessor, localToolInInit, type KeyRunGateway } from './runtime-run.js';
 export { redactSecrets, REDACTED_SECRET } from './redaction.js';
 export { answerCleaner, type AnswerCleaner } from './answer-addresses.js';
 export { withoutInventedMarks, withoutOwnSources } from './answer-marks.js';

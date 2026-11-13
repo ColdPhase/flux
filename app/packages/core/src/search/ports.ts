@@ -63,6 +63,9 @@ export interface SearchRow {
   status: string | null;
   /** A message's place in its conversation (or direct message): what `flux_read_around` reads from (#1290). */
   sequence?: number | null;
+  /** A file's part of the text (C-63): the PDF page where the part begins, and the message the file was sent with. */
+  page?: number | null;
+  messageId?: string | null;
   title: SearchText;
   snippet: SearchText | null;
   hasBody: boolean;

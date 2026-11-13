@@ -8,4 +8,11 @@ services:
     # Neither network holds the database.
     networks: [default, runtime-control, runtime-api, keyring]
   worker:
-    networks: [default, runtime-control, keyring]
+    # runtime-api: runtime-egress passes API-key runs' model requests to the worker's model gateway (#1441), which
+    # listens there only, under this alias.
+    networks:
+      default: {}
+      runtime-control: {}
+      keyring: {}
+      runtime-api:
+        aliases: [worker-gateway]

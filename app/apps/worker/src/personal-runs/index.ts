@@ -5,6 +5,7 @@ import {
   PERSONAL_RUN_JOB,
   recoverPersonalRuns,
   unavailablePersonalCompute,
+  type KeyRunGateway,
   type PersonalCompute,
   type PersonalConnectionLookup,
   type PersonalRunTokenIssuer,
@@ -35,6 +36,8 @@ const STOP_WAIT_MS = 5_000;
  */
 export async function registerPersonalRunWorker(boss: PgBoss, db: Database, options: {
   connections?: PersonalConnectionLookup; compute?: PersonalCompute; tools?: PersonalToolHost; tokens?: PersonalRunTokenIssuer; runtime?: PersonalRuntime;
+  /** Flux's model gateway (#1441): API-key runs in pi need it. */
+  gateway?: KeyRunGateway | null;
 } = {}) {
   const uow = personalRunWorkerUnitOfWork(db);
   const processor = createPersonalRunProcessor({
@@ -44,6 +47,7 @@ export async function registerPersonalRunWorker(boss: PgBoss, db: Database, opti
     ...(options.tools ? { tools: options.tools } : {}),
     ...(options.tokens ? { tokens: options.tokens } : {}),
     ...(options.runtime ? { runtime: options.runtime } : {}),
+    ...(options.gateway ? { gateway: options.gateway } : {}),
     // The asker sees `/ai` and a chat answered as they are written (#1248), over the API's live stream.
     live: runLiveText(db),
   });

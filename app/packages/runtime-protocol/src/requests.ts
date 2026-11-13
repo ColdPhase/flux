@@ -2,6 +2,7 @@ import {
   BINDING_ID, FLUX_TOOL_NAME, KEY_ENGINE, KEY_MODEL_ID, KEY_PROVIDERS, MODEL_ID, RUN_ENGINES, RUN_TOKEN, RUNTIME_CLIENTS, RUNTIME_LOGIN_METHODS, UUID,
   type KeyProvider, type RuntimeClient, type RuntimeLoginMethod,
 } from './names.js';
+import { MODEL_GATEWAY_TOKEN } from './model-gateway.js';
 import { arrayOf, firstBadKey, int, object, oneOf, str, text, type Check } from './shape.js';
 
 /** The terminal size a sign-in console may ask for (F-022 T4): a phone held upright to a wide screen. */
@@ -58,7 +59,7 @@ export type SupervisorRequest =
    * `pictures`: the model takes image input (Flux's table for the provider and model).
    */
   | { kind: 'run'; bindingId: string; client: typeof KEY_ENGINE; runId: string; prompt: string; runToken: string; tools: string[]; caps: RunCaps; model: string;
-    provider: KeyProvider; pictures?: true; webSearch?: true }
+    provider: KeyProvider; modelToken: string; pictures?: true; webSearch?: true }
   | { kind: 'stop'; bindingId: string; runId: string }
   | { kind: 'logout'; bindingId: string; bootId: string; client: RuntimeClient }
   | { kind: 'release'; bindingId: string };
@@ -85,7 +86,7 @@ const SHAPES: Record<SupervisorRequestKind, Fields> = {
   login: { required: { bindingId, bootId: str(UUID, 36), client, method: oneOf([...RUNTIME_LOGIN_METHODS.claude_code, ...RUNTIME_LOGIN_METHODS.codex]),
     cols: int(CONSOLE_SIZE.cols.min, CONSOLE_SIZE.cols.max), rows: int(CONSOLE_SIZE.rows.min, CONSOLE_SIZE.rows.max) } },
   run: { required: { bindingId, client: engine, runId: str(UUID, 36), prompt: text(REQUEST_LIMITS.promptCharacters, 1), runToken: str(RUN_TOKEN, 12_300), tools: uniqueTools, caps },
-    optional: { model: str(KEY_MODEL_ID, 128), webSearch: yes, provider: oneOf(KEY_PROVIDERS), pictures: yes } },
+    optional: { model: str(KEY_MODEL_ID, 128), webSearch: yes, provider: oneOf(KEY_PROVIDERS), pictures: yes, modelToken: str(MODEL_GATEWAY_TOKEN, 51) } },
   stop: { required: { bindingId, runId: str(UUID, 36) } },
   logout: { required: { bindingId, bootId: str(UUID, 36), client } },
   release: { required: { bindingId } },
@@ -117,6 +118,8 @@ export function parseSupervisorRequest(kind: unknown, body: unknown): ParsedRequ
     if (pi && fields.model === undefined) return { ok: false, code: 'invalid_request', field: 'model' };
     if (!pi && fields.model !== undefined && !MODEL_ID.test(fields.model as string)) return { ok: false, code: 'invalid_request', field: 'model' };
     if (pi !== (fields.provider !== undefined)) return { ok: false, code: 'invalid_request', field: 'provider' };
+    // Its model gateway token (#1441): pi's API key, which only Flux's gateway takes.
+    if (pi !== (fields.modelToken !== undefined)) return { ok: false, code: 'invalid_request', field: 'modelToken' };
     if (!pi && fields.pictures !== undefined) return { ok: false, code: 'invalid_request', field: 'pictures' };
   }
   if (kind === 'login' && !(RUNTIME_LOGIN_METHODS[fields.client as RuntimeClient] as readonly string[]).includes(fields.method as string)) {

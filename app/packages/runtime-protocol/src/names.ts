@@ -79,4 +79,4 @@ export function parseRuntimeSwitch(value: string | undefined): RuntimeClient[] {
 export const RUNTIME_SECRET = /^[A-Za-z0-9_-]{32,256}$/;
 
 /** Fixed ports inside the runtime networks. */
-export const RUNTIME_PORTS = { supervisor: 7700, manager: 7600, egressProxy: 3128, egressInstall: 3129, egressMcp: 8080 } as const;
+export const RUNTIME_PORTS = { supervisor: 7700, manager: 7600, egressProxy: 3128, egressInstall: 3129, egressMcp: 8080, egressModel: 8081 } as const;

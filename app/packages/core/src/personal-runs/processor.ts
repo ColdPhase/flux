@@ -17,7 +17,7 @@ import { placeAllows, spaceSwitchAllows } from './place.js';
 import { answerCleaner } from './answer-addresses.js';
 import { answerWithWebSources } from './web-sources.js';
 import { boundedWebSearch, keepPrivateText } from './web-addresses.js';
-import { createRuntimeRunProcessor, type RuntimeCaps } from './runtime-run.js';
+import { createRuntimeRunProcessor, type KeyRunGateway, type RuntimeCaps } from './runtime-run.js';
 import { reserveOnKey } from './service.js';
 import { updateAndAnnounce } from './progress.js';
 import { dropSearch, requestParts, runToolLoop, type LoopResult, type RunAccount } from './tool-loop.js';
@@ -92,6 +92,8 @@ export interface PersonalRunProcessorDeps {
   runtimeCaps?: Partial<RuntimeCaps>;
   /** The asker's live view (#1248): the words of `/ai` and of a chat as they are written, and the current step. Without it nothing is sent. */
   live?: RunLiveText;
+  /** Flux's model gateway (#1441): API-key runs in pi send their model requests through it. Without it such a run ends `unavailable`. */
+  gateway?: KeyRunGateway;
 }
 
 type Stage = 'before_read' | 'before_dispatch' | 'before_commit';
@@ -244,7 +246,7 @@ const SEARCH_REFUSED_MS = 6 * 3600_000;
 const WALL_CLOCK_MS = RUNTIME_RUN_LIMITS.wallClockSeconds * 1000;
 
 export function createPersonalRunProcessor({ uow, connections, compute, stopPollMs = 250, hooks = {}, tools, maxTurns = PERSONAL_RUN_LIMITS.maxTurns,
-  wallClockMs = WALL_CLOCK_MS, now = Date.now, runtime, tokens, runtimeCaps, live }: PersonalRunProcessorDeps) {
+  wallClockMs = WALL_CLOCK_MS, now = Date.now, runtime, tokens, runtimeCaps, live, gateway }: PersonalRunProcessorDeps) {
   /**
    * The keys and models whose provider refused its own web search tool (#954), until when: their runs are not offered it, so not every
    * run sends a refused request first. In this worker's memory only; a restart asks again.
@@ -267,6 +269,7 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
    */
   const keyRuns = createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, hooks, now, ...(runtimeCaps ? { caps: runtimeCaps } : {}), ...(live ? { live } : {}),
     key: {
+      gateway,
       async check(ports, run, stage, lock) {
         const checked = await recheck(ports, connections, compute, run, stage, lock);
         return 'refusal' in checked ? checked.refusal : null;

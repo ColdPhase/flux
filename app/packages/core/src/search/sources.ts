@@ -63,6 +63,12 @@ export const SEARCH_SOURCES: Record<SearchKind, SearchSource> = {
     filter: 'doc', audience: 'project', textIsTitle: false, label: docLabel,
     target: (row) => ({ type: 'doc', projectId: inProject(row), docId: row.objectId, version: row.version ?? 1 }),
   },
+  // A file someone sent (C-63): its name is the title, the matching part of its text the snippet; it opens its message with its preview open.
+  file: {
+    filter: 'file', audience: 'project', textIsTitle: false, label: (row) => (row.page ? `File · page ${row.page}` : 'File'),
+    target: (row) => ({ type: 'file', projectId: inProject(row), conversationId: row.parentId ?? '', messageId: row.messageId ?? '', fileId: row.objectId,
+      ...(row.page ? { page: row.page } : {}) }),
+  },
   work: {
     filter: 'work', audience: 'project', textIsTitle: false, label: (row) => WORK_STATUS[row.status ?? ''] ?? 'Task',
     target: (row) => ({ type: 'work', projectId: inProject(row), id: row.objectId }),

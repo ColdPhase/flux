@@ -561,6 +561,8 @@ class LiveJourney(LiveBase):
         })();""")
         kai.goto(f"/projects/{pid}")
         header = kai.locator("header.top")
+        views_at = lambda: header.locator(".top__views").bounding_box()["x"]
+        before = views_at()
         header.get_by_role("button", name="Call", exact=True).and_(header.locator(".lv-entry__btn:not(.lv-entry__btn--why)")).click()
         clicked = time.monotonic()
         bar = self.bar(kai)
@@ -569,12 +571,24 @@ class LiveJourney(LiveBase):
         expect(bar.get_by_role("status").first).to_contain_text("Connecting")
         expect(bar.locator(".lv-where")).to_have_text("Call in Quick start")
         expect(bar.get_by_role("button", name="Leave", exact=True)).to_have_count(0)
+        # The strip's items share one centre line: the place's title is level with the live word (#1378), not at the top of the row.
+        centres = bar.evaluate("""el => { const c = (s) => { const r = el.querySelector(s).getBoundingClientRect(); return r.top + r.height / 2; }; return [c('.lv-row__lead'), c('.lv-where__t')]; }""")
+        self.assertLessEqual(abs(centres[0] - centres[1]), 2, f"the title is on the row's centre line: {centres}")
         shot(kai, "live-desktop-1440-connecting")
-        # While it connects, Call does not start a second call: it says it is connecting.
-        header.get_by_role("button", name="Call", exact=True).click()
+        # While it connects, the header shows the call's state, not a Call button again (#1378), and it starts no second call: it says it is connecting.
+        in_call = header.get_by_role("button", name="In call", exact=True)
+        expect(in_call).to_have_text("In call")
+        expect(header.get_by_role("button", name="Call", exact=True)).to_have_count(0)
+        # "In call" fits the Call slot: its word is not cut and the views do not move (Spokój rule 7).
+        self.assertEqual(in_call.evaluate("el => { const l = el.querySelector('.lv-entry__label'); return l.scrollWidth <= l.clientWidth + 0.5 && el.scrollWidth <= el.clientWidth + 0.5; }"), True)
+        self.assertAlmostEqual(views_at(), before, delta=0.5, msg="the views keep their place while the call connects")
+        in_call.click()
         expect(kai.locator(".lv-pop__text")).to_have_text("Connecting to the call.")
         kai.keyboard.press("Escape")
         expect(bar.get_by_role("status").first).to_contain_text("Live", timeout=30000)
+        expect(in_call.locator(".lv-dot")).to_be_visible()
+        self.assertTrue(in_call.evaluate("el => el.scrollWidth <= el.clientWidth + 0.5"), "In call with its dot fits the slot")
+        self.assertAlmostEqual(views_at(), before, delta=0.5, msg="the views keep their place in the call")
         calls = [item for item in self.api(kai, "GET", f"/api/v1/projects/{pid}/live-sessions", status=200)["items"] if item["context"]["id"] == pid]
         self.assertEqual(len(calls), 1, "one call, not one per click")
         bar.get_by_role("button", name="Leave", exact=True).click()
@@ -1234,6 +1248,13 @@ class LiveJourney(LiveBase):
             box = button.bounding_box()
             assert box
             self.assertGreaterEqual(min(box["width"], box["height"]), 43.5, f"touch target {button.get_attribute('aria-label') or button.inner_text()}")
+        # #1378: at 390 px the live dot keeps its word, every item shares the row's centre line and nothing in the row is cut or outside it.
+        expect(bar.locator(".lv-status").first).to_be_visible()
+        row = bar.evaluate("""el => { const row = el.querySelector('.lv-row').getBoundingClientRect(); const mid = (r) => r.top + r.height / 2;
+          const items = ['.lv-row__lead', '.lv-where__t', '.lv-row__acts'].map((s) => el.querySelector(s)).filter(Boolean).map((n) => n.getBoundingClientRect());
+          return { centres: items.map((r) => Math.round(Math.abs(mid(r) - mid(row)))), inside: items.every((r) => r.left >= row.left - 0.5 && r.right <= row.right + 0.5) }; }""")
+        self.assertTrue(all(gap <= 2 for gap in row["centres"]), row)
+        self.assertTrue(row["inside"], row)
         # No fake screen publishing on a phone browser without the picker.
         can_capture = phone.evaluate("typeof navigator.mediaDevices?.getDisplayMedia === 'function'")
         if not can_capture:

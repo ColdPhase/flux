@@ -1,8 +1,8 @@
 import { readSync } from 'node:fs';
 
 // The launcher of pi (#1441, RT-5): the program the slot starts for an API-key run. It reads ONE line from standard input before pi runs,
-// `{"run":"<run token>"}`, puts the token into this process's environment (pi's own files name it, `$FLUX_RUN_TOKEN` and
-// `${FLUX_RUN_TOKEN}`, so it is never written to a file), and then starts pi's own command-line program in this same process with the
+// `{"run":"<MCP run token>","model":"<model gateway token>"}`, puts the tokens into this process's environment (pi's own files name them,
+// `${FLUX_RUN_TOKEN}` and `$FLUX_MODEL_GATEWAY_TOKEN`, so they are never written to a file), and then starts pi's own command-line program in this same process with the
 // arguments it was given. The rest of standard input is the run's request, which pi reads as its prompt.
 //
 // Why a launcher: pi's own file tools run inside pi's process, which may read `/proc/self/environ`; that file holds only the environment
@@ -29,8 +29,9 @@ if (!cli || !cli.startsWith('/')) {
   console.error('usage: pi-launch <pi cli.js> <args>, with {"run":"<token>"} as the first line of standard input');
   process.exit(2);
 }
-const secrets = JSON.parse(firstLine()) as { run?: unknown };
-if (typeof secrets.run !== 'string' || !secrets.run) process.exit(2);
+const secrets = JSON.parse(firstLine()) as { run?: unknown; model?: unknown };
+if (typeof secrets.run !== 'string' || !secrets.run || typeof secrets.model !== 'string' || !secrets.model) process.exit(2);
 process.env.FLUX_RUN_TOKEN = secrets.run;
+process.env.FLUX_MODEL_GATEWAY_TOKEN = secrets.model;
 process.argv = [process.argv[0]!, cli, ...args];
 await import(cli);

@@ -106,8 +106,8 @@
 .sset-theme { display: grid; gap: 8px; padding: 0; border: 0; background: none; color: var(--t1); font: inherit; text-align: left; cursor: pointer; }
 .sset-theme__art { position: relative; display: block; height: 96px; border-radius: 14px; overflow: hidden; box-shadow: inset 0 0 0 1px var(--line); }
 .sset-theme[aria-checked="true"] .sset-theme__art { box-shadow: inset 0 0 0 2px var(--t1), 0 0 0 2px var(--bg); }
-.sset-theme:focus-visible { outline: none; }
-.sset-theme:focus-visible .sset-theme__art { outline: 2px solid var(--t1); outline-offset: 3px; }
+/* The ring of README §2 is on the tile itself (the radio is the button), clear of the chosen tile's own edge (#1380). */
+.sset-theme:focus-visible { outline: 2px solid var(--t1); outline-offset: 5px; border-radius: var(--r-sm); }
 .sset-theme__art--light { background: #F4F4F5; }
 .sset-theme__art--dark { background: #0B0B0B; }
 .sset-theme__art--system { background: linear-gradient(90deg, #F4F4F5 50%, #0B0B0B 50%); }

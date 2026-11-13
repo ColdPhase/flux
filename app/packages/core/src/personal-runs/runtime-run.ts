@@ -46,7 +46,17 @@ export type RuntimeCaps = PersonalRuntimeRunRequest['caps'];
  * daily budget today. Flux's model gateway reserves and charges each request of the run on the run's own row (CA-3), so the run reserves
  * nothing up front here.
  */
+export interface KeyRunGateway {
+  issue(runId: string): Promise<{ token: string } | null>;
+  close(runId: string): Promise<{ unknown: number; stopped: 'budget' | 'ended' | null }>;
+}
+
 export interface KeyRunDeps {
+  /**
+   * Flux's model gateway (RT-4 "The model gateway"): a token for the run's model requests, issued once the run is working and closed at its
+   * end with what its requests came to. Absent (the gateway is off on this worker): a key run cannot start.
+   */
+  gateway?: KeyRunGateway | undefined;
   check(ports: PersonalRunPorts, run: RunRecord, stage: Stage, lock: boolean): Promise<Refusal | null>;
   /** `paused`: not even one request fits today; the request waits for the key's next day (#854). */
   fits(ports: PersonalRunPorts, run: RunRecord): Promise<'ok' | { paused: Date } | 'unavailable'>;
@@ -93,7 +103,8 @@ const used: RunChanges = { costState: 'unknown', chargedMicros: 0 };
  * After a key run in pi (#1441): the model gateway has charged each request on the run's row; the run's cost is what it charged
  * (`observed`), nothing (`released`), or unknown where the gateway lost a response.
  */
-const keySettled = (current: RunRecord): RunChanges => current.costState === 'unknown' ? {} : { costState: current.chargedMicros > 0 ? 'observed' : 'released' };
+const keySettled = (current: RunRecord, unknown: boolean): RunChanges => unknown || current.costState === 'unknown' ? { costState: 'unknown' }
+  : { costState: current.chargedMicros > 0 ? 'observed' : 'released' };
 
 /** How each end of the CLI is recorded: its status, and the reason when the status alone does not say. */
 function endChanges(reason: AssistantRunEndReason | 'stopped' | 'unavailable' | 'input_too_large', planResetsAt: Date | null | undefined, used: RunChanges): RunChanges {
@@ -317,10 +328,15 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
       // The run token, minted by the authorization server for this run only (F-027 A2). It never reaches a
       // log or the database; it travels to the slot in the run request and to the CLI in FLUX_RUN_TOKEN only.
       const grant = await tokens!.issue(run.id).catch(() => null);
-      if (!grant || !grant.tools.length) {
+      // A key run's model requests (#1441): their own token, which only the model gateway takes; the key stays in the worker.
+      const modelToken = key && grant?.tools.length ? await key.gateway?.issue(run.id).catch(() => null) ?? null : null;
+      if (!grant || !grant.tools.length || (key && !modelToken)) {
         await tokens!.close(run.id).catch(() => undefined);
+        if (key && modelToken) await key.gateway?.close(run.id).catch(() => undefined);
         return finish(run.id, 'dispatching', () => ended('unavailable', 'before_dispatch', free));
       }
+      /** What the gateway said of the run's requests at its end: unknown usage, and a refusal for the money or the run's standing. */
+      let gatewayAccount: { unknown: number; stopped: 'budget' | 'ended' | null } | null = null;
 
       // `/ai` and a chat are shown to the asker while the CLI writes them (#1248); the run token is never shown, even half.
       const shown = live && isAsked(run) ? liveText(live, run, { secrets: [grant.token] }) : undefined;
@@ -392,7 +408,7 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
         await uow.run((ports) => ports.runs.addPrivateText(run.id, kept));
         end = await runtime!.run(target, { runId: run.id, prompt, runToken: grant.token, tools: grant.tools, caps, ...(model ? { model } : {}),
           ...(webSearch ? { webSearch: true as const } : {}),
-          ...(key ? { key: { provider: run.provider, pictures: aiModelSeesPictures(run.provider, run.model, 'server') } } : {}) }, onEvent);
+          ...(key ? { key: { provider: run.provider, pictures: aiModelSeesPictures(run.provider, run.model, 'server'), modelToken: modelToken!.token } } : {}) }, onEvent);
       } catch {
         // The stream to the slot broke: whether the CLI changed anything is unknown, and it is never rerun.
         end = { kind: 'ended', reason: 'unknown' };
@@ -400,7 +416,10 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
         stopWatching();
         await shown?.close();
         await tokens!.close(run.id).catch(() => undefined);
+        if (key) gatewayAccount = await key.gateway!.close(run.id).catch(() => ({ unknown: 1, stopped: null }));
       }
+      // The gateway refused a request for the key's day (402): pi stops at it, and the run ends "budget", whatever pi made of the refusal.
+      if (gatewayAccount?.stopped === 'budget' && end.kind === 'ended' && end.reason !== 'stopped') end = { kind: 'ended', reason: 'budget' };
       await stopSent;
       // Every search the CLI reported is written before the run's end is.
       await recorded;
@@ -435,7 +454,7 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
         if (!current || current.status !== 'dispatching') return 'skipped';
         const save = async (changes: RunChanges) => (await updateAndAnnounce(ports, run.id, changes)).status;
         // What the run used: a plan's is unknown to Flux; a key run's is what the model gateway charged on its row (#1441).
-        const spent = key ? keySettled(current) : used;
+        const spent = key ? keySettled(current, (gatewayAccount?.unknown ?? 0) > 0) : used;
         // F-029: a run stopped because AI was turned off says so; nothing it produced is posted.
         if (refusal === 'ai_off') return save(ended('ai_off', 'before_commit', spent));
         if (current.stopRequestedAt) {

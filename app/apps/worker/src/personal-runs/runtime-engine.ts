@@ -76,7 +76,7 @@ export function managerPersonalRuntime(config: AgentRuntimeConfig, db: Database,
         ...(request.webSearch ? { webSearch: true as const } : {}) };
       // A key run in pi (#1441): the key's provider and model; the key itself stays with Flux's model gateway.
       const sent: Extract<SupervisorRequest, { kind: 'run' }> | null = client === 'pi'
-        ? (request.key && request.model ? { kind: 'run', client, ...common, model: request.model, provider: request.key.provider, ...(request.key.pictures ? { pictures: true as const } : {}) } : null)
+        ? (request.key && request.model ? { kind: 'run', client, ...common, model: request.model, provider: request.key.provider, modelToken: request.key.modelToken, ...(request.key.pictures ? { pictures: true as const } : {}) } : null)
         : { kind: 'run', client, ...common, ...(request.model ? { model: request.model } : {}) };
       if (!sent) return { kind: 'ended', reason: 'unavailable' };
       const outcome = await streamManagerRun(manager, target.slot, sent, (frame) => onEvent(eventOf(frame)));
