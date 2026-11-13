@@ -54,13 +54,16 @@ describe('API-key agents run in pi in the runtime (#1441)', () => {
     manager = createManagerServer({ secret: SECRET, slots: new Map([[slot.config.slot, { host: '127.0.0.1', port: portOf(slot.url), secret: slot.config.secret }]]), log: () => undefined });
     await new Promise<void>((done) => manager.listen(0, '127.0.0.1', done));
     config = { clients: [], keys: true, commercialTermsAgreedOn: null, idleDays: null, manager: { url: `http://127.0.0.1:${(manager.address() as AddressInfo).port}`, secret: SECRET } };
-    await pool.query(`INSERT INTO agent_runtime_slots(slot, state, capacity) VALUES ($1, 'ready', 8) ON CONFLICT (slot) DO UPDATE SET state = 'ready', capacity = 8`, [slot.config.slot]);
+    await pool.query(`INSERT INTO agent_runtime_slots(slot, state) VALUES ($1, 'ready') ON CONFLICT (slot) DO UPDATE SET state = 'ready'`, [slot.config.slot]);
+    // Other files leave runtimes of their own in this database: the owner's place is made on this one (pi needs no sign-in, only the place).
     owner = await person('rt-pi');
     ws = await createWorkspace(owner, 'Pi runs');
     place = await createProject(owner, ws.id, 'Reports', 'workspace');
     const agentId = (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'My assistant', owner: 'self' } }), 201) as { id: string }).id;
     thread = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/conversations`,
       { body: { body: 'Please turn the notes into a page', clientMessageId: randomUUID() } }), 201) as Conversation;
+    const bindingId = randomUUID();
+    await pool.query(`INSERT INTO agent_runtime_bindings(id, owner_user_id, slot, state) VALUES ($1, $2, $3, 'binding')`, [bindingId, owner.id, slot.config.slot]);
     runs = personalRunUseCases(db, { queue: queue.factory, connections, providerEnabled: true, runtime: personalRuntimeAvailability(config, db) });
     processor = createPersonalRunProcessor({ uow: personalRunWorkerUnitOfWork(db), connections, compute,
       runtime: managerPersonalRuntime(config, db), tokens: runTokenIssuer(db, apiUrl), stopPollMs: 50, runtimeCaps: { idleSeconds: 20, wallClockSeconds: 60, maxTurns: 10 } });
@@ -69,6 +72,8 @@ describe('API-key agents run in pi in the runtime (#1441)', () => {
     await runs.enable(human(owner), { agentId, connection: connectionId, model: 'claude-sonnet-5' });
   });
   after(async () => {
+    // The runtime this file made is gone with it: later files count the runtimes' room (#860).
+    await pool.query(`UPDATE agent_runtime_slots SET state = 'out_of_pool', out_of_pool_reason = 'missing' WHERE slot = $1`, [slot.config.slot]).catch(() => undefined);
     await new Promise<void>((done) => manager.close(() => done()));
     await slot.close();
     await gateway.close();
@@ -109,7 +114,7 @@ describe('API-key agents run in pi in the runtime (#1441)', () => {
     assert.deepEqual(shell.slice(1, 3), ['0', 'notes.html'], 'empty at the start; the file was made there');
     assert.match(gateway.requests[2]!.results[1] ?? '', /Reports|context/i, 'the Flux tool ran through Flux\'s MCP route');
     assert.deepEqual(await readdir(scratchRoot()), [], 'the scratch is gone after the run');
-    assert.equal((await readdir(join(slot.config.dataDir))).length, 1, 'the owner got one place in the runtime, made for this run');
+    assert.equal((await readdir(join(slot.config.dataDir))).length, 1, 'the owner\'s place in the runtime was made for the run (no sign-in)');
   });
 
   test('the gateway\'s budget refusal ends the run at once, with one request and nothing posted', async () => {

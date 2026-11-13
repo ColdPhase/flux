@@ -23,7 +23,7 @@ further kinds of agent.
 ## RT-1 — Engines on the server
 
 **Founder decision (Hubert, 2026-11-13, [#1441](https://github.com/ColdPhase/flux/issues/1441)), on the harness research
-([agent-harness-2026-11](research/agent-harness-2026-11.md)):** a **plan** runs in its vendor's CLI, the only legal way; **every API
+([PR #1440](https://github.com/ColdPhase/flux/pull/1440), `docs/product/research/agent-harness-2026-11.md`):** a **plan** runs in its vendor's CLI, the only legal way; **every API
 key** (Anthropic, OpenAI, OpenRouter, Gemini, OpenAI-compatible, self-hosted) runs in **pi**. One Flux contract holds for every agent:
 the same Flux tools over MCP, the same per-run sandbox with shell and files (RT-5), `flux_attach_file`, the same network limits and the
 same "Ask me first", which covers changes in Flux only, never commands inside the agent's own sandbox. The key never enters the runtime:

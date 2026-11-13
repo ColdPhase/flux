@@ -411,6 +411,7 @@ INTERNAL: dict[str, str] = {
 NOT_SETTINGS: dict[str, str] = {
     "FLUX_SCHEMA_VERSION": "constant: the schema version of this build",
     "FLUX_MCP_PROTOCOL_VERSIONS": "constant: supported MCP protocol versions",
+    "FLUX_MCP_LEGACY_VERSIONS": "constant: the legacy MCP protocol versions Flux admits",
     "FLUX_TOOL_NAME": "constant: pattern of Flux's MCP tool names",
     "FLUX_LIVE_QUEUE": "log marker",
     "FLUX_MIGRATION_GATE": "output marker of the operations tool",

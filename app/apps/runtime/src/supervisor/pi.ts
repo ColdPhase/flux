@@ -160,6 +160,8 @@ export async function runPi(config: SupervisorConfig, request: PiRequest, dir: s
   const env: Record<string, string> = {
     PATH: '/usr/local/bin:/usr/bin:/bin', HOME: join(dir, 'home'), LANG: 'C.UTF-8', TMPDIR: work, NO_COLOR: '1',
     PI_CODING_AGENT_DIR: home, PI_OFFLINE: '1', PI_SKIP_VERSION_CHECK: '1', PI_TELEMETRY: '0',
+    // Node's own compile cache would go to TMPDIR, the scratch: nothing but what the run makes belongs there.
+    NODE_DISABLE_COMPILE_CACHE: '1',
     ...(scratch ? { FLUX_SANDBOX_DIR: scratch } : {}),
   };
   const argv = [paths.launcher, paths.cli, ...piArgs(ownTools, brief, request.model)];

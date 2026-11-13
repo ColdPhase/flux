@@ -47,9 +47,10 @@ updates:
         dependency-type: development
         update-types: [minor, patch]
   # The documentation site (Astro Starlight, package-lock.json) and the test tooling with a lockfile of their own
-  # (app/tooling: the live-editing calibration on pnpm, the SFU test on npm). Not part of the workspace above.
+  # (app/tooling: the live-editing calibration on pnpm, the SFU test on npm). Not part of the workspace above. And pi, the agent runtime's
+  # engine for API keys (app/apps/runtime/pi, npm lockfile, #1441): a bump is reviewed against its flag contract (RT-5) before it merges.
   - package-ecosystem: npm
-    directories: ["/site", "/app/tooling/live-editing-calibration", "/app/tooling/live-sfu-test"]
+    directories: ["/site", "/app/tooling/live-editing-calibration", "/app/tooling/live-sfu-test", "/app/apps/runtime/pi"]
     schedule:
       interval: weekly
       day: monday
