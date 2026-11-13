@@ -329,8 +329,9 @@ export class LiveMediaConnection {
       if (!track) return this.set(kind, { state: 'off', note: kind === 'screen' ? 'Nothing was chosen, so nothing is shared.' : null });
       const sentAs = this.screenMode;
       const result = await this.inOrder(async () => {
-        // Asked to stop (or the connection dropped) while this waited its turn: the track was already stopped, nothing is sent.
-        if (stale()) return drop(stale()!);
+        // Asked to stop (or the connection dropped) while this waited its turn: nothing is sent, and the capture stops (a lost
+        // connection does not stop captures on its own).
+        if (stale()) { track.stop(); this.pending[kind].delete(track); return drop(stale()!); }
         // A camera keeps moving when the encoder is short of CPU or bandwidth (LiveKit would keep a 1080p camera's resolution).
         await local.publishTrack(track, kind === 'screen' ? { ...SCREEN_MODES[sentAs].publish } : kind === 'camera' ? { degradationPreference: 'balanced' } : {});
         // Superseded while publishing: the track was already stopped; take the publication back too.
