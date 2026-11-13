@@ -606,7 +606,6 @@ class ReturnToOrigin(unittest.TestCase):
                 self.assertTrue(kept, "the places are kept while someone reads")
                 self.assertNotIn(secret, page.evaluate("() => JSON.stringify({ ...sessionStorage, ...localStorage })"), "no message text is written to storage")
                 # A confirmed sign-out forgets the places with the drafts.
-                page.get_by_role("button", name=re.compile("Sol Nowak")).click()
                 with page.expect_request(lambda request: request.method == "POST" and request.url.endswith("/api/auth/sign-out")):
                     sign_out(page, no_wait_after=True)
                 expect(page).to_have_url(re.compile(r"/sign-in"))

@@ -406,7 +406,7 @@ class AppShellJourney(unittest.TestCase):
         page.get_by_role("button", name="Create account").click()
         expect(page).to_have_url(f"{ORIGIN}/")
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
-        expect(page.get_by_role("button", name=re.compile(NAME))).to_be_visible()
+        expect(page.get_by_role("link", name=re.compile(rf"{NAME}, Settings$"))).to_be_visible()
         # F-037: a server's company was set up by its first account (check_ui.sh makes that one); a person who signs up
         # later is in no company until invited. The test deployment's fixture route gives this person their own.
         made = page.request.post(f"{ORIGIN}/api/v1/workspaces", headers={"origin": ORIGIN}, data={"name": "Personal"})
@@ -795,6 +795,7 @@ class AppShellJourney(unittest.TestCase):
         expect(page.get_by_role("dialog", name="Account")).to_have_count(0)
         account.click()
         expect(page).to_have_url(f"{ORIGIN}/settings")
+        page.get_by_role("link", name=re.compile(r"^Account")).first.click()
         expect(page.get_by_role("heading", name="Account", exact=True)).to_be_visible()
         expect(page.get_by_text(EMAIL)).to_be_visible()
         shot(page, "desktop-1440-account-light")

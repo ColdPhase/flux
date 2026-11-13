@@ -77,7 +77,7 @@ class CompositionProbe(unittest.TestCase):
 
     def settings(self, page, actor):
         page.goto(f"/projects/{actor['project']}")
-        page.get_by_role('link',name='Settings',exact=True).click()
+        page.get_by_role('link',name=re.compile(r', Settings$')).click()
         page.locator('a[href="/settings/notifications"]').first.click()
         expect(page.get_by_role('radio',name=re.compile(r'^Everything(?:\s|$)'))).to_be_visible()
 

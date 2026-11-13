@@ -15,7 +15,10 @@ def account_link(page: Page, name: str | None = None) -> Locator:
 
 
 def open_settings(page: Page, name: str | None = None) -> None:
+    """The name opens Settings; Sign out is in its Account section, one row down the list on a phone and in the list beside the page on a computer."""
     account_link(page, name).click()
+    expect(page.get_by_role("heading", level=1, name="Settings")).to_be_visible()
+    page.get_by_role("link", name=re.compile(r"^Account")).first.click()
     expect(page.get_by_role("heading", name="Account", exact=True)).to_be_visible()
 
 

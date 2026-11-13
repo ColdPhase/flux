@@ -12,7 +12,7 @@ import uuid
 
 from playwright.sync_api import Page, expect, sync_playwright
 
-from account import account_link, open_settings, sign_out_button
+from account import account_link, sign_out_button
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, start_forwarder
 
 PASSWORD = "one way to do each thing"
@@ -123,8 +123,8 @@ class UxSimplicityPartAAccount(unittest.TestCase):
         expect(page).to_have_url(f"{ORIGIN}/settings")
         expect(link).to_have_attribute("aria-current", "page")
         # Sign out is in Settings › Account.
+        page.get_by_role("link", name=re.compile(r"^Account")).first.click()
         expect(sign_out_button(page)).to_be_visible()
-        open_settings(page, ADA["name"])
 
 
 if __name__ == "__main__":
