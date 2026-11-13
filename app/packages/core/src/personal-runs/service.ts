@@ -228,7 +228,6 @@ export async function runView(ports: PersonalRunPorts, record: RunRecord): Promi
   };
 }
 
-
 /** The run holding the owner's lane, for the line of a request waiting behind it (AST-6 "Queue"). */
 async function behindView(ports: PersonalRunPorts, record: RunRecord): Promise<AssistantRunBehind | null> {
   const working = await ports.runs.workingOf(record.ownerUserId);
