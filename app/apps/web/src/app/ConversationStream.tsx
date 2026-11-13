@@ -469,7 +469,9 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
     if (feed) {
       const place = { id: element.id, offset: element.getBoundingClientRect().top - feed.getBoundingClientRect().top };
       anchorRef.current = place;
-      if (openRef.current === revealRoot.conversationId) pinRef.current = place;
+      // A root shown without its thread (a search result nobody replied to, #1424) is the place to keep: the root of a thread that was open
+      // before is not, or the panel leaving would bring the stream back to it.
+      pinRef.current = openRef.current === revealRoot.conversationId ? place : null;
     }
     if (arrived === revealRoot.message.id) element.focus({ preventScroll: true });
     // Once per link: later refreshes of the same root never move the reader.

@@ -644,7 +644,7 @@ class AppShellJourney(unittest.TestCase):
                 # panel of its own (#1419). A narrower header may move People and Call in front of them (Spokój rule 3).
                 self.assertEqual(geometry["labels"][-2:], ["Settings", "Mute space"], f"the space's rows, in order: {geometry}")
                 self.assertFalse([label for label in geometry["labels"] if re.search("sidebar|details", label, re.I)], f"no row for the sidebar or details: {geometry}")
-                self.assertEqual([text for text in geometry["rowTexts"] if not text.startswith("Mute")], ["Settings"], f"Settings is the plain row: {geometry}")
+                self.assertEqual([text for text in geometry["rowTexts"] if not text.startswith("Mute") and text not in ("People", "Call")], ["Settings"], f"Settings is the space's plain row: {geometry}")
                 self.assertGreaterEqual(len(geometry["rowHeights"]), 1, f"Settings is shown: {geometry}")
                 self.assertEqual(len(geometry["hintedHeights"]), 1, f"Mute space is the one row with a hint line: {geometry}")
                 if device == "tablet":
