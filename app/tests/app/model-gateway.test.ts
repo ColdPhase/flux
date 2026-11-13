@@ -416,6 +416,21 @@ describe('money and limits', () => {
     await gateway.close(run.id);
   });
 
+  test('one run holds only its share of the bound, so its places never make other runs wait (security review of #1444, P3-3)', async () => {
+    const run = await runOn('anthropic', 'claude-sonnet-5');
+    const small = createModelGatewayServer({ gateway, policy: parsePrivateTargets('127.0.0.1'),
+      limits: { ...LIMITS, bodiesInFlightBytes: 1024 * 1024, bodiesInFlightPerRunBytes: 1024 }, resolveKey: async () => KEY, upstreams: { anthropic: `${mockUrl}/anthropic` } });
+    const port = await listen(small);
+    try {
+      const answer = await fetch(`http://127.0.0.1:${port}/anthropic/v1/messages`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': run.token },
+        body: JSON.stringify({ ...body, messages: [{ role: 'user', content: 'x'.repeat(4096) }] }) });
+      assert.equal(answer.status, 429, 'past the run\'s share, though the worker\'s bound has room');
+      assert.equal(answer.headers.get('x-should-retry'), 'true');
+      assert.equal((await row(run.id)).reserved_micros, 0, 'nothing held');
+    } finally { small.close(); }
+    await gateway.close(run.id);
+  });
+
   test('a request larger than the bound is refused', async () => {
     const run = await runOn('anthropic', 'claude-sonnet-5');
     const answer = await call('/anthropic/v1/messages', run.token, { ...body, messages: [{ role: 'user', content: 'x'.repeat(70 * 1024) }] });

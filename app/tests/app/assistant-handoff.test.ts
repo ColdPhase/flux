@@ -1,24 +1,27 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { before, beforeEach, describe, test } from 'node:test';
+import { after, before, beforeEach, describe, test } from 'node:test';
 import {
   assistantChangeActionPath, assistantChangeLine, assistantRunChangesActionPath, assistantRunChangesPath, ASSISTANT_UNIT_CREATE_VIEW,
   type AssistantChange, type AssistantRunUndone,
 } from '@flux/contracts';
-import { assistantHandoffRunId, type PersonalComputeResult } from '@flux/core';
+import { assistantHandoffRunId } from '@flux/core';
 import { db, pool } from './support/db.js';
 import { agentConnection, toolFailure } from './support/mcp-actions.js';
 import { mcp, toolValue } from './support/mcp.js';
 import { expectStatus, grant, removeFromSpace, type Person } from './support/people.js';
+import { startPiRuntime, type PiRuntime } from './support/pi-runtime.js';
 import { assistantScene, changesOf, text, type AssistantScene, type Message } from './support/assistant-scene.js';
 import { assistantChangeUseCases } from '../../apps/server/src/assistant/changes.js';
 
 // F-027 A3/A4 (#403, #404): the owner's assistant hands a task to one of the owner's OWN external agents (AST-3 "Hand-offs between the owner's
 // agents", the bounded co-work amendment of 2026-10-10), with the controls of AST-3.2, AST-5.2, AST-5.4 and AST-6.2: the run-private catalog,
 // strict input, the recipient and separation rules, "Ask me first" and an owner Apply long after the run ended, Undo before and after the
-// recipient started, and the held races. The recipient is a real OAuth connection with its own grant; no model, CLI or account is used.
+// recipient started, and the held races. The recipient is a real OAuth connection with its own grant; no model, CLI or account is used (the one
+// run the worker takes up is pi in the agent runtime, #1441, RT-1, on a scripted model gateway).
 
 let scene: AssistantScene;
+let pi: PiRuntime;
 type Recipient = Awaited<ReturnType<typeof recipient>>;
 let codex: Recipient; let jonasAgent: Recipient;
 
@@ -38,10 +41,12 @@ const claim = (r: Recipient, unitId: string, expectedVersion: number) =>
 
 describe('hand-offs from the owner\'s assistant to the owner\'s own agents (F-027 A3/A4, #403/#404)', () => {
   before(async () => {
-    scene = await assistantScene('ah');
+    pi = await startPiRuntime();
+    scene = await assistantScene('ah', { pi });
     codex = await recipient(scene.owner, 'Codex');
     jonasAgent = await recipient(scene.peer, 'Jonas Codex');
   });
+  after(async () => { await pi.close(); });
   beforeEach(async () => { await scene.reset(); });
 
   const handoff = (live: Awaited<ReturnType<AssistantScene['liveRun']>>, task: { id: string; version: number }, key: string,
@@ -193,7 +198,7 @@ describe('hand-offs from the owner\'s assistant to the owner\'s own agents (F-02
     assert.deepEqual(Object.keys(row!.prepared_command!.args).sort(), ['assignmentConnectionId', 'clientCommandId', 'expectedTaskVersion', 'parent', 'peerRequestClass', 'projectId', 'taskId', 'unitKey']);
     await scene.complete(live.runId);
     const runs = Number((await pool.query(`SELECT count(*)::int AS n FROM personal_runs`)).rows[0].n);
-    const dispatched = scene.compute.dispatched.length;
+    const requests = pi.gateway.requests.length;
     const applied = expectStatus(await scene.owner.browser.request('POST', assistantChangeActionPath(row!.id, 'apply'), { body: { expectedVersion: row!.version } }), 200) as { change: AssistantChange };
     assert.equal(applied.change.state, 'applied_after_wait');
     assert.equal(applied.change.line, 'Approved by ah-ada');
@@ -204,7 +209,7 @@ describe('hand-offs from the owner\'s assistant to the owner\'s own agents (F-02
     assert.equal(after!.receipt!.approvedBy, scene.owner.id);
     assert.equal(after!.receipt!.preparedBy, scene.agentId);
     assert.equal(Number((await pool.query(`SELECT count(*)::int AS n FROM personal_runs`)).rows[0].n), runs, 'no run was made or revived');
-    assert.equal(scene.compute.dispatched.length, dispatched, 'no provider call');
+    assert.equal(pi.gateway.requests.length, requests, 'no model request');
     assert.equal((await pool.query(`SELECT status FROM personal_runs WHERE id = $1`, [live.runId])).rows[0].status, 'completed');
     expectStatus(await scene.owner.browser.request('POST', assistantChangeActionPath(row!.id, 'apply'), { body: {} }), 409);
     assert.equal((await units(task.id)).length, 1, 'a replay creates nothing more');
@@ -396,26 +401,22 @@ describe('hand-offs from the owner\'s assistant to the owner\'s own agents (F-02
     assert.deepEqual([after!.state, after!.authority, after!.receipt], ['refused', null, null]);
   });
 
-  test('AST-3.2 (both engines): a fake provider on the `server` engine prepares the same private intent through the worker\'s tool loop, and the plain result reaches it', async () => {
+  test('AST-3.2: an API-key agent in pi prepares the same private intent through Flux\'s MCP route, and the plain result reaches it', async () => {
     await scene.setMayDo('ask');
-    const task = await scene.task(scene.owner, 'Server engine hand-off');
-    const input = { clientCommandId: randomUUID(), peerRequestClass: 'review', taskId: task.id, unitKey: 'server', expectedTaskVersion: task.version,
+    const task = await scene.task(scene.owner, 'Pi hand-off');
+    const input = { clientCommandId: randomUUID(), peerRequestClass: 'review', taskId: task.id, unitKey: 'pi', expectedTaskVersion: task.version,
       assignmentConnectionId: codex.connectionId, parent: null };
-    const replies: PersonalComputeResult[] = [
-      { kind: 'completed' as const, text: 'handing', stopReason: 'tool_use', usage: { inputTokens: 300, outputTokens: 20 }, toolCalls: [{ id: 'c1', name: 'flux_create_unit', input }] },
-      { kind: 'completed' as const, text: 'Asked Ada first.', stopReason: 'end_turn', usage: { inputTokens: 300, outputTokens: 20 } },
-    ];
-    scene.compute.respond = async () => replies.shift()!;
+    pi.gateway.script([{ tool: 'mcp__flux__flux_create_unit', args: input }, { text: 'Asked Ada first.' }]);
     const started = await scene.runs.invoke({ kind: 'human', id: scene.owner.id }, scene.thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Ask my Codex to review it' });
-    assert.equal(await scene.processor.process(started.run.id), 'completed');
-    const toolTurn = JSON.stringify(scene.compute.dispatched[1]?.turns ?? []);
-    assert.ok(toolTurn.includes('Waiting for ah-ada') && toolTurn.includes('hand off task'), 'the provider got the plain result');
+    assert.equal(await scene.processor!.process(started.run.id), 'completed', JSON.stringify(pi.lastPi()));
+    const plain = pi.gateway.requests[1]!.results[0] ?? '';
+    assert.ok(plain.includes('Waiting for ah-ada') && plain.includes('hand off task'), `the model got the plain result: ${plain}`);
     const [row] = await changesOf(started.run.id);
     assert.deepEqual([row!.state, row!.prepared_command!.view, row!.prepared_command!.args.assignmentConnectionId, row!.prepared_command!.args.peerRequestClass],
       ['waiting', ASSISTANT_UNIT_CREATE_VIEW, codex.connectionId, 'review']);
-    const dispatched = scene.compute.dispatched.length;
+    const requests = pi.gateway.requests.length;
     expectStatus(await scene.owner.browser.request('POST', assistantChangeActionPath(row!.id, 'apply'), { body: {} }), 200);
-    assert.equal(scene.compute.dispatched.length, dispatched, 'Apply runs no engine');
+    assert.equal(pi.gateway.requests.length, requests, 'Apply runs no engine');
     assert.deepEqual((await units(task.id)).map((item) => [item.role, item.state]), [['review', 'pending']]);
   });
 

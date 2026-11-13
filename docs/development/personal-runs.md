@@ -12,6 +12,15 @@ history, which could only record a result, went with the Result object (#1054).
 above is the history of #68; read [Places and private answers](#places-and-private-answers-842)
 for what holds now.
 
+**Since v0.2.1 (#1441, founder decision 2026-11-13) every agent runs in the agent runtime, and the worker has no agent loop of its own.**
+A plan runs in its vendor's CLI and every API key in pi. The key stays in the worker: its model gateway passes pi's requests on to the
+provider and meters each one against the key's daily budget. Without the runtime (or without `pi` in `FLUX_AGENT_RUNTIME`) a key run ends
+`unavailable` at zero cost. The contract is in [ai-modes.md](../product/ai-modes.md#rt-1--engines-on-the-server) (RT-1; the gateway in
+RT-4; the tools in RT-5); this page covers what the worker, the API and the database do around such a run. The loop that sent the model its
+numbered sources, fitted and counted its input, reserved a run's money up front and ran the tools itself is gone, with page notes (#1113),
+the provider's built-in search inside a run and its refusal memory, the `pause_turn` continuation, the loop's step limits and the
+answer-only mode for a model that cannot call tools. Only a model that calls tools can be an agent (RT-1 point 2).
+
 **Production still fails closed.** Slice 2 adds the UI, owner-only progress events
 and the real Anthropic adapter, but there is still no key storage. The owner's key
 connection belongs to [#124](https://github.com/ColdPhase/flux/pull/124). Until it
@@ -19,14 +28,14 @@ lands, production composes no connection lookup and the provider switch off. So
 enabling fails with `PERSONAL_RUN_CONNECTION_REQUIRED`, every invocation fails with
 `503 PERSONAL_RUN_UNAVAILABLE`, the worker ends any queued run as `unavailable` at
 zero cost, and the UI says exactly that. Runs past dispatch are tested with the
-fakes in `app/tests/app/support/personal-runs.ts` (API suite) and, in the browser
-suite, with the real adapter against a mock provider server (see
+fakes in `app/tests/app/support/personal-runs.ts` and the real pinned pi in a test runtime whose model is a
+script (API suite) and, in the browser suite, with pi and Flux's model gateway against a mock provider server (see
 [Test-only switch](#test-only-switch)). No test is a provider, billing or
 compatibility pass.
 
 **Any provider (F-020, #179).** A run goes to the owner's connection, whatever its provider kind
-and model: the same use cases, rechecks, reservation and commit, with the wire format chosen by
-the adapter registry of `@flux/agent-runtime`. See [AI providers](ai-providers.md). The production
+and model: the same use cases, rechecks and commit. pi sends the model requests in the provider's own wire format to the model gateway,
+which holds the key; the adapter registry of `@flux/agent-runtime` serves `flux_web_search`. See [AI providers](ai-providers.md). The production
 connection lookup is still `noPersonalConnections`.
 
 ## Layout
@@ -34,15 +43,17 @@ connection lookup is still `noPersonalConnections`.
 | Path | Role |
 | --- | --- |
 | `app/packages/contracts/src/personal-runs.ts` | Paths, wire types, the consent versions (`o-008-2026-10-02` for new consents; `o-008-2026-09-28` stays valid for Anthropic) and the O-008 limits (`PERSONAL_RUN_LIMITS`), the same for every provider. |
-| `app/packages/core/src/personal-runs/` | Ports, input and output rules, use cases (`service.ts`), and the worker processor (`processor.ts`). |
+| `app/packages/core/src/personal-runs/` | Ports, input and output rules, use cases (`service.ts`), the worker processor (`processor.ts`, which hands every run to `runtime-run.ts`: a key to pi, a plan to its CLI), the brief and `key-search.ts` (`flux_web_search`). |
 | `app/packages/core/src/access/personal-run-access.ts` | The access policy as the `PersonalRunAccess` port. |
 | `app/packages/core/src/access/policy.ts` | New agent action `agent.invoke`: only the person who owns the unrevoked agent. A workspace role never grants it. |
 | `app/packages/db/migrations/0001_v0_1_baseline.sql`, `app/packages/db/src/repositories/personal-runs.ts` | Tables and rows. |
 | `app/apps/server/src/personal-runs/` | Routes and the per-transaction composition. The server only queues runs. |
-| `app/apps/worker/src/personal-runs/` | The `personal-run.dispatch.v1` handler and its composition (`composition.ts`). The queue never retries a job (`PERSONAL_RUN_QUEUE`). |
+| `app/apps/worker/src/personal-runs/` | The `personal-run.dispatch.v1` handler and its composition (`composition.ts`), the run token issuer (`run-tokens.ts`) and the runtime engine (`runtime-engine.ts`). The queue never retries a job (`PERSONAL_RUN_QUEUE`). `mcp-session.ts`, the worker's old MCP client of `/mcp`, is no longer used by a run; it stays in the tree for `mcp-tool-catalog.test.ts`. |
+| `app/packages/core/src/model-gateway/`, `app/apps/worker/src/model-gateway/` | Flux's model gateway: it holds the key and holds and charges each request of a key run ([RT-4](../product/ai-modes.md#the-model-gateway-1441)). |
+| `app/apps/server/src/agent-connection/web-search.ts` | `flux_web_search`, the search of an API-key agent ([below](#web-search-954-1441)). |
 | `app/packages/core/src/personal-runs/progress.ts` | Owner-only progress events (`assistant_run.changed.v1`). |
 | `app/packages/core/src/access/policy.ts` (`evaluateAssistantRun`) | The `assistant_run` object: its only reader is the run's owner. |
-| `app/packages/agent-runtime/src/anthropic.ts`, `responses.ts`, `openai-compatible.ts`, `registry.ts` | The adapters behind `PersonalCompute`, one per wire format (`@anthropic-ai/sdk` 0.129.0, pinned; fetch clients for OpenAI's Responses API and for Chat Completions), and `providerPersonalCompute`, which picks one by the connection's provider. |
+| `app/packages/agent-runtime/src/anthropic.ts`, `responses.ts`, `openai-compatible.ts`, `registry.ts` | The adapters behind `PersonalCompute`, one per wire format (the Anthropic SDK, pinned, and fetch clients for OpenAI's Responses API and for Chat Completions), and `providerPersonalCompute`, which picks one by the connection's provider. Since #1441 the one caller of `dispatch` is `flux_web_search`; the worker's checks read only `enabled`. |
 | `app/apps/web/src/assistant/` | The UI (AC-8): ask mode, working line, answers, settings. |
 | `app/packages/core/src/personal-runs/test-fixture.ts`, `app/tests/ui/anthropic_mock.py` | TEST ONLY: fixture key connections and the mock provider of the browser suite. |
 
@@ -54,18 +65,18 @@ connection lookup is still `noPersonalConnections`.
   never sees key material. Production composes `noPersonalConnections` until the
   real lookup over #124's custody is wired (#68).
 - `PersonalCompute` has `enabled` (the instance operator's switch, O-008 §6), an
-  optional `countInputTokens` (a provider count, which may only raise the Flux
-  estimate) and `dispatch(request, signal)`. A dispatch is one bounded request to
-  the connection's provider and model, at most 1500 output tokens, low effort where
-  the wire format has it, and no tools unless the run has the Flux tools of the [tool loop](#tool-loop-f-027-ast-8-406-first-part). The result is either `completed` with text,
+  optional `countInputTokens` (nothing calls it any more: no run's input is counted before it is sent) and `dispatch(request, signal)`. A dispatch is one bounded
+  request to the connection's provider and model, at most 1500 output tokens, low effort where the wire format has it. The worker's
+  standing checks read only `enabled`; since #1441 the one caller of `dispatch` is `flux_web_search`
+  (see [Web search](#web-search-954-1441)). The result is either `completed` with text,
   `stopReason` and usage (with the provider-reported cost when there is one), or
   `failed` with `billed: 'none' | 'unknown'`. Production composes
-  `unavailablePersonalCompute`; the adapters are described below.
+  `unavailablePersonalCompute` while the switch is off; the adapters are described below.
 - `PersonalRunUnitOfWork` bundles, in one transaction, the access port, the rows,
   the queue (the job is sent in the same transaction) and the event log.
 
 **Price and model (F-020).** The model and its price belong to the owner's connection
-(see [AI providers](ai-providers.md#prices-reservations-and-the-input-bound)); there is no
+(see [AI providers](ai-providers.md#prices-and-the-gateways-holds)); there is no
 pinned model. Claude Sonnet 5 is in Flux's price table at $2/M input and $10/M output, read
 from the Anthropic [pricing page](https://platform.claude.com/docs/en/about-claude/pricing)
 on 2026-10-02 (2026-09-30: the page called it the standard price, and the scheduled rise to
@@ -77,9 +88,9 @@ $3/$15 "will not occur"). Check again when production dispatch is switched on.
 the adapter of the connection's wire format: `anthropicPersonalCompute` for Anthropic Messages,
 `openAiResponsesPersonalCompute` for OpenAI (the Responses API, #954), and `openAiCompatiblePersonalCompute`
 for OpenRouter, Gemini's compatible endpoint and OpenAI-compatible servers. All use the guarded transport, refuse a request outside the O-008
-limits before a key is resolved, send no tools unless the run offers its Flux tools (see
-[Tool loop](#tool-loop-f-027-ast-8-406-first-part)) and never retry; the Chat Completions details are
-in [AI providers](ai-providers.md#provider-kinds-and-wire-formats).
+limits before a key is resolved and never retry; the Chat Completions details are
+in [AI providers](ai-providers.md#provider-kinds-and-wire-formats). A run's own model requests do not go through them: pi sends them in
+the provider's wire format to the model gateway ([RT-4](../product/ai-modes.md#the-model-gateway-1441)).
 
 `anthropicPersonalCompute({ enabled, resolveKey, baseURL?, timeoutMs?, policy? })` implements
 `PersonalCompute` with the official SDK:
@@ -95,8 +106,8 @@ in [AI providers](ai-providers.md#provider-kinds-and-wire-formats).
   keys are sent as `Authorization: Bearer`"): the key is still the owner's, passed as the client's explicit `apiKey`, so the
   environment and the SDK's profile lookup are never consulted;
 - `messages.create({ model, max_tokens, system, messages: [user input], output_config: { effort: 'low' } })`
-  with no tools, and the `AbortSignal` of the owner's Stop;
-- `messages.countTokens` with the same model, system and input for the preflight;
+  with no tools (a `flux_web_search` request adds the provider's hosted search and nothing else), and an `AbortSignal`;
+- `messages.countTokens` with the same model, system and input, which nothing calls any more (no preflight count, #1441);
 - a request outside the O-008 limits (a malformed model id, `max_tokens` above 1500, another
   effort) is refused before a key is resolved;
 - usage: `input_tokens` plus cache tokens counted conservatively (reads as full input,
@@ -105,25 +116,24 @@ in [AI providers](ai-providers.md#provider-kinds-and-wire-formats).
   key is resolved, and an endpoint the guard refuses) is `billed: 'none'`. Every failure after the
   request reached the provider — 429 `rate_limited`, 529 and 503 `overloaded`, other 4xx and 5xx
   `provider_error`, timeouts, lost
-  connections and aborts — is `billed: 'unknown'` and keeps the reservation counted: the
+  connections and aborts — is `billed: 'unknown'`: the
   provider's error and pricing references (checked 2026-09-30) define these errors but promise
-  no billing outcome. Token counting is free per the provider's documentation. Retry is a new
-  capped run. A failed preflight count ends the run as `provider_failed` at
-  zero cost (nothing was dispatched).
+  no billing outcome, so `flux_web_search` charges such a request all it held. Token counting is free per the provider's documentation.
+  Retry is a new run.
 
-## Tool loop (F-027 AST-8, #406 first part)
+## Tool calling in the adapters (F-027 AST-8.1, #406)
 
-Contract: [F-027 AST-8](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/assistant.md#ast-8--engines-the-server-tool-loop-and-the-runtime).
-This part is the provider side and the loop's limits; the tools themselves are the worker's MCP
-client of `/mcp` with the run token (below, #484). With the provider switched on the worker composes
-that `PersonalToolHost` and the API composes `toolTurns` (10); switched off, every run stays one request.
+Until #1441 the worker drove these adapters in a tool loop of its own (F-027 AST-8). That loop is deleted: an API-key agent works in pi in
+the agent runtime, which calls the Flux tools itself over MCP ([RT-1](../product/ai-modes.md#rt-1--engines-on-the-server),
+[RT-5](../product/ai-modes.md#rt-5--tools)). Nothing in the worker offers tools to a provider, reserves a run's money up front or
+reconciles its requests one by one; a run's requests are held and charged by the model gateway
+([RT-4](../product/ai-modes.md#the-model-gateway-1441), [Money](#money)). The adapters still speak tool calls in every wire format: the
+connect-time tool check of RT-1 (one request with one `ping` tool) will use them, and `flux_web_search` uses the adapters.
 
-- **Port.** `PersonalComputeRequest` gains optional `tools` (neutral `PersonalTool`: name,
-  description, JSON Schema) and `turns` (the earlier turns, each with the calls the model made,
-  the results that came back and `replay`, the provider's own assistant message). A completed
-  result gains the stop reason `tool_use` with `toolCalls`, only when tools were offered and the
-  answer was neither cut off nor refused. Without `tools` the request has no `tools` key on the
-  wire. One `dispatch` is still exactly one HTTP request.
+- **Port.** `PersonalComputeRequest` has optional `tools` (neutral `PersonalTool`: name, description, JSON Schema) and `turns` (the earlier
+  turns, each with the calls the model made, the results that came back and `replay`, the provider's own assistant message). A completed
+  result has the stop reason `tool_use` with `toolCalls`, only when tools were offered and the answer was neither cut off nor refused.
+  Without `tools` the request has no `tools` key on the wire. One `dispatch` is exactly one HTTP request.
 - **Wire formats** (`@flux/agent-runtime` `tool-wire.ts`, shapes read 2026-10-11 from the vendors'
   documentation): Anthropic Messages writes `tools[].input_schema`, reads `tool_use` blocks and
   returns `tool_result` blocks first in one user message with `is_error`; Chat Completions
@@ -131,93 +141,47 @@ that `PersonalToolHost` and the API composes `toolTurns` (10); switched off, eve
   `tools[].function.parameters`, reads `tool_calls` (a JSON-string `arguments`; not an object
   means `invalid`, never run) and returns one `role: "tool"` message per call, with failures
   starting "Error: ". `tool_choice` is never sent. The provider's own assistant message is sent
-  back unchanged, so reasoning blocks and thought signatures survive. The Anthropic token count
-  carries the tools and the turns. `checkRequestLimits` refuses a bad tool name, schema,
+  back unchanged, so reasoning blocks and thought signatures survive. `checkRequestLimits` refuses a bad tool name, schema,
   duplicate, more than 64 tools, a turn whose calls and results do not match one to one, more
   turns than the cap, and tools offered to a model Flux knows cannot call them, all before a key
   is resolved.
-- **No-tools model** (AST-8.3). `connectionCallsTools`: false when the owner marked the model
-  (`PersonalConnection.toolCalling === false`) or Flux's dated table `AI_MODELS_WITHOUT_TOOL_CALLING`
-  lists it. The table is empty since #954: OpenAI's function-calling guide (read 2026-10-11) says GPT-6
-  Astra and GPT-6.1 Sol need the Responses API for tool calling, which Flux now speaks to OpenAI.
-  Persisting the owner's mark and the account row's "This model can answer but can't make changes"
-  are not part of this change.
-- **Reservation** (#854). `budgetedReservationMicros`: when the worker claims the run, turns × the
-  largest request of a tool run (64,000 × input price + 4,000 × output price;
-  `PERSONAL_RUN_LIMITS.maxToolInputTokens`, #484, #843), never above what is left of the key's one daily
-  budget and never below one request. Asking only checks what the key has already been charged today;
-  a run that finds not even one request's room left waits, queued, for the key's next day
-  (`end_reason = 'budget'`, `resume_at`). `PERSONAL_RUN_LIMITS.maxTurns` is 200, a safety bound.
-- **The loop** (`core/personal-runs/tool-loop.ts`, driven by the processor when its `tools` host
-  returns a session with tools). It sends the first request, and while the model asks for tools
-  checks, before running anything it asked for, the turn bound, the money reservation (the largest
-  possible next request must still fit what the reservation has left) and the clock (one hour,
-  `RUNTIME_RUN_LIMITS.wallClockSeconds`);
-  runs each call once through the session (a call the provider could not state as JSON, or outside the
-  offered tools, is answered with an error and never sent); rechecks the run's standing (stop,
-  enablement, connection, access, the key's daily budget; the same recheck as before a dispatch) before the calls
-  and before the next request; and bounds the next request's input like the first. A run that
-  reaches a bound ends **`cap_reached`** with `stopped_at_stage = before_dispatch`, cost `observed`,
-  nothing posted and its own `end_reason` (`budget`, `max_turns`, `wall_clock` or `input_too_large`);
-  the calls already made stay made.
-- **Per-request reconciliation** (PROV-3). Each response is charged at the connection price or as the
-  provider reported it, within what is left of the reservation. A request outside its token limits,
-  or one that would take the run above its reservation, is a lost response: cost `unknown`, charge 0,
-  the earlier requests and the most this one could have cost stay counted and the rest of the
-  reservation goes back (#854), nothing posted (`provider_failed`), the earlier calls kept. A
-  request that failed after it may have been billed does the same; one that was never sent
-  (`billed: none`) keeps the earlier requests' charge. A run's input and output tokens are the sums
-  over its requests.
 - **Tests.** `provider-tool-calling.test.ts` (AST-8.1: every wire format against documented-shape
-  fixtures in `support/provider-tool-fixtures.ts`, a local mock server), `personal-runs-tool-loop-core.test.ts`
-  (reservation, reconciliation and the loop with fakes) and `personal-runs-tools.test.ts` (AST-8.2 and AST-8.3
-  through the real worker and database, with a fake provider and a fake tool session).
+  fixtures in `support/provider-tool-fixtures.ts`, a local mock server) and `personal-runs-tools.test.ts` (an API-key run through the real
+  worker, runtime manager, supervisor and database with the real pinned pi and a scripted stand-in for the gateway: the standing checks before, during and at the
+  end of the run, the commit and the cost). `personal-runs-tool-loop-core.test.ts`, which covered the loop's reservation and
+  reconciliation with fakes, went with the loop.
 
-## Web search (#954)
+## Web search (#954, #1441)
 
 Contract: [AG-8](../product/assistant.md#ag-8--what-server-agents-may-do), C-29 and C-30 (founder direction 2026-11-08; no limit on searches or
-pages, founder direction 2026-11-09, #1113).
+pages, founder direction 2026-11-09, #1113). Which engine searches how, and why pi has a Flux tool for it, is
+[RT-5](../product/ai-modes.md#rt-5--tools) ("pi's web search").
 
-- **What is offered.** A run with tools (`session` non-null) on a provider with its own search
-  (`AI_PROVIDERS[kind].searchesWeb`: Anthropic, OpenAI), while the worker's `FLUX_WEB_READS` is on (the
-  default; `webSearchSwitch`, the same variable the API reads for `flux_read_web`), gets
-  `PersonalComputeRequest.webSearch`. The Anthropic adapter adds `{ type: 'web_search_20250305', name:
-  'web_search' }` (the basic version every model and platform has; no `max_uses`: a run searches as much as its question needs, #1113);
-  the Responses adapter adds `{ type: 'web_search', external_web_access: false }` with `include: ['web_search_call.action.sources']` and no
-  `max_tool_calls`.
-  Chat Completions has none, and `checkRequestLimits` refuses `webSearch` there or without tools. A model in
-  `AI_MODELS_WITHOUT_WEB_SEARCH` (o3-mini, checked 2026-11-09) is not offered it. Every run with tools is told in
-  its brief whether it can search (`buildBrief` with `webSearch`: `WEB_SEARCH_LINE`, and the search results as readable
-  addresses in the web rule; `NO_WEB_SEARCH_LINE` otherwise). The runtime engine's brief has `RUNTIME_WEB_SEARCH_LINE`
-  on Claude Code or Codex with the switch on (see "The CLI's own search" below).
-- **A refused search.** When the provider refuses the tool, recognised only from the error's own `type` and `message`
-  (`anthropicSearchRefusal`: a 400 `invalid_request_error` saying web search is not enabled, an organization whose admin
-  turned it off; `openAiSearchRefusal`: a 400 `invalid_request_error` saying the tool `web_search` is not supported, a model
-  without it), the adapter returns `searchRefused` with `billed: 'none'`; the loop sends the same request once more
-  without the search (`withoutSearch`: the brief built again with `webSearch: false`) in the same turn. Anthropic's token
-  count carries the search tool too: a refusal there throws `WebSearchRefusedError`, and the preflight `fit` and the
-  loop's count count again without the search. Either way the worker does not offer the search to that key's model for
-  6 hours (`searchRefusedUntil`, in memory), and a Connect AI budget is checked without search room for a model in
-  `AI_MODELS_WITHOUT_WEB_SEARCH`.
+- **What is offered.** Reading a page is `flux_read_web` on every engine. An agent on Claude Code or Codex searches with its CLI's own search
+  (below). An agent on an API key runs in pi, which has none, so it has `flux_web_search`: a Flux MCP tool that the run token's mint adds to a
+  pi run (the worker says the run is in pi; the run's engine is `server`) whose key's provider has a hosted search for the run's model
+  (`aiModelSearchesWeb`: `AI_PROVIDERS[kind].searchesWeb`, Anthropic and OpenAI, and not a model in `AI_MODELS_WITHOUT_WEB_SEARCH`), in every
+  place where the run may read the web, while `FLUX_WEB_READS` is on (the default). The API registers it only where it can open the key
+  (`keyWebSearcher`: the operator's `FLUX_PERSONAL_RUNS=on` and the instance key). A key whose provider has none (OpenRouter, Gemini,
+  OpenAI-compatible and self-hosted) has no such tool; its brief says it has no web search.
+- **What one search is.** The Flux server runs one request with the run owner's key and model through the provider's hosted search, with
+  no other tool and Flux's own short instruction (`KEY_SEARCH_SYSTEM`; the query goes in the user message): Anthropic's
+  `{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }`, OpenAI Responses' `{ type: 'web_search', external_web_access: false }`
+  with `max_tool_calls: 3` and `include: ['web_search_call.action.sources']`. At most 3 searches (`KEY_SEARCH_LIMITS.searches`), 1,500 output
+  tokens and a 300-character query. The tool's answer is the provider's text (at most 16,000 characters), the result addresses and a note
+  that all of it is data. The loop's own search (no `max_uses`, the refusal memory and its retry without the tool) is gone: a provider that
+  refuses the tool, or a request that fails, is the tool's error (`WEB_SEARCH_BUDGET`, `WEB_SEARCH_UNAVAILABLE`, `WEB_SEARCH_FAILED` or `WEB_SEARCH_NO_SEARCH`), and
+  the agent goes on without it.
 - **What comes back.** The adapters read the provider's structured answer, never the model's words:
   Anthropic's `server_tool_use` queries, `web_search_tool_result` addresses and `web_search_result_location`
   citations; OpenAI's `search` actions' queries and `action.sources` and the message's `url_citation`
   annotations (`WebSearchFound`). An `open_page` or `find_in_page` action's address is the model's choice and is
   never taken (the review of #1073). Usage gains `webSearches` (Anthropic's
-  `usage.server_tool_use.web_search_requests`, OpenAI's number of `web_search_call` items). The replay of a
-  turn carries Anthropic's own blocks unchanged (it needs the results' `encrypted_content`); on OpenAI it is the
-  model's words and its function calls without item ids (`responsesReplay`): no reasoning is carried between
-  turns and no encrypted reasoning is asked for.
-  A `pause_turn` (#1116) is continued: without `max_uses` a request that searches ten times in one turn reaches the server's own loop limit and
-  pauses, and the adapter returns it as `stopReason: 'pause_turn'` with the paused blocks as `replay`. The tool loop sends them back as the
-  last message (a turn with no call and no result, so no user message follows) and the model goes on. It is one more request like any other,
-  reconciled by itself and held to the turn cap, the money, the clock and the input bound; a pause is never the run's answer. Unverified
-  without a real key: the Docker mock only has the documented shape.
-- **Before the calls.** The loop awaits `onWebSearch` for every response that searched or cites, before
-  any call of that response runs; the processor writes `personal_run_web_searches` (`boundedWebSearch`:
+  `usage.server_tool_use.web_search_requests`, OpenAI's number of `web_search_call` items).
+- **Recorded.** The tool writes `personal_run_web_searches` through `personalRunWebReadRows.addSearch` (`boundedWebSearch`:
   normalized web addresses only, each once, at most 1,000 results and 1,000 cited, 100 queries of 300
-  characters for one response, written in as many rows of `personal_run_web_searches` as they need, since a row holds 10 queries and 100
-  addresses; a run has as many responses as it makes requests). A cited address is listed only when the run's search returned it.
+  characters for one response, written in as many rows as they need, since a row holds 10 queries and 100
+  addresses), like a CLI's search. A cited address is listed only when the run's search returned it.
 - **Any address opens (#1065, founder direction 2026-11-09, C-30; #1136).** `flux_read_web` opens any public address on every engine, and
   refuses one that carries private Flux text the run read (`privateFragmentIn`, `WEB_READ_PRIVATE_TEXT`, with the fragment in its words, the
   same words on every engine). **What is kept** (`keptPrivateText`; `keepPrivateText` does a long text in slices of about 32 KiB with a turn of
@@ -228,7 +192,7 @@ pages, founder direction 2026-11-09, #1113).
   no spaces), a cut being a line break no compared address holds; and each real date, with its time, read as one mark (`datesMarked`: a
   month 1–12, a day 1–31, a year 1900–2099; a time alone is not a date). `addresses`, those links compared the same way, without scheme
   and `www.`, and the link inside a redirect wrapper's query (`?q=`, `?url=`, two deep). The worker writes the brief's private part when the
-  run is dispatched (`briefPrivateText`: names, ids, the agent's instructions and memory, the task, every source given, the earlier exchanges
+  run starts (`briefPrivateText`: names, ids, the agent's instructions and memory, the task, every source given, the earlier exchanges
   and the request, one per line; never Flux's own rules, headings or clock), and the API writes each Flux tool result in `boundRunResult`
   (every part, an error too, a result that is only links too; never `flux_read_web`'s page). `addPrivateText` inserts only while the run is
   `reading` or `dispatching`, with its row share-locked, and migration 0050's trigger deletes the run's rows when its status leaves those
@@ -278,19 +242,9 @@ pages, founder direction 2026-11-09, #1113).
   hyphens for spaces, pieces under 12 characters) is not caught, nor a search query, which runs at the provider or the CLI's vendor before
   Flux sees it: the founder's accepted risk. Link cards fetch nothing for a line an agent that runs on the server wrote
   (`messageReferenceRows.writtenOnServer`, the same rule as who its line notifies), so that fetch cannot carry what a run read past this check.
-- **Input.** The estimate does not count Anthropic's opaque `encrypted_content` and `encrypted_index` byte for
-  byte (`requestParts`); Anthropic's token count, which counts the results as the provider does, may only raise
-  it. A request that offers search has room for the results (`WEB_SEARCH_INPUT_TOKENS`, 50,000 tokens in all, an assumption) in its input
-  bound and its reservation (`personalRunMaxInputTokens(true, true)`); the searches are not counted. What a request that searched reports as
-  input is held to the money the run has left and not to that bound (`reconcileRequest`), because the provider adds the results of every round
-  of its own search loop on its own.
-- **Long research** (#1113). The tool loop keeps the pages the model read and has not noted (`page-notes.ts`: the results of `flux_read_web`
-  that are a page). When a later step's words are at least `PAGE_NOTE_MIN_CHARS` (40) characters long they are the note of every page read
-  before that step: the text of those results is replaced in the turns of every later request by the page's address and title with the line
-  that it was left out and can be read again (`notePages`, `notedPageResult`). The pages that step read are not noted yet: the model has not
-  seen them. Turns are replaced, never changed, so a request already sent keeps what it carried. The brief of an API-key run asks for the note
-  (`PAGE_NOTE_LINE`); the Claude Code and Codex engines are not touched. A page that is never noted stays in later requests, and a run that
-  outgrows the request's input bound ends at it ("Limit reached"). The provider's own search results are replayed unchanged.
+- **Long research.** No page notes (#1113): Flux no longer rewrites what the model has read, and no input bound or fit of Flux's meets pi.
+  pi keeps and manages its own context; the gateway refuses a request that is too large (RT-4: 16 MiB, and its worst cost against the
+  key's day), and a run that has used the key's day ends calmly as "budget" (see [Money](#money)).
 - **Sources.** `webSourcesLine` lists "Searched the web for:" (queries) and "Found on the web:" (cited
   addresses) before "Read on the web:" and "Requested, not read:", at most 20 of each search list (the pages read are all listed), under the
   answer or in the end line (the run view's `webSources`, and the task's discussion).
@@ -298,16 +252,19 @@ pages, founder direction 2026-11-09, #1113).
   "Źródła:" or "References:" block (`withoutOwnSources`), but only a block that runs to the end of the answer and whose every line is a list
   entry of addresses Flux lists, with a short title at most; a paragraph after it, a sentence, an address Flux does not list or words after the
   heading ("References: see X and Y …") leave the answer whole, so nothing the model wrote is cut. Invented citation marks are taken out of
-  the answer on every engine (`withoutInventedMarks`: `[8]`, `[S2]` that no source Flux supplied answers to, and `【…】`; a list `[S1, S2]`
-  keeps the supplied ones for the numbering; not in code, not in an address, not the writer's own "option [1]"). Both are linear in the
+  the answer on every engine (`withoutInventedMarks`: `[8]`, `[S2]` and `【…】`: no run is given numbered sources any more, so none answers to
+  anything; not in code, not in an address, not the writer's own "option [1]"; Flux's own cite marks such as `[doc:ID]` stay for the numbering, C-62). Both are linear in the
   text (no pattern backtracks on an answer of 100 000 characters; `answer-marks.test.ts` times hostile ones). `messageLinkUrls` leaves out
   the addresses of that list, so a link card shows only an address the list does not hold.
-- **Money.** Each search is charged `WEB_SEARCH_MICROS` on top of its tokens, as the provider reports it, and none is reserved
-  (#1113): `nextRequestFits` and `budgetedReservationMicros` hold a request's tokens and the room for results, so a small budget stays usable.
-  A request whose searches take the run above its reservation is a lost response (the reservation is counted as spent, the answer withheld), so
-  what Flux records never passes the key's day; one request's own bill can pass it by that request. A response that reports searches when none
-  were offered is outside its bounds. A key's budget is refused when saved if it cannot hold one request with the room for results on a
-  provider that has a search.
+- **Money.** `flux_web_search` meets the key's daily budget by the model gateway's own rule (RT-4, CA-3), on the run's own row
+  (`runMeter`, under the run's lock, while the run is `dispatching`). Before the request is sent, the most it can cost is held in
+  `reserved_micros` if it fits in what is left of the key's day: 114,000 input tokens (`personalRunMaxInputTokens(true, true)`: the 64,000 of
+  a request with tools and `WEB_SEARCH_INPUT_TOKENS`, 50,000, the room for the results) at the input price, 1,500 output tokens at the
+  output price and 3 searches at `WEB_SEARCH_MICROS` ($0.01 each; Anthropic and OpenAI both list $10 per 1,000, read 2026-11-08)
+  (`keySearchHoldMicros`). A search that does not fit is refused (`WEB_SEARCH_BUDGET`, 429) and nothing is sent. After it, what the
+  provider reported (tokens at the key's price and each search) replaces the hold in `charged_micros`, even when it passes the hold; a
+  request that was never sent, or an error answer the provider documents as free (`billed: 'none'`), is charged nothing; any other failure
+  after the request reached the provider, or an answer with no usable usage, is charged all it held. Nothing is reserved for a run's other requests: they are the gateway's.
 - **The CLI's own search (#1065, RT-5).** With `FLUX_WEB_READS` on, `managerPersonalRuntime(…, { webSearch })` marks the runtime, and a
   run sends `webSearch: true` in the supervisor's run request. Claude Code's template then keeps exactly one built-in, `--tools WebSearch`,
   with `WebSearch` in `--allowedTools` (never `WebFetch`), and the `system/init` read-back (the slot's and `localToolInInit`) accepts it;
@@ -326,10 +283,13 @@ pages, founder direction 2026-11-09, #1113).
   sends its `found` at once, with no addresses. A `user` event that carries several tool results (a CLI running tools in parallel) is not
   read as a search's: each of its searches is `found` with no addresses (checking a real plan's parallel results is for release
   acceptance). Local clients use their own tools.
-- **Tests.** `web-search.test.ts`; the UI test `test_private_ai.py` `test_02b` shows the sources under an
-  `/ai` answer.
+- **Tests.** `web-search.test.ts` (the provider adapters against the Docker mock; a pi run through the real `/mcp` route with a scripted
+  gateway, where `flux_web_search` runs against a stand-in provider and the run lists its searches and the addresses its answer cites),
+  `key-search-adapters.test.ts` (the one search request through the real adapters: the hosted search alone, its bound, its hold and its
+  charge), `agent-runtime-pi-search.test.ts` (pi calling the tool); the UI test `test_private_ai.py` `test_02b` shows the sources under an
+  `/ai` answer. Nothing is a provider pass: real providers are unverified.
 
-## Run token and the worker's MCP client (F-027 A2 and A6, #280, #484)
+## Run token (F-027 A2 and A6, #280, #484)
 
 - **Minting** (`apps/server/src/personal-runs/run-tokens.ts`, INTERNAL `POST /api/internal/v1/personal-runs/:id/run-token`).
   The API is the authorization server: it signs the token with the same JWKS as every MCP access token
@@ -338,8 +298,9 @@ pages, founder direction 2026-11-09, #1113).
   token per run for the owner's `owner_assistant` connection in the run's workspace: `sub` and
   `flux_owner_user_id` the owner, `flux_connection_id`, `scope` `flux.context.read`, `flux_run_id`,
   `flux_place` (project and conversation), `jti`, audience `/mcp`, lifetime `RUN_TOKEN_LIMITS.lifetimeSeconds`
-  (the run's clock plus 300 s). It records the `jti`, the expiry and the exact tools (`assistantRunTools`: the read tools the
-  owner's switches enable, sorted; the co-work bootstrap and playbook never). Every refusal is the same 404.
+  (the run's clock plus 300 s). It records the `jti`, the expiry and the exact tools (`assistantRunTools`: the run's read tools and, where the run may
+  change things, its change tools, sorted; the co-work bootstrap and playbook never; and `flux_web_search` for a key run in pi, #1441,
+  which the worker asks for with `engine: 'pi'`). Every refusal is the same 404.
   Migration 0100 adds the columns; the token itself is never stored.
 - **At `/mcp`** (`agent-connection/run-token.ts`). A bearer with run claims also needs: the run in flight
   for its owner, the minted `jti`, not closed, not expired, not stopped, its place, and the owner's
@@ -373,31 +334,28 @@ pages, founder direction 2026-11-09, #1113).
   message notifies as before. An identity is one or the other: one with a server setup (`assistant_settings`) is a server agent whatever
   else signed in as it, and `POST /api/v1/my-agents {agentId}` refuses a server setup on a local client's identity
   (`AGENT_IS_LOCAL_CLIENT`, 409).
-- **Worker** (`apps/worker/src/personal-runs/mcp-session.ts`, `run-tokens.ts`). `mcpToolHost` mints the
-  token, lists the tools (MCP 2026-07-28, stateless HTTP) and offers the model only the minted ones; a
-  refused call (401/403 or a JSON-RPC error) is an error result; `close` ends the token
-  (`run_token_closed_at`). `FLUX_API_INTERNAL_URL` (default `http://api:8080`). A revoked assistant
-  connection ends a run that holds a token `revoked` at the next standing check.
-- **Ambient context** follows the switches too: with conversations, tasks or maps Off, a `server`
-  request carries none of their messages, open work or selected thought; the owner's request is input.
-- **Tool definitions and the input bound** (2026-10-16, founder direction on #484). Measured with
-  `assistant-run-tokens.test.ts` (a test diagnostic, every switch on): the run lists 18 read tools whose
-  definitions took 14,464 bytes, so at one token per byte (PROV-3) and the 16,000-token bound a fake
-  provider that kept calling `flux_list_contexts` reached the input bound at its 2nd request. Now the
-  definitions take 7,729 bytes (-47%) and ten turns fit. Two changes: the tool descriptions are shorter
-  (`agent-connection/domain-reads.ts`, `bootstrap.ts`, descriptions only; the schemas `/mcp` serves are unchanged), and the
-  worker drops from each schema what costs tokens but tells the model nothing (`compactToolSchema` in
-  `apps/worker/src/personal-runs/mcp-session.ts`: the `$schema` URL, zod's regular expression beside
-  `format: "uuid"`/`"date-time"`, the unbounded safe-integer range; `/mcp` still validates). The
-  per-request input bound of a run with tools is `PERSONAL_RUN_LIMITS.maxToolInputTokens`, now 64,000
-  (`personalRunMaxInputTokens`); a request without tools has 32,000 (#843). There is no per-request
-  money ceiling any more; only the key's one daily budget (#854).
+- **Worker** (`apps/worker/src/personal-runs/run-tokens.ts`). `runTokenIssuer` arms the nonce, asks the API for the token and hands it to
+  the runtime, which gives it to the harness in its own environment variable; the harness (Claude Code, Codex or pi) is the MCP client of
+  `/mcp` (MCP 2026-07-28, stateless HTTP) and offers the model the run's tools. The worker has no MCP client in a run any more:
+  `mcp-session.ts` (`mcpToolHost`, `compactToolSchema`), which the worker's own loop used, is unused and stays in the tree only for
+  `mcp-tool-catalog.test.ts`. `close` ends the token (`run_token_closed_at`) when the run ends. `FLUX_API_INTERNAL_URL` (default
+  `http://api:8080`) is how the worker reaches the API for the token. A revoked assistant connection ends a run that holds a token
+  `revoked` at the next standing check.
+- **What a run is given.** A space's messages and open work are not in the request: the agent reads them with the tools, so what it reads
+  is what its owner can read in the run's place, on every call. A DM's latest messages and a chat's earlier turns are given in the
+  request (no tool reads them; [The brief](#the-brief-1064)).
+- **Tool definitions** (2026-10-16, founder direction on #484). The run's tool definitions are the schemas `/mcp` serves, with short
+  descriptions (`agent-connection/domain-reads.ts`, `bootstrap.ts`), because they are input of every model request. The worker no longer
+  trims schemas or bounds a run's input per request: the harness manages its own context, and the model gateway bounds each request's
+  body and holds its worst cost (RT-4). The measurement of 2026-10-16 (18 read tools, 14,464 bytes before the shortening and 7,729 after) was
+  taken with the worker's loop and its 16,000-token bound and is a record, not a current limit.
 
-## Runs on the owner's own Claude Code (F-022 T5, #280)
+## Runs in the agent runtime (F-022 T5, #280; #1441)
 
-`createRuntimeRunProcessor` (`core/personal-runs/runtime-run.ts`) handles a run whose `engine` is
-`runtime`: the same standing checks before the CLI starts, while it runs (stop, a result bound, a
-revocation, about once a second) and inside the commit; no source reading (the CLI reads through the run
+`createRuntimeRunProcessor` (`core/personal-runs/runtime-run.ts`) handles every run since #1441: one whose `engine` is `runtime` (the owner's
+own Claude Code or Codex) and, with its `key` dependencies, one on an API key (engine `server`), which `processor.ts` hands to it (pi, RT-1).
+Both have the same standing checks before the harness starts, while it runs (stop, a result bound, a
+revocation, about once a second) and inside the commit; no source reading (the harness reads through the run
 token); `RUNTIME_RUN_LIMITS` (#843: no runs a day; safety bounds of 200 turns, one hour of wall clock,
 10 minutes without an event and a 64 KiB answer). A plan limit pauses an owner's
 request: `pauseUntilReset` queues a new run (`retry_of_run_id`, `resume_at` at the reset,
@@ -407,25 +365,21 @@ request: `pauseUntilReset` queues a new run (`retry_of_run_id`, `resume_at` at t
 The worker's `managerPersonalRuntime` resolves the owner's own slot and binding from the database and
 streams the run through `runtime-manager` (`streamManagerRun`); the slot's `run.ts` runs the fixed
 template, checks `system/init`, reduces the JSONL to closed frames and ends each run in its own outcome.
-Each end has its own `end_reason` (0100); a dispatched runtime run costs nothing in Flux and its usage is
+Each end has its own `end_reason` (0100); a dispatched plan run costs nothing in Flux and its usage is
 `unknown` (not visible to Flux). The committed answer has token-shaped strings and the run token replaced
-by "[removed: looked like a secret]" (`answer_redacted`). A `server` run on an API key is redacted the same
-way before its answer or proposal is committed (token patterns only: its context holds no run token;
-2026-10-16, #484). An enablement names its engine; a runtime
+by "[removed: looked like a secret]" (`answer_redacted`). An enablement names its engine; a runtime
 enablement has no key connection and its own consent. Operator view: [agent runtime](../operations/agent-runtime.md#runs).
 
-**Observed 2026-10-16 with the pinned real Claude Code 2.1.285** (`tests/app/e2e/runtime-run-claude.e2e.ts`, run in
-the `mcp-clients` image against the scripted local model, no account): started with the run template's exact argv and
-the slot's environment, its `system/init` has the fields `agents, analytics_disabled, apiKeySource, capabilities,
-claude_code_version, cwd, fast_mode_disabled_reason, fast_mode_state, mcp_servers, messaging_socket_path, model,
-output_style, per_turn_effort_active, permissionMode, plugins, product_feedback_disabled, session_id, skills,
-slash_commands, subtype, tools, type, uuid, view_mode`; `tools` lists exactly the run's 18 switch-derived Flux tools
-(no built-in tool and no `EndConversation`); `mcp_servers` is `[{"name":"flux","status":"connected","source":"dynamic"}]`;
-and its Flux call was answered through `/mcp`, so `FLUX_RUN_TOKEN` reached the MCP `Authorization` header through
-`${FLUX_RUN_TOKEN}` expansion (no `headersHelper` is needed). Plan-limit, expired-login and refusal wording still
-needs a real account (T10). The same live check found that `runtime-egress`'s `/mcp` forwarder dropped MCP
-2026-07-28's `Mcp-Method` and `Mcp-Name` headers (the route answered 400); it now forwards them, `Mcp-Wire-Codec`
-and `Mcp-Param-*`.
+**A key run in pi** (contract: [RT-1](../product/ai-modes.md#rt-1--engines-on-the-server), [RT-4](../product/ai-modes.md#the-model-gateway-1441),
+[RT-5](../product/ai-modes.md#rt-5--tools); `processor.ts`' `keyRuns`). The processor rechecks what a key run depends on (the connection the
+run started on, the operator's provider switch, the key's daily budget before the run starts) and a run starts when at least one request
+with tools fits in what is left of the key's day (`fits`; nothing is reserved for the run, the gateway holds each request). Without the runtime, or without
+`pi` in `FLUX_AGENT_RUNTIME`, the run ends `unavailable` at zero cost. The worker issues a gateway token as well as the run token (the
+run's secrets, never shown in an answer, redacted if written), and pi runs in the owner's own place in the runtime, made the first time it is
+needed. Every model request of the run goes through the gateway, which holds its worst cost on the run's row before it is sent and charges
+what the provider reports; at its end the run's cost is what was charged (`observed`), nothing (`released`), or `unknown` where the gateway
+lost a response. A gateway refusal for the key's day stops pi at once and the run ends `cap_reached` with `end_reason = budget`; a refusal because the
+run ended ends it by the commit's checks, else `unavailable`. The answer is redacted and cleaned as a CLI's (the same `prepare`).
 
 ## Switching production on
 
@@ -440,8 +394,10 @@ Done in #179 (F-020 PROV-1), 2026-10-03:
    dispatch, bound to its owner and id.
 3. The operator switch `FLUX_PERSONAL_RUNS=on`. The API composes the real lookup with
    `providerEnabled: true`, and the worker composes `providerPersonalCompute({ enabled: true,
-   resolveKey, policy })`. Empty or `off`, the default, keeps the real lookup and a disabled
-   provider, so every run is `provider_off` at zero cost. Any other value stops both apps.
+   resolveKey, policy })`: its `enabled` is what the worker's standing checks read, and the same key resolver and endpoint policy
+   feed the model gateway (#1441). Empty or `off`, the default, keeps the real lookup and a disabled
+   provider, so every run is `provider_off` at zero cost. Any other value stops both apps. A key run also needs the agent runtime with
+   `pi` (`FLUX_AGENT_RUNTIME`); without it the run ends `unavailable` at zero cost.
 
 Before an instance switches it on, its operator repeats the price and model check of
 [Price and model](#ports). There is no independently verified real-key provider pass (PROV-6) as a gate
@@ -452,11 +408,12 @@ for O-008: the gates are the mock verification gates of 2026-10-08 (founder dire
 `FLUX_TEST_PERSONAL_RUNS=anthropic-mock`, accepted by the API and the worker only together
 with `FLUX_TEST_FAILURE_INJECTION=true` (any other value refuses to start), composes
 `testFixturePersonalConnections` (every person has one stable fixture connection) and turns
-the switch on. The worker then uses the **real** adapter registry with Anthropic's URL =
+the switch on. The worker's model gateway and its adapter registry then use Anthropic's URL =
 `FLUX_TEST_ANTHROPIC_URL` (a plain `http://host:port` origin, whose host the endpoint policy then
 allows; the fixture connection is Anthropic `claude-sonnet-5` at its table price) and a fixed non-secret fixture
-"key". Only `scripts/check_ui.sh` sets it, against the `anthropic-mock` Compose service. It
-lets the browser suite drive a whole run through the production code paths without a model.
+"key", and the API's `flux_web_search` does the same. Only `scripts/check_ui.sh` sets it, against the `anthropic-mock` Compose service,
+with the agent runtime on (`FLUX_AGENT_RUNTIME=pi`). It lets the browser suite drive a whole run through the production code paths: a real
+pi in the runtime, whose model requests the real gateway sends to the mock provider, without a model.
 
 ## Progress events
 
@@ -619,35 +576,37 @@ settling a firing takes the schedule row before the firing's own, so none of the
 
 Every run is told what to do by one builder, `buildBrief` in `app/packages/core/src/personal-runs/brief.ts`, for every place (`/ai` in a
 space's thread, task discussion or main conversation, a DM and its threads, the agent's private chat, a task run, an answer to another agent,
-a schedule's run) and for both engines. An API-key run sends its `system` as the system prompt and its `request` as the one user message;
-the owner's Claude Code or Codex gets `runtimeBrief`, the same two texts in that order, on standard input. The runtime appends only a short,
-place-neutral line to the CLI's own system prompt (`RUN_BRIEF`), and the MCP route's run instructions are place-neutral too. The full text of
+a schedule's run). Since #1441 every run, a plan's and an API key's, gets `runtimeBrief` (`system` then `request`, rules first and the request
+last) on standard input. The runtime appends only a short, place-neutral line to the harness's own system prompt (`RUN_BRIEF`, or
+`RUN_BRIEF_OWN_TOOLS` where the run has its own shell and file tools), and the MCP route's run instructions are place-neutral too. The builder
+has one form: the one for an API-key run, with numbered sources, went with the loop. The full text of
 each case is pinned in `app/tests/app/snapshots/ai-brief/`, so a change to what a model reads shows as a diff in review (rewrite them with
 `FLUX_WRITE_BRIEF_SNAPSHOTS=<dir>` on `ai-brief.test.ts`).
 
 - **System**: who the agent is and whose (names the owner gave: the agent's and their own), where it was asked (the kind of place only),
   the time now in the owner's time zone (`personTimeZone`: their browser's zone, which the web app saves on them, `auth_users.time_zone`, C-57; the zone a schedule they ask for runs in); who reads the answer and so what it may
   use of Flux (AG-4, C-37); how to answer (in the asker's language, short, in the message subset of Markdown that the one renderer draws (`FORMAT`, #1247; `assistant.md` AG-4), written so the asker can post it
-  as their own message with Show everyone, with no "You asked…" or lead-in and only the text when asked to draft one, `[S<n>]` marks where
-  sources are numbered, `#12` and `[[Wiki page]]` that stay links after Show everyone, names without `@`, general knowledge never passed off
+  as their own message with Show everyone, with no "You asked…" or lead-in and only the text when asked to draft one, the cite mark of a Flux fact read with a tool
+  (`[doc:ID]`, C-62), `#12` and `[[Wiki page]]` that stay links after Show everyone, names without `@`, general knowledge never passed off
   as what the conversation says, an honest "not in the conversation", files it cannot open); the tools and the ids they need, the
   no-posting rule of #1063 (`NO_POSTING_LINE`) whenever the run has change tools, the web rule of C-30 when `flux_read_web` is listed; the
   schedule block for the agent's private chat (C-53: `/ai` in a space and a schedule's own run make none); what is data, with what a message's `via`, `kind`,
   `edited` and "(agent)" mean; and last what the owner gave the agent (C-7, C-8).
 - **Request**: `<place …/>` with the names of the space, the task or the DM's people; for a task run the whole task (outcome, done-when,
-  prerequisites, due day, blocker); the space's open tasks and the place's messages, each with its mark, author, time, `kind`, `via`,
-  `edited`, attachments by name (with their file id when the run's model sees pictures and has `flux_view_image`, #1217), and in a space's main conversation the opening words of its thread where the thread changes; a line that says when older messages
-  were left out (the window reads one message more than it gives, and the fit that drops the oldest ones says so too); the chat's latest
+  prerequisites, due day, blocker); for a direct message its latest messages, each with its author, time, `kind`, `via`,
+  `edited` and attachments by name (with their file id when the run's model sees pictures and has `flux_view_image`, #1217), and a line that says when older
+  messages were left out (the window reads one message more than it gives; no fit drops any); a space's messages and open tasks are not
+  in it: the agent reads them with the tools (it is told the ids and where to start); the chat's latest
   exchanges; then the request, the schedule's instruction, the task's assignment or the other agent's question, last.
 - **Rules of the text.** Nothing other people wrote is in `system`: a space's or task's name, a message, a DM's other people. Content is
   fenced in tags with `<` and `>` escaped, so a message cannot close its tag or forge the request; `&` stays, so an address is read exactly
   as a person wrote it (C-30). The `<ask>` block of a task run's assignment stays as written. The old "Label statements as Fact,
   Interpretation or Proposal" is gone.
-- **The engines differ only in what each can do.** An API-key run is given the place's messages and open tasks as numbered sources it
-  cites. The CLI reads a space itself with the Flux tools (it is told the ids and where to start), and is given a DM's messages and a chat's
-  turns, without marks. The worker reads the brief's names for the CLI after the same place checks as an API-key run's read
+- **One way to read.** Every agent reads a space itself with the Flux tools, and is given a DM's messages and a chat's
+  turns, without marks (no numbered sources, no `[S<n>]`: #1441). The worker reads the brief's names after the place checks of a read
   (`brief-facts.ts`); if that read fails, the brief goes without the names (the agent's instructions and memory are read on their own) and
-  the tools and the commit's checks still decide.
+  the tools and the commit's checks still decide. An agent on an API key whose provider has a hosted search is told it can search with
+  `flux_web_search` (`KEY_WEB_SEARCH_LINE`); without one it is told it has no web search.
 
 What a run may read and change is decided by the server, never by the brief: the audience of each place, deleted messages, encrypted spaces,
 guests and the address rule are unchanged.
@@ -679,7 +638,8 @@ tokens:
   stream reconnects.
 - **Answer.** Since #842 it is the asker's private card, see above: the body and `[n]` citations that open exactly
   their source (a message in the conversation, a work item in Details, a map thought).
-  Committed answers renumber the model's `[S<n>]` labels to `[1]…` in the order of `sources`.
+  Committed answers renumber the model's cite marks (`[doc:ID]`, `[task:ID]`, `[decision:ID]`, `[message:ID]`, C-62, taken from what its tools
+  returned) to `[1]…` in the order they stand.
   No cost is shown. A run on a task has no card of its own for the people: its result is the agent's message in the
   task's discussion, like any other agent-posted message (#1120).
 - **Settings** at `/settings/assistant` (Settings → AI, and Details → *Connect your AI*): the
@@ -707,8 +667,8 @@ tokens:
   The owner's own access bounds what a run may read (F-036 AG-3).
 - `personal_runs` stores the request, place, agent and connection snapshot
   (with the connection's `provider` and `model`, shown as the answer's provenance),
-  status, reservation (`reserved_micros`), `cost_state`, observed usage and
-  charge. It stores the committed answer only after the final recheck. A partial
+  status, `reserved_micros` (what the gateway holds for requests in flight), `cost_state`, observed usage and
+  `charged_micros`. It stores the committed answer only after the final recheck. A partial
   unique index enforces one run in flight per owner.
 
 There is no table of assistant proposals: migration 0044 (#1054) dropped `assistant_proposals`, which stored a drafted result
@@ -720,20 +680,23 @@ Amounts are integer micro-dollars. Only runs on an API key cost money in Flux; a
 Claude or ChatGPT plan is the plan's (#854). Each key has **one daily budget** in its own time
 zone (`background_compute_connections.daily_budget_cents`, `time_zone`); there is no per-run
 ceiling and no second allowance. `apiKeySpendToday` counts the key's spend since its local
-midnight: the charge of `observed` runs and comparisons plus the most an `unknown` run could have
+midnight: the charge of `observed` runs plus the most an `unknown` run could have
 cost, and apart from that what in-flight work holds, which no usage line shows as spent; `released`
-runs cost nothing. Asking admits a request while the key's charged
-spend is under the budget. When the worker claims the run, it reserves turns × the largest request
-(64 000 × the input price + 4 000 × the output price with tools, 32 000 × input without; F-020
-PROV-3, #843) at the key's price, rounded up and never above what is left of the budget; with
-not even one request's room left the run waits for the key's next day (`end_reason = 'budget'`,
-`resume_at`). The claim stamps `reserved_at`, the day the run counts on, so a request that waited
-overnight counts when it runs, and `largest_request_micros`. Each turn keeps what was spent so far
-in `charged_micros`, so a run lost with its worker counts that and one more request, not its whole
-reservation. A connection without a price is `PERSONAL_RUN_PRICE_UNKNOWN` / `price_unknown`.
-Usage is charged at the connection's price, or at the provider-reported cost when the response
-carries one (OpenRouter), and each search of the provider's own web search at $0.01 on top, with 5
-searches reserved for each request that offers it (#954).
+runs cost nothing. Asking admits a request while at least one request with the Flux tools (`64,000 × input + 4,000 × output` at the key's
+price) fits in what is left of the key's day (`reserveOnKey` with `admit`, the same measure as the worker's claim); otherwise it waits, queued, for the key's next day (`end_reason = 'budget'`, `resume_at`), and a schedule's run ends
+`cap_reached` when it is claimed instead of waiting.
+
+Since #1441 a key run reserves **nothing up front**: no turns × the largest request, no `budgetedReservationMicros`, no per-turn
+reconciliation. The worker claims the run when one request with tools fits in what is left of the day (`fits`). Flux's model gateway then
+holds each request's worst cost on the run's own row (`reserved_micros`) before it sends the request, against what is left of the day with
+everything else the key has that day, and charges the usage the provider reported (`charged_micros`, at the key's price, with the cache rules,
+or the cost OpenRouter reports) when the answer ends ([RT-4](../product/ai-modes.md#the-model-gateway-1441), [CA-3](../product/model-providers.md#ca-3--the-providers-limits-not-fluxs)).
+A request whose usage is missing or beyond its bounds is charged all it held and the run's cost is `unknown`; a request the day cannot hold is
+refused (402), which stops pi at once and ends the run `cap_reached` with `end_reason = budget`. Flux does not fit or count
+a run's input: a run whose context outgrows the model's window ends `input_too_large` when pi reports the provider's refusal (the same
+status and words as a CLI's), and its turns are bounded only by the runtime's 200. A search of `flux_web_search` is held and charged the same way
+(`$0.01` for each search the provider reports, `WEB_SEARCH_MICROS`; [Web search](#web-search-954-1441)). A connection without a price is
+`PERSONAL_RUN_PRICE_UNKNOWN` / `price_unknown`.
 
 ## HTTP API
 
@@ -748,7 +711,7 @@ from the request.
 | `GET /api/v1/personal-assistant/model` | the caller | The models of every connection the caller has, grouped by connection, the current pick and Connect AI's default. An agent's model is changed on its page, `PATCH /api/v1/my-agents/:id` (`{ connection, model }`); there is no other route for it. |
 | `PUT /api/v1/personal-assistant/agents` | the caller | `{ agentId }`: the caller's assistant for that agent's workspace. |
 | `POST …/pause`, `POST …/resume`, `DELETE /api/v1/personal-assistant` | the caller | Pause ends queued work at zero cost. Delete also removes the consent. |
-| `POST /api/v1/conversations/:id/assistant-runs` | the caller | Invoke `{ clientRunId, kind, prompt, target?, continuesRunId? }`: 202 with the run; the same `clientRunId` returns it again (200) and never charges twice. |
+| `POST /api/v1/conversations/:id/assistant-runs` | the caller | Invoke `{ clientRunId, kind, prompt, target?, continuesRunId? }`: 202 with the run; the same `clientRunId` returns it again (200) and never charges twice. `continuesRunId` (Continue, the owner's own committed answer in the same place) is a new, separately charged run whose brief carries that answer as `<earlier_answer>`, the same for every engine (pi and the CLIs in the runtime, #1441). |
 | `GET /api/v1/assistant-runs`, `GET /api/v1/assistant-runs/:id` | the run's owner | Own runs with status and cost. Anyone else gets 404. |
 | `POST /api/v1/assistant-runs/:id/stop` | the run's owner | Before dispatch: `stopped` and free. During dispatch: best-effort abort, the charge is kept and nothing is committed. |
 | `POST /api/v1/assistant-runs/:id/retry` | the run's owner | `{ clientRunId }`: a new, separately capped run with the same request (202). |
@@ -782,51 +745,43 @@ invoke writes nothing and reserves nothing.
 
 ## Worker
 
-The job payload is `{ runId }`. The processor checks again before the read,
-before **every** preflight token-count request (a count sends the input to the
-provider, so it gets the same check as a dispatch), before dispatch and inside
-the commit transaction:
+The job payload is `{ runId }`. `processor.ts` hands the run to `runtime-run.ts` ([above](#runs-in-the-agent-runtime-f-022-t5-280-1441)). The
+processor checks again before the read, before the harness starts, about once a second while it runs, and inside the commit transaction:
 
 - the enablement (not paused or removed, same workspace agent);
 - `agent.invoke` for the owner;
-- the provider switch;
-- the owner's connection, which must be the one the run reserved on;
+- AI on in the run's space, at the epoch the run was admitted under;
+- for a key run, the provider switch, the owner's connection (which must be the one the run started on) and the runtime's `pi`;
 - the owner's current write access and the agent's current read access to the project;
-- before dispatch, the cap.
+- for a key run, before it starts, that the key's daily budget still holds the run.
 
-A refusal before dispatch ends the run as `denied`, `paused`, `revoked`,
-`unavailable` or `cap_reached`, with the reservation released. After dispatch the
-observed usage is charged. A refusal at commit stores no answer and no proposal,
-and records no event.
+A refusal before the harness starts ends the run as `denied`, `paused`, `revoked`, `unavailable` or `cap_reached`, with nothing charged. A key
+run's cost is what the model gateway charged on its row. A refusal at commit stores no answer and no proposal, and records no event.
 
-A run reads, as its agent, only project-audience objects of the requested place:
+A run reads, as its agent, only through its tools, which reach the run's place (see [Places](#places-and-private-answers-842)): a space's
+run that space, a DM's run that DM, a chat every space of its owner that has AI on and never a DM. The request carries no source it
+could cite (the [brief](#the-brief-1064): a DM's latest 20 messages, F-042 #1291, with a line that older ones were left out and that `flux_search`
+and `flux_read_around` find them). Nothing fits, drops or counts a run's input.
 
-- the latest 20 messages of the conversation (F-042, #1291; the brief says when older ones were left out and that `flux_search` and `flux_read_around` find them);
-- up to 20 open work items of the project;
-- the target thought, only on a project sketch of that project.
-
-It never reads DMs, drafts, private sketches or other projects. The fit drops the
-oldest messages until the conservative Flux estimate (raised, never lowered, by a
-provider count where the wire format has one) fits 16 000 tokens (32 000 for a run
-with tools), or ends the run as `input_too_large`.
-
-At commit, citations `[S<n>]` count only for supplied sources. A `max_tokens` answer is committed as
-`truncated`. The commit tells the owner alone (`assistant_run.changed.v1`); nothing is recorded for the project's audience.
+At commit, the answer's Flux cite marks count only for what the run's tools returned and it may cite (C-62); any other mark is taken out. The
+commit tells the owner alone (`assistant_run.changed.v1`); nothing is recorded for the project's audience.
 A `<proposal>` block in a model's text is plain text: nothing asks for it or reads it any more (#1054).
 
 ## Tests
 
 `app/tests/app/personal-runs.test.ts` covers #68 AC-1 to AC-6 with two or more
 people, plus owner-only progress events (audience rows and live streams of the owner,
-a project member and the workspace owner) and a failed preflight count. It sends HTTP
-requests to the API container's production composition and drives dispatch in-process
-with the fakes. `app/tests/app/personal-runs-core.test.ts` checks the pure output and cost
+a project member and the workspace owner). It sends HTTP
+requests to the API container's production composition and drives the worker in-process
+with the fakes and, since every agent runs in pi (#1441), a real pi in a test runtime whose model is a script
+(`support/pi-runtime.ts`, `support/fake-gateway.ts`). `app/tests/app/personal-runs-core.test.ts` checks the pure output and cost
 rules. `app/tests/app/ai-brief.test.ts` pins the brief of every place and engine and checks the asker's name, time, zone, language
-rule, message authors and times, the fences and the note about older messages; `app/tests/app/ai-brief-replay.test.ts` sends it through the
-real adapters of both wire formats to the provider mock and checks what Flux makes of a scripted answer (marks, a made-up mark,
+rule, message authors and times, the fences and the note about older messages; `app/tests/app/ai-brief-replay.test.ts` gives it to a real pi on the fake gateway
+at the wire formats of both providers and checks what Flux makes of a scripted answer (marks, a made-up mark,
 a secret, Show everyone). `app/tests/app/personal-runs-anthropic.test.ts` checks the adapter against a local mock
 HTTP server (request shape, key, retries off, abort, timeout, counting, usage, error
-mapping, limits, environment isolation) and the composition guards. Run them through
+mapping, limits, environment isolation) and the composition guards. The model gateway has `model-gateway-core.test.ts` and
+`model-gateway.test.ts` (every wire format, streamed and whole), and pi as a harness `agent-runtime-pi.test.ts`. Run them through
 `./scripts/check_application.sh`.
 
 `app/tests/ui/test_personal_assistant.py` (through `./scripts/check_ui.sh`, with the
@@ -867,10 +822,10 @@ went with its company-wide switch (F-037, #874); the per-space AI switch brings 
 
 ## Not yet done
 
-- The rest of #406/#484: AST-3.2's handoff, catalog and owner-Apply parity, the
-  persisted owner mark and the account row's note for a model without tool calling, a "Limit reached"
-  status and copy, the Responses API for the OpenAI models that need it, and the Gemini
-  thought-signature field name (unverified against Google's pages).
+- The rest of #406/#484: AST-3.2's handoff, catalog and owner-Apply parity, a "Limit reached"
+  status and copy, and the Gemini thought-signature field name (unverified against Google's pages). The owner's tool-calling mark and the
+  account row's note for a model without tool calling are replaced by the connect-time `ping` check of
+  [RT-1](../product/ai-modes.md#rt-1--engines-on-the-server), which is being added separately; the Responses API for OpenAI is done (#954).
 - A provider pass against the real API (a real key, by its owner), including billing on cancellation and
   lost responses. Not a gate for O-008 (founder direction 2026-10-16, no PROV-6 real-key gate); the operator
   who sets `FLUX_PERSONAL_RUNS=on` first does the price and model check of [Switching production on](#switching-production-on).

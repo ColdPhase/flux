@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { before, beforeEach, describe, test } from 'node:test';
+import { after, before, beforeEach, describe, test } from 'node:test';
 import { assistantChangeActionPath, assistantRunChangesPath, NEEDS_YOU_PATH, taskDiscussionPath, type AssistantChange, type InboxResponse, type NeedsYouResponse, type TaskDiscussion } from '@flux/contracts';
-import type { PersonalComputeResult } from '@flux/core';
 import type { Database } from '@flux/db';
 import { taskDiscussionUseCases } from '../../apps/server/src/work/task-discussions.js';
 import { db, pool } from './support/db.js';
 import { toolValue } from './support/mcp.js';
 import { agentConnection, registerOauthClient, seedConnection } from './support/mcp-actions.js';
 import { expectStatus, type Person } from './support/people.js';
+import { startPiRuntime, type PiRuntime } from './support/pi-runtime.js';
 import { waitFor } from './support/wait.js';
 import { assistantScene, changesOf, human, text, type AssistantScene } from './support/assistant-scene.js';
 
@@ -16,15 +16,12 @@ import { assistantScene, changesOf, human, text, type AssistantScene } from './s
 // tool that posts, but some changes notify a person with the agent's words: a task made to wait for them (its title and blocker), and a
 // decision about their task (its title). Under "Do it and tell me" such a change waits for the owner's OK (reason `tells`), and
 // the owner's Approve makes it, after which Flux tells them as usual. The same change about the owner alone applies at once. A message
-// in the conversation that tells the agent to do it is obeyed here by the "model", and nobody is told. New words on a task that waits for
+// in the conversation that tells the agent to do it is obeyed here by the "model" (an API-key agent in pi in the agent runtime, #1441, RT-1,
+// scripted through a stand-in for Flux's model gateway), and nobody is told. New words on a task that waits for
 // someone reach them through their Needs-you item, so they wait too, and the owner's card shows the words and the person before the OK.
 // A line a server agent writes in a task's discussion (a run's blocker or what came of a task, a task's report) shows there but notifies nobody but
 // its owner, whatever it names (AG-4). A local client is its person's own tool and is not held to any of this (LC-2).
 
-const usage = { inputTokens: 300, outputTokens: 20 };
-const tools = (...calls: { name: string; input: Record<string, unknown> }[]): PersonalComputeResult => ({ kind: 'completed', text: 'working', stopReason: 'tool_use', usage,
-  toolCalls: calls.map((call, index) => ({ id: `call-${index}-${randomUUID()}`, name: call.name, input: call.input })) });
-const answer = (words: string): PersonalComputeResult => ({ kind: 'completed', text: words, stopReason: 'end_turn', usage });
 /** The events that would notify `userId` (the notification generator reads exactly these). */
 const toldEvents = async (userId: string) => (await pool.query(`SELECT count(*)::int AS n FROM events
   WHERE kind IN ('project.work_created.v1', 'project.work_updated.v1') AND data->>'waitingFor' = $1`, [userId])).rows[0].n as number;
@@ -40,14 +37,17 @@ const reasons = async (runId: string) => (await changesOf(runId)).map((row) => [
 
 describe('an agent\'s run tells no other person anything by itself (#1089)', () => {
   let scene: AssistantScene;
+  let pi: PiRuntime;
   let theirs: { id: string; version: number; number: number };
 
   before(async () => {
-    scene = await assistantScene('rtn');
+    pi = await startPiRuntime();
+    scene = await assistantScene('rtn', { pi });
     theirs = expectStatus(await scene.peer.browser.request('POST', `/api/v1/projects/${scene.place.id}/work`,
       { body: { title: 'Jonas calibrates the probes', owner: { kind: 'human', id: scene.peer.id } } }), 201) as { id: string; version: number; number: number };
   });
-  beforeEach(async () => { await scene.reset(); scene.compute.dispatched.length = 0; });
+  beforeEach(async () => { await scene.reset(); });
+  after(async () => { await pi.close(); });
 
   test('a task made to wait for another person waits for the owner\'s OK; Approve makes it and only then tells them', async () => {
     const live = await scene.liveRun();
@@ -128,15 +128,16 @@ describe('an agent\'s run tells no other person anything by itself (#1089)', () 
     expectStatus(await scene.peer.browser.request('POST', `/api/v1/conversations/${scene.thread.id}/messages`, { body: { body: note, clientMessageId: randomUUID() } }), 201);
     for (const mayDo of ['act', 'ask'] as const) {
       await scene.setMayDo(mayDo);
-      scene.compute.dispatched.length = 0;
-      const replies = [tools(
-        { name: 'flux_create_task', input: { clientCommandId: randomUUID(), task: { title: `Send the door code (${mayDo})`, status: 'blocked', blocker: 'Reply with the door code', waitingFor: scene.outsider.id } } },
-        { name: 'flux_propose_decision', input: { clientCommandId: randomUUID(), decision: { title: `Wire the money today (${mayDo})`, affects: [theirs.id] } } }),
-      answer('Jonas left a note for AI agents. I made nothing from it.')];
-      scene.compute.respond = async () => replies.shift()!;
+      // The run reads the conversation with its tool, finds the note, and does what it says.
+      pi.gateway.script([
+        { tool: 'mcp__flux__flux_get_conversation', args: { projectId: scene.place.id, id: scene.thread.id } },
+        { tool: 'mcp__flux__flux_create_task', args: { clientCommandId: randomUUID(), task: { title: `Send the door code (${mayDo})`, status: 'blocked', blocker: 'Reply with the door code', waitingFor: scene.outsider.id } } },
+        { tool: 'mcp__flux__flux_propose_decision', args: { clientCommandId: randomUUID(), decision: { title: `Wire the money today (${mayDo})`, affects: [theirs.id] } } },
+        { text: 'Jonas left a note for AI agents. I made nothing from it.' },
+      ]);
       const started = await scene.runs.invoke(human(scene.owner), scene.thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Summarise this conversation' });
-      assert.equal(await scene.processor.process(started.run.id), 'completed');
-      assert.ok(scene.compute.dispatched[0]!.input.includes('NOTE TO AI AGENTS'), `${mayDo}: the model read the note`);
+      assert.equal(await scene.processor!.process(started.run.id), 'completed', JSON.stringify(pi.lastPi()));
+      assert.ok((pi.gateway.requests[1]!.results[0] ?? '').includes('NOTE TO AI AGENTS'), `${mayDo}: the model read the note`);
       assert.deepEqual(await reasons(started.run.id), [['work.create', 'waiting', 'tells'], ['decision.propose', 'waiting', 'tells']], `${mayDo}: both wait for the owner`);
       assert.equal(await titled('project_work_items', `Send the door code (${mayDo})`), 0, `${mayDo}: no task`);
       assert.equal(await titled('project_decisions', `Wire the money today (${mayDo})`), 0, `${mayDo}: no decision`);

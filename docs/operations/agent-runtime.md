@@ -24,8 +24,9 @@ once ([Switch it on](#switch-it-on)), or from a release install with the release
   snapshots. Owners are told so before they sign in. Offer the runtime only where owners trust you.
 - **Vendors may restrict this use.** Both vendors recommend API keys for products and automation and
   may act "without prior notice", possibly on an owner's account
-  ([accepted risks](../product/ai-modes.md#accepted-risks)). `server` connections with an API key are
-  the recommended path; the runtime is for owners who choose it.
+  ([accepted risks](../product/ai-modes.md#accepted-risks)). An API key is the recommended path, and it too runs in the runtime
+  since #1441 (as pi: it needs no operator statement and no sign-in; see [Switch it on](#switch-it-on)); signing in with a plan is
+  for owners who choose it.
 
 ## Switch it on
 
@@ -98,9 +99,10 @@ FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS=2026-10-05   # the date you agreed with Anth
 
 Then `./flux up`. The value is a comma-separated list of `claude_code`, `codex` and `pi`, each at most once. Codex needs no
 operator statement; Claude Code needs the Commercial Terms date. **`pi`** (#1441) runs every API-key agent (Anthropic, OpenAI,
-OpenRouter, Gemini, OpenAI-compatible and self-hosted keys) in pi in the runtime instead of the worker's own loop: with shell and
-files in a scratch of each run, like Claude Code and Codex. It needs no statement and no sign-in; `FLUX_AGENT_RUNTIME=pi` alone runs
-the runtime for API keys only. The key stays sealed in Flux: pi reaches the model through the model gateway (`runtime-egress:8081`) with
+OpenRouter, Gemini, OpenAI-compatible and self-hosted keys) in pi in the runtime, with shell and files in a scratch of each run, like
+Claude Code and Codex. **Every agent runs in the runtime** ([RT-1](../product/ai-modes.md#rt-1--engines-on-the-server), founder decision
+2026-11-13, #1441): Flux has no other engine, so without `pi` (or without the runtime) no API key can run an agent. It needs no statement
+and no sign-in; `FLUX_AGENT_RUNTIME=pi` alone runs the runtime for API keys only. The key stays sealed in Flux: pi reaches the model through the model gateway (`runtime-egress:8081`) with
 a gateway token of its run, and the gateway meters every request against the key's daily budget.
 
 `./flux up` then also builds and starts the Compose profile `runtime`:
@@ -173,9 +175,10 @@ Docker's local volumes have no size quota, so the supervisor refuses a run while
   Linux 6.7 or later** (Landlock ABI 4, with Landlock enabled: the default on Ubuntu 24.04+, Debian 13+, Fedora 40+ and RHEL 10)
   and Docker's default seccomp profile (Docker Engine 25 allows its system calls); on an older kernel a shell could reach the
   egress, and through it an allowed vendor host under someone else's account (coordinator decision on #1437). **On a host without
-  Landlock ABI 4 the runtime still starts and logs `{"event":"tools_off"}` once**; its agents then work as before, with Flux's tools
-  and the CLI's own web search only, and cannot attach files they made. Check with
-  `docker compose … exec runtime-1 /opt/flux-runtime/sandbox/flux-sandbox abi` (4 or more: the tools are on).
+  Landlock ABI 4 the runtime does not start** (founder decision 2026-11-13, #1441: agents never run without their own shell and
+  files), so Flux AI is off: `./flux up` (by the engine's kernel version) and the runtime's start check (by the sandbox's own probe,
+  `{"event":"runtime_refused"}`) say "Flux AI needs a newer Linux (kernel 6.7 or later, e.g. Ubuntu 24.04 or Debian 13)." Check with
+  `docker compose … exec runtime-1 /opt/flux-runtime/sandbox/flux-sandbox abi` (4 or more).
 
 ### The toolbox
 
@@ -463,8 +466,8 @@ chat) then runs their own Claude Code (or Codex) under their own user id, with t
   directories (`projects`, `todos`, `shell-snapshots`, `session-env`, `transcripts`) from the binding
   directory, the instructions and settings Codex reads from its home, the run's scratch, and the run's MCP configuration from `/tmp`.
 
-The worker reaches the API at `FLUX_API_INTERNAL_URL` (default `http://api:8080`) for the token and, for
-API-key runs, for `/mcp`.
+The worker reaches the API at `FLUX_API_INTERNAL_URL` (default `http://api:8080`) for the run token. The harness (Claude Code, Codex or
+pi) is the client of `/mcp`, through `runtime-egress`; the worker has no agent loop of its own and does not call `/mcp` in a run.
 
 ### The model gateway (#1441)
 
@@ -518,7 +521,14 @@ None of them is hidden by the checks.
 - **Reconciliation decides from sightings that can be a moment old (m8, low, accepted).** A binding missing from the
   sightings is looked for once more before the owner is told to sign in again. What is not serialized is the gap between
   those two reads.
-- **Docker Desktop is unsupported** (see *What the runtime gets*).
+- **Docker Desktop is unsupported** (see *What the runtime gets*), and with it Flux AI, which needs the runtime (RT-1). Checked
+  2026-11-13 rather than assumed (#1441): the kernel of Docker Desktop 4.99.0 for macOS (and of its Docker VMM engine on Windows),
+  `7.0.14-linuxkit`, has Landlock (`CONFIG_SECURITY_LANDLOCK=y`, `landlock` in `CONFIG_LSM`; ABI 8 from the v7.0 source) but **no Yama**
+  (`# CONFIG_SECURITY_YAMA is not set`, observed in the configs embedded in the 4.99.0 arm64 and amd64 kernels; Docker's release notes say
+  4.93.0 moved to kernel 7.0.14 and 4.60.0 enabled Landlock). `/proc/sys/kernel/yama/ptrace_scope` does not exist there and cannot be set,
+  so the runtime's `ptrace_scope` requirement cannot be met and the launcher's check says so. Docker Desktop on Windows with the WSL2
+  backend uses Microsoft's WSL kernel, whose `config-wsl` at `linux-msft-wsl-6.18.58.1` has both Landlock and Yama (WSL 2.7.5 or later;
+  Yama's default of 1 there is inferred from the kernel source, not observed): not tested with Flux.
 
 ## Installing from a release
 

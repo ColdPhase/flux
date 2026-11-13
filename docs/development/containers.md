@@ -496,8 +496,8 @@ The UI stack runs with the limits off; `FLUX_UI_RATE_LIMIT=true ./scripts/check_
 (two people at one address use the app: nothing is refused, #838), and the other modules skip nothing and use the default.
 
 `check_ui.sh` also sets the TEST-ONLY personal-run switch (#68): `FLUX_TEST_PERSONAL_RUNS=anthropic-mock`
-with `FLUX_TEST_FAILURE_INJECTION=true` gives every person a fixture key connection, and the
-worker sends runs through the real Anthropic adapter to the `anthropic-mock` Compose service
+with `FLUX_TEST_FAILURE_INJECTION=true` gives every person a fixture key connection, and every agent on it runs in pi in the agent runtime
+(`FLUX_AGENT_RUNTIME=pi`, #1441): the worker's model gateway sends pi's requests to the `anthropic-mock` Compose service
 (`app/tests/ui/anthropic_mock.py`, `FLUX_TEST_ANTHROPIC_URL`). The API and worker refuse to start
 with the switch unless the test flag is set. Never set it in a deployment; see
 [personal runs](personal-runs.md#test-only-switch).

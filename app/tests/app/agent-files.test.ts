@@ -1,21 +1,18 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { before, beforeEach, describe, test } from 'node:test';
+import { after, before, beforeEach, describe, test } from 'node:test';
 import { assistantChangeActionPath, assistantRunShowPath, filePath, type ShowAnswerResult } from '@flux/contracts';
-import { type PersonalComputeResult } from '@flux/core';
 import { pool } from './support/db.js';
 import { expectStatus } from './support/people.js';
+import { startPiRuntime, type PiRuntime } from './support/pi-runtime.js';
 import { assistantScene, changesOf, human, result, text, type AssistantScene } from './support/assistant-scene.js';
 
-// An agent attaches a file to its answer (#1437, RT-5, AG-8), on the real /mcp route with a run's token and through the real worker loop with
-// a fake provider: an API-key run gives a text file's content (a run on the owner's Claude Code or Codex names a file of its scratch instead,
-// proved on the runtime's real networks by step 9e of scripts/check_agent_runtime.sh). The file goes through the asker's own upload path,
+// An agent attaches a file to its answer (#1437, RT-5, AG-8), on the real /mcp route with a run's token and, for an API-key agent, as pi in the
+// agent runtime (#1441, RT-1) whose model is a scripted stand-in for Flux's model gateway: any run can give a text file's content (a run in
+// the runtime also names a file of its scratch, which is proved on the runtime's real networks by step 9e of scripts/check_agent_runtime.sh and
+// by agent-runtime-pi.test.ts). The file goes through the asker's own upload path,
 // staged for the asker alone, with its change line, waits and Undo, until Show everyone posts it with the answer.
 
-const usage = { inputTokens: 300, outputTokens: 20 };
-const calls = (...list: { name: string; input: Record<string, unknown> }[]): PersonalComputeResult => ({ kind: 'completed', text: 'working', stopReason: 'tool_use', usage,
-  toolCalls: list.map((call, index) => ({ id: `call-${index}-${randomUUID()}`, name: call.name, input: call.input })) });
-const answer = (words: string): PersonalComputeResult => ({ kind: 'completed', text: words, stopReason: 'end_turn', usage });
 const stagedFor = async (userId: string) => (await pool.query(`SELECT id, name, size, message_id FROM project_files WHERE uploader_id = $1 AND message_id IS NULL ORDER BY created_at`,
   [userId])).rows as { id: string; name: string; size: number; message_id: string | null }[];
 const fileChanges = async (runId: string) => (await changesOf(runId)).filter((row) => row.operation === 'answer.file.attach');
@@ -27,22 +24,22 @@ const PAGE = '<!doctype html><title>Lamp report</title><h1>Lamp sensor</h1><p>Fa
 
 describe('flux_attach_file: an agent attaches a file to its answer like its asker\'s own upload (#1437)', () => {
   let scene: AssistantScene;
-  before(async () => { scene = await assistantScene('files'); });
+  let pi: PiRuntime;
+  before(async () => { pi = await startPiRuntime(); scene = await assistantScene('files', { pi }); });
+  after(async () => { await pi.close(); });
   beforeEach(async () => {
     await scene.reset();
-    scene.compute.dispatched.length = 0;
     await pool.query(`DELETE FROM project_files WHERE uploader_id = $1 AND message_id IS NULL`, [scene.owner.id]);
   });
 
   test('/ai "make a page of the report": an API-key run attaches an HTML file; the asker\'s alone until Show everyone, then every member opens it', async () => {
-    const replies = [calls({ name: 'flux_attach_file', input: { clientCommandId: randomUUID(), name: 'lamp-report.html', content: PAGE } }),
-      answer('Here is the report as a page.')];
-    scene.compute.respond = async () => replies.shift()!;
+    pi.gateway.script([{ tool: 'mcp__flux__flux_attach_file', args: { clientCommandId: randomUUID(), name: 'lamp-report.html', content: PAGE } },
+      { text: 'Here is the report as a page.' }]);
     const started = await scene.runs.invoke(human(scene.owner), scene.thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'make a page of the report' });
-    assert.equal(await scene.processor.process(started.run.id), 'completed');
-    assert.ok(scene.compute.dispatched[0]!.tools?.some((tool) => tool.name === 'flux_attach_file'), 'offered on /ai in a space');
-    assert.match(scene.compute.dispatched[0]!.system, /attach it to your answer with flux_attach_file: its name with the extension and its content/);
-    assert.match(JSON.stringify(scene.compute.dispatched[1]!.turns), /The file is attached to your answer/);
+    assert.equal(await scene.processor!.process(started.run.id), 'completed', JSON.stringify(pi.lastPi()));
+    assert.ok(pi.gateway.requests[0]!.tools.includes('mcp__flux__flux_attach_file'), 'offered on /ai in a space');
+    assert.match(pi.gateway.requests[0]!.prompt, /attach it to your answer with flux_attach_file/);
+    assert.match(pi.gateway.requests[1]!.results[0] ?? '', /The file is attached to your answer/);
     const [change] = await fileChanges(started.run.id);
     assert.deepEqual([change!.state, change!.object_title], ['applied', 'lamp-report.html']);
     assert.deepEqual((await pool.query(`SELECT object_type FROM assistant_changes WHERE id = $1`, [change!.id])).rows, [{ object_type: 'file' }],

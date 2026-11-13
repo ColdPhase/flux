@@ -19,8 +19,9 @@ import { responsesInput, responsesReplay, responsesText, responsesToolCalls, res
 
 /**
  * OpenAI's own web search (#954, C-29), on its cached index only (`external_web_access: false`): no live page request leaves on the
- * agent's word except through Flux's `flux_read_web`, whose addresses C-30 bounds. No `max_tool_calls`: the calls of a request are not
- * limited (founder direction 2026-11-09, #1113), and each is charged as counted.
+ * agent's word except through Flux's `flux_read_web`, whose addresses C-30 bounds. An agent searches as much as its question needs (founder
+ * direction 2026-11-09, #1113): each `flux_web_search` is one request of at most a few searches (`max_tool_calls`, #1441), held for that
+ * bound, and each is charged as counted.
  */
 export const OPENAI_WEB_SEARCH_TOOL = { type: 'web_search', external_web_access: false } as const;
 
@@ -36,6 +37,8 @@ export interface ResponsesRequest {
   /** A run's last request (#1410): no tool may be called (`tool_choice: none`), and Flux's words follow the last outputs. */
   answerNow?: string;
   webSearch?: boolean;
+  /** The most searches of a search-only request (`max_tool_calls`, #1441). */
+  maxSearches?: number;
   signal: AbortSignal;
   /** The answer's words as they are written (#1248): the request is streamed, and its final response read as a whole one. */
   onText?: (delta: string) => void;
@@ -46,14 +49,16 @@ const tokens = (value: unknown) => (typeof value === 'number' && Number.isSafeIn
 /** Sends one Responses request and maps its answer to a completed result. Throws the typed errors of Chat Completions. */
 export async function openAiResponse(fetch: GuardedFetch, request: ResponsesRequest): Promise<Extract<PersonalComputeResult, { kind: 'completed' }>> {
   const tools = request.tools?.length ? request.tools : null;
-  const search = !!tools && request.webSearch === true;
+  // With the Flux tools, or alone as `flux_web_search`'s one search request (#1441), bounded by `max_tool_calls`.
+  const search = request.webSearch === true;
   const body: Record<string, unknown> = {
     model: request.model,
     instructions: request.system,
     input: responsesInput(request.user, request.turns, request.answerNow),
     max_output_tokens: request.maxTokens,
     store: false,
-    ...(tools ? { tools: [...responsesTools(tools), ...(search ? [OPENAI_WEB_SEARCH_TOOL] : [])], ...(request.answerNow ? { tool_choice: 'none' } : {}) } : {}),
+    ...(tools || search ? { tools: [...(tools ? responsesTools(tools) : []), ...(search ? [OPENAI_WEB_SEARCH_TOOL] : [])], ...(tools && request.answerNow ? { tool_choice: 'none' } : {}) } : {}),
+    ...(search && request.maxSearches ? { max_tool_calls: request.maxSearches } : {}),
     // Every address a search returned, so a cited one is listed (C-30).
     ...(search ? { include: ['web_search_call.action.sources'] } : {}),
     ...(request.onText ? { stream: true } : {}),
@@ -146,12 +151,14 @@ export function openAiResponsesPersonalCompute({ enabled, resolveKey, policy = P
   return {
     enabled,
     async dispatch(request, signal, onText) {
-      checkRequestLimits(request, 'openai_responses');
+      // A request outside the limits is never sent, so it costs nothing.
+      try { checkRequestLimits(request, 'openai_responses'); } catch { return { kind: 'failed', reason: 'provider_error', billed: 'none' }; }
       try {
         const apiKey = await resolveKey(request.connection.keyRef);
         if (!apiKey) throw new PersonalKeyUnavailableError();
         return await openAiResponse(fetch, { baseUrl, apiKey, model: request.model, system: request.system, user: request.input,
-          maxTokens: request.maxTokens, tools: request.tools, turns: request.turns, ...(request.answerNow ? { answerNow: request.answerNow } : {}), webSearch: request.webSearch === true, signal, ...(onText ? { onText } : {}) });
+          maxTokens: request.maxTokens, tools: request.tools, turns: request.turns, ...(request.answerNow ? { answerNow: request.answerNow } : {}), webSearch: request.webSearch === true,
+          ...(request.webSearchMaxUses ? { maxSearches: request.webSearchMaxUses } : {}), signal, ...(onText ? { onText } : {}) });
       } catch (error) {
         if (error instanceof PersonalKeyUnavailableError) return { kind: 'failed', reason: 'provider_error', billed: 'none' };
         if (error instanceof SearchRefusedError) return { kind: 'failed', reason: 'provider_error', billed: 'none', searchRefused: true };

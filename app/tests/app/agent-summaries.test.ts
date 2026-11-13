@@ -9,12 +9,14 @@ import { agentConnection, toolFailure } from './support/mcp-actions.js';
 import { addMember, expectStatus, grant, person, removeFromSpace, type Person } from './support/people.js';
 import { ensureSpaceAiAllowed, setSpaceAi } from './support/space-ai.js';
 import { assistantScene, human, result, text, type AssistantScene, type Message } from './support/assistant-scene.js';
+import { startPiRuntime, type PiRuntime } from './support/pi-runtime.js';
 
 // F-042, AG-12, #1292: `flux_summarize` reads one place since a date as a compact digest that the calling agent summarises itself. It is the
 // same tool for the server engine (a run token) and for the owner's Claude Code or Codex (an OAuth client), and it makes no model call of
 // its own: the summary is the agent's work in its own run, which its owner pays for as for any other run. Nothing is stored. What it reads is
 // what the caller may read at the moment of the call: the owner's rights, the space's AI switch, a message still there and as it was last written,
-// a direct message only in a run in it, and an encrypted space never.
+// a direct message only in a run in it, and an encrypted space never. An API-key agent runs in pi in the agent runtime (#1441, RT-1) and
+// calls the tool through the same route; its model is a scripted stand-in for Flux's model gateway.
 
 const rename = (who: Person, name: string) => pool.query('UPDATE auth_users SET name = $1 WHERE id = $2', [name, who.id]);
 const value = (message: Message) => JSON.parse(text(message)) as Digest;
@@ -27,6 +29,7 @@ const codeOf = (message: Message) => result(message)?.isError ? (JSON.parse(text
 
 describe('flux_summarize: a place since a date, on both engines, only what the caller may read now (#1292)', () => {
   let scene: AssistantScene;
+  let pi: PiRuntime;
   let talk: Conversation; // the scene's thread, the run's own place
   let camera: Conversation; // another thread of the space
   let barrel: { id: string; number: number; version: number }; // a task with a discussion
@@ -50,7 +53,8 @@ describe('flux_summarize: a place since a date, on both engines, only what the c
   const summarize = async (live: Awaited<ReturnType<typeof run>>, args: Record<string, unknown>) => value((await live.call('flux_summarize', args)).message);
 
   before(async () => {
-    scene = await assistantScene('summary');
+    pi = await startPiRuntime();
+    scene = await assistantScene('summary', { pi });
     for (const [who, name] of [[scene.owner, 'Ada Nowak'], [scene.peer, 'Jonas Berg'], [scene.viewer, 'Vera Lis'], [scene.outsider, 'Olek Mur'], [scene.lead, 'Lea Lead']] as const) await rename(who, name);
     talk = scene.thread;
     await pool.query('UPDATE project_messages SET created_at = $2 WHERE conversation_id = $1 AND sequence = 1', [talk.id, '2026-11-01T09:00:00Z']);
@@ -68,10 +72,10 @@ describe('flux_summarize: a place since a date, on both engines, only what the c
     await discussion(scene.peer, 'Blocked on the lid seal.', '2026-11-03T09:00:00Z');
     await discussion(scene.owner, 'Order the seal today.', '2026-11-03T09:10:00Z');
   });
-  beforeEach(async () => { await scene.reset(); scene.compute.dispatched.length = 0; await ensureSpaceAiAllowed(scene.place.id); });
-  after(async () => { await ensureSpaceAiAllowed(scene.place.id); });
+  beforeEach(async () => { await scene.reset(); await ensureSpaceAiAllowed(scene.place.id); });
+  after(async () => { await ensureSpaceAiAllowed(scene.place.id); await pi.close(); });
 
-  test('a thread since a date: oldest first, one line each, authors as people see them; the end is exclusive; nothing is stored and no model is called', async () => {
+  test('a thread since a date: oldest first, one line each, authors as people see them; the end is exclusive; nothing is stored', async () => {
     const live = await run();
     const before = await rows();
     const answer = await summarize(live, { after: '2026-11-02' });
@@ -88,8 +92,23 @@ describe('flux_summarize: a place since a date, on both engines, only what the c
     assert.deepEqual([empty.messages, empty.complete, empty.digest], [0, true, undefined]);
     assert.match(empty.note, /No messages in this range/);
     assert.deepEqual(await rows(), before, 'no message, change, run or summary is made');
-    assert.equal(scene.compute.dispatched.length, 0, 'and the tool calls no model: the summary is the agent\'s own work in its own run');
     await scene.complete(live.runId);
+  });
+
+  test('an API-key agent in pi summarises a thread with the tool in its own run: the digest is the tool\'s result, and the tool calls no model of its own', async () => {
+    const before = await rows();
+    pi.gateway.script([{ tool: 'mcp__flux__flux_summarize', args: { after: '2026-11-02' } }, { text: 'Jonas took the barrel tasks and finished them; the deadline is Friday.' }]);
+    const started = await scene.runs.invoke(human(scene.owner), talk.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Catch me up' });
+    assert.equal(await scene.processor!.process(started.run.id), 'completed', JSON.stringify(pi.lastPi()));
+    assert.ok(pi.gateway.requests[0]!.tools.includes('mcp__flux__flux_summarize'), 'the run is offered the tool');
+    assert.equal(pi.gateway.requests.length, 2, 'one request that asked for the digest and one that wrote the summary: the tool made none');
+    const digest = JSON.parse(pi.gateway.requests[1]!.results[0] ?? '{}') as Digest;
+    assert.deepEqual(lines(digest), ['## 2026-11-02', '10:02 Jonas Berg: I can take the barrel tasks.', '## 2026-11-03', '08:30 Ada Nowak: Great, the deadline is Friday.',
+      '## 2026-11-04', '16:45 Jonas Berg: Done: barrel tasks tidied.']);
+    assert.deepEqual([digest.place.type, digest.place.id, digest.messages, digest.complete], ['thread', talk.id, 3, true], 'the run\'s own thread');
+    // Nothing is stored for the summary: only the run itself is new.
+    assert.deepEqual(await rows(), { ...before, runs: before.runs! + 1 });
+    assert.match((await pool.query('SELECT answer_body FROM personal_runs WHERE id = $1', [started.run.id])).rows[0].answer_body, /barrel tasks/);
   });
 
   test('a space is all its conversations with a heading for each thread; a task\'s discussion is not among them', async () => {
@@ -265,7 +284,6 @@ describe('flux_summarize: a place since a date, on both engines, only what the c
     for (const [args, code] of [[{ in: talk.id, after: 'yesterday' }, 'INVALID_TIME'], [{ in: talk.id, after: '2026-11-03', before: '2026-11-02' }, 'INVALID_TIME'],
       [{ in: talk.id, after: '2026-11-02', next: 'x' }, 'INVALID_CURSOR'], [{ in: randomUUID(), after: '2026-11-02' }, 'PLACE_NOT_FOUND']] as const)
       assert.equal(failure(await client.tool('flux_summarize', args)).code, code, JSON.stringify(args));
-    assert.equal(scene.compute.dispatched.length, 0, 'no model is called for any of it');
     await scene.complete(live.runId);
   });
 

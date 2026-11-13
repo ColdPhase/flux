@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { before, describe, test } from 'node:test';
+import { after, before, describe, test } from 'node:test';
 import { agentConnectionPath, assistantRunChangesActionPath, MY_AGENTS_PATH, taskDiscussionPath, type AgentChatMessage, type AssistantRunUndone, type MyAgentList,
   type TaskDiscussion } from '@flux/contracts';
 import { stopRunBy } from '@flux/core';
@@ -9,14 +9,17 @@ import { personalRunWorkerUnitOfWork } from '../../apps/worker/src/personal-runs
 import { assistantScene, human, text, type AssistantScene } from './support/assistant-scene.js';
 import { db, pool } from './support/db.js';
 import { expectStatus } from './support/people.js';
+import { startPiRuntime, type PiRuntime } from './support/pi-runtime.js';
 import { waitFor } from './support/wait.js';
 
 // An agent's reports arrive in its private chat (#919, F-036 AG-7): when the outcome of a run on a task is known, one line, once, unread
 // until its owner opens the chat, with Undo while the run's changes stand. The API container's real drain decides the outcome (Done, or back
-// with the owner to check) from the run's end, as it does for any task. Reports never go to the Inbox. Fake compute: no provider pass is claimed.
+// with the owner to check) from the run's end, as it does for any task. Reports never go to the Inbox. The one run of an API key here is pi in the
+// agent runtime on a scripted stand-in for the model gateway (#1441, RT-1): no provider pass is claimed.
 
 describe('the report of a run on a task (#919)', () => {
   let scene: AssistantScene;
+  let pi: PiRuntime;
   const chat = async (agentId = scene.agentId) => scene.runs.agentChatMessages(human(scene.owner), agentId);
   const unread = async () => (await scene.runs.agentChats(human(scene.owner))).find((item) => item.agentId === scene.agentId)!.unread;
   const reportOf = (runId: string, agentId = scene.agentId) => waitFor(async () => (await chat(agentId)).find((line) => line.runId === runId), `the report of run ${runId}`);
@@ -37,9 +40,11 @@ describe('the report of a run on a task (#919)', () => {
     cost_state = 'released', charged_micros = 0 WHERE id = $1`, [runId, answer]);
 
   before(async () => {
-    scene = await assistantScene('rep');
+    pi = await startPiRuntime();
+    scene = await assistantScene('rep', { pi });
     await scene.runs.readAgentChat(human(scene.owner), scene.agentId);
   });
+  after(async () => { await pi.close(); });
 
   test('Do it and tell me: the drain marks the task Done and the chat gets one Done line, with the agent\'s words and the task, and nothing to undo', async () => {
     await scene.setMayDo('act');
@@ -169,8 +174,8 @@ describe('the report of a run on a task (#919)', () => {
     // A run that is not on a task is not reported.
     const before = (await chat()).length;
     const asked = await scene.runs.invoke(human(scene.owner), scene.thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Hello' });
-    scene.compute.respond = async () => ({ kind: 'completed', text: 'Hi', stopReason: 'end_turn', usage: { inputTokens: 10, outputTokens: 2 } });
-    assert.equal(await scene.processor.process(asked.run.id), 'completed');
+    pi.gateway.script([{ text: 'Hi' }]);
+    assert.equal(await scene.processor!.process(asked.run.id), 'completed', JSON.stringify(pi.lastPi()));
     assert.equal((await chat()).length, before);
   });
 });

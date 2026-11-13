@@ -2,10 +2,9 @@ import { aiEndpointPolicyFromEnv, parsePrivateTargets, providerPersonalCompute, 
 import type { AiProviderKind } from '@flux/contracts';
 import {
   TEST_FIXTURE_API_KEY, TEST_FIXTURE_KEY_REF, testFixturePersonalConnections, unavailablePersonalCompute,
-  type AgentRuntimeConfig, type PersonalCompute, type PersonalConnectionLookup, type PersonalRunTokenIssuer, type PersonalRuntime, type PersonalToolHost,
+  type AgentRuntimeConfig, type PersonalCompute, type PersonalConnectionLookup, type PersonalRunTokenIssuer, type PersonalRuntime,
 } from '@flux/core';
 import { loadBackgroundMasterKey, personalConnectionLookup, personalKeyResolver, type Database } from '@flux/db';
-import { mcpToolHost } from './mcp-session.js';
 import { apiInternalUrl, runTokenIssuer } from './run-tokens.js';
 import { managerPersonalRuntime } from './runtime-engine.js';
 
@@ -26,12 +25,6 @@ export interface PersonalRunWorkerComposition {
   connections: PersonalConnectionLookup;
   compute: PersonalCompute;
   mode: 'production' | 'test-anthropic-mock';
-  /**
-   * F-027 A2/A6 (#484): with the provider on, each `server` run lists and calls its tools through the API's
-   * `/mcp` with its run token (`FLUX_API_INTERNAL_URL`, default `http://api:8080`); the API composes the
-   * matching turn reservation. The owner's own Claude Code runs through runtime-manager (#280).
-   */
-  tools?: PersonalToolHost;
   tokens: PersonalRunTokenIssuer;
   runtime: PersonalRuntime;
   /**
@@ -41,11 +34,11 @@ export interface PersonalRunWorkerComposition {
   keys?: { resolveKey: PersonalKeyResolver; policy: AiEndpointPolicy; upstreams: Partial<Record<AiProviderKind, string>> };
 }
 
-/** The run token issuer, the `server` tool host (only with the provider on) and the runtime engine (Claude Code's search with the web on, #1065). */
-function runPorts(env: NodeJS.ProcessEnv, db: Database, compute: PersonalCompute, runtimeConfig: AgentRuntimeConfig) {
+/** The run token issuer and the runtime engine (Claude Code's search with the web on, #1065), which runs every agent (#1441, RT-1). */
+function runPorts(env: NodeJS.ProcessEnv, db: Database, runtimeConfig: AgentRuntimeConfig) {
   const apiUrl = apiInternalUrl(env);
   const tokens = runTokenIssuer(db, apiUrl);
-  return { tokens, runtime: managerPersonalRuntime(runtimeConfig, db, { webSearch: webSearchSwitch(env) }), ...(compute.enabled ? { tools: mcpToolHost(tokens, `${apiUrl}/mcp`) } : {}) };
+  return { tokens, runtime: managerPersonalRuntime(runtimeConfig, db, { webSearch: webSearchSwitch(env) }) };
 }
 
 /**
@@ -92,7 +85,7 @@ export function personalRunWorkerComposition(env: NodeJS.ProcessEnv, db: Databas
     const resolveKey = switchedOn && masterKey ? personalKeyResolver(db, masterKey) : null;
     const compute = resolveKey ? providerPersonalCompute({ enabled: true, resolveKey, policy, webSearch,
       ...(proxy ? { baseUrls: { anthropic: proxy } } : {}) }) : unavailablePersonalCompute;
-    return { connections: personalConnectionLookup(db), compute, mode: 'production', ...runPorts(env, db, compute, runtimeConfig),
+    return { connections: personalConnectionLookup(db), compute, mode: 'production', ...runPorts(env, db, runtimeConfig),
       ...(resolveKey ? { keys: { resolveKey, policy, upstreams: proxy ? { anthropic: proxy } : {} } } : {}) };
   }
   if (mode !== 'anthropic-mock') throw new Error('FLUX_TEST_PERSONAL_RUNS must be empty or anthropic-mock');
@@ -103,6 +96,6 @@ export function personalRunWorkerComposition(env: NodeJS.ProcessEnv, db: Databas
   const mockPolicy = parsePrivateTargets([env.FLUX_AI_PRIVATE_TARGETS ?? '', mock[1]].join(','));
   const resolveKey: PersonalKeyResolver = async (keyRef) => (keyRef === TEST_FIXTURE_KEY_REF ? TEST_FIXTURE_API_KEY : null);
   const compute = providerPersonalCompute({ enabled: true, timeoutMs: 30_000, baseUrls: { anthropic: baseURL }, webSearch, policy: mockPolicy, resolveKey });
-  return { connections: testFixturePersonalConnections, compute, mode: 'test-anthropic-mock', ...runPorts(env, db, compute, runtimeConfig),
+  return { connections: testFixturePersonalConnections, compute, mode: 'test-anthropic-mock', ...runPorts(env, db, runtimeConfig),
     keys: { resolveKey, policy: mockPolicy, upstreams: { anthropic: baseURL } } };
 }

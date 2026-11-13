@@ -3,7 +3,7 @@ import { aiModelSeesPictures, ASSISTANT_RUN_CHANGED_EVENT, RUNTIME_RUN_LIMITS, t
 import { ForbiddenError, NotFoundError } from '../access/errors.js';
 import type { Principal } from '../principal.js';
 import type {
-  AgentBrief,
+  AgentBrief, MessageSource,
   PersonalRunPorts, PersonalRunTokenIssuer, PersonalRunUnitOfWork, PersonalRuntime, PersonalRuntimeEnd, PersonalRuntimeEvent, PersonalRuntimeRunRequest,
   RunChanges, RunEndStatus, RunLiveText, RunRecord,
 } from './ports.js';
@@ -15,7 +15,7 @@ import { answerWithSchedule, preparedAnswer } from './schedule-request.js';
 import { placeAllows, spaceSwitchAllows } from './place.js';
 import { isAsked, isPrivateAnswer } from './ports.js';
 import { chatFilesOf } from './chat-files.js';
-import { briefPrivateText, runtimeBrief, type BriefInput, type SuppliedSource } from './brief.js';
+import { briefPrivateText, runtimeBrief, type BriefInput } from './brief.js';
 import { CHAT_TURNS, latestMessages, readBriefFacts, type BriefFacts } from './brief-facts.js';
 import { answerCleaner } from './answer-addresses.js';
 import { answerWithWebSources } from './web-sources.js';
@@ -174,12 +174,19 @@ async function pauseUntilReset(ports: PersonalRunPorts, run: RunRecord, resetsAt
   await announce(ports, resumed);
 }
 
-/** What the worker reads for the CLI's brief (#1064), after the same place checks as an API-key run's read. */
-interface RuntimeContext { brief: AgentBrief | null; facts: BriefFacts; sources: SuppliedSource[]; leftOut: boolean; turns: { prompt: string; answer: string; files?: MessageFile[] }[]; files?: MessageFile[] }
+/** What the worker reads for a run's brief (#1064), after the place checks. */
+interface RuntimeContext {
+  brief: AgentBrief | null; facts: BriefFacts; messages: MessageSource[]; leftOut: boolean; turns: { prompt: string; answer: string; files?: MessageFile[] }[];
+  /** The files its owner sent with this request in the agent's chat (#1438, C-64). Absent: none. */
+  files?: MessageFile[];
+  /** The earlier answer a "Continue" (`continuesRunId`) asks to go on with: the same owner and place, else none. */
+  earlier: string | null;
+}
 
 /**
  * The CLI reads a space itself, through the run's tools. A direct message has no tool that reads it, and a chat remembers its earlier turns:
- * Flux gives those in the request (#842), with the brief's names and times.
+ * Flux gives those in the request (#842), with the brief's names and times, and the answer a Continue goes on with (#1441: the same for every
+ * engine, as the worker's own loop did before it was removed).
  */
 async function runtimeContext(ports: PersonalRunPorts, run: RunRecord): Promise<RuntimeContext> {
   const { projectId, dmId } = run;
@@ -192,9 +199,12 @@ async function runtimeContext(ports: PersonalRunPorts, run: RunRecord): Promise<
   const turns = projectId === null && dmId === null && isAsked(run) ? await ports.runs.chatTurns(run.agentId, run.id, CHAT_TURNS) : [];
   // The files its owner sent with this request in the chat (#1438, C-64): named with their ids, read with the run's tools.
   const files = isAsked(run) ? await chatFilesOf(ports, run) : [];
+  const previous = run.continuesRunId ? await ports.runs.findRun(run.continuesRunId) : null;
+  const earlier = previous && previous.ownerUserId === run.ownerUserId && previous.projectId === run.projectId && previous.conversationId === run.conversationId
+    && previous.dmId === run.dmId && previous.dmThreadRootId === run.dmThreadRootId ? previous.answerBody : null;
   return {
-    brief, facts: await readBriefFacts(ports, run, brief), leftOut: dm.leftOut, turns, ...(files.length ? { files } : {}),
-    sources: dm.messages.map((message, index) => ({ label: `S${index + 1}`, ref: { type: 'message', id: message.id, revision: 1 }, item: { kind: 'message', message } })),
+    brief, facts: await readBriefFacts(ports, run, brief), leftOut: dm.leftOut, turns, earlier, ...(files.length ? { files } : {}),
+    messages: dm.messages,
   };
 }
 
@@ -204,7 +214,7 @@ async function runtimeContext(ports: PersonalRunPorts, run: RunRecord): Promise<
  */
 function unreadContext(run: RunRecord, brief: AgentBrief | null): RuntimeContext {
   return {
-    brief, sources: [], leftOut: false, turns: [],
+    brief, messages: [], leftOut: false, turns: [], earlier: null,
     facts: { ownerName: 'your owner', agentName: brief?.name ?? 'Assistant', agentId: run.agentId, namesake: false, timeZone: 'UTC', task: null, scheduleTitle: null,
       place: run.projectId !== null ? { kind: 'space', spaceId: run.projectId, spaceName: null, conversationId: run.conversationId, task: null }
         : run.dmId !== null ? { kind: 'dm', others: [], thread: run.dmThreadRootId !== null } : { kind: 'chat' } },
@@ -284,7 +294,7 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
         const refusal = await checked(ports, run, 'before_read', true);
         if (refusal) return { done: true as const, status: (await updateAndAnnounce(ports, run.id, ended(refusal, 'before_read', free))).status };
         // The server runs as many agents as fit in its memory; the others wait, in order, with one line (#860).
-        if (!(await ports.runs.roomForRuntimeRun(runtime?.keys === true))) {
+        if (!(await ports.runs.roomForRuntimeRun(true))) {
           if (run.endReason !== 'no_room') await updateAndAnnounce(ports, run.id, { endReason: 'no_room', resumeAt: null, planLimitResetsAt: null });
           return null;
         }
@@ -339,7 +349,13 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
       if (!grant || !grant.tools.length || (key && !modelToken)) {
         await tokens!.close(run.id).catch(() => undefined);
         if (key && modelToken) await key.gateway?.close(run.id).catch(() => undefined);
-        return finish(run.id, 'dispatching', () => ended('unavailable', 'before_dispatch', free));
+        // The token is refused for a run its owner stopped as it started (a Stop right after a Retry): that run is stopped, not unavailable.
+        return uow.run(async (ports) => {
+          const current = await ports.runs.findRun(run.id, { lock: true });
+          if (!current || current.status !== 'dispatching') return 'skipped';
+          const why = current.stopRequestedAt ? ((await spaceSwitchAllows(ports, current, false)) ? 'stopped' : 'ai_off') : 'unavailable';
+          return (await updateAndAnnounce(ports, run.id, ended(why, 'before_dispatch', free))).status;
+        });
       }
       /** What the gateway said of the run's requests at its end: unknown usage, and a refusal for the money or the run's standing. */
       let gatewayAccount: { unknown: number; stopped: 'budget' | 'ended' | null } | null = null;
@@ -406,11 +422,11 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
         const model = key ? run.model : runtimeModelFlag(run.model);
         const read = await uow.run((ports) => runtimeContext(ports, run))
           .catch(async () => unreadContext(run, await uow.run((ports) => ports.runs.agentBrief(run.agentId)).catch(() => null)));
-        // One brief for every place and both engines (#1064): the same text an API-key run gets, on standard input.
+        // One brief for every place (#1064), on standard input: the same text for a key's run in pi and for a plan's CLI.
         const briefed: BriefInput = {
-          engine: 'runtime', kind: run.kind, tools: grant.tools, ...read.facts, now: new Date(now()), agent: read.brief,
-          prompt: grant.context ? `${run.prompt}\n${grant.context}` : run.prompt, requestedAt: run.createdAt, sources: read.sources, leftOut: read.leftOut,
-          turns: read.turns, earlier: null, thought: run.targetSketchId && run.targetThoughtId ? { sketchId: run.targetSketchId, thoughtId: run.targetThoughtId } : null,
+          kind: run.kind, tools: grant.tools, ...read.facts, now: new Date(now()), agent: read.brief,
+          prompt: grant.context ? `${run.prompt}\n${grant.context}` : run.prompt, requestedAt: run.createdAt, messages: read.messages, leftOut: read.leftOut,
+          turns: read.turns, earlier: read.earlier, thought: run.targetSketchId && run.targetThoughtId ? { sketchId: run.targetSketchId, thoughtId: run.targetThoughtId } : null,
           webSearch, ...(read.files?.length ? { files: read.files } : {}),
         };
         const prompt = runtimeBrief(briefed);

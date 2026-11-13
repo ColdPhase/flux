@@ -60,13 +60,20 @@ export function useForgetLiveRun(runId: string, done: boolean) {
   useEffect(() => { if (done) runs.delete(runId); }, [runId, done]);
 }
 
+/** A Flux cite mark (C-62): `[doc:ID]`, `[doc:ID#2]`, `[task:ID]`, `[decision:ID]`, `[message:ID]`. */
+const CITE_MARK = /\s?\[(?:doc|task|decision|message):[0-9a-fA-F-]{36}(?:#\d{1,3})?\]/g;
+/** The start of one at the end of the words so far: the next words may finish it. */
+const CITE_MARK_BEGUN = /\s?\[(?:[a-z]{1,8}(?::[0-9a-fA-F-]{0,36}(?:#\d{0,3})?)?)?$/;
+
 /**
- * What of the growing words a reader is shown: the `[S1]` source marks (the answer numbers them at the end) and a `<schedule>` or `<ask>`
- * block, whole or begun, left out. With reduced motion only finished paragraphs show, so nothing types (#1248).
+ * What of the growing words a reader is shown: the `[S1]` source marks and the Flux cite marks (C-62; the answer numbers them at the end),
+ * whole or begun, and a `<schedule>` or `<ask>` block, whole or begun, left out. With reduced motion only finished paragraphs show, so
+ * nothing types (#1248).
  */
 export function shownWords(text: string, reduced: boolean): string {
   const cut = text.search(/<(?:schedule|ask)\b|<[a-z]{0,8}$/);
-  const words = (cut >= 0 ? text.slice(0, cut) : text).replace(/\s?\[S\d{1,3}\]/g, '').replace(/\s?\[S?\d{0,3}$/, '');
+  const words = (cut >= 0 ? text.slice(0, cut) : text).replace(/\s?\[S\d{1,3}\]/g, '').replace(CITE_MARK, '').replace(/\s?\[S?\d{0,3}$/, '')
+    .replace(CITE_MARK_BEGUN, '');
   if (!reduced) return words.trimStart();
   const end = words.lastIndexOf('\n\n');
   return end < 0 ? '' : words.slice(0, end).trim();

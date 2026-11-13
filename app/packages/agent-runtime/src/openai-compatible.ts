@@ -31,7 +31,8 @@ export function openAiCompatiblePersonalCompute({ enabled, resolveKey, policy = 
   return {
     enabled,
     async dispatch(request, signal) {
-      checkRequestLimits(request, 'openai_chat_completions');
+      // A request outside the limits is never sent, so it costs nothing.
+      try { checkRequestLimits(request, 'openai_chat_completions'); } catch { return { kind: 'failed', reason: 'provider_error', billed: 'none' }; }
       try {
         const baseUrl = chatBaseUrl(request.connection.provider, request.connection.baseUrl, baseUrls);
         const apiKey = await resolveKey(request.connection.keyRef);

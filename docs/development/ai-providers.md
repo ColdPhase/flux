@@ -11,18 +11,19 @@ consent, caps and fail-closed rules are those of
 | --- | --- |
 | `app/packages/contracts/src/ai-providers.ts` | Provider kinds, labels, fixed base URLs, key hints, the dated price table, `maxRequestMicros`, the model-list wire types. |
 | `app/packages/core/src/ai/` | Key-format, model-id, base-URL and price validation; the conservative token estimate; price resolution; the endpoint-policy port. |
-| `app/packages/core/src/proactive-comparison/dispatch.ts` | The comparison prompt, answer schema and parsing, shared by every provider. |
-| `app/packages/core/src/personal-runs/` | The personal-run prompt, parsing, reservation and commit, shared by every provider. |
+| `app/packages/core/src/personal-runs/` | The personal-run brief, answer parsing, processor and commit, and `flux_web_search`'s one search request (`key-search.ts`), shared by every provider. |
+| `app/packages/core/src/model-gateway/`, `app/apps/worker/src/model-gateway/` | Flux's model gateway: a key run's model requests in pi's own wire format, passed to the provider with the sealed key, each held and charged against the key's daily budget ([RT-4](../product/ai-modes.md#the-model-gateway-1441)). |
 | `app/packages/agent-runtime/src/endpoint-policy.ts` | The SSRF guard: address classes, the operator allowlist, save-time and connect-time checks. |
 | `app/packages/agent-runtime/src/guarded-fetch.ts` | The one HTTP transport of every adapter: guarded lookup, no redirects, size and time bounds. |
-| `app/packages/agent-runtime/src/anthropic.ts`, `responses.ts`, `chat-completions.ts`, `openai-compatible.ts` | The three wire formats of personal runs: Anthropic Messages, OpenAI's Responses API (#954) and Chat Completions. |
-| `app/packages/agent-runtime/src/registry.ts` | `providerPersonalCompute` and `providerComparison`: the adapter chosen by the connection's provider kind. |
+| `app/packages/agent-runtime/src/anthropic.ts`, `responses.ts`, `chat-completions.ts`, `openai-compatible.ts` | The three wire formats of the provider adapters: Anthropic Messages, OpenAI's Responses API (#954) and Chat Completions. Since #1441 they serve `flux_web_search` (and, when it is added, the connect-time tool check of RT-1); a run's own model requests go through the gateway, not through them. |
+| `app/packages/agent-runtime/src/registry.ts` | `providerPersonalCompute`: the adapter chosen by the connection's provider kind. |
 | `app/packages/agent-runtime/src/model-list.ts` | Keyless model listings (OpenRouter, an OpenAI-compatible endpoint) and the listings read with a key (Anthropic, OpenAI, Gemini; #1218). |
 | `app/packages/contracts/src/ai-model-families.ts` | A listed model's family and the newest-first order of the picker (#1218). |
 | `app/apps/server/src/ai-keys/` | The key form's listing and key test (6-hour cache by key digest), Try again and the owner's model prices; `model-refresh.ts` asks the worker to read a stored key's list. |
-| `app/apps/worker/src/ai-keys/model-lists.ts` | Reads a stored key's models (`api-key.model-list.v1`): the only process that opens a stored key. |
-| `app/apps/server/src/proactive-comparison/ai-composition.ts` | The API's endpoint policy, save-time check and listings. |
-| `app/apps/worker/src/proactive-comparison/providers.ts`, `personal-runs/composition.ts` | The worker's adapter registry. |
+| `app/apps/worker/src/ai-keys/model-lists.ts` | Reads a stored key's models (`api-key.model-list.v1`). The worker is the process that opens a stored key for a run (the gateway); the API opens one only for a `flux_web_search` request. |
+| `app/apps/server/src/ai-keys/ai-composition.ts` | The API's endpoint policy, save-time check and listings. |
+| `app/apps/server/src/agent-connection/web-search.ts` | `flux_web_search`: the API's adapter registry, with a key resolver for one search ([personal runs](personal-runs.md#web-search-954-1441)). |
+| `app/apps/worker/src/personal-runs/composition.ts` | The worker's adapter registry (its `enabled` is the operator's switch) and the key resolver and endpoint policy of the gateway. |
 | `app/packages/db/migrations/0001_v0_1_baseline.sql` | The schema (the v0.1 baseline, #779). |
 
 ## Provider kinds and wire formats
@@ -51,17 +52,19 @@ providers is exercised with a real key yet. A model id is the owner's free choic
 within `^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,199}$`; OpenRouter's `:online` variants, which add a
 provider-hosted web search, are refused.
 
-Every wire format sends the same request: the Flux system prompt, one user message, the output
-bound, no tools (a `server` run with the Flux tool loop adds the Flux tools and, while the operator's `FLUX_WEB_READS`
-is on, the provider's own web search where it has one, each request one turn: see
-[personal runs](personal-runs.md#tool-loop-f-027-ast-8-406-first-part) and [web search](personal-runs.md#web-search-954)), no streaming, no retries. The differences are the wire format only:
+Every adapter sends the same bounded request: a system prompt, one user message, the output bound, no tools and no retries. The one caller of an adapter
+in a run is `flux_web_search` ([web search](personal-runs.md#web-search-954-1441)), whose request adds the provider's own hosted search and nothing
+else; the connect-time tool check of [RT-1](../product/ai-modes.md#rt-1--engines-on-the-server) will add one `ping` tool. The adapters can write and read
+tool calls in each wire format ([tool calling](personal-runs.md#tool-calling-in-the-adapters-f-027-ast-81-406)). A run's own model requests are not
+sent by them: pi sends them in the provider's wire format to the [model gateway](../product/ai-modes.md#the-model-gateway-1441), which holds the key
+(since #1441 the worker has no tool loop of its own). The differences are the wire format only:
 
 - Anthropic: `Authorization: Bearer` (the key; SDK 1.x sends an API key there, not in `x-api-key`, #1240), `max_tokens`, `output_config.effort: "low"`, and for comparisons
   `output_config.format` with the answer schema; the official SDK with `maxRetries: 0` and the
-  guarded transport as its `fetch`. Its token-count endpoint may raise the Flux estimate.
+  guarded transport as its `fetch`. Its token-count endpoint is in the adapter and nothing calls it.
 - OpenAI Responses (#954): `Authorization: Bearer`, `POST <base>/responses`, the brief as `instructions`,
-  `max_output_tokens` (it includes reasoning tokens), `store: false` (nothing is kept at OpenAI; a run's
-  earlier turns travel in every request as the model's words and function calls, without item ids; no
+  `max_output_tokens` (it includes reasoning tokens), `store: false` (nothing is kept at OpenAI; earlier turns of a request
+  travel in it as the model's words and function calls, without item ids; no
   reasoning is carried between turns and no encrypted reasoning is asked for, which non-reasoning models refuse),
   function tools with `strict: false`, results as `function_call_output` items. No effort field. A small
   fetch client, not a vendor SDK. Flux speaks it to OpenAI because OpenAI's own web search is a Responses
@@ -95,15 +98,15 @@ their own key, it is encrypted at rest, and only that owner's runs and compariso
 `openai_compatible` endpoints are the owner's own servers or services and carry their own terms.
 Anthropic was confirmed in O-007/O-008 and is unchanged.
 
-## Prices, reservations and the input bound
+## Prices and the gateway's holds
 
 A connection's price per 1M tokens (micro-dollars) comes only from Flux's dated table
 (`AI_PRICE_TABLE`; source `table`) or from the owner
-(`owner`, zero allowed), because a reservation needs a price before any response exists. An owner
+(`owner`, zero allowed), because a request is held at its worst cost before any response exists. An owner
 price is refused when the table has the model. A price OpenRouter lists is shown in the form as
 the starting value of the owner's price, never stored as a source of its own. A connection without
 a price can be saved but not enabled: `BACKGROUND_PRICE_UNKNOWN`, `PERSONAL_RUN_PRICE_UNKNOWN`, the
-reservation refusal `CONNECTION_PRICE_UNKNOWN`, and the assistant state `unavailable` /
+refusal `CONNECTION_PRICE_UNKNOWN`, and the assistant state `unavailable` /
 `price_unknown`.
 
 The table rows come from these pages (all vendor claims), all read on 2026-11-12 (#1218):
@@ -114,39 +117,32 @@ The table rows come from these pages (all vendor claims), all read on 2026-11-12
 | OpenAI | [developers.openai.com pricing](https://developers.openai.com/api/docs/pricing) (undated) | Standard text rates, the ≤272k-token tier; not batch, flex or fast |
 | Gemini | [aistudio.google.com/docs/pricing](https://aistudio.google.com/docs/pricing) (ai.google.dev's pricing page redirects there; undated) | Paid tier, ≤200k-token prompt tier |
 
-Left out because the provider has announced the price will change on a known date (a stale row would under-reserve; the owner
+Left out because the provider has announced the price will change on a known date (a stale row would under-hold; the owner
 enters the price): Gemini 4 Carbon and Argon ($2 / $10 until 2026-11-30, $4 / $20 from 2026-12-01), Gemini 3.6 and 3.8 Flash ($0.75 /
 $3.75 until 2026-12-31), and GPT-5.6 Sol (promotional until 2026-11-30). Gone since the last reading: `gemini-3.5-flash` and `o3-mini`
 (no longer on the pages). A listed model without a row is still offered: its owner enters its price for that key
 (`PUT /api/v1/background-compute-connections/:id/model-price`, kept in `model_prices`).
 
-- One request of a personal run is bounded at `32,000 × input + 4,000 × output` at the key's price (`64,000 × input`
-  for a request of a run with tools; #484, #843). When the worker starts the run it reserves its turns × that
-  largest request, never above what is left of the key's one daily budget (`budgetedReservationMicros`, #854);
-  a request that finds not even one request's room left waits for the key's next day (`end_reason = 'budget'`,
-  `resume_at`). There is no per-run ceiling.
-- A comparison reserves `8,000 × input + 1,200 × output`, at least O-007's $0.05, against the same daily budget
-  of the background key (`apiKeySpendToday` counts personal runs and comparisons on the key together).
-- Usage is charged at the connection's price, or reconciled at the cost the provider reported in
-  the response (OpenRouter `usage.cost`), which never raises or bypasses the reservation.
-- A search of the provider's own web search (#954) is charged `WEB_SEARCH_MICROS` ($0.01; Anthropic and
-  OpenAI both list $10 per 1,000, read 2026-11-08) on top of the tokens, as the provider reports it. There is no limit on the searches of a request
-  or a run (#1113), so none is reserved. A response that reports searches when its request offered none is outside its bounds (a lost response),
-  and so is one whose cost passes what the run has left. A request that offers the search has room for its results in its input bound
-  (`WEB_SEARCH_INPUT_TOKENS`, 50,000 tokens in all, Flux's assumption), reserved at the input price; the input a request that searched reports is
-  held to the run's money, not to that bound. A key's budget must hold one request with that room when its provider has a search. A refused
-  search is not billed and the request is sent once more without it.
-- The charge never exceeds the reservation (`boundedUsageMicros`). Usage above the request's token
-  limits, or a cost above its reservation, is not stored: a personal run ends `provider_failed`
-  with cost `unknown` and its reservation counted, and a comparison ends `unknown`
-  (`INVALID_OBSERVED_USAGE`, `OBSERVED_COST_OVER_CEILING`). Nothing is posted in either case.
+- **A run's request** through the model gateway is held at its most it can cost before it is sent: its body's bytes as input tokens plus
+  1,024 (at the provider's cache-write rate where it has one, Anthropic's 1.25) and its output bound (at most 32,000 tokens), at the run
+  model's price, against what is left of the key's one daily budget with everything else the key holds that day (`gatewayHoldMicros`,
+  [RT-4](../product/ai-modes.md#the-model-gateway-1441)). Nothing is reserved when the run starts: a run starts when one request with tools
+  (`64,000 × input + 4,000 × output` at the key's price) fits in what is left of the day, and a request that finds not even that waits for
+  the key's next day (`end_reason = 'budget'`, `resume_at`). There is no per-run ceiling and no turns × largest request (#854, #1441).
+- **Usage** is charged when the answer ends, at the key's price with the provider's cache rules, or at the cost the provider reported (OpenRouter
+  `usage.cost`), and never above the hold (`gatewayChargeMicros`, `boundedUsageMicros`). Usage that is missing, malformed or beyond the
+  request's bounds is charged all it held and the run's cost is `unknown`; a request that was never sent is charged nothing.
+- **A search** (`flux_web_search`, #954, #1441) is its own request, held for `personalRunMaxInputTokens(true, true)` input tokens (64,000, and
+  `WEB_SEARCH_INPUT_TOKENS`, 50,000, as room for the results; Flux's assumption), 1,500 output tokens and 3 searches at `WEB_SEARCH_MICROS`
+  ($0.01 each; Anthropic and OpenAI both list $10 per 1,000, read 2026-11-08), then charged what the provider reports, the searches
+  included (`keySearchHoldMicros`). A key's budget is refused when saved if it cannot hold one request with that room on a provider that has a search. The gateway refuses a
+  provider's hosted tools, so a search never goes through it.
 
-The input of every provider is bounded by `conservativeTokenEstimate`: one token per UTF-8 byte
-plus framing. Byte-level BPE and SentencePiece tokenizers emit at least one byte per token, so
-this is an upper bound for any text (prose, CJK, emoji, digit runs).
-It replaces O-007/O-008's Anthropic preflight count as the bound. Anthropic's count endpoint is
-still called when the estimate fits, as an optional refinement: only a higher count is used.
-A provider that still reports more usage than the bound is handled by the charge bound above.
+There is no Flux bound on a run's input any more: no estimate, fit or preflight token count (#1441). The gateway bounds a request's body (16
+MiB) and holds its worst cost, with one token per UTF-8 byte of the body as the input bound; byte-level BPE and SentencePiece tokenizers emit at
+least one byte per token, so this is an upper bound for any text (prose, CJK, emoji, digit runs). A run whose context outgrows the model's window
+ends `input_too_large` when pi reports the provider's refusal. `conservativeTokenEstimate` stays in `app/packages/core/src/ai/estimate.ts`
+with its test and no run calls it.
 
 ## Endpoint guard (SSRF)
 
@@ -179,8 +175,9 @@ for an endpoint the guard refuses; `unavailable` when the endpoint does not answ
 
 ## Keys
 
-Custody is unchanged: AEAD with the owner and connection ids, decrypted only in the worker for one
-request. A key never appears in API responses, error bodies, logs, stream frames, job rows,
+Custody: AEAD with the owner and connection ids, opened for one request. The worker opens it for a model request of a run in the gateway
+and for a model list; the API process opens it for one `flux_web_search` request (#1441), with the same resolver, endpoint policy and
+operator switch, and only while `FLUX_PERSONAL_RUNS=on`. The key never enters the runtime. A key never appears in API responses, error bodies, logs, stream frames, job rows,
 candidates or proposals. Seeded keys of every adapter carry the marker `owner-budget-key-`, which
 `scripts/check_application.sh` looks for in the API, worker and provider-mock logs, and
 `ai-connections.test.ts` in stored candidates, proposals, events and jobs.
@@ -189,11 +186,12 @@ candidates or proposals. Seeded keys of every adapter carry the marker `owner-bu
 
 | File | Covers |
 | --- | --- |
-| `app/tests/app/provider-adapters.test.ts` | The adapter contract suite: one set of cases, run identically against the Docker `providermock` for both wire formats (success, truncation, refusal, 429, 529/503, other errors, timeout, abort, malformed, usage-less, redirect, oversized, refused endpoints, environment variables, usage and cost, keys absent from results, errors and console), plus the comparison adapters, OpenRouter cost, OpenAI's token field and keyless model lists. |
+| `app/tests/app/provider-adapters.test.ts` | The adapter contract suite: one set of cases, run identically against the Docker `providermock` for both wire formats (success, truncation, refusal, 429, 529/503, other errors, timeout, abort, malformed, usage-less, redirect, oversized, refused endpoints, environment variables, usage and cost, keys absent from results, errors and console), plus OpenRouter cost, OpenAI's token field and keyless model lists. |
 | `app/tests/app/ai-endpoint-guard.test.ts` | Address classes, the allowlist, DNS rebinding, redirects, size and time bounds; key formats, model ids, base URLs and the estimate. |
-| `app/tests/app/ai-connections.test.ts` | The API: every provider kind, validation, save-time SSRF refusals, model lists, enabling without a price, and worker dispatch on both wire formats with reservation and usage at the connection's price. |
-| `app/tests/app/personal-runs-providers.test.ts` | Personal runs through the real registry on both wire formats. |
-| `app/tests/app/web-search.test.ts` | The provider's own web search on Anthropic Messages and the Responses API against the Docker mock, a search's results as its own run's addresses through the real worker and `/mcp`, the sources line, the charge and the operator switch (#954). |
+| `app/tests/app/ai-connections.test.ts` | The API: every provider kind, validation, save-time SSRF refusals, model lists, enabling without a price, and a key's budget below one request. |
+| `app/tests/app/personal-runs-providers.test.ts` | Personal runs on each provider's wire format: the real worker and a real pi in a test runtime, whose model is the fake gateway at that provider's path. |
+| `app/tests/app/key-search-adapters.test.ts`, `app/tests/app/model-gateway-core.test.ts`, `app/tests/app/model-gateway.test.ts` | `flux_web_search`'s one request through the real adapters, with its hold and charge; the gateway's admission, holds and charges, and every wire format through it, streamed and whole. |
+| `app/tests/app/web-search.test.ts` | The provider's own web search on Anthropic Messages and the Responses API against the Docker mock, and a pi run's `flux_web_search` through the real `/mcp` route: its results as the run's addresses, the sources line and the operator switch (#954, #1441). |
 | `app/tests/app/ai-connections-migration.test.ts` | `0042` on earlier data, its constraints and its guarded reversal. |
 | `app/tests/ui/test_ai_connections.py` | The settings form, model listing, prices, refused endpoints, phone width, neutral copy and the Connect guide. |
 

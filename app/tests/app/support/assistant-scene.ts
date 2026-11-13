@@ -6,21 +6,19 @@ import {
 } from '@flux/contracts';
 import type { Principal } from '@flux/core';
 import { personalRunTokenRows } from '@flux/db';
-import { createPersonalRunProcessor } from '@flux/core';
 import { personalRunUseCases } from '../../../apps/server/src/personal-runs/adapters.js';
-import { personalRunWorkerUnitOfWork } from '../../../apps/worker/src/personal-runs/adapters.js';
-import { mcpToolHost } from '../../../apps/worker/src/personal-runs/mcp-session.js';
-import { runTokenIssuer } from '../../../apps/worker/src/personal-runs/run-tokens.js';
 import { db, pool } from './db.js';
 import { apiUrl } from './http.js';
 import { mcp } from './mcp.js';
 import { addMember, expectStatus, grant, person, project as createProject, workspace as createWorkspace, type Person } from './people.js';
-import { FakeCompute, FakeConnections, FakeQueue } from './personal-runs.js';
+import { FakeConnections, FakeQueue } from './personal-runs.js';
+import type { PiRuntime } from './pi-runtime.js';
 import { waitFor } from './wait.js';
 
 // The shared starting point of the assistant's change tests (F-027 A3/A4): an owner with an assistant in a project of a workspace, two other
 // members, an assistant run that can be made "live" (token minted, MCP calls through the real `/mcp` route) and the helpers to make, read and
-// end things. A fake clock, fake provider and fake CLI stand in for every vendor; nothing here calls one.
+// end things. A fake clock, fake provider and fake CLI stand in for every vendor; nothing here calls one. A scene given a pi runtime
+// (support/pi-runtime.ts) has a `processor`: the owner's API-key runs run in pi in it (#1441, RT-1), scripted through `pi.gateway`.
 
 import { agentSettings } from './agent-settings.js';
 export { agentSettings, type AgentSettingsView } from './agent-settings.js';
@@ -40,15 +38,12 @@ export interface ChangeRow { id: string; state: string; wait_reason: string | nu
 export const changesOf = async (runId: string) =>
   (await pool.query(`SELECT * FROM assistant_changes WHERE run_id = $1 ORDER BY created_at, id`, [runId])).rows as ChangeRow[];
 
-export async function assistantScene(label: string) {
+export async function assistantScene(label: string, options: { pi?: PiRuntime } = {}) {
   const connections = new FakeConnections();
   const queue = new FakeQueue();
-  const compute = new FakeCompute();
   const runs = personalRunUseCases(db, { queue: queue.factory, connections, providerEnabled: true });
-  const tokens = runTokenIssuer(db, apiUrl);
-  /** The `server` engine's worker: a fake provider calls the same effect tools through the real `/mcp` route. */
-  const processor = createPersonalRunProcessor({ uow: personalRunWorkerUnitOfWork(db), connections, compute, stopPollMs: 20,
-    tools: mcpToolHost(tokens, `${apiUrl}/mcp`), tokens });
+  /** The worker with pi in the runtime, when the scene has one: the run's model (`pi.gateway`) calls the effect tools through the real `/mcp` route. */
+  const processor = options.pi ? options.pi.processor(connections) : null;
   // The assistant's owner is a plain member who is the space's admin by grant, so their access can end (#903): a company owner or admin
   // reaches every space, and nothing takes it away. `lead` is the company's owner and the space's other admin.
   const lead = await person(`${label}-lead`);
@@ -78,6 +73,7 @@ export async function assistantScene(label: string) {
   const connectionId = randomUUID();
   connections.connect(owner.id, connectionId);
   await runs.enable(human(owner), { agentId, connection: connectionId, model: 'claude-sonnet-5' });
+  await options.pi?.place(owner.id);
 
   const settings = () => agentSettings(owner, ws.id);
   /** The assistant's own agent connection (the S6 policy and the run tokens belong to it). */
@@ -159,7 +155,7 @@ export async function assistantScene(label: string) {
   const listConversation = async (who: Person, conversation: Conversation = thread) =>
     (expectStatus(await who.browser.request('GET', `/api/v1/conversations/${conversation.id}/assistant-changes`), 200) as { items: AssistantChange[] }).items;
 
-  return { connections, queue, runs, compute, processor, assistantConnectionId, lead, owner, peer, outsider, admin, viewer, stranger, guest, ws, place, agentId, thread, connectionId, settings, setMayDo, reset,
+  return { connections, queue, runs, processor, assistantConnectionId, lead, owner, peer, outsider, admin, viewer, stranger, guest, ws, place, agentId, thread, connectionId, settings, setMayDo, reset,
     liveRun, liveOf, complete, task, doc, docBody, map, patchWork, taskRow, dependencies, holding, listConversation, changesOf };
 }
 export type AssistantScene = Awaited<ReturnType<typeof assistantScene>>;

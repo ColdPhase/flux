@@ -1,8 +1,10 @@
 """Browser tests for `/ai` in every conversation, answered privately (#842, F-036 AG-4, mockups AiPrivate and AiAgents).
 
 Runs with the other tests/ui journeys through scripts/check_ui.sh, on the TEST-ONLY mock provider (`FLUX_TEST_PERSONAL_RUNS=anthropic-mock`): the
-real worker sends runs through the real Anthropic adapter to `tests/ui/anthropic_mock.py`. Nothing here calls a model; no test is a provider,
-billing or compatibility pass.
+real worker runs each agent in pi in the agent runtime (#1441, RT-1), whose model requests go through the worker's model gateway to
+`tests/ui/anthropic_mock.py`. pi is not given a space: the model reads it with Flux's tools (scripted with `tool`) and cites what they returned with
+the marks of C-62 (`{cite1}`, `{cite2}`, … in a scripted text). A direct message's messages are in the brief. Nothing here calls a model; no test is a
+provider, billing or compatibility pass.
 
 Three people share a space: Jo (owns the assistant), Kai (contributor) and Lee (a guest of the company). Jo asks in the space's main conversation, in a
 thread, in a direct message with Kai and in the task's thread; the answer is Jo's alone until Show everyone posts it as "Jo's Assistant" (#1232).
@@ -35,7 +37,9 @@ MIA = {"name": "Mia Roth", "email": f"mia.roth.pai+{STAMP}@example.test"}
 OPENING = "Which network for the far beds: LoRa or Wi-Fi?"
 KAI_REPLY = "LoRa for the far beds, because Wi-Fi drops when the hedge is wet."
 DM_TOKEN = f"BETWEEN-US-{uuid.uuid4()}"
-ANSWER = "Fact: the far beds will use LoRa because Wi-Fi drops when the hedge is wet [S1]."
+ANSWER = "Fact: the far beds will use LoRa because Wi-Fi drops when the hedge is wet."
+# The same answer citing Kai's reply, as the second message the model read of the conversation (`{cite2}`, C-62).
+CITING_ANSWER = "Fact: the far beds will use LoRa because Wi-Fi drops when the hedge is wet {cite2}."
 
 
 def mock(path: str, body: dict | None = None) -> dict:
@@ -119,6 +123,18 @@ class PrivateAiJourney(unittest.TestCase):
     def private_card(self, page: Page):
         return page.locator(".assistant-private")
 
+    def asked_card(self, page: Page, prompt: str):
+        """The card of one question: cards that other tests left in a place are not mistaken for it."""
+        return self.private_card(page).filter(has_text=f"You asked: /ai {prompt}")
+
+    def messages_sent(self) -> list[dict]:
+        """The Messages requests pi's runs sent to the provider since the script was reset, oldest first."""
+        return [item for item in mock("/__requests")["requests"] if item["path"] == "/v1/messages"]
+
+    def flux_tools(self, request: dict) -> set[str]:
+        """The Flux tools a request offers (pi names them `mcp__flux__<tool>` and offers its own read, bash, edit and write beside them)."""
+        return {tool["name"].removeprefix("mcp__flux__") for tool in request["body"].get("tools", []) if tool["name"].startswith("mcp__flux__")}
+
     def agent_answer(self, posted, label: str = "Jo's Assistant", spoken: str = "Jo's Assistant, shown by Jo") -> None:
         """An answer shown to everyone is the agent's message for every reader, the asker included (#1232): its label, its Kreska in the agent's
         colour, the "Agent" tag, and never the asker's own right-hand bubble; a screen reader hears whose it is and who showed it."""
@@ -174,7 +190,9 @@ class PrivateAiJourney(unittest.TestCase):
     # ---------------------------------------------------------------- the space's main conversation
 
     def test_02_in_the_main_conversation_the_answer_is_the_askers_until_show_everyone(self) -> None:
-        mock("/__script", {"reset": True, "delay": 2, "text": ANSWER})
+        # pi is not given the space: the model reads the conversation with a Flux tool and the answer cites Kai's reply from what it returned.
+        mock("/__script", {"reset": True, "delay": 2, "text": CITING_ANSWER,
+                           "tool": [{"name": "flux_get_conversation", "input": {"projectId": self.ids["project"], "id": self.ids["conversation"]}}]})
         jo = self.space("jo")
         kai = self.space("kai")
         self.ask_in(jo, "#project-composer", "summarise what we decided about the network")
@@ -194,11 +212,18 @@ class PrivateAiJourney(unittest.TestCase):
         shot(jo, "private-ai-1440-main-conversation")
         expect(self.private_card(kai)).to_have_count(0)
         self.assertNotIn("far beds will use LoRa because Wi-Fi drops when the hedge is wet [", kai.locator("body").inner_text(), "the others do not see the answer")
-        # The cited source is one message of this space; nothing of the DM was sent.
-        sent = [item for item in mock("/__requests")["requests"] if item["path"] == "/v1/messages"]
-        self.assertEqual(len(sent), 1)
-        self.assertIn(OPENING, json.dumps(sent[0]["body"]))
-        self.assertNotIn(DM_TOKEN, json.dumps(sent[0]["body"]))
+        # The cited source is one message of this space, the one the tool returned; nothing of the DM was sent.
+        # The chip opens exactly its source, Kai's reply, in the thread it was written in. The stream holds no thread's replies, so the chip cannot name
+        # the message's number and author as a thread's view does (test_personal_assistant test_06): its label says where it is.
+        reply = next(message for message in self.api(jo, "GET", f"/api/v1/conversations/{self.ids['conversation']}", status=200)["messages"] if message["body"] == KAI_REPLY)
+        chip = card.locator(".assistant-cite")
+        expect(chip).to_have_count(1)
+        expect(chip).to_have_attribute("href", f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}#message-{reply['id']}")
+        expect(chip).to_have_attribute("aria-label", "Source 1: a message in this space")
+        sent = self.messages_sent()
+        self.assertEqual(len(sent), 2, "the tool call, then the answer")
+        self.assertIn(OPENING, json.dumps(sent[1]["body"]), "the conversation the model read came back to it")
+        self.assertNotIn(DM_TOKEN, json.dumps([item["body"] for item in sent]))
         # Show everyone: the card goes, the answer is Jo's message for the others, "Jo's Assistant", an agent's message (#1232).
         card.get_by_role("button", name="Show everyone").click()
         expect(card).to_have_count(0)
@@ -213,31 +238,36 @@ class PrivateAiJourney(unittest.TestCase):
         lee = self.space("lee")
         self.agent_answer(lee.locator(".project-convo__message").filter(has_text="far beds will use LoRa"))
 
-    def test_02b_an_answer_that_searched_the_web_lists_what_it_searched_and_the_page_it_cites(self) -> None:
-        """#954: the provider's own web search is on by default; Flux lists the search and the cited address under the answer, in its own words."""
-        cited = "https://lora-alliance.example/coverage/far-beds"
-        mock("/__script", {"reset": True, "text": "LoRa reaches about two kilometres through a wet hedge.",
-                           "search": {"query": "LoRa range through wet hedge", "results": [cited, "https://wifi.example/range"], "cite": cited}})
+    def test_02b_an_answer_that_read_a_web_page_lists_the_page_it_read(self) -> None:
+        """#918, #1441: pi has no web search of its own and the runtime's egress is closed: Flux reads a page for it (`flux_read_web`) and lists the address under the answer, in its own words.
+        The key's hosted search (#954) is Flux's `flux_web_search`, which this stack cannot run: the API's searcher opens the key of a stored connection and
+        the fixture key is none, so a search would end "not available for this key". Its offer is checked here; the search itself and its listing are in
+        tests/app/agent-runtime-pi-search.test.ts."""
+        page = "http://public.test/ferry"
+        mock("/__script", {"reset": True, "text": "The winter timetable starts on 3 November.",
+                           "tool": [{"name": "flux_read_web", "input": {"url": page}}]})
         jo = self.space("jo")
-        self.ask_in(jo, "#project-composer", "how far does LoRa reach through a wet hedge?")
-        card = self.private_card(jo)
+        self.ask_in(jo, "#project-composer", "when does the winter ferry timetable start?")
+        card = self.asked_card(jo, "when does the winter ferry timetable start?")
         expect(card).to_be_visible(timeout=20000)
-        expect(card).to_contain_text("Based on the search, LoRa reaches about two kilometres through a wet hedge.")
-        expect(card).to_contain_text("Searched the web for:")
-        expect(card).to_contain_text("LoRa range through wet hedge")
-        expect(card).to_contain_text("Found on the web:")
-        expect(card).to_contain_text(cited)
-        self.assertNotIn("wifi.example", card.inner_text(), "a result the answer does not cite is not listed as its source")
-        shot(jo, "private-ai-1440-web-search-sources")
-        sent = [item for item in mock("/__requests")["requests"] if item["path"] == "/v1/messages"]
-        self.assertIn({"type": "web_search_20250305", "name": "web_search"}, sent[-1]["body"]["tools"], "Anthropic's own search was offered, with no limit on its searches")
+        expect(card).to_contain_text("The winter timetable starts on 3 November.")
+        expect(card).to_contain_text("Read on the web:")
+        expect(card).to_contain_text("public.test/ferry")
+        expect(card).not_to_contain_text("Requested, not read:")
+        expect(card).not_to_contain_text("Searched the web for:")
+        shot(jo, "private-ai-1440-web-sources")
+        sent = self.messages_sent()
+        self.assertEqual(len(sent), 2, "the tool call, then the answer")
+        # The server, not pi, read the page; pi was offered Flux's search and read tools, and no search of its own.
+        self.assertTrue({"flux_read_web", "flux_web_search"} <= self.flux_tools(sent[0]), self.flux_tools(sent[0]))
+        self.assertNotIn("web_search", {tool["name"] for tool in sent[0]["body"].get("tools", [])})
         card.get_by_role("button", name="Dismiss").click()
         expect(card).to_have_count(0)
 
     # ---------------------------------------------------------------- a thread
 
     def test_03_in_a_thread_dismiss_puts_it_away_and_a_reload_does_not_bring_it_back(self) -> None:
-        mock("/__script", {"reset": True, "text": "Interpretation: the hedge is the reason [S1]."})
+        mock("/__script", {"reset": True, "text": "Interpretation: the hedge is the reason."})
         jo = self.thread("jo")
         kai = self.thread("kai")
         self.ask_in(jo, "#thread-composer", "why LoRa?")
@@ -362,7 +392,7 @@ class PrivateAiJourney(unittest.TestCase):
             expect(answer).to_have_count(0)
 
     def test_04_in_a_direct_message_both_people_see_one_line_and_only_jo_the_answer(self) -> None:
-        mock("/__script", {"reset": True, "text": "Fact: you two agreed to meet on Thursday [S1]."})
+        mock("/__script", {"reset": True, "text": "Fact: you two agreed to meet on Thursday."})
         jo = self.dm("jo")
         kai = self.dm("kai")
         jo.locator("#dm-composer").fill("/ai what did we agree?")
@@ -376,13 +406,13 @@ class PrivateAiJourney(unittest.TestCase):
         expect(card).to_contain_text("Thursday")
         expect(self.private_card(kai)).to_have_count(0)
         expect(kai.locator(".assistant-working")).to_have_count(0)
-        sent = [item for item in mock("/__requests")["requests"] if item["path"] == "/v1/messages"]
-        self.assertIn(DM_TOKEN, json.dumps(sent[-1]["body"]))
+        sent = self.messages_sent()
+        self.assertIn(DM_TOKEN, json.dumps(sent[-1]["body"]), "the DM's messages are in the brief: no tool reads a DM")
         self.assertNotIn(OPENING, json.dumps(sent[-1]["body"]), "the DM is all the model was given")
         # A DM run's tools reach only this direct message (finding, reading around and summarising its messages, F-042 #1290-#1292) and read the
-        # web: a public page (#918) and, on by default, the provider's own search (#954). Nothing that writes or reaches a space.
-        self.assertTrue({tool["name"] for tool in sent[-1]["body"].get("tools", [])}
-                        <= {"flux_read_around", "flux_read_web", "flux_search", "flux_summarize", "web_search"}, sent[-1]["body"].get("tools"))
+        # web: a public page (#918) and the key's search, Flux's `flux_web_search` (#1441). Nothing that writes or reaches a space.
+        self.assertTrue(self.flux_tools(sent[-1]) <= {"flux_read_around", "flux_read_web", "flux_search", "flux_summarize", "flux_web_search"}, self.flux_tools(sent[-1]))
+        self.assertTrue({"flux_read_around", "flux_search", "flux_summarize"} <= self.flux_tools(sent[-1]), self.flux_tools(sent[-1]))
         shot(jo, "private-ai-1440-direct-message")
         card.get_by_role("button", name="Show everyone").click()
         expect(card).to_have_count(0)
@@ -397,7 +427,7 @@ class PrivateAiJourney(unittest.TestCase):
     # ---------------------------------------------------------------- a thread of a direct message
 
     def test_04b_in_a_direct_messages_thread_the_card_is_in_the_thread_and_show_everyone_replies_there(self) -> None:
-        mock("/__script", {"reset": True, "text": "Fact: the thread settled on Thursday for the planting [S1]."})
+        mock("/__script", {"reset": True, "text": "Fact: the thread settled on Thursday for the planting."})
         root_words, reply_words = "Planting day: Thursday or Friday?", "Thursday, the soil is ready."
         kai_api = self.page("kai")
         root = self.api(kai_api, "POST", f"/api/v1/dms/{self.ids['dm']}/messages", {"body": root_words, "clientMessageId": str(uuid.uuid4())}, status=201)
@@ -430,7 +460,7 @@ class PrivateAiJourney(unittest.TestCase):
         expect(kai.locator(".dm-notice__line").last).to_have_text("Jo Weber used AI here (Claude)")
         expect(jo.locator(".dm-thread .dm-notice__line")).to_have_count(0)
         # The model was given this thread, not the conversation's other messages and not the space.
-        given = json.dumps([item for item in mock("/__requests")["requests"] if item["path"] == "/v1/messages"][-1]["body"])
+        given = json.dumps(self.messages_sent()[-1]["body"])
         self.assertIn(root_words, given)
         self.assertIn(reply_words, given)
         self.assertNotIn(DM_TOKEN, given, "the thread is all the model was given")
@@ -458,11 +488,11 @@ class PrivateAiJourney(unittest.TestCase):
         for phone, size in ((False, "1440"), (True, "390")):
             with self.subTest(size=size):
                 words = f"the soil probes need calibrating on Monday ({size})"
-                mock("/__script", {"reset": True, "text": f"Fact: {words} [S1]"})
+                mock("/__script", {"reset": True, "text": f"Fact: {words}"})
                 jo, kai = self.dm("jo", phone=phone), self.dm("kai", phone=phone)
                 jo.locator("#dm-composer").fill("/ai when do we calibrate?")
                 jo.get_by_role("button", name="Ask your agent").click()
-                card = self.private_card(jo)
+                card = self.asked_card(jo, "when do we calibrate?")
                 expect(card).to_be_visible(timeout=20000)
                 # Jo's own message comes after the "used AI here" line and before the answer is shown: the answer would follow it as one run.
                 self.api(jo, "POST", f"/api/v1/dms/{self.ids['dm']}/messages", {"body": f"One moment, asking my assistant ({size})", "clientMessageId": str(uuid.uuid4())}, status=201)
@@ -488,7 +518,7 @@ class PrivateAiJourney(unittest.TestCase):
         for phone, size in ((False, "1440"), (True, "390")):
             with self.subTest(size=size):
                 words = f"the thread agreed on a Monday run ({size})"
-                mock("/__script", {"reset": True, "text": f"Fact: {words} [S1]"})
+                mock("/__script", {"reset": True, "text": f"Fact: {words}"})
                 kai_api = self.page("kai")
                 root = self.api(kai_api, "POST", f"/api/v1/dms/{self.ids['dm']}/messages", {"body": f"Calibration day ({size}): Monday?", "clientMessageId": str(uuid.uuid4())}, status=201)
                 jo, kai = self.page("jo", phone=phone), self.page("kai", phone=phone)
@@ -518,7 +548,7 @@ class PrivateAiJourney(unittest.TestCase):
     # ---------------------------------------------------------------- the task's thread
 
     def test_05_in_a_tasks_thread_the_answer_shows_in_the_task_and_posts_into_its_discussion(self) -> None:
-        mock("/__script", {"reset": True, "text": "Fact: six probes are ordered, two more wait for the school [S1]."})
+        mock("/__script", {"reset": True, "text": "Fact: six probes are ordered, two more wait for the school."})
         jo = self.page("jo")
         jo.goto(f"/projects/{self.ids['project']}/tasks?open=work:{self.ids['work']}")
         box = jo.locator("#details .wd-composer textarea")
@@ -692,7 +722,7 @@ class PrivateAiJourney(unittest.TestCase):
     # ---------------------------------------------------------------- the phone
 
     def test_08_on_the_phone_the_card_fits_and_its_buttons_are_big_enough(self) -> None:
-        mock("/__script", {"reset": True, "text": "Fact: " + "the far beds will use LoRa because the hedge is wet. " * 6 + "[S1]"})
+        mock("/__script", {"reset": True, "text": "Fact: " + "the far beds will use LoRa because the hedge is wet. " * 6})
         jo = self.thread("jo", phone=True)
         self.ask_in(jo, "#thread-composer", "summarise it")
         card = self.private_card(jo).last
@@ -749,9 +779,12 @@ class PrivateAiJourney(unittest.TestCase):
     # ---------------------------------------------------------------- the answer as it is written (#1248)
 
     def test_12_an_answer_appears_as_it_is_written_then_copy_and_try_again_and_stop_keeps_the_words(self) -> None:
-        streamed = ("Fact: the far beds will use LoRa because Wi-Fi drops when the hedge is wet {first}. "
+        # The model reads the thread with a Flux tool, then writes its answer with a cite mark (C-62) after the first sentence: the mark is not words
+        # to show while they grow (the answer numbers it when it is done) and is no part of what Copy copies.
+        streamed = ("Fact: the far beds will use LoRa because Wi-Fi drops when the hedge is wet {cite2}. "
                     + "The gateway stays near the shed, where the power is. " * 4).strip()
-        mock("/__script", {"reset": True, "text": streamed, "stream_gap": 0.12})
+        mock("/__script", {"reset": True, "text": streamed, "stream_gap": 0.12,
+                           "tool": [{"name": "flux_get_conversation", "input": {"projectId": self.ids["project"], "id": self.ids["conversation"]}}]})
         jo = self.thread("jo")
         if UI_BROWSER == "chromium":
             jo.context.grant_permissions(["clipboard-read", "clipboard-write"], origin=ORIGIN)
@@ -765,13 +798,15 @@ class PrivateAiJourney(unittest.TestCase):
         words = writing.locator("[data-writing-words]")
         first = words.inner_text().strip()
         self.assertTrue(first, "the first words show while it works")
-        self.assertNotIn("[S", first, "source marks are not shown while it writes")
         # The text grows: later it is longer and begins with what was shown first.
         jo.wait_for_function("([el, n]) => el.innerText.trim().length > n + 20", arg=[words.element_handle(), len(first)], timeout=10000)
         self.assertTrue(words.inner_text().strip().startswith(first[:20]))
         expect(writing.locator(".assistant-writing__caret")).to_have_count(1)
         # The thread panel follows the growing words while Jo is at its end: the newest words and Stop stay in view, unscrolled.
         jo.wait_for_function("([el, n]) => el.innerText.trim().length > n + 60", arg=[words.element_handle(), len(first)], timeout=10000)
+        # Past the first sentence, so the mark was written: it is not shown.
+        expect(words).to_contain_text("The gateway stays near the shed")
+        self.assertNotIn("[message:", words.inner_text(), "source marks are not shown while it writes")
         expect(writing.get_by_role("button", name="Stop")).to_be_in_viewport()
         expect(writing.locator(".assistant-writing__caret")).to_be_in_viewport()
         shot(jo, "streaming-1440-writing-light")

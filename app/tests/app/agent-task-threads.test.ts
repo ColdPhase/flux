@@ -11,10 +11,12 @@ import { eventNow, withFault } from './support/db-faults.js';
 import { assistantScene, text, result, type AssistantScene } from './support/assistant-scene.js';
 import { addMember, expectStatus, grant, person, project as createProject, removeFromSpace, workspace as createWorkspace, type Person } from './support/people.js';
 import { FakeConnections, FakeQueue } from './support/personal-runs.js';
+import { startPiRuntime } from './support/pi-runtime.js';
 import { waitFor } from './support/wait.js';
 
 // Agents in a task's thread (#841, F-036 TA-2, TA-3) and a task's link to its message (#844). A run's change tool goes through the
-// real `/mcp` route with the run's own token; nothing calls a model. The exchange of questions between two agents, which needs two
+// real `/mcp` route with the run's own token; no provider is called. The one run of an API key here (TA-4's answer) is pi in the agent runtime
+// (#1441, RT-1), whose model is a scripted stand-in for Flux's model gateway. The exchange of questions between two agents, which needs two
 // owners' runs, is followed in the browser suite on the mock provider (tests/ui/test_agent_task_questions.py).
 
 describe('agents split a task into subtasks, and a task keeps the message it came from (#841, #844)', () => {
@@ -399,46 +401,51 @@ describe('an answer uses only what the task\'s people can all see (TA-4, #841, #
   const DM = `ta4dm${tag}`; const PRIVATE_MAP = `ta4private${tag}`; const ELSEWHERE = `ta4elsewhere${tag}`; const SHARED = `ta4shared${tag}`;
 
   test('a private map, a DM and a space the others are not in reach neither the provider nor the answer\'s tools; what everyone sees does', async () => {
-    const scene = await assistantScene('ta4');
-    const { owner, peer, ws, place, agentId, lead } = scene;
-    const post = async (who: Person, path: string, body: unknown) => expectStatus(await who.browser.request('POST', path, { body }), 201) as { id: string };
-    // Everything the answering owner (Ada) can read that the other people of the task (Jonas) cannot.
-    const elsewhere = await createProject(lead, ws.id, 'Ada elsewhere', 'restricted');
-    await grant(lead, elsewhere.id, owner, 'manager');
-    const elsewhereDoc = await post(owner, `/api/v1/projects/${elsewhere.id}/docs`, { title: 'Elsewhere', body: ELSEWHERE });
-    const privateMap = await post(owner, `/api/v1/workspaces/${ws.id}/sketches`, { title: PRIVATE_MAP, scope: 'private' });
-    await post(owner, `/api/v1/sketches/${privateMap.id}/thoughts`, { text: PRIVATE_MAP, x: 0, y: 0 });
-    const opened = await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/dms`, { body: { participantIds: [lead.id] } });
-    assert.ok(opened.status === 201 || opened.status === 200, `open DM: ${opened.status}`);
-    await post(owner, `/api/v1/dms/${(opened.json as { id: string }).id}/messages`, { body: DM, clientMessageId: randomUUID() });
-    // What the task's people share.
-    await post(owner, `/api/v1/projects/${place.id}/docs`, { title: 'Shared reading', body: `The 0.82 V reading means full. ${SHARED}` });
-    const task = await scene.task(owner, 'Which reading means full?');
-    await post(peer, taskDiscussionPath(task.id), { body: 'I need the reading', clientMessageId: randomUUID() });
-    const talk = expectStatus(await owner.browser.request('GET', taskDiscussionPath(task.id)), 200) as TaskDiscussion;
-    const started = await db.transaction((tx) => scene.runs.startTask(personalRunPorts(tx, scene.queue.factory), { kind: 'task_answer', ownerUserId: owner.id, agentId, workId: task.id,
-      projectId: place.id, conversationId: talk.conversationId!, prompt: 'Which reading means full?', clientRunId: randomUUID(), exchangeTurn: 1, audience: [owner.id, peer.id] }));
-    assert.ok(started.started, JSON.stringify(started));
-    scene.compute.dispatched = [];
-    scene.compute.respond = async () => scene.compute.dispatched.length === 1
-      ? { kind: 'completed', text: 'looking', stopReason: 'tool_use', usage: { inputTokens: 800, outputTokens: 40 }, toolCalls: [
-        { id: 's1', name: 'flux_search', input: { q: 'reading' } },
-        { id: 's2', name: 'flux_search', input: { q: 'ta4' } },
-        { id: 's3', name: 'flux_list_maps', input: { projectId: place.id } },
-        { id: 's4', name: 'flux_get_doc', input: { projectId: elsewhere.id, id: elsewhereDoc.id } },
-        { id: 's5', name: 'flux_list_contexts', input: {} },
-      ] }
-      : { kind: 'completed', text: '0.82 V means full.', stopReason: 'end_turn', usage: { inputTokens: 800, outputTokens: 40 } };
-    assert.equal(await scene.processor.process(started.run.id), 'completed');
-    const sent = JSON.stringify(scene.compute.dispatched);
-    for (const canary of [DM, PRIVATE_MAP, ELSEWHERE]) assert.ok(!sent.includes(canary), `${canary} never reaches the provider`);
-    assert.ok(sent.includes(SHARED), 'control: what every person of the task can see is read');
-    const tools = (scene.compute.dispatched[0]?.tools ?? []).map((tool) => tool.name);
-    assert.ok(tools.length > 0 && tools.every((name) => !/create|update|delete|apply|undo/.test(name)), `an answer reads only: ${tools.join(', ')}`);
-    // #1120: the answer reaches the people only as a message of the task's discussion, which the drain posts. The run commits it for its
-    // owner, and there is no list of posted answers and no event about one for the space.
-    assert.equal((await pool.query('SELECT committed_at IS NOT NULL AS committed FROM personal_runs WHERE id = $1', [started.run.id])).rows[0].committed, true);
-    assert.equal(Number((await pool.query(`SELECT count(*)::int AS n FROM events WHERE kind = 'project.assistant_answer_committed.v1' AND data->>'runId' = $1`, [started.run.id])).rows[0].n), 0);
-    assert.equal((await peer.browser.request('GET', `/api/v1/conversations/${talk.conversationId}/assistant-answers`)).status, 404, 'the feed of posted answers is gone');
+    // The answering agent is an API key's, so it runs in pi in the agent runtime (#1441, RT-1) and reads with the Flux tools its run token lists.
+    const pi = await startPiRuntime();
+    try {
+      const scene = await assistantScene('ta4', { pi });
+      const { owner, peer, ws, place, agentId, lead } = scene;
+      const post = async (who: Person, path: string, body: unknown) => expectStatus(await who.browser.request('POST', path, { body }), 201) as { id: string };
+      // Everything the answering owner (Ada) can read that the other people of the task (Jonas) cannot.
+      const elsewhere = await createProject(lead, ws.id, 'Ada elsewhere', 'restricted');
+      await grant(lead, elsewhere.id, owner, 'manager');
+      const elsewhereDoc = await post(owner, `/api/v1/projects/${elsewhere.id}/docs`, { title: 'Elsewhere', body: ELSEWHERE });
+      const privateMap = await post(owner, `/api/v1/workspaces/${ws.id}/sketches`, { title: PRIVATE_MAP, scope: 'private' });
+      await post(owner, `/api/v1/sketches/${privateMap.id}/thoughts`, { text: PRIVATE_MAP, x: 0, y: 0 });
+      const opened = await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/dms`, { body: { participantIds: [lead.id] } });
+      assert.ok(opened.status === 201 || opened.status === 200, `open DM: ${opened.status}`);
+      await post(owner, `/api/v1/dms/${(opened.json as { id: string }).id}/messages`, { body: DM, clientMessageId: randomUUID() });
+      // What the task's people share.
+      await post(owner, `/api/v1/projects/${place.id}/docs`, { title: 'Shared reading', body: `The 0.82 V reading means full. ${SHARED}` });
+      const task = await scene.task(owner, 'Which reading means full?');
+      await post(peer, taskDiscussionPath(task.id), { body: 'I need the reading', clientMessageId: randomUUID() });
+      const talk = expectStatus(await owner.browser.request('GET', taskDiscussionPath(task.id)), 200) as TaskDiscussion;
+      const started = await db.transaction((tx) => scene.runs.startTask(personalRunPorts(tx, scene.queue.factory), { kind: 'task_answer', ownerUserId: owner.id, agentId, workId: task.id,
+        projectId: place.id, conversationId: talk.conversationId!, prompt: 'Which reading means full?', clientRunId: randomUUID(), exchangeTurn: 1, audience: [owner.id, peer.id] }));
+      assert.ok(started.started, JSON.stringify(started));
+      pi.gateway.script([
+        { tool: 'mcp__flux__flux_search', args: { q: 'reading' } },
+        { tool: 'mcp__flux__flux_search', args: { q: 'ta4' } },
+        { tool: 'mcp__flux__flux_list_maps', args: { projectId: place.id } },
+        { tool: 'mcp__flux__flux_get_doc', args: { projectId: elsewhere.id, id: elsewhereDoc.id } },
+        { tool: 'mcp__flux__flux_list_contexts', args: {} },
+        { text: '0.82 V means full.' },
+      ]);
+      assert.equal(await scene.processor!.process(started.run.id), 'completed', JSON.stringify(pi.lastPi()));
+      assert.equal(pi.gateway.requests.length, 6, 'the five reads and the answer');
+      const sent = JSON.stringify(pi.gateway.requests);
+      for (const canary of [DM, PRIVATE_MAP, ELSEWHERE]) assert.ok(!sent.includes(canary), `${canary} never reaches the provider`);
+      assert.ok(JSON.stringify(pi.gateway.requests.at(-1)!.results).includes(SHARED), 'control: what every person of the task can see is read');
+      const tools = pi.gateway.requests[0]!.tools.filter((name) => name.startsWith('mcp__flux__')).map((name) => name.slice('mcp__flux__'.length));
+      assert.ok(tools.length > 0 && tools.every((name) => !/create|update|delete|apply|undo/.test(name)), `an answer reads only: ${tools.join(', ')}`);
+      // #1120: the answer reaches the people only as a message of the task's discussion, which the drain posts. The run commits it for its
+      // owner, and there is no list of posted answers and no event about one for the space.
+      assert.equal((await pool.query('SELECT committed_at IS NOT NULL AS committed FROM personal_runs WHERE id = $1', [started.run.id])).rows[0].committed, true);
+      assert.equal(Number((await pool.query(`SELECT count(*)::int AS n FROM events WHERE kind = 'project.assistant_answer_committed.v1' AND data->>'runId' = $1`, [started.run.id])).rows[0].n), 0);
+      assert.equal((await peer.browser.request('GET', `/api/v1/conversations/${talk.conversationId}/assistant-answers`)).status, 404, 'the feed of posted answers is gone');
+    } finally {
+      await pi.close();
+    }
   });
 });

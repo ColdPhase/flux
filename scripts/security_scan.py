@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """Dependency and image security scans with one policy and one allowlist (#834, #835).
 
-    python3 scripts/security_scan.py audit                  # pnpm audit --prod in Docker
+    python3 scripts/security_scan.py audit                  # pnpm audit --prod in Docker, and npm audit of pi's lockfile
     python3 scripts/security_scan.py image REF [REF ...]    # Trivy in Docker, registry references
     python3 scripts/security_scan.py image --local NAME ... # Trivy on images in the local Docker engine
     python3 scripts/security_scan.py allowlist              # validate .github/security-allowlist.json
 
 Policy (docs/agents/ci-and-releases.md, "Security scanning"):
 
-- `audit` fails on any HIGH or CRITICAL advisory in the production dependencies of app/ (`pnpm audit --prod`) that the
+- `audit` fails on any HIGH or CRITICAL advisory in the production dependencies of app/ (`pnpm audit --prod`), or of pi,
+  which the agent runtime installs from its own npm lockfile (app/apps/runtime/pi, `npm audit --omit=dev`, #1441), that the
   allowlist does not name. Fixed or not: an advisory without a fix needs an allowlist entry with its reason.
 - `image` fails on any HIGH or CRITICAL finding that HAS a fixed version and is not allowlisted. Findings without a fix
   are reported and do not fail.
@@ -193,6 +194,54 @@ def run_audit() -> dict:
     raise Problem(f"pnpm audit gave no usable report after 3 attempts (registry unreachable?): {last.strip()}")
 
 
+PI_LOCK_DIR = "app/apps/runtime/pi"
+
+
+def validate_npm_audit_report(report: object, what: str = "npm audit") -> dict:
+    """An `npm audit --json` report (format 2) that scanned something. `{}` or an error document is not a clean report."""
+    if not isinstance(report, dict) or report.get("auditReportVersion") != 2 or not isinstance(report.get("vulnerabilities"), dict):
+        raise Problem(f"{what}: not an npm audit report (no `auditReportVersion` 2 with `vulnerabilities`): {json.dumps(report)[:200]}")
+    metadata = report.get("metadata")
+    dependencies = metadata.get("dependencies") if isinstance(metadata, dict) else None
+    total = dependencies.get("total") if isinstance(dependencies, dict) else None
+    if isinstance(total, bool) or not isinstance(total, int) or total <= 0:
+        raise Problem(f"{what}: the report counts {total!r} dependencies (`metadata.dependencies.total`), so nothing was shown to be scanned")
+    return report
+
+
+def run_pi_audit() -> dict:
+    """npm audit of pi's own lockfile, with the npm of the Dockerfile's pinned Node image: the lockfile alone, nothing installed."""
+    image, _ = toolchain()
+    command = ["docker", "run", "--rm", "-v", f"{ROOT / PI_LOCK_DIR}:/work:ro,z", "-w", "/work", image, "sh", "-c",
+               "npm audit --omit=dev --package-lock-only --json"]
+    last = ""
+    for attempt in range(1, 4):
+        result = subprocess.run(command, capture_output=True, text=True)
+        try:
+            return validate_npm_audit_report(parse_report(result.stdout, "npm audit (pi)"), "npm audit (pi)")
+        except Problem as error:
+            last = f"{error}; {(result.stderr or '')[-300:]}"
+        if attempt < 3:
+            time.sleep(5 * attempt)
+    raise Problem(f"npm audit of pi gave no usable report after 3 attempts (registry unreachable?): {last.strip()}")
+
+
+def npm_audit_findings(report: dict) -> list[dict]:
+    """The advisories of an npm audit report, once each: an entry's `via` names its advisories (objects) or the package it inherits them from."""
+    findings: dict[tuple[str, str], dict] = {}
+    for name, entry in (report.get("vulnerabilities") or {}).items():
+        fixed = "available" if entry.get("fixAvailable") else ""
+        for via in entry.get("via") or []:
+            if not isinstance(via, dict):
+                continue
+            url = str(via.get("url", ""))
+            advisory = url.rsplit("/", 1)[-1] if "/advisories/" in url else str(via.get("source", ""))
+            package = str(via.get("name") or name)
+            findings[(advisory, package)] = {"id": advisory, "severity": str(via.get("severity", "")).upper(), "package": package,
+                                             "installed": str(via.get("range", "")), "fixed": fixed, "title": str(via.get("title", "")), "url": url}
+    return list(findings.values())
+
+
 def audit_findings(report: dict) -> list[dict]:
     findings = []
     for advisory in (report.get("advisories") or {}).values():
@@ -333,11 +382,14 @@ def command_audit(arguments: argparse.Namespace) -> int:
     entries, problems = load_allowlist()
     if arguments.json:
         report = validate_audit_report(parse_report(read_report(Path(arguments.json), arguments.json), arguments.json), arguments.json)
+        pi = validate_npm_audit_report(parse_report(read_report(Path(arguments.pi_json), arguments.pi_json), arguments.pi_json), arguments.pi_json) \
+            if arguments.pi_json else None
     else:
         report = run_audit()
-    findings = audit_findings(report)
+        pi = run_pi_audit()
+    findings = audit_findings(report) + (npm_audit_findings(pi) if pi else [])
     failing, excused, _ = judge(findings, "audit", entries, need_fix=False)
-    lines = ["## Dependency audit (`pnpm audit --prod`)", "",
+    lines = ["## Dependency audit (`pnpm audit --prod`, and pi's `npm audit --omit=dev`)", "",
              f"{len(findings)} advisories in production dependencies; {len(failing)} HIGH/CRITICAL not allowlisted, "
              f"{len(excused)} HIGH/CRITICAL allowlisted."]
     if failing:
@@ -384,8 +436,9 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("allowlist", help="validate the allowlist").set_defaults(run=command_allowlist)
-    audit = commands.add_parser("audit", help="pnpm audit --prod on app/pnpm-lock.yaml")
+    audit = commands.add_parser("audit", help="pnpm audit --prod on app/pnpm-lock.yaml and npm audit on pi's lockfile")
     audit.add_argument("--json", help="read this `pnpm audit --json` report instead of running pnpm (for tests)")
+    audit.add_argument("--pi-json", help="with --json: read this `npm audit --json` report of pi's lockfile too (for tests)")
     audit.add_argument("--summary-file", help="also write the Markdown summary to this file")
     audit.set_defaults(run=command_audit)
     image = commands.add_parser("image", help="Trivy on container images")

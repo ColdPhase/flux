@@ -22,7 +22,6 @@ import { invisibleFormatRefused } from '../access/validation.js';
 import { id } from '../work/validation.js';
 import { boundedUsageMicros, requestReservationMicros, usageMicros, usageTokensWithin } from '../ai/price.js';
 import type { PersonalComputeUsage, PersonalConnection } from './ports.js';
-import type { SuppliedSource } from './brief.js';
 
 // Input and output rules of personal runs (#68, O-008). Pure functions shared by every entry
 // point and by the worker.
@@ -202,7 +201,11 @@ export function connectionCallsTools(connection: Pick<PersonalConnection, 'provi
 
 export const centsToMicros = (value: number) => value * 10_000;
 
-export type { SuppliedSource } from './brief.js';
+/** One numbered source an answer may cite as `[S<n>]`. */
+export interface SuppliedSource {
+  label: string;
+  ref: AssistantSourceRef;
+}
 
 /** What makes two citations one: the same message, task, thought, decision or page (a page cited at two sections is two places). */
 const refKey = (ref: AssistantSourceRef) => `${ref.type}:${ref.id}${ref.type === 'doc' && ref.section ? `#${ref.section.n}` : ''}`;
@@ -212,7 +215,7 @@ const refKey = (ref: AssistantSourceRef) => `${ref.type}:${ref.id}${ref.type ===
  * Citations count only for supplied labels (`[S3]`) and for the Flux marks (`[doc:ID#2]`, C-62) that `fluxRefs` resolved, by mark key, to an object the run
  * may cite; both are renumbered `[1]`… in the order they stand, one number for an object however it was cited.
  */
-export function parseOutput(text: string, sources: readonly Pick<SuppliedSource, 'label' | 'ref'>[], fluxRefs: ReadonlyMap<string, AssistantSourceRef> = new Map()) {
+export function parseOutput(text: string, sources: readonly SuppliedSource[], fluxRefs: ReadonlyMap<string, AssistantSourceRef> = new Map()) {
   const byLabel = new Map(sources.map((source) => [source.label, source]));
   // Marks the model invented (`[8]`, `[S9]` of no supplied source, `【3†source】`) are taken out first (#1222): what is left of `[n]` after the numbering
   // below is exactly a supplied source's.

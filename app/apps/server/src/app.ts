@@ -321,7 +321,7 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   await app.register(aiRoutes(agentStopRoutes), { db, sessions: identity });
   await app.register(aiRoutes(agentQuestionRoutes), { db, sessions: identity });
   // Connecting AI the first time (a key saved, a plan signed in) gives a person Assistant (F-036 AG-1).
-  const personalRuns = personalRunServerComposition(env, db);
+  const personalRuns = personalRunServerComposition(env, db, config.agentRuntime);
   if (personalRuns.mode !== 'production') app.log.warn({ mode: personalRuns.mode }, 'TEST ONLY: personal runs use fixture connections and a mock provider');
   const firstAgent = firstAgentMaker(db, { queue: pgBossPersonalRunQueue(boss), connections: personalRuns.connections, providerEnabled: personalRuns.providerEnabled,
     runtime: personalRuntimeAvailability(config.agentRuntime, db) }, app.log);

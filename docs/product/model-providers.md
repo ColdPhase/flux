@@ -135,8 +135,9 @@ A person connects AI once, in Settings › AI. Their connections power all of th
     longer offered by ChatGPT" and pauses, as above; a run that still names one ends with the line below.
 - A model the plan refuses gives one line: "Your Claude plan didn't accept Opus". Nothing switches
   to another model.
-- An API-key model that cannot call tools can answer but cannot change anything, and the picker
-  says so.
+- Only a model that calls tools can be an agent ([RT-1](ai-modes.md#rt-1--engines-on-the-server), #1441): adding a key, or
+  choosing another model of its list, sends one small request with a `ping` tool the model must call; otherwise the form says
+  "This model can't use tools. Choose another." (`AI_TOOLS_REQUIRED`).
 
 ## CA-3 — The provider's limits, not Flux's
 
@@ -179,8 +180,9 @@ A person connects AI once, in Settings › AI. Their connections power all of th
 
 Kept from PROV-4:
 
-- API keys are sealed at rest (AEAD) and only the worker decrypts them. The API sends a key only
-  while it is being added, to list its models (CA-2), before sealing it. A key never appears in API
+- API keys are sealed at rest (AEAD). The worker decrypts a key for each model request of its model gateway; the API decrypts
+  one only for `flux_web_search`, one search of a run in pi on the run's own key (#1441, RT-5). The API sends a key while it is being
+  added, to list its models (CA-2), before sealing it. A key never appears in API
   responses, stream frames, jobs, logs, exports or error bodies; a seeded-key absence test runs
   for every adapter.
 - **Base URL guard.** Public HTTPS by default; redirects are not followed; response time and size
