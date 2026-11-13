@@ -1,5 +1,9 @@
 """Pointer reachability of the live controls on phone and tablet (#63).
 
+A thread opened in a live session is a modal sheet on a phone and, from 641 to 1000 px, the one panel's non-modal card laid over the work's right
+edge under the header and the strip, with no scrim and nothing made inert (#1365, docs/design/final/README.md §4): the tablet tests below hold the
+card to that, with the same reachability of mute, Leave and More that the phone's sheet gives.
+
 Covers the three product findings from the emulated platform rows: on a phone the screen stage's
 "Back to work" was painted over by the open thread sheet; on an iPad the session sheet's camera
 control was painted over by the thread; and a WebKit camera click showed "Camera on" while the
@@ -262,10 +266,18 @@ class ReachabilityRows(LiveBase):
 
     # ---- the strip above a thread sheet (phone and tablet) ----
 
+    def is_tablet(self, page: Page) -> bool:
+        """From 641 px the thread is the one panel's card (#1365); a phone's is a sheet."""
+        return page.viewport_size["width"] > 640
+
     def open_thread(self, page: Page):
-        """Opens the seeded conversation's thread from its root's replies button, as a person does mid-session."""
+        """Opens the seeded conversation's thread from its root's replies button, as a person does mid-session. Returns the sheet's surface on a
+        phone and the panel's card on a tablet."""
         page.get_by_role("button", name=re.compile(r"^\d+ repl")).first.click()
-        surface = page.locator(".ui-overlay[data-state='open'] .ui-overlay__surface")
+        if self.is_tablet(page):
+            surface = page.locator("#details.ui-panel--float")
+        else:
+            surface = page.locator(".ui-overlay[data-state='open'] .ui-overlay__surface")
         expect(surface).to_be_visible()
         expect(page.locator(".ui-panel__close").first).to_be_visible()
         page.wait_for_timeout(600)  # the sheet has finished sliding in
@@ -281,7 +293,67 @@ class ReachabilityRows(LiveBase):
         left = page.evaluate("() => ({ root: document.getElementById('root').inert, inert: document.querySelectorAll('#root [inert]').length, modal: document.getElementById('root').hasAttribute('data-modal') })")
         self.assertEqual(left, {"root": False, "inert": 0, "modal": False}, "closing the sheet leaves nothing inert")
 
+    def check_strip_beside_thread(self, page: Page, label: str) -> None:
+        """A tablet's thread is the panel's card under the strip: it covers neither the strip nor the header, makes nothing inert and has no scrim, so
+        mute, More and Leave take pointer input and the keyboard as they do without it (#1365)."""
+        bar = self.bar(page)
+        expect(page.locator(".route-progress")).to_have_count(0)
+        shot(page, f"live-reachability-{label}-session")
+        before = self.strip_box(page)
+        card = self.open_thread(page)
+        shot(page, f"live-reachability-{label}-thread")
+        self.assertEqual(self.strip_box(page), before, "the strip keeps its place when the thread opens")
+        # Under the strip, and not modal: no scrim, no overlay, nothing inert.
+        self.assertGreaterEqual(round(card.bounding_box()["y"]) + 1, before[1] + before[3], "the card lies under the strip")
+        expect(page.locator(".ui-overlay[data-state='open']")).to_have_count(0)
+        expect(page.locator(".ui-scrim")).to_have_count(0)
+        self.assert_app_interactive(page)
+        self.assertFalse(page.evaluate("() => document.getElementById('content').closest('[inert]') !== null"), "the work beside the card stays usable")
+        hits = {}
+        for name, button in (("mic", bar.get_by_role("button", name=re.compile("^Microphone"))),
+                             ("more", bar.get_by_role("button", name="Session details and more")),
+                             ("leave", bar.get_by_role("button", name="Leave", exact=True))):
+            hits[name] = button.evaluate(HIT_TEST)
+            self.assertTrue(hits[name]["ok"], f"{label}: {name} is covered by {hits[name]['top']} at {hits[name]['centre']}")
+        self.observed[f"{label}-thread-beside-strip"] = {"strip": before, "hits": hits}
+        # Mute works with the thread open, by a real tap.
+        mic = bar.get_by_role("button", name=re.compile("^Microphone"))
+        mic.tap(timeout=5000)
+        expect(bar.get_by_role("button", name=re.compile("^Microphone on"))).to_have_attribute("aria-pressed", "true", timeout=30000)
+        bar.get_by_role("button", name=re.compile("^Microphone on")).tap(timeout=5000)
+        expect(bar.get_by_role("button", name=re.compile("^Microphone off"))).to_have_attribute("aria-pressed", "false", timeout=30000)
+        # Keyboard: the strip is in the page's own tab order, so Tab from the card reaches Leave and Shift+Tab from the strip goes back to the page.
+        page.locator(".ui-panel__close").first.focus()
+        reached = set()
+        for _ in range(60):
+            page.keyboard.press("Tab")
+            reached.add(page.evaluate("() => { const a = document.activeElement; return a?.closest('.lv-bar') ? (a.getAttribute('aria-label') || a.textContent?.trim() || '') : ''; }"))
+        self.assertIn("Leave", reached, f"{label}: Tab reaches Leave with the thread open")
+        # Esc closes the card from inside it, and the strip is where it was.
+        page.locator(".ui-panel__close").first.focus()
+        page.keyboard.press("Escape")
+        expect(card).to_have_count(0)
+        expect(page.locator(".route-progress")).to_have_count(0)
+        self.assertEqual(self.strip_box(page), before)
+        self.assert_app_interactive(page)
+        # The card's own close control closes it too.
+        self.open_thread(page)
+        page.locator(".ui-panel__close").first.tap()
+        expect(card).to_have_count(0)
+        self.assert_app_interactive(page)
+        # Leave works with the card open; the card stays and the app stays usable.
+        self.open_thread(page)
+        bar.get_by_role("button", name="Leave", exact=True).tap(timeout=5000)
+        expect(bar).to_have_count(0, timeout=10000)
+        expect(card).to_be_visible()
+        self.assert_app_interactive(page)
+        page.locator(".ui-panel__close").first.tap()
+        expect(card).to_have_count(0)
+        self.assert_app_interactive(page)
+
     def check_strip_over_thread(self, page: Page, label: str) -> None:
+        if self.is_tablet(page):
+            return self.check_strip_beside_thread(page, label)
         bar = self.bar(page)
         expect(page.locator(".route-progress")).to_have_count(0)
         shot(page, f"live-reachability-{label}-session")
@@ -363,7 +435,7 @@ class ReachabilityRows(LiveBase):
         self.check_strip_over_thread(guest, "phone-390-chromium")
 
     def test_06_tablet_thread_panel_keeps_mute_and_leave_reachable(self) -> None:
-        # iPad (WebKit emulation): Details and threads are an overlay panel from the right edge; the strip stays whole.
+        # iPad (WebKit emulation): a thread is the panel's non-modal card under the strip and the header (#1365); the strip stays whole.
         self.start_host()
         guest = self.guest_join("webkit", device="iPad (gen 7)")
         self.check_strip_over_thread(guest, "ipad-webkit")
@@ -464,17 +536,31 @@ class ReachabilityRows(LiveBase):
         self.assertTrue(hit["ok"], f"{label}: the first control of More is covered by {hit['top']} at {hit['centre']}")
         self.assertTrue(centre, f"{label}: More is not painted under the thread")
         self.assertTrue(dialog.evaluate("(el) => el.contains(document.activeElement)"), f"{label}: focus is inside the visible dialog")
-        self.assertEqual(page.locator(".lv-pop").count(), 0, f"{label}: no hidden popover is left in the page")
+        if self.is_tablet(page):
+            # Beside the panel's card, More is the strip's own popover under its button, laid over the card (#1365): the only one, and it is the dialog.
+            self.assertEqual(page.locator(".lv-pop").count(), 1, f"{label}: More is one popover")
+            self.assertTrue(dialog.evaluate("(el) => el.matches('.lv-pop')"), f"{label}: the dialog is the strip's popover")
+        else:
+            self.assertEqual(page.locator(".lv-pop").count(), 0, f"{label}: no hidden popover is left in the page")
         page.keyboard.press("Escape")
         expect(dialog).to_be_hidden()
-        expect(page.locator(".ui-overlay[data-state='open']")).to_have_count(1)  # the thread stays
+        expect(page.locator(".lv-pop")).to_have_count(0)
         expect(bar.get_by_role("button", name="Session details and more")).to_be_focused()
-        page.keyboard.press("Escape")
-        expect(page.locator(".ui-overlay[data-state='open']")).to_have_count(0)
+        if self.is_tablet(page):
+            # The thread is the panel's card, not a sheet (#1365): More closes alone, the card stays, and Esc in the card closes it.
+            expect(page.locator("#details.ui-panel--float")).to_be_visible()
+            expect(page.locator(".ui-overlay[data-state='open']")).to_have_count(0)
+            page.locator(".ui-panel__close").first.focus()
+            page.keyboard.press("Escape")
+            expect(page.locator("#details")).to_have_count(0)
+        else:
+            expect(page.locator(".ui-overlay[data-state='open']")).to_have_count(1)  # the thread stays
+            page.keyboard.press("Escape")
+            expect(page.locator(".ui-overlay[data-state='open']")).to_have_count(0)
         self.assert_app_interactive(page)
 
     def check_invitation_card_stays_inert(self, host: Page, engine: str, label: str, **context) -> None:
-        """An invitation card on screen is ordinary content: a thread sheet opened over it makes it inert."""
+        """An invitation card on screen is ordinary content: a thread sheet opened over it makes it inert on a phone; a tablet's card does not (#1365)."""
         self.use(engine)
         sessions = self.api(host, "GET", f"/api/v1/projects/{self.ids['project']}/live-sessions", status=200)["items"]
         self.api(host, "POST", f"/api/v1/live-sessions/{sessions[0]['id']}/invitations", {"recipientId": PEOPLE["kai"]["id"]}, status=201)
@@ -495,10 +581,19 @@ class ReachabilityRows(LiveBase):
         shot(page, f"live-reachability-{label}-invitation-under-thread")
         hit = later.evaluate(HIT_TEST)
         self.observed[f"{label}-invitation-under-thread"] = hit
-        self.assertFalse(hit["ok"], f"{label}: Later is still topmost under the thread sheet")
-        self.assertTrue(later.evaluate("(el) => !!el.closest('[inert]')"), f"{label}: the invitation card is inert while the sheet is open")
-        page.keyboard.press("Escape")
-        expect(page.locator(".ui-overlay[data-state='open']")).to_have_count(0)
+        if self.is_tablet(page):
+            # The thread is the panel's card under the strip, which the invitation is part of: the card stays usable and nothing is inert (#1365).
+            self.assertTrue(hit["ok"], f"{label}: Later is covered by {hit['top']} beside the thread's card")
+            self.assertFalse(later.evaluate("(el) => !!el.closest('[inert]')"), f"{label}: the invitation card is not made inert by the card")
+            self.assert_app_interactive(page)
+            page.locator(".ui-panel__close").first.focus()
+            page.keyboard.press("Escape")
+            expect(page.locator("#details")).to_have_count(0)
+        else:
+            self.assertFalse(hit["ok"], f"{label}: Later is still topmost under the thread sheet")
+            self.assertTrue(later.evaluate("(el) => !!el.closest('[inert]')"), f"{label}: the invitation card is inert while the sheet is open")
+            page.keyboard.press("Escape")
+            expect(page.locator(".ui-overlay[data-state='open']")).to_have_count(0)
         self.assertTrue(later.evaluate(HIT_TEST)["ok"], "the card is usable again once the sheet closes")
 
     def test_10_phone_more_over_a_thread(self) -> None:
@@ -514,8 +609,8 @@ class ReachabilityRows(LiveBase):
         self.check_more_over_thread(self.guest_join("webkit", device="iPad (gen 7)"), "ipad-webkit")
 
     def test_13_tablet_popover_closes_when_a_thread_opens(self) -> None:
-        # The popover under the strip would paint under the sheet's frame; it closes as the sheet opens, and the
-        # sheet opens over a page with no hidden, focusable dialog behind it.
+        # A popover that is open under the strip closes when the thread opens (the press on the replies button is outside it, #1365), and the
+        # thread's card opens beside a page with no hidden, focusable dialog.
         self.start_host()
         page = self.guest_join("webkit", device="iPad (gen 7)")
         bar = self.bar(page)
@@ -530,7 +625,7 @@ class ReachabilityRows(LiveBase):
         host = self.start_host()
         self.check_invitation_card_stays_inert(host, "chromium", "phone-390-chromium", phone=True)
 
-    def test_15_tablet_invitation_card_is_inert_under_a_thread(self) -> None:
+    def test_15_tablet_invitation_card_stays_usable_beside_a_thread(self) -> None:
         host = self.start_host()
         self.check_invitation_card_stays_inert(host, "webkit", "ipad-webkit", device="iPad (gen 7)")
 

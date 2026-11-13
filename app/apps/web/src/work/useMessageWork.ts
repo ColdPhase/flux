@@ -73,7 +73,14 @@ export function useMessageWorkRead(accountId: string, projectId: string, scopeKe
   const load = useCallback((signal: AbortSignal) => getWorkAssociations(projectId, query, signal), [projectId, query]);
   const state = useWorkRead(scope, load, revision, revalidator.state === 'idle');
   const page = state.phase === 'ready' || state.phase === 'refreshing' ? state.value : null;
-  const previews = useMemo(() => page ? messageWorkPreviews(page) : null, [page]);
+  const current = useMemo(() => page ? messageWorkPreviews(page) : null, [page]);
+  // A message that arrives widens the batch, so the read's scope changes and its answer is on its way for a moment. The chips already under the
+  // messages stay until it comes: taking them away and putting them back moves everything below a chip by its height, under a finger that
+  // is about to tap it. They are kept only for the same place (account, space and conversation).
+  const lineage = JSON.stringify([accountId, projectId, scopeKey]);
+  const [kept, setKept] = useState<{ lineage: string; previews: NonNullable<typeof current> } | null>(null);
+  if (current && kept?.previews !== current) setKept({ lineage, previews: current });
+  const previews = current ?? (kept?.lineage === lineage ? kept.previews : null);
   useEffect(() => {
     const value = { cursor: position.cursor, edgeCursor: position.edgeCursor };
     positions.set(base, value);
