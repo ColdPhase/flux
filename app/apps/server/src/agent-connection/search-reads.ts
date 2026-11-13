@@ -11,6 +11,7 @@ import { messagesForAgents, spaceReadersNamed, withAgentLabels } from './authors
 import { textPageEnd } from './domain-reads.js';
 import type { AgentToolRegistrar, ToolCall } from './tool-registry.js';
 import { toolError, toolResult } from './tool-results.js';
+import { reachesChatFile } from './chat-files.js';
 
 // `flux_search` and `flux_read_around` (F-042, AG-12, #1290): how an agent, on the server's engine or in the owner's Claude Code or Codex, finds
 // what lies outside the messages it was given. Both are the owner's rights at the moment of the call, nothing stored: the audiences come from the
@@ -255,7 +256,18 @@ async function readAround(ctx: FluxAgentReadContext, claims: FluxMcpClaims, inpu
 async function readFile(ctx: FluxAgentReadContext, claims: FluxMcpClaims, input: z.output<typeof fileInput>) {
   const rows = fileTextRows(ctx.tx);
   const file = await rows.locate(ctx.workspaceId, input.fileId.toLowerCase());
-  if (!file) throw fileNotFound();
+  if (!file) {
+    // A file its owner sent in the agent's chat (#1438, C-64): only a run of that chat reads it, and it is no search row.
+    const chat = await rows.locateChat(ctx.workspaceId, input.fileId.toLowerCase());
+    if (!chat || !await reachesChatFile(ctx, claims, chat)) throw fileNotFound();
+    const { text, parts } = await rows.chatText(chat.fileId);
+    const named = { fileId: chat.fileId, name: chat.name, ...(chat.pages !== null ? { pages: chat.pages } : {}) };
+    if (!parts) return { ...named, totalLength: 0, body: '', nextOffset: null,
+      note: chat.pending ? 'Its text has not been read yet; try again in a minute.' : 'No text could be read from this file (a scan, a picture or a file whose kind is not read).' };
+    const offset = Math.min(input.offset, text.length);
+    const end = textPageEnd(text, offset, claims.run !== undefined);
+    return { ...named, offset, totalLength: text.length, body: text.slice(offset, end), nextOffset: end < text.length ? end : null };
+  }
   // The same reach as a search: the run's own space, or every space of a chat or a client, while AI is on there and the owner may read it.
   try { await ctx.requireProject(file.projectId); } catch (error) { throw error instanceof DomainError ? fileNotFound() : error; }
   const { text, parts } = await rows.text(file.fileId);

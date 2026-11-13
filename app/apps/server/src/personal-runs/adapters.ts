@@ -1,8 +1,13 @@
 import { withTaskUseErrors } from '../work/task-use-errors.js';
 import { fromDrizzle, type PgBoss } from 'pg-boss';
-import { personalRunRows, withIdpStanding, sql, type DbExecutor, accessReader, type Database } from '@flux/db';
+import { fileRows, personalRunRows, withIdpStanding, sql, type DbExecutor, accessReader, type Database } from '@flux/db';
 import {
   createPersonalRunUseCases,
+  lockAttachments,
+  storedDetail,
+  verifyAttachmentBytes,
+  type FileStorage,
+  type PersonalRunChatFiles,
   noPersonalConnections,
   PERSONAL_RUN_JOB,
   policyPersonalRunAccess,
@@ -32,9 +37,25 @@ export function pgBossPersonalRunQueue(boss: Pick<PgBoss, 'send'>): PersonalRunQ
   });
 }
 
-export function personalRunPorts(tx: DbExecutor, queue: PersonalRunQueueFactory,
-  events?: PersonalRunPorts['events'], session?: ReturnType<typeof transactionEventSession>): PersonalRunPorts {
+/**
+ * The files an owner sends with a request in an agent's chat (#1438 point 10, C-64): the same checks as a message's attachments
+ * (`lockAttachments`), with the agent's chat as the place, then attached to the run just stored.
+ */
+function chatFiles(tx: DbExecutor, storage: FileStorage): PersonalRunChatFiles {
   return {
+    async attach(agentId, ownerUserId, runId, fileIds, at) {
+      const locked = (await lockAttachments(fileRows(tx), storage, agentId.toLowerCase(), { kind: 'human', id: ownerUserId }, fileIds, () => new Date()))
+        .map((row) => ({ id: row.id, name: row.name, size: row.size!, ...storedDetail(row) }));
+      const posters = await fileRows(tx).publishToRun(agentId.toLowerCase(), runId, locked, at);
+      return locked.map((file) => posters.has(file.id) ? { ...file, poster: posters.get(file.id)! } : file);
+    },
+  };
+}
+
+export function personalRunPorts(tx: DbExecutor, queue: PersonalRunQueueFactory,
+  events?: PersonalRunPorts['events'], session?: ReturnType<typeof transactionEventSession>, storage?: FileStorage): PersonalRunPorts {
+  return {
+    ...(storage ? { chatFiles: chatFiles(tx, storage) } : {}),
     ...(session ? { assistants: assistantRows(tx) } : {}),
     access: withIdpStanding(policyPersonalRunAccess(accessReader(tx)), tx),
     runs: personalRunRows(tx),
@@ -44,13 +65,17 @@ export function personalRunPorts(tx: DbExecutor, queue: PersonalRunQueueFactory,
 }
 
 /** One transaction per use case; on an open transaction (an idempotency scope) it nests as a savepoint. */
-export function personalRunUnitOfWork(db: Database, queue: PersonalRunQueueFactory): PersonalRunUnitOfWork {
-  return { run: (work) => db.transaction(async (tx) => {
-    const session = transactionEventSession(tx);
-    const result = await session.run(() => withTaskUseErrors(() => work(personalRunPorts(tx, queue, session, session))));
-    await session.flushEvents();
-    return result;
-  }) };
+export function personalRunUnitOfWork(db: Database, queue: PersonalRunQueueFactory, storage?: FileStorage): PersonalRunUnitOfWork {
+  return {
+    run: (work) => db.transaction(async (tx) => {
+      const session = transactionEventSession(tx);
+      const result = await session.run(() => withTaskUseErrors(() => work(personalRunPorts(tx, queue, session, session, storage))));
+      await session.flushEvents();
+      return result;
+    }),
+    // With the files volume a request in a chat may carry files (C-64): their bytes are checked before the transaction opens (#1411).
+    ...(storage ? { verifyFiles: (ownerUserId: string, ids: readonly string[]) => verifyAttachmentBytes(fileRows(db as unknown as DbExecutor), storage, { kind: 'human', id: ownerUserId }, ids) } : {}),
+  };
 }
 
 export interface PersonalRunComposition {
@@ -61,8 +86,10 @@ export interface PersonalRunComposition {
   providerEnabled?: boolean;
   /** The owner's own Claude Code in the agent runtime (F-022 AIM-3, #280); absent: no runtime assistant. */
   runtime?: PersonalRuntimeAvailability;
+  /** The files volume: a request in an agent's chat may carry files (#1438, C-64); absent: none. */
+  storage?: FileStorage;
 }
 
-export function personalRunUseCases(db: Database, { queue, connections = noPersonalConnections, providerEnabled = false, runtime }: PersonalRunComposition) {
-  return createPersonalRunUseCases({ uow: personalRunUnitOfWork(db, queue), connections, providerEnabled, ...(runtime ? { runtime } : {}) });
+export function personalRunUseCases(db: Database, { queue, connections = noPersonalConnections, providerEnabled = false, runtime, storage }: PersonalRunComposition) {
+  return createPersonalRunUseCases({ uow: personalRunUnitOfWork(db, queue, storage), connections, providerEnabled, ...(runtime ? { runtime } : {}) });
 }

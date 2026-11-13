@@ -37,7 +37,7 @@ import {
   type UpdateMyAgentCommand,
 } from '@flux/contracts';
 import {
-  ConflictError, ForbiddenError, InvalidInputError, NotFoundError, ServiceUnavailableError,
+  ConflictError, ForbiddenError, InvalidInputError, NotFoundError, RuleViolationError, ServiceUnavailableError,
 } from '../access/errors.js';
 import type { Principal } from '../principal.js';
 import { isId, page } from '../work/validation.js';
@@ -53,6 +53,7 @@ import { endedWithWebSources } from './web-sources.js';
 import { unreadAgentChats } from './agent-chat.js';
 import { takeAsk } from '../agent-tasks/ask.js';
 import { isPrivateAnswer, placeOf } from './ports.js';
+import { chatFilesOf } from './chat-files.js';
 import {
   budgetedReservationMicros, centsToMicros, connectionRef, memoryText, normalizeAgentChange, normalizeEnable, normalizeInvoke, retryRequest, runReservationMicros,
   type NormalizedInvoke,
@@ -222,8 +223,11 @@ export async function runView(ports: PersonalRunPorts, record: RunRecord): Promi
     // A chat's answer can carry pictures (#1217, C-59); only a chat run that answered is asked.
     ...(record.projectId === null && record.dmId === null && record.answerBody !== null && ports.runs.runPictures
       ? await ports.runs.runPictures(record.id).then((pictures) => (pictures.length ? { pictures } : {})) : {}),
+    // The files its owner sent with the request in the chat (#1438, C-64).
+    ...(record.attachmentCount ? await chatFilesOf(ports, record).then((files) => (files.length ? { files } : {})) : {}),
   };
 }
+
 
 /** The run holding the owner's lane, for the line of a request waiting behind it (AST-6 "Queue"). */
 async function behindView(ports: PersonalRunPorts, record: RunRecord): Promise<AssistantRunBehind | null> {
@@ -526,6 +530,8 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
     // lookup, with the answer a new request meets, in a space, a direct message and a chat alike.
     if (!enablement && await ports.runs.ownerIsGuest(owner)) throw new ConflictError('You have no agent to answer yet. Make one in Settings › AI', 'PERSONAL_RUN_NOT_ENABLED');
     refuseForeignIds(request.claimed, owner, enablement);
+    // Files go with a request only in an agent's private chat (#1438 point 10, C-64): a run elsewhere is read by others, and has its place's own files.
+    if (request.attachmentIds.length && place.agentId === null) throw new RuleViolationError('Files can be sent to an agent only in its chat', 'RUN_FILES_ONLY_IN_CHAT');
     const existing = await ports.runs.runByClientId(owner, request.clientRunId);
     if (existing) {
       if (existing.requestFingerprint !== request.fingerprint || existing.projectId !== place.projectId || existing.conversationId !== place.conversationId
@@ -561,7 +567,13 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
       requestFingerprint: request.fingerprint, kind: request.kind, prompt: request.prompt,
       targetSketchId: request.target?.sketchId ?? null, targetThoughtId: request.target?.thoughtId ?? null,
       continuesRunId: request.continuesRunId, retryOfRunId, ...admitted.fields, engine: enablement.engine, aiEpoch: place.epoch,
+      ...(request.carriedFiles ? { attachmentCount: request.carriedFiles } : {}),
     });
+    // The owner's files of this chat go with the request, checked as a message's are; any other file is the same unknown one (C-64).
+    if (request.attachmentIds.length) {
+      if (!ports.chatFiles) throw new RuleViolationError('Files cannot be sent from here', 'RUN_FILES_UNSUPPORTED');
+      await ports.chatFiles.attach(agentId, owner, run.id, request.attachmentIds, run.createdAt);
+    }
     // "remember that …", typed by the owner to their own agent in its chat, is the one way a memory item is added by a message (AG-1).
     const remember = place.agentId !== null && retryOfRunId === null && ports.assistants ? /^\s*remember(?:\s+that)?\s+(\S[\s\S]*)$/i.exec(request.prompt) : null;
     if (remember && ports.assistants && await ports.assistants.memory.count(agentId) < AGENT_LIMITS.memoryItems)
@@ -826,8 +838,10 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
 
     /** A request for `/ai` in a conversation (its id), in a space's main conversation, in a DM, or a message to one's own agent in its chat (#842). */
     async invoke(principal: Principal, place: string | AssistantPlace, command: InvokeAssistantRunCommand): Promise<{ run: AssistantRun; created: boolean }> {
-      ownerOf(principal);
+      const owner = ownerOf(principal);
       const request = normalizeInvoke(command);
+      // The bytes of each file up to 5 MiB are checked first, holding no connection while read (#1411), as for a message.
+      if (request.attachmentIds.length) await uow.verifyFiles?.(owner, request.attachmentIds);
       return uow.run(async (ports) => {
         const started = await start(ports, principal, asPlace(place), request, null);
         return { run: await runView(ports, started.run), created: started.created };

@@ -1,0 +1,146 @@
+import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+import { before, beforeEach, describe, test } from 'node:test';
+import { agentChatFilesPath, type MessageFile, type StagedFile } from '@flux/contracts';
+import { CHAT_FILES_LINE, type PersonalComputeResult, type PersonalTurn } from '@flux/core';
+import { fileTextRows } from '@flux/db';
+import { diskFileStorage } from '../../apps/server/src/files/storage.js';
+import { personalRunUseCases } from '../../apps/server/src/personal-runs/adapters.js';
+import { db, pool } from './support/db.js';
+import { expectStatus, removeMember, type Person } from './support/people.js';
+import { assistantScene, human, result, text, type AssistantScene } from './support/assistant-scene.js';
+import { png } from './support/pictures.js';
+
+// Files, photos and videos in an agent's private chat (#1438 point 10, C-64 point 4): the owner stages them in the chat and sends them with a
+// request; only the owner reaches them, and only a run of that chat reads them (flux_view_image, flux_read_file). No space, direct message,
+// search or other run sees them.
+
+const filesDir = process.env.FLUX_TEST_FILES_DIR ?? '/data/files';
+const usage = { inputTokens: 300, outputTokens: 20 };
+const answer = (words: string): PersonalComputeResult => ({ kind: 'completed', text: words, stopReason: 'end_turn', usage });
+const calls = (...list: { name: string; input: Record<string, unknown> }[]): PersonalComputeResult => ({ kind: 'completed', text: 'looking', stopReason: 'tool_use', usage,
+  toolCalls: list.map((call, index) => ({ id: `call-${index}-${randomUUID()}`, name: call.name, input: call.input })) });
+const headers = (who: Person, extra: Record<string, string> = {}) => ({ cookie: who.browser.cookieHeader(), origin: who.browser.defaultOrigin, ...extra });
+const download = (who: Person, fileId: string) => fetch(new URL(`/api/v1/files/${fileId}`, who.browser.base), { headers: headers(who) });
+
+async function stage(who: Person, path: string, name: string, bytes: Uint8Array) {
+  const response = await fetch(new URL(`${path}?uploadId=${randomUUID()}&name=${encodeURIComponent(name)}`, who.browser.base),
+    { method: 'POST', headers: headers(who, { 'content-type': 'application/octet-stream' }), body: Buffer.from(bytes) });
+  return { status: response.status, body: await response.json() as StagedFile & { code?: string } };
+}
+
+describe('files in an agent\'s private chat', () => {
+  let scene: AssistantScene;
+  let runs: ReturnType<typeof personalRunUseCases>;
+  const chat = () => ({ kind: 'chat' as const, agentId: scene.agentId });
+  before(async () => {
+    scene = await assistantScene('chatfiles');
+    // The API's own composition, with the files volume: a request in a chat may carry files.
+    runs = personalRunUseCases(db, { queue: scene.queue.factory, connections: scene.connections, providerEnabled: true, storage: await diskFileStorage(filesDir) });
+  });
+  beforeEach(async () => { await scene.reset(); scene.compute.dispatched.length = 0; });
+
+  test('the owner stages a file in the chat and sends it with a request; it is theirs alone and no space\'s', async () => {
+    const photo = await stage(scene.owner, agentChatFilesPath(scene.agentId), 'bed.png', png(64, 48, { metadata: true }));
+    assert.equal(photo.status, 201, JSON.stringify(photo.body));
+    assert.equal(photo.body.agentId, scene.agentId);
+    assert.equal(photo.body.projectId, undefined);
+    // Another person, even one who shares the space, can neither stage in the owner's chat nor read the file.
+    assert.equal((await stage(scene.peer, agentChatFilesPath(scene.agentId), 'mine.txt', Buffer.from('x'))).status, 404);
+    assert.equal((await download(scene.peer, photo.body.id)).status, 404);
+    assert.equal((await download(scene.owner, photo.body.id)).status, 200);
+    const notes = await stage(scene.owner, agentChatFilesPath(scene.agentId), 'notes.txt', Buffer.from('The pump runs at 40 percent.'));
+    const started = await runs.invoke(human(scene.owner), chat(), { clientRunId: randomUUID(), kind: 'ask', prompt: 'What do these say?', attachmentIds: [photo.body.id, notes.body.id] });
+    assert.deepEqual(started.run.files?.map((file) => file.name), ['bed.png', 'notes.txt']);
+    // Read back as the chat lists it.
+    const listed = expectStatus(await scene.owner.browser.request('GET', `/api/v1/assistant-runs/${started.run.id}`), 200) as { files?: MessageFile[] };
+    assert.deepEqual(listed.files?.map((file) => file.id), [photo.body.id, notes.body.id]);
+    const rows = (await pool.query(`SELECT project_id, dm_id, agent_id, run_id, message_id FROM project_files WHERE id = $1`, [photo.body.id])).rows[0];
+    assert.deepEqual(rows, { project_id: null, dm_id: null, agent_id: scene.agentId, run_id: started.run.id, message_id: null });
+    assert.equal((await pool.query(`SELECT 1 FROM search_documents WHERE object_id = ANY($1)`, [[photo.body.id, notes.body.id]])).rows.length, 0, 'no search row');
+    // Files alone are a request; nothing at all is not.
+    const alone = await stage(scene.owner, agentChatFilesPath(scene.agentId), 'alone.txt', Buffer.from('only a file'));
+    const filesOnly = await runs.invoke(human(scene.owner), chat(), { clientRunId: randomUUID(), kind: 'ask', prompt: '', attachmentIds: [alone.body.id] });
+    assert.equal(filesOnly.run.prompt, '');
+    assert.equal(filesOnly.run.files?.length, 1);
+    await assert.rejects(runs.invoke(human(scene.owner), chat(), { clientRunId: randomUUID(), kind: 'ask', prompt: '' }), /prompt must be/);
+    // A file goes once: sent again it is refused.
+    await assert.rejects(runs.invoke(human(scene.owner), chat(), { clientRunId: randomUUID(), kind: 'ask', prompt: 'again', attachmentIds: [alone.body.id] }), /already attached/);
+    for (const id of [started.run.id, filesOnly.run.id]) await scene.complete(id);
+  });
+
+  test('a request with files is refused outside the chat, and the chat takes no file of a space, of a direct message or of someone else', async () => {
+    const own = await stage(scene.owner, agentChatFilesPath(scene.agentId), 'own.txt', Buffer.from('own'));
+    await assert.rejects(runs.invoke(human(scene.owner), scene.thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'look', attachmentIds: [own.body.id] }),
+      (error: Error & { code?: string }) => error.code === 'RUN_FILES_ONLY_IN_CHAT');
+    const spaceFile = await stage(scene.owner, `/api/v1/projects/${scene.place.id}/files`, 'space.txt', Buffer.from('space'));
+    const dm = expectStatus(await scene.owner.browser.request('POST', `/api/v1/workspaces/${scene.ws.id}/dms`, { body: { participantIds: [scene.peer.id] } }), 201) as { id: string };
+    const dmFile = await stage(scene.owner, `/api/v1/dms/${dm.id}/files`, 'dm.txt', Buffer.from('dm'));
+    const peers = await stage(scene.peer, `/api/v1/projects/${scene.place.id}/files`, 'peer.txt', Buffer.from('peer'));
+    for (const id of [spaceFile.body.id, dmFile.body.id, peers.body.id, randomUUID()]) {
+      await assert.rejects(runs.invoke(human(scene.owner), chat(), { clientRunId: randomUUID(), kind: 'ask', prompt: 'look', attachmentIds: [id] }),
+        (error: Error & { code?: string }) => error.code === 'ATTACHMENT_UNAVAILABLE', id);
+    }
+    // Nor does a chat's file go into a space's message.
+    const posted = await scene.owner.browser.request('POST', `/api/v1/conversations/${scene.thread.id}/messages`, { body: { body: 'leak?', clientMessageId: randomUUID(), attachmentIds: [own.body.id] } });
+    assert.equal(posted.status, 404);
+  });
+
+  test('a run of the chat looks at the picture and reads the file; a run in the space reaches neither', async () => {
+    const photo = await stage(scene.owner, agentChatFilesPath(scene.agentId), 'plot.png', png(40, 30));
+    const notes = await stage(scene.owner, agentChatFilesPath(scene.agentId), 'plan.md', Buffer.from('# Plan\nWater on Mondays.'));
+    const started = await runs.invoke(human(scene.owner), chat(), { clientRunId: randomUUID(), kind: 'ask', prompt: 'Read these', attachmentIds: [photo.body.id, notes.body.id] });
+    // The worker reads a chat's file like a space's (C-63): queued when sent, its text kept for the chat only.
+    assert.equal((await pool.query(`SELECT 1 FROM file_text_jobs WHERE file_id = $1`, [notes.body.id])).rows.length
+      + (await pool.query(`SELECT 1 FROM agent_chat_file_text WHERE file_id = $1`, [notes.body.id])).rows.length > 0, true, 'queued for the worker');
+    assert.equal(await fileTextRows(db).store(notes.body.id, [{ part: 1, page: null, text: '# Plan\nWater on Mondays.' }]), true);
+    assert.equal((await pool.query(`SELECT 1 FROM search_documents WHERE object_id = $1`, [notes.body.id])).rows.length, 0, 'never a search row');
+    const live = await scene.liveOf(started.run.id);
+    assert.ok(live.tools.includes('flux_view_image') && live.tools.includes('flux_read_file'), live.tools.join(','));
+    const seen = await live.raw('tools/call', { name: 'flux_view_image', arguments: { fileId: photo.body.id } });
+    assert.equal(result(seen.message)?.isError, undefined, text(seen.message));
+    const read = await live.raw('tools/call', { name: 'flux_read_file', arguments: { fileId: notes.body.id } });
+    assert.match(text(read.message), /Water on Mondays/);
+    await scene.complete(started.run.id);
+    // A run in the space has neither, and is told the same as for a file that is not there.
+    const space = await scene.liveRun(undefined, 'look at the plot');
+    assert.match(text((await space.raw('tools/call', { name: 'flux_view_image', arguments: { fileId: photo.body.id } })).message), /There is no picture with that id/);
+    const unread = await space.raw('tools/call', { name: 'flux_read_file', arguments: { fileId: notes.body.id } });
+    assert.equal(result(unread.message)?.isError, true);
+    assert.doesNotMatch(text(unread.message), /Mondays/);
+    await scene.complete(space.runId);
+  });
+
+  test('the worker tells the run the files with their ids, and the model gets the picture it asks for', async () => {
+    const photo = await stage(scene.owner, agentChatFilesPath(scene.agentId), 'leaf.png', png(32, 32));
+    const replies = [calls({ name: 'flux_view_image', input: { fileId: photo.body.id } }), answer('A green leaf.')];
+    scene.compute.respond = async () => replies.shift()!;
+    const started = await runs.invoke(human(scene.owner), chat(), { clientRunId: randomUUID(), kind: 'ask', prompt: 'What is it?', attachmentIds: [photo.body.id] });
+    assert.equal(await scene.processor.process(started.run.id), 'completed');
+    const first = scene.compute.dispatched[0]!;
+    assert.ok(first.input.includes(`<attachment name="leaf.png" bytes="${photo.body.size}" id="${photo.body.id}"/>`), first.input.slice(-600));
+    assert.ok(first.system.includes(CHAT_FILES_LINE));
+    const turn = scene.compute.dispatched[1]!.turns![0]! as PersonalTurn;
+    assert.equal(turn.results[0]!.images?.[0]?.mimeType, 'image/png');
+    // The next request in the chat is told the earlier exchange's file too.
+    scene.compute.respond = async () => answer('Still a leaf.');
+    const next = await runs.invoke(human(scene.owner), chat(), { clientRunId: randomUUID(), kind: 'ask', prompt: 'And now?' });
+    assert.equal(await scene.processor.process(next.run.id), 'completed');
+    assert.ok(scene.compute.dispatched.at(-1)!.input.includes(`id="${photo.body.id}"`), 'the earlier turn names its file');
+  });
+
+  test('a chat\'s files go with their run, and the owner removed from the company reaches none', async () => {
+    const kept = await stage(scene.owner, agentChatFilesPath(scene.agentId), 'kept.txt', Buffer.from('kept'));
+    const gone = await stage(scene.owner, agentChatFilesPath(scene.agentId), 'gone.txt', Buffer.from('gone'));
+    const keep = await runs.invoke(human(scene.owner), chat(), { clientRunId: randomUUID(), kind: 'ask', prompt: 'keep', attachmentIds: [kept.body.id] });
+    const drop = await runs.invoke(human(scene.owner), chat(), { clientRunId: randomUUID(), kind: 'ask', prompt: 'drop', attachmentIds: [gone.body.id] });
+    for (const id of [keep.run.id, drop.run.id]) await scene.complete(id);
+    await pool.query(`DELETE FROM personal_runs WHERE id = $1`, [drop.run.id]);
+    assert.equal((await pool.query(`SELECT 1 FROM project_files WHERE id = $1`, [gone.body.id])).rows.length, 0);
+    assert.equal((await pool.query(`SELECT 1 FROM file_garbage WHERE id = $1`, [gone.body.id])).rows.length, 1, 'its bytes are queued for removal');
+    assert.equal((await download(scene.owner, kept.body.id)).status, 200);
+    await removeMember(scene.lead, scene.ws.id, scene.owner);
+    assert.equal((await download(scene.owner, kept.body.id)).status, 404);
+    assert.equal((await stage(scene.owner, agentChatFilesPath(scene.agentId), 'late.txt', Buffer.from('late'))).status, 404);
+  });
+});

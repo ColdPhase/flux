@@ -218,6 +218,7 @@ export function personalRunRows(db: DbExecutor) {
 
     webReads: (runId: string) => personalRunWebReadRows(db).forRun(runId),
     runPictures: (runId: string) => runPictureRows(db).forRun(runId),
+    runFiles: (runIds: readonly string[]) => fileRows(db).runFiles(runIds),
     webSearches: (runId: string) => personalRunWebReadRows(db).searches(runId),
     addWebSearch: (runId: string, found: { queries: string[]; results: string[]; cited: string[] }) => personalRunWebReadRows(db).addSearch(runId, found),
     startWebSearch: (runId: string, query: string) => personalRunWebReadRows(db).startSearch(runId, query),
@@ -398,10 +399,12 @@ export function personalRunRows(db: DbExecutor) {
 
     /** The last `limit` exchanges of an agent's private chat before this run: what was asked and what it answered. */
     async chatTurns(agentId: string, beforeRunId: string, limit: number) {
-      const rows = await db.select({ prompt: r.prompt, answer: r.answerBody }).from(r)
+      const rows = await db.select({ id: r.id, prompt: r.prompt, answer: r.answerBody, files: r.attachmentCount }).from(r)
         .where(and(eq(r.agentId, agentId), isNull(r.projectId), isNull(r.dmId), eq(r.kind, 'ask'), isNotNull(r.committedAt), sql`${r.id} <> ${beforeRunId}`,
           sql`${r.createdAt} < (SELECT created_at FROM personal_runs WHERE id = ${beforeRunId})`)).orderBy(desc(r.createdAt), desc(r.id)).limit(limit);
-      return rows.reverse().map((row) => ({ prompt: row.prompt, answer: row.answer ?? '' }));
+      // The files the owner sent with each (#1438, C-64), so the agent may look at an earlier one again; a retry's are its first run's.
+      const files = await fileRows(db).runFiles(rows.filter((row) => row.files > 0).map((row) => row.id));
+      return rows.reverse().map((row) => ({ prompt: row.prompt, answer: row.answer ?? '', ...(files.get(row.id)?.length ? { files: files.get(row.id)! } : {}) }));
     },
 
     /** Whether a message is a root of this DM, not a reply and not the line "used AI here": the only thing a thread hangs on (#1016). */

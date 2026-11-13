@@ -41,7 +41,7 @@ export function fileTextRows(db: Database) {
             RETURNING j.file_id::text AS file_id, j.attempts`)).rows[0] as { file_id: string; attempts: number } | undefined;
           if (!claimed) return 'none' as const;
           const file = (await tx.execute(sql`SELECT f.workspace_id::text AS workspace_id, f.name, f.size FROM project_files f
-            WHERE f.id = ${claimed.file_id}::uuid AND f.state = 'ready' AND f.published_at IS NOT NULL AND f.message_id IS NOT NULL
+            WHERE f.id = ${claimed.file_id}::uuid AND f.state = 'ready' AND f.published_at IS NOT NULL AND (f.message_id IS NOT NULL OR f.run_id IS NOT NULL)
               AND f.size IS NOT NULL AND NOT workspace_sealed(f.workspace_id)`)).rows[0] as { workspace_id: string; name: string; size: number } | undefined;
           if (!file) {
             await tx.execute(sql`DELETE FROM file_text_jobs WHERE file_id = ${claimed.file_id}::uuid`);
@@ -74,6 +74,21 @@ export function fileTextRows(db: Database) {
      */
     async store(fileId: string, parts: readonly FileTextPart[]): Promise<boolean> {
       return db.transaction(async (tx) => {
+        // A file of an agent's chat (#1438, C-64): its text is kept for that chat's runs only, never as a search row.
+        const chat = (await tx.execute(sql`SELECT f.workspace_id::text AS workspace_id, f.agent_id::text AS agent_id FROM project_files f
+            WHERE f.id = ${fileId}::uuid AND f.agent_id IS NOT NULL AND f.run_id IS NOT NULL AND f.state = 'ready' AND NOT workspace_sealed(f.workspace_id) FOR SHARE OF f`)).rows[0] as
+          { workspace_id: string; agent_id: string } | undefined;
+        if (chat) {
+          await tx.execute(sql`DELETE FROM agent_chat_file_text WHERE file_id = ${fileId}::uuid`);
+          if (parts.length) {
+            const payload = JSON.stringify(parts.map((part) => ({ part: part.part, page: part.page, text: part.text })));
+            await tx.execute(sql`INSERT INTO agent_chat_file_text (file_id, part, workspace_id, agent_id, page, body)
+              SELECT ${fileId}::uuid, (p->>'part')::int, ${chat.workspace_id}::uuid, ${chat.agent_id}::uuid, (p->>'page')::int, p->>'text'
+              FROM jsonb_array_elements(${payload}::jsonb) p`);
+          }
+          await tx.execute(sql`DELETE FROM file_text_jobs WHERE file_id = ${fileId}::uuid`);
+          return true;
+        }
         const file = (await tx.execute(sql`SELECT f.workspace_id::text AS workspace_id, f.project_id::text AS project_id, f.name, f.published_at::text AS at,
               f.uploader_id, f.uploader_agent_id::text AS agent_id, m.conversation_id::text AS conversation_id
             FROM project_files f JOIN project_messages m ON m.id = f.message_id
@@ -106,6 +121,27 @@ export function fileTextRows(db: Database) {
         { file_id: string; workspace_id: string; project_id: string; conversation_id: string; message_id: string; name: string; size: number; pages: number | null; pending: boolean } | undefined;
       return row ? { fileId: row.file_id, workspaceId: row.workspace_id, projectId: row.project_id, conversationId: row.conversation_id, messageId: row.message_id,
         name: row.name, size: row.size, pages: row.pages, pending: row.pending } : null;
+    },
+
+    /**
+     * A file its owner sent in an agent's private chat (#1438, C-64), as that chat's run asks for it: null when it is not a sent file of a chat
+     * in this company. Who may read it is the caller's to decide (`reachesChatFile`).
+     */
+    async locateChat(workspaceId: string, fileId: string): Promise<(Omit<FileTextLocated, 'projectId' | 'conversationId' | 'messageId'> & { agentId: string; runId: string; uploaderId: string | null }) | null> {
+      const row = (await db.execute(sql`SELECT f.id::text AS file_id, f.workspace_id::text AS workspace_id, f.agent_id::text AS agent_id, f.run_id::text AS run_id,
+            f.uploader_id, f.name, f.size, f.page_count AS pages, EXISTS (SELECT 1 FROM file_text_jobs j WHERE j.file_id = f.id) AS pending
+          FROM project_files f
+          WHERE f.id = ${fileId}::uuid AND f.workspace_id = ${workspaceId}::uuid AND f.agent_id IS NOT NULL AND f.run_id IS NOT NULL AND f.state = 'ready'
+            AND f.published_at IS NOT NULL AND f.size IS NOT NULL AND NOT workspace_sealed(f.workspace_id)`)).rows[0] as
+        { file_id: string; workspace_id: string; agent_id: string; run_id: string; uploader_id: string | null; name: string; size: number; pages: number | null; pending: boolean } | undefined;
+      return row ? { fileId: row.file_id, workspaceId: row.workspace_id, agentId: row.agent_id, runId: row.run_id, uploaderId: row.uploader_id, name: row.name, size: row.size,
+        pages: row.pages, pending: row.pending } : null;
+    },
+
+    /** The text of a chat's file (C-64), the parts joined in order, and how many there are. */
+    async chatText(fileId: string): Promise<{ text: string; parts: number }> {
+      return (await db.execute(sql`SELECT coalesce(string_agg(body, '' ORDER BY part), '') AS text, count(*)::int AS parts
+        FROM agent_chat_file_text WHERE file_id = ${fileId}::uuid`)).rows[0] as { text: string; parts: number };
     },
 
     /** The text of a file, the parts joined in order, and how many there are. Empty text and 0 parts when none was read. */

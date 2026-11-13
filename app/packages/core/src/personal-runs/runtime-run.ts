@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { ASSISTANT_RUN_CHANGED_EVENT, RUNTIME_RUN_LIMITS, type AssistantRunEndReason } from '@flux/contracts';
+import { ASSISTANT_RUN_CHANGED_EVENT, RUNTIME_RUN_LIMITS, type AssistantRunEndReason, type MessageFile } from '@flux/contracts';
 import { ForbiddenError, NotFoundError } from '../access/errors.js';
 import type { Principal } from '../principal.js';
 import type {
@@ -14,6 +14,7 @@ import { runtimeModelFlag } from './model.js';
 import { answerWithSchedule, preparedAnswer } from './schedule-request.js';
 import { placeAllows, spaceSwitchAllows } from './place.js';
 import { isAsked, isPrivateAnswer } from './ports.js';
+import { chatFilesOf } from './chat-files.js';
 import { briefPrivateText, runtimeBrief, type BriefInput, type SuppliedSource } from './brief.js';
 import { CHAT_TURNS, latestMessages, readBriefFacts, type BriefFacts } from './brief-facts.js';
 import { answerCleaner } from './answer-addresses.js';
@@ -132,7 +133,7 @@ async function pauseUntilReset(ports: PersonalRunPorts, run: RunRecord, resetsAt
 }
 
 /** What the worker reads for the CLI's brief (#1064), after the same place checks as an API-key run's read. */
-interface RuntimeContext { brief: AgentBrief | null; facts: BriefFacts; sources: SuppliedSource[]; leftOut: boolean; turns: { prompt: string; answer: string }[] }
+interface RuntimeContext { brief: AgentBrief | null; facts: BriefFacts; sources: SuppliedSource[]; leftOut: boolean; turns: { prompt: string; answer: string; files?: MessageFile[] }[]; files?: MessageFile[] }
 
 /**
  * The CLI reads a space itself, through the run's tools. A direct message has no tool that reads it, and a chat remembers its earlier turns:
@@ -147,8 +148,10 @@ async function runtimeContext(ports: PersonalRunPorts, run: RunRecord): Promise<
   const brief = await ports.runs.agentBrief(run.agentId);
   const dm = dmId !== null && isPrivateAnswer(run) ? await latestMessages((limit) => ports.runs.dmMessages(dmId, limit, run.dmThreadRootId)) : { messages: [], leftOut: false };
   const turns = projectId === null && dmId === null && isAsked(run) ? await ports.runs.chatTurns(run.agentId, run.id, CHAT_TURNS) : [];
+  // The files its owner sent with this request in the chat (#1438, C-64): named with their ids, read with the run's tools.
+  const files = isAsked(run) ? await chatFilesOf(ports, run) : [];
   return {
-    brief, facts: await readBriefFacts(ports, run, brief), leftOut: dm.leftOut, turns,
+    brief, facts: await readBriefFacts(ports, run, brief), leftOut: dm.leftOut, turns, ...(files.length ? { files } : {}),
     sources: dm.messages.map((message, index) => ({ label: `S${index + 1}`, ref: { type: 'message', id: message.id, revision: 1 }, item: { kind: 'message', message } })),
   };
 }
@@ -341,7 +344,7 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
           engine: 'runtime', kind: run.kind, tools: grant.tools, ...read.facts, now: new Date(now()), agent: read.brief,
           prompt: grant.context ? `${run.prompt}\n${grant.context}` : run.prompt, requestedAt: run.createdAt, sources: read.sources, leftOut: read.leftOut,
           turns: read.turns, earlier: null, thought: run.targetSketchId && run.targetThoughtId ? { sketchId: run.targetSketchId, thoughtId: run.targetThoughtId } : null,
-          webSearch,
+          webSearch, ...(read.files?.length ? { files: read.files } : {}),
         };
         const prompt = runtimeBrief(briefed);
         // What people, the company and its tools wrote in what the CLI is given is private Flux text the run read (#1065, #1136, C-30): a web

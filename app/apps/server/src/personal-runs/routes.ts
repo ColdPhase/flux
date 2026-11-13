@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import type { PgBoss } from 'pg-boss';
 import { modelListRefresh } from '../ai-keys/model-refresh.js';
 import {
+  FILE_LIMITS,
   AGENT_CHATS_PATH,
   agentChatMessagesPath,
   agentChatReadPath,
@@ -73,7 +74,9 @@ const updateAgentBody = { type: 'object', additionalProperties: false, propertie
 const memoryBody = { type: 'object', required: ['body'], additionalProperties: false, properties: { body: { type: 'string', minLength: 1, maxLength: AGENT_LIMITS.memoryItem } } } as const;
 const invoke = { type: 'object', required: ['clientRunId', 'kind', 'prompt'], additionalProperties: false, properties: {
   clientRunId: { type: 'string' }, kind: { type: 'string', enum: ['ask', 'summarize', 'map_thought'] },
-  prompt: { type: 'string', minLength: 1, maxLength: PERSONAL_RUN_LIMITS.prompt },
+  // The words may be empty only with files, in an agent's chat (#1438, C-64): core decides.
+  prompt: { type: 'string', maxLength: PERSONAL_RUN_LIMITS.prompt },
+  attachmentIds: { type: 'array', maxItems: FILE_LIMITS.messageFiles, items: { type: 'string' } },
   target: { type: 'object', required: ['type', 'sketchId', 'thoughtId'], additionalProperties: false,
     properties: { type: { type: 'string', enum: ['thought'] }, sketchId: { type: 'string' }, thoughtId: { type: 'string' } } },
   continuesRunId: { type: 'string' },
@@ -103,7 +106,8 @@ export async function personalRunRoutes(app: FastifyInstance, { db, sessions, bo
   const queue = pgBossPersonalRunQueue(boss);
   const modelLists = modelListRefresh(db, boss);
   const composition = { queue, connections, providerEnabled, ...(runtime ? { runtime } : {}) };
-  const runs = personalRunUseCases(db, composition);
+  // A request in an agent's chat may carry files (#1438, C-64): the same composition with the files volume.
+  const runs = personalRunUseCases(db, { ...composition, ...(storage ? { storage } : {}) });
   // The owner's schedules (F-027 A8) run on the same composition: the same connection, switch and runtime.
   registerAssistantJobRoutes(app, db, sessions, boss, composition);
 
@@ -188,7 +192,7 @@ export async function personalRunRoutes(app: FastifyInstance, { db, sessions, bo
       return command(request, reply, {
         operation, scope: 'account', status: () => (created ? 202 : 200),
         run: async (actor, conn) => {
-          const started = await personalRunUseCases(conn, composition).invoke(actor, placeOf(request.params), request.body);
+          const started = await personalRunUseCases(conn, { ...composition, ...(storage ? { storage } : {}) }).invoke(actor, placeOf(request.params), request.body);
           created = started.created;
           return started.run;
         },

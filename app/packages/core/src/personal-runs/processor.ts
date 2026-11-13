@@ -1,4 +1,4 @@
-import { aiModelSearchesWeb, PERSONAL_RUN_LIMITS, personalRunMaxInputTokens, RUNTIME_RUN_LIMITS, type AiPrice } from '@flux/contracts';
+import { aiModelSearchesWeb, PERSONAL_RUN_LIMITS, personalRunMaxInputTokens, RUNTIME_RUN_LIMITS, type AiPrice, type MessageFile } from '@flux/contracts';
 import { boundedInputTokens, conservativeTokenEstimate } from '../ai/estimate.js';
 import { ForbiddenError, NotFoundError, SpaceAiOffError } from '../access/errors.js';
 import type { Principal } from '../principal.js';
@@ -10,6 +10,7 @@ import type {
 } from './ports.js';
 import { liveText, type LiveText } from './live-text.js';
 import { isAsked, WebSearchRefusedError } from './ports.js';
+import { chatFilesOf } from './chat-files.js';
 import { connectionOnModel } from './model.js';
 import { redactSecrets } from './redaction.js';
 import { answerWithSchedule, preparedAnswer } from './schedule-request.js';
@@ -149,7 +150,9 @@ interface ReadSources {
   sources: SuppliedSource[];
   earlier: string | null;
   brief: AgentBrief | null;
-  turns: { prompt: string; answer: string }[];
+  turns: { prompt: string; answer: string; files?: MessageFile[] }[];
+  /** The files its owner sent with the request in the agent's chat (#1438, C-64). */
+  files: MessageFile[];
   facts: BriefFacts;
   /** Older messages of the place than those read exist. */
   leftOut: boolean;
@@ -199,7 +202,9 @@ async function readSources(ports: PersonalRunPorts, run: RunRecord): Promise<Rea
   const turns = run.projectId === null && run.dmId === null && isAsked(run) ? await ports.runs.chatTurns(run.agentId, run.id, CHAT_TURNS) : [];
   // The calls of a space's conversation or a task, among the messages by when they started; with older messages left out, only the later ones.
   const events = await callEvents(ports, run, leftOut ? messages[0]?.createdAt ?? null : null);
-  return { sources, earlier, brief, turns, facts: await readBriefFacts(ports, run, brief), leftOut, events };
+  // The files its owner sent with this request in the chat (C-64): the run is told their names and ids, and reads them with its tools.
+  const files = isAsked(run) ? await chatFilesOf(ports, run) : [];
+  return { sources, earlier, brief, turns, files, facts: await readBriefFacts(ports, run, brief), leftOut, events };
 }
 
 /**
@@ -439,7 +444,7 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
     const briefInput = (sources: SuppliedSource[], dropped: boolean, webSearch: boolean): BriefInput => ({
       engine: 'server', kind: run.kind, tools: session ? session.tools.map((tool) => tool.name) : [], webSearch, ...read.facts, now: asked,
       agent: read.brief, prompt: run.prompt, requestedAt: run.createdAt, sources, leftOut: read.leftOut || dropped, turns: read.turns, earlier: read.earlier, thought: null,
-      events: read.events,
+      events: read.events, ...(read.files.length ? { files: read.files } : {}),
     });
     const brief = (sources: SuppliedSource[], dropped: boolean, webSearch: boolean) => buildBrief(briefInput(sources, dropped, webSearch));
     let fitted: Awaited<ReturnType<typeof fit>>;

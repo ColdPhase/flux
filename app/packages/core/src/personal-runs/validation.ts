@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import {
   AGENT_LIMITS,
   aiModelCallsTools,
+  FILE_LIMITS,
   PERSONAL_RUN_LIMITS,
   personalRunMaxInputTokens,
   type AiConnectionRef,
@@ -102,16 +103,28 @@ export function normalizeInvoke(command: InvokeAssistantRunCommand) {
     throw new InvalidInputError(`kind must be one of ${KINDS.join(', ')}`);
   const kind = command.kind as AssistantRunKind;
   const prompt = typeof command.prompt === 'string' ? command.prompt.trim() : '';
-  if (!prompt || prompt.length > PERSONAL_RUN_LIMITS.prompt) throw new InvalidInputError(`prompt must be 1–${PERSONAL_RUN_LIMITS.prompt} characters`);
+  const attachmentIds = files(command.attachmentIds);
+  // A request with files may have no words, as a message may (#1438 point 10, C-64).
+  if ((!prompt && !attachmentIds.length) || prompt.length > PERSONAL_RUN_LIMITS.prompt) throw new InvalidInputError(`prompt must be 1–${PERSONAL_RUN_LIMITS.prompt} characters`);
   const request = {
     kind, prompt, target: target(command.target, kind),
     continuesRunId: command.continuesRunId === undefined ? null : id(command.continuesRunId, 'continuesRunId'),
   };
   const named = (value: unknown, label: string) => (value === undefined ? null : typeof value === 'string' && value ? value : invalid(label));
   return {
-    clientRunId, ...request, fingerprint: fingerprint(request),
+    // A request without files keeps the fingerprint it always had.
+    clientRunId, ...request, attachmentIds, carriedFiles: attachmentIds.length, fingerprint: fingerprint(attachmentIds.length ? { ...request, attachmentIds } : request),
     claimed: { ownerId: named(command.ownerId, 'ownerId'), connectionId: named(command.connectionId, 'connectionId'), agentId: named(command.agentId, 'agentId') },
   };
+}
+
+/** The files of a request in an agent's chat (#1438, C-64): distinct ids, in order, at most a message's 10. */
+function files(value: unknown): string[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > FILE_LIMITS.messageFiles) throw new InvalidInputError(`attachmentIds must be at most ${FILE_LIMITS.messageFiles} file ids`);
+  const ids = value.map((item) => id(item, 'attachmentIds').toLowerCase());
+  if (new Set(ids).size !== ids.length) throw new InvalidInputError('attachmentIds must not repeat a file');
+  return ids;
 }
 
 function invalid(label: string): never {
@@ -121,13 +134,15 @@ function invalid(label: string): never {
 export type NormalizedInvoke = ReturnType<typeof normalizeInvoke>;
 
 /** The request of a retry: the same kind, prompt, target and continuation as the retried run. */
-export function retryRequest(run: { kind: AssistantRunKind; prompt: string; targetSketchId: string | null; targetThoughtId: string | null; continuesRunId: string | null }, clientRunId: unknown): NormalizedInvoke {
+export function retryRequest(run: { kind: AssistantRunKind; prompt: string; targetSketchId: string | null; targetThoughtId: string | null; continuesRunId: string | null; attachmentCount?: number }, clientRunId: unknown): NormalizedInvoke {
   const request = {
     kind: run.kind, prompt: run.prompt,
     target: run.targetSketchId && run.targetThoughtId ? { type: 'thought' as const, sketchId: run.targetSketchId, thoughtId: run.targetThoughtId } : null,
     continuesRunId: run.continuesRunId,
   };
-  return { clientRunId: id(clientRunId, 'clientRunId'), ...request, fingerprint: fingerprint(request), claimed: { ownerId: null, connectionId: null, agentId: null } };
+  // A retry sends no files of its own: it reads those of the run it retries (C-64), which it counts so a request of files alone stays one.
+  return { clientRunId: id(clientRunId, 'clientRunId'), ...request, attachmentIds: [] as string[], carriedFiles: run.attachmentCount ?? 0, fingerprint: fingerprint(request),
+    claimed: { ownerId: null, connectionId: null, agentId: null } };
 }
 
 /**

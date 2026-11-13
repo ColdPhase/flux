@@ -290,6 +290,11 @@ export interface InvokeAssistantRunCommand {
   target?: AssistantRunTarget;
   /** An earlier committed run of the caller in the same conversation; its answer is passed as input. */
   continuesRunId?: string;
+  /**
+   * Only in an agent's private chat (#1438 point 10, C-64): files the owner staged in that chat (`agentChatFilesPath`), sent with the request in this
+   * order (at most `FILE_LIMITS.messageFiles`); with files the prompt may be empty. Anywhere else a request carries no file (422).
+   */
+  attachmentIds?: string[];
   ownerId?: string;
   connectionId?: string;
   agentId?: string;
@@ -380,6 +385,11 @@ export interface AssistantRun {
   dismissedAt?: string | null;
   /** The pictures its agent attached to its answer in its private chat (#1217, C-59): its owner's alone. Absent elsewhere. */
   pictures?: MessageFile[];
+  /**
+   * The files its owner sent with the request in the agent's private chat (#1438 point 10, C-64), in order; a retry shows those of the run it
+   * retries. Its owner's alone. Absent elsewhere and when there are none.
+   */
+  files?: MessageFile[];
 }
 
 export type AssistantRunAuthority = 'owner_request' | 'owner_schedule';

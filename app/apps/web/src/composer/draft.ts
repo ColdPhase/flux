@@ -4,7 +4,7 @@ import { ApiError, NetworkError } from '../api/client';
 import { reply, startConversation } from '../conversations/api';
 import { announceAnswered } from '../notifications/api';
 import { sendDmMessage, sendDmReply } from '../api/direct-messages';
-import { contributeToTask, stageFile } from './api';
+import { contributeToTask, stageFile, type FilePlace } from './api';
 import { fileLimits, loadFileLimits, uploadPoster } from '../api/files';
 import { drawPoster } from './videoPoster';
 import { assumeReachable, connectionState, onConnectionChange, reportReachable, reportUnreachable } from './connection';
@@ -151,11 +151,15 @@ function alive(key: string, generation: number) {
   return !externallyRetired && generation === sessionGeneration && snapshots.has(key);
 }
 
-/** The place a draft's files go to: the space (its id), or (#1438 point 10) the direct message a `dm:<dmId>[/<rootId>]` context names. */
-const filePlace = (projectId: string, context: string): string | { dmId: string } => context.startsWith('dm:') ? { dmId: context.slice('dm:'.length).split('/')[0]! } : projectId;
+/**
+ * The place a draft's files go to: the space (its id), or (#1438 point 10) the direct message a `dm:<dmId>[/<rootId>]` context names, or the
+ * private chat with an agent a `chat:<agentId>` context names (C-64).
+ */
+const filePlace = (projectId: string, context: string): FilePlace => context.startsWith('dm:') ? { dmId: context.slice('dm:'.length).split('/')[0]! }
+  : context.startsWith('chat:') ? { agentId: context.slice('chat:'.length) } : projectId;
 const stagedHere = (staged: StagedFile, projectId: string, context: string) => {
   const place = filePlace(projectId, context);
-  return typeof place === 'string' ? staged.projectId === place : staged.dmId === place.dmId;
+  return typeof place === 'string' ? staged.projectId === place : 'dmId' in place ? staged.dmId === place.dmId : staged.agentId === place.agentId;
 };
 const validFile = (file: DraftFile, projectId: string, context: string) => uuid(file.uploadId) && typeof file.name === 'string' && typeof file.size === 'number'
   && ['uploading', 'failed', 'ready'].includes(file.state) && (file.state !== 'ready' || (!!file.staged && uuid(file.staged.id) && stagedHere(file.staged, projectId, context)));

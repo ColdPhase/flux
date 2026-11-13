@@ -112,6 +112,8 @@ export interface RunRecord {
   /** #842: Show everyone posted the answer, or Dismiss put it away. */
   shownAt: Date | null;
   dismissedAt: Date | null;
+  /** 0079 (#1438, C-64): how many files the owner sent with this request in its agent's chat (a retry counts those of the run it retries). */
+  attachmentCount?: number;
 }
 
 /** Where a run belongs, from its row: a space, a direct message, or the private chat with its agent (#842). */
@@ -137,7 +139,7 @@ export type NewRun = Pick<RunRecord, 'id' | 'workspaceId' | 'projectId' | 'conve
   | 'clientRunId' | 'requestFingerprint' | 'kind' | 'prompt' | 'targetSketchId' | 'targetThoughtId' | 'continuesRunId' | 'retryOfRunId'
   | 'reservedMicros' | 'provider' | 'model' | 'aiEpoch'> & { engine?: AssistantEngine; authority?: RunRecord['authority']; backgroundLabel?: string | null; workId?: string | null; askedByRunId?: string | null; exchangeTurn?: number;
     /** A paused request: queued until then, with the reason it waits (#854). */
-    resumeAt?: Date | null; endReason?: AssistantRunEndReason | null; planLimitResetsAt?: Date | null };
+    resumeAt?: Date | null; endReason?: AssistantRunEndReason | null; planLimitResetsAt?: Date | null; attachmentCount?: number };
 export type RunChanges = Partial<Pick<RunRecord, 'status' | 'stoppedAtStage' | 'stopRequestedAt' | 'stopRequestedBy' | 'costState' | 'chargedMicros'
   | 'inputTokens' | 'outputTokens' | 'answerBody' | 'answerTruncated' | 'answerSources' | 'committedAt' | 'dispatchedAt' | 'completedAt'
   | 'endReason' | 'planLimitResetsAt' | 'stopAcknowledgedAt' | 'answerRedacted' | 'resumeAt' | 'reservedMicros' | 'reservedAt' | 'largestRequestMicros'
@@ -176,6 +178,8 @@ export interface PersonalRunRepository {
   webReads(runId: string): Promise<{ finalUrl: string; outcome: string; writable: boolean }[]>;
   /** #1217: the pictures an agent attached to its answer in its private chat, in order. Absent from a port that serves no chat. */
   runPictures?(runId: string): Promise<MessageFile[]>;
+  /** #1438 (C-64): the files the owner sent with these requests in an agent's chat, by run, in order. Absent from a port that serves no chat. */
+  runFiles?(runIds: readonly string[]): Promise<Map<string, MessageFile[]>>;
   /** The run's searches (#954): their queries and the addresses the answers cited, each once, in the order found. */
   webSearches(runId: string): Promise<{ queries: string[]; cited: string[] }>;
   /** Records what one response's web search brought (#954), before any tool call the same response asked for runs. */
@@ -284,7 +288,7 @@ export interface PersonalRunRepository {
   /** Whether a message is a root (not a reply, not the line "used AI here") of this direct message: the only thing a thread can hang on (#1016). */
   isDmThreadRoot(dmId: string, messageId: string): Promise<boolean>;
   /** What the owner and this agent said last in their private chat, oldest first: the earlier turns of a chat (#842). */
-  chatTurns(agentId: string, beforeRunId: string, limit: number): Promise<{ prompt: string; answer: string }[]>;
+  chatTurns(agentId: string, beforeRunId: string, limit: number): Promise<{ prompt: string; answer: string; files?: MessageFile[] }[]>;
   /**
    * The line both people of a DM see when AI is used in it: "Ada used AI here (Claude)" (#842, F-036 AG-4). `company` is the name
    * of the company that receives the conversation. It takes a place in the DM but is not a message to read: no notification, no
@@ -367,7 +371,21 @@ export interface PersonalRunSchedules {
     Promise<{ ok: true; title: string; words: string } | { ok: false; message: string }>;
 }
 
+/**
+ * The files an owner sends with a request to their agent in its private chat (#1438 point 10, C-64): the same stored files and checks as a
+ * message's, staged by the owner in that chat. Absent where no file is served.
+ */
+export interface PersonalRunChatFiles {
+  /**
+   * Locks the owner's ready, unsent files of this agent's chat (every check of a message's attachments; anything else is the same unknown
+   * file) and attaches them, in order, with their videos' posters, to the run just stored.
+   */
+  attach(agentId: string, ownerUserId: string, runId: string, fileIds: readonly string[], at: Date): Promise<MessageFile[]>;
+}
+
 export interface PersonalRunPorts {
+  /** #1438 (C-64): files sent with a request in an agent's chat; only the API supplies it. */
+  chatFiles?: PersonalRunChatFiles;
   /** Where an owner's request can prepare a schedule; the API does not run the processor, so only the worker supplies it. */
   schedules?: PersonalRunSchedules;
   /** Production always supplies the assistant identity adapter; older isolated fake ports may omit it. */
@@ -381,6 +399,8 @@ export interface PersonalRunPorts {
 /** Runs `work` in one transaction; on an open transaction (an idempotency scope) it nests. */
 export interface PersonalRunUnitOfWork {
   run<T>(work: (ports: PersonalRunPorts) => Promise<T>): Promise<T>;
+  /** Checks the bytes of the files a request in a chat will carry, before its transaction opens (#154, #1411): no connection is held while they are read. */
+  verifyFiles?(ownerUserId: string, fileIds: readonly string[]): Promise<void>;
 }
 
 /**

@@ -11,8 +11,11 @@ function wire(row: typeof f.$inferSelect) {
     : { kind: 'agent' as const, id: row.uploaderAgentId! } };
 }
 const uploaderFilter = (actor: ActorRef) => actor.kind === 'human' ? eq(f.uploaderId, actor.id) : eq(f.uploaderAgentId, actor.id);
-/** The place a file belongs to is a space or a direct message (migration 0076): their ids are UUIDs of different tables, so one id names either. */
-const inPlace = (placeId: string) => or(eq(f.projectId, placeId), eq(f.dmId, placeId))!;
+/**
+ * The place a file belongs to is a space, a direct message (migration 0076) or an agent's private chat (0079): their ids are UUIDs of different
+ * tables, so one id names exactly one.
+ */
+const inPlace = (placeId: string) => or(eq(f.projectId, placeId), eq(f.dmId, placeId), eq(f.agentId, placeId))!;
 /** The message of a space or of a direct message a file is attached to. */
 const messageOf = sql<string>`coalesce(${f.messageId}, ${f.dmMessageId})`;
 
@@ -53,7 +56,7 @@ export function fileRows(db: DbExecutor) {
     async postersOf(videoId: string) {
       return (await open(await db.select().from(f).where(eq(f.posterOf, videoId)))).map(wire);
     },
-    async reserve(input: { id: string; workspaceId: string; projectId?: string; dmId?: string; uploader: ActorRef; uploadId: string; name: string; reservedBytes: number; expiresAt: Date; replayOf?: string; videoContainer?: VideoContainer; posterOf?: string }) {
+    async reserve(input: { id: string; workspaceId: string; projectId?: string; dmId?: string; agentId?: string; uploader: ActorRef; uploadId: string; name: string; reservedBytes: number; expiresAt: Date; replayOf?: string; videoContainer?: VideoContainer; posterOf?: string }) {
       const { uploader, ...fields } = input;
       const seal = await sealOf(db, fields.workspaceId, { write: true });
       const [row] = await open(await db.insert(f).values(await sealFor(db, 'project_files', fields.workspaceId, { ...fields, state: 'receiving' as const,
@@ -155,6 +158,27 @@ export function fileRows(db: DbExecutor) {
       return new Map(rows.map((row) => [row.posterOf!, row.id]));
     },
     /**
+     * #1438 point 10 (C-64): attaches the owner's ready, unsent files of an agent's chat to the request (its run) just stored, in order, with
+     * their videos' posters. Each must be exactly the locked file (the caller made every check in this transaction).
+     */
+    async publishToRun(agentId: string, runId: string, files: readonly { id: string; video?: unknown }[], publishedAt: Date): Promise<Map<string, string>> {
+      for (const [position, file] of files.entries()) {
+        const rows = await db.update(f).set({ runId, position, publishedAt, expiresAt: null })
+          .where(and(eq(f.id, file.id), eq(f.agentId, agentId), isNull(f.publishedAt))).returning({ id: f.id });
+        if (rows.length !== 1) throw new Error('Locked attachment publication invariant failed');
+      }
+      const videos = files.filter((file) => file.video).map((file) => file.id);
+      if (!videos.length) return new Map();
+      const rows = await db.update(f).set({ runId, position: null, publishedAt, expiresAt: null })
+        .where(and(inArray(f.posterOf, videos), eq(f.agentId, agentId), eq(f.state, 'ready'), isNull(f.publishedAt))).returning({ id: f.id, posterOf: f.posterOf });
+      return new Map(rows.map((row) => [row.posterOf!, row.id]));
+    },
+    /** The files the owner sent with these requests in an agent's chat (#1438, C-64), by run, in order. */
+    async runFiles(runIds: readonly string[]) {
+      if (!runIds.length) return new Map<string, MessageFile[]>();
+      return groupMessageFiles(new Map(), await open(await db.select().from(f).where(inArray(f.runId, [...runIds])).orderBy(asc(f.runId), asc(f.position))));
+    },
+    /**
      * C-61: gives the posters of these just-published videos to the message they went to (a poster is published with its video, at the
      * same time, and is read through the download route under the video's own access).
      */
@@ -183,7 +207,7 @@ function groupMessageFiles(grouped: Map<string, MessageFile[]>, rows: readonly (
   const posters = new Map(rows.filter((row) => row.posterOf !== null).map((row) => [row.posterOf!, row.id]));
   for (const row of rows) {
     if (row.posterOf !== null) continue;
-    const at = row.messageId ?? row.dmMessageId!;
+    const at = row.messageId ?? row.dmMessageId ?? row.runId!;
     const list = grouped.get(at) ?? [];
     const poster = posters.get(row.id);
     list.push({ id: row.id, name: row.name, size: row.size!, ...fileDetail(row), ...(poster ? { poster } : {}) });

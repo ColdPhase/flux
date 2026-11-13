@@ -58,8 +58,9 @@ export function useAgentChat(agentId: string, meId: string) {
 
   return {
     runs, lines, status, failed, incomplete, working, refresh, version: signal, opening,
-    async send(prompt: string) {
-      const started = await askAssistant({ kind: 'chat', agentId }, { clientRunId: crypto.randomUUID(), kind: 'ask', prompt });
+    /** The words and the files staged in this chat (#1438, C-64); the same `clientRunId` again after a lost answer finds the same request. */
+    async send(prompt: string, attachmentIds: readonly string[] = [], clientRunId: string = crypto.randomUUID()) {
+      const started = await askAssistant({ kind: 'chat', agentId }, { clientRunId, kind: 'ask', prompt, ...(attachmentIds.length ? { attachmentIds: [...attachmentIds] } : {}) });
       setRuns((items) => [...(items ?? []).filter((item) => item.id !== started.id), started]);
       refresh();
     },
