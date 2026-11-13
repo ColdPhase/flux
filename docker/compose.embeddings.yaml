@@ -8,9 +8,11 @@
 #   docker compose --env-file .env -f compose.yaml -f compose.embeddings.yaml up -d --wait
 #
 # The first start downloads the model (about 2.3 GB, from huggingface.co) into the `embeddings` volume; until it is ready search ranks
-# by BM25 alone and the worker retries by itself. The worker then embeds every searchable row of a space whose AI is on, a few a second
-# on 2 vCPUs: 10,000 messages take about 17 minutes. Encrypted spaces and spaces with AI off are never embedded. The container is
-# internal: no port is published, and nothing is ever embedded through a person's own AI connection.
+# by BM25 alone and the worker retries by itself. The worker then embeds every searchable row of a space whose AI is on: short messages
+# about 10 a second, messages of about 700 characters about 0.35 a second on 2 cores (the audit of #1270), so a backfill of a large
+# space takes hours. The container may use one CPU (`FLUX_EMBEDDINGS_CPUS`, default 1): on a 2-core server the other stays Flux's
+# while it embeds; raise it on a larger server for a faster backfill. Encrypted spaces and spaces with AI off are never embedded. The
+# container is internal: no port is published, and nothing is ever embedded through a person's own AI connection.
 # Remove the file (and set FLUX_EMBEDDINGS=off) to turn it off: the next worker start deletes every vector.
 services:
   embeddings:
@@ -22,6 +24,8 @@ services:
     command: ["--model-id", "BAAI/bge-m3", "--max-batch-tokens", "2048", "--tokenization-workers", "2", "--auto-truncate", "--port", "8080"]
     environment:
       HF_HUB_DISABLE_TELEMETRY: "1"
+    # One CPU by default (audit of #1270): unbounded, a backfill kept it at 150–175 % of a 2-core server for hours.
+    cpus: ${FLUX_EMBEDDINGS_CPUS:-1}
     mem_limit: ${FLUX_EMBEDDINGS_MEMORY:-6g}
     memswap_limit: ${FLUX_EMBEDDINGS_MEMORY:-6g}
     cap_drop: [ALL]

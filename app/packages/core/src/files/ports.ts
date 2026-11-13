@@ -30,6 +30,8 @@ export interface StoredFileRow {
   videoContainer?: VideoContainer | null;
   /** C-61: the staged video this file is the poster of; such a file is no attachment of its own and follows its video to the message. */
   posterOf?: string | null;
+  /** F-030: the key version an encrypted workspace's object is sealed under; null (or absent) for a plain object. */
+  keyVersion?: number | null;
 }
 
 /** Rows only; the use cases decide. Every method runs in the caller's transaction. */
@@ -107,6 +109,12 @@ export interface FileStorage {
   stream(objectId: string, range: { size: number; start: number; end: number }): Promise<AsyncIterable<Uint8Array> | null>;
   /** Whether immutable bytes exist with exactly this size and, when supplied, SHA-256 (a plain object is hashed as a stream, never held whole). */
   has(objectId: string, size: number, sha256?: string): Promise<boolean>;
+  /**
+   * #1411: whether the object is on disk as a regular file holding exactly `size` bytes of content (a sealed object's header and tag
+   * on top), from the file system's metadata alone: no byte is read and no database is asked. This is the only check of the bytes a
+   * message's transaction makes (`lockAttachments`): a digest is computed once, as the upload arrives, and verified where bytes are read.
+   */
+  present(objectId: string, size: number, sealed: boolean): Promise<boolean>;
   /** Removes the object durably; a missing object is not an error. */
   remove(objectId: string): Promise<void>;
   /** Removes scratch files older than this age (abandoned receives). */

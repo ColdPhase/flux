@@ -140,8 +140,9 @@ text-embeddings-inference, by digest; `release.json` names it as `embeddings_ima
 docker compose --env-file .env -f compose.yaml -f compose.embeddings.yaml up -d --wait
 ```
 
-It needs about 3.2 GiB of RAM idle and 3.9 GiB at its peak, a 2.3 GB model downloaded on its first start and about 17 minutes of two
-cores for 10,000 existing rows ([requirements](requirements.md#local-embeddings-optional)). Leave the file out again to turn it off:
+It needs about 3.2 GiB of RAM idle and 3.9 GiB at its peak, a 2.3 GB model downloaded on its first start and, for 10,000 existing
+rows, from about 17 minutes of two cores (short messages) to about 8 hours (messages of about 700 characters; longer with its default
+limit of one CPU, `FLUX_EMBEDDINGS_CPUS`) ([requirements](requirements.md#local-embeddings-optional)). Leave the file out again to turn it off:
 the next worker start deletes every vector.
 
 ## Upgrade, backup and restore
