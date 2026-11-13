@@ -610,7 +610,7 @@ class ScenarioJourney:
         # A person proposes the first rule and accepts it.
         page = self.page("ada")
         # A message has no Propose a decision (#867); the one Create window proposes it (#1419), held for Undo until that window ends.
-        page.goto(f"/projects/{lamp}")
+        page.goto(f"/projects/{lamp}/tasks")  # the phone's "+" is on the lists and views, not in the conversation
         propose_decision(page, D1, why=WHY1)
         d1 = self.wait_for("the proposal", lambda: next((item for item in self.api("ada", "GET", f"/api/v1/projects/{lamp}/decisions?limit=100", status=200)["items"] if item["title"] == D1), None))
         page.goto(f"/projects/{lamp}?open=decision:{d1['id']}")
