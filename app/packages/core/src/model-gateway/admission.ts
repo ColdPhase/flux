@@ -55,7 +55,14 @@ function scan(value: unknown, operation: GatewayOperation, found: Scan, depth = 
   if (depth > MAX_DEPTH) { found.refused = 'The request is nested too deeply'; return; }
   if (Array.isArray(value)) { for (const item of value) scan(item, operation, found, depth + 1); return; }
   if (!isObject(value)) return;
-  if ('cache_control' in value) found.cacheAsked = true;
+  if ('cache_control' in value) {
+    found.cacheAsked = true;
+    // A one-hour cache write costs twice the input price, not the 1.25 times Flux holds and charges (#1410): only the default 5 minutes.
+    const mark = value.cache_control;
+    if (isObject(mark) && mark.ttl !== undefined && mark.ttl !== '5m') { found.refused = 'Only the default 5-minute prompt cache is offered through Flux'; return; }
+  }
+  // Items kept at the provider (OpenAI Responses) are not in the body, so what they cost cannot be bounded from it.
+  if (value.type === 'item_reference') { found.refused = 'Send the whole conversation: items kept at the provider are not offered through Flux'; return; }
   // Content the provider would fetch or keep itself is not in the body, so what it costs cannot be bounded from the body.
   const source = value.source;
   if (isObject(source) && (source.type === 'url' || source.type === 'file')) { found.refused = 'Only content inside the request can be sent: no URL or file references'; return; }
@@ -81,6 +88,26 @@ function toolsRefusal(body: Json, operation: GatewayOperation): string | null {
   }
   if (operation === 'anthropic_messages' && (body.mcp_servers !== undefined || body.container !== undefined)) return 'Provider-side connectors and containers are not offered through Flux';
   if (operation === 'openai_chat' && (body.web_search_options !== undefined || body.plugins !== undefined)) return 'The provider\'s own web search is not offered through Flux';
+  return null;
+}
+
+/**
+ * Request fields that change the price or the model of the answer, which Flux's prices cannot follow (#1441 review): Anthropic's fast
+ * mode and US-only inference (premium rates), OpenAI's priority and scale tiers, OpenRouter's fallback models and routes (another model
+ * than the run's), Gemini's provider-side settings through its compatible endpoint (cached content), and stored prompt templates.
+ */
+function priceRefusal(body: Json, operation: GatewayOperation, provider: AiProviderKind): string | null {
+  if (operation === 'anthropic_messages') {
+    if (body.speed !== undefined && body.speed !== null && body.speed !== 'standard') return 'Fast mode is not offered through Flux';
+    if (body.inference_geo !== undefined && body.inference_geo !== null && body.inference_geo !== 'global') return 'Only global inference is offered through Flux';
+  }
+  if (operation === 'openai_chat' || operation === 'openai_responses') {
+    const tier = body.service_tier;
+    if (tier !== undefined && tier !== null && tier !== 'auto' && tier !== 'default' && tier !== 'flex') return `The ${String(tier)} service tier is not offered through Flux`;
+    if (body.extra_body !== undefined || body.google !== undefined) return 'Provider-side settings are not offered through Flux';
+    if (provider === 'openrouter' && (body.models !== undefined || body.route !== undefined)) return 'This run uses one model: fallback models are not offered through Flux';
+  }
+  if (operation === 'openai_responses' && body.prompt !== undefined && body.prompt !== null) return 'Prompts kept at the provider are not offered through Flux';
   return null;
 }
 
@@ -114,7 +141,7 @@ export function admitGatewayRequest(facts: GatewayRequestFacts, raw: Buffer, run
     if (body.cachedContent !== undefined) return refuse('Content cached at the provider cannot be sent through Flux');
   } else if (body.model !== runModel) return refuse(`This run uses the model ${runModel}`);
 
-  const tools = toolsRefusal(body, operation);
+  const tools = toolsRefusal(body, operation) ?? priceRefusal(body, operation, provider);
   if (tools) return refuse(tools);
   const found: Scan = { pictures: 0, cacheAsked: false, refused: null };
   scan(body, operation, found);
@@ -134,9 +161,12 @@ export function admitGatewayRequest(facts: GatewayRequestFacts, raw: Buffer, run
       const legacy = bound(body, 'max_tokens', max, false);
       if (typeof completion === 'string') return refuse(completion);
       if (typeof legacy === 'string') return refuse(legacy);
-      // Without either, the provider's own name for the bound: OpenAI's current one, or the one every compatible server reads.
+      // Without either, the provider's own name for the bound: OpenAI's current one, or the one every compatible server reads. With
+      // both, a server may honour either, so the larger one is held (#1441 review: holding the smaller let an answer cost past its hold).
       const given = [completion, legacy].filter((value) => value > 0);
-      output = given.length ? Math.min(...given) : (bound(body, provider === 'openai' ? 'max_completion_tokens' : 'max_tokens', max, true) as number);
+      output = given.length ? Math.max(...given) : (bound(body, provider === 'openai' ? 'max_completion_tokens' : 'max_tokens', max, true) as number);
+      // OpenAI's "auto" tier is the project's default, which may be priority: Flux's prices are the standard tier's.
+      if (provider === 'openai' && body.service_tier !== 'flex') body.service_tier = 'default';
       stream = body.stream === true;
       if (stream) body.stream_options = { ...(isObject(body.stream_options) ? body.stream_options : {}), include_usage: true };
       // OpenRouter reports each answer's cost, which reconciles the charge (CA-3).
@@ -149,6 +179,7 @@ export function admitGatewayRequest(facts: GatewayRequestFacts, raw: Buffer, run
       if (body.conversation !== undefined && body.conversation !== null) return refuse('Send the whole conversation: conversations kept at the provider are not offered through Flux');
       output = bound(body, 'max_output_tokens', max, true);
       stream = body.stream === true;
+      if (provider === 'openai' && body.service_tier !== 'flex') body.service_tier = 'default';
       break;
     case 'gemini_generate': {
       const config = body.generationConfig === undefined ? (body.generationConfig = {}) : body.generationConfig;

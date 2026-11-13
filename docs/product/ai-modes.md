@@ -177,12 +177,24 @@ the token as its API key; it adds the provider's usual paths:
 - **What a request may ask.** A JSON body of at most 16 MiB; the run's model (the body's `model`, or the path's on Gemini's native
   API); at most 32,000 output tokens (a larger or missing bound is set to that); only the harness's own function tools (a provider's
   hosted tools — web search, code execution, file search, connectors, computer use — are refused); one answer (`n` 1); no OpenAI
-  `background`, `previous_response_id` or `conversation`, whose cost cannot be bounded before it is sent. Streaming is allowed; a Chat
+  `background`, `previous_response_id`, `conversation`, stored `prompt` or `item_reference`, whose cost cannot be bounded before it is
+  sent; nothing that changes the price or the model past Flux's prices: no Anthropic fast mode (`speed`) or US-only inference
+  (`inference_geo`), only the default 5-minute prompt cache (a one-hour write costs twice the input price), no OpenAI tier but the
+  standard one or `flex` (a request to OpenAI is sent with `service_tier: "default"` unless it asks for `flex`, so a project default of
+  priority does not apply), no OpenRouter fallback `models` or `route`, no provider-side settings (`extra_body`, `google`). A provider's
+  hosted web search may go through only as the run's configured web search (decided in the #1444 review, 2026-11-13): with the
+  operator's web switch on, on a model that searches (`aiModelSearchesWeb`), in exactly the server engine's tool shape (Anthropic
+  `web_search_20250305`, OpenAI Responses `web_search` with `external_web_access: false`), each search charged as a server run's (#954,
+  #1113) and its sources recorded for the answer (C-30). Until the run's engine for API keys (#1441 workstream 2) gives the gateway the
+  run's search flag and records those sources, the gateway refuses every hosted tool; no other hosted tool is ever offered. With both Chat Completions bounds
+  (`max_completion_tokens`, `max_tokens`) the larger is held, since a server may honour either. Streaming is allowed; a Chat
   Completions stream is asked to report its usage (`stream_options.include_usage`), and OpenRouter its cost.
 - **Refusals** are JSON errors that a harness does not retry (`x-should-retry: false`), shaped like both vendors' errors:
   `{"type":"error","error":{"type":"<code>","code":"<code>","message":"…"}}` — 401 `flux_token_invalid`, 402
   `flux_budget_exhausted` (the key's day cannot hold the request), 403 `flux_run_ended` (stopped, ended, AI turned off, the connection
-  gone), 400 `flux_request_refused`, 404 `flux_not_found`, 413 `flux_request_too_large`, 429 `flux_run_busy`. After a 402 or 403 the
+  gone), 400 `flux_request_refused`, 404 `flux_not_found`, 413 `flux_request_too_large`, 429 `flux_run_busy` (the run's four places are taken;
+  when the worker's shared bound on request bodies in memory is full instead, the same code comes with `x-should-retry: true` and
+  `retry-after: 2`, and the harness sends it again). After a 402 or 403 the
   harness gets no further answer and stops; Flux ends the run calmly, as on a server run ("budget" for the day's money).
 - **Metering** ([CA-3](model-providers.md#ca-3--the-providers-limits-not-fluxs)). Before a request is sent, the most it can cost
   (its body's bytes as input tokens plus 1,024, at the cache-write rate where the provider has one, and its output bound, at the run
@@ -192,8 +204,10 @@ the token as its API key; it adds the provider's usual paths:
   otherwise at the full price; counts that cannot be right count the input twice; OpenRouter's reported cost reconciles. A request
   whose usage is missing, malformed, beyond its bounds or cut off by a broken stream is charged the whole of what it held. A
   complete error answer of the provider (an HTTP error status) is charged nothing.
-- **Limits** (technical safety bounds, like #843's): 16 MiB a request, 32 MiB an answer, 10 minutes a request and 2 minutes without a
-  byte from the provider, 4 requests at once for one run, and the egress's per-source connection caps.
+- **Limits** (technical safety bounds, like #843's): 16 MiB a request, 32 MiB an answer, 10 minutes a request and, for a streamed
+  answer, 2 minutes without a byte from the provider, 4 requests at once for one run (the place is taken before the body is read, so an
+  unknown token or a busy run costs the worker no body), 48 MiB of request bodies in the worker's memory at once for every run
+  together (the worker has 512 MiB for all its jobs), and the egress's per-source connection caps.
 
 ## RT-5 — Tools
 

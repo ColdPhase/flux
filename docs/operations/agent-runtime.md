@@ -473,9 +473,10 @@ metering are in [RT-4](../product/ai-modes.md#the-model-gateway-1441).
 | --- | --- | --- |
 | Request body | 16 MiB | `MODEL_GATEWAY_LIMITS.requestBytes` |
 | Answer | 32 MiB | `MODEL_GATEWAY_LIMITS.responseBytes` |
-| One request | 10 minutes, and 2 minutes without a byte from the provider | `MODEL_GATEWAY_LIMITS.requestMs`, `idleMs` |
+| One request | 10 minutes, and for a streamed answer 2 minutes without a byte from the provider | `MODEL_GATEWAY_LIMITS.requestMs`, `idleMs` |
 | Output of one request | 32,000 tokens | `MODEL_GATEWAY_LIMITS.maxOutputTokens` |
 | Requests at once for one run | 4 | `MODEL_GATEWAY_LIMITS.concurrentPerRun` |
+| Request bodies in the worker's memory at once, every run together | 48 MiB (past it: 429, sent again after 2 s) | `MODEL_GATEWAY_LIMITS.bodiesInFlightBytes` |
 
 The worker's log has one line per request: the run, the provider, the path, the status and the charge; never a token, a key or a
 body. `FLUX_MODEL_GATEWAY_LISTEN` (the worker's listening name, default `worker-gateway`) and `FLUX_RUNTIME_EGRESS_GATEWAY` (where

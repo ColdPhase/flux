@@ -35,6 +35,8 @@ function headerRecord(headers: RequestInit['headers']): Record<string, string> {
 async function bodyBuffer(body: RequestInit['body']): Promise<Buffer | undefined> {
   if (body === undefined || body === null) return undefined;
   if (typeof body === 'string') return Buffer.from(body, 'utf8');
+  // A Buffer is sent as it is: a large request body is not copied again (the model gateway's, #1441).
+  if (Buffer.isBuffer(body)) return body;
   if (body instanceof ArrayBuffer || ArrayBuffer.isView(body)) return Buffer.from(body as ArrayBuffer);
   return Buffer.from(await new Response(body).arrayBuffer());
 }
