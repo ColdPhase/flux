@@ -432,9 +432,9 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
   and, next to it, "My map" (Hubert, 2026-11-03). The tab bar stays at three tabs. Your face at the
   top of Home opens Settings.
 - **One "+".** A floating soft-fill button above the tab bar opens Create: Task, Thought, Decision,
-  Page, Space. These are the same five types as on the computer. A "+" never means two things on one screen (founder
+  Page, Space. These are the same five types as on the computer. There is one "+" for each thing (founder
   decision, Hubert, 2026-11-13, #1419): the Spaces tab has no "+ New space" button (the "+" › Space is the one way in), and the
-  Messages list has no floating "+" at all, only its own **+ New message**, which starts a message.
+  Messages list has no floating "+" (it cannot make a message), only its own **+ New message**, which starts a message.
 - **Inside a space.** Founder direction, Hubert, 2026-11-12 (#1239); the approved mock-up is the
   v0.2.1 canvas, boards "Phone header" and "Phone: long names + view switch options", variant A.
   - **Title row: Back, the space's name and ⋯, and nothing else.** Search and Call are the first
