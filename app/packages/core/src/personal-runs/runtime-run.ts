@@ -174,11 +174,16 @@ async function pauseUntilReset(ports: PersonalRunPorts, run: RunRecord, resetsAt
 }
 
 /** What the worker reads for a run's brief (#1064), after the place checks. */
-interface RuntimeContext { brief: AgentBrief | null; facts: BriefFacts; messages: MessageSource[]; leftOut: boolean; turns: { prompt: string; answer: string }[] }
+interface RuntimeContext {
+  brief: AgentBrief | null; facts: BriefFacts; messages: MessageSource[]; leftOut: boolean; turns: { prompt: string; answer: string }[];
+  /** The earlier answer a "Continue" (`continuesRunId`) asks to go on with: the same owner and place, else none. */
+  earlier: string | null;
+}
 
 /**
  * The CLI reads a space itself, through the run's tools. A direct message has no tool that reads it, and a chat remembers its earlier turns:
- * Flux gives those in the request (#842), with the brief's names and times.
+ * Flux gives those in the request (#842), with the brief's names and times, and the answer a Continue goes on with (#1441: the same for every
+ * engine, as the worker's own loop did before it was removed).
  */
 async function runtimeContext(ports: PersonalRunPorts, run: RunRecord): Promise<RuntimeContext> {
   const { projectId, dmId } = run;
@@ -189,8 +194,11 @@ async function runtimeContext(ports: PersonalRunPorts, run: RunRecord): Promise<
   const brief = await ports.runs.agentBrief(run.agentId);
   const dm = dmId !== null && isPrivateAnswer(run) ? await latestMessages((limit) => ports.runs.dmMessages(dmId, limit, run.dmThreadRootId)) : { messages: [], leftOut: false };
   const turns = projectId === null && dmId === null && isAsked(run) ? await ports.runs.chatTurns(run.agentId, run.id, CHAT_TURNS) : [];
+  const previous = run.continuesRunId ? await ports.runs.findRun(run.continuesRunId) : null;
+  const earlier = previous && previous.ownerUserId === run.ownerUserId && previous.projectId === run.projectId && previous.conversationId === run.conversationId
+    && previous.dmId === run.dmId && previous.dmThreadRootId === run.dmThreadRootId ? previous.answerBody : null;
   return {
-    brief, facts: await readBriefFacts(ports, run, brief), leftOut: dm.leftOut, turns,
+    brief, facts: await readBriefFacts(ports, run, brief), leftOut: dm.leftOut, turns, earlier,
     messages: dm.messages,
   };
 }
@@ -201,7 +209,7 @@ async function runtimeContext(ports: PersonalRunPorts, run: RunRecord): Promise<
  */
 function unreadContext(run: RunRecord, brief: AgentBrief | null): RuntimeContext {
   return {
-    brief, messages: [], leftOut: false, turns: [],
+    brief, messages: [], leftOut: false, turns: [], earlier: null,
     facts: { ownerName: 'your owner', agentName: brief?.name ?? 'Assistant', agentId: run.agentId, namesake: false, timeZone: 'UTC', task: null, scheduleTitle: null,
       place: run.projectId !== null ? { kind: 'space', spaceId: run.projectId, spaceName: null, conversationId: run.conversationId, task: null }
         : run.dmId !== null ? { kind: 'dm', others: [], thread: run.dmThreadRootId !== null } : { kind: 'chat' } },
@@ -413,7 +421,7 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
         const briefed: BriefInput = {
           kind: run.kind, tools: grant.tools, ...read.facts, now: new Date(now()), agent: read.brief,
           prompt: grant.context ? `${run.prompt}\n${grant.context}` : run.prompt, requestedAt: run.createdAt, messages: read.messages, leftOut: read.leftOut,
-          turns: read.turns, earlier: null, thought: run.targetSketchId && run.targetThoughtId ? { sketchId: run.targetSketchId, thoughtId: run.targetThoughtId } : null,
+          turns: read.turns, earlier: read.earlier, thought: run.targetSketchId && run.targetThoughtId ? { sketchId: run.targetSketchId, thoughtId: run.targetThoughtId } : null,
           webSearch,
         };
         const prompt = runtimeBrief(briefed);

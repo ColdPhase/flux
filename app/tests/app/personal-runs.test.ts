@@ -440,6 +440,22 @@ describe('personal assistant runs (#68, pi in the runtime on a scripted model: n
     assert.equal(events.rows[0].n, 0);
   });
 
+  test('Continue: a new, separately charged run in pi whose brief carries the earlier answer to go on with (#1441, one rule for every engine)', async () => {
+    pi.gateway.script([{ text: 'The camera fails below 5 lux, so the team chose' }]);
+    const first = await ask(hubert, 'Record it again');
+    assert.equal(await processor.process(first.run.id), 'completed', JSON.stringify(pi.lastPi()));
+    pi.gateway.script([{ text: 'the brighter sensor.' }]);
+    const continued = await ask(hubert, 'Continue', { continuesRunId: first.run.id });
+    assert.notEqual(continued.run.id, first.run.id);
+    assert.equal(await processor.process(continued.run.id), 'completed', JSON.stringify(pi.lastPi()));
+    assert.match(pi.gateway.requests.at(-1)!.prompt, /Your earlier answer to this request was cut off\. Continue it from where it stopped, without repeating it:\n<earlier_answer>The camera fails below 5 lux, so the team chose<\/earlier_answer>/);
+    // A run that continues nothing is told of no earlier answer.
+    pi.gateway.script([{ text: 'Still on track.' }]);
+    const plain = await ask(hubert, 'And now?');
+    assert.equal(await processor.process(plain.run.id), 'completed', JSON.stringify(pi.lastPi()));
+    assert.doesNotMatch(pi.gateway.requests.at(-1)!.prompt, /earlier_answer/);
+  });
+
   test('progress: every state change of a run reaches only its owner; the others hear nothing, not even that an assistant worked (#842)', async () => {
     const [own, peer, admin] = await Promise.all([hubert, kai, ada].map((someone) => StreamClient.connect(someone.browser)));
     pi.gateway.script([{ text: 'The sensor test is under way.' }]);

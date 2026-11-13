@@ -77,7 +77,12 @@ export FLUX_TEST_FAILURE_INJECTION=true FLUX_TEST_PERSONAL_RUNS=anthropic-mock F
 export FLUX_TEST_PROVIDER_LISTS=http://anthropic-mock:8090
 export FLUX_AI_PRIVATE_TARGETS=openai-mock FLUX_LINK_PREVIEWS=on FLUX_TEST_LINK_PREVIEW_HOSTS=public.test=link-mock:8098
 export FLUX_BACKGROUND_KEY_HOST_FILE="$out/.secrets/background_key"
-compose="docker compose --env-file /dev/null -p $project -f docker/compose.source.yaml --profile ui"
+# Every agent on an API key runs in pi in the agent runtime (#1441, RT-1), as in scripts/check_ui.sh: the stack has the runtime with
+# `pi`, and the worker's model gateway sends pi's requests to the mock provider. The runtime's supervisor needs kernel.yama.ptrace_scope >= 1.
+export FLUX_AGENT_RUNTIME=pi
+export FLUX_RUNTIME_MANAGER_SECRET="$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')"
+export FLUX_RUNTIME_SECRET_1="$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')"
+compose="docker compose --env-file /dev/null -p $project -f docker/compose.source.yaml -f docker/compose.source.runtime.yaml --profile ui --profile runtime"
 audit_env="-e FLUX_DEMO_OWNER_PASSWORD=$owner_password -e FLUX_DEMO_PARTNER_PASSWORD=$partner_password -e FLUX_AUDIT_OUT=/screenshots
   -e FLUX_UIAUDIT_SHA=$sha -e FLUX_UIAUDIT_BROWSERS -e FLUX_UIAUDIT_THEMES -e FLUX_UIAUDIT_WINDOWS -e FLUX_UIAUDIT_SCREENS
   -e FLUX_UIAUDIT_PARALLEL -e FLUX_UIAUDIT_STATE_WINDOWS -e FLUX_UIAUDIT_A11Y_WINDOWS -e FLUX_UIAUDIT_ANNOTATE
@@ -111,7 +116,7 @@ if [ -z "$reuse" ]; then
   if [ -n "${FLUX_UIAUDIT_IMAGES:-}" ]; then
     echo "Using the images tagged :$FLUX_UIAUDIT_IMAGES (no build)."
   else
-    $compose build migrate ui-test
+    $compose build migrate ui-test runtime-1 runtime-install
   fi
   # The build above takes minutes: look again, right before the app binds its port, so two audits started together do not take the same pair.
   pick_ports
@@ -123,7 +128,7 @@ if [ -z "$reuse" ]; then
   FLUX_VAPID_PRIVATE_KEY=$(printf '%s' "$keys" | sed -n 's/.*"privateKey":"\([^"]*\)".*/\1/p')
   [ -n "$FLUX_VAPID_PUBLIC_KEY" ] && FLUX_VAPID_SUBJECT="mailto:admin@localhost.localdomain" || echo "No VAPID keys: the push offer will not show." >&2
   export FLUX_VAPID_PUBLIC_KEY FLUX_VAPID_PRIVATE_KEY FLUX_VAPID_SUBJECT
-  $compose up -d --wait api worker
+  $compose up -d --wait api worker runtime-egress runtime-manager runtime-1
   cat > "$state" <<EOF
 POSTGRES_PASSWORD='$POSTGRES_PASSWORD'
 FLUX_FIXTURE_TOKEN='$FLUX_FIXTURE_TOKEN'
