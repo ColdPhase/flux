@@ -130,6 +130,17 @@ class LauncherReleaseTest(unittest.TestCase):
         runtime = [c for c in calls if "--profile runtime" in c and c.startswith("--log-level error compose ")]
         self.assertTrue(runtime and all(f"-f {self.folder}/docker/compose.runtime.yaml" in c for c in runtime))
 
+    def test_with_the_runtime_off_its_own_file_comes_only_with_its_profile(self) -> None:
+        """A release defines the runtime's services in compose.runtime.yaml: `down` (profile runtime) must still know them while the
+        runtime is off, so it can remove a runtime that was switched off; `logs` must not join the API to the runtime's networks."""
+        self.write_env("FLUX_AGENT_RUNTIME=\n")
+        self.assertEqual(self.flux("down").returncode, 0)
+        down = [c for c in self.calls() if c.startswith("--log-level error compose ") and "--profile runtime" in c]
+        self.assertTrue(down and all(f"-f {self.folder}/docker/compose.runtime.yaml" in c for c in down), down)
+        self.assertEqual(self.flux("logs").returncode, 0)
+        logs = [c for c in self.calls() if c.startswith("--log-level error compose ")]
+        self.assertTrue(logs and not [c for c in logs if "compose.runtime.yaml" in c], logs)
+
     def test_a_damaged_release_file_stops_every_command(self) -> None:
         release_env = self.folder / "docker" / "release.env"
         release_env.write_text(release_env.read_text().replace(APP, "ghcr.io/coldphase/flux:latest"))

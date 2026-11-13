@@ -72,7 +72,9 @@ need_docker() {
 # (docs/development/containers.md). Compose's errors still print.
 compose_main() {
   if [ -f "$COMPOSE_OVERRIDE" ]; then set -- -f "$COMPOSE_OVERRIDE" "$@"; fi
-  if runtime_on; then set -- -f "$COMPOSE_RUNTIME" "$@"; fi
+  # A release defines the runtime's services in its own file (the source Compose file holds them with the `runtime` profile): a
+  # command that names that profile (stop, purge, down, clean, reset) needs the file even while the runtime is off.
+  if runtime_on || { from_release && runtime_profile_named "$@"; }; then set -- -f "$COMPOSE_RUNTIME" "$@"; fi
   if embeddings_on; then set -- -f "$COMPOSE_EMBEDDINGS" "$@"; fi
   if https_on; then
     FLUX_HTTPS_HOST=$(origin_host) FLUX_HTTPS_PORT=$(origin_port); export FLUX_HTTPS_HOST FLUX_HTTPS_PORT
@@ -82,6 +84,10 @@ compose_main() {
   release_images_env
   FLUX_IMAGE_TAG="$PROJECT" docker --log-level error compose --project-directory "$FLUX_ROOT/docker" \
     --env-file "$ENV_FILE" -p "$PROJECT" -f "$COMPOSE_MAIN" "$@"
+}
+runtime_profile_named() {
+  while [ $# -gt 1 ]; do [ "$1 $2" != "--profile runtime" ] || return 0; shift; done
+  return 1
 }
 # `clean` and `reset`: with every optional overlay too, so that their containers, networks and volumes (the embedding model, the
 # proxy's certificates) go even after their switch went back to off (Compose removes only what the files it is given define). The
