@@ -1,4 +1,4 @@
-import { useId, useState, type KeyboardEvent } from 'react';
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { Avatar, Icon } from '../ui';
 import './waiting-field.css';
 
@@ -15,7 +15,7 @@ const fold = (text: string) => text.normalize('NFD').replace(/\p{M}/gu, '').toLo
  * the words and leaves Enter to the form), Escape closes the list and never the window around it. It lists everything when the field is entered
  * and what the words typed after that match; words that match nothing are simply a reason.
  */
-export function WaitingField({ label = 'Waiting for', choices, choice, choiceLabel, text, onChoice, onText, disabled, maxLength, autoFocus }: {
+export function WaitingField({ label = 'Waiting for', choices, choice, choiceLabel, text, onChoice, onText, disabled, pickDisabled, maxLength, autoFocus }: {
   label?: string;
   choices: readonly WaitingChoice[];
   /** The value of what is picked, or ''. */
@@ -26,6 +26,8 @@ export function WaitingField({ label = 'Waiting for', choices, choice, choiceLab
   onChoice: (value: string) => void;
   onText: (text: string) => void;
   disabled?: boolean;
+  /** Only picking is held (a pick saves at once in the task panel): the words stay editable while a save is on its way. */
+  pickDisabled?: boolean;
   maxLength: number;
   autoFocus?: boolean;
 }) {
@@ -37,12 +39,30 @@ export function WaitingField({ label = 'Waiting for', choices, choice, choiceLab
   const [typed, setTyped] = useState(false);
   const needle = typed ? fold(text.trim()) : '';
   const shown = choice ? [] : choices.filter((item) => !needle || fold(item.label).includes(needle)).slice(0, MOST);
-  const open = focused && !dismissed && !disabled && shown.length > 0;
+  const open = focused && !dismissed && !disabled && !pickDisabled && shown.length > 0;
   const picked = choices.find((item) => item.value === choice);
   const pickedName = picked?.label ?? choiceLabel ?? '';
   // Words typed to find the choice were a search, so they go; the reason that was already there stays beside the pick.
   const pick = (item: WaitingChoice) => { onChoice(item.value); if (typed) onText(''); setTyped(false); setActive(-1); setDismissed(false); };
   const optionId = (index: number) => `${id}-o${index}`;
+  // The list is in flow under the field: closing it moves what is below. A press that takes the focus away (on Save, Cancel or Create) closes
+  // it only once that press has ended in its click, so the click lands on what was pressed.
+  const pressing = useRef(false);
+  useEffect(() => {
+    const down = () => { pressing.current = true; };
+    const up = () => { pressing.current = false; };
+    document.addEventListener('pointerdown', down, true);
+    document.addEventListener('pointerup', up, true);
+    document.addEventListener('pointercancel', up, true);
+    return () => { document.removeEventListener('pointerdown', down, true); document.removeEventListener('pointerup', up, true); document.removeEventListener('pointercancel', up, true); };
+  }, []);
+  function left() {
+    const close = () => { if (document.activeElement?.id === id) return; setFocused(false); setTyped(false); setActive(-1); setDismissed(false); };
+    if (!pressing.current) { close(); return; }
+    const after = () => { window.setTimeout(close, 0); };
+    document.addEventListener('pointerup', after, { capture: true, once: true });
+    document.addEventListener('pointercancel', after, { capture: true, once: true });
+  }
   function onKeyDown(event: KeyboardEvent<HTMLInputElement>) {
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       if (!shown.length) return;
@@ -53,7 +73,7 @@ export function WaitingField({ label = 'Waiting for', choices, choice, choiceLab
       event.preventDefault(); event.stopPropagation(); pick(shown[active]!);
     } else if (event.key === 'Escape' && open) {
       event.preventDefault(); event.stopPropagation(); setDismissed(true); setActive(-1);
-    } else if (event.key === 'Backspace' && choice && !event.currentTarget.value) {
+    } else if (event.key === 'Backspace' && choice && !event.currentTarget.value && !pickDisabled) {
       event.preventDefault(); onChoice('');
     }
   }
@@ -65,14 +85,14 @@ export function WaitingField({ label = 'Waiting for', choices, choice, choiceLab
           <span className="waiting__pick">
             {choice.startsWith('human:') ? <Avatar name={pickedName} id={choice.slice('human:'.length)} size="sm" /> : <Icon name={choice.startsWith('decision:') ? 'flag' : 'tasks'} size={14} />}
             <span className="waiting__name">{pickedName}</span>
-            <button type="button" className="waiting__x" aria-label={`Stop waiting for ${pickedName}`} disabled={disabled} onClick={() => { onChoice(''); document.getElementById(id)?.focus(); }}><Icon name="x" size={12} /></button>
+            <button type="button" className="waiting__x" aria-label={`Stop waiting for ${pickedName}`} disabled={disabled || pickDisabled} onClick={() => { onChoice(''); document.getElementById(id)?.focus(); }}><Icon name="x" size={12} /></button>
           </span>
         ) : null}
         <input id={id} className="waiting__input" type="text" role="combobox" autoComplete="off" value={text} maxLength={maxLength} disabled={disabled} autoFocus={autoFocus}
           placeholder={choice ? 'Add a reason (optional)' : 'A person, or what it is waiting for'}
           aria-expanded={open} aria-autocomplete="list" aria-controls={open ? `${id}-list` : undefined} aria-activedescendant={open && active >= 0 ? optionId(active) : undefined}
           onChange={(event) => { onText(event.target.value); setTyped(true); setActive(-1); setDismissed(false); }}
-          onFocus={() => setFocused(true)} onBlur={() => { setFocused(false); setTyped(false); setActive(-1); setDismissed(false); }} onKeyDown={onKeyDown} />
+          onFocus={() => setFocused(true)} onBlur={left} onKeyDown={onKeyDown} />
       </div>
       {open ? (
         // The field keeps focus: a press on a row must not blur it.

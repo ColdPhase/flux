@@ -497,7 +497,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
             {writable && editingBlocker ? (
               <form className="wd-blocker-form" onSubmit={(event) => { event.preventDefault(); void saveField('blocker', blocker.trim() || null); }}>
                 {/* One field (#1438 point 12): the reason as words, or a person, a decision or a task picked from its list. */}
-                <WaitingField choices={waitingOptions.filter((option) => option.value !== '')} choice={waitingValue} choiceLabel={waitingName} text={blocker} disabled={busy} autoFocus maxLength={2000}
+                <WaitingField choices={waitingOptions.filter((option) => option.value !== '')} choice={waitingValue} choiceLabel={waitingName} text={blocker} pickDisabled={busy} autoFocus maxLength={2000}
                   onChoice={chooseWait} onText={(value) => { fieldEdits.current.blocker++; blockerBase.current ??= item.version; setBlocker(value); }} />
                 {commands.state.blocker !== undefined && item.blocker !== blocker ? <p className="wd-muted">Now: {item.blocker || 'No blocker written.'}</p> : null}
                 <div className="wd-blocker__form-acts">
