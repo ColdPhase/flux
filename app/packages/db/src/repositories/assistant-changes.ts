@@ -272,6 +272,13 @@ export function assistantChangeRows(db: DbExecutor) {
       const rows = await db.select({ id: u.id, state: u.state, generation: u.generation }).from(u).where(inArray(u.id, ids));
       return new Map(rows.map((row) => [row.id, { state: row.state, generation: row.generation }]));
     },
+    /** The task of a co-work unit as its waiting change names it ("#4 Order sensors", #1419); null for an unknown unit. */
+    async unitTask(unitId: string): Promise<{ id: string; projectId: string; number: number; title: string } | null> {
+      const u = schema.coworkUnits;
+      const w = schema.projectWorkItems;
+      const [row] = await db.select({ id: w.id, projectId: w.projectId, number: w.number, title: w.title }).from(u).innerJoin(w, eq(w.id, u.taskId)).where(eq(u.id, unitId));
+      return row ?? null;
+    },
     /**
      * An agent connection, as a hand-off recipient: whose it is, what it is called to its owner and whether it takes work in this space
      * (its owner a non-guest member who can see the space with AI on there; `projectId` null asks only the first).

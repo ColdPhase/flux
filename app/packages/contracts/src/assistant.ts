@@ -162,6 +162,12 @@ const PHRASES: Record<string, { phrase: string; verb: string; noun: string }> = 
   'conversation.reply': { phrase: 'post', verb: 'Post', noun: 'message' },
   'cowork.unit.create': { phrase: 'hand off', verb: 'Hand off', noun: 'task' },
   'cowork.unit.transfer': { phrase: 'hand over', verb: 'Hand over', noun: 'unit' },
+  // A local client's own work, which waits under Ask me first (#1419).
+  'cowork.claim': { phrase: 'take', verb: 'Take', noun: 'task' },
+  'cowork.release': { phrase: 'pause', verb: 'Pause', noun: 'task' },
+  'cowork.unit.complete': { phrase: 'finish', verb: 'Finish', noun: 'task' },
+  'cowork.unit.decline': { phrase: 'decline', verb: 'Decline', noun: 'task' },
+  'proposal.create': { phrase: 'suggest', verb: 'Suggest', noun: 'action' },
   'work.creation.revert': { phrase: 'take back', verb: 'Take back', noun: 'task' },
   'answer.picture.attach': { phrase: 'attach', verb: 'Attach', noun: 'picture' },
 };
@@ -205,7 +211,8 @@ export function assistantChangeSummary(changes: readonly Pick<AssistantChange, '
 }
 
 const PAST: Record<string, string> = { add: 'added', change: 'changed', close: 'closed', rename: 'renamed', record: 'recorded', propose: 'proposed',
-  edit: 'edited', delete: 'deleted', remove: 'removed', move: 'moved', post: 'posted', set: 'set', hand: 'handed', send: 'sent', take: 'took', attach: 'attached' };
+  edit: 'edited', delete: 'deleted', remove: 'removed', move: 'moved', post: 'posted', set: 'set', hand: 'handed', send: 'sent', take: 'took', attach: 'attached',
+  pause: 'paused', finish: 'finished', decline: 'declined', suggest: 'suggested' };
 /** "add task" becomes "added task" for a message about what already happened. */
 export function assistantPastPhrase(phrase: string): string {
   const space = phrase.indexOf(' ');
