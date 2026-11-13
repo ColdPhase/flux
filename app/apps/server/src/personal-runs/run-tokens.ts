@@ -48,14 +48,14 @@ export function registerPersonalRunTokenRoute(app: FastifyInstance, db: Database
       // access only: the assistant reaches what its owner can (F-036 AG-3).
       const grant = await createAgentConnectionStore(tx).grantForRun(run.ownerUserId, connectionId);
       if (!grant || grant.connection.id !== connectionId || grant.connection.agentId !== run.agentId || grant.connection.computeSource !== 'owner_assistant') return null;
-      // The run's exact tools: reads, and the changes unless its "What it may do" is Only read (F-036 AG-3).
-      // An answer to another agent's question only reads, whatever the agent may do (TA-3: a question is not an instruction).
+      // The run's exact tools: reads and the changes (F-036 AG-3; under Ask me first a change waits for the owner's OK).
+      // An answer to another agent's question only reads, whatever the switch (TA-3: a question is not an instruction).
       // A private chat reads and answers and changes nothing (#842); a run in a direct message has one tool: reading a web page, since no
       // tool reads a DM and nothing of the owner's other places may reach an answer its audience reads. It finds older messages of that DM
       // with the two tools that find and read around a message, which reach that DM alone (F-042, #1290).
-      const readOnly = grant.connection.mayDo === 'read' || run.kind === 'task_answer' || run.projectId === null;
+      const readOnly = run.kind === 'task_answer' || run.projectId === null;
       // A picture goes only on an answer to `/ai` in a space (#1217, C-59): its asker's card, its change line and Undo, and their Show everyone.
-      const tools = run.dmId !== null ? DM_RUN_TOOLS : assistantRunTools(readOnly ? 'read' : grant.connection.mayDo)
+      const tools = run.dmId !== null ? DM_RUN_TOOLS : assistantRunTools(readOnly)
         .filter((tool) => tool !== ATTACH_PICTURE_TOOL || (run.projectId !== null && PICTURE_RUN_KINDS.has(run.kind)))
         // A file the run made or wrote (#1437) goes on the same answers…
         .filter((tool) => tool !== 'flux_attach_file' || (run.projectId !== null && PICTURE_RUN_KINDS.has(run.kind)))

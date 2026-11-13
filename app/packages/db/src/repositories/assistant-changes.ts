@@ -7,7 +7,7 @@ import type { DbExecutor } from './push.js';
 
 /**
  * Rows of the agent change log (migration 0104, F-027 A3 #403; F-036 #855) and the few facts its classification
- * reads: the run, the agent's "What it may do" and the owner's enablement, who made a target object and who last
+ * reads: the run, the agent's Ask me first and the owner's enablement, who made a target object and who last
  * changed an object. These rows make no access decision; the server's executor does.
  */
 
@@ -82,14 +82,14 @@ export function assistantChangeRows(db: DbExecutor) {
       const [row] = await db.select({ ownerUserId: schema.personalRuns.ownerUserId }).from(schema.personalRuns).where(eq(schema.personalRuns.id, runId));
       return row?.ownerUserId ?? null;
     },
-    /** A local client's connection with its "What it may do", held `FOR SHARE` like the assistant's, so a concurrent change of it waits (#859). */
+    /** A local client's connection with its Ask me first, held `FOR SHARE` like the assistant's, so a concurrent change of it waits (#859). */
     async lockClient(connectionId: string) {
       const k = schema.agentConnections;
       const [row] = await db.select({ id: k.id, ownerUserId: k.ownerUserId, workspaceId: k.workspaceId, agentId: k.agentId, mayDo: k.mayDo, revokedAt: k.revokedAt,
         computeSource: k.computeSource, name: k.name }).from(k).where(eq(k.id, connectionId)).for('share');
       return row ?? null;
     },
-    /** The agent and its "What it may do" (F-036 AG-3), read with the connection row `FOR SHARE`, so a concurrent change of it waits. A deleted agent has none. */
+    /** The agent and its Ask me first (F-036 AG-3), read with the connection row `FOR SHARE`, so a concurrent change of it waits. A deleted agent has none. */
     async settings(ownerUserId: string, agentId: string) {
       const s = schema.assistantSettings; const k = schema.agentConnections;
       const [row] = await db.select({ mayDo: k.mayDo, connectionId: s.connectionId, agentId: s.agentId })
@@ -272,9 +272,16 @@ export function assistantChangeRows(db: DbExecutor) {
       const rows = await db.select({ id: u.id, state: u.state, generation: u.generation }).from(u).where(inArray(u.id, ids));
       return new Map(rows.map((row) => [row.id, { state: row.state, generation: row.generation }]));
     },
+    /** The task of a co-work unit as its waiting change names it ("#4 Order sensors", #1419); null for an unknown unit. */
+    async unitTask(unitId: string): Promise<{ id: string; projectId: string; number: number; title: string } | null> {
+      const u = schema.coworkUnits;
+      const w = schema.projectWorkItems;
+      const [row] = await db.select({ id: w.id, projectId: w.projectId, number: w.number, title: w.title }).from(u).innerJoin(w, eq(w.id, u.taskId)).where(eq(u.id, unitId));
+      return row ?? null;
+    },
     /**
      * An agent connection, as a hand-off recipient: whose it is, what it is called to its owner and whether it takes work in this space
-     * (not Only read, and its owner a non-guest member who can see the space with AI on there; `projectId` null asks only the first).
+     * (its owner a non-guest member who can see the space with AI on there; `projectId` null asks only the first).
      */
     async connection(id: string, projectId: string | null = null) {
       const k = schema.agentConnections;
@@ -282,7 +289,7 @@ export function assistantChangeRows(db: DbExecutor) {
         clientDesignation: k.clientDesignation, mayDo: k.mayDo }).from(k).where(eq(k.id, id));
       if (!row) return null;
       const label = row.clientDesignation === 'codex' ? 'Codex' : row.clientDesignation === 'claude_code' ? 'Claude Code' : row.name;
-      return { ...row, label, usable: row.mayDo !== 'read' && (!projectId || await connectionReaches(db, row.id, projectId)) };
+      return { ...row, label, usable: !projectId || await connectionReaches(db, row.id, projectId) };
     },
     async names(ids: string[]): Promise<Map<string, string>> {
       const unique = [...new Set(ids.filter(Boolean))];

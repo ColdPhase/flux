@@ -20,13 +20,13 @@ export function agentConnectionUseCases(port: AgentConnectionPort) {
   return {
     list(principal: Principal): Promise<AgentConnection[]> { return port.list(personId(principal)); },
     /**
-     * "What it may do" (F-036 AG-3): only the owner, in their own signed-in session, changes it. The HTTP route takes a browser
+     * Ask me first (F-036 AG-3): only the owner, in their own signed-in session, changes it. The HTTP route takes a browser
      * session only, so no agent, run token or MCP client reaches it, not even for itself.
      */
     async update(principal: Principal, id: string, input: UpdateAgentConnectionCommand): Promise<AgentConnection> {
       if (!isUuid(id)) throw new NotFoundError('Connection', 'CONNECTION_NOT_FOUND');
       if (!input || typeof input !== 'object' || Object.keys(input).some((key) => key !== 'mayDo') || !AGENT_MAY_DO.includes(input.mayDo))
-        throw new InvalidInputError('Choose Only read, Do it and tell me, or Ask me first');
+        throw new InvalidInputError('Turn Ask me first on or off');
       const updated = await port.setMayDo(personId(principal), id, input.mayDo);
       if (!updated) throw new NotFoundError('Connection', 'CONNECTION_NOT_FOUND');
       return updated;

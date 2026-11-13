@@ -88,7 +88,7 @@ export function openOnWholeMessages(feed: HTMLElement, column: HTMLElement, sele
  * explicit public handoff. Ordinary replies show no marker.
  */
 export function ContributionMark({ contribution }: { contribution: NonNullable<ConversationMessage['contribution']> }) {
-  return <span className="project-convo__source project-convo__contribution" data-contribution={contribution.kind}>{contribution.kind === 'blocker' ? 'Saved as the task blocker' : contribution.kind === 'came_of_it' ? 'What came of it' : 'Handoff instruction'}</span>;
+  return <span className="project-convo__source project-convo__contribution" data-contribution={contribution.kind}>{contribution.kind === 'blocker' ? 'Saved as the task blocker' : contribution.kind === 'came_of_it' ? 'What came of it' : 'Instruction for an agent'}</span>;
 }
 
 export function SourceCitation({ materialId, version, onDenied }: { materialId: string; version: number; onDenied: (cause: unknown) => void }) {

@@ -37,7 +37,7 @@ export interface AgentToolCapability {
   name: string;
   title: string;
   access: 'read' | 'write';
-  /** False for a change tool while the agent's "What it may do" is Only read. */
+  /** Whether the client may call it now: every tool is (Ask me first makes a change wait, it never hides it, #1419). */
   available: boolean;
   operation: AgentOperation | null;
   classes: readonly AgentPeerRequestClass[];

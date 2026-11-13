@@ -81,11 +81,11 @@ class DetailPanelFinal(unittest.TestCase):
             with self.subTest(scheme=scheme):
                 page = self.page(scheme=scheme)
                 panel = self.open_task(page, blocked)
-                # One panel: the kind is a chip, the number sits beside it, Esc closes it.
+                # One panel: the kind is a chip, "#2 · space" is above the title, Esc closes it.
                 expect(page.get_by_role("complementary", name="Details")).to_be_visible()
                 expect(panel.locator(".ui-panel__kind")).to_have_text("Task")
-                expect(panel.locator(".ui-panel__meta")).to_have_text("#2")
-                # Rows of label and value; the blocker is a card; Activity and a composer follow. Empty Results are not shown.
+                expect(panel.locator(".wd__ref")).to_have_text(re.compile(r"^#2\s·\s.+"))
+                # Rows of label and value; the blocker is a card; the one discussion and its composer follow. Empty Results are not shown.
                 rows = panel.locator(".wd-rows .wd-row")
                 expect(rows).to_have_count(4)
                 for label in ("Status", "Owner", "From", "Due"):
@@ -97,7 +97,10 @@ class DetailPanelFinal(unittest.TestCase):
                 expect(card.get_by_label("What is it waiting for?")).to_have_value("Waiting for the probe dimensions")
                 card.get_by_role("button", name="Cancel").click()
                 expect(panel.get_by_role("heading", name="Results")).to_have_count(0)
-                expect(panel.get_by_role("heading", name="Activity")).to_be_visible()
+                # No Activity section (§8): the discussion is always there, with its composer, from the first moment (#1364).
+                expect(panel.get_by_role("heading", name="Activity")).to_have_count(0)
+                expect(panel.get_by_role("region", name="Discussion")).to_be_visible()
+                expect(panel.get_by_role("button", name="Start the discussion")).to_have_count(0)
                 expect(panel.get_by_placeholder("Write about #2 · @ · /")).to_be_visible()
                 # The conversation stays visible beside it.
                 expect(page.locator("#content")).to_be_visible()

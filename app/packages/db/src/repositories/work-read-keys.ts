@@ -76,8 +76,11 @@ export interface NativeReadKeyPage<Kind extends string> {
   items: { kind: Kind; id: string; rank: number; createdAt: string }[];
   total: number; before: number; hasBefore: boolean; hasAfter: boolean;
 }
-/** One observation: overfetch only one lightweight key, then hydrate <=limit returned keys. */
-/** `prepared`: run both statements as prepared ones (#1178), for a `selected` whose text has a fixed shape (arrays as one parameter). */
+/**
+ * One observation, one statement (#1429; the page and its counts were two): the page's keys, then the total and how many keys come
+ * before and after the page's first key (or the cursor's, for an empty page), all from the same `selected` rows. Hydrate <= limit keys.
+ * `prepared`: run it as a prepared statement (#1178), for a `selected` whose text has a fixed shape (arrays as one parameter).
+ */
 export async function nativeReadKeyWindow<Kind extends string>(db: DbExecutor, selected: SQL, limit: number, cursor?: WorkReadCursor, ascending = false,
   prepared = false): Promise<NativeReadKeyPage<Kind>> {
   const run = <T extends Record<string, unknown>>(query: SQL) => prepared ? executePrepared<T>(db, query) : db.execute<T>(query);
@@ -88,19 +91,25 @@ export async function nativeReadKeyWindow<Kind extends string>(db: DbExecutor, s
   const ownedCursor = cursor ? { direction: cursor.direction, boundary: { ...cursor.boundary } } : undefined;
   const forward = ownedCursor?.direction !== 'previous';
   const continuation = ownedCursor ? forward ? followingKey(ownedCursor.boundary) : precedingKey(ownedCursor.boundary) : sql`true`;
-  const order = ascending ? forward ? sql`created_at ASC, id ASC` : sql`created_at DESC, id DESC` : forward ? sql`rank ASC, created_at DESC, id DESC` : sql`rank DESC, created_at ASC, id ASC`;
-  const found = await run<{ kind: Kind; id: string; rank: number; createdAt: string }>(sql`WITH selected AS (${selected}) SELECT kind, id, rank,
-    to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS "createdAt"
-    FROM selected WHERE (${continuation}) ORDER BY ${order} LIMIT ${limit + 1}`);
-  const items = found.rows.slice(0, limit);
-  if (!forward) items.reverse();
-  const boundary = items[0] ?? ownedCursor?.boundary;
-  const prior = boundary ? precedingKey(boundary) : sql`false`;
-  const later = boundary ? followingKey(boundary) : sql`false`;
-  const counted = await run<{ total: string; prior: string; later: string }>(sql`WITH selected AS (${selected}) SELECT count(*)::text AS total,
-    count(*) FILTER (WHERE ${prior})::text AS prior, count(*) FILTER (WHERE ${later})::text AS later FROM selected`);
-  const facts = counted.rows[0];
+  const shown = ascending ? sql`created_at ASC, id ASC` : sql`rank ASC, created_at DESC, id DESC`;
+  const order = forward ? shown : ascending ? sql`created_at DESC, id DESC` : sql`rank DESC, created_at ASC, id ASC`;
+  // The key the counts are taken around: the page's first in the order it is shown (a page read backwards is shown reversed), or the
+  // cursor's for an empty page, or none. Before and after it as `precedingKey` and `followingKey` say, with the key's own columns.
+  const cursorKey = ownedCursor ? sql`UNION ALL SELECT ${ownedCursor.boundary.rank}::int, ${ownedCursor.boundary.createdAt}::timestamptz, ${ownedCursor.boundary.id}::uuid
+      WHERE NOT EXISTS (SELECT 1 FROM page)` : sql``;
+  const prior = ascending ? sql`(s.created_at, s.id) < (k.created_at, k.id)` : sql`s.rank < k.rank OR (s.rank = k.rank AND (s.created_at, s.id) > (k.created_at, k.id))`;
+  const later = ascending ? sql`(s.created_at, s.id) > (k.created_at, k.id)` : sql`s.rank > k.rank OR (s.rank = k.rank AND (s.created_at, s.id) < (k.created_at, k.id))`;
+  const found = await run<{ total: string; prior: string; later: string; kind: Kind | null; id: string | null; rank: number | null; createdAt: string | null }>(sql`WITH selected AS (${selected}),
+    page AS (SELECT kind, id, rank, created_at, row_number() OVER (ORDER BY ${order}) AS n FROM selected WHERE (${continuation}) ORDER BY ${order} LIMIT ${limit}),
+    k AS ((SELECT rank, created_at, id FROM page ORDER BY ${shown} LIMIT 1) ${cursorKey}),
+    counted AS (SELECT count(*)::text AS total, count(*) FILTER (WHERE ${prior})::text AS prior, count(*) FILTER (WHERE ${later})::text AS later
+      FROM selected s LEFT JOIN k ON true)
+    SELECT c.total, c.prior, c.later, p.kind, p.id, p.rank, to_char(p.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS "createdAt"
+    FROM counted c LEFT JOIN page p ON true ORDER BY p.n`);
+  const facts = found.rows[0];
   if (!facts) throw new Error('Missing native work count observation');
+  const items = found.rows.flatMap((row) => row.id === null ? [] : [{ kind: row.kind!, id: row.id, rank: Number(row.rank), createdAt: row.createdAt! }]);
+  if (!forward) items.reverse();
   const total = safeCount(facts.total), priorCount = safeCount(facts.prior), laterCount = safeCount(facts.later);
   if (!ownedCursor && !items.length && total !== 0) throw new Error('Native work key/count observations differ');
   const before = items.length ? priorCount : ownedCursor?.direction === 'next' ? total : 0;

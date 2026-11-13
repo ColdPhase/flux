@@ -58,7 +58,7 @@ export function TaskAgentState({ item, projectId, conversationId, revision, onCh
     <div className="wd-agent" data-agent-line={state.line}>
       <div className="wd-agent__line" role="status" aria-live="polite">
         <Kreska size={20} expression={FACE[state.line]} />
-        <AgentIdentity name={state.agent.name} owner={state.agent.owner.id === me.user.id ? 'you' : state.agent.owner.name} icon={false} />
+        <AgentIdentity name={state.agent.name} owner={state.agent.owner.name} icon={false} />
         <span className="wd-agent__text">{state.text}{state.resumesAt ? `, resumes at ${clock(state.resumesAt)}` : ''}</span>
         <span className="wd-agent__actions">
           {state.canStop ? <Button variant="secondary" size="sm" busy={busy === 'stop'} onClick={() => void act('stop', () => stopTaskAgent(item.id))}>Stop</Button> : null}

@@ -137,11 +137,12 @@ class OauthConsentJourney(unittest.TestCase):
         expect(destination.locator("dd")).to_have_text(["127.0.0.1:19737", "Registered on this Flux server"])
         expect(destination).to_contain_text("This address is on your own computer")
         expect(page.get_by_role("note")).to_have_count(0)
-        # What it will be: Nora's rights, "What it may do", and waiting for deleting and other people's things. No capability is offered.
+        # What it will be: Nora's rights, Ask me first (off at first, #1419), and waiting for deleting and other people's things. No capability is offered.
         will = page.get_by_role("list", name="What it will be").get_by_role("listitem")
         expect(will).to_have_count(3)
         expect(will.nth(0)).to_contain_text("Acts with your rights")
-        expect(will.nth(1)).to_contain_text("Do it and tell me")
+        expect(will.nth(1)).to_contain_text("Makes changes and tells you, with Undo")
+        expect(will.nth(1)).to_contain_text("Ask me first")
         expect(will.nth(2)).to_contain_text("wait for your OK")
         for chooser in ("checkbox", "radio", "combobox", "textbox"):
             expect(page.get_by_role(chooser)).to_have_count(0)
@@ -267,7 +268,7 @@ class OauthConsentJourney(unittest.TestCase):
         made = {item["name"]: item for item in self.clients(page)}
         self.assertEqual(sorted(made), ["Claude Code", "Local CLI on this computer"])
         self.assertEqual((made["Claude Code"]["clientDesignation"], made["Claude Code"]["mayDo"]), ("claude_code", "act"))
-        # Her page of connected clients lists both, each with "What it may do" and Disconnect.
+        # Her page of connected clients lists both, each with Ask me first and Disconnect.
         page.goto("/settings/agents/connect")
         listed = page.get_by_role("list", name="Connected clients").get_by_role("listitem")
         expect(listed).to_have_count(2)

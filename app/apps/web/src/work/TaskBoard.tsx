@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useRevalidator } from 'react-router';
 import type { Project, ProjectWorkView, WorkGroup, WorkItem, WorkRowProjection, WorkStatus } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
-import { AgentTag, Button, Icon, Kreska, StatusGlyph, initials, useRowMotion } from '../ui';
+import { AgentIdentity, Button, Icon, StatusGlyph, initials, useRowMotion } from '../ui';
 import { updateWork } from './api';
 import { DROPPED, STATUS_LABEL, blockedLine, dueShort, taskNumber } from './format';
 import { STATE_KEYS, useStateChanges } from './taskState';
@@ -117,11 +117,13 @@ function Card({ item, agentOwner, meId, writable, hintId, saving, dragged, lifte
         {item.dueOn ? <span className="tb-card__due">{dueShort(item.dueOn)}</span> : null}
         {note ? <span className="tb-card__state">{note}</span> : null}
         {owner ? (
-          <span className={`tb-card__owner${owner.kind === 'agent' ? ' tb-card__owner--agent' : ''}`}>
-            {owner.kind === 'agent' ? <Kreska size={20} /> : <span className="tb-av" aria-hidden="true">{initials(owner.name)}</span>}
-            <span className="tb-card__name">{owner.id === meId && owner.kind === 'human' ? 'You' : owner.name}</span>
-            {owner.kind === 'agent' ? <><AgentTag />{agentOwner ? <span className="agent-for">for {agentOwner}</span> : null}</> : null}
-          </span>
+          // A person is a face and a name; an agent is Kreska and its one label, "Planner · Ada's agent", on one line (#1364).
+          owner.kind === 'agent'
+            ? <span className="tb-card__owner tb-card__owner--agent"><AgentIdentity name={owner.name} owner={agentOwner} icon={20} /></span>
+            : <span className="tb-card__owner">
+              <span className="tb-av" aria-hidden="true">{initials(owner.name)}</span>
+              <span className="tb-card__name">{owner.id === meId ? 'You' : owner.name}</span>
+            </span>
         ) : <span className="tb-card__owner tb-card__owner--none">No owner</span>}
       </div>
     </li>

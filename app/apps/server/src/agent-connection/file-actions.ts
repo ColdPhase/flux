@@ -25,7 +25,7 @@ import { toolError, toolResult } from './tool-results.js';
  *
  * Attaching is a change of AG-3, through the same executor as every other: under "Do it and tell me" it is made at once, with its line and
  * Undo; under "Ask me first" the file is staged now (the scratch is gone once the run ends) and joins the answer only on the owner's
- * Approve; under "Only read" it is refused. Never in an encrypted space. A refusal comes back as plain words.
+ * Approve. Never in an encrypted space. A refusal comes back as plain words.
  */
 
 interface FileServices { storage: FileStorage; options: FileUseCaseOptions; manager: { url: string; secret: string } | null }

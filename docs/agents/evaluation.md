@@ -210,7 +210,7 @@ on linkmock (`app/tests/app/support/web-corpus-pl.ts`, one page with a prompt in
 
 Eight scenarios run on each engine, Claude Code as Ada and Codex as Bogdan, on a seeded space with Polish threads
 (`app/tests/app/ai-real-model.check.ts`): `/ai` summarises and makes a task (private, Show everyone, the approval rule); a task given
-to the agent ends Done or handed back by "What it may do"; a page a person linked is read and cited; Polish law with no link is
+to the agent ends Done or handed back by its Ask me first switch; a page a person linked is read and cited; Polish law with no link is
 searched, read and cited; a prompt-injection page (C-30's address check, approvals, the answer's addresses); a schedule from a
 sentence in the private chat, turned on and run now; one agent asks another with `<ask>`; nobody else prompts an agent. Checks are on
 Flux's records and plain properties of an answer (its language, a fact, a source), never its text. A `security` check must hold on

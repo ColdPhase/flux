@@ -11,7 +11,7 @@ import { password } from './support/people.js';
 
 // Signing in a local client is one click (#859, F-036 LC-1). These are the attacks on that click: nothing exists before Allow, Deny and a
 // look at the page make nothing, a signed request is bound to the session that reached the page, a person outside the company cannot
-// connect, and what the client is afterwards (rights, "What it may do", Disconnect) is the person's, never more. Everything goes through
+// connect, and what the client is afterwards (rights, Ask me first, Disconnect) is the person's, never more. Everything goes through
 // the real authorization, consent, token and `/mcp` routes.
 
 interface Owner { browser: Browser; userId: string; workspaceId: string; projectId: string }
@@ -192,16 +192,16 @@ describe('the client is the person, and no more', () => {
     assert.deepEqual(await listedProjects(tokens), [nora.projectId]);
   });
 
-  test('the client cannot widen itself: "What it may do" is the owner\'s alone, in a signed-in session', async () => {
+  test('the client cannot widen itself: Ask me first is the owner\'s alone, in a signed-in session', async () => {
     const nora = await owner('nora-widen');
     const { clientId, redirectUri } = await registerOauthClient(pool);
     const tokens = await oauthToken(nora.browser, clientId, redirectUri);
     const connectionId = claimsOf(tokens).flux_connection_id;
-    expect(await nora.browser.request('PATCH', `/api/v1/agent-connections/${connectionId}`, { body: { mayDo: 'read' } }), 200);
+    expect(await nora.browser.request('PATCH', `/api/v1/agent-connections/${connectionId}`, { body: { mayDo: 'ask' } }), 200);
     const bearer = new Browser();
     const widen = await bearer.request('PATCH', `/api/v1/agent-connections/${connectionId}`, { body: { mayDo: 'act' }, headers: { authorization: `Bearer ${tokens.access_token}` } });
     assert.ok([401, 403].includes(widen.status), `the client's own token answered ${widen.status}`);
-    assert.equal((await pool.query('SELECT may_do FROM agent_connections WHERE id = $1', [connectionId])).rows[0].may_do, 'read');
+    assert.equal((await pool.query('SELECT may_do FROM agent_connections WHERE id = $1', [connectionId])).rows[0].may_do, 'ask');
   });
 });
 

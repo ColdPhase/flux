@@ -186,7 +186,9 @@ export function serveBrowserConsole(first: WebSocket, owner: { userId: string; s
   timers.push(setTimeout(() => fail('ended', CONSOLE_CLOSE.ended), (deps.lifetimeMs ?? AGENT_RUNTIME_CONSOLE_LIFETIME_MS) + 30_000));
   const revalidate = setInterval(() => {
     void deps.sessionAlive().then(async alive => {
-      if (!alive || (operation && !memory.done && !await deps.runtime.renewAuth(operation))) fail('ended', CONSOLE_CLOSE.refused);
+      // Once the result is being recorded the operation is settled by that record, and reading the plan's models after it (#1332) may take
+      // up to the models timeout: the lease is no longer renewed then, so a tick in that window must not end a sign-in that was accepted.
+      if (!alive || (operation && !finishing && !memory.done && !await deps.runtime.renewAuth(operation))) fail('ended', CONSOLE_CLOSE.refused);
     }).catch(() => fail('unavailable', CONSOLE_CLOSE.unavailable));
   }, 20_000);
   timers.push(revalidate as unknown as ReturnType<typeof setTimeout>);

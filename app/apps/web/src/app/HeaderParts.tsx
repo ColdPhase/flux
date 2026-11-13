@@ -2,34 +2,32 @@ import { Fragment, useEffect, useId, useRef, useState, type KeyboardEvent, type 
 import type { ProjectPerson } from '@flux/contracts';
 import { Avatar, IconButton, Kreska, usePop } from '../ui';
 import { activeFirst } from '../people/lastActive';
+import { useAgentWorkingIn } from './WorkingAgent';
 
 /**
- * The people and agents of a project as faces, one button to the space's people (F-026 §4 header).
- * People are grey circles with initials; agents are Kreska, monochrome outside the Agents view. The faces touch, side by side as drawn, and
- * what does not fit is one "+N" face. The button hugs them and ends at the slot's right edge; the slot (`top__faces-slot`) keeps the width the
- * header's other controls rely on whatever the number of faces (#873), so no pill is wider than its faces (#1236). A header pane of 70 rem
- * and up has room for three people, the agent and "+N"; a narrower one for two people, the agent and "+N" (a two-digit one too), so both
- * counts are drawn and the pane's width chooses (project-header.css). The order is the space's own: people first, then the agent.
+ * The people of a space as faces, one button to the space's people (F-026 §4 header). Agents are not members: they are not counted in "+N" and
+ * have no face here except one that works for its owner right now on a task of `projectId`, drawn as Kreska after the people and only while it works (S13).
+ * People are grey circles with initials. The faces touch, side by side as drawn, and what does not fit is one "+N" face. The button hugs them
+ * and ends at the slot's right edge; the slot (`top__faces-slot`) keeps the width the header's other controls rely on whatever the number of
+ * faces (#873), so no pill is wider than its faces (#1236). A header pane of 70 rem and up has room for three people, the agent and "+N"; a
+ * narrower one for two people, the agent and "+N" (a two-digit one too), so both counts are drawn and the pane's width chooses (project-header.css).
  */
-export function HeaderFaces({ people, meId, audience, onOpen }: { people: ProjectPerson[]; meId: string; audience: string; onOpen: () => void }) {
-  // The people active now come first (#1236, #1225), then the others as the list has them, and an agent last.
-  const ordered = activeFirst(people, meId);
-  const humans = ordered.filter((person) => person.kind === 'human');
-  const agents = ordered.filter((person) => person.kind === 'agent');
-  const shown = [...humans.slice(0, 3), ...agents.slice(0, 1)];
-  const narrow = Math.min(humans.length, 2) + Math.min(agents.length, 1);
-  /** What is left beyond `faces` drawn: "+5", and "99+" from a hundred so it stays as wide as "+99". */
-  const rest = (faces: number) => people.length - faces;
-  const count = (faces: number) => (rest(faces) > 99 ? '99+' : `+${rest(faces)}`);
+export function HeaderFaces({ people, meId, audience, projectId, onOpen }: { people: ProjectPerson[]; meId: string; audience: string; projectId?: string; onOpen: () => void }) {
+  const working = useAgentWorkingIn(projectId);
+  // The people active now come first (#1236, #1225), then the others as the list has them.
+  const humans = activeFirst(people, meId).filter((person) => person.kind === 'human');
+  const shown = humans.slice(0, 3);
+  /** What is left beyond `faces` people drawn: "+5", and "99+" from a hundred so it stays as wide as "+99". */
+  const count = (faces: number) => (humans.length - faces > 99 ? '99+' : `+${humans.length - faces}`);
+  const narrow = Math.min(humans.length, 2);
   return (
     <span className="top__faces-slot">
       <button type="button" className="top__audience top__faces" onClick={onOpen} aria-haspopup="dialog" title={audience}>
         <span className="ui-vh">{audience}, who can see this space</span>
-        {shown.map((person, at) => person.kind === 'agent'
-          ? <Kreska key={person.id} size={20} className="top__face" />
-          : <span key={person.id} className={`top__face${at === 2 ? ' top__face--wide' : ''}`}><Avatar name={person.name} id={person.id} size="sm" /></span>)}
-        {rest(narrow) > 0 ? <span className="top__more-faces top__more-faces--narrow" aria-hidden="true">{count(narrow)}</span> : null}
-        {rest(shown.length) > 0 ? <span className="top__more-faces top__more-faces--wide" aria-hidden="true">{count(shown.length)}</span> : null}
+        {shown.map((person, at) => <span key={person.id} className={`top__face${at === 2 ? ' top__face--wide' : ''}`}><Avatar name={person.name} id={person.id} size="sm" /></span>)}
+        {working ? <Kreska size={20} expression="working" className="top__face" /> : null}
+        {humans.length > narrow ? <span className="top__more-faces top__more-faces--narrow" aria-hidden="true">{count(narrow)}</span> : null}
+        {humans.length > shown.length ? <span className="top__more-faces top__more-faces--wide" aria-hidden="true">{count(shown.length)}</span> : null}
       </button>
     </span>
   );
@@ -40,7 +38,7 @@ export function HeaderFaces({ people, meId, audience, onOpen }: { people: Projec
  * does (Mute: what still arrives, #1249). `node` is a row that keeps its own
  * state (the header's Call); a click on its enabled `[data-more-row]` closes the menu.
  */
-export type MoreItem = { label: string; run: () => void; keys?: string; checked?: boolean; narrow?: boolean; hint?: string }
+export type MoreItem = { label: string; run: () => void; keys?: string; checked?: boolean; narrow?: boolean | 'people'; hint?: string }
   | { label: string; node: ReactNode };
 
 /** The menu's rows that are shown: rows a wide header keeps in its own row are in the menu but hidden, and the keys skip them. */
@@ -84,7 +82,7 @@ export function MoreMenu({ items, label = 'More', icon = 'more', className, size
           onClick={(event) => { if ((event.target as Element).closest('[data-more-row]:not([aria-disabled="true"])')) close(); }}>
           {items.map((item) => 'node' in item ? <Fragment key={item.label}>{item.node}</Fragment> : (
             <button key={item.label} type="button" role={item.checked === undefined ? 'menuitem' : 'menuitemcheckbox'} aria-checked={item.checked}
-              className={`newmenu__item${item.narrow ? ' top__more-narrow' : ''}`} aria-keyshortcuts={item.keys} onClick={() => { button.current?.focus(); setOpen(false); item.run(); }}>
+              className={`newmenu__item${item.narrow ? ' top__more-narrow' : ''}${item.narrow === 'people' ? ' top__more-people' : ''}`} aria-keyshortcuts={item.keys} onClick={() => { button.current?.focus(); setOpen(false); item.run(); }}>
               {item.hint ? <span className="top__more-text"><span>{item.label}</span><small>{item.hint}</small></span> : <span>{item.label}</span>}
               {item.keys ? <kbd aria-hidden="true">{item.keys}</kbd> : null}
             </button>

@@ -12,7 +12,8 @@ import type { Plugin, ResolvedConfig } from 'vite';
 /**
  * Chunks that only work online are not precached: the Claude Code sign-in console's terminal (F-022
  * T4) needs a live connection to the runtime, and a call's media client (livekit, 427 KB raw) cannot run without one, so every
- * installed client would download them for nothing (#850 AC-4).
+ * installed client would download them for nothing (#850 AC-4). The PDF viewer page (`/pdf-viewer/`, C-60) is online-only for the same reason and
+ * never reaches this list: it is a build of its own after this one (vite.pdf-viewer.config.ts), and it shows only bytes the uncached download route gives it.
  */
 export const ONLINE_ONLY = [/^assets\/SignInConsole-[^/]+\.(js|css)$/, /^assets\/media-[^/]+\.(js|css)$/];
 

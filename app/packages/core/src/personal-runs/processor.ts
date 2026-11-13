@@ -13,6 +13,7 @@ import { isAsked, WebSearchRefusedError } from './ports.js';
 import { connectionOnModel } from './model.js';
 import { redactSecrets } from './redaction.js';
 import { answerWithSchedule, preparedAnswer } from './schedule-request.js';
+import { fluxMarks, resolveCites } from './cites.js';
 import { placeAllows, spaceSwitchAllows } from './place.js';
 import { answerCleaner } from './answer-addresses.js';
 import { answerWithWebSources } from './web-sources.js';
@@ -358,7 +359,10 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
   async function answerToCommit(runId: string, text: string, sources: SuppliedSource[]) {
     // The same redaction as a runtime answer's (F-022 AIM-3, F-027 AST-9, #484): token-shaped strings never reach the conversation.
     const redacted = redactSecrets(text);
-    const parsed = parseOutput(redacted.text, sources);
+    // What its tools read and it cited by id (C-62), resolved to what the run may cite before the marks are numbered with the supplied sources'.
+    const marks = fluxMarks(redacted.text);
+    const cited = marks.length ? await uow.run(async (ports) => { const run = await ports.runs.findRun(runId); return run ? resolveCites(ports, run, marks) : new Map(); }) : undefined;
+    const parsed = parseOutput(redacted.text, sources, cited);
     // The answer's final text, cleaned (#1143, #1149, C-30): after its marks and its schedule block are taken out (and the schedule's
     // instruction cleaned), before Flux lists its sources; the `<ask>` question decoded and cleaned.
     const cleaner = answerCleaner(() => uow.run((ports) => ports.runs.privateTexts(runId)));

@@ -278,22 +278,23 @@ class LiveBase(unittest.TestCase):
 
 @unittest.skipIf(LIVE, "the media server is configured in this run")
 class LiveUnavailable(LiveBase):
-    """Without a media server the interface explains it once and ordinary work continues."""
+    """Without a media server there is no Call anywhere and ordinary work continues (#1424)."""
 
-    def test_01_unavailable_is_explained_and_work_is_unchanged(self) -> None:
+    def test_01_unavailable_shows_no_call_and_work_is_unchanged(self) -> None:
         self.seed()
         page = self.page("nia")
         page.goto(self.task_url())
         panel = page.locator("#details")
         expect(panel.get_by_role("heading", name=TASK)).to_be_visible()
-        # Explained once, behind the header's Call; the task itself does not repeat it (#189).
+        # A server that cannot call shows no Call: not in the header, not in ⋯, not on the task, and nothing says "live sessions" or "media server".
         expect(panel).not_to_contain_text("Live sessions")
+        expect(panel.get_by_role("button", name=re.compile("Work on this together|Join"))).to_have_count(0)
         header = page.locator("header.top, header.phead")
-        header.get_by_role("button", name="Call").click()
-        dialog = page.get_by_role("dialog", name="Live sessions")
-        expect(dialog).to_contain_text("no media server configured")
+        expect(header.get_by_role("button", name="Call")).to_have_count(0)
+        expect(page.get_by_text(re.compile("media server|Live sessions", re.I))).to_have_count(0)
+        header.get_by_role("button", name="More", exact=True).click()
+        expect(page.get_by_role("menu", name="More").get_by_role("menuitem", name=re.compile("^Call"))).to_have_count(0)
         page.keyboard.press("Escape")
-        expect(dialog).to_be_hidden()
         self.assertEqual(page.evaluate("window.__live.gum + window.__live.gdm"), 0, "nothing asked for a device")
         expect(self.bar(page)).to_have_count(0)
         self.assertEqual(self.api(page, "GET", "/api/v1/live-sessions/capabilities", status=200)["status"], "unavailable")
@@ -328,7 +329,7 @@ class LiveJourney(LiveBase):
 
     def test_00_a_call_that_can_be_joined_moves_nothing_in_the_computer_header(self) -> None:
         """#873: the people, Call (or Join) and More have fixed slots on the computer, so someone else's call appears without a shift,
-        and the tablet's row keeps the people and Join. A space of its own: a call is joinable there for a while after everyone has left,
+        and the tablet's row keeps Join (its people are in More, where the name keeps its slot, #1375). A space of its own: a call is joinable there for a while after everyone has left,
         and one elsewhere in the space adds a "Live now" button to the row."""
         self.seed()
         ada = self.page("ada")
@@ -354,12 +355,12 @@ class LiveJourney(LiveBase):
             self.assertAlmostEqual(before[name]["x"], after[name]["x"], delta=1, msg=f"{name} did not move when the call became joinable")
         self.assertAlmostEqual(before["Call"]["x"] + before["Call"]["width"] / 2, after["Join"]["x"] + after["Join"]["width"] / 2, delta=1, msg="Join sits where Call was")
         shot(watcher, "live-desktop-1440-join-in-header")
-        # The tablet's row has room for the people and Join too: they stay in the header at 820 px (they are not only in More).
+        # The tablet's row keeps Join at 820 px; the people are in More there, so the name keeps its 220 px slot (#1375).
         tablet = self.page("ada", viewport=TABLET)
         self.open_conversation(tablet, url)
         row = tablet.locator("header.top")
         expect(row.get_by_role("button", name="Join", exact=True)).to_be_visible()
-        expect(row.get_by_role("button", name=re.compile("who can see this space$"))).to_be_visible()
+        expect(row.get_by_role("button", name=re.compile("who can see this space$"))).to_be_hidden()
         self.assertLessEqual(tablet.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth"), 0, "no sideways scroll at 820")
         shot(tablet, "live-tablet-820-join-in-header")
         # Under 360 px Call is in More: a call that can be joined is a dot on More, and the row reads Join the moment More opens.
@@ -398,7 +399,7 @@ class LiveJourney(LiveBase):
         for width, height in ((820, 1180), (1024, 768), (1180, 820), (1440, 900)):
             page = self.page("ada", viewport={"width": width, "height": height})
             if width == 1024:
-                # A 1024 px window has "+ Task"'s slot in the header and no room for the people and Call: they are in More (no Call to wait for).
+                # A 1024 px window has no room for the people and Call beside a 220 px name: they are in More (no Call to wait for).
                 page.goto(conversation_url)
                 if page.locator(".ui-panel__close").first.is_visible():
                     page.locator(".ui-panel__close").first.click()
@@ -883,7 +884,7 @@ class LiveJourney(LiveBase):
         self.assertEqual(nia.evaluate("window.__live.gum + window.__live.gdm"), 0, "starting and joining request no microphone, camera or screen")
         mic = bar.get_by_role("button", name=re.compile("^Microphone off"))
         expect(mic).to_have_attribute("aria-pressed", "false")
-        expect(panel).to_contain_text("You are in the live session for this task")
+        expect(panel).to_contain_text("You are in the call for this task")
         work_before = self.api(nia, "GET", f"/api/v1/work/{self.ids['work']}", status=200)
         self.assertEqual(work_before["status"], "blocked", "starting a session changes no work status")
 

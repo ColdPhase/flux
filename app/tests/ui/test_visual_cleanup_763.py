@@ -139,19 +139,15 @@ class VisualCleanup763(unittest.TestCase):
                 self.assertEqual(over, [], "every header control is whole inside the header")
         shot(page, "763-cleanup-header-1024")
 
-    def test_04_together_says_why_instead_of_looking_disabled(self) -> None:
+    def test_04_without_a_media_server_there_is_no_call_to_look_disabled(self) -> None:
+        """#1424: this test server has no media server, so Call is in no view: no greyed button and no popover that explains it."""
         page = self.page(DESKTOP)
-        page.goto(f"/projects/{self.project}/tasks")
-        together = page.locator("header.top").get_by_role("button", name="Call", exact=True)
-        expect(together).to_be_visible()
-        expect(together).not_to_have_attribute("aria-disabled", "true")
-        self.assertEqual(together.evaluate("(el) => getComputedStyle(el).opacity"), "1", "not greyed out")
-        together.click()
-        dialog = page.get_by_role("dialog", name="Call")
-        expect(dialog).to_contain_text("Open a conversation, task, map or page to work on it together.")
-        page.keyboard.press("Escape")
-        expect(dialog).to_have_count(0)
-        expect(together).to_be_focused()
+        for path in ("", "/tasks", "/map"):
+            page.goto(f"/projects/{self.project}{path}")
+            expect(page.locator("header.top").get_by_role("button", name="More", exact=True)).to_be_visible()
+            expect(page.locator("header.top").get_by_role("button", name="Call", exact=True)).to_have_count(0)
+            expect(page.get_by_text("Open a conversation, task, map or page to work on it together.")).to_have_count(0)
+        expect(page.get_by_text("Live sessions", exact=False)).to_have_count(0)
 
     def test_05_icon_buttons_take_the_control_token(self) -> None:
         page = self.page(DESKTOP)

@@ -246,16 +246,3 @@
 .sset-acct__done { margin: 0; padding: 0 18px; font-size: var(--fs-sm); color: var(--t2); }
 .sset-acct__done:empty { display: none; }
 .sset-acct__done svg { vertical-align: -2px; margin-right: 4px; }
-
-/* "When someone assigns a task to me" (F-026 §7 Agents and AI, #1377): Do nothing / Give it to [agent ▾] as one segmented choice. With several agents the
-   second segment is the app's Select, dressed as a segment so it sits in the same track and raises when it is the choice. */
-.tt .seg { flex: none; }
-.tt__seg .tt__give.ui-select { min-height: 30px; height: auto; align-self: stretch; padding: 0 13px; border: 0; border-radius: var(--r-pill); background: transparent; box-shadow: none; color: var(--seg-off); font-size: var(--fs-md); font-weight: 500; }
-/* As tall and in the same type as "Do nothing" beside it, on touch too (review of #1377). */
-@media (pointer: coarse) { .tt__seg .tt__give.ui-select { min-height: 44px; font-size: var(--fs-md); } }
-.tt__seg .tt__give.ui-select.is-on { background: var(--seg-on); color: var(--t1); box-shadow: var(--sh-raise), inset 0 0 0 1px var(--line2); }
-.tt__seg .tt__give.ui-select:hover { color: var(--t1); }
-.tt .sset-row { flex-wrap: wrap; row-gap: 10px; }
-.tt .sset-row__b { flex: 1 1 14rem; }
-.tt__seg { margin-left: auto; }
-@media (max-width: 640px) { .tt__seg { margin-left: 0; } }

@@ -47,7 +47,7 @@ export function agentProposalRepository(db: Database, policy: AgentProposalPolic
             eq(schema.agentConnections.ownerUserId, connection.ownerUserId),
             eq(schema.agentConnections.agentId, connection.agentId),
             isNull(schema.agentConnections.revokedAt))).for('share');
-        if (!selection || selection.mayDo === 'read') return 'CONNECTION_NOT_FOUND';
+        if (!selection) return 'CONNECTION_NOT_FOUND';
         const [agent] = await tx.select({ id: schema.agents.id }).from(schema.agents).where(and(
           eq(schema.agents.id, connection.agentId), eq(schema.agents.ownerUserId, connection.ownerUserId),
           isNull(schema.agents.revokedAt))).for('share');

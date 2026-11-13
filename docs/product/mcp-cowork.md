@@ -10,7 +10,7 @@ Flux task and the GitHub binding (CO-3). The earlier text is at [`a82ee012`](htt
 **Implementation.** #859 landed in two steps. Step 1 built the waiting rules and removed the standing grants. Step 2 (2026-11-07)
 removed the three OAuth scopes (one remains, `offline_access`, so a client stays connected), the 38 capability switches and the
 permissions page, and project selection; a client signs in with one click on the consent page. What a client reaches is read again
-at every call from its owner's rights, and what it may change comes only from "What it may do"
+at every call from its owner's rights, and what it may change comes only from its Ask me first switch (#1419)
 ([coordinator defaults C-19 to C-23](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)).
 
 A person's own Claude Code, Codex or other MCP client on their computer connects to Flux for code
@@ -25,7 +25,7 @@ complicated or different").
   and signs in once in the browser (OAuth). There are no scopes, capability switches, project
   selections, standing grants, project grants or access requests.
 - The client appears as one row in Settings › AI: "Claude Code on Ada's laptop · Do it and tell me
-  · Disconnect". Disconnect revokes it at once. A person may connect several clients, each with its
+  · Disconnect" (the tag reads "Ask me first" while that switch is on). Disconnect revokes it at once. A person may connect several clients, each with its
   own row. A password reset, a password change that signs out the other devices, and "Sign out all
   other devices" disconnect every client of the person the same way; each connects again with one
   click on the consent page ([C-42](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)).
@@ -42,7 +42,7 @@ complicated or different").
 - It sees exactly what the person sees, never more, and only in spaces with AI on; never in an
   encrypted space (AG-3, AG-10). A DM between people it opens shows both people the line of AG-4
   ([coordinator default C-2](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)).
-- It has the same "What it may do" row: Only read, Do it and tell me or Ask me first. Deleting
+- It has the same Ask me first switch as an agent (AG-3; a client set to the former "Only read" is on). Deleting
   anything and other people's things wait for the person's OK, and the never-list holds (AG-3),
   except posting: a local client is its person's own tool, so it may post in a space's conversations
   as the person, marked "via Claude Code" or "via Codex" (Hubert, 2026-11-08, [#1089](https://github.com/ColdPhase/flux/issues/1089); how it is stored and shown is below).
@@ -59,14 +59,16 @@ complicated or different").
   its own Delete (below), and its lines in a task's discussion are its owner's to delete (TA-3).
 - **Only the person approves.** Approving, editing or skipping a waiting item, Approve all, and
   accepting a decision come only from the person in a signed-in Flux session. The client's grant
-  has no tool for them, so a prompt-injected client cannot approve its own wait ([AG-3](assistant.md#ag-3--rights-what-it-may-do-approvals-and-undo)).
+  has no tool for them, so a prompt-injected client cannot approve its own wait ([AG-3](assistant.md#ag-3--rights-ask-me-first-approvals-and-undo)).
 - **What waits.** A local client's changes wait exactly as an agent's do (AG-3), and what waits is one Inbox item per client:
   "Claude Code on Ada's laptop · 3 things wait for you · Approve all · Open". Its answer to the client is plain words that the
   change waits; the client does not retry it. What it made carries one change line with Undo on the task, page or map it changed (above),
   and an Undo takes back that change and never the client's earlier work
   ([coordinator default C-18](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)).
-  Taking a task, claiming or releasing it, asking a question, writing in the task's discussion and linking a pull request are
-  its own work on a task it holds, not changes to anyone's things, so they do not wait; Only read refuses them like any change.
+  Taking a task, claiming, releasing, finishing or declining a unit, asking a question, writing in the task's discussion, linking a
+  pull request and making a proposal are its own work on a task: they are made at once with Ask me first off, and with it on each
+  waits for the person's OK like any change, because other people see them or they change shared Flux state (AG-3, #1419). A question
+  to the person alone never waits (asking them is how the client gets its OK), nor does renewing a claim the person let it make.
   Taking back its own unused task (`flux_undo_task_creation`) is a deletion, so it waits like any deletion (AG-3). Giving a unit to
   another person's client (a new child unit or a transfer) is another person's thing: it waits like a task
   for someone else. Approve repeats the call as the client's own, which works while the claim and session it was made under are live
@@ -92,11 +94,11 @@ complicated or different").
 ## LC-3 — "Work on #4"
 
 - The person tells their client "work on #4". The client takes the task through MCP (Flux shows
-  "Ada is on it via Claude Code"), reports in the task's discussion and finishes it under "What it
-  may do": Done with Undo, or handed back for review.
+  "Ada is on it via Claude Code"), reports in the task's discussion and finishes it under its Ask me
+  first switch: Done with Undo (off), or handed back for review (on).
 - **Review.** There is no separate Flux review verdict on a pull request head (F-016's and F-018's
-  review gate; [coordinator default C-9](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)). Review is the "What it may do" row: under Ask
-  me first, or Only read, the task is handed back to its person, "Ready for you to check". A
+  review gate; [coordinator default C-9](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)). Review is the Ask me first switch: with it on,
+  the task is handed back to its person, "Ready for you to check". A
   separate reviewer is optional, for example a subtask for a Reviewer agent. GitHub's own reviews and
   checks stay GitHub's (LC-4).
 - Flux's MCP server gives the client its instructions and tools. The person never copies prompts,

@@ -203,7 +203,7 @@ Kept from PROV-4:
 
 ## CA-6 — Every provider is treated the same
 
-- One set of rules for every provider and model: the same Flux tools, "What it may do", waits,
+- One set of rules for every provider and model: the same Flux tools, Ask me first, waits,
   Undo, attribution and failures ([agents](assistant.md)). No Flux feature is reserved to a vendor.
 - Adapters translate only the wire format, stop reasons, usage and errors into one shared result
   set. Provider-hosted tools stay off, with one exception: the provider's own built-in **web search**

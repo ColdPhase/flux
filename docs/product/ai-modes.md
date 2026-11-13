@@ -49,7 +49,7 @@ Flux's model gateway holds it and meters every request against the owner's budge
 
 - Both reach Flux only through its MCP route, with a short-lived run token bound to the agent, its
   owner, the run and its place. The route lists exactly the run's tools and checks the owner's
-  current rights, the space's AI switch and "What it may do" on every call.
+  current rights, the space's AI switch and the agent's Ask me first switch on every call.
 - The run token is passed in its own environment variable, never in a file or argument, and
   expires with the run.
 - Flux's brief is appended to the CLI's system prompt and never replaces it, so a run stays a
@@ -533,11 +533,11 @@ operator decides for their server through the operator step (RT-9).
    offered beside the plan, and the risk stated before sign-in. **Rating: medium–high for Claude
    Code.** Anthropic's Usage Policy effective 2026-11-12 forbids access "through unauthorized
    means, including services that route requests through consumer subscriptions"; re-read it then.
-2. **Always-on agents and other people's triggers.** Someone else assigning a task to a person can
-   start that person's agent on their plan (when they chose "Give it to [agent]"), and an agent
-   answers another person's agent in a task. Anthropic prohibits tools that "route third-party
+2. **Always-on agents and other people's triggers.** Someone else's task reaches a person's agent
+   only when that person gives it to the agent with its Owner field (the automatic "Give it to
+   [agent]" rule went in #1419), and an agent answers another person's agent in a task. Anthropic prohibits tools that "route third-party
    traffic against subscription limits" (support 13189465). Mitigations: only the owner's own
-   standing choice starts it; the task is assigned to the owner; an answer uses only what the
+   choice starts it; the task is assigned to the owner; an answer uses only what the
    task's people can see, and its owner sees and can delete it. **Rating: medium–high to high for
    Claude Code, medium for Codex.** The monthly API credits are the clean alternative for heavy
    automated use (support 17154008, 2026-10-07).

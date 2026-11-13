@@ -236,6 +236,83 @@ the API's CPU), a larger V8 young generation (`--max-semi-space-size=32`) and ge
 
 The acceptance run of `FLUX_PERF_ENFORCE=1 ./scripts/check_performance.sh` on a quiet host is still to be made.
 
+### A busy space, the slow work reads and `flux_search` ([#1429](https://github.com/ColdPhase/flux/issues/1429), #1191, 2026-11-13)
+
+The v0.2.0-against-`main` comparison (`scripts/perf_compare.sh`, [#1430](https://github.com/ColdPhase/flux/pull/1430)) left three
+budget misses at `a0237fbab`: entering the perf seed's busy space cost 11 requests (budget 8), 0 to 5 of 37 requests were over 50 ms
+in the concurrent 1-CPU phase (the Tasks work views and the roots' work associations), and agents' `flux_search` had a p95 of
+50–60 ms at 1 CPU.
+
+**Observed, the causes** (a kept `check_performance.sh` stack of the perf seed; `pg_stat_statements`, `auto_explain`, the API's CPU
+profile over the inspector and the containers' cgroup counters):
+- **Entering a busy space.** The view carried the first 100 task announcements; the seed's 300 tasks are all newer than the window's
+  oldest root, so the stream read two more pages before it could place them. The company's people (to name authors) and the file
+  limits (a composer mounted) were reads of their own.
+- **Work reads.** No statement was slow (the slowest executed in 0.3 ms); a work view sent 26 and the roots' associations 28, and
+  each statement costs the API about 0.2 ms of CPU (Drizzle composing it, `pg` sending and parsing it, the socket write). A
+  person's check of a space was three statements, and every work read makes three checks; the summary was three statements; each
+  key window two (its page, then its counts); the observation time and the fingerprint two.
+- **`flux_search`.** About 80 statements a call, against 23 for people's search with the same ranked statement. Each of the call's
+  three transactions (the route's check, the tool, the delivery fence) holds the connection and the owner's standing `FOR SHARE`,
+  so it has a transaction id and its COMMIT waited for a WAL flush: 12–18 ms each on this host, three times a call. The search's
+  audiences read the agent's standing four times (once per audience type).
+
+**Changed.**
+- **The view carries what the stream shows** (`CONVERSATION_VIEW_LIMITS.noticesReach`): the task and decision announcements reach
+  back as far as the roots, every one at or after the window's oldest root and the first one before it (all of them when the window
+  holds the oldest root), at most 500; the stream pages back only when the person reads older roots. The view also carries the
+  company's people (without their last-active times), and the file limits are read once a page load when a composer first holds or
+  takes a file; a video waits for them before it is checked against the operator's cap (C-61). A fold of announcements draws its
+  hidden lines once the stream is shown, in a transition: drawing 300 of them in the first render delayed the stream by up to the
+  opening's 1 s limit on a slow CPU (measured: click to threads shown 508 → 990 ms in the first comparison, 458 ms after).
+- **A page of announcements** reads whether a task's creation was undone with the line, not every task's whole record.
+- **One statement for a person's unlocked check of a space** (`readProjectAsPerson`): the space, the role and the level, the level
+  written per role exactly as before. Locked and agents' checks keep their reads and lock order.
+- **Work reads:** the observation time comes with the fingerprint; the summary's two counts and its time are one statement; a key
+  window's page and counts are one statement; an empty page of objects reads no edges.
+- **MCP:** the route's check, the delivery fence and `flux_search`/`flux_read_around` commit without waiting for a flush
+  (`commitWithoutFlush`: they write nothing but row locks, as the live-editing fences already do, `EditingCommit` `transient`); a check of a space in the fence and
+  in a tool uses the agent's standing already read and locked in that transaction; search reads the standing once for all its
+  audiences, a person's and an agent's.
+
+Nothing a read answers changed: the same answers, byte for byte apart from times and cursors, on the perf seed for every work view
+group paged forward and back, the summary, the associations, every page of announcements and the six search queries (people's and
+`flux_search`), `main` against this change on one stack. Every check, fence, lock and session read of the read contract (#155) and
+of the agents' authorization (#152, #153) is still made.
+
+| Request (perf seed, owner) | Statements before | after |
+| --- | ---: | ---: |
+| Tasks: work view (open) | 26 | 16 |
+| Conversation: root work associations | 28 | 17 |
+| Work summary | 20 | 11 |
+| Task notices (a page of 100) | 10 | 7 |
+| A space (`GET /projects/:id`) | 6 | 4 |
+| `flux_search` "after the rain" | 76 | 64, no COMMIT waiting for a flush |
+
+**Observed after** (`perf_compare.sh` on a GitHub runner, run [43442243358](https://github.com/ColdPhase/flux/actions/runs/43442243358):
+`main` `b9e9cf168` against this change `3abfd792e`, 3 rounds alternating; median [lowest–highest round]):
+
+| Metric | `main` | this change | budget |
+| --- | ---: | ---: | --- |
+| Entering the busy space: API requests (Chromium) | 11 | 7 | ≤ 8 |
+| Entering the busy space: statements | 308 [288–328] | 240 [220–249] | |
+| Entering the busy space: click to threads shown (ms) | 508 [500–526] | 458 [455–475] | |
+| Concurrent @1.0 cpu: requests with p95 over 50 ms (of 37) | 7 [4–10] | 2 [0–3] | 0 |
+| Concurrent @1.0 cpu: p95 of all requests (ms) | 39 [39–41] | 35 [34–36] | ≤ 50 |
+| Concurrent @1.0 cpu: work view open, p95 (ms) | 59 [56–62] | 47 [43–50] | ≤ 50 |
+| Concurrent @1.0 cpu: root work associations, p95 (ms) | 64 [48–91] | 48 [41–52] | ≤ 50 |
+| Statements of one pass, Tasks / Conversation | 144 / 87 | 88 / 62 | |
+| `flux_search` p95 / p50 @1.0 cpu (ms) | 62 [61–64] / 38 | 57 [54–61] / 33 | ≤ 50 |
+| People's search p95 @1.0 cpu (ms) | 38 [36–39] | 38 [36–38] | ≤ 50 |
+
+**Inferred, what is left.** The concurrent phase is at the line, not under it in every round: 0 to 3 of 37 requests at 50–60 ms (a
+work view, the associations, people of a space, search), as the four work views and two relation reads of the Tasks view are sent
+together by two clients. A work read still makes 16 statements, 8 of them the read contract's checks (two session reads and two policy
+checks around the final fence, a policy check and the fingerprint inside); fewer needs a change to the contract (#155), not this one.
+`flux_search` is now about 30 ms of database (the any-word BM25 statement over about 2,700 candidates for the common words of the
+seed's queries: about 18 ms to run and 5 ms to plan) and about 60 statements of MCP checks (three transactions that each read the
+connection, its grant and the owner's standing `FOR SHARE`, as #152 and #153 require); its p95 needs one of those to shrink.
+
 ## Editors
 
 **Observed.** [#862](https://github.com/ColdPhase/flux/issues/862) measured an open Map at +10,400 statements a minute:

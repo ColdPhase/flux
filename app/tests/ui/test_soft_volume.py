@@ -76,7 +76,7 @@ class SoftVolume(unittest.TestCase):
         self.assertEqual(family.split(",")[0].strip(" \"'"), "Geist Mono", family)
 
     def assert_sans(self, node) -> None:
-        # File names are text, not numbers or labels: Geist, served by Flux (F-026 §2).
+        # Names, and the time under a message (#1231), are text, not numbers or labels: Geist, served by Flux (F-026 §2).
         family = node.evaluate("e => getComputedStyle(e).fontFamily")
         self.assertEqual(family.split(",")[0].strip(" \"'"), "Geist", family)
 

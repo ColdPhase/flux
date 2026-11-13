@@ -3,7 +3,7 @@ track (1.1:1) and an off switch was a white knob on a pale track (1.3:1 in light
 
 Runs with the other tests/ui journeys through scripts/check_ui.sh against the running Compose app; FLUX_UI_BROWSER picks the engine
 (chromium by default, webkit too). The numbers are measured in the running app, composited over every ancestor with tests/ui/contrast.py,
-never judged by eye, for the Map / List switch, Board / List, What it may do and Text size, and for the switch of
+never judged by eye, for the Map / List switch, Board / List and Text size, and for the switch of
 Settings, light and dark, on the computer (1440) and on the phone (390):
 - the selected option's fill against its track at least 1.5:1 and lighter than the track, its label at least 4.5:1 on it, an unselected
   label at least 4.5:1 on the track and not the selected label's colour, and in dark a 1 px light edge (2:1 against the track);
@@ -193,12 +193,7 @@ class SwitchesVisible(unittest.TestCase):
             expect(page.get_by_role("radiogroup", name="Show tasks as")).to_be_visible()
             self.segmented(page, page.get_by_role("radiogroup", name="Show tasks as"), "Board / List")
             shot(page, f"1238-board-list-1440-{scheme}")
-            # What it may do, and Text size.
-            page.goto("/settings/agents/connect")
-            may_do = page.get_by_role("radiogroup", name="What it may do")
-            expect(may_do).to_be_visible()
-            self.segmented(page, may_do, "What it may do")
-            shot(page, f"1238-what-it-may-do-1440-{scheme}")
+            # Text size.
             page.goto("/settings")
             self.segmented(page, page.get_by_role("radiogroup", name="Text size"), "Text size")
 
@@ -215,11 +210,6 @@ class SwitchesVisible(unittest.TestCase):
             expect(page.get_by_role("radiogroup", name="Show tasks as")).to_be_visible()
             self.segmented(page, page.get_by_role("radiogroup", name="Show tasks as"), "Board / List")
             shot(page, f"1238-board-list-390-{scheme}")
-            page.goto("/settings/agents/connect")
-            may_do = page.get_by_role("radiogroup", name="What it may do")
-            expect(may_do).to_be_visible()
-            self.segmented(page, may_do, "What it may do")
-            shot(page, f"1238-what-it-may-do-390-{scheme}")
 
     # ---------------------------------------------------------------- switches
 
@@ -229,7 +219,7 @@ class SwitchesVisible(unittest.TestCase):
             page = self.page(scheme, phone)
             # A Settings row's switch (the Kreska row), off and on.
             page.goto("/settings/appearance" if phone else "/settings")
-            row = page.get_by_role("switch", name=re.compile(r"^Kreska in"))
+            row = page.get_by_role("switch", name=re.compile(r"^Show the face"))
             expect(row).to_be_visible()
             if row.get_attribute("aria-checked") == "true":
                 row.click()

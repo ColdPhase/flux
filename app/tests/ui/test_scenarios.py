@@ -680,7 +680,7 @@ class ScenarioJourney:
 
         # The same task thread from the task and from the map.
         page.goto(f"/projects/{lamp}/tasks?open=work:{experiment['id']}")
-        discussion = page.get_by_role("region", name="Activity")
+        discussion = page.get_by_role("region", name="Discussion")
         expect(discussion).to_contain_text(CAME_OF_IT)
         self.tap(discussion.get_by_role("link", name=re.compile("Open in Conversation")))
         thread = page.get_by_role("complementary", name="Replies").or_(page.get_by_role("dialog", name="Replies"))
@@ -918,6 +918,7 @@ class ScenarioJourney:
         # A decision is open as its card (the right column on a computer, expanded in the list on a phone): who proposed it, what it replaces, Accept.
         card = open_item(jonas.locator(".nyc", has_text=D2))
         expect(card.get_by_text(f"This replaces the decision {D1}")).to_be_visible()
+        expect(card.get_by_role("heading", name="What happens to current work?")).to_have_count(0)
         expect(card.locator(".agent-tag").first).to_be_visible()
         accept = card.get_by_role("button", name=re.compile("^Accept"))
         accept.scroll_into_view_if_needed()
@@ -978,7 +979,7 @@ class ScenarioJourney:
         expect(self.details(page)).to_contain_text(D1)
         self.close_details(page)
         page.goto(f"/projects/{lamp}/tasks?open=work:{s['experiment']}")
-        expect(self.details(page).get_by_role("region", name="Activity")).to_contain_text(CAME_OF_IT)
+        expect(self.details(page).get_by_role("region", name="Discussion")).to_contain_text(CAME_OF_IT)
         self.close_details(page)
         page.goto(f"/projects/{lamp}/tasks?view=list")
         summary = self.api("ada", "GET", f"/api/v1/return?place=project&id={lamp}", status=200)
@@ -1093,8 +1094,21 @@ class ScenarioJourney:
         for path in (f"/api/v1/sketches/{draft_id}", f"/api/v1/dms/{s['dm']}"):
             self.assertEqual(self.status("mia", path), 404, f"the member cannot open the private {path}")
         self.assertEqual(self.fetch("mia", "GET", f"/api/v1/projects/{lamp}/export").status, 403, "a member cannot export")
-        for query in ("89 EUR", "Saturday market"):
-            self.assertEqual(self.api("mia", "GET", f"/api/v1/search?q={urllib.parse.quote(query)}", status=200)["items"], [], query)
+        # Neither Ada's private draft nor her DM with Jonas reaches Mia's search. Plain words match any word and the last
+        # one as a prefix (#1293), so "Saturday market" may find what Mia shares (Marketplace stall, the lamp's market
+        # thought), never the DM: the DM's own word finds nothing for her, while it finds the DM for Ada.
+        search = lambda who, q: self.api(who, "GET", f"/api/v1/search?q={urllib.parse.quote(q)}&limit=50", status=200)["items"]  # noqa: E731
+        self.assertIn(("dm_message", s["dm"]), {(i["kind"], i["place"].get("id")) for i in search("ada", "Saturday")})
+        for query in ("89 EUR", "Saturday"):
+            self.assertEqual(search("mia", query), [], query)
+        found = search("mia", "Saturday market")
+        # A space is found under its company (place "workspace", target the project); everything else under its space.
+        space = lambda i: i["place"].get("id") if i["place"]["type"] == "project" else i["target"].get("projectId")  # noqa: E731
+        self.assertEqual({space(i) for i in found} - {s["market"], lamp}, set(), found)
+        self.assertNotIn(LEFT_OUT, json.dumps(found))
+        # Highlighting splits a title into parts, so the ids prove it too: neither the DM nor the private map is anywhere in the answer.
+        for hidden in (s["dm"], draft_id):
+            self.assertNotIn(hidden, json.dumps(found), found)
         self.assertEqual(self.api("ada", "GET", f"/api/v1/decisions/{d3['id']}", status=200)["status"], "proposed")
 
         # Lee shares only Marketplace: every lamp address is 404 for him.

@@ -56,7 +56,7 @@ UNLOCK_PASSWORD = "seven loud geese in a hat"       # Ada's unlock password in A
 NEW_PASSWORD = "twelve quiet lamps by the sea"       # a valid new password (29 characters)
 LOCKED_LINE = "Locked, waiting for an admin"        # what a member sees (C-24)
 UNLOCK_LINE = "Locked, unlock it"                   # what an admin who can unlock it sees
-WAITING = "Waiting to be unlocked"                  # the heading of the Inbox note and the label of the waiting list
+WAITING = "Waiting to be unlocked"                  # the label of Home's waiting list
 CODE = re.compile(r"^[A-Z0-9]{4}(-[A-Z0-9]{4}){7}$")
 # On screen the code is two lines of four groups in reading order (UI audit RC-3).
 CODE_LINE = re.compile(r"^[A-Z0-9]{4}(-[A-Z0-9]{4}){3}$")
@@ -485,8 +485,10 @@ class EncryptedWorkspaces(Base):
                 expect(waiting.get_by_role("link", name=re.compile(rf"^{A_NAME}\s+{UNLOCK_LINE}$"))).to_be_visible()
                 expect(need.get_by_text("Nothing is waiting for you.", exact=True)).to_have_count(0)
                 shot(page, f"needs-you-waiting-{'phone' if phone else 'computer'}")
+                # The sidebar row and Home say it once; the Inbox and Search say nothing more (#1419 item 16).
                 page.goto("/inbox")
-                expect(page.locator("[data-locked-note]")).to_contain_text(WAITING)
+                expect(page.get_by_role("heading", name="Inbox", level=1)).to_be_visible()
+                expect(page.get_by_text(WAITING)).to_have_count(0)
                 expect(page.get_by_text("The Inbox couldn’t be loaded")).to_have_count(0)
                 page.goto("/")
                 expect(page.get_by_role("button", name="Search", exact=True).first).to_be_visible()  # the shortcut works once the shell is up
@@ -495,11 +497,11 @@ class EncryptedWorkspaces(Base):
                 else:
                     page.keyboard.press("Control+k")
                 page.get_by_role("combobox", name="Search", exact=True).fill("dock")
-                unsearched = page.locator("[data-unsearched]")
-                expect(unsearched).to_have_text(f"{A_NAME} isn’t searched while it waits to be unlocked.")
                 # Search is one dialog on the computer and the phone: its Results list holds the answer (#770, #870).
                 results = page.get_by_role("listbox", name="Results")
                 expect(results.get_by_text(B_PROJECT).first).to_be_visible()
+                expect(page.locator("[data-unsearched]")).to_have_count(0)
+                expect(page.get_by_text("waits to be unlocked")).to_have_count(0)
                 expect(page.get_by_role("alert").filter(has_text="Search is unavailable")).to_have_count(0)
                 shot(page, f"search-waiting-{'phone' if phone else 'computer'}")
                 page.keyboard.press("Escape")
@@ -520,7 +522,6 @@ class EncryptedWorkspaces(Base):
         page.evaluate("window.dispatchEvent(new Event('flux:inbox-changed'))")
         expect(side.get_by_role("link", name=re.compile(rf"^{A_NAME}\s+{LOCKED_LINE}$"))).to_be_visible()
         expect(side.get_by_role("link", name=re.compile(f"^{A_PROJECT}"))).to_have_count(0)
-        expect(page.locator("[data-locked-note]")).to_contain_text(A_NAME)
 
     def test_18_a_security_notice_is_read_in_the_inbox_and_got_it_marks_it_read(self) -> None:
         world = self.make_world()
@@ -966,7 +967,7 @@ class EncryptedWorkspaces(Base):
         expect(phone.locator(".phead").get_by_role("img", name="Encrypted", exact=True)).to_be_visible()
         shot(phone, "lock-header-phone")
 
-    def test_31_settings_says_ai_is_off_there_for_good_and_jump_to_lists_the_waiting_space(self) -> None:
+    def test_31_settings_says_ai_is_off_there_for_good_and_search_lists_no_waiting_space(self) -> None:
         world = self.make_world()
         self.lock(world)
         for phone in (False, True):
@@ -983,17 +984,16 @@ class EncryptedWorkspaces(Base):
                     page.keyboard.press("Control+k")
                 jump = page.get_by_role("combobox", name="Search", exact=True)
                 expect(jump).to_be_visible()
-                option = page.get_by_role("option", name=re.compile(f"{A_NAME}.*{UNLOCK_LINE}"))
-                expect(option).to_be_visible()
+                # Search lists no waiting space (#1419 item 16): its sidebar row is the way in.
                 jump.fill("garden")
-                expect(option).to_be_visible()
-                option.click()
+                expect(page.get_by_role("option", name=re.compile(f"{A_NAME}.*{UNLOCK_LINE}"))).to_have_count(0)
+                page.keyboard.press("Escape")
+                if phone:
+                    page.goto(f"/spaces/{world.a}")
+                else:
+                    page.get_by_role("navigation", name="Spaces").get_by_role("link", name=re.compile(rf"^{A_NAME}\s+{UNLOCK_LINE}$")).click()
                 expect(page).to_have_url(re.compile(rf"/spaces/{world.a}$"))
                 expect(page.get_by_role("heading", name=f"{A_NAME} is locked")).to_be_visible()
-                page.goto("/inbox")
-                note = page.locator("[data-locked-note]")
-                expect(note).to_contain_text(WAITING)
-                expect(note.get_by_role("link", name=A_NAME)).to_be_visible()
 
 
 class KeyRotation(Base):

@@ -269,7 +269,8 @@ describe('bounded native work reads through HTTP and current native fences', () 
         : pool.query('DELETE FROM auth_sessions WHERE id = $1', [session.sessionId]);
       // Hold the final completed policy statement, the person's read of the space with their level (composed once and prepared, #1178),
       // at the connection it is sent on; every row/level still comes from the actual current central policy.
-      const policyRead = (text: unknown) => typeof text === 'string' && /AS level\s+FROM projects p WHERE p\.id = \$/.test(text);
+      // A person's check is one statement since #1429, the space read with the role and the level.
+      const policyRead = (text: unknown) => typeof text === 'string' && /AS level\s+FROM projects p (?:LEFT JOIN workspace_members m [\s\S]*?)?WHERE p\.id = \$/.test(text);
       const client = (db as unknown as { session: { client: { query: (...args: unknown[]) => Promise<unknown> } } }).session.client;
       const heldClient = new Proxy(client, { get(target, name) {
         const member = Reflect.get(target, name, target) as unknown;

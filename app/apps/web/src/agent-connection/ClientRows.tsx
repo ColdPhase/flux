@@ -1,15 +1,16 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
-import { AGENT_MAY_DO_LABELS, type AgentConnection } from '@flux/contracts';
+import type { AgentConnection } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { Button, Icon } from '../ui';
 import { revokeAgentConnection } from './api';
+import { mayDoLabel } from '../my-agents/agentLabel';
 import '../my-agents/my-agents.css';
 import './connection.css';
 
 /**
  * The person's own Claude Code or Codex, one row each in Settings › AI's Connect AI card (F-026 §7 Agents and AI, #1363): the terminal mark in
- * the icon tile the connections have (as `desktop-settings-ai` draws it), "Claude Code on this computer", "For code on your computer. Same rules as your agents.", its "What it may do" tag (a link to the page
+ * the icon tile the connections have (as `desktop-settings-ai` draws it), "Claude Code on this computer", "For code on your computer. Same rules as your agents.", its tag, "Do it and tell me" or "Ask me first" (a link to the page
  * where it is changed) and Disconnect. Disconnect asks in the row, in one line, and stops the client's access at once.
  */
 export function ClientRows({ connections, onDisconnected }: { connections: AgentConnection[]; onDisconnected: (connectionId: string) => void }) {
@@ -39,7 +40,7 @@ export function ClientRows({ connections, onDisconnected }: { connections: Agent
         ) : null}
         {confirming === connection.id && error ? <span className="client-row__error" role="alert"><Icon name="alert" size={14} />{error}</span> : null}
       </span>
-      <Link className="agl__may client-row__may" to="/settings/agents/connect" aria-label={`What ${connection.name} may do: ${AGENT_MAY_DO_LABELS[connection.mayDo]}. Change it`}>{AGENT_MAY_DO_LABELS[connection.mayDo]}</Link>
+      <Link className="agl__may client-row__may" to="/settings/agents/connect" aria-label={`${connection.name}: ${mayDoLabel(connection)}. Change it`}>{mayDoLabel(connection)}</Link>
       {confirming === connection.id ? null : <Button variant="quiet" size="sm" className="cai__change" aria-label={`Disconnect ${connection.name}`} onClick={() => { setConfirming(connection.id); setError(''); }}>Disconnect</Button>}
     </li>
   ))}</>;

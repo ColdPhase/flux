@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
 import {
-  projectConversationViewPath, projectSpaceShellPath, type Conversation, type ConversationView, type Material, type SpaceShell, type WorkItem,
+  projectConversationViewPath, projectSpaceShellPath, type Conversation, type ConversationView, type Material, type SpaceShell, type WorkItem, type WorkspaceMember,
 } from '@flux/contracts';
 import { addMember, expectStatus, grant, person, project, removeFromSpace, workspace, type Person } from './support/people.js';
 import { ensureSpaceAiAllowed, setSpaceAi } from './support/space-ai.js';
@@ -64,6 +64,51 @@ describe('the space-shell and conversation-view reads', () => {
     const own = await get<{ observedAt: string }>(ben, `${base()}/work-associations?relation=source&limit=50&messageIds=${ids}`);
     assert.deepEqual({ ...view.workAssociations, observedAt: '' }, { ...own, observedAt: '' });
     assert.ok(view.workAssociations?.items.some((item) => item.id === task.id), 'the task made from the first root is among its work');
+    // #1429: the company's people, as their route answers them without the last-active times, so the stream names its authors without a read of its own.
+    const members = await get<WorkspaceMember[]>(ben, `/api/v1/workspaces/${workspaceId}/members`);
+    assert.deepEqual(view.members, members.map((member) => { const shown = { ...member }; delete shown.lastActiveAt; return shown; }));
+    assert.deepEqual(view.members?.map((member) => member.name).sort(), ['Ada', 'Ben', 'Cy']);
+  });
+
+  test('a guest\'s view has no company people, as their route refuses a guest (#1429)', async () => {
+    const dee = await person('Dee');
+    await addMember(ada, workspaceId, dee, 'guest');
+    await grant(ada, projectId, dee, 'contributor');
+    await get(dee, `/api/v1/workspaces/${workspaceId}/members`, 403);
+    const view = await get<ConversationView>(dee, projectConversationViewPath(projectId));
+    assert.equal(view.members, null);
+    assert.equal(view.roots.roots.length, 2, 'the conversation still opens');
+  });
+
+  test('the announcements reach back as far as the roots, so the stream needs no further page when it opens (#1429)', async () => {
+    const busy = (await project(ada, workspaceId, 'Seed library', 'workspace')).id;
+    const start = (body: string) => post<Conversation>(ada, `/api/v1/projects/${busy}/conversations`, { body, clientMessageId: randomUUID() });
+    const task = (title: string) => post<WorkItem>(ada, `/api/v1/projects/${busy}/work`, { title });
+    await start('Seed swap: the first note');
+    await task('Label the jars');
+    await task('Count the packets');
+    for (let index = 0; index < 50; index++) await start(`Seed swap note ${index + 1}`);
+    for (let index = 0; index < 101; index++) await task(`Sort seed packet ${index + 1}`);
+    const view = await get<ConversationView>(ben, projectConversationViewPath(busy));
+    assert.equal(view.roots.rootPage.hasMoreBefore, true, 'the first note is older than the window');
+    const oldest = view.roots.roots[0]!.message.createdAt;
+    const { items, total } = view.taskNotices;
+    assert.equal(total, 103);
+    assert.equal(items.length, 102, 'the 101 announcements after the oldest root of the window and the first one before it');
+    assert.ok(items.slice(0, 101).every((notice) => notice.createdAt >= oldest));
+    assert.ok(items[101]!.createdAt < oldest && items[101]!.workTitle === 'Count the packets');
+    // The same announcements, in the same order, as the route's own pages.
+    const first = await get<{ items: unknown[] }>(ben, `/api/v1/projects/${busy}/task-notices?limit=100&offset=0`);
+    const second = await get<{ items: unknown[] }>(ben, `/api/v1/projects/${busy}/task-notices?limit=100&offset=100`);
+    assert.deepEqual(items, [...first.items, ...second.items].slice(0, 102));
+    // When the window holds the oldest root, every announcement comes with the view.
+    const quiet = (await project(ada, workspaceId, 'Seed archive', 'workspace')).id;
+    await post(ada, `/api/v1/projects/${quiet}/conversations`, { body: 'Archive opened', clientMessageId: randomUUID() });
+    for (let index = 0; index < 101; index++) await post(ada, `/api/v1/projects/${quiet}/work`, { title: `Archive packet ${index + 1}` });
+    const all = await get<ConversationView>(ben, projectConversationViewPath(quiet));
+    assert.equal(all.roots.rootPage.hasMoreBefore, false);
+    assert.equal(all.taskNotices.total, 101);
+    assert.equal(all.taskNotices.items.length, 101);
   });
 
   test('while the space\'s AI is off, the view leaves the agents\' questions out, as their route refuses them', async () => {

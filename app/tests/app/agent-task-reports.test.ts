@@ -73,7 +73,7 @@ describe('the report of a run on a task (#919)', () => {
     } finally { await scene.setMayDo('act'); }
   });
 
-  test('each agent finishes by its own What it may do, not the owner\'s first agent\'s (AG-3, AG-5; found by the real-model acceptance)', async () => {
+  test('each agent finishes by its own Ask me first, not the owner\'s first agent\'s (AG-3, AG-5; found by the real-model acceptance)', async () => {
     // A second agent of Ada's, on "Ask me first", while her first agent stays on "Do it and tell me"; then the other way round.
     const planner = (expectStatus(await scene.owner.browser.request('POST', `/api/v1/workspaces/${scene.ws.id}/agents`, { body: { name: 'Ada planner', owner: 'self' } }), 201) as { id: string }).id;
     const connection = randomUUID();

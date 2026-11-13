@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { AgentExecutionCommand, AgentJsonValue, AgentOperation, AgentPostcondition, AuthenticatedAgentRuntime,
   ObjectRef } from '@flux/contracts';
-import { sketchRows, type Database, type Transaction } from '@flux/db';
+import { sketchRows, taskDiscussionRows, type Database, type Transaction } from '@flux/db';
 import { agentExecutionUseCases, requestHash, type Principal } from '@flux/core';
 import { nativeConversationsInEventSession } from '../conversation/store.js';
 import { nativeDocsInEventSession } from '../docs/adapters.js';
@@ -11,6 +11,7 @@ import { transactionEventSession } from '../work/transaction-events.js';
 import type { FluxMcpClaims } from './context.js';
 import { agentExecutionInTransaction } from './execution.js';
 import { assistantChangeExecutor, type AssistantCall } from './assistant-changes.js';
+import { askMeFirst, isWaiting, type AskFirstTarget } from './ask-first.js';
 import { agentFileStorage } from './file-storage.js';
 
 export const actionId = z.uuid();
@@ -61,7 +62,7 @@ export const materialSources = (input: ActionInput): { sources?: ObjectRef[] } =
 
 /**
  * The effect path of a change to a person's things, for the assistant's runs and for a local client alike (F-036 AG-3, mcp-cowork
- * LC-2): the owner's rights now, "What it may do", and the change log in the same transaction. It applies the change, makes it wait
+ * LC-2): the owner's rights now, Ask me first, and the change log in the same transaction. It applies the change, makes it wait
  * for the owner's OK (deleting, other people's things, a task for someone else, everything under Ask me first), or refuses it. The
  * result of a waiting change is plain words, which the tool wrapper hands back as text.
  */
@@ -70,27 +71,36 @@ export function nativeActionExecutor(db: Database, claims: FluxMcpClaims): Execu
 }
 
 /**
- * The effect path of coordination (a question, a task-thread post, a pull request link, undoing one's own unused task): the agent's
- * own words or claim on a task, not a change to anyone's things, so nothing waits. One caller-owned transaction: the owner's rights
+ * The effect path of coordination (a question, a task-thread post, a pull request link): the agent's own work on a task, not a change
+ * to anyone's things, so nothing waits for another person's OK. With `ask`, a local client whose owner turned Ask me first on waits for
+ * the owner's OK first (#1419), and the owner's Approve repeats the call here. One caller-owned transaction: the owner's rights
  * and the runtime are checked, the canonical command runs as the agent, its produced post-state is checked and the receipt stored;
  * only then is the single final event batch flushed. A retry with the same command ID returns the stored outcome without a second
  * effect or event.
  */
-export function coordinationExecutor(db: Database, claims: FluxMcpClaims, privateTarget?: 'task-discussion/v1'): Execute<CoordinationActionInput> {
+export function coordinationExecutor(db: Database, claims: FluxMcpClaims, privateTarget?: 'task-discussion/v1',
+  ask?: Omit<AskFirstTarget, 'projectId' | 'clientCommandId'>): Execute<CoordinationActionInput> {
   return async function execute<T extends { [key: string]: AgentJsonValue }>(input: CoordinationActionInput, operation: AgentOperation,
     objectId: string | null, payload: AgentJsonValue, effect: (native: NativeActions) => Promise<Produced<T>>) {
     const command: AgentExecutionCommand = { runtimeSessionId: input.runtimeSessionId, clientCommandId: input.clientCommandId,
       projectId: input.projectId, operation, peerRequestClass: 'execute', audience: { kind: 'project', projectId: input.projectId },
       objectId, sources: input.sources, payload };
     return db.transaction(async (tx) => {
+      // Under Ask me first it waits for the owner's OK, like any change (#1419); the owner's Approve repeats it here.
+      const step = ask ? await askMeFirst(tx, claims, { ...ask, projectId: input.projectId, clientCommandId: input.clientCommandId }) : null;
+      if (step && isWaiting(step)) return step as unknown as T & { replayed: boolean };
+      // The owner's Approve is a person's decision: a line it writes in a task's discussion is not refused by the five-in-a-row limit (C-51).
+      if (claims.approval) await taskDiscussionRows(tx).markOwnerApproval();
       const session = transactionEventSession(tx);
       let replayed = false;
+      let produced: { value: unknown; postconditions?: AgentPostcondition[] } = { value: null };
       const value = await agentExecutionUseCases(agentExecutionInTransaction(tx, claims, {}, privateTarget)).run(command, async (scope) => {
         if (scope.replay) {
           replayed = true;
+          produced = { value: scope.replay.value, postconditions: scope.replay.postconditions };
           return { value: scope.replay.value, postconditions: scope.replay.postconditions };
         }
-        return effect({ work: nativeWorkInEventSession(tx, session),
+        const made = await effect({ work: nativeWorkInEventSession(tx, session),
           maps: nativeSketchInEventSession(tx, session, { prepared: false, commandId: input.clientCommandId, operation: `native-agent:${operation}`, fingerprint: requestHash(command), retainUntil: () => undefined }),
           docs: nativeDocsInEventSession(tx, session), conversations: nativeConversationsInEventSession(tx, session, agentFileStorage()),
           transaction: tx, events: session, agent: { kind: 'agent', id: scope.context.agentId }, runtime: scope.context,
@@ -99,9 +109,19 @@ export function coordinationExecutor(db: Database, claims: FluxMcpClaims, privat
             if (!map) throw new Error('A changed map vanished inside its transaction');
             return { kind: 'map_checkpoint', id: map.id, updatedAt: map.updatedAt.toISOString() };
           } });
+        produced = made;
+        return made;
       });
+      await step?.done(produced, { objectId: messageOf(produced.postconditions), conversationId: conversationOf(produced.value) });
       await session.flushEvents();
       return { ...(value as T), replayed };
     });
   };
 }
+
+/** What an approved change made, for its row: the message it posted, and the conversation it is in. */
+const messageOf = (conditions?: AgentPostcondition[]) => conditions?.find((condition): condition is Extract<AgentPostcondition, { kind: 'message' }> => condition.kind === 'message')?.id ?? null;
+const conversationOf = (value: unknown) => {
+  const id = (value as { conversationId?: unknown } | null)?.conversationId;
+  return typeof id === 'string' ? id : null;
+};
