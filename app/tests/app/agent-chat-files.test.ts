@@ -10,6 +10,8 @@ import { db, pool } from './support/db.js';
 import { expectStatus, removeMember, type Person } from './support/people.js';
 import { assistantScene, human, result, text, type AssistantScene } from './support/assistant-scene.js';
 import { png } from './support/pictures.js';
+import { agentConnection } from './support/mcp-actions.js';
+import { mcp } from './support/mcp.js';
 
 // Files, photos and videos in an agent's private chat (#1438 point 10, C-64 point 4): the owner stages them in the chat and sends them with a
 // request; only the owner reaches them, and only a run of that chat reads them (flux_view_image, flux_read_file). No space, direct message,
@@ -129,6 +131,45 @@ describe('files in an agent\'s private chat', () => {
     const next = await runs.invoke(human(scene.owner), chat(), { clientRunId: randomUUID(), kind: 'ask', prompt: 'And now?' });
     assert.equal(await scene.processor.process(next.run.id), 'completed');
     assert.ok(scene.compute.dispatched.at(-1)!.input.includes(`id="${photo.body.id}"`), 'the earlier turn names its file');
+  });
+
+  test('no run of a direct message, of another agent\'s chat or of a local client reaches a chat\'s file, and deleting the agent deletes its files', async () => {
+    const secret = await stage(scene.owner, agentChatFilesPath(scene.agentId), 'safe.txt', Buffer.from('The safe code is 4711.'));
+    const kept = await runs.invoke(human(scene.owner), chat(), { clientRunId: randomUUID(), kind: 'ask', prompt: 'Keep this', attachmentIds: [secret.body.id] });
+    assert.equal(await fileTextRows(db).store(secret.body.id, [{ part: 1, page: null, text: 'The safe code is 4711.' }]), true);
+    await end(kept.run.id);
+    const refused = async (live: Awaited<ReturnType<AssistantScene['liveOf']>>, label: string) => {
+      const read = await live.raw('tools/call', { name: 'flux_read_file', arguments: { fileId: secret.body.id } });
+      assert.equal(result(read.message)?.isError, true, label);
+      assert.doesNotMatch(text(read.message), /4711/, label);
+      await scene.complete(live.runId);
+    };
+    // A run in a direct message of the same owner.
+    const dm = expectStatus(await scene.owner.browser.request('POST', `/api/v1/workspaces/${scene.ws.id}/dms`, { body: { participantIds: [scene.peer.id] } }), 201) as { id: string };
+    await refused(await scene.liveOf((await runs.invoke(human(scene.owner), { kind: 'dm', dmId: dm.id, threadRootId: null },
+      { clientRunId: randomUUID(), kind: 'ask', prompt: 'What is the code?' })).run.id), 'a direct message\'s run');
+    // A run in the chat of the owner's other agent.
+    const newAgent = async (name: string) => (expectStatus(await scene.owner.browser.request('POST', `/api/v1/workspaces/${scene.ws.id}/agents`, { body: { name, owner: 'self' } }), 201) as { id: string }).id;
+    const other = await newAgent('Ada second');
+    await runs.enable(human(scene.owner), { agentId: other, connection: scene.connectionId, model: 'claude-sonnet-5' });
+    await refused(await scene.liveOf((await runs.invoke(human(scene.owner), { kind: 'chat', agentId: other },
+      { clientRunId: randomUUID(), kind: 'ask', prompt: 'What is the code?' })).run.id), 'another agent\'s chat run');
+    // The owner's own Claude Code or Codex on their computer.
+    const client = await agentConnection(pool, scene.owner.browser, await newAgent('Ada desk'), [scene.place.id]);
+    const byClient = await mcp(client.accessToken, 1, 'tools/call', { name: 'flux_read_file', arguments: { fileId: secret.body.id } });
+    assert.equal(result(byClient.message)?.isError, true);
+    assert.doesNotMatch(text(byClient.message), /4711/);
+    // Deleting the other agent (its row stays, revoked) takes its chat's files, sent and staged, and queues their bytes.
+    const sent = await stage(scene.owner, agentChatFilesPath(other), 'sent.txt', Buffer.from('sent'));
+    const staged = await stage(scene.owner, agentChatFilesPath(other), 'staged.txt', Buffer.from('staged'));
+    await end((await runs.invoke(human(scene.owner), { kind: 'chat', agentId: other }, { clientRunId: randomUUID(), kind: 'ask', prompt: 'keep', attachmentIds: [sent.body.id] })).run.id);
+    expectStatus(await scene.owner.browser.request('DELETE', `/api/v1/my-agents/${other}`), 204);
+    const ids = [sent.body.id, staged.body.id];
+    assert.equal((await pool.query(`SELECT 1 FROM project_files WHERE id = ANY($1)`, [ids])).rows.length, 0, 'its files are gone');
+    assert.equal((await pool.query(`SELECT 1 FROM file_garbage WHERE id = ANY($1)`, [ids])).rows.length, 2, 'their bytes are queued for removal');
+    assert.equal((await download(scene.owner, sent.body.id)).status, 404);
+    // The first agent's file is untouched.
+    assert.equal((await download(scene.owner, secret.body.id)).status, 200);
   });
 
   test('a chat\'s files go with their run, and the owner removed from the company reaches none', async () => {

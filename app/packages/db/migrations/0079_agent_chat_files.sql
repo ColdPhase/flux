@@ -2,7 +2,7 @@
 -- `project_files` that belongs to the chat of one agent (`agent_id`) instead of a space or a direct message, and once sent to the owner's
 -- request in that chat (`run_id`, the run that request is); exactly one of `project_id`, `dm_id` and `agent_id` is set, so no space's or direct
 -- message's query, trigger, export or search ever sees it. Only the agent's owner reaches it (checked where it is read), and only the runs of
--- that chat. It goes with its run, its agent or its company, its bytes to the deletion queue.
+-- that chat. It goes with its run, its agent (deleted, that is revoked) or its company, its bytes to the deletion queue.
 -- Works on data left by v0.2.0 and by 0076: two new nullable columns, checks that only widen what a row may hold, a new table and triggers.
 ALTER TABLE public.project_files
   ADD COLUMN agent_id uuid,
@@ -36,6 +36,19 @@ BEGIN
 END $$;
 CREATE TRIGGER agent_chat_file_gone AFTER DELETE ON public.project_files FOR EACH ROW WHEN (OLD.agent_id IS NOT NULL)
   EXECUTE FUNCTION public.agent_chat_file_gone();
+
+-- A deleted agent keeps its row, revoked (its owner's Delete, or an admin's revoke; neither is undone), so the cascade above never runs for
+-- it: its chat's files, sent or staged, go when it is revoked, their bytes to the deletion queue by the trigger above.
+CREATE FUNCTION public.agent_revoked_chat_files() RETURNS trigger
+    LANGUAGE plpgsql
+    SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+    AS $$
+BEGIN
+  DELETE FROM project_files WHERE agent_id = NEW.id;
+  RETURN NULL;
+END $$;
+CREATE TRIGGER agent_revoked_chat_files AFTER UPDATE OF revoked_at ON public.agents FOR EACH ROW
+  WHEN (OLD.revoked_at IS NULL AND NEW.revoked_at IS NOT NULL) EXECUTE FUNCTION public.agent_revoked_chat_files();
 
 -- The text of a chat's file (C-63's reader, C-64 point 4): read once by the same sandboxed worker when the request is sent, for the runs of that
 -- chat only (`flux_read_file`). It is never a search row: nobody's search, and no run elsewhere, finds it. It goes with its file.
