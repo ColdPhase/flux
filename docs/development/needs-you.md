@@ -58,7 +58,7 @@ person's own choice (204; idempotent).
 - Done on a mention or question also reads its notification; Undo unreads it. Nothing is deleted.
 - **A call is not a question** (F-041, #1368). A call's notice (`reason: call`) and an invitation to a call (`reason: invitation`)
   are listed with `call: { projectId, sessionId }`, only while someone is in the call, and are named "Call" with Join. They leave the
-  queue when the call ends, and when the person joins it: the join (`POST /api/v1/live/sessions/:id/join`) reads the person's notices
+  queue when the call ends, and when the person joins it: the join (`POST /api/v1/live-sessions/:id/join`) reads the person's notices
   and invitations of that session in the same transaction, so every tab's Inbox and Home lose it on their next read.
 - **Answered where it was asked** (#1170): a person's reply in a conversation (`POST /api/v1/conversations/:id/messages`, or
   `POST /api/v1/work/:id/discussion` in a task's discussion) answers their unread `question` and `mention` notifications that open a
