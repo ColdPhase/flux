@@ -1,0 +1,8 @@
+/* A page of the Wiki by its own address (#1371): in the app's type scale, on its own stylesheet, because this route's code is not the conversation's. */
+.material-view { max-width: 760px; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+.material-view h2 { margin: 0; font-size: var(--fs-xl); line-height: 1.3; letter-spacing: -.015em; }
+.material-view__back { font-size: var(--fs-md); }
+.material-view__meta { margin: 0; font-size: var(--fs-sm); color: var(--t3); }
+.material-view__body { align-self: stretch; margin: 6px 0 0; padding: 20px 24px; border-radius: var(--r-card); background: var(--el); box-shadow: var(--sh-card);
+  font-size: var(--fs-base); line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+.material-view__link { font-size: var(--fs-md); }

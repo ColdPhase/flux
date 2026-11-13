@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Navigate } from 'react-router';
-import { Button, EmptyState, Spinner } from '../ui';
+import { Button, EmptyState, ErrorState, Spinner } from '../ui';
 import { useShellData } from '../app/data';
 import { openMyMap } from '../api/sketches';
 import { sketchHref } from './format';
@@ -32,11 +32,11 @@ export function MyMap() {
   }
   if (state === 'failed') {
     return (
-      <div className="view-empty">
-        <EmptyState icon="map" title="My map couldn’t be loaded" action={<Button onClick={() => { setState('loading'); setAttempt((n) => n + 1); }}>Try again</Button>}>
+      <div className="pane-scroll"><div className="pane-in">
+        <ErrorState title="My map couldn’t be loaded" actions={<Button variant="secondary" icon="refresh" onClick={() => { setState('loading'); setAttempt((n) => n + 1); }}>Try again</Button>}>
           <p>Nothing was lost.</p>
-        </EmptyState>
-      </div>
+        </ErrorState>
+      </div></div>
     );
   }
   if (state === 'loading') return <div className="sk-page sk-page--center"><Spinner label="Opening My map" /></div>;

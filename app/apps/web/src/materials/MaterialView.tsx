@@ -3,6 +3,7 @@ import type { MaterialOrDoc, MaterialVersion } from '@flux/contracts';
 import type { materialLoader } from './loader';
 import { useShellData } from '../app/data';
 import { agentAuthorLabel } from '../docs/format';
+import './material.css';
 
 export function MaterialView() {
   const data = useLoaderData() as Awaited<ReturnType<typeof materialLoader>>;

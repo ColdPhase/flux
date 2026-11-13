@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { WorkItem } from '@flux/contracts';
 import { useStreamEvents } from '../api/stream';
-import { Button, EmptyState, Icon, MEDIA, PullToRefresh, Spinner, useMediaQuery } from '../ui';
+import { Button, EmptyState, ErrorState, Icon, MEDIA, PullToRefresh, Spinner, useMediaQuery } from '../ui';
 import { listAssignedWork } from '../work/api';
 import { STATUS_LABEL } from '../work/format';
 import { getProject } from '../project/api';
@@ -81,11 +81,9 @@ export function HomeTasks() {
   if (!shown.items.length) {
     if (shown.failed) {
       return (
-        <div className="view-empty">
-          <EmptyState icon="tasks" title="My tasks couldn’t be loaded" action={<Button onClick={again}>Try again</Button>}>
-            <p>Nothing was lost.</p>
-          </EmptyState>
-        </div>
+        <ErrorState title="My tasks couldn’t be loaded" actions={<Button variant="secondary" icon="refresh" onClick={again}>Try again</Button>}>
+          <p>Nothing was lost.</p>
+        </ErrorState>
       );
     }
     const action = !projects.length
