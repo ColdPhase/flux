@@ -5,7 +5,7 @@
 /* The stream keeps its own reading anchor when earlier roots load or the thread docks beside it. */
 .project-convo__feed.is-stream { overflow-anchor: none; }
 /* The spare height above a short stream (ConversationStream sets its height): the stream sits against its composer. */
-.project-convo__lift, .thread__lift { height: 0; flex: none; }
+.project-convo__lift { height: 0; flex: none; }
 
 /* Under a root: the size of its thread and the reply action. Both open the thread. */
 .convo-replies { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; margin: 6px 0 0 -7px; font-size: var(--fs-sm); }

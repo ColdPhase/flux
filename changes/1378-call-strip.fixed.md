@@ -1,0 +1,1 @@
+- The call strip centres its items (the place's title was at the top of its row), keeps the live dot's word on a phone from 360 px, a call line's faces no longer overlap, and the header shows "In call" while you are in the call instead of a Call button again ([#1378](https://github.com/ColdPhase/flux/issues/1378)).

@@ -20,7 +20,6 @@ import { ownRuns, useObservation, useReceipts } from '../app/receipts';
 import { pageBackTo } from '../app/seekMessage';
 import { useMessageReadingPosition } from '../work/readingPosition';
 import { useLeftPlace, useReturnPlace } from './returnPlace';
-import { useSpareHeight } from '../ui/spareHeight';
 import { MessageDay } from '../app/messageParts';
 import { NewBelow, UnreadDivider, countBelow, openAtUnread, useNewBelow } from '../app/unreadReading';
 
@@ -239,9 +238,6 @@ export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, others, writ
   const lines = [...shown.map((message) => ({ message, authorId: message.authorId, via: message.via ?? null, at: message.createdAt })),
     ...outbox.pending.map((item) => ({ message: null, item, authorId: meId, at: item.at }))];
   const rows = groupRows(lines, (line) => !!line.message && line.message.id === unreadFrom);
-  // A short thread sits against its reply field instead of at the top of a tall panel (ui/spareHeight.ts).
-  const liftRef = useRef<HTMLDivElement>(null);
-  useSpareHeight(feed, columnRef, liftRef, (root ? 1 : 0) + rows.length, feedNode);
   // What arrives while the person reads above the end is counted in "↓ N new" (#1246).
   const newBelow = useNewBelow(feedNode);
   useArrivals(feed, [...shown.map((message) => `thread-message-${message.id}`), ...outbox.pending.map((item) => `pending-${item.id}`)], (id) => document.getElementById(id), (ids, atEnd) => {
@@ -259,7 +255,6 @@ export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, others, writ
       <div className="thread__pane dm-thread" data-dm-thread={rootId}>
         <div className="convo-stream">
         <div className={`thread__feed${returned.pending ? ' is-returning' : ''}`} ref={attachFeed}>
-          <div className="thread__lift" aria-hidden="true" ref={liftRef} />
           <div className="thread__in dm__in" ref={columnRef}>
             {root ? (
               <ol className="dm__list dm-thread__root" aria-label="Message">

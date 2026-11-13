@@ -44,7 +44,7 @@ interface Props {
 export function ThreadFeed(props: Props) {
   const { core: { me, project, writable, composerId }, thread, reading, entries, outbox, privateAi, owners, arrived, seen } = props;
   const { assistant, changes } = privateAi;
-  const { attachFeed, liftRef, columnRef, revealed, messageWork, discussedRow } = reading;
+  const { attachFeed, columnRef, revealed, messageWork, discussedRow } = reading;
   // Every entry, then every queued reply, with a day line where the day changes.
   const rows: { at: string; key: string; items: ReactNode[] }[] = [];
   const withDay = (at: string, key: string, items: ReactNode[]) => { rows.push({ at, key, items }); };
@@ -79,7 +79,6 @@ export function ThreadFeed(props: Props) {
   {/* The replies are laid out but hidden until their first reads settle (#155); quiet rows stand in their place from the first frame (#863 rule 6), so the panel never opens empty. */}
   {revealed ? null : <div className="thread__opening"><OpeningRows rows={Math.min(4, Math.max(2, thread.messages.length))} /></div>}
   <div className={`thread__feed${revealed ? '' : ' is-opening'}`} ref={attachFeed} aria-busy={revealed ? undefined : true}>
-    <div className="thread__lift" aria-hidden="true" ref={liftRef} />
     <div className="thread__in" ref={columnRef}>
       {props.rootHeader?.({ preview: props.rootMessageId ? messageWork.previews?.get(props.rootMessageId) ?? null : null, taskRow: discussedRow, firstDay })}
       <section aria-label="Replies to this message" className="project-convo__messages">
