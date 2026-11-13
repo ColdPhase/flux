@@ -515,6 +515,66 @@ class LiveJourney(LiveBase):
             self.bar(leaver).get_by_role("button", name="Leave", exact=True).click()
             expect(self.bar(leaver)).to_have_count(0)
 
+    def test_00d_a_call_is_noticed_in_the_inbox_and_sidebar_and_invitations_reach_people(self) -> None:
+        """#1223 points 2 to 6 (F-041): Lee starts a call; Ada's open tab on Home shows the space's call glyph and her Inbox the call with
+        Join, within 2 s; Join joins it. Lee alone reads "Nobody joined · Invite someone"; Invite… invites Jonas and Kai. The call leaves
+        the Inbox when it is over. (The invitation's chime is #1243's "Sound when someone calls me".)"""
+        self.seed()
+        ada = self.page("ada")
+        project = self.api(ada, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects", {"name": "Repair cafe", "visibility": "restricted"}, status=201)
+        pid = project["id"]
+        for key in ("lee", "jonas", "kai"):
+            self.api(ada, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": PEOPLE[key]["id"]}, "role": "contributor"}, status=201)
+        ada.goto("/")
+        space = ada.locator("aside").get_by_role("link", name=re.compile("^Repair cafe"))
+        expect(space).to_be_visible()
+        expect(space.locator("svg.side__live[data-call-mark]")).to_have_count(0)
+        jonas = self.page("jonas")
+        jonas.goto("/")
+
+        # Lee starts it: each person runs at most a few calls at once, and the journeys before this one started theirs.
+        nia = self.page("lee")
+        nia.goto(f"/projects/{pid}")
+        self.call(nia)
+        bar = self.bar(nia)
+        expect(bar.locator(".lv-where")).to_have_text("Call in Repair cafe")
+        expect(bar.get_by_role("status").filter(has_text="Nobody joined")).to_be_visible()
+        started = time.monotonic()
+        expect(space).to_have_accessible_name(re.compile("call on"), timeout=2500)
+        expect(space.locator("svg.side__live[data-call-mark]")).to_be_visible()
+        self.assertLess(time.monotonic() - started, 3, "the space's call glyph shows within about 2 s")
+        shot(ada, "live-desktop-1440-sidebar-call-on")
+        # The Inbox: the call with Join (the notice is written by the worker, a moment after the start).
+        ada.goto("/inbox")
+        card = ada.locator(".nyc", has_text="Lee Park started a call in Repair cafe")
+        expect(card).to_be_visible()
+        shot(ada, "live-desktop-1440-inbox-call")
+        card.get_by_role("button", name="Join").first.click()
+        expect(self.bar(ada).locator(".lv-where")).to_have_text("Call in Repair cafe")
+        expect(bar.get_by_role("status").filter(has_text="Nobody joined")).to_have_count(0)
+
+        # Invite… from the strip opens the panel at the people who can join.
+        bar.get_by_role("button", name="Invite…").click()
+        panel = nia.get_by_role("dialog", name="Live session")
+        expect(panel).to_be_visible()
+        shot(nia, "live-desktop-1440-invite")
+        for name in ("Jonas Berg", "Kai Moreau"):
+            row = panel.locator(".lv-person--absent", has_text=name)
+            row.get_by_role("button", name="Invite").click()
+            expect(row).to_contain_text("Invited")
+        nia.keyboard.press("Escape")
+        # Each invitation is an Inbox item with Join for its person.
+        jonas.goto("/inbox")
+        expect(jonas.locator(".nyc", has_text="invited you to a call").get_by_role("button", name="Join").first).to_be_visible()
+        for leaver in (ada, nia):
+            self.bar(leaver).get_by_role("button", name="Leave", exact=True).click()
+            expect(self.bar(leaver)).to_have_count(0)
+        # Over: the space loses its dot and the Inbox its call.
+        ada.goto("/")
+        expect(ada.locator("aside").get_by_role("link", name=re.compile("^Repair cafe")).locator("svg.side__live[data-call-mark]")).to_have_count(0, timeout=40000)
+        ada.goto("/inbox")
+        expect(ada.locator(".nyc", has_text="started a call in Repair cafe")).to_have_count(0)
+
     def test_01_two_people_blocker_join_show_screen_result_leave(self) -> None:
         self.seed()
         nia = self.page("nia")

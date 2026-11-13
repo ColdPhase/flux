@@ -1,4 +1,5 @@
-import { accessPorts, needsYouRows, notificationPreferenceRows, returnRows, memberFilter, accessReader, type Database } from '@flux/db';
+import { and, eq, inArray, isNull } from 'drizzle-orm';
+import { accessPorts, needsYouRows, notificationPreferenceRows, returnRows, memberFilter, accessReader, schema, type Database } from '@flux/db';
 import {
   createNeedsYou,
   preferenceRepository,
@@ -50,4 +51,10 @@ export const needsYouUseCases = (db: Database, assistant?: NeedsYouAssistant) =>
   inbox: notificationRepository(db),
   level: async (userId) => (await preferenceRepository(notificationPreferenceRows(db)).get(userId)).level,
   work: workRepository(db),
+  // A call is on while it is available and someone is in it: its room is not empty (F-041).
+  async runningCalls(sessionIds) {
+    const ls = schema.liveSessions;
+    const rows = await db.select({ id: ls.id }).from(ls).where(and(inArray(ls.id, sessionIds), eq(ls.state, 'available'), isNull(ls.emptySince)));
+    return new Set(rows.map((row) => row.id));
+  },
 });

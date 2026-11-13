@@ -43,7 +43,7 @@ const t = schema.notificationAddressTokens;
 const ob = schema.notificationEmails;
 const CURSOR = 'generator';
 
-type Reason = 'mention' | 'question' | 'reply' | 'dm' | 'assigned' | 'review' | 'invitation' | 'approval';
+type Reason = 'mention' | 'question' | 'reply' | 'dm' | 'assigned' | 'review' | 'invitation' | 'approval' | 'call';
 type SourceType = 'workspace' | 'project' | 'dm';
 
 export interface StoredPreferenceRow {
@@ -152,6 +152,36 @@ export function notificationFactRows(db: DbExecutor) {
       .from(schema.projects).where(eq(schema.projects.id, projectId)));
     return row?.name ?? 'a project';
   };
+  /** The label of a call's place, read only where the place is still in its space: the space's name for a call of the space (F-041). */
+  const sessionAnchor = async (session: typeof schema.liveSessions.$inferSelect) => {
+    let anchor: { type: 'space' | 'conversation' | 'work' | 'sketch' | 'doc'; label: string } | null = null;
+    // A call of the space (F-041) is named by the space.
+    const spaceCall = !session.conversationId && !session.workId && !session.sketchId && !session.docId;
+    if (spaceCall) anchor = { type: 'space', label: await projectName(session.projectId) };
+    else if (session.conversationId) {
+      const pm = schema.projectMessages;
+      const [opening] = await db.select({ body: pm.body, attachmentCount: pm.attachmentCount }).from(pm)
+        .where(and(eq(pm.conversationId, session.conversationId), eq(pm.projectId, session.projectId))).orderBy(asc(pm.sequence)).limit(1);
+      if (opening) anchor = { type: 'conversation', label: messagePreview(opening.body, opening.attachmentCount) };
+    } else if (session.workId) {
+      const w = schema.projectWorkItems;
+      const [work] = await db.select({ title: w.title }).from(w).where(and(eq(w.id, session.workId), eq(w.projectId, session.projectId)));
+      if (work) anchor = { type: 'work', label: work.title };
+    } else if (session.sketchId) {
+      const sk = schema.sketches;
+      const [sketch] = await db.select({ title: sk.title, scope: sk.scope }).from(sk).where(and(eq(sk.id, session.sketchId), eq(sk.projectId, session.projectId)));
+      // A private sketch never anchors a project session; never show its title.
+      if (sketch && sketch.scope === 'project') anchor = { type: 'sketch', label: sketch.title };
+    } else if (session.docId) {
+      const pmat = schema.projectMaterials;
+      const v = schema.projectMaterialVersions;
+      const [doc] = await db.select({ title: v.title }).from(pmat)
+        .innerJoin(v, and(eq(v.materialId, pmat.id), eq(v.version, pmat.currentVersion)))
+        .where(and(eq(pmat.id, session.docId), eq(pmat.projectId, session.projectId), eq(pmat.kind, 'doc')));
+      if (doc) anchor = { type: 'doc', label: doc.title };
+    }
+    return anchor;
+  };
   const workOwners = async (ids: string[]) => {
     if (!ids.length) return [];
     const rows = await db.selectDistinct({ owner: schema.projectWorkItems.ownerUserId }).from(schema.projectWorkItems)
@@ -246,6 +276,14 @@ export function notificationFactRows(db: DbExecutor) {
         by: { kind: row.kind as 'human' | 'agent', id: row.by }, workOwners: await workOwners(await linkedWork(row.id)), agentOwner: await agentOwner(row.kind, row.by),
       };
     },
+    /** A call that is still on, with who started it and its place's label (F-041): what its notice says. */
+    async liveSession(sessionId: string) {
+      const [session] = await db.select().from(schema.liveSessions).where(eq(schema.liveSessions.id, sessionId));
+      if (!session || session.state !== 'available') return null;
+      const anchor = await sessionAnchor(session);
+      if (!anchor) return null;
+      return { id: session.id, projectId: session.projectId, projectName: await projectName(session.projectId), startedBy: session.createdBy, anchor };
+    },
     /** A pending invitation of an available session, with its anchor's project-level label (#62). */
     async liveInvitation(invitationId: string) {
       const li = schema.liveInvitations;
@@ -255,32 +293,7 @@ export function notificationFactRows(db: DbExecutor) {
         .where(eq(li.id, invitationId));
       if (!row || row.invitation.response !== 'pending' || row.session.state !== 'available') return null;
       const { session } = row;
-      let anchor: { type: 'space' | 'conversation' | 'work' | 'sketch' | 'doc'; label: string } | null = null;
-      // A call of the space (F-041) is named by the space.
-      const spaceCall = !session.conversationId && !session.workId && !session.sketchId && !session.docId;
-      if (spaceCall) anchor = { type: 'space', label: await projectName(session.projectId) };
-      else if (session.conversationId) {
-        const pm = schema.projectMessages;
-        const [opening] = await db.select({ body: pm.body, attachmentCount: pm.attachmentCount }).from(pm)
-          .where(and(eq(pm.conversationId, session.conversationId), eq(pm.projectId, session.projectId))).orderBy(asc(pm.sequence)).limit(1);
-        if (opening) anchor = { type: 'conversation', label: messagePreview(opening.body, opening.attachmentCount) };
-      } else if (session.workId) {
-        const w = schema.projectWorkItems;
-        const [work] = await db.select({ title: w.title }).from(w).where(and(eq(w.id, session.workId), eq(w.projectId, session.projectId)));
-        if (work) anchor = { type: 'work', label: work.title };
-      } else if (session.sketchId) {
-        const sk = schema.sketches;
-        const [sketch] = await db.select({ title: sk.title, scope: sk.scope }).from(sk).where(and(eq(sk.id, session.sketchId), eq(sk.projectId, session.projectId)));
-        // A private sketch never anchors a project session; never show its title.
-        if (sketch && sketch.scope === 'project') anchor = { type: 'sketch', label: sketch.title };
-      } else if (session.docId) {
-        const pmat = schema.projectMaterials;
-        const v = schema.projectMaterialVersions;
-        const [doc] = await db.select({ title: v.title }).from(pmat)
-          .innerJoin(v, and(eq(v.materialId, pmat.id), eq(v.version, pmat.currentVersion)))
-          .where(and(eq(pmat.id, session.docId), eq(pmat.projectId, session.projectId), eq(pmat.kind, 'doc')));
-        if (doc) anchor = { type: 'doc', label: doc.title };
-      }
+      const anchor = await sessionAnchor(session);
       if (!anchor) return null;
       return {
         id: row.invitation.id, sessionId: session.id, projectId: session.projectId, projectName: await projectName(session.projectId),

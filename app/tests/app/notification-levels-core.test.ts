@@ -32,7 +32,7 @@ describe('notification levels', () => {
   test('Everything, Nothing and back: the inbox is never turned off', () => {
     const everything = applyPreferenceChange(fresh(), { level: 'everything' });
     assert.equal(everything.level, 'everything');
-    assert.ok(NOTIFICATION_REASONS.every((reason) => channelsOf(everything)[reason].push && channelsOf(everything)[reason].email === (reason !== 'invitation')));
+    assert.ok(NOTIFICATION_REASONS.every((reason) => channelsOf(everything)[reason].push && channelsOf(everything)[reason].email === (reason !== 'invitation' && reason !== 'call')));
 
     const nothing = applyPreferenceChange(everything, { level: 'nothing' });
     const off = channelsOf(nothing);
@@ -48,7 +48,7 @@ describe('notification levels', () => {
     assert.ok(NOTIFICATION_REASONS.every((reason) => !channelsOf(noEmail)[reason].email), 'no reason emails');
     assert.deepEqual(NOTIFICATION_REASONS.map((reason) => channelsOf(noEmail)[reason].push), NOTIFICATION_REASONS.map((reason) => channelsOf(fresh())[reason].push), 'push is unchanged');
     const everything = applyPreferenceChange(fresh(), { level: 'everything', emailMe: true });
-    assert.ok(NOTIFICATION_REASONS.every((reason) => channelsOf(everything)[reason].email === (reason !== 'invitation')), 'Everything emails every reason but a live call invitation');
+    assert.ok(NOTIFICATION_REASONS.every((reason) => channelsOf(everything)[reason].email === (reason !== 'invitation' && reason !== 'call')), 'Everything emails every reason but a live call invitation or notice');
     assert.equal(channelsOf(everything).invitation.push, true, 'the invitation still rings on push, and is in the Inbox');
   });
 
@@ -68,7 +68,7 @@ describe('quiet hours', () => {
       advanceCursor: async () => undefined,
       eventsAfter: async (seq) => (seq ? [] : [{ id: randomUUID(), seq: 1, kind: 'dm.message_sent.v1', workspaceId, objectId: randomUUID(), actorId: 'human:ada', data: { messageId: randomUUID() } }]),
       facts: {
-        audience: async () => ['kai'], projectMessage: async () => null, work: async () => null, decision: async () => null, liveInvitation: async () => null, waitingChange: async () => null,
+        audience: async () => ['kai'], projectMessage: async () => null, work: async () => null, decision: async () => null, liveInvitation: async () => null, liveSession: async () => null, waitingChange: async () => null,
         dmMessage: async (dmId, id) => ({ id, workspaceId, dmId, kind: 'pair', title: null, authorId: 'ada', body: 'hi', participantIds: ['ada', 'kai'] }),
         names: async (ids) => new Map(ids.map((id) => [id, id])),
       },

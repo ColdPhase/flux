@@ -9,6 +9,7 @@ import WebSocket from 'ws';
 import { PgBoss } from 'pg-boss';
 import { projectObjectNoticesPath, type Project } from '@flux/contracts';
 import { connectionString, pool } from './support/db.js';
+import { sealedNotificationTitle } from '@flux/core';
 import { apiUrl, Browser, publicOrigin } from './support/http.js';
 import { createSealed, lock, passphrase, unlock } from './support/encryption.js';
 import { addMember, expectStatus, person, workspace, type Person } from './support/people.js';
@@ -342,6 +343,21 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
     await assert.rejects(insert('Ada mentioned you in Garden club', 'a preview'), { hint: 'NOTIFICATION_CONTENT_REFUSED' }, 'a body');
     await assert.rejects(insert('Ada mentioned you in a secret project', ''), { hint: 'NOTIFICATION_CONTENT_REFUSED' }, 'another place');
     await assert.rejects(insert('secret words mentioned you in Garden club', ''), { hint: 'NOTIFICATION_CONTENT_REFUSED' }, 'a free who');
+  });
+
+  test('a call notice in A is content-free ("Ada started a call in Garden club"), linking the call by ids only (F-041, #1223)', async () => {
+    // The generator writes sealedNotificationTitle('call', …) for a sealed workspace; the database accepts exactly that form and refuses any
+    // other title, a body or a link with words (migration 0056).
+    const url = `/projects/${ids.A.project}/live/${randomUUID()}`;
+    const insert = (title: string, body: string, link: string) => pool.query(`INSERT INTO notifications (id, user_id, workspace_id, source_type, source_id, reason, title, body, url, ai_origin)
+      VALUES (gen_random_uuid(), $1, $2, 'project', $3, 'call', $4, $5, $6, false) RETURNING id`, [ben.id, A, ids.A.project, title, body, link]);
+    const accepted = await insert(sealedNotificationTitle('call', 'Ada', 'Garden club'), '', url);
+    assert.equal(accepted.rows.length, 1, 'the content-free call notice is stored');
+    assert.equal(sealedNotificationTitle('call', 'Ada', 'Garden club'), 'Ada started a call in Garden club');
+    await assert.rejects(insert('Ada started a call in a secret project', '', url), { hint: 'NOTIFICATION_CONTENT_REFUSED' }, 'another place');
+    await assert.rejects(insert('Ada started a call in Garden club', 'Call in Secret room', url), { hint: 'NOTIFICATION_CONTENT_REFUSED' }, 'a body');
+    await assert.rejects(insert('Ada started a call in Garden club', '', `${url}?topic=secret`), { hint: 'NOTIFICATION_CONTENT_REFUSED' }, 'a link with words');
+    await pool.query('DELETE FROM notifications WHERE id = $1', [accepted.rows[0].id]);
   });
 
   test('mid-upload, the scratch file of A holds ciphertext only (B plaintext); an aborted upload leaves nothing in tmp (#707 review)', async () => {

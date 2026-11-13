@@ -8,10 +8,10 @@ import { NEEDS_YOU_REASONS, type NotificationLevel, type NotificationReason } fr
 export const REASON_WORDS: Record<NotificationReason, string> = {
   question: 'questions', mention: 'mentions', dm: 'direct messages', assigned: 'tasks that need you',
   review: 'decisions about your work', invitation: 'invitations to work together', approval: 'agents waiting for you',
-  reply: 'every reply in conversations you are part of',
+  reply: 'every reply in conversations you are part of', call: 'calls started in your spaces',
 };
 /** The order a line names them in. */
-const ORDER: readonly NotificationReason[] = ['question', 'mention', 'dm', 'assigned', 'review', 'invitation', 'approval', 'reply'];
+const ORDER: readonly NotificationReason[] = ['question', 'mention', 'dm', 'assigned', 'review', 'invitation', 'approval', 'reply', 'call'];
 const needsYou = new Set<NotificationReason>(NEEDS_YOU_REASONS);
 
 /** What interrupts the person by push and email at each level. The Inbox keeps every reason at each. */

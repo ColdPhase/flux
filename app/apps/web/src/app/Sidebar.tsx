@@ -17,6 +17,7 @@ import { NewMenu } from './NewMenu';
 import { useAgentUnread } from '../my-agents/AgentChatDots';
 import type { SpaceIcon } from '@flux/contracts';
 import { SpaceFace } from '../ui/SpaceFace';
+import { useLiveSpaces } from '../live/spaces';
 import { lockedLine, useEncryptedWorkspaceIds, useLockedWorkspaces } from '../encryption/state';
 import { usePlaceMutes } from '../notifications/mutes';
 
@@ -71,6 +72,8 @@ export function Sidebar({ directMessages, agents = [], user, onClose, titleId, i
   const { muted } = usePlaceMutes();
   // The dot is for what needs the person: a space that holds an Inbox item (a question to them, a decision, a blocked task).
   const needing = useNeedsYouSpaces(useShellData().me.user.id);
+  // A call is on in the space (F-041): the call glyph after its name, before the muted mark and the unread mark.
+  const calls = useLiveSpaces();
   const navigate = onClose ? () => onClose() : undefined;
   const sketchbook = place === 'home' && /^\/map(\/|$)/.test(location.pathname);
   // Home is current only on Home (#763 NV-1): a page reached from it (the Wiki, New space, a missing page) is no place
@@ -155,10 +158,11 @@ export function Sidebar({ directMessages, agents = [], user, onClose, titleId, i
         <nav className="side__rail-projects" aria-label="Spaces" ref={railProjects}>
           <span className="side__rail-glide" ref={railGlide} aria-hidden="true" />
           {projects.map((project) => (
-            <NavLink key={project.id} to={`/projects/${project.id}`} end={false} className={`side__rail-project${project.id === projectId ? ' is-open' : ''}`} aria-label={`${project.name}${encrypted(project) ? ', encrypted' : ''}${muted.has(`project:${project.id}`) ? ', muted' : ''}`} title={`${project.name}${encrypted(project) ? ' · Encrypted' : ''}${muted.has(`project:${project.id}`) ? ' · Muted' : ''}`}
+            <NavLink key={project.id} to={`/projects/${project.id}`} end={false} className={`side__rail-project${project.id === projectId ? ' is-open' : ''}`} aria-label={`${project.name}${encrypted(project) ? ', encrypted' : ''}${muted.has(`project:${project.id}`) ? ', muted' : ''}${calls.has(project.id) ? ', call on' : ''}`} title={`${project.name}${encrypted(project) ? ' · Encrypted' : ''}${muted.has(`project:${project.id}`) ? ' · Muted' : ''}`}
               onClick={(event) => { if (choosesInPlace(event)) glideRailTo(event.currentTarget); }}
               data-glide-id={project.id} data-pending={pendingProject === project.id && project.id !== projectId ? '' : undefined}>
               <ProjectTile name={project.name} icon={project.icon} size={28} />
+              {calls.has(project.id) ? <span className="side__rail-live" aria-hidden="true"><Icon name="call" size={12} /></span> : null}
             </NavLink>
           ))}
           {locked.map((space) => (
@@ -248,11 +252,12 @@ export function Sidebar({ directMessages, agents = [], user, onClose, titleId, i
                     <NavLink to={`/projects/${project.id}`} end={false} className={`side__item side__project${open ? ' is-open' : ''}${unread ? ' is-unread' : ''}`} onClick={(event) => { if (choosesInPlace(event)) glideTo(event.currentTarget); navigate?.(); }}
                       data-glide-id={project.id} data-pending={pendingProject === project.id && !open ? '' : undefined}
                       title={project.name} draggable={false}
-                      aria-label={spaceRowLabel(project.name, { encrypted: encrypted(project), quiet, fresh, needsYou: needing.has(project.id) })}
+                      aria-label={spaceRowLabel(project.name, { encrypted: encrypted(project), quiet, fresh, needsYou: needing.has(project.id), call: calls.has(project.id) })}
                       data-encrypted={encrypted(project) ? '' : undefined}>
                       <ProjectTile name={project.name} icon={project.icon} />
                       <span className="side__label">{project.name}</span>
                       {encrypted(project) ? <Icon name="lock" size={12} className="side__lock" /> : null}
+                      {calls.has(project.id) ? <Icon name="call" size={12} className="side__live" data-call-mark="" /> : null}
                       {quiet ? <Icon name="quiet" size={12} className="side__muted" data-muted-mark="" /> : null}
                       {fresh && quiet ? <span className="side__quiet" aria-hidden="true">{fresh}</span> : needing.has(project.id) ? <span className="side__dot" aria-hidden="true" /> : null}
                     </NavLink>

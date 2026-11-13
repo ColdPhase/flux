@@ -14,7 +14,7 @@ import {
 } from '@flux/core';
 import type { LiveContextRef, LivePresentation, LivePresentationRef } from '@flux/contracts';
 import { requireLiveContext, requireLivePresentationSource } from './access.js';
-import { recordLiveChanged } from './events.js';
+import { recordLiveChanged, recordLiveStarted } from './events.js';
 import { liveContextColumns, liveContextOf, sameLiveContext } from './context.js';
 
 type SessionRow = typeof schema.liveSessions.$inferSelect;
@@ -37,6 +37,7 @@ function record(row: SessionRow): LiveSessionRecord {
     roomId: row.roomId,
     createdBy: row.createdBy,
     createdAt: row.createdAt.toISOString(),
+    joinedBy: row.joinedBy,
   };
 }
 
@@ -116,7 +117,8 @@ export function liveSessionStore(db: Database): LiveRepository {
         if (inserted) {
           await ensureRoom(inserted.roomId);
           await taskFence.mark();
-          // The space's open tabs show Join at once (#1175). Last: the event's insert holds the sequence lock to commit.
+          // The space's people are told (F-041), and its open tabs show Join at once (#1175). Last: the event's insert holds the sequence lock to commit.
+          await recordLiveStarted(tx, { workspaceId: inserted.workspaceId, projectId, sessionId: inserted.id, actor: principal });
           await recordLiveChanged(tx, { workspaceId: inserted.workspaceId, projectId, sessionId: inserted.id, actor: principal });
           return record(inserted);
         }

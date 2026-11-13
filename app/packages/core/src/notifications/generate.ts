@@ -61,7 +61,7 @@ export interface Candidate {
  */
 export const SEALED_NOTIFICATION_PHRASES: Readonly<Record<Exclude<NotificationReason, 'security'>, string>> = {
   mention: 'mentioned you', question: 'asked you', reply: 'replied', dm: 'sent you a message', assigned: 'assigned you a task',
-  review: 'asked for your review', invitation: 'invited you to work together', approval: 'is waiting for your OK',
+  review: 'asked for your review', invitation: 'invited you to work together', approval: 'is waiting for your OK', call: 'started a call',
 };
 export function sealedNotificationTitle(reason: NotificationReason, who: string, workspaceName: string): string {
   return `${who} ${SEALED_NOTIFICATION_PHRASES[reason as Exclude<NotificationReason, 'security'>]} in ${workspaceName}`;
@@ -71,6 +71,11 @@ export function sealedNotificationTitle(reason: NotificationReason, who: string,
 export const WAITING_CHANGE_EVENT = 'project.change_waiting.v1';
 /** Where an agent waiting for your OK leads: its one Inbox item, open (`assistant:<run or client>`). */
 export const waitingChangeUrl = (group: string) => `/inbox?item=assistant:${group}`;
+
+/** A call of a space started (F-041): its space's people are told, each in their Inbox and by push at "Everything". */
+export const LIVE_STARTED_EVENT = 'project.live_started.v1';
+/** Where a call's notice leads: the call, which opens at its place (`LiveOpen`). */
+export const liveCallUrl = (projectId: string, sessionId: string) => `/projects/${projectId}/live/${sessionId}`;
 
 /** True for an event whose actor is an AI principal: an agent, which includes every member's own assistant. */
 export function isAgentActor(actorId: string) {
@@ -242,6 +247,20 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
         body: invitation.anchor.type === 'space' ? `Call in ${invitation.projectName}` : `On ${quote(excerpt(invitation.anchor.label, 80))} in ${invitation.projectName}`,
         url: `/projects/${invitation.projectId}/live/${invitation.sessionId}?invitation=${invitation.id}`, who: inviter,
       }];
+    }
+    case LIVE_STARTED_EVENT: {
+      // A call started in one of your spaces (F-041 point 3): everyone the event reached but its starter, while the call is still on. The
+      // Inbox always has it; push follows the level ("Everything"), and it is never emailed (`channelsOf`).
+      const sessionId = id(event.data.sessionId);
+      const session = sessionId ? await facts.liveSession(sessionId) : null;
+      if (!session || session.projectId !== event.objectId) return [];
+      const starter = (await facts.names([session.startedBy])).get(session.startedBy) ?? 'Someone';
+      return [...audience].filter((userId) => userId !== session.startedBy && reachable(userId)).map((userId) => ({
+        userId, reason: 'call' as const, source: { type: 'project' as const, id: session.projectId },
+        title: `${starter} started a call in ${session.projectName}`,
+        body: session.anchor.type === 'space' ? `Call in ${session.projectName}` : `At ${quote(excerpt(session.anchor.label, 80))}`,
+        url: liveCallUrl(session.projectId, session.id), who: starter,
+      }));
     }
     default:
       return [];

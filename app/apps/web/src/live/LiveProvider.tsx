@@ -50,6 +50,8 @@ export interface LiveValue {
   following: string | null;
   shown: ShownFragment | null;
   invitation: PendingInvitation | null;
+  /** Someone else has been in this call since you joined it (F-041): until then its starter reads "Nobody joined · Invite someone". */
+  othersJoined: boolean;
   /** Names of the session project's people; "You" for yourself. */
   nameOf(userId: string): string;
   /** The person's own name, also for yourself (initials on faces). */
@@ -141,6 +143,7 @@ export function LiveProvider({ meId, children }: { meId: string; children: React
   const [people, setPeople] = useState<ProjectPerson[]>([]);
   const [connection, setConnection] = useState<LiveMediaConnection | null>(null);
   const [stage, setStage] = useState<{ open: boolean; focus: string | null }>({ open: false, focus: null });
+  const othersJoinedRef = useRef(false);
   const connectionRef = useRef<LiveMediaConnection | null>(null);
   const rejoining = useRef(false);
   const cursor = useRef<string | null>(null);
@@ -151,6 +154,15 @@ export function LiveProvider({ meId, children }: { meId: string; children: React
   useEffect(() => { phaseRef.current = phase; sessionRef.current = session; quietRef.current = quiet; followingRef.current = following; });
 
   const media = useSyncExternalStore(connection?.subscribe ?? EMPTY_SNAPSHOT_SUBSCRIBE, connection?.getSnapshot ?? nullSnapshot);
+  // Someone else came into the call (F-041): from then on it is not a call "nobody joined".
+  // Remembered for the call it happened in, so a later call starts again from "Nobody joined".
+  const someoneElse = phase === 'in' && !!session && !!media?.people.some((person) => !person.local);
+  const [joinedIn, setJoinedIn] = useState<string | null>(null);
+  if (someoneElse && session && joinedIn !== session.id) setJoinedIn(session.id);
+  // Also after a reload: the server keeps who has been in the call.
+  const othersJoined = !!session && (joinedIn === session.id || session.joinedBy.some((userId) => userId !== session.createdBy));
+  useEffect(() => { if (session) othersJoinedRef.current = othersJoined; });
+
 
   // Whether this server has a media server at all. Unavailable is a normal, explained state.
   useEffect(() => {
@@ -314,9 +326,11 @@ export function LiveProvider({ meId, children }: { meId: string; children: React
       setSession(null);
       setShown(null);
       setFollowing(null);
-      setNotice('The live session ended or can no longer be reached. Nothing you saved was lost.');
+      // A call nobody else joined ends after 10 minutes alone (F-041 point 6); its starter is told so.
+      setNotice(current.createdBy === meId && !othersJoinedRef.current ? 'Nobody joined, so the call ended. Your work is saved.'
+        : 'The live session ended or can no longer be reached. Nothing you saved was lost.');
     })();
-  }, [connect, toast]);
+  }, [connect, meId, toast]);
   useEffect(() => {
     if (!connection) return;
     return connection.subscribe(() => {
@@ -462,7 +476,7 @@ export function LiveProvider({ meId, children }: { meId: string; children: React
   const startAudio = useCallback(async () => { await connectionRef.current?.startAudio(); }, []);
 
   const value = useMemo<LiveValue>(() => ({
-    capability, phase, session, anchor, notice, media, quiet, following, shown, invitation, nameOf, fullName, people, meId,
+    capability, phase, session, anchor, notice, media, quiet, following, shown, invitation, othersJoined, nameOf, fullName, people, meId,
     start, join, leave, setDevice, setScreenMode, setQuiet, startAudio, present, view, follow, answerInvitation,
     dismissNotice: () => setNotice(null),
     audio: connection?.audio ?? null,
@@ -470,7 +484,7 @@ export function LiveProvider({ meId, children }: { meId: string; children: React
     stage,
     openStage: (focus: string | null = null) => setStage({ open: true, focus }),
     closeStage: () => setStage((current) => ({ ...current, open: false })),
-  }), [capability, phase, session, anchor, notice, media, quiet, following, shown, invitation, nameOf, fullName, people, meId,
+  }), [capability, phase, session, anchor, notice, media, quiet, following, shown, invitation, othersJoined, nameOf, fullName, people, meId,
     start, join, leave, setDevice, setScreenMode, setQuiet, startAudio, present, view, follow, answerInvitation, connection, stage]);
 
   // The registry of what the current views are about.
