@@ -1615,7 +1615,7 @@ token alone is not enough (S1 review): a real deployment never holds a half-seal
   head**, named by SHA in the S3 PR.
 - **S3: creation and interface.** The production route; New space with encryption and the recovery
   code step; the removal, demotion and leave confirmations and the rotation progress line; the locked panel and sidebar row; the People panel sections; the project Details line;
-  `lockedWorkspaces` drawn on Home, Inbox and ⌘K; and the operations guides (install, backup and
+  `lockedWorkspaces` drawn on Home, Inbox and ⌘K (since #1419 on Home only, beside the sidebar row); and the operations guides (install, backup and
   restore, upgrade: "upgrading locks encrypted spaces; have an unlock password ready"; swap and
   hibernation). Then AC-11 and the visual review.
 
