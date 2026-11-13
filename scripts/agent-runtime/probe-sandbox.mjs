@@ -341,8 +341,8 @@ const piModelToken = `flux_mg_${randomBytes(32).toString('base64url')}`;
 const piProbes = [
   ['pi\'s bash: the scratch, a clean environment', { tool: 'bash', args: { command: 'pwd; env | cut -d= -f1 | sort | tr "\\n" " "' } }],
   ['pi\'s bash: the person\'s and another person\'s files', { tool: 'bash', args: { command: `cat /data/${ada}/claude/.credentials.json /data/${bo}/claude/.credentials.json; ls /data/${ada}/pi` } }],
-  // The shell's parent is the run's broker (#1437, #1461); pi is found by its launcher in its command line.
-  ['pi\'s bash: pi\'s own environment', { tool: 'bash', args: { command: 'for p in /proc/[0-9]*; do grep -q "pi-launc[h]" $p/cmdline 2>/dev/null && { echo "pi is $p" >&2; cat $p/environ; }; done | tr "\\0" "\\n" | grep -c FLUX_RUN_TOKEN' } }],
+  // The shell's parent is the run's broker (#1437, #1461); pi is found by its command line, which pi sets to its name (`process.title`).
+  ['pi\'s bash: pi\'s own environment', { tool: 'bash', args: { command: 'for p in /proc/[0-9]*; do [ "$(tr -d "\\0" < $p/cmdline 2>/dev/null)" = pi ] && { echo "pi is $p" >&2; cat $p/environ; }; done | tr "\\0" "\\n" | grep -c FLUX_RUN_TOKEN' } }],
   ['pi\'s bash: TCP to the model stand-in', { tool: 'bash', args: { command: `node -e 'require("net").connect(${modelPort}, "127.0.0.1").on("connect", () => console.log("CONNECTED")).on("error", (e) => console.log(e.code))'` } }],
   ['pi\'s read: its own /proc environment', { tool: 'read', args: { path: '/proc/self/environ' } }],
   ['pi\'s read: another person\'s login', { tool: 'read', args: { path: `/data/${bo}/claude/.credentials.json` } }],
