@@ -1158,7 +1158,9 @@ Live strip, someone shares a screen
   is "Join · Nia". On the phone Join is the dark pill between the name and ⋯ (#1239); under 360 px it takes Call's row in ⋯, after Search, with the dot on ⋯.
 - **In the call, the header's slot shows the call** (#1424): "In call" with the live dot, the same quiet button, which takes you
   to the call: its place when you are somewhere else, else its stage (a shared screen or the cameras; again to put it away),
-  else the strip's own place button. It never says "You are in a live session" and does nothing. ⋯'s row reads the same.
+  else the strip's own place button. It never says "You are in a live session" and does nothing. ⋯'s row reads the same. While the
+  call connects ([#1378](https://github.com/ColdPhase/flux/issues/1378)) the dot is a spinner and the button only says "Connecting to the call."; the slot keeps
+  its width either way, so nothing moves.
 - **A server with no media server shows no Call in the header** (#1419 decision 4, #1424): nothing that explains why it does
   nothing. Conversations, tasks, maps and pages work as usual.
 - **The strip's row is centred** on every window: the live dot with its word (**Live**, from 360 px), the place's button, the faces, then the devices; every item shares
