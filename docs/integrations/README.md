@@ -146,8 +146,8 @@ HTTP-level failures:
   `WWW-Authenticate` challenge that points to the resource metadata.
 - **403:** the connection was revoked, or the OAuth client was disabled.
 
-In Flux, the owner sees each connection under **Settings › AI › Local co-work on this computer**, with its **What it may
-do** setting, and **Disconnect** there revokes it at once. A change a client made shows its change line ("Ada · via Claude Code") with Undo where it was made.
+In Flux, the owner sees each connection as a row of **Settings › AI**, with its **What it may do** tag and **Disconnect**, which
+revokes it at once. A change a client made shows its change line ("Ada · via Claude Code") with Undo where it was made.
 
 ## EXT-2: read a project export
 
