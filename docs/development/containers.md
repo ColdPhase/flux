@@ -433,7 +433,7 @@ image) is served by the API on the same origin. Its design tokens and components
 described in [the app shell record](../design/app-shell/README.md).
 `python3 scripts/check_contrast.py` checks token contrast without Docker.
 
-`./scripts/check_ui.sh` builds the image (which runs build, typecheck and lint), starts the
+`./scripts/check_ui.sh` builds the image (the build only; the type check and the lint run in the Dockerfile's `verify` stage, which `check_application.sh` and the Application validation build, #1471), starts the
 stack in its own Compose project on `127.0.0.1:${FLUX_UI_PORT:-18591}` with Mailpit, and runs
 `app/tests/ui` (copied into the image, `unittest discover`; pass module names such as
 `./scripts/check_ui.sh test_docs test_people`, or `Module.Class.test_name`, to run only those) in a Playwright 1.65 container (`docker/ui-tests.Dockerfile`, image pinned by
