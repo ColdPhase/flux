@@ -376,8 +376,15 @@ class FilesReferencesPhotos(unittest.TestCase):
         expect(body).to_contain_text("see #8 and ask @Ada:")
         for chip in (body.locator(".ref-chip[data-ref=task]"), body.locator(".ref-chip[data-ref=person]")):
             self.assertEqual(chip.evaluate("el => getComputedStyle(el).verticalAlign"), "baseline")
-            drift = chip.evaluate("""el => { const r = document.createRange(); const t = el.previousSibling; r.setStart(t, t.length - 1); r.setEnd(t, t.length);
-                const a = r.getBoundingClientRect(), b = el.getBoundingClientRect(); return Math.abs((a.top + a.bottom) / 2 - (b.top + b.bottom) / 2); }""")
+            # Measured against the letter next to it on its own line: on a phone the chip may begin a line (it wraps like a word), and the
+            # letter before it then ends the line above, a line height away; the one after it shares its line.
+            drift = chip.evaluate("""el => {
+                const centre = (rect) => (rect.top + rect.bottom) / 2, b = centre(el.getBoundingClientRect());
+                const letter = (node, last) => { if (!node || node.nodeType !== Node.TEXT_NODE) return null; const text = node.textContent;
+                  const i = last ? text.trimEnd().length - 1 : text.length - text.trimStart().length; if (i < 0 || i >= text.length) return null;
+                  const r = document.createRange(); r.setStart(node, i); r.setEnd(node, i + 1); return Math.abs(centre(r.getBoundingClientRect()) - b); };
+                const near = [letter(el.previousSibling, true), letter(el.nextSibling, false)].filter((d) => d !== null);
+                return near.length ? Math.min(...near) : 999; }""")
             self.assertLessEqual(drift, 3, "chip sits on the text line")
         preview = files.get_by_role("list", name="Link preview").get_by_role("link")
         expect(preview).to_contain_text("thethingsnetwork.org")
