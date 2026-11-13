@@ -141,6 +141,11 @@ class InviteLinksJourney(unittest.TestCase):
         page.goto(self.member_link)
         expect(page.get_by_role("heading", level=1, name="Join Riverside Makers")).to_be_visible()
         expect(page.get_by_text("Ada Kowalska invited you to Riverside Makers as a member.")).to_be_visible()
+        # #1424: a new person is who the link is for: "Create an account" is the primary action, and "Sign in" is the second way.
+        create, sign_in = page.get_by_role("button", name="Create an account"), page.get_by_role("button", name="Sign in", exact=True)
+        expect(create).to_have_class(re.compile(r"ui-btn--primary"))
+        expect(sign_in).to_have_class(re.compile(r"ui-btn--secondary"))
+        self.assertLess(create.bounding_box()["y"], sign_in.bounding_box()["y"], "Create an account comes first")
         # The token is kept in this tab only: not in the address or the history (#776 review P3-2).
         self.assertEqual(page.evaluate("location.hash"), "")
         self.assertEqual(page.url, f"{ORIGIN}/join")
@@ -151,12 +156,13 @@ class InviteLinksJourney(unittest.TestCase):
         page.get_by_label("Email").fill(NIA[1])
         page.get_by_label("Password").fill(PASSWORD)
         page.get_by_role("button", name="Create account").click()
-        # #763 FT-3: an account made from the link joins as it is made; there is no second "Join" to press.
-        expect(page.get_by_role("heading", level=1, name="You joined Riverside Makers")).to_be_visible()
-        self.assertEqual(page.url, f"{ORIGIN}/join")
-        expect(page.get_by_text("You’re a member of Riverside Makers.")).to_be_visible()
-        page.get_by_role("button", name="Open Riverside Makers").click()
-        expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+        # #763 FT-3: an account made from the link joins as it is made; there is no second "Join" to press. #1424: and no "You joined" page
+        # either: the person lands in Everyone, where the composer is ready to write in.
+        expect(page.get_by_role("heading", level=1, name="Everyone")).to_be_visible()
+        expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]+$"))
+        expect(page.get_by_role("heading", level=1, name=re.compile("You joined"))).to_have_count(0)
+        expect(page.locator("#project-composer")).to_be_visible()
+        shot(page, "invite-landed-in-everyone-phone-390")
         self.assertEqual(self.roles(self.riverside).get(NIA[1]), "member")
         self.assertEqual(self.pending(self.riverside), [], "the used link is no longer listed")
         # The link worked once: opening it again from this account says there is nothing more to do.
@@ -181,13 +187,14 @@ class InviteLinksJourney(unittest.TestCase):
         # Ben, signed out, signs in through the link and joins as a guest.
         ben = self.page(None)
         ben.goto(link)
-        ben.get_by_role("button", name="Sign in to join").click()
+        ben.get_by_role("button", name="Sign in", exact=True).click()
         ben.get_by_label("Email").fill(PEOPLE["ben"][1])
         ben.get_by_label("Password").fill(PASSWORD)
         ben.get_by_role("button", name="Sign in").click()
         ben.get_by_role("button", name="Join Riverside Makers").click()
-        expect(ben.get_by_role("heading", level=1, name="You joined Riverside Makers")).to_be_visible()
-        expect(ben.get_by_text("You’re a guest of Riverside Makers.")).to_be_visible()
+        # A guest has no space yet, so Home says whose company this is (#1424: no "You joined" page).
+        expect(ben.get_by_role("heading", level=1, name="Home")).to_be_visible()
+        expect(ben.get_by_role("heading", name="You’re in Riverside Makers")).to_be_visible()
         self.assertEqual(self.roles(self.riverside).get(PEOPLE["ben"][1]), "guest")
         # Ada's People shows Ben without a reload (the join is an event of the workspace).
         expect(owner.get_by_role("list", name="People in Riverside Makers")).to_contain_text("Ben Okafor")
@@ -223,7 +230,9 @@ class InviteLinksJourney(unittest.TestCase):
         visitor.goto(invite.json()["link"])
         expect(visitor.get_by_text("New here? Sign in with Company SSO; your account is made the first time.")).to_be_visible()
         expect(visitor.get_by_text("New accounts are closed on this Flux server.")).to_have_count(0)
-        expect(visitor.get_by_role("button", name="Sign in to join")).to_be_visible()
+        expect(visitor.get_by_role("button", name="Sign in", exact=True)).to_be_visible()
+        expect(visitor.get_by_role("button", name="Sign in", exact=True)).to_have_class(re.compile(r"ui-btn--primary"))
+        expect(visitor.get_by_role("button", name="Create an account")).to_have_count(0)
         # F-037: with single sign-on, Settings › Company says who joins and offers no invite links.
         owner = context.new_page()
         owner.route("**/api/v1/auth/capabilities", lambda route: route.fulfill(json={

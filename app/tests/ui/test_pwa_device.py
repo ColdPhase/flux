@@ -232,6 +232,28 @@ class InstallAndLaunch(unittest.TestCase):
         sizes = row.evaluate("(el) => [getComputedStyle(el.querySelector('.sset-row__t')).fontSize, getComputedStyle(el.querySelector('[role=note]')).fontSize]")
         self.assertGreaterEqual(float(sizes[1].rstrip("px")), float(sizes[0].rstrip("px")), f"steps at body size, not meta text: {sizes}")
 
+    def test_04a_on_a_server_that_pushes_the_steps_are_said_where_the_person_is(self) -> None:
+        """#1424: the phone's "On this device" row says what to do (Share, then Add to Home Screen), never "see below"; the install row at the
+        bottom does not say it again, so the steps are said once, in the row the person is reading."""
+        context = self.context(PHONE, user_agent=IPHONE_UA)
+        # This run's server has no push keys: the page is told it has them (its own request is answered, so no route is stubbed and the service
+        # worker stays allowed).
+        context.add_init_script("""(() => {
+          const real = window.fetch.bind(window);
+          window.fetch = (input, init) => {
+            const url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input);
+            if (url.includes('/api/v1/push/public-key')) return Promise.resolve(new Response(JSON.stringify({ status: 'available', publicKey: 'BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYp5Nksh8U' }), { status: 200, headers: { 'content-type': 'application/json' } }));
+            return real(input, init);
+          };
+        })();""")
+        page = self.page(context)
+        self.appearance(page)
+        device = page.locator(".sset-row", has=page.get_by_text("On this device", exact=True))
+        expect(device.get_by_role("note")).to_contain_text("Tap Share, then Add to Home Screen")
+        expect(page.get_by_text(re.compile("see .* below", re.I))).to_have_count(0)
+        expect(page.get_by_test_id("install-flux")).to_have_count(0)
+        expect(page.get_by_text(re.compile("Add to Home Screen"))).to_have_count(1)
+
     def test_04b_an_ipad_shows_the_home_screen_steps(self) -> None:
         """iPad: the classic "iPad" user agent, and iPadOS's desktop one ("Macintosh" with touch points)."""
         for name, user_agent in (("iPad", IPAD_UA), ("iPadOS desktop UA", IPADOS_DESKTOP_UA)):

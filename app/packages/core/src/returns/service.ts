@@ -298,7 +298,7 @@ export function createReturnUseCases(ports: ReturnPorts) {
         } else if (item.status === 'done') { text = `Done: ${item.title}`; }
         else if (newForYou && !madeForYou) { text = `${giver} gave you a task: ${item.title}`; }
         else if (created) {
-          text = mine ? `${actor} added a task for you: ${item.title}` : `New task: ${item.title}`;
+          text = mine ? `${actor} created a task for you: ${item.title}` : `New task: ${item.title}`;
           const owner = nameOf(item.ownerKey);
           if (!mine && owner) detail = `${owner} owns it`;
         } else if (item.status === 'in_progress') {

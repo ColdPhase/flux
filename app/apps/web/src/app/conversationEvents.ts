@@ -43,17 +43,17 @@ export function messageOf(author: string, actor?: { name: string; mine: boolean 
   return `${possessive(author)} message`;
 }
 
-/** The part after the creator's name for one task: "made a task from", "added a task in Tasks", ... */
+/** The part after the creator's name for one task: "created a task from", "created a task", ... A new task is always "created" (#1424). */
 export function sourcePhrase(source: NoticeSource, actor?: { name: string; mine: boolean }): { lead: string; link?: string } {
   switch (source.kind) {
-    case 'message': return source.author ? { lead: 'made a task from', link: messageOf(source.author, actor) } : { lead: 'made a task from', link: 'a message' };
-    case 'map': return { lead: 'made a task from the map' };
-    case 'material': return { lead: 'made a task from a source' };
-    default: return { lead: 'added a task' };
+    case 'message': return source.author ? { lead: 'created a task from', link: messageOf(source.author, actor) } : { lead: 'created a task from', link: 'a message' };
+    case 'map': return { lead: 'created a task from the map' };
+    case 'material': return { lead: 'created a task from a source' };
+    default: return { lead: 'created a task' };
   }
 }
 
-/** Plain words for the folded line: "Ada made 2 tasks, Claude Code added 1 task on the Map". */
+/** Plain words for the folded line: "Ada created 2 tasks, Claude Code created 1 task from the map". */
 export function foldSummary(notices: TaskCreationNotice[], authorOf: (messageId: string) => string | null, nameOf: (notice: TaskCreationNotice) => string): string {
   const groups = new Map<string, { name: string; count: number; where: string }>();
   for (const notice of notices) {
@@ -74,7 +74,7 @@ export function foldSummary(notices: TaskCreationNotice[], authorOf: (messageId:
     groups.set(key, group);
   }
   return [...groups.values()].map((group) => group.where === '\0updated' ? `${group.name} updated ${group.count === 1 ? 'a task' : `${group.count} tasks`}`
-    : `${group.name} added ${group.count === 1 ? 'a task' : `${group.count} tasks`}${group.where}`).join(', ');
+    : `${group.name} created ${group.count === 1 ? 'a task' : `${group.count} tasks`}${group.where}`).join(', ');
 }
 
 /** The stream as drawn: roots, single announcements and folded runs of announcements. */

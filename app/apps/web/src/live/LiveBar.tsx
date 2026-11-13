@@ -8,6 +8,7 @@ import type { MediaPerson, ScreenMode } from './media';
 import { MicControl } from './AudioSettings';
 import { DeviceButton } from './DeviceButton';
 import { FaceSound } from './ParticipantVolume';
+import { InvitePanel, peopleToInvite, useInvited } from './InvitePanel';
 import { LivePanel } from './LivePanel';
 import { Popover } from './Popover';
 import { LiveDot, namesLine } from './LiveEntry';
@@ -35,8 +36,9 @@ export function LiveBar() {
   const navigate = useNavigate();
   const phone = useMediaQuery(MEDIA.phone);
   const [moreOpen, setMoreOpen] = useState(false);
-  // Invite… opens the same panel at its "Can join" people (F-041 point 4).
-  const [inviteFocus, setInviteFocus] = useState(false);
+  // "Invite someone" is the strip's one invite control and opens its own small list, not ⋯'s panel (F-041 point 4, #1424).
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [invited, onInvited] = useInvited(live.session?.id);
   const moreRef = useRef<HTMLButtonElement>(null);
   const inviteRef = useRef<HTMLButtonElement>(null);
   const [showBusy, setShowBusy] = useState(false);
@@ -46,6 +48,8 @@ export function LiveBar() {
   const stripOnly = useStripOnlyModal();
   const [moreAs, setMoreAs] = useState<'sheet' | 'popover'>('popover');
   if (stripOnly && moreAs === 'popover' && moreOpen && !phone) setMoreOpen(false);
+  const [inviteAs, setInviteAs] = useState<'sheet' | 'popover'>('popover');
+  if (stripOnly && inviteAs === 'popover' && inviteOpen && !phone) setInviteOpen(false);
 
   // An invitation you opened: one card, three calm answers.
   if (live.phase === 'idle' && live.invitation) {
@@ -75,7 +79,7 @@ export function LiveBar() {
 
   if (live.phase === 'ended' && live.notice) {
     return (
-      <section className="lv-bar lv-bar--ended" aria-label="Live session">
+      <section className="lv-bar lv-bar--ended" aria-label="Call">
         <div className="lv-row" role="status">
           <span className="lv-row__lead"><Icon name="together" size={16} /></span>
           <p className="lv-row__text">{live.notice}</p>
@@ -89,7 +93,7 @@ export function LiveBar() {
   if ((live.phase === 'starting' || live.phase === 'joining') && live.anchor) {
     const connectingTo = live.anchor;
     return (
-      <section className="lv-bar" aria-label="Live session">
+      <section className="lv-bar" aria-label="Call">
         <div className="lv-row">
           <span className="lv-row__lead" role="status" aria-live="polite"><Spinner /><span className="lv-status">Connecting…</span></span>
           <button type="button" className="lv-where" onClick={() => navigate(anchorPath(connectingTo), { state: { liveFollow: true } })}
@@ -128,19 +132,25 @@ export function LiveBar() {
   };
 
   const faces = (
-    <span className="lv-faces lv-faces--room" aria-label={`In the session: ${namesLine(people.map((p) => p.userId), live.nameOf, live.meId)}`}>
+    <span className="lv-faces lv-faces--room" aria-label={`In the call: ${namesLine(people.map((p) => p.userId), live.nameOf, live.meId)}`}>
       {people.slice(0, phone ? 3 : 5).map((person) => <FaceSound key={person.userId} live={live} person={person}><Face person={person} name={live.fullName(person.userId)} /></FaceSound>)}
       {people.length > (phone ? 3 : 5) ? <span className="lv-face lv-face--more">+{people.length - (phone ? 3 : 5)}</span> : null}
     </span>
   );
 
-  const panel = <LivePanel live={live} presentable={presentable} focusInvite={inviteFocus} onShow={() => { setMoreOpen(false); void showThis(); }} onClose={() => setMoreOpen(false)} />;
-  const openPanel = (invite: boolean) => { setInviteFocus(invite); if (!moreOpen) setMoreAs(stripOnly ? 'sheet' : 'popover'); setMoreOpen(true); };
-  // Its starter alone in a call nobody else has joined (F-041 point 6): it says so, with the way to invite someone.
+  const openInvite = () => { if (!inviteOpen) setInviteAs(stripOnly || phone ? 'sheet' : 'popover'); setInviteOpen(true); };
+  const panel = <LivePanel live={live} presentable={presentable} onShow={() => { setMoreOpen(false); void showThis(); }} onClose={() => setMoreOpen(false)}
+    {...(phone ? { onInvite: () => { setMoreOpen(false); openInvite(); } } : {})} />;
+  const invitePanel = <InvitePanel live={live} invited={invited} onInvited={onInvited} onClose={() => setInviteOpen(false)} />;
+  const openPanel = () => { if (!moreOpen) setMoreAs(stripOnly ? 'sheet' : 'popover'); setMoreOpen(true); };
+  // Someone the space has who is not in the call: only then is there anything to invite, so the control is not shown otherwise.
+  const canInvite = live.phase === 'in' && !live.quiet && peopleToInvite(live).length > 0;
+  // Its starter alone in a call nobody else has joined (F-041 point 6): it says so; the way to invite someone is the strip's one control,
+  // which on a phone, with no room for it in the row, is in this line while nobody has joined.
   const nobodyJoined = live.phase === 'in' && live.session?.createdBy === live.meId && !live.othersJoined && others.length === 0;
 
   return (
-    <section className={`lv-bar${live.quiet ? ' is-quiet' : ''}${reconnecting ? ' is-reconnecting' : ''}`} aria-label="Live session">
+    <section className={`lv-bar${live.quiet ? ' is-quiet' : ''}${reconnecting ? ' is-reconnecting' : ''}`} aria-label="Call">
       <div className="lv-row">
         <span className="lv-row__lead" role="status" aria-live="polite">
           {connecting || reconnecting ? <Spinner /> : <LiveDot on={!live.quiet} />}
@@ -169,13 +179,13 @@ export function LiveBar() {
               ) : !phone && cameras.length && !screens.length ? (
                 <Button variant="quiet" icon="video" aria-pressed={live.stage.open} onClick={() => (live.stage.open ? live.closeStage() : live.openStage(null))}>Cameras</Button>
               ) : null}
-              {!phone ? <Button ref={inviteRef} variant="quiet" icon="plus" aria-haspopup="dialog" onClick={() => openPanel(true)}>Invite…</Button> : null}
+              {!phone && canInvite ? <Button ref={inviteRef} variant="quiet" icon="plus" aria-haspopup="dialog" aria-expanded={inviteOpen} onClick={openInvite}>Invite someone</Button> : null}
               <MicControl live={live} />
               {!phone ? <DeviceButton kind="camera" live={live} /> : null}
               {!phone && canPublishScreen() ? <DeviceButton kind="screen" live={live} /> : null}
             </>
           )}
-          <IconButton ref={moreRef} icon="more" label="Session details and more" aria-expanded={moreOpen} aria-haspopup="dialog" onClick={() => { if (moreOpen) setMoreOpen(false); else openPanel(false); }} />
+          <IconButton ref={moreRef} icon="more" label="Call details and more" aria-expanded={moreOpen} aria-haspopup="dialog" onClick={() => { if (moreOpen) setMoreOpen(false); else openPanel(); }} />
           <Button variant="danger" icon={phone ? undefined : 'leave'} className="lv-leave" onClick={() => void live.leave()}>Leave</Button>
         </span>
       </div>
@@ -184,13 +194,13 @@ export function LiveBar() {
         <div className="lv-line" role="status">
           <Icon name="together" size={14} />
           <span className="lv-line__text">Nobody joined</span>
-          <Button variant="quiet" onClick={() => openPanel(true)}>Invite someone</Button>
+          {phone && canInvite ? <Button variant="quiet" aria-haspopup="dialog" onClick={openInvite}>Invite someone</Button> : null}
         </div>
       ) : null}
       {sharingScreen ? (
         <div className="lv-line lv-line--sharing" role="status">
           <span className="lv-dot lv-dot--share" aria-hidden="true" />
-          <span className="lv-line__text">You are sharing your screen. Everyone in the session can see it.</span>
+          <span className="lv-line__text">You are sharing your screen. Everyone in the call can see it.</span>
           <ScreenModeChoice live={live} />
           <Button variant="quiet" onClick={() => void live.setDevice('screen', false)}>Stop sharing</Button>
         </div>
@@ -239,9 +249,14 @@ export function LiveBar() {
         </Sheet>
       ) : null}
       {phone || moreAs === 'sheet' ? (
-        <Sheet open={moreOpen} onClose={() => setMoreOpen(false)} label="Live session" className="lv-sheet">{panel}</Sheet>
+        <Sheet open={moreOpen} onClose={() => setMoreOpen(false)} label="Call details" className="lv-sheet">{panel}</Sheet>
       ) : (
-        <Popover open={moreOpen} onClose={() => setMoreOpen(false)} anchorRef={inviteFocus && !live.quiet ? inviteRef : moreRef} label="Live session" className="lv-pop--panel">{panel}</Popover>
+        <Popover open={moreOpen} onClose={() => setMoreOpen(false)} anchorRef={moreRef} label="Call details" className="lv-pop--panel">{panel}</Popover>
+      )}
+      {phone || inviteAs === 'sheet' ? (
+        <Sheet open={inviteOpen} onClose={() => setInviteOpen(false)} label="Invite someone" className="lv-sheet">{invitePanel}</Sheet>
+      ) : (
+        <Popover open={inviteOpen} onClose={() => setInviteOpen(false)} anchorRef={inviteRef} label="Invite someone" className="lv-pop--panel">{invitePanel}</Popover>
       )}
     </section>
   );

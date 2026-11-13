@@ -391,9 +391,7 @@ class FirstRunSettingsPeople(unittest.TestCase):
         stranger.get_by_label("Email").fill(newcomer)
         stranger.get_by_label("Password").fill(PASSWORD)
         stranger.get_by_role("button", name="Create account").click()
-        expect(stranger.get_by_role("heading", level=1, name="You joined Riverside Makers")).to_be_visible()
-        stranger.get_by_role("button", name="Open Riverside Makers").click()
-        expect(stranger.get_by_role("heading", level=1, name="Home")).to_be_visible()
+        expect(stranger.get_by_role("heading", level=1, name="Everyone")).to_be_visible()
         expect(page.get_by_role("list", name="People in Riverside Makers")).to_contain_text("Piotr Nowy")
 
     # ---------------------------------------------------------------- mention chips (PE-4)

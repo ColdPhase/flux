@@ -6,6 +6,8 @@ import { type AgentConnection, type BackgroundComputeConnection, type PersonalAs
 import { listAgentConnections } from '../agent-connection/api';
 import { getAssistantStatus } from '../assistant/api';
 import { listBackgroundConnections } from '../ai/api';
+import { getPreferences } from '../notifications/api';
+import { notificationSummary } from '../notifications/levels';
 import { SERVER_AI_OFF_LINE } from '../assistant/format';
 import { AgentsList } from '../my-agents/AgentsList';
 import { Avatar, Button, Icon, Kreska, MEDIA, Spinner, setReduceMotion, useMediaQuery, useReduceMotion } from '../ui';
@@ -269,6 +271,13 @@ export function SettingsAppearance() {
 function PhoneSettings() {
   const { me, workspace, agents } = useShellData();
   const theme = useTheme();
+  // What the person hears about, said as it is now: quiet hours are named only while they are on (#1424). Until it is read the line keeps its height.
+  const [heard, setHeard] = useState<string | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    getPreferences(controller.signal).then((prefs) => setHeard(notificationSummary(prefs)), () => undefined);
+    return () => controller.abort();
+  }, []);
   return (
     <div className="pane-scroll">
       <div className="pane-in sset-in">
@@ -280,7 +289,7 @@ function PhoneSettings() {
         </Link>
         <ul className="sset-card sset-gap">
           <LinkRow to="/settings/appearance" icon={<Icon name="sun" size={16} />} title="Appearance" detail={THEME_LABEL[theme]} />
-          <LinkRow to="/settings/notifications" icon={<Icon name="bell" size={16} />} title="Notifications" detail="Needs you and quiet hours" />
+          <LinkRow to="/settings/notifications" icon={<Icon name="bell" size={16} />} title="Notifications" detail={heard ?? '\u00a0'} />
           {isGuest(workspace) ? null : <LinkRow to="/settings/agents" icon={<Icon name="spark" size={16} />} title="AI" detail={agents.length ? `${agents.length} ${agents.length === 1 ? 'agent' : 'agents'}` : undefined} />}
           <LinkRow to="/settings/company" icon={<Icon name="people" size={16} />} title="Company" detail={workspace ? `${workspace.name} · its people and their roles` : 'Its people and their roles'} />
         </ul>

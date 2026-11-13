@@ -6,7 +6,8 @@ import { ApiError } from '../api/client';
 import { listAiModels } from './api';
 
 // Provider, API key, model, endpoint and price of an owner's AI connection (F-020, #179; CA-2, #1218), in that order: the key
-// comes before the model because the model list is the key's own. Every provider is offered the same way; none is preselected.
+// comes before the model because the model list is the key's own. Every provider is offered the same way; none is preselected, and a
+// model is chosen for the owner only when the provider lists exactly one.
 // - Anthropic, OpenAI and Gemini: when the key field is left, the server lists the models that key can use, and that one call is
 //   also the key's test. The Model is then a dropdown by family, newest first, each with its price or "price unknown, enter it",
 //   and "Other model id…" for an id the list lacks. A refused key says so and Connect waits for another; a list that can't be
@@ -126,8 +127,9 @@ export function ConnectionFields({ disabled, onKeyRefused, keyHelpId }: {
       if (!result || ask !== asked.current) return;
       setListing({ state: 'done', list: result });
       if (result.status === 'listed' && result.models.length) {
-        // Nothing is preselected: the models are the provider's own, and the owner picks one (#1218).
-        setModel((current) => (result.models.some((entry) => entry.id === current) ? current : ''));
+        // Nothing is preselected among several: the models are the provider's own, and the owner picks one (#1218). A list of one has
+        // nothing to pick between (the journey review, #1424), so that model is already chosen.
+        setModel((current) => (result.models.some((entry) => entry.id === current) ? current : result.models.length === 1 ? result.models[0]!.id : ''));
         setOther(false);
       }
     } catch {
@@ -203,8 +205,8 @@ export function ConnectionFields({ disabled, onKeyRefused, keyHelpId }: {
         <p className="background-settings__help">Flux doesn’t know this model’s price yet. Enter it to use it with a daily budget: from your provider’s pricing, or 0 for a self-hosted server you pay for otherwise. Flux prices each request at it before sending, so your daily budget holds.</p>
         {listedPrice ? <p className="background-settings__help" data-testid="listed-price">{info!.label} lists {priceText(listedPrice)} (read {list!.checkedOn}); it is filled in below for you to confirm.</p> : null}
         <div className="background-settings__limits">
-          <label>Input price<input name="inputPrice" type="number" min="0" max="1000" step="any" inputMode="decimal" defaultValue={listedPrice ? usd(listedPrice.inputMicrosPerMTok) : undefined} /></label>
-          <label>Output price<input name="outputPrice" type="number" min="0" max="1000" step="any" inputMode="decimal" defaultValue={listedPrice ? usd(listedPrice.outputMicrosPerMTok) : undefined} /></label>
+          <label>Input price<input name="inputPrice" type="number" min="0" max="1000" step="any" inputMode="decimal" aria-required="true" defaultValue={listedPrice ? usd(listedPrice.inputMicrosPerMTok) : undefined} /></label>
+          <label>Output price<input name="outputPrice" type="number" min="0" max="1000" step="any" inputMode="decimal" aria-required="true" defaultValue={listedPrice ? usd(listedPrice.outputMicrosPerMTok) : undefined} /></label>
         </div>
       </fieldset> : null}
   </>;

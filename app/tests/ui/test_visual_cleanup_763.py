@@ -72,7 +72,7 @@ class VisualCleanup763(unittest.TestCase):
         cls.pw.stop()
 
     def page(self, viewport: dict, touch: bool = False) -> Page:
-        options = dict(base_url=ORIGIN, viewport=viewport, storage_state=self.states["ada"], locale="en-GB", service_workers="block")
+        options: dict = {"base_url": ORIGIN, "viewport": viewport, "storage_state": self.states["ada"], "locale": "en-GB", "service_workers": "block"}
         if touch:
             options.update(is_mobile=UI_BROWSER == "chromium", has_touch=True)
         context = self.browser.new_context(**options)
@@ -141,6 +141,8 @@ class VisualCleanup763(unittest.TestCase):
 
     def test_04_together_says_why_instead_of_looking_disabled(self) -> None:
         page = self.page(DESKTOP)
+        # A server with no media server shows no Call (#1424); this one is read as if it had one.
+        page.context.route("**/api/v1/live-sessions/capabilities", lambda route: route.fulfill(json={"status": "configured"}))
         page.goto(f"/projects/{self.project}/tasks")
         together = page.locator("header.top").get_by_role("button", name="Call", exact=True)
         expect(together).to_be_visible()

@@ -239,11 +239,11 @@ class Round2Flows(unittest.TestCase):
         page = self.page("ada")
         page.goto(f"/projects/{self.ids['project']}")
         notice = page.locator(".convo-notice", has_text="Order six capacitive probes").first
-        expect(notice.locator(".convo-notice__what")).to_have_text("made a task from your message")
+        expect(notice.locator(".convo-notice__what")).to_have_text("created a task from your message")
         jonas = self.page("jonas")
         jonas.goto(f"/projects/{self.ids['project']}")
         notice = jonas.locator(".convo-notice", has_text="Order six capacitive probes").first
-        expect(notice.locator(".convo-notice__what")).to_have_text("made a task from their own message")
+        expect(notice.locator(".convo-notice__what")).to_have_text("created a task from their own message")
 
 
     # ---------------------------------------------------------------- H11-3

@@ -141,6 +141,10 @@ grey-text "Import a Markdown file" at another height and weight, and a sign-in t
 - **Sign-in, sign-up, an invitation, a password reset and single sign-on use the same pair,** both `lg` and as wide as the form: the
   primary action ("Sign in", "Create account", "Join Acme", "Send reset link"), and, where there is a second way, a `secondary` below it.
   With single sign-on as the only way in, "Sign in with *provider*" is the primary. The page's other actions are links in a line under the form.
+- **An invitation's page leads with the new person's way in** (#1424): signed out, **Create an account** is the primary and **Sign in**
+  the `secondary` below it (where new accounts are closed, Sign in is the primary). Joining, with a new account or with Join, lands in
+  the space: Everyone, with the composer ready on a computer. There is no "You joined" page and no "Open" to press; the one page that
+  stays is the admin of an encrypted space who must be told they have no unlock password yet.
 - **A dialog's Cancel is `secondary`**, beside its one primary.
 - **Not an action button.** Some controls are not buttons of the system and draw themselves: a menu row, a whole row or card that
   opens something, the shell's own controls (the sidebar, the phone's bar), the composer's and a message's controls, an inline text
@@ -402,7 +406,7 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
   where there is no face; the slot keeps its width (100 px, 120 px from 70 rem) whatever the number of people. The ⋯ menu holds the space's settings,
   **Mute space** / **Unmute space** and **Space details**, the one way into the space's own panel ([#871](https://github.com/ColdPhase/flux/issues/871),
   [#873](https://github.com/ColdPhase/flux/issues/873); the phone's ⋯ has it too, after Search, Call, Settings and Mute). It has no row for the sidebar:
-  the sidebar folds with its own control and `[`, and the rail and the navigation button open it ([#1376](https://github.com/ColdPhase/flux/issues/1376)). There is no Agents view, no Focus, no goal and no "needs you" count.
+  the sidebar folds with its own control and `[`, and the rail and the navigation button open it ([#1376](https://github.com/ColdPhase/flux/issues/1376)). There is no Agents view, no Focus, no goal and no "needs you" count. **A place whose ⋯ would hold nothing shows none** (#1424): Settings, My map, Home, Messages and a missing page have no ⋯ button that opens an empty menu; the Inbox and the Spaces list have theirs (Mark all as read), a space and a direct message theirs.
 - **One detail panel.** A task, a decision or a thread opens in the same right-hand panel, and the
   conversation stays visible. Opening another object replaces the panel's content, with "‹ back".
   `Esc` closes it.
@@ -540,7 +544,7 @@ The IDs come from the first Prostota canvas; rules that no longer apply are left
 | P1 | **Home** has two parts: Waiting for you (the top three, with Open Inbox) and Continue where you left off. Every row is clickable and ends in an arrow. |
 | P3 | Kreska is the agent icon everywhere (section 3). |
 | P4 | **A decision is one card on both devices:** who proposed it, the decision, its reason, then Accept / Not now / Discuss and who can accept it. Plain sentences appear only when they apply: "This replaces the decision **Wi-Fi in every bed** (12 Oct)." and "Shown on the Wiki page **Sensor network**." Accepting only marks the replaced decision "replaced"; Flux never moves or parks tasks. |
-| P5 | **Creating a task is separate from its notice.** The conversation only announces it, in one line with its source: "Ada created #1 …", "made a task from Jonas's message", "Planner · Ada's agent is on it". (The Map has no Create task, #867.) Founder report 2026-10-28 ([#694](https://github.com/ColdPhase/flux/issues/694)): a decision is announced the same way, because a decision proposed in a thread left no trace anywhere. One line, "Ada proposed a decision" (or "accepted a decision"; a message has no Propose a decision, #867), then the decision as one card with its state now (Proposed, Accepted, Replaced) that opens it in the one panel. The line is in the space's stream by time and in the thread it came from; it updates for every member who can read the space, and it is information, not a message. There is no result card: Done may carry one "What came of it" line in the task's discussion. |
+| P5 | **Creating a task is separate from its notice.** The conversation only announces it, in one line with its source: "Ada created #1 …", "created a task from Jonas's message", "Planner · Ada's agent is on it". A new task is **created** everywhere it is said: the line, the toast ("Task #12 created"), the task's activity ("created the task", "created it from a message") and Home's "since you were away" line (#1424). (The Map has no Create task, #867.) Founder report 2026-10-28 ([#694](https://github.com/ColdPhase/flux/issues/694)): a decision is announced the same way, because a decision proposed in a thread left no trace anywhere. One line, "Ada proposed a decision" (or "accepted a decision"; a message has no Propose a decision, #867), then the decision as one card with its state now (Proposed, Accepted, Replaced) that opens it in the one panel. The line is in the space's stream by time and in the thread it came from; it updates for every member who can read the space, and it is information, not a message. There is no result card: Done may carry one "What came of it" line in the task's discussion. |
 | P6 | Attachments sit inside their message (section 6). |
 | P7 | Monochrome with light, dark and system; no accent colour. |
 | P8 | The action is called "Create task", never "Create work". |
@@ -1132,8 +1136,8 @@ Space header, computer (a call of the space is on; Join keeps Call's fixed slot,
 
 Live strip (the starter, alone)
 ┌─────────────────────────────────────────────────────────────────────────────────────────────┐
-│ ● Live   Call in Gesture lamp      (H)          [Invite…]  🎙  📷  🖥   ⋯   [Leave]           │
-│ Nobody joined · [Invite someone]                                                              │
+│ ● Live   Call in Gesture lamp      (H)     [Invite someone]  🎙  📷  🖥   ⋯   [Leave]           │
+│ Nobody joined                                                                                 │
 └─────────────────────────────────────────────────────────────────────────────────────────────┘
 
 Conversation, an event line like a task line (reading column)
@@ -1152,23 +1156,29 @@ Live strip, someone shares a screen
   Nia", and "Join · Nia · at “Loan rules”" when the call is at another task, map or page than the one open (a call of
   the space itself has no "at"). Below 44 rem the header has moved Call into ⋯: ⋯ carries the live dot and its first row
   is "Join · Nia". On the phone Join is the dark pill between the name and ⋯ (#1239); under 360 px it takes Call's row in ⋯, after Search, with the dot on ⋯.
-- **While you are in the call** the header's slot shows the call's state, not a Call button again ([#1378](https://github.com/ColdPhase/flux/issues/1378)):
-  the live dot (a spinner while it connects) and **In call**, the same quiet button in the same slot, so nothing moves. It explains itself in its popover
-  ("You are in a live session." / "Connecting to the call.") and starts nothing; ⋯'s row reads **In call** the same way.
+- **In the call, the header's slot shows the call** (#1424): "In call" with the live dot, the same quiet button, which takes you
+  to the call: its place when you are somewhere else, else its stage (a shared screen or the cameras; again to put it away),
+  else the strip's own place button. It never says "You are in a live session" and does nothing. ⋯'s row reads the same.
+- **A server with no media server shows no Call in the header** (#1419 decision 4, #1424): nothing that explains why it does
+  nothing. Conversations, tasks, maps and pages work as usual.
 - **The strip's row is centred** on every window: the live dot with its word (**Live**, from 360 px), the place's button, the faces, then the devices; every item shares
   the row's centre line, and a call line's faces sit side by side, 2 px apart, with no overlap (the receipts' rule).
 - **Connecting.** From the click on Call or Join the strip is there, in the place it will keep: the spinner and "Connecting…",
-  and the call's place (the same button), with nothing else; its devices, Invite…, ⋯ and Leave come when the call is joined, in the
+  and the call's place (the same button), with nothing else; its devices, Invite someone, ⋯ and Leave come when the call is joined, in the
   same row, so the work below does not move twice. Until then the header's Call (or ⋯'s row) says "Connecting to the call." and
   starts nothing more, so a slow connection never looks like nothing happened and a second click cannot start a second call (#1304).
 - **⋯ with calls.** Further calls of the space are rows "Join · Kai · at “Order sensors”" (dot first), and **Start a
   call here** starts a separate call at the place open. Starting from the conversation joins the space's call instead.
 - **The strip's place** is the button it always was; a call of the space reads "Call in Gesture lamp" with no kind
   word, a task's call keeps "Order sensors · task".
-- **Invite…** is a quiet button in the strip before the devices (in ⋯'s sheet on the phone). It opens the strip's
-  existing popover (a sheet on the phone) with the space's people who are not in the call, each with Invite → "Invited".
-- **Nobody joined.** While the starter is alone in a call nobody else joined, one `lv-line` under the strip: "Nobody
-  joined" and a quiet **Invite someone**, which opens Invite…. After 10 minutes alone the call ends and the strip's ended
+- **Invite someone** is the strip's one invite control, a quiet button before the devices on a computer and a tablet (#1424). It
+  opens a small popover (a sheet on a phone) that holds only the space's people who are not in the call, each with Invite →
+  "Invited", and nothing else: it never repeats the microphone, camera or screen, which are the strip's and ⋯'s. The same name
+  everywhere: there is no "Invite…" beside it. It is not shown when nobody is left to invite. On a phone the row has no room for
+  it: ⋯'s sheet has one "Invite someone" row, which opens that same sheet.
+- **Nobody joined.** While the starter is alone in a call nobody else joined, one `lv-line` under the strip says "Nobody
+  joined"; on a phone it carries the quiet **Invite someone** (the computer's strip has it in its row, so the line has no
+  second one). After 10 minutes alone the call ends and the strip's ended
   row says "Nobody joined, so the call ended. Your work is saved." with Dismiss.
 - **The conversation line** is one line in the reading column, the size, colour and indent of a task line ("Ada created
   #1 …"): the starter's face, "**Hubert** started a call", then while it runs the faces of who is in it, "N people",
@@ -1452,6 +1462,10 @@ standard switch row in Settings › Notifications, and the rest of the page stay
     "Opus", "Haiku"), each option "Claude Opus 5.5 · $4 / $20" or "Claude Sonnet 5.7 · price
     unknown, enter it". Its last option, "Other model id…", shows the plain field under it. A model
     carries the name its provider gives it ("Claude Opus 5.5") here and on the agent's page alike.
+  - **The window's buttons keep their side** (#1424): on every step the secondary action is on the left and the one primary on
+    the right, in one row: Cancel and Continue, Use an API key and Try again, Cancel and Connect. Connect does not swap sides with
+    Cancel on the key step.
+  - A list of exactly one model has that model chosen already (nothing to pick between); a list of several has none chosen.
   - Nothing is saved on a model nobody chose. Enter in the key field reads the models, as leaving the
     field does, instead of saving. Connect before a model is chosen (the list is still being read)
     puts "Choose a model first. Flux lists the models of your key once you have entered it and left
@@ -1463,7 +1477,9 @@ standard switch row in Settings › Notifications, and the rest of the page stay
   - A list that can't be read in time shows the plain Model field with "Anthropic's model list
     couldn't be read. Type the model id from Anthropic's documentation." Connect works.
   - An unpriced model shows the two price fields under the Model (as for an own endpoint) with
-    "Flux doesn't know this model's price yet. Enter it to use it with a daily budget."
+    "Flux doesn't know this model's price yet. Enter it to use it with a daily budget." Both are needed (0 is a price):
+    Connect without them puts "Enter this model's price to use it with a daily budget…" above the form and saves nothing, so
+    Settings never shows a key that "can't be used" (#1424).
   - OpenRouter and an OpenAI-compatible endpoint keep "Show available models" and the field.
 - **The Model of an agent with an API key** lists the key's models under its connection, in the
   same family order, in the app's `Select` (a plan keeps its few models as segments), each with its
@@ -1589,8 +1605,10 @@ standard switch row in Settings › Notifications, and the rest of the page stay
     it gets the same label and agent message, with the Kreska in the default ink (`--inv`).
   - **The screen reader** reads the message as "Hubert's Assistant, shown by Hubert".
   - **The private card says the same:** "Show everyone posts it as “Hubert's Assistant”".
-  - **Where only text fits** (notifications, search results, what an agent reads) the line stays
-    "Hubert · via Assistant": it names the person as the author.
+  - **Where only text fits** (notifications, search results, what an agent reads) there is no bubble to carry the agent's
+    Kreska, so the line is the person and the agent's own name, "Hubert · via Assistant"; it still names the person as the author.
+    The label drawn on a message is only ever "Hubert's Assistant" (founder decision, 2026-11-12, #1232); the "via" form is
+    the plain-text fallback of the same answer, never a second label on screen.
 - **A web answer lists its sources once** (#1222, founder decision, Hubert, 2026-11-12). Flux's own
   list under the answer, "Searched the web for" and "Found on the web", is the only list. The words of
   the model that repeat it are not stored: a closing "Sources:" block whose lines are only addresses

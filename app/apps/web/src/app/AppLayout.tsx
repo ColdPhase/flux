@@ -717,6 +717,9 @@ function AppLayoutContent() {
   // The Inbox's and the Spaces list's one bulk action (#1250): everything unread is read; what needs an action stays in the Inbox. It is on every Inbox address
   // (an open item and a missing one too), so the header's ⋯ never comes and goes (#1376).
   const bulkRead: MoreItem[] = (where === 'inbox' && /^\/inbox(\/|$)/.test(location.pathname)) || location.pathname === '/projects' ? [{ label: 'Mark all as read', run: markAllRead }] : [];
+  // Whether ⋯ holds anything on the computer's header: the Inbox's and the Spaces list's bulk action, the people and Call of a space and its
+  // settings, Mute, or the place's details.
+  const hasMore = bulkRead.length > 0 || !!project?.people || !!activeProject || !!placeMute || !('noDetails' in place);
   const moreItems: MoreItem[] = [
     ...bulkRead,
     // A header with no room for them (Spokój rule 3) moves the people and Call here; the views stay in the row.
@@ -889,7 +892,8 @@ function AppLayoutContent() {
             {project?.people ? <HeaderFaces people={project.people} meId={me.user.id} audience={audience} onOpen={openAudience} />
               : lockedHere && lockedPeople ? <HeaderFaces people={lockedPeople} meId={me.user.id} audience={audienceLine(lockedPeople, me.user.id)} onOpen={() => shell.openDetails({ kind: 'people', workspaceId: lockedSpace.id })} /> : null}
             {activeProject ? <LiveEntry /> : null}
-            <MoreMenu items={moreItems} cue={activeProject ? (id, buttonId) => <LiveCue id={id} buttonId={buttonId} /> : undefined} />
+            {/* A place whose ⋯ would hold nothing (Settings, My map, Home, Messages) shows none: no button that opens an empty menu (#1424). */}
+            {hasMore ? <MoreMenu items={moreItems} cue={activeProject ? (id, buttonId) => <LiveCue id={id} buttonId={buttonId} /> : undefined} /> : null}
           </div>
         </header>
         )}

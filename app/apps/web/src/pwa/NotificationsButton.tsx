@@ -9,7 +9,7 @@ type View = PushState | { state: 'loading' } | { state: 'working' } | { state: '
 
 const MESSAGES: Partial<Record<View['state'], string>> = {
   unsupported: 'This browser cannot show Flux notifications. New activity always appears in your Inbox.',
-  'needs-install': 'On iPhone and iPad, add Flux to your Home Screen first (Share, then Add to Home Screen), open it from there and turn notifications on here.',
+  'needs-install': 'On iPhone and iPad, notifications work once Flux is on your Home Screen. Tap Share, then Add to Home Screen, open Flux from there and turn notifications on here.',
   unavailable: 'Notifications are not set up on this Flux server. New activity always appears in your Inbox.',
   denied: 'Notifications are blocked for Flux in your browser or system settings. New activity still appears in your Inbox.',
 };
@@ -18,17 +18,16 @@ const MESSAGES: Partial<Record<View['state'], string>> = {
  * Settings control for this device's notifications. It never asks for permission on render;
  * the browser prompt appears only after the person presses "Turn on notifications".
  */
-export function NotificationsButton({ deviceLabel, installStepsBelow }: {
+export function NotificationsButton({ deviceLabel }: {
   deviceLabel?: string;
-  /** The Home Screen steps are shown in the install row below, so this note points there instead of repeating them. */
-  installStepsBelow?: boolean;
 }) {
   const [view, setView] = useState<View>({ state: 'loading' });
   const refresh = () => getPushState().then(setView, (error: unknown) => setView({ state: 'error', message: String(error) }));
   useEffect(() => { void refresh(); }, []);
 
   if (view.state === 'loading') return null;
-  const message = view.state === 'needs-install' && installStepsBelow ? 'Notifications work once Flux is on your Home Screen: see Flux on this phone below.' : MESSAGES[view.state];
+  // The Home Screen steps are said here, where the person is, never "see below" (#1424); the install row under the page does not repeat them.
+  const message = MESSAGES[view.state];
   if (message) return <p className={note} role="note">{message}</p>;
   if (view.state === 'error') return <p className={note} role="alert">Notification settings could not be loaded. Your Inbox still works.</p>;
   if (view.state === 'subscribed') {

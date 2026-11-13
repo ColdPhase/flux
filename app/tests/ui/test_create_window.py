@@ -237,7 +237,7 @@ class CreateWindow(unittest.TestCase):
         expect(page.locator(".ui-toast").filter(has_text=f"Task #{made[0]['number']} created").get_by_role("button", name="Undo")).to_be_visible()
         self.assertEqual([(link["role"], link["to"]) for link in made[0]["links"]], [("source", {"type": "message", "id": self.ids["message"]})])
         expect(page.locator(".convo-notice")).to_have_count(before + 1)
-        expect(page.locator(f'.convo-notice[data-work-id="{made[0]["id"]}"] .convo-notice__what')).to_contain_text("made a task from")
+        expect(page.locator(f'.convo-notice[data-work-id="{made[0]["id"]}"] .convo-notice__what')).to_contain_text("created a task from")
 
     # ---------------------------------------------------------------- AC-3: ⌘K finds (no Create group, #870)
 

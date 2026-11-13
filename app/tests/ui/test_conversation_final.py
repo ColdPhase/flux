@@ -187,9 +187,9 @@ class ConversationFinal(unittest.TestCase):
         page = self.open("ada")
         made = self.notice(page, self.ids["from_message"])
         expect(made.locator(".convo-notice__meta strong")).to_have_text("Ada Kowalska · you")
-        expect(made.locator(".convo-notice__what")).to_have_text("made a task from Jonas’s message")
-        expect(self.notice(page, self.ids["in_tasks"]).locator(".convo-notice__what")).to_have_text("added a task")
-        expect(self.notice(page, self.ids["on_map"]).locator(".convo-notice__what")).to_have_text("made a task from the map")
+        expect(made.locator(".convo-notice__what")).to_have_text("created a task from Jonas’s message")
+        expect(self.notice(page, self.ids["in_tasks"]).locator(".convo-notice__what")).to_have_text("created a task")
+        expect(self.notice(page, self.ids["on_map"]).locator(".convo-notice__what")).to_have_text("created a task from the map")
         expect(made.locator(".convo-notice__num")).to_have_text(f"#{self.ids['from_message_number']}")
         expect(made.get_by_role("button", name=re.compile(rf"^Open task #\d+ {FROM_MESSAGE}$"))).to_be_visible()
         self.assertEqual(page.locator(".convo-notice__kind").count(), 0, "no 'New task' label any more")
@@ -210,7 +210,7 @@ class ConversationFinal(unittest.TestCase):
         expect(fold).to_have_count(1)
         toggle = fold.get_by_role("button", name=re.compile(r"^4 task updates"))
         expect(toggle).to_have_attribute("aria-expanded", "false")
-        expect(toggle).to_contain_text("Ada added 4 tasks")
+        expect(toggle).to_contain_text("Ada created 4 tasks")
         ids = json.loads(self.ids["folded"])
         for work_id in ids:
             expect(self.notice(page, work_id)).to_be_hidden()
@@ -571,11 +571,11 @@ class ConversationFinal(unittest.TestCase):
         window.get_by_role("button", name=re.compile("^Create task")).click()
         expect(page.locator("#details").get_by_role("heading", name=title)).to_be_visible()
         made = page.locator(".convo-notice").filter(has_text=title)
-        expect(made.locator(".convo-notice__what")).to_have_text("added a task")
+        expect(made.locator(".convo-notice__what")).to_have_text("created a task")
         for text in page.locator(".convo-notice__what").all_inner_texts():
             self.assertNotIn("in Tasks", text, "no notice names Tasks as its origin")
         # A task made from a message keeps its truthful source (positive control).
-        expect(self.notice(page, self.ids["from_message"]).locator(".convo-notice__what")).to_have_text("made a task from Jonas’s message")
+        expect(self.notice(page, self.ids["from_message"]).locator(".convo-notice__what")).to_have_text("created a task from Jonas’s message")
 
     def test_13_short_taps_leave_no_timer_that_opens_the_next_press_early(self) -> None:
         page = self.open("ada", phone=True)

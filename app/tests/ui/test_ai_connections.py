@@ -141,6 +141,12 @@ class AiConnectionSettings(unittest.TestCase):
         expect(page.locator("datalist")).to_have_count(0)
         choose(model, value="llama3.1:8b")
         expect(page.get_by_role("group", name="Price per 1M tokens (USD)")).to_be_visible()
+        # #1424: a key is never saved on a model with no price, which could not be used: Connect says so above the form and saves nothing.
+        self.fill_key(page, KEYS["openai_compatible"])
+        before = self.connections(page)
+        page.get_by_role("button", name="Connect", exact=True).click()
+        expect(page.get_by_role("alert").filter(has_text="Enter this model’s price to use it with a daily budget")).to_be_visible()
+        self.assertEqual(self.connections(page), before, "a key without a price is not saved")
         page.get_by_label("Input price").fill("0")
         page.get_by_label("Output price").fill("0")
         self.fill_key(page, KEYS["openai_compatible"])
@@ -162,6 +168,24 @@ class AiConnectionSettings(unittest.TestCase):
             self.assertNotIn(gone, saved, "one daily budget, nothing else (#854)")
         self.no_key_anywhere(page)
         shot(page, "ai-connection-1440-compatible-saved")
+
+    def test_03b_a_list_of_one_model_has_it_chosen_and_the_buttons_keep_their_side(self) -> None:
+        """#1424: nothing to pick between, so the model is already chosen; Cancel and then Connect, the primary on the right."""
+        page = self.page()
+        page.route(re.compile(r".*/api/v1/ai-model-lists$"), lambda route: route.fulfill(json={
+            "provider": "openai_compatible", "status": "listed", "checkedOn": "2026-11-13",
+            "models": [{"id": "only-model", "name": None, "price": None}]}))
+        page.goto("/settings/ai-connections")
+        page.get_by_role("button", name="Add a key").click()
+        choose(page.get_by_label("Provider", exact=True), label="OpenAI-compatible endpoint")
+        page.get_by_label("Endpoint base URL").fill(ENDPOINT)
+        page.get_by_role("button", name="Show available models").click()
+        expect(page.get_by_role("status").filter(has_text="1 model from OpenAI-compatible endpoint")).to_be_visible()
+        expect_value(page.get_by_label("Model", exact=True), "only-model")
+        expect(page.get_by_role("group", name="Price per 1M tokens (USD)")).to_be_visible()
+        cancel, connect = page.get_by_role("button", name="Cancel", exact=True).last.bounding_box(), page.get_by_role("button", name="Connect", exact=True).bounding_box()
+        self.assertLess(cancel["x"], connect["x"], "Cancel is left of the one primary, as in the window's first step")
+        self.assertGreater(connect["x"] + connect["width"], page.viewport_size["width"] * 0.5, "the pair sits on the right")
 
     def test_04_a_table_priced_model_needs_no_price_and_names_its_provider(self) -> None:
         page = self.page()

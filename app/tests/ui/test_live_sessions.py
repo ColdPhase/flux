@@ -245,7 +245,7 @@ class LiveBase(unittest.TestCase):
         expect(self.bar(page).get_by_role("status").first).to_contain_text("Live", timeout=30000)
 
     def bar(self, page: Page):
-        return page.get_by_role("region", name="Live session")
+        return page.get_by_role("region", name="Call", exact=True)
 
     def see_shared_screen(self, page: Page) -> None:
         """A screen someone shares reaches the stage as the product has it (F-041 point 8): on a computer and a tablet the stage opens by
@@ -286,14 +286,13 @@ class LiveUnavailable(LiveBase):
         page.goto(self.task_url())
         panel = page.locator("#details")
         expect(panel.get_by_role("heading", name=TASK)).to_be_visible()
-        # Explained once, behind the header's Call; the task itself does not repeat it (#189).
+        # #1424 (#1419 decision 4): a server that cannot make calls shows no Call at all, neither in the header nor in the task: nothing that
+        # explains why it does nothing.
         expect(panel).not_to_contain_text("Live sessions")
         header = page.locator("header.top, header.phead")
-        header.get_by_role("button", name="Call").click()
-        dialog = page.get_by_role("dialog", name="Live sessions")
-        expect(dialog).to_contain_text("no media server configured")
-        page.keyboard.press("Escape")
-        expect(dialog).to_be_hidden()
+        expect(header.get_by_role("button", name="Call")).to_have_count(0)
+        expect(page.get_by_role("dialog", name="Live sessions")).to_have_count(0)
+        expect(panel.get_by_role("button", name=re.compile("Work on this together|Join"))).to_have_count(0)
         self.assertEqual(page.evaluate("window.__live.gum + window.__live.gdm"), 0, "nothing asked for a device")
         expect(self.bar(page)).to_have_count(0)
         self.assertEqual(self.api(page, "GET", "/api/v1/live-sessions/capabilities", status=200)["status"], "unavailable")
@@ -369,7 +368,7 @@ class LiveJourney(LiveBase):
         expect(phead.locator(".top__live-cue")).to_be_visible()
         expect(phead.get_by_role("button", name="Join", exact=True)).to_be_hidden()
         # The live mark is part of More's name, so a screen reader hears it, and Join takes Call's row (after Search) from the first frame.
-        more_small = phead.get_by_role("button", name=re.compile("^More live session here"))
+        more_small = phead.get_by_role("button", name=re.compile("^More live now here"))
         expect(more_small).to_be_visible()
         more_small.click()
         menu = small.get_by_role("menu", name="More")
@@ -669,15 +668,25 @@ class LiveJourney(LiveBase):
         expect(ada.locator(".home__row", has_text="started a call in Repair cafe")).to_have_count(0)
         expect(bar.get_by_role("status").filter(has_text="Nobody joined")).to_have_count(0)
 
-        # Invite… from the strip opens the panel at the people who can join.
-        bar.get_by_role("button", name="Invite…").click()
-        panel = nia.get_by_role("dialog", name="Live session")
+        # #1424: "Invite someone" is the strip's one invite control (no "Invite…" beside it, and the "Nobody joined" line has no second one on a
+        # computer); it opens the people who can join, and only them: no microphone, camera or screen rows repeated.
+        expect(bar.get_by_role("button", name="Invite…")).to_have_count(0)
+        expect(bar.get_by_role("button", name="Invite someone")).to_have_count(1)
+        bar.get_by_role("button", name="Invite someone").click()
+        panel = nia.get_by_role("dialog", name="Invite someone", exact=True)
         expect(panel).to_be_visible()
+        expect(panel).not_to_contain_text("Microphone")
+        expect(panel).not_to_contain_text("Camera")
+        expect(panel).not_to_contain_text("Share a window")
         shot(nia, "live-desktop-1440-invite")
         for name in ("Jonas Berg", "Kai Moreau"):
             row = panel.locator(".lv-person--absent", has_text=name)
             row.get_by_role("button", name="Invite").click()
             expect(row).to_contain_text("Invited")
+        nia.keyboard.press("Escape")
+        # Closed and opened again, the ones invited stay "Invited": they are not offered twice.
+        bar.get_by_role("button", name="Invite someone").click()
+        expect(nia.get_by_role("dialog", name="Invite someone", exact=True).locator(".lv-person--absent", has_text="Jonas Berg")).to_contain_text("Invited")
         nia.keyboard.press("Escape")
         # Each invitation is an Inbox item with Join for its person.
         jonas.goto("/inbox")
@@ -883,15 +892,24 @@ class LiveJourney(LiveBase):
         self.assertEqual(nia.evaluate("window.__live.gum + window.__live.gdm"), 0, "starting and joining request no microphone, camera or screen")
         mic = bar.get_by_role("button", name=re.compile("^Microphone off"))
         expect(mic).to_have_attribute("aria-pressed", "false")
-        expect(panel).to_contain_text("You are in the live session for this task")
+        expect(panel).to_contain_text("You are in the call for this task")
         work_before = self.api(nia, "GET", f"/api/v1/work/{self.ids['work']}", status=200)
         self.assertEqual(work_before["status"], "blocked", "starting a session changes no work status")
 
         # A targeted invitation: one quiet inbox item with join, later and text.
-        bar.get_by_role("button", name="Session details and more").click()
-        details = nia.get_by_role("dialog", name="Live session")
+        bar.get_by_role("button", name="Call details and more").click()
+        details = nia.get_by_role("dialog", name="Call details", exact=True)
         expect(details.get_by_role("heading", name=TASK)).to_be_visible()
-        row = details.locator(".lv-person--absent", has_text="Jonas Berg")
+        # #1424: ⋯'s panel is who is here and the devices; the invite list is "Invite someone"'s own, never a second one beside it.
+        expect(details.locator(".lv-person--absent")).to_have_count(0)
+        expect(details.get_by_role("button", name="Invite someone")).to_have_count(0)
+        shot(nia, "live-desktop-1440-panel")
+        nia.keyboard.press("Escape")
+        expect(details).to_be_hidden()
+        expect(bar.get_by_role("button", name="Call details and more")).to_be_focused()
+        bar.get_by_role("button", name="Invite someone").click()
+        invite = nia.get_by_role("dialog", name="Invite someone", exact=True)
+        row = invite.locator(".lv-person--absent", has_text="Jonas Berg")
         # Jonas has Flux open elsewhere (Home): the invitation reaches him at once as a call notice with Join (#1243).
         jonas = self.page("jonas")
         jonas.goto("/")
@@ -906,10 +924,9 @@ class LiveJourney(LiveBase):
         jonas.wait_for_timeout(6500)
         expect(notice).to_be_visible()  # a call's notice stays until the call ends or it is closed
         shot(jonas, "live-desktop-1440-call-notice")
-        shot(nia, "live-desktop-1440-panel")
         nia.keyboard.press("Escape")
-        expect(details).to_be_hidden()
-        expect(bar.get_by_role("button", name="Session details and more")).to_be_focused()
+        expect(invite).to_be_hidden()
+        expect(bar.get_by_role("button", name="Invite someone")).to_be_focused()
         # Inviting again stays one inbox item (the server deduplicates).
         sessions = self.api(nia, "GET", f"/api/v1/projects/{self.ids['project']}/live-sessions", status=200)["items"]
         session_id = next(item["id"] for item in sessions if item["context"]["id"] == self.ids["work"])
@@ -939,8 +956,8 @@ class LiveJourney(LiveBase):
         expect(self.bar(nia).get_by_role("button", name=re.compile("^Microphone on"))).to_have_attribute("aria-pressed", "true")
         self.assertEqual(nia.evaluate("window.__live.gum"), 1)
         expect(jonas.locator("[data-live-audio] audio")).to_have_count(1)
-        jbar.get_by_role("button", name="Session details and more").click()
-        jdetails = jonas.get_by_role("dialog", name="Live session")
+        jbar.get_by_role("button", name="Call details and more").click()
+        jdetails = jonas.get_by_role("dialog", name="Call details", exact=True)
         expect(jdetails.locator(".lv-person", has_text="Nia Okafor")).to_contain_text("microphone on")
         jonas.keyboard.press("Escape")
 
@@ -1141,8 +1158,8 @@ class LiveJourney(LiveBase):
         nia = pages["nia"]
         self.bar(nia).get_by_role("button", name=re.compile("^Microphone off")).click()
         expect(self.bar(nia).get_by_role("button", name=re.compile("^Microphone on"))).to_be_visible()
-        self.bar(nia).get_by_role("button", name="Session details and more").click()
-        dialog = nia.get_by_role("dialog", name="Live session")
+        self.bar(nia).get_by_role("button", name="Call details and more").click()
+        dialog = nia.get_by_role("dialog", name="Call details", exact=True)
         dialog.get_by_role("switch", name=re.compile("Work quietly")).click()
         nia.keyboard.press("Escape")
         # Escape closes the panel; it leaves through a short exit (inert meanwhile) before its controls are gone.
@@ -1163,10 +1180,10 @@ class LiveJourney(LiveBase):
         nia.evaluate("window.__holdCapture = true")
         self.bar(nia).get_by_role("button", name=re.compile("^Microphone off")).click()
         nia.wait_for_function("() => typeof window.__releaseCapture === 'function'")
-        self.bar(nia).get_by_role("button", name="Session details and more").click()
-        nia.get_by_role("dialog", name="Live session").get_by_role("switch", name=re.compile("Work quietly")).click()
+        self.bar(nia).get_by_role("button", name="Call details and more").click()
+        nia.get_by_role("dialog", name="Call details", exact=True).get_by_role("switch", name=re.compile("Work quietly")).click()
         nia.keyboard.press("Escape")
-        expect(nia.get_by_role("dialog", name="Live session")).to_have_count(0)
+        expect(nia.get_by_role("dialog", name="Call details", exact=True)).to_have_count(0)
         expect(self.bar(nia).get_by_role("status").first).to_contain_text("Quiet")
         nia.evaluate("window.__holdCapture = false; window.__releaseCapture()")
         nia.wait_for_function("() => window.__live.tracks.every((t) => t.readyState === 'ended')")
@@ -1182,10 +1199,10 @@ class LiveJourney(LiveBase):
         nia.evaluate("window.__holdSignals = true")
         self.bar(nia).get_by_role("button", name=re.compile("^Microphone off")).click()
         nia.wait_for_function("() => window.__live.tracks.some((t) => t.kind === 'audio' && t.readyState === 'live')")
-        self.bar(nia).get_by_role("button", name="Session details and more").click()
-        nia.get_by_role("dialog", name="Live session").get_by_role("switch", name=re.compile("Work quietly")).click()
+        self.bar(nia).get_by_role("button", name="Call details and more").click()
+        nia.get_by_role("dialog", name="Call details", exact=True).get_by_role("switch", name=re.compile("Work quietly")).click()
         nia.keyboard.press("Escape")
-        expect(nia.get_by_role("dialog", name="Live session")).to_have_count(0)
+        expect(nia.get_by_role("dialog", name="Call details", exact=True)).to_have_count(0)
         nia.wait_for_function("() => window.__live.tracks.every((t) => t.readyState === 'ended')", timeout=3000)
         self.assertTrue(nia.evaluate("window.__holdSignals"), "still before the publication answer")
         nia.evaluate("window.__releaseSignals()")
@@ -1260,8 +1277,8 @@ class LiveJourney(LiveBase):
         if not can_capture:
             expect(bar.get_by_role("button", name="Share a window, tab or screen")).to_have_count(0)
         shot(phone, "live-phone-390-strip")
-        bar.get_by_role("button", name="Session details and more").click()
-        sheet = phone.get_by_role("dialog", name="Live session")
+        bar.get_by_role("button", name="Call details and more").click()
+        sheet = phone.get_by_role("dialog", name="Call details", exact=True)
         # Call on the conversation page is the space's call (F-041): the space is the session's name, never a message's text.
         expect(sheet.get_by_role("heading", name="Gesture lamp")).to_be_visible()
         shot(phone, "live-phone-390-sheet")
@@ -1274,7 +1291,7 @@ class LiveJourney(LiveBase):
         back.tap()
         expect(sheet).to_be_hidden()
         expect(self.bar(phone).get_by_role("status").first).to_contain_text("Live")
-        expect(self.bar(phone).get_by_role("button", name="Session details and more")).to_be_focused()
+        expect(self.bar(phone).get_by_role("button", name="Call details and more")).to_be_focused()
         # Nia shares her screen; the phone views it and zooms without publishing anything.
         self.bar(nia).get_by_role("button", name="Share a window, tab or screen").click()
         # On a phone a new shared screen is offered in a sheet (F-041), not opened over the work.
@@ -1322,10 +1339,10 @@ class LiveJourney(LiveBase):
         expect(bar.get_by_role("status").first).to_contain_text("Live")
         self.assertIn(page.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--dur-in').trim()"), ("0ms", "0s"))
         # Every strip control is reachable with Tab and names its state.
-        more = bar.get_by_role("button", name="Session details and more")
+        more = bar.get_by_role("button", name="Call details and more")
         more.focus()
         page.keyboard.press("Enter")
-        dialog = page.get_by_role("dialog", name="Live session")
+        dialog = page.get_by_role("dialog", name="Call details", exact=True)
         expect(dialog).to_be_visible()
         for _ in range(30):
             page.keyboard.press("Tab")

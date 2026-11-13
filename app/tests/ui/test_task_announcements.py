@@ -1,6 +1,6 @@
 """Browser tests for task announcements in the project conversation (UI116-3, #154, F-026 P5).
 
-Creating a task shows one compact line in the project's stream, "<name> made a task from <name>'s message"
+Creating a task shows one compact line in the project's stream, "<name> created a task from <name>'s message"
 with the task as a row under it; the task's first genuine
 contribution is a root of the stream that names its task, and replies grow under it. Runs with the
 other tests/ui modules through scripts/check_ui.sh against the running Compose application. Ada
@@ -191,7 +191,7 @@ class TaskAnnouncements(unittest.TestCase):
         expect(made).to_have_count(1)
         expect(made.locator(".convo-notice__meta strong")).to_have_text("Jonas Berg")
         # P5: the line says where the task came from; there is no "New task" label.
-        expect(made.locator(".convo-notice__what")).to_have_text("made a task from Ada’s message")
+        expect(made.locator(".convo-notice__what")).to_have_text("created a task from Ada’s message")
         self.assertEqual(page.locator(".convo-notice__kind").count(), 0)
         assert_author_column(self, made, DESKTOP["width"], "task event author")
         expect(made.get_by_role("button", name=opens_task(FROM_MESSAGE))).to_be_visible()

@@ -199,8 +199,8 @@ class ReachabilityRows(LiveBase):
         host = self.start_host()
         guest = self.guest_join("webkit", device="iPad (gen 7)")
         bar = self.bar(guest)
-        bar.get_by_role("button", name="Session details and more").click()
-        sheet = guest.get_by_role("dialog", name="Live session")
+        bar.get_by_role("button", name="Call details and more").click()
+        sheet = guest.get_by_role("dialog", name="Call details", exact=True)
         expect(sheet).to_be_visible()
         camera = sheet.get_by_role("button", name=re.compile("^Camera off"))
         hit = camera.evaluate(HIT_TEST)
@@ -245,8 +245,8 @@ class ReachabilityRows(LiveBase):
         self.start_host()
         guest = self.guest_join("chromium", phone=True)
         bar = self.bar(guest)
-        bar.get_by_role("button", name="Session details and more").click()
-        sheet = guest.get_by_role("dialog", name="Live session")
+        bar.get_by_role("button", name="Call details and more").click()
+        sheet = guest.get_by_role("dialog", name="Call details", exact=True)
         expect(sheet).to_be_visible()
         leave = bar.get_by_role("button", name="Leave", exact=True)
         covered_by = leave.evaluate("""(el) => {
@@ -301,7 +301,7 @@ class ReachabilityRows(LiveBase):
             self.assertIn("ui-scrim", beside or "", f"{label}: the inert rail beside the strip is under the scrim")
         hits = {}
         for name, button in (("mic", bar.get_by_role("button", name=re.compile("^Microphone"))),
-                             ("more", bar.get_by_role("button", name="Session details and more")),
+                             ("more", bar.get_by_role("button", name="Call details and more")),
                              ("leave", bar.get_by_role("button", name="Leave", exact=True))):
             hits[name] = button.evaluate(HIT_TEST)
             self.assertTrue(hits[name]["ok"], f"{label}: {name} is covered by {hits[name]['top']} at {hits[name]['centre']}")
@@ -452,8 +452,8 @@ class ReachabilityRows(LiveBase):
         """More, opened from the strip while a thread is open, is on top, takes the focus and is closed by Esc alone."""
         bar = self.bar(page)
         self.open_thread(page)
-        bar.get_by_role("button", name="Session details and more").tap(timeout=5000)
-        dialog = page.get_by_role("dialog", name="Live session")
+        bar.get_by_role("button", name="Call details and more").tap(timeout=5000)
+        dialog = page.get_by_role("dialog", name="Call details", exact=True)
         expect(dialog).to_be_visible()
         page.wait_for_timeout(600)
         first = dialog.get_by_role("button").first
@@ -468,7 +468,7 @@ class ReachabilityRows(LiveBase):
         page.keyboard.press("Escape")
         expect(dialog).to_be_hidden()
         expect(page.locator(".ui-overlay[data-state='open']")).to_have_count(1)  # the thread stays
-        expect(bar.get_by_role("button", name="Session details and more")).to_be_focused()
+        expect(bar.get_by_role("button", name="Call details and more")).to_be_focused()
         page.keyboard.press("Escape")
         expect(page.locator(".ui-overlay[data-state='open']")).to_have_count(0)
         self.assert_app_interactive(page)
@@ -519,7 +519,7 @@ class ReachabilityRows(LiveBase):
         self.start_host()
         page = self.guest_join("webkit", device="iPad (gen 7)")
         bar = self.bar(page)
-        bar.get_by_role("button", name="Session details and more").tap(timeout=5000)
+        bar.get_by_role("button", name="Call details and more").tap(timeout=5000)
         popover = page.locator(".lv-pop")
         expect(popover).to_be_visible()
         self.open_thread(page)

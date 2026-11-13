@@ -520,14 +520,14 @@ class AppShellJourney(unittest.TestCase):
         shot(page, "desktop-1440-map-light")
 
         # Only a space and a direct message have Details (#871): My map has none, and the header has no Details button.
-        more = page.locator("header.top").get_by_role("button", name="More", exact=True)
         expect(page.locator("header.top").get_by_role("button", name="Details", exact=True)).to_have_count(0)
-        more.click()
-        menu = page.get_by_role("menu", name="More")
-        expect(menu.get_by_role("menuitem", name=re.compile("details|info", re.I))).to_have_count(0)
-        page.keyboard.press("Escape")
-        expect(menu).to_have_count(0)
-        expect(more).to_be_focused()
+        # #1424: and with nothing to hold, no ⋯ either: My map and Settings have no button that opens an empty menu.
+        expect(page.locator("header.top").get_by_role("button", name="More", exact=True)).to_have_count(0)
+        page.goto("/settings")
+        expect(page.get_by_role("heading", level=1, name="Settings", exact=True)).to_be_visible()
+        expect(page.locator("header.top").get_by_role("button", name="More", exact=True)).to_have_count(0)
+        page.go_back()
+        expect(page.get_by_role("heading", level=1, name="My map", exact=True)).to_be_visible()
         # "]" is not a key of the final design (§4 keyboard); it opens nothing.
         page.keyboard.press("]")
         expect(page.get_by_role("complementary", name=re.compile("details|info", re.I))).to_have_count(0)

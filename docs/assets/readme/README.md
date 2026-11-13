@@ -6,7 +6,7 @@ the dark theme, and the README gives the browser both through `prefers-color-sch
 
 | File | What it shows | Viewport |
 | --- | --- | --- |
-| `conversation-desktop.webp`, `conversation-desktop-dark.webp` | The *Community garden sensors* space on a computer: the stream with Jonas's question, Ada's `/ai` answer shared as hers ("via Assistant"), a post from her Claude Code ("via Claude Code"), the task made from the answer, a second answer from her Assistant that only she sees (its card, with sources and Show everyone), and the accepted decision "Measure soil moisture first; frost warnings later" open beside it with the message it is based on | 1440 × 900 CSS px |
+| `conversation-desktop.webp`, `conversation-desktop-dark.webp` | The *Community garden sensors* space on a computer: the stream with Jonas's question, Ada's `/ai` answer shared as hers ("Ada's Assistant"), a post from her Claude Code ("via Claude Code"), the task made from the answer, a second answer from her Assistant that only she sees (its card, with sources and Show everyone), and the accepted decision "Measure soil moisture first; frost warnings later" open beside it with the message it is based on | 1440 × 900 CSS px |
 | `conversation-phone.webp`, `conversation-phone-dark.webp` | The same space on a phone: the task made from the shared answer, Ada's second answer that only she sees (its card, with sources and Show everyone), the composer, and the space's Conversation, Tasks, Map and Wiki views above | 390 × 844 CSS px at device scale 3 |
 
 The content is the fictional *Riverside Makers* company: Ada Kowalska, Jonas Berg, Basia Wrona and Tomasz Lis, and Ada's agents Assistant, Planner

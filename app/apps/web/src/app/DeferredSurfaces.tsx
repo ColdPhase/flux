@@ -168,7 +168,7 @@ export function DeferredLiveBar() {
   const [requested, setRequested] = useState(() => shown || liveBar.loaded() !== null);
   if (shown && !requested) setRequested(true);
   if (!requested) return null;
-  return <SurfaceBoundary label="Live session"><Surface of={liveBar} props={{}} fallback={null} /></SurfaceBoundary>;
+  return <SurfaceBoundary label="Call"><Surface of={liveBar} props={{}} fallback={null} /></SurfaceBoundary>;
 }
 
 export function DeferredLiveStage() {

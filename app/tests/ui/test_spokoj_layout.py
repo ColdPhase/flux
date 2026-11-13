@@ -49,12 +49,12 @@ class SpokojLayout(unittest.TestCase):
         cls.browser = getattr(cls.pw, UI_BROWSER).launch()
         expect.set_options(timeout=8000)
         cls.kai_email = f"kai-spokoj-{uuid.uuid4()}@example.test"
-        kai = cls.browser.new_context(base_url=ORIGIN)
+        kai = cls.browser.new_context(base_url=ORIGIN, service_workers="block")
         response = kai.request.post("/api/auth/sign-up/email", data={"email": cls.kai_email, "password": PASSWORD, "name": "Kai Spokoj"}, headers={"origin": ORIGIN})
         assert response.status == 200, response.text()
         cls.kai_id = kai.request.get("/api/v1/me").json()["user"]["id"]
         kai.close()
-        context = cls.browser.new_context(base_url=ORIGIN)
+        context = cls.browser.new_context(base_url=ORIGIN, service_workers="block")
         page = context.new_page()
         page.goto("/sign-up")
         page.get_by_label("Name").fill("Ada Spokoj")
@@ -107,6 +107,9 @@ class SpokojLayout(unittest.TestCase):
             options.update(has_touch=True, is_mobile=UI_BROWSER == "chromium")
         context = self.browser.new_context(**options)
         self.addCleanup(context.close)
+        # This server has no media server, so its header shows no Call (#1424). The header's layout is measured with Call in its slot, as on a
+        # server that has one.
+        context.route("**/api/v1/live-sessions/capabilities", lambda route: route.fulfill(json={"status": "configured"}))
         return context.new_page()
 
     def box(self, locator) -> dict:
@@ -220,8 +223,7 @@ class SpokojLayout(unittest.TestCase):
                 items = [text.split("\n")[0].strip() for text in menu.locator("[role^=menuitem]:visible").all_inner_texts()]
                 # Mute space (#1249) sits between Settings and the space's details, under its own one-line hint.
                 self.assertEqual(items[:5], ["People", "Call", "Settings", "Mute space", "Space details"], items)
-                # Live sessions are off on this test server: Call is dimmed in place, not removed.
-                expect(menu.get_by_role("menuitem", name="Call")).to_have_attribute("aria-disabled", "true")
+                expect(menu.get_by_role("menuitem", name="Call")).to_be_visible()
                 menu.get_by_role("menuitem", name="Space details").click()
                 expect(page.locator("#details")).to_be_visible()
                 page.wait_for_function(SETTLED)
