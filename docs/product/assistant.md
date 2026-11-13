@@ -417,6 +417,11 @@ inferences are [C-59](decisions.md#coordinator-defaults-and-inferences-not-found
   Code and Codex it is an MCP image result, which the CLI hands to its model. The tool is offered only when the run's model sees
   pictures. The model list says when a model does not ("Can't see pictures"); such an agent is told, as before, that it sees only
   the names of attached files, and says so.
+- **Files its owner sends in its private chat** ([C-64](decisions.md) point 4, #1438 point 10): the owner attaches photos, videos and
+  files to a message to the agent, or sends them alone. The run of that chat is told their names and ids with the request (and with the
+  earlier exchanges it is given), looks at a picture with `flux_view_image` and reads a file's text with `flux_read_file`. Only a run of
+  that chat reaches them; a run in a space or a direct message, and a local client, reach none. Nothing else changes: the chat still
+  changes nothing (C-38).
 - **Not in this version:** generating pictures (it needs its own provider decision, cost and approvals), pictures in a DM between
   people or in a task's or a schedule's report (C-59), and image previews of link cards (F-031).
 
@@ -540,7 +545,7 @@ searching ([F-042](decisions.md#f-042--agents-find-what-they-need-with-bm25-sear
 - **`flux_read_around`** returns the message and up to 25 before and after it (five by default) in its conversation or direct
   message, oldest first, with the same author labels and the same access check as a search: one answer for a message that
   is not there, one that is deleted and one the caller may not read.
-- **`flux_read_file`** (#1382) returns the text of a file that a search found, in pages from `offset` (12,000 characters in a run, 20,000
+- **`flux_read_file`** (#1382) returns the text of a file that a search found (or, in an agent's chat, one its owner sent there, C-64), in pages from `offset` (12,000 characters in a run, 20,000
   for a client; `nextOffset` continues; a note says when the text has not been read yet or the file has none, as a scan). The text is
   what the worker read in its sandbox (C-63), so a long file's first 200,000 characters. One answer for a file that is not there, one in
   an encrypted space and one the caller may not read, under the same reach and the same AI switch as a search.

@@ -21,7 +21,7 @@ export async function fileRoutes(app: FastifyInstance, { db, sessions, storage, 
   // A space's files and a direct message's (#1438 point 10) are staged the same way: the same limits, checks, pictures and videos, and the same
   // rule that a staged file is its sender's alone. Only the right to write in the place differs, and it is checked in the use case.
   // Each route keeps its own parameter name (`projectId`, `dmId`), which the route walks of the tests read as the object it names.
-  for (const [prefix, place, param] of [['projects', 'project', 'projectId'], ['dms', 'dm', 'dmId']] as const) {
+  for (const [prefix, place, param] of [['projects', 'project', 'projectId'], ['dms', 'dm', 'dmId'], ['my-agents', 'chat', 'agentId']] as const) {
     app.post<{ Params: Record<string, string>; Querystring: { uploadId: string; name: string }; Body: Readable | undefined }>(
       `/api/v1/${prefix}/:${param}/files`, { bodyLimit: largest,
         schema: { querystring: { type: 'object', required: ['uploadId', 'name'], additionalProperties: false,
@@ -67,7 +67,7 @@ export async function fileRoutes(app: FastifyInstance, { db, sessions, storage, 
     return sendStored(reply, file, VIDEO_MEDIA_TYPES[file.video!]);
   } });
   // The picture the sender's browser drew from a staged video (C-61): raw bytes, decoded and re-encoded by the server.
-  for (const [prefix, place, param] of [['projects', 'project', 'projectId'], ['dms', 'dm', 'dmId']] as const) {
+  for (const [prefix, place, param] of [['projects', 'project', 'projectId'], ['dms', 'dm', 'dmId'], ['my-agents', 'chat', 'agentId']] as const) {
     app.post<{ Params: Record<string, string>; Body: Readable | undefined }>(`/api/v1/${prefix}/:${param}/files/:fileId/poster`, {
       bodyLimit: FILE_LIMITS.posterBytes,
       onRequest: async (request) => {

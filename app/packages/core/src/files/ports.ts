@@ -9,6 +9,9 @@ export interface StoredFileRow {
   /** The space the file belongs to; null for a direct message's file (#1438 point 10), which names `dmId` instead: exactly one is set. */
   projectId: string | null;
   dmId: string | null;
+  /** The agent whose private chat the file belongs to (#1438, C-64), and the owner's request (a run) it was sent with; null elsewhere. */
+  agentId?: string | null;
+  runId?: string | null;
   uploader: ActorRef;
   uploadId: string;
   name: string;
@@ -52,7 +55,7 @@ export interface FileRepository {
   stagedBytes(placeId: string, uploader: ActorRef, now: Date): Promise<number>;
   /** The same for this uploader's videos only. */
   stagedVideoBytes(placeId: string, uploader: ActorRef, now: Date): Promise<number>;
-  reserve(input: { id: string; workspaceId: string; projectId?: string; dmId?: string; uploader: ActorRef; uploadId: string; name: string;
+  reserve(input: { id: string; workspaceId: string; projectId?: string; dmId?: string; agentId?: string; uploader: ActorRef; uploadId: string; name: string;
     reservedBytes: number; expiresAt: Date; replayOf?: string; videoContainer?: VideoContainer; posterOf?: string }): Promise<StoredFileRow>;
   /** Whether this workspace is encrypted (F-030): its files are sealed and never played (C-61). */
   encrypted(workspaceId: string): Promise<boolean>;
@@ -144,6 +147,11 @@ export interface FilePorts {
      * message's file is served.
      */
     requireDm?(principal: Principal, action: 'dm.read' | 'dm.write', dmId: string, options?: { lock?: boolean }): Promise<{ workspaceId: string }>;
+    /**
+     * #1438 point 10 (C-64): throws NotFoundError unless the principal is the person whose own agent this is, a member of its company now (a
+     * guest has no AI); its chat is theirs alone. Absent where no chat's file is served.
+     */
+    requireChat?(principal: Principal, agentId: string, options?: { lock?: boolean }): Promise<{ workspaceId: string }>;
   };
   files: FileRepository;
   /** Absent where no chat picture is served. */

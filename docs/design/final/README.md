@@ -699,6 +699,10 @@ These functional rules from UI116-4 remain required:
   (no empty bubble of words above them); the conversation's list says "Sent a file" under its name when that was the last message. The paperclip is
   greyed, "(not available here)", only while the draft is a question to the agent (`/ai …`), whose private answer is not a message of the conversation.
   Only the conversation's people reach a file, on every request.
+- **Files in an agent's chat** (the same founder direction, C-64 point 4). The composer of the private chat with one of your agents has the same
+  paperclip, tray, drop and paste: photos, videos and files go with your message to the agent, or alone. Your message shows them as any message does
+  (the photo grid above the words, file rows with Preview and Download, the dark viewer and the player); nobody else sees them. The agent looks at a
+  photo and reads a file's text when you ask about it; it says so in its answer like anything else it read.
 - **References** to Flux objects are cards with the object icon, the kind, the title and the
   state: task, Wiki page, decision, thought, message. In text they are inline chips aligned to
   the text baseline: `@person`, `#4`, a Wiki page.

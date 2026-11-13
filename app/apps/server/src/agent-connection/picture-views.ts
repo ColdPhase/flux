@@ -7,6 +7,7 @@ import { withAgentConnection } from './context.js';
 import { pictureStorage } from './picture-actions.js';
 import type { AgentToolRegistry } from './tool-registry.js';
 import { toolError } from './tool-results.js';
+import { reachesChatFile } from './chat-files.js';
 
 /**
  * `flux_view_image` (#1217, F-036 AG-8, C-59): a run looks at a picture attached to a message it may read, and its model gets it as image
@@ -46,9 +47,13 @@ export function registerAgentPictureViews(tools: AgentToolRegistry, db: Database
     try {
       const storage = pictureStorage();
       if (!storage) return words('Pictures cannot be opened on this Flux.');
-      const file = await withAgentConnection(db, claims, 'read', null, async ({ tx, requireObject }) => {
+      const file = await withAgentConnection(db, claims, 'read', null, async (ctx) => {
+        const { tx, requireObject } = ctx;
         const row = await fileRows(tx as DbExecutor).findFile(fileId.toLowerCase());
-        if (!row || row.state !== 'ready' || row.messageId === null || row.size === null || row.sha256 === null) throw unavailable();
+        if (!row || row.state !== 'ready' || row.size === null || row.sha256 === null) throw unavailable();
+        // A picture its owner sent in the agent's chat (C-64): only a run of that chat reaches it.
+        if (row.agentId) { if (!await reachesChatFile(ctx, claims, row)) throw unavailable(); return row; }
+        if (row.messageId === null || row.projectId === null) throw unavailable();
         const m = schema.projectMessages;
         const [message] = await tx.select({ conversationId: m.conversationId, projectId: m.projectId }).from(m)
           .where(and(eq(m.id, row.messageId), isNull(m.removedAt)));

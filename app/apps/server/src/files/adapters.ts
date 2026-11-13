@@ -14,8 +14,27 @@ function dmFileAccess(tx: Transaction): NonNullable<FilePorts['access']['require
   };
 }
 
+/**
+ * The private chat with an agent is its owner's alone (#1438 point 10, C-64): the person asking must be the agent's owner, and the agent must
+ * be active (not removed, its owner still a member of its company and not a guest, who has no AI). Anything else is the same "not there".
+ */
+function chatFileAccess(tx: Transaction): NonNullable<FilePorts['access']['requireChat']> {
+  const reader = accessReader(tx);
+  return async (principal, agentId, options) => {
+    const notFound = () => new NotFoundError('Agent', 'AGENT_NOT_FOUND');
+    if (principal.kind !== 'human' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(agentId)) throw notFound();
+    const [agent] = await tx.select({ workspaceId: schema.agents.workspaceId, ownerUserId: schema.agents.ownerUserId }).from(schema.agents)
+      .where(eq(schema.agents.id, agentId.toLowerCase()));
+    if (!agent || agent.ownerUserId !== principal.id) throw notFound();
+    const actor = await reader.loadActor({ kind: 'agent', id: agentId.toLowerCase() }, agent.workspaceId, { lock: options?.lock });
+    if (!actor.active || actor.agent?.ownerUserId !== principal.id) throw notFound();
+    return { workspaceId: agent.workspaceId };
+  };
+}
+
 export function fileUnitOfWork(db: Database): FileUnitOfWork {
-  return { run: (action) => db.transaction((tx) => action({ access: { ...policyWorkAccess(tx), requireDm: dmFileAccess(tx) }, files: fileRows(tx), runPictures: runPictureRows(tx) })) };
+  return { run: (action) => db.transaction((tx) => action({ access: { ...policyWorkAccess(tx), requireDm: dmFileAccess(tx), requireChat: chatFileAccess(tx) },
+    files: fileRows(tx), runPictures: runPictureRows(tx) })) };
 }
 /**
  * With `options.pictures`, every picture staged is decoded and written again first (#1343); without one, bytes are stored as they arrive.
