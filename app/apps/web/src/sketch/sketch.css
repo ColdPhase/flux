@@ -12,8 +12,6 @@
 .sk-head { display: flex; align-items: center; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap; }
 .sk-lead { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; min-width: 0; font-size: var(--fs-md); color: var(--t2); }
 .sk-title { min-height: 28px; padding: 0 6px; margin: 0 -6px; border-radius: var(--r-sm); font-weight: 600; color: var(--t1); text-align: left; transition: var(--tr); }
-.sk-title:hover:not(:disabled) { background: var(--hov); }
-.sk-title:disabled { cursor: default; }
 /* The space map's title is the switcher (#1438 point 7); its menu is the Wiki's (docs.css). */
 .sk-switch { position: relative; display: inline-flex; min-width: 0; }
 .sk-switch .wiki-switch { min-height: 32px; margin: 0 0 0 -6px; padding: 0 6px; gap: 4px; border-radius: var(--r-sm); font-weight: 600; }
