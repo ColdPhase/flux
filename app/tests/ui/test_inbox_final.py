@@ -337,7 +337,17 @@ class InboxFinal(unittest.TestCase):
         expect(decision.locator(".nyc__waiting")).to_contain_text("waiting for you")
         expect(decision.locator(".nyc__waiting")).to_contain_text("Jonas Berg can accept too")
         expect(self.card(page, "asked you")).to_contain_text("Question")
-        expect(self.card(page, "is blocked")).to_contain_text("Your task")
+        expect(self.card(page, "is blocked")).to_contain_text("your task")
+        # One shape for every kind (README §7, #1424): a muted line "Kind · who · space" (a notification's own title says who and where), then the
+        # title. No bold name before the kind, no time in the row, and the kind is always first.
+        eyebrows = [text.strip() for text in cards.locator(".nyc__eyebrow--row").all_inner_texts()]
+        self.assertEqual(len(eyebrows), 4, eyebrows)
+        self.assertEqual(sorted(text.split(" · ")[0] for text in eyebrows), ["Blocked", "Decision", "Mention", "Question"], eyebrows)
+        self.assertIn("Decision · Jonas Berg · Community garden sensors", eyebrows)
+        self.assertIn("Blocked · your task · Community garden sensors", eyebrows)
+        self.assertEqual(cards.locator(".nyc__eyebrow--row b").count(), 0, "no bold name leads a row")
+        for text in eyebrows:
+            self.assertNotRegex(text, r"\d+ ?(min|h|d)\b|ago|yesterday", f"no time in a row: {text}")
         expect(self.item(page, "is blocked")).to_contain_text("waiting for the probe dimensions")
         expect(self.card(page, "mentioned you")).to_be_visible()
         # The count in the sidebar is the number of things that need you.

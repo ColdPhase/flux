@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { Fragment, useState, type ReactNode } from 'react';
 import type { NeedsYouItem } from '@flux/contracts';
 import { AgentTag, Avatar, Button, Icon, Kreska, MEDIA, StatusGlyph, useMediaQuery, type IconName } from '../ui';
 import { ago, when } from './format';
@@ -105,6 +105,15 @@ export function NeedsYouCard({ item, selected = false, compact = false, list = f
     : decision ? ['Decision', project] : item.kind === 'blocked' ? [item.blocked?.waitedBy ? 'Waiting on you' : 'Your task', project, ago(item.at)] : [word, project]).filter(Boolean).join(' · ');
   const who = run?.agentName ?? item.from?.name ?? null;
   const asked = item.agentQuestion ?? null;
+  // A row of any kind is one muted line, "Kind · who · space", then the title (README §7 Inbox, #1424): a decision "Decision · Maja · Community garden
+  // sensors", an agent's question "Question · Reviewer · Agent · …", a blocked task "Blocked · waits for you · …". A notification's own title says who
+  // and where ("Maja asked you in Community garden sensors"), so its line is its kind. No row carries the time: the open item does.
+  const rowParts: ReactNode[] = [
+    word,
+    ...(who ? [<Fragment key="who">{who}{item.from?.kind === 'agent' ? <> <AgentTag /></> : null}</Fragment>] : []),
+    ...(item.kind === 'blocked' ? [item.blocked?.waitedBy ? 'waits for you' : 'your task'] : []),
+    ...(project ? [project] : []),
+  ];
   // An agent's question names the task it is about, as drawn ("Claude Code · Agent · on #8").
   const askedMeta = asked ? [asked.task ? `on #${asked.task.number}` : null, project].filter(Boolean).join(' · ') : null;
   const answers = asked && handlers.answer ? asked.options.map((option, index) => (
@@ -178,6 +187,10 @@ export function NeedsYouCard({ item, selected = false, compact = false, list = f
               <span className="nyc__meta">{meta} · {when(item.at)}</span>
             </span>
           </div>
+        ) : row && !run ? (
+          <p className="nyc__eyebrow nyc__eyebrow--row">
+            <span className="nyc__meta">{rowParts.map((part, at) => <Fragment key={at}>{at ? ' · ' : null}{part}</Fragment>)}</span>
+          </p>
         ) : (
           <p className="nyc__eyebrow">
             {asked ? <><b>{who}</b><AgentTag />{askedMeta ? <span className="nyc__meta">{[askedMeta, when(item.at)].filter(Boolean).join(' · ')}</span> : null}</>

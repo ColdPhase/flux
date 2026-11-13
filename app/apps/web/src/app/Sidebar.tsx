@@ -286,7 +286,8 @@ export function Sidebar({ directMessages, agents = [], user, onClose, titleId, i
         <nav className="side__sec" aria-labelledby="side-dms">
           <div className="side__head">
             <h2 className="side__h" id="side-dms"><Link to="/dm" className="side__h-link" aria-current={location.pathname === '/dm' ? 'page' : undefined} onClick={navigate}>Messages</Link></h2>
-            {onClose ? <Link to="/dm/new" className="side__add" aria-label="New message" onClick={navigate}><Icon name="plus" size={14} /></Link> : null}
+            {/* The drawer has the "+" always; the computer's sidebar offers it where Messages would otherwise be a heading over nothing (#1424). */}
+            {onClose || !(directMessages.length || agents.length) ? <Link to="/dm/new" className="side__add" aria-label="New message" onClick={navigate}><Icon name="plus" size={14} /></Link> : null}
           </div>
           {directMessages.length || agents.length ? (
             <ul className="side__list">

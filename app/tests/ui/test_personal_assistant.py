@@ -442,8 +442,8 @@ class PersonalAssistantJourney(unittest.TestCase):
             expect(working.locator('.kreska[data-expression="thinking"]')).to_have_count(1)
             settings = jo.context.new_page()  # the same storage as the conversation
             settings.goto("/settings")
-            settings.get_by_role("switch", name="Kreska in loading and empty screens").click()
-            expect(settings.get_by_role("switch", name="Kreska in loading and empty screens")).to_have_attribute("aria-checked", "false")
+            settings.get_by_role("switch", name="Show the face on loading and empty screens").click()
+            expect(settings.get_by_role("switch", name="Show the face on loading and empty screens")).to_have_attribute("aria-checked", "false")
             settings.close()
             jo.reload()
             expect(working).to_contain_text("Your assistant is thinking…", timeout=15000)
@@ -469,8 +469,8 @@ class PersonalAssistantJourney(unittest.TestCase):
             # Turning the moments back on brings the live thinking face back, in the conversation and the sidebar.
             settings = jo.context.new_page()  # the same storage as the conversation
             settings.goto("/settings")
-            settings.get_by_role("switch", name="Kreska in loading and empty screens").click()
-            expect(settings.get_by_role("switch", name="Kreska in loading and empty screens")).to_have_attribute("aria-checked", "true")
+            settings.get_by_role("switch", name="Show the face on loading and empty screens").click()
+            expect(settings.get_by_role("switch", name="Show the face on loading and empty screens")).to_have_attribute("aria-checked", "true")
             settings.close()
             jo.reload()
             expect(working.locator('.kreska[data-expression="thinking"] .kreska__brow')).to_be_visible()

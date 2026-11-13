@@ -94,34 +94,19 @@ export function LiveEntry({ variant = 'header', anchor: given, onAction }: {
       </Popover>
     </span>
   ) : null;
-  if (live.capability === 'loading') return dimmed('Checking whether live sessions are available.');
-  // Nothing open to start at (Tasks, Map or Wiki without an object open) and no call of the space to join: Call says why, also on a server
-  // without a media server (the order of #763: the place first).
+  if (live.capability === 'loading') return dimmed('Checking whether calls are available.');
+  // A server without a media server has no calls, so Call is not shown anywhere: no greyed button, no row and no explanation (founder decision
+  // on #1419 item 4, #1424). Every other member sees what this server can do, nothing more.
+  if (!configured) return null;
+  // Nothing open to start at (Tasks, Map or Wiki without an object open) and no call of the space to join: Call says why.
   if (!anchor && !(hereJoinable ?? away)) return dimmed('Open a conversation, task, map or page to work on it together.');
   const inSession = live.phase === 'in' || live.phase === 'joining' || live.phase === 'rejoining' || live.phase === 'starting';
   const busy = live.phase === 'starting' || live.phase === 'joining';
 
-  if (!configured) {
-    // Explained once, behind the header's "Call" (#189): a task does not repeat it.
-    if (variant === 'inline') return null;
-    if (variant === 'more') return dimmed('Live sessions are not available on this Flux server.');
-    return (
-      <span className="lv-entry">
-        <Button ref={buttonRef} variant="quiet" icon="call" className="lv-entry__btn" aria-expanded={open} aria-haspopup="dialog" aria-label="Call" onClick={() => setOpen((v) => !v)}>
-          <span className="lv-entry__label">Call</span>
-        </Button>
-        <Popover open={open} onClose={() => setOpen(false)} anchorRef={buttonRef} label="Live sessions" className="lv-pop--narrow">
-          <p className="lv-pop__title">Live sessions are not available here</p>
-          <p className="lv-pop__text">This Flux server has no media server configured, so voice, camera and screen sharing are off for everyone. Conversations, tasks, maps and docs work as usual.</p>
-        </Popover>
-      </span>
-    );
-  }
-
   if (inSession) {
-    if (variant === 'header' || variant === 'more') return dimmed(busy ? 'Connecting to the call.' : 'You are in a live session.');
+    if (variant === 'header' || variant === 'more') return dimmed(busy ? 'Connecting to the call.' : 'You are in a call.');
     if (anchor && live.session && sameContext(live.session.context, anchor.context))
-      return <p className="lv-inline-note lv-inline-note--on"><span className="lv-dot" aria-hidden="true" />You are in the live session for this {KIND_WORD[anchor.context.type]}.</p>;
+      return <p className="lv-inline-note lv-inline-note--on"><span className="lv-dot" aria-hidden="true" />You are in the call for this {KIND_WORD[anchor.context.type]}.</p>;
     return null;
   }
 

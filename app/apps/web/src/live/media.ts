@@ -455,7 +455,7 @@ export class LiveMediaConnection {
     const now = performance.now();
     const version = this.trackDiagnostics.version;
     const keys = new Set<string>();
-    rows.push({ who: 'Connection', what: this.connection === 'connected' ? 'Connected' : this.connection, values: [`${this.snapshot.people.length || 1} ${this.snapshot.people.length === 1 ? 'person' : 'people'} in the room`], warning: this.connection === 'reconnecting' ? 'Reconnecting to the media server' : null });
+    rows.push({ who: 'Connection', what: this.connection === 'connected' ? 'Connected' : this.connection, values: [`${this.snapshot.people.length || 1} ${this.snapshot.people.length === 1 ? 'person' : 'people'} in the room`], warning: this.connection === 'reconnecting' ? 'Reconnecting to the call' : null });
     const local = this.room.localParticipant;
     for (const publication of local.trackPublications.values()) {
       keys.add(`out:${publication.trackSid}`);

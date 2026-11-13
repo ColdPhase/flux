@@ -19,7 +19,7 @@ from playwright.sync_api import Browser, Page, expect, sync_playwright
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
 
 PASSWORD = "a quiet small moment"
-SWITCH = "Kreska in loading and empty screens"
+SWITCH = "Show the face on loading and empty screens"
 # Every animated part of one face: its animation's name and iteration count, sorted (#1342).
 MOTION = """face => [...face.querySelectorAll('*')].map((part) => getComputedStyle(part)).filter((style) => style.animationName !== 'none')
   .map((style) => `${style.animationName} ${style.animationIterationCount}`).sort()"""
@@ -387,7 +387,7 @@ class SmallMomentsJourney(unittest.TestCase):
 
     def test_12_each_moment_moves_as_drawn_and_reduced_motion_or_the_switch_stops_it(self) -> None:
         """#1342: the empty Inbox's eyes settle into the smile once, the offline face's z drifts and it breathes (loops of an
-        ongoing state), and Settings → Appearance (Kreska in small moments off, or Reduce motion) leaves every face still."""
+        ongoing state), and Settings → Appearance (the face switch off, or Reduce motion) leaves every face still."""
         self.ensure_account()
         page = self.page()
         page.goto("/inbox")

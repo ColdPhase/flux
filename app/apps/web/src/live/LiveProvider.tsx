@@ -121,12 +121,12 @@ export function useRegisterLiveHere(anchor: LiveAnchor | null, presentable: Pres
 function readable(error: unknown): string {
   if (error instanceof NetworkError) return 'Flux could not be reached. Your work is safe; try again in a moment.';
   if (error instanceof ApiError) {
-    if (error.status === 404) return 'This session is no longer available to you.';
+    if (error.status === 404) return 'This call is no longer available to you.';
     if (error.status === 429) return 'Too many attempts. Wait a few seconds, then try again.';
     if (error.code === 'LIVE_SESSION_LIMIT')
-      return 'This space already has as many live sessions as it allows. Join one that is running.';
-    if (error.status === 503) return 'The media server is not reachable right now. Text work is unaffected.';
-    if (error.code === 'LIVE_SESSION_ENDED' || error.code === 'LIVE_SESSION_UNAVAILABLE') return 'This session has ended.';
+      return 'This space already has as many calls as it allows. Join one that is running.';
+    if (error.status === 503) return 'Calls are not working right now. Everything else is unaffected.';
+    if (error.code === 'LIVE_SESSION_ENDED' || error.code === 'LIVE_SESSION_UNAVAILABLE') return 'This call has ended.';
     return error.message;
   }
   return 'The live connection failed. Your work is safe; try again.';
@@ -412,7 +412,7 @@ export function LiveProvider({ meId, children }: { meId: string; children: React
       setFollowing(null);
       // A call nobody else joined ends after 10 minutes alone (F-041 point 6); its starter is told so.
       setNotice(current.createdBy === meId && !othersJoinedRef.current ? 'Nobody joined, so the call ended. Your work is saved.'
-        : 'The live session ended or can no longer be reached. Nothing you saved was lost.');
+        : 'The call ended or can no longer be reached. Nothing you saved was lost.');
     })();
   }, [connect, meId, toast]);
   useEffect(() => {

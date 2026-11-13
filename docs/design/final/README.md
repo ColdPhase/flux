@@ -233,7 +233,7 @@ the rail and its unfold keep their smooth width animation, and the content besid
 the fold (Hubert, 2026-11-03, #720). Reduced motion sets every duration and delay to zero. Nothing
 moves for its own sake.
 
-**Theme:** Light, Dark and Match system. There is no accent colour and no colour picker. The v0.2
+**Theme:** Light, Dark and Match system, with those words on every device (the phone does not say "System", #1424). There is no accent colour and no colour picker, and no line that says so. The v0.2
 renders are light; dark comes from the tokens.
 
 ![Visual system](screens/reference-system.webp)
@@ -341,7 +341,7 @@ Celebrate stays drawn (the sparkle, with the smiling eyes) for a moment that may
 sparkle turning in once while the eyes settle into the smile (600 ms).
 
 **Small moments.** These are the only places the mascot appears, and Settings → Appearance can
-turn them off:
+turn them off with one switch, **"Show the face on loading and empty screens"** on every device (the name Kreska is not in the words, #1424):
 - splash;
 - space loading;
 - an agent is thinking, with Stop;
@@ -378,7 +378,8 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
     you muted has a small muted mark there too ([Muting and following](#muting-a-place-and-following-a-thread)).
     You see only the spaces you were added to;
   - **Messages**: your agents and people. Assistant is pinned first, then your other agents, then
-    people. A dot marks an unread report or message;
+    people. A dot marks an unread report or message. With no agent and no message yet, the heading has the phone's "+" (**New message**),
+    so it is never a heading over nothing (#1424);
   - your name at the bottom. It opens the account menu: your name, Settings and Sign out.
 - **Collapsed rail (64 px).** Icons only. Folding to the rail and unfolding animate the sidebar's
   width smoothly, and the content beside it adapts during the fold. This is the one named exception
@@ -388,13 +389,16 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
   Wiki** as [underline tabs](#underline-tabs-the-views-switch), the people's faces (people active now first, then the others, an agent last; with a working agent's
   face only while it works), **Call** (Join while a call of the space is on, [Calls](#calls)) and ⋯. The tabs are as tall as the row, so their underline sits on the
   header's hairline. The faces sit side by side and touch, as drawn, so two-letter initials stay whole:
-  at most three people and one agent (two people and one agent in a header pane narrower than 70 rem, a tablet or a
-  computer window of about 1001 to 1380 px), then one "+N" face of the same size (a circle for "+5", "99+" from a
-  hundred). The people's button is as wide as its faces and ends at the right edge of its slot, so no grey area shows
+  at most three people (two in a header pane narrower than 70 rem, a tablet or a computer window of about 1001 to 1380 px) and,
+  while one of your own agents works on a task of the space, its Kreska after them, then one "+N" face of the same size (a circle for
+  "+5", "99+" from a hundred). **Agents are not members** (founder decision on [#1419](https://github.com/ColdPhase/flux/issues/1419), #1424):
+  "+N", the button's accessible name ("Basia, Jonas, you and 2 others, who can see this space") and the phone's line count people only,
+  and an empty Everyone does not say "1 agent". The people's button is as wide as its faces and ends at the right edge of its slot, so no grey area shows
   where there is no face; the slot keeps its width (100 px, 120 px from 70 rem) whatever the number of people. The ⋯ menu holds the space's settings,
   **Mute space** / **Unmute space** and **Space details**, the one way into the space's own panel ([#871](https://github.com/ColdPhase/flux/issues/871),
   [#873](https://github.com/ColdPhase/flux/issues/873); the phone's ⋯ has it too, after Search, Call, Settings and Mute). It has no row for the sidebar:
-  the sidebar folds with its own control and `[`, and the rail and the navigation button open it ([#1376](https://github.com/ColdPhase/flux/issues/1376)). There is no Agents view, no Focus, no goal and no "needs you" count.
+  the sidebar folds with its own control and `[`, and the rail and the navigation button open it ([#1376](https://github.com/ColdPhase/flux/issues/1376)). There is no Agents view, no Focus, no goal and no "needs you" count. **⋯ is there only where it has rows** (#1424): My tasks, My map, an
+  agent's chat on the computer and a page of Settings have none, so they show no ⋯ and no empty menu.
 - **One detail panel.** A task, a decision or a thread opens in the same right-hand panel, and the
   conversation stays visible. Opening another object replaces the panel's content, with "‹ back".
   `Esc` closes it.
@@ -420,7 +424,7 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
   - **A live call shows Join.** The one dark pill (#1230) sits between the name and ⋯ and never
     shrinks, as ⋯ never shrinks. It folds into ⋯ below 360 px, as before, with the live mark on ⋯.
   - **A long name wraps to at most two lines, then an ellipsis.** The full name is the heading's
-    text, so it is the accessible name, and its title. The line "3 people · 4 agents" stays one
+    text, so it is the accessible name, and its title. The line "3 people" (agents are not members, #1424) stays one
     line under it, in `--t3`.
   - **The views are the same [underline tabs](#underline-tabs-the-views-switch) as on the computer
     and the tablet,** in the row under the title, left-aligned; the title is not a view menu.
@@ -825,7 +829,9 @@ Community garden sensors, Rain barrel monitor and Tool library.
   in the Inbox. Every item needs you, so none is marked "Needs you" (§2 lists the pill as superseded).
 - **Two columns where there is room, one column on the phone.** From a 1001 px window (the width at which the detail panel stops
   being an overlay) the list is the left column, about 360 px, and the open item is the right column, as drawn. In the list each
-  item is one row: kind · who · space, the title (two lines at most) and one line of what it says, with no button; the open row is
+  item is one row: kind · who · space, the title (two lines at most) and one line of what it says, with no button; every kind has the same shape
+  (a muted line that starts with the kind, no bold name before it and no time; a notification's own title already says who and where, so its line is
+  its kind, #1424); the open row is
   the raised `--el` row, and the first item is open until another is chosen. The right column is the open item as its card with no
   box around it: the face, who and where and when, the title (`--fs-xl`), its words, its actions, then who can accept it. Nothing in
   the list moves when another item opens. **In one column** (a tablet in portrait, the phone) the open item is the card that is
@@ -1144,6 +1150,9 @@ Live strip, someone shares a screen
   Nia", and "Join · Nia · at “Loan rules”" when the call is at another task, map or page than the one open (a call of
   the space itself has no "at"). Below 44 rem the header has moved Call into ⋯: ⋯ carries the live dot and its first row
   is "Join · Nia". On the phone Join is the dark pill between the name and ⋯ (#1239); under 360 px it takes Call's row in ⋯, after Search, with the dot on ⋯.
+- **No media server, no Call** (founder decision on [#1419](https://github.com/ColdPhase/flux/issues/1419) item 4, #1424). A server that has no media server shows
+  no Call anywhere: not in the header on any view (Tasks, Map and Wiki lists included), not as a greyed row in ⋯ or on the phone, not on a task, and no
+  popover that explains it. Its words "media server" and "live sessions" are not said to members: a call that fails says "Calls are not working right now."
 - **Connecting.** From the click on Call or Join the strip is there, in the place it will keep: the spinner and "Connecting…",
   and the call's place (the same button), with nothing else; its devices, Invite…, ⋯ and Leave come when the call is joined, in the
   same row, so the work below does not move twice. Until then the header's Call (or ⋯'s row) says "Connecting to the call." and
@@ -1609,6 +1618,8 @@ On the phone the Assistant conversation is a normal conversation. Its header lis
   - People with Add people, an Admin / Member choice and Remove on each row, and under each name a quiet line with when they were last active ([Last active](#last-active)).
   - The AI switch.
   - Leave space, and Delete space… for admins.
+  - **GitHub repositories** is offered to a space's manager only on a server where GitHub is set up. A server without it shows no row, no link and no
+    "ask whoever runs Flux" (founder decision on [#1419](https://github.com/ColdPhase/flux/issues/1419) item 4, #1424): what a server cannot do is not shown.
   - An encrypted space shows its lock in place of the AI switch, and only its own admins change its
     people.
 - **A locked space** keeps its header, with the views inactive and no Call, and shows one calm card

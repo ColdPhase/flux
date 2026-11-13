@@ -539,8 +539,9 @@ class AppShellJourney(unittest.TestCase):
         expect(page.get_by_role("heading", name="No messages yet")).to_be_visible()
         expect(sidebar.locator("#side-dms").get_by_role("link", name="Messages", exact=True)).to_have_attribute("aria-current", "page")
         expect(sidebar.get_by_text("No conversations yet", exact=False)).to_have_count(0)  # #763 FR-4
-        # On the computer New (C) starts a message; the sidebar has no second "+".
-        expect(sidebar.get_by_role("link", name="New message")).to_have_count(0)
+        # With no message and no agent yet, Messages is not a heading over nothing: it has the phone's "+" (New message, #1424).
+        expect(sidebar.get_by_role("link", name="New message")).to_have_count(1)
+        expect(sidebar.get_by_role("link", name="New message")).to_have_attribute("href", "/dm/new")
         expect(page.get_by_role("navigation", name="Views")).to_have_count(0)
         shot(page, "desktop-1440-dm-light")
         rail.get_by_role("link", name="Home").click()

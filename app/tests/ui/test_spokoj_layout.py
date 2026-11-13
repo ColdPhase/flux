@@ -127,12 +127,13 @@ class SpokojLayout(unittest.TestCase):
         page.wait_for_function(SETTLED)
 
     def header_boxes(self, page: Page, views: bool = True, narrow: bool = False) -> dict:
-        """The header's controls by accessible name: the views, then people · Call · More. Where the row has no room for them (under 704 px) the people and Call are in More."""
+        """The header's controls by accessible name: the views, then the people and More. This test server has no media server, so there is no Call (#1424).
+        Where the row has no room for them (under 704 px) the people are in More."""
         header = page.locator("header.top")
         boxes = {"More": self.box(header.get_by_role("button", name="More", exact=True))}
         if not narrow:
             boxes["people"] = self.box(header.get_by_role("button", name=PEOPLE))
-            boxes["Call"] = self.box(header.get_by_role("button", name="Call", exact=True))
+            expect(header.get_by_role("button", name="Call", exact=True)).to_have_count(0)
         if views:
             for name in VIEW_NAMES:
                 # A view with a count has it in its name ("Tasks, 3 open").
@@ -168,9 +169,8 @@ class SpokojLayout(unittest.TestCase):
                 self.goto_view(page, "")
                 self.assert_one_row(page, f"{size['width']} closed")
                 closed = self.header_boxes(page)
-                # The people, Call and More follow the views in that order (#506 AC-2).
-                self.assertLess(closed["people"]["x"], closed["Call"]["x"])
-                self.assertLess(closed["Call"]["x"], closed["More"]["x"])
+                # The people and More follow the views in that order (#506 AC-2); Call is not shown without a media server (#1424).
+                self.assertLess(closed["people"]["x"], closed["More"]["x"])
                 self.open_panel(page)
                 self.assert_one_row(page, f"{size['width']} panel open")
                 self.assert_same_place(closed, self.header_boxes(page), f"{size['width']} panel opened")
@@ -213,15 +213,15 @@ class SpokojLayout(unittest.TestCase):
                 header = page.locator("header.top")
                 self.assert_one_row(page, f"{size['width']}")
                 expect(header.get_by_role("button", name=PEOPLE)).to_be_hidden()
-                expect(header.get_by_role("button", name="Call", exact=True)).to_be_hidden()
+                expect(header.get_by_role("button", name="Call", exact=True)).to_have_count(0)
                 views = self.header_boxes_views_only(page)
                 header.get_by_role("button", name="More", exact=True).click()
                 menu = page.get_by_role("menu", name="More")
                 items = [text.split("\n")[0].strip() for text in menu.locator("[role^=menuitem]:visible").all_inner_texts()]
                 # Mute space (#1249) sits between Settings and the space's details, under its own one-line hint.
-                self.assertEqual(items[:5], ["People", "Call", "Settings", "Mute space", "Space details"], items)
-                # Live sessions are off on this test server: Call is dimmed in place, not removed.
-                expect(menu.get_by_role("menuitem", name="Call")).to_have_attribute("aria-disabled", "true")
+                # There is no media server on this test server, so there is no Call row, not even a greyed one (#1424).
+                self.assertEqual(items[:4], ["People", "Settings", "Mute space", "Space details"], items)
+                expect(menu.get_by_role("menuitem", name="Call")).to_have_count(0)
                 menu.get_by_role("menuitem", name="Space details").click()
                 expect(page.locator("#details")).to_be_visible()
                 page.wait_for_function(SETTLED)
@@ -365,14 +365,8 @@ class SpokojLayout(unittest.TestCase):
                     self.goto_view(page, path)
                     header = page.locator("header.top")
                     boxes = self.header_boxes(page, views=True)
-                    # Call is in every view; where nothing is open to work on together it stays and says why on a click.
-                    if path in ("/map", "/tasks"):
-                        together = header.get_by_role("button", name="Call", exact=True)
-                        expect(together).not_to_have_attribute("aria-disabled", "true")
-                        together.click()
-                        expect(page.get_by_role("dialog", name="Call")).to_contain_text("Open a conversation, task, map or page")
-                        page.keyboard.press("Escape")
-                        expect(page.get_by_role("dialog", name="Call")).to_have_count(0)
+                    # No media server here: Call is in no view, not even greyed or explained (#1424).
+                    expect(header.get_by_role("button", name="Call", exact=True)).to_have_count(0)
                     if first is None:
                         first = boxes
                     else:
@@ -496,7 +490,7 @@ class SpokojLayout(unittest.TestCase):
         self.assertEqual([round(width) for width in compact], [round(width) for width in widths], f"the tablet's tabs are the computer's: {compact}")
 
     def header_places(self, page: Page) -> dict:
-        """Where the header's items are, by accessible name, in the state the page is in: the four views, the people, Call and More."""
+        """Where the header's items are, by accessible name, in the state the page is in: the four views, the people and More (Call only with a media server)."""
         header = page.locator("header.top")
         places = {name: self.box(header.get_by_role("navigation", name="Space views").get_by_role("tab", name=re.compile(f"^{name}"))) for name in VIEW_NAMES}
         places["name"] = self.box(header.locator(".top__title"))

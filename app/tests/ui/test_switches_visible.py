@@ -229,7 +229,7 @@ class SwitchesVisible(unittest.TestCase):
             page = self.page(scheme, phone)
             # A Settings row's switch (the Kreska row), off and on.
             page.goto("/settings/appearance" if phone else "/settings")
-            row = page.get_by_role("switch", name=re.compile(r"^Kreska in"))
+            row = page.get_by_role("switch", name=re.compile(r"^Show the face"))
             expect(row).to_be_visible()
             if row.get_attribute("aria-checked") == "true":
                 row.click()

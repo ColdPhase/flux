@@ -87,16 +87,16 @@ function PageHead({ title, lead }: { title: string; lead?: string }) {
   );
 }
 
-const THEMES: { id: ThemeChoice; label: string; phoneLabel: string }[] = [
-  { id: 'light', label: 'Light', phoneLabel: 'Light' },
-  { id: 'dark', label: 'Dark', phoneLabel: 'Dark' },
-  { id: 'system', label: 'Match system', phoneLabel: 'System' },
+/** One word for each, on every device: the computer's "Match system" is the phone's too (#1424). */
+const THEMES: { id: ThemeChoice; label: string }[] = [
+  { id: 'light', label: 'Light' },
+  { id: 'dark', label: 'Dark' },
+  { id: 'system', label: 'Match system' },
 ];
 
 /** Light, Dark or Match system as three drawn previews in one radio group, with arrow keys. */
 function ThemeChoices() {
   const theme = useTheme();
-  const phone = useMediaQuery(MEDIA.phone);
   const ref = useRef<HTMLDivElement>(null);
   const move = (event: KeyboardEvent<HTMLDivElement>) => {
     const delta = event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 1 : event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 0;
@@ -113,19 +113,20 @@ function ThemeChoices() {
         <button key={item.id} type="button" role="radio" className="sset-theme" data-theme-option={item.id} aria-checked={theme === item.id}
           tabIndex={theme === item.id ? 0 : -1} onClick={() => setTheme(item.id)}>
           <span className={`sset-theme__art sset-theme__art--${item.id}`} aria-hidden="true"><i /><i /><i /></span>
-          <span className="sset-theme__label"><span className="sset-radio" aria-hidden="true" />{phone ? item.phoneLabel : item.label}</span>
+          <span className="sset-theme__label"><span className="sset-radio" aria-hidden="true" />{item.label}</span>
         </button>
       ))}
     </div>
   );
 }
 
+/** Kreska's small moments in plain words, the same on every device: it is a face, not a name to know (#1424). */
 function KreskaSwitch() {
   const on = useSmallMoments();
   const phone = useMediaQuery(MEDIA.phone);
   return (
-    <SwitchRow icon={<Kreska size={phone ? 26 : 22} />} label={phone ? 'Kreska in small moments' : 'Kreska in loading and empty screens'}
-      detail={phone ? undefined : 'Small moments: loading, agent thinking, empty Inbox, offline'} checked={on} onChange={setSmallMoments} />
+    <SwitchRow icon={<Kreska size={phone ? 26 : 22} />} label="Show the face on loading and empty screens"
+      detail={phone ? undefined : 'Also when an agent is thinking, the Inbox is empty or you are offline.'} checked={on} onChange={setSmallMoments} />
   );
 }
 
@@ -164,22 +165,12 @@ function TextSizeChoice() {
   );
 }
 
-/** On the phone the text size follows the system setting: a plain value, with no control to change it. */
-function TextSizeFollowsPhone() {
-  return (
-    <div className="sset-row">
-      <span className="sset-row__b"><span className="sset-row__t">Text size</span></span>
-      <span className="sset-row__go">Follows your phone</span>
-    </div>
-  );
-}
-
 function ReduceMotionSwitch() {
   const reduce = useReduceMotion();
   return <SwitchRow label="Reduce motion" checked={reduce} onChange={setReduceMotion} />;
 }
 
-const THEME_LABEL: Record<ThemeChoice, string> = { light: 'Light', dark: 'Dark', system: 'System' };
+const THEME_LABEL: Record<ThemeChoice, string> = { light: 'Light', dark: 'Dark', system: 'Match system' };
 
 /**
  * AI, on its own page (Settings → AI, and the phone's section): Connect AI with every connection (#854), your agents (#857),
@@ -250,11 +241,11 @@ export function SettingsAppearance() {
           <PageHead title="Appearance" lead="Flux uses one neutral palette. Status is shown by shape and words, so it reads the same in both themes." />
         )}
         <ThemeChoices />
-        {phone ? <p className="sset-note">One neutral palette. There is no accent color to pick.</p> : null}
         {phone ? <h2 className="sset-sec">This phone</h2> : null}
         {/* Notifications and installing Flux on this device live under Notifications → This device (#763 SG-8). */}
         <div className="sset-card">
-          {phone ? <TextSizeFollowsPhone /> : <><TextSizeChoice /><ReduceMotionSwitch /></>}
+          {/* On the phone the text size follows the phone's own setting, so there is nothing here to choose or to read. */}
+          {phone ? null : <><TextSizeChoice /><ReduceMotionSwitch /></>}
           <KreskaSwitch />
         </div>
       </div>

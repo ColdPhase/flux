@@ -16,6 +16,7 @@ import { agentAuthorOwner, useAgentOwners } from '../agents/owners';
 import './overview.css';
 import { SpaceFace } from '../ui/SpaceFace';
 import { RefLink } from '../place/origin';
+import { useGithubSetUp } from '../github/useGithubSetUp';
 
 /** Hooks run before the shell is known; this stands in for it and is never shown. */
 
@@ -101,6 +102,8 @@ export function ProjectOverview({ messageId, selection, onBack }: { messageId?: 
   const read = useOverviewWork(me.user.id, shell?.project.id ?? null, open?.conversation?.id ?? null, messageId);
   const owners = useAgentOwners(shell?.project);
   const encrypted = !!useWorkspaceEncryption(shell?.project.workspaceId);
+  // GitHub is offered to a space's manager, and only on a server where it is set up (#1424).
+  const github = useGithubSetUp(shell?.project.id, shell?.project.access === 'manager');
   if (!shell) return null;
   const { project, people, sketches, docs } = shell;
   // An agent is named with Kreska, the "Agent" tag and its owner; a person by name only.
@@ -172,7 +175,7 @@ export function ProjectOverview({ messageId, selection, onBack }: { messageId?: 
   const noLinkedContext = read.objects.phase === 'idle' || read.page && (read.page.total === 0
     || read.page.total === rows.length && read.links?.total === 0);
 
-  const connected: Row[] = projectMode && project.access === 'manager' ? [{ key: 'github', icon: 'link', kind: '', title: 'GitHub repositories', to: `${base}/github` }] : [];
+  const connected: Row[] = projectMode && github ? [{ key: 'github', icon: 'link', kind: '', title: 'GitHub repositories', to: `${base}/github` }] : [];
   const author: ReactNode = message ? (message.authorId === null
     ? <AgentIdentity name={agentDisplayName(message.author)} owner={agentAuthorOwner(message.author, owners)} icon={14} />
     : message.authorId === me.user.id ? 'you' : people?.find((person) => person.id === message.authorId)?.name ?? 'a member') : null;
@@ -231,7 +234,7 @@ export function ProjectOverview({ messageId, selection, onBack }: { messageId?: 
           <Icon name="chevron-right" size={16} className="ov-row__go" />
         </Link>
       </section>
-      {projectMode ? <Rows label="Connected" rows={connected} /> : !message && project.access === 'manager' ? <p className="ov-more"><Link to={`${base}/github`}>GitHub repositories</Link></p> : null}
+      {projectMode ? <Rows label="Connected" rows={connected} /> : !message && github ? <p className="ov-more"><Link to={`${base}/github`}>GitHub repositories</Link></p> : null}
     </div>
   );
 }

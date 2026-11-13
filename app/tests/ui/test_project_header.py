@@ -1,6 +1,6 @@
 """The computer's one-row project header (#340, final design F-026 §4; Focus mode went with F-038, #872).
 
-One row holds the project name, the views as underline tabs, the people and agents, and More. What needs the
+One row holds the project name, the views as underline tabs, the people (agents are not members: no face, no count; one shows only while it works), and More. What needs the
 person is only in the Inbox: the header carries no "N needs you" (#865).
 
 Runs with the other tests/ui journeys through scripts/check_ui.sh against the running Compose app.
@@ -112,7 +112,7 @@ class ProjectHeader(unittest.TestCase):
             self.assertAlmostEqual(mark["height"], 2, delta=0.1)
             self.assertAlmostEqual(mark["y"] + mark["height"], header.bounding_box()["y"] + header.bounding_box()["height"], delta=1)
             self.assertEqual(views.locator(".ui-tabs__bar").evaluate("el => getComputedStyle(el).boxShadow"), "none")
-            # People and agents as faces, which open the space's settings.
+            # The people as faces, which open the space's settings.
             faces = header.get_by_role("button", name=re.compile("who can see this space$"))
             expect(faces.locator(".ui-avatar")).to_have_count(1)
             # What needs Ada is in the Inbox alone: no chip in the header claims it (#865).
@@ -173,9 +173,10 @@ class ProjectHeader(unittest.TestCase):
         page.route(re.compile(r".*/api/v1/projects/[0-9a-f-]{36}/space-shell$"), shell)
 
     def test_03_the_people_pill_hugs_its_touching_faces_inside_a_slot_that_never_moves(self) -> None:
-        """#1236: the faces touch with whole initials; a header pane of 70 rem and up draws three people, the agent and "+N", a narrower one two
-        people, the agent and "+N" (two digits too); the pill is as wide as its faces and ends at the slot's right edge; the slot (the width #873
-        keeps: 100 px, 120 px from 70 rem) and the header's other controls are where they were whatever the number of people."""
+        """#1236: the faces touch with whole initials; a header pane of 70 rem and up draws three people and "+N", a narrower one two people and "+N"
+        (two digits too); agents are not members, so none is drawn or counted while none works (#1424); the pill is as wide as its faces and ends
+        at the slot's right edge; the slot (the width #873 keeps: 100 px, 120 px from 70 rem) and the header's other controls are where they were
+        whatever the number of people."""
         self.ensure_project()
         engine = UI_BROWSER
         counts = [(h, a) for h in (1, 2, 3, 4, 12, 99) for a in (0, 2)] + [(120, 0)]
@@ -191,8 +192,8 @@ class ProjectHeader(unittest.TestCase):
                 faces = page.evaluate(self.FACES)
                 self.assertEqual(faces["wide"], width >= 1440, f"{width}: the header pane is {'wide' if width >= 1440 else 'narrow'}")
                 people_shown = min(humans, 3 if faces["wide"] else 2)
-                shown = people_shown + min(agents, 1)
-                self.assertEqual(faces["drawn"], shown, f"{where}: {3 if faces['wide'] else 2} people and one agent at most")
+                shown = people_shown
+                self.assertEqual(faces["drawn"], shown, f"{where}: {3 if faces['wide'] else 2} people at most, and no agent")
                 content = faces["faces"][-1]["right"] - faces["faces"][0]["left"]
                 self.assertAlmostEqual(faces["pill"]["width"] - content, 12, delta=1.5, msg=f"{where}: the pill is its faces and 6 px each side, no empty area: {faces}")
                 self.assertAlmostEqual(faces["faces"][0]["left"] - faces["pill"]["left"], faces["pill"]["right"] - faces["faces"][-1]["right"], delta=1, msg=f"{where}: equal padding")
@@ -202,7 +203,7 @@ class ProjectHeader(unittest.TestCase):
                 self.assertEqual(faces["background"], "rgba(0, 0, 0, 0)", f"{where}: no grey area while nobody hovers it")
                 for before, after in zip(faces["faces"], faces["faces"][1:]):
                     self.assertAlmostEqual(after["left"] - before["right"], 0, delta=0.6, msg=f"{where}: the faces touch, none overlaps: {faces['faces']}")
-                rest = humans + agents - shown
+                rest = humans - shown  # agents are not counted
                 if rest:
                     self.assertIsNotNone(faces["more"], f"{where}: what does not fit is a +N face")
                     self.assertEqual(faces["more"]["text"], "99+" if rest > 99 else f"+{rest}")
@@ -235,12 +236,55 @@ class ProjectHeader(unittest.TestCase):
         page.wait_for_function("getComputedStyle(document.querySelector('.top__faces')).backgroundColor !== 'rgba(0, 0, 0, 0)'")
         self.assertEqual(pill.bounding_box(), before)
         shot_both(page, f"1236-header-people-hover-1440-{engine}")
-        # The phone's header has no pill (the people are in More and the space's settings).
+        # The phone's header has no pill (the people are in More and the space's settings); its line counts people only (#1424).
         phone = self.page("light", PHONE)
         self.people_of(phone, 4, 1)
         phone.goto(f"/projects/{self.ids['project']}")
         expect(phone.get_by_role("heading", level=1, name=PROJECT)).to_be_visible()
+        expect(phone.locator(".phead__sub")).to_have_text("4 people")
         shot_both(phone, f"1236-header-people-390-{engine}")
+
+    def test_04_agents_are_not_members_and_a_working_agent_shows_only_while_it_works(self) -> None:
+        """#1424: the faces, "+N", the accessible name and the phone's line count people only. An agent's face (Kreska, after the people) is there
+        only while one of the person's own agents works on a task of this space, and goes when it stops."""
+        self.ensure_project()
+        page = self.page("light", {"width": 1440, "height": 900})
+        self.people_of(page, 5, 4)
+        working: list[dict] = []
+        page.route(re.compile(r".*/api/v1/working-agents$"), lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps({"items": working})))
+        page.goto(f"/projects/{self.ids['project']}")
+        pill = self.header(page).get_by_role("button", name=re.compile("who can see this space$"))
+        expect(pill).to_be_visible()
+        # Nobody works: three people and "+2" (5 people; the 4 agents are not counted), no agent face, no word "agent" anywhere in the name.
+        expect(pill.locator(".top__face")).to_have_count(3)
+        expect(pill.locator(".kreska")).to_have_count(0)
+        expect(pill.locator(".top__more-faces--wide")).to_have_text("+2")
+        self.assertNotRegex(pill.locator(".ui-vh").inner_text(), r"agent")
+        self.assertNotRegex(pill.get_attribute("title") or "", r"agent")
+        # One of the person's agents works on a task here: its face follows the people.
+        working.append({"agent": {"id": "00000000-0000-4000-9000-000000000000", "name": "Agent 1"},
+                        "task": {"id": "00000000-0000-4000-a000-000000000001", "projectId": self.ids["project"], "projectName": PROJECT, "number": 1, "title": "Calibrate"},
+                        "working": True, "online": True, "signedIn": True})
+        page.reload()
+        expect(pill.locator(".kreska")).to_have_count(1)
+        expect(pill.locator(".top__face")).to_have_count(4)
+        expect(pill.locator(".top__more-faces--wide")).to_have_text("+2")
+        # An agent that is on a task but not working now has no face here.
+        working[0]["working"] = False
+        page.reload()
+        expect(self.header(page).get_by_role("button", name=re.compile("who can see this space$"))).to_be_visible()
+        expect(pill.locator(".kreska")).to_have_count(0)
+
+    def test_05_more_is_there_only_where_it_has_rows(self) -> None:
+        """#1424: My tasks and My map have nothing in ⋯, so no empty menu opens; a space's header keeps it with its rows."""
+        self.ensure_project()
+        page = self.page("light", {"width": 1440, "height": 900})
+        for path, title in (("/tasks", "My tasks"), ("/map", "My map")):
+            page.goto(path)
+            expect(self.header(page).get_by_role("heading", level=1, name=title)).to_be_visible()
+            expect(self.header(page).get_by_role("button", name="More", exact=True)).to_have_count(0)
+        page.goto(f"/projects/{self.ids['project']}")
+        expect(self.header(page).get_by_role("button", name="More", exact=True)).to_be_visible()
 
 
 if __name__ == "__main__":

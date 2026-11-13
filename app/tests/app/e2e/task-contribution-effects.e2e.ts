@@ -145,7 +145,7 @@ test('a saved blocker, what came of a finished task and a handoff appear as mark
       await cameOfItLine.waitFor();
       assert.match(await cameOfItLine.innerText(), /The new hinge holds at 40 N/);
       assert.equal(await cameOfItLine.locator('[data-contribution="came_of_it"]').innerText(), 'What came of it');
-      assert.equal(await activity.locator(`[data-message-id="${handoff.id}"] [data-contribution="handoff"]`).innerText(), 'Handoff instruction');
+      assert.equal(await activity.locator(`[data-message-id="${handoff.id}"] [data-contribution="handoff"]`).innerText(), 'Instruction for an agent');
       assert.ok(await readerPage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `no horizontal overflow in the task at ${width}px`);
       if (evidence) { mkdirSync(evidence, { recursive: true }); await readerPage.screenshot({ path: join(evidence, `task-effects-reader-details-${width}.png`), fullPage: true }); }
 
@@ -161,7 +161,7 @@ test('a saved blocker, what came of a finished task and a handoff appear as mark
       await line.getByText('The new hinge holds at 40 N').first().waitFor();
       assert.match(await line.innerText(), /The new hinge holds at 40 N/);
       assert.equal(await line.locator('[data-contribution="came_of_it"]').innerText(), 'What came of it');
-      assert.equal(await readerPage.locator(`#message-${handoff.id} [data-contribution="handoff"]`).innerText(), 'Handoff instruction');
+      assert.equal(await readerPage.locator(`#message-${handoff.id} [data-contribution="handoff"]`).innerText(), 'Instruction for an agent');
       // A space has no read-only reader since #903 (Member and Admin): the person added to it can answer in the thread.
       await readerPage.getByRole('textbox', { name: 'Reply', exact: true }).waitFor();
       assert.ok(await readerPage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `no horizontal overflow at ${width}px`);

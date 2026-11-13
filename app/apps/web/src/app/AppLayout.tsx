@@ -35,7 +35,7 @@ import './project-header.css';
 import { WorkReadProvider, useProjectWorkSummary } from '../work/WorkReadContext';
 import { OverviewContext } from '../project/OverviewContext';
 import { remember, remembered } from './remembered';
-import { ProjectAgentStop } from './WorkingAgent';
+import { OwnWorkingAgentsProvider, ProjectAgentStop, useAgentWorkingIn } from './WorkingAgent';
 import { HeaderFaces, MoreMenu, type MoreItem } from './HeaderParts';
 import { beginNotificationSession, retireNotificationSession } from '../notifications/session';
 import { retireLeftCopies } from '../docs/drafts';
@@ -584,6 +584,7 @@ function AppLayoutContent() {
   ] : null;
   const places = phonePlaces(location.pathname, inboxUnread);
   const audience = project ? audienceLine(project.people, me.user.id) : 'People with space access';
+  const agentWorking = useAgentWorkingIn(projectId);
   // The audience line leads to the space's settings, where its people are and its admins change them (F-037, #874).
   const openAudience = () => { if (projectId) void navigate(`/projects/${projectId}/settings`); };
   // A task or decision opens in the one detail panel with its kind as a chip (F-026 S4).
@@ -716,7 +717,8 @@ function AppLayoutContent() {
   const heading = panelHeading(detailsView, placeDetailsLabel);
   // The Inbox's and the Spaces list's one bulk action (#1250): everything unread is read; what needs an action stays in the Inbox. It is on every Inbox address
   // (an open item and a missing one too), so the header's ⋯ never comes and goes (#1376).
-  const bulkRead: MoreItem[] = (where === 'inbox' && /^\/inbox(\/|$)/.test(location.pathname)) || location.pathname === '/projects' ? [{ label: 'Mark all as read', run: markAllRead }] : [];
+  const offersBulkRead = (where === 'inbox' && /^\/inbox(\/|$)/.test(location.pathname)) || location.pathname === '/projects';
+  const bulkRead: MoreItem[] = offersBulkRead ? [{ label: 'Mark all as read', run: markAllRead }] : [];
   const moreItems: MoreItem[] = [
     ...bulkRead,
     // A header with no room for them (Spokój rule 3) moves the people and Call here; the views stay in the row.
@@ -727,6 +729,8 @@ function AppLayoutContent() {
     ...('noDetails' in place ? [] : [{ label: placeDetailsLabel, run: () => shell.openDetails('place') }]),
     // No sidebar row: the sidebar folds with its own control and `[`, and the rail and the navigation button open it (README §4, #1376).
   ];
+  // The same conditions as the rows above: My tasks, My map, an agent's chat and Settings have none, and then no ⋯ is shown (#1424).
+  const hasMoreRows = offersBulkRead || !!project?.people || !!activeProject || !!placeMute || !('noDetails' in place);
 
   // The phone's header (F-026 §4 Phone): inside a space the title row is Back, the space's plain title (two lines at most) with who is here
   // beneath it, and More, with Join between them while a call is live (#1239); Search and Call are the first rows of More. The views are
@@ -760,11 +764,11 @@ function AppLayoutContent() {
   // An opened reference leads back to where it was followed from, in the place of the generic back (#592).
   const phoneBack = (fallback: string) => routeOrigin ? <RouteOriginBack origin={routeOrigin} className="origin-back--phone" /> : <PhoneBack onBack={() => goBack(fallback)} />;
   const searchButton = <IconButton icon="search" label="Search" size={24} className="phead__round" onClick={shell.openSearch} />;
-  const peopleLine = (people: ProjectPerson[] | null, includeAgents = true) => {
+  /** "5 people": agents are not members and are not counted (#1424). */
+  const peopleLine = (people: ProjectPerson[] | null) => {
     if (!people) return '';
     const humans = people.filter((person) => person.kind === 'human').length;
-    const agents = includeAgents ? people.length - humans : 0;
-    return `${humans} ${humans === 1 ? 'person' : 'people'}${agents ? ` · ${agents} ${agents === 1 ? 'agent' : 'agents'}` : ''}`;
+    return `${humans} ${humans === 1 ? 'person' : 'people'}`;
   };
   // The phone's More holds the space's Search and Call (Join, while a call is live, which the header also shows from 360 px wide), its Settings
   // and its details, the one place they open from (#873, #1239).
@@ -846,6 +850,7 @@ function AppLayoutContent() {
     <ShellContext.Provider value={shell}>
     {/* One live session per tab, above the routes, so navigation keeps it (#62). */}
     <LiveProvider meId={me.user.id}>
+    <OwnWorkingAgentsProvider>
     <div className={`app${phone && !detailsOpen && !lockedHere && phoneOffersCreate(location.pathname) ? ' app--fab' : ''}`} ref={appRef}>
       <a className="ui-skip" href="#content">Skip to content</a>
       {phone ? null : navDrawer ? (
@@ -886,10 +891,11 @@ function AppLayoutContent() {
           <div className="top__right">
             {/* A view can put one quiet action here (a DM's Select, #96). */}
             <span className="top__actions" ref={setActionSlot} />
-            {project?.people ? <HeaderFaces people={project.people} meId={me.user.id} audience={audience} onOpen={openAudience} />
+            {project?.people ? <HeaderFaces people={project.people} meId={me.user.id} audience={audience} working={agentWorking} onOpen={openAudience} />
               : lockedHere && lockedPeople ? <HeaderFaces people={lockedPeople} meId={me.user.id} audience={audienceLine(lockedPeople, me.user.id)} onOpen={() => shell.openDetails({ kind: 'people', workspaceId: lockedSpace.id })} /> : null}
             {activeProject ? <LiveEntry /> : null}
-            <MoreMenu items={moreItems} cue={activeProject ? (id, buttonId) => <LiveCue id={id} buttonId={buttonId} /> : undefined} />
+            {/* ⋯ is there only where it has rows: My tasks, My map and an agent's chat have none, so no empty menu opens (#1424). */}
+            {hasMoreRows ? <MoreMenu items={moreItems} cue={activeProject ? (id, buttonId) => <LiveCue id={id} buttonId={buttonId} /> : undefined} /> : null}
           </div>
         </header>
         )}
@@ -927,6 +933,7 @@ function AppLayoutContent() {
       <Notices identity={me.user.id} meName={me.user.name} placeName={(id) => projects.find((project) => project.id === id)?.name ?? null} />
       <DeferredJumpTo open={jumpOpen} onClose={() => setJumpOpen(false)} userId={me.user.id} />
     </div>
+    </OwnWorkingAgentsProvider>
     </LiveProvider>
     </ShellContext.Provider>
   );
