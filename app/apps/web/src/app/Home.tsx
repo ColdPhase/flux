@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import type { NeedsYouItem, ReturnNextStep, WorkItem } from '@flux/contracts';
 import { Button, Icon, Kreska, MEDIA, StatusGlyph, useMediaQuery } from '../ui';
@@ -33,6 +33,9 @@ interface HomeReads {
   value: Continue | null;
   /** How many tasks are yours, your agents' included: "My tasks (N)" on the phone. Null until read. */
   tasks: number | null;
+  /** Nothing to continue from could be read: said under its heading, with Try again, never left out as if there were nothing (#1369). */
+  failed: boolean;
+  reload: () => void;
 }
 
 /**
@@ -41,14 +44,17 @@ interface HomeReads {
  * its due day, #763 H11-5), else nothing; and how many tasks are yours, for "My tasks (N)".
  */
 function useContinue(userId: string, workspaceIds: string[]): HomeReads {
-  const [state, setState] = useState<{ userId: string; value: Continue | null; tasks: number | null } | null>(null);
+  const [state, setState] = useState<{ userId: string; value: Continue | null; tasks: number | null; failed: boolean } | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  const reload = useCallback(() => setAttempt((n) => n + 1), []);
   const spaces = workspaceIds.join(',');
   useEffect(() => {
     const controller = new AbortController();
     void (async () => {
       let value: Continue | null = null;
       let tasks: number | null = null;
-      const read = await getReturnSummary({ type: 'home' }, controller.signal).catch(() => null);
+      let failed = false;
+      const read = await getReturnSummary({ type: 'home' }, controller.signal).catch(() => { failed = true; return null; });
       // A first visit starts the return point and has nothing to continue from: nothing was shown, so nothing is acknowledged.
       const first = !!read && read.point.savedAt === null;
       if (read && first && !controller.signal.aborted) await saveReturnPoint({ type: 'home' }, read.mark).catch(() => undefined);
@@ -58,14 +64,14 @@ function useContinue(userId: string, workspaceIds: string[]): HomeReads {
         tasks = assigned.total;
         const active = assigned.items.filter((item) => item.status === 'in_progress').sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
         if (active) value = { kind: 'task', item: active };
-      } catch { /* the card is optional */ }
+      } catch { failed = true; }
       if (!value && summary?.nextStep) value = { kind: 'step', step: summary.nextStep, mark: summary.mark };
-      if (!controller.signal.aborted) setState({ userId, value, tasks });
+      if (!controller.signal.aborted) setState({ userId, value, tasks, failed: failed && !value });
     })();
     return () => controller.abort();
-  }, [userId, spaces]);
+  }, [userId, spaces, attempt]);
   const mine = state?.userId === userId ? state : null;
-  return { value: mine?.value ?? null, tasks: mine?.tasks ?? null };
+  return { value: mine?.value ?? null, tasks: mine?.tasks ?? null, failed: mine?.failed ?? false, reload };
 }
 
 /** "Continue where you left off" (F-026 P1): where the person last worked, as one row under its own heading. */
@@ -73,6 +79,14 @@ function ContinueSection({ reads }: { reads: HomeReads }) {
   const { projects } = useShellData();
   // It is the last thing on Home, so when it arrives nothing above it moves and no space is kept for it (#863 rule 6).
   const { value } = reads;
+  if (!value && reads.failed) {
+    return (
+      <section className="home__continue" aria-labelledby="home-continue">
+        <div className="home__sech"><h3 id="home-continue">Continue where you left off</h3></div>
+        <div className="home__card home__quiet" role="alert">This couldn’t be loaded. <Button variant="link" size="sm" onClick={reads.reload}>Try again</Button></div>
+      </section>
+    );
+  }
   if (!value) return null;
   let row: ReactNode;
   if (value.kind === 'task') {

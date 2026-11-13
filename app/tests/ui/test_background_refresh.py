@@ -22,7 +22,7 @@ from test_app_shell import DESKTOP, ORIGIN, UPSTREAM, start_forwarder
 PASSWORD = "a page that stays up"
 STAMP = int(time.time() * 1000)
 EMAIL = f"ada.refresh+{STAMP}@example.test"
-ERROR = "Something went wrong"
+ERROR = "Flux isn’t answering"
 GONE = "This place isn’t available"
 
 UI_BROWSER = os.environ.get("FLUX_UI_BROWSER", "chromium")
@@ -205,7 +205,7 @@ class BackgroundRefresh(unittest.TestCase):
         expect(page.locator("header.top .top__title h1")).to_have_text(self.state["name"])
         reads = self.failing(page, pattern, "gone")
         self.rename(page)
-        expect(page.get_by_role("heading", level=1, name=GONE)).to_be_visible()
+        expect(page.get_by_role("heading", name=GONE)).to_be_visible()
         self.assertGreaterEqual(reads["reads"], 1)
         expect(page.get_by_text(ERROR)).to_have_count(0)
 
@@ -219,6 +219,64 @@ class BackgroundRefresh(unittest.TestCase):
         self.rename(page)
         expect(page).to_have_url(re.compile(r"/sign-in"))
         expect(page.get_by_text(ERROR)).to_have_count(0)
+
+    # ---------------------------------------------------------------- #1369: a failed read is said where it happened
+
+    def in_place(self, page: Page, title: str) -> None:
+        """"<place> couldn’t be loaded" under the shell: the sidebar and the header stay, nothing raw is said, and Try again is there."""
+        expect(page.get_by_role("heading", level=2, name=title)).to_be_visible()
+        expect(page.locator(".app__side")).to_be_visible()
+        expect(page.locator("header.top h1")).to_be_visible()
+        expect(page.get_by_text("Service Unavailable")).to_have_count(0)
+        expect(page.get_by_text("Something went wrong")).to_have_count(0)
+        expect(page.get_by_text("unexpected problem")).to_have_count(0)
+        expect(page.get_by_role("button", name="Try again")).to_be_visible()
+
+    def test_06_a_failed_read_of_a_place_is_said_inside_the_shell_on_a_deep_link_and_a_reload(self) -> None:
+        self.world()
+        space = self.state["space"]
+        for path, title in ((f"/projects/{space}", "The conversation couldn’t be loaded"), (f"/projects/{space}/tasks", "Tasks couldn’t be loaded"),
+                            (f"/projects/{space}/docs", "The Wiki couldn’t be loaded")):
+            with self.subTest(deep_link=path):
+                page = self.page()
+                reads = self.failing(page, space_read(space), "server")
+                page.goto(path)
+                self.in_place(page, title)
+                self.assertGreaterEqual(reads["reads"], 1)
+                reads["failing"] = False
+                # By keyboard: once the place is back, focus is on it, not lost to the start of the page.
+                page.get_by_role("button", name="Try again").focus()
+                page.keyboard.press("Enter")
+                expect(page.get_by_text("couldn’t be loaded")).to_have_count(0)
+                expect(page.locator("header.top .top__title h1")).to_have_text(self.state["name"])
+                page.wait_for_function("() => document.activeElement && document.activeElement !== document.body && document.querySelector('#content').contains(document.activeElement)")
+        # A reload of an open place whose read now fails: the same, in place, and Try again brings the place back.
+        with self.subTest(reload=True):
+            page = self.page()
+            self.open(page, f"/projects/{space}/tasks")
+            expect(page.locator("header.top .top__title h1")).to_have_text(self.state["name"])
+            reads = self.failing(page, space_read(space), "server")
+            page.reload()
+            self.in_place(page, "Tasks couldn’t be loaded")
+            self.assertGreaterEqual(reads["reads"], 1)
+            reads["failing"] = False
+            page.get_by_role("button", name="Try again").click()
+            expect(page.get_by_text("couldn’t be loaded")).to_have_count(0)
+            expect(page.get_by_role("navigation", name="Space views").get_by_role("tab", name="Tasks", exact=True)).to_have_attribute("aria-selected", "true")
+
+    def test_07_home_says_when_its_continue_section_could_not_be_loaded(self) -> None:
+        self.world()
+        page = self.page()
+        state = self.failing(page, re.compile(r".*/api/v1/(return(\?.*)?|workspaces/[^/]+/work/assigned(\?.*)?)$"), "server")
+        page.goto("/")
+        expect(page.locator(".home__hello")).to_be_visible()
+        section = page.get_by_role("region", name="Continue where you left off")
+        expect(section).to_contain_text("couldn’t be loaded")
+        expect(page.get_by_text("Service Unavailable")).to_have_count(0)
+        self.assertGreaterEqual(state["reads"], 1)
+        state["failing"] = False
+        section.get_by_role("button", name="Try again").click()
+        expect(section.get_by_text("couldn’t be loaded")).to_have_count(0)
 
 
 if __name__ == "__main__":

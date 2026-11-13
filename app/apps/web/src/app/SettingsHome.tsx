@@ -198,13 +198,16 @@ function AgentsAndAi() {
   const loadKeys = useCallback((signal?: AbortSignal) => {
     listBackgroundConnections(signal).then((list) => { setKeys(list); setKeysFailed(false); }, () => { if (!signal?.aborted) { setKeys([]); setKeysFailed(true); } });
   }, []);
+  const loadConnections = useCallback((signal?: AbortSignal) => {
+    listAgentConnections(signal).then((list) => { setConnections(list); setFailed(false); }, (error: unknown) => { if (!signal?.aborted) { setConnections([]); setFailed(!!error); } });
+  }, []);
   useEffect(() => {
     const controller = new AbortController();
-    listAgentConnections(controller.signal).then(setConnections, (error: unknown) => { if (!controller.signal.aborted) { setConnections([]); setFailed(!!error); } });
+    loadConnections(controller.signal);
     getAssistantStatus(controller.signal).then(setAssistant, () => undefined);
     loadKeys(controller.signal);
     return () => controller.abort();
-  }, [loadKeys]);
+  }, [loadKeys, loadConnections]);
   // An agent's own connection (it answers inside Flux) is not an app on the person's computer.
   const mine = (connections ?? []).filter((connection) => !connection.revokedAt && connection.ownerUserId === me.user.id && connection.computeSource !== 'owner_assistant');
   const dropped = (connectionId: string) => setConnections((current) => (current ?? []).filter((connection) => connection.id !== connectionId));
@@ -221,7 +224,7 @@ function AgentsAndAi() {
             detail="For code on your computer. Same rules as your agents." action={mine.length ? 'Connect another' : 'Connect'} />
         </ul>
         {connections === null ? <p className="sset-note"><Spinner label="Loading your agents" /></p> : null}
-        {failed ? <p className="sset-note" role="note">Your connected apps could not be listed. Try again in a moment.</p> : null}
+        {failed ? <p className="sset-note" role="note">Your connected apps couldn’t be loaded. <button type="button" className="ui-link" onClick={() => loadConnections()}>Try again</button></p> : null}
         <p className="sset-note">{SERVER_AI_OFF_LINE}. Your agents wait until it is on.</p>
       </div>
     );
@@ -231,7 +234,7 @@ function AgentsAndAi() {
       {/* #854, #857 (mockup Main): Connect AI first, with every connection and its usage line, and the person's own Claude Code or Codex as rows of
           the same card (#1363); then the person's agents, each using one of them. */}
       <ConnectAi apiKeys={assistant ? assistant.setup.provider === 'on' : true} keys={keys} keysFailed={keysFailed} onRetryKeys={() => loadKeys()} onListed={setListed} clients={clientRows} />
-      {failed ? <p className="sset-note" role="note">Your connected apps could not be listed. Try again in a moment.</p> : null}
+      {failed ? <p className="sset-note" role="note">Your connected apps couldn’t be loaded. <button type="button" className="ui-link" onClick={() => loadConnections()}>Try again</button></p> : null}
       <AgentsList listed={listed} />
     </>
   );

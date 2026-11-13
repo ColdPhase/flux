@@ -336,7 +336,7 @@ class MyAgentsJourney(unittest.TestCase):
         self.api(ben, "DELETE", f"/api/v1/my-agents/{self.ids['planner']}", status=404)
         self.api(ben, "GET", f"/api/v1/my-agents/{self.ids['planner']}/memory", status=404)
         ben.goto(f"/settings/agents/{self.ids['planner']}")
-        expect(ben.get_by_text("This agent isn’t here.")).to_be_visible()
+        expect(ben.get_by_text("This agent isn’t here")).to_be_visible()
 
     def test_07_deleting_an_agent_asks_first_and_removes_it_everywhere(self) -> None:
         page = self.page()

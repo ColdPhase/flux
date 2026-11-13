@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { redirect, useLoaderData, type LoaderFunctionArgs } from 'react-router';
+import { Link, redirect, useLoaderData, type LoaderFunctionArgs } from 'react-router';
 import type { AgentConnection } from '@flux/contracts';
 import { getMe } from '../api/auth';
 import { ApiError, NetworkError } from '../api/client';
@@ -39,10 +39,11 @@ export async function agentConnectionLoader({ request }: LoaderFunctionArgs): Pr
   return { connections: (await listAgentConnections(request.signal)).filter((connection) => connection.computeSource !== 'owner_assistant') };
 }
 
-export async function agentConsentLoader({ request }: LoaderFunctionArgs): Promise<{ context: ConsentContext; oauthQuery: string }> {
+export async function agentConsentLoader({ request }: LoaderFunctionArgs): Promise<{ context: ConsentContext | null; oauthQuery: string }> {
   await requirePerson(request);
   const oauthQuery = queryFrom(request);
-  if (!oauthQuery) throw new Response('The authorization request is missing. Start again in your agent client.', { status: 400 });
+  // Opened with no request behind it (a bookmark, a typed address): said as a sign-in page says things, not as an error that Try again could mend (#1371).
+  if (!oauthQuery) return { context: null, oauthQuery: '' };
   const context = await getConsentContext(oauthQuery, request.signal);
   return { context, oauthQuery };
 }
@@ -157,7 +158,16 @@ function ConsentDestination({ context }: { context: ConsentContext }) {
 }
 
 export function AgentConsentPage() {
-  const { context, oauthQuery } = useLoaderData() as { context: ConsentContext; oauthQuery: string };
+  const { context, oauthQuery } = useLoaderData() as { context: ConsentContext | null; oauthQuery: string };
+  if (!context) {
+    return (
+      <div className="auth__head">
+        <h1 className="auth__title">This sign-in link isn’t complete</h1>
+        <p className="auth__lead">Start the connection again in your agent client.</p>
+        <p><Link className="ui-btn ui-btn--secondary ui-btn--lg" to="/">Go to Home</Link></p>
+      </div>
+    );
+  }
   return <ConsentReview context={context} oauthQuery={oauthQuery} />;
 }
 

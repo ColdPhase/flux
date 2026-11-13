@@ -746,7 +746,10 @@ class SharedComposerJourney(unittest.TestCase):
             route.fulfill(status=503, content_type="application/json", body=json.dumps({"code": "UNAVAILABLE", "message": "Controlled unavailable read"}))
         page.route(detail(d), fail)
         self.switch_to(page, project, d)
-        expect(page.locator("#details").get_by_role("heading", name="Not available")).to_be_visible()
+        # Said as every failed read is (#1369): no server words, and Try again.
+        expect(page.locator("#details").get_by_role("heading", name="The details couldn’t be loaded")).to_be_visible()
+        expect(page.locator("#details").get_by_role("button", name="Try again")).to_be_visible()
+        expect(page.locator("#details").get_by_text("Controlled unavailable read")).to_have_count(0)
         expect(self.box(page)).to_have_count(0)
         self.assertEqual(self.record(page, project, a), before_a)
         self.assertEqual(self.record(page, project, b), edited_b)

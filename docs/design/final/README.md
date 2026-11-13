@@ -1636,6 +1636,26 @@ the toast with Undo, the tokens and the existing icons. No new setting, mode or 
 | --- | --- | --- |
 | ![Sign in](screens/desktop-signin.webp) Sign in | ![Sign in on the phone](screens/phone-signin.webp) Sign in, phone | ![Splash](screens/phone-splash.webp) Splash |
 
+### A place that could not be loaded, and a place that is not available
+
+Founder priorities (calm; plain words), decided by the agents for the v0.2.1 audit ([#1369](https://github.com/ColdPhase/flux/issues/1369), [#1371](https://github.com/ColdPhase/flux/issues/1371)). Nothing here is drawn; it is composed from the empty and error states of the system (`EmptyState`, `ErrorState`, `Button`).
+
+- **A failed read is said where it happened, inside the shell.** One place's read answers badly (a deep link, a reload, Try again's own read): the sidebar, the header
+  and the tab bar stay, and under them the place says **"<place> couldn't be loaded"** (the person's word for it: "The conversation", "Tasks", "The Wiki", "Messages",
+  "My map") with one calm line and one **Try again** (`secondary`, icon refresh). It never says why in server words: no status code, no "Service Unavailable", no
+  "unexpected problem". "Something went wrong" is only for a screen that crashed. Only when the shell's own read fails (or on a sign-in page) is it the whole page, as "Flux isn't answering · Try again".
+- **A part of a page that could not be loaded says so in its own place,** in the same sentence ("This chat couldn't be loaded · Try again", "Schedules couldn't be loaded",
+  "Your API keys couldn't be loaded"), and never shows as an empty list or leaves out its section. Home's **Continue where you left off** keeps its heading and says
+  "This couldn't be loaded · Try again".
+- **A place that is gone, closed to the person, or never existed is one page** (agent, direct message, Inbox item, space, Wiki page, call, address): the search icon in its 40 px tile, **one plain
+  sentence** as the heading ("This conversation isn't available", "This agent isn't here", "This page doesn't exist") and **one way back** as a `secondary` button
+  ("Back to Messages", "Back to the Inbox", "Back to the space", "Go to Home"), under the shell's header, on the page's own column. It never says why (a place nobody
+  may open is not told apart from one that is gone) and has no Try again, which could not succeed.
+- **The header names the place or nothing.** A Wiki page by its own address is "Wiki", a missing agent "Messages", a space that did not open "Spaces". "Home" with the company before it
+  is only Home's own, and Home has no header row on the computer.
+- **A Wiki page by its address** (the old "material") is a card on the page: its back link, "Version 1", the title (`--fs-xl`), "You · Saved 13 Nov 2026, 09:00" in `--t3`, and its words (`--fs-base`) on `--el`.
+- **A sign-in link with nothing behind it** (the agent consent page opened with no request) is a sign-in page: "This sign-in link isn't complete", the way to start again, and "Go to Home", in the column of the other sign-in pages.
+
 ### Not drawn yet
 
 Compose these from the drawn components and rules, and get an independent review before reusing

@@ -4,6 +4,7 @@ import { AGENT_LIMITS, assistantModelName, groupModelsByFamily, type AgentMemory
 import { ApiError } from '../api/client';
 import { useShellData } from '../app/data';
 import { SettingsBack } from '../app/SettingsBack';
+import { NotAvailable } from '../app/NotAvailable';
 import { MayDoChoice } from '../agent-connection/MayDoChoice';
 import { refreshAssistantModel, useAssistantModel } from '../assistant/model';
 import { Button, Icon, Kreska, Option, OptionGroup, Select, Spinner } from '../ui';
@@ -173,12 +174,7 @@ export function AgentPage() {
   const { agents } = useShellData();
   const agent = agents.find((item) => item.id === agentId);
   if (!agent) {
-    return (
-      <div className="pane-scroll"><div className="pane-in nset agp">
-        <SettingsBack />
-        <p className="nset__note">This agent isn’t here. It may have been deleted.</p>
-      </div></div>
-    );
+    return <NotAvailable title="This agent isn’t here" back={{ to: '/settings/agents', label: 'Back to AI' }} />;
   }
   return <AgentSettings key={agent.id} agent={agent} />;
 }
