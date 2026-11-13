@@ -103,6 +103,27 @@ describe('the migrator on a database dumped from each release (#1241)', () => {
       });
     });
 
+    test(`${tag}: an agent or local app left on "Only read" is Ask me first after the upgrade, and "Only read" can no longer be stored (#1419)`, async () => {
+      await withReleasedDatabase(release, async (url) => {
+        const { pool } = createDatabase(url, undefined, { queryTimeoutMs: 120_000, max: 1 });
+        try {
+          // The release's own CHECK still allows 'read': one connection is left on it, one on each other value, as a v0.2 instance can hold them.
+          const rows = (await pool.query('SELECT id FROM agent_connections ORDER BY id')).rows as { id: string }[];
+          assert.ok(rows.length >= 2, `the dump of ${tag} holds agent connections`);
+          const [reader, asker] = rows;
+          await pool.query("UPDATE agent_connections SET may_do = 'read' WHERE id = $1", [reader!.id]);
+          await pool.query("UPDATE agent_connections SET may_do = 'ask' WHERE id = $1", [asker!.id]);
+          const before = Object.fromEntries((await pool.query('SELECT id, may_do FROM agent_connections')).rows.map((row) => [row.id, row.may_do]));
+          const result = await migrator(url);
+          assert.equal(result.code, 0, `${result.stdout}${result.stderr}`);
+          const after = Object.fromEntries((await pool.query('SELECT id, may_do FROM agent_connections')).rows.map((row) => [row.id, row.may_do]));
+          assert.equal(after[reader!.id], 'ask', 'Only read becomes Ask me first (the AG-3 mapping)');
+          for (const [id, value] of Object.entries(before)) if (id !== reader!.id) assert.equal(after[id], value, `${id} keeps ${value}`);
+          await assert.rejects(pool.query("UPDATE agent_connections SET may_do = 'read' WHERE id = $1", [asker!.id]), /agent_connections_may_do_check/);
+        } finally { await pool.end(); }
+      });
+    });
+
     test(`${tag}: a migration that works on an empty database and fails on this data is caught (negative control)`, async () => {
       const breaking = 'ALTER TABLE project_messages ADD CONSTRAINT upgrade_check_no_messages CHECK (false)';
       await withReleasedDatabase(null, async (emptyUrl) => {

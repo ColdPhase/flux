@@ -83,7 +83,7 @@ test('enablement creates one identity and settings with "Do it and tell me"; it 
   assert.equal((await settings(f.owner, f.ws.id)).body.connectionId, saved.connectionId, 'choosing another model keeps the one rights connection');
 });
 
-test('only the owner reads the settings and turns Ask me first on or off; each is kept; Only read and nothing else can be saved (#1419)', async () => {
+test('only the owner reads the settings and turns Ask me first on or off; each is kept; Only read and any other word are refused (#1419)', async () => {
   const f = await setup('settings'); const original = (await settings(f.owner, f.ws.id)).body;
   const other = await person('assistant-other'); const admin = await person('assistant-admin');
   await addMember(f.manager, f.ws.id, other, 'member'); await addMember(f.manager, f.ws.id, admin, 'admin');
@@ -104,8 +104,8 @@ test('only the owner reads the settings and turns Ask me first on or off; each i
   const identity = async () => (await pool.query('SELECT agent_id, compute_source, owner_user_id FROM agent_connections WHERE id = $1', [original.connectionId])).rows[0];
   const before = await identity();
   expectStatus(await f.owner.browser.request('PATCH', mayDo, { body: { mayDo: 'act', computeSource: 'user_operated_external_client', agentId: randomUUID(), ownerUserId: other.id } }), 200);
-  assert.deepEqual(await identity(), before, 'only "What it may do" can be set here');
-  // Nothing is left to save here (#843, F-036): the settings are read, and "What it may do" is the connection's own row.
+  assert.deepEqual(await identity(), before, 'only Ask me first can be set here');
+  // Nothing is left to save here (#843, F-036): the settings are read, and Ask me first is the connection's own row.
   const kept = (await settings(f.owner, f.ws.id)).body;
   for (const removed of [{ backgroundRunsPerDay: 7 }, { approvalMode: 'ask' }, { changesPerRun: 7 }, { areas: { wiki: 'off' } }, { projectMode: 'chosen' }])
     expectStatus(await f.owner.browser.request('PATCH', endpoint, { body: removed }), 400);
