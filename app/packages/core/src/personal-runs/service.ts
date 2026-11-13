@@ -349,9 +349,9 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
 
   /**
    * Only a model that calls tools can be an agent (RT-1 rule 2, #1441): one small request with the tool `ping` on this model of the key, unless
-   * the model passed it before. Its cost is charged to the key's day like any request and kept whatever the answer. The request waits for the
-   * provider, at most `TOOL_CHECK_TIMEOUT_MS` (30 s, under the 60 s a session may idle inside a transaction); it is recorded on a handle of its
-   * own, so a model that is refused still costs what it cost.
+   * the model passed it before. Its cost is charged to the key's day like any request and kept whatever the answer. Sent before the change's
+   * transaction (`checkBeforeChoosing`); inside it, only a model the provider was not asked about yet (a race) waits for it, at most
+   * `TOOL_CHECK_TIMEOUT_MS`. It is recorded on a handle of its own, so a model that is refused still costs what it cost.
    */
   async function requireToolCalling(connection: PersonalConnection) {
     if (!toolChecking || !connection.price) return;
@@ -360,6 +360,22 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
       key: { connectionId: connection.id } });
     await toolChecking.record({ connectionId: connection.id, model: connection.model, callsTools: checked.callsTools, chargedMicros: checked.chargedMicros });
     if (!checked.callsTools) throw toolsRequired();
+  }
+
+  /**
+   * The tool check of a model about to be chosen, sent BEFORE the change's transaction (#1441 review): Flux never waits on a provider with
+   * rows locked. A model that does not call tools is refused here; one that does is recorded, so `pick` inside the transaction only reads that
+   * it passed. Anything else (not the owner's key, not in its list, unpriced) is left to `pick`'s own refusals.
+   */
+  async function checkBeforeChoosing(owner: string, connectionWanted: unknown, modelWanted: unknown, current: ModelPick | null = null) {
+    if (!toolChecking || typeof modelWanted !== 'string' || (connectionWanted === undefined && modelWanted === undefined)) return;
+    let ref: string;
+    try { ref = connectionRef(connectionWanted); } catch { return; }
+    if (current?.connection === ref && current.model === modelWanted) return;
+    const item = (await ownConnections(owner)).find((connection) => connection.ref === ref);
+    if (!item?.connection || !item.account.options.some((option) => option.id === modelWanted && !option.retired)) return;
+    const priced = connectionOnModel(item.connection, modelWanted);
+    if (priced?.price) await requireToolCalling(priced);
   }
 
   /**
@@ -738,6 +754,7 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
     async enable(principal: Principal, command: CreateMyAgentCommand): Promise<MyAgent> {
       const owner = ownerOf(principal);
       const input = normalizeEnable(command);
+      await checkBeforeChoosing(owner, input.connection, input.model);
       return uow.run(async (ports) => {
         const agents = agentsOf(ports);
         await agents.lockOwner(owner);
@@ -773,6 +790,10 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
       const owner = ownerOf(principal);
       if (!isId(agentId)) throw agentNotFound();
       const change = normalizeAgentChange(command);
+      if (change.model) {
+        const before = await uow.run((ports) => agentsOf(ports).get(owner, agentId.toLowerCase()));
+        await checkBeforeChoosing(owner, change.model.connection, change.model.model, before?.model ?? null);
+      }
       return uow.run(async (ports) => {
         const agents = agentsOf(ports);
         await agents.lockOwner(owner);
