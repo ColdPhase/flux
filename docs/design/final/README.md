@@ -932,6 +932,8 @@ built. The contract is in [mobile and PWA](../../product/mobile-pwa.md#while-flu
 
 - The header follows section 4: name, Conversation · Tasks · Map · Wiki in fixed slots, faces,
   Call and ⋯.
+- The right-hand drawing's list of types under the phone's "+" is replaced: the "+" opens the Create
+  window on Task (#1438 point 8, [Phone](#phone)); the message actions beside it are as drawn.
 - The reading column is at most 760 px. A task event is one line: "Ada created #1 Calibrate the
   soil moisture probes · 8:05".
 - The message toolbar sits at the bubble's top corner, as
