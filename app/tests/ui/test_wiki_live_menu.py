@@ -16,7 +16,9 @@ class WikiLiveMenu(LiveBase):
         url = f"/projects/{self.ids['project']}/docs/{self.ids['doc']}"
         before = self.api(reader, "GET", f"/api/v1/docs/{self.ids['doc']}", status=200)
         reader.goto(url)
-        reader.locator("header.phead").get_by_role("button", name="Call", exact=True).click()
+        # On a phone Call is the first row of the space's More (#1239), not a button of the header.
+        reader.locator("header.phead").get_by_role("button", name="More", exact=True).click()
+        reader.get_by_role("menu", name="More").get_by_role("menuitem", name="Call", exact=True).click()
         bar = self.bar(reader)
         expect(bar.get_by_role("status").first).to_contain_text("Live")
         expect(bar.get_by_role("button", name=re.compile("^Microphone off"))).to_have_attribute("aria-pressed", "false")
