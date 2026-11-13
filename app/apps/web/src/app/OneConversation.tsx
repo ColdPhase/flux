@@ -51,7 +51,8 @@ export interface PaneProps {
   focusComposer?: boolean;
 }
 
-interface NavState { fromStream?: boolean; backToStream?: boolean; focusComposer?: boolean; keepPanel?: boolean; sourceOf?: string }
+/** `found`: a search result brought the person to this message (#1424). */
+interface NavState { fromStream?: boolean; backToStream?: boolean; focusComposer?: boolean; keepPanel?: boolean; sourceOf?: string; found?: boolean }
 
 /**
  * One project conversation (UI116-1, 2026-10-02): the stream of roots with its composer, and the open
@@ -73,7 +74,13 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
   const [closing, setClosing] = useState<string | null>(null);
   const [shownId, setShownId] = useState(conversation?.id ?? null);
   if ((conversation?.id ?? null) !== shownId) { setShownId(conversation?.id ?? null); setClosing(null); }
-  const thread = conversation && conversation.id !== closing ? conversation : null;
+  // A search result that names a root nobody has replied to shows it in the conversation, marked: a thread of one message has nothing to show, so no
+  // empty panel opens (#1424). Decided once per arrival, so a reply that comes later never opens a panel beside the reader.
+  const alone = state?.found === true && !!conversation && !conversation.task && !!arrived && conversation.messages.length === 1 && conversation.messages[0]!.id === arrived;
+  const [lone, setLone] = useState({ key: location.key, alone });
+  if (lone.key !== location.key) setLone({ key: location.key, alone });
+  const withheld = lone.key === location.key ? lone.alone : alone;
+  const thread = conversation && conversation.id !== closing && !withheld ? conversation : null;
   const makeWork = useCreateWorkFromMessage(project);
   const owners = useAgentOwners(project);
   const { reopenPanel } = useShellActions();

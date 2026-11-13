@@ -13,8 +13,10 @@ import { LockedSpacesNote } from '../encryption/LockedSpace';
 import { SecurityNotices } from '../encryption/SecurityNotices';
 import { useNeedsYouActions } from './useNeedsYouActions';
 import { ApiError } from '../api/client';
+import { inComposer } from '../ui/keys';
 import './notifications.css';
 import './needs-you.css';
+
 
 /** From this width the detail panel is no longer an overlay, and the Inbox shows the list and the open item side by side (README §7 Inbox). */
 const TWO_COLUMNS = '(min-width: 1001px)';
@@ -25,7 +27,7 @@ function useQueueKeys(items: NeedsYouItem[], selected: string | null, select: (k
     const onKey = (event: KeyboardEvent) => {
       if (event.metaKey || event.ctrlKey || event.altKey || event.defaultPrevented) return;
       const target = event.target as HTMLElement | null;
-      if (target?.closest('input, textarea, select, [role="combobox"], [role="listbox"], [contenteditable="true"], [role="dialog"], [role="menu"], #details')) return;
+      if (target?.closest('input, textarea, select, [role="combobox"], [role="listbox"], [contenteditable="true"], [role="dialog"], [role="menu"], #details') || inComposer(target)) return;
       const key = event.key.toLowerCase();
       const at = items.findIndex((item) => item.key === selected);
       const current = items[at] ?? null;

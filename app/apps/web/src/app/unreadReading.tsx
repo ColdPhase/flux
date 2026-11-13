@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Icon } from '../ui';
 import { newBelowText } from '../ui/motion-rules';
 import { readerActive, watchReaderInput } from '../work/readerIntent';
+import { inComposer } from '../ui/keys';
 import './unread-reading.css';
 
 /**
@@ -143,7 +144,7 @@ function useEndKey(feed: HTMLElement | null, active: boolean, toEnd: () => void)
     const press = (event: KeyboardEvent) => {
       if (event.key !== 'End' || event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
       const target = event.target instanceof Element ? event.target : null;
-      if (target?.closest('input, textarea, select, [contenteditable="true"], [role="combobox"], [role="listbox"], [role="textbox"]')) return;
+      if (target?.closest('input, textarea, select, [contenteditable="true"], [role="combobox"], [role="listbox"], [role="textbox"]') || inComposer(target)) return;
       // Only the surface the person is in: focus inside it, or nowhere in particular (the page itself).
       const surface = feed.parentElement ?? feed;
       const nowhere = !target || target === document.body || target === document.documentElement;

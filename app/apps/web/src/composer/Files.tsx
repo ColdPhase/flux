@@ -2,11 +2,10 @@ import { useEffect, useRef, useState, type DragEvent } from 'react';
 import { Button, Icon, useMediaQuery } from '../ui';
 import { FileIcon, typeLine, useObjectUrl, warmPreview } from './Attachments';
 import { selectedFile, uploadLabel, type ComposerState, type DraftFile } from './draft';
-import { isVideoName } from '@flux/contracts';
+import { isVideoName, type FileLimits } from '@flux/contracts';
 import { useFileLimits } from '../api/files';
 import { detailLine, looksLikePhoto } from './fileKind';
 import { useVideoPoster } from './videoPoster';
-import { PhotoPicker } from './PhotoPicker';
 import './composer.css';
 
 export { MessageFiles, MessageContent, hasPhotos, fileSize } from './Attachments';
@@ -18,15 +17,21 @@ const fileStatus = (file: DraftFile, unconfirmed: boolean) => file.state === 'up
       : Date.parse(file.staged!.expiresAt) <= Date.now() ? 'Staging expired; select this file again' : 'Ready, private';
 
 /**
- * Files from the picker. On a phone, several at once open the numbered picker (#348 AC-4) and attach in the order tapped;
- * one file, or any choice on a larger screen, attaches at once. The caller renders `sheet`.
+ * Files chosen in the system's picker attach at once, in the order it returns them (on a phone it numbers the choices itself as they are made;
+ * Flux asks nothing more, #1424). The draft's thumbnails carry the order on a touch screen ("Sends 1").
  */
-function usePickedFiles(state: ComposerState) {
-  const phone = useMediaQuery('(max-width: 640px)');
-  const [chosen, setChosen] = useState<File[] | null>(null);
-  const take = (files: File[]) => { if (phone && files.length > 1) setChosen(files); else state.addFiles(files); };
-  const sheet = chosen ? <PhotoPicker files={chosen} onClose={() => setChosen(null)} onAdd={(picked) => { setChosen(null); state.addFiles(picked); }} /> : null;
-  return { take, sheet };
+
+/**
+ * After files are attached the person is writing the message that carries them: the focus goes back to its field, as it was before the picker
+ * (the dialog leaves it on the paperclip, where typing fired app shortcuts, #1424). Only where a keyboard is the way to type: a phone's field is
+ * tapped, and focusing it would raise the keyboard and move the view under the person.
+ */
+function backToField(fieldId: string | undefined) {
+  if (!fieldId || !window.matchMedia('(pointer: fine)').matches) return;
+  const focus = () => { const field = document.getElementById(fieldId); if (field && !field.matches(':disabled')) field.focus({ preventScroll: true }); };
+  focus();
+  // Some engines give the focus back to the paperclip as the picker closes, after the change event.
+  requestAnimationFrame(focus);
 }
 
 /** Staged files remain private until the exact message is confirmed. No bytes enter a helper prompt. */
@@ -34,16 +39,20 @@ function usePickedFiles(state: ComposerState) {
  * The attach control as one quiet paperclip, for composers that keep their tools inside the box
  * (#266 PF-3). Its accessible name stays "Attach files"; picked files join the same private draft.
  */
-export function AttachButton({ state, disabled = false, className }: { state: ComposerState; disabled?: boolean; className?: string }) {
+export function AttachButton({ state, disabled = false, className, fieldId }: { state: ComposerState; disabled?: boolean; className?: string; fieldId?: string }) {
   const input = useRef<HTMLInputElement>(null);
   const blocked = disabled || state.sending;
-  const picked = usePickedFiles(state);
   return <>
     <input ref={input} className="ui-vh" type="file" multiple tabIndex={-1} aria-hidden="true" disabled={blocked}
-      onChange={(event) => { if (!blocked) picked.take([...event.currentTarget.files ?? []]); event.currentTarget.value = ''; }} />
+      onChange={(event) => {
+        const files = [...event.currentTarget.files ?? []];
+        event.currentTarget.value = '';
+        if (blocked || !files.length) return;
+        state.addFiles(files);
+        backToField(fieldId);
+      }} />
     <button type="button" className={['composer__attach', className].filter(Boolean).join(' ')} disabled={blocked} onClick={() => input.current?.click()}
       aria-label="Attach files" data-tip="Attach files · private until sent" data-tip-align="start"><Icon name="clip" size={16} /></button>
-    {picked.sheet}
   </>;
 }
 
@@ -54,22 +63,21 @@ export function ComposerFiles({ state, disabled = false, attach = 'row' }: { sta
   const recoverId = useRef<string | null>(null);
   const blocked = disabled || state.sending;
   const touch = useMediaQuery('(pointer: coarse)');
-  const picked = usePickedFiles(state);
   const limits = useFileLimits();
   const empty = attach === 'none' && !state.draft.files.length && !state.draft.references.length && state.storage !== 'visit'
     && !(state.draft.unconfirmed && !state.sending && !state.error) && !state.error;
   return <div className="composer-files" hidden={empty || undefined}>
     <input ref={input} className="ui-vh" type="file" multiple tabIndex={-1} aria-hidden="true" disabled={blocked}
-      onChange={(event) => { if (!blocked) picked.take([...event.currentTarget.files ?? []]); event.currentTarget.value = ''; }} />
+      onChange={(event) => { if (!blocked) state.addFiles([...event.currentTarget.files ?? []]); event.currentTarget.value = ''; }} />
     <input ref={recovery} className="ui-vh" type="file" tabIndex={-1} aria-hidden="true" disabled={blocked}
       onChange={(event) => { const file = event.currentTarget.files?.[0]; if (!blocked && file && recoverId.current) state.retryFile(recoverId.current, file); event.currentTarget.value = ''; }} />
     {attach === 'row' ? <button type="button" className="composer-files__add" disabled={blocked} onClick={() => input.current?.click()} aria-label="Attach files"><Icon name="clip" size={14} />Attach files</button> : null}
     {state.draft.files.length ? <>
-      <span className="composer-files__privacy">Private until sent · 5 MiB each, videos {Math.round(limits.videoBytes / (1024 * 1024))} MiB · 10 files / 20 MiB per message</span>
       <ol className="composer-files__list" aria-label="Files in your draft">{state.draft.files.map((file, index) => <DraftThumb key={file.uploadId} file={file} order={touch && state.draft.files.length > 1 ? index + 1 : 0}
         status={fileStatus(file, state.draft.unconfirmed)} blocked={blocked}
         onRetry={() => { if (!state.retryFile(file.uploadId)) { recoverId.current = file.uploadId; recovery.current?.click(); } }}
         onRemove={() => state.removeFile(file.uploadId)} />)}</ol>
+      {limitsMatter(state, limits) ? <span className="composer-files__privacy" data-file-limits>{limitsLine(limits)}</span> : null}
     </> : null}
     {state.draft.references.map((ref) => <div key={`${ref.materialId}:${ref.version}`} className="composer-files__ref">
       <span>Source: {ref.title} · v{ref.version}</span><button type="button" className="composer-files__x" disabled={blocked} aria-label="Remove material citation" onClick={() => state.setReference(null)}><Icon name="x" size={14} /></button>
@@ -77,8 +85,25 @@ export function ComposerFiles({ state, disabled = false, attach = 'row' }: { sta
     {state.storage === 'visit' ? <p className="composer-files__privacy">This browser refused draft storage. Your text, files and sources stay during this visit; keep this tab open to recover them.</p> : null}
     {state.draft.unconfirmed && !state.sending && !state.error ? <p className="composer-files__privacy">This send is unconfirmed. Retry sends the same command once.</p> : null}
     {state.error ? <p className="composer-files__error" role="alert">{state.error}</p> : null}
-    {picked.sheet}
   </div>;
+}
+
+const mebibytes = (bytes: number) => Math.round(bytes / (1024 * 1024));
+const limitsLine = (limits: FileLimits) => `Private until sent · ${mebibytes(limits.fileBytes)} MiB each, videos ${mebibytes(limits.videoBytes)} MiB · ${limits.messageFiles} files / ${mebibytes(limits.messageBytes)} MiB per message`;
+
+/** How close to a limit the draft is when its numbers are worth saying: two files short of the count, or four fifths of the bytes (#1424). */
+const NEAR_BYTES = 0.8;
+
+/**
+ * The limits are said only when they matter: a file or the whole draft was refused, or the draft is near one. A draft of a file or two says
+ * nothing about them (its rows already say "Ready, private"), so nothing stays under the composer the whole time files are attached.
+ */
+function limitsMatter(state: ComposerState, limits: FileLimits): boolean {
+  const files = state.draft.files;
+  if (state.error || files.some((file) => file.error)) return true;
+  // The bytes of one message are counted as the draft counts them: the videos together against the video cap, every other file against the message's.
+  const bytes = (video: boolean) => files.filter((file) => isVideoName(file.name) === video).reduce((total, file) => total + file.size, 0);
+  return files.length >= limits.messageFiles - 2 || bytes(false) >= limits.messageBytes * NEAR_BYTES || bytes(true) >= limits.videoBytes * NEAR_BYTES;
 }
 
 /**

@@ -43,6 +43,7 @@ import { AgentChatDotsProvider } from '../my-agents/AgentChatDots';
 import { PlaceMutesProvider, notificationsChanged, useMuteRow } from '../notifications/mutes';
 import { PhotosContext } from '../people/photos';
 import { PhoneAvatar, PhoneBack, PhoneCreate, PhoneDock, PhoneHomeLead, phoneHidesDock, phoneOffersCreate, phonePlaces } from './PhoneChrome';
+import { inComposer } from '../ui/keys';
 
 const lastConversationPath = (userId: string, projectId: string) => remembered('conversation', userId, projectId) ?? `/projects/${projectId}`;
 /** The Tasks view last chosen in this project (#136), e.g. `?status=blocked&show=mine`. */
@@ -123,7 +124,7 @@ function isDetailsPlace(value: unknown): value is DetailsPlace {
 
 function isTyping(target: EventTarget | null) {
   const el = target as HTMLElement | null;
-  return !!el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName) || !!el.closest?.('[role="combobox"], [role="listbox"]'));
+  return !!el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName) || !!el.closest?.('[role="combobox"], [role="listbox"]') || inComposer(el));
 }
 
 /**

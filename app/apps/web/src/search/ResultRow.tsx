@@ -9,25 +9,7 @@ import { FileIcon } from '../composer/Attachments';
 import type { ShellData } from '../app/data';
 
 // One search result as Search.dc.html draws it (#870): a 28 px tile for what it is, the matching text with the matched
-// words marked, and one line of where it lives, who wrote it and when. The results are grouped by kind, in this order.
-
-const GROUPS: { label: string; kinds: SearchKind[] }[] = [
-  { label: 'Tasks', kinds: ['work', 'decision'] },
-  { label: 'Messages', kinds: ['message', 'dm_message'] },
-  { label: 'Wiki', kinds: ['doc'] },
-  { label: 'Files', kinds: ['file', 'material'] },
-  { label: 'Thoughts', kinds: ['thought', 'sketch'] },
-  { label: 'Spaces', kinds: ['project'] },
-  { label: 'People', kinds: ['person'] },
-];
-
-/** The results in groups by kind; inside a group they keep the order the server ranked them in. */
-export function groupResults(items: SearchResult[]): { label: string; items: SearchResult[] }[] {
-  return GROUPS.flatMap((group) => {
-    const found = items.filter((item) => group.kinds.includes(item.kind));
-    return found.length ? [{ label: group.label, items: found }] : [];
-  });
-}
+// words marked, and one line of where it lives, who wrote it and when. The groups are `groups.ts`.
 
 const ICONS: Record<Exclude<SearchKind, 'project' | 'message' | 'dm_message' | 'file'>, IconName> = {
   work: 'tasks', material: 'link', doc: 'doc', decision: 'flag', sketch: 'map', thought: 'map', person: 'people',

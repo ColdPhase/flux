@@ -17,6 +17,7 @@ import re
 import time
 import unittest
 import uuid
+from urllib.parse import quote
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
@@ -100,6 +101,19 @@ class SearchJourney(unittest.TestCase):
     def groups(self, dialog) -> list[str]:
         return dialog.locator(".jump__sh").all_inner_texts()
 
+    GROUP_OF = {"work": "Tasks", "decision": "Tasks", "message": "Messages", "dm_message": "Messages", "doc": "Wiki", "file": "Files", "material": "Files",
+                "thought": "Thoughts", "sketch": "Thoughts", "project": "Spaces", "person": "People"}
+
+    def ranked_groups(self, page: Page, query: str) -> list[str]:
+        """The groups in the order of their best match: the server ranks the results, and each group stands where its first result does (#1424)."""
+        items = self.api(page, "GET", f"/api/v1/search?q={quote(query)}&limit=20", status=200)["items"]
+        order: list[str] = []
+        for item in items:
+            label = self.GROUP_OF[item["kind"]]
+            if label not in order:
+                order.append(label)
+        return order
+
     # ---------------------------------------------------------------- a studio with things to find
 
     def test_01_a_studio_with_things_to_find(self) -> None:
@@ -160,16 +174,15 @@ class SearchJourney(unittest.TestCase):
         expect(dialog.locator(".sr__hit").first).to_be_visible()
         self.assertEqual(options.first.get_attribute("aria-selected"), "true")
         # The results are in groups by kind, in one order, and there is nothing to filter with (#870).
-        order = ["Tasks", "Messages", "Wiki", "Files", "Thoughts", "Spaces", "People"]
         shown = self.groups(dialog)
         for name in ("Tasks", "Messages", "Wiki", "Files", "Thoughts"):
             self.assertIn(name, shown)
-        self.assertEqual(shown, [name for name in order if name in shown], "groups keep the drawn order")
+        self.assertEqual(shown, self.ranked_groups(page, "sensor"), "the groups follow the ranking: the group of the best match leads (#1424)")
         self.assertEqual(dialog.get_by_role("group").count(), 0, "no filter chips")
         expect(dialog.get_by_text("All places")).to_have_count(0)
         expect(dialog.get_by_role("option", name=re.compile("See all results"))).to_have_count(0)
         shot(page, "search-jump-desktop-1440")
-        # Any of the words matches (BM25, F-042) and the groups keep their order: the message with both words leads the Messages group.
+        # Any of the words matches (BM25, F-042) and a group keeps the server's order: the message with both words leads the Messages group.
         field.fill("sensor reacts")
         reacts = dialog.locator("[role=option].sr").filter(has_text="The infrared sensor reacts at 5 lux in the hallway test.")
         expect(reacts).to_have_count(1)
@@ -656,6 +669,98 @@ class SearchJourney(unittest.TestCase):
                 expect(dialog.get_by_role("option")).to_have_count(20)
                 expect(dialog.locator("p.ui-vh[role=status]")).to_have_text("20 results")
                 expect(line).to_have_count(0)
+
+
+    def test_15_a_message_nobody_replied_to_opens_in_the_conversation_and_a_reply_in_its_thread_with_no_new_control(self) -> None:
+        """#1424: a result opened an empty "0 replies" thread with the message at the top edge, unmarked; the computer's header gained
+        "‹ Conversation" and moved its name and tabs by 124 px; the phone's gained a filled "‹ Home" pill and a second back in the sheet.
+        Now the message is shown in its conversation, in the middle, marked; a thread opens only when the message is in one; and no control
+        appears or moves (Back still returns to where Search was opened)."""
+        ari, lamp = self.page("ari"), self.ids["lamp"]
+        post = lambda body: self.api(ari, "POST", f"/api/v1/projects/{lamp}/conversations", {"body": body, "clientMessageId": str(uuid.uuid4())}, status=201)
+        for index in range(9):
+            post(f"Before the veneer note, the shop count {index + 1}.")
+        alone = post("The zinnia crate for the porch arrives on Tuesday morning.")
+        for index in range(9):
+            post(f"After the veneer note, the shop count {index + 1}.")
+        for phone in (False, True):
+            with self.subTest(phone=phone):
+                page = self.page("nia", phone=phone)
+                # The phone's Search is on Home; the computer's is a key anywhere, here on the space the header of which must not move.
+                page.goto("/" if phone else f"/projects/{lamp}")
+                title = page.get_by_role("heading", name="Gesture lamp", level=1)
+                if not phone:
+                    expect(title).to_be_visible()
+                before = None if phone else title.bounding_box()
+                dialog, field = self.jump(page, "zinnia crate porch") if not phone else self.phone_search(page, "zinnia crate porch")
+                dialog.locator("[role=option].sr").first.click()
+                expect(page).to_have_url(re.compile(rf"/projects/{lamp}/conversations/{alone['id']}#message-"))
+                target = page.locator(f"#message-{alone['messages'][0]['id']}")
+                expect(target).to_have_class(re.compile("is-arrived"))
+                expect(target).to_be_focused()
+                expect(target).to_be_in_viewport()
+                # Nobody replied: there is no thread to show, so no panel and no "0 replies" opens.
+                expect(page.locator("#thread")).to_have_count(0)
+                expect(page.get_by_text("0 replies")).to_have_count(0)
+                expect(page.get_by_role("dialog")).to_have_count(0)
+                # The message is in the middle of the stream, not under the header at its top edge.
+                feed, box = page.locator(".project-convo__feed.is-stream").bounding_box(), target.bounding_box()
+                middle = (box["y"] + box["height"] / 2 - feed["y"]) / feed["height"]
+                self.assertGreater(middle, 0.2, f"the message is not at the top edge ({middle:.2f})")
+                self.assertLess(middle, 0.8, f"the message is not at the bottom edge ({middle:.2f})")
+                # No "‹ where I came from" control, and nothing in the header moved.
+                expect(page.locator("[data-origin-back]")).to_have_count(0)
+                if before:
+                    after = title.bounding_box()
+                    self.assertEqual((after["x"], after["y"]), (before["x"], before["y"]), "the title and the tabs stay where they were")
+                self.assertEqual(page.locator(".origin-back").count(), 0, "no pill on the phone, no second back in a sheet")
+                # Back returns to where Search was opened.
+                page.go_back()
+                expect(page).to_have_url(re.compile(r"/$" if phone else rf"/projects/{lamp}$"))
+                # A reply is in a thread: it opens there, on that reply, and still no control.
+                dialog, field = self.jump(page, "hallway test") if not phone else self.phone_search(page, "hallway test")
+                dialog.locator("[role=option].sr").filter(has_text="hallway test").first.click()
+                expect(page).to_have_url(re.compile(rf"/projects/{lamp}/conversations/{self.ids['thread']}#message-"))
+                panel = page.locator("#thread, [role=dialog]").first
+                expect(panel).to_be_visible()
+                expect(page.locator(".project-convo__message.is-arrived").last).to_contain_text("hallway test")
+                expect(page.locator("[data-origin-back], .ui-panel__back")).to_have_count(0)
+                if before:
+                    after = title.bounding_box()
+                    self.assertEqual((after["x"], after["y"]), (before["x"], before["y"]), "the header still stands where it was")
+
+    def phone_search(self, page: Page, query: str):
+        page.get_by_role("button", name="Search", exact=True).click()
+        dialog = page.get_by_role("dialog", name="Search", exact=True)
+        field = dialog.get_by_role("combobox", name="Search", exact=True)
+        field.fill(query)
+        return dialog, field
+
+    def test_16_a_plain_question_leads_with_the_message_that_answers_it_not_with_a_task_that_shares_a_word(self) -> None:
+        """#1424: the results were listed Tasks first, so a task that shared "the" with the question stood above the message that answered it.
+        The server ranks the results; the group of the best match leads."""
+        owner, lamp = self.page("ari"), self.ids["lamp"]
+        self.api(owner, "POST", f"/api/v1/projects/{lamp}/work", {"title": "Ask the studio about spare veneer sheets"}, status=201)
+        self.api(owner, "POST", f"/api/v1/projects/{lamp}/conversations", {"body": "Where did we put the zinnia seed tray and the veneer offcuts?", "clientMessageId": str(uuid.uuid4())}, status=201)
+        question = "Where did we put the zinnia seed tray"
+        found = self.api(owner, "GET", f"/api/v1/search?q={quote(question)}&limit=20", status=200)["items"]
+        kinds = [item["kind"] for item in found]
+        self.assertIn("work", kinds, "the task shares a word with the question, so it is among the results")
+        self.assertEqual(kinds[0], "message", "the server ranks the message that holds the words first")
+        self.assertLess(kinds.index("message"), kinds.index("work"), "and the weak task below it")
+        for phone in (False, True):
+            with self.subTest(phone=phone):
+                page = self.page("ari", phone=phone)
+                page.goto("/")
+                dialog, field = self.jump(page, question) if not phone else self.phone_search(page, question)
+                first = dialog.locator("[role=option]").first
+                expect(first).to_contain_text("zinnia seed tray")
+                self.assertEqual(first.get_attribute("aria-selected"), "true", "Enter opens the best match")
+                groups = self.groups(dialog)
+                self.assertEqual(groups[0], "Messages", groups)
+                self.assertLess(groups.index("Messages"), groups.index("Tasks"), groups)
+                self.assertEqual(groups, self.ranked_groups(page, question))
+                shot(page, f"search-best-match-leads-{'phone-390' if phone else 'desktop-1440'}")
 
 
 if __name__ == "__main__":

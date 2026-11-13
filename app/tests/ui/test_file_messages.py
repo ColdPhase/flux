@@ -712,17 +712,18 @@ class FilesReferencesPhotos(unittest.TestCase):
                 chooser.value.set_files([{"name": "IMG_3001.png", "mimeType": "image/png", "buffer": FIELD},
                                          {"name": "IMG_3002.png", "mimeType": "image/png", "buffer": BOARD},
                                          {"name": "probe-offsets.xlsx", "mimeType": "application/octet-stream", "buffer": b"PK\x03\x04" + b"0" * 12000}])
-                if phone:
-                    # Several files on a phone open the picker: they attach in the order tapped (#348 AC-4).
-                    sheet = page.get_by_role("dialog", name="Choose files to send")
-                    for name in ("IMG_3001.png", "IMG_3002.png", "probe-offsets.xlsx"):
-                        sheet.get_by_role("button", name=name).click()
-                    sheet.get_by_role("button", name="Add 3").click()
+                # Several files chosen in the system's picker attach at once, in the order it returns them, with their names: no second picker (#1424).
+                self.assertEqual(page.get_by_role("dialog").count(), 0, "Flux adds no screen after the system's picker")
                 draft = page.get_by_role("list", name="Files in your draft")
                 expect(draft.get_by_role("listitem")).to_have_count(3)
                 expect(draft.get_by_text("Ready, private", exact=False)).to_have_count(3)
                 expect(draft.locator(".composer-thumb.is-photo img[src^='blob:']")).to_have_count(2)
                 expect(draft.locator(".composer-thumb:not(.is-photo) .file-icon__label")).to_have_text("XLSX")
+                expect(draft.locator(".composer-files__name")).to_contain_text(["IMG_3001.png", "IMG_3002.png", "probe-offsets.xlsx"])
+                # Three small files say nothing about limits (#1424); the field keeps the focus where a keyboard types (the phone's is tapped).
+                expect(page.locator("[data-file-limits]")).to_have_count(0)
+                if not phone:
+                    expect(field).to_be_focused()
                 orders = draft.locator(".composer-thumb__order")
                 if phone:
                     expect(orders).to_have_text(["Sends 1.", "Sends 2.", "Sends 3."])
@@ -910,48 +911,88 @@ class FilesReferencesPhotos(unittest.TestCase):
         self.assertGreater(metrics["scroll"], metrics["client"], f"text beyond the third line is clamped, not shown: {metrics}")
         self.shot(page, "link-address-fallback-390")
 
-    def test_phone_picker_numbers_photos_in_tap_order(self) -> None:
-        """#348 AC-4: on a phone, several photos open a picker. Each selected one shows its send number; a second tap takes it out and renumbers."""
+    def test_phone_files_chosen_in_the_system_picker_arrive_selected_with_names_and_no_second_picker(self) -> None:
+        """#1424 (was #348 AC-4): the phone's own picker numbers the choices as they are made and returns them in that order. Flux attaches them
+        at once, in that order, each with its name and its send number, and adds no screen of its own."""
         for dark in (False, True):
             with self.subTest(dark=dark):
                 page = self.page(phone=True, dark=dark)
                 with page.expect_file_chooser() as chooser:
                     page.get_by_role("button", name="Attach files").click()
-                chooser.value.set_files([{"name": "IMG_7001.png", "mimeType": "image/png", "buffer": FIELD},
-                                         {"name": "IMG_7002.png", "mimeType": "image/png", "buffer": BOARD},
-                                         {"name": "IMG_7003.png", "mimeType": "image/png", "buffer": SHED}])
-                sheet = page.get_by_role("dialog", name="Choose files to send")
-                expect(sheet).to_be_visible()
-                tiles = sheet.locator(".photo-pick__tile")
-                expect(tiles).to_have_count(3)
-                expect(sheet.locator(".photo-pick__tile.is-on")).to_have_count(0)  # nothing is numbered before a tap
-                box = tiles.nth(0).bounding_box()
-                at_least_44(self, min(box["width"], box["height"]))
-                tiles.nth(1).click()  # IMG_7002 is sent first
-                expect(sheet.get_by_role("button", name="IMG_7002.png, send 1")).to_be_visible()
-                tiles.nth(2).click()  # then IMG_7003
-                expect(sheet.get_by_role("button", name="IMG_7003.png, send 2")).to_be_visible()
-                tiles.nth(1).click()  # a second tap takes IMG_7002 out, and IMG_7003 becomes first
-                expect(tiles.nth(1)).to_have_attribute("aria-pressed", "false")
-                expect(sheet.get_by_role("button", name="IMG_7003.png, send 1")).to_be_visible()
-                tiles.nth(0).click()  # IMG_7001 is sent second
-                expect(sheet.get_by_role("button", name="IMG_7001.png, send 2")).to_be_visible()
-                expect(tiles.nth(2).locator(".photo-pick__num")).to_have_text("1")
-                expect(tiles.nth(0).locator(".photo-pick__num")).to_have_text("2")
-                expect(tiles.nth(1).locator(".photo-pick__num")).to_have_text("")
-                # Its colours are tokens: the inverted chip is the light ink in light theme and the light surface in dark.
-                badge = tiles.nth(2).locator(".photo-pick__num")
-                expected = "rgb(240, 240, 240)" if dark else "rgb(24, 24, 27)"
-                self.assertEqual(badge.evaluate("node => getComputedStyle(node).backgroundColor"), expected)
-                sheet.get_by_role("button", name="Add 2").click()
-                expect(sheet).to_have_count(0)
+                chooser.value.set_files([{"name": "IMG_7003.png", "mimeType": "image/png", "buffer": SHED},
+                                         {"name": "IMG_7001.png", "mimeType": "image/png", "buffer": FIELD},
+                                         {"name": "plan-notes.xlsx", "mimeType": "application/octet-stream", "buffer": b"PK\x03\x04" + b"0" * 4000}])
                 draft = page.get_by_role("list", name="Files in your draft")
-                expect(draft.get_by_role("listitem")).to_have_count(2)
-                expect(draft.locator(".composer-files__name").nth(0)).to_contain_text("IMG_7003.png")
-                expect(draft.locator(".composer-files__name").nth(1)).to_contain_text("IMG_7001.png")
-                expect(draft.locator(".composer-thumb__order")).to_have_text(["Sends 1.", "Sends 2."])
-                expect(draft.get_by_text("Ready, private", exact=False)).to_have_count(2)
-                self.shot(page, f"picker-{'dark' if dark else 'light'}-390")
+                expect(draft.get_by_role("listitem")).to_have_count(3)
+                self.assertEqual(page.get_by_role("dialog").count(), 0, "no second picker after the system's")
+                expect(page.get_by_text("Choose files to send")).to_have_count(0)
+                expect(draft.locator(".composer-files__name")).to_contain_text(["IMG_7003.png", "IMG_7001.png", "plan-notes.xlsx"])
+                expect(draft.locator(".composer-thumb__order")).to_have_text(["Sends 1.", "Sends 2.", "Sends 3."])
+                expect(draft.get_by_text("Ready, private", exact=False)).to_have_count(3)
+                # The phone's field is tapped, not focused for the person: no keyboard rises over the files they just chose.
+                self.assertFalse(page.evaluate("() => document.activeElement && document.activeElement.tagName === 'TEXTAREA'"), "the phone's keyboard is not raised")
+                self.shot(page, f"phone-files-attached-{'dark' if dark else 'light'}-390")
+
+    def test_after_attaching_a_file_typing_goes_to_the_message_and_never_fires_a_shortcut(self) -> None:
+        """#1424: the picker leaves the focus on the paperclip, and typing "check" opened New with "heck" in its title and went to the Inbox.
+        The focus returns to the message field; and with it anywhere else in the composer (the paperclip, Send, a file's remove button)
+        the single-key shortcuts stay silent."""
+        page = self.page()
+        field = page.get_by_label("Write a message", exact=True)
+        with page.expect_file_chooser() as chooser:
+            page.get_by_role("button", name="Attach files").click()
+        chooser.value.set_files([{"name": "sensor-wiring-plan.pdf", "mimeType": "application/pdf", "buffer": b"%PDF-1.4\n%%EOF\n"}])
+        draft = page.get_by_role("list", name="Files in your draft")
+        expect(draft.get_by_role("listitem")).to_have_count(1)
+        expect(field).to_be_focused()
+        url = page.url
+        page.keyboard.type("check the gateway, then go home", delay=15)
+        expect(field).to_have_value("check the gateway, then go home")
+        self.assertEqual(page.url, url, "typing did not leave the conversation (G then I is the Inbox)")
+        self.assertEqual(page.get_by_role("dialog").count(), 0, "typing did not open New (C)")
+        # The same keys with the focus on a button of the composer: nothing happens (the guard, not the focus, keeps them quiet).
+        for button in (page.get_by_role("button", name="Attach files"), draft.get_by_role("button", name="Remove sensor-wiring-plan.pdf"), page.get_by_role("button", name="Send message")):
+            button.focus()
+            page.keyboard.type("c")
+            page.keyboard.type("gi")
+            page.keyboard.press("[")
+            page.wait_for_timeout(250)
+            self.assertEqual(page.url, url, "G then I stays quiet in the composer")
+            self.assertEqual(page.get_by_role("dialog").count(), 0, "C stays quiet in the composer")
+        # Outside the composer the shortcut still works: Escape out of the field and press C.
+        page.evaluate("() => document.activeElement && document.activeElement.blur()")
+        page.keyboard.press("c")
+        expect(page.get_by_role("dialog")).to_be_visible()
+
+    def test_the_limits_are_said_only_when_a_file_is_refused_or_the_draft_is_near_one(self) -> None:
+        """#1424: "Private until sent · 5 MiB each, videos 200 MiB · 10 files / 20 MiB per message" stayed under the composer the whole time
+        files were attached. It shows when a file is refused or the draft is within two files or a fifth of the message's bytes of a limit."""
+        page = self.page()
+        text = {"name": "notes.txt", "mimeType": "text/plain", "buffer": b"lux,gestures\n"}
+        def choose(files):
+            with page.expect_file_chooser() as chooser:
+                page.get_by_role("button", name="Attach files").click()
+            chooser.value.set_files(files)
+        limits = page.locator("[data-file-limits]")
+        draft = page.get_by_role("list", name="Files in your draft")
+        choose([{**text, "name": f"notes-{index}.txt"} for index in range(3)])
+        expect(draft.get_by_role("listitem")).to_have_count(3)
+        expect(draft.get_by_text("Ready, private", exact=False)).to_have_count(3)
+        expect(limits).to_have_count(0)
+        # Near the count (8 of 10): the limits are said once, in full.
+        choose([{**text, "name": f"more-{index}.txt"} for index in range(5)])
+        expect(draft.get_by_role("listitem")).to_have_count(8)
+        expect(limits).to_have_text(re.compile(r"^Private until sent · 5 MiB each, videos \d+ MiB · 10 files / 20 MiB per message$"))
+        draft.get_by_role("button", name="Remove more-0.txt").click()
+        draft.get_by_role("button", name="Remove more-1.txt").click()
+        expect(draft.get_by_role("listitem")).to_have_count(6)
+        expect(limits).to_have_count(0)
+        # A refused file says why on its row and brings the limits with it.
+        choose([{"name": "too-big.bin", "mimeType": "application/octet-stream", "buffer": b"\x00" * (5 * 1024 * 1024 + 1)}])
+        expect(draft.get_by_role("listitem").filter(has_text="too-big.bin").get_by_role("alert")).to_have_text("A file can be at most 5 MiB.")
+        expect(limits).to_have_count(1)
+        draft.get_by_role("button", name="Remove too-big.bin").click()
+        expect(limits).to_have_count(0)
 
     def test_photo_waits_offline_on_the_photo(self) -> None:
         page = self.page()

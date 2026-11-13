@@ -739,6 +739,35 @@ class OneConversationJourney(unittest.TestCase):
                         card.evaluate("e => { document.getElementById('wiki-card-slot').replaceWith(e); }")
                     self.assert_card_in_bubble(scope, card)
 
+    def test_07e_a_phone_thread_sheet_starts_with_its_root_and_keeps_a_sent_reply_above_the_field(self) -> None:
+        """#1424: in the phone's thread sheet the root of a thread nobody answered stood far below the sheet's head, with an empty gap above
+        it, and a reply the person had just sent was left half under the field (WebKit scrolled the sheet back as the reply was stored)."""
+        page = self.page("ada", phone=True)
+        started = self.api(page, "POST", f"/api/v1/projects/{self.ids['project']}/conversations",
+                           {"body": "Does anyone have a spare crimping tool for the sensor leads?", "clientMessageId": str(uuid.uuid4())}, status=201)
+        page.goto(self.project_url(f"/conversations/{started['id']}"))
+        thread = self.thread(page)
+        expect(thread).to_be_visible()
+        feed, root = thread.locator(".thread__feed"), thread.locator(".thread__root")
+        expect(root).to_be_visible()
+        expect(feed).not_to_have_class(re.compile("is-opening"))
+        page.wait_for_timeout(600)
+        gap = root.bounding_box()["y"] - feed.bounding_box()["y"]
+        self.assertLess(gap, 40, f"the root stands at the top of the sheet's list, not {gap:.0f} px below it")
+        composer = page.locator("#thread-composer")
+        composer.tap()
+        composer.fill("I have one in the van, back at six.")
+        thread.get_by_role("button", name="Send reply").tap()
+        reply = thread.locator(".project-convo__message", has_text="I have one in the van, back at six.")
+        expect(reply).to_be_visible()
+        # The reply, pending and then stored, stays whole above the field whatever the engine does with the list meanwhile.
+        for _ in range(8):
+            page.wait_for_timeout(250)
+            inside, box = feed.bounding_box(), reply.bounding_box()
+            self.assertGreaterEqual(box["y"], inside["y"] - 1, "the reply is not above the list's top")
+            self.assertLessEqual(box["y"] + box["height"], inside["y"] + inside["height"] + 1, "the reply is whole above the field, not under it")
+        shot(page, f"one-conversation-phone-390-thread-sent-{UI_BROWSER}")
+
     def test_08_tablet_and_desktop_renders(self) -> None:
         tablet = self.page("ada", phone=True, viewport={"width": 820, "height": 1180})
         tablet.goto(self.project_url())

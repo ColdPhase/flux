@@ -71,6 +71,17 @@ the [thread reading-position owner](thread-reading-position-2026-10-16.md), whic
    (Conversation, Tasks, Map, Wiki, Agents) keeps it. Back to the earlier page restores it as above. A link from another
    place to a project's task or decision opens it there on arrival (`?open=`).
 
+## A search result carries no control (#1424)
+
+Founder review, 2026-11-13: a search result opened with "‹ Conversation" in the computer's header, which moved its name and tabs
+by 124 px, and with a filled "‹ Home" pill in place of the phone's round back plus a second back in the thread sheet. A control
+never changes place, so Search is the one reference that does not leave an origin: it flushes the place (as every reference
+does) and navigates with `{ found: true }` as its only state. The destination keeps its header as it is, the phone's back stays
+the plain chevron, and a thread that opens in a sheet has no back to an origin. The return the decision above promises is the
+browser's Back (and the phone's gesture, Alt+←): it is a router POP to the entry Search was opened from, so route, panel,
+reading position and the unsent draft come back as they do for any entry. The other references (a wiki card, a task chip, a
+linked decision, an Inbox item, an agent link) keep the control.
+
 ## Where the control sits (rule 7)
 
 - **Computer and tablet:** first in the header row of an opened page, in front of the title, at the same x and y on
@@ -101,7 +112,7 @@ screen, or the control with no earlier entry); opening such an address directly 
 `app/tests/ui/test_return_to_origin.py` (Chromium and WebKit; 1440 × 900, 820 × 1180 and 390 × 844 with the display
 mode reported as standalone): the five journeys of the issue (a conversation scrolled up → wiki card; a thread →
 task chip → the panel's back; Tasks with a filter and an open panel → linked decision → the panel's back and a source
-page; search → result; Inbox → item), each asserting the route, the open panel or thread, the visible anchor message
+page; a search result, which carries no control and returns with Back; Inbox → item), each asserting the route, the open panel or thread, the visible anchor message
 and the draft (or the filter, selection and query where a page has no composer), plus the control's place, history
 (one entry, Back one step, Forward again, reload keeps the target), and a revoked origin (a project, a material whose
 grant was revoked, a direct message that was left), and a direct message's feed and thread that come back to an

@@ -405,7 +405,9 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
   the sidebar folds with its own control and `[`, and the rail and the navigation button open it ([#1376](https://github.com/ColdPhase/flux/issues/1376)). There is no Agents view, no Focus, no goal and no "needs you" count.
 - **One detail panel.** A task, a decision or a thread opens in the same right-hand panel, and the
   conversation stays visible. Opening another object replaces the panel's content, with "‹ back".
-  `Esc` closes it.
+  `Esc` closes it. In the phone's thread sheet the root stands at the top of the list with no gap above it (the sheet's
+  height is its own, not spare screen), and a reply the person has just sent stays whole above the field
+  ([#1424](https://github.com/ColdPhase/flux/issues/1424)).
 - **Search.** ⌘K, the sidebar's Search and the phone's Search open the same tool (S16).
 - **Settings.** One list of sections on the left and the section on the right, under a header that
   never changes. No section is lost at 820 px.
@@ -688,8 +690,10 @@ These functional rules from UI116-4 remain required:
   - Sending, offline and failure show on the photo itself: progress in %, "sends when you're
     back", Retry.
   - Before sending, thumbnails with × sit in the composer.
-  - On the phone the picker numbers your choices in send order. The full-screen viewer is always
-    dark, with Reply, Create task, Save and Share.
+  - On the phone the system's own picker numbers your choices as you make them and hands them back in that
+    order. Flux adds no picker of its own (founder review 2026-11-13, [#1424](https://github.com/ColdPhase/flux/issues/1424)):
+    the files arrive in the draft at once, each with its name, numbered "Sends 1", "Sends 2" on its thumbnail. The
+    full-screen viewer is always dark, with Reply, Create task, Save and Share.
 - **A file preview** (founder decisions 2026-11-10 and 2026-11-12, [#1252](https://github.com/ColdPhase/flux/issues/1252),
   [C-60](../../product/decisions.md)). HTML, plain text (`.txt`, `.log`, source code), Markdown, JSON,
   CSV/TSV and PDF open in the photo viewer's frame. Pressing the row's name opens the preview; the
@@ -748,13 +752,23 @@ These functional rules from UI116-4 remain required:
   - **The viewer** is the file preview's frame (always dark, Close at the top left, the name with
     "Video · size" in the middle, Download in the bottom bar, Esc closes and focus returns to the
     row). The stage holds the player, `object-fit: contain` on black, up to the stage's size, with
-    the browser's own controls (`controls`, `playsinline`) and the poster shown until Play. It
+    the browser's own controls (`controls`, `playsinline`) and the poster shown until the first frame. The
+    row's ▶ is Play: the viewer opens **playing** (one click, founder review 2026-11-13,
+    [#1424](https://github.com/ColdPhase/flux/issues/1424)); a browser that refuses sound before a press on the
+    player itself leaves it paused with its controls. It
     starts at once and seeks without loading the file: the bytes come in ranges. On the phone the
     stage is the whole screen between the bars, and the browser's controls and full-screen button do
     the rest. Closing stops the video and its download.
   - **A video this browser cannot play** (its codec is not one the browser has) shows on the stage
     "This browser can't play this video." with Download as the one button, as a PDF does. A person
     who lost access sees "You no longer have access to this file." and nothing else.
+  - **The limits line** ("Private until sent · 5 MiB each, videos 200 MiB · 10 files / 20 MiB per message") is not under
+    the composer the whole time files are attached ([#1424](https://github.com/ColdPhase/flux/issues/1424)): each row already
+    says "Ready, private". It shows below the files only when a file or the draft was refused, or when the draft is
+    within two files of the count or at four fifths of the message's bytes (the videos together against their own cap).
+    After the picker the focus is back in the message field on a computer (on a phone the field is tapped, so no keyboard
+    rises over the files), and no single-key shortcut (`C`, `G` `I`, `[`, the Inbox's and a task's keys, `End`) fires anywhere
+    inside a composer, its paperclip, Send and a file's × included.
   - **In the composer** a video is a thumbnail like a photo's (its poster once drawn, else the page
     icon), with its name, "Video · size · Uploading 42%" and ×; Retry upload as for any file. Over the
     limit it says "A video can be at most 200 MiB." (the operator's number); in an encrypted space a
@@ -762,7 +776,7 @@ These functional rules from UI116-4 remain required:
 
 | | |
 | --- | --- |
-| ![Photo picker](screens/phone-photopick.webp) Photo picker | ![Photo viewer](screens/phone-photoview.webp) Photo viewer |
+| ![Photo viewer](screens/phone-photoview.webp) Photo viewer |
 
 These boards date from 2026-10-07. Their files, references and photos are current; their task
 words and the conversation header follow sections 2 and 4.
@@ -1261,7 +1275,10 @@ the composer. The right-hand phone above shows the sheet.
 
 - One dialog over the screen, opened by ⌘K, the sidebar's Search or the phone's Search.
 - Results are grouped by kind (Tasks, Messages, Wiki, Files, Thoughts, Spaces, People), with the
-  match marked; decisions are listed with Tasks, and maps and drafts with Thoughts.
+  match marked; decisions are listed with Tasks, and maps and drafts with Thoughts. The server ranks the
+  results and the groups follow it: **the group of the best match comes first**, then the one that holds the next best, so a
+  task that shares a word with a plain question never stands above the message that answers it
+  ([#1424](https://github.com/ColdPhase/flux/issues/1424)); inside a group the server's order stands.
   Each row is 48 px: a tile, the matching text and one line of where it lives. The first result is
   selected, and `↵` opens it. A list that is too long is narrowed by typing more words; there is
   no second page.
@@ -1276,6 +1293,13 @@ the composer. The right-hand phone above shows the sheet.
   address. The text of a PDF, a Word document, Markdown, plain text and CSV/TSV is found; images,
   audio, video and anything in an encrypted space are not. A file counts once however many of its
   parts match.
+- **Opening a result** puts the person at the thing itself and adds nothing to the screen
+  ([#1424](https://github.com/ColdPhase/flux/issues/1424)). A message opens in its conversation, scrolled to the middle and
+  marked with the arrival's soft fill (rule 6); its thread opens beside it (a sheet on the phone) only when the message is in
+  one: a reply, or a root that has replies. A root nobody answered opens no thread: there is nothing to show in an empty
+  panel. A result carries no "‹ where I came from" control: the header's name and tabs never move for it, and the phone's
+  round back stays the plain chevron. The browser's Back (and the phone's gesture) returns to where Search was opened,
+  as it restores any entry.
 - The hint is one plain sentence: "Finds spaces, people, messages, tasks, Wiki pages, files and
   thoughts you can see." A list of more than 20 ends with one quiet line, "Showing 20 · type more words
   to narrow". There are no filter chips and no Create group.

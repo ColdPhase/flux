@@ -46,7 +46,7 @@ export function ComposerBox({ id, label, placeholder, value, onChange, onKeyDown
   };
   return (
     <div className="composer__box" aria-disabled={boxDisabled || undefined} onClick={(event) => { if (event.target === event.currentTarget) document.getElementById(id)?.focus(); }}>
-      {attach ? <AttachButton state={attach} disabled={attachDisabled} />
+      {attach ? <AttachButton state={attach} disabled={attachDisabled} fieldId={id} />
         : <button type="button" className="composer__attach" aria-disabled="true" aria-label="Attach files (not available here)" aria-describedby={`${id}-plus-why`} data-tip="Files cannot be added here" data-tip-align="start"
           onClick={() => toast({ message: 'Files cannot be added here.', timeout: 3000 })}><Icon name="clip" size={16} /></button>}
       {attach ? null : <span id={`${id}-plus-why`} className="ui-vh">This place takes text only.</span>}

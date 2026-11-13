@@ -2,10 +2,11 @@
 
 Actual authenticated routes and data, Chromium and WebKit, on the computer (1440 x 900), a tablet (820 x 1180) and a
 phone (390 x 844) that reports the installed display mode. Following a reference (a wiki card, a task chip, a linked
-decision, a search result opened from ⌘K, an Inbox item) pushes one history entry that carries its origin; the destination shows one
+decision, an Inbox item) pushes one history entry that carries its origin; the destination shows one
 "‹ <origin>" control; going back (the control, browser Back) restores the origin as it was left: route and filters,
 open thread or panel, the message in view at the same offset (also when messages arrived meanwhile), the unsent draft.
 The origin is only in the browser's history entry, never on the server, so there is no API path to check.
+A search result is the exception (#1424): it carries no control, which would move the header's name and tabs, and the browser's Back returns.
 """
 from __future__ import annotations
 
@@ -164,7 +165,8 @@ class ReturnToOrigin(unittest.TestCase):
         return {"id": dm, "roots": ids, "replies": answers, "partner": tag}
 
     def jump_to_search(self, page, query="order first"):
-        """⌘K, a query, a result: the message it names is opened as a reference from wherever the person was reading (#870: Search is a dialog, there is no results page)."""
+        """⌘K, a query, a result: the message it names is opened from wherever the person was reading (#870: Search is a dialog, there is no results page).
+        It leaves one history entry and no control (#1424): the way back is the browser's Back."""
         page.evaluate("() => document.activeElement && document.activeElement.blur()")
         page.keyboard.press("Control+k")
         palette = page.get_by_role("dialog", name="Search", exact=True)
@@ -522,7 +524,7 @@ class ReturnToOrigin(unittest.TestCase):
             with self.subTest(engine=engine):
                 page = self.page(engine)
                 places = {}
-                # A wiki card, a search result and an Inbox item: three kinds of destination, one control.
+                # A wiki card and an Inbox item: two kinds of destination, one control.
                 page.goto(f"/projects/{self.project}")
                 self.wait_stream(page)
                 card = page.locator(f"#message-{self.wiki_message} .wiki-card")
@@ -530,8 +532,15 @@ class ReturnToOrigin(unittest.TestCase):
                 card.click()
                 places["wiki card"] = self.box(self.origin_back(page, "Conversation"))
                 page.go_back()
+                # A search result carries none (#1424): it would move the header's name and tabs. The entry has no origin; Back returns.
+                heading = page.get_by_role("heading", name="Night lamp", level=1)
+                title = heading.bounding_box()
                 self.jump_to_search(page)
-                places["search result"] = self.box(self.origin_back(page, "Conversation"))
+                expect(self.origin_back(page)).to_have_count(0)
+                self.assertIsNone(page.evaluate("(history.state && history.state.usr && history.state.usr.origin) || null"))
+                self.assertEqual(heading.bounding_box(), title, "the header does not move for a search result")
+                page.go_back()
+                expect(page).to_have_url(f"{ORIGIN}/projects/{self.project}")
                 page.goto("/inbox")
                 open_item(page.locator(".nyc--decision").first).get_by_role("button", name="Discuss").click()
                 expect(page).to_have_url(f"{ORIGIN}/projects/{self.project}")
@@ -665,7 +674,7 @@ class ReturnToOrigin(unittest.TestCase):
                     # Something arrives while the person is away.
                     api(self.contexts[dm["partner"]], "POST", f"/api/v1/dms/{dm['id']}/messages", {"body": f"While you were away ({engine}).", "clientMessageId": str(uuid.uuid4())}, 201)
                     self.jump_to_search(page)
-                    self.origin_back(page, "Messages").click()
+                    page.go_back()
                     expect(page).to_have_url(f"{ORIGIN}/dm/{dm['id']}")
                     expect(page.locator(target)).to_have_count(1)
                     page.wait_for_timeout(1500)
@@ -705,7 +714,7 @@ class ReturnToOrigin(unittest.TestCase):
                 self.assertGreater(page.evaluate(AWAY, feed), 1000, "the reader is far from the end")
                 api(self.contexts[dm["partner"]], "POST", f"/api/v1/dms/{dm['id']}/threads/{dm['roots'][0]}/replies", {"body": f"While you were away ({engine}).", "clientMessageId": str(uuid.uuid4())}, 201)
                 self.jump_to_search(page)
-                self.origin_back(page, "Messages").click()
+                page.go_back()
                 expect(page).to_have_url(f"{ORIGIN}/dm/{dm['id']}?thread={dm['roots'][0]}")
                 expect(page.locator("[data-dm-thread]")).to_be_visible()
                 expect(page.locator(target)).to_have_count(1)
