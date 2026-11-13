@@ -5,18 +5,21 @@
                --person ada=ada@demo.flux.test:PASSWORD --person jonas=jonas@demo.flux.test:PASSWORD
 
 Writes into DIR: `cookie-<name>` (the session cookie, one `name=value` line, for ZAP's replacer rule), `openapi.json` (every route
-the test deployment lists, with its body and query schemas, and the ids of the seeded data as examples) and `routes.json`.
+the test deployment lists, with its body and query schemas, and the ids of the seeded data as examples) and `routes.json`. The first
+person also sets a profile photo and sends an HTML file in the first space, so the picture, file, preview, message and receipt routes
+are scanned with ids that exist; the preview carries the frame headers it needs, and the photo, space icon and file uploads raw bytes.
 Standard library only. The route listing exists only in a test deployment (`GET /api/v1/test/routes` with the fixture bearer).
 """
 import argparse
-import struct
-import zlib
 import http.cookiejar
 import json
 import re
+import struct
 import sys
 import urllib.error
 import urllib.request
+import uuid
+import zlib
 
 # Never scanned: ending the scan's own session, the test deployment's own routes, and the long-lived streams.
 SKIP = (
@@ -44,8 +47,15 @@ LISTS = {
     "agentId": "/api/v1/workspaces/{workspaceId}/agents",
 }
 UUID = "00000000-0000-4000-8000-000000000000"
-# Routes whose body is raw bytes, not JSON (F-039: a profile photo), described as such so the scan sends bytes there.
-RAW_BODY_ROUTES = {("PUT", "/api/v1/me/photo"): "image/png"}
+# Routes whose body is raw bytes, not JSON, described as such so the scan sends bytes there: a profile photo (F-039), a space's icon
+# picture (F-040; the same route also takes JSON `{ emoji }`) and a file upload.
+RAW_BODY_ROUTES = {("PUT", "/api/v1/me/photo"): "image/png", ("PUT", "/api/v1/projects/:projectId/icon"): "image/png",
+                   ("POST", "/api/v1/projects/:projectId/files"): "application/octet-stream"}
+# Request headers a route needs before its handler runs, with the value a browser sends: a file preview answers only a frame of a Flux
+# page (C-60), so without them every request of the scan would stop at the same 403.
+HEADER_PARAMETERS = {("GET", "/api/v1/files/:fileId/preview"): {"Sec-Fetch-Dest": "iframe", "Sec-Fetch-Site": "same-origin"}}
+# A previewable page, sent in the first space so the file, preview, message and receipt routes are scanned with ids that exist.
+PREVIEW_PAGE = b"<!doctype html><title>DAST</title><h1>Gateway range report</h1><p>Signal at the far east bed.</p>"
 
 
 def small_png():
@@ -53,6 +63,20 @@ def small_png():
     chunk = lambda kind, data: struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)  # noqa: E731
     raw = b"".join(b"\x00" + bytes((40, 150, 140)) * 4 for _ in range(4))
     return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 4, 4, 8, 2, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b"")
+
+
+def seeded_file(person, project_id):
+    """An HTML file sent with a new message in the space: its file, message and conversation ids (empty when there is no space)."""
+    if not project_id:
+        return {}
+    status, staged = person.call("POST", f"/api/v1/projects/{project_id}/files?uploadId={uuid.uuid4()}&name=range-report.html", PREVIEW_PAGE)
+    if status != 201 or not isinstance(staged, dict):
+        sys.exit(f"dast: the preview file could not be uploaded (answered {status})")
+    status, started = person.call("POST", f"/api/v1/projects/{project_id}/conversations",
+                                  {"body": "Range report", "attachmentIds": [staged["id"]], "clientMessageId": str(uuid.uuid4())})
+    if status not in (200, 201) or not isinstance(started, dict):
+        sys.exit(f"dast: the message with the preview file could not be sent (answered {status})")
+    return {"fileId": staged["id"], "messageId": started["messages"][0]["id"], "conversationId": started["id"]}
 
 
 class Person:
@@ -165,6 +189,8 @@ def openapi(routes, server, ids, only=None, examples=None):
             required = set(query.get("required") or [])
             for name, value in (query.get("properties") or {}).items():
                 parameters.append({"name": name, "in": "query", "required": name in required, "schema": schema_of(value)})
+        for name, value in HEADER_PARAMETERS.get((method, url), {}).items():
+            parameters.append({"name": name, "in": "header", "required": True, "schema": {"type": "string", "default": value}, "example": value})
         operation = {"operationId": f"{method.lower()}_{re.sub(r'[^A-Za-z0-9]+', '_', path).strip('_')}", "parameters": parameters,
                      "responses": {"default": {"description": "Whatever the API answers"}}}
         if (method, url) in RAW_BODY_ROUTES:
@@ -201,6 +227,7 @@ def main():
     for person in people:
         with open(f"{args.out}/cookie-{person.name}", "w", encoding="utf-8") as handle:
             handle.write(person.cookie())
+    ids.update(seeded_file(first, ids.get("projectId")))
     ids["userId"] = (people[1] if len(people) > 1 else first).call("GET", "/api/v1/me")[1].get("user", {}).get("id", UUID)
     # A real photo, so the picture route is scanned with an id that exists (F-039); the second person can see the first's.
     examples = {}

@@ -21,6 +21,11 @@
 # FLUX_DAST_PORT / FLUX_DAST_MAILPIT_PORT pick the loopback ports; FLUX_DAST_PEOPLE narrows the API scans (default "ada jonas");
 # FLUX_DAST_SKIP_BASELINE=1 skips the baseline scan, FLUX_DAST_SKIP_API=1 the API scans (a quick check of the pages' headers).
 # FLUX_DAST_ONLY, a regular expression, limits the API scans to the paths it matches (one change's routes, e.g. '/photo|/pictures/').
+# The v0.2.1 routes are in the listing like every other: file previews (with a real file and the frame headers they need, C-60),
+# profile photo and space icon uploads (raw bytes, F-039/F-040), receipt readers, search, model lists and calls. The API offers its call
+# routes only with a LiveKit server, so this stack runs one (docker/compose.live.yaml, a throwaway key; FLUX_DAST_LIVEKIT_TCP_PORT,
+# FLUX_DAST_LIVEKIT_UDP_PORT and FLUX_DAST_LIVEKIT_TURN_PORT pick its media ports). One change's routes, for example:
+# FLUX_DAST_ONLY='/preview|/photo|/icon|/pictures/|/receipts|/search|model-list|/ai-model-lists|/calls|/live-sessions'.
 set -eu
 
 cd "$(dirname "$0")/.."
@@ -51,6 +56,13 @@ background_secret_dir=$(mktemp -d)
 head -c 32 /dev/urandom > "$background_secret_dir/background_key"
 chmod 0444 "$background_secret_dir/background_key"
 export FLUX_BACKGROUND_KEY_HOST_FILE="$background_secret_dir/background_key"
+# Calls need a LiveKit server for their routes to exist; this one's key is made for the run and its media ports are the run's own.
+export FLUX_LIVEKIT_API_KEY="dast$(od -An -N6 -tx1 /dev/urandom | tr -d ' \n')"
+export FLUX_LIVEKIT_API_SECRET="$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')"
+export FLUX_LIVEKIT_PUBLIC_IP=127.0.0.1 FLUX_LIVEKIT_DOMAIN=localhost
+export FLUX_LIVEKIT_ICE_TCP_PORT="${FLUX_DAST_LIVEKIT_TCP_PORT:-18601}"
+export FLUX_LIVEKIT_ICE_UDP_PORT="${FLUX_DAST_LIVEKIT_UDP_PORT:-18602}"
+export FLUX_LIVEKIT_TURN_UDP_PORT="${FLUX_DAST_LIVEKIT_TURN_PORT:-18603}"
 # No push keys from a developer's docker/.env reach this run.
 export FLUX_VAPID_PUBLIC_KEY='' FLUX_VAPID_PRIVATE_KEY='' FLUX_VAPID_SUBJECT=''
 ada_password="demo-$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
@@ -58,7 +70,7 @@ jonas_password="demo-$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
 # ZAP 2.17.0, pinned by digest (ghcr.io/zaproxy/zaproxy:stable on 2026-11-08).
 zap_image="ghcr.io/zaproxy/zaproxy@sha256:9624669db72f54d86c4b46a7064518bd9bf79d8c61a4c31befa9923489f328af"
 . scripts/test_images.sh
-compose="docker compose --env-file /dev/null -p $project -f docker/compose.source.yaml"
+compose="docker compose --env-file /dev/null -p $project -f docker/compose.source.yaml -f docker/compose.live.yaml"
 
 cleanup() {
   status=$?
