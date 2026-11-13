@@ -150,8 +150,11 @@ class ButtonSystem(unittest.TestCase):
                     page.wait_for_load_state("networkidle")
                     if ready:
                         expect(page.get_by_text(ready, exact=False).first).to_be_visible()
-                    # A conversation's header has no button of the system on the phone any more: Search and Call are rows of More (#1239).
-                    self.check(page, name, needs_buttons=name == "Empty wiki" or (name == "Conversation" and not phone))
+                    # A conversation's header has no button of the system on the phone any more: Search and Call are rows of More (#1239). On the
+                    # computer its one was Call, which a server without a media server no longer shows anywhere (#1424). This stack has no media
+                    # server (Call runs only in the live suite, scripts/check_live_ui.sh), so Conversation is measured for whatever system buttons it
+                    # shows, without requiring one.
+                    self.check(page, name, needs_buttons=name == "Empty wiki")
                     if name == "Account":
                         self.account_rows_fit(page, phone)
                     self.row_actions_shown(page, name)

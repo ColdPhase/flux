@@ -305,7 +305,7 @@ Founder decision 2026-10-31 ([F-035](../product/decisions.md), #763 PE-2). An in
 someone who has no account yet, or one Flux cannot find by address, join a workspace. Flux sends
 no invitation email: the owner or admin copies the link and sends it themselves.
 
-**Creating.** `POST /api/v1/workspaces/:id/invites` `{ role, email?, expiresInDays? }` needs
+**Creating.** `POST /api/v1/workspaces/:id/invites` `{ role, email?, expiresInDays?, spaceId? }` needs
 `workspace.manage_members`. `role` is `member`, `guest` or `admin`; `admin` needs the creator to
 be an owner (`403 OWNER_REQUIRED`), and `owner` is never offered (`400`). `email` (optional)
 locks the link to that address, compared case-insensitively. `expiresInDays` is 1, 7 or 30
@@ -349,14 +349,18 @@ needsUnlockPassword }`. Accepting again from the same account answers `joined` a
 nothing; another account gets `410 INVITE_USED`. Accepting has no idempotency row: it is
 idempotent by itself.
 
-**An invite joins the company only (F-037, 2026-11-03).** A link names no space (the FT-3
-`projectId` of #763 went with F-037); the new member is in Everyone at once and is added to other
-spaces from each space's people. In the same transaction the creator gets an Inbox notice
-"<name> joined <company>" linking Settings › Company. Settings › Company shows invite links only
+**An invite joins the company, and can add one space (F-037, 2026-11-03; founder decision 2026-11-13, #1438).** The new member is in
+Everyone at once. A link made from a space's Add people names that space (`spaceId`): creating it needs `project.manage` on it, and it
+is a space of the same workspace other than Everyone (`400` otherwise); encrypted spaces are other workspaces and never named. Joining
+then grants the person `contributor` there, recorded as `project.grant_set.v1` by the link's maker, who is still a company owner or admin
+(the checks above) and so may change that space's people. A space deleted since adds nothing (`space_id` is set null). The list shows the
+space's name (`space`), and the answer of joining names the space the join page opens with its composer ready (`landingSpaceId`):
+Everyone, or for a guest the link's space, or none. In the same transaction the creator gets an Inbox notice
+"<name> joined <company>" linking Settings › Company, or the space's settings when the link named one. Settings › Company shows invite links only
 without single sign-on: with it, the provider decides who joins.
 
-**Sign-up rules stay as they are.** A signed-out visitor on `/join` is sent to sign in or to
-create an account and back. The page keeps the token in that tab's session storage and removes it
+**Sign-up rules stay as they are.** A signed-out visitor on `/join` gets the create-account form on the page itself (#1438), or signs
+in and comes back; an account made there joins at once through the same `accept`, so it can only join the link's workspace. The page keeps the token in that tab's session storage and removes it
 from the address and the browser history; a sign-in finished in another tab asks for the link to be
 opened again there. With single sign-on and password sign-up closed, the page says the first
 single sign-on makes the account (F-024). Creating an account follows `FLUX_SIGNUP` and single sign-on exactly

@@ -22,6 +22,8 @@
 .home__row-k { font-size: var(--fs-sm); line-height: 1.35; color: var(--t3); overflow-wrap: anywhere; }
 .home__row-go { color: var(--t3); }
 .home__row-t .home__n { display: inline; min-width: 0; height: auto; margin-left: 6px; padding: 0; font-size: inherit; font-weight: 400; }
+/* First steps (#1438): the same rows as every Home card, above what waits. */
+.home__steps { margin-bottom: 28px; }
 /* The phone's two places, under the waiting items (no sidebar there). */
 .home__places { margin-top: 16px; }
 /* The first step for a person with no project yet (#763 FT-1): Hello, one sentence about what Flux is for, one primary. */
@@ -39,6 +41,7 @@
   .home__hello { margin-bottom: 20px; font-size: var(--fs-2xl); }
   .home__sech { padding-inline: 4px; }
   .home__need { margin-top: 20px; }
+  .home__steps { margin-bottom: 20px; }
   .home__continue { margin-top: 24px; }
   .home .agentlive { margin: 0 0 12px; padding: 12px 12px 12px 14px; border-radius: var(--r-card); }
 }

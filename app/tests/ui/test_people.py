@@ -123,7 +123,7 @@ class PeopleJourney(unittest.TestCase):
 
     def add_form(self, page: Page):
         """The forms sit behind Invite (F-037: the company's people come first); they stay open once opened."""
-        form = page.get_by_role("region", name="Add someone")
+        form = page.get_by_role("region", name="Invite people")
         invite = page.get_by_role("button", name="Invite", exact=True)
         expect(invite).to_be_visible()
         if invite.get_attribute("aria-expanded") != "true":
@@ -131,12 +131,20 @@ class PeopleJourney(unittest.TestCase):
         expect(form).to_be_visible()
         return form
 
+    def more(self, form) -> None:
+        """#1438: the role and the expiry wait under More."""
+        more = form.get_by_role("button", name="More")
+        if more.get_attribute("aria-expanded") != "true":
+            more.click()
+
     def add(self, page: Page, email: str, role: str | None = None) -> None:
+        """One invite form (#1438): an address with an account joins at once; Create invite link is its one button."""
         form = self.add_form(page)
-        form.get_by_label("Email").fill(email)
+        form.get_by_label("Email (optional)").fill(email)
         if role:
-            choose(form.get_by_label("Role"), label=role)
-        form.get_by_role("button", name=re.compile("^Add to ")).click()
+            self.more(form)
+            choose(form.get_by_label("Joins as"), label=role)
+        form.get_by_role("button", name="Create invite link").click()
 
     def settings_page(self, page: Page, project_id: str) -> None:
         """A space's settings (F-037, #874): ⋯ › Settings in its header, at its own address."""
@@ -165,17 +173,18 @@ class PeopleJourney(unittest.TestCase):
         people = page.get_by_role("list", name="People in Riverside Makers")
         expect(people.get_by_text("Ada Kowalska (you)")).to_be_visible()
         form = self.add_form(page)
-        expect(page.get_by_text("Their Flux account’s address. Someone new? Create an invite link below.")).to_be_visible()
+        expect(page.get_by_text("Empty: anyone who opens the link first can join.")).to_be_visible()
+        # #1438: one form; the role and the expiry are under More, Member and 7 days by default.
+        expect(form.get_by_label("Joins as")).to_have_count(0)
 
-        # Keyboard only: type the address, Tab to the role (Member by default), Tab to the button, Enter.
-        email = form.get_by_label("Email")
+        # Keyboard only: type the address, Tab past More to the button, Enter.
+        email = form.get_by_label("Email (optional)")
         email.focus()
         page.keyboard.type(PEOPLE["kai"][1])
         page.keyboard.press("Tab")
-        expect(form.get_by_label("Role")).to_be_focused()
-        expect_value(form.get_by_label("Role"), "member")
+        expect(form.get_by_role("button", name="More")).to_be_focused()
         page.keyboard.press("Tab")
-        expect(form.get_by_role("button", name="Add to Riverside Makers")).to_be_focused()
+        expect(form.get_by_role("button", name="Create invite link")).to_be_focused()
         page.keyboard.press("Enter")
         expect(page.locator(".people__done")).to_have_text("Kai Tanaka joined Riverside Makers as member.")
         expect(email).to_have_value("")
@@ -183,7 +192,10 @@ class PeopleJourney(unittest.TestCase):
 
         # Enter in the address field submits too.
         email.fill(PEOPLE["lee"][1])
-        choose(form.get_by_label("Role"), label="Admin")
+        self.more(form)
+        expect_value(form.get_by_label("Joins as"), "member")
+        expect(form.get_by_label("Works for")).to_contain_text("7 days")
+        choose(form.get_by_label("Joins as"), label="Admin")
         expect(form.get_by_text("Adds and removes people and can change every space.")).to_be_visible()
         email.press("Enter")
         expect(page.locator(".people__done")).to_have_text("Lee Moreno joined Riverside Makers as admin.")
@@ -200,9 +212,10 @@ class PeopleJourney(unittest.TestCase):
         page = self.page("lee")
         self.open_people(page, "Riverside Makers")
         form = self.add_form(page)
-        labels = app_labels(form.get_by_label("Role"))
-        self.assertNotIn("Owner", labels, labels)
-        self.assertIn("Admin", labels, labels)
+        self.more(form)
+        # An admin invites members and guests; only an owner invites an admin, and nobody an owner.
+        labels = app_labels(form.get_by_label("Joins as"))
+        self.assertEqual(labels, ["Member", "Guest"], labels)
         roster = page.get_by_role("list", name="People in Riverside Makers")
         expect(roster.get_by_role("listitem").filter(has_text="Ada Kowalska")).to_contain_text("Owner")
         expect(page.get_by_role("button", name="Change Ada Kowalska")).to_have_count(0)
@@ -217,17 +230,19 @@ class PeopleJourney(unittest.TestCase):
         page = self.page("ada")
         self.open_people(page, "Riverside Makers")
         form = self.add_form(page)
+        # #1438: an address nobody has an account with gets a link locked to it, at once.
         self.add(page, NOBODY)
-        alert = form.get_by_role("alert")
-        expect(alert).to_have_text(f"No one has an account with {NOBODY} here yet. Create an invite link for them below and send it yourself.")
-        expect(form.get_by_label("Email")).to_be_focused()
+        expect(form.get_by_role("group", name="New invite link")).to_be_visible()
+        expect(form.get_by_role("list", name=re.compile("^Waiting to be used"))).to_contain_text(NOBODY)
         shot(page, "people-desktop-1440-not-found")
 
         self.add(page, PEOPLE["kai"][1].upper())
+        alert = form.get_by_role("alert")
         expect(alert).to_have_text("Kai Tanaka is already in Riverside Makers.")
+        expect(form.get_by_label("Email (optional)")).to_be_focused()
         self.add(page, "kai")
-        expect(alert).to_have_text("Enter the email address of their Flux account.")
-        # Nothing changed on the server.
+        expect(alert).to_have_text("Enter an email address, or leave it empty for anyone with the link.")
+        # Nobody joined.
         self.assertEqual(len(self.roles(page, self.riverside)), 4)
 
     def test_03_owner_changes_a_role(self) -> None:
@@ -280,7 +295,7 @@ class PeopleJourney(unittest.TestCase):
         self.open_people(mia, "Riverside Makers")
         expect(mia.get_by_text("Guests see only the spaces they’re added to, not everyone in Riverside Makers.")).to_be_visible()
         expect(mia.get_by_text("Kai Tanaka")).to_have_count(0)
-        expect(mia.get_by_role("region", name="Add someone")).to_have_count(0)
+        expect(mia.get_by_role("region", name="Invite people")).to_have_count(0)
 
     # ---------------------------------------------------------------- AC-2/AC-3 project access
 
@@ -505,7 +520,7 @@ class PeopleFocus(unittest.TestCase):
         page.on("pageerror", lambda error: errors.append(str(error)))
         self.addCleanup(lambda: self.assertEqual(errors, [], "no uncaught page errors"))
         page.goto("/settings/company?invite=1")
-        expect(page.get_by_role("region", name="Add someone")).to_be_visible()
+        expect(page.get_by_role("region", name="Invite people")).to_be_visible()
         return page
 
     @staticmethod
@@ -515,7 +530,7 @@ class PeopleFocus(unittest.TestCase):
 
     def test_1_focus_stays_in_the_form_so_the_next_address_is_typed_at_once(self) -> None:
         page = self.people_page()
-        email = page.get_by_role("region", name="Add someone").get_by_label("Email")
+        email = page.get_by_role("region", name="Invite people").get_by_label("Email (optional)")
         done = page.locator(".people__done")
         email.fill(self.emails["kai"])
         email.press("Enter")

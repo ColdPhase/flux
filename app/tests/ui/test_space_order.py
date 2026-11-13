@@ -27,6 +27,9 @@ from message_gestures import centre, touch
 from test_app_shell import ORIGIN, UI_BROWSER, UPSTREAM, start_forwarder
 from test_work_pagination import api
 
+# A 44 px touch target, less a 0.01 px sub-pixel tolerance (coordinator's approval, train 15): WebKit lays a box that starts on a
+# fractional pixel out to 43.99999 px while it settles. This is not a smaller target: anything under 43.99 px still fails.
+TARGET_PX = 44 - 0.01
 PASSWORD = "an order of my own for the spaces"
 NAMES = ["Release check", "Garden", "Barrel", "Library", "Tool shed"]
 LIST = "nav[aria-labelledby='side-projects'] ul.side__list"
@@ -647,7 +650,7 @@ class SpaceOrder(unittest.TestCase):
         self.assertEqual(button.evaluate("(el) => { const s = getComputedStyle(el.closest('.top__more')); return [s.opacity, s.pointerEvents]; }"), ["1", "auto"], "always shown on touch")
         box = button.bounding_box()
         assert box
-        self.assertGreaterEqual(min(box["width"], box["height"]), 44, "a 44 px target")
+        self.assertGreaterEqual(min(box["width"], box["height"]), TARGET_PX, "a 44 px target")
         for other in row_end:
             self.assertLessEqual(other["x"] + other["width"], box["x"] + 1, "the dot, the count and the chevron stay clear of the ⋯")
 

@@ -519,10 +519,11 @@ class AppShellJourney(unittest.TestCase):
         expect(page.get_by_role("heading", level=1, name="My map", exact=True)).to_be_visible()
         shot(page, "desktop-1440-map-light")
 
-        # Only a space and a direct message have Details (#871): My map has none, and the header has no Details button. It has no row in ⋯ either,
-        # so it has no ⋯ (#1424): no menu opens empty.
+        # Only a space and a direct message have Details (#871): My map has none, and the header has no Details button. Since ⋯ lost its
+        # sidebar row (#1376) My map has nothing for ⋯, so its header has no ⋯ at all: no empty menu to open (README §4).
         expect(page.locator("header.top").get_by_role("button", name="Details", exact=True)).to_have_count(0)
         expect(page.locator("header.top").get_by_role("button", name="More", exact=True)).to_have_count(0)
+        expect(page.get_by_role("menuitem", name=re.compile("details|info", re.I))).to_have_count(0)
         # "]" is not a key of the final design (§4 keyboard); it opens nothing.
         page.keyboard.press("]")
         expect(page.get_by_role("complementary", name=re.compile("details|info", re.I))).to_have_count(0)
@@ -610,6 +611,7 @@ class AppShellJourney(unittest.TestCase):
                     button: {left: button.left, right: button.right, top: button.top, bottom: button.bottom},
                     menu: {left: menu.left, right: menu.right, top: menu.top, bottom: menu.bottom},
                     rowHeights: rows.filter(el => !el.querySelector('small')).map(el => el.getBoundingClientRect().height), hintedHeights: hinted,
+                    labels: rows.map(el => (el.querySelector('span > span, span') || el).firstChild.textContent.trim()),
                     viewport: document.documentElement.clientWidth};
                 }""")
                 after = header.bounding_box()
@@ -618,6 +620,10 @@ class AppShellJourney(unittest.TestCase):
                 self.assertLessEqual(geometry["menu"]["right"], geometry["viewport"], geometry)
                 self.assertAlmostEqual(geometry["menu"]["right"], anchor["x"] + anchor["width"], delta=1, msg=f"menu is right aligned to More: {geometry}")
                 self.assertGreaterEqual(geometry["menu"]["top"], geometry["button"]["bottom"] - 1, geometry)
+                # A space's ⋯ holds Settings, Mute space and Space details, and no row for the sidebar (README §4, #1376).
+                # A narrower header may move People and Call in front of them (Spokój rule 3).
+                self.assertEqual(geometry["labels"][-3:], ["Settings", "Mute space", "Space details"], f"the space's rows, in order: {geometry}")
+                self.assertFalse([label for label in geometry["labels"] if re.search("sidebar", label, re.I)], f"no row for the sidebar: {geometry}")
                 self.assertGreaterEqual(len(geometry["rowHeights"]), 2, f"Settings and Space details are shown (no Call row on a server without a media server, #1424): {geometry}")
                 self.assertEqual(len(geometry["hintedHeights"]), 1, f"Mute space is the one row with a hint line: {geometry}")
                 if device == "tablet":

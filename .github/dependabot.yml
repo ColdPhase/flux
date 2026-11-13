@@ -9,9 +9,9 @@
 # update, where a group lists `update-types`) arrives alone, so it gets its own review.
 #
 # Coverage: every directory of the repository that holds a manifest, a lockfile, a Dockerfile or a Compose file
-# (tests/test_security_scan.py checks it), except two: app/tests/ui/requirements.txt and demo-requirements.txt (pip), whose
+# (tests/test_security_scan.py checks it), except these: app/tests/ui/requirements.txt and demo-requirements.txt (pip), whose
 # Playwright pin must equal the tag of the image in docker/ui-tests.Dockerfile, which a version-only PR would break; and
-# the prototype Dockerfile under docs/product/research/evidence/460, which is research evidence and is never built.
+# the probe Dockerfiles under docs/product/research/evidence/460 and evidence/harness-2026-11, research evidence never built.
 # Playwright is moved by hand on both sides of each pair, so it is ignored where Dependabot would move one side only: the
 # `playwright` npm package (app/package.json, which docker/Dockerfile's e2e image must match) and the
 # mcr.microsoft.com/playwright and playwright/python images (docker/Dockerfile, docker/ui-tests.Dockerfile, docker/public-sim/client.Dockerfile).

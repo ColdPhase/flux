@@ -411,7 +411,7 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
   people go into ⋯ first, as its People row, and Call stays in the row; under 44 rem Call follows them (#1375). The ⋯ menu holds the space's settings,
   **Mute space** / **Unmute space** and **Space details**, the one way into the space's own panel ([#871](https://github.com/ColdPhase/flux/issues/871),
   [#873](https://github.com/ColdPhase/flux/issues/873); the phone's ⋯ has it too, after Search, Call, Settings and Mute). It has no row for the sidebar:
-  the sidebar folds with its own control and `[`, and the rail and the navigation button open it ([#1376](https://github.com/ColdPhase/flux/issues/1376)). There is no Agents view, no Focus, no goal and no "needs you" count. **⋯ is there only where it has rows** (#1424): My tasks, My map, an
+  the sidebar folds with its own control and `[`, and the rail and the navigation button open it ([#1376](https://github.com/ColdPhase/flux/issues/1376)). There is no Agents view, no Focus, no goal and no "needs you" count. **⋯ is there only where it has rows** (#1424, #1460): Home, My tasks, My map, an
   agent's chat on the computer and a page of Settings have none, so they show no ⋯ and no empty menu.
 - **One detail panel.** A task, a decision or a thread opens in the same right-hand panel, and the
   conversation stays visible. Opening another object replaces the panel's content, with "‹ back".
@@ -832,7 +832,25 @@ Community garden sensors, Rain barrel monitor and Tool library.
   ("Doing · #1 · Community garden sensors") or a Wiki page you edited.
 - On the phone, "My tasks (4)" is a row under the waiting items, with "My map" next to it. The
   render draws "My tasks" only; the "My map" row follows this text. Home has nothing else: no
-  spaces card, footer links, keyboard hints or assistant banner.
+  spaces card, footer links, keyboard hints or assistant banner, except the first-steps card below.
+- **First steps** (founder decisions, Hubert, 2026-11-13, [#1438](https://github.com/ColdPhase/flux/issues/1438)): every new
+  person but a guest gets one card on Home, above Waiting for you, titled "First steps", with at most three rows and one quiet
+  **Hide** (a `link` button at the card's head) that hides it for good on every device. It replaces the old empty-Home line for a
+  new member: one concept, not two. Each row is a Home row (face, title, one quiet line, the arrow) and leaves when what it asks
+  is done; when none is left the card is gone. **Only a new person has it:** someone who joined the company in the last 30 days and
+  has a step left, until they hide it or finish it. The first time no step is left (or on Hide) it is done for that person, saved
+  on the server, so it never returns, on another device or when a step becomes undone later (a removed photo). Someone who joined
+  longer ago never sees it, and notifications alone never make it: the notifications row only sits beside a step that is left, and
+  notifications stay offered where they are today (Settings › Notifications, and the one-time offer after a first
+  mention or question). The rows follow the person's company role:
+  - **An owner or admin:** **Name your company** (the company still has the name setup gave it; opens Settings › Company with the
+    name's editor open), **Invite people** (nobody else is in the company and no invite link was ever made; opens Settings › Company
+    with the invite form open) and **Connect AI** (the person has no AI connection yet; opens Settings › AI's Connect AI).
+  - **A member:** **Write your first message** (the person has written none; opens Everyone with the composer ready), **Add your
+    photo** (no profile photo; opens Settings › Account) and **Get notifications on this phone** (only beside one of those two rows,
+    where push is available and this device is not subscribed; the same flow as the one-time offer, which then does not show
+    separately).
+  - **A guest:** no card.
 
 ### Inbox
 
@@ -1391,6 +1409,11 @@ the composer. The right-hand phone above shows the sheet.
   - With SSO, "Everyone who signs in with Riverside SSO joins automatically", and there is no
     Invite. Without SSO, Invite makes a one-time link that the admin sends (F-035); Flux sends no
     invitation email.
+  - **One invite form** (founder decision, 2026-11-13, #1438). Invite opens one form: **Email (optional)** and **Create invite
+    link** (`primary`). **More** (a quiet disclosure under the field) holds **Joins as** (Member by default; Guest; Admin for an
+    owner) and **Works for** (7 days by default; 1 day, 30 days). An address that already has a Flux account is added at once
+    ("Maja joined as member"); any other address, or none, makes the link, copied at once, with its card and Copy link as before.
+    "Only for", "Add someone" and the second role picker go. Links waiting to be used stay listed under the form.
   - There is no AI switch here; AI is per space.
 
 #### Hide previews
@@ -1696,6 +1719,12 @@ On the phone the Assistant conversation is a normal conversation. Its header lis
   - "Only people added here, and the company's owners and admins, can open this space." (The drawn line said only the first part, which the details panel and the rules contradict: owners and admins reach every space but an encrypted one, #1116.)
   - Name with Change.
   - People with Add people, an Admin / Member choice and Remove on each row, and under each name a quiet line with when they were last active ([Last active](#last-active)).
+  - **Add people also takes a new person's email** (founder decision, 2026-11-13, #1438). Under the company's people, the open
+    Add people has one more row for a company owner or admin: **Someone new?** an Email field and **Invite** (`secondary`). It
+    makes the company's invite link (Member, 7 days, locked to that address) that also adds the person to this space when they
+    join; the link is copied at once and shown in place with Copy link. An address that already has an account in the company is
+    simply ticked in the list instead. The inviter gets "<name> joined <company>" naming the space when they join. A space admin
+    who is not a company admin has no such row. About 6 clicks instead of 13.
   - The AI switch.
   - Leave space, and Delete space… for admins.
   - **GitHub repositories** is offered to a space's manager only on a server where GitHub is set up. A server without it shows no row, no link and no
@@ -1789,6 +1818,19 @@ the toast with Undo, the tokens and the existing icons. No new setting, mode or 
 | | | |
 | --- | --- | --- |
 | ![Sign in](screens/desktop-signin.webp) Sign in | ![Sign in on the phone](screens/phone-signin.webp) Sign in, phone | ![Splash](screens/phone-splash.webp) Splash |
+
+### The invite page
+
+Founder decision, Hubert, 2026-11-13 ([#1438](https://github.com/ColdPhase/flux/issues/1438)); composed from the sign-in pages.
+
+- An invite link opens **the create-account form first**: "Join Riverside Makers", one line "Ada Kowalska invited you.", then
+  Name, Email and Password and **Create account and join** (`primary`, large). Under the card, "Already have an account? **Sign in
+  to join**". With sign-up closed or single sign-on only, the page says how to get in instead, as before.
+- **No "You joined" step.** Creating the account (or Join, when signed in already) lands in **Everyone with the composer ready**; a
+  guest, who is not in Everyone, lands in the space the link was made from, or on Home. The one exception is an admin joining an
+  encrypted space who has no unlock password yet: one page says so, with Open <space>, as before.
+- **No jargon:** no role explanation (a member is the ordinary case; only Guest and Admin get one plain line), no "work and
+  handoffs", no "invite link has nothing more to do". A link already used by this account opens Flux.
 
 ### A place that could not be loaded, and a place that is not available
 

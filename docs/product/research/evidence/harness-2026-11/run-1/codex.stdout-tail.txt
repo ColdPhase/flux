@@ -1,0 +1,7 @@
+{"type":"thread.started","thread_id":"01a1d51b-20a4-77a0-bcf8-1f1181e11575"}
+{"type":"item.completed","item":{"id":"item_0","type":"error","message":"Model metadata for `mock-model` not found. Defaulting to fallback metadata; this can degrade performance and cause issues."}}
+{"type":"turn.started"}
+{"type":"item.started","item":{"id":"item_1","type":"mcp_tool_call","server":"flux","tool":"flux_echo","arguments":{"text":"hello from the probe"},"result":null,"error":null,"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_1","type":"mcp_tool_call","server":"flux","tool":"flux_echo","arguments":{"text":"hello from the probe"},"result":{"content":[{"type":"text","text":"echo: hello from the probe"}],"structured_content":null},"error":null,"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_2","type":"agent_message","text":"DONE [{'type': 'input_text', 'text': 'Wall ti"}}
+{"type":"turn.completed","usage":{"input_tokens":200,"cached_input_tokens":0,"cache_write_input_tokens":0,"output_tokens":20,"reasoning_output_tokens":0}}

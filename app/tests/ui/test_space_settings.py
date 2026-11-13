@@ -225,11 +225,14 @@ class SpaceSettings(unittest.TestCase):
         card = page.get_by_role("list", name="People in Kiln firmware")
         expect(card.get_by_role("listitem")).to_have_count(2)
         expect(card.get_by_role("listitem").filter(has_text="Ada Kowalska")).to_contain_text("Admin")
-        # One button opens the company's list; no second step, and no invite link inside it (that stays in Settings › Company).
+        # One button opens the company's list; no second step. Ada owns the company, so it also has "Someone new?" (#1438): an email and
+        # Invite, which make the company's link for that address and this space; no link is there before Invite.
         page.get_by_role("button", name="Add people", exact=True).click()
         add = page.get_by_role("group", name="Add people")
         expect(add.get_by_role("button", name="Add people")).to_have_count(0)
-        expect(add).not_to_contain_text("Invite")
+        expect(add.get_by_label("Someone new?")).to_be_visible()
+        expect(add.get_by_role("button", name="Invite", exact=True)).to_be_visible()
+        expect(add.get_by_role("group", name="New invite link")).to_have_count(0)
         add.get_by_role("checkbox", name=re.compile("Lee Moreno")).check()
         add.get_by_role("button", name="Add 1 person").click()
         expect(page.locator(".spset__status")).to_have_text("Lee is now in Kiln firmware.")
@@ -294,7 +297,7 @@ class SpaceSettings(unittest.TestCase):
     }"""
 
     def test_02c_the_settings_column_is_centred_in_the_pane_on_the_computer_and_as_before_on_tablet_and_phone(self) -> None:
-        """#1214: drawn centred under the header (final design, Space settings); account Settings keeps its flush-left page beside its list."""
+        """#1214: drawn centred under the header (final design, Space settings); account Settings centres its column beside its list too (#1362)."""
         self.ensure_world()
         ada = self.page("ada")
         made = self.api(ada, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects", {"name": "Centred room", "visibility": "restricted", "people": [self.ids["kai"]]}, status=201)
@@ -313,13 +316,21 @@ class SpaceSettings(unittest.TestCase):
         page = self.page("ada")
         page.goto("/settings/appearance")
         expect(page.locator(".sset__nav")).to_be_visible()
-        self.assertEqual(page.evaluate("getComputedStyle(document.querySelector('.pane-in.sset-in')).marginLeft"), "0px", "account Settings stays flush left")
-        # Tablet and phone keep their own padding: no centring margin.
+        # Account Settings centres its one column in the page's area beside the section list, as every page inside Settings does (#1362, F-015).
+        gaps = page.evaluate("""() => {
+          const column = document.querySelector('.pane-in.sset-in'), pane = column.closest('.pane-scroll'), frame = pane.getBoundingClientRect();
+          const box = column.getBoundingClientRect();
+          return { left: box.left - frame.left, right: frame.left + pane.clientWidth - box.right };
+        }""")
+        self.assertGreater(gaps["left"], 0, f"account Settings is not flush left: {gaps}")
+        self.assertAlmostEqual(gaps["left"], gaps["right"], delta=2, msg=f"account Settings centres its column: {gaps}")
+        # Tablet and phone: the same one column, centred where the pane is wider than it (#1362), never wider than the screen.
         for label, viewport in (("820", {"width": 820, "height": 1180}), ("390", PHONE)):
             page = self.page("ada", viewport)
             page.goto(f"/projects/{made['id']}/settings")
             expect(page.get_by_role("heading", name="Space settings")).to_be_visible()
-            self.assertEqual(page.evaluate(self.COLUMN)["margin"], "0px", f"{label}: no centring margin")
+            gaps = page.evaluate(self.COLUMN)
+            self.assertAlmostEqual(gaps["left"], gaps["right"], delta=2, msg=f"{label}: the column is centred in the pane: {gaps}")
             self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), viewport["width"], f"{label}: no sideways scroll")
             shot_both(page, f"1214-space-settings-{label}-{UI_BROWSER}")
 

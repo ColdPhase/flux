@@ -59,7 +59,8 @@ describe('F-035 invite links', () => {
     const dan = { browser };
     const danId = ((await browser.request('GET', '/api/v1/me')).json as { user: { id: string } }).user.id;
     const joined = expectStatus(await accept(dan, token), 200) as AcceptInviteResult;
-    assert.deepEqual(joined, { status: 'joined', workspaceId: space, workspaceName: 'Riverside Makers', role: 'member', encrypted: false, needsUnlockPassword: false });
+    assert.deepEqual({ ...joined, landingSpaceId: undefined }, { status: 'joined', workspaceId: space, workspaceName: 'Riverside Makers', role: 'member', encrypted: false, needsUnlockPassword: false, landingSpaceId: undefined });
+    assert.equal(invite.space, null, 'a link from Settings › Company names no space');
     assert.equal(await roleOf(ada, space, danId), 'member');
     // Idempotent for the account that used it; the preview says joined.
     assert.equal((expectStatus(await accept(dan, token), 200) as AcceptInviteResult).status, 'joined');
@@ -77,6 +78,60 @@ describe('F-035 invite links', () => {
     assert.deepEqual(events.map((e) => e.kind), ['workspace.invite_created.v1', 'workspace.member_added.v1']);
     assert.equal(events[1]!.actor_id, `human:${danId}`);
     assert.deepEqual(events[1]!.data, { userId: danId, role: 'member', inviteId: invite.id });
+  });
+
+  test('#1438: a link made from a space adds the person to that space, names it to the maker and lands them in Everyone', async () => {
+    const project = async (name: string, visibility: 'workspace' | 'restricted') =>
+      (await ada.browser.request('POST', `/api/v1/workspaces/${space}/projects`, { body: { name, visibility } }));
+    const tool = (expectStatus(await project('Tool library', 'restricted'), 201) as { id: string }).id;
+    const everyoneAnswer = await project('Everyone here', 'workspace');
+    const everyone = everyoneAnswer.status === 201 ? (everyoneAnswer.json as { id: string }).id : null;
+    const landing = (await pool.query<{ id: string }>(`SELECT id FROM projects WHERE workspace_id = $1 AND visibility = 'workspace' ORDER BY created_at, id LIMIT 1`, [space])).rows[0]?.id ?? null;
+    if (everyone) assert.ok(landing, 'the workspace has a space everyone reads');
+
+    // Only a space of this workspace other than one everyone reads; never a malformed or unknown id.
+    if (landing) assert.equal((await create(ada, space, { role: 'member', spaceId: landing }, 400)).code !== undefined, true);
+    await create(ada, space, { role: 'member', spaceId: 'not-a-space' }, 400);
+    assert.ok([403, 404].includes((await ada.browser.request('POST', `/api/v1/workspaces/${space}/invites`, { body: { role: 'member', spaceId: randomUUID() }, headers: key() })).status));
+    // Someone outside the company makes no link at all.
+    assert.ok([403, 404].includes((await cleo.browser.request('POST', `/api/v1/workspaces/${space}/invites`, { body: { role: 'member', spaceId: tool }, headers: key() })).status));
+
+    const email = uniqueEmail('maja-invites');
+    const invite = await create(ben, space, { role: 'member', email, spaceId: tool });
+    assert.deepEqual(invite.space, { id: tool, name: 'Tool library' });
+    const listed = expectStatus(await ada.browser.request('GET', `/api/v1/workspaces/${space}/invites`), 200) as WorkspaceInvite[];
+    assert.deepEqual(listed.find((item) => item.id === invite.id)?.space, { id: tool, name: 'Tool library' });
+
+    const { browser } = await register(email, password, 'Maja Invites');
+    const majaId = ((await browser.request('GET', '/api/v1/me')).json as { user: { id: string } }).user.id;
+    const joined = expectStatus(await accept({ browser }, tokenOf(invite)), 200) as AcceptInviteResult;
+    assert.equal(joined.status, 'joined');
+    assert.equal(joined.landingSpaceId, landing, 'a member opens the space everyone reads, with the composer ready');
+    // In the space as a member, granted by the link's maker.
+    assert.equal((expectStatus(await browser.request('GET', `/api/v1/projects/${tool}`), 200) as { access: string }).access, 'contributor');
+    const grant = (await pool.query<{ kind: string; actor_id: string; data: { role: string; principal: { id: string } } }>(
+      `SELECT kind, actor_id, data FROM events WHERE workspace_id = $1 AND object_id = $2 AND kind = 'project.grant_set.v1' ORDER BY seq DESC LIMIT 1`, [space, tool])).rows[0]!;
+    assert.deepEqual([grant.actor_id, grant.data.role, grant.data.principal.id], [`human:${ben.id}`, 'contributor', majaId]);
+    // The maker hears it, with the space named and opened.
+    const notice = (await pool.query<{ title: string; body: string; url: string }>(`SELECT title, body, url FROM notifications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1`, [ben.id])).rows[0]!;
+    assert.deepEqual(notice, { title: 'Maja Invites joined Riverside Makers', body: 'They are in Everyone and Tool library.', url: `/projects/${tool}/settings` });
+    // Accepting again changes nothing and lands the same way.
+    assert.equal((expectStatus(await accept({ browser }, tokenOf(invite)), 200) as AcceptInviteResult).landingSpaceId, landing);
+
+    // A guest is not in the space everyone reads: they open the link's space.
+    const guestEmail = uniqueEmail('olek-invites');
+    const guestInvite = await create(ada, space, { role: 'guest', spaceId: tool });
+    const guest = await register(guestEmail, password, 'Olek Invites');
+    const guestJoined = expectStatus(await accept(guest, tokenOf(guestInvite)), 200) as AcceptInviteResult;
+    assert.deepEqual([guestJoined.role, guestJoined.landingSpaceId], ['guest', tool]);
+
+    // A space deleted since adds nobody: the link joins the workspace only, and a guest then opens Home.
+    const gone = (expectStatus(await project('Old shed', 'restricted'), 201) as { id: string }).id;
+    const goneInvite = await create(ada, space, { role: 'guest', spaceId: gone });
+    assert.ok([200, 204].includes((await ada.browser.request('DELETE', `/api/v1/projects/${gone}`)).status), 'the space is deleted');
+    const late = await register(uniqueEmail('pia-invites'), password, 'Pia Invites');
+    const lateJoined = expectStatus(await accept(late, tokenOf(goneInvite)), 200) as AcceptInviteResult;
+    assert.deepEqual([lateJoined.status, lateJoined.landingSpaceId], ['joined', null]);
   });
 
   test('the token is not at rest: only its SHA-256 is stored, and no event or stored answer holds it', async () => {

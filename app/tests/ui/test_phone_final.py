@@ -18,6 +18,9 @@ from app_select import choose
 
 from test_app_shell import ORIGIN, UPSTREAM, shot, start_forwarder
 
+# A 44 px touch target, less a 0.01 px sub-pixel tolerance (coordinator's approval, train 15): WebKit lays a box that starts on a
+# fractional pixel out to 43.99999 px while it settles. This is not a smaller target: anything under 43.99 px still fails.
+TARGET_PX = 44 - 0.01
 SIZES = ({"width": 390, "height": 844}, {"width": 320, "height": 568})
 PASSWORD = "phones deserve room to work"
 UI_BROWSER = os.environ.get("FLUX_UI_BROWSER", "chromium")
@@ -143,12 +146,12 @@ class PhoneFinal(unittest.TestCase):
                 search = page.get_by_role("button", name="Search", exact=True)
                 round_box = self.box(search)
                 self.assertAlmostEqual(round_box["width"], round_box["height"], delta=1, msg="Search is round")
-                self.assertGreaterEqual(round_box["width"], 44)
+                self.assertGreaterEqual(round_box["width"], TARGET_PX)
                 self.assertAlmostEqual(round_box["y"], capsule["y"], delta=6, msg="beside the capsule")
                 self.assertGreater(round_box["x"], capsule["x"] + capsule["width"] - 2)
                 for name in ("Home", "Spaces", "Inbox"):
                     item = self.box(bar.get_by_role("link", name=re.compile(f"^{name}")))
-                    self.assertGreaterEqual(min(item["width"], item["height"]), 44, name)
+                    self.assertGreaterEqual(min(item["width"], item["height"]), TARGET_PX, name)
                 expect(bar.locator('[aria-current="page"]')).to_contain_text("Home")
                 # No other bottom bar.
                 self.assertEqual(page.locator("nav[aria-label='Main places'], .ui-bottomnav").count(), 1)
@@ -174,7 +177,7 @@ class PhoneFinal(unittest.TestCase):
                 expect(page.get_by_role("heading", name="Messages", exact=True)).to_be_visible()
                 row = page.get_by_role("link", name=re.compile("Kai Tanaka"))
                 expect(row).to_be_visible()
-                self.assertGreaterEqual(self.box(row)["height"], 44)
+                self.assertGreaterEqual(self.box(row)["height"], TARGET_PX)
                 row.click()
                 expect(page).to_have_url(f"{ORIGIN}{self.dm_path}")
                 expect(bar).to_have_count(0)
@@ -193,7 +196,7 @@ class PhoneFinal(unittest.TestCase):
                 plus = page.get_by_role("button", name="Create", exact=True)
                 expect(plus).to_have_count(1)
                 fab = self.box(plus)
-                self.assertGreaterEqual(min(fab["width"], fab["height"]), 44)
+                self.assertGreaterEqual(min(fab["width"], fab["height"]), TARGET_PX)
                 # Spokój rule 7: a project's views have no capsule (Search is in the header); the plus floats alone.
                 expect(page.get_by_role("navigation", name="Main places")).to_have_count(0)
                 self.assertLessEqual(fab["y"] + fab["height"], size["height"] - 8, "the plus floats above the bottom edge")
@@ -208,7 +211,7 @@ class PhoneFinal(unittest.TestCase):
                 names = [text.strip().split("\n")[0] for text in sheet.get_by_role("button").all_inner_texts() if text.strip()]
                 self.assertEqual(names[:5], ["Task", "Thought", "Decision", "Page", "Space"])
                 for name in ("Task", "Thought", "Decision", "Page", "Space"):
-                    self.assertGreaterEqual(min(self.box(sheet.get_by_role("button", name=re.compile(f"^{name}")))["height"], 44), 44)
+                    self.assertGreaterEqual(min(self.box(sheet.get_by_role("button", name=re.compile(f"^{name}")))["height"], 44), TARGET_PX)
                 self.assert_no_sideways_scroll(page, size["width"])
                 shot(page, f"341-create-{size['width']}-{'dark' if dark else 'light'}")
                 sheet.get_by_role("button", name=re.compile("^Task")).click()
@@ -289,8 +292,8 @@ class PhoneFinal(unittest.TestCase):
                 tabs = tablist.get_by_role("tab").all()
                 widths = []
                 for item in tabs:
-                    self.assertGreaterEqual(self.box(item)["height"], 44)
-                    self.assertGreaterEqual(self.box(item)["width"], 44)
+                    self.assertGreaterEqual(self.box(item)["height"], TARGET_PX)
+                    self.assertGreaterEqual(self.box(item)["width"], TARGET_PX)
                     widths.append(self.box(item)["width"])
                 self.assertNotAlmostEqual(widths[0], widths[-1], delta=20, msg=f"tabs are as wide as their words: {widths}")
                 first_word = page.evaluate("""() => { const label = document.querySelector('.phead__views .ui-tabs__label'); return label.getBoundingClientRect().left; }""")
@@ -382,7 +385,7 @@ class PhoneFinal(unittest.TestCase):
                 self.assert_no_sideways_scroll(page, size["width"])
                 shot(page, f"341-conversation-{size['width']}-{'dark' if dark else 'light'}")
                 back = page.get_by_role("button", name="Back", exact=True)
-                self.assertGreaterEqual(min(self.box(back)["width"], self.box(back)["height"]), 44)
+                self.assertGreaterEqual(min(self.box(back)["width"], self.box(back)["height"]), TARGET_PX)
                 back.click()
                 expect(page).to_have_url(f"{ORIGIN}/projects")
                 expect(page.get_by_role("navigation", name="Main places")).to_be_visible()
@@ -455,7 +458,7 @@ class PhoneFinal(unittest.TestCase):
                 self.assertGreaterEqual(sizes(".phead__sub"), 12.5, "meta text")
                 for selector in (".phead__round", ".phone-fab"):
                     item = self.box(page.locator(selector).first)
-                    self.assertGreaterEqual(min(item["width"], item["height"]), 44, selector)
+                    self.assertGreaterEqual(min(item["width"], item["height"]), TARGET_PX, selector)
                 # rem: the page's own text size scales the header's meta text.
                 before = sizes(".phead__sub")
                 page.evaluate("document.documentElement.style.fontSize = '20px'")
@@ -466,7 +469,7 @@ class PhoneFinal(unittest.TestCase):
                 page.goto("/")
                 self.assertGreaterEqual(sizes(".phone-dock__bar .ui-bottomnav__label"), 12.5, "tab labels")
                 item = self.box(page.locator(".phone-dock__search").first)
-                self.assertGreaterEqual(min(item["width"], item["height"]), 44, "Search")
+                self.assertGreaterEqual(min(item["width"], item["height"]), TARGET_PX, "Search")
                 labels = page.locator(".phone-dock__bar .ui-bottomnav__label")
                 for index in range(labels.count()):
                     self.assertTrue(labels.nth(index).evaluate("el => el.scrollWidth <= el.clientWidth + 1"), "tab labels are not clipped")
@@ -543,8 +546,8 @@ class PhoneFinal(unittest.TestCase):
                         self.assertEqual(page.evaluate("getComputedStyle(document.querySelector('header.phead .phead__sub')).color"),
                                          page.evaluate("getComputedStyle(document.querySelector('header.phead [role=tab]:not([aria-current])')).color"))
                         for control in ("back", "more"):
-                            self.assertGreaterEqual(part[control]["width"], 44, control)
-                            self.assertGreaterEqual(part[control]["height"], 44, control)
+                            self.assertGreaterEqual(part[control]["width"], TARGET_PX, control)
+                            self.assertGreaterEqual(part[control]["height"], TARGET_PX, control)
                         for plain in ("plainBack", "plainMore"):
                             self.assertIn(part[plain]["fill"], ("rgba(0, 0, 0, 0)", "transparent"), f"{plain} has no fill")
                             self.assertEqual(part[plain]["shadow"], "none", f"{plain} has no shadow")

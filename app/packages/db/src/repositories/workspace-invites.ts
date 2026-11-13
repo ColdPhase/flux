@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, isNull, sql } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 import { isUuid } from './uuid.js';
@@ -10,15 +10,17 @@ import { isUuid } from './uuid.js';
 export function workspaceInviteRepository(db: DbExecutor) {
   const i = schema.workspaceInvites;
   return {
-    async insert(row: { id: string; workspaceId: string; role: 'admin' | 'member' | 'guest'; email: string | null; tokenHash: string; createdBy: string; expiresAt: Date }) {
+    async insert(row: { id: string; workspaceId: string; role: 'admin' | 'member' | 'guest'; email: string | null; tokenHash: string; createdBy: string; expiresAt: Date;
+      spaceId: string | null }) {
       const [created] = await db.insert(i).values(row).returning();
       return created!;
     },
 
-    /** The pending (not used, not revoked, not expired) invites with their creator's name, newest first. */
+    /** The pending (not used, not revoked, not expired) invites with their creator's name and space's name, newest first. */
     pending(workspaceId: string, now: Date) {
-      return db.select({ invite: i, creatorName: schema.authUsers.name }).from(i)
+      return db.select({ invite: i, creatorName: schema.authUsers.name, spaceName: schema.projects.name }).from(i)
         .innerJoin(schema.authUsers, eq(schema.authUsers.id, i.createdBy))
+        .leftJoin(schema.projects, eq(schema.projects.id, i.spaceId))
         .where(and(eq(i.workspaceId, workspaceId), isNull(i.revokedAt), isNull(i.acceptedAt), gt(i.expiresAt, now)))
         .orderBy(desc(i.createdAt), desc(i.id));
     },
@@ -51,6 +53,14 @@ export function workspaceInviteRepository(db: DbExecutor) {
 
     async markAccepted(inviteId: string, acceptedBy: string, at: Date) {
       await db.update(i).set({ acceptedAt: at, acceptedBy }).where(eq(i.id, inviteId));
+    },
+
+    /** The workspace's oldest space everyone in it reads (the company's Everyone), or null (#1438). */
+    async everyoneSpace(workspaceId: string): Promise<string | null> {
+      const p = schema.projects;
+      const [row] = await db.select({ id: p.id }).from(p).where(and(eq(p.workspaceId, workspaceId), eq(p.visibility, 'workspace')))
+        .orderBy(asc(p.createdAt), asc(p.id)).limit(1);
+      return row?.id ?? null;
     },
   };
 }

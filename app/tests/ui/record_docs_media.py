@@ -147,7 +147,7 @@ def invite(browser: Browser) -> None:
     window = context(browser, size={"width": 1440, "height": 1300})
     page = window.new_page()
     page.goto("/settings/company?invite=1")
-    heading = page.get_by_role("heading", name="Invite with a link")
+    heading = page.get_by_role("heading", name="Invite people")
     expect(heading).to_be_visible()
     page.get_by_role("button", name="Create invite link").click()
     field = page.locator("#people-invite-link")
@@ -165,7 +165,7 @@ def invite(browser: Browser) -> None:
     visitor = context(browser, signed=False, size={"width": 720, "height": 560})
     join = visitor.new_page()
     join.goto(f"/join#{link.split('#', 1)[1]}")
-    expect(join.get_by_role("button", name="Create an account")).to_be_visible()
+    expect(join.get_by_role("button", name="Create account and join")).to_be_visible()
     shoot(join, "join-page")
     visitor.close()
 

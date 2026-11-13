@@ -1,6 +1,6 @@
-import { Outlet, createBrowserRouter, useMatches, useRouteError, useRouteLoaderData, type RouteObject } from 'react-router';
-import { useEffect, useState, type ComponentType } from 'react';
-import { markBooted } from './place/memory';
+import { Outlet, createBrowserRouter, useLocation, useMatches, useRouteError, useRouteLoaderData, type RouteObject } from 'react-router';
+import { useEffect, useRef, useState, type ComponentType } from 'react';
+import { markBooted, noteShown } from './place/memory';
 import { ToastProvider, markMotionReady } from './ui';
 import { UpdatePrompt } from './pwa';
 import { AppLayout } from './app/AppLayout';
@@ -24,6 +24,7 @@ import {
   signOutAction,
   signOutLoader,
   signUpAction,
+  joinSignUpAction,
   signUpLoader,
 } from './auth/logic';
 
@@ -81,7 +82,11 @@ const material = secondary(async () => {
 
 function Root() {
   // The first screen of this document is on show: from now on, Back and Forward are returns that find their place (#592).
-  useEffect(() => { markBooted(); }, []);
+  // The first screen's own entry is no return, even when a place of it renders again after this (a deep link's error page inside the shell).
+  const { key } = useLocation();
+  noteShown(key);
+  const firstKey = useRef(key);
+  useEffect(() => { markBooted(firstKey.current); }, []);
   const shell = useRouteLoaderData('app') as ShellData | undefined;
   const inApp = useMatches().some((match) => match.id === 'app');
   const [session, setSession] = useState<string | null>(null);
@@ -122,7 +127,7 @@ export const router = createBrowserRouter([
           { path: 'reset-password', action: resetPasswordAction, ...lazyComponent(authPages, (page) => page.ResetPasswordPage) },
           { path: 'claim', ...lazyComponent(authPages, (page) => page.ClaimPage) },
           // An invite link (F-035): `/join#<token>`, signed in or not.
-          { path: 'join', ...secondary(async () => ({ Component: (await import('./auth/JoinPage')).JoinPage })) },
+          { path: 'join', action: joinSignUpAction, ...secondary(async () => ({ Component: (await import('./auth/JoinPage')).JoinPage })) },
           { path: 'sign-out', loader: signOutLoader, action: signOutAction, ...lazyComponent(authPages, (page) => page.SignOutPage) },
           { path: 'connect-agent', ...secondary(async () => { const page = await import('./agent-connection/pages'); return { Component: page.AgentConnectionPage, loader: page.agentConnectionEntryLoader }; }) },
           { path: 'consent', ...secondary(async () => { const page = await import('./agent-connection/pages'); return { Component: page.AgentConsentPage, loader: page.agentConsentLoader }; }) },

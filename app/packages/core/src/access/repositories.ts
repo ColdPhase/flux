@@ -58,13 +58,16 @@ export interface WorkspaceRepository {
 export interface InviteRow {
   id: string; workspaceId: string; role: 'admin' | 'member' | 'guest'; email: string | null; tokenHash: string; createdBy: string;
   createdAt: Date; expiresAt: Date; revokedAt: Date | null; revokedBy: string | null; acceptedAt: Date | null; acceptedBy: string | null;
+  /** The space the person is also added to on joining (#1438), while it exists. */
+  spaceId: string | null;
 }
 
 /** Invite link rows (F-035, `workspaceInviteRepository`). */
 export interface InviteRepository {
-  insert(row: { id: string; workspaceId: string; role: InviteRow['role']; email: string | null; tokenHash: string; createdBy: string; expiresAt: Date }): Promise<InviteRow>;
-  /** Pending invites with their creator's name, newest first. */
-  pending(workspaceId: string, now: Date): Promise<{ invite: InviteRow; creatorName: string }[]>;
+  insert(row: { id: string; workspaceId: string; role: InviteRow['role']; email: string | null; tokenHash: string; createdBy: string; expiresAt: Date;
+    spaceId: string | null }): Promise<InviteRow>;
+  /** Pending invites with their creator's name and their space's name, newest first. */
+  pending(workspaceId: string, now: Date): Promise<{ invite: InviteRow; creatorName: string; spaceName: string | null }[]>;
   pendingCount(workspaceId: string, now: Date): Promise<number>;
   /** One invite with its workspace and creator; with `lock`, the invite row `FOR UPDATE`. */
   get(inviteId: string, options?: { lock?: boolean }): Promise<{ invite: InviteRow; workspaceName: string; encrypted: boolean; creatorName: string } | null>;
@@ -72,6 +75,8 @@ export interface InviteRepository {
   memberRole(workspaceId: string, userId: string): Promise<WorkspaceRole | null>;
   revoke(inviteId: string, revokedBy: string, at: Date): Promise<void>;
   markAccepted(inviteId: string, acceptedBy: string, at: Date): Promise<void>;
+  /** The workspace's oldest space everyone in it reads (the company's Everyone), or null: where a new member lands (#1438). */
+  everyoneSpace(workspaceId: string): Promise<string | null>;
 }
 
 /** The rows of an encrypted workspace (F-030) that membership changes and workspace reads need (`workspaceEncryptionRows`). */

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type MouseEvent, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import type { NeedsYouItem, ReturnNextStep, WorkItem } from '@flux/contracts';
 import { Button, Icon, Kreska, MEDIA, StatusGlyph, useMediaQuery } from '../ui';
@@ -17,6 +17,9 @@ import '../notifications/needs-you.css';
 import './home.css';
 import { RefLink } from '../place/origin';
 import { PushOffer } from '../notifications/PushOffer';
+import { enablePushNotifications, getPushState } from '../pwa/push';
+import type { FirstStep, FirstSteps as FirstStepsRead } from '@flux/contracts';
+import { getFirstSteps, hideFirstSteps } from './firstSteps';
 
 const dateFormat = new Intl.DateTimeFormat(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
 
@@ -148,7 +151,7 @@ export function waitingRows(items: NeedsYouItem[], limit = 3): WaitingRow[] {
 }
 
 /** One line of a Home card: a face, two lines of words and the arrow every row ends in. */
-function HomeRow({ to, state, face, title, meta, metaFirst = false, onClick }: { to: string; state?: unknown; face: ReactNode; title: ReactNode; meta?: ReactNode; metaFirst?: boolean; onClick?: () => void }) {
+function HomeRow({ to, state, face, title, meta, metaFirst = false, onClick }: { to: string; state?: unknown; face: ReactNode; title: ReactNode; meta?: ReactNode; metaFirst?: boolean; onClick?: (event: MouseEvent<HTMLAnchorElement>) => void }) {
   return (
     <li>
       <Link className="home__row" to={to} state={state} onClick={onClick}>
@@ -184,6 +187,71 @@ function WaitingItem({ row }: { row: WaitingRow }) {
   return <HomeRow to="/inbox" state={{ select: item.key }} face={<Face item={item} />} title={item.title} meta={meta} metaFirst />;
 }
 
+type StepRow = { key: FirstStep | 'push'; icon: 'edit' | 'people' | 'spark' | 'chat' | 'person' | 'bell'; title: string; meta: string; to?: string; state?: unknown };
+
+const STEP_ROWS: Record<FirstStep, (read: FirstStepsRead) => StepRow> = {
+  name_company: () => ({ key: 'name_company', icon: 'edit', title: 'Name your company', meta: 'Shown on the sign-in page and in emails', to: '/settings/company?name=1' }),
+  invite_people: () => ({ key: 'invite_people', icon: 'people', title: 'Invite people', meta: 'Make a link and send it to them', to: '/settings/company?invite=1' }),
+  connect_ai: () => ({ key: 'connect_ai', icon: 'spark', title: 'Connect AI', meta: 'A Claude or ChatGPT plan, or an API key', to: '/settings/agents?connect=1' }),
+  first_message: (read) => ({ key: 'first_message', icon: 'chat', title: 'Write your first message', meta: 'Say hello in Everyone', to: `/projects/${read.everyoneSpaceId}`, state: { focusComposer: true } }),
+  photo: () => ({ key: 'photo', icon: 'person', title: 'Add your photo', meta: 'So people know it’s you', to: '/settings/account' }),
+};
+
+/**
+ * First steps (founder decisions, Hubert, 2026-11-13, #1438; docs/design/final/README.md "Home"): one card for every new person but a guest
+ * (the server decides who is new and still has a step left), at most three rows by role, each gone once done, and one quiet Hide for good. A member's third row turns notifications on for this device
+ * where push is available and it is not on yet: the one-time offer then waits (`onPushRow`).
+ */
+function FirstStepsCard({ phone, onPushRow }: { phone: boolean; onPushRow: (shown: boolean) => void }) {
+  const [read, setRead] = useState<FirstStepsRead | null>(null);
+  const [pushKey, setPushKey] = useState<string | null>(null);
+  const [hidden, setHidden] = useState(false);
+  const [asking, setAsking] = useState(false);
+  useEffect(() => {
+    const controller = new AbortController();
+    getFirstSteps(controller.signal).then(async (next) => {
+      setRead(next);
+      // Notifications on this device are never a card of their own: only beside a step that is left (the server says so in `offerPush`).
+      if (!next.offerPush || !next.steps.length) return;
+      const push = await getPushState().catch(() => null);
+      if (!controller.signal.aborted && push?.state === 'prompt') setPushKey(push.publicKey);
+    }, () => undefined);
+    return () => controller.abort();
+  }, []);
+  const rows: StepRow[] = read && !hidden ? read.steps.map((step) => STEP_ROWS[step](read)) : [];
+  if (read && !hidden && pushKey) rows.push({ key: 'push', icon: 'bell', title: `Get notifications on this ${phone ? 'phone' : 'computer'}`, meta: 'When someone writes to you or calls' });
+  const shown = rows.slice(0, 3);
+  const pushShown = shown.some((row) => row.key === 'push');
+  useEffect(() => { onPushRow(pushShown); }, [onPushRow, pushShown]);
+  if (!shown.length) return null;
+  const hide = () => { setHidden(true); void hideFirstSteps().catch(() => undefined); };
+  const turnOn = (publicKey: string) => {
+    // Called in the tap itself: the browser asks only after a gesture.
+    const pending = enablePushNotifications(publicKey);
+    setAsking(true);
+    void pending.then((result) => { setAsking(false); if (result.status === 'subscribed' || result.status === 'denied') setPushKey(null); });
+  };
+  return (
+    <section className="home__steps" aria-labelledby="home-steps" data-first-steps="">
+      <div className="home__sech">
+        <h3 id="home-steps">First steps</h3>
+        <Button variant="link" size="sm" onClick={hide}>Hide</Button>
+      </div>
+      <ul className="home__rows" aria-label="First steps">
+        {shown.map((row) => row.key === 'push' ? (
+          // The same Home row as the others. Its tap asks for notifications in place (the browser asks only in a gesture); without a key to
+          // ask with, it opens Settings › Notifications, where the same switch is.
+          <HomeRow key={row.key} to="/settings/notifications" face={<span className="nyc__face nyc__face--icon"><Icon name={row.icon} size={16} /></span>}
+            title={row.title} meta={row.meta} onClick={(event) => { if (!pushKey) return; event.preventDefault(); if (!asking) turnOn(pushKey); }} />
+        ) : (
+          <HomeRow key={row.key} to={row.to!} state={row.state} face={<span className="nyc__face nyc__face--icon"><Icon name={row.icon} size={16} /></span>}
+            title={row.title} meta={row.meta} />
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 /** Home (F-026 §7, P1, #865): the date and a greeting, what waits for you (the top of the Inbox), and where to continue. */
 export function Home() {
   const moments = useSmallMoments();
@@ -200,6 +268,7 @@ export function Home() {
   // A space waiting to be unlocked is not a first run (F-030, #655).
   const firstRun = projects.length === 0 && !lockedWorkspaces.length && !rows.length;
   const joinedSpace = workspace;
+  const [pushRow, setPushRow] = useState(false);
 
   return (
     <div className="pane-scroll"><div className="pane-in home">
@@ -208,6 +277,9 @@ export function Home() {
 
       {/* Without a sidebar (phone) Home carries the working agents with Stop; nothing shows while none works (S13). */}
       {phone ? <><WorkingAssistant /><HomeWorkingAgents /></> : null}
+
+      {/* #1438: first steps for every new person but a guest, above what waits (it replaces the new member's empty Home line). */}
+      {firstRun ? null : <FirstStepsCard phone={phone} onPushRow={setPushRow} />}
 
       {firstRun ? (
         <section className="home__card home__first" aria-labelledby="home-first">
@@ -255,7 +327,7 @@ export function Home() {
 
       <ContinueSection reads={reads} />
       {/* The one-time offer to turn notifications on (#1243): last on the page, since it may not come (motion rule 6). */}
-      <PushOffer userId={me.user.id} ready={(queue.items ?? []).some((item) => item.kind === 'mention' || item.reason === 'question')} />
+      <PushOffer userId={me.user.id} hidden={pushRow} ready={(queue.items ?? []).some((item) => item.kind === 'mention' || item.reason === 'question')} />
     </div></div>
   );
 }

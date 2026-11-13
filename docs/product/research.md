@@ -1,5 +1,9 @@
 # Research that changes a decision
 
+Open research beside #1437 (no decision yet): [one agent harness contract for every way of paying, 2026-11-13](research/agent-harness-2026-11.md)
+compares Claude Code, Codex, pi, opencode, Goose, Crush, Qwen Code and others for running every Flux agent with the same
+capabilities, with an offline probe of each, and recommends the vendor harness per model family plus pi behind one model gateway.
+
 Open research for #1242 (v0.2.1, no decision yet): [how agents read long conversations, 2026-11-12](research/2026-11-ai-context-retrieval.md)
 measures today's window and search against PostgreSQL full text, BM25 (`pg_search`), pgvector hybrids and Meilisearch on a
 seeded 10k-message Polish/English space, with the questions Hubert must answer before the decision is recorded.

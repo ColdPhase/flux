@@ -548,8 +548,8 @@ class WorkflowRulesTest(unittest.TestCase):
             self.skipTest("not a git checkout")
         configured = self.dependabot_directories()
         # Documented in dependabot.yml: the Playwright pin must equal the tag of the image in docker/ui-tests.Dockerfile, and the
-        # prototype Dockerfile is the evidence of a research issue, not something that is built.
-        deliberately_left_out = {"pip": {"/app/tests/ui"}, "docker": {"/docs/product/research/evidence/460"}}
+        # research probes' Dockerfiles are evidence of research issues (#460, #1437), not something that is built.
+        deliberately_left_out = {"pip": {"/app/tests/ui"}, "docker": {"/docs/product/research/evidence/460", "/docs/product/research/evidence/harness-2026-11"}}
 
         def covered(ecosystem: str, directory: str) -> bool:
             return any(re.fullmatch(glob.replace("*", "[^/]+"), directory) for glob in configured.get(ecosystem, []))
