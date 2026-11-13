@@ -6,7 +6,6 @@ import {
   type AskPlace,
 } from './api';
 import { isWorking } from './format';
-import { rememberAskedConversation } from './lastAsked';
 import { readRunChanges } from './WaitingChanges';
 
 // The person's own agent asked from one place (#68, #842): a conversation of a space, the space's main conversation, a direct message or the
@@ -165,7 +164,6 @@ export function useConversationAssistant({ meId, place, onShown, enabled = true 
       started.current.set(accepted.id, { run: accepted, at: Date.now() });
       see([accepted.id]);
       setMine((items) => [accepted, ...items.filter((item) => item.id !== accepted.id)]);
-      if (place.kind === 'space' && place.conversationId) rememberAskedConversation(meId, place.projectId, place.conversationId);
       return accepted;
     },
     async stop() {

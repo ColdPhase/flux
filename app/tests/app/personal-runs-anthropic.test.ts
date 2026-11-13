@@ -85,15 +85,56 @@ describe('Anthropic personal compute adapter (#68, local mock server: no provide
     assert.equal(JSON.stringify(result).includes(KEY), false, 'the key never appears in the result');
   });
 
-  test('cache tokens are counted conservatively as input and a context-window stop counts as truncated', async () => {
+  test('cache tokens a request did not ask for are charged at no less than the full price, and a context-window stop counts as truncated', async () => {
     handler = (_seen, response) => json(response, 200, message({ stop_reason: 'model_context_window_exceeded', usage: { input_tokens: 10, cache_creation_input_tokens: 8, cache_read_input_tokens: 7, output_tokens: 3 } }));
-    assert.deepEqual(await compute().dispatch(request, new AbortController().signal), {
-      kind: 'completed', text: 'Fact: the camera fails below 5 lux [S1].', stopReason: 'max_tokens', usage: { inputTokens: 10 + 10 + 7, outputTokens: 3 },
+    const unasked = await compute().dispatch(request, new AbortController().signal);
+    assert.deepEqual(unasked, {
+      kind: 'completed', text: 'Fact: the camera fails below 5 lux [S1].', stopReason: 'max_tokens',
+      usage: { inputTokens: 10 + 8 + 7, outputTokens: 3, cache: { readTokens: 7, writeTokens: 8, readRate: 1, writeRate: 1.25 } },
     });
+    assert.equal(unasked.kind === 'completed' && costMicros(unasked.usage, tablePrice('anthropic', 'claude-sonnet-5')!), Math.ceil(((10 + 10 + 7) * 2_000_000 + 3 * 10_000_000) / 1_000_000));
     handler = (_seen, response) => json(response, 200, message({ stop_reason: 'max_tokens' }));
     assert.equal((await compute().dispatch(request, new AbortController().signal) as { stopReason: string }).stopReason, 'max_tokens');
     handler = (_seen, response) => json(response, 200, message({ stop_reason: 'refusal', content: [] }));
     assert.deepEqual(await compute().dispatch(request, new AbortController().signal), { kind: 'completed', text: '', stopReason: 'refusal', usage: { inputTokens: 1_200, outputTokens: 80 } });
+  });
+
+  test('a run that asks for caching marks its last Flux tool, its brief and the conversation; reads and writes are charged at their rates (#1410)', async () => {
+    const tools = [{ name: 'flux_search', description: 'Search', inputSchema: { type: 'object', properties: { q: { type: 'string' } } } },
+      { name: 'flux_get_work', description: 'Read a task', inputSchema: { type: 'object', properties: {} } }];
+    const turns = [{ text: '', calls: [{ id: 'toolu_1', name: 'flux_search', input: { q: 'x' } }], results: [{ callId: 'toolu_1', content: '{"results":[]}', isError: false }] }];
+    handler = (_seen, response) => json(response, 200, message({ usage: { input_tokens: 500, cache_creation_input_tokens: 2_000, cache_read_input_tokens: 10_000, output_tokens: 80 } }));
+    const result = await compute().dispatch({ ...request, tools, turns, cache: true }, new AbortController().signal);
+    const body = seen[0]!.body as { system: unknown; tools: Record<string, unknown>[]; cache_control?: unknown; tool_choice?: unknown };
+    assert.deepEqual(body.system, [{ type: 'text', text: BRIEF.system, cache_control: { type: 'ephemeral' } }], 'the brief is a marked block');
+    assert.deepEqual(body.tools.map((tool) => tool.cache_control), [undefined, { type: 'ephemeral' }], 'the last Flux tool is marked');
+    assert.deepEqual(body.cache_control, { type: 'ephemeral' }, 'the conversation is cached as it grows');
+    assert.equal(body.tool_choice, undefined);
+    assert.deepEqual(result.kind === 'completed' && result.usage, { inputTokens: 12_500, outputTokens: 80, cache: { readTokens: 10_000, writeTokens: 2_000, readRate: 0.1, writeRate: 1.25 } });
+    // $2/M: 500 at the full price, 2,000 written at 1.25×, 10,000 read at 0.1×; $10/M out.
+    assert.equal(result.kind === 'completed' && costMicros(result.usage, tablePrice('anthropic', 'claude-sonnet-5')!), (500 + 2_500 + 1_000) * 2 + 80 * 10);
+
+    // The last request of a run: no tool may be called, Flux's words follow the results, and without `cache` nothing is marked.
+    seen = [];
+    await compute().dispatch({ ...request, tools, turns, answerNow: 'Answer now.' }, new AbortController().signal);
+    const last = seen[0]!.body as { system: unknown; tools: Record<string, unknown>[]; cache_control?: unknown; tool_choice?: unknown; messages: { role: string; content: unknown }[] };
+    assert.deepEqual(last.tool_choice, { type: 'none' });
+    assert.equal(last.system, BRIEF.system);
+    assert.ok(last.tools.every((tool) => tool.cache_control === undefined) && last.cache_control === undefined);
+    assert.deepEqual(last.messages.at(-1), { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_1', content: '{"results":[]}' }, { type: 'text', text: 'Answer now.' }] });
+    // With `cache`, the last request keeps the tools' and the brief's marks, but writes no conversation to the cache: its `tool_choice`
+    // starts the messages cache over and nothing reads after it.
+    seen = [];
+    await compute().dispatch({ ...request, tools, turns, cache: true, answerNow: 'Answer now.' }, new AbortController().signal);
+    const lastCached = seen[0]!.body as { system: unknown; tools: Record<string, unknown>[]; cache_control?: unknown; tool_choice?: unknown };
+    assert.deepEqual([lastCached.tool_choice, lastCached.cache_control, lastCached.tools.at(-1)!.cache_control, (lastCached.system as { cache_control?: unknown }[])[0]!.cache_control],
+      [{ type: 'none' }, undefined, { type: 'ephemeral' }, { type: 'ephemeral' }]);
+    seen = [];
+    handler = (_seen, response) => json(response, 200, { input_tokens: 99 });
+    await compute().countInputTokens!({ ...request, tools, turns, cache: true, answerNow: 'Answer now.' });
+    const counted = seen[0]!.body as Record<string, unknown>;
+    assert.equal(counted.cache_control, undefined, 'the count carries no top-level cache mark');
+    assert.deepEqual(counted.tool_choice, { type: 'none' }, 'it counts what is sent');
   });
 
   test('the preflight uses the token-counting endpoint with the same input and key', async () => {

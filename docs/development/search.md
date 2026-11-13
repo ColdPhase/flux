@@ -215,13 +215,13 @@ Direct messages were added this way (`dm_message`, audience `dm`), and docs (`do
   selected row (the first is selected), Esc closes and returns focus. A longer list is narrowed by typing
   more words. The footer (on the phone, the line above the list when there are no recent places) says
   what it finds in one sentence: "Finds spaces, people, messages, tasks, Wiki pages, files and thoughts you
-  can see." With no text it lists the recent places and a few actions (`recent.ts`). A row is 48 px: a tile
+  can see." With no text it lists the recent places and one action, Go to Inbox (`recent.ts`); "My tasks" is named as the sidebar names it. There is no
+  "Ask my assistant…" and no sidebar toggle there: the assistant's suggestions are in the `/` menu under `/ai` and nowhere else (README S5, #1376). A row is 48 px: a tile
   for the kind, the matching text with the words marked, and one line of where it lives (`ResultRow.tsx`).
   Only the answer to the latest request is shown. A list that has more than the 20 rows ends with one quiet
   line, "Showing 20 · type more words to narrow" (`next` is set; there is no second page).
-- **It opens at its final size** (#898): whether "Ask my assistant…" has a row is read while the dialog
-  is closed (`useAssistantReady`, at load and each time it closes) and kept while it is open, and the
-  skeleton counts the same rows, so nothing is added to the dialog after it is on screen.
+- **It opens at its final size** (#898): what it lists with no text (the recent places, the spaces waiting to be unlocked and Go to Inbox)
+  is known before its code arrives, and the skeleton counts the same rows, so nothing is added to the dialog after it is on screen.
 - **Opening a result** goes to the exact object: a message or DM message opens on that whole
   message (`#message-<id>`, highlighted and focused), a material or doc at the matched version, a thought
   selected in its sketch (`#thought-<id>`), a person to a

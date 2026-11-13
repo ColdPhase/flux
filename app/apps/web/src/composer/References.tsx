@@ -2,7 +2,6 @@ import type { MessageReferenceCard, MessageReferenceKind } from '@flux/contracts
 import { RefLink } from '../place/origin';
 import { targetHref } from '../search/api';
 import { Icon } from '../ui';
-import type { DraftCite } from './draft';
 
 // References to Flux objects inside a message (#469, F-026 §6): a cited map thought is a card with the object's glyph,
 // its kind, its title, one line of context and a target that opens it. The server makes each card for the reader who asks, so a
@@ -40,13 +39,4 @@ export function ReferenceCard({ card }: { card: MessageReferenceCard }) {
 export function MessageReferences({ references }: { references?: readonly MessageReferenceCard[] }) {
   if (!references?.length) return null;
   return <>{references.map((card, index) => <ReferenceCard key={index} card={card} />)}</>;
-}
-
-/** What a draft or a queued message cites, before the server has made the cards: the kind and the title the person chose. */
-export function CiteTile({ cite, onRemove, disabled = false }: { cite: DraftCite; onRemove?: () => void; disabled?: boolean }) {
-  return <div className="composer-cite" data-ref={cite.kind}>
-    <span className="composer-cite__glyph" aria-hidden="true"><Icon name={GLYPH[cite.kind]} size={14} /></span>
-    <span className="composer-cite__text"><small>{KIND[cite.kind]}{cite.context ? ` · ${cite.context}` : ''}</small><strong>{cite.title}</strong></span>
-    {onRemove ? <button type="button" className="composer-cite__x" disabled={disabled} onClick={onRemove} aria-label={`Remove citation: ${cite.title}`}><Icon name="x" size={14} /></button> : null}
-  </div>;
 }

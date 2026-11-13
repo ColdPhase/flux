@@ -150,6 +150,29 @@ describe('tool calling on every provider wire format (AST-8.1; local mock, docum
         }
       });
 
+      test('a run\'s last request offers the tools but none to call, and Flux\'s words follow the results (#1410)', async () => {
+        script = [{ body: wire.toolCalls }, { body: wire.final }];
+        const adapter = compute();
+        const first = await adapter.dispatch(requestFor(wire), live);
+        if (first.kind !== 'completed') return assert.fail('the first turn completes');
+        const turn: PersonalTurn = { text: first.text, calls: first.toolCalls!, results: [{ callId: first.toolCalls![0]!.id, content: LISTED, isError: false }], replay: first.replay };
+        const NOTE = 'Flux: answer now from what you found.';
+        await adapter.dispatch(requestFor(wire, { turns: [turn], answerNow: NOTE }), live);
+        const body = seen[1]!.body;
+        assert.deepEqual(body.tools, toolsOnWire(wire.wire), 'the tools stay: the earlier calls need them');
+        const id = first.toolCalls![0]!.id;
+        if (wire.wire === 'anthropic') {
+          assert.deepEqual(body.tool_choice, { type: 'none' });
+          assert.deepEqual(body.messages.at(-1), { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: LISTED }, { type: 'text', text: NOTE }] });
+        } else if (wire.wire === 'responses') {
+          assert.equal(body.tool_choice, 'none');
+          assert.deepEqual(body.input!.slice(-2), [{ type: 'function_call_output', call_id: id, output: LISTED }, { role: 'user', content: NOTE }]);
+        } else {
+          assert.equal(body.tool_choice, 'none');
+          assert.deepEqual(body.messages.slice(-2), [{ role: 'tool', tool_call_id: id, content: LISTED }, { role: 'user', content: NOTE }]);
+        }
+      });
+
       test('a refused or failed tool call goes back as an error result in this wire format', async () => {
         script = [{ body: wire.toolCalls }, { body: wire.final }];
         const adapter = compute();

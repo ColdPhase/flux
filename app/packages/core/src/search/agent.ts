@@ -19,7 +19,7 @@ const WORD = /[\p{L}\p{N}]+/gu;
 /** What the tool is asked: as the model writes it, before anything is checked. */
 export interface AgentSearchInput {
   q: string;
-  /** An author's id as an earlier result gave it (`author.id`): a person's or an agent's. */
+  /** An author's id as an earlier result gave it (`author.id`), or by the server, from a name (#1410): a person's or an agent's. */
   from?: string | undefined;
   /** A date (`2026-09-01`, from midnight UTC) or a time with its offset; from then on. */
   after?: string | undefined;
@@ -89,6 +89,66 @@ export function agentSearchPlan(input: AgentSearchInput, scope: AgentSearchScope
     authorId: input.from?.trim() || null, conversationId: scope.conversationId, since, until };
 }
 
+/**
+ * Someone a search may be held to (#1410): a person by the name people see, or an agent with its owner's name, as the server
+ * labels them for the caller. Only people and agents the caller may see named are ever candidates; the server decides who.
+ */
+export interface AuthorCandidate { kind: 'human' | 'agent'; id: string; name: string; ownerName?: string | null }
+
+/** A name's words as they are compared: lower case, accents and the Polish ł folded, letters and digits only. */
+export function foldedNameWords(text: string): string[] {
+  return (text.normalize('NFD').replace(/\p{M}/gu, '').replace(/[łŁ]/gu, 'l').toLowerCase().match(WORD) ?? []);
+}
+
+/**
+ * Whether `from` names someone rather than giving an id (#1410). An id has no space and is long: a uuid (an agent) or an account id of
+ * 20 characters or more with a digit. A name is anything else.
+ */
+export function isAuthorName(from: string): boolean {
+  const text = from.trim();
+  return !(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(text) || (/^[A-Za-z0-9_-]{20,}$/.test(text) && /\d/.test(text)));
+}
+
+/** One word as written against one word of a name: the same, or the same word in another case ending ("Maurycego" for "Maurycy"). */
+function sameWord(asked: string, name: string): 'exact' | 'form' | null {
+  if (asked === name) return 'exact';
+  if (asked.length < 3 || name.length < 3) return null;
+  let common = 0;
+  while (common < asked.length && common < name.length && asked[common] === name[common]) common += 1;
+  // A word that begins the name ("Mau" for "Maurycy"), or one that shares at least four letters and all but the last two of the shorter
+  // ("Maurycego", "Jonasa"), never two names that only begin alike ("Marek" and "Marta").
+  return common === asked.length || common >= Math.max(4, Math.min(asked.length, name.length) - 2) ? 'form' : null;
+}
+
+/**
+ * Who `from` names among the candidates (#1410): every word of it matches a word of the name (an agent may also be named as people see
+ * it, "Assistant (Ada's agent)", whose owner's words then match its owner). Exact words win over other forms: "Ada" is Ada and not
+ * Adam when there is an Ada. None, one or several; the caller says which.
+ */
+export function authorsNamed(from: string, candidates: readonly AuthorCandidate[]): AuthorCandidate[] {
+  const label = /^(.*?)\s*\((.+?)['’]s?\s+agent\)\s*$/iu.exec(from.trim());
+  const asked = foldedNameWords(label ? label[1]! : from);
+  const owner = label ? foldedNameWords(label[2]!) : [];
+  if (!asked.length) return [];
+  const score = (words: readonly string[], of: readonly string[]): 'exact' | 'form' | null => {
+    let form = false;
+    for (const word of words) {
+      const best = of.map((name) => sameWord(word, name)).reduce<'exact' | 'form' | null>((top, next) => (top === 'exact' || next === 'exact' ? 'exact' : top ?? next), null);
+      if (!best) return null;
+      if (best === 'form') form = true;
+    }
+    return form ? 'form' : 'exact';
+  };
+  const matched = candidates.flatMap((candidate) => {
+    const name = score(asked, foldedNameWords(candidate.name));
+    if (!name) return [];
+    if (owner.length && (candidate.kind !== 'agent' || !score(owner, foldedNameWords(candidate.ownerName ?? '')))) return [];
+    return [{ candidate, exact: name === 'exact' }];
+  });
+  const exact = matched.filter((match) => match.exact);
+  return (exact.length ? exact : matched).map((match) => match.candidate);
+}
+
 /** Matched words in **bold**: the one mark a model reads without a legend. */
 export function markedText(parts: SearchText | null): string {
   return (parts ?? []).map((part) => (part.match ? `**${part.text}**` : part.text)).join('');
@@ -122,6 +182,8 @@ export interface AgentHit {
   snippet?: string;
   author?: AgentHitAuthor;
   at: string;
+  /** A task's discussion (#1410): how many messages people and agents wrote about it, read with `flux_get_task_discussion`. */
+  discussion?: { messages: number };
 }
 
 /** One row as the model is told it: compact, with only what it can use. The author is the server's label, never the raw name. */

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { agentHit, agentSearchPlan, agentSearchTime, agentSearchWords, markedText, type SearchRow } from '@flux/core';
+import { agentHit, agentSearchPlan, agentSearchTime, agentSearchWords, authorsNamed, isAuthorName, markedText, type AuthorCandidate, type SearchRow } from '@flux/core';
 
 // What an agent's search means and how a hit is told (F-042, AG-12, #1290), with no database: the words, the dates, the plan and the compact hit.
 
@@ -81,5 +81,36 @@ describe('a hit as the model is told it', () => {
   test('a thought is a thought of a map, found by the map filter', () => {
     const hit = agentHit(row({ kind: 'thought', objectId: 't-1', parentId: 'k-1', projectId: 'p-1', title: [{ text: 'ToF sensor', match: false }], snippet: null, sequence: null }), null);
     assert.deepEqual([hit.kind, hit.snippet, hit.link], ['thought', 'ToF sensor', '/map/k-1#thought-t-1']);
+  });
+});
+
+describe('an author by name (#1410)', () => {
+  const people: AuthorCandidate[] = [
+    { kind: 'human', id: 'u-maurycy', name: 'Maurycy Zamojski' }, { kind: 'human', id: 'u-ada', name: 'Ada Nowak' }, { kind: 'human', id: 'u-adam', name: 'Adam Łęcki' },
+    { kind: 'human', id: 'u-marek', name: 'Marek Wiśniewski' }, { kind: 'human', id: 'u-marta', name: 'Marta Kos' },
+    { kind: 'agent', id: 'a-1', name: 'Assistant', ownerName: 'Ada Nowak' }, { kind: 'agent', id: 'a-2', name: 'Assistant', ownerName: 'Marta Kos' },
+  ];
+  const ids = (from: string) => authorsNamed(from, people).map((author) => author.id);
+
+  test('a first name, a full name, another case ending, accents and case aside', () => {
+    for (const from of ['Maurycy', 'maurycy zamojski', 'Maurycego', 'MAURYCY', 'Zamojski']) assert.deepEqual(ids(from), ['u-maurycy'], from);
+    assert.deepEqual(ids('Adam Lecki'), ['u-adam'], 'ł and ę folded');
+    assert.deepEqual(ids('Ada'), ['u-ada'], 'an exact word wins over a longer name that begins with it');
+    assert.deepEqual(ids('Marek'), ['u-marek'], 'two names that only begin alike are not one');
+    assert.deepEqual(ids('Mar'), ['u-marek', 'u-marta'], 'a beginning that fits several is several');
+    assert.deepEqual(ids('Zbigniew'), []);
+  });
+
+  test('agents by their name, and by the name people see, with whose they are', () => {
+    assert.deepEqual(ids('Assistant'), ['a-1', 'a-2']);
+    assert.deepEqual(ids('Assistant (Marta\'s agent)'), ['a-2']);
+    assert.deepEqual(ids('Assistant (Ada Nowak’s agent)'), ['a-1']);
+    assert.deepEqual(ids('Ada Nowak (Marta\'s agent)'), [], 'a person is never an agent');
+  });
+
+  test('an id is not a name: a uuid, or a long account id with a digit', () => {
+    assert.equal(isAuthorName('6810ef5a-9ce9-47d5-914b-7613ef09ab72'), false);
+    assert.equal(isAuthorName('Xk2vQ9mRtY7bLp3sWn5cFh8d'), false);
+    for (const name of ['Maurycy', 'Ada Nowak', 'Assistant (Ada\'s agent)', 'Bartholomew-Featherstonehaugh']) assert.equal(isAuthorName(name), true, name);
   });
 });

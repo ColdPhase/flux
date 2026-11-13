@@ -570,16 +570,8 @@ class SearchJourney(unittest.TestCase):
                 self.assertEqual({sample["height"] for sample in samples}, {samples[0]["height"]}, f"the dialog never changes height: {samples[:3]} … {samples[-3:]}")
                 self.assertEqual({sample["offset"] for sample in samples}, {samples[0]["offset"]}, "and its place in the layout never changes (its 8 px entry travel is a transform)")
                 dialog = page.get_by_role("dialog", name="Search", exact=True)
-                ask = dialog.get_by_role("option", name=re.compile("Ask my assistant"))
-                if delay == 0:
-                    expect(ask).to_have_count(1)  # known before the dialog opened: the row is in it from the first frame
-                else:
-                    expect(ask).to_have_count(0)  # still unknown when it opened: it is not added to a dialog that is on screen
-                    page.keyboard.press("Escape")
-                    expect(dialog).to_be_hidden()
-                    page.wait_for_timeout(2300)
-                    page.keyboard.press("Control+k")
-                    expect(dialog.get_by_role("option", name=re.compile("Ask my assistant"))).to_have_count(1)  # the next time it is there
+                # No assistant row at any time (README S5: its suggestions are in the `/` menu, #1376): nothing is added to the dialog.
+                expect(dialog.get_by_role("option", name=re.compile("Ask my assistant"))).to_have_count(0)
                 shot(page, f"search-open-stable-desktop-1440-{delay}")
 
     # ---------------------------------------------------------------- Polish words and accents (BM25, #1293)

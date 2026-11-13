@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { AI_PROVIDERS } from '@flux/contracts';
+import { AI_PROVIDERS, PROMPT_CACHE_RATES } from '@flux/contracts';
 import { WebSearchRefusedError, type PersonalCompute, type PersonalComputeRequest, type PersonalComputeResult } from '@flux/core';
 import { PUBLIC_ONLY, type AiEndpointPolicy } from './endpoint-policy.js';
 import { endpointRefusal, guardedFetch } from './guarded-fetch.js';
@@ -10,7 +10,8 @@ import { anthropicMessages, anthropicText, anthropicToolCalls, anthropicTools, a
 // The Anthropic Messages adapter behind core's `PersonalCompute` port (#68, O-008 §3–§4; F-020).
 // One run is one Messages request on the connection's model with `max_tokens` 1500, low effort and
 // no tools (with `request.tools`, F-027 AST-8, one turn of the worker's loop: the Flux tools in
-// `tools`, the earlier turns and their `tool_result`s in `messages`, no `tool_choice`; with `request.webSearch`, #954, also Anthropic's own
+// `tools`, the earlier turns and their `tool_result`s in `messages`, no `tool_choice` but `none` on a run's last request (#1410); with
+// `request.cache`, #1410, the cache marks of `promptOf`; with `request.webSearch`, #954, also Anthropic's own
 // `web_search` server tool); the optional preflight uses the token-counting endpoint, which may only raise the Flux
 // estimate. The SDK's automatic retries are off, a stop aborts the HTTP request through the
 // AbortSignal, the transport is the guarded fetch every adapter uses (which hands a streamed answer over as it arrives, #1248), and every failure maps to
@@ -79,9 +80,34 @@ export function failureOf(error: unknown, signal: AbortSignal): Extract<Personal
  */
 export const ANTHROPIC_WEB_SEARCH_TOOL = { type: 'web_search_20250305', name: 'web_search' } as const;
 
-/** The tools of a request on the wire: the Flux tools, and Anthropic's own web search when the run is offered it. */
-const toolsOf = (request: PersonalComputeRequest) => request.tools?.length
-  ? { tools: [...anthropicTools(request.tools), ...(request.webSearch ? [ANTHROPIC_WEB_SEARCH_TOOL] : [])] as unknown as Anthropic.Tool[] } : {};
+const EPHEMERAL = { type: 'ephemeral' } as const;
+
+/**
+ * The tools of a request on the wire: the Flux tools, and Anthropic's own web search when the run is offered it. A request that asks
+ * for caching (#1410) marks the last Flux tool: the definitions are the same in every request of an agent's runs, so they are read
+ * from the cache across runs too. The last request of a run offers none to call (`tool_choice: none`), but still carries them.
+ */
+const toolsOf = (request: PersonalComputeRequest) => {
+  if (!request.tools?.length) return {};
+  const flux = anthropicTools(request.tools);
+  if (request.cache) flux[flux.length - 1] = { ...flux.at(-1)!, cache_control: EPHEMERAL };
+  return { tools: [...flux, ...(request.webSearch ? [ANTHROPIC_WEB_SEARCH_TOOL] : [])] as unknown as Anthropic.Tool[],
+    ...(request.answerNow ? { tool_choice: { type: 'none' } as const } : {}) };
+};
+
+/**
+ * The brief, and with caching (#1410) the cache marks: one after the brief (the tool definitions and the brief stay the same in every
+ * request of a run) and the top-level one that Anthropic moves to the end of the conversation as it grows, so each request reads all
+ * that the one before it sent. Three of the four marks a request may carry.
+ */
+const promptOf = (request: PersonalComputeRequest) => ({
+  system: request.cache ? [{ type: 'text' as const, text: request.system, cache_control: EPHEMERAL }] : request.system,
+  messages: anthropicMessages(request.input, request.turns, request.answerNow) as unknown as Anthropic.MessageParam[],
+  ...toolsOf(request),
+  // A run's last request changes `tool_choice`, which Anthropic's messages cache does not survive, and no request reads after it: the
+  // conversation is not written to the cache there (a write costs 1.25×), only the tools and the brief stay marked.
+  ...(request.cache && !request.answerNow ? { cache_control: EPHEMERAL } : {}),
+});
 
 export function anthropicPersonalCompute({ enabled, resolveKey, baseURL = AI_PROVIDERS.anthropic.baseUrl!, timeoutMs = 120_000,
   policy = PUBLIC_ONLY, maxResponseBytes = 1_000_000 }: AnthropicPersonalComputeOptions): PersonalCompute {
@@ -101,10 +127,9 @@ export function anthropicPersonalCompute({ enabled, resolveKey, baseURL = AI_PRO
       checkRequestLimits(request, 'anthropic_messages');
       const api = await client(request.connection.keyRef);
       try {
-        const counted = await api.messages.countTokens({
-          model: request.model, system: request.system, messages: anthropicMessages(request.input, request.turns) as unknown as Anthropic.MessageParam[],
-          ...toolsOf(request),
-        });
+        const { cache_control: _mark, ...prompt } = promptOf(request);
+        void _mark;
+        const counted = await api.messages.countTokens({ model: request.model, ...prompt });
         return counted.input_tokens;
       } catch (error) {
         // The count carries the search tool too, so an organization that turned search off refuses it here first (#954, the review of
@@ -121,9 +146,7 @@ export function anthropicPersonalCompute({ enabled, resolveKey, baseURL = AI_PRO
         const params = {
           model: request.model,
           max_tokens: request.maxTokens,
-          system: request.system,
-          messages: anthropicMessages(request.input, request.turns) as unknown as Anthropic.MessageParam[],
-          ...toolsOf(request),
+          ...promptOf(request),
           output_config: { effort: request.effort },
         };
         // With a reader of the words as they come (#1248) the same request is streamed: its final message is the same answer, with the
@@ -134,12 +157,17 @@ export function anthropicPersonalCompute({ enabled, resolveKey, baseURL = AI_PRO
           return stream.finalMessage();
         })() : await api.messages.create(params, { signal });
         const text = anthropicText(message.content);
-        // No caching is requested, so these should be zero. If a workspace default caches anyway, they
-        // are counted conservatively in base-input equivalents: a read as full input (priced 0.1x) and a
-        // 5-minute write at 1.25x (pricing page, checked 2026-09-30).
+        // The whole prompt is the uncached input, what was written to the cache and what was read from it (#1410); the writes and the
+        // reads are charged at their rates of the input price (`PROMPT_CACHE_RATES`). A request that asked for no caching is charged a
+        // write at the write rate and a read at the full price, should the provider cache anyway.
         const usage = message.usage;
-        const inputTokens = usage.input_tokens + Math.ceil((usage.cache_creation_input_tokens ?? 0) * 1.25) + (usage.cache_read_input_tokens ?? 0);
-        if (!Number.isSafeInteger(inputTokens) || !Number.isSafeInteger(usage.output_tokens)) throw new Error('The provider reported no usable usage');
+        const written = usage.cache_creation_input_tokens ?? 0;
+        const read = usage.cache_read_input_tokens ?? 0;
+        const inputTokens = usage.input_tokens + written + read;
+        if (!Number.isSafeInteger(inputTokens) || !Number.isSafeInteger(usage.output_tokens) || !Number.isSafeInteger(written) || !Number.isSafeInteger(read)
+          || written < 0 || read < 0) throw new Error('The provider reported no usable usage');
+        const rates = PROMPT_CACHE_RATES.anthropic!;
+        const cache = written || read ? { cache: { readTokens: read, writeTokens: written, readRate: request.cache ? rates.read : 1, writeRate: rates.write } } : {};
         // Each search is billed on top of the tokens (#954); a count that is not a whole number is no usable usage either.
         const webSearches = (usage as { server_tool_use?: { web_search_requests?: unknown } | null }).server_tool_use?.web_search_requests ?? 0;
         if (typeof webSearches !== 'number' || !Number.isSafeInteger(webSearches) || webSearches < 0) throw new Error('The provider reported no usable usage');
@@ -150,7 +178,7 @@ export function anthropicPersonalCompute({ enabled, resolveKey, baseURL = AI_PRO
         // A paused turn is sent back whole to go on: only a request that offered the search can pause, and only with something to send.
         const paused = request.webSearch === true && message.stop_reason === 'pause_turn' && message.content.length > 0;
         const reason: StopReason = calls.length ? 'tool_use' : paused ? 'pause_turn' : message.stop_reason === 'tool_use' || message.stop_reason === 'pause_turn' ? 'end_turn' : stopReason(message.stop_reason);
-        return { kind: 'completed', text, stopReason: reason, usage: { inputTokens, outputTokens: usage.output_tokens, ...(webSearches ? { webSearches } : {}) },
+        return { kind: 'completed', text, stopReason: reason, usage: { inputTokens, outputTokens: usage.output_tokens, ...(webSearches ? { webSearches } : {}), ...cache },
           ...(calls.length || paused ? { ...(calls.length ? { toolCalls: calls } : {}), replay: message.content } : {}), ...(found ? { webSearch: found } : {}) };
       } catch (error) {
         // An organization whose admin turned web search off refuses every request that offers it with a 400 (#954): not billed, and
