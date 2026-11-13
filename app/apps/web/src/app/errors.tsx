@@ -85,7 +85,8 @@ function ErrorPage({ shell }: { shell: boolean }) {
   if (isWorkspaceLocked(error)) return <LockedSpace workspaceId={lockedWorkspaceId(error)} />;
   if (revoked) {
     const title = isRouteErrorResponse(error) && error.status === 404 ? 'This page doesn’t exist' : 'This place isn’t available';
-    return <NotAvailable title={title} bare={!shell} />;
+    // A map's unsaved private thought outlives the place: the person removed from its space still reads and can discard it (#1402 kept it out).
+    return <NotAvailable title={title} bare={!shell}>{sketchId ? <PrivateThoughtRecovery sketchId={sketchId} /> : null}</NotAvailable>;
   }
 
   const tryAgain = <Button variant={shell ? 'secondary' : 'primary'} size={shell ? 'md' : 'lg'} icon={retrying ? undefined : 'refresh'} busy={retrying} onClick={() => { tried.current = true; revalidator.revalidate(); }}>Try again</Button>;

@@ -2204,6 +2204,35 @@
       }
     },
     {
+      "name": "flux_read_file",
+      "title": "Read the text of a file",
+      "operation": null,
+      "classes": [],
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "inputSchema": {
+        "type": "object",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "fileId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "offset": {
+            "default": 0,
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000
+          }
+        },
+        "required": [
+          "fileId"
+        ]
+      }
+    },
+    {
       "name": "flux_read_material",
       "title": "Read a project material",
       "operation": null,
@@ -2865,6 +2894,7 @@
               "message",
               "doc",
               "material",
+              "file",
               "task",
               "decision",
               "map"

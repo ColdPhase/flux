@@ -72,7 +72,8 @@ export function channelsOf(stored: Pick<StoredPreferences, 'level' | 'emailMe'>)
 }
 
 /**
- * Muting a place keeps only its ordinary messages quiet (#1249, founder decision): a reply in a thread and a direct message. Everything that
+ * Muting a place keeps only its ordinary messages quiet (#1249, founder decision): a reply in a thread and a direct message, and the space's
+ * notice of an open call (#1299; an invitation to the call is personal and still arrives). Everything that
  * needs the person still arrives, on every channel: a mention of them, a question to them, a task given to them, a decision about their
  * work, a live invitation and an agent waiting for their OK (the reasons of "Only what needs me", except an ordinary direct message).
  * This is the one rule: the generator, the push job and the email job all ask `PreferenceRepository.quiet`, which asks it.

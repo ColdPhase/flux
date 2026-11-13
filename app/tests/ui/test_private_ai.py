@@ -379,9 +379,10 @@ class PrivateAiJourney(unittest.TestCase):
         sent = [item for item in mock("/__requests")["requests"] if item["path"] == "/v1/messages"]
         self.assertIn(DM_TOKEN, json.dumps(sent[-1]["body"]))
         self.assertNotIn(OPENING, json.dumps(sent[-1]["body"]), "the DM is all the model was given")
-        # The only tools a DM run has read the web (a public page, #918, and the provider's own search, #954) and find older messages of that
-        # DM alone (F-042, #1290, #1292).
-        self.assertTrue({tool["name"] for tool in sent[-1]["body"].get("tools", [])} <= {"flux_read_web", "web_search", "flux_search", "flux_read_around", "flux_summarize"})
+        # A DM run's tools reach only this direct message (finding, reading around and summarising its messages, F-042 #1290-#1292) and read the
+        # web: a public page (#918) and, on by default, the provider's own search (#954). Nothing that writes or reaches a space.
+        self.assertTrue({tool["name"] for tool in sent[-1]["body"].get("tools", [])}
+                        <= {"flux_read_around", "flux_read_web", "flux_search", "flux_summarize", "web_search"}, sent[-1]["body"].get("tools"))
         shot(jo, "private-ai-1440-direct-message")
         card.get_by_role("button", name="Show everyone").click()
         expect(card).to_have_count(0)
