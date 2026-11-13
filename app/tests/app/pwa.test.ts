@@ -102,9 +102,12 @@ describe('service worker delivery', () => {
     }
     walk(directory);
     // The build leaves these out of the precache (ONLINE_ONLY in apps/web/build/service-worker-plugin.ts): the sign-in console's terminal and the call library.
-    const onlineOnly = /^\/assets\/(?:SignInConsole|media)-[^/]+\.(?:js|css)$/;
+    // The PDF viewer page (C-60, #1350) is a build of its own after the app's (vite.pdf-viewer.config.ts), outside the offline shell: it shows only bytes the
+    // download route hands it, which are never cached, so offline it has nothing to show, and every installed client would download PDF.js for nothing.
+    const onlineOnly = /^\/assets\/(?:SignInConsole|media)-[^/]+\.(?:js|css)$|^\/pdf-viewer\//;
     const expected = actual.filter((url) => !onlineOnly.test(url)).sort();
     assert.ok(actual.some((url) => /^\/assets\/SignInConsole-[^/]+\.js$/.test(url)), 'the online-only terminal is actually built');
+    assert.ok(actual.includes('/pdf-viewer/index.html') && actual.some((url) => /^\/pdf-viewer\/assets\/.+\.js$/.test(url)), 'the online-only PDF viewer is actually built');
     assert.deepEqual(precache, expected, 'the exact final build inventory has no phantom or omitted cached asset');
     const hash = createHash('sha256');
     for (const url of precache) {
