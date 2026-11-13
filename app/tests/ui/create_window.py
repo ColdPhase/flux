@@ -90,12 +90,12 @@ def create_other(page: Page, name: str) -> None:
 
 
 def open_decision(page: Page) -> Locator:
-    """The Create window on its Decision tab, whichever way the device opens it: `C` on a computer, the "+" sheet's Decision row on a phone (#867)."""
+    """The Create window on its Decision tab, whichever way the device opens it: New on a computer, the "+" sheet's Decision row on a phone (#867)."""
     if (page.viewport_size or {"width": 1500})["width"] <= 640:
         page.get_by_role("button", name="Create", exact=True).click()
         page.get_by_role("button", name="Decision", exact=True).click()
     else:
-        page.locator("body").press("c")
+        open_create(page)
         create_other(page, "Decision")
     decision = page.get_by_role("dialog", name="New decision")
     expect(decision).to_be_visible()
