@@ -168,6 +168,28 @@ describe('optional embeddings: off by default, hybrid ranking when on', () => {
     assert.deepEqual([...first.slice(0, 2), ...next.slice(0, 2)].map((hit) => hit.objectId), all.slice(0, 4));
   });
 
+  test('file text (C-63): the parts of a file are embedded like any row, and a file counts once in the fused list however many of its parts are near', async () => {
+    // The rows the file-text worker writes for a file of three parts, all about a cat (migration 0072: kind file, one row for each part).
+    const fileId = randomUUID();
+    const parts = ['Cat food budget part of the file.', 'The kitten sleeps on the sofa, chapter two of the file.', 'Another kitten chapter, part three of the file.'];
+    await Promise.all(parts.map((body, index) => pool.query(
+      `INSERT INTO search_documents (doc_key, kind, workspace_id, audience_key, project_id, object_id, parent_id, version, title, body, author_kind, author_id, at)
+       VALUES ($1, 'file', $2, $3, $4, $5, $6, $7, 'cats.txt', $8, 'human', $9, now())`,
+      [`file:${fileId}:${index + 1}`, ws.id, `project:${open.id}`, open.id, fileId, openThread.id, index + 1, body, olek.id])));
+    await settled();
+    const embedded = await pool.query(`SELECT count(*)::int AS n FROM search_vectors v JOIN search_documents d ON d.id = v.document_id WHERE d.kind = 'file' AND d.object_id = $1`, [fileId]);
+    assert.equal(embedded.rows[0].n, 3, 'every part of the file has its vector');
+    for (const vectors of [null, withVectors()]) {
+      const hits = await searchRows(db, vectors ?? undefined).ranked(await access.audiences(human(olek)), plan('cat', olek.id));
+      assert.equal(hits.filter((hit) => hit.kind === 'file' && hit.objectId === fileId).length, 1, `one result for the file${vectors ? ' in the fused list' : ''}`);
+    }
+    // Hidden from a member who may not read the space the file is in: not in the nearest list either.
+    const restricted = await pool.query(`UPDATE search_documents SET audience_key = $1, project_id = $2 WHERE kind = 'file' AND object_id = $3`, [`project:${lamp.id}`, lamp.id, fileId]);
+    assert.equal(restricted.rowCount, 3);
+    assert.deepEqual((await searchRows(db, withVectors()).ranked(await access.audiences(human(olek)), plan('cat', olek.id))).filter((hit) => hit.kind === 'file'), []);
+    await pool.query(`DELETE FROM search_documents WHERE kind = 'file' AND object_id = $1`, [fileId]);
+  });
+
   test('only what the caller may read now: the restricted space, a lost grant and a guest', async () => {
     const hidden = 'Kot śpi na ciepłym parapecie w stacji.';
     assert.ok((await found(human(nia), 'cat')).includes(hidden), 'a member with the grant finds it by meaning');

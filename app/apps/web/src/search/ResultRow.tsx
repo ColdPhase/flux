@@ -14,7 +14,7 @@ const GROUPS: { label: string; kinds: SearchKind[] }[] = [
   { label: 'Tasks', kinds: ['work', 'decision'] },
   { label: 'Messages', kinds: ['message', 'dm_message'] },
   { label: 'Wiki', kinds: ['doc'] },
-  { label: 'Files', kinds: ['material'] },
+  { label: 'Files', kinds: ['file', 'material'] },
   { label: 'Thoughts', kinds: ['thought', 'sketch'] },
   { label: 'Spaces', kinds: ['project'] },
   { label: 'People', kinds: ['person'] },
@@ -29,7 +29,7 @@ export function groupResults(items: SearchResult[]): { label: string; items: Sea
 }
 
 const ICONS: Record<Exclude<SearchKind, 'project' | 'message' | 'dm_message'>, IconName> = {
-  work: 'tasks', material: 'link', doc: 'doc', decision: 'rule', sketch: 'map', thought: 'map', person: 'people',
+  work: 'tasks', material: 'link', file: 'doc', doc: 'doc', decision: 'rule', sketch: 'map', thought: 'map', person: 'people',
 };
 
 const time = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' });

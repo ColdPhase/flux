@@ -11,6 +11,8 @@ __pycache__/
 node_modules/
 dist/
 .env
+# The worker's kernel sandbox is compiled in the image build (docker/Dockerfile), never committed.
+*.node
 
 # Test and tool artifacts.
 test-results/

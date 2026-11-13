@@ -39,8 +39,9 @@ const human = (someone: Person): Principal => ({ kind: 'human', id: someone.id }
  * runtime, grant, class or sources; compacted like the reads), measured 21,207 bytes for 34 tools (2026-10-17). #1290 replaces the one-space search by the two tools
  * that find and read around a message: 36 tools, 25,672 bytes (2026-11-12, CI run 43296958864; the bound was 24,000). #1292 adds the tool that
  * summarises a range: 37 tools, 26,525 bytes (2026-11-13, CI run 43376634883; the bound was 26,000 with 328 bytes left, and the tool's definition takes 853).
+ * #1382 (C-63) adds flux_read_file, the excerpt of a file's text, and the word "file" in flux_search's description and kind: 38 tools, 27,119 bytes (2026-11-13, local run of this change; the bound is 27,200, 81 bytes above).
  */
-const TOOL_DEFINITION_BYTES = 26_600;
+const TOOL_DEFINITION_BYTES = 27_200;
 const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
 const claims = (token: string) => JSON.parse(Buffer.from(token.split('.')[1]!, 'base64url').toString()) as Record<string, unknown>;
 const toolText = (message: Record<string, unknown> | null) => JSON.stringify(message);
@@ -372,7 +373,7 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
       { id: 'ctx-chat', name: 'flux_list_contexts', input: {} });
     const inChat = await asked({ kind: 'chat', agentId });
     const names = compute.dispatched[0]!.tools!.map((tool) => tool.name);
-    assert.equal(names.length, 22, 'the 21 read tools (flux_view_image, #1217; flux_search and flux_read_around, #1290; flux_summarize, #1292) and a picture for its answer (flux_attach_image, #1217)');
+    assert.equal(names.length, 23, 'the 22 read tools (flux_view_image, #1217; flux_search and flux_read_around, #1290; flux_summarize, #1292; flux_read_file, #1382) and a picture for its answer (flux_attach_image, #1217)');
     assert.ok(names.includes('flux_attach_image'), 'its answer in the chat can carry a picture (founder decision on #1217)');
     assert.ok(ASSISTANT_RUN_EFFECT_TOOLS.filter((tool) => tool !== 'flux_attach_image').every((tool) => !names.includes(tool)), 'no tool that changes anything');
     assert.ok(JSON.stringify(compute.dispatched).includes(OTHER_CANARY), 'another space of its owner is read: nobody else reads this answer');
@@ -408,7 +409,7 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
     const fullTools = compute.dispatched[0]?.tools ?? [];
     const fullBytes = JSON.stringify(fullTools).length;
     t.diagnostic(`all switches on: ${fullOutcome} after ${compute.dispatched.length} requests; ${fullBytes} bytes of tool definitions, ${fullTools.length} tools`);
-    assert.equal(fullTools.length, 21 + ASSISTANT_RUN_EFFECT_TOOLS.length, '21 read tools (flux_read_web, #918; flux_view_image, #1217; flux_search and flux_read_around, #1290; flux_summarize, #1292) and every change tool (A3)');
+    assert.equal(fullTools.length, 22 + ASSISTANT_RUN_EFFECT_TOOLS.length, '22 read tools (flux_read_web, #918; flux_view_image, #1217; flux_search and flux_read_around, #1290; flux_summarize, #1292; flux_read_file, #1382) and every change tool (A3)');
     assert.ok(fullBytes <= TOOL_DEFINITION_BYTES, `the run's tool definitions take ${fullBytes} bytes; keep them under ${TOOL_DEFINITION_BYTES} (they are input of every request)`);
     assert.ok(!JSON.stringify(fullTools).includes('"$schema"') && !JSON.stringify(fullTools).includes('"pattern"'), 'no draft URL or uuid regular expression on the wire');
     assert.ok(fullTools.every((tool) => tool.name !== 'flux_get_conversation' || JSON.stringify(tool.inputSchema).includes('"beforeSequence"')), 'the parameters themselves are kept');

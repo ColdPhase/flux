@@ -13,11 +13,11 @@ import type { LockedWorkspaceRef } from './encryption.js';
 export const SEARCH_PATH = '/api/v1/search';
 
 /** What a result is. `dm_message` results belong to the `message` filter and `thought` results to `sketch`. */
-export type SearchKind = 'project' | 'message' | 'dm_message' | 'material' | 'doc' | 'work' | 'decision' | 'sketch' | 'thought' | 'person';
+export type SearchKind = 'project' | 'message' | 'dm_message' | 'material' | 'doc' | 'file' | 'work' | 'decision' | 'sketch' | 'thought' | 'person';
 
 /** Filter values of `type`: one kind, with project and direct messages together and sketches with their thoughts. */
-export type SearchFilterType = 'project' | 'message' | 'doc' | 'material' | 'work' | 'decision' | 'sketch' | 'person';
-export const SEARCH_FILTER_TYPES: readonly SearchFilterType[] = ['project', 'message', 'doc', 'material', 'work', 'decision', 'sketch', 'person'];
+export type SearchFilterType = 'project' | 'message' | 'doc' | 'material' | 'file' | 'work' | 'decision' | 'sketch' | 'person';
+export const SEARCH_FILTER_TYPES: readonly SearchFilterType[] = ['project', 'message', 'doc', 'material', 'file', 'work', 'decision', 'sketch', 'person'];
 
 export const SEARCH_LIMITS = { query: 200, pageDefault: 20, pageMax: 50 } as const;
 
@@ -48,6 +48,8 @@ export function searchTargetPath(target: SearchTarget): string {
     case 'dm_message': return `/dm/${target.dmId}#message-${target.messageId}`;
     case 'material': return `/materials/${target.materialId}/versions/${target.version}`;
     case 'doc': return `/projects/${target.projectId}/docs/${target.docId}/versions/${target.version}`;
+    // A file (C-63) opens its message with its preview open, at the page that matched for a PDF.
+    case 'file': return `/projects/${target.projectId}/conversations/${target.conversationId}?file=${target.fileId}${target.page ? `&page=${target.page}` : ''}#message-${target.messageId}`;
     case 'sketch': return `/map/${target.sketchId}`;
     case 'thought': return `/map/${target.sketchId}#thought-${target.thoughtId}`;
     case 'person': return `/dm/new?workspace=${encodeURIComponent(target.workspaceId)}&with=${encodeURIComponent(target.userId)}`;
@@ -83,6 +85,8 @@ export type SearchTarget =
   | { type: 'material'; projectId: string; materialId: string; version: number }
   /** A doc (#112) at the version that matched. */
   | { type: 'doc'; projectId: string; docId: string; version: number }
+  /** A file someone sent (C-63): its message, with its preview open at `page` (a PDF's page where the match is). */
+  | { type: 'file'; projectId: string; conversationId: string; messageId: string; fileId: string; page?: number }
   | { type: 'work' | 'decision'; projectId: string; id: string }
   | { type: 'sketch'; sketchId: string }
   | { type: 'thought'; sketchId: string; thoughtId: string }

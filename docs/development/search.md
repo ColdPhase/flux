@@ -112,6 +112,34 @@ contrib extension) and one table, `search_documents`. Each row is one searchable
   Queries with web search syntax (`"exact phrase"`, `or`, `-word`) are left to
   `websearch_to_tsquery` alone, without prefix or trigram matching, so an exclusion stays exact.
 
+## Files (C-63)
+
+What is inside the files people send is searched too (#1382): PDF text, DOCX, Markdown, plain text, CSV/TSV (never images, audio or video,
+and never an OCR). Migration `0072_file_text.sql` adds kind `file`, the column `page`, the table `file_text_jobs` and the triggers; the
+worker (`apps/worker/src/file-text`) reads the files.
+
+- **Rows.** A file attached to a space's message whose name `file_text_extractable` accepts gets, at publication, one row for its name
+  (`doc_key` `file:<id>:0`, `version` 0, an empty body) and a job. The worker replaces the rest: one row for each part of about 4,000
+  characters of the text (`file:<id>:<n>`, `version` n from 1, `page` the PDF page of the part: a part never crosses a page, so a page of more than
+  4,000 characters is several parts and a file is at most about 150 rows). The audience is the message's
+  space (`project:<id>`), `parent_id` its conversation, `author` the uploader, `at` the time it was sent. The 4,000 characters are what
+  the optional embeddings embed of a row, so all the text is covered, and a snippet is cut from a small text (`ts_headline` reads the first
+  20,000 characters of a body).
+- **One result for a file.** The ranked statement keeps a file's best-ranked part (`ranked` over the visible hits, before the fused list of
+  the embeddings takes its first 50, so one long file cannot fill it; the exact statement keeps the part with the best `ts_rank`).
+  The statistics (a word's document frequency, the document count and the average length) count the parts like any row, among the hits the
+  caller may see and nothing else; `search-hidden-ranking.test.ts` pins that hidden files move no visible order.
+- **Dropping out.** The delete trigger on `project_files` removes a file's rows in the transaction that deletes it (a deleted message, a
+  deleted space), and its job goes by the foreign key. Who finds a file is decided on every search from its audience, so a person who lost
+  access finds nothing the next moment. A file of an encrypted space gets no row and no job.
+- **Limits and the sandbox.** 5 MiB, 100 PDF pages, 200,000 characters, 20 s, 320 MiB resident, in a child process with no network, no files and
+  no children ([C-63](../product/decisions.md), [threat model B4](../security/threat-model.md#b4-database-and-files)). The worker wakes on
+  `NOTIFY flux_file_text` and polls nothing; a job is claimed with a lease of two minutes, tried three times and given up.
+- **Agents.** `flux_search` takes `kind: "file"` and returns the file's name, a snippet with the matches in **bold**, the page, the
+  message and a link; `flux_read_file` reads the text in pages of 12,000 (a run) or 20,000 characters from `offset`.
+- **Web.** A file hit is the Files group's row (the file's icon, its name and the snippet) and opens its message with the preview open at
+  the matched page (`?file=<id>&page=<n>`).
+
 ## Access before ranking
 
 `app/packages/core/src/search/` owns the use case and its ports; the server passes the adapters.

@@ -42,6 +42,8 @@ const system = [
   'event_data_tokens', 'event_data_keys', 'agent_task_events',
   // F-042 (#1294): vectors of rows that may be embedded (never a sealed placeholder, never a space with AI off) and the queue of rows waiting for one.
   'search_vectors', 'search_vector_queue', 'search_vector_state',
+  // C-63 (#1382): the files waiting for their text to be read; plain spaces only (an encrypted space's files get no job).
+  'file_text_jobs',
 ] as const;
 const refused = [
   'github_bindings', 'github_deliveries', 'github_processing', 'github_rule_defaults', 'github_task_links',
@@ -192,7 +194,7 @@ export const VISIBLE_COLUMNS: Readonly<Record<string, Readonly<Record<string, st
     response_etag: 'a version tag' },
   search_documents: { doc_key: 'object ids', kind: 'an enum', audience_key: 'ids', object_id: 'an id', status: 'an enum',
     title: 'empty in a placeholder row of a sealed workspace', body: 'empty in a placeholder row of a sealed workspace', author_kind: 'an enum',
-    author_id: 'a principal id', tsv: 'empty in a placeholder row of a sealed workspace',
+    author_id: 'a principal id', page: 'a number (a PDF page of a file row; a file of an encrypted space has no row)', tsv: 'empty in a placeholder row of a sealed workspace',
     keys: 'hashed search keys, generated from title and body: empty in a placeholder row' },
   search_changes: { doc_key: 'object ids' },
   live_sessions: { created_by: 'a user id', state: 'an enum', room_id: 'a room id', joined_by: 'user ids' },
