@@ -314,6 +314,8 @@ assert features["shell_tool"] is True and features["unified_exec"] is False and 
 assert overrides["web_search"] in ("disabled", "cached"), overrides["web_search"]
 assert list(overrides["mcp_servers"]) == ["flux"] and overrides["mcp_servers"]["flux"]["required"] is True
 methods = [c.get("method") for c in calls if c.get("event") == "app_server" and c.get("method") != "initialized"]
+# The plan model read (#1332, `model/list` on an app-server of its own) may come at any tick after the sign-in, before the run: not part of the run.
+while methods[:4] == ["initialize", "model/list", "initialize", "model/list"]: methods = methods[2:]
 assert methods == ["initialize", "model/list", "initialize", "config/read", "initialize", "account/rateLimits/read"], methods
 results = [c for c in calls if c.get("event") == "tool_result"]
 assert results and all(r["status"] == 200 and not r["isError"] for r in results), results
