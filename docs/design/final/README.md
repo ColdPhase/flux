@@ -402,7 +402,7 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
   where there is no face; the slot keeps its width (100 px, 120 px from 70 rem) whatever the number of people. The ⋯ menu holds the space's settings,
   **Mute space** / **Unmute space** and **Space details**, the one way into the space's own panel ([#871](https://github.com/ColdPhase/flux/issues/871),
   [#873](https://github.com/ColdPhase/flux/issues/873); the phone's ⋯ has it too, after Search, Call, Settings and Mute). It has no row for the sidebar:
-  the sidebar folds with its own control and `[`, and the rail and the navigation button open it ([#1376](https://github.com/ColdPhase/flux/issues/1376)). There is no Agents view, no Focus, no goal and no "needs you" count. **A place whose ⋯ would hold nothing shows none** (#1424): Settings, My map, Home, Messages and a missing page have no ⋯ button that opens an empty menu; the Inbox and the Spaces list have theirs (Mark all as read), a space and a direct message theirs.
+  the sidebar folds with its own control and `[`, and the rail and the navigation button open it ([#1376](https://github.com/ColdPhase/flux/issues/1376)). There is no Agents view, no Focus, no goal and no "needs you" count.
 - **One detail panel.** A task, a decision or a thread opens in the same right-hand panel, and the
   conversation stays visible. Opening another object replaces the panel's content, with "‹ back".
   `Esc` closes it.
@@ -1157,8 +1157,6 @@ Live strip, someone shares a screen
   else the strip's own place button. It never says "You are in a live session" and does nothing. ⋯'s row reads the same. While the
   call connects ([#1378](https://github.com/ColdPhase/flux/issues/1378)) the dot is a spinner and the button only says "Connecting to the call."; the slot keeps
   its width either way, so nothing moves.
-- **A server with no media server shows no Call in the header** (#1419 decision 4, #1424): nothing that explains why it does
-  nothing. Conversations, tasks, maps and pages work as usual.
 - **The strip's row is centred** on every window: the live dot with its word (**Live**, from 360 px), the place's button, the faces, then the devices; every item shares
   the row's centre line, and a call line's faces sit side by side, 2 px apart, with no overlap (the receipts' rule).
 - **Connecting.** From the click on Call or Join the strip is there, in the place it will keep: the spinner and "Connecting…",

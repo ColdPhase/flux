@@ -99,10 +99,10 @@ export function LiveEntry({ variant = 'header', anchor: given, onAction }: {
       </Popover>
     </span>
   ) : null;
-  if (live.capability === 'loading') return dimmed('Checking whether calls are available.');
-  // A server with no media server cannot do calls, so the header shows no Call that only explains why it does nothing (#1419 decision 4,
-  // #1424). Conversations, tasks, maps and pages work as usual. (A row of More follows #1419 part A.)
-  if (!configured && variant === 'header') return null;
+  // A server without a media server has no calls, so Call is not shown anywhere: no greyed button, no row and no explanation (founder decision
+  // on #1419 item 4, #1424). Until the server has said which it is (one short read), nothing is shown either, so a server without calls never
+  // flashes a Call that goes away.
+  if (!configured) return null;
   const inSession = live.phase === 'in' || live.phase === 'joining' || live.phase === 'rejoining' || live.phase === 'starting';
   const busy = live.phase === 'starting' || live.phase === 'joining';
 
@@ -140,7 +140,6 @@ export function LiveEntry({ variant = 'header', anchor: given, onAction }: {
   // Nothing open to start at (Tasks, Map or Wiki without an object open) and no call of the space to join: Call says why (the order of #763:
   // the place first).
   if (!anchor && !(hereJoinable ?? away)) return dimmed('Open a conversation, task, map or page to start a call there.');
-  if (!configured) return variant === 'more' ? dimmed('Calls are not available on this Flux server.') : null;
 
   const target = hereJoinable ?? away;
   const word = anchor ? KIND_WORD[anchor.context.type] : 'space';

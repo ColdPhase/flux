@@ -56,7 +56,7 @@ export function LivePanel({ live, presentable, onShow, onClose, onInvite }: {
               </li>
             ))}
           </ul>
-        ) : <p className="lv-panel__text">Connecting to the media server…</p>}
+        ) : <p className="lv-panel__text">Connecting to the call…</p>}
         {canInvite ? <Button variant="quiet" icon="plus" onClick={onInvite}>Invite someone</Button> : null}
       </section>
 

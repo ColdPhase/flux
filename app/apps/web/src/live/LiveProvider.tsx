@@ -125,7 +125,7 @@ function readable(error: unknown): string {
     if (error.status === 429) return 'Too many attempts. Wait a few seconds, then try again.';
     if (error.code === 'LIVE_SESSION_LIMIT')
       return 'This space already has as many calls as it allows. Join one that is running.';
-    if (error.status === 503) return 'The media server is not reachable right now. Text work is unaffected.';
+    if (error.status === 503) return 'Calls are not working right now. Everything else is unaffected.';
     if (error.code === 'LIVE_SESSION_ENDED' || error.code === 'LIVE_SESSION_UNAVAILABLE') return 'This call has ended.';
     return error.message;
   }
