@@ -129,7 +129,9 @@ class MessageWorkJourney(unittest.TestCase):
                 self.assertEqual(self.chips(page), first)
                 objects.get_by_role("button", name="Next", exact=True).click(); self.ready(page)
                 expect(objects).to_contain_text("51–67 of 67 objects")
-                expect(edges).to_contain_text("1–31 of 31 links")
+                # A whole list says how many it holds, not where it is (#1372): the 31 links of this objects page are all of them.
+                expect(edges).to_contain_text("31 links")
+                expect(edges).not_to_contain_text("of 31 links")
                 last = self.chips(page); self.assertEqual(len(last), 31)
                 self.assertEqual({(chip["kind"], chip["id"]) for chip in first + second_edges + last}, self.expected)
                 self.assertLessEqual(len(self.chips(page)), 50)

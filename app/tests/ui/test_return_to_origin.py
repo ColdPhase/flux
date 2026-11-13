@@ -32,6 +32,11 @@ CHIP_AT = 12
 CITE_AT = 22
 TASKS = 40
 DECIDED = 30
+# Decisions Jonas proposes to Ada: the Inbox lists them newest first, one row each and the open one expanded. Enough of them that the list
+# scrolls at 100 px and more on the tablet (820 x 1180) whatever the height of a row, so the place a reader returns to is a real one.
+PROPOSALS = 16
+# The one the journey reads: the seventh row, far enough down to be scrolled to and with rows below it.
+PICKED = PROPOSALS - 6
 DESKTOP = {"width": 1440, "height": 900}
 TABLET = {"width": 820, "height": 1180}
 PHONE = {"width": 390, "height": 844}
@@ -126,7 +131,7 @@ class ReturnToOrigin(unittest.TestCase):
         decision = api(ada, "POST", root + "/decisions", {"title": "Use the distance sensor", "affects": [cls.tasks[DECIDED - 1]["id"]]}, 201)
         api(ada, "POST", f"/api/v1/decisions/{decision['id']}/accept", {"expectedVersion": 1})
         # What needs Ada: decisions Jonas proposes.
-        for index in range(1, 11):
+        for index in range(1, PROPOSALS + 1):
             api(jonas, "POST", root + "/decisions", {"title": f"Proposal {index:02}: prefer the ToF board for case {index}", "rationale": lines(3, "Reason")}, 201)
         # A second project, which Ada opens from the sidebar.
         cls.garden = cls.make_project("Garden sensors")["id"]
@@ -259,8 +264,24 @@ class ReturnToOrigin(unittest.TestCase):
         before = self.offset(page, feed, target)
         self.assertGreater(page.evaluate("(feed) => document.querySelector(feed).scrollTop", feed), 0)
         self.assertEqual(self.origin_back(page).count(), 0, "a conversation opened by its address has no way back")
-        # Something arrives while the person is away: the place they return to must not jump.
-        self.start("jonas", f"While you were reading the shortlist ({engine}, {size}): the ToF board arrived.")
+        # Something arrives while the person is reading: what is on screen does not move for it, not even for a moment. The task chip above the card
+        # went away while the chips were read again for the wider batch and came back, so the card moved up by the chip's height under a tap that came
+        # at that moment (a tap meant for the card landed on the message). The chip is watched at every change of the page, not at every frame.
+        page.evaluate("""([target]) => {
+          window.__chipGone = false;
+          const message = document.querySelector(target);
+          new MutationObserver(() => { if (!message.querySelector('.ws-chip')) window.__chipGone = true; }).observe(message, { childList: true, subtree: true });
+        }""", [target])
+        expect(page.locator(f"{target} .ws-chip")).to_have_count(1)
+        arrived = f"While you were reading the shortlist ({engine}, {size}): the ToF board arrived."
+        already = page.get_by_text(arrived).count()
+        self.start("jonas", arrived)
+        # The arrival is on the page and the chips have been read again: the place was kept all that time, and the tap is on what the person saw.
+        expect(page.get_by_text(arrived)).to_have_count(already + 1)
+        page.wait_for_timeout(900)
+        self.assertFalse(page.evaluate("window.__chipGone"), "the task chip stayed under the message while the arrival's chips were read")
+        expect(page.locator(f"{target} .ws-chip")).to_have_count(1)
+        self.assert_same(before, self.offset(page, feed, target), "the message stays where it was when something arrives below")
         history = page.evaluate("history.length")
         self.press_in_place(page, page.locator(f"{target} .wiki-card"), tap)
         expect(page).to_have_url(re.compile(r"/materials/[0-9a-f-]{36}/versions/1$"))
@@ -485,8 +506,8 @@ class ReturnToOrigin(unittest.TestCase):
         page.goto("/inbox")
         # No filters (#1367): the list holds every decision that waits, and the open item is in the right column.
         cards = page.locator(".nyc")
-        expect(cards.filter(has_text="Proposal ")).to_have_count(10)
-        card = cards.filter(has_text="Proposal 04")
+        expect(cards.filter(has_text="Proposal ")).to_have_count(PROPOSALS)
+        card = cards.filter(has_text=f"Proposal {PICKED:02}")
         # J selects the next item: the selected item is part of the place.
         for _ in range(12):
             if card.get_attribute("aria-current") == "true":
@@ -507,7 +528,7 @@ class ReturnToOrigin(unittest.TestCase):
         shot(page, f"592-inbox-item-{engine}-{size}")
         self.activate(back, tap)
         expect(page).to_have_url(f"{ORIGIN}/inbox")
-        card = page.locator(".nyc").filter(has_text="Proposal 04")
+        card = page.locator(".nyc").filter(has_text=f"Proposal {PICKED:02}")
         expect(card).to_be_visible()
         expect(card).to_have_attribute("aria-current", "true")
         page.wait_for_timeout(900)

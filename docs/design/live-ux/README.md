@@ -68,14 +68,17 @@ palette, demo data and single-file script were not copied.
   touched. Leaving as the last person says the session closes shortly.
 - **Phone and tablet.** The strip is one 52 px row: the anchor, microphone, **More** and
   **Leave**. Every target is at least 44 × 44 px. Everything else is in the sheet.
-  A thread or Details sheet (phone) or panel (tablet) opened during a session starts below the
+  A thread or Details sheet on a phone opened during a session starts below the
   strip, and so does its scrim: the strip does not move, and the microphone, **More** and
   **Leave** stay on top and take taps. Tab runs through the sheet and the strip; Esc or a tap
   on the scrim still closes the sheet. A screen opened from the strip closes the sheet first.
   Only the joined session's strip escapes `inert`: an invitation card or ended notice is ordinary
-  content and is inert under the sheet. On a tablet, **More** opened while such a sheet is open is
-  a sheet itself (a popover under the strip would sit under the sheet's frame), and a popover that is
-  already open closes when the sheet opens.
+  content and is inert under the sheet. On a tablet (641 to 1000 px) the thread or Details is the
+  one panel's card ([final design](../final/README.md) §4, #1365): it lies under the header and the
+  strip, has no scrim and makes nothing inert, so the strip, the header and an invitation card take
+  taps as they do without it; Esc in the card or its close control closes it. **More** from the strip
+  is its own popover over the card, closed by Esc alone, and a popover that is already open closes
+  when the card opens.
   When a
   browser cannot publish its screen (Android and iOS browsers have no `getDisplayMedia`),
   Flux shows no screen button. It says so in the sheet and still lets the person view
