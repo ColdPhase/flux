@@ -162,7 +162,7 @@ class NotificationJourney(unittest.TestCase):
         page = self.page("ada")
         self.wait_for_inbox(page, 6)
         queue = self.wait_for_needs(page, 3)
-        self.assertEqual([item["kind"] for item in queue["items"]], ["decision", "question", "mention"])
+        self.assertEqual(sorted(item["kind"] for item in queue["items"]), ["decision", "mention", "question"])
         page.goto("/")
         rail = page.get_by_role("navigation", name="Places")
         inbox_link = rail.get_by_role("link", name=re.compile(r"^Inbox, \d+ new$"))

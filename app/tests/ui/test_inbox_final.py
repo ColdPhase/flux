@@ -50,7 +50,10 @@ def open_card(card) -> None:
     if "nyc--compact" not in (card.get_attribute("class") or ""):
         return
     box = card.locator(".nyc__card").bounding_box()
-    card.page.mouse.click(box["x"] + 10, box["y"] + box["height"] / 2)
+    if card.page.evaluate("matchMedia('(hover: none)').matches"):
+        card.page.touchscreen.tap(box["x"] + 10, box["y"] + box["height"] / 2)
+    else:
+        card.page.mouse.click(box["x"] + 10, box["y"] + box["height"] / 2)
     expect(card).to_have_class(re.compile(r"\bis-selected\b"))
 
 
@@ -813,7 +816,8 @@ class InboxFinal(unittest.TestCase):
         cards = page.locator(".nyc")
         expect(cards).to_have_count(2)
         self.assertLessEqual(page.evaluate("document.scrollingElement.scrollWidth"), PHONE["width"], "no sideways scroll")
-        decision = self.card(page, "Mulch the north beds")
+        # The Inbox is one list newest first (#1367): the decision is chosen first, and its card carries Accept, Not now and Discuss.
+        decision = self.item(page, "Mulch the north beds")
         for name in (re.compile("^Accept"), "Not now"):
             self.assertGreaterEqual(box(page, decision.get_by_role("button", name=name))["height"], 44)
         expect(decision.get_by_role("button", name="Discuss")).to_be_visible()

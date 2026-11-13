@@ -14,7 +14,11 @@ def open_item(row: Locator) -> Locator:
     if not page.locator(".nyq--two").count():
         if "nyc--compact" in (row.get_attribute("class") or ""):
             frame = row.locator(".nyc__card").bounding_box()
-            page.mouse.click(frame["x"] + 10, frame["y"] + frame["height"] / 2)
+            # A tap on a touch screen, a click elsewhere: the free space beside the face selects the row.
+            if page.evaluate("matchMedia('(hover: none)').matches"):
+                page.touchscreen.tap(frame["x"] + 10, frame["y"] + frame["height"] / 2)
+            else:
+                page.mouse.click(frame["x"] + 10, frame["y"] + frame["height"] / 2)
             expect(row).to_have_attribute("aria-current", "true")
         return row
     if row.get_attribute("aria-current") != "true":
