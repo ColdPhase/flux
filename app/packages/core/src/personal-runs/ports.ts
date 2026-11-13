@@ -7,6 +7,7 @@ import type { AssistantIdentityPort } from '../assistant/ports.js';
 import type { Principal } from '../principal.js';
 import type { Paged, PageWindow } from '../work/ports.js';
 import type { TaskFacts } from './brief.js';
+import type { CitedObject, CiteRequest } from './cites.js';
 import type { KeptPrivateText } from './web-addresses.js';
 
 /**
@@ -307,6 +308,17 @@ export interface PersonalRunRepository {
   /** Whether this DM exists, whoever may read it; callers must authorize before using it. */
   locateDm(dmId: string): Promise<{ workspaceId: string } | null>;
   openWork(projectId: string, limit: number): Promise<WorkSource[]>;
+  /**
+   * The objects an answer's Flux marks name (C-62), among the pages, tasks, decisions and messages of the run's workspace: in `projectId` only when the run is in
+   * a space, anywhere in the workspace when it is not. No access decision: the use case asks the policy for each space it finds. A page cited by section comes with
+   * its headings (`docHeadings`), and its current version. An object that is not there, or a message that was removed, is simply missing. Fakes may omit it.
+   */
+  cites?(scope: { workspaceId: string; projectId: string | null }, refs: readonly CiteRequest[]): Promise<CitedObject[]>;
+  /**
+   * The Wiki of a space for the brief's index (C-62, variant B): its latest `limit` pages by their last change, newest first, each with its title and the start of
+   * its text, and how many pages the space has. No access decision: the run has read access to the space already. Fakes may omit it.
+   */
+  wikiPages?(projectId: string, limit: number): Promise<{ pages: { title: string; lead: string }[]; total: number }>;
   thought(sketchId: string, thoughtId: string): Promise<ThoughtSource | null>;
   /**
    * Whether the agent's rights connection (F-027 AST-3) is live. Runs that hold a run token end `revoked` once it is revoked

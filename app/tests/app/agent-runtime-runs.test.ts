@@ -768,6 +768,21 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
       assert.equal(body.split(at('/read/timetable')).length - 1, 2, 'the address in the sentence and in Flux\'s list, never a third time');
     });
 
+    test('the Flux marks of what the CLI read are numbered and listed as sources, the ones that point at nothing it may cite are taken out (C-62, #1381)', async () => {
+      const unknown = '00000000-0000-4000-8000-000000000000';
+      await script({ calls: [{ name: 'flux_get_doc', args: { projectId: place.id, id: docId } }],
+        answer: `The sensor is a PIR [doc:${docId}]. It works well [doc:${otherDocId}] [doc:${unknown}] [8].` });
+      const started = await ask('What does the sensor page say?');
+      assert.equal(await searching.process(started.run.id), 'completed');
+      const run = (await calls()).find((entry) => entry.event === 'run') as { prompt: string };
+      assert.ok(run.prompt.includes('add that object\'s cite mark right after it, copied as the tool gave it, such as [doc:ID]'), 'the brief says how to cite');
+      assert.ok(!run.prompt.includes('<wiki_index>'), 'variant A: nothing of the Wiki\'s pages');
+      assert.equal(String((await row(started.run.id)).answer_body), 'The sensor is a PIR [1]. It works well.', 'one list: the page of this space; another space\'s page, an unknown id and an invented number go');
+      const sources = (await pool.query('SELECT answer_sources FROM personal_runs WHERE id = $1', [started.run.id])).rows[0].answer_sources as Record<string, unknown>[];
+      assert.deepEqual(sources.map((source) => [source.type, source.id, source.projectId]), [['doc', docId, place.id]]);
+      assert.equal(typeof sources[0]!.title, 'string');
+    });
+
     test('an address carrying what a Flux tool returned to the CLI is refused, and says why', async () => {
       await script({ calls: [
         { name: 'flux_get_doc', args: { projectId: place.id, id: docId } },

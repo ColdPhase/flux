@@ -7,6 +7,7 @@ import { loadBackgroundMasterKey, personalConnectionLookup, personalKeyResolver,
 import { mcpToolHost } from './mcp-session.js';
 import { apiInternalUrl, runTokenIssuer } from './run-tokens.js';
 import { managerPersonalRuntime } from './runtime-engine.js';
+import { wikiIndexSwitch } from './wiki-index-switch.js';
 
 // Which connection lookup and provider the worker composes for personal runs (#68, O-008; F-020).
 //
@@ -33,13 +34,15 @@ export interface PersonalRunWorkerComposition {
   tools?: PersonalToolHost;
   tokens: PersonalRunTokenIssuer;
   runtime: PersonalRuntime;
+  /** `FLUX_AI_BRIEF_WIKI_INDEX` (C-62, #1381): variant B of the Wiki as a knowledge base. An evaluation switch, off by default. */
+  wikiIndex: boolean;
 }
 
 /** The run token issuer, the `server` tool host (only with the provider on) and the runtime engine (Claude Code's search with the web on, #1065). */
 function runPorts(env: NodeJS.ProcessEnv, db: Database, compute: PersonalCompute, runtimeConfig: AgentRuntimeConfig) {
   const apiUrl = apiInternalUrl(env);
   const tokens = runTokenIssuer(db, apiUrl);
-  return { tokens, runtime: managerPersonalRuntime(runtimeConfig, db, { webSearch: webSearchSwitch(env) }), ...(compute.enabled ? { tools: mcpToolHost(tokens, `${apiUrl}/mcp`) } : {}) };
+  return { tokens, wikiIndex: wikiIndexSwitch(env), runtime: managerPersonalRuntime(runtimeConfig, db, { webSearch: webSearchSwitch(env) }), ...(compute.enabled ? { tools: mcpToolHost(tokens, `${apiUrl}/mcp`) } : {}) };
 }
 
 /**

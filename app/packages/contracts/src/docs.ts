@@ -20,6 +20,41 @@ export const docSectionsPath = (docId: string) => `${docPath(docId)}/sections`;
 
 export const DOC_LIMITS = { title: 200, body: 100_000, reason: 500, mentions: 200, fileName: 200 } as const;
 
+/** The most headings of a page that a section citation can name (C-62): a mark carries at most three digits. */
+export const DOC_SECTIONS_MAX = 999;
+/** A heading is shown to an agent in at most this many characters. */
+const SECTION_WORDS = 80;
+
+/**
+ * The headings of levels 1 to 3 of a page's Markdown, in order, as the page's Contents numbers them (`section-1`, `section-2`, …; F-026 Wiki)
+ * and as an agent cites them (`[doc:ID#2]`, C-62): ATX headings (`## Install`) outside fenced code, their words without the closing hashes
+ * and the marks `* _ ~` and backticks. A heading with no words is not numbered, as in the page. A heading underlined with `===` or `---`
+ * is not read. Each line is looked at once and cut at 400 characters first, so a page of 100,000 characters costs no more than its length.
+ */
+export function docHeadings(markdown: string): string[] {
+  const found: string[] = [];
+  let fence: string | null = null;
+  for (const line of markdown.split('\n')) {
+    const edge = /^ {0,3}(`{3,}|~{3,})/.exec(line);
+    if (fence !== null) {
+      if (edge && edge[1]![0] === fence[0] && edge[1]!.length >= fence.length && !line.slice(edge[0].length).trim()) fence = null;
+      continue;
+    }
+    if (edge) { fence = edge[1]!; continue; }
+    const head = /^ {0,3}(#{1,3})(?:[ \t]+|$)/.exec(line);
+    if (!head) continue;
+    let words = line.slice(head[0].length, head[0].length + 400).trimEnd();
+    let end = words.length;
+    while (end > 0 && words[end - 1] === '#') end--;
+    if (end < words.length && (end === 0 || words[end - 1] === ' ' || words[end - 1] === '\t')) words = words.slice(0, end).trimEnd();
+    words = words.replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/[*_`~\\]/g, '').replace(/\s+/g, ' ').trim();
+    if (!words) continue;
+    found.push(words.length > SECTION_WORDS ? `${words.slice(0, SECTION_WORDS - 1)}…` : words);
+    if (found.length >= DOC_SECTIONS_MAX) break;
+  }
+  return found;
+}
+
 /**
  * Why a person's save is the version it is, when the change itself does not say. The server checks the cause against the
  * page and writes the sentence History shows ("Restored version 3"); a person never writes a version's reason. Without a

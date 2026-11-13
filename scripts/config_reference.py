@@ -344,6 +344,8 @@ INTERNAL: dict[str, str] = {
     "FLUX_KEYRING_URL": "How the API and worker reach the keyring; default `http://keyring:8090`.",
     "FLUX_KEYRING_PORT": "Port the keyring listens on inside its network; default `8090`.",
     "FLUX_API_INTERNAL_URL": "How the worker reaches the API inside Compose; default `http://api:8080`.",
+    "FLUX_AI_BRIEF_WIKI_INDEX": "Evaluation switch, not a setting ([C-62](../product/decisions.md), #1381): `on` lists the Wiki pages of a space in the brief of a run in it (variant B); `off`, the default, says nothing of them (variant A). Read by the worker. The `test` Compose file passes it through; it is removed once the evaluation (#1295) has chosen.",
+    "FLUX_TEST_AI_VARIANT": "Test deployments only, together with `FLUX_TEST_FAILURE_INJECTION=true`: the evaluation's named variants of an AI change under evaluation (#1295, its variant option); `wiki-index` is the Wiki index of #1381.",
     "FLUX_EMBEDDINGS_URL": "Set by the embeddings overlay to `http://embeddings:8080` on `api` and `worker`; empty (every other stack) is off.",
     "FLUX_LIVEKIT_API_URL": "Set by the live-media overlay to `http://livekit:7880` on its internal network.",
     "FLUX_RUNTIME_MANAGER_URL": "How the API and worker reach the runtime manager; default `http://runtime-manager-control:7600`.",

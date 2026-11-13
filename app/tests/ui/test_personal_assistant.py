@@ -520,6 +520,44 @@ class PersonalAssistantJourney(unittest.TestCase):
         expect(working).to_have_count(0)
         expect(box).to_be_focused()
 
+    def test_08c_an_answer_cites_what_it_used_from_flux_as_chips_that_open_exactly_it(self) -> None:
+        # C-62 (#1381): a Wiki page and its section, a decision and an id that points at nothing; the marks the model wrote with the ids its tools gave
+        # become the same numbered chips as any source, in one list, and the unknown one goes. The section opens the page at its heading.
+        project = self.ids["project"]
+        jo = self.conversation("jo")
+        page = self.api(jo, "POST", f"/api/v1/projects/{project}/docs", {"title": "Calibration", "body": "# Calibration\nHow to calibrate.\n\n## Install\nMount the probe.\n\n## Readings\nWithin 2%."}, status=201)
+        decision = self.api(jo, "POST", f"/api/v1/projects/{project}/decisions", {"title": "Use the reference probe"}, status=201)
+        unknown = "00000000-0000-4000-8000-000000000000"
+        mock("/__script", {"reset": True, "text": f"Mount the probe first [doc:{page['id']}#2] and read it within 2% [doc:{page['id']}#3]. "
+                                                  f"We decided on it [decision:{decision['id']}], not on [doc:{unknown}]."})
+        self.ask(jo, "How do we calibrate the north barrel?")
+        card = jo.locator(".assistant-private").last
+        expect(card).to_be_visible(timeout=20000)
+        chips = card.locator(".assistant-cite")
+        expect(chips).to_have_count(3)
+        expect(card).not_to_contain_text("[doc:")
+        expect(card).not_to_contain_text(unknown)
+        expect(chips.nth(0)).to_have_attribute("aria-label", "Source 1: Wiki page “Calibration”, section “Install”")
+        expect(chips.nth(1)).to_have_attribute("aria-label", "Source 2: Wiki page “Calibration”, section “Readings”")
+        expect(chips.nth(2)).to_have_attribute("aria-label", "Source 3: decision “Use the reference probe”")
+        shot(jo, "assistant-1440-flux-citations")
+        answer = self.own_runs(jo)[0]["answer"]
+        self.assertEqual([source["type"] for source in answer["sources"]], ["doc", "doc", "decision"])
+        # The section opens the version it was numbered in, at its heading.
+        chips.nth(0).click()
+        jo.wait_for_url(re.compile(rf"/projects/{project}/docs/{page['id']}/versions/\d+#section-2$"))
+        heading = jo.locator("#section-2")
+        expect(heading).to_have_text("Install")
+        expect(heading).to_be_in_viewport()
+        # A decision opens in Details (the thread, which is the same one panel, makes room for it); the answer is still the owner's to read.
+        again = self.conversation("jo")
+        card = again.locator(".assistant-private").last
+        expect(card).to_be_visible(timeout=20000)
+        expect(card.locator(".assistant-cite")).to_have_count(3)
+        card.locator(".assistant-cite").nth(2).click()
+        expect(again.get_by_text("Use the reference probe").first).to_be_visible()
+        mock("/__script", {"reset": True})
+
     def test_09_a_used_budget_is_explicit(self) -> None:
         jo = self.conversation("jo")
         self.composer(jo).fill("/ai ")

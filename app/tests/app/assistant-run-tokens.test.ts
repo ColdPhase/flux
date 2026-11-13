@@ -39,8 +39,10 @@ const human = (someone: Person): Principal => ({ kind: 'human', id: someone.id }
  * runtime, grant, class or sources; compacted like the reads), measured 21,207 bytes for 34 tools (2026-10-17). #1290 replaces the one-space search by the two tools
  * that find and read around a message: 36 tools, 25,672 bytes (2026-11-12, CI run 43296958864; the bound was 24,000). #1292 adds the tool that
  * summarises a range: 37 tools, 26,525 bytes (2026-11-13, CI run 43376634883; the bound was 26,000 with 328 bytes left, and the tool's definition takes 853).
+ * #1381 (C-62) tells the agent in three descriptions to look in the Wiki for how, what and why and how to cite a page: 37 tools, 27,027 bytes (2026-11-13, local test.sh
+ * run; the bound was 26,600 with 75 bytes left, and is now 27,100).
  */
-const TOOL_DEFINITION_BYTES = 26_600;
+const TOOL_DEFINITION_BYTES = 27_100;
 const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
 const claims = (token: string) => JSON.parse(Buffer.from(token.split('.')[1]!, 'base64url').toString()) as Record<string, unknown>;
 const toolText = (message: Record<string, unknown> | null) => JSON.stringify(message);

@@ -18,7 +18,9 @@ import { briefPrivateText, runtimeBrief, type BriefInput, type SuppliedSource } 
 import { CHAT_TURNS, latestMessages, readBriefFacts, type BriefFacts } from './brief-facts.js';
 import { answerCleaner } from './answer-addresses.js';
 import { answerWithWebSources } from './web-sources.js';
-import { withoutInventedMarks } from './answer-marks.js';
+import { fluxMarks, resolveCites } from './cites.js';
+import { readWikiIndex } from './wiki-index.js';
+import { parseOutput } from './validation.js';
 import { addressesIn, boundedWebSearch, keepPrivateText, WEB_SEARCH_BOUNDS } from './web-addresses.js';
 
 // A personal run on the owner's own Claude Code in the agent runtime (F-022 AIM-3 "Run", #280; F-027 A2).
@@ -51,6 +53,8 @@ export interface RuntimeRunDeps {
   now?: () => number;
   /** The asker's live view (#1248): the words the CLI streams for `/ai` and a chat, and the Flux tool it uses now. */
   live?: RunLiveText;
+  /** The evaluation switch `FLUX_AI_BRIEF_WIKI_INDEX=on` (C-62, #1381): the brief of a run in a space lists that space's Wiki pages. */
+  wikiIndex?: boolean;
 }
 
 /**
@@ -166,7 +170,7 @@ function unreadContext(run: RunRecord, brief: AgentBrief | null): RuntimeContext
   };
 }
 
-export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, hooks, caps: lowered = {}, now = Date.now, live }: RuntimeRunDeps) {
+export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, hooks, caps: lowered = {}, now = Date.now, live, wikiIndex = false }: RuntimeRunDeps) {
   const caps: RuntimeCaps = {
     maxTurns: Math.min(lowered.maxTurns ?? RUNTIME_RUN_LIMITS.maxTurns, RUNTIME_RUN_LIMITS.maxTurns),
     wallClockSeconds: Math.min(lowered.wallClockSeconds ?? RUNTIME_RUN_LIMITS.wallClockSeconds, RUNTIME_RUN_LIMITS.wallClockSeconds),
@@ -337,8 +341,9 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
         const read = await uow.run((ports) => runtimeContext(ports, run))
           .catch(async () => unreadContext(run, await uow.run((ports) => ports.runs.agentBrief(run.agentId)).catch(() => null)));
         // One brief for every place and both engines (#1064): the same text an API-key run gets, on standard input.
+        const index = wikiIndex ? await uow.run((ports) => readWikiIndex(ports, run, true, grant.tools)).catch(() => null) : null;
         const briefed: BriefInput = {
-          engine: 'runtime', kind: run.kind, tools: grant.tools, ...read.facts, now: new Date(now()), agent: read.brief,
+          engine: 'runtime', kind: run.kind, tools: grant.tools, ...read.facts, now: new Date(now()), agent: read.brief, wikiIndex: index,
           prompt: grant.context ? `${run.prompt}\n${grant.context}` : run.prompt, requestedAt: run.createdAt, sources: read.sources, leftOut: read.leftOut,
           turns: read.turns, earlier: null, thought: run.targetSketchId && run.targetThoughtId ? { sketchId: run.targetSketchId, thoughtId: run.targetThoughtId } : null,
           webSearch,
@@ -370,8 +375,12 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
         const redacted = redactSecrets(text, [grant.token]);
         const cleaner = answerCleaner(() => uow.run((ports) => ports.runs.privateTexts(run.id)));
         const searches = await uow.run((ports) => ports.runs.webSearches(run.id));
-        // Claude Code and Codex are given no source to cite (#1222): every mark in their answer is the model's own and is taken out.
-        return { redacted, prepared: await preparedAnswer(withoutInventedMarks(redacted.text), cleaner, searches.cited) };
+        // Claude Code and Codex are given no source to cite (#1222): every `[8]` in their answer is the model's own and is taken out. The Flux marks
+        // that carry the id of what its tools read (`[doc:ID]`, C-62) are resolved to what the run may cite and numbered.
+        const marks = fluxMarks(redacted.text);
+        const cited = marks.length ? await uow.run((ports) => resolveCites(ports, run, marks)) : undefined;
+        const parsed = parseOutput(redacted.text, [], cited);
+        return { redacted, sources: parsed.sources, prepared: await preparedAnswer(parsed.body, cleaner, searches.cited) };
       };
       const answer = end.kind === 'answer' && Buffer.byteLength(end.text, 'utf8') <= caps.maxAnswerBytes ? await prepare(end.text) : null;
       // The words the CLI had written when its owner stopped it (#1248), cleaned the same way; a `<schedule>` or `<ask>` block, whole or
@@ -398,7 +407,7 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
           // run was: a refusal stores nothing.
           if (kept && kept.prepared.text.trim() && !refusal) {
             const words = await answerWithWebSources(ports, run, kept.prepared.text, kept.prepared.cited);
-            return save(ended('stopped', 'before_commit', { ...used, answerBody: words.trim(), answerTruncated: false, answerSources: [], answerRedacted: kept.redacted.changed, committedAt: new Date() }));
+            return save(ended('stopped', 'before_commit', { ...used, answerBody: words.trim(), answerTruncated: false, answerSources: kept.sources, answerRedacted: kept.redacted.changed, committedAt: new Date() }));
           }
           return save(ended('stopped', 'before_commit', used));
         }
@@ -412,14 +421,14 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
           return status;
         }
         if (!answer) return save(ended('cap_reached', null, { ...used, endReason: 'answer_too_large' }));
-        const { redacted, prepared } = answer;
+        const { redacted, prepared, sources } = answer;
         const text = await answerWithSchedule(ports, run, prepared);
         // Claude Code hands Flux no citations (#1065, C-30): the addresses its answer names count as cited, listed when its search returned
         // them; those of the cleaned answer, so an address left out is never listed.
         if (searched) await ports.runs.addWebSearch(run.id, boundedWebSearch({ queries: [], results: [], cited: addressesIn(text, WEB_SEARCH_BOUNDS.cited) }));
         const words = await answerWithWebSources(ports, run, text, prepared.cited);
         const status = await save(ended('completed', null, {
-          ...used, answerBody: words.trim() || '(No answer text.)', answerTruncated: false, answerSources: [], answerRedacted: redacted.changed,
+          ...used, answerBody: words.trim() || '(No answer text.)', answerTruncated: false, answerSources: sources, answerRedacted: redacted.changed,
           committedAt: new Date(),
         }));
         await fence?.mark();

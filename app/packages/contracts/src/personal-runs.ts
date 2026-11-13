@@ -375,10 +375,28 @@ export type AssistantRunAuthority = 'owner_request' | 'owner_schedule';
 /** The working run a queued request waits behind (AST-6 "Queue"): another request, or a background run by name. */
 export interface AssistantRunBehind { runId: string; authority: AssistantRunAuthority; label: string | null }
 
+/**
+ * What an answer cites, in the order its `[1]`, `[2]` marks stand: a message, task or map thought the run was given (`[S3]`), or an object its
+ * tools read and it cited with a mark that carries the id (`[doc:ID#2]`, C-62). The tool-read kinds also name where the object is: a `projectId`
+ * (the chip of a private chat has no space of its own), a message's `conversationId`, and the Wiki page's or decision's title and a page's
+ * section (its heading's number as the page's Contents numbers it, its words, and the version it was numbered in, which the chip opens), so the
+ * chip opens exactly it and says what it is.
+ */
 export type AssistantSourceRef =
-  | { type: 'message'; id: string; revision: number }
-  | { type: 'work'; id: string; revision: number }
-  | { type: 'thought'; id: string; sketchId: string; revision: number };
+  | { type: 'message'; id: string; revision: number; projectId?: string; conversationId?: string }
+  | { type: 'work'; id: string; revision: number; projectId?: string; title?: string }
+  | { type: 'thought'; id: string; sketchId: string; revision: number }
+  | { type: 'doc'; id: string; projectId: string; title: string; section?: { n: number; text: string; version: number } }
+  | { type: 'decision'; id: string; projectId: string; title: string };
+
+/** The kinds of object an answer may cite by a mark (C-62): a Wiki page, a task, a decision, a message. */
+export type CiteKind = 'doc' | 'task' | 'decision' | 'message';
+/**
+ * The mark that cites an object, `[doc:ID]` (C-62, #1381). Every tool result that returns such an object carries it ready, as `cite`, so the agent copies it after the
+ * statement it supports and never composes one; a page's section adds its number from the page's `sections`, `[doc:ID#2]`. Flux resolves the marks of an answer when it
+ * is committed and shows each as the numbered chip of a source.
+ */
+export const citeMark = (kind: CiteKind, id: string) => `[${kind}:${id}]`;
 
 /** A committed answer as the run's owner reads it. No cost, budget or connection. */
 export interface AssistantAnswer {

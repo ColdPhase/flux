@@ -53,6 +53,13 @@ const TASK: TaskFacts = {
 };
 const READS = ['flux_get_conversation', 'flux_get_work', 'flux_list_conversations', 'flux_list_work', 'flux_search', 'flux_read_around'];
 const CHANGES = ['flux_create_task', 'flux_update_task', 'flux_update_doc'];
+/** The Wiki's tools, and the index of variant B of #1381 (C-62): pages as titles and first lines, the latest change first, one of 38 more not listed. */
+const WIKI = ['flux_list_docs', 'flux_get_doc'];
+const WIKI_INDEX = { pages: [
+  { title: 'Calibration', line: 'How to calibrate the north barrel against the reference probe.' },
+  { title: 'Camera <rules>', line: 'The camera fails below 5 lux, so the lamp stays on.' },
+  { title: 'Lunch', line: '' },
+], more: 38 };
 const WEB = ['flux_read_web'];
 /** A run in a direct message: the two tools that find and read around the messages of that DM, and the web read (F-042, #1290). */
 const DM_TOOLS = ['flux_read_around', 'flux_search', ...WEB];
@@ -86,6 +93,9 @@ const CASES: Record<string, BriefInput> = {
   'space-task-discussion-summary': { ...base, kind: 'summarize', place: space(THREAD_ID, { number: 12, title: 'Calibrate north barrel' }), prompt: 'Summarise this' },
   'space-main-conversation': { ...base, place: space(null), sources: [...MAIN, ...OPEN_TASKS], leftOut: true, prompt: 'What is new since Friday?' },
   'space-map-thought': { ...base, kind: 'map_thought', sources: [{ label: 'S1', ref: { type: 'thought', id: 't-1', sketchId: 'k-1', revision: 2 }, item: { kind: 'thought', text: 'ToF sensor: swipe + hold' } }, ...OPEN_TASKS.map((source, index) => ({ ...source, label: `S${index + 2}` }))], prompt: 'Is this worth a test?' },
+  'space-thread-wiki-index': { ...base, tools: [...base.tools, ...WIKI], wikiIndex: WIKI_INDEX },
+  'space-thread-wiki-tools': { ...base, tools: [...base.tools, ...WIKI] },
+  'space-thread-wiki-index-no-doc-tool': { ...base, wikiIndex: WIKI_INDEX },
   'space-continue': { ...base, earlier: 'The camera fails below 5 lux [S1], so the team chose' },
   'dm': dm,
   'dm-thread-no-tools': { ...dm, place: { kind: 'dm', others: ['Kai Weber', 'Jonas Berg'], thread: true }, tools: [], kind: 'summarize', prompt: 'Summarise the thread' },
@@ -96,6 +106,7 @@ const CASES: Record<string, BriefInput> = {
   'task-answer': answer,
   'scheduled': scheduled,
   'runtime-space-thread': { ...base, engine: 'runtime', sources: [] },
+  'runtime-space-thread-wiki-index': { ...base, engine: 'runtime', sources: [], tools: [...base.tools, ...WIKI], wikiIndex: WIKI_INDEX },
   'runtime-space-thread-no-search': { ...base, engine: 'runtime', sources: [], webSearch: false },
   'runtime-space-main-conversation': { ...base, engine: 'runtime', place: space(null), sources: [], prompt: 'What is new since Friday?' },
   'runtime-space-map-thought': { ...base, engine: 'runtime', kind: 'map_thought', sources: [], thought: { sketchId: 'k-1', thoughtId: 't-1' }, prompt: 'Is this worth a test?' },
