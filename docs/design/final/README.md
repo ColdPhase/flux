@@ -1367,8 +1367,8 @@ the composer. The right-hand phone above shows the sheet.
   - **Ask me first**, one switch (the app's `SwitchRow`), off by default. Its line says what it does
     now: off, "Makes new things and changes yours at once, then tells you, with Undo."; on, "Every
     change waits for your OK." Deleting and other people's things wait either way (AG-3).
-  - **More**, a quiet disclosure button (`Button` quiet, `chevron-right` / `chevron-down`, `aria-expanded`)
-    under the card, with the model in words beside it: "Model: Sonnet · Claude plan". A new agent
+  - **More**, a quiet disclosure button (`Button` quiet, `chevron-right` / `chevron-down`, `aria-expanded`;
+    a screen reader hears "More settings", apart from the header's ⋯ More) under the card, with the model in words beside it: "Model: Sonnet · Claude plan". A new agent
     runs on its connection's default model, so most people never open it. Open, it shows the
     **Model**, grouped by connection ("Claude plan: Opus · Sonnet · Haiku", the models the signed-in
     CLI itself lists, #1332), as described below. It is open by itself while the agent is paused on a

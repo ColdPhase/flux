@@ -279,14 +279,14 @@ class ConnectAiJourney(unittest.TestCase):
         expect(section).to_contain_text("Test fixture key")
         # #1173: the model line names Opus and the Claude limit only beside a Claude plan that offers Opus; an API key is not one.
         section.get_by_role("link", name=re.compile("Ines personal assistant")).click()
-        ines.get_by_role("button", name="More").click()  # the Model is behind More (#1419)
+        ines.get_by_role("button", name="More settings").click()  # the Model is behind More (#1419)
         expect(ines.locator("#agent-model")).to_have_text("Model")
         plan = {"connection": "claude_plan", "account": "claude_plan", "label": "Claude plan", "company": "Claude",
                 "options": [{"id": model, "name": name, "note": "", "callsTools": True} for model, name in (("opus", "Opus"), ("sonnet", "Sonnet"), ("haiku", "Haiku"))]}
         with_plan = json.dumps({**choice, "groups": [plan, *choice["groups"]]})
         ines.route(re.compile(r".*/api/v1/personal-assistant/model$"), lambda route: route.fulfill(status=200, content_type="application/json", body=with_plan))
         ines.reload()
-        ines.get_by_role("button", name="More").click()
+        ines.get_by_role("button", name="More settings").click()
         expect(ines.locator("#agent-model")).to_have_text("Model · Opus thinks longest and uses your Claude limit fastest.")
 
     def test_07_a_second_member_never_sees_or_changes_the_first_members_connections(self) -> None:

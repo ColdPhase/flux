@@ -260,7 +260,8 @@ function AgentSettings({ agent }: { agent: MyAgent }) {
       {error ? <p className="nset__error" role="alert"><Icon name="alert" size={14} />{error}</p> : null}
 
       <div className="agp__more">
-        <Button variant="quiet" size="sm" icon={showModel ? 'chevron-down' : 'chevron-right'} aria-expanded={showModel} aria-controls="agent-more" onClick={() => setMore(!showModel)}>More</Button>
+        {/* Named apart from the header's ⋯ More, which a screen reader lists beside it; the visible word starts the name (WCAG 2.5.3). */}
+        <Button variant="quiet" size="sm" icon={showModel ? 'chevron-down' : 'chevron-right'} aria-label="More settings" aria-expanded={showModel} aria-controls="agent-more" onClick={() => setMore(!showModel)}>More</Button>
         {showModel ? null : <span className="agp__hint" data-agent-model="">Model: {model.name}{model.connection ? ` · ${model.connection}` : ''}</span>}
       </div>
       {showModel ? (

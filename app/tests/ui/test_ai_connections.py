@@ -337,7 +337,7 @@ class AiConnectionSettings(unittest.TestCase):
         page.route("**/api/v1/personal-assistant/model", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(choice))
                    if route.request.method == "GET" else route.continue_())
         page.goto(f"/settings/agents/{agent.json()['id']}")
-        page.get_by_role("button", name="More").click()  # the Model is behind More (#1419)
+        page.get_by_role("button", name="More settings").click()  # the Model is behind More (#1419)
         # #1218: a key's models are the app's dropdown, named by the key.
         for item in owned:
             expect(page.get_by_role("combobox", name=item["name"])).to_be_visible()

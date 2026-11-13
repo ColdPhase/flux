@@ -136,8 +136,8 @@ class MyAgentsJourney(unittest.TestCase):
         # #1419: the agent starts on its connection's default model, named beside More; the choice is behind More.
         expect(page.get_by_role("group", name=re.compile("^Model"))).to_have_count(0)
         expect(page.locator("[data-agent-model]")).to_contain_text("Model: ")
-        page.get_by_role("button", name="More").click()
-        expect(page.get_by_role("button", name="More")).to_have_attribute("aria-expanded", "true")
+        page.get_by_role("button", name="More settings").click()
+        expect(page.get_by_role("button", name="More settings")).to_have_attribute("aria-expanded", "true")
         # A second model, if the connection offers one, is a click; the choice is the one the server kept.
         group = page.get_by_role("group", name=re.compile("^Model"))
         # A plan's few models are segments; a key's models are the app's dropdown (#1218).
@@ -244,7 +244,7 @@ class MyAgentsJourney(unittest.TestCase):
         blind = self.page()
         self.stub_models(blind, agent, sees_pictures=False)
         blind.goto(f"/settings/agents/{agent['id']}")
-        blind.get_by_role("button", name="More").click()  # the Model is behind More (#1419)
+        blind.get_by_role("button", name="More settings").click()  # the Model is behind More (#1419)
         # An API key's models are the app's dropdown, named by the key (#1218); it shows the agent's model.
         expect(blind.get_by_role("combobox", name="Ada's Anthropic key")).to_contain_text("Test model")
         expect(blind.get_by_role("note").filter(has_text=note)).to_have_text(f"Test model: {note}")
@@ -255,7 +255,7 @@ class MyAgentsJourney(unittest.TestCase):
                 sighted = self.page()
                 self.stub_models(sighted, agent, sees_pictures=vision)
                 sighted.goto(f"/settings/agents/{agent['id']}")
-                sighted.get_by_role("button", name="More").click()
+                sighted.get_by_role("button", name="More settings").click()
                 expect(sighted.get_by_role("combobox", name="Ada's Anthropic key")).to_contain_text("Test model")
                 expect(sighted.get_by_role("note").filter(has_text="see pictures")).to_have_count(0)
 
@@ -314,7 +314,7 @@ class MyAgentsJourney(unittest.TestCase):
             self.stub_plan_models(page, agent)
             page.goto(f"/settings/agents/{self.ids['planner']}")
             expect(page.get_by_role("switch", name="Ask me first")).to_be_visible()
-            page.get_by_role("button", name="More").click()
+            page.get_by_role("button", name="More settings").click()
             # The model choices arrive after the page does.
             expect(page.get_by_role("group", name=re.compile("^Model")).get_by_role("radio").first).to_be_visible()
             groups = page.evaluate("""() => [...document.querySelectorAll('#agent-more [role=radiogroup]')].map((group) => {
