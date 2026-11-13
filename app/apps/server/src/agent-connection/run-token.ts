@@ -1,6 +1,6 @@
 import { RUN_TOKEN_LIMITS } from '@flux/contracts';
-import { DomainError, keepPrivateText, keptCites, requireSpaceAi, resultCites } from '@flux/core';
-import { personalRunTokenRows, personalRunWebReadRows, accessReader, type Database, type Transaction } from '@flux/db';
+import { DomainError, keepPrivateText, requireSpaceAi, resultCites } from '@flux/core';
+import { personalRunRows, personalRunTokenRows, personalRunWebReadRows, accessReader, type Database, type Transaction } from '@flux/db';
 import { toolError } from './tool-results.js';
 
 // A personal run's MCP token at the MCP route (F-022 "Agent connection and permissions", F-027 A2/AST-8,
@@ -98,11 +98,10 @@ export async function boundRunResult<T extends ToolOutput>(db: Database, runId: 
     return toolError(new DomainError(413, 'MCP_RESULTS_TOO_LARGE', 'This run has read as much as one assistant run may; the run stops'));
   }
   if (tool !== 'flux_read_web') {
-    const rows = personalRunWebReadRows(db);
-    await rows.addPrivateText(runId, await keepPrivateText(resultText(result)));
-    // The marks it returned to be cited (C-62): an answer cites only what its own tools returned, never a mark someone wrote.
+    await personalRunWebReadRows(db).addPrivateText(runId, await keepPrivateText(resultText(result)));
+    // What it returned to be cited (C-62): an answer cites only what its own tools returned, never a mark someone wrote.
     const cites = resultCites(result);
-    if (cites.length) await rows.addPrivateText(runId, keptCites(cites));
+    if (cites.length) await personalRunRows(db).addCites(runId, cites);
   }
   return result;
 }

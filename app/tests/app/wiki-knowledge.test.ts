@@ -39,6 +39,9 @@ describe('the Wiki as the space\'s knowledge base: tools first, citations as lin
   });
   beforeEach(async () => { await scene.reset(); scene.compute.dispatched.length = 0; await ensureSpaceAiAllowed(scene.place.id); await ensureSpaceAiAllowed(other.id); });
 
+  /** What the runs of a conversation keep of what their tools returned to be cited, as `kind:id`. */
+  const cites = async (conversationId: string) => (await pool.query(`SELECT c.kind || ':' || c.object_id AS cite FROM personal_run_cites c
+    JOIN personal_runs r ON r.id = c.run_id WHERE r.conversation_id = $1`, [conversationId])).rows.map((row: { cite: string }) => row.cite);
   const call = (name: string, input: Record<string, unknown>): PersonalToolCall => ({ id: `${name}-${randomUUID()}`, name, input });
   /** The provider reads with `reads` first and then answers with `words`. */
   const script = (reads: PersonalToolCall[], words: string) => {
@@ -88,6 +91,12 @@ describe('the Wiki as the space\'s knowledge base: tools first, citations as lin
       call('flux_get_decision', { projectId: scene.place.id, id: decisionId }), call('flux_get_conversation', { projectId: scene.place.id, id: talk.id })],
       `Calibrate against the probe [doc:${pageId}#3]; mount it first [doc:${pageId}#2]. Task [task:${taskId}], decision [decision:${decisionId}], and Jonas said Monday [message:${messageId}].`
       + ` Elsewhere [doc:${otherPageId}], unknown [doc:${unknown}], a section that is not there [doc:${pageId}#9], and [8].`);
+    const scripted = scene.compute.respond;
+    const kept: string[][] = [];
+    scene.compute.respond = async (...args: Parameters<typeof scripted>) => {
+      if (scene.compute.dispatched.length === 2) kept.push(await cites(talk.id));
+      return scripted(...args);
+    };
     const stored = await ask(scene.processor);
     assert.equal(stored.answer_body, 'Calibrate against the probe [1]; mount it first [2]. Task [3], decision [4], and Jonas said Monday [5]. Elsewhere, unknown, a section that is not there [6], and.');
     const version = Number((await pool.query('SELECT current_version FROM project_materials WHERE id = $1', [pageId])).rows[0].current_version);
@@ -100,6 +109,10 @@ describe('the Wiki as the space\'s knowledge base: tools first, citations as lin
       { type: 'doc', id: pageId, projectId: scene.place.id, title: 'Calibration' },
     ]);
     // The asker reads the same list through the API, so the web draws exactly these chips.
+    // What the tools returned to be cited is kept only while the run is in flight (0074): the page, task, decision and the conversation's
+    // messages while it answered; nothing once it has ended.
+    assert.ok(kept[0]!.includes(`doc:${pageId}`) && kept[0]!.includes(`task:${taskId}`) && kept[0]!.includes(`decision:${decisionId}`) && kept[0]!.includes(`message:${messageId}`), kept[0]!.join());
+    assert.deepEqual(await cites(talk.id), []);
     const listed = expectStatus(await scene.owner.browser.request('GET', `/api/v1/assistant-runs?conversationId=${talk.id}&limit=1`), 200) as { items: { answer: { sources: unknown[] } | null }[] };
     assert.equal(listed.items[0]!.answer!.sources.length, 6);
   });

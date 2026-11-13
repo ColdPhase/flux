@@ -314,8 +314,8 @@ export interface PersonalRunRepository {
    * its headings (`docHeadings`), and its current version. An object that is not there, or a message that was removed, is simply missing. Fakes may omit it.
    */
   cites?(scope: { workspaceId: string; projectId: string | null }, refs: readonly CiteRequest[]): Promise<CitedObject[]>;
-  /** The kept texts that list the marks the run's tools returned (`keptCites`, C-62), as kept. Fakes may omit it: then the run cites nothing by mark. */
-  keptCites?(runId: string): Promise<string[]>;
+  /** The objects the run's own tools returned to be cited (`resultCites`, C-62), as `kind:id`. Fakes may omit it: then the run cites nothing by mark. */
+  returnedCites?(runId: string): Promise<string[]>;
   thought(sketchId: string, thoughtId: string): Promise<ThoughtSource | null>;
   /**
    * Whether the agent's rights connection (F-027 AST-3) is live. Runs that hold a run token end `revoked` once it is revoked

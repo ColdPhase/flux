@@ -546,10 +546,24 @@ export function personalRunRows(db: DbExecutor) {
       return found;
     },
 
-    /** The kept texts that list the marks the run's tools returned (C-62): those that start with the control character `keptCites` writes. */
-    async keptCites(runId: string) {
-      const p = schema.personalRunPrivateTexts;
-      return (await db.select({ body: p.body }).from(p).where(and(eq(p.runId, runId), sql`starts_with(${p.body}, chr(2))`))).map((row) => row.body);
+    /**
+     * Keeps the objects a tool result of the run returned to be cited (C-62), each once, only while the run is in flight: a result that arrives as
+     * the run ends finds it ended (the run's row is share-locked) and keeps nothing; 0074's trigger deletes them when it ends.
+     */
+    async addCites(runId: string, cites: readonly { kind: 'doc' | 'task' | 'decision' | 'message'; id: string }[]) {
+      if (!cites.length) return;
+      const kinds = cites.map((cite) => cite.kind);
+      const ids = cites.map((cite) => cite.id);
+      await db.execute(sql`INSERT INTO personal_run_cites (run_id, kind, object_id)
+        SELECT r.id, c.kind, c.object_id FROM personal_runs r, unnest(${sql.param(kinds)}::text[], ${sql.param(ids)}::uuid[]) AS c(kind, object_id)
+        WHERE r.id = ${runId} AND r.status IN ('reading', 'dispatching') FOR SHARE OF r
+        ON CONFLICT DO NOTHING`);
+    },
+
+    /** The objects the run's tools returned to be cited (C-62), as `kind:id`. */
+    async returnedCites(runId: string) {
+      const c = schema.personalRunCites;
+      return (await db.select({ kind: c.kind, id: c.objectId }).from(c).where(eq(c.runId, runId))).map((row) => `${row.kind}:${row.id}`);
     },
 
     async thought(sketchId: string, thoughtId: string) {

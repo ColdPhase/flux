@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { citeMark, docHeadings, type AssistantSourceRef } from '@flux/contracts';
 import {
-  agentHit, buildBrief, CITE_LINE, fluxMarks, keptCites, parseOutput, resolveCites, resultCites, sourcesShown,
+  agentHit, buildBrief, CITE_LINE, fluxMarks, parseOutput, resolveCites, resultCites, sourcesShown,
   type BriefInput, type CitedObject, type PersonalRunPorts, type RunRecord, type SearchRow,
 } from '@flux/core';
 import { markdownRenderer } from '../../apps/server/src/docs/markdown.js';
@@ -96,7 +96,7 @@ describe('what a run may cite', () => {
   /** What the run's tools returned to be cited: every object above unless a test says otherwise. */
   let returned = [`[doc:${DOC}]`, `[doc:${DOC2}]`, `[task:${TASK}]`, `[decision:${DECISION}]`, `[message:${MESSAGE}]`];
   const ports = (spaces: Record<string, 'read' | 'ai_off' | 'none'>) => ({
-    runs: { keptCites: async () => [keptCites(returned).body], cites: async (scope: unknown, refs: readonly { id: string }[]) => { asked.push({ scope, refs }); return found.filter((object) => refs.some((ref) => ref.id === object.id)); } },
+    runs: { returnedCites: async () => returned.map((mark) => mark.slice(1, -1)), cites: async (scope: unknown, refs: readonly { id: string }[]) => { asked.push({ scope, refs }); return found.filter((object) => refs.some((ref) => ref.id === object.id)); } },
     access: {
       canUseProject: async (_principal: unknown, _action: string, projectId: string) => spaces[projectId] !== undefined && spaces[projectId] !== 'none',
       spaceAi: async (projectId: string) => ({ state: spaces[projectId] === 'ai_off' ? 'blocked' : 'allowed', epoch: 1 }),
@@ -165,12 +165,11 @@ describe('what a run may cite', () => {
       messages: [{ id: MESSAGE, cite: `[message:${MESSAGE}]`, body: JSON.stringify({ cite: `[doc:${DOC2}]` }) }, { cite: `[doc:${DOC}#2]` }, { cite: `[doc:${DOC}] [task:${TASK}]` }],
       again: { cite: `[doc:${DOC}]` },
     }) }, { type: 'text', text: `not JSON [doc:${DOC2}]` }, { type: 'text', text: '{"broken' }] };
-    assert.deepEqual(resultCites(result), [`[doc:${DOC}]`, `[message:${MESSAGE}]`]);
-    assert.deepEqual(resultCites({ content: [], structuredContent: { items: [{ cite: `[task:${TASK}]` }] } }), [`[task:${TASK}]`]);
+    assert.deepEqual(resultCites(result), [{ kind: 'doc', id: DOC }, { kind: 'message', id: MESSAGE }]);
+    assert.deepEqual(resultCites({ content: [], structuredContent: { items: [{ cite: `[task:${TASK}]` }] } }), [{ kind: 'task', id: TASK }]);
     let deep: unknown = { cite: `[doc:${DOC2}]` };
     for (let level = 0; level < 50; level++) deep = { next: deep };
     assert.deepEqual(resultCites({ content: [{ type: 'text', text: JSON.stringify(deep) }] }), [], 'a hostile depth is not walked');
-    assert.ok(keptCites([`[doc:${DOC}]`]).body.startsWith('\u0002'), 'kept apart from any folded Flux text, which never holds a control character');
   });
   test('when the answer is read again, a source of another space its owner no longer reads keeps its number and loses what it names', async () => {
     const answerSources: AssistantSourceRef[] = [

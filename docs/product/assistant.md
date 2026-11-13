@@ -545,8 +545,8 @@ searching ([F-042](decisions.md#f-042--agents-find-what-they-need-with-bm25-sear
 - **Citations.** Every tool result that returns a page, task, decision or message carries the mark that cites it as `cite` (search hits of those kinds, the lists and reads of
   pages, tasks and decisions, and every message a conversation, thread or discussion read returns). An answer that states a fact it read in Flux with a tool copies that mark after
   the statement: `[doc:ID]`, `[doc:ID#2]` (a section: the heading's number in `flux_get_doc`'s `sections`), `[task:ID]`, `[decision:ID]`, `[message:ID]`; an answer with no Flux fact has none.
-  The brief's answer-format line says so on both engines, for every run that reads with tools except a run in a DM. The `cite` fields a run's tools return are kept with the
-  private Flux text it read (C-30); at the commit Flux resolves each mark of the answer that one of them returned (a mark someone wrote in a message, a page or the request is
+  The brief's answer-format line says so on both engines, for every run that reads with tools except a run in a DM. The objects whose `cite` a run's tools returned are kept per
+  run while it is in flight (`personal_run_cites`, migration 0074); at the commit Flux resolves each mark of the answer that one of them returned (a mark someone wrote in a message, a page or the request is
   words, and is taken out) to an object the run may cite (a run in a space: that space; a private chat or a schedule: any space its owner reads with AI on; never a DM's run,
   never an encrypted space), and numbers it `[n]` with the supplied sources' `[S3]` in one list, in the order they stand, one number for an object however it was cited; a
   mark that points at nothing the run may cite is taken out like an invented `[8]`. The chip opens exactly the page (a section opens the version it was numbered in, at its
