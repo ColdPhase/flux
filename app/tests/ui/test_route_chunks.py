@@ -308,12 +308,13 @@ class RouteChunksJourney(unittest.TestCase):
                 deadline = time.monotonic() + 20
                 while not refused and time.monotonic() < deadline:
                     page.wait_for_timeout(200)
-                page.unroute(save_pattern, refuse_save)
                 self.assertTrue(refused, "the save was tried by itself and refused")
                 refused_id = refused[0]["clientCommandId"]
-                # Sign out from this tab without a document reload: the visit copy is retired.
+                # Sign out from this tab without a document reload: the visit copy is retired. Signing out is a trip through Settings (#1419),
+                # so the page is left first; saves stay refused until the sign-out is done, or leaving the page would store the text.
                 sign_out(page)
                 expect(page).to_have_url(re.compile("/sign-in"))
+                page.unroute(save_pattern, refuse_save)
                 self.assertEqual(page.evaluate("() => Object.keys(sessionStorage).filter((key) => key.startsWith('flux:wiki-live:')).length"), 0)
                 # Ben signs in next in this tab: Ari's text is not on his screen and his session has no copy of it.
                 ben = self.other_account(engine)
@@ -329,8 +330,7 @@ class RouteChunksJourney(unittest.TestCase):
                 page.get_by_label("Password", exact=True).fill("a quiet route loading passphrase")
                 page.get_by_role("button", name="Sign in", exact=True).click()
                 expect(page.get_by_role("heading", name="Home", exact=True)).to_be_visible()
-                # Through the router, not a document load: a load would clear this tab's visit copies anyway. Signing out is a trip through
-                # Settings now (#1419), so the page is left first; nothing of the refused Save may come back with Ari either.
+                # Through the router, not a document load: a load would clear this tab's visit copies anyway.
                 page.locator(".app__side").get_by_role("link", name=re.compile("^Chunk boundaries(?:, new activity)?$")).click()
                 page.get_by_role("navigation", name="Space views").get_by_role("tab", name="Wiki", exact=True).click()
                 page.locator(".wiki-page").get_by_role("heading", level=2).get_by_role("button").click()
