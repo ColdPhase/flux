@@ -2978,6 +2978,44 @@
       }
     },
     {
+      "name": "flux_summarize",
+      "title": "Read what was said since a date, to summarise it",
+      "operation": null,
+      "classes": [],
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "in": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "after": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 40
+          },
+          "before": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 40
+          },
+          "next": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          }
+        },
+        "required": [
+          "after"
+        ]
+      }
+    },
+    {
       "name": "flux_transfer_unit",
       "title": "Hand your co-work unit to another connection",
       "operation": "cowork.unit.transfer",

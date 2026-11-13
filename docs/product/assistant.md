@@ -497,8 +497,17 @@ searching ([F-042](decisions.md#f-042--agents-find-what-they-need-with-bm25-sear
   and that the two tools find them; a run that has the two tools is also told, in one line, to search before it says it does
   not know, where the search reaches, and to use each language the people write in. Server agents and local clients get the
   same tools and the same brief text.
-- **Summaries** are on demand only: a tool summarises a conversation or a thread since a date, paid by the asking agent's
-  owner. Nothing is stored.
+- **Summaries** are on demand only (#1292): **`flux_summarize`** reads one place since a date, `after` and an optional `before`
+  (a date, or a time with its offset), and returns it as one compact digest, oldest first, that the calling agent summarises itself.
+  The place is a space (every conversation of it), a conversation or thread, a task's discussion, or the direct message a run is
+  in; a run may leave it out for its own place. Flux calls no model for it: the summary is the agent's own work in its own run, so
+  its owner pays for it as for any other run of that agent (AG-11), on the server's engine and on the owner's Claude Code or
+  Codex alike, and **nothing is stored**: no summary record, no trigger, no job. A long range comes in answers of about 4,000
+  tokens (16,000 characters, a message cut at 500 characters with the tool that reads it whole); an answer that stopped early
+  says so, how many messages remain and the `next` to go on with. It reads what the caller may read now, as search does: a lost
+  grant, a space whose AI is off, a removed message, an edited one (its new words only) and a person who left (a former member) are
+  reflected at the next call; one answer for a place that is not there and one the caller may not read; a direct message only in
+  a run in it, while its owner is one of its people; an encrypted space never.
 - **What may be found** is decided at the moment of the search, never stored in the index: a lost grant, a space whose AI was
   turned off, a removed or edited message is reflected by the very next search. Encrypted spaces are never indexed for AI.
 - **Embeddings** are an optional local container, off by default, for larger servers; with it on, ranking fuses BM25 and the

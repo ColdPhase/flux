@@ -127,7 +127,9 @@ not verify it. A paid hosting service run by the Flux project keeps plan sign-in
   not change, and no agent generates pictures.
 - **Finding older messages** (F-042, [AG-12](assistant.md#ag-12--finding-older-messages-f-042)): a CLI run gets the
   same `flux_search` and `flux_read_around` tools and the same brief text as an API-key run, so both engines see the same
-  results. They search Flux's own database (BM25); no model or embedding call is made to search.
+  results. They search Flux's own database (BM25); no model or embedding call is made to search. `flux_summarize` is the same
+  for both: it returns the messages of a range as a digest and the run's own model writes the summary, so the owner pays as for
+  any run and nothing is stored.
 - **Claude Code** runs with every built-in tool removed but `WebSearch` while the web is on
   (`--tools WebSearch`; `--tools ''` with `FLUX_WEB_READS=off`, C-29; never `WebFetch`), Flux as
   the only MCP server (`--strict-mcp-config`, `ENABLE_CLAUDEAI_MCP_SERVERS=false`), the exact Flux

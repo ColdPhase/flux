@@ -124,6 +124,11 @@ needs a live session and answers `Cache-Control: no-store`.
   `limit`. `type` and `cursor` serve the API's own tests; no screen sends them. An agent does not use this endpoint:
   `flux_search` and `flux_read_around` (`agent-connection/search-reads.ts`, F-042) rank by BM25 with `searchRows(db).ranked`
   and take their audiences from the same policy, for the agent's owner, on every call.
+- **`flux_summarize`** (`agent-connection/summary-reads.ts`, F-042, #1292) does not search: it reads one place (a space's
+  conversations, a thread, a task's discussion, a run's own direct message) between `after` and `before`, ordered by stored time and
+  message id, through the same `withAgentConnection` checks as the other reads, and returns a digest (`digestPage` in
+  `packages/core/src/search/summary.ts`) that the calling agent summarises itself; nothing is stored. Its tests are
+  `tests/app/agent-summaries.test.ts` and `tests/app/agent-summary-core.test.ts`.
 - **Cursor.** `next` is the AES-256-GCM encryption (keys from `FLUX_AUTH_SECRET` via HKDF) of the
   last visible result's rank, time and row, authenticated with the reader and a hash of the query
   and filters. It works only for that person and that exact search; anything else is

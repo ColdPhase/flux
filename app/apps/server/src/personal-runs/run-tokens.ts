@@ -19,8 +19,8 @@ import { createAgentConnectionStore } from '../agent-connection/store.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const RUN_TOKEN_AUTHORIZED_PARTY = 'flux-personal-run';
-/** A run in a direct message: reading a web page, and finding and reading around the messages of that direct message (F-042, #1290). Sorted, as every run's tools are. */
-const DM_RUN_TOOLS = ['flux_read_around', 'flux_read_web', 'flux_search'];
+/** A run in a direct message: reading a web page, and finding, reading around and summarising the messages of that direct message (F-042, #1290, #1292). Sorted, as every run's tools are. */
+const DM_RUN_TOOLS = ['flux_read_around', 'flux_read_web', 'flux_search', 'flux_summarize'];
 const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
 const sameHash = (a: string, b: string) => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 
