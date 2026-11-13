@@ -143,6 +143,7 @@ describe('the Wiki as the space\'s knowledge base: tools first, citations as lin
     script([], 'The lamp is blue; nothing in Flux says so.');
     assert.deepEqual((await ask(scene.processor)).answer_sources, []);
     // The task is open, so it is also a supplied source; the answer cites it by its id and gets the one chip.
+    scene.compute.dispatched.length = 0;
     script([call('flux_get_work', { projectId: scene.place.id, id: taskId })], `Calibrating is open [task:${taskId}].`);
     const cited = await ask(scene.processor);
     assert.equal(cited.answer_body, 'Calibrating is open [1].');
