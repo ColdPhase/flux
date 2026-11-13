@@ -20,7 +20,7 @@ deterministically (sorted archive members, owner root, fixed modes, the candidat
 | `sbom-agent-runtime.spdx.json`, `THIRD_PARTY_NOTICES.agent-runtime.json` | The same for the agent-runtime image; the notices add the pinned official Codex (Apache-2.0, tag read from `docker/Dockerfile`) when the scanner does not list the vendor binary. |
 | `sbom-database.spdx.json`, `THIRD_PARTY_NOTICES.database.json` | The same for the database image. |
 | `LICENSE`, `SHA256SUMS` | The repository license and the checksums of every other asset. |
-| `SHA256SUMS.sigstore.json` | The `sign` job's keyless cosign signature of `SHA256SUMS` (not listed in it). `./flux upgrade` verifies it when cosign is installed ([signatures](../operations/upgrade.md#signatures)). |
+| `SHA256SUMS.sigstore.json` | The `sign` job's keyless cosign signature of `SHA256SUMS` (not listed in it). `./flux upgrade` always verifies it (host cosign, else the pinned cosign image; [signatures](../operations/upgrade.md#signatures)). |
 
 `tests/test_release_assets.py` packages the real files and checks the archive (its members, modes, `docker/release.env`,
 byte-for-byte copies, reproducibility) and each refusal; `tests/test_launcher_release.py` runs the real launcher in an unpacked

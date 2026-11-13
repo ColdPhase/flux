@@ -12,7 +12,7 @@ Documentation: <https://coldphase.github.io/flux/>. Flux is open source under th
 - **One install path** ([#1471](https://github.com/ColdPhase/flux/issues/1471), founder decision 5). Download `flux.tar.gz` and
   `SHA256SUMS`, check, unpack, `./flux up` ([installation](https://coldphase.github.io/flux/operate/install/)). The launcher comes with
   the release and pulls its images by digest; nothing is built. Later releases install with `./flux upgrade`, which checks the
-  download against `SHA256SUMS` (and its signature, with cosign) first.
+  download against `SHA256SUMS` and its signature first, always.
 - **From v0.2.0.** No v0.2.0 installation exists to carry over, so v0.2.1 brings no way to move one into the release folder: install
   it fresh. Its data would upgrade: this release was tested to upgrade the data of **v0.2.0** (the "Upgrades from" line of the release
   page names what was tested).

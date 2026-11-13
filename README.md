@@ -142,7 +142,7 @@ tar -xzf flux.tar.gz && cd flux
 
 Then open the URL that `./flux up` prints, <http://127.0.0.1:8081/> by default. If port 8081 is
 taken, start the first time with another free port, for example `FLUX_PORT=8090 ./flux up`. The first
-`./flux up` downloads the release's images, pinned by digest; nothing is built on your machine. To connect your own MCP client, such
+`./flux up` downloads the release's images, pinned by digest; nothing is built on your machine. On a server, also check the release's signature first ([installation](docs/operations/install.md#1-download-the-release-and-start-once-on-loopback)). To connect your own MCP client, such
 as Claude Code or Codex, follow [Connect your own agent](#connect-your-own-agent).
 
 AI is off until someone connects it in **Settings › AI**. An API key needs the operator's

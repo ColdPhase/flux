@@ -3,8 +3,8 @@
 # nothing: no ghcr.io login or push, no attestation, no tag, no GitHub release. The images are built for the
 # host platform from `git archive HEAD` (the workflow checks out the same commit), pushed to a throwaway
 # registry on 127.0.0.1, so they get real manifest digests and are pulled by digest. The release assets are
-# rendered with those digests, verified like the workflow does, and then the image names of the Compose
-# files (not the digests) are rewritten from ghcr.io/coldphase to the local registry for the two smokes.
+# packaged with those digests and the local registry's names (prepare_assets.py --registry), verified like the workflow
+# does, and installed by the smokes: the owner's path (smoke_launcher.sh), the packaged Compose files and the runtime.
 #
 #   scripts/release/dry_run.sh [output directory]
 #   FLUX_DRYRUN_PREVIOUS=<git revision> scripts/release/dry_run.sh   (adds the upgrade leg of smoke_artifacts.sh)

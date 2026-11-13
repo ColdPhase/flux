@@ -22,17 +22,26 @@ The example uses `/srv/flux` and `https://flux.example.org`; replace both.
 
 ```sh
 cd /srv                       # the release unpacks into /srv/flux
-curl -fLO https://github.com/ColdPhase/flux/releases/latest/download/flux.tar.gz
-curl -fLO https://github.com/ColdPhase/flux/releases/latest/download/SHA256SUMS
+for f in flux.tar.gz SHA256SUMS SHA256SUMS.sigstore.json; do
+  curl -fLO "https://github.com/ColdPhase/flux/releases/latest/download/$f"
+done
+# SHA256SUMS must be signed by Flux's release workflow (the official cosign image, pinned by digest; prints: Verified OK)
+docker run --rm --read-only --cap-drop ALL --security-opt no-new-privileges --user "$(id -u):$(id -g)" -e HOME=/tmp --tmpfs /tmp \
+  -v "$PWD/SHA256SUMS:/verify/SHA256SUMS:ro,z" -v "$PWD/SHA256SUMS.sigstore.json:/verify/SHA256SUMS.sigstore.json:ro,z" \
+  ghcr.io/sigstore/cosign/cosign:v3.0.6@sha256:de9c65609e6bde17e6b48de485ee788407c9502fa08b8f4459f595b21f56cd00 \
+  verify-blob --bundle /verify/SHA256SUMS.sigstore.json \
+  --certificate-identity https://github.com/ColdPhase/flux/.github/workflows/final-release.yml@refs/heads/main \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com /verify/SHA256SUMS
 sha256sum --ignore-missing -c SHA256SUMS      # must print: flux.tar.gz: OK
 tar -xzf flux.tar.gz
 cd flux
 ./flux up
 ```
 
-On macOS, check with `shasum -a 256 --ignore-missing -c SHA256SUMS`. A different version is under
-`releases/download/<version>/` instead of `releases/latest/download/`. To check that the release was built by Flux's release
-workflow, verify the signature of `SHA256SUMS` too ([signatures](upgrade.md#signatures)).
+The `docker run` line is the check `./flux upgrade` makes on every later release ([signatures](upgrade.md#signatures)): it gives
+the cosign container only the two files, read-only. Do not go on if it does not print `Verified OK`. On macOS, check the
+checksum with `shasum -a 256 --ignore-missing -c SHA256SUMS`. A different version is under `releases/download/<version>/`
+instead of `releases/latest/download/`.
 
 The first `./flux up` creates `docker/.env` with new random secrets and push keys, downloads the images of this release (a
 few minutes the first time; `docker/release.env` names them), runs the migrations, starts the services and prints

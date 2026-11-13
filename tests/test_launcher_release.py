@@ -3,7 +3,8 @@
 A release folder is made the way an owner gets it: scripts/release/prepare_assets.py packages this repository into flux.tar.gz, which
 is unpacked. The real `./flux` then runs against a stand-in `docker` that records each call, so these checks need no Docker: `up` pulls
 the release's images it does not have and never builds, writes no fixture token, and `upgrade` refuses an archive that does not match
-SHA256SUMS (or, with cosign installed, whose signature does not verify) before it changes anything. Where Docker Compose is installed,
+SHA256SUMS or whose signature does not verify (with the host's cosign, or else the pinned cosign image through Docker) or cannot be
+checked, before it changes anything. Where Docker Compose is installed,
 the launcher's own Compose arguments are rendered: every Flux service runs an image of docker/release.env, pinned by digest, and nothing
 builds. Standard library only.
 """
@@ -38,7 +39,10 @@ printf '%s\n' "$*" >> "$FLUX_TEST_LOG"
 case "$*" in
   *"config --images"*) printf '%s\n%s\n' "$FLUX_RELEASE_IMAGE" "$FLUX_RELEASE_DATABASE_IMAGE"
      case "$*" in *"--profile runtime"*) printf '%s\n' "$FLUX_RELEASE_RUNTIME_IMAGE" ;; esac ;;
+  *"image inspect ghcr.io/sigstore/cosign/"*) [ "${FLUX_TEST_COSIGN_IMAGE:-present}" = present ]; exit ;;
   "image inspect"*) case " ${FLUX_TEST_PRESENT:-} " in *" $3 "*) exit 0 ;; esac; exit 1 ;;
+  *"pull --quiet ghcr.io/sigstore/cosign/"*) [ "${FLUX_TEST_COSIGN_IMAGE:-present}" != unavailable ]; exit ;;
+  "run "*"ghcr.io/sigstore/cosign/"*) exit "${FLUX_TEST_COSIGN_STATUS:-0}" ;;
 esac
 exit 0
 '''
@@ -192,8 +196,11 @@ class LauncherReleaseTest(unittest.TestCase):
     # --- upgrade
 
     def new_release(self, version: str = "v0.2.2") -> Path:
-        return release(self.base / f"assets-{version}", version=version, sha="e" * 40, digest="sha256:" + "1" * 64,
-                       runtime_digest="sha256:" + "2" * 64, database_digest="sha256:" + "3" * 64)
+        """A newer release with a signature file beside SHA256SUMS (the stand-ins decide whether it verifies)."""
+        assets = release(self.base / f"assets-{version}", version=version, sha="e" * 40, digest="sha256:" + "1" * 64,
+                         runtime_digest="sha256:" + "2" * 64, database_digest="sha256:" + "3" * 64)
+        (assets / "SHA256SUMS.sigstore.json").write_text("{}")
+        return assets
 
     def snapshot(self) -> dict[str, str]:
         return {str(p.relative_to(self.folder)): hashlib.sha256(p.read_bytes()).hexdigest()
@@ -224,23 +231,72 @@ class LauncherReleaseTest(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("SHA256SUMS is not next to", result.stderr)
 
-    def test_with_cosign_installed_the_signature_must_verify(self) -> None:
+    def test_the_signature_is_always_required(self) -> None:
+        self.write_env()
+        new = self.new_release()
+        (new / "SHA256SUMS.sigstore.json").unlink()
+        before = self.snapshot()
+        result = self.flux("upgrade", "--file", str(new / "flux.tar.gz"), "-y")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("the release has no signature", result.stderr)
+        self.assertEqual(self.snapshot(), before)
+
+    def test_with_cosign_installed_it_verifies_with_the_pinned_identity(self) -> None:
         self.write_env()
         new = self.new_release()
         self.stub("cosign", 'printf "%s\\n" "$*" > "$FLUX_TEST_LOG.cosign"\nexit 1\n')
         result = self.flux("upgrade", "--file", str(new / "flux.tar.gz"), "-y")
-        self.assertIn("the release has no signature", result.stderr)
-        (new / "SHA256SUMS.sigstore.json").write_text("{}")
-        result = self.flux("upgrade", "--file", str(new / "flux.tar.gz"), "-y")
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("SHA256SUMS is not signed by ColdPhase/flux's release workflow", result.stderr)
+        self.assertIn("SHA256SUMS does not verify as signed by Flux's release workflow", result.stderr)
         cosign = Path(str(self.log) + ".cosign").read_text()
         self.assertIn("verify-blob --bundle", cosign)
-        self.assertIn("final-release\\.yml@refs/heads/main$", cosign)
+        self.assertIn("--certificate-identity https://github.com/ColdPhase/flux/.github/workflows/final-release.yml@refs/heads/main ", cosign)
         self.assertIn("--certificate-oidc-issuer https://token.actions.githubusercontent.com", cosign)
+        self.assertFalse([c for c in self.calls() if "sigstore/cosign" in c], "the host's cosign is used, not the image")
+        self.assertFalse((self.folder / ".flux-upgrade").exists())
+
+    def test_without_host_cosign_the_pinned_image_verifies_with_only_the_two_files_read_only(self) -> None:
+        self.write_env()
+        new = self.new_release()
+        self.assertIsNone(shutil.which("cosign", path=self.env["PATH"]), "this test needs a PATH without cosign")
+        result = self.flux("upgrade", "--file", str(new / "flux.tar.gz"), "-y", FLUX_TEST_COSIGN_IMAGE="missing", FLUX_TEST_COSIGN_STATUS="1")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("SHA256SUMS does not verify as signed by Flux's release workflow", result.stderr)
+        calls = self.calls()
+        image = "ghcr.io/sigstore/cosign/cosign:v3.0.6@sha256:de9c65609e6bde17e6b48de485ee788407c9502fa08b8f4459f595b21f56cd00"
+        self.assertIn(f"pull --quiet {image}", calls, "a missing image is pulled")
+        run = next(c for c in calls if c.startswith("run ") and image in c)
+        stage = self.folder / ".flux-upgrade"
+        self.assertEqual(run, f"run --rm --read-only --cap-drop ALL --security-opt no-new-privileges --user {os.getuid()}:{os.getgid()} "
+                              f"-e HOME=/tmp --tmpfs /tmp -v {stage}/SHA256SUMS:/verify/SHA256SUMS:ro,z "
+                              f"-v {stage}/SHA256SUMS.sigstore.json:/verify/SHA256SUMS.sigstore.json:ro,z {image} verify-blob "
+                              "--bundle /verify/SHA256SUMS.sigstore.json --certificate-identity "
+                              "https://github.com/ColdPhase/flux/.github/workflows/final-release.yml@refs/heads/main "
+                              "--certificate-oidc-issuer https://token.actions.githubusercontent.com /verify/SHA256SUMS")
+        self.assertNotIn("docker.sock", run)
+        # It verifies: the upgrade goes past the check (to the confirmation, which nobody gives here).
+        result = self.flux("upgrade", "--file", str(new / "flux.tar.gz"), FLUX_TEST_COSIGN_STATUS="0")
+        self.assertIn("Verified the release's signature (the cosign image)", result.stdout)
+        self.assertIn("Checked Flux v0.2.2", result.stdout)
+
+    def test_when_the_signature_cannot_be_checked_the_upgrade_is_refused(self) -> None:
+        self.write_env()
+        new = self.new_release()
+        before = self.snapshot()
+        result = self.flux("upgrade", "--file", str(new / "flux.tar.gz"), "-y", FLUX_TEST_COSIGN_IMAGE="unavailable")
+        self.assertNotEqual(result.returncode, 0)
+        message = [line for line in result.stderr.splitlines() if "cannot be checked" in line]
+        self.assertEqual(len(message), 1, result.stderr)
+        self.assertIn("neither cosign nor the cosign image", message[0])
+        self.assertIn("docker pull ghcr.io/sigstore/cosign/cosign:v3.0.6@sha256:", message[0])
+        self.assertIn("docker save and docker load", message[0])
+        self.assertEqual(self.snapshot(), before)
+        self.assertFalse((self.folder / ".flux-upgrade").exists())
+        self.assertFalse([c for c in self.calls() if c.startswith("run ")], "nothing ran unverified")
 
     def test_upgrade_to_the_same_release_changes_nothing(self) -> None:
         self.write_env()
+        (self.assets / "SHA256SUMS.sigstore.json").write_text("{}")
         result = self.flux("upgrade", "--file", str(self.assets / "flux.tar.gz"), "-y")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("already runs Flux v0.2.1", result.stdout)

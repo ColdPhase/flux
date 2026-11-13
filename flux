@@ -1677,10 +1677,16 @@ cmd_upgrade() {
 
 # --- Upgrading a release (#1471 decision 5; docs/operations/upgrade.md). The new release's flux.tar.gz and SHA256SUMS come from GitHub
 # (FLUX_RELEASE_URL names another place that has the same layout, such as a mirror), or from files the owner downloaded (--file). The
-# archive must match its line in SHA256SUMS; with cosign installed, SHA256SUMS must also carry the release workflow's signature
-# (SHA256SUMS.sigstore.json). The images are pinned by digest in the checked archive's docker/release.env, so what runs is what was signed.
+# archive must match its line in SHA256SUMS, and SHA256SUMS must carry the release workflow's keyless signature (SHA256SUMS.sigstore.json),
+# always (founder decision, 2026-11-13). The images are pinned by digest in the checked archive's docker/release.env, so what runs is
+# what was signed.
 RELEASE_URL=${FLUX_RELEASE_URL:-https://github.com/ColdPhase/flux/releases}
-RELEASE_REPOSITORY=${FLUX_RELEASE_REPOSITORY:-ColdPhase/flux}
+# Who signs a release: Flux's release workflow on main, through GitHub's OIDC issuer. Pinned; nothing configures another.
+RELEASE_IDENTITY=https://github.com/ColdPhase/flux/.github/workflows/final-release.yml@refs/heads/main
+RELEASE_ISSUER=https://token.actions.githubusercontent.com
+# The official cosign v3.0.6 image, by the digest of its index (checked 2026-11-13; scripts/release/check_signing.sh uses the same). Used
+# when this machine has no cosign of its own.
+COSIGN_IMAGE=ghcr.io/sigstore/cosign/cosign:v3.0.6@sha256:de9c65609e6bde17e6b48de485ee788407c9502fa08b8f4459f595b21f56cd00
 UPGRADE_STAGE="$FLUX_ROOT/.flux-upgrade"
 # Stops the upgrade before anything outside the staging folder changed, and removes that folder.
 refuse() { rm -rf "$UPGRADE_STAGE"; die "$@"; }
@@ -1733,23 +1739,41 @@ release_older() {
   a=${1#v}; a=${a%%-*}; b=${2#v}; b=${b%%-*}
   [ "$a" != "$b" ] && [ "$(printf '%s\n%s\n' "$a" "$b" | sort -t. -k1,1n -k2,2n -k3,3n | head -n 1)" = "$a" ]
 }
-# The archive must be named in SHA256SUMS with its exact hash. With cosign on this machine, SHA256SUMS must carry the keyless signature of
-# the release workflow on main (the identity the images are signed with, scripts/release/verify_signatures.sh).
+# The archive must be named in SHA256SUMS with its exact hash, and SHA256SUMS must verify as signed by the release workflow.
 release_verify() {
   expected=$(awk '$2 == "flux.tar.gz" || $2 == "*flux.tar.gz" { print $1 }' "$1/SHA256SUMS" | head -n 1)
   [ -n "$expected" ] || refuse "upgrade: SHA256SUMS names no flux.tar.gz; refusing the download. Nothing was changed."
   actual=$(sha256_of "$1/flux.tar.gz")
   [ "$actual" = "$expected" ] || refuse "upgrade: flux.tar.gz does not match SHA256SUMS (sha256 $actual, expected $expected); refusing it. Download it again; nothing was changed."
+  [ -f "$1/SHA256SUMS.sigstore.json" ] || refuse "upgrade: the release has no signature (SHA256SUMS.sigstore.json); download it with the release (next to SHA256SUMS for --file) and retry. Nothing was changed."
   if command -v cosign >/dev/null 2>&1; then
-    [ -f "$1/SHA256SUMS.sigstore.json" ] || refuse "upgrade: the release has no signature (SHA256SUMS.sigstore.json); refusing it. Nothing was changed."
-    identity="^https://github\\.com/$(printf '%s' "$RELEASE_REPOSITORY" | sed 's/[.]/\\./g')/\\.github/workflows/final-release\\.yml@refs/heads/main\$"
-    cosign verify-blob --bundle "$1/SHA256SUMS.sigstore.json" --certificate-identity-regexp "$identity" \
-      --certificate-oidc-issuer https://token.actions.githubusercontent.com "$1/SHA256SUMS" >/dev/null 2>&1 ||
-      refuse "upgrade: SHA256SUMS is not signed by $RELEASE_REPOSITORY's release workflow; refusing it. Nothing was changed."
-    say "Verified the release's signature (cosign)."
+    signature_ok "$1" cosign; how="cosign"
+  elif docker image inspect "$COSIGN_IMAGE" >/dev/null 2>&1 || docker pull --quiet "$COSIGN_IMAGE" >/dev/null 2>&1; then
+    signature_ok "$1" docker; how="the cosign image"
   else
-    say "The release's signature was not checked: cosign is not installed (docs/operations/upgrade.md#signatures). The checksum was."
+    refuse "upgrade: the signature cannot be checked, because this machine has neither cosign nor the cosign image; without internet access, run docker pull $COSIGN_IMAGE on a connected machine, carry it over with docker save and docker load, and retry. Nothing was changed."
   fi
+  say "Verified the release's signature ($how): SHA256SUMS was signed by Flux's release workflow."
+}
+# Runs `cosign verify-blob` on $1/SHA256SUMS with its bundle: with the host's cosign ($2 = cosign), or with the official image ($2 = docker),
+# which sees only the files it checks, read-only, and nothing else of this machine; it reaches the network for Sigstore's trust root.
+# FLUX_TEST_COSIGN_KEY (a public key file) is for scripts/release/smoke_launcher.sh only: it swaps the release identity for a test key.
+signature_ok() {
+  dir=$1 runner=$2
+  if [ "$runner" = cosign ]; then bundle=$dir/SHA256SUMS.sigstore.json sums=$dir/SHA256SUMS key=${FLUX_TEST_COSIGN_KEY:-}
+  else bundle=/verify/SHA256SUMS.sigstore.json sums=/verify/SHA256SUMS key=/verify/key.pub; fi
+  if [ -n "${FLUX_TEST_COSIGN_KEY:-}" ]; then set -- verify-blob --bundle "$bundle" --key "$key" --insecure-ignore-tlog=true "$sums"
+  else set -- verify-blob --bundle "$bundle" --certificate-identity "$RELEASE_IDENTITY" --certificate-oidc-issuer "$RELEASE_ISSUER" "$sums"; fi
+  if [ "$runner" = cosign ]; then
+    cosign "$@" >/dev/null 2>&1 && return 0
+  else
+    set -- "$COSIGN_IMAGE" "$@"
+    if [ -n "${FLUX_TEST_COSIGN_KEY:-}" ]; then set -- -v "$FLUX_TEST_COSIGN_KEY:/verify/key.pub:ro,z" "$@"; fi
+    docker run --rm --read-only --cap-drop ALL --security-opt no-new-privileges --user "$(id -u):$(id -g)" -e HOME=/tmp --tmpfs /tmp \
+      -v "$dir/SHA256SUMS:/verify/SHA256SUMS:ro,z" -v "$dir/SHA256SUMS.sigstore.json:/verify/SHA256SUMS.sigstore.json:ro,z" \
+      "$@" >/dev/null 2>&1 && return 0
+  fi
+  refuse "upgrade: SHA256SUMS does not verify as signed by Flux's release workflow (or Sigstore's trust root could not be reached); refusing it. Nothing was changed."
 }
 # Pulls the images of the new release that this Docker does not have, while the old version keeps running: the runtime's only when it is on.
 release_pull_new() {
@@ -1979,7 +2003,7 @@ Flux launcher. Flux runs in Docker; the external cowork action also needs the na
                          Audited operator removal of the provider sign-in; refused as the last way in.
   ./flux upgrade [VERSION | --file flux.tar.gz] [--output DIR] [-y]
                          A release: download the latest release (or VERSION), check it against
-                         SHA256SUMS (and its signature, with cosign), pull its images, back up,
+                         SHA256SUMS and its signature (cosign, or its image), pull its images, back up,
                          put its files in place, migrate and check health; on failure print the
                          way back. A source checkout: ./flux upgrade [--pull] builds its own code.
   ./flux runtime status | release <email> | purge [-y]

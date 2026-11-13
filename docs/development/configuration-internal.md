@@ -52,7 +52,6 @@ the wiring between services or enables test-only code.
 | `FLUX_RELEASE_COMMIT` | In a release's `docker/release.env`: the source commit the release was built from. |
 | `FLUX_RELEASE_DATABASE_IMAGE` | In a release's `docker/release.env`: the database image, pinned by digest. |
 | `FLUX_RELEASE_IMAGE` | In a release's `docker/release.env`: the application image, pinned by digest; `./flux` exports it for `docker/compose.yaml`. |
-| `FLUX_RELEASE_REPOSITORY` | The repository whose release workflow must have signed a release's `SHA256SUMS` (default `ColdPhase/flux`), when cosign is installed. |
 | `FLUX_RELEASE_RUNTIME_IMAGE` | In a release's `docker/release.env`: the agent-runtime image, pinned by digest; pulled only while the runtime is on. |
 | `FLUX_RELEASE_SCHEMA` | In a release's `docker/release.env`: the highest migration of the release. |
 | `FLUX_RELEASE_URL` | Where `./flux upgrade` downloads releases (default `https://github.com/ColdPhase/flux/releases`): a mirror with the same layout, or a test server. |
@@ -71,6 +70,7 @@ the wiring between services or enables test-only code.
 | `FLUX_SANDBOX_DIR` | The run's scratch the runtime gives the CLI it starts, for its sandbox shell (#1437); never an operator setting. |
 | `FLUX_TEST_ANTHROPIC_PROXY_URL` | Test deployments only, with `FLUX_TEST_FAILURE_INJECTION`: the worker sends real API-key runs through the answer-accuracy evaluation's recording proxy (#1295, `scripts/check_ai_eval.sh`). |
 | `FLUX_TEST_ANTHROPIC_URL` | Test deployments only. |
+| `FLUX_TEST_COSIGN_KEY` | TEST ONLY: a public key file that `./flux upgrade` verifies a release's `SHA256SUMS` signature with instead of the release workflow's identity (`scripts/release/smoke_launcher.sh`). |
 | `FLUX_TEST_CSP_EVAL` | Test deployments only: `false` makes the enforced Content-Security-Policy the one that ships (no `eval`, which Playwright's `waitForFunction` needs). |
 | `FLUX_TEST_FAILURE_INJECTION` | Test deployments only, together with `FLUX_FIXTURE_TOKEN`. Never in production. |
 | `FLUX_TEST_LINK_PREVIEW_HOSTS` | Test deployments only; refused without `FLUX_TEST_FAILURE_INJECTION`. |

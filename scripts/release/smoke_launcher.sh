@@ -8,8 +8,11 @@
 #      built; every Flux container runs an image of docker/release.env; docker/.env has new secrets, push keys and no fixture token.
 #   2. ./flux backup, then ./flux restore of that archive: Flux is healthy again on the same data.
 #   3. ./flux upgrade from a release URL (FLUX_RELEASE_URL, here a file:// folder with GitHub's layout): an archive that does not match
-#      its SHA256SUMS is refused with nothing changed and Flux running; the "next release" (this candidate packaged again under another
-#      source commit, with the same images) is downloaded, checked, backed up, put in place and migrated; the previous files are kept.
+#      its SHA256SUMS, and one whose SHA256SUMS is signed by another key, are refused with nothing changed and Flux running; the "next
+#      release" (this candidate packaged again under another source commit, with the same images) is downloaded, checked, its signature
+#      verified, backed up, put in place and migrated; the previous files are kept. The signature check is the launcher's own, through
+#      the pinned cosign image (no cosign on the PATH here), with a throwaway key in place of the release workflow's identity
+#      (FLUX_TEST_COSIGN_KEY: the real identity only signs on GitHub, after this job).
 #   4. ./flux clean -y removes the project.
 # Port defaults to 18084 (FLUX_SMOKE_LAUNCHER_PORT). The images must be pullable (a docker login for private packages).
 set -euo pipefail
@@ -74,10 +77,27 @@ python3 "$root/scripts/release/prepare_assets.py" --version "$version" --source-
   --digest "${app#*@}" --runtime-digest "$(json_field "$assets/release.json" runtime_image | sed 's/.*@//')" \
   --database-digest "${database#*@}" --sbom "$state/sbom.json" --runtime-sbom "$state/sbom.json" --database-sbom "$state/sbom.json" \
   --source "$root" --registry "$registry" --destination "$web/download/next" >/dev/null
-mkdir -p "$web/download/v0.0.1" "$web/latest"
+# A throwaway key pair signs the next release's SHA256SUMS the way the sign job does (sign-blob with a bundle), with the cosign image
+# the launcher pins; "other" signs a copy that must be refused.
+cosign_image=$(sed -n 's/^COSIGN_IMAGE=//p' "$folder/flux")
+keys="$state/keys"
+mkdir -p "$keys"
+cosign() { docker run --rm --user "$(id -u):$(id -g)" -e COSIGN_PASSWORD= -e HOME=/tmp --tmpfs /tmp -v "$keys:/keys:rw,z" "$cosign_image" "$@"; }
+cosign generate-key-pair --output-key-prefix /keys/test >/dev/null 2>&1
+cosign generate-key-pair --output-key-prefix /keys/other >/dev/null 2>&1
+sign() { # release folder, key name
+  cp "$1/SHA256SUMS" "$keys/SHA256SUMS"
+  cosign sign-blob --yes --key "/keys/$2.key" --tlog-upload=false --use-signing-config=false --bundle /keys/bundle.json /keys/SHA256SUMS >/dev/null 2>&1
+  cp "$keys/bundle.json" "$1/SHA256SUMS.sigstore.json"
+}
+sign "$web/download/next" test
+mkdir -p "$web/download/v0.0.1" "$web/download/v9.9.9" "$web/latest"
 cp "$web/download/next/"* "$web/download/v0.0.1/"
 printf x >> "$web/download/v0.0.1/flux.tar.gz"
+cp "$web/download/next/"* "$web/download/v9.9.9/"
+sign "$web/download/v9.9.9" other
 ln -s ../download/next "$web/latest/download"
+export FLUX_TEST_COSIGN_KEY="$keys/test.pub"
 before=$(find . -type f -not -name .env -not -path './backups/*' -exec sha256sum {} + | sort | sha256sum)
 if FLUX_RELEASE_URL="file://$web" ./flux upgrade v0.0.1 -y --output "$state/backups" > "$state/refused.log" 2>&1; then
   cat "$state/refused.log"; fail "./flux upgrade accepted an archive that does not match SHA256SUMS"
@@ -87,8 +107,17 @@ grep -q 'flux.tar.gz does not match SHA256SUMS' "$state/refused.log" || { cat "$
 [ ! -e .flux-upgrade ] || fail "a refused upgrade left its staging folder"
 health >/dev/null || fail "Flux stopped for a refused upgrade"
 echo "refused: $(grep -o 'flux.tar.gz does not match SHA256SUMS' "$state/refused.log")"
+if FLUX_RELEASE_URL="file://$web" ./flux upgrade v9.9.9 -y --output "$state/backups" > "$state/refused-signature.log" 2>&1; then
+  cat "$state/refused-signature.log"; fail "./flux upgrade accepted a SHA256SUMS signed by another key"
+fi
+grep -q 'SHA256SUMS does not verify as signed by Flux' "$state/refused-signature.log" || { cat "$state/refused-signature.log"; fail "the signature refusal does not say why"; }
+[ "$(find . -type f -not -name .env -not -path './backups/*' -exec sha256sum {} + | sort | sha256sum)" = "$before" ] || fail "a refused signature changed files"
+[ ! -e .flux-upgrade ] || fail "a refused signature left its staging folder"
+health >/dev/null || fail "Flux stopped for a refused signature"
+echo "refused: $(grep -o 'SHA256SUMS does not verify as signed by Flux.s release workflow' "$state/refused-signature.log")"
 FLUX_RELEASE_URL="file://$web" ./flux upgrade -y --output "$state/backups" 2>&1 | tee "$state/upgrade.log"
 grep -q '^Checked Flux ' "$state/upgrade.log" || fail "the upgrade did not check the archive"
+grep -q "^Verified the release's signature" "$state/upgrade.log" || fail "the upgrade did not verify the signature"
 grep -q '^Upgraded ' "$state/upgrade.log" || fail "the upgrade did not finish"
 grep -q '^FLUX_RELEASE_COMMIT=ffffffffffffffffffffffffffffffffffffffff$' docker/release.env || fail "the new release's files are not in place"
 ls "$state"/backups/flux-files-"$version"-*.tar.gz >/dev/null || fail "the previous release's files were not kept"
@@ -99,4 +128,4 @@ FLUX_RELEASE_URL="file://$web" ./flux upgrade -y 2>&1 | grep -q 'already runs Fl
 step "4. ./flux clean"
 ./flux clean -y > /dev/null
 [ -z "$(docker ps -aq --filter "label=com.docker.compose.project=$project")" ] || fail "containers remain after ./flux clean"
-echo "The owner's path of Flux $version passed: install, backup, restore, a refused and a completed upgrade, clean."
+echo "The owner's path of Flux $version passed: install, backup, restore, two refused upgrades (checksum, signature), a completed one, clean."

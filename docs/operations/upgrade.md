@@ -51,9 +51,9 @@ founder decision 5):
 
 1. **Download and check, while Flux runs.** It downloads the release's `flux.tar.gz` and `SHA256SUMS` (the latest release, or the
    version you name, from `https://github.com/ColdPhase/flux/releases`; `FLUX_RELEASE_URL` names a mirror with the same layout).
-   The archive must match its line in `SHA256SUMS`, and, when `cosign` is installed, `SHA256SUMS` must carry the release workflow's
-   [signature](#signatures); otherwise it refuses and nothing changes. Without network access, download both files yourself and run
-   `./flux upgrade --file flux.tar.gz` (with `SHA256SUMS` beside it). It refuses an older release, or one whose schema is older than the data
+   The archive must match its line in `SHA256SUMS`, and `SHA256SUMS` must carry the release workflow's
+   [signature](#signatures), always; otherwise it refuses and nothing changes. Without network access, download both files yourself and run
+   `./flux upgrade --file flux.tar.gz` (with `SHA256SUMS` and `SHA256SUMS.sigstore.json` beside it). It refuses an older release, or one whose schema is older than the data
    (a downgrade) and says so when this folder already runs that release.
 2. **Pull the new images, while Flux runs.** The images that the new `docker/release.env` names, pinned by digest (the agent
    runtime's only while it is on), so the downtime does not include the download.
@@ -167,18 +167,19 @@ What to do:
 Every release's `SHA256SUMS` is signed keylessly by its release workflow ([`final-release.yml`](../../.github/workflows/final-release.yml),
 cosign with GitHub's OIDC identity; the signature is the release asset `SHA256SUMS.sigstore.json`). `SHA256SUMS` holds the checksum
 of `flux.tar.gz`, whose `docker/release.env` pins every image by digest, so one signature covers everything Flux runs; the images
-are signed by the same workflow too. With [cosign](https://docs.sigstore.dev/cosign/system_config/installation/) v3 installed,
-`./flux upgrade` checks the signature itself and refuses a release without a valid one. To check a download by hand (for the first
-installation, for example):
+are signed by the same workflow too.
 
-```sh
-curl -fLO https://github.com/ColdPhase/flux/releases/latest/download/SHA256SUMS.sigstore.json
-cosign verify-blob --bundle SHA256SUMS.sigstore.json \
-  --certificate-identity-regexp '^https://github\.com/ColdPhase/flux/\.github/workflows/final-release\.yml@refs/heads/main$' \
-  --certificate-oidc-issuer https://token.actions.githubusercontent.com SHA256SUMS
-```
+**`./flux upgrade` always checks it** (founder decision, 2026-11-13, [F-043](../product/decisions.md#f-043--https-calls-and-the-install-by-the-launcher)).
+The identity is pinned: `https://github.com/ColdPhase/flux/.github/workflows/final-release.yml@refs/heads/main`, issued by `https://token.actions.githubusercontent.com`. It uses
+[cosign](https://docs.sigstore.dev/cosign/system_config/installation/) when this machine has it, and otherwise the official cosign
+image, pinned by digest (`ghcr.io/sigstore/cosign/cosign:v3.0.6@sha256:de9c65609e6bde17e6b48de485ee788407c9502fa08b8f4459f595b21f56cd00`), through Docker: that container gets only `SHA256SUMS` and its signature, read-only, no
+capabilities and no other file of the server, and it reaches the network for Sigstore's trust root. The upgrade is refused, with
+nothing changed, when the signature is missing, does not verify, or cannot be checked.
 
-Without cosign, `./flux upgrade` checks the checksum and says that it did not check the signature.
+**Offline (`./flux upgrade --file`).** Keep `SHA256SUMS.sigstore.json` beside `flux.tar.gz` and `SHA256SUMS`. A server without
+internet access needs the cosign image loaded once: `docker pull ghcr.io/sigstore/cosign/cosign:v3.0.6@sha256:de9c65609e6bde17e6b48de485ee788407c9502fa08b8f4459f595b21f56cd00` on a connected machine, `docker save` it into a file,
+carry it over and `docker load` it. The check also needs Sigstore's trust root, so on a fully offline server it fails, and the
+upgrade with it; check the files on a connected machine instead (the command of the [installation](install.md#1-download-the-release-and-start-once-on-loopback)).
 
 ## When it fails
 
@@ -227,8 +228,9 @@ checks that every released migration file is byte-identical to the one in its re
 (`FLUX_MATRIX_CONTROL=edited-migration` and `old-data`) must fail the check.
 
 `scripts/release/smoke_launcher.sh` runs the owner's path itself on the candidate's own images: the download check, `./flux up`,
-backup and restore, `./flux upgrade` from a release URL to the next release, and its refusal of an archive that does not match
-`SHA256SUMS` (nothing changes and Flux keeps running).
+backup and restore, `./flux upgrade` from a release URL to the next release with the signature checked through the pinned cosign
+image (a throwaway key stands in for the release workflow's identity, which signs only on GitHub), and its refusals of an archive that
+does not match `SHA256SUMS` and of a `SHA256SUMS` signed by another key (nothing changes and Flux keeps running).
 
 [`final-release.yml`](../../.github/workflows/final-release.yml) runs the upgrade from the previous release in its `package` job and
 the matrix of every earlier release in its `upgrade` job; the draft is not made when either fails, and its notes name the versions

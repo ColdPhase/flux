@@ -753,7 +753,7 @@ Flux launcher. Flux runs in Docker; the external cowork action also needs the na
                          Audited operator removal of the provider sign-in; refused as the last way in.
   ./flux upgrade [VERSION | --file flux.tar.gz] [--output DIR] [-y]
                          A release: download the latest release (or VERSION), check it against
-                         SHA256SUMS (and its signature, with cosign), pull its images, back up,
+                         SHA256SUMS and its signature (cosign, or its image), pull its images, back up,
                          put its files in place, migrate and check health; on failure print the
                          way back. A source checkout: ./flux upgrade [--pull] builds its own code.
   ./flux runtime status | release <email> | purge [-y]

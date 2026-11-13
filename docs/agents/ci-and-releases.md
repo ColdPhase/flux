@@ -145,7 +145,7 @@ after the `scan` and `package` jobs pass and before the draft is created (`draft
 dispatched from. There is no signing key to store, rotate or leak. Nothing else changed in the release path: the action is pinned by
 SHA like the others (`sigstore/cosign-installer`, cosign `v3.0.6`), no check was added, no PR check starts it. The same job signs
 the release's `SHA256SUMS` with `cosign sign-blob` (the asset `SHA256SUMS.sigstore.json`, #1471): it covers `flux.tar.gz`, whose
-`docker/release.env` pins every image, and `./flux upgrade` verifies it with the same identity when cosign is installed.
+`docker/release.env` pins every image, and `./flux upgrade` always verifies it with that exact identity (host cosign, else the pinned cosign image through Docker).
 
 [`publish-release.yml`](../../.github/workflows/publish-release.yml) job `verify` runs `scripts/release/verify_signatures.sh` on
 the reviewed image digest and the agent-runtime digest from `release.json` before anything is promoted or published: a digest

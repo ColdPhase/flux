@@ -361,7 +361,7 @@ INTERNAL: dict[str, str] = {
     "FLUX_RELEASE_DATABASE_IMAGE": "In a release's `docker/release.env`: the database image, pinned by digest.",
     "FLUX_RELEASE_RUNTIME_IMAGE": "In a release's `docker/release.env`: the agent-runtime image, pinned by digest; pulled only while the runtime is on.",
     "FLUX_RELEASE_URL": "Where `./flux upgrade` downloads releases (default `https://github.com/ColdPhase/flux/releases`): a mirror with the same layout, or a test server.",
-    "FLUX_RELEASE_REPOSITORY": "The repository whose release workflow must have signed a release's `SHA256SUMS` (default `ColdPhase/flux`), when cosign is installed.",
+    "FLUX_TEST_COSIGN_KEY": "TEST ONLY: a public key file that `./flux upgrade` verifies a release's `SHA256SUMS` signature with instead of the release workflow's identity (`scripts/release/smoke_launcher.sh`).",
     "FLUX_UPGRADE_PREVIOUS_FILES": "Set by `./flux upgrade` for the new launcher: the archive of the previous release's files, for the way back.",
     "FLUX_RUNTIME_MANAGER_URL": "How the API and worker reach the runtime manager; default `http://runtime-manager-control:7600`.",
     "FLUX_RUNTIME_MANAGER_LISTEN": "Listen address of the runtime manager.",

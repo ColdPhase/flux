@@ -534,7 +534,7 @@ jobs:
           ( cd release-assets && sha256sum -c SHA256SUMS )
           cosign sign-blob --yes --bundle SHA256SUMS.sigstore.json release-assets/SHA256SUMS
           cosign verify-blob --bundle SHA256SUMS.sigstore.json \
-            --certificate-identity-regexp '^https://github\.com/ColdPhase/flux/\.github/workflows/final-release\.yml@refs/heads/main$' \
+            --certificate-identity https://github.com/ColdPhase/flux/.github/workflows/final-release.yml@refs/heads/main \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com release-assets/SHA256SUMS
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

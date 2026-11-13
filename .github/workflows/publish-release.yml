@@ -120,7 +120,7 @@ jobs:
           # SHA256SUMS carries the same workflow's keyless signature, the one ./flux upgrade checks (#1471): no release without it.
           test -f SHA256SUMS.sigstore.json
           cosign verify-blob --bundle SHA256SUMS.sigstore.json \
-            --certificate-identity-regexp '^https://github\.com/ColdPhase/flux/\.github/workflows/final-release\.yml@refs/heads/main$' \
+            --certificate-identity https://github.com/ColdPhase/flux/.github/workflows/final-release.yml@refs/heads/main \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com SHA256SUMS
           checksums_sha=$(sha256sum SHA256SUMS | cut -d ' ' -f1)
           gh api --paginate --slurp \
