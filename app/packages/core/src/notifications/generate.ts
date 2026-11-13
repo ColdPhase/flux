@@ -173,7 +173,7 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
         const reason: NotificationReason = addressed ? (isQuestion(message.body) ? 'question' : 'mention') : 'dm';
         const title = reason === 'question' ? `${marked} asked you${place}` : reason === 'mention' ? `${marked} mentioned you${place}`
           : message.kind === 'pair' ? `${marked} sent you a message` : `${marked}${place}`;
-        return { userId, reason, source: { type: 'dm' as const, id: message.dmId }, title, body: excerpt(message.body),
+        return { userId, reason, source: { type: 'dm' as const, id: message.dmId }, title, body: message.body.trim() ? excerpt(message.body) : 'Sent a file',
           url: `/dm/${message.dmId}#message-${message.id}`, who: author, where: message.kind === 'pair' ? '' : message.title ? quote(message.title) : 'a group',
           ...(message.via ? { aiOrigin: true } : {}) };
       });

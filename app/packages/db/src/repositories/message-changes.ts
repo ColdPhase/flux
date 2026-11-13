@@ -103,11 +103,14 @@ export function messageChangeRows(db: DbExecutor) {
 
     async removeDm(message: { id: string; workspaceId: string; dmId: string; authorId: string }): Promise<Date> {
       await db.delete(r).where(eq(r.dmMessageId, message.id));
+      // Its files leave with it, as a space message's do (C-48): the rows now, the bytes by the cleanup of `file_garbage`.
+      const files = await db.delete(f).where(eq(f.dmMessageId, message.id)).returning({ id: f.id });
+      if (files.length) await db.insert(schema.fileGarbage).values(files.map(({ id }) => ({ id }))).onConflictDoNothing();
       // A send retried under an Idempotency-Key stored the message in its answer for replay; the message id is the retry identity too,
       // so dropping the author's stored answers for sends only costs a repeat of the same send (which finds the marker, #1052).
       await forgetSendAnswers(db, message);
       const sealed = await sealFor(db, 'dm_messages', message.workspaceId, { body: REMOVED_BY_AUTHOR_BODY, requestFingerprint: unlinkedFingerprint() }, { id: message.id });
-      const [updated] = await db.update(dm).set({ body: sealed.body, requestFingerprint: sealed.requestFingerprint, removedAt: sql`now()`, via: null, viaColour: null }).where(eq(dm.id, message.id)).returning({ removedAt: dm.removedAt });
+      const [updated] = await db.update(dm).set({ body: sealed.body, requestFingerprint: sealed.requestFingerprint, removedAt: sql`now()`, via: null, viaColour: null, attachmentCount: 0 }).where(eq(dm.id, message.id)).returning({ removedAt: dm.removedAt });
       await forgetNotices(db, { type: 'dm', id: message.dmId }, `/dm/${message.dmId}#message-${message.id}`);
       return updated!.removedAt!;
     },

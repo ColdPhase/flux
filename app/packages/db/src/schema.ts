@@ -776,7 +776,11 @@ export const fileGarbage = pgTable('file_garbage', {
 export const projectFiles = pgTable('project_files', {
   id: uuid('id').primaryKey(),
   workspaceId: uuid('workspace_id').notNull(),
-  projectId: uuid('project_id').notNull(),
+  /** Null for a direct message's file (migration 0076, #1438): exactly one of `projectId` and `dmId` is set. */
+  projectId: uuid('project_id'),
+  /** The conversation a direct message's file belongs to, and the message of it once sent; null for a space's. */
+  dmId: uuid('dm_id'),
+  dmMessageId: uuid('dm_message_id'),
   uploaderId: text('uploader_id').references(() => authUsers.id),
   uploaderAgentId: uuid('uploader_agent_id'),
   uploadId: uuid('upload_id').notNull(),
@@ -813,6 +817,9 @@ export const projectFiles = pgTable('project_files', {
   index('project_files_expiry_idx').on(table.expiresAt).where(sql`${table.publishedAt} IS NULL`),
   index('project_files_poster_idx').on(table.posterOf).where(sql`${table.posterOf} IS NOT NULL`),
   foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.dmId], foreignColumns: [dms.workspaceId, dms.id] }).onDelete('cascade'),
+  uniqueIndex('project_files_dm_upload_idx').on(table.dmId, table.uploaderId, table.uploadId).where(sql`${table.dmId} IS NOT NULL AND ${table.uploaderId} IS NOT NULL`),
+  uniqueIndex('project_files_dm_message_position_idx').on(table.dmMessageId, table.position).where(sql`${table.dmMessageId} IS NOT NULL`),
   foreignKey({ columns: [table.workspaceId, table.uploaderAgentId], foreignColumns: [agents.workspaceId, agents.id] }),
   check('project_file_exact_uploader', sql`num_nonnulls(${table.uploaderId}, ${table.uploaderAgentId}) = 1`),
 ]);
@@ -1510,6 +1517,8 @@ export const dmMessages = pgTable('dm_messages', {
   viaColour: text('via_colour').$type<import('@flux/contracts').AgentColour>(),
   /** 0022 (#842): `ai_used` is the line "Ada used AI here (Claude)": its body names the company that receives the conversation. */
   kind: text('kind', { enum: ['text', 'ai_used'] }).notNull().default('text'),
+  /** 0076 (#1438): how many files the message carries; a message with files may have no words. */
+  attachmentCount: smallint('attachment_count').notNull().default(0),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   unique().on(table.dmId, table.sequence),

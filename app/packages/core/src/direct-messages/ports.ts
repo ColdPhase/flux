@@ -1,4 +1,4 @@
-import type { AgentColour, DmKind, DmPerson, MessageReference, PageQuery, DmTaskCopyPerson, WorkItem } from '@flux/contracts';
+import type { AgentColour, DmKind, DmPerson, MessageFile, MessageReference, PageQuery, DmTaskCopyPerson, WorkItem } from '@flux/contracts';
 import type { Principal } from '../principal.js';
 
 /**
@@ -49,6 +49,10 @@ export interface DmMessageRecord {
   viaColour?: AgentColour | null;
   /** `ai_used` is the line "used AI here" (#842), whose body names the company that receives the conversation. */
   kind: 'text' | 'ai_used';
+  /** The files the message carries, in order (#1438 point 10); absent when it has none. */
+  files?: MessageFile[];
+  /** How many files it carries; a message with files may have no words. */
+  attachmentCount?: number;
 }
 
 /** Adapter over the core access policy (`evaluateDm`, `evaluateWorkspace`, `loadActor`). */
@@ -88,6 +92,8 @@ export interface NewDmMessage {
   threadRootId?: string | null;
   via?: string | null;
   viaColour?: AgentColour | null;
+  /** How many files the message carries (#1438 point 10); a message with files may have no words. */
+  attachmentCount?: number;
 }
 
 /** Rows only; the repository makes no access decisions (the use cases ask {@link DmAccess}). */
@@ -184,8 +190,23 @@ export interface DmInbox {
   answerIn(userId: string, dmId: string): Promise<string[]>;
 }
 
+/**
+ * The files a direct message carries (#1438 point 10): the same stored files as a space's, staged by their sender in this conversation. Absent
+ * where no file is served (an entry point that cannot send them).
+ */
+export interface DmFiles {
+  /**
+   * The sender's own ready, unsent files of this conversation, locked, with every check of the rows (the files stay unattached until
+   * {@link DmFiles.publish}); anything else is the same unknown file.
+   */
+  lock(dmId: string, authorId: string, ids: readonly string[]): Promise<MessageFile[]>;
+  /** Attaches the locked files to the message just stored, in order, with their videos' posters; returns them as the message carries them. */
+  publish(dmId: string, messageId: string, files: readonly MessageFile[], at: Date): Promise<MessageFile[]>;
+}
+
 export interface DmPorts {
   inbox?: DmInbox;
+  files?: DmFiles;
   access: DmAccess;
   references: DmReferences;
   taskCopy: DmTaskCopy;
@@ -196,4 +217,6 @@ export interface DmPorts {
 /** Runs `work` in one transaction; on an open transaction (an idempotency scope) it nests in it. */
 export interface DmUnitOfWork {
   run<T>(work: (ports: DmPorts) => Promise<T>): Promise<T>;
+  /** Checks the bytes of the files a new message will carry, before its transaction opens (#154, #1411): no connection is held while they are read. */
+  verifyFiles?(authorId: string, ids: readonly string[]): Promise<void>;
 }

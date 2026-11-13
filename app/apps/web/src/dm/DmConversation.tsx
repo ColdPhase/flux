@@ -11,6 +11,7 @@ import type { Dm, DmMessage, DmPerson, DmTaskCopyResult } from '@flux/contracts'
 import { ApiError } from '../api/client';
 import { dmReaders, dmReceipts, getDm, observeDmMessages, olderDmMessages } from '../api/direct-messages';
 import { ComposerBox } from '../composer/ComposerBox';
+import { ComposerFiles, useFileDrop } from '../composer/Files';
 import { outboxView, useComposerDraft, useComposerScope } from '../composer/draft';
 import { ConnectionLine, SendAnnouncer } from '../composer/Outbox';
 import { askError, askState } from '../assistant/format';
@@ -430,10 +431,12 @@ function DmContent({ initial }: { initial: Dm }) {
   const threadOpen = !!threadId && !!messages.length && !gone;
   const originBack = useOriginPanelBack();
   const slot = useOwnedPanel(threadOpen ? { key: `dm-thread:${threadId}`, chip: 'Thread', label: 'Replies', ...(originBack ? { origin: originBack } : {}), onClose: closeThread } : null);
+  // Files dropped anywhere on the conversation join its draft, as in a space (#348, #1438 point 10); a question to the agent takes none.
+  const drop = useFileDrop(composer, !asking && !recipientGone);
   if (gone) return <DmUnavailable />;
   const canSend = composer.canSend && !recipientGone;
   return (
-    <div className="convo-split dm-split">
+    <div className={`convo-split dm-split${drop.dropping ? ' is-dropping' : ''}`} {...drop.handlers}>
     <div className="convo-split__stream">
     <div ref={root} className="dm" data-dm-id={dm.id}>
       <div className="convo-stream">
@@ -487,12 +490,14 @@ function DmContent({ initial }: { initial: Dm }) {
         <div className="composer__in">
           {goneNotice ? <p className="dm__notice" role="status"><Icon name="lock" size={13} />{goneNotice}</p> : null}
           <ConnectionLine />
+          {asking || recipientGone ? null : <ComposerFiles state={composer} attach="none" />}
           <ComposerBox id="dm-composer" label={`Message ${title}`} fieldRef={textareaRef} value={draft} onChange={(value, position) => { menu.change(position); change(value); }}
             onSelect={menu.setCaret} onBlur={typing.stop} onKeyDown={onKey}
             disabled={recipientGone} boxDisabled={recipientGone} placeholder={recipientGone ? 'Nobody else is in this conversation' : [`Message ${others.length === 1 ? others[0]!.name.split(/\s+/)[0] : title}…`, 'Message…']}
             fieldProps={{ 'aria-describedby': asking ? audienceId : undefined, 'aria-controls': menu.open ? 'dm-composer-menu' : undefined,
               'aria-activedescendant': menu.open ? `dm-composer-menu-${menu.options[menu.active]!.id}` : undefined }}
             menu={<ComposerMenu open={menu.open} id="dm-composer-menu" options={menu.options} active={menu.active} trigger="/" onPick={menu.pick} onHover={menu.setIndex} />}
+            attach={asking || recipientGone ? null : composer}
             sendLabel={asking ? 'Ask your agent' : 'Send message'} sendDisabled={!canSend} onSend={() => void send()} />
           {asking ? <p className="composer__audience" data-asking="true"><Icon name="lock" size={13} /><span id={audienceId}>Only you see the answer · {firstNames(others.map((person) => person.name)).join(', ') || 'The others'} {others.length === 1 ? 'sees' : 'see'} only a line that AI was used here</span></p>
             : null}
