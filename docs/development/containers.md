@@ -135,6 +135,9 @@ or stalled database a read timeout can fire while PostgreSQL still runs the
 statement, so `patches/drizzle-orm-0.45.4-flux-pool-release.patch` destroys a
 pooled client whose `BEGIN` or `ROLLBACK` failed instead of leaking it or returning
 it to the pool with an open transaction ([#234](https://github.com/ColdPhase/flux/issues/234)).
+A `COMMIT` is waited for up to 15 s instead (`COMMIT_TIMEOUT_MS`): once sent its outcome cannot be
+learned, and given up at 2 s it still committed while the request answered 500 (a CI run where commits
+took 2 to 5 s, [#1389](https://github.com/ColdPhase/flux/pull/1389)).
 Each connection also sets `idle_in_transaction_session_timeout` to 60 s, so PostgreSQL
 ends any session abandoned inside a transaction. Flux code does not wait on
 anything outside the database inside a transaction. Each connection also sets `jit=off`:

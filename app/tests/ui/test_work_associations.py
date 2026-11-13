@@ -335,7 +335,10 @@ class MessageWorkJourney(unittest.TestCase):
     def test_08_one_pagedown_gesture_keeps_scrolling_across_a_held_batch(self):
         page=self.page();reads=[]
         page.on("request",lambda request:reads.append(parse_qs(urlsplit(request.url).query)["messageIds"][0]) if self.thread_read(request.url) else None)
-        page.goto(f"/projects/{self.project}/conversations/{self.long_conversation}#message-{self.long_messages[1]}")
+        # The batch of the message the link opened, as in settled_selector_anchor: the thread first reads its newest replies (with the root, whose
+        # chip is shown at once) and only then pages back to the message, so the first ready read is not yet the batch the reader stays in.
+        with page.expect_request(lambda request: self.thread_read(request.url) and self.long_messages[1] in parse_qs(urlsplit(request.url).query)["messageIds"][0].split(',') and len(parse_qs(urlsplit(request.url).query)["messageIds"][0].split(','))==100):
+            page.goto(f"/projects/{self.project}/conversations/{self.long_conversation}#message-{self.long_messages[1]}")
         expect(page.locator("#thread").get_by_role("button",name=re.compile(r"^Task #\d+: " + re.escape("Revisit the first measurement") + "$"))).to_be_visible();self.ready(page)
         original=reads[-1];pane=page.locator(".thread__feed")
         self.read_to(page,self.long_messages[100])

@@ -401,6 +401,7 @@ class InstantSendJourney(unittest.TestCase):
         for route in held_reads:
             route.continue_()
         expect(page.get_by_text("Flux isn’t responding", exact=False)).to_have_count(0)
+        expect(stream.locator(".project-convo__message").filter(has_text=body)).to_have_count(1)
         self.assertEqual([command["clientMessageId"] for command in sent], [lost[0]] * 3, "the same command each time")
         self.assertEqual(sum(root["message"]["body"] == body for root in self.roots(page)), 1, "exactly one stored root")
 

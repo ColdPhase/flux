@@ -60,6 +60,37 @@ test('a statement that times out fails the ones waiting behind it at once, not o
   }
 });
 
+test('a COMMIT slower than the read timeout is waited for: what it stored is reported stored, not failed (#1389)', { timeout: 15_000 }, async () => {
+  // A commit that takes a second on the server (a deferred trigger sleeps in it), against a 300 ms read timeout. Given up at 300 ms, the
+  // server committed anyway and the caller was told the write failed, as the API answered 500 for stored messages on a slow CI database.
+  const quick = createDatabase(connectionString, undefined, { onError: () => undefined, queryTimeoutMs: 300 });
+  const table = `slow_commit_${process.pid}_${Date.now()}`;
+  await database.pool.query(`CREATE TABLE ${table} (id int PRIMARY KEY)`);
+  await database.pool.query(`CREATE FUNCTION ${table}_wait() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN PERFORM pg_sleep(1); RETURN NULL; END $$`);
+  await database.pool.query(`CREATE CONSTRAINT TRIGGER ${table}_at_commit AFTER INSERT ON ${table} DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION ${table}_wait()`);
+  try {
+    const started = Date.now();
+    const stored = await quick.db.transaction(async (tx) => {
+      await tx.execute(sql.raw(`INSERT INTO ${table} VALUES (1)`));
+      return 'stored';
+    });
+    const took = Date.now() - started;
+    assert.equal(stored, 'stored', 'the transaction reports what it stored');
+    assert.ok(took >= 900, `the commit itself took the second (${took} ms), longer than the 300 ms read timeout`);
+    assert.equal((await database.pool.query(`SELECT count(*)::int AS n FROM ${table}`)).rows[0].n, 1);
+    assert.equal(quick.pool.totalCount, 1, 'its client is healthy and back in the pool');
+    assert.equal(quick.pool.idleCount, 1);
+    // Every other statement keeps the short read timeout.
+    await assert.rejects(quick.pool.connect().then(async (client) => {
+      try { await client.query('SELECT pg_sleep(1)'); } finally { client.release(true); }
+    }), /Query read timeout/);
+  } finally {
+    await quick.pool.end();
+    await database.pool.query(`DROP TABLE ${table}`);
+    await database.pool.query(`DROP FUNCTION ${table}_wait()`);
+  }
+});
+
 test('control: asking pg directly, past the wrapper, makes it warn, so the checks above could have failed', async () => {
   const client = await database.pool.connect();
   try {

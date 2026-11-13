@@ -79,7 +79,7 @@ compose="docker compose --env-file /dev/null -p $project -f docker/compose.sourc
 cleanup() {
   status=$?
   if [ "$status" -ne 0 ]; then
-    $compose logs --no-color db migrate files-init api || true
+    $compose logs --no-color db migrate files-init api worker || true
   fi
   $compose down -v || true
   remove_project_images

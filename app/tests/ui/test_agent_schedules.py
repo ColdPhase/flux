@@ -244,7 +244,10 @@ class AgentSchedulesJourney(unittest.TestCase):
         expect(line.locator(".dm-msg__meta")).to_contain_text("Garden summary")
         expect(chat.locator("[data-chat-me]")).to_have_count(1)
         expect(chat.get_by_text("two tasks in Garden sensors changed since yesterday")).to_have_count(1)
-        expect(chat.get_by_role("button", name="Try again")).to_have_count(0)
+        # No run of the agent's was made or failed for it: the result line has no Try again, and no turn carries a failed run's Try again. The
+        # answered request of test_02 keeps its own Copy and Try again under the answer (#1248), so the chat as a whole is not counted.
+        expect(line.get_by_role("button", name="Try again")).to_have_count(0)
+        expect(chat.locator(".agc__actions").get_by_role("button", name="Try again")).to_have_count(0)
         shot(chat, "schedules-1440-chat-result")
         # A failed run is told in the chat in the same place, and the schedule stays on.
         mock("/__script", {"reset": True, "status": 500})
