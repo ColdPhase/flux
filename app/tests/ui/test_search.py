@@ -169,10 +169,12 @@ class SearchJourney(unittest.TestCase):
         expect(dialog.get_by_text("All places")).to_have_count(0)
         expect(dialog.get_by_role("option", name=re.compile("See all results"))).to_have_count(0)
         shot(page, "search-jump-desktop-1440")
-        # Any of the words matches (BM25, F-042), so the groups keep their order and the message with both words is one row among the results.
+        # Any of the words matches (BM25, F-042) and the groups keep their order: the message with both words leads the Messages group.
         field.fill("sensor reacts")
         reacts = dialog.locator("[role=option].sr").filter(has_text="The infrared sensor reacts at 5 lux in the hallway test.")
         expect(reacts).to_have_count(1)
+        first_message = dialog.locator(".jump__sh", has_text="Messages").locator("xpath=following-sibling::*[@role='option'][1]")
+        expect(first_message).to_contain_text("The infrared sensor reacts at 5 lux in the hallway test.")
         reacts.first.click()
         expect(dialog).to_be_hidden()
         expect(page).to_have_url(re.compile(rf"/projects/{self.ids['lamp']}/conversations/{self.ids['thread']}#message-"))

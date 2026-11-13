@@ -11,18 +11,33 @@ ranking, limits and snippets.**
 
 | The query | Answered by | What it does |
 | --- | --- | --- |
-| Plain words (`sensor`, `czujnik piatek`, `#12`) | the BM25 index of migration 0065 (`searchRows(db).ranked`) | **Any** of the words matches, Polish and English stems, accents folded; ranked by how rare the words are, a word in a title counting double. |
+| Plain words (`sensor`, `czujnik piatek`, `#12`) | the BM25 index of migration 0065 (`searchRows(db).ranked`) | **Any** of the words matches, Polish and English stems, accents folded; ranked by how rare the words are **among the hits the reader may see**, a word in a title counting double. |
 | Quotes, `or` or `-word` (`"exact phrase"`, `sensor -lamp`) | the exact index below (`searchRows(db).page`) | Exactly what it says: every word, no stems, the web search syntax. |
 
 The service (`createSearchUseCases`) picks by `usesSearchSyntax(text)`; the cursor, the audiences, the filters (`type`, `place`,
 `author`), the one result per object and the task-number rule (`#12` first) are the same for both, and so is the answer's shape.
 
-- **The word being typed** is also looked up as a prefix: the index holds stems, so the statement adds `pdb.regex('<word>.*')`
-  on the four fields (folded by `foldSearchWord`, boosted 0.3), and "sens" finds "sensors" and "kalibr" finds "kalibracja".
+- **pg_search matches; it does not rank.** Its own score (`pdb.score`) counts how rare a word is over the whole index, and the index
+  holds what the reader may not read: restricted spaces, other people's direct messages and every other workspace of the instance. A
+  writer in one visible place could then move the order of a reader's own results by writing a word in the hidden ones (the review
+  probe of #1326 swapped two visible messages with 40 hidden ones). So the statement (`rankedStatement` in
+  `packages/db/src/repositories/search.ts`) asks the index only which documents hold which word: one scan for each word and kind of
+  match, each returning ids, under the reader's audiences and filters. The order is then **BM25 computed in SQL over the visible
+  hits** (`cand`): a word's document frequency, the number of documents and their average length are counted over those hits and
+  nothing else; a document's own part is its length (`length(tsv)`, stored with the row) and where the word was found. The term
+  frequency of a word is one (the index says it matches, not how often). Each word adds `idf × weight × (k1 + 1) / (1 + k1 × (1 − b + b × length / average))`
+  with k1 1.2 and b 0.75; the weight is 2 for a whole word in the title, 1 in the body, 0.6 for a prefix or a typo in the title and 0.3
+  for a prefix in the body. No statistic of the index, and no row the reader may not see, influences what they are shown or in which
+  order; `search-hidden-ranking.test.ts` holds it for the people's search and for the statement an agent's `flux_search` runs, with
+  writes in a restricted space, another workspace and other people's direct messages.
+- **The word being typed** is also looked up as a prefix: the index holds stems, so a scan adds `pdb.regex('<word>.*')` on the title and
+  the body fields (folded by `foldSearchWord`), and "sens" finds "sensors" and "kalibr" finds "kalibracja".
 - **A title tolerates a typo:** each plain word of four letters or more (at most six) also matches the title with one edit
   (`pdb.fuzzy(1)`), as the trigram match did ("ensor", "omparison", "comparisn" find "Sensor comparison"). A task number
   names one task, so it gets no typo.
-- **The score** in a position is `bm25 / (bm25 + 10)`, in (0, 1) and in the same order, so that the rows of an encrypted space,
+- **At most twelve words are looked up** (the first twelve and the word being typed), each costing two scans (title and body) and
+  the typed or mistyped ones a third; a search of one to four words runs in a few milliseconds.
+- **The score** in a position is `rank / (rank + 10)`, in (0, 1) and in the same order, so that the rows of an encrypted space,
   which the in-memory index ranks from 0 to 1.5, merge with them.
 - **Encrypted spaces** answer plain words the same way, without stems and accents (`plan.anyWord`, `sealed-search.ts`): their content is
   never in the BM25 index, so the in-memory index matches any of the words, the typed word as a prefix and a title with a typo (four
@@ -33,9 +48,6 @@ The service (`createSearchUseCases`) picks by `usesSearchSyntax(text)`; the curs
 - **Snippets and marks.** `ts_headline` picks the passage and marks the query words and their longer forms (`czujn:*` for
   "czujnik"); `markSearchWords` (core) marks the rest in the text of the result: a longer form, the word without its
   accents ("piatek" marks "piątek") and the word as far as it was typed. Both use the same stem rule (`searchWordStem`).
-- **What BM25 does not isolate:** the rarity of a word (its idf) is counted over the whole index, hidden rows included, so a
-  score can move when others write; what a reader is shown is decided by the audiences first (the identical answers of the
-  saturation test hold for the BM25 statement as well).
 - **`/api/v1/search/explain`** (test support) describes the exact statement, which is what its work counts were written for.
 - **The exact index stays.** Quotes, `or` and `-word` need every-word and exclusion semantics that `|||` does not give; the
   `keys` index and its trigram and prefix terms are therefore not dropped by this change (a migration that drops them would have to

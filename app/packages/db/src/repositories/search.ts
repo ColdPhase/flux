@@ -11,8 +11,9 @@ export type SearchExecutor = Pick<NodePgDatabase<typeof schema>, 'select' | 'exe
  * `packages/core/src/search/ports.ts` structurally and make no access decisions: every statement
  * receives the audiences the caller may read now, each with the access policy's own list
  * condition (`visibleFilter`), and composes them into its WHERE clause, so ranking, the limit,
- * counts and highlighting only ever see visible rows. `search_documents` (migration 0014) is kept
- * current by triggers in the same transaction as every write.
+ * counts and highlighting only ever see visible rows. Nothing computed over rows the caller may not see (a word's rarity among them, a
+ * count of them) may reach the order or the answer: the BM25 statement lets pg_search match and ranks over the visible hits itself.
+ * `search_documents` (migration 0014) is kept current by triggers in the same transaction as every write.
  */
 
 /** `search_documents.kind` (the contracts' `SearchKind`; this package does not depend on contracts). */
@@ -166,23 +167,29 @@ export function visibleKeys(audiences: SearchAudienceRows[]): SQL {
 
 /**
  * How a search matches and ranks (F-042). `prefix`: today's index, every word required, the last as a prefix, ranked by `ts_rank`.
- * `bm25`: the BM25 index of migration 0065 (pg_search): any of the words, Polish and English stems, accents folded, ranked by
- * word rarity. Both apply the same audiences and filters in the same statement.
+ * `bm25`: the BM25 index of migration 0065 (pg_search) **matches**: any of the words, Polish and English stems, accents folded. It does
+ * not rank. pg_search's own score counts word rarity over the whole index, which holds what the caller may not read (restricted spaces,
+ * other people's direct messages, other workspaces), so the order is computed here, in the statement, from the hits the caller may see
+ * (see {@link rankedStatement}). Both apply the same audiences and filters in the same statement.
  */
 export type SearchRanking = 'prefix' | 'bm25';
 
 /** The BM25 index's text fields (migration 0065): title and body, each with a Polish and an English stemmer. */
 const BM25_TITLES = [sql`sd.title::pdb.alias('title_pl')`, sql`sd.title::pdb.alias('title_en')`];
 const BM25_BODIES = [sql`sd.body::pdb.alias('body_pl')`, sql`sd.body::pdb.alias('body_en')`];
-const BM25_FIELDS = [...BM25_TITLES, ...BM25_BODIES];
-/** A word in a title counts this much more than the same word in a body, as a title does in the exact search. */
-const TITLE_BOOST = 2;
-/** What a prefix of the word being typed counts next to a whole word (a prefix query scores a constant of 1). */
-const PREFIX_BOOST = 0.3;
-/** A title also matches a word with one typo, for words of this many letters or more and for this many words at most. */
+/**
+ * What a word counts in a hit, by where and how it was found: a whole word in the title (twice a body word, as in the exact search), in the
+ * body, or only as the word being typed (a prefix of one) or a title with one typo.
+ */
+const WEIGHT = { title: 2, body: 1, part: 0.5 } as const;
+/** Okapi BM25's constants, applied to the visible hits only. */
+const BM25_K1 = 1.2;
+const BM25_B = 0.75;
+/** The query words that are looked up (a longer query keeps its first words and the word being typed), and the words that also match a title with a typo. */
+const MATCH_WORDS = 12;
 const TYPO_MIN_LETTERS = 4;
 const TYPO_MAX_WORDS = 6;
-/** BM25 scores are unbounded; a hit's position carries this one, `bm25 / (bm25 + SQUASH)`, in (0, 1), so that an encrypted space's rows (ranked 0 to 1.5 in memory) merge with them. The order is the same. */
+/** A position carries `rank / (rank + SQUASH)`, in (0, 1), so that an encrypted space's rows (ranked 0 to 1.5 in memory) merge with them. The order is the same. */
 const SQUASH = 10;
 
 /** The word a person is still typing: the last word of the prefix query (`lamp & sens:*`), folded, when it has two letters or more. */
@@ -191,25 +198,6 @@ function typingWord(plan: SearchPlanRows): string | null {
   const folded = word ? foldSearchWord(word) : '';
   // Only letters and digits reach a pattern, so it carries no regular expression syntax.
   return /^[\p{L}\p{N}]{2,}$/u.test(folded) ? folded : null;
-}
-
-/**
- * What a hit must match: any of the plan's plain words in any BM25 field (stems, accents folded), and, for a person's own search,
- * also the word being typed as a prefix of what is indexed ("sens" finds "sensors": the index holds stems, so a prefix is looked up in
- * them), and a title with one typo. Titles count double. Only letters and digits reach it (`plan.words`), so it carries no query syntax.
- */
-function bm25Match(plan: SearchPlanRows): SQL {
-  const clauses = [
-    ...BM25_TITLES.map((field) => sql`${field} ||| ${plan.words}::text::pdb.boost(${sql.raw(String(TITLE_BOOST))})`),
-    ...BM25_BODIES.map((field) => sql`${field} ||| ${plan.words}::text`),
-  ];
-  const typing = typingWord(plan);
-  if (typing) clauses.push(...BM25_FIELDS.map((field) => sql`${field} @@@ (pdb.regex(${`${typing}.*`}::text)::pdb.boost(${sql.raw(String(PREFIX_BOOST))}))`));
-  // An agent's statement matches exactly (`fuzzy` is false); a person's also tolerates a typo in a title, but a task number names one task.
-  if (plan.fuzzy && plan.number === null)
-    for (const word of [...new Set(plan.words.split(' '))].filter((item) => [...item].length >= TYPO_MIN_LETTERS).slice(0, TYPO_MAX_WORDS))
-      clauses.push(...BM25_TITLES.map((field) => sql`${field} ||| ${word}::text::pdb.fuzzy(1)`));
-  return sql`(${sql.join(clauses, sql` OR `)})`;
 }
 
 /**
@@ -222,24 +210,13 @@ function anyWord(plan: SearchPlanRows): SQL {
     FROM unnest(to_tsvector('simple', ${plan.words}))), ' | '))`;
 }
 
-/** Everything a hit must satisfy apart from the cursor. */
-function hitConditions(plan: SearchPlanRows, ranking: SearchRanking = 'prefix'): SQL {
-  const match = ranking === 'bm25'
-    // The index leaves sealed rows out (WHERE NOT sealed), so the statement says so too, or PostgreSQL could not use it.
-    ? [sql`NOT sd.sealed`, bm25Match(plan)]
-    : [sql`sd.keys && (SELECT lookups FROM aud)`];
-  const conditions: SQL[] = [
-    ...match,
-    sql`sd.audience_key = ANY ((SELECT keys FROM aud)::text[])`,
-    // Work IDs are UUIDs; other kinds (including people) can carry arbitrary text IDs.
-    // Keep the indexed UUID side intact and apply lifecycle before page/count/probe limits.
-    // A correlated scalar projection cannot become a hashed scan of unrelated tasks.
-    sql`(sd.kind <> 'work' OR COALESCE((SELECT active_work.creation_reverted_at IS NULL FROM project_work_items active_work
-      WHERE active_work.id = (CASE WHEN sd.kind = 'work' THEN sd.object_id::uuid END)), false))`,
-  ];
-  if (ranking === 'prefix') {
-    conditions.push(plan.fuzzy ? sql`(sd.tsv @@ ${tsquery(plan)} OR sd.title %> ${plan.text})` : sql`sd.tsv @@ ${tsquery(plan)}`);
-  }
+/** A task that exists and whose creation was not reverted: work IDs are UUIDs, other kinds (including people) carry arbitrary text IDs, so only a task's is cast. */
+const WORK_LIFECYCLE = sql`(sd.kind <> 'work' OR COALESCE((SELECT active_work.creation_reverted_at IS NULL FROM project_work_items active_work
+      WHERE active_work.id = (CASE WHEN sd.kind = 'work' THEN sd.object_id::uuid END)), false))`;
+
+/** What the caller asked to narrow the search to: kind, place, author (and for an agent: author id, conversation, time). */
+function scopeConditions(plan: SearchPlanRows): SQL[] {
+  const conditions: SQL[] = [];
   if (plan.kinds?.length) conditions.push(sql`sd.kind IN (${sql.join(plan.kinds.map((kind) => sql`${kind}`), sql`, `)})`);
   const place = plan.place;
   if (place?.type === 'project') conditions.push(sql`sd.project_id = ${place.id}::uuid`);
@@ -252,6 +229,22 @@ function hitConditions(plan: SearchPlanRows, ranking: SearchRanking = 'prefix'):
   if (plan.conversationId) conditions.push(sql`(sd.kind = 'message' AND sd.parent_id = ${plan.conversationId})`);
   if (plan.since) conditions.push(sql`sd.at >= ${plan.since.toISOString()}::timestamptz`);
   if (plan.until) conditions.push(sql`sd.at < ${plan.until.toISOString()}::timestamptz`);
+  return conditions;
+}
+
+const AUDIENCE_ANY = sql`sd.audience_key = ANY ((SELECT keys FROM aud)::text[])`;
+
+/** Everything a hit of the exact (`prefix`) statement must satisfy apart from the cursor. */
+function hitConditions(plan: SearchPlanRows): SQL {
+  const conditions: SQL[] = [
+    sql`sd.keys && (SELECT lookups FROM aud)`,
+    AUDIENCE_ANY,
+    // Keep the indexed UUID side intact and apply lifecycle before page/count/probe limits.
+    // A correlated scalar projection cannot become a hashed scan of unrelated tasks.
+    WORK_LIFECYCLE,
+    plan.fuzzy ? sql`(sd.tsv @@ ${tsquery(plan)} OR sd.title %> ${plan.text})` : sql`sd.tsv @@ ${tsquery(plan)}`,
+    ...scopeConditions(plan),
+  ];
   return sql.join(conditions, sql` AND `);
 }
 
@@ -266,40 +259,169 @@ function exactNumber(plan: SearchPlanRows): SQL {
     : sql` + CASE WHEN sd.kind = 'work' AND split_part(sd.body, E'\n', 1) = ${`#${plan.number}`} THEN 10 ELSE 0 END`;
 }
 
+/** The words that are looked up, and the one being typed (as the prefix query gives it). */
+function lookedUpWords(plan: SearchPlanRows): { words: string[]; typed: string | null } {
+  const distinct = [...new Set(plan.words.split(' ').filter(Boolean))];
+  const typed = /([\p{L}\p{N}]+):\*$/u.exec(plan.prefix ?? '')?.[1] ?? null;
+  const words = distinct.slice(0, MATCH_WORDS);
+  if (typed && distinct.includes(typed) && !words.includes(typed)) words[MATCH_WORDS - 1] = typed;
+  return { words, typed };
+}
+
+/**
+ * The ranked statement's evidence (F-042): which of the query's words each visible document holds, and how well. The BM25 index decides what
+ * a word matches (stems, accents, a prefix, a typo); how rare a word is, is decided from these facts alone, never from the index's statistics.
+ *
+ * pg_search can tell which clause matched only through the score. Every clause is therefore a constant-score query (`pdb.const`), so a hit's
+ * score is the sum of the constants of the clauses that matched and nothing else: no term frequency, no rarity of any word, no other
+ * document. A constant is a power of two, one bit for each time a clause of a kind can match (a word in the title may match through the
+ * Polish and through the English field: two clauses, two bits), above the few units the filters add (each filter is a constant-score clause
+ * too, at most `filterUnits` altogether, so the constants are multiples of a power of two above them). The words are packed into as few scans
+ * as the 24 bits of a score allow (one for a query of up to five words), and each hit's score is decoded into the words it holds and where:
+ * for each word, whole in the title or whole in the body; and for the document, matched only as the word being typed (a prefix) or as a
+ * title with a typo, which is not tied to one word.
+ */
+interface RankedField { shift: number; bits: number }
+/** A clause of a scan: the query for a constant, and the field of the score that constant belongs to (null: the document-level partial match of the chunk). */
+interface RankedClause { query: (constant: SQL) => SQL; at: RankedField | null }
+interface RankedWord { w: number; title: RankedField; body: RankedField }
+interface RankedChunk { words: RankedWord[]; clauses: RankedClause[]; base: number; part: RankedField | null }
+
+/** The most the filters of a scan add to a hit's score, counted generously (a condition may be more than one clause); constants are multiples of the next power of two. */
+function filterUnits(plan: SearchPlanRows): number {
+  const conditions = 1 + (plan.kinds?.length ? 1 : 0) + (plan.place ? 2 : 0) + (plan.author ? 2 : 0) + (plan.authorId ? 1 : 0) + (plan.conversationId ? 2 : 0)
+    + (plan.since ? 1 : 0) + (plan.until ? 1 : 0);
+  return conditions * 2;
+}
+const bitsFor = (count: number) => Math.ceil(Math.log2(count + 1));
+/** A score is a 32-bit float: whole numbers are exact up to 2^24. One bit stays unused. */
+const SCORE_BITS = 23;
+
+/** The clauses that match a word only partly: the word being typed as a prefix of what is indexed, and a title with one typo. */
+function partialClauses(plan: SearchPlanRows): RankedClause[] {
+  const { words, typed } = lookedUpWords(plan);
+  const prefix = typingWord(plan);
+  const clauses: RankedClause[] = [];
+  // "sens" finds "sensors": the index holds stems, so a prefix is looked up in them.
+  if (prefix && typed && words.includes(typed))
+    for (const field of [...BM25_TITLES, ...BM25_BODIES]) clauses.push({ at: null, query: (constant) => sql`${field} @@@ (pdb.regex(${`${prefix}.*`}::text)::pdb.const(${constant}))` });
+  // A person's search (`fuzzy`) also tolerates a typo in a title, in any of its longer words; a task number names one task.
+  const typos = plan.fuzzy && plan.number === null ? words.filter((word) => [...word].length >= TYPO_MIN_LETTERS).slice(0, TYPO_MAX_WORDS) : [];
+  if (typos.length)
+    for (const field of BM25_TITLES) clauses.push({ at: null, query: (constant) => sql`${field} ||| ${typos.join(' ')}::text::pdb.fuzzy(1)::pdb.const(${constant})` });
+  return clauses;
+}
+
+function rankedChunks(plan: SearchPlanRows): RankedChunk[] {
+  const { words } = lookedUpWords(plan);
+  const base = 2 ** bitsFor(filterUnits(plan));
+  const capacity = SCORE_BITS - Math.log2(base);
+  const partial = partialClauses(plan);
+  const chunks: RankedChunk[] = [{ words: [], clauses: [...partial], base, part: partial.length ? { shift: 0, bits: bitsFor(partial.length) } : null }];
+  let used = chunks[0]!.part ? chunks[0]!.part.bits : 0;
+  words.forEach((word, w) => {
+    if (used + 4 > capacity) { chunks.push({ words: [], clauses: [], base, part: null }); used = 0; }
+    const chunk = chunks[chunks.length - 1]!;
+    const title = { shift: used, bits: 2 };
+    const body = { shift: used + 2, bits: 2 };
+    chunk.words.push({ w, title, body });
+    for (const field of BM25_TITLES) chunk.clauses.push({ at: title, query: (constant) => sql`${field} ||| ${word}::text::pdb.const(${constant})` });
+    for (const field of BM25_BODIES) chunk.clauses.push({ at: body, query: (constant) => sql`${field} ||| ${word}::text::pdb.const(${constant})` });
+    used += 4;
+  });
+  return chunks;
+}
+
+/** The scan of one chunk: each visible hit, read once, with the sum of the constants of the clauses it matched (`code`). */
+function rankedScan(chunk: RankedChunk, plan: SearchPlanRows): SQL {
+  const clauses = chunk.clauses.map((clause) => {
+    const at = clause.at ?? chunk.part!;
+    return clause.query(sql.raw(String(chunk.base * 2 ** at.shift)));
+  });
+  const scope = sql.join([AUDIENCE_ANY, ...scopeConditions(plan)], sql` AND `);
+  const numbered = plan.number === null ? sql`false` : sql`(sd.kind = 'work' AND split_part(sd.body, E'\n', 1) = ${`#${plan.number}`})`;
+  return sql`SELECT sd.id, sd.kind, sd.object_id, sd.version, sd.at, length(sd.tsv) AS dl, ${numbered} AS numbered,
+        floor(pdb.score(sd.id) / ${sql.raw(String(chunk.base))})::bigint AS code
+      FROM search_documents sd WHERE NOT sd.sealed AND ${scope} AND ${WORK_LIFECYCLE} AND (${sql.join(clauses, sql` OR `)})`;
+}
+
+const num = (value: number) => sql.raw(String(value));
+
+/**
+ * The ranked statement's CTEs: BM25 over the visible hits only, in SQL. `cand` holds the documents that match any word and may be shown (the
+ * audiences and the work lifecycle are in every scan); a word's document frequency, the number of documents and their average length are
+ * counted over `cand` and nothing else, so what the caller cannot read, in this space, in another or in another workspace, moves nothing. A
+ * document's own part is its length, `length(tsv)`, stored with the row (the term frequency of a word is one: the index says only that it
+ * matches). Each word the document holds adds `idf × weight`, the title's twice the body's, and the sum is scaled by
+ * `(k1 + 1) / (1 + k1 × (1 − b + b × length / average))`; a word that every hit holds counts for little. A document that holds no whole word
+ * but matched as the word being typed or with a typo counts half the average rarity of the query's words.
+ */
+function rankedStatement(plan: SearchPlanRows): SQL {
+  const chunks = rankedChunks(plan);
+  const scans = chunks.map((chunk, index) => sql`chunk${num(index)} AS MATERIALIZED (${rankedScan(chunk, plan)}),`);
+  // A document found by several scans is one row, with the code of each; one scan (the usual case) needs no grouping.
+  const cand = chunks.length === 1
+    ? sql`SELECT id, kind, object_id, version, at, dl, numbered, code AS c0 FROM chunk0`
+    : sql`SELECT id, min(kind) AS kind, min(object_id) AS object_id, min(version) AS version, min(at) AS at, min(dl) AS dl, bool_or(numbered) AS numbered,
+        ${sql.join(chunks.map((_, index) => sql`max(code) FILTER (WHERE k = ${num(index)}) AS c${num(index)}`), sql`, `)}
+      FROM (${sql.join(chunks.map((_, index) => sql`SELECT ${num(index)} AS k, * FROM chunk${num(index)}`), sql` UNION ALL `)}) u GROUP BY id`;
+  const words = chunks.flatMap((chunk, index) => chunk.words.map((word) => ({ word, code: sql.raw(`coalesce(c.c${index}, 0)`) })));
+  const field = (code: SQL, f: RankedField) => sql`((${code} >> ${num(f.shift)}) & ${num(2 ** f.bits - 1)})`;
+  const present = ({ word, code }: (typeof words)[number]) => sql`((${code} >> ${num(word.title.shift)}) & ${num(15)}) > 0`;
+  const weight = ({ word, code }: (typeof words)[number]) => sql`(CASE WHEN ${field(code, word.title)} > 0 THEN ${num(WEIGHT.title)} ELSE ${num(WEIGHT.body)} END)`;
+  const idf = (entry: (typeof words)[number]) => sql`ln(1 + (st.n - st.n${num(entry.word.w)} + 0.5) / (st.n${num(entry.word.w)} + 0.5))`;
+  const counts = words.map((entry) => sql`count(*) FILTER (WHERE ${present(entry)})::float8 AS n${num(entry.word.w)}`);
+  const whole = sql.join(words.map((entry) => sql`CASE WHEN ${present(entry)} THEN ${idf(entry)} * ${weight(entry)} ELSE 0 END`), sql` + `);
+  const partial = sql`${num(WEIGHT.part)} * (${sql.join(words.map((entry) => idf(entry)), sql` + `)}) / ${num(words.length)}`;
+  const any = sql.join(words.map((entry) => present(entry)), sql` OR `);
+  return sql`
+    ${sql.join(scans, sql`
+    `)}
+    cand AS MATERIALIZED (${cand}),
+    stats AS (SELECT count(*)::float8 AS n, greatest(avg(c.dl)::float8, 1) AS avgdl, ${sql.join(counts, sql`, `)} FROM cand c),
+    ranked AS (
+      SELECT c.id, c.kind, c.object_id, c.version, c.at, c.numbered,
+        (CASE WHEN ${any} THEN ${whole} ELSE ${partial} END) * ${num(BM25_K1 + 1)} / (1 + ${num(BM25_K1)} * (1 - ${num(BM25_B)} + ${num(BM25_B)} * c.dl / st.avgdl)) AS rank
+      FROM cand c CROSS JOIN stats st),
+    matched AS (
+      SELECT r.id, r.kind, r.object_id, r.version, r.at,
+        round((r.rank / (r.rank + ${num(SQUASH)}))::numeric, 6) + CASE WHEN r.numbered THEN 10 ELSE 0 END AS score,
+        row_number() OVER (PARTITION BY r.kind, r.object_id ORDER BY r.version DESC NULLS LAST) AS newest
+      FROM ranked r
+    ),`;
+}
+
 function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows, ranking: SearchRanking = 'prefix'): SQL {
-  const q = ranking === 'bm25' ? anyWord(plan) : tsquery(plan);
-  const score = ranking === 'bm25'
-    ? sql`round((sd.bm25 / (sd.bm25 + ${sql.raw(String(SQUASH))}))::numeric, 6)`
-    : sql`round((ts_rank(sd.tsv, ${q}) + 0.5 * word_similarity(${plan.text}, sd.title))::numeric, 6)`;
-  const columns = sql`sd.id, sd.kind, sd.workspace_id, sd.object_id, sd.parent_id, sd.project_id, sd.version, sd.status, sd.title, sd.body,
-        sd.author_kind, sd.author_id, sd.at`;
-  // pg_search scores only in its own scan, so BM25 hits are scored in a CTE of their own before the window that keeps one row per object.
-  const scored = ranking === 'bm25'
-    ? sql`scored AS MATERIALIZED (
-      SELECT ${columns}, pdb.score(sd.id) AS bm25 FROM search_documents sd WHERE ${hitConditions(plan, ranking)}
-    ),`
-    : sql``;
-  const from = ranking === 'bm25' ? sql`scored sd` : sql`search_documents sd WHERE ${hitConditions(plan)}`;
+  const bm25 = ranking === 'bm25';
+  const q = bm25 ? anyWord(plan) : tsquery(plan);
+  const columns = (alias: string) => sql.raw(['id', 'kind', 'workspace_id', 'object_id', 'parent_id', 'project_id', 'version', 'status', 'title', 'body', 'author_kind', 'author_id', 'at']
+    .map((column) => `${alias}.${column}`).join(', '));
   // The BM25 statement needs only the audiences; the index keys of today's index are not looked up.
-  const audience = ranking === 'bm25' ? sql`aud AS MATERIALIZED (SELECT ${visibleKeys(audiences)} AS keys)` : audienceCte(audiences, plan);
+  const audience = bm25 ? sql`aud AS MATERIALIZED (SELECT ${visibleKeys(audiences)} AS keys)` : audienceCte(audiences, plan);
+  const matched = bm25 ? rankedStatement(plan) : sql`
+    matched AS (
+      SELECT ${columns('sd')},
+        round((ts_rank(sd.tsv, ${q}) + 0.5 * word_similarity(${plan.text}, sd.title))::numeric, 6)${exactNumber(plan)} AS score,
+        row_number() OVER (PARTITION BY sd.kind, sd.object_id ORDER BY sd.version DESC NULLS LAST) AS newest
+      FROM search_documents sd WHERE ${hitConditions(plan)}
+    ),`;
   const after = plan.after
     ? sql`WHERE (hits.score, hits.at, hits.id) < (${plan.after.score}::numeric, ${plan.after.at}::timestamptz, ${plan.after.id}::bigint)`
     : sql``;
   const clean = (column: SQL) => sql`translate(left(${column}, ${HEADLINE_INPUT}), ${START + STOP}, '')`;
+  // The ranked statement ranks narrow rows; the page's rows are read whole by id, so a long body is read for at most `limit + 1` documents.
+  const page = bm25
+    ? sql`(SELECT ${columns('x')}, r.score FROM (SELECT hits.id, hits.score FROM hits ${after} ORDER BY hits.score DESC, hits.at DESC, hits.id DESC LIMIT ${plan.limit + 1}) r
+      JOIN search_documents x ON x.id = r.id)`
+    : sql`(SELECT * FROM hits ${after} ORDER BY hits.score DESC, hits.at DESC, hits.id DESC LIMIT ${plan.limit + 1})`;
   // The BM25 plan joins the hits from a CTE, where PostgreSQL may cast before it checks the kind: only a task's id is cast there.
   // The prefix plan keeps its join as it was (its rows examined are what the hidden-work tests pin).
-  const workJoin = ranking === 'bm25'
+  const workJoin = bm25
     ? sql`wi.id = (CASE WHEN h.kind = 'work' THEN h.object_id::uuid END)`
     : sql`h.kind = 'work' AND wi.id = h.object_id::uuid`;
   return sql`
     WITH ${audience},
-    ${scored}
-    matched AS (
-      SELECT ${columns},
-        ${score}${exactNumber(plan)} AS score,
-        row_number() OVER (PARTITION BY sd.kind, sd.object_id ORDER BY sd.version DESC NULLS LAST) AS newest
-      FROM ${from}
-    ),
+    ${matched}
     -- One result per object: of several matching versions of a material, the newest.
     hits AS (SELECT * FROM matched WHERE newest = 1)
     SELECT h.id::text AS id, h.score::text AS score, h.at::text AS at_key, h.at, h.kind, h.workspace_id, w.name AS workspace_name,
@@ -314,7 +436,7 @@ function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows, ra
         WHEN d.kind = 'pair' THEN (SELECT u.name FROM auth_users u WHERE u.id IN (split_part(d.pair_key, ':', 1), split_part(d.pair_key, ':', 2)) AND u.id <> ${plan.reader} LIMIT 1)
         ELSE (SELECT string_agg(u.name, ', ' ORDER BY u.name) FROM dm_participants dp JOIN auth_users u ON u.id = dp.user_id WHERE dp.dm_id = d.id AND dp.user_id <> ${plan.reader})
       END AS dm_name
-    FROM (SELECT * FROM hits ${after} ORDER BY hits.score DESC, hits.at DESC, hits.id DESC LIMIT ${plan.limit + 1}) h
+    FROM ${page} h
     LEFT JOIN projects p ON p.id = h.project_id AND ('project:' || p.id) = ANY ((SELECT keys FROM aud)::text[])
     LEFT JOIN workspaces w ON w.id = h.workspace_id
     LEFT JOIN auth_users au ON h.author_kind = 'human' AND au.id = h.author_id
@@ -461,9 +583,10 @@ export function searchRows(db: SearchExecutor) {
     },
 
     /**
-     * One page like `page`, ranked by BM25 (F-042, migration 0065): any of the plan's plain words, Polish and English stems,
-     * accents folded. The same audiences, filters, cursor and one-row-per-object rule; the access policy decides the audiences
-     * on every call, so a lost grant, a space whose AI was turned off, a removed or edited row is reflected by the next call.
+     * One page like `page`, matched by the BM25 index (F-042, migration 0065): any of the plan's plain words, Polish and English stems, accents
+     * folded. pg_search only matches; the order is BM25 over the hits the caller may see, computed in the statement, so nothing the caller
+     * may not read moves it. The same audiences, filters, cursor and one-row-per-object rule; the access policy decides the audiences on
+     * every call, so a lost grant, a space whose AI was turned off, a removed or edited row is reflected by the next call.
      */
     async ranked(audiences: SearchAudienceRows[], plan: SearchPlanRows): Promise<SearchRowRecord[]> {
       if (!audiences.length || !/[\p{L}\p{N}]/u.test(plan.words)) return [];
