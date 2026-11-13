@@ -1056,6 +1056,8 @@ def phase_journeys(pw, engine: str, data: dict) -> None:
                 else:
                     page.keyboard.press("c")
                 page.locator("[role='dialog']").first.wait_for(timeout=6000)
+                if touch:  # the phone's Create sheet lists the five types first
+                    press(page.locator("[role='dialog']").get_by_text("Task", exact=True).first)
                 field = page.locator("[role='dialog']").get_by_placeholder(re.compile("What needs doing")).first
                 press(field)
                 page.keyboard.type(title, delay=5)
@@ -1065,7 +1067,7 @@ def phase_journeys(pw, engine: str, data: dict) -> None:
                 api = api_for(browser, data, "ada")
                 where = ""
                 for project in vca.items(call(api, "GET", f"/api/v1/workspaces/{ids['ws']}/projects")):
-                    if any(t["title"] == title for t in vca.items(call(api, "GET", f"/api/v1/projects/{project['id']}/work?limit=200"))):
+                    if any(t["title"] == title for t in vca.items(call(api, "GET", f"/api/v1/projects/{project['id']}/work?limit=100"))):
                         where = project["id"]
                 assert where, "the task was not saved"
                 page.goto(ORIGIN + f"/projects/{where}/tasks?view=list")
@@ -1177,7 +1179,10 @@ def phase_journeys(pw, engine: str, data: dict) -> None:
 
             def map_thought(page):
                 text = f"Audit thought {tag}"
-                press(page.get_by_role("toolbar", name="Map tools").get_by_role("button", name="Thought", exact=True))
+                if touch:  # the phone's map is for viewing and adding a thought (S15): one "Add a thought" button
+                    press(page.get_by_role("button", name="Add a thought"))
+                else:
+                    press(page.get_by_role("toolbar", name="Map tools").get_by_role("button", name="Thought", exact=True))
                 field = page.get_by_role("form", name="New thought draft").get_by_label("Thought text")
                 field.wait_for(timeout=6000)
                 field.type(text, delay=5)
