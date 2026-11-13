@@ -243,8 +243,19 @@ describe('answers whose cost is not known, and the provider\'s error answers', (
   });
 
   test('an unknown token, or a run with all its places taken, is refused before its body is read', async () => {
-    const unknown = await call('/anthropic/v1/messages', `flux_mg_${'A'.repeat(43)}`, { ...body, messages: [{ role: 'user', content: 'x'.repeat(70 * 1024) }] });
-    assert.equal(unknown.status, 401, 'refused for its token, not read to its size');
+    const big = { ...body, messages: [{ role: 'user', content: 'x'.repeat(40 * 1024) }] };
+    const unknown = await call('/anthropic/v1/messages', `flux_mg_${'A'.repeat(43)}`, big);
+    assert.equal(unknown.status, 401, 'refused for its token before its body is read');
+    const run = await runOn('openai_compatible', 'qwen3-coder');
+    const waiting: ServerResponse[] = [];
+    script = (_req, _body, res) => { waiting.push(res); };
+    const calls = [0, 1, 2, 3].map(() => call('/openai_compatible/chat/completions', run.token, body, 'authorization'));
+    while (waiting.length < 4) await new Promise((done) => setTimeout(done, 20));
+    const fifth = await call('/openai_compatible/chat/completions', run.token, { ...big, model: 'qwen3-coder' }, 'authorization');
+    assert.equal(fifth.status, 429, 'a fifth request of the run is refused before its body is read');
+    for (const res of waiting) whole({ usage: { prompt_tokens: 1, completion_tokens: 1 } })(null as never, '', res);
+    await Promise.all(calls);
+    await gateway.close(run.id);
   });
 
   test('an error answer is passed back without the key or anything shaped like one, and costs nothing', async () => {
