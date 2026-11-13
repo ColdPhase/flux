@@ -49,6 +49,14 @@ the wiring between services or enables test-only code.
 | `FLUX_OIDC_CLIENT_SECRET_FILE` | Set by Compose to `/run/secrets/flux_oidc_client_secret`; the host file is `FLUX_OIDC_CLIENT_SECRET_HOST_FILE`. |
 | `FLUX_OPENAI_MOCK_URL` | Browser-test profile only (mock provider). |
 | `FLUX_PUSH_ALLOW_PRIVATE_NETWORK` | Phone-emulation tests only: lets push reach a private test service. |
+| `FLUX_RELEASE_COMMIT` | In a release's `docker/release.env`: the source commit the release was built from. |
+| `FLUX_RELEASE_DATABASE_IMAGE` | In a release's `docker/release.env`: the database image, pinned by digest. |
+| `FLUX_RELEASE_IMAGE` | In a release's `docker/release.env`: the application image, pinned by digest; `./flux` exports it for `docker/compose.yaml`. |
+| `FLUX_RELEASE_REPOSITORY` | The repository whose release workflow must have signed a release's `SHA256SUMS` (default `ColdPhase/flux`), when cosign is installed. |
+| `FLUX_RELEASE_RUNTIME_IMAGE` | In a release's `docker/release.env`: the agent-runtime image, pinned by digest; pulled only while the runtime is on. |
+| `FLUX_RELEASE_SCHEMA` | In a release's `docker/release.env`: the highest migration of the release. |
+| `FLUX_RELEASE_URL` | Where `./flux upgrade` downloads releases (default `https://github.com/ColdPhase/flux/releases`): a mirror with the same layout, or a test server. |
+| `FLUX_RELEASE_VERSION` | In a release's `docker/release.env` (#1471): the version. Written by the release workflow, read by `./flux`. |
 | `FLUX_ROOT` | The launcher's own directory. |
 | `FLUX_RUNTIME_EGRESS_API` | Set by Compose: where the runtime egress proxy forwards `/mcp`. |
 | `FLUX_RUNTIME_EGRESS_GATEWAY` | Set by Compose: where the runtime egress passes model requests on to the worker's model gateway; default `worker-gateway:8095` (#1441). |
@@ -77,6 +85,7 @@ the wiring between services or enables test-only code.
 | `FLUX_UI_SCREENSHOTS` | Browser-test profile only. |
 | `FLUX_UI_SCREENSHOT_DIR` | Browser-test profile only. |
 | `FLUX_UI_UPSTREAM` | Browser-test profile only. |
+| `FLUX_UPGRADE_PREVIOUS_FILES` | Set by `./flux upgrade` for the new launcher: the archive of the previous release's files, for the way back. |
 
 Names in the code that are not settings at all:
 

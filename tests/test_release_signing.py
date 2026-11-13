@@ -2,7 +2,7 @@
 
 The keyless signature itself can only be made by the real workflow; scripts/release/check_signing.sh signs with a throwaway key in
 Docker. This file checks what can be checked without a release: the keyless command line, the identity pattern, the digest-only rule,
-the order and permissions of the jobs, the SHA pins, and that INSTALL.md shows the same command the script runs."""
+the order and permissions of the jobs, the SHA pins, and that the upgrade guide and ./flux upgrade check SHA256SUMS with the same identity."""
 
 import os
 import re
@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = ROOT / "scripts/release/verify_signatures.sh"
 FINAL = (ROOT / ".github/workflows/final-release.yml").read_text(encoding="utf-8")
 PUBLISH = (ROOT / ".github/workflows/publish-release.yml").read_text(encoding="utf-8")
-GUIDE = (ROOT / "docs/operations/release-guide.md").read_text(encoding="utf-8")
+GUIDE = (ROOT / "docs/operations/upgrade.md").read_text(encoding="utf-8")
 DIGEST = "sha256:" + "a" * 64
 ISSUER = "https://token.actions.githubusercontent.com"
 
@@ -134,14 +134,18 @@ class Workflows(unittest.TestCase):
 
 
 class Guide(unittest.TestCase):
-    def test_install_md_shows_the_command_the_script_runs(self):
+    def test_the_guide_the_launcher_and_the_workflow_check_sha256sums_with_the_images_identity(self):
         identity = re.search(r"--certificate-identity-regexp (\S+) ", run_script(f"x@{DIGEST}")[1][0]).group(1)
-        # Shell-quoted in the guide, with the same pattern and issuer.
-        self.assertIn(f"--certificate-identity-regexp '{identity}'", GUIDE.replace("\\\n    ", ""))
-        self.assertIn(f"--certificate-oidc-issuer {ISSUER}", GUIDE)
-        self.assertIn('gh attestation verify "oci://$image" --repo ColdPhase/flux', GUIDE)
-        self.assertIn("cosign verify", GUIDE)
-        self.assertIn("release.json", GUIDE)
+        # Shell-quoted in the guide and the workflow, with the same pattern and issuer as the images.
+        guide = GUIDE.replace("\\\n  ", "")
+        self.assertIn(f"cosign verify-blob --bundle SHA256SUMS.sigstore.json --certificate-identity-regexp '{identity}'", guide)
+        self.assertIn(f"--certificate-oidc-issuer {ISSUER} SHA256SUMS", guide)
+        sign = job(FINAL, "sign")
+        self.assertIn("cosign sign-blob --yes --bundle SHA256SUMS.sigstore.json release-assets/SHA256SUMS", sign)
+        self.assertIn(f"--certificate-identity-regexp '{identity}'", sign)
+        launcher = (ROOT / "flux").read_text(encoding="utf-8")
+        self.assertIn('cosign verify-blob --bundle "$1/SHA256SUMS.sigstore.json" --certificate-identity-regexp "$identity"', launcher)
+        self.assertIn("--certificate-oidc-issuer https://token.actions.githubusercontent.com", launcher)
 
 
 if __name__ == "__main__":

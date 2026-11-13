@@ -7,7 +7,7 @@
 # 1. The released migrations are byte-identical to their tags (scripts/release/check_released_migrations.py).
 # 2. For every published release from v0.2.0 on (gh release list; v0.1 is not upgraded, #1176) before the candidate:
 #      a. RELEASE INSTALLATION: the release's own assets are downloaded and checked against SHA256SUMS, the release is installed
-#         from them (compose.yaml, its image by digest, env.example), seeded through its API (scripts/release/smoke_data.py:
+#         from them (its Compose file and settings template, from flux.tar.gz from v0.2.1 on; its images by digest), seeded through its API (scripts/release/smoke_data.py:
 #         people and a guest, spaces with an encrypted one, threads, direct messages, files, wiki history, a map, tasks with due dates
 #         and waits, notification settings, a second device, an AI connection with an API key, an agent with memory and schedules and a
 #         completed run, on a provider mock), backed up, and upgraded to the candidate by the release guide's steps. Then everything
@@ -166,11 +166,8 @@ if [ -z "$candidate_assets" ]; then
   ( cd "$work/candidate-src" && python3 scripts/release/prepare_assets.py --version "$candidate_version" --source-sha "$sha" --digest "$digest" \
       --sbom "$work/releases/$newest/sbom.spdx.json" --runtime-digest "$runtime_digest" \
       --runtime-sbom "$work/releases/$newest/sbom-agent-runtime.spdx.json" --database-digest "$database_digest" --database-sbom "$database_sbom" \
-      --destination "$work/candidate-assets" ) > "$work/prepare.log" 2>&1 || { cat "$work/prepare.log"; fail "the candidate's release assets did not render"; }
-  for file in compose.yaml release.json; do
-    sed "s#ghcr.io/coldphase/#127.0.0.1:$registry_port/#g" "$work/candidate-assets/$file" > "$work/candidate-assets/$file.edit"
-    mv "$work/candidate-assets/$file.edit" "$work/candidate-assets/$file"
-  done
+      --source . --registry "127.0.0.1:$registry_port" --destination "$work/candidate-assets" ) > "$work/prepare.log" 2>&1 ||
+    { cat "$work/prepare.log"; fail "the candidate's release assets did not render"; }
   candidate_assets="$work/candidate-assets"
   echo "candidate image $digest, database image $database_digest"
 fi

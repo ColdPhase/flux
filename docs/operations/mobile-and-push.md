@@ -21,7 +21,7 @@ iPhone and iPad and receiving notifications (MOB-6 in
 ## 2. Turn on Web Push
 
 Set all three of `FLUX_VAPID_PUBLIC_KEY`, `FLUX_VAPID_PRIVATE_KEY` and `FLUX_VAPID_SUBJECT`
-([install step 3](install-release.md), [variables](configuration.md#web-push)).
+(`./flux up` generates the key pair; [variables](configuration.md#web-push)).
 The subject must be a contact Apple accepts: `mailto:` at a real domain you own, or your
 public `https://` origin. With a `localhost`, `.local` or `.test` contact, Apple's push
 service answers 403 and iPhone and iPad notifications fail. The worker warns about this at

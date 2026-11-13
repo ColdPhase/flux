@@ -5,10 +5,9 @@ One proxy serves the entire Flux origin: the web app, authentication, OAuth disc
 Set `FLUX_PUBLIC_ORIGIN` to the exact HTTPS URL people open, including a nonstandard port.
 Do not strip paths, authorization or cookies, or replace Host with the upstream address.
 
-In a source checkout the proxy is built in: [an `https` origin is all](#built-in-https). A proxy of
+The proxy is built in: [an `https` origin is all](#built-in-https). A proxy of
 your own is the same single setting with its address added ([your own proxy](#your-own-proxy-instead)).
-A release install has no launcher and always brings its own proxy: the Caddy example below is the most
-complete; [nginx](#nginx) and [Traefik](#traefik) follow, and any proxy that passes WebSocket upgrades
+For your own proxy, the Caddy example below is the most complete; [nginx](#nginx) and [Traefik](#traefik) follow, and any proxy that passes WebSocket upgrades
 and request bodies of at least 5 MiB works the same way.
 
 ## Built-in HTTPS
@@ -86,17 +85,16 @@ with one sign-in. The rest of this page is your proxy's configuration: whole ori
 
 ### Local HTTPS example
 
-This is a proxy of your own, for a [release installation](install-release.md); a source checkout has
-it [built in](#built-in-https). Edit only these settings in the release `.env`:
+This is a proxy of your own; without one, HTTPS is [built in](#built-in-https). Edit only these settings in
+`docker/.env` (the gateway address is the one of [your own proxy](#your-own-proxy-instead); measure it below):
 
 ```dotenv
 FLUX_PORT=19373
 FLUX_PUBLIC_ORIGIN=https://localhost:19443
-FLUX_TRUSTED_PROXIES=
+FLUX_TRUSTED_PROXIES=172.27.0.1/32
 ```
 
-Apply the settings with `docker compose --env-file .env -f compose.yaml up -d --wait`. Keep the other
-settings and secrets from that installation.
+Apply the settings with `./flux up`. Keep the other settings and secrets from that installation.
 
 Save this as `Caddyfile` in a separate proxy directory:
 
@@ -137,22 +135,21 @@ not obtain a public ACME certificate.
 
 ### Trust only the measured proxy peer
 
-For a release install, initially leave `FLUX_TRUSTED_PROXIES` empty (in a source checkout an empty
-value with an `https` origin starts the [built-in proxy](#built-in-https), so set the
-[gateway address](#your-own-proxy-instead) first and use the query below to confirm it). Create an identifiable account through Caddy,
+An empty `FLUX_TRUSTED_PROXIES` with an `https` origin starts the [built-in proxy](#built-in-https), so set the
+[gateway address](#your-own-proxy-instead) first and use the query below to confirm it. Create an identifiable account through Caddy,
 for example `proxy-probe@example.org`, and inspect **only** its session address. For the
-default database name and user, the release command is:
+default database name and user, the command is (in the Flux folder):
 
 ```sh
-docker compose --env-file .env -f compose.yaml exec -T db \
+docker compose --env-file docker/release.env --env-file docker/.env -p YOUR_PROJECT -f docker/compose.yaml exec -T db \
   psql -U flux -d flux -c "SELECT s.ip_address FROM auth_sessions s
     JOIN auth_users u ON u.id = s.user_id
     WHERE u.email = 'proxy-probe@example.org'
     ORDER BY s.created_at DESC LIMIT 1;"
 ```
 
-For source use `docker compose --env-file docker/.env -p YOUR_PROJECT -f docker/compose.source.yaml`
-instead, replacing `YOUR_PROJECT` with the existing `FLUX_PROJECT` from `docker/.env`.
+Replace `YOUR_PROJECT` with the `FLUX_PROJECT` from `docker/.env` (a developer's source checkout uses
+`--env-file docker/.env -f docker/compose.source.yaml`).
 Use your configured database user/name if changed. Do not select tokens or password hashes.
 With trust empty, this address is the API's socket peer, including Docker's NAT if present.
 
@@ -202,8 +199,7 @@ WebSocket location or path rewrite is required.
 When the optional [live-media overlay](../development/live-media.md) is enabled, the
 whole-origin proxy also covers `/media/rtc`, `/media/rtc/v1` and the other `/media/*`
 signaling paths. Actual media RTP/ICE/TURN reachability follows that guide separately;
-an HTTPS proxy does not establish working audio/video transport. The live-media overlay is not
-part of the release `compose.yaml` yet.
+an HTTPS proxy does not establish working audio/video transport. `FLUX_CALLS=on` layers the overlay ([calls](calls.md)).
 
 Check discovery and the unauthenticated MCP challenge at your exact public origin:
 

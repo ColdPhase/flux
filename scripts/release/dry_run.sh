@@ -248,26 +248,22 @@ for image in flux flux-agent-runtime flux-database; do
   python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(sys.argv[2], d['spdxVersion'], len(d['packages']), 'packages')" "$work/sbom-$image.spdx.json" "$image"
 done
 
-step "Prepare and verify the release assets (digests are real manifest digests of the local registry)"
+step "Prepare and verify the release assets (digests are real manifest digests of the local registry, which the folder names)"
 built_platforms=${platforms:-$platform}
 python3 scripts/release/prepare_assets.py --version "$version" --source-sha "$sha" --digest "$app_digest" \
   --sbom "$work/sbom-flux.spdx.json" --runtime-digest "$runtime_digest" \
   --runtime-sbom "$work/sbom-flux-agent-runtime.spdx.json" --database-digest "$database_digest" \
-  --database-sbom "$work/sbom-flux-database.spdx.json" --platforms "$built_platforms" --destination "$work/release-assets"
+  --database-sbom "$work/sbom-flux-database.spdx.json" --platforms "$built_platforms" --source . \
+  --registry "127.0.0.1:$registry_port" --destination "$work/release-assets"
 ( cd "$work/release-assets" && ls -l && sha256 -c SHA256SUMS && python3 "$work/src/scripts/release/check_asset_set.py" . &&
   python3 "$work/src/scripts/release/verify_assets.py" . --version "$version" --source-sha "$sha" --digest "$app_digest" \
-    --platforms "$built_platforms" )
-grep -n 'image:' "$work/release-assets/compose.runtime.yaml" "$work/release-assets/compose.live.yaml"
+    --platforms "$built_platforms" --registry "127.0.0.1:$registry_port" )
+tar -xzOf "$work/release-assets/flux.tar.gz" flux/docker/release.env
 cat "$work/release-assets/release.json"
 echo "-- negative controls (each must fail)"
 refuses() { label=$1; shift; if "$@" >"$work/out" 2>&1; then fail "$label was accepted"; fi; echo "refused ($label): $(tail -n 1 "$work/out")"; }
-cp -r "$work/release-assets" "$work/tampered"; echo '# x' >> "$work/tampered/compose.runtime.yaml"
-refuses 'tampered overlay (checksum)' python3 scripts/release/verify_assets.py "$work/tampered"
-cp -r "$work/release-assets" "$work/swapped"
-edit "$work/swapped/compose.runtime.yaml" -e "s#flux-agent-runtime@$runtime_digest#flux@$app_digest#"
-# The new sums are written outside the directory: a file created inside it would be globbed into its own list.
-( cd "$work/swapped" && for f in *; do [ "$f" = SHA256SUMS ] || sha256 "$f"; done > "$work/swapped.sums" ) && mv "$work/swapped.sums" "$work/swapped/SHA256SUMS"
-refuses 'runtime image swapped for the application image' python3 scripts/release/verify_assets.py "$work/swapped"
+cp -r "$work/release-assets" "$work/tampered"; printf x >> "$work/tampered/flux.tar.gz"
+refuses 'tampered archive (checksum)' python3 scripts/release/verify_assets.py "$work/tampered" --registry "127.0.0.1:$registry_port"
 refuses 'same digest for both images' python3 scripts/release/prepare_assets.py --version "$version" --source-sha "$sha" --digest "$app_digest" \
   --sbom "$work/sbom-flux.spdx.json" --runtime-digest "$app_digest" --runtime-sbom "$work/sbom-flux-agent-runtime.spdx.json" \
   --database-digest "$database_digest" --database-sbom "$work/sbom-flux-database.spdx.json" --destination "$work/same"
@@ -276,39 +272,40 @@ step "Runtime overlay against the source stack (docker compose config)"
 (
   export POSTGRES_PASSWORD=x FLUX_FIXTURE_TOKEN=x FLUX_PUBLIC_ORIGIN=http://127.0.0.1 FLUX_AUTH_SECRET=x
   docker compose --env-file /dev/null -f docker/compose.source.yaml -f docker/compose.source.runtime.yaml --profile runtime config --format json > "$work/source-config.json"
-  FLUX_PROJECT=fluxcompare docker compose -f "$work/release-assets/compose.yaml" -f "$work/release-assets/compose.runtime.yaml" \
+  folder=$(sh scripts/release/unpack_release.sh "$work/release-assets" "$work/compare")
+  set -a; . "$folder/docker/release.env"; set +a
+  FLUX_PROJECT=fluxcompare docker compose --env-file /dev/null -f "$folder/docker/compose.yaml" -f "$folder/docker/compose.runtime.yaml" \
     --profile runtime config --format json > "$work/release-config.json"
   python3 scripts/release/compare_runtime_overlay.py "$work/source-config.json" "$work/release-config.json"
 )
 
-step "Live-media overlays resolve on the release compose.yaml (docker compose config, as in final-release.yml)"
-bash scripts/release/check_live_overlay.sh "$work/release-assets"
+step "The HTTPS, calls and embeddings overlays resolve on the release compose.yaml (docker compose config, as in final-release.yml)"
+bash scripts/release/check_overlays.sh "$work/release-assets"
 
-localize() { # asset directory, destination: image names (not digests) to the local registry, SHA256SUMS regenerated
+localize() { # a release before v0.2.1 (compose.yaml and release.json as assets), destination: image names to the local registry
   mkdir "$2"
   cp "$1"/* "$2/"
-  for f in compose.yaml compose.runtime.yaml release.json; do edit "$2/$f" -e "s#ghcr.io/coldphase/#127.0.0.1:$registry_port/#g"; done
+  for f in compose.yaml compose.runtime.yaml release.json; do [ ! -f "$2/$f" ] || edit "$2/$f" -e "s#ghcr.io/coldphase/#127.0.0.1:$registry_port/#g"; done
   ( cd "$2" && for f in *; do [ "$f" = SHA256SUMS ] || sha256 "$f"; done > "$work/localized.sums" ) && mv "$work/localized.sums" "$2/SHA256SUMS"
 }
-step "Point the Compose image names at the local registry (digests unchanged) for the smokes"
-localize "$work/release-assets" "$work/local-assets"
-grep -n 'image:' "$work/local-assets/compose.yaml"
 previous_env=()
 if [ -n "$previous_rev" ]; then
   # The previous release is rendered by ITS OWN script from ITS OWN templates, as its workflow would have. The SBOMs and the
   # runtime image are this commit's (the SBOM files only have to exist, the upgrade leg never pulls the runtime image).
-  # A previous release from before F-042 ran the official PostgreSQL image and takes no database digest.
-  previous_database=()
+  # A previous release from before F-042 ran the official PostgreSQL image and takes no database digest; one from v0.2.1 on is a
+  # flux.tar.gz and names the local registry itself.
+  previous_args=()
   grep -q -- '--database-digest' "$work/prev-src/scripts/release/prepare_assets.py" &&
-    previous_database=(--database-digest "$database_digest" --database-sbom "$work/sbom-flux-database.spdx.json")
+    previous_args=(--database-digest "$database_digest" --database-sbom "$work/sbom-flux-database.spdx.json")
+  grep -q -- '--registry' "$work/prev-src/scripts/release/prepare_assets.py" &&
+    previous_args+=(--source . --registry "127.0.0.1:$registry_port")
   ( cd "$work/prev-src" && python3 scripts/release/prepare_assets.py --version "$previous_version" --source-sha "$previous_sha" \
       --digest "$previous_digest" --sbom "$work/sbom-flux.spdx.json" --runtime-digest "$runtime_digest" \
-      --runtime-sbom "$work/sbom-flux-agent-runtime.spdx.json" ${previous_database[@]+"${previous_database[@]}"} --destination "$work/previous-assets" &&
-    cd "$work/previous-assets" && sha256 -c SHA256SUMS >/dev/null &&
-    python3 "$work/prev-src/scripts/release/verify_assets.py" . --version "$previous_version" --source-sha "$previous_sha" --digest "$previous_digest" )
-  localize "$work/previous-assets" "$work/previous-local-assets"
+      --runtime-sbom "$work/sbom-flux-agent-runtime.spdx.json" ${previous_args[@]+"${previous_args[@]}"} --destination "$work/previous-assets" &&
+    cd "$work/previous-assets" && sha256 -c SHA256SUMS >/dev/null )
+  if [ -f "$work/previous-assets/compose.yaml" ]; then localize "$work/previous-assets" "$work/previous-local-assets"
+  else cp -r "$work/previous-assets" "$work/previous-local-assets"; fi
   echo "previous release assets: $previous_version $previous_sha $previous_digest"
-  grep -n 'image:' "$work/previous-local-assets/compose.yaml" | head -n 2
   previous_env=(env "FLUX_SMOKE_PREVIOUS_ASSETS=$work/previous-local-assets")
 fi
 
@@ -318,49 +315,30 @@ if [ -n "$smoke_platform" ]; then
   export FLUX_SMOKE_WAIT=${FLUX_SMOKE_WAIT:-1800}
   echo "smokes on $smoke_platform (DOCKER_DEFAULT_PLATFORM; up --wait allows $FLUX_SMOKE_WAIT s)"
 fi
+step "The owner's path: the install folder with ./flux up, backup, restore and ./flux upgrade (scripts/release/smoke_launcher.sh)"
+FLUX_SMOKE_LAUNCHER_PORT=$((base + 4)) bash scripts/release/smoke_launcher.sh "$work/release-assets" "$work/launcher-state" "$run_id-own"
+
 step "Packaged clean install, paired backup and restore (scripts/release/smoke_artifacts.sh; image pulled by digest)${previous_rev:+ and the upgrade from $previous_version}"
 start=$(date +%s)
 FLUX_SMOKE_PORT=$((base + 1)) FLUX_SMOKE_RESTORE_PORT=$((base + 2)) \
   ${previous_env[@]+"${previous_env[@]}"} \
-  bash scripts/release/smoke_artifacts.sh "$work/local-assets" "$work/smoke-state" "$run_id-src" "$run_id-rst"
+  bash scripts/release/smoke_artifacts.sh "$work/release-assets" "$work/smoke-state" "$run_id-src" "$run_id-rst"
 echo "smoke took $(( $(date +%s) - start )) s"
 
 step "Packaged agent runtime (scripts/release/smoke_runtime.sh)"
 # Read in the ENGINE's kernel (on Docker Desktop a Linux VM, not the host), with the runtime image itself like smoke_runtime.sh does.
 scope=$(docker run --rm --network none --entrypoint cat "$runtime_ref" /proc/sys/kernel/yama/ptrace_scope 2>/dev/null || echo none)
 if [ "$scope" -ge 1 ] 2>/dev/null; then
-  FLUX_SMOKE_RUNTIME_PORT=$((base + 3)) bash scripts/release/smoke_runtime.sh "$work/local-assets" "$work/runtime-state" "$run_id-rt"
+  FLUX_SMOKE_RUNTIME_PORT=$((base + 3)) bash scripts/release/smoke_runtime.sh "$work/release-assets" "$work/runtime-state" "$run_id-rt"
 else
   echo "NOT RUN IN FULL: this engine's kernel.yama.ptrace_scope is '$scope' (needs 1 or higher), so smoke_runtime.sh exits at its host check:"
-  if FLUX_SMOKE_RUNTIME_PORT=$((base + 3)) bash scripts/release/smoke_runtime.sh "$work/local-assets" "$work/runtime-state" "$run_id-rt"; then fail "smoke_runtime passed on a host without Yama"; fi
-  echo "Partial run on this engine: runtime-manager, runtime-egress and runtime-install start; a slot refuses to start (the documented requirement)."
-  env_file="$work/partial.env"
-  python3 scripts/release/write_test_env.py --source "$work/local-assets/env.example" --destination "$env_file" --port $((base + 3))
-  edit "$env_file" -e "s/^FLUX_PROJECT=.*/FLUX_PROJECT=$run_id-rt/" -e 's/^FLUX_AGENT_RUNTIME=.*/FLUX_AGENT_RUNTIME=codex/'
-  chmod 600 "$env_file"
-  for n in 1 2 3 4; do echo "FLUX_RUNTIME_SECRET_$n=$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')" >> "$env_file"; done
-  echo "FLUX_RUNTIME_MANAGER_SECRET=$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')" >> "$env_file"
-  c() { docker compose --env-file "$env_file" -f "$work/local-assets/compose.yaml" -f "$work/local-assets/compose.runtime.yaml" --profile runtime "$@"; }
-  c up -d --wait --wait-timeout 300 api worker
-  c up -d runtime-manager runtime-egress runtime-1
-  sleep 8
-  [ -n "$(c ps -q --status running runtime-manager)" ] || fail "runtime-manager is not running"
-  [ -n "$(c ps -q --status running runtime-egress)" ] || fail "runtime-egress is not running"
-  [ "$(docker inspect -f '{{.State.ExitCode}}' "$(c ps -aq runtime-install)")" = 0 ] || fail "runtime-install did not exit 0"
-  slot_log=$(c logs --no-color runtime-1 2>&1 || true) # captured: `grep -q` on a pipe can SIGPIPE the writer under pipefail
-  printf '%s\n' "$slot_log" | tail -n 4
-  printf '%s' "$slot_log" | grep -qi 'ptrace' || fail "the slot did not name the Yama requirement"
-  # shellcheck disable=SC2046
-  docker inspect $(docker ps -q --filter "label=com.docker.compose.project=$run_id-rt") > "$work/inspect.json"
-  python3 scripts/agent-runtime/inspect.py "$run_id-rt" "$work/local-assets" < "$work/inspect.json" || true
-  c down -v --remove-orphans >/dev/null 2>&1
+  if FLUX_SMOKE_RUNTIME_PORT=$((base + 3)) bash scripts/release/smoke_runtime.sh "$work/release-assets" "$work/runtime-state" "$run_id-rt"; then fail "smoke_runtime passed on a host without Yama"; fi
 fi
 
 if [ -n "$out" ]; then
   mkdir -p "$out"
   cp "$work/release-assets/SHA256SUMS" "$out/SHA256SUMS.txt"
   cp "$work/release-assets/release.json" "$out/release.json.txt"
-  cp "$work/release-assets/compose.runtime.yaml" "$out/compose.runtime.yaml.txt"
-  cp "$work/release-assets/compose.live.yaml" "$out/compose.live.yaml.txt"
+  tar -xzOf "$work/release-assets/flux.tar.gz" flux/docker/release.env > "$out/release.env.txt"
 fi
 echo "DRY RUN COMPLETE: $sha, application $app_digest, agent-runtime $runtime_digest; nothing published."

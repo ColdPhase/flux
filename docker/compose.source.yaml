@@ -28,7 +28,7 @@ x-runtime-slot: &runtime-slot
   image: flux-agent-runtime:${FLUX_IMAGE_TAG:-${COMPOSE_PROJECT_NAME:-local}}
   # One runtime for everyone (#860). Its supervisor starts as root inside the container, with only these capabilities, to run
   # each person's CLIs under that person's own user id; the CLIs have no capabilities at all. FLUX_RUNTIME_MEMORY bounds all the
-  # agents together, and how many run at once follows from it (./flux and runtime.sh set it from the server's memory).
+  # agents together, and how many run at once follows from it (./flux sets it from the server's memory).
   user: "0:0"
   cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, KILL, SETGID, SETUID]
   mem_limit: ${FLUX_RUNTIME_MEMORY:-2560m}

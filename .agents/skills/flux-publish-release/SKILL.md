@@ -13,16 +13,22 @@ recorded authority and the actual artifact formats in the release contract.
    targets, and publication permissions. Respect existing tag and branch rules.
 2. Build the selected distribution in Actions from that SHA and test installation
    and startup of the produced artifact in a clean environment. Implement or repair
-   the workflow through a reviewed PR if it does not yet exist.
+   the workflow through a reviewed PR if it does not yet exist. Flux ships one owner
+   artifact (#1471, founder decision 5): `flux.tar.gz`, the launcher with the Compose
+   files it runs and `docker/release.env` pinning the image digests, plus `release.json`,
+   SBOMs, notices and a signed `SHA256SUMS`. The documented install path is download,
+   `sha256sum --ignore-missing -c SHA256SUMS`, unpack, `./flux up`; upgrade is
+   `./flux upgrade`. `scripts/release/smoke_launcher.sh` tests exactly that.
 3. Create/reuse the tag and draft release consistently. Verify an existing tag's
    target; never move it silently. Record source SHA, build run, asset digests,
    supported platforms, release notes, and installation/upgrade instructions.
 4. Have the peer verify draft contents and packaged behavior. Keep publishing
    permissions isolated to the publishing job. A changed source candidate needs
    evaluation again before release.
-5. Publish in the agreed prerelease/stable mode. Verify the actual download URLs,
-   checksums, and documented install path, then link evidence from the milestone's
-   acceptance task/PR.
+5. Publish in the agreed prerelease/stable mode. Verify the actual download URLs
+   (including `releases/latest/download/flux.tar.gz`), checksums, the signature of
+   `SHA256SUMS`, and the documented install path, then link evidence from the
+   milestone's acceptance task/PR.
    Resume matching work after an interruption instead of duplicating a release.
 
 If a hosting deployment is part of the contract, perform and verify it for that

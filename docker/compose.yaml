@@ -1,27 +1,19 @@
-# Flux operator Compose: runs a PUBLISHED Flux release. No source checkout, no build.
+# Flux for an owner: the Compose file of a Flux release (#1471, founder decision 5; F-043). No source checkout, no build.
 #
-# The repository copy (docker/compose.yaml) is the example for a future release. It is NOT
-# what `./flux up` runs (that builds the checked-out source from docker/compose.source.yaml) and does
-# not start as is: its placeholder digests RELEASE_DIGEST and DATABASE_DIGEST are replaced by the release workflow
-# (#77) with the accepted manifest digests of ghcr.io/coldphase/flux and flux-database. Download compose.yaml and
-# .env.example from ONE GitHub Release; their image digest, migrations and variables match.
+# It ships in every release's flux.tar.gz with the `flux` launcher, which runs it: `./flux up` reads docker/release.env (the release's
+# version and its three images pinned by digest), pulls the images this Docker does not have and starts Flux. The images come only from
+# that file, through FLUX_RELEASE_IMAGE and FLUX_RELEASE_DATABASE_IMAGE, which the launcher exports; docker/.env never names one.
+# Install, upgrade and backup: docs/operations/install.md. A source checkout (the developer's path) builds docker/compose.source.yaml
+# instead; tests/test_release_compose_parity.py keeps the two in step.
 #
-#   cp .env.example .env    # then fill in the required values, see .env.example
-#   docker compose --env-file .env -f compose.yaml config --quiet
-#   docker compose --env-file .env -f compose.yaml up -d --wait
-#
-# In this repository the same command reads docker/.env:
-#   docker compose --env-file docker/.env -f docker/compose.yaml up -d --wait
-# Install, upgrade and backup: docs/operations/install-release.md.
-#
-# api, worker, keyring and migrate run one image at one revision (O-002); the database image of the same release is pinned by
-# digest. Only the API is published, on loopback: put a TLS reverse proxy in front of it.
+# api, worker, keyring and migrate run one image at one revision (O-002); the database image of the same release is pinned by digest.
+# Only the API is published, on loopback: the launcher's built-in HTTPS (compose.https.yaml) or the owner's own proxy is in front of it.
 name: ${FLUX_PROJECT:-flux}
 
 services:
   db:
     # Flux's database image (F-042): PostgreSQL 18 with pg_search, built by the release from docker/database/Dockerfile.
-    image: ghcr.io/coldphase/flux-database@sha256:DATABASE_DIGEST
+    image: ${FLUX_RELEASE_DATABASE_IMAGE:?run Flux with ./flux, which names the images}
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-flux}
@@ -45,7 +37,7 @@ services:
   migrate:
     # One-shot: applies the release's SQL migrations in order, then exits. API and worker
     # start only after it succeeded.
-    image: ghcr.io/coldphase/flux@sha256:RELEASE_DIGEST
+    image: ${FLUX_RELEASE_IMAGE:?run Flux with ./flux, which names the images}
     command: ["node", "tooling/dist/migrate.js"]
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-flux}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-flux}
@@ -53,8 +45,27 @@ services:
       db:
         condition: service_healthy
     restart: "no"
+  files-init:
+    # One-shot of ./flux up: gives the non-root API and worker their files volume.
+    profiles: ["setup"]
+    image: ${FLUX_RELEASE_IMAGE:?run Flux with ./flux, which names the images}
+    user: "0:0"
+    command: ["chown", "-R", "1000:1000", "/data/files"]
+    volumes:
+      - files:/data/files:z
+    restart: "no"
+  files-archive:
+    # One-shot helper of ./flux backup and restore (issue #123): streams the files volume as a tar archive over stdin/stdout. The
+    # database image is always present and provides tar, gzip and sha256sum. No network, no ports.
+    profiles: ["ops"]
+    image: ${FLUX_RELEASE_DATABASE_IMAGE:?run Flux with ./flux, which names the images}
+    user: "0:0"
+    network_mode: none
+    volumes:
+      - files:/data/files:z
+    restart: "no"
   api:
-    image: ghcr.io/coldphase/flux@sha256:RELEASE_DIGEST
+    image: ${FLUX_RELEASE_IMAGE:?run Flux with ./flux, which names the images}
     restart: unless-stopped
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-flux}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-flux}
@@ -123,6 +134,10 @@ services:
       # The image owns /data/files as its non-root user, so a new volume starts writable.
       # "z" relabels the shared volume for SELinux hosts and is ignored elsewhere.
       - files:/data/files:z
+      # Optional 32-byte owner secret for agents on API keys; the empty placeholder means unavailable.
+      - ${FLUX_BACKGROUND_KEY_HOST_FILE:-./background-key-unavailable}:/run/secrets/flux_background_key:ro,z
+      # Optional single sign-on client secret (#113); the empty placeholder is unused while sign-on is off.
+      - ${FLUX_OIDC_CLIENT_SECRET_HOST_FILE:-./oidc-client-secret-unavailable}:/run/secrets/flux_oidc_client_secret:ro,z
     ports:
       - 127.0.0.1:${FLUX_PORT:-8081}:8080
     depends_on:
@@ -140,7 +155,7 @@ services:
       start_period: 60s
       start_interval: 250ms
   worker:
-    image: ghcr.io/coldphase/flux@sha256:RELEASE_DIGEST
+    image: ${FLUX_RELEASE_IMAGE:?run Flux with ./flux, which names the images}
     restart: unless-stopped
     command: ["node", "apps/worker/dist/index.js"]
     environment:
@@ -169,13 +184,14 @@ services:
     networks: [default, keyring]
     volumes:
       - files:/data/files:z
+      - ${FLUX_BACKGROUND_KEY_HOST_FILE:-./background-key-unavailable}:/run/secrets/flux_background_key:ro,z
     depends_on:
       migrate:
         condition: service_completed_successfully
   keyring:
     # Encrypted workspaces (F-030): one random boot key in RAM only, nothing on disk; exactly one per deployment,
     # on this host only. It refuses to start where its memory could be paged to disk.
-    image: ghcr.io/coldphase/flux@sha256:RELEASE_DIGEST
+    image: ${FLUX_RELEASE_IMAGE:?run Flux with ./flux, which names the images}
     command: ["node", "apps/keyring/dist/main.js"]
     restart: unless-stopped
     user: "1000:1000"
@@ -193,6 +209,9 @@ services:
       FLUX_SWAP_ACKNOWLEDGED: ${FLUX_SWAP_ACKNOWLEDGED:-}
       NODE_OPTIONS: --secure-heap=65536
     networks: [keyring]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
     # The shell and `nc` of the image's busybox, not a Node process (#862). The token goes through the pipe, never an argument,
     # so no process list shows it. Without a token the keyring is idle and healthy; with one, `/v1/boot` must answer 200.
     healthcheck:

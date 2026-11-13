@@ -12,8 +12,7 @@ worker and one keyring on one Docker host, and that is the only deployment that 
 - **Database.** Each API and worker process keeps a pool of 10 PostgreSQL connections, and
   PostgreSQL keeps its default of 100. Give the host fast disk before more CPU: every write ends with
   an ordered event insert. PostgreSQL itself runs with its image defaults; tune it through a Compose
-  override file only if you measure a need (a source checkout reads `docker/compose.override.yaml`; a release
-  install passes its own file with `-f` after `compose.yaml`).
+  override file only if you measure a need (`./flux` reads `docker/compose.override.yaml`).
 - **Disk.** The database keeps every saved version. Watch the `pgdata` volume and keep room for a
   backup, which needs about twice its size while it is written.
 - **Agent runtime.** Everyone with Connect AI has a place; how many agents run at once follows from

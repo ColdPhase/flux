@@ -15,15 +15,18 @@ API and a separate worker with named `pgdata` and `files` volumes. The
 [application foundation guide](application-foundation.md) has the clean-start,
 validation and backup/restore commands and what the application includes today.
 
-`docker/compose.yaml` and `docker/.env.example` are the **operator** files for a published
-release (#76 phase 1): pull-only, with `api`, `worker` and `migrate` on the one marker image
-`ghcr.io/coldphase/flux@sha256:RELEASE_DIGEST` that the release workflow (#77) replaces with
-the accepted digest, and the same pinned PostgreSQL, runtime variables, volumes, health checks
-and migration ordering as the production-mode services here. They are not used by `./flux` or
-the checks below; see [install from a release](../operations/install-release.md).
-`./scripts/check_operator_compose.sh` runs them against the locally built source image
-(port `FLUX_OPERATOR_TEST_PORT`, default `18951`) and `tests/test_operator_compose.py`
-checks them statically. The #75 layout is implemented with the application workspace
+**Two kinds of folder, one launcher** (#1471, founder decision 5). An owner installs a release: its `flux.tar.gz` holds
+`./flux` and `docker/compose.yaml` with the optional overlays, and `docker/release.env` names the release's images by digest,
+so `./flux up` pulls them and builds nothing ([installation](../operations/install.md)). A source checkout, this repository,
+is the Flux developers' path: without `docker/release.env`, the same `./flux` builds `docker/compose.source.yaml` (with the
+test switches the checks need), and `./flux dev` runs the hot-reload stack. `docker/compose.yaml` and
+`docker/compose.runtime.yaml` are pull-only and take every Flux image from `FLUX_RELEASE_IMAGE`, `FLUX_RELEASE_DATABASE_IMAGE`
+and `FLUX_RELEASE_RUNTIME_IMAGE`, which the launcher exports from `docker/release.env`; `scripts/release/prepare_assets.py`
+packages them ([release pipeline](release-pipeline.md)). `./scripts/check_operator_compose.sh` runs `docker/compose.yaml`
+against the locally built source images (port `FLUX_OPERATOR_TEST_PORT`, default `18951`),
+`tests/test_operator_compose.py` checks it statically, and `tests/test_launcher_release.py` checks the launcher in a release
+folder. To try the owner's path from a checkout, package it with `prepare_assets.py --registry <a local registry>` and run
+`scripts/release/smoke_launcher.sh` on the result. The #75 layout is implemented with the application workspace
 under `app/` and source/dev/test/live Docker inputs under `docker/` (#76).
 `./flux` and the source checks use `docker/compose.source.yaml`; the operator file
 remains pull-only.
@@ -408,7 +411,7 @@ checks ordinary saved behavior instead, including the explicit-off first-render 
 Existing-doc Wiki editing is shared in the normal lane; creating a new page and restoring a
 historical version keep their private editor. Saving shared text creates an immutable version.
 For opt-out recovery, save working copies before planned disable; if disabled while dirty,
-re-enable and save before ordinary writes can proceed (see [installation](../operations/install-release.md#upgrade-backup-and-restore)).
+re-enable and save before ordinary writes can proceed (see [backup and restore](../operations/backup-restore.md)).
 
 The configured test command runs one application test file at a time
 (`--test-concurrency=1`), never more than four. The controlled comparison scheduling

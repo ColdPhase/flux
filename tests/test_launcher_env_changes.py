@@ -83,7 +83,7 @@ class EnvChangesTest(unittest.TestCase):
         self.assertEqual(lines, [], "a release that renames or removes a setting adds its line here and to its notes")
         upgrade = launcher_function("upgrade_apply")
         self.assertIn("apply_env_changes", upgrade)
-        self.assertLess(upgrade.index("apply_env_changes"), upgrade.index("build_main"), "reported before the build, after the backup")
+        self.assertLess(upgrade.index("apply_env_changes"), upgrade.index("get_images"), "reported before the images, after the backup")
 
 
 if __name__ == "__main__":

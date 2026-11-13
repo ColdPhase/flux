@@ -4,13 +4,18 @@
 #   smoke_artifacts.sh <assets> <state dir> <install project> <restore project>
 #   FLUX_SMOKE_PREVIOUS_ASSETS=<previous release's assets> smoke_artifacts.sh ...   (adds the upgrade leg)
 #
-# Leg 1 (unless FLUX_SMOKE_LEGS=upgrade): a clean install of the candidate's assets EXACTLY as INSTALL.md says, with its default settings
+# A release from v0.2.1 on is one archive, flux.tar.gz (#1471 decision 5): the owner runs it with ./flux, which smoke_launcher.sh
+# tests. This script runs the same Compose files directly (docker/compose.yaml of the unpacked archive, with the images of its
+# docker/release.env), so that it can compare tables and ledgers across an upgrade; an earlier release (v0.2.0) has compose.yaml and
+# env.example as assets of their own, and is run from them.
+#
+# Leg 1 (unless FLUX_SMOKE_LEGS=upgrade): a clean install of the candidate's Compose files with their default settings
 # and no overlay: an account, workspace and content created through the API (smoke_data.py seed: people, a guest, spaces, an encrypted
 # space with the keyring secrets of INSTALL.md, conversations, a wiki, a map, tasks, notification settings, a second device), a paired
 # PostgreSQL + files backup and its restore into fresh volumes. The agents' settings and the provider mock are not part of it.
 #
 # Leg 2, only when FLUX_SMOKE_PREVIOUS_ASSETS names the downloaded assets of the PREVIOUS release (its
-# compose.yaml, env.example, release.json, SHA256SUMS): INSTALL.md's upgrade, followed literally. The previous release is ANY published
+# release.json and SHA256SUMS, with flux.tar.gz or compose.yaml and env.example): its upgrade. The previous release is ANY published
 # release from v0.2.0 on, not only the last one: check_upgrade_matrix.sh runs this leg for each of them (#1241). It is the leg that
 # seeds the agents' data: its environment file also sets the three switches of "Agents on your own AI key" and its projects carry the
 # provider mock overlay (an AI connection on an API key, an agent with memory and schedules, a run).
@@ -68,7 +73,19 @@ step() { printf '\n== %s\n' "$*"; }
 json_field() { python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[sys.argv[2]])' "$1" "$2"; }
 candidate_image=$(json_field "$assets/release.json" image)
 # The database image a release pins: the official PostgreSQL image before v0.2.1, Flux's own database image from it on (F-042).
-db_image() { sed -n 's/^ *image: *\(\(postgres\|[^ ]*\/flux-database\)@sha256:[0-9a-f]*\).*/\1/p' "$1/compose.yaml"; }
+# The install folder of a release that ships flux.tar.gz, unpacked once into the state directory (scripts/release/unpack_release.sh).
+unpacked() {
+  local key
+  key=$(printf '%s' "$1" | cksum | cut -d' ' -f1)
+  [ -d "$state_dir/unpacked-$key" ] || sh "$root/scripts/release/unpack_release.sh" "$1" "$state_dir/unpacked-$key" >/dev/null
+  printf '%s/flux' "$state_dir/unpacked-$key"
+}
+compose_file() { if [ -f "$1/compose.yaml" ]; then printf '%s' "$1/compose.yaml"; else printf '%s' "$(unpacked "$1")/docker/compose.yaml"; fi; }
+env_template() { if [ -f "$1/env.example" ]; then printf '%s' "$1/env.example"; else printf '%s' "$(unpacked "$1")/docker/.env.example"; fi; }
+db_image() {
+  if [ -f "$1/compose.yaml" ]; then sed -n 's/^ *image: *\(\(postgres\|[^ ]*\/flux-database\)@sha256:[0-9a-f]*\).*/\1/p' "$1/compose.yaml"
+  else sed -n 's/^FLUX_RELEASE_DATABASE_IMAGE=//p' "$(unpacked "$1")/docker/release.env"; fi
+}
 check_sums() { # in the current directory
   if command -v sha256sum >/dev/null 2>&1; then sha256sum -c SHA256SUMS >/dev/null; else shasum -a 256 -c SHA256SUMS >/dev/null; fi
 }
@@ -77,9 +94,10 @@ check_sums() { # in the current directory
 if [ -n "$previous_assets" ]; then
   [ -d "$previous_assets" ] || fail "FLUX_SMOKE_PREVIOUS_ASSETS is not a directory: $previous_assets"
   previous_assets=$(realpath "$previous_assets")
-  for name in compose.yaml env.example release.json SHA256SUMS; do
+  for name in release.json SHA256SUMS; do
     [ -f "$previous_assets/$name" ] || fail "the previous release has no $name"
   done
+  [ -f "$previous_assets/flux.tar.gz" ] || [ -f "$previous_assets/compose.yaml" ] || fail "the previous release has neither flux.tar.gz nor compose.yaml"
   ( cd "$previous_assets" && check_sums ) || fail "the previous release's assets do not match its SHA256SUMS"
   previous_image=$(json_field "$previous_assets/release.json" image)
   [ "$previous_image" != "$candidate_image" ] || fail "the previous release and the candidate pin the same image ($candidate_image); nothing would be upgraded"
@@ -100,12 +118,15 @@ inject_overlay="" # set while the candidate runs with the injected migration (Le
 # A project has the provider mock exactly when its environment file names the background key file (make_env ... agents): the default
 # install of Leg 1 has neither the settings nor the overlay.
 agents_on() { [ -f "$1" ] && grep -q '^FLUX_BACKGROUND_KEY_HOST_FILE=.' "$1"; }
-dc() { # project, environment file, assets directory, then docker compose arguments
-  local project=$1 env_file=$2 dir=$3 files=(-f "$3/compose.yaml")
+dc() { # project, environment file, assets directory, then Compose arguments
+  local project=$1 env_file=$2 dir=$3 files env_files=()
+  files=(-f "$(compose_file "$3")")
+  # The images of a release archive come from its docker/release.env, as ./flux exports them; the environment file comes second.
+  if [ ! -f "$3/compose.yaml" ]; then env_files=(--env-file "$(unpacked "$3")/docker/release.env"); fi
   shift 3
   if agents_on "$env_file"; then files+=(-f "$provider_overlay"); fi
   if [ -n "$inject_overlay" ] && [ "$dir" = "$assets" ]; then files+=(-f "$inject_overlay"); fi
-  docker compose --env-file "$env_file" -p "$project" "${files[@]}" "$@"
+  docker compose ${env_files[@]+"${env_files[@]}"} --env-file "$env_file" -p "$project" "${files[@]}" "$@"
 }
 down() { # project, environment file (the candidate's compose file names the same services as the previous one)
   if [ -f "$2" ]; then dc "$1" "$2" "$assets" down -v --remove-orphans >/dev/null 2>&1 || true; fi
@@ -227,8 +248,8 @@ restore_env_from() { # source environment file, destination, port
 # ---------------------------------------------------------------------------------------------------------
 if [ "$legs" = all ]; then
   step "Leg 1: clean install of the candidate, paired backup and restore"
-  # The environment template is the downloaded asset, filled in exactly as INSTALL.md instructs.
-  make_env "$assets/env.example" "$source_env" "$source_port"
+  # The environment template is the release's own, filled in with the required values.
+  make_env "$(env_template "$assets")" "$source_env" "$source_port"
   restore_env_from "$source_env" "$restore_env" "$restore_port"
 
   dc "$source_project" "$source_env" "$assets" config --quiet
@@ -261,7 +282,7 @@ previous_digest=${previous_image##*@}
 candidate_digest=${candidate_image##*@}
 step "Leg 2: upgrade $previous_version ($previous_digest) to $candidate_version ($candidate_digest), then backup and restore"
 mkdir -p "$up_dir"
-make_env "$previous_assets/env.example" "$up_env" "$source_port" agents
+make_env "$(env_template "$previous_assets")" "$up_env" "$source_port" agents
 restore_env_from "$up_env" "$up_restore_env" "$restore_port"
 candidate_ledger=$(expected_ledger)
 [ -n "$candidate_ledger" ] || fail "no migration files found under app/packages/db/migrations"

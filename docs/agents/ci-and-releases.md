@@ -142,12 +142,14 @@ and `ghcr.io/coldphase/flux-agent-runtime`) **keylessly** with cosign (Sigstore,
 after the `scan` and `package` jobs pass and before the draft is created (`draft` needs `sign`). The certificate names
 `https://github.com/ColdPhase/flux/.github/workflows/final-release.yml@refs/heads/main`, which is what the release can only be
 dispatched from. There is no signing key to store, rotate or leak. Nothing else changed in the release path: the action is pinned by
-SHA like the others (`sigstore/cosign-installer`, cosign `v3.0.6`), no check was added, no PR check starts it.
+SHA like the others (`sigstore/cosign-installer`, cosign `v3.0.6`), no check was added, no PR check starts it. The same job signs
+the release's `SHA256SUMS` with `cosign sign-blob` (the asset `SHA256SUMS.sigstore.json`, #1471): it covers `flux.tar.gz`, whose
+`docker/release.env` pins every image, and `./flux upgrade` verifies it with the same identity when cosign is installed.
 
 [`publish-release.yml`](../../.github/workflows/publish-release.yml) job `verify` runs `scripts/release/verify_signatures.sh` on
 the reviewed image digest and the agent-runtime digest from `release.json` before anything is promoted or published: a digest
-without that workflow's signature stops the publication. Operators run the same `cosign verify`
-([`release-guide.md`](../operations/release-guide.md#verify-the-images-before-you-pull-them), shipped as `INSTALL.md`).
+without that workflow's signature stops the publication. Owners can run the same `cosign verify`, and the `cosign verify-blob`
+of `SHA256SUMS` ([signatures](../operations/upgrade.md#signatures)).
 The script accepts only `image@sha256:` references (a tag can move).
 
 What is proved without a release: `scripts/release/check_signing.sh` signs two digests with a throwaway key against a throwaway
@@ -156,7 +158,7 @@ one, a digest signed with another key, a tag, and new content pushed under a sig
 keyless command line, the identity pattern against workflow paths that must and must not match, the pins and the job order. What
 only a real release proves: that GitHub's OIDC token yields a certificate with that identity, that Rekor records the entry, and
 that ghcr.io accepts the signature manifest. The first release after this change is the proof: verify its two digests with the
-commands of `INSTALL.md` from a machine that has nothing of ours before you publish it.
+commands of [signatures](../operations/upgrade.md#signatures) from a machine that has nothing of ours before you publish it.
 
 ## Dynamic security testing (#838)
 
@@ -445,9 +447,11 @@ by a PR or a push ([#77](https://github.com/ColdPhase/flux/issues/77)):
 SHA, the release owner's acceptance and an independent reviewer's review (a reviewer who wrote none of
 the code), builds the application and agent-runtime images for its `platforms` input (`linux/amd64`
 for v0.1; `linux/amd64,linux/arm64` from v0.1.1) by
-digest ([#358](https://github.com/ColdPhase/flux/issues/358)), packages the digest-pinned operator
-assets (including the optional runtime and live-media overlays), smoke-tests their install and paired
-backup/restore, and creates a draft Release;
+digest ([#358](https://github.com/ColdPhase/flux/issues/358)), packages the owner's install folder `flux.tar.gz` (the
+launcher with the Compose files it runs and `docker/release.env`, which pins the three digests; #1471, founder decision 5),
+smoke-tests the owner's path (`./flux up`, backup, restore, `./flux upgrade`), the packaged Compose files' paired
+backup/restore and the agent runtime, signs the digests and `SHA256SUMS`, and creates a draft Release (no publication: the
+founder publishes with the release owner);
 [`publish-release.yml`](../../.github/workflows/publish-release.yml) publishes
 only after an independent exact artifact review. Their assets, flow, design notes and the gates
 that remain open (credential, package visibility, candidate acceptance, platform evidence)
