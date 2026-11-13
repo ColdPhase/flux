@@ -75,6 +75,8 @@ def create_other(page: Page, name: str) -> None:
     """From the open Create window: one of its other tabs (Thought, Decision or Page, #521, #867), or "Space", which opens the New space
     window (F-037). With no project yet the window opens on New space (#763 FR-2), so any window may be showing."""
     if name == "Space":
+        # The window's code comes with it (#1428): wait for whichever window opens before asking which one it is.
+        expect(window(page)).to_be_visible()
         if new_space_window(page).count() == 0:
             open_new_space(page)
         expect(new_space_window(page)).to_be_visible()
