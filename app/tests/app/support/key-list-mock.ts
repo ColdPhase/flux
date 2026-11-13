@@ -60,8 +60,9 @@ export function handleKeyLists(request: http.IncomingMessage, response: http.Ser
   if (!match) return false;
   const provider = match[1] as KeyListRequest['provider'];
   // Anthropic and OpenAI take the key as a bearer token (Anthropic's SDK 1.x does, #1240); Gemini in its own header.
-  const key = provider === 'gemini' ? (request.headers['x-goog-api-key'] as string | undefined) ?? null
-    : String(request.headers.authorization ?? '').replace(/^Bearer /, '') || null;
+  // Gemini's OpenAI-compatible endpoint (the tool check, #1441) takes it as a bearer, as the Chat Completions adapter sends it.
+  const bearer = String(request.headers.authorization ?? '').replace(/^Bearer /, '') || null;
+  const key = provider === 'gemini' ? (request.headers['x-goog-api-key'] as string | undefined) ?? bearer : bearer;
   const wire = request.method === 'POST' ? toolWireOf(url.pathname) : null;
   if (wire) {
     // The check that the key's model calls tools (#1441).
