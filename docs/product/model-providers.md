@@ -78,7 +78,10 @@ A person connects AI once, in Settings › AI. Their connections power all of th
   its largest cost with every input token written to the cache (1.25×) still fits what is left of the
   run's reservation; a cache write is charged at 1.25× and a read at 0.1× of the input price
   (`PROMPT_CACHE_RATES`, dated), which is never below what Anthropic bills. Cached input on other
-  providers is charged at the full price.
+  providers is charged at the full price. The run's stored input tokens are the whole prompt; its
+  cached tokens are not stored separately (v0.2.1): the charge is what reflects the cache. A key is
+  its owner's, so Anthropic's cache (kept per Anthropic workspace) is never shared through Flux
+  between people who did not add the same key.
 - **A model the provider retires** (in an earlier list of the key, missing from a later one) shows
   as "no longer offered by Anthropic", wherever its agents show it. The agents on it pause until
   their owner picks another model (like C-3); Flux never switches the model by itself.

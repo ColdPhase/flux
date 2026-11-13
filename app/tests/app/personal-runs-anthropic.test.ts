@@ -122,6 +122,13 @@ describe('Anthropic personal compute adapter (#68, local mock server: no provide
     assert.equal(last.system, BRIEF.system);
     assert.ok(last.tools.every((tool) => tool.cache_control === undefined) && last.cache_control === undefined);
     assert.deepEqual(last.messages.at(-1), { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_1', content: '{"results":[]}' }, { type: 'text', text: 'Answer now.' }] });
+    // With `cache`, the last request keeps the tools' and the brief's marks, but writes no conversation to the cache: its `tool_choice`
+    // starts the messages cache over and nothing reads after it.
+    seen = [];
+    await compute().dispatch({ ...request, tools, turns, cache: true, answerNow: 'Answer now.' }, new AbortController().signal);
+    const lastCached = seen[0]!.body as { system: unknown; tools: Record<string, unknown>[]; cache_control?: unknown; tool_choice?: unknown };
+    assert.deepEqual([lastCached.tool_choice, lastCached.cache_control, lastCached.tools.at(-1)!.cache_control, (lastCached.system as { cache_control?: unknown }[])[0]!.cache_control],
+      [{ type: 'none' }, undefined, { type: 'ephemeral' }, { type: 'ephemeral' }]);
     seen = [];
     handler = (_seen, response) => json(response, 200, { input_tokens: 99 });
     await compute().countInputTokens!({ ...request, tools, turns, cache: true, answerNow: 'Answer now.' });

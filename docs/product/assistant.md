@@ -482,7 +482,10 @@ database backstop) is the starting point at space level for #855 and #874; see i
   for the provider's five-minute cache, so each step reads what the step before sent; the charge counts a cache write at 1.25×
   and a read at 0.1× of the input price (never less than Anthropic bills). A request asks for caching only while its cost
   with every input token written to the cache still fits what is left of the run's reservation, so the daily budget holds.
-  OpenAI and Gemini cache repeated prefixes by themselves; Flux charges their input at the full price.
+  The run's last request (which asks for the answer) keeps the tools' and the brief's marks but does not write the conversation
+  to the cache: nothing reads it after. A run records its input tokens as the whole prompt (uncached, written and read); in
+  v0.2.1 how much of it was written to or read from the cache is not stored per run, and its charge (spend) already reflects
+  the cache. OpenAI and Gemini cache repeated prefixes by themselves; Flux charges their input at the full price.
 
 ## AG-12 — Finding older messages (F-042)
 

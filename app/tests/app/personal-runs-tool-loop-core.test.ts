@@ -229,6 +229,13 @@ describe('the bounded loop', () => {
     assert.match(carried, /\[Flux: this result was cut here; 16384 of its 64020 bytes are shown\. Ask for less at a time/);
     assert.ok(Buffer.byteLength(carried) < PERSONAL_RUN_LIMITS.toolResultBytes + 300);
     assert.equal(boundedResult({ callId: 'a', content: 'short', isError: false }).content, 'short', 'an ordinary result is untouched');
+    // The bound falls inside a two-byte and a four-byte character: the character is left out whole, never half of it.
+    for (const [lead, char] of [['x', 'ł'], ['xx', '🙂']] as const) {
+      const cut = boundedResult({ callId: 'a', content: `${lead}${char.repeat(9_000)}`, isError: false }).content;
+      const kept = cut.slice(0, cut.indexOf('\n[Flux:'));
+      assert.ok(!kept.includes('�') && kept === `${lead}${char.repeat((kept.length - lead.length) / char.length)}`, char);
+      assert.ok(Buffer.byteLength(kept) <= PERSONAL_RUN_LIMITS.toolResultBytes && Buffer.byteLength(kept) > PERSONAL_RUN_LIMITS.toolResultBytes - 4, char);
+    }
   });
 
   test('a result that would take the next request over the input bound becomes the run\'s last request: no tool to call, the answer from what was found (#1410)', async () => {

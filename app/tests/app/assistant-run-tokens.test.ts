@@ -408,7 +408,7 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
     const full = await ask();
     const fullOutcome = await processor.process(full.run.id);
     const fullTools = compute.dispatched[0]?.tools ?? [];
-    const fullBytes = JSON.stringify(fullTools).length;
+    const fullBytes = Buffer.byteLength(JSON.stringify(fullTools), 'utf8');
     t.diagnostic(`all switches on: ${fullOutcome} after ${compute.dispatched.length} requests; ${fullBytes} bytes of tool definitions, ${fullTools.length} tools`);
     assert.equal(fullTools.length, 21 + ASSISTANT_RUN_EFFECT_TOOLS.length, '21 read tools (flux_read_web, #918; flux_view_image, #1217; flux_search and flux_read_around, #1290; flux_summarize, #1292) and every change tool (A3)');
     assert.ok(fullBytes <= TOOL_DEFINITION_BYTES, `the run's tool definitions take ${fullBytes} bytes; keep them under ${TOOL_DEFINITION_BYTES} (they are input of every request)`);

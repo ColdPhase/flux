@@ -104,7 +104,9 @@ const promptOf = (request: PersonalComputeRequest) => ({
   system: request.cache ? [{ type: 'text' as const, text: request.system, cache_control: EPHEMERAL }] : request.system,
   messages: anthropicMessages(request.input, request.turns, request.answerNow) as unknown as Anthropic.MessageParam[],
   ...toolsOf(request),
-  ...(request.cache ? { cache_control: EPHEMERAL } : {}),
+  // A run's last request changes `tool_choice`, which Anthropic's messages cache does not survive, and no request reads after it: the
+  // conversation is not written to the cache there (a write costs 1.25×), only the tools and the brief stay marked.
+  ...(request.cache && !request.answerNow ? { cache_control: EPHEMERAL } : {}),
 });
 
 export function anthropicPersonalCompute({ enabled, resolveKey, baseURL = AI_PROVIDERS.anthropic.baseUrl!, timeoutMs = 120_000,

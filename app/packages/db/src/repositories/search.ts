@@ -432,12 +432,13 @@ function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows, ra
   // The BM25 statement needs only the audiences; the index keys of today's index are not looked up.
   const audience = bm25 ? sql`aud AS MATERIALIZED (SELECT ${visibleKeys(audiences)} AS keys)` : audienceCte(audiences, plan);
   // `latest` (#1410): no word is matched; what the plan's filters hold among the visible rows, newest first (an agent's `from` whose words
-  // found nothing). No statistic of any row decides the order, only its time.
+  // found nothing). No statistic of any row decides the order, only its time; a sealed placeholder is never listed, as in the
+  // ranked scan.
   const matched = latest ? sql`
     matched AS (
       SELECT ${columns('sd')}, 0::numeric AS score,
         row_number() OVER (PARTITION BY sd.kind, sd.object_id ORDER BY sd.version DESC NULLS LAST) AS newest
-      FROM search_documents sd WHERE ${sql.join([AUDIENCE_ANY, WORK_LIFECYCLE, ...scopeConditions(plan)], sql` AND `)}
+      FROM search_documents sd WHERE ${sql.join([sql`NOT sd.sealed`, AUDIENCE_ANY, WORK_LIFECYCLE, ...scopeConditions(plan)], sql` AND `)}
     ),` : bm25 ? rankedStatement(plan, vector) : sql`
     matched AS (
       SELECT ${columns('sd')},
