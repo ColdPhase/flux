@@ -168,6 +168,47 @@ Docker's local volumes have no size quota, so the supervisor refuses a run while
   web search only, and cannot attach files they made. Check with
   `docker compose … exec runtime-1 /opt/flux-runtime/sandbox/flux-sandbox abi` (0: none; 4 or more: no TCP for tools).
 
+### The toolbox
+
+The CLIs' own tools (and every harness's, #1437) find a **fixed, pinned toolbox** in the runtime image (founder decision 2026-11-13): an
+agent never installs anything at run time, and its sandbox has no network to do it. Pinned to exact Alpine 3.24 package versions
+(`docker/Dockerfile`, `agent-runtime-base`; apk checks each against Alpine's signed index) and, for python-docx, one wheel by its
+SHA-256:
+
+| Tool | Version | For |
+| --- | --- | --- |
+| Python 3 | 3.14.10 | scripts |
+| pandas, NumPy | 3.0.3, 2.4.6 | tables, CSV |
+| openpyxl | 3.1.5 | XLSX |
+| python-docx (and lxml) | 1.2.0 (6.1.1) | DOCX |
+| matplotlib (and Pillow) | 3.10.6 | charts |
+| Node | the image's own (24.22) | scripts |
+| pandoc | 3.10 | HTML, Markdown, DOCX and more, between each other |
+| typst | 0.14.2 | PDF, as pandoc's engine: `pandoc page.html -o page.pdf --pdf-engine=typst` (no browser) |
+| jq, ripgrep | 1.8.2, 15.1.0 | JSON, search |
+| vips (libvips) | 8.18.2 | pictures: convert, resize |
+| bash | 5.3.9 | the shell both CLIs require |
+
+What it costs is measured by `scripts/check_runtime_sandbox.sh` (its `MEASURE` lines, one CPU as on a 2 vCPU server) and recorded under
+*Resources measured* below. A pin Alpine drops makes the image build fail: move the pins together.
+
+**More tools.** Build your own image on top of Flux's runtime image and point the runtime services at it, for example in
+`docker/compose.override.yaml` (source checkout) or beside `compose.runtime.yaml` (release):
+
+    # Dockerfile.runtime
+    FROM ghcr.io/coldphase/flux-agent-runtime@sha256:<the digest of your release>
+    USER root
+    RUN apk add --no-cache graphviz && pip install --no-cache-dir --break-system-packages --require-hashes -r /tmp/requirements.txt
+    USER node
+
+    # docker/compose.override.yaml
+    services:
+      runtime-1:
+        image: my-flux-agent-runtime:<tag>
+
+Keep the user, the entry point and everything under `/opt/flux-runtime` as they are, and build it again for every Flux release (the
+runtime image is pinned per release). What you add runs inside the same per-run sandbox and limits.
+
 ### What each agent needs
 
 Every person with Connect AI can have their agents ready: there is no fixed number of people. A person who is not running
