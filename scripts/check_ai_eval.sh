@@ -18,6 +18,7 @@
 # separated; all by default), FLUX_EVAL_MAX_USD (this run's cap, default 2), FLUX_EVAL_BUDGET_USD (all runs together, default 8),
 # FLUX_EVAL_LEDGER (default <repo>/.worktrees/ai-eval-evidence/spend.tsv), FLUX_EVAL_EVIDENCE_DIR, FLUX_EVAL_LABEL and FLUX_EVAL_RECORD
 # (a directory, e.g. docs/product/research/evidence/1295: results-<label>.json and .md are copied there), FLUX_EVAL_TODAY (the seed's day),
+# FLUX_EVAL_VARIANT (a named engine variant under evaluation, given to the API and worker as FLUX_TEST_AI_VARIANT; empty = main as it is),
 # FLUX_TEST_PORT / FLUX_TEST_MAILPIT_PORT (18790 / 18791). Run it under the shared Docker slot limiter.
 set -eu
 
@@ -133,6 +134,8 @@ check_with_key judge
 
 step "7. Results"
 check report | tee "$FLUX_EVAL_EVIDENCE_DIR/summary.txt"
+# A run the provider failed (an outage, an authentication error) measures the provider, not Flux: it is never recorded as a result.
+if grep -q '^PROVIDER FAILURES' "$FLUX_EVAL_EVIDENCE_DIR/summary.txt"; then fail "the provider failed some runs (see summary.txt); run again"; fi
 if [ -n "${FLUX_EVAL_RECORD:-}" ]; then
   mkdir -p "$FLUX_EVAL_RECORD"
   cp "$FLUX_EVAL_EVIDENCE_DIR/results.json" "$FLUX_EVAL_RECORD/results-$FLUX_EVAL_LABEL.json"

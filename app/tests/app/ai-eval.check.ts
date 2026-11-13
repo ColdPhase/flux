@@ -406,13 +406,13 @@ async function report(seed: Seed) {
   const judgeUsd = all.reduce((sum, row) => sum + (row.judge?.costUsd ?? 0), 0);
   const meta = {
     issue: 1295, label: process.env.FLUX_EVAL_LABEL ?? null, sha: process.env.FLUX_EVAL_SHA ?? null, productSha: process.env.FLUX_EVAL_PRODUCT_SHA ?? null, date: new Date().toISOString(), seedToday: seed.today, shiftDays: seed.shiftDays,
-    model: MODEL, judgeModel: JUDGE_MODEL, engine: 'server (API key)', webSearch: process.env.FLUX_WEB_READS ?? 'off', window: seed.window,
+    model: MODEL, judgeModel: JUDGE_MODEL, engine: 'server (API key)', variant: process.env.FLUX_EVAL_VARIANT || 'main', webSearch: process.env.FLUX_WEB_READS ?? 'off', window: seed.window,
     connectDefault: (await load()).connectDefault ?? null,
     spend: { agentUsd: round(all.reduce((sum, row) => sum + row.usage.costUsd, 0), 4), judgeUsd: round(judgeUsd, 4) },
   };
   const results = { meta, overall: summarize(all), byCategory, questions: rows };
   await writeFile(`${evidence}/results.json`, JSON.stringify(results, null, 1));
-  const lines = [`# Answer accuracy (#1295): ${MODEL}${meta.label ? `, ${meta.label}` : ''}`, '',
+  const lines = [`# Answer accuracy (#1295): ${MODEL}, variant ${meta.variant}${meta.label ? `, ${meta.label}` : ''}`, '',
     `Flux ${meta.productSha ?? '?'} (main; harness ${meta.sha ?? '?'}) · ${meta.date.slice(0, 10)} · ${all.length} questions · judge ${JUDGE_MODEL} · web search ${meta.webSearch} · spend $${meta.spend.agentUsd} agent + $${meta.spend.judgeUsd} judge`, '',
     '| Category | n | Accuracy | Correct / partial / wrong / don\'t know | Runs without an answer | Keys | Gold source read | Answer in tool results | Cited (named) gold | Date filter | In tok/q | Out tok/q | $/q | p50 / p95 s |',
     '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |'];
@@ -427,6 +427,8 @@ async function report(seed: Seed) {
   }
   await writeFile(`${evidence}/results.md`, `${lines.join('\n')}\n`);
   console.log(lines.slice(0, 6 + Object.keys(byCategory).length).join('\n'));
+  const failed = all.filter((row) => row.status === 'provider_failed').map((row) => row.id);
+  if (failed.length) console.log(`PROVIDER FAILURES ${failed.length}: ${failed.join(' ')}`);
   console.log(`RESULT accuracy=${results.overall.accuracy} questions=${all.length} agentUsd=${meta.spend.agentUsd} judgeUsd=${meta.spend.judgeUsd}`);
 }
 
