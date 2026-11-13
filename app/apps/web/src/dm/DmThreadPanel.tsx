@@ -9,6 +9,7 @@ import { useConversationAssistant } from '../assistant/useConversationAssistant'
 import { useFollowEnd } from '../assistant/useFollowEnd';
 import { useShellData } from '../app/data';
 import { ComposerBox } from '../composer/ComposerBox';
+import { ComposerFiles } from '../composer/Files';
 import { outboxView, useComposerDraft, useComposerScope } from '../composer/draft';
 import { SendAnnouncer } from '../composer/Outbox';
 import { Button, Icon, MEDIA, PanelMeta, sendsOnEnter, useArrivals, useMediaQuery } from '../ui';
@@ -294,8 +295,9 @@ export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, others, writ
         </div>
         <div className="composer dm__composer dm-thread__composer">
           <div className="composer__in">
+            {asking || !writable ? null : <ComposerFiles state={composer} attach="none" />}
             <ComposerBox id="dm-thread-composer" label="Reply in thread" fieldRef={field} value={draft} onChange={(value) => { setAskFailure(''); composer.setBody(value); }} onKeyDown={onKey}
-              disabled={!writable} boxDisabled={!writable} placeholder={writable ? 'Reply in thread…' : 'Nobody else is in this conversation'}
+              disabled={!writable} boxDisabled={!writable} placeholder={writable ? 'Reply in thread…' : 'Nobody else is in this conversation'} attach={asking || !writable ? null : composer}
               sendLabel={asking ? 'Ask your agent' : 'Send reply'} sendDisabled={!composer.canSend || !writable} onSend={() => void send()} />
             {asking ? <p className="composer__audience" data-asking="true"><Icon name="lock" size={13} /><span>Only you see the answer · {others.join(', ') || 'The others'} {others.length === 1 ? 'sees' : 'see'} only a line that AI was used here</span></p>
               : null}

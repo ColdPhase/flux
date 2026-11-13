@@ -669,6 +669,12 @@ These functional rules from UI116-4 remain required:
   label underneath: PDF (inverted band), CSV, XLSX, DOCX, MD, code, ZIP, audio, video, image,
   other. The row shows the icon, the name, "type · detail · size" and a download button. A voice
   note shows a waveform and a play button.
+- **Files in direct messages** (founder direction, Hubert, 2026-11-13, [#1438](https://github.com/ColdPhase/flux/issues/1438) point 10). The paperclip
+  of a direct message and of its thread is the one of a space: the same tray under the field with the draft's files, thumbnails, progress and Remove,
+  the same photo grid, file rows with Preview and Download, the dark photo viewer and the video player, drag and paste. A message may be files alone
+  (no empty bubble of words above them); the conversation's list says "Sent a file" under its name when that was the last message. The paperclip is
+  greyed, "(not available here)", only while the draft is a question to the agent (`/ai …`), whose private answer is not a message of the conversation.
+  Only the conversation's people reach a file, on every request.
 - **References** to Flux objects are cards with the object icon, the kind, the title and the
   state: task, Wiki page, decision, thought, message. In text they are inline chips aligned to
   the text baseline: `@person`, `#4`, a Wiki page.

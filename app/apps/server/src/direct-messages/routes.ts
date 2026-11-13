@@ -14,7 +14,7 @@ import {
   type SendDmMessageCommand,
   type UpdateDmCommand,
 } from '@flux/contracts';
-import type { Principal, ResourceRef } from '@flux/core';
+import type { FileStorage, Principal, ResourceRef } from '@flux/core';
 import type { Database } from '@flux/db';
 import type { SessionResolver } from '../identity/index.js';
 import { bodyId, commandRunner, expectedVersion, requires, useDomainErrors, versionEtag } from '../http/commands.js';
@@ -24,6 +24,8 @@ import { dmUseCases } from './adapters.js';
 export interface DmRouteOptions {
   db: Database;
   sessions: SessionResolver;
+  /** The files volume: with it a message may carry files (#1438 point 10); without it none. */
+  storage?: FileStorage;
 }
 
 const WORKSPACE_DMS = '/api/v1/workspaces/:workspaceId/dms';
@@ -38,10 +40,10 @@ const references = { type: 'array', maxItems: 4, items: { type: 'object' } } as 
  * and PATCH accept `Idempotency-Key`; renaming a group needs its version (`If-Match` or
  * `expectedVersion`). Messages also keep the #36 `clientMessageId` retry rule.
  */
-export async function dmRoutes(app: FastifyInstance, { db, sessions }: DmRouteOptions) {
+export async function dmRoutes(app: FastifyInstance, { db, sessions, storage }: DmRouteOptions) {
   useDomainErrors(app);
   const { principal, command } = commandRunner(db, sessions);
-  const dms = dmUseCases(db);
+  const dms = dmUseCases(db, storage);
   const dmScope = (dmId: string): ResourceRef => ({ type: 'dm', id: dmId });
   const readDm = (dmId: string) => requires('dm', 'dm.read', () => dmId);
   /** What each message cites (#469), made for the person reading now: a target they cannot open is an "unavailable" card. */
@@ -96,14 +98,14 @@ export async function dmRoutes(app: FastifyInstance, { db, sessions }: DmRouteOp
     schema: {
       body: {
         type: 'object', required: ['body', 'clientMessageId'], additionalProperties: false,
-        // Unsupported source/files must reach the core refusal instead of being silently stripped.
-        properties: { body: { type: 'string', minLength: 1, maxLength: 100_000 }, clientMessageId: { type: 'string' },
-          source: { type: 'object' }, attachmentIds: {}, references },
+        // An unsupported source must reach the core refusal instead of being silently stripped; the words may be empty only with files, which core decides.
+        properties: { body: { type: 'string', maxLength: 100_000 }, clientMessageId: { type: 'string' },
+          source: { type: 'object' }, attachmentIds: { type: 'array', maxItems: 10, items: { type: 'string' } }, references },
       },
     },
   }, async (request, reply) => command(request, reply, {
     operation: `POST ${DM}/messages`, scope: dmScope(request.params.dmId), status: 201,
-    run: async (actor, conn) => (await cited(conn, actor, request.params.dmId, [await dmUseCases(conn).send(actor, request.params.dmId, request.body)]))[0]!,
+    run: async (actor, conn) => (await cited(conn, actor, request.params.dmId, [await dmUseCases(conn, storage).send(actor, request.params.dmId, request.body)]))[0]!,
     replay: readDm(request.params.dmId),
   }));
 
@@ -136,12 +138,12 @@ export async function dmRoutes(app: FastifyInstance, { db, sessions }: DmRouteOp
     schema: {
       body: {
         type: 'object', required: ['body', 'clientMessageId'], additionalProperties: false,
-        properties: { body: { type: 'string', minLength: 1, maxLength: 100_000 }, clientMessageId: { type: 'string' }, source: { type: 'object' }, attachmentIds: {}, references },
+        properties: { body: { type: 'string', maxLength: 100_000 }, clientMessageId: { type: 'string' }, source: { type: 'object' }, attachmentIds: { type: 'array', maxItems: 10, items: { type: 'string' } }, references },
       },
     },
   }, async (request, reply) => command(request, reply, {
     operation: `POST ${THREAD}/replies`, scope: dmScope(request.params.dmId), status: 201,
-    run: async (actor, conn) => (await cited(conn, actor, request.params.dmId, [await dmUseCases(conn).reply(actor, request.params.dmId, request.params.rootId, request.body)]))[0]!,
+    run: async (actor, conn) => (await cited(conn, actor, request.params.dmId, [await dmUseCases(conn, storage).reply(actor, request.params.dmId, request.params.rootId, request.body)]))[0]!,
     replay: readDm(request.params.dmId),
   }));
 

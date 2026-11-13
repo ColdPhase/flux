@@ -1,13 +1,18 @@
-import { accessPorts, dmRows, messageChangeRows, needsYouRows, schema, toDmMessageRecord, type DbExecutor, visibleFilter, accessReader, type Database, type Transaction } from '@flux/db';
+import { accessPorts, dmRows, fileRows, messageChangeRows, needsYouRows, schema, toDmMessageRecord, type DbExecutor, visibleFilter, accessReader, type Database, type Transaction } from '@flux/db';
 import { eq, and } from 'drizzle-orm';
 import {
   createDmUseCases,
   getProject,
+  lockAttachments,
+  verifyAttachmentBytes,
+  storedDetail,
+  type FileStorage,
   listProjectPeople,
   listProjects,
   policyDmAccess,
   recordEvent,
   RuleViolationError,
+  type DmFiles,
   type DmPorts,
   type DmRepository,
   type DmTaskCopy,
@@ -76,8 +81,26 @@ function dmTaskCopy(tx: Transaction): DmTaskCopy {
   };
 }
 
-function dmPorts(tx: Transaction): DmPorts {
+/**
+ * A direct message's files (#1438 point 10): the same stored files and the same checks as a space message's (`lockAttachments`), with the
+ * conversation as the place. Without a storage the entry point carries none.
+ */
+function dmFiles(tx: Transaction, storage: FileStorage): DmFiles {
   return {
+    async lock(dmId, authorId, ids) {
+      return (await lockAttachments(fileRows(tx), storage, dmId.toLowerCase(), { kind: 'human', id: authorId }, ids, () => new Date()))
+        .map((row) => ({ id: row.id, name: row.name, size: row.size!, ...storedDetail(row) }));
+    },
+    async publish(dmId, messageId, files, at) {
+      const posters = await fileRows(tx).publishToDmMessage(dmId, messageId, files, at);
+      return files.map((file) => posters.has(file.id) ? { ...file, poster: posters.get(file.id)! } : file);
+    },
+  };
+}
+
+function dmPorts(tx: Transaction, storage?: FileStorage): DmPorts {
+  return {
+    ...(storage ? { files: dmFiles(tx, storage) } : {}),
     access: policyDmAccess(accessReader(tx)),
     references: { assertReadable: (principal, workspaceId, references) => messageReferences(tx).assertReadable(principal, workspaceId, references),
       save: (messageId, workspaceId, references) => messageReferences(tx).save({ kind: 'dm', id: messageId }, workspaceId, references) },
@@ -89,10 +112,16 @@ function dmPorts(tx: Transaction): DmPorts {
   };
 }
 
-/** One transaction per use case; on an open transaction (an idempotency scope) it nests as a savepoint. */
-export function dmUnitOfWork(db: Database): DmUnitOfWork {
-  return { run: (work) => db.transaction((tx) => work(dmPorts(tx))) };
+/**
+ * One transaction per use case; on an open transaction (an idempotency scope) it nests as a savepoint. With the files volume, a message may
+ * carry files (#1438 point 10): their bytes are checked before the transaction opens (#1411).
+ */
+export function dmUnitOfWork(db: Database, storage?: FileStorage): DmUnitOfWork {
+  return {
+    run: (work) => db.transaction((tx) => work(dmPorts(tx, storage))),
+    ...(storage ? { verifyFiles: (authorId: string, ids: readonly string[]) => verifyAttachmentBytes(fileRows(db as unknown as DbExecutor), storage, { kind: 'human', id: authorId }, ids) } : {}),
+  };
 }
 
 /** The direct-message use cases bound to a connection or transaction. */
-export const dmUseCases = (db: Database) => createDmUseCases(dmUnitOfWork(db));
+export const dmUseCases = (db: Database, storage?: FileStorage) => createDmUseCases(dmUnitOfWork(db, storage));

@@ -210,7 +210,7 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   } });
   const editingConfirmation = identityConfig.oidc ? { providerId: identityConfig.oidc.providerId, confirmationMaxAgeMs: identityConfig.oidc.confirmationMaxAgeMs } : null;
   await app.register(sketchRoutes, { db, sessions: identity, confirmation: editingConfirmation, storage: fileStorage, developmentEditing: config.liveEditing, liveBackend: () => editing?.mapsBackend ?? null });
-  await app.register(dmRoutes, { db, sessions: identity });
+  await app.register(dmRoutes, { db, sessions: identity, storage: fileStorage });
   await app.register(pushRoutes, { db, sessions: identity, config: pushConfig });
   if (pushConfig.status === 'unavailable') app.log.warn(pushConfig.reason);
   // Upgrades reach @fastify/websocket through this emitter, except `/media/*` and the editing gate,

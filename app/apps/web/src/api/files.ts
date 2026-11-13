@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import { FILE_LIMITS, FILE_LIMITS_PATH, filePath, filePosterPath, type FileLimits, type StagedFile } from '@flux/contracts';
+import { FILE_LIMITS, FILE_LIMITS_PATH, dmFilePosterPath, filePath, filePosterPath, type FileLimits, type StagedFile } from '@flux/contracts';
 import { request, send } from './client';
 
 /**
@@ -32,5 +32,5 @@ export function useFileLimits(): FileLimits {
 }
 
 /** Gives a staged video its poster, the picture the browser drew from its first frame (C-61). The server decodes and re-encodes it; nothing here is trusted. */
-export const uploadPoster = (projectId: string, fileId: string, picture: Blob) =>
-  request<StagedFile>(filePosterPath(projectId, fileId), { method: 'POST', bytes: new Blob([picture], { type: 'application/octet-stream' }) });
+export const uploadPoster = (place: string | { dmId: string }, fileId: string, picture: Blob) =>
+  request<StagedFile>(typeof place === 'string' ? filePosterPath(place, fileId) : dmFilePosterPath(place.dmId, fileId), { method: 'POST', bytes: new Blob([picture], { type: 'application/octet-stream' }) });

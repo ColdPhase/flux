@@ -110,8 +110,11 @@ export interface UpdateDmCommand {
 
 /** `POST /api/v1/dms/:dmId/messages`: the #36 SendMessageCommand without a material citation. */
 export interface SendDmMessageCommand {
+  /** The words; they may be empty only when files are attached (#1438 point 10), as in a space. */
   body: string;
   clientMessageId: string;
+  /** Files staged in this conversation by the sender (`dmFilesPath`), attached to the message in this order (at most `FILE_LIMITS.messageFiles`). */
+  attachmentIds?: string[];
   /** Map thoughts and messages this message cites (#469); the same rules as a project message's references. */
   references?: MessageReference[];
 }

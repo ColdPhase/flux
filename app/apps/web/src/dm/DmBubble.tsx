@@ -1,7 +1,7 @@
 import type { DmMessage } from '@flux/contracts';
 import { Avatar, Icon, Kreska } from '../ui';
 import { MessageContent } from '../composer/Files';
-import { OutboxStatus, PendingSource } from '../composer/Outbox';
+import { OutboxStatus, PendingFiles, PendingSource } from '../composer/Outbox';
 import type { PendingSend } from '../composer/draft';
 import { MessageDay, MessageTime, ShownAnswerName, shownAnswer, shownLabel } from '../app/messageParts';
 import type { Receipt } from '../app/receipts';
@@ -83,7 +83,10 @@ export function DmBubble({ dmId, message, pending, mine: authored, name, continu
         {day ? <MessageDay as="p" label={day} /> : null}
         <div className="dm-msg__row">
           <div className="dm-msg__main is-mine">
-            <MessageContent body={<div className="dm-msg__body"><MessageText body={item.body} /></div>}><PendingSource item={item} className="project-convo__source" /></MessageContent>
+            {/* Files going out show as they are sent (#1438 point 10), the words above them when there are any. */}
+            {item.files.length
+              ? <PendingFiles body={item.body ? <div className="dm-msg__body"><MessageText body={item.body} /></div> : null} files={item.files} send={{ state: item.state, onRetry: onRetry ?? (() => undefined) }} />
+              : <MessageContent body={<div className="dm-msg__body"><MessageText body={item.body} /></div>}><PendingSource item={item} className="project-convo__source" /></MessageContent>}
             <OutboxStatus item={item} onRetry={onRetry ?? (() => undefined)} onRemove={onRemove ?? (() => undefined)} />
           </div>
         </div>
@@ -101,7 +104,10 @@ export function DmBubble({ dmId, message, pending, mine: authored, name, continu
           {continued || mine ? null : shown ? <p className="dm-msg__meta"><ShownAnswerName shown={shown} asker={name} /></p>
             : <p className="dm-msg__meta"><b>{name}</b>{message.via ? <span className="dm-msg__via">via {message.via}</span> : null}</p>}
           {mine && message.via ? <p className="dm-msg__meta"><span className="dm-msg__via">via {message.via}</span></p> : null}
-          <MessageContent body={own.slot ?? <div className={`dm-msg__body${message.removedAt ? ' message-body--removed' : ''}`}><MessageText body={message.body} /></div>} references={message.references} />
+          {/* A message may be only files (#1438 point 10): no empty bubble of words above them. */}
+          <MessageContent body={own.slot ?? (message.body ? <div className={`dm-msg__body${message.removedAt ? ' message-body--removed' : ''}`}><MessageText body={message.body} /></div> : null)}
+            files={message.files} references={message.references}
+            context={{ author: name, at: message.createdAt, caption: message.body, onReply: writable ? onReply : undefined, onCreateTask: writable ? () => onCreateTask(message, undefined) : undefined }} />
           {nav === 'stream' && message.replyCount > 0 ? (
             <button type="button" className="dm-replies" data-replies={message.replyCount} aria-label={`${message.replyCount} ${message.replyCount === 1 ? 'reply' : 'replies'}, open thread`}
               onClick={(event) => onOpenThread?.(message, event.currentTarget)}>

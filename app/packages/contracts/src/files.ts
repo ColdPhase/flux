@@ -10,6 +10,11 @@ import { plainMessageText } from './message-format.js';
  * not stored; current access is checked on every download. A staged, unpublished file is its uploader's only.
  */
 export const projectFilesPath = (projectId: string) => `/api/v1/projects/${projectId}/files`;
+/**
+ * Files in direct messages (#1438 point 10): the same staging, limits, checks, pictures and videos as a space's, in a conversation. A staged
+ * file is its sender's alone until it is sent, and a sent one is for the conversation's current people only: every download checks it again.
+ */
+export const dmFilesPath = (dmId: string) => `/api/v1/dms/${dmId}/files`;
 export const filePath = (fileId: string) => `/api/v1/files/${fileId}`;
 
 /**
@@ -20,6 +25,7 @@ export const filePath = (fileId: string) => `/api/v1/files/${fileId}`;
  */
 export const fileVideoPath = (fileId: string) => `/api/v1/files/${fileId}/video`;
 export const filePosterPath = (projectId: string, fileId: string) => `/api/v1/projects/${projectId}/files/${fileId}/poster`;
+export const dmFilePosterPath = (dmId: string, fileId: string) => `/api/v1/dms/${dmId}/files/${fileId}/poster`;
 export const FILE_LIMITS_PATH = '/api/v1/files/limits';
 
 /**
@@ -78,7 +84,9 @@ export interface FileDetail {
 /** A file staged by the signed-in person, ready to attach. */
 export interface StagedFile extends FileDetail {
   id: string;
-  projectId: string;
+  /** The space it was staged in, or (#1438 point 10) the direct message: exactly one of the two is present. */
+  projectId?: string;
+  dmId?: string;
   /** The client's upload UUID; the same upload again returns this file. */
   uploadId: string;
   name: string;

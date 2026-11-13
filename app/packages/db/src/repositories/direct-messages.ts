@@ -3,6 +3,7 @@ import type { AgentColour } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 import { openField, openRows, sealFor, sealOf, sealsOf } from '../sealing.js';
+import { fileRows } from './files.js';
 
 /**
  * Drizzle persistence for direct messages (issues #107, #46). The rows satisfy the ports in
@@ -36,11 +37,13 @@ export interface NewDmMessageRow {
   /** The agent whose answer the author posted with Show everyone (#842). */
   via?: string | null;
   viaColour?: AgentColour | null;
+  /** How many files the message carries (#1438 point 10); they are attached to it right after, in the same transaction. */
+  attachmentCount?: number;
 }
 
 export function toDmMessageRecord(row: MessageRow, replyCount = 0) {
   return { id: row.id, dmId: row.dmId, authorId: row.authorId, body: row.body, sequence: row.sequence, requestFingerprint: row.requestFingerprint, createdAt: row.createdAt, threadRootId: row.threadRootId, replyCount, via: row.via, viaColour: row.viaColour, kind: row.kind,
-    editedAt: row.editedAt, removedAt: row.removedAt };
+    editedAt: row.editedAt, removedAt: row.removedAt, attachmentCount: row.attachmentCount };
 }
 
 export function dmRows(db: DbExecutor) {
@@ -78,6 +81,12 @@ export function dmRows(db: DbExecutor) {
     for (const row of rows) if (row.rootId) counts.set(row.rootId, row.n);
     return counts;
   }
+  /** The files each of these messages carries (#1438 point 10), by the one read; a message without files is left as it is. */
+  const withFiles = async <T extends { id: string }>(records: T[]) => {
+    if (!records.length) return records;
+    const files = await fileRows(db).messageFiles(records.map((record) => record.id));
+    return records.map((record) => files.has(record.id) ? { ...record, files: files.get(record.id)! } : record);
+  };
   const select = () => db.select({ row: d, lastMessageId: lastId, lastMessageBody: lastBody, lastMessageVia: lastVia }).from(d);
   const open = (rows: MessageRow[]) => openRows(db, 'dm_messages', rows);
   const find = async (id: string) => (await records(await select().where(eq(d.id, id))))[0] ?? null;
@@ -124,19 +133,19 @@ export function dmRows(db: DbExecutor) {
         .orderBy(desc(m.sequence)).limit(window.limit + 1));
       const page = rows.slice(0, window.limit).reverse();
       const counts = await replyCounts(page.map((row) => row.id));
-      return { messages: page.map((row) => toDmMessageRecord(row, counts.get(row.id) ?? 0)), hasMoreBefore: rows.length > window.limit };
+      return { messages: await withFiles(page.map((row) => toDmMessageRecord(row, counts.get(row.id) ?? 0))), hasMoreBefore: rows.length > window.limit };
     },
     /** One message of this DM, root or reply, whose reply count is included. Null for any other id. */
     async message(dmId: string, messageId: string) {
       const [row] = await open(await db.select().from(m).where(and(eq(m.dmId, dmId), eq(m.id, messageId))));
-      return row ? toDmMessageRecord(row, row.threadRootId ? 0 : (await replyCounts([row.id])).get(row.id) ?? 0) : null;
+      return row ? (await withFiles([toDmMessageRecord(row, row.threadRootId ? 0 : (await replyCounts([row.id])).get(row.id) ?? 0)]))[0]! : null;
     },
     /** The newest `limit` replies of one root below `beforeSequence`, ascending. */
     async threadWindow(dmId: string, rootId: string, window: { limit: number; beforeSequence: number | null }) {
       const rows = await open(await db.select().from(m)
         .where(and(eq(m.dmId, dmId), eq(m.threadRootId, rootId), window.beforeSequence === null ? undefined : lt(m.sequence, window.beforeSequence)))
         .orderBy(desc(m.sequence)).limit(window.limit + 1));
-      return { messages: rows.slice(0, window.limit).reverse().map((row) => toDmMessageRecord(row)), hasMoreBefore: rows.length > window.limit };
+      return { messages: await withFiles(rows.slice(0, window.limit).reverse().map((row) => toDmMessageRecord(row))), hasMoreBefore: rows.length > window.limit };
     },
     async lockClientMessage(dmId: string, authorId: string, clientMessageId: string) {
       // Hash collisions only serialize unrelated sends; the unique constraint stays the final guard.
@@ -144,13 +153,13 @@ export function dmRows(db: DbExecutor) {
     },
     async findMessage(dmId: string, authorId: string, clientMessageId: string) {
       const [row] = await open(await db.select().from(m).where(and(eq(m.dmId, dmId), eq(m.authorId, authorId), eq(m.clientMessageId, clientMessageId))));
-      return row ? toDmMessageRecord(row) : null;
+      return row ? (await withFiles([toDmMessageRecord(row)]))[0]! : null;
     },
     async appendMessage(message: NewDmMessageRow) {
       const [updated] = await db.update(d).set({ nextSequence: sql`${d.nextSequence} + 1`, lastMessageAt: sql`now()` })
         .where(eq(d.id, message.dmId)).returning({ nextSequence: d.nextSequence });
       const [row] = await db.insert(m).values(await sealFor(db, 'dm_messages', message.workspaceId,
-        { ...message, threadRootId: message.threadRootId ?? null, via: message.via ?? null, viaColour: message.via ? message.viaColour ?? null : null, sequence: updated!.nextSequence - 1 })).returning();
+        { ...message, threadRootId: message.threadRootId ?? null, via: message.via ?? null, viaColour: message.via ? message.viaColour ?? null : null, attachmentCount: message.attachmentCount ?? 0, sequence: updated!.nextSequence - 1 })).returning();
       return toDmMessageRecord({ ...row!, body: message.body, requestFingerprint: message.requestFingerprint });
     },
     /** Messages of this DM among `ids`, with the facts a receipt run is checked against. Foreign ids are absent. */
