@@ -266,8 +266,8 @@ VARIABLES: dict[str, Var] = {
     # --- runtime
     "FLUX_AGENT_RUNTIME": Var("runtime", "empty · any of `claude_code`, `codex`, `pi`, comma-separated",
         "Lets people sign in with their own Claude or ChatGPT subscription and run that CLI, isolated from everyone else; `pi` runs "
-        "every API-key agent in pi in the same runtime (#1441). Empty is off and no runtime service runs. The first `./flux up` "
-        "writes `codex,pi` where the host can run the runtime (#1438, #1441).", "codex,pi"),
+        "every API-key agent in pi in the same runtime, with shell and files in a scratch of each run. Empty is off and no runtime "
+        "service runs.", "codex,pi"),
     "FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS": Var("runtime", "date `YYYY-MM-DD`",
         "Required with `claude_code`: the date you agreed to Anthropic's Commercial Terms with Anthropic. Recorded, not verified.",
         "2026-10-01"),

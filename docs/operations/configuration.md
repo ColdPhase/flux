@@ -474,7 +474,7 @@ Off by default. See the [agent runtime guide](agent-runtime.md); `./flux ai on` 
 
 **Type** empty, any of `claude_code`, `codex`, `pi`, comma-separated · **Default** empty · **Used by** api, runtime-1, runtime-egress, runtime-install, worker (release runtime overlay, source, `./flux`)
 
-Lets people sign in with their own Claude or ChatGPT subscription and run that CLI, isolated from everyone else; `pi` runs every API-key agent in pi in the same runtime (#1441). Empty is off and no runtime service runs. The first `./flux up` writes `codex,pi` where the host can run the runtime (#1438, #1441). Example: `codex,pi`.
+Lets people sign in with their own Claude or ChatGPT subscription and run that CLI, isolated from everyone else; `pi` runs every API-key agent in pi in the same runtime, with shell and files in a scratch of each run. Empty is off and no runtime service runs. Example: `codex,pi`.
 
 ### `FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS`
 
