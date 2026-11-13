@@ -48,7 +48,7 @@ async function serveScan(config: SupervisorConfig, req: IncomingMessage, res: Se
     res.end(JSON.stringify(body));
   };
   const body = await readBody(req, RUN_SCAN_LIMITS.bodyBytes);
-  let value: unknown = null;
+  let value: unknown;
   try { value = body ? JSON.parse(body.toString('utf8')) : null; } catch { value = null; }
   if (!isRunScanRequest(value)) { reply(RUN_SCAN_STATUS.invalid_request, { error: 'invalid_request' }); return; }
   try {
