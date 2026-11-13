@@ -82,8 +82,8 @@ export function LockedSpace({ workspaceId }: { workspaceId: string | null }) {
       : unlocker ? `${reason} You don’t have an unlock password for ${name} yet. ${whoCanUnlock(encryption, me.user.id)}${codeExists ? ' Or use the recovery code.' : ''}`
         : `${reason} You don’t have an unlock password for ${name} yet. ${whoCanUnlock(encryption, me.user.id)}`
     : `${reason} ${space?.role === 'guest' ? 'An admin of this space unlocks it.' : whoCanUnlock(encryption, me.user.id)}`;
-  // A locked space has no settings page to reach its keys from: its admins open them here (who has a password, a rotation waiting). Beside
-  // "Use the recovery code", so the line a refusal is said in stays at the card's foot instead of opening a gap above this (review of #1360).
+  // A locked space has no settings page to reach its keys from: its admins open them here (who has a password, a rotation waiting). Inside the
+  // form, above the line a refusal is said in, so that reserved line is at the card's foot instead of a gap above this (review of #1360).
   const keys = workspaceId ? <Button variant="quiet" data-encrypted-keys="" onClick={() => openDetails({ kind: 'people', workspaceId })}>People and encryption</Button> : null;
   return (
     <div className="pane-scroll"><div className="pane-in locked">
@@ -105,7 +105,7 @@ export function LockedSpace({ workspaceId }: { workspaceId: string | null }) {
  */
 export function UnlockForm({ workspaceId, name, encryption, autoFocus = false, onUnlocked, onCancel, more }: {
   workspaceId: string; name: string; encryption: WorkspaceEncryption | null; autoFocus?: boolean; onUnlocked?: () => void; onCancel?: () => void;
-  /** One more quiet action in the row under the field (the locked card's "People and encryption"). */
+  /** One more quiet action on its own row under the others, above the refusal line (the locked card's "People and encryption"). */
   more?: ReactNode;
 }) {
   const revalidator = useRevalidator();
@@ -156,9 +156,10 @@ export function UnlockForm({ workspaceId, name, encryption, autoFocus = false, o
       </div>
       <div className="locked__actions">
         {hasPassword && codeExists ? <Button variant="quiet" onClick={() => { setRecovery(!recovery); setSecret(''); setProblem(''); requestAnimationFrame(() => fieldRef.current?.focus()); }}>{recovery ? 'Use my unlock password' : 'Use the recovery code'}</Button> : null}
-        {more}
         {onCancel ? <Button variant="secondary" onClick={onCancel}>Cancel</Button> : null}
       </div>
+      {/* Its own row, so a longer "Use my unlock password" never wraps the row above and moves the field. */}
+      {more ? <div className="locked__actions">{more}</div> : null}
       {/* Below the buttons, so an error never moves them. */}
       <p className="locked__status" id={statusId} role="alert">{problem}</p>
     </form>
