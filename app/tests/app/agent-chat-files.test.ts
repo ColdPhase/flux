@@ -21,6 +21,8 @@ const answer = (words: string): PersonalComputeResult => ({ kind: 'completed', t
 const calls = (...list: { name: string; input: Record<string, unknown> }[]): PersonalComputeResult => ({ kind: 'completed', text: 'looking', stopReason: 'tool_use', usage,
   toolCalls: list.map((call, index) => ({ id: `call-${index}-${randomUUID()}`, name: call.name, input: call.input })) });
 const headers = (who: Person, extra: Record<string, string> = {}) => ({ cookie: who.browser.cookieHeader(), origin: who.browser.defaultOrigin, ...extra });
+/** A request that was never dispatched ends as Stop leaves it: it no longer holds the owner's lane. */
+const end = (runId: string) => pool.query(`UPDATE personal_runs SET status = 'stopped', completed_at = now(), cost_state = 'released', charged_micros = 0 WHERE id = $1`, [runId]);
 const download = (who: Person, fileId: string) => fetch(new URL(`/api/v1/files/${fileId}`, who.browser.base), { headers: headers(who) });
 
 async function stage(who: Person, path: string, name: string, bytes: Uint8Array) {
@@ -66,7 +68,7 @@ describe('files in an agent\'s private chat', () => {
     await assert.rejects(runs.invoke(human(scene.owner), chat(), { clientRunId: randomUUID(), kind: 'ask', prompt: '' }), /prompt must be/);
     // A file goes once: sent again it is refused.
     await assert.rejects(runs.invoke(human(scene.owner), chat(), { clientRunId: randomUUID(), kind: 'ask', prompt: 'again', attachmentIds: [alone.body.id] }), /already attached/);
-    for (const id of [started.run.id, filesOnly.run.id]) await scene.complete(id);
+    for (const id of [started.run.id, filesOnly.run.id]) await end(id);
   });
 
   test('a request with files is refused outside the chat, and the chat takes no file of a space, of a direct message or of someone else', async () => {
@@ -134,7 +136,7 @@ describe('files in an agent\'s private chat', () => {
     const gone = await stage(scene.owner, agentChatFilesPath(scene.agentId), 'gone.txt', Buffer.from('gone'));
     const keep = await runs.invoke(human(scene.owner), chat(), { clientRunId: randomUUID(), kind: 'ask', prompt: 'keep', attachmentIds: [kept.body.id] });
     const drop = await runs.invoke(human(scene.owner), chat(), { clientRunId: randomUUID(), kind: 'ask', prompt: 'drop', attachmentIds: [gone.body.id] });
-    for (const id of [keep.run.id, drop.run.id]) await scene.complete(id);
+    for (const id of [keep.run.id, drop.run.id]) await end(id);
     await pool.query(`DELETE FROM personal_runs WHERE id = $1`, [drop.run.id]);
     assert.equal((await pool.query(`SELECT 1 FROM project_files WHERE id = $1`, [gone.body.id])).rows.length, 0);
     assert.equal((await pool.query(`SELECT 1 FROM file_garbage WHERE id = $1`, [gone.body.id])).rows.length, 1, 'its bytes are queued for removal');
