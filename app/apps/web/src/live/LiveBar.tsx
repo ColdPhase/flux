@@ -11,6 +11,7 @@ import { FaceSound } from './ParticipantVolume';
 import { LivePanel } from './LivePanel';
 import { Popover } from './Popover';
 import { LiveDot, namesLine } from './LiveEntry';
+import { PushOffer } from '../notifications/PushOffer';
 
 function Face({ person, name }: { person: MediaPerson; name: string }) {
   // Sharing a screen shows on the face where the muted microphone does (F-041): it is the more important of the two.
@@ -66,6 +67,8 @@ export function LiveBar() {
             <Button variant="quiet" icon="chat" onClick={() => void live.answerInvitation('text')}>Reply in text</Button>
           </span>
         </div>
+        {/* Someone calls the person: the one offer to turn notifications on may come here too, under the same conditions as on Home (#1243, F-041). */}
+        <PushOffer userId={live.meId} ready />
       </section>
     );
   }

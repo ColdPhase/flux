@@ -15,6 +15,7 @@ networks and TURN are verified in #63.
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import re
@@ -39,6 +40,8 @@ PEOPLE = {
     "kai": {"name": "Kai Moreau", "email": f"kai.live+{STAMP}@example.test"},
     "lee": {"name": "Lee Park", "email": f"lee.live+{STAMP}@example.test"},
 }
+# A public key as the server gives it (65 bytes, base64url): the page only compares it with a subscription it would make.
+PUSH_KEY = base64.urlsafe_b64encode(bytes([4]) + bytes(64)).decode().rstrip("=")
 TABLET = {"width": 820, "height": 1180}
 SMALL_DESKTOP = {"width": 1280, "height": 800}
 TASK = "Test the night camera on the lamp board"
@@ -558,7 +561,26 @@ class LiveJourney(LiveBase):
         expect(space).to_be_visible()
         expect(space.locator("svg.side__live[data-call-mark]")).to_have_count(0)
         jonas = self.page("jonas")
+        # This run's server has no push keys: Jonas's page is told it has them and has not been asked, as on a server that can push (the page's
+        # own request is answered, so no route is stubbed and the service worker stays allowed).
+        jonas.context.add_init_script("""(() => {
+          Object.defineProperty(Notification, 'permission', { configurable: true, get: () => 'default' });
+          const real = window.fetch.bind(window);
+          window.fetch = (input, init) => {
+            const url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input);
+            if (url.includes('/api/v1/push/public-key')) return Promise.resolve(new Response(JSON.stringify({ status: 'available', publicKey: %s }), { status: 200, headers: { 'content-type': 'application/json' } }));
+            return real(input, init);
+          };
+        })();""" % json.dumps(PUSH_KEY))
         jonas.goto("/")
+        # Kai takes everything that happens (the level "Everything" pushes an open call too), with Flux open on Home: the corner notice card (#1268)
+        # and the tab's "(N)" (#1283) tell him of the call; the call has no sound of its own (the chime is the invitation's).
+        kai = self.page("kai")
+        self.api(kai, "PATCH", "/api/v1/notification-preferences", {"level": "everything"}, status=200)
+        self.addCleanup(lambda: self.api(kai, "PATCH", "/api/v1/notification-preferences", {"level": "needsYou"}))
+        kai.goto("/")
+        expect(kai.locator(".app__pane")).to_be_visible()
+        kai.wait_for_timeout(1500)
 
         # Lee starts it: each person runs at most a few calls at once, and the journeys before this one started theirs.
         nia = self.page("lee")
@@ -567,6 +589,12 @@ class LiveJourney(LiveBase):
         bar = self.bar(nia)
         expect(bar.locator(".lv-where")).to_have_text("Call in Repair cafe")
         expect(bar.get_by_role("status").filter(has_text="Nobody joined")).to_be_visible()
+        notice = kai.locator(".ui-notices .ui-notice")
+        expect(notice).to_contain_text("Lee Park started a call in Repair cafe", timeout=5000)
+        expect(notice.get_by_role("button", name="Join")).to_be_visible()
+        expect(notice.get_by_role("button", name="Open")).to_have_count(0)
+        expect(kai).to_have_title(re.compile(r"^\(1\) "), timeout=5000)
+        shot(kai, "live-desktop-1440-call-notice-card")
         started = time.monotonic()
         expect(space).to_have_accessible_name(re.compile("call on"), timeout=2500)
         expect(space.locator("svg.side__live[data-call-mark]")).to_be_visible()
@@ -594,6 +622,16 @@ class LiveJourney(LiveBase):
         # Each invitation is an Inbox item with Join for its person.
         jonas.goto("/inbox")
         expect(jonas.locator(".nyc", has_text="invited you to a call").get_by_role("button", name="Join").first).to_be_visible()
+        # Opening the invitation: its strip offers to turn notifications on, once, with Home's card and no earlier message (#1243, F-041).
+        jonas.locator(".nyc", has_text="invited you to a call").get_by_role("button", name="Open").first.click()
+        strip = jonas.get_by_role("region", name="Invitation to work together")
+        offer = strip.locator("section.push-offer")
+        expect(offer).to_contain_text("Get notified when someone writes to you or calls")
+        expect(offer.get_by_role("button", name="Turn on")).to_be_visible()
+        shot(jonas, "live-desktop-1440-invitation-push-offer")
+        offer.get_by_role("button", name="Not now").click()
+        expect(offer).to_have_count(0)
+        expect(strip.get_by_role("button", name="Join")).to_be_visible()
         for leaver in (ada, nia):
             self.bar(leaver).get_by_role("button", name="Leave", exact=True).click()
             expect(self.bar(leaver)).to_have_count(0)
@@ -602,6 +640,8 @@ class LiveJourney(LiveBase):
         expect(ada.locator("aside").get_by_role("link", name=re.compile("^Repair cafe")).locator("svg.side__live[data-call-mark]")).to_have_count(0, timeout=40000)
         ada.goto("/inbox")
         expect(ada.locator(".nyc", has_text="started a call in Repair cafe")).to_have_count(0)
+        # The tab stops counting the call once nobody is in it (its card stays until the call ends, as #1268 draws it).
+        expect(kai).not_to_have_title(re.compile(r"^\(\d+\) "), timeout=30000)
 
     def test_00f_a_call_is_one_line_in_the_conversation(self) -> None:
         """#1223 point 6 (F-041): a call started in the conversation shows one line on another member's open tab within 2 s, with Join;

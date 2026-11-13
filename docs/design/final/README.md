@@ -821,6 +821,12 @@ built. The contract is in [mobile and PWA](../../product/mobile-pwa.md#while-flu
   makes the offer. **Android** adds **Install Flux** (text button) where the browser offers installation.
 - **Blocked.** When the browser answers Block, the card says "Notifications are blocked for Flux", how to allow them for
   this browser, that the Inbox has everything, and **Got it**.
+- **In the call strip.** When someone invites you to a call, the invitation's strip carries the same card under its row:
+  the same words, buttons, conditions and 14 days of Not now (one answer for both places). No earlier message is needed:
+  the invitation is the reason. It sits inset as the row is (20 px from the left, 12 px from the right, 10 px below; on a
+  phone 16 px and 12 px), is the Home card as it is (no extra shadow or colour), and comes without motion. The strip's Join,
+  Later and Reply in text stay where they are; the card is read once when the strip opens, so the work below moves down once
+  at most, and back when the strip is answered (the strip is above the work and goes with the answer).
 
 ### A space: header, conversation and message actions
 

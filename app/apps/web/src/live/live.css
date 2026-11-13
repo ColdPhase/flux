@@ -128,6 +128,8 @@
 .lv-line--shown > svg { color: var(--t1); }
 .lv-bar--invite { background: var(--sub); }
 .lv-bar--invite .lv-row { padding-top: 8px; padding-bottom: 8px; }
+/* The offer to turn notifications on, under the invitation's row (docs/design/final/README.md "Asking for notifications"): Home's card, inset as the row is. */
+.lv-bar--invite .home__card.push-offer { margin: 0 12px 10px 20px; background: var(--el); border-radius: var(--r-card); box-shadow: var(--sh-card); color: var(--t1); }
 
 /* ---------- Panel (desktop popover, phone sheet) ---------- */
 .lv-panel { display: flex; flex-direction: column; }
@@ -257,6 +259,7 @@
   .lv-line__acts { margin-left: auto; }
   .lv-bar--invite .lv-row { flex-wrap: wrap; }
   .lv-bar--invite .lv-row__acts { width: 100%; justify-content: flex-start; margin-left: 30px; }
+  .lv-bar--invite .home__card.push-offer { margin: 0 12px 10px; }
   .lv-stage__bar { padding: 6px 8px; }
   .lv-stage__end .ui-btn:not(:last-child) { display: none; }
   .lv-stage__body { flex-direction: column; padding: 8px; gap: 8px; }

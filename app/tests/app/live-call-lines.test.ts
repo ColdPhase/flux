@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import { DomainError, type LiveMedia } from '@flux/core';
 import { listCallLines } from '../../apps/server/src/live/discovery.js';
 import { liveSessionStore } from '../../apps/server/src/live/store.js';
+import { personalRunRows } from '@flux/db';
 import { db, pool } from './support/db.js';
 import { addMember, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
 
@@ -61,4 +62,31 @@ test('the space conversation lists its calls as lines: running with who is in it
 
   await assert.rejects(listCallLines(db, media, human(lee), place.id, null), missing('PROJECT_NOT_FOUND'), 'never for someone outside the space');
   await assert.rejects(listCallLines(db, media, human(ada), place.id, randomUUID()), missing('LIVE_CONTEXT_NOT_FOUND'));
+});
+
+test('a run on the space conversation or a task is told its calls: oldest first, the running one open, a thread none', async () => {
+  const nia = await person('Nia Brief');
+  const ada = await person('Ada Brief');
+  const ws = await workspace(nia, 'Call events');
+  await addMember(nia, ws.id, ada, 'member');
+  const place = await project(nia, ws.id, 'Garden', 'restricted');
+  await grant(nia, place.id, ada, 'contributor');
+  const store = liveSessionStore(db);
+  const noRoom = async () => {};
+  const ended = await store.createOrGet(human(nia), place.id, { type: 'space', id: place.id }, randomUUID(), noRoom);
+  await pool.query(`UPDATE live_sessions SET state = 'ended', joined_by = $2, created_at = now() - interval '20 minutes', ended_at = now() - interval '8 minutes' WHERE id = $1`,
+    [ended.id, [nia.id, ada.id]]);
+  const running = await store.createOrGet(human(ada), place.id, { type: 'space', id: place.id }, randomUUID(), noRoom);
+  const task = expectStatus(await nia.browser.request('POST', `/api/v1/projects/${place.id}/work`, { body: { title: 'Water the beds' } }), 201) as { id: string };
+  const atTask = await store.createOrGet(human(nia), place.id, { type: 'work', id: task.id }, randomUUID(), noRoom);
+  const thread = expectStatus(await nia.browser.request('POST', `/api/v1/projects/${place.id}/conversations`, { body: { body: 'Who waters?', clientMessageId: randomUUID() } }), 201) as { id: string };
+  const runs = personalRunRows(db);
+
+  const mine = await runs.calls(place.id, { conversationId: null, workId: null }, 10);
+  assert.deepEqual(mine.map((call) => call.id), [ended.id, running.id], 'the space\'s own calls, oldest first; the task\'s call is not among them');
+  assert.deepEqual(mine[0]!.joinedBy.sort(), [nia.id, ada.id].sort());
+  assert.ok(mine[0]!.endedAt instanceof Date, 'an ended call has its end');
+  assert.equal(mine[1]!.endedAt, null, 'a running call has none');
+  assert.deepEqual((await runs.calls(place.id, { conversationId: null, workId: task.id }, 10)).map((call) => call.id), [atTask.id], 'a task run: the task\'s calls');
+  assert.deepEqual(await runs.calls(place.id, { conversationId: thread.id, workId: null }, 10), [], 'a thread has none');
 });

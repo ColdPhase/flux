@@ -1,5 +1,5 @@
 import { authorLabel, firstName, FORMER_MEMBER, sharedFirstNames } from '../agent-tasks/ask.js';
-import type { BriefPlace, TaskFacts } from './brief.js';
+import type { BriefPlace, CallEvent, TaskFacts } from './brief.js';
 import type { AgentBrief, MessageSource, PersonalRunPorts, RunRecord } from './ports.js';
 
 // What a run's brief says about who asks, where and when (#1064), read for both engines. The callers have authorized the run's place
@@ -50,6 +50,32 @@ export async function readBriefFacts(ports: PersonalRunPorts, run: RunRecord, br
 export async function latestMessages(read: (limit: number) => Promise<MessageSource[]>): Promise<{ messages: MessageSource[]; leftOut: boolean }> {
   const rows = await read(MESSAGE_WINDOW + 1);
   return rows.length > MESSAGE_WINDOW ? { messages: rows.slice(rows.length - MESSAGE_WINDOW), leftOut: true } : { messages: rows, leftOut: false };
+}
+
+/** How many calls of a place a run is told. */
+const CALL_WINDOW = 20;
+
+/**
+ * The calls of the place a run reads (F-041): a space's main conversation (the space's own calls) or one task's discussion, as events with
+ * the people's names as the space's readers see them: someone who can no longer read the space is a former member. A thread, a direct message and
+ * the private chat have none. `since`: with older messages left out, only the calls after the oldest message read.
+ */
+export async function callEvents(ports: PersonalRunPorts, run: RunRecord, since: Date | null): Promise<CallEvent[]> {
+  if (run.projectId === null || run.dmId !== null) return [];
+  const calls = (await ports.runs.calls(run.projectId, { conversationId: run.conversationId, workId: run.workId }, CALL_WINDOW)).filter((call) => since === null || call.startedAt >= since);
+  if (!calls.length) return [];
+  const names = await ports.runs.names([...new Set(calls.flatMap((call) => [call.startedBy, ...call.joinedBy]))]);
+  const readers = new Map<string, boolean>();
+  const nameOf = async (userId: string) => {
+    if (!readers.has(userId)) readers.set(userId, names.has(userId) && await ports.access.canUseProject({ kind: 'human', id: userId }, 'read', run.projectId!));
+    return readers.get(userId) ? names.get(userId)! : FORMER_MEMBER;
+  };
+  const events: CallEvent[] = [];
+  for (const call of calls) {
+    const others = [...new Set(call.joinedBy.filter((userId) => userId !== call.startedBy))];
+    events.push({ at: call.startedAt, endedAt: call.endedAt, starter: await nameOf(call.startedBy), others: await Promise.all(others.map(nameOf)) });
+  }
+  return events;
 }
 
 /** Of these agents' owners, those who share a first name with someone else who can read the space now (#1163). */
