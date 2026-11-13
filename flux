@@ -193,9 +193,10 @@ calls_env() {
     esac
   fi
 }
+# The media ports to open; an unset one is its default (`sed 's/^$/…/'` would print nothing for an empty value, which has no line).
 calls_ports() {
-  printf '%s/tcp, %s/udp and %s/udp' "$(env_value FLUX_LIVEKIT_ICE_TCP_PORT | sed 's/^$/7881/')" \
-    "$(env_value FLUX_LIVEKIT_ICE_UDP_PORT | sed 's/^$/7882/')" "$(env_value FLUX_LIVEKIT_TURN_UDP_PORT | sed 's/^$/3478/')"
+  tcp=$(env_value FLUX_LIVEKIT_ICE_TCP_PORT) udp=$(env_value FLUX_LIVEKIT_ICE_UDP_PORT) turn=$(env_value FLUX_LIVEKIT_TURN_UDP_PORT)
+  printf '%s/tcp, %s/udp and %s/udp' "${tcp:-7881}" "${udp:-7882}" "${turn:-3478}"
 }
 
 # --- Compose project names. Each checkout gets its own stable default, derived from its
@@ -347,9 +348,10 @@ ensure_env() {
   if [ -n "$public_key" ] && [ -n "$private_key" ]; then
     set_env_line "$draft" FLUX_VAPID_PUBLIC_KEY "$public_key"
     set_env_line "$draft" FLUX_VAPID_PRIVATE_KEY "$private_key"
-    set_env_line "$draft" FLUX_VAPID_SUBJECT "mailto:admin@localhost.localdomain"
+    # No contact is written (#1471): empty, the worker uses the https public address (FLUX_PUBLIC_ORIGIN), which Apple accepts. The
+    # placeholder this wrote before is refused by Apple's push service, so iPhone and iPad got nothing.
   else
-    warn "VAPID key generation failed; Web Push stays unavailable until you set the three FLUX_VAPID_* values."
+    warn "VAPID key generation failed; Web Push stays unavailable until you set FLUX_VAPID_PUBLIC_KEY and FLUX_VAPID_PRIVATE_KEY."
   fi
   mv "$draft" "$ENV_FILE"
   trap - EXIT HUP INT TERM
@@ -780,6 +782,54 @@ print_logins() {
   say "Passwords are stored in ${ENV_FILE#"$FLUX_ROOT"/}. Demo data is for local development only."
 }
 
+# What the sign-in plans are, in a few words, from FLUX_AGENT_RUNTIME (F-027).
+ai_status() {
+  st_chatgpt=off st_claude=off
+  case ",$(runtime_value)," in *,codex,*) st_chatgpt=on ;; esac
+  case ",$(runtime_value)," in *,claude_code,*) st_claude=on ;; esac
+  if [ "$st_chatgpt" = on ] && [ "$st_claude" = on ]; then say "ChatGPT and Claude plans on"
+  elif [ "$st_chatgpt" = on ]; then say "ChatGPT plans on, Claude plans off (./flux ai on turns them on)"
+  elif [ "$st_claude" = on ]; then say "Claude plans on, ChatGPT plans off"
+  else say "plans off (./flux ai on lets people sign in with their ChatGPT or Claude plan)"
+  fi
+}
+
+# The newest archive of this project in the backup folder, as its date, or nothing.
+last_backup_date() {
+  newest=$(ls -t "$BACKUP_DIR" 2>/dev/null | grep "^flux-backup-$PROJECT-[0-9]\{8\}T[0-9]\{6\}Z-[0-9a-f]*\.tar\$" | head -n 1) || true
+  printf '%s' "$newest" | sed -n 's/^.*-\([0-9]\{4\}\)\([0-9]\{2\}\)\([0-9]\{2\}\)T.*$/\1-\2-\3/p'
+}
+
+# The end of `./flux up` (#1471): what is on and what is still to do, one plain line each, read from docker/.env and the backup folder.
+# It starts nothing and asks nothing.
+up_status() {
+  say ""
+  say "Status"
+  if [ -n "$(env_value FLUX_SMTP_URL)" ]; then st_email="on"
+  else st_email="off (set FLUX_SMTP_URL and FLUX_MAIL_FROM in ${ENV_FILE#"$FLUX_ROOT"/} to send email)"; fi
+  if [ -z "$(env_value FLUX_VAPID_PUBLIC_KEY)" ]; then st_push="off (no VAPID keys in ${ENV_FILE#"$FLUX_ROOT"/})"
+  else
+    case "$(public_origin)" in
+      https://*) st_push="on" ;;
+      *) st_push="on for this computer; iPhone and iPad need an https address (FLUX_PUBLIC_ORIGIN)" ;;
+    esac
+  fi
+  # Built-in HTTPS and calls (#1471, decisions 3 and 4): the switches themselves; the lines above say what is left to do.
+  if https_on; then st_address="$(public_origin) (HTTPS by the bundled Caddy)"
+  else case "$(public_origin)" in https://*) st_address="$(public_origin) (HTTPS by your own proxy)" ;; *) st_address=$(public_origin) ;; esac; fi
+  if calls_on; then st_calls="on (open $(calls_ports) to this server)"
+  else st_calls="off (FLUX_CALLS=on in ${ENV_FILE#"$FLUX_ROOT"/} turns them on)"; fi
+  st_last=$(last_backup_date)
+  if [ -n "$st_last" ]; then st_backups="last one $st_last, in ${BACKUP_DIR#"$FLUX_ROOT"/}"
+  else st_backups="none yet (run ./flux backup, and add it to cron: docs/operations/backup-restore.md)"; fi
+  say "  Address   $st_address"
+  say "  Email     $st_email"
+  say "  Push      $st_push"
+  say "  AI        $(ai_status)"
+  say "  Calls     $st_calls"
+  say "  Backups   $st_backups"
+}
+
 cmd_up() {
   [ "$#" -eq 0 ] || die "up: unknown option $1 (up takes no options; use ./flux dev for hot reload)"
   need_docker
@@ -790,13 +840,17 @@ cmd_up() {
   say ""
   say "Flux is running:  $(public_origin)"
   say_https_and_calls
+  # ./flux demo refuses a production-looking address, so it is offered only on a local one.
   if [ "$(env_value FLUX_SIGNUP | tr -d '[:space:]' | tr 'A-Z' 'a-z')" = off ]; then
     say "Sign-up is closed (FLUX_SIGNUP=off): see \"Decide who can sign up\" in docs/operations/install.md to add people."
-    say "Or run ./flux demo for sample data and two logins."
-  else
+    ! is_loopback_origin "$(public_origin)" || say "Or run ./flux demo for sample data and two logins."
+  elif is_loopback_origin "$(public_origin)"; then
     say "Create an account there, or run ./flux demo for sample data and two logins."
+  else
+    say "Create an account there."
   fi
   warn_unclaimed_company
+  up_status
 }
 
 # What the owner still does for HTTPS and calls (#1471): the DNS name and the ports to open, and what the launcher found.
@@ -1170,6 +1224,9 @@ backup_to() {
   BACKUP_ARCHIVE="$out/$name.tar"
   say "Backup written: $BACKUP_ARCHIVE ($(file_bytes "$BACKUP_ARCHIVE") bytes, schema $schema)"
   say "It holds all data and the secrets of ${ENV_FILE#"$FLUX_ROOT"/}: keep it private and copy it off this machine."
+  # The key that seals people's AI keys is kept outside the database and the backup on purpose (#1471).
+  ai_key_file=$(env_value FLUX_BACKGROUND_KEY_HOST_FILE)
+  [ -z "$ai_key_file" ] || say "Not in it: the AI key file $ai_key_file. Copy that file to the same safe place; without it people connect their AI keys again."
 }
 
 write_manifest() {

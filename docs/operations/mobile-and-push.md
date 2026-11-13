@@ -20,12 +20,16 @@ iPhone and iPad and receiving notifications (MOB-6 in
 
 ## 2. Turn on Web Push
 
-Set all three of `FLUX_VAPID_PUBLIC_KEY`, `FLUX_VAPID_PRIVATE_KEY` and `FLUX_VAPID_SUBJECT`
-(`./flux up` generates the key pair; [variables](configuration.md#web-push)).
-The subject must be a contact Apple accepts: `mailto:` at a real domain you own, or your
-public `https://` origin. With a `localhost`, `.local` or `.test` contact, Apple's push
-service answers 403 and iPhone and iPad notifications fail. The worker warns about this at
-startup. Back up the key pair with the other secrets ([backup](backup-restore.md)).
+Set both `FLUX_VAPID_PUBLIC_KEY` and `FLUX_VAPID_PRIVATE_KEY`; `./flux up` makes them
+([variables](configuration.md#web-push)).
+`FLUX_VAPID_SUBJECT`, the contact the push services get, is optional: empty, it is your public
+`https://` origin (`FLUX_PUBLIC_ORIGIN`), which Apple's push service accepts, so there is nothing
+to set. Set it only to give a `mailto:` address at a real domain you own. With a `localhost`,
+`.local` or `.test` contact, or an origin that is not `https`, Apple's push service answers 403
+and iPhone and iPad notifications fail. The worker warns about this at startup, and again with
+the fix whenever a push service refuses the contact (`403 BadJwtToken`). A `docker/.env` from
+v0.2.0 that still holds `mailto:admin@localhost.localdomain` (what `./flux up` used to write) is
+treated as empty. Back up the key pair with the other secrets ([backup](backup-restore.md)).
 Restoring the same pair keeps every device's subscription.
 
 ## 3. Allow outbound HTTPS to the push services
@@ -56,12 +60,14 @@ appears in the Inbox.
 
 ## 5. Check that it works
 
-1. Open `https://<your host>/api/v1/push/public-key`. `{"status":"available",...}` means
-   push is configured; `503 PUSH_UNAVAILABLE` means the API has no public key.
+1. Sign in to Flux, then open `https://<your host>/api/v1/push/public-key` in the same
+   browser. `{"status":"available",...}` means push is configured; `503 PUSH_UNAVAILABLE`
+   means the API has no public key. Signed out, the address answers `401`: it needs a session.
 2. On a phone, turn on notifications, then ask someone to send that person a direct message.
 3. If nothing arrives, read the worker log (`docker compose logs worker`). Each delivery
    attempt logs the push service's status. 201 means accepted; 403 usually means a VAPID
-   subject or key mismatch; 404 and 410 remove the subscription (the device must turn
+   contact or key mismatch (`403 BadJwtToken` from Apple: the worker log says the contact was
+   refused and what to set); 404 and 410 remove the subscription (the device must turn
    notifications on again); 429 and 5xx are retried up to five times.
 4. A 201 means the push service accepted the message, not that the device showed it.
    Battery saving, Focus modes and notification settings on the device can delay or hide it.

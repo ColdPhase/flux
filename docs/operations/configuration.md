@@ -287,7 +287,7 @@ Sender of every mail. Required when `FLUX_SMTP_URL` is set. Example: `Flux <flux
 
 ## Web Push
 
-Optional, all three or none. See [phones, tablets and push](mobile-and-push.md).
+Optional: both keys or neither; the contact is optional. See [phones, tablets and push](mobile-and-push.md).
 
 ### `FLUX_VAPID_PUBLIC_KEY`
 
@@ -305,7 +305,7 @@ Private VAPID key; only the worker receives it. Changing the pair makes every de
 
 **Type** `mailto:` or `https:` URL · **Default** empty · **Used by** worker (release, source)
 
-Operator contact sent to the push services. Use a real, reachable address. Example: `mailto:ops@example.org`.
+Optional contact sent to the push services. Empty, it is `FLUX_PUBLIC_ORIGIN` when that is `https:` (Apple's push service accepts it). Set it only to give a `mailto:` address at your own domain; a contact Apple cannot reach (`localhost`, `.local`, `.test`) makes iPhone and iPad notifications fail with 403. Example: `mailto:ops@example.org`.
 
 ## Collaboration, link cards and the live stream
 

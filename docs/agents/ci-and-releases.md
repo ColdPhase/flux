@@ -99,7 +99,8 @@ application functionality.
 
 The `Application validation` contract ([#143](https://github.com/ColdPhase/flux/issues/143))
 uses the pinned application's Docker `test` target: its build performs compilation,
-type checks and lint, then a disposable container runs `app/tests/app/architecture.test.ts`
+then type checks and lint in the `verify` stage `test` is built on (the image `./flux up`
+builds skips that stage, #1471), then a disposable container runs `app/tests/app/architecture.test.ts`
 and every `app/tests/app/*-core.test.ts`. These portable tests run without networking,
 database, worker or browser services. Every main-targeted PR receives the same
 check, obsolete runs are cancelled, and an explicit dispatch can check the base.

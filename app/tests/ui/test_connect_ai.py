@@ -451,6 +451,33 @@ class ConnectAiJourney(unittest.TestCase):
         expect(window.get_by_role("alert")).to_have_text("The agent runtime is starting; try again shortly. If it stays like this, ask whoever runs Flux.")
         page.context.close()
 
+    def test_08h_a_claude_plan_the_server_has_left_off_tells_its_owners_how_to_turn_it_on(self) -> None:
+        """#1471: the first ./flux up asks about Anthropic's Commercial Terms and the default answer is No: ChatGPT plans on, Claude plans off.
+        An owner or admin reads how to turn the Claude plan on in its one line, with the command in the mono face; a member reads that it is
+        not offered, and a server whose plans are all off says that to everyone. The ChatGPT plan is still offered."""
+        claude_off = {**RUNTIME_ON, "clients": {"claude_code": "off", "codex": "available"}}
+        everything_off = {**RUNTIME_ON, "enabled": False, "clients": {"claude_code": "off", "codex": "off"}}
+        for who, status, line in (("ines", claude_off, "Not turned on. Run ./flux ai on on the server."),
+                                  ("tom", claude_off, "Not offered on this Flux server"),
+                                  ("ines", everything_off, "Not offered on this Flux server")):
+            with self.subTest(who=who, enabled=status["enabled"]):
+                page = self.page(who)
+                self.stub_runtime(page, status)
+                page.goto("/settings/agents")
+                connect, _, _ = self.sections(page)
+                connect.get_by_role("button", name=re.compile(r"^Connect (AI|another)$")).click()
+                window = page.get_by_role("dialog", name="Connect your AI")
+                claude = window.locator("[data-choice=claude_plan]")
+                expect(claude.locator(".cai-window__detail")).to_have_text(line)
+                expect(claude.locator("input")).to_be_disabled()
+                if status["enabled"]:
+                    expect(window.locator("[data-choice=chatgpt_plan] input")).to_be_enabled()
+                if line.startswith("Not turned on"):
+                    expect(claude.locator("code")).to_have_text("./flux ai on")
+                    self.no_horizontal_scroll(page)
+                window.get_by_role("button", name="Cancel").click()
+                page.context.close()
+
     def test_08b_a_plan_at_its_limit_says_so_in_one_line_and_nothing_switches(self) -> None:
         """#854: "Claude limit reached, resumes at 14:00", or without a time when the provider gave none. The line stays one
         line beside Change, also on the phone; there is no switch button anywhere on the page."""

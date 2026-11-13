@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
 import { AGENT_RUNTIME_ERRORS, type AgentRuntimeClient, type AgentRuntimeSignInMethod, type AgentRuntimeStatus } from '@flux/contracts';
 import { consoleTicket } from '../agent-runtime/api';
 import { SIGN_IN_PROBLEM, signInFailure } from '../agent-runtime/copy';
@@ -43,8 +43,11 @@ type Step =
  * The window itself. `runtime`: null while it could not be read (`runtimeFailed`), so a plan is not called unavailable by
  * mistake. `have`: what the person has connected; a plan is one connection, a key can be added again.
  */
-export function ConnectAiWindow({ runtime, runtimeFailed, apiKeys, have, onClose, onConnected, onLocalClient }: {
-  runtime: AgentRuntimeStatus | null; runtimeFailed: boolean; apiKeys: boolean; have: ReadonlySet<AiConnectionKind>;
+export function ConnectAiWindow({ runtime, runtimeFailed, apiKeys, manager, have, onClose, onConnected, onLocalClient }: {
+  runtime: AgentRuntimeStatus | null; runtimeFailed: boolean; apiKeys: boolean;
+  /** The person is an owner or admin of the company: the only ones told how to turn a Claude plan on (#1471). */
+  manager: boolean;
+  have: ReadonlySet<AiConnectionKind>;
   onClose: () => void; onConnected: () => void; onLocalClient: () => void;
 }) {
   const phone = useMediaQuery(MEDIA.phone);
@@ -64,6 +67,17 @@ export function ConnectAiWindow({ runtime, runtimeFailed, apiKeys, have, onClose
   // it), a sign-in could only fail with words nobody can act on (#910).
   const notReady = !!runtime?.enabled && runtime.pool === 'starting';
   const offered = (kind: Choice) => (kind === 'local_client' ? true : kind === 'api_key' ? apiKeys : !!runtime?.enabled && !notReady && runtime.clients[PLANS[kind].client] === 'available');
+  /**
+   * Why a choice is dimmed. A server that runs ChatGPT plans but not Claude plans (its owner answered No to Anthropic's Commercial Terms) tells its
+   * owners and admins how to turn them on, in the one line of the row; everyone else is told it is not offered here (#1471).
+   */
+  const offDetail = (kind: Choice): ReactNode => {
+    if (kind === 'api_key') return 'Not offered on this Flux server';
+    if (runtimeFailed) return 'Flux couldn’t check this just now';
+    if (notReady) return 'Not ready yet. If this stays, ask whoever runs Flux.';
+    if (manager && kind === 'claude_plan' && runtime?.enabled && runtime.clients.claude_code === 'off') return <>Not turned on. Run <code>./flux ai on</code> on the server.</>;
+    return 'Not offered on this Flux server';
+  };
   const choices = CHOICES.filter((choice) => choice.kind === 'api_key' || choice.kind === 'local_client' || !have.has(choice.kind));
   const [chosen, setChosen] = useState<Choice | null>(null);
   const selected = chosen && offered(chosen) ? chosen : choices.find((choice) => offered(choice.kind))?.kind ?? null;
@@ -102,8 +116,7 @@ export function ConnectAiWindow({ runtime, runtimeFailed, apiKeys, have, onClose
                   <Icon name={choice.icon} size={16} />
                   <span className="cai-window__text">
                     <span className="cai-window__name">{choice.title}</span>
-                    <span className="cai-window__detail">{on ? choice.detail : runtimeFailed && choice.kind !== 'api_key' ? 'Flux couldn’t check this just now'
-                      : notReady && choice.kind !== 'api_key' ? 'Not ready yet. If this stays, ask whoever runs Flux.' : 'Not offered on this Flux server'}</span>
+                    <span className="cai-window__detail">{on ? choice.detail : offDetail(choice.kind)}</span>
                   </span>
                 </label>
               );

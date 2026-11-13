@@ -69,7 +69,7 @@ export function webPushSender(
         );
         return { kind: 'accepted', status: result.statusCode };
       } catch (error) {
-        if (error instanceof WebPushError) return { kind: 'http-error', status: error.statusCode };
+        if (error instanceof WebPushError) return { kind: 'http-error', status: error.statusCode, body: typeof error.body === 'string' ? error.body.slice(0, 200) : undefined };
         if ((error as { code?: string }).code === 'EPUSHPRIVATE') return { kind: 'refused', reason: (error as Error).message };
         return { kind: 'network', message: (error as Error).message };
       }

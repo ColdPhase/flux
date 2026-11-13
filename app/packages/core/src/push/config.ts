@@ -35,7 +35,22 @@ export type PushSenderConfig =
   | { status: 'available'; publicKey: string; privateKey: string; subject: string; allowPrivateNetwork: boolean }
   | { status: 'unavailable'; reason: string };
 
-const NOT_CONFIGURED = 'Web Push is not configured: set FLUX_VAPID_PUBLIC_KEY, FLUX_VAPID_PRIVATE_KEY and FLUX_VAPID_SUBJECT';
+const NOT_CONFIGURED = 'Web Push is not configured: set FLUX_VAPID_PUBLIC_KEY and FLUX_VAPID_PRIVATE_KEY';
+
+/**
+ * The contact a push service gets when none is set and the address is not https (#1471): such an address cannot receive push on iPhone or iPad
+ * anyway, and desktop push services accept it. It is also what ./flux up of v0.2.0 wrote into docker/.env; Apple refuses it, so a file that still
+ * holds it counts as not set and takes the https address once there is one.
+ */
+export const LOCAL_VAPID_SUBJECT = 'mailto:admin@localhost.localdomain';
+
+/** The public address when it is https: the contact Apple can reach without anyone naming a mailbox. */
+function httpsOrigin(env: NodeJS.ProcessEnv): string | null {
+  try {
+    const url = new URL(env.FLUX_PUBLIC_ORIGIN?.trim() ?? '');
+    return url.protocol === 'https:' ? url.origin : null;
+  } catch { return null; }
+}
 
 function decodeBase64Url(value: string): Buffer | null {
   if (!/^[A-Za-z0-9_-]+={0,2}$/.test(value)) return null;
@@ -71,24 +86,29 @@ export function loadPushServerConfig(env: NodeJS.ProcessEnv = process.env): Push
 }
 
 /**
- * The worker signs with the private key. All three values are required together, and the
- * public key must match the private key so the API never advertises a key the worker cannot use.
+ * The worker signs with the private key. The two keys are required together, and the public key must match the private key so the API
+ * never advertises a key the worker cannot use. The contact (FLUX_VAPID_SUBJECT) is optional: empty, it is the public https address
+ * (FLUX_PUBLIC_ORIGIN), which Apple's push service accepts (#1471); without an https address it is a local placeholder.
  */
 export function loadPushSenderConfig(env: NodeJS.ProcessEnv = process.env): PushSenderConfig {
   const publicKey = env.FLUX_VAPID_PUBLIC_KEY?.trim() ?? '';
   const privateKey = env.FLUX_VAPID_PRIVATE_KEY?.trim() ?? '';
-  const subject = env.FLUX_VAPID_SUBJECT?.trim() ?? '';
+  const given = env.FLUX_VAPID_SUBJECT?.trim() ?? '';
+  const configured = given === LOCAL_VAPID_SUBJECT ? '' : given;
   const allowPrivateNetwork = flag(env, 'FLUX_PUSH_ALLOW_PRIVATE_NETWORK');
-  const given = [publicKey, privateKey, subject].filter(Boolean).length;
-  if (given === 0) return { status: 'unavailable', reason: NOT_CONFIGURED };
-  if (given < 3) throw new Error('FLUX_VAPID_PUBLIC_KEY, FLUX_VAPID_PRIVATE_KEY and FLUX_VAPID_SUBJECT must be set together');
+  if (!publicKey && !privateKey && !given) return { status: 'unavailable', reason: NOT_CONFIGURED };
+  if (!publicKey || !privateKey) throw new Error('FLUX_VAPID_PUBLIC_KEY and FLUX_VAPID_PRIVATE_KEY must be set together (FLUX_VAPID_SUBJECT is optional)');
   if (!isP256PublicKey(publicKey)) throw new Error('FLUX_VAPID_PUBLIC_KEY must be a base64url uncompressed P-256 public key (65 bytes)');
   if (publicKeyFromPrivate(privateKey) !== publicKey.replace(/=+$/, '')) throw new Error('FLUX_VAPID_PUBLIC_KEY does not belong to FLUX_VAPID_PRIVATE_KEY');
+  const subject = configured || httpsOrigin(env) || LOCAL_VAPID_SUBJECT;
   if (!/^mailto:[^@\s]+@[^@\s]+$/.test(subject) && !/^https:\/\/[^\s/]+/.test(subject)) {
     throw new Error('FLUX_VAPID_SUBJECT must be a mailto: address or an https: URL for the operator');
   }
   return { status: 'available', publicKey: publicKey.replace(/=+$/, ''), privateKey: privateKey.replace(/=+$/, ''), subject, allowPrivateNetwork };
 }
+
+/** What to do about a contact Apple refuses (#1471); the same words at startup and when a push service refuses a send. */
+export const PUSH_CONTACT_FIX = 'Set FLUX_PUBLIC_ORIGIN to your public https address and leave FLUX_VAPID_SUBJECT empty (Flux then uses that address), or set FLUX_VAPID_SUBJECT to a mailto: address at your own domain; then start Flux again so the worker reads it.';
 
 /** Host suffixes that cannot receive mail or serve a public site: localhost, mDNS and the RFC 2606/6761 reserved names. */
 const UNREACHABLE_CONTACT_HOST = /(^|\.)(localhost|localdomain|local|test|example|invalid|internal|home\.arpa)$/;
@@ -102,7 +122,7 @@ const UNREACHABLE_CONTACT_HOST = /(^|\.)(localhost|localdomain|local|test|exampl
 export function vapidSubjectWarning(subject: string): string | null {
   const host = (subject.startsWith('mailto:') ? subject.slice(subject.lastIndexOf('@') + 1) : hostOf(subject)).toLowerCase().replace(/\.$/, '');
   if (host && host.includes('.') && !UNREACHABLE_CONTACT_HOST.test(host) && !/^[\d.]+$|^\[|:/.test(host)) return null;
-  return `FLUX_VAPID_SUBJECT ${subject} is not a reachable contact; Apple's push service refuses it, so iPhone and iPad notifications fail. Set a mailto: address at your own domain or your public https origin.`;
+  return `The push contact ${subject} is not reachable; Apple's push service refuses it, so iPhone and iPad notifications fail. ${PUSH_CONTACT_FIX}`;
 }
 
 function hostOf(url: string): string {

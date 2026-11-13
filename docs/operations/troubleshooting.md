@@ -50,7 +50,7 @@ dc logs --tail 50 migrate api worker keyring
 
 | Feature | Check |
 | --- | --- |
-| Push notifications | HTTPS origin, all three `FLUX_VAPID_*` set, outbound HTTPS to the push services ([push](mobile-and-push.md)). |
+| Push notifications | An https `FLUX_PUBLIC_ORIGIN`, both `FLUX_VAPID_PUBLIC_KEY` and `FLUX_VAPID_PRIVATE_KEY` set (the contact `FLUX_VAPID_SUBJECT` is optional), outbound HTTPS to the push services ([push](mobile-and-push.md)). |
 | Installing on a phone | HTTPS at the root of its own origin; iPhone and iPad install from Safari's Share menu. |
 | Agents answering in Flux (API keys) | `FLUX_PERSONAL_RUNS=on` and a readable `FLUX_BACKGROUND_KEY_HOST_FILE`. Also the space's AI must be on, and the person must not be a guest. Settings › AI says "Off on this Flux server" while neither this nor the runtime below is on. |
 | Sign-in with Claude or ChatGPT subscriptions | `FLUX_AGENT_RUNTIME` set and applied with `./flux up`; `./flux runtime status` ([agent runtime](agent-runtime.md)). A host with Yama `ptrace_scope` 0 stops the runtime with one message and the fix. Agents beyond what the server's memory allows wait with "Waiting for room on the server" (`FLUX_RUNTIME_MAX_RUNS`). |

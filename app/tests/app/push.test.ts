@@ -10,6 +10,7 @@ import {
   loadPushSenderConfig,
   loadPushServerConfig,
   pushEndpointViolation,
+  LOCAL_VAPID_SUBJECT,
   vapidSubjectWarning,
   type PushSendJob,
 } from '@flux/core';
@@ -40,13 +41,14 @@ async function subscriptionExists(id: string) {
 }
 
 describe('push configuration', () => {
-  test('the sender needs all three VAPID values, a matching pair and an operator contact', () => {
+  test('the sender needs both VAPID keys, a matching pair and a contact that is set, or the public https address (#1471)', () => {
     assert.equal(loadPushSenderConfig({}).status, 'unavailable');
     assert.equal(loadPushServerConfig({}).status, 'unavailable');
     assert.equal(sender.status, 'available', 'the test run configures generated VAPID keys');
     if (sender.status !== 'available') return;
     const { publicKey, privateKey, subject } = sender;
     assert.throws(() => loadPushSenderConfig({ FLUX_VAPID_PUBLIC_KEY: publicKey }), /must be set together/);
+    assert.throws(() => loadPushSenderConfig({ FLUX_VAPID_SUBJECT: 'mailto:ops@flux.company.com' }), /must be set together/);
     assert.throws(() => loadPushSenderConfig({ FLUX_VAPID_PUBLIC_KEY: publicKey, FLUX_VAPID_PRIVATE_KEY: privateKey, FLUX_VAPID_SUBJECT: 'ops@example.test' }), /mailto: address or an https: URL/);
     // Apple refuses a contact it cannot reach (#20): those load, with a warning naming iPhone and iPad.
     for (const unreachable of ['mailto:mobile-fixture@example.test', 'mailto:admin@localhost.localdomain', 'mailto:ops@localhost', 'https://localhost',
@@ -57,6 +59,16 @@ describe('push configuration', () => {
       assert.equal(vapidSubjectWarning(reachable), null, reachable);
     }
     assert.equal(loadPushSenderConfig({ FLUX_VAPID_PUBLIC_KEY: publicKey, FLUX_VAPID_PRIVATE_KEY: privateKey, FLUX_VAPID_SUBJECT: 'mailto:admin@localhost.localdomain' }).status, 'available');
+    // No contact set: the public https address is it, whatever path or trailing slash the origin has; no https address, a local placeholder.
+    const keys = { FLUX_VAPID_PUBLIC_KEY: publicKey, FLUX_VAPID_PRIVATE_KEY: privateKey };
+    const contact = (env: NodeJS.ProcessEnv) => { const loaded = loadPushSenderConfig({ ...keys, ...env }); return loaded.status === 'available' ? loaded.subject : loaded.reason; };
+    assert.equal(contact({ FLUX_PUBLIC_ORIGIN: 'https://flux.company.com' }), 'https://flux.company.com');
+    assert.equal(contact({ FLUX_PUBLIC_ORIGIN: 'https://flux.company.com:8443/', FLUX_VAPID_SUBJECT: '' }), 'https://flux.company.com:8443');
+    assert.equal(contact({ FLUX_PUBLIC_ORIGIN: 'https://flux.company.com', FLUX_VAPID_SUBJECT: 'mailto:ops@flux.company.com' }), 'mailto:ops@flux.company.com', 'a contact that is set wins');
+    assert.equal(contact({ FLUX_PUBLIC_ORIGIN: 'https://flux.company.com', FLUX_VAPID_SUBJECT: LOCAL_VAPID_SUBJECT }), 'https://flux.company.com', 'the placeholder v0.2.0 wrote counts as not set');
+    assert.equal(contact({ FLUX_PUBLIC_ORIGIN: 'http://127.0.0.1:8081' }), LOCAL_VAPID_SUBJECT);
+    assert.equal(contact({}), LOCAL_VAPID_SUBJECT);
+    assert.match(vapidSubjectWarning(LOCAL_VAPID_SUBJECT) ?? '', /FLUX_PUBLIC_ORIGIN to your public https address/, 'the warning names the fix');
     const other = testSubscription().keys.p256dh;
     assert.throws(() => loadPushSenderConfig({ FLUX_VAPID_PUBLIC_KEY: other, FLUX_VAPID_PRIVATE_KEY: privateKey, FLUX_VAPID_SUBJECT: subject }), /does not belong/);
     assert.throws(() => loadPushServerConfig({ FLUX_VAPID_PUBLIC_KEY: 'not-a-key' }), /P-256 public key/);
