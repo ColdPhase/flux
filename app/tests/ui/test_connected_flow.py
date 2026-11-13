@@ -185,37 +185,6 @@ class ConnectedFlow(unittest.TestCase):
         self.assertEqual((made[0]["source"] or {}).get("projectMessageId"), self.ids["lockers"], "the phone keeps the source")
         shot(page, "cw1-phone-add-to-map")
 
-    def test_05_slash_map_in_a_thread_puts_its_opening_message_on_the_map(self) -> None:
-        page = self.page()
-        page.goto(f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}")
-        composer = page.locator("#thread-composer")
-        expect(composer).to_be_visible()
-        composer.click()
-        composer.press_sequentially("/ma")
-        menu = page.get_by_role("listbox", name="Actions")
-        expect(menu.locator(".cmenu__cmd", has_text="/map")).to_be_visible()
-        # Enter first picks "/map" from the menu, then sends it.
-        composer.fill("/map")
-        composer.press("Enter")
-        expect(composer).to_have_value("/map ")
-        composer.press("Enter")
-        expect(page).to_have_url(re.compile(f"/projects/{self.ids['project']}/map/{self.ids['sketch']}"))
-        draft = page.get_by_role("form", name="New thought draft")
-        expect(draft.get_by_role("textbox", name="Thought text")).to_have_value(SMS)
-        # The draft lands in free space in view, not over a thought or under the breadcrumb (CW-12).
-        page.wait_for_timeout(300)
-        shot(page, "cw12-arrival-desktop")
-        ghost = page.locator(".sk-ghost--draft").bounding_box()
-        canvas = page.locator(".sk-canvas").bounding_box()
-        if ghost and canvas:
-            self.assertGreaterEqual(ghost["y"], canvas["y"] + 60)
-            for box in page.locator(".sk-node").evaluate_all("els => els.map(el => el.getBoundingClientRect().toJSON())"):
-                overlap = not (ghost["x"] + ghost["width"] <= box["left"] or box["right"] <= ghost["x"] or ghost["y"] + ghost["height"] <= box["top"] or box["bottom"] <= ghost["y"])
-                self.assertFalse(overlap, f"the new thought overlaps a thought at {box}")
-        draft.get_by_role("button", name="Cancel").click()
-
-    # ---------------------------------------------------------------- CW-6: a task and its criteria
-
     def test_06_a_task_lists_its_criteria_unchecked(self) -> None:
         for phone in (False, True):
             with self.subTest(phone=phone):

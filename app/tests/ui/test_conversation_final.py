@@ -254,16 +254,16 @@ class ConversationFinal(unittest.TestCase):
         expect(page.get_by_role("button", name=re.compile("^Sources"))).to_have_count(0)
         expect(page.get_by_role("button", name="Ask my assistant")).to_have_count(0)
         expect(composer).to_have_attribute("placeholder", "Message · @ mention · / actions")
-        # "/" lists the four actions in order, then the two commands that replaced the old buttons.
+        # "/" lists the design's four actions, and no more (#1419): no /map, /handoff or /source.
         composer.fill("/")
         menu = page.get_by_role("listbox", name="Actions")
         expect(menu).to_be_visible()
-        self.assertEqual(menu.get_by_role("option").locator(".cmenu__cmd").all_inner_texts()[:4], ["/task", "/decide", "/map", "/handoff"])
+        self.assertEqual(menu.get_by_role("option").locator(".cmenu__cmd").all_inner_texts(), ["/task", "/decide", "/file", "/ai"])
         expect(composer).to_have_attribute("aria-controls", re.compile("menu$"))
         shot(page, "conversation-final-slash-desktop")
         page.keyboard.press("Escape")
         expect(menu).to_have_count(0)
-        # Keys choose: Down, Enter makes "/decide ", and sending it opens the proposal with that title.
+        # Keys choose: Down, Enter makes "/decide ", and sending it opens the one Create window on Decision with that title (#1419).
         composer.fill("")
         composer.fill("/")
         page.keyboard.press("ArrowDown")
@@ -272,9 +272,13 @@ class ConversationFinal(unittest.TestCase):
         expect(composer).to_have_value("/decide ")
         page.keyboard.type("Use the second supplier")
         page.keyboard.press("Enter")
-        expect(page.locator("#details").get_by_label("Decision")).to_have_value("Use the second supplier")
-        expect(composer).to_have_value("")
+        decision = page.get_by_role("dialog", name="New decision")
+        expect(decision.get_by_role("textbox", name="Decision", exact=True)).to_have_value("Use the second supplier")
+        # The words stay until the decision is proposed; closing the window loses nothing.
+        expect(composer).to_have_value("/decide Use the second supplier")
         page.keyboard.press("Escape")
+        expect(decision).to_have_count(0)
+        composer.fill("")
         # /task opens the one Create window with the words as its title; the task is made there.
         composer.fill("/task Order the probes from the second supplier")
         page.keyboard.press("Enter")
@@ -300,7 +304,7 @@ class ConversationFinal(unittest.TestCase):
         page.keyboard.press("Enter")
         expect(page.get_by_role("status").filter(has_text="Say what it is")).to_be_visible()
         composer.fill("")
-        # /file opens the file chooser, /source the saved sources.
+        # /file opens the file chooser.
         composer.fill("/fi")
         expect(page.get_by_role("listbox", name="Actions").get_by_role("option", selected=True)).to_contain_text("/file")
         attach = page.locator(".project-convo__composer .composer__attach")
@@ -313,10 +317,7 @@ class ConversationFinal(unittest.TestCase):
         expect(page.get_by_text("Ready, private", exact=False)).to_be_visible()
         page.get_by_role("button", name="Remove bed-readings.csv").click()
         expect(composer).to_have_value("")
-        composer.fill("/source")
-        page.keyboard.press("Enter")
-        expect(page.get_by_role("region", name="Space materials")).to_be_visible()
-        # "@" lists people and agents; the chosen name goes in as a chip that sits on the text baseline.
+        # "@" lists people only (#1419); the chosen name goes in as a chip that sits on the text baseline.
         composer.fill("Thanks @jo")
         people = page.get_by_role("listbox", name="Mention")
         expect(people.get_by_role("option")).to_have_count(1)
@@ -502,7 +503,7 @@ class ConversationFinal(unittest.TestCase):
         composer = page.locator("#thread-composer")
         expect(composer).to_be_focused()
         composer.fill("/")
-        expect(page.get_by_role("listbox", name="Actions").get_by_role("option").locator(".cmenu__cmd")).to_contain_text(["/task", "/decide", "/map", "/handoff", "/file", "/source", "/ai"])
+        expect(page.get_by_role("listbox", name="Actions").get_by_role("option").locator(".cmenu__cmd")).to_have_text(["/task", "/decide", "/file", "/ai"])
         page.keyboard.press("Escape")
         composer.fill("Checked the depths.")
         page.keyboard.press("Enter")
@@ -523,7 +524,7 @@ class ConversationFinal(unittest.TestCase):
         return held
 
     def test_11_a_slash_command_consumes_only_the_draft_it_was_given(self) -> None:
-        for command in ("task", "handoff"):
+        for command in ("task",):
             page = self.open("ada")
             composer = self.composer(page)
             held = self.hold_work(page)
@@ -614,7 +615,7 @@ class ConversationFinal(unittest.TestCase):
         touch(first, "pointerup", x, y + 30)
 
     def test_15_a_completed_command_consumes_its_original_thread_draft_after_leaving(self) -> None:
-        for command in ("task", "handoff"):
+        for command in ("task",):
             page = self.open("ada")
             message = self.message(page, self.ids["probes"])
 

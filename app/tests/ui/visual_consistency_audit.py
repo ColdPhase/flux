@@ -260,7 +260,6 @@ SCREENS = [
     Screen("task-panel", "/projects/{p}/tasks?view=board&open=work:{task}", needs=("task",)),
     Screen("task-blocked", "/projects/{p}/tasks?view=list&open=work:{blocked}", needs=("blocked",)),
     Screen("decision-panel", "/projects/{p}?open=decision:{decision}", needs=("decision",)),
-    Screen("propose-decision", "/projects/{p}?open=propose-decision"),
     Screen("project-people", "/projects/{p}/settings"),
     Screen("new-space", "/", steps=[("click", "button[aria-label='More']"), ("click", "[role='menuitem']:has-text('Details')"),
                                     ("click", "button.ov-row:has-text('New space')")]),

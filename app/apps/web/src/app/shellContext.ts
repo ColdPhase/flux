@@ -7,16 +7,6 @@ export interface ObjectView {
   /** The title of the task, when the opener has it (its row or card): the panel's loading state shows it in its own place at once (#863 rule 6). */
   title?: string;
 }
-/** A form in the Details panel that starts from a message or a work item, keeping the source in place. */
-export interface WorkFormView {
-  kind: 'propose-decision';
-  projectId: string;
-  source?: { messageId: string; text: string };
-  /** A title typed in the composer (`/decide …`), when there is no message to start from. */
-  title?: string;
-  workId?: string;
-}
-
 /** "Add to docs" for a decision (#112); `inDocs` are the docs that already have it. */
 export interface AddToDocView {
   kind: 'add-to-doc';
@@ -63,7 +53,7 @@ export interface OwnedView { kind: 'owned' }
 export const isOwned = (view: DetailsView): view is OwnedView => typeof view === 'object' && view.kind === 'owned';
 
 /** What the Details panel shows: the current place, a project object or form, or how to connect a personal AI (#57). */
-export type DetailsView = 'place' | 'connect-ai' | ObjectView | WorkFormView | AddToDocView | OverviewView | PeopleView | ThoughtTasksView | OwnedView;
+export type DetailsView = 'place' | 'connect-ai' | ObjectView | AddToDocView | OverviewView | PeopleView | ThoughtTasksView | OwnedView;
 
 /**
  * A panel a route's own view owns (F-026 S4, #488): a conversation thread, a direct-message thread, an agent or a task's
@@ -98,7 +88,7 @@ export interface CreateRequest {
   status?: WorkStatus;
   /** What the task comes from (a message or the thoughts of a Map selection): linked, never moved or copied. */
   sources?: { ref: ObjectRef; label: string }[];
-  /** Called once the task exists, e.g. a `/task` command consumes its composer text only then (closing the window keeps it). */
+  /** Called once the task or decision exists, e.g. a `/task` or `/decide` command consumes its composer text only then (closing the window keeps it). */
   onCreated?: () => void;
 }
 

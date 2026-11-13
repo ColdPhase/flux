@@ -93,10 +93,9 @@ export async function viewRoutes(app: FastifyInstance, { db, sessions, storage }
     // when the person reads older roots.
     const reach = { since: roots.rootPage.hasMoreBefore && roots.roots[0] ? new Date(roots.roots[0].message.createdAt) : null, most: CONVERSATION_VIEW_LIMITS.noticesReach };
     const first = { limit: CONVERSATION_VIEW_LIMITS.notices, offset: 0 };
-    const [taskNotices, objectNotices, materials, agentQuestions, workAssociations, members] = await Promise.all([
+    const [taskNotices, objectNotices, agentQuestions, workAssociations, members] = await Promise.all([
       announcements(request, 'task notices', () => work.listTaskNotices(principal, roots.projectId, first, reach)),
       announcements(request, 'object notices', () => work.listObjectNotices(principal, roots.projectId, first, reach)),
-      conversations.listMaterials(principal, roots.projectId, { limit: CONVERSATION_VIEW_LIMITS.materials, offset: 0 }),
       // AG-10: while the space's AI is off its questions route refuses; the view leaves them out.
       context(request, 'agent questions', async () => await aiAllowedInProject(db, roots.projectId) ? questions.list(principal, roots.projectId) : null),
       messageIds.length ? context(request, 'work associations', () => reads.associations(principal, roots.projectId,
@@ -104,6 +103,6 @@ export async function viewRoutes(app: FastifyInstance, { db, sessions, storage }
       // The stream names its authors with the company's people (#1429: one request fewer when a space opens); a guest may not read them.
       context(request, 'members', async () => listMembers(principal, (await getProject(principal, roots.projectId, db, accessPorts)).workspaceId, db, accessPorts)),
     ]);
-    return { projectId: roots.projectId, roots, taskNotices, objectNotices, materials, agentQuestions, workAssociations, members };
+    return { projectId: roots.projectId, roots, taskNotices, objectNotices, agentQuestions, workAssociations, members };
   });
 }

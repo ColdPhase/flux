@@ -600,10 +600,10 @@ class PrivateAiJourney(unittest.TestCase):
                     expect(lee.get_by_role("button", name=re.compile("Ask your|Send to your assistant"))).to_have_count(0)
                     expect(lee.locator("[data-ai-surface], .assistant-private, .assistant-working")).to_have_count(0)
                     if field != "#dm-composer":
-                        # Neither menu offers AI: not `/ai` or `/handoff`, not "My assistant", no agent of anyone's.
+                        # Neither menu offers AI: not `/ai`, and `@` lists people only (#1419), so no assistant and no agent of anyone's.
                         box.fill("/")
                         expect(lee.locator('[role="option"]').filter(has_text="/task")).to_have_count(1)
-                        expect(lee.locator('[role="option"]').filter(has_text=re.compile("/ai|/handoff"))).to_have_count(0)
+                        expect(lee.locator('[role="option"]').filter(has_text="/ai")).to_have_count(0)
                         box.fill("@")
                         expect(lee.locator('[role="option"]').filter(has_text=re.compile("My assistant|Agent"))).to_have_count(0)
                 self.no_horizontal_scroll(lee)

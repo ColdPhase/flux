@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { Conversation, Material, Page } from '@flux/contracts';
+import type { Conversation } from '@flux/contracts';
 import type { SentMessage } from '../composer/draft';
 import { fluxAnswers, onFluxAnswered } from '../composer/connection';
 import { streamLive, useStreamEvents } from '../api/stream';
-import { listMaterials } from '../materials/api';
 import { getConversation, olderMessages } from './api';
 import { readableError } from './errors';
 import { mergeMessages } from './feed';
@@ -11,16 +10,12 @@ import { onMessageChanged } from './messageChanges';
 import type { PaneCore } from './paneCore';
 
 /** Project events that change what a conversation pane shows; the assistant's Undo (#68) can take a message back. */
-const LIVE_KINDS = new Set(['project.conversation_created.v1', 'project.message_sent.v1', 'project.message_edited.v1', 'project.message_removed.v1', 'project.assistant_change_undone.v1',
-  // The sources read with the replies (#862: no timer reads them any more while the stream is open).
-  'project.material_created.v1', 'project.material_updated.v1']);
+const LIVE_KINDS = new Set(['project.conversation_created.v1', 'project.message_sent.v1', 'project.message_edited.v1', 'project.message_removed.v1', 'project.assistant_change_undone.v1']);
 
 interface Options {
   /** Replies this person sent and the server confirmed: shown at once until a read includes them (#264). */
   sent: readonly SentMessage[];
   hideIfDenied: (cause: unknown) => void;
-  /** The newest first page of the project's sources, read with the replies. */
-  mergeMaterials: (latest: Page<Material>) => void;
   onThreadSize?: (conversationId: string, replyCount: number, lastReplyAt: string | null) => void;
 }
 
@@ -28,7 +23,7 @@ interface Options {
  * The open thread's replies and how they stay current: earlier pages, and a refresh on every project message
  * (#733), on a resync, when Flux answers again, on focus and every 15 s. The stream's pane refreshes its route.
  */
-export function useThreadReplies({ me, project, conversation, revalidateRef }: PaneCore, { sent, hideIfDenied, mergeMaterials, onThreadSize }: Options) {
+export function useThreadReplies({ me, project, conversation, revalidateRef }: PaneCore, { sent, hideIfDenied, onThreadSize }: Options) {
   const [stored, setMessages] = useState<Conversation['messages']>(conversation?.messages ?? []);
   const messagesRef = useRef(stored);
   useEffect(() => { messagesRef.current = stored; }, [stored]);
@@ -53,11 +48,7 @@ export function useThreadReplies({ me, project, conversation, revalidateRef }: P
     // The stream's refresh reloads the route (newest roots, the project); a thread reads only its own replies.
     if (!conversationId) revalidateRef.current();
     try {
-      const [latestMaterials, latestConversation] = await Promise.all([
-        listMaterials(project.id),
-        conversationId ? getConversation(conversationId) : Promise.resolve(null),
-      ]);
-      mergeMaterials(latestMaterials);
+      const latestConversation = conversationId ? await getConversation(conversationId) : null;
       if (latestConversation) {
         const newestSeen = messagesRef.current.at(-1)?.sequence ?? 0;
         let incoming = latestConversation.messages;
@@ -75,7 +66,7 @@ export function useThreadReplies({ me, project, conversation, revalidateRef }: P
       refreshingRef.current = false;
       if (refreshAgainRef.current) { refreshAgainRef.current = false; queueMicrotask(() => { void refreshLatest.current(); }); }
     }
-  }, [conversationId, hideIfDenied, project.id, mergeMaterials, revalidateRef]);
+  }, [conversationId, hideIfDenied, revalidateRef]);
   const refreshLatest = useRef(refresh);
   useEffect(() => { refreshLatest.current = refresh; }, [refresh]);
   // The author edited or deleted a message of this thread (#1006): it is replaced at once, without reading the thread again.

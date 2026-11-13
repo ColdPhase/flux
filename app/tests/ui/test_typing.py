@@ -164,12 +164,7 @@ class TypingJourney(unittest.TestCase):
     def test_01_project_input_blur_expiry_and_unchanged_renewal(self):
         alice = self.open("alice", video=True)
         bob = self.open("bob")
-        # The receiver keeps its draft, selected source, keyboard focus and scroll.
-        # "/source" opens the saved sources (F-026 S5: no Sources button in the composer).
-        self.composer(bob).fill("/source")
-        self.composer(bob).press("Enter")
-        self.thread(bob).get_by_role("button", name="Discuss this version").click()
-        expect(self.thread(bob).locator(".composer-files__ref")).to_contain_text("Low-light observations")
+        # The receiver keeps its draft, keyboard focus and scroll.
         self.composer(bob).fill("PRIVATE-DRAFT receiver notes")
         self.composer(bob).focus()
         bob.locator(".thread__feed").evaluate("el => { el.scrollTop = 120; }")
@@ -180,13 +175,12 @@ class TypingJourney(unittest.TestCase):
         expect(alice.locator(".typing-notice")).not_to_contain_text("Alice Rivera")
         expect(self.composer(bob)).to_be_focused()
         expect(self.composer(bob)).to_have_value("PRIVATE-DRAFT receiver notes")
-        expect(self.thread(bob).locator(".composer-files__ref")).to_contain_text("Low-light observations")
         after = bob.locator(".thread__feed").evaluate("el => ({top:el.scrollTop,height:el.clientHeight,count:el.querySelectorAll('.project-convo__message').length})")
         self.assertEqual(before, after)
         bob.evaluate("""() => { window.typingChanges = 0; window.typingObserver = new MutationObserver(() => window.typingChanges++); window.typingObserver.observe(document.querySelector('.typing-notice'), {childList:true,characterData:true,subtree:true}); }""")
         bob.wait_for_timeout(2100)
         self.assertEqual(bob.evaluate("window.typingChanges"), 0, "unchanged heartbeat does not repeat live-region text")
-        shot(bob, "typing-project-1280-active-source-draft")
+        shot(bob, "typing-project-1280-active-draft")
         self.measure("project-blur-stop", lambda: self.composer(alice).blur(), lambda: expect(notice).not_to_contain_text("Alice Rivera", timeout=750), 750)
         self.composer(alice).fill("PRIVATE-DRAFT idle author")
         expect(notice).to_contain_text("Alice Rivera", timeout=2000)

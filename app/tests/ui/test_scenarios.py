@@ -55,7 +55,7 @@ from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_play
 
 from app_select import choose
 
-from create_window import create_other, linked_labels, open_from_tasks, submit_button
+from create_window import create_other, linked_labels, open_from_tasks, propose_decision, submit_button
 from message_gestures import open_message_menu
 from message_gestures import open_message_menu
 from test_app_shell import show_map_as, DESKTOP, ORIGIN, PHONE, UPSTREAM, open_details, shot, start_forwarder
@@ -609,13 +609,12 @@ class ScenarioJourney:
 
         # A person proposes the first rule and accepts it.
         page = self.page("ada")
-        # A message has no Propose a decision (#867); the full form (Does it replace an earlier one?) opens from its address.
-        page.goto(f"/projects/{lamp}?open=propose-decision")
+        # A message has no Propose a decision (#867); the one Create window proposes it (#1419), held for Undo until that window ends.
+        page.goto(f"/projects/{lamp}/tasks")  # the phone's "+" is on the lists and views, not in the conversation
+        propose_decision(page, D1, why=WHY1)
+        d1 = self.wait_for("the proposal", lambda: next((item for item in self.api("ada", "GET", f"/api/v1/projects/{lamp}/decisions?limit=100", status=200)["items"] if item["title"] == D1), None))
+        page.goto(f"/projects/{lamp}?open=decision:{d1['id']}")
         panel = self.details(page)
-        expect(panel.get_by_role("heading", name="Propose a decision")).to_be_visible()
-        panel.get_by_label("Decision").fill(D1)
-        panel.get_by_label("Why").fill(WHY1)
-        self.tap(panel.get_by_role("button", name="Propose decision", exact=True))
         expect(panel.locator(".wd-eyebrow")).to_contain_text("Proposed decision")
         self.tap(panel.get_by_role("button", name="Accept", exact=True))
         expect(panel.locator(".wd-eyebrow")).to_contain_text("Decision · accepted")

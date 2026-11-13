@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
 import {
-  projectConversationViewPath, projectSpaceShellPath, type Conversation, type ConversationView, type Material, type SpaceShell, type WorkItem, type WorkspaceMember,
+  projectConversationViewPath, projectSpaceShellPath, type Conversation, type ConversationView, type SpaceShell, type WorkItem, type WorkspaceMember,
 } from '@flux/contracts';
 import { addMember, expectStatus, grant, person, project, removeFromSpace, workspace, type Person } from './support/people.js';
 import { ensureSpaceAiAllowed, setSpaceAi } from './support/space-ai.js';
@@ -13,7 +13,7 @@ import { ensureSpaceAiAllowed, setSpaceAi } from './support/space-ai.js';
 describe('the space-shell and conversation-view reads', () => {
   let ada: Person, ben: Person, cy: Person;
   let workspaceId: string, projectId: string;
-  let conversation: Conversation, material: Material, task: WorkItem;
+  let conversation: Conversation, task: WorkItem;
   const base = () => `/api/v1/projects/${projectId}`;
   const post = async <T>(who: Person, path: string, body: unknown) =>
     expectStatus(await who.browser.request('POST', path, { body, headers: { 'idempotency-key': randomUUID() } }), 201) as T;
@@ -31,7 +31,6 @@ describe('the space-shell and conversation-view reads', () => {
     await grant(ada, projectId, ben, 'contributor');
     conversation = await post<Conversation>(ada, `${base()}/conversations`, { body: 'The overflow pipe sits low', clientMessageId: randomUUID() });
     await post(ada, `${base()}/conversations`, { body: 'Barrel two fills second', clientMessageId: randomUUID() });
-    material = await post<Material>(ada, `${base()}/materials`, { title: 'Pipe sizes', body: '40 mm', clientMutationId: randomUUID() });
     task = await post<WorkItem>(ada, `${base()}/work`, { title: 'Raise the pipe', sources: [{ type: 'message', id: conversation.messages[0]!.id }] });
     await post(ada, `${base()}/docs`, { title: 'How the barrels fill', body: 'Barrel one first.', state: 'published', reason: 'First page' });
     await post(ada, `/api/v1/workspaces/${workspaceId}/sketches`, { title: 'Where the sensors go', scope: 'project', projectId });
@@ -50,16 +49,14 @@ describe('the space-shell and conversation-view reads', () => {
     assert.equal(shell.docs?.items[0]?.title, 'How the barrels fill');
   });
 
-  test('the conversation view is the stream\'s first reads: roots, notices, sources, agents\' questions and the roots\' work', async () => {
+  test('the conversation view is the stream\'s first reads: roots, notices, agents\' questions and the roots\' work', async () => {
     const view = await get<ConversationView>(ben, projectConversationViewPath(projectId));
     assert.equal(view.projectId, projectId);
     assert.deepEqual(view.roots, await get(ben, `${base()}/conversation-roots`));
     assert.deepEqual(view.taskNotices, await get(ben, `${base()}/task-notices?limit=100&offset=0`));
     assert.deepEqual(view.objectNotices, await get(ben, `${base()}/object-notices?limit=100&offset=0`));
-    assert.deepEqual(view.materials, await get(ben, `${base()}/materials?limit=100&offset=0`));
     assert.deepEqual(view.agentQuestions, await get(ben, `${base()}/agent-questions`));
     assert.equal(view.roots.roots.length, 2);
-    assert.equal(view.materials.items[0]?.materialId, material.materialId);
     const ids = view.roots.roots.map((root) => root.message.id).sort().join(',');
     const own = await get<{ observedAt: string }>(ben, `${base()}/work-associations?relation=source&limit=50&messageIds=${ids}`);
     assert.deepEqual({ ...view.workAssociations, observedAt: '' }, { ...own, observedAt: '' });

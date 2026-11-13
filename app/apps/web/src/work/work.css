@@ -89,10 +89,6 @@ button.ws-task__glyph:active { background: var(--hov); }
 /* The pinned title paints the panel's own surface, so it is not a box of its own (#693). */
 .wd-decision-identity { position: sticky; top: -20px; z-index: 2; padding: var(--s-2) 0 var(--s-1); background: var(--panel-bg, var(--el)); border-bottom: 1px solid var(--line); }
 .ui-sheet .wd-decision-identity { top: -18px; }
-/* A form's primary action and its one line of help are a section: --s-2 between them, the section gap around (#692). */
-/* A form's primary sits at the bottom right, as in the Create window and the hand-off (SP-5, #763). */
-.wd-submit .wd-actions { margin-top: 0; justify-content: flex-end; }
-.wd-submit > .wd-muted { margin-top: var(--s-2); }
 /* "Proposed" and "Decided" are the task panel's rows (.wd-rows), a step under the lead. */
 .wd-rows.wd-decision-rows { margin-top: var(--s-3); }
 .wd-eyebrow { display: flex; align-items: center; gap: 6px; }
@@ -190,8 +186,6 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
 .wd-pick__keys { margin: 0; }
 .wd-error { margin-top: 10px; font-size: var(--fs-sm); color: var(--t1); }
 .wd-ids { margin-top: 28px; padding-top: 12px; border-top: 1px solid var(--line); font-size: var(--fs-xs); color: var(--t3); }
-.wd-source { margin: 4px 0 16px; padding: 8px 12px; border-left: 2px solid var(--line2); font-size: var(--fs-md); color: var(--t2); white-space: pre-wrap; overflow-wrap: anywhere; }
-.wd-source span { display: block; font-size: var(--fs-xs); font-weight: 500; color: var(--t3); }
 .wd-form { display: grid; gap: 8px; min-width: 0; margin: 0; padding: 0; border: 0; }
 .wd-form > label { margin-top: 6px; font-size: var(--fs-sm); font-weight: 500; color: var(--t2); }
 .wd-form textarea { width: 100%; padding: 9px 12px; border: 0; border-radius: var(--r); background: var(--el); color: var(--t1); font-size: var(--fs-base); line-height: 1.5; resize: vertical; box-shadow: inset 0 0 0 1px var(--line2); }

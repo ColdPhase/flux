@@ -96,14 +96,6 @@ function PendingPhoto({ file, send, more }: { file: DraftFile; send?: { state: P
   </li>;
 }
 
-/** The cited material, thoughts and messages of a message not stored yet. */
-export function PendingSource({ item, className = 'outbox-source' }: { item: PendingSend; className?: string }) {
-  const ref = item.references[0];
-  return <>
-    {ref ? <span className={className}>Source: {ref.title} · v{ref.version}</span> : null}
-  </>;
-}
-
 /**
  * One polite announcement per send: "Sending…" when a message is sent, and "Waiting to send"
  * when it has to wait. Being stored says nothing; "Not sent" is an alert on the message.
