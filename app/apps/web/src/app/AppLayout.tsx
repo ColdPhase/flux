@@ -3,7 +3,7 @@ import type { ProjectPerson } from '@flux/contracts';
 import { NavigationType, Outlet, useLocation, useMatches, useNavigate, useNavigation, useNavigationType, useParams, useRevalidator } from 'react-router';
 import { useStreamEvents } from '../api/stream';
 import { WORKSPACE_LOCKED_DOM_EVENT, isEncryptionEvent } from '../encryption/api';
-import { lockedLine, useLockedPlace } from '../encryption/state';
+import { useLockedPeople, useLockedPlace } from '../encryption/state';
 import { Drawer, Icon, IconButton, MEDIA, SidePanel, SizeSwap, Tabs, ViewFade, useMediaQuery, useToast, useSidePanelMode } from '../ui';
 import { routeView } from '../ui/motion-rules';
 import { useShellData } from './data';
@@ -57,6 +57,8 @@ function lastMapPath(userId: string, projectId: string, sketches: { items: { id:
 }
 
 const SIDEBAR_KEY = 'flux.sidebar';
+/** The views of a space, drawn inactive in a locked space's header (F-026 §7 Spaces). */
+const LOCKED_VIEWS = [{ id: 'conversation', label: 'Conversation' }, { id: 'tasks', label: 'Tasks' }, { id: 'map', label: 'Map' }, { id: 'docs', label: 'Wiki' }];
 /** The width the sidebar settles at when it is full and when it is the rail (tokens.css). */
 const SIDE_WIDTHS = { full: '--side-w', rail: '--rail-w' } as const;
 
@@ -157,7 +159,7 @@ function AppLayoutContent() {
   // A page inside Settings (#266 PF-5): on the phone its header leads back instead of opening the drawer.
   const settingsPage = /^\/settings\/./.test(location.pathname);
   // Back from a direct link goes to the page that leads there: the AI pages to Settings › AI (#513).
-  const settingsParent = /^\/settings\/(assistant|ai-connections|agents\/connect)(\/|$)/.test(location.pathname) ? '/settings/agents' : '/settings';
+  const settingsParent = /^\/settings\/(assistant|ai-connections|agents\/.+)/.test(location.pathname) ? '/settings/agents' : '/settings';
   const navDrawer = useMediaQuery(MEDIA.navDrawer);
   const tablet = useMediaQuery(MEDIA.tablet);
   const phone = useMediaQuery(MEDIA.phone);
@@ -648,16 +650,17 @@ function AppLayoutContent() {
   // An encrypted space has a small lock after its name in its header, locked or not (F-026 §4, as the locked space is drawn).
   const encryptedHere = lockedHere || (!!activeProject?.workspaceId && workspaces.some((space) => space.id === activeProject.workspaceId && !!space.encryption));
   const encryptedMark = encryptedHere ? <Icon name="lock" size={14} label="Encrypted" className="title-lock" data-encrypted-mark="" /> : null;
+  // A locked space keeps its header (F-026 §7 Spaces): its name and lock, the views inactive, its people as faces and ⋯, no Call.
+  const lockedPeople = useLockedPeople(lockedHere ? lockedSpace.id : null);
   // A place has a name and, when it is locked, one line saying so. No place carries a subtitle that describes it or its audience
   // (#871): the audience of a space is the default and is not said, and a direct message is named by its people.
   const place = lockedHere
-    ? { crumb: null, title: lockedSpace.name, topic: lockedLine(lockedSpace), noDetails: true }
+    ? { crumb: null, title: lockedSpace.name, noDetails: true }
     : location.pathname === '/projects'
     ? { crumb: null, title: 'Spaces', noDetails: true }
-    : /^\/settings(\/(appearance|account|company|notifications|agents|shortcuts)(\/.*)?)?$/.test(location.pathname)
+    // One header for the whole of Settings, whatever page is open in it (F-026 §4, #1362).
+    : /^\/settings(\/(appearance|account|company|notifications|agents|ai-connections|shortcuts)(\/.*)?)?$/.test(location.pathname)
     ? { crumb: null, title: 'Settings', noDetails: true }
-    : aiConnections
-    ? { crumb: null, title: 'Your API keys', noDetails: true }
     : activeAgent
     ? { crumb: null, title: activeAgent.name, noDetails: true }
     : activeProject
@@ -701,7 +704,8 @@ function AppLayoutContent() {
     rememberPlace(me.user.id, opened.key.endsWith(':docs') && docTitle && /\/docs\/[^/]+$/.test(opened.path) ? { ...opened, title: docTitle } : opened);
   }, [location.pathname, openable, me.user.id, docTitle]);
   const rowViews = phone ? null
-    : activeProject && projectViews ? { items: projectViews, label: 'Space views' }
+    : activeProject && projectViews ? { items: projectViews, label: 'Space views', inactive: false }
+      : lockedHere ? { items: LOCKED_VIEWS, label: 'Space views', inactive: true }
       : null;
   // One label for the place's own panel, on every device and in every entry to it: a space's and a direct message's (#871).
   const placeDetailsLabel = activeProject ? 'Space details' : 'Message info';
@@ -772,7 +776,7 @@ function AppLayoutContent() {
   const backOnly = settingsPage || dmId === 'new' || homePage;
   const spaceHeader = !!activeProject && !!projectViews && !backOnly;
   const phoneHeader = (
-    <header className={`phead${mainPlace ? ' phead--large' : ''}${spaceHeader ? ' phead--space' : ''}`}>
+    <header className={`phead${mainPlace ? ' phead--large' : ''}${spaceHeader || lockedHere ? ' phead--space' : ''}`}>
       {backOnly ? (
         <>{phoneBack(settingsPage ? settingsParent : homePage ? '/' : '/projects')}
           <div className="phead__id"><div className="phead__title"><h1>{place.title}</h1></div></div></>
@@ -794,10 +798,10 @@ function AppLayoutContent() {
           <div className="phead__title"><h1><span className="ui-vh">Home</span><span className="phead__word" aria-hidden="true">flux</span></h1></div>
         </div>
       ) : (
-        // A place of a locked space opened at its own address (a deep link) keeps a way back on the phone (LK-2): an
-        // installed app has no browser Back. The sidebar row's own page (/spaces/:id) is a main place with the tab bar.
+        // A locked space keeps its header on the phone (F-026 §4, §7): Back, its name and lock, and the views inactive in the row under it. An
+        // installed app has no browser Back (LK-2), so the sidebar row's page (/spaces/:id) leads back to Spaces and a deep link to Home.
         <>{routeOrigin ? <RouteOriginBack origin={routeOrigin} className="origin-back--phone" />
-            : lockedHere && !location.pathname.startsWith('/spaces/') ? <PhoneBack onBack={() => goBack('/')} /> : null}
+            : lockedHere ? <PhoneBack onBack={() => goBack(location.pathname.startsWith('/spaces/') ? '/projects' : '/')} /> : null}
           <div className="phead__id"><div className="phead__title">{encryptedMark ? <div className="phead__titlerow"><h1>{place.title}</h1>{encryptedMark}</div> : <h1>{place.title}</h1>}{'topic' in place && place.topic ? <p className="phead__sub">{place.topic}</p> : null}</div></div></>
       )}
       <div className="phead__right">
@@ -811,6 +815,7 @@ function AppLayoutContent() {
         {!backOnly && !activeProject && !activeDm && location.pathname !== '/settings' ? <PhoneAvatar id={me.user.id} name={me.user.name} /> : null}
       </div>
       {spaceHeader && projectViews ? <Tabs className="phead__views" label="Space views" items={projectViews} /> : null}
+      {lockedHere ? <Tabs className="phead__views" label="Space views" items={LOCKED_VIEWS} inactive /> : null}
     </header>
   );
 
@@ -841,7 +846,7 @@ function AppLayoutContent() {
 
       <div className="app__main">
         {phone ? phoneHeader : (
-        <header className={`top${activeProject ? ' top--project' : ''} top--row${homeRoot && !navDrawer ? ' top--bare' : ''}`}>
+        <header className={`top${activeProject || lockedHere ? ' top--project' : ''} top--row${homeRoot && !navDrawer ? ' top--bare' : ''}`}>
           {navDrawer ? (
             <IconButton icon="menu" label="Open navigation" size={18} aria-expanded={navOpen} aria-controls={navOpen ? 'nav-drawer' : undefined}
               aria-haspopup="dialog" data-tip-align="start" onClick={() => { setDetailsOpen(false); setNavOpen(true); }} className="top__menu" />
@@ -853,11 +858,12 @@ function AppLayoutContent() {
             {encryptedMark}
             {'topic' in place && place.topic ? <span className="top__topic">{place.topic}</span> : null}
           </div>
-          {rowViews ? <Tabs className="top__views" label={rowViews.label} items={rowViews.items} /> : null}
+          {rowViews ? <Tabs className="top__views" label={rowViews.label} items={rowViews.items} inactive={rowViews.inactive} /> : null}
           <div className="top__right">
             {/* A view can put one quiet action here (a DM's Select, #96). */}
             <span className="top__actions" ref={setActionSlot} />
-            {project?.people ? <HeaderFaces people={project.people} meId={me.user.id} audience={audience} onOpen={openAudience} /> : null}
+            {project?.people ? <HeaderFaces people={project.people} meId={me.user.id} audience={audience} onOpen={openAudience} />
+              : lockedHere && lockedPeople ? <HeaderFaces people={lockedPeople} meId={me.user.id} audience={audienceLine(lockedPeople, me.user.id)} onOpen={() => shell.openDetails({ kind: 'people', workspaceId: lockedSpace.id })} /> : null}
             {activeProject ? <LiveEntry /> : null}
             <MoreMenu items={moreItems} cue={activeProject ? (id, buttonId) => <LiveCue id={id} buttonId={buttonId} /> : undefined} />
           </div>

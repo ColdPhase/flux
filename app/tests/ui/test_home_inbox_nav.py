@@ -393,6 +393,9 @@ class HomeInboxNav(unittest.TestCase):
         page = self.page("jonas")
         page.goto("/connect-agent")
         expect(page.get_by_role("heading", level=1, name="Claude Code, Codex or another app on your computer")).to_be_visible()
+        # The commands are one quiet "Show the command" away (#1363).
+        expect(page.get_by_text("claude mcp add --transport http flux", exact=False)).to_be_hidden()
+        page.get_by_text("Show the command", exact=True).first.click()
         expect(page.get_by_text("claude mcp add --transport http flux", exact=False)).to_be_visible()
         self.no_sideways_scroll(page)
         shot(page, "connect-1440")

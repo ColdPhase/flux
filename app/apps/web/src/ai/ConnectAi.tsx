@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Link, useRevalidator } from 'react-router';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { Link, useNavigate, useRevalidator } from 'react-router';
 import type { AgentRuntimeStatus, BackgroundComputeConnection } from '@flux/contracts';
 import { getRuntime } from '../agent-runtime/api';
 import { Button, Icon, Spinner } from '../ui';
@@ -37,11 +37,14 @@ function ConnectionRow({ line }: { line: AiConnectionLine }) {
  * `apiKeys`: whether this Flux runs agents on API keys at all (the operator's switch); a key is only offered then. `keys`: the
  * person's own API keys, null while they load (the page reads them once, also to tell whether the server runs any AI).
  */
-export function ConnectAi({ apiKeys, keys, keysFailed, onRetryKeys, onListed }: {
+export function ConnectAi({ apiKeys, keys, keysFailed, onRetryKeys, onListed, clients }: {
   apiKeys: boolean; keys: BackgroundComputeConnection[] | null; keysFailed: boolean; onRetryKeys: () => void;
   /** Whether any connection is listed, usable or not, for Your agents to say what waits for it (#1173). */
   onListed?: (listed: boolean) => void;
+  /** The rows of the person's own Claude Code or Codex, one each, in the same card after the connections (F-026 §7 Agents and AI, #1363). */
+  clients?: ReactNode;
 }) {
+  const navigate = useNavigate();
   const [runtime, setRuntime] = useState<AgentRuntimeStatus | null>(null);
   const [runtimeFailed, setRuntimeFailed] = useState(false);
   const [windowOpen, setWindowOpen] = useState(false);
@@ -68,16 +71,18 @@ export function ConnectAi({ apiKeys, keys, keysFailed, onRetryKeys, onListed }: 
         {lines.length ? <Button variant="secondary" icon="plus" onClick={() => setWindowOpen(true)}>Connect another</Button> : null}
       </div>
       {keys === null ? <p className="sset-note"><Spinner label="Loading your connections" /></p> : null}
-      {lines.length ? <ul className="sset-card cai__list">{lines.map((line) => <ConnectionRow key={line.id} line={line} />)}</ul> : null}
+      {lines.length || clients ? <ul className="sset-card cai__list">{lines.map((line) => <ConnectionRow key={line.id} line={line} />)}{clients}</ul> : null}
       {keysFailed ? <p className="sset-note" role="note">Your API keys could not be listed. <button type="button" className="ui-link" onClick={onRetryKeys}>Try again</button></p> : null}
       {runtimeFailed ? <p className="sset-note" role="note">Your plans could not be read. <button type="button" className="ui-link" onClick={() => loadRuntime()}>Try again</button></p> : null}
       {keys !== null && !lines.length ? (
         <div className="sset-card cai__empty">
-          <span className="cai__choose-lead">Nothing is connected yet.</span>
+          {/* With Claude Code or Codex listed above, the line must not say nothing is connected (review of #1363). */}
+          <span className="cai__choose-lead">{clients ? 'No plan or API key is connected yet.' : 'Nothing is connected yet.'}</span>
           <Button variant="primary" onClick={() => setWindowOpen(true)}>Connect AI</Button>
         </div>
       ) : null}
       {windowOpen ? <ConnectAiWindow runtime={runtime} runtimeFailed={runtimeFailed} apiKeys={apiKeys} have={have} onClose={() => setWindowOpen(false)}
+        onLocalClient={() => { setWindowOpen(false); void navigate('/settings/agents/connect'); }}
         onConnected={() => {
           setWindowOpen(false); loadRuntime(); onRetryKeys();
           // The first connection gives a person their Assistant on the server, so the shell's agents and the models are read again.

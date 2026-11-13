@@ -125,7 +125,7 @@ In v0.2 everything that works for a person with AI is an **agent**, and each per
   tell me* (the default) or *Ask me first*. Deleting anything and changing other people's things always wait for the owner's OK,
   which only the owner can give, in their own signed-in session. Every change has an **Undo** on the agent's message.
 - **Local clients.** A person connects their own Claude Code, Codex or another MCP client to Flux with the commands on the
-  Connect page (**Settings › AI › Local co-work on this computer**) and one click on **Allow**. It acts with the person's
+  connect page (**Settings › AI › Connect AI › Connect another › Claude Code or Codex on your computer**, then **Show the command**) and one click on **Allow**. It acts with the person's
   rights, has the same **What it may do** row, and **Disconnect** ends it at once. Nobody can make a connection on someone
   else's behalf. [Connect your own agent](../../README.md#connect-your-own-agent) walks through it, and the
   [integration guide](../integrations/README.md) is for people who build clients.

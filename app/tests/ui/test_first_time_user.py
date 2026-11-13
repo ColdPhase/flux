@@ -115,9 +115,9 @@ class FirstTimeUser(unittest.TestCase):
         dev = self.page("dev")
         dev.goto("/settings/agents/connect")
         expect(dev.get_by_role("heading", level=1, name="Claude Code, Codex or another app on your computer")).to_be_visible()
-        expect(dev.get_by_text("No client is connected yet")).to_be_visible()
+        expect(dev.get_by_text("Nothing is connected yet")).to_be_visible()
         for chooser in ("checkbox", "radio"):
-            expect(dev.get_by_role("region", name="Your agent app").get_by_role(chooser)).to_have_count(0)
+            expect(dev.get_by_role("region", name="Claude Code, Codex or another app").get_by_role(chooser)).to_have_count(0)
         expect(dev.get_by_role("button", name="Ask a manager to let it in")).to_have_count(0)
         shot(dev, "ftu-connect-owner-rights")
         grants = self.api(self.page("anna"), "GET", f"/api/v1/projects/{self.ids['project']}/grants", status=200)

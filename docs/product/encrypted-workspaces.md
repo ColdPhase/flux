@@ -1353,19 +1353,24 @@ project picker and in Create like any other space. After Done the person lands i
     while no unlock row exists): "Ada locked Garden club at 22:10." (`person`; "You locked…" for the
     person who did) or "The server restarted at 22:15." (`restart`); otherwise "Its content is encrypted."
     (UI audit LK-1.)
-  - For a member or guest: **Garden club is waiting to be unlocked** · the reason · "Ada, Jonas or Ben
-    can unlock it. You can come back then." (`encryption.unlockers`, the owners and admins with an
-    unlock password; "An owner or admin needs to unlock it." when the list is empty or for a guest).
-  - For an owner or admin: **Unlock Garden club** · the reason · "Type your unlock password to open it for
-    everyone." · field **Your unlock password** · button **Unlock**
+  - The card is one calm card centred in the space's pane, under the space's own header (its name and lock,
+    the four views inactive, the people's faces and ⋯; no line under the name), with the title
+    **Garden club is locked** for everyone (final design §7 Spaces, #1360). The reason and who can unlock
+    it are said once each, with no "Waiting for an admin" beside them.
+  - For a member or guest: the reason · "Ada, Jonas or Ben can unlock it." (`encryption.unlockers`, the
+    owners and admins with an unlock password; "An owner or admin needs to unlock it." when the list is
+    empty or for a guest).
+  - For an owner or admin: the reason · "Type your unlock password to open it for everyone." · field
+    **Your unlock password** and button **Unlock** on one row
     · quiet link **Use the recovery code**, which swaps the field in place. Errors are shown in place:
     "That password doesn't unlock Garden club." and "Too many tries. Try again in 15 minutes."
   - For an owner or admin without a password: "You don't have an unlock password for Garden club
     yet. Another owner or admin can unlock it, or you can use the recovery code."
 - An open page in that workspace turns into the locked panel on `workspace.locked.v1` or on any
   `423`, and back on `workspace.unlocked.v1`, without a reload.
-- **On a phone** the locked panel of a deep link keeps the header's ‹ Back and the tab bar, so an
-  installed app is never left without a way out (LK-2).
+- **On a phone** the locked panel, at a deep link and at the sidebar row's own page, keeps the header's
+  ‹ Back (the row's page leads back to Spaces) and the tab bar, so an installed app is never left without
+  a way out (LK-2).
 - **Cross-workspace places.** Home's "Needs you" lists one quiet row per waiting space below its queue
   (lock, "Garden club", "Waiting to be unlocked"), and its empty line reads "Nothing needs you in your
   open spaces." while any space waits. The Inbox keeps its "Waiting to be unlocked" note. Search says

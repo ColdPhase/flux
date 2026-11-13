@@ -1,6 +1,8 @@
-import { useMemo, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { useRouteLoaderData } from 'react-router';
+import type { ProjectPerson } from '@flux/contracts';
 import type { ShellData, WorkspaceSummary } from '../app/data';
+import { listMembers } from '../people/api';
 import type { WorkspaceEncryption } from './api';
 
 // What the shell knows about encrypted workspaces (F-030, #655). The shell loader reads every workspace, including
@@ -57,4 +59,25 @@ export function setLockedPlace(workspaceId: string | null) {
 const subscribe = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
 export function useLockedPlace(): string | null {
   return useSyncExternalStore(subscribe, () => lockedPlace, () => null);
+}
+
+/**
+ * The people of a locked space, for the faces in its header (F-026 §7 Spaces: a locked space keeps its header). Who is in a space and with
+ * which role is metadata, readable while it is locked (encryption.ts); only what is inside is sealed. Null until they are read, and when
+ * they cannot be: the header then draws no faces and nothing else changes.
+ */
+export function useLockedPeople(workspaceId: string | null): ProjectPerson[] | null {
+  const [read, setRead] = useState<{ workspaceId: string; people: ProjectPerson[] } | null>(null);
+  useEffect(() => {
+    if (!workspaceId) return undefined;
+    const controller = new AbortController();
+    listMembers(workspaceId, controller.signal).then((members) => {
+      setRead({ workspaceId, people: members.map((member) => ({
+        kind: 'human' as const, id: member.userId, name: member.name, access: member.role === 'owner' || member.role === 'admin' ? 'manager' as const : 'contributor' as const,
+        ...(member.lastActiveAt ? { lastActiveAt: member.lastActiveAt } : {}),
+      })) });
+    }, () => undefined);
+    return () => controller.abort();
+  }, [workspaceId]);
+  return read && read.workspaceId === workspaceId ? read.people : null;
 }

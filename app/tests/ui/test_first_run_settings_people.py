@@ -255,14 +255,14 @@ class FirstRunSettingsPeople(unittest.TestCase):
             page.goto("/settings/agents")
             calm = page.locator("[data-ai-settings='server-off']")
             expect(calm).to_be_visible()
-            expect(calm.get_by_role("link", name=re.compile("^Local co-work on this computer"))).to_be_visible()
+            expect(calm.get_by_role("link", name=re.compile("^Claude Code or Codex on your computer"))).to_have_attribute("href", "/settings/agents/connect")
             card = calm.get_by_text("Off on this Flux server · ask your admin to turn it on")
             expect(card).to_be_visible()
             expect(page.get_by_role("region", name="Your agents")).to_have_count(0)
             expect(page.get_by_role("link", name=re.compile("^Use an API key"))).to_have_count(0)
             expect(page.get_by_text("Which account should I use?")).to_have_count(0)
-            # E04 order: local co-work, then the one status line.
-            rows = [page.get_by_text("Local co-work on this computer"), card]
+            # E04 order: the person's own Claude Code or Codex, then the one status line.
+            rows = [page.get_by_text("Claude Code or Codex on your computer"), card]
             tops = [row.bounding_box()["y"] for row in rows]
             self.assertEqual(tops, sorted(tops), tops)
             shot(page, f"763-agents-ai-server-off-{'390' if viewport == PHONE else '1440'}-{UI_BROWSER}")

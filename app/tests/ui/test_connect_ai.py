@@ -36,7 +36,7 @@ INES = {"name": "Ines Moreau", "email": f"ines.connect+{STAMP}@example.test"}
 TOM = {"name": "Tom Reyes", "email": f"tom.connect+{STAMP}@example.test"}
 CONNECTION = "Ines desk laptop"
 KEY_NAME = "Ines lab key"
-MODE_B_PAGE = "Your agent app"  # Settings › AI, plain words (F-027 AST-10.2)
+CLIENT_ROWS = "li[data-client]"  # the person's own Claude Code or Codex: one row each in the Connect AI card (F-026 §7, #1363)
 # F-027 AST-10.2: words no Flux screen shows. "API" is allowed in "API key", "API keys", "API credits", and the
 # payer labels "API billing" that the #277 change list names.
 JARGON = re.compile(r"\b(scopes?|grants?|MCP|tokens?|capabilit(?:y|ies)|execut(?:e|ion)|runtimes?|transports?|OAuth|"
@@ -131,8 +131,9 @@ class ConnectAiJourney(unittest.TestCase):
         page.route(re.compile(r".*/api/v1/agent-runtime$"), lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(status or RUNTIME_ON)))
 
     def sections(self, page: Page) -> tuple[Locator, Locator, Locator]:
+        """Connect AI, Your agents and the rows of the person's own Claude Code or Codex (inside Connect AI's card)."""
         return (page.get_by_role("region", name="Connect AI", exact=True), page.get_by_role("region", name="Your agents", exact=True),
-                page.get_by_role("region", name=MODE_B_PAGE, exact=True))
+                page.locator(CLIENT_ROWS))
 
     def assert_change_beside_the_text(self, row: Locator) -> None:
         """#854: "Change" sits on the right of its row, vertically centred, and never overlaps the name or the usage line."""
@@ -193,6 +194,10 @@ class ConnectAiJourney(unittest.TestCase):
         api_key = window.locator("[data-choice=api_key]")
         expect(api_key).to_contain_text("API key")
         expect(api_key.locator("input")).to_be_checked()
+        # #1363: the person's own Claude Code or Codex is the window's fourth choice, whatever the server runs.
+        local = window.locator("[data-choice=local_client]")
+        expect(local).to_contain_text("Claude Code or Codex on your computer")
+        expect(local.locator("input")).to_be_enabled()
         window.get_by_role("button", name="Cancel").click()
         expect(window).to_have_count(0)
         # Opening Settings makes no agent: Assistant is made on the server when the person connects AI (#857), and this check stack's
@@ -200,12 +205,16 @@ class ConnectAiJourney(unittest.TestCase):
         expect(assistant).to_contain_text("You have no agents. Make one with New agent.")
         expect(assistant.get_by_role("list", name="Your agents")).to_have_count(0)
         self.assertTrue(self.above(connect, assistant), "Connect AI comes first")
-        self.assertTrue(self.above(assistant, app), "then the agents, then the agent app")
-        # Your agent app: MCP connections; no client guide with command-line words on this page.
-        # #763 SG-6: the client and its Agent tag first, the device in the meta line ("Codex · for you · Ines desk laptop").
-        expect(app.get_by_role("link", name=re.compile(f"^Codex.*for you · {CONNECTION}"))).to_have_attribute("href", "/connect-agent")
-        expect(app.get_by_role("link", name="Local co-work on this computer")).to_have_attribute("href", "/connect-agent")
-        expect(app).not_to_contain_text("claude mcp add")
+        # The person's own Claude Code or Codex is one row of Connect AI's card, as drawn (#1363): its name, what it is for, its "What it may do" tag
+        # (a link to where it is changed) and Disconnect. No client guide with command-line words on this page.
+        self.assertTrue(self.above(app.first, assistant), "the client's row is in Connect AI's card, above the agents")
+        expect(app).to_have_count(1)
+        expect(app.first).to_contain_text(CONNECTION)
+        expect(app.first).to_contain_text("For code on your computer. Same rules as your agents.")
+        expect(app.first.get_by_role("link")).to_have_attribute("href", "/settings/agents/connect")
+        expect(app.first.get_by_role("button", name=re.compile("^Disconnect"))).to_be_visible()
+        expect(page.locator(".pane-in")).not_to_contain_text("Local co-work")
+        expect(page.locator(".pane-in")).not_to_contain_text("claude mcp add")
         for region in (connect, assistant):
             self.assertIsNone(FLUX_LIMITS.search(region.inner_text()), f"no Flux limit or switch: {region.inner_text()!r}")
         shot(page, "connect-ai-desktop-1440")
@@ -216,7 +225,7 @@ class ConnectAiJourney(unittest.TestCase):
         connect, assistant, app = self.sections(page)
         expect(connect).to_be_visible()
         expect(assistant).to_be_visible()
-        expect(app).to_be_visible()
+        expect(app.first).to_be_visible()
         self.assertTrue(self.above(connect, assistant))
         self.no_horizontal_scroll(page)
         shot(page, "connect-ai-phone-390")
@@ -232,9 +241,8 @@ class ConnectAiJourney(unittest.TestCase):
         expect(connect.get_by_role("button", name="Connect AI", exact=True)).to_be_visible()
         expect(assistant.get_by_role("list", name="Your agents")).to_have_count(0)
         expect(assistant).to_contain_text("You have no agents. Make one with New agent.")
-        expect(app.get_by_role("link", name="Local co-work on this computer")).to_be_visible()
-        expect(app.locator(".sset-row__identity")).to_have_count(0)
-        expect(page.get_by_text("Your connected agents could not be listed")).to_have_count(0)
+        expect(app).to_have_count(0)
+        expect(page.get_by_text("Your connected apps could not be listed")).to_have_count(0)
 
     def test_05b_the_lines_say_what_the_connections_give(self) -> None:
         """#1173: with nothing connected Connect AI says its rule once. A connection listed above that cannot run an agent (a plan to
@@ -266,7 +274,7 @@ class ConnectAiJourney(unittest.TestCase):
         # Settings lists the owner’s agents with their model and connection; the app list holds only the computer's apps (#857).
         ines.goto("/settings/agents")
         _, section, app = self.sections(ines)
-        expect(app.locator(".sset-row__identity")).to_have_count(1)
+        expect(app).to_have_count(1)
         expect(section.get_by_role("list", name="Your agents")).to_contain_text("Ines personal assistant")
         expect(section).to_contain_text("Test fixture key")
         # #1173: the model line names Opus and the Claude limit only beside a Claude plan that offers Opus; an API key is not one.
@@ -288,8 +296,7 @@ class ConnectAiJourney(unittest.TestCase):
         # What Tom sees: his own page, not her agents or keys.
         tom.goto("/settings/agents")
         connect, assistant, app = self.sections(tom)
-        expect(app).not_to_contain_text(CONNECTION)
-        expect(app).not_to_contain_text("Ines")
+        expect(app).to_have_count(0)
         expect(assistant).not_to_contain_text("Ines")
         expect(assistant).not_to_contain_text("Assistant on")
         expect(connect).not_to_contain_text(KEY_NAME)
@@ -352,7 +359,8 @@ class ConnectAiJourney(unittest.TestCase):
             # "Connect another" offers only what is not connected yet: another API key.
             connect.get_by_role("button", name="Connect another").click()
             window = page.get_by_role("dialog", name="Connect your AI")
-            expect(window.locator("[data-choice]")).to_have_count(1)
+            # ... and the person's own Claude Code or Codex, which is no connection of Flux's (#1363).
+            expect(window.locator("[data-choice]")).to_have_count(2)
             expect(window.locator("[data-choice=api_key] input")).to_be_checked()
             window.get_by_role("button", name="Cancel").click()
             expect(window).to_have_count(0)
@@ -371,7 +379,7 @@ class ConnectAiJourney(unittest.TestCase):
             connect.get_by_role("button", name="Connect AI", exact=True).click()
             window = page.get_by_role("dialog", name="Connect your AI")
             expect(window.get_by_role("heading", name="Connect your AI")).to_be_visible()
-            expect(window.locator("[data-choice]")).to_have_count(3)
+            expect(window.locator("[data-choice]")).to_have_count(4)
             window.locator("[data-choice=claude_plan]").click()
             window.get_by_role("button", name="Continue").click()
             expect(window.get_by_role("heading", name="Couldn’t connect")).to_be_visible()
@@ -506,7 +514,7 @@ class ConnectAiJourney(unittest.TestCase):
                     self.stub_runtime(page, runtime_signed_in(CLAUDE, CODEX))
                 page.goto("/settings/agents")
                 expect(page.get_by_role("region", name="Connect AI", exact=True)).to_be_visible()
-                page.get_by_role("region", name=MODE_B_PAGE, exact=True).get_by_text("Local co-work on this computer").wait_for()
+                page.locator(CLIENT_ROWS).first.wait_for()
                 for details in page.locator("details").all():
                     details.locator("summary").click()
                 text = page.locator(".pane-in").first.inner_text()

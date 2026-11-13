@@ -27,8 +27,14 @@ const short = (micros: number) => {
   return `$${Number.isInteger(value) ? value : value >= 0.01 ? value.toFixed(2) : value.toFixed(4)}`;
 };
 
+/** "12 Nov 2026" from the price table's ISO day. */
+export const checkedDay = (isoDay: string) => {
+  const day = new Date(`${isoDay}T12:00:00Z`);
+  return Number.isNaN(day.getTime()) ? isoDay : day.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+};
+
 export function priceSourceText(price: AiPrice) {
-  return price.source === 'table' ? `Flux price table, checked ${price.checkedOn}` : 'Entered by you';
+  return price.source === 'table' ? (price.checkedOn ? `Flux’s price list, checked ${checkedDay(price.checkedOn)}` : 'Flux’s price list') : 'Entered by you';
 }
 
 export const priceText = (price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'>) =>

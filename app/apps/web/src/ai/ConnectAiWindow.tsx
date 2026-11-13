@@ -22,10 +22,14 @@ const PLANS: Record<'claude_plan' | 'chatgpt_plan', { client: AgentRuntimeClient
 };
 type PlanKind = keyof typeof PLANS;
 
-const CHOICES: { kind: AiConnectionKind; title: string; detail: string; icon: 'spark' | 'chat' | 'key' }[] = [
+/** The window's fourth choice is not an AI connection: it leads to the page that connects Claude Code or Codex on the person's own computer (#1363). */
+type Choice = AiConnectionKind | 'local_client';
+
+const CHOICES: { kind: Choice; title: string; detail: string; icon: 'spark' | 'chat' | 'key' | 'terminal' }[] = [
   { kind: 'claude_plan', title: 'Claude plan', detail: 'Pro, Max or Team · sign in with Claude', icon: 'spark' },
   { kind: 'chatgpt_plan', title: 'ChatGPT plan', detail: 'Plus, Pro or Business · sign in with ChatGPT', icon: 'chat' },
   { kind: 'api_key', title: 'API key', detail: 'Anthropic, OpenAI or another provider · one daily budget', icon: 'key' },
+  { kind: 'local_client', title: 'Claude Code or Codex on your computer', detail: 'For code on your computer · same rules as your agents', icon: 'terminal' },
 ];
 
 type Step =
@@ -39,9 +43,9 @@ type Step =
  * The window itself. `runtime`: null while it could not be read (`runtimeFailed`), so a plan is not called unavailable by
  * mistake. `have`: what the person has connected; a plan is one connection, a key can be added again.
  */
-export function ConnectAiWindow({ runtime, runtimeFailed, apiKeys, have, onClose, onConnected }: {
+export function ConnectAiWindow({ runtime, runtimeFailed, apiKeys, have, onClose, onConnected, onLocalClient }: {
   runtime: AgentRuntimeStatus | null; runtimeFailed: boolean; apiKeys: boolean; have: ReadonlySet<AiConnectionKind>;
-  onClose: () => void; onConnected: () => void;
+  onClose: () => void; onConnected: () => void; onLocalClient: () => void;
 }) {
   const phone = useMediaQuery(MEDIA.phone);
   const [step, setStep] = useState<Step>({ kind: 'choose' });
@@ -59,9 +63,9 @@ export function ConnectAiWindow({ runtime, runtimeFailed, apiKeys, have, onClose
   // A plan is offered when the server has it and its place to sign in is ready: while it is not (it is starting, or the host cannot run
   // it), a sign-in could only fail with words nobody can act on (#910).
   const notReady = !!runtime?.enabled && runtime.pool === 'starting';
-  const offered = (kind: AiConnectionKind) => (kind === 'api_key' ? apiKeys : !!runtime?.enabled && !notReady && runtime.clients[PLANS[kind].client] === 'available');
-  const choices = CHOICES.filter((choice) => choice.kind === 'api_key' || !have.has(choice.kind));
-  const [chosen, setChosen] = useState<AiConnectionKind | null>(null);
+  const offered = (kind: Choice) => (kind === 'local_client' ? true : kind === 'api_key' ? apiKeys : !!runtime?.enabled && !notReady && runtime.clients[PLANS[kind].client] === 'available');
+  const choices = CHOICES.filter((choice) => choice.kind === 'api_key' || choice.kind === 'local_client' || !have.has(choice.kind));
+  const [chosen, setChosen] = useState<Choice | null>(null);
   const selected = chosen && offered(chosen) ? chosen : choices.find((choice) => offered(choice.kind))?.kind ?? null;
 
   async function signIn(plan: PlanKind) {
@@ -86,7 +90,7 @@ export function ConnectAiWindow({ runtime, runtimeFailed, apiKeys, have, onClose
   const body = (
     <div className="cai-window" ref={windowRef} tabIndex={-1}>
       {step.kind === 'choose' ? (
-        <form onSubmit={(event) => { event.preventDefault(); if (selected) { if (selected === 'api_key') setStep({ kind: 'key' }); else void signIn(selected); } }}>
+        <form onSubmit={(event) => { event.preventDefault(); if (selected) { if (selected === 'api_key') setStep({ kind: 'key' }); else if (selected === 'local_client') onLocalClient(); else void signIn(selected); } }}>
           <h2 className="cai-window__title">Connect your AI</h2>
           <p className="cai-window__lead">Add a connection. You can have several, and each agent uses one. Flux adds no limits of its own.</p>
           <div className="cai-window__choices" role="radiogroup" aria-label="What to connect">

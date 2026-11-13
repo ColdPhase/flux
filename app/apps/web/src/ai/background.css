@@ -29,7 +29,6 @@
 .background-settings__fields .background-settings__check { display: flex; align-items: flex-start; gap: 10px; font-weight: 400; line-height: 1.45; }
 .background-settings__check input { flex: none; width: 18px; height: 18px; margin: 1px 0 0; accent-color: var(--t1); }
 .background-settings__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-.background-settings__back { display: inline-flex; align-items: center; min-height: 36px; margin-top: 12px; font-size: var(--fs-md); color: var(--t1); text-underline-offset: 3px; }
 .background-settings__select { display: grid; gap: 4px; margin: 10px 0; font-size: var(--fs-sm); font-weight: 500; color: var(--t2); }
 .background-settings__select input, .background-settings__select .ui-select, .background-settings__fields .ui-select { min-width: 0; width: 100%; min-height: 36px; padding: 6px 10px; border: 1px solid var(--line2); border-radius: var(--r); color: var(--t1); background: var(--el); font-size: var(--fs-md); font-weight: 400; }
 .background-settings__agent-create { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
@@ -53,7 +52,6 @@
   .background-settings__metadata > div { grid-template-columns: 1fr; gap: 1px; }
 }
 /* On the phone the header already names the page: one title (#513). */
-@media (max-width: 640px) { .sset-in.background-settings .background-settings__head h2 { display: none; } }
 @media (pointer: coarse) {
   .background-settings__fields input:not([type=checkbox]), .background-settings__price input { font-size: var(--fs-input-touch); min-height: 44px; }
   .background-settings__select input, .background-settings__select .ui-select, .background-settings__fields .ui-select { font-size: var(--fs-input-touch); min-height: 44px; }
@@ -78,4 +76,6 @@
 /* One daily budget per key (#854): its line under the name, and the budget saved in place. */
 .background-settings__usage { margin: 2px 0 8px; font-size: var(--fs-sm); color: var(--t2); }
 .background-settings__budget { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 12px; margin-top: 8px; }
-.background-settings__budget label { display: grid; gap: 4px; max-width: 200px; }
+.background-settings__budget .ui-field { flex: 0 1 200px; min-width: 0; margin: 0; }
+/* The button is as tall as the field beside it, so its word sits on the field's centre line (#1362). */
+.background-settings__budget > .ui-btn { min-height: var(--ctl-lg); }

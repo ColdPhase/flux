@@ -258,7 +258,8 @@ is Done with a "dropped" note.
 
 The palette is muted OKLCH with equal lightness: L 0.55 light, 0.80 dark. Each agent has its own
 calm Kreska face colour from it, either chosen when the agent is created or assigned automatically
-(Hubert, 2026-11-03). The colour shows everywhere the agent appears: Messages, the Owner picker, a
+(Hubert, 2026-11-03), in the order Teal, Indigo, Ochre, Rose, Sage, Plum, Clay, the colours furthest
+apart first, so a person's first agents differ at the size of a sidebar row (#1377). The colour shows everywhere the agent appears: Messages, the Owner picker, a
 task's owner and discussion, Home, the Inbox and Settings › AI. It replaces "agent colours only in
 the Agents section" of the first Prostota canvas. The v0.2 screens draw Assistant in ink (`--inv`)
 and Planner, Reviewer and Jonas's Fieldbot in Teal, Indigo and Ochre. Kreska's lines take the
@@ -1255,6 +1256,12 @@ the composer. The right-hand phone above shows the sheet.
 - **Direction A**, chosen by Hubert: grouped white cards on the grey ground, short rows and text
   buttons such as Change. The sections are Account, Appearance, Notifications, AI, Company and
   Shortcuts, in this order on every device.
+- **One header, one column** (#1362). The header says "Settings" on every page of it (the keys and an
+  agent's page included), and the sections' pages share one column: 640 px of content (728 with its 44 px
+  sides), centred in the area beside the list at every computer width, with the same left edge and
+  width on every page. The renders draw it at 1440 px, where centring puts it about 55 px further right
+  than drawn. A page under AI leads back from "‹ AI" above its title, in one place, 44 px high on touch
+  (the phone has only the header's Back).
 - **Notifications:** "The Inbox always shows everything that waits for you."
   - **Tell me about** is one level. Only what needs me covers decisions, questions, blocked tasks,
     mentions and agents waiting for you. Everything adds new messages and task updates. Nothing
@@ -1294,15 +1301,31 @@ the composer. The right-hand phone above shows the sheet.
   - **Connect AI**, with Connect another. Each connection is a card with its name, "Connected" and
     the provider's usage line ("62% of your 5-hour limit left · resets at 14:00"). Change sits on
     the right, centred, and never overlaps the text.
-  - The local client as one row: "Claude Code on Ada's laptop · For code on your computer. Same
-    rules as your agents.", its "What it may do" tag and Disconnect.
+  - The local client as one row, in the same card as the connections (#1363): the terminal mark in
+    the same icon tile as the connections (as drawn), "Claude Code on Ada's laptop", "For code on your computer. Same rules as your agents.", its
+    "What it may do" tag (a link to the page where it is changed) and Disconnect, which asks in the
+    row. A person may connect several, each with its own row. There is no section of its own for it and
+    no word "agent app" or "co-work".
+  - **Connecting one** is the fourth choice of the Connect AI window, "Claude Code or Codex on your
+    computer · For code on your computer · same rules as your agents". It leads to the page of these
+    apps (reached with "‹ AI"): each connected app as a card with its What it may do and Disconnect, then
+    "Connect it to Flux" with a tab each for Claude Code, Codex and Another app. A tab says what to do in
+    words (add Flux, sign in, start work in a space) and keeps the terminal text behind one quiet
+    "Show the command". The words are "space" and "app", never "project", "MCP client", "HTTPS address"
+    or "operator". A server with no AI at all shows no window: one row, "Claude Code or Codex on your
+    computer · Connect", leads to the same page.
+  - **Two things are never called by one name.** "Claude plan" and "ChatGPT plan" are the sign-ins Flux
+    runs for the person (the window's first two choices; their pages read "Sign in to Claude" and "Sign
+    in to ChatGPT", and where the server doesn't offer them, "Signing in with a Claude plan isn't offered
+    on this Flux server."). "Claude Code" and "Codex" are only the apps on the person's own computer.
   - **Your agents**, with New agent. Each row has the agent's Kreska in its own colour (chosen when
     the agent is created, or assigned automatically), its name, one line about its job, its "What
     it may do" tag and its model with the connection ("Opus · Claude plan").
     Assistant carries an "Answers /ai" tag. Under the list: "Agents never have more rights than
     you. Deleting and other people's things always wait for your OK."
-  - **When someone assigns a task to me:** Do nothing / Give it to [agent ▾], with Do nothing as
-    the default.
+  - **How your AI works** is the heading before **When someone assigns a task to me:** Do nothing /
+    Give it to [agent ▾], one segmented choice with Do nothing as the default. With one agent the second
+    segment names it; with several it is the app's `Select` dressed as the segment.
   - There is no list of spaces with AI off.
 - **An agent's page** (Assistant's is the same):
   - "‹ AI", the agent, and "Your agent · uses your Claude plan · can do only what you can".
@@ -1341,7 +1364,8 @@ the composer. The right-hand phone above shows the sheet.
   - OpenRouter and an OpenAI-compatible endpoint keep "Show available models" and the field.
 - **The Model of an agent with an API key** lists the key's models under its connection, in the
   same family order, in the app's `Select` (a plan keeps its few models as segments), each with its
-  price line. An unpriced one says "Price unknown, enter it";
+  price line worded as in Connect AI, "Opus 5.5 · $4 / $20", and one line under the control that
+  says the unit once: "Prices are US dollars per 1M tokens, input / output." (#1362). An unpriced one says "Price unknown, enter it";
   choosing it opens the two price fields and Save price under the control, and the model is
   chosen when the price is saved. A list that couldn't be read adds one line under the group,
   "Couldn't read Anthropic's model list · Try again", and the saved model stays. A model the
@@ -1492,6 +1516,12 @@ On the phone the Assistant conversation is a normal conversation. Its header lis
   unlock password and Repeat side by side, a strength hint and Download recovery code. Create space
   stays disabled until the code is downloaded. A note explains that after each server restart an
   admin of the space unlocks it.
+  - **The window keeps its head and its footer in view** (#1361): only the middle scrolls, so Cancel
+    and Create space are never below the fold, at 1280 × 800 and 1180 × 820 too. While Create is off the
+    footer says why, "Download the recovery code first.", to the left of the buttons (the same line
+    describes the button to a screen reader). The password and Repeat sit side by side while the window
+    is wide enough (440 px inside the card) and stack below that. The AI row stays, dimmed and off, with
+    "No AI in encrypted spaces" as its line. The scrim covers the sidebar as in Create.
 - **Space settings** (⋯ › Settings) use direction A, a 640 px column centred in the space's pane
   under the header at every computer width (the tablet and phone keep their own padding):
   - "Only people added here, and the company's owners and admins, can open this space." (The drawn line said only the first part, which the details panel and the rules contradict: owners and admins reach every space but an encrypted one, #1116.)
@@ -1504,7 +1534,19 @@ On the phone the Assistant conversation is a normal conversation. Its header lis
 - **A locked space** keeps its header, with the views inactive and no Call, and shows one calm card
   in place of the content. A member sees "Payroll is locked" and the admins who can unlock it, with
   no buttons. A space admin sees the unlock password field, Unlock and Use recovery code. The rest
-  of the company works normally.
+  of the company works normally (#1360).
+  - **The header** is the space's own: its name and lock, the four views as the
+    [underline tabs](#underline-tabs-the-views-switch) but inactive (every word `--t3`, none current,
+    no underline, not links, `aria-disabled`), the people's faces (they open People and encryption)
+    and ⋯. There is no line under the name: the card says what the header would. On the phone it is
+    the space header of §4: Back, the name and lock, and the inactive views in the row under it.
+  - **The card** is centred both ways in the space's pane at every window (420 px at most): the
+    lock in a round tile, "Payroll is locked", then one paragraph that says what happened and who can
+    unlock it once ("Ada locked Payroll at 09:00. Ada can unlock it." or "The server restarted at
+    22:15. Ada and Piotr can unlock it."). A space admin's card adds the password field and Unlock on
+    one row, "Use the recovery code" under them and "People and encryption" last, all centred. The line
+    a refusal is said in is kept at the card's foot, under them, so nothing in the card moves when one
+    appears.
 
 ### Last active
 
