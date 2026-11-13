@@ -439,15 +439,18 @@ describe('F-030 AI forced off', () => {
     const tables = (await pool.query(`SELECT c.table_name AS name,
         bool_or(k.column_name = 'workspace_id') AS ws, bool_or(k.column_name = 'project_id') AS project, bool_or(k.column_name = 'agent_id') AS agent,
         bool_or(k.column_name = 'connection_id') AS connection,
+        EXISTS (SELECT 1 FROM pg_constraint f JOIN pg_attribute a ON a.attrelid = f.conrelid AND a.attnum = ANY (f.conkey)
+          WHERE f.conrelid = ('public.' || c.table_name)::regclass AND f.contype = 'f' AND a.attname = 'connection_id'
+            AND f.confrelid = 'public.agent_runtime_connections'::regclass) AS runtime,
         EXISTS (SELECT 1 FROM pg_trigger t WHERE t.tgrelid = ('public.' || c.table_name)::regclass AND t.tgname = 'a_sealed_workspace_no_ai') AS guarded
       FROM information_schema.tables c JOIN information_schema.columns k ON k.table_schema = 'public' AND k.table_name = c.table_name
       WHERE c.table_schema = 'public' AND c.table_type = 'BASE TABLE' AND (c.table_name LIKE 'agent%' OR c.table_name LIKE 'assistant%'
         OR c.table_name LIKE 'cowork%' OR c.table_name LIKE 'personal_run%' OR c.table_name = 'background_compute_connections')
-      GROUP BY c.table_name ORDER BY c.table_name`)).rows as { name: string; ws: boolean; project: boolean; agent: boolean; connection: boolean; guarded: boolean }[];
-    // A connection_id leads to a workspace only through agent_connections, which is what the trigger reads. A runtime connection belongs to an account
-    // (owner_user_id), so the table of its models (#1332, agent_runtime_connection_models) is AI-class like it, with no workspace path to guard
-    // (docs/product/encrypted-workspaces.md#enforcement: `agent_runtime_*` those with a workspace).
-    const withPath = tables.filter((t) => t.ws || t.project || t.agent || (t.connection && t.name.startsWith('agent') && !t.name.startsWith('agent_runtime_')));
+      GROUP BY c.table_name ORDER BY c.table_name`)).rows as { name: string; ws: boolean; project: boolean; agent: boolean; connection: boolean; runtime: boolean; guarded: boolean }[];
+    // A connection_id leads to a workspace only through agent_connections, which is what the trigger reads. One that references a runtime connection
+    // (agent_runtime_connections, owned by an account: owner_user_id) has no workspace path to guard, like the table of its models (#1332,
+    // agent_runtime_connection_models; docs/product/encrypted-workspaces.md#enforcement: `agent_runtime_*` those with a workspace).
+    const withPath = tables.filter((t) => t.ws || t.project || t.agent || (t.connection && !t.runtime && t.name.startsWith('agent')));
     // Pinned like the other registries: a table added or dropped changes this list on purpose, after checking it is guarded (a count floor went red whenever a table was dropped, #1017).
     assert.deepEqual(withPath.map((t) => t.name).sort(), [
       'agent_chat_messages', 'agent_chat_reads', 'agent_command_receipts', 'agent_connections', 'agent_memory_items', 'agent_oauth_bindings',

@@ -1105,6 +1105,9 @@ class ScenarioJourney:
         space = lambda i: i["place"].get("id") if i["place"]["type"] == "project" else i["target"].get("projectId")  # noqa: E731
         self.assertEqual({space(i) for i in found} - {s["market"], lamp}, set(), found)
         self.assertNotIn(LEFT_OUT, json.dumps(found))
+        # Highlighting splits a title into parts, so the ids prove it too: neither the DM nor the private map is anywhere in the answer.
+        for hidden in (s["dm"], draft_id):
+            self.assertNotIn(hidden, json.dumps(found), found)
         self.assertEqual(self.api("ada", "GET", f"/api/v1/decisions/{d3['id']}", status=200)["status"], "proposed")
 
         # Lee shares only Marketplace: every lamp address is 404 for him.
