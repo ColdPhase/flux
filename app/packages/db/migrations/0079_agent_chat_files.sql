@@ -61,6 +61,7 @@ CREATE FUNCTION public.agent_chat_file_text_job() RETURNS trigger
 BEGIN
   IF workspace_sealed(NEW.workspace_id) OR NOT file_text_extractable(NEW.name) THEN RETURN NULL; END IF;
   INSERT INTO file_text_jobs (file_id) VALUES (NEW.id) ON CONFLICT DO NOTHING;
+  PERFORM pg_notify('flux_file_text', '');
   RETURN NULL;
 END $$;
 CREATE TRIGGER agent_chat_file_text_job AFTER UPDATE OF published_at ON public.project_files FOR EACH ROW
