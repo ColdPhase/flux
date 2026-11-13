@@ -1,7 +1,7 @@
-"""Browser tests for the rest of the assistant screen and journeys (F-027 A7, #407; AST-10.1, 10.5, 10.9 to 10.11).
+"""Browser tests for the rest of the assistant screen and journeys (F-027 A7, #407; AST-10.1, 10.5, 10.9 to 10.11; "Ask my assistant…" is no longer in ⌘K, #1376).
 
 Same stubbed-engine approach as test_assistant_screen. This module covers: the request appearing in the stream as sent
-(Journey 1 step 6), the waiting card with its Approve (steps 8 and 9), "Ask my assistant…" outside a conversation (AST-10.10),
+(Journey 1 step 6), the waiting card with its Approve (steps 8 and 9), the
 turn-on that reuses what an earlier try made, the subscription-off row and axe on the assistant screens (AST-10.11).
 """
 
@@ -149,49 +149,6 @@ class AssistantFinish(unittest.TestCase):
                 expect(line.get_by_role("button", name="Undo", exact=True)).to_be_visible()
                 expect(page.locator(".assistant-waiting__card")).to_have_count(0)
                 shot(page, f"j1-approved-{self.tag(phone)}")
-
-    # ---------------------------------------------------------------- AST-10.10: Ask my assistant… outside a conversation
-
-    def test_08_command_k_outside_a_conversation_asks_in_which_conversation_and_never_leads_nowhere(self) -> None:
-        for phone, remembered in ((False, False), (False, True), (True, True)):
-            with self.subTest(phone=phone, remembered=remembered):
-                page = self.page(phone=phone)
-                self.stub_assistant(page)
-                self.stub_thread(page)
-                if remembered:
-                    page.add_init_script(f"localStorage.setItem('flux.assistant-last-asked.{base.ADA['id']}', JSON.stringify({{projectId: '{self.ids['project']}', conversationId: '{self.ids['conversation']}'}}))")
-                page.goto("/")
-                expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
-                base.assistant_known(page)
-                page.keyboard.press("Control+k")
-                option = page.get_by_role("option", name=re.compile("Ask my assistant…"))
-                expect(option).to_be_visible()
-                option.click()
-                where = page.get_by_role("group", name="In which conversation?")
-                expect(where).to_be_visible()
-                first = where.get_by_role("button").first
-                if remembered:
-                    expect(first).to_contain_text("Camera or ToF sensor")
-                    expect(first).to_contain_text("Last used")
-                self.assertGreaterEqual(first.bounding_box()["height"], 44)
-                self.assertIsNone(FORBIDDEN.search(where.inner_text()))
-                shot(page, f"ask-where-{self.tag(phone)}-{'last' if remembered else 'recent'}")
-                first.click()
-                expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}/conversations/[0-9a-f-]{36}$"))
-                expect(page.get_by_placeholder("Ask your assistant…")).to_be_visible()
-
-    def test_09_command_k_in_a_project_lists_that_projects_conversations(self) -> None:
-        page = self.page()
-        self.stub_assistant(page)
-        page.goto(f"/projects/{self.ids['project']}")
-        expect(page.get_by_role("heading", level=1, name="Gesture lamp")).to_be_visible()
-        base.assistant_known(page)
-        page.keyboard.press("Control+k")
-        page.get_by_role("option", name=re.compile("Ask my assistant…")).click()
-        where = page.get_by_role("group", name="In which conversation?")
-        expect(where.get_by_role("button").first).to_contain_text("Camera or ToF sensor")
-        where.get_by_role("button", name="Back").click()
-        expect(page.get_by_role("combobox", name="Search", exact=True)).to_be_visible()
 
     # ---------------------------------------------------------------- Journey 6: subscription sign-in off
 

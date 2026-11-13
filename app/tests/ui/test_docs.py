@@ -458,17 +458,10 @@ class DocsJourney(unittest.TestCase):
         self.assertEqual(struck["color"], struck["t3"], "removed text is --t3")
         shot(page, "wiki-history-rendered-desktop-1440-light")
 
-        # AC-2: "Rendered | Markdown" keeps the exact text.
-        rendered = page.get_by_role("button", name="Rendered")
-        markdown = page.get_by_role("button", name="Markdown", exact=True)
-        expect(rendered).to_have_attribute("aria-pressed", "true")
-        markdown.click()
-        expect(markdown).to_have_attribute("aria-pressed", "true")
-        expect(page.locator(".doc-diff__row--added")).to_contain_text(["- Shed gateway"])
-        expect(page.locator(".doc-diff__row--added", has_text="| Shed | 60 m |")).to_have_count(1)
-        expect(diff.locator(".doc-prose")).to_have_count(0)
-        shot(page, "wiki-history-markdown-desktop-1440-light")
-        rendered.click()
+        # History shows the rendered version only (Hubert, 2026-11-13, #1376): no Rendered / Markdown switch and no raw line diff.
+        expect(page.get_by_role("button", name="Rendered")).to_have_count(0)
+        expect(page.get_by_role("button", name="Markdown", exact=True)).to_have_count(0)
+        expect(page.locator(".doc-diff")).to_have_count(0)
         expect(diff.locator(".doc-prose h2")).to_have_count(2)
         page.emulate_media(color_scheme="dark")
         shot(page, "wiki-history-rendered-desktop-1440-dark")

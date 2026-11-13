@@ -180,6 +180,11 @@ span.photo-grid__open { cursor: default; }
 /* Inline references in text: chips on the text baseline. */
 .ref-chip { display: inline-flex; align-items: baseline; gap: 4px; padding: 1px 7px; margin: 0 1px; border-radius: var(--r-pill); background: var(--sub); color: var(--t1); font-weight: 500; line-height: 1.35; white-space: nowrap; vertical-align: baseline; }
 .ref-chip svg { align-self: center; flex: none; }
+/* A map thought's own address (#1376): a chip that opens the map with the thought selected; one the reader may not read says so. */
+a.ref-chip--thought { text-decoration: none; cursor: pointer; }
+a.ref-chip--thought:hover { background: var(--hov); }
+a.ref-chip--thought:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }
+.ref-chip--thought.is-unavailable { color: var(--t2); font-weight: 400; }
 .ref-chip__face { align-self: center; display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; background: var(--el); font-size: var(--fs-face); font-weight: 600; letter-spacing: .02em; }
 .ref-chip__face::before { content: attr(data-initials); }
 .is-mine > .message-bubble .ref-chip { background: rgba(255, 255, 255, .14); color: var(--oninv); }
@@ -244,16 +249,6 @@ span.photo-grid__open { cursor: default; }
 .is-mine > .message-bubble .ref-card__ctx, .is-mine > .message-bubble .ref-card small { color: var(--t3); opacity: 1; }
 
 /* What a draft or a queued message cites, before it is sent: the same glyph and words, with × to take it out. */
-.composer-cite { display: flex; align-items: center; gap: 10px; min-width: 0; max-width: 100%; margin-top: 6px; padding: 6px 6px 6px 8px; border-radius: var(--r); background: var(--sub); color: var(--t1); }
-.composer-cite__glyph { display: grid; place-items: center; flex: none; width: 28px; height: 28px; border-radius: var(--r-sm); background: var(--el); color: var(--t2); }
-.composer-cite__text { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; }
-.composer-cite__text strong { font-size: var(--fs-base); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.composer-cite__text small { color: var(--t3); font-size: var(--fs-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.composer-cite__x { display: grid; place-items: center; flex: none; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--t2); cursor: pointer; }
-.composer-cite__x:hover:not(:disabled) { background: var(--hov); color: var(--t1); }
-.composer-cite__x:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }
-.composer-cite__x:disabled { opacity: .4; cursor: default; }
-@media (pointer: coarse) { .composer-cite { min-height: 44px; } .composer-cite__x { width: 44px; height: 44px; } }
 
 /* Spokój: every conversation uses this bubble, including files, photos and references. */
 .message-bubble { color: var(--t1); box-shadow: inset 0 0 0 1px var(--line); }

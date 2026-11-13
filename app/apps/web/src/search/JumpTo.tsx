@@ -1,9 +1,7 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import type { SearchResult } from '@flux/contracts';
-import { AskWhere } from '../assistant/AskWhere';
 import { useShellData, type WorkspaceSummary } from '../app/data';
-import { useShellActions } from '../app/shellContext';
 import { useFollow } from '../place/origin';
 import { Icon, MEDIA, Mascot, Spinner, useMediaQuery, type IconName } from '../ui';
 import { targetHref } from './api';
@@ -21,7 +19,7 @@ const RESULTS = 20;
 type Option = { id: string; section: string } & (
   | { kind: 'result'; result: SearchResult }
   | { kind: 'place'; place: RecentPlace; label: string; side?: string; icon: IconName }
-  | { kind: 'command'; label: string; icon: IconName; keys?: string[]; stays?: boolean; run: () => void }
+  | { kind: 'command'; label: string; icon: IconName; keys?: string[]; run: () => void }
   /** An encrypted space that waits to be unlocked (F-030, #655): its content is not searched until it is unlocked. */
   | { kind: 'locked'; space: WorkspaceSummary }
 );
@@ -36,7 +34,7 @@ const PROJECT_VIEW: Record<string, { side: string; icon: IconName }> = {
   docs: { side: 'Wiki', icon: 'doc' },
 };
 const OWN_PLACE: Record<string, PlaceName> = {
-  home: { label: 'Home', icon: 'home' }, 'home:tasks': { label: 'Home', side: 'Tasks', icon: 'tasks' },
+  home: { label: 'Home', icon: 'home' }, 'home:tasks': { label: 'My tasks', icon: 'tasks' },
   sketchbook: { label: 'My map', icon: 'map' }, inbox: { label: 'Inbox', icon: 'inbox' },
 };
 const placeName = (name: PlaceName) => (name.side ? `${name.label} · ${name.side}` : name.label);
@@ -51,17 +49,15 @@ export function useOpenResult() {
  * Search (⌘K / Ctrl+K, the sidebar's Search and the phone's Search, #870): one field that searches everything the person may open,
  * as they type, with the results in groups by kind and no filters. Arrow keys move through the rows, Enter opens one.
  * `DeferredJumpTo` puts it in one dialog on the computer (a floating one) or a full-screen sheet on the phone, so the dialog
- * opens once and its content loads in it.
- *
- * `assistantReady` is read before the dialog opens and kept for as long as it is open (`DeferredJumpTo`, #898): the dialog is its
- * final size when it appears and nothing is added to it afterwards.
+ * opens once and its content loads in it. It lists what it finds and, with the field empty, the places last opened and Go to Inbox: no
+ * assistant, no Create group and no sidebar toggle (README S5, S16; #1376), and nothing is added to the dialog once it is on screen (#898).
  */
-export function JumpToBody({ onClose, userId, assistantReady }: { onClose: () => void; userId: string; assistantReady: boolean }) {
+export function JumpToBody({ onClose, userId }: { onClose: () => void; userId: string }) {
   const phone = useMediaQuery(MEDIA.phone);
-  return <SearchBody onClose={onClose} userId={userId} phone={phone} assistantReady={assistantReady} />;
+  return <SearchBody onClose={onClose} userId={userId} phone={phone} />;
 }
 
-function SearchBody({ onClose, userId, phone, assistantReady }: { onClose: () => void; userId: string; phone: boolean; assistantReady: boolean }) {
+function SearchBody({ onClose, userId, phone }: { onClose: () => void; userId: string; phone: boolean }) {
   const [query, setQuery] = useState('');
   // The highlighted option, reset to the first whenever the text changes.
   const [activeFor, setActiveFor] = useState({ text: '', index: 0 });
@@ -73,30 +69,13 @@ function SearchBody({ onClose, userId, phone, assistantReady }: { onClose: () =>
   // The empty field lists the places the person opened (F-026 E02).
   const recentPlaces = useRecentPlaces(userId);
   const { projects, lockedWorkspaces, directMessages } = useShellData();
-  const { toggleSidebar, sidebarHidden } = useShellActions();
   const location = useLocation();
-  const here = location.pathname.match(/^\/projects\/([^/]+)/)?.[1];
   const text = query.trim();
   const state = useSearch(text, RESULTS);
   // Once, as the body opens.
   useEffect(() => { inputRef.current?.focus(); }, []);
 
   const shown = state.status === 'ready' ? state.items : state.status === 'loading' ? state.previous?.items ?? [] : [];
-  // "Ask my assistant…" (F-027 AST-10.10): where an ask can be answered (a thread of a project conversation) and the assistant is ready.
-  const inThread = /^\/projects\/[^/]+\/conversations\/[^/]+/.test(location.pathname);
-  // Outside a conversation the ask first asks "In which conversation?" (never a dead end), then opens it the same way.
-  const [pickingWhere, setPickingWhere] = useState(false);
-  // In a space the question is about that space; elsewhere about every space whose AI is on.
-  const hereProject = projects.find((project) => project.id === here);
-  const aiHere = hereProject ? hereProject.ai !== 'blocked' : projects.some((project) => project.ai !== 'blocked');
-  // Whether it is ready was decided before the dialog opened, so the row is there from the first frame or not at all (#898).
-  const askMine: Option[] = assistantReady && aiHere ? [{ kind: 'command', section: 'Actions', id: 'action-ask-assistant', label: 'Ask my assistant…', icon: 'spark', stays: !inThread,
-    run: () => { if (inThread) navigate({ pathname: location.pathname, search: '?ask=1' }); else setPickingWhere(true); } }] : [];
-  // Typed words that name a command show it first: the assistant.
-  const typed = text.toLowerCase();
-  const commands: Option[] = [
-    ...(typed && 'ask my assistant'.includes(typed) ? askMine : []),
-  ];
   // With no text: up to four recent places (not the one in view, and only those the person can still open, named as
   // their header names them), then the actions with their keys as drawn (E02).
   const hereKey = placeOfPath(location.pathname)?.key;
@@ -121,13 +100,9 @@ function SearchBody({ onClose, userId, phone, assistantReady }: { onClose: () =>
     ...places.map(({ place, label, side, icon }): Option => ({ kind: 'place', section: 'Recent', id: `place-${place.key}`, place, label, side, icon })),
     ...lockedOptions(''),
     { kind: 'command', section: 'Actions', id: 'action-inbox', label: 'Go to Inbox', icon: 'inbox', keys: ['G', 'I'], run: () => navigate('/inbox') },
-    ...askMine,
-    ...(phone ? [] : [
-      { kind: 'command' as const, section: 'Actions', id: 'action-rail', label: sidebarHidden ? 'Show the sidebar' : 'Hide the sidebar', icon: 'sidebar' as const, keys: ['['], run: toggleSidebar },
-    ]),
   ];
   const results: Option[] = groupResults(shown).flatMap((group) => group.items.map((result): Option => ({ kind: 'result', section: group.label, id: result.id, result })));
-  const options: Option[] = text ? [...commands, ...results, ...lockedOptions(text)] : emptyOptions;
+  const options: Option[] = text ? [...results, ...lockedOptions(text)] : emptyOptions;
   const current = Math.min(activeFor.text === text ? activeFor.index : 0, Math.max(options.length - 1, 0));
   const setActive = (index: number) => setActiveFor({ text, index });
   useEffect(() => {
@@ -138,7 +113,7 @@ function SearchBody({ onClose, userId, phone, assistantReady }: { onClose: () =>
     if (!option) return;
     if (option.kind === 'place') { onClose(); navigate(option.place.path); return; }
     if (option.kind === 'locked') { onClose(); navigate(`/spaces/${option.space.id}`); return; }
-    if (option.kind === 'command') { if (!option.stays) onClose(); option.run(); return; }
+    if (option.kind === 'command') { onClose(); option.run(); return; }
     onClose();
     void openResult(option.result);
   };
@@ -158,7 +133,7 @@ function SearchBody({ onClose, userId, phone, assistantReady }: { onClose: () =>
         // Section names are plain text: the list holds options only, so nothing interactive sits inside it.
         const head = option.section !== options[index - 1]?.section ? <li key={`h-${option.section}`} role="presentation" className="jump__sh">{option.section}</li> : null;
         return [head, (
-          <li key={option.id} id={`${listId}-${index}`} role="option" aria-selected={index === current} data-ai-surface={option.id === 'action-ask-assistant' ? 'jump-ask' : undefined}
+          <li key={option.id} id={`${listId}-${index}`} role="option" aria-selected={index === current}
             aria-label={option.kind === 'place' ? placeName(option) : undefined}
             className={`jump__opt${option.kind === 'result' ? ' sr' : ''}${index === current ? ' is-active' : ''}`}
             onMouseMove={() => { if (index !== current) setActive(index); }} onClick={() => choose(option)}>
@@ -186,14 +161,6 @@ function SearchBody({ onClose, userId, phone, assistantReady }: { onClose: () =>
   const more = text && settled?.next && found
     ? <p className="jump__hint jump__more">Showing {found} · type more words to narrow</p> : null;
 
-  if (pickingWhere) {
-    return (
-      <div className="jump__in">
-        {phone ? <h2 className="jump__title">Ask my assistant</h2> : null}
-        <div className="jump__body"><AskWhere userId={userId} projectId={here} projects={projects.filter((project) => project.ai !== 'blocked')} onOpen={onClose} onBack={() => setPickingWhere(false)} /></div>
-      </div>
-    );
-  }
   return (
     <div className="jump__in">
       {phone ? <h2 className="jump__title">Search</h2> : null}

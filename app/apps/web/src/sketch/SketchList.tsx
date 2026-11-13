@@ -41,10 +41,9 @@ export interface SketchListProps {
   onReparent(id: string, parentId: string | null, how: 'indent' | 'outdent'): void;
   onConnectFrom(id: string): void;
   onConnections(id: string): void;
-  /** Cite the selected thought in its place's conversation (#469); absent where a sketch has none. */
-  onCite: (() => void) | null;
-  /** My map only (#948): "Move to a space map" for the selection, and "Copy link" to the one selected thought. */
+  /** My map only (#948): "Move to a space map" for the selection. */
   onMove: (() => void) | null;
+  /** "Copy link" to the one selected thought, on My map and a space's map (#948, #1376). */
   onCopyLink: (() => void) | null;
   onSay(text: string): void;
 }
@@ -263,7 +262,6 @@ export function SketchList({ sketch, meId, selection, connectFrom, editing, canW
           {arrange && canWrite ? <button type="button" className="sk-outline-menu__item" aria-pressed={connectFrom === thought.id} onClick={() => { setMoreId(null); on.onConnectFrom(thought.id); }}>Connect…</button> : null}
           <button type="button" className="sk-outline-menu__item" onClick={() => { setMoreId(null); on.onConnections(thought.id); }}>Connections</button>
           {projectId && thought.source?.projectMessageId ? <Link to={projectMessageHref(projectId, thought.source.projectMessageId)} onClick={() => setMoreId(null)}>Open message</Link> : null}
-          {on.onCite ? <button type="button" className="sk-outline-menu__item" onClick={() => { setMoreId(null); on.onCite?.(); }}>Cite in conversation</button> : null}
           {on.onMove ? <button type="button" className="sk-outline-menu__item" onClick={() => { setMoreId(null); on.onMove?.(); }}>Move to a space map</button> : null}
           {on.onCopyLink && selection.length === 1 ? <button type="button" className="sk-outline-menu__item" onClick={() => { setMoreId(null); on.onCopyLink?.(); }}>Copy link</button> : null}
           {canWrite ? <button type="button" className="sk-outline-menu__item" onClick={() => { setMoreId(null); on.onRemove(selection.includes(thought.id) ? selection : [thought.id]); }}>Remove</button> : null}

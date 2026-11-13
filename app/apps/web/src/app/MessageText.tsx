@@ -3,6 +3,7 @@ import { LINK_URL_SOURCE, messageLinkUrls, parseMessage, type MessageInline, typ
 import { Icon, Kreska, initials } from '../ui';
 import { CodeBlock } from './CodeBlock';
 import { useLinkPreviews } from './linkPreviews';
+import { ThoughtChip, thoughtLink } from './thoughtLinks';
 import '../composer/attachments.css';
 import './message-format.css';
 
@@ -10,7 +11,7 @@ import './message-format.css';
 // message, a reply, a task's discussion, an agent's chat and answer). It reads the stored body and builds React elements, never HTML, so
 // no text can add a tag or an attribute. The text may carry `**bold**`, `*italic*`, `inline code`, fenced code, `- `/`1. ` lists and `>`
 // quotes (`parseMessage` in @flux/contracts is the one parser); anything else stays as typed. Inline references are chips on the text
-// baseline: `@person`, `#4` and a Wiki page `[[Title]]`; a web address is a link with a preview card under the text. The stored body is
+// baseline: `@person`, `#4`, a Wiki page `[[Title]]` and a map thought's own address; any other web address is a link with a preview card under the text. The stored body is
 // unchanged: this only reads it. With the project's people, a known name (also one with a space, such as "Jonas Berg") is one chip, and
 // an agent's chip carries the Kreska mark.
 
@@ -46,7 +47,10 @@ export function MessageText({ body, linked = true, people = null, cite }: { body
       const lead = groups.mlead ?? groups.klead ?? groups.tlead ?? '';
       const start = match.index! + lead.length;
       if (start > last) parts.push(text.slice(last, start));
-      if (groups.url) parts.push(linked ? <a key={`${keyPrefix}${key++}`} className="msg-link" href={groups.url} target="_blank" rel="noopener noreferrer nofollow">{groups.url}</a> : <span key={`${keyPrefix}${key++}`}>{groups.url}</span>);
+      const thought = groups.url ? thoughtLink(groups.url) : null;
+      // A map thought's own address (its Copy link) is the thought's chip, not a bare address (#1376).
+      if (thought) parts.push(<ThoughtChip key={`${keyPrefix}${key++}`} link={thought} linked={linked} />);
+      else if (groups.url) parts.push(linked ? <a key={`${keyPrefix}${key++}`} className="msg-link" href={groups.url} target="_blank" rel="noopener noreferrer nofollow">{groups.url}</a> : <span key={`${keyPrefix}${key++}`}>{groups.url}</span>);
       else if (groups.known || groups.mention) {
         const name = (groups.known ?? groups.mention!).slice(1);
         const agent = names.find((person) => person.name === name)?.kind === 'agent' || /['’]s assistant$/.test(name);
@@ -106,7 +110,8 @@ function addressTitle(url: URL) {
 export function LinkPreviews({ body, projectId, messageId }: { body: string; projectId: string; messageId: string | null }) {
   const fetched = useLinkPreviews(projectId, messageId, body);
   // The addresses of the message that get a card: the one rule the server shares, which leaves out what Flux's own list holds (#1222).
-  const urls = messageLinkUrls(body);
+  // A map thought's own address is its chip in the text, with no card (#1376).
+  const urls = messageLinkUrls(body).filter((raw) => !thoughtLink(raw));
   const cards = urls.flatMap((raw) => { try { return [{ raw, url: new URL(raw) }]; } catch { return []; } });
   if (!cards.length) return null;
   return <ul className="link-previews" aria-label={cards.length === 1 ? 'Link preview' : 'Link previews'}>{cards.map(({ raw, url }) => {

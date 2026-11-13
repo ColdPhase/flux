@@ -218,7 +218,7 @@ draws it since #869: two columns only, the sidebar and the page.
   reading the page. Rename and Restore save the head with their title or reason; when someone else
   typed or saved meanwhile, they try again on the newer head for up to 10 s.
 - **History** (⋯ › History, `…/history?from=&to=`): every version with its reason, author and date,
-  the comparison as the page reads or as exact Markdown, and **Restore version N**, which opens the
+  the comparison as the page reads (no Markdown view, #1376), and **Restore version N**, which opens the
   page and makes that version the page again (shared at once with live editing) as the next version.
   An earlier version (`…/versions/:n`) is read as the server rendered it, with Restore.
 - **Import a Markdown file** (`markdown-file.ts`): one `.md`/`.markdown` file of at most 400 KB and

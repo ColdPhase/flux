@@ -266,8 +266,10 @@ class CreateWindow(unittest.TestCase):
         page.keyboard.press("Escape")
         # With no query: the actions with their keys (E02), none of them creates; Go to Inbox runs.
         palette, field = self.jump(page, "")
-        for name in ("Go to Inbox", "Hide the sidebar"):
-            expect(palette.get_by_role("option", name=name, exact=True)).to_be_visible()
+        expect(palette.get_by_role("option", name="Go to Inbox", exact=True)).to_be_visible()
+        # No assistant row (README S5: its suggestions are in the `/` menu) and no sidebar toggle (the sidebar's own control and `[`), #1376.
+        for name in (re.compile("Ask my assistant"), re.compile("the sidebar$")):
+            expect(palette.get_by_role("option", name=name)).to_have_count(0)
         expect(palette.get_by_role("option", name=re.compile("^New "))).to_have_count(0)
         palette.get_by_role("option", name="Go to Inbox", exact=True).click()
         expect(page).to_have_url(re.compile(r"/inbox$"))
@@ -881,7 +883,7 @@ class CreateWindow(unittest.TestCase):
         self.visit(page, "/", "Home")
         palette, field = self.jump(page, "")
         expect(palette.get_by_role("listbox", name="Actions")).to_be_visible()
-        expect(palette.get_by_role("option")).to_have_text([re.compile("^Go to Inbox"), re.compile("^Hide the sidebar")])
+        expect(palette.get_by_role("option")).to_have_text([re.compile("^Go to Inbox")])
         page.keyboard.press("Escape")
         expect(palette).to_have_count(0)
         # Places by identity, most recent first: a second visit moves a place up once, a doc's version is its doc (named by
@@ -898,7 +900,7 @@ class CreateWindow(unittest.TestCase):
         palette, field = self.jump(page, "")
         listbox = palette.get_by_role("listbox", name="Recent places and actions")
         self.assertEqual(self.option_names(listbox), ["How the garden sensors work · Wiki", "Community garden sensors · Tasks", "Cargo bike co-op · Conversation", "Home",
-                                                      "Go to Inbox", "Hide the sidebar"])
+                                                      "Go to Inbox"])
         options = listbox.get_by_role("option")
         expect(options.first.locator(".jump__side")).to_have_text("Wiki")
         expect(options.nth(3).locator(".jump__side")).to_have_count(0)
@@ -910,7 +912,7 @@ class CreateWindow(unittest.TestCase):
         selected = palette.locator("[role=option][aria-selected=true]")
         expect(selected).to_have_attribute("aria-label", "How the garden sensors work · Wiki")
         field.press("ArrowUp")
-        expect(selected).to_have_text(re.compile("^Hide the sidebar"))
+        expect(selected).to_have_text(re.compile("^Go to Inbox"))
         for _ in range(3):
             field.press("ArrowDown")
         expect(selected).to_have_attribute("aria-label", "Cargo bike co-op · Conversation")
@@ -928,20 +930,13 @@ class CreateWindow(unittest.TestCase):
         field.press("Escape")
         expect(palette).to_have_count(0)
 
-    def test_24_hide_the_sidebar_runs_from_the_empty_command_k(self) -> None:
+    def test_24_the_empty_command_k_has_no_sidebar_toggle_and_no_focus_mode(self) -> None:
         self.ensure_account()
         page = self.page()
         self.visit(page, f"/projects/{self.ids['project']}", "Community garden sensors")
-        side = page.get_by_role("complementary", name="Sidebar")
-        expect(side.locator(".side--rail")).to_have_count(0)
         palette, field = self.jump(page, "")
-        field.press("ArrowUp")  # the last action
-        expect(palette.locator("[role=option][aria-selected=true]")).to_have_text(re.compile("^Hide the sidebar"))
-        field.press("Enter")
-        expect(side.locator(".side--rail")).to_have_count(1)
-        palette, field = self.jump(page, "")
-        palette.get_by_role("option", name="Show the sidebar", exact=True).click()
-        expect(side.locator(".side--rail")).to_have_count(0)
+        expect(palette.get_by_role("option", name=re.compile("the sidebar$"))).to_have_count(0)
+        page.keyboard.press("Escape")
         # There is no Focus mode (F-038): the palette lists no such action and the notification settings have no pause.
         palette, field = self.jump(page, "")
         expect(palette.get_by_role("option", name="Focus mode", exact=True)).to_have_count(0)

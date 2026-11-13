@@ -27,13 +27,6 @@ NOW = "2026-10-16T09:00:00.000Z"
 UI_BROWSER = os.environ.get("FLUX_UI_BROWSER", "chromium")
 
 
-def assistant_known(page: Page) -> None:
-    """Search decides whether it has an "Ask my assistant…" row before it opens, from the status read the shell makes as it loads (#898):
-    wait for that read, as a person who presses ⌘K a moment after the page came up would have."""
-    page.wait_for_function("() => performance.getEntriesByType('resource').some((entry) => entry.name.endsWith('/api/v1/personal-assistant'))")
-    page.wait_for_timeout(250)
-
-
 def pick_suggestion(page: Page, name: str, composer: str = "#thread-composer") -> None:
     """#1224: the assistant's suggestions are rows of the `/` menu, under `/ai`: type "/" in the composer and choose one."""
     page.locator(composer).fill("/")
@@ -204,20 +197,6 @@ class AssistantScreen(unittest.TestCase):
                 options.first.click()
                 expect(page.get_by_placeholder("Ask your assistant…")).to_be_visible()
                 self.stub_thread(page)
-
-    def test_10_command_k_asks_my_assistant_in_the_open_thread(self) -> None:
-        page = self.page()
-        self.stub_assistant(page)
-        self.stub_thread(page)
-        page.goto(self.thread_url())
-        expect(page.get_by_placeholder(re.compile("Reply in thread"))).to_be_visible()
-        assistant_known(page)
-        page.keyboard.press("Control+k")
-        option = page.get_by_role("option", name=re.compile("Ask my assistant…"))
-        expect(option).to_be_visible()
-        option.click()
-        expect(page.get_by_placeholder("Ask your assistant…")).to_be_visible()
-        expect(page).to_have_url(re.compile(r"/conversations/[0-9a-f-]{36}$"))
 
 
 if __name__ == "__main__":
