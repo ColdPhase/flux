@@ -48,7 +48,9 @@ log() { printf '%s %s\n' "$(date -u +%H:%M:%S)" "$*" >&2; }
 # --- The two refs, each in a worktree of its own -------------------------------------------------------------------------------
 resolve() {
   if sha=$(git rev-parse --verify -q "$1^{commit}"); then echo "$sha"; return; fi
-  git fetch -q --depth 1 origin "$1" && git rev-parse --verify "FETCH_HEAD^{commit}"
+  # --depth only in a clone that is already shallow (a runner's checkout): in a full clone it would cut the fetched commit's history.
+  depth=; [ "$(git rev-parse --is-shallow-repository)" != true ] || depth="--depth 1"
+  git fetch -q $depth origin "$1" && git rev-parse --verify "FETCH_HEAD^{commit}"
 }
 sha_a=$(resolve "$1")
 sha_b=$(resolve "$2")
@@ -169,8 +171,10 @@ for side in a b; do
   sample_memory "$side" "$out/$side/seed-memory.tsv" "$out/$side/.seed-done" &
   sampler=$!
   dc "$side" exec -T -e FLUX_PERF_PASSWORD="$perf_password" api node --input-type=module - < scripts/perf-seed.mjs > "$out/$side/seed.log"
-  previous=-1; stable=0
-  while [ "$stable" -lt 3 ]; do
+  previous=-1; stable=0; polls=0
+  # Until the seed's notifications stop growing (3 equal counts 3 s apart), at most 10 minutes.
+  while [ "$stable" -lt 3 ] && [ "$polls" -lt 200 ]; do
+    polls=$((polls + 1))
     sleep 3
     current=$(psql_on "$side" -c 'SELECT count(*) FROM notifications')
     if [ "$current" = "$previous" ]; then stable=$((stable + 1)); else stable=0; fi
