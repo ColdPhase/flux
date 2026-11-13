@@ -86,6 +86,8 @@ services:
       FLUX_AI_PRIVATE_TARGETS: providermock
       FLUX_LINK_PREVIEWS: "on"
       FLUX_WEB_READS: ${FLUX_WEB_READS:-on}
+      # A small video cap, so the limit tests need no 200 MiB upload (C-61); the suites read it from GET /api/v1/files/limits.
+      FLUX_VIDEO_MAX_MIB: "12"
       # other.test (#1136): a second site on the same mock, for a redirect from one site to another.
       FLUX_TEST_LINK_PREVIEW_HOSTS: public.test=linkmock:8098,other.test=linkmock:8098
       # Pool connection wait for this suite (#271, docs/development/containers.md): new connections and

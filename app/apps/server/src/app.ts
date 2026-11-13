@@ -219,9 +219,10 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   await app.register(websocket, { options: { maxPayload: 1024, server: streamUpgrades as unknown as Server } });
   await app.register(streamRoutes, { db, sessions: identity, publicOrigin: identityConfig.publicOrigin, connectionString, heartbeatMs: config.heartbeatMs, cursorSecret: identityConfig.secret, exposeWork });
   await app.register(typingRoutes, { db, sessions: identity, publicOrigin: identityConfig.publicOrigin, connectionString, tasks: typingTaskDiscussion(db) });
-  // One libvips, one picture at a time: profile photos, space icons and every stored picture (a person's upload, an agent's) wait in the same line.
+  // One libvips, one picture at a time: profile photos, space icons, every stored picture (a person's upload, an agent's) and a video's
+  // poster (C-61) wait in the same line.
   const pictures = sharpPictureRenderer();
-  await app.register(fileRoutes, { db, sessions: identity, storage: fileStorage, pictures });
+  await app.register(fileRoutes, { db, sessions: identity, storage: fileStorage, pictures, videoBytes: config.files.videoBytes, poster: (bytes) => pictures.poster(bytes) });
   await app.register(pictureRoutes, { db, sessions: identity, storage: fileStorage, renderer: pictures });
   await app.register(conversationRoutes, { db, sessions: identity, storage: fileStorage });
   await app.register(linkPreviewRoutes, { db, sessions: identity, config: config.linkPreviews });

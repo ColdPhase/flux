@@ -9,7 +9,9 @@ import { createGzip } from 'node:zlib';
  */
 export interface BundleFile {
   path: string;
-  content: Buffer;
+  /** Held whole, or (a video, C-61) streamed a chunk at a time and exactly `size` bytes long. */
+  content: Buffer | AsyncIterable<Uint8Array>;
+  size?: number;
 }
 
 function octal(value: number, width: number) {
@@ -51,9 +53,15 @@ export function tarGzip(root: string, files: Iterable<BundleFile> | AsyncIterabl
   async function* blocks() {
     for await (const file of files) {
       signal?.throwIfAborted();
-      yield header(`${root}/${file.path}`, file.content.length, mtime);
-      yield file.content;
-      const padding = (512 - (file.content.length % 512)) % 512;
+      const size = Buffer.isBuffer(file.content) ? file.content.length : file.size!;
+      yield header(`${root}/${file.path}`, size, mtime);
+      if (Buffer.isBuffer(file.content)) yield file.content;
+      else {
+        let sent = 0;
+        for await (const chunk of file.content) { signal?.throwIfAborted(); sent += chunk.byteLength; yield chunk; }
+        if (sent !== size) throw new Error(`Bundle file ${file.path} changed while it was written`);
+      }
+      const padding = (512 - (size % 512)) % 512;
       if (padding) yield Buffer.alloc(padding, 0);
     }
     yield Buffer.alloc(1024, 0);

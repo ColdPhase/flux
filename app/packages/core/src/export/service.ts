@@ -1,4 +1,5 @@
 import {
+  FILE_LIMITS,
   PROJECT_EXPORT_EXCLUDED,
   PROJECT_EXPORT_FORMAT,
   PROJECT_EXPORT_FORMAT_VERSION,
@@ -10,6 +11,7 @@ import {
   type ProjectExportManifest,
   type ProjectExportPerson,
 } from '@flux/contracts';
+import { createHash } from 'node:crypto';
 import type { Readable } from 'node:stream';
 import { NotFoundError } from '../access/errors.js';
 import type { Principal } from '../principal.js';
@@ -162,12 +164,19 @@ export function createProjectExportUseCases(uow: ProjectExportUnitOfWork, contex
     options.signal?.throwIfAborted();
     const { data, storage } = await snapshotProject(principal, projectId);
     const utf8 = (value: string) => Buffer.from(value, 'utf8');
-    const base: BundleFile[] = [
+    const base: Array<BundleFile & { content: Buffer }> = [
       { path: 'project.json', content: utf8(`${JSON.stringify(data, null, 2)}\n`) },
       { path: 'schema/project-export.v1.schema.json', content: utf8(`${JSON.stringify(PROJECT_EXPORT_JSON_SCHEMA, null, 2)}\n`) },
       { path: 'README.md', content: utf8(readme(data)) },
     ];
     const attachments = data.files ?? [];
+    // A file over the ordinary limit is a video (C-61): it is hashed and written as a stream, never held whole.
+    const streamed = (file: (typeof attachments)[number]) => file.size > FILE_LIMITS.fileBytes;
+    const open = async (file: (typeof attachments)[number]) => {
+      const body = await storage?.stream?.(file.id, { size: file.size, start: 0, end: file.size - 1 });
+      if (!body) throw new NotFoundError('File', 'FILE_UNAVAILABLE');
+      return body;
+    };
     async function attachment(file: (typeof attachments)[number]): Promise<Buffer> {
       options.signal?.throwIfAborted();
       const content = await storage?.read(file.id);
@@ -176,10 +185,22 @@ export function createProjectExportUseCases(uow: ProjectExportUnitOfWork, contex
         throw new NotFoundError('File', 'FILE_UNAVAILABLE');
       return Buffer.from(content);
     }
+    /** The preflight of a streamed file: its digest, read once as a stream. */
+    async function verified(file: (typeof attachments)[number]) {
+      const hash = createHash('sha256');
+      for await (const chunk of await open(file)) { options.signal?.throwIfAborted(); hash.update(chunk); }
+      if (hash.digest('hex') !== file.sha256) throw new NotFoundError('File', 'FILE_UNAVAILABLE');
+    }
+    /** The bytes of a streamed file as they are written: checked against the manifest's digest when the last one has gone by. */
+    async function* checked(file: (typeof attachments)[number]): AsyncGenerator<Uint8Array> {
+      const hash = createHash('sha256');
+      for await (const chunk of await open(file)) { hash.update(chunk); yield chunk; }
+      if (hash.digest('hex') !== file.sha256) throw new NotFoundError('File', 'FILE_UNAVAILABLE');
+    }
     options.signal?.throwIfAborted();
     // Reject missing/corrupt files before HTTP headers or CLI output. Published objects are
     // immutable and never abandoned; reads during streaming recheck against the same manifest.
-    for (const file of attachments) await attachment(file);
+    for (const file of attachments) { if (streamed(file)) await verified(file); else await attachment(file); }
     const manifest: ProjectExportManifest = {
       format: 'flux.project-export-bundle', formatVersion: 1,
       projectId: data.project.id, exportedAt: data.exportedAt,
@@ -194,7 +215,7 @@ export function createProjectExportUseCases(uow: ProjectExportUnitOfWork, contex
     };
     async function* files(): AsyncGenerator<BundleFile> {
       yield* base;
-      for (const file of attachments) yield { path: file.path, content: await attachment(file) };
+      for (const file of attachments) yield streamed(file) ? { path: file.path, size: file.size, content: checked(file) } : { path: file.path, content: await attachment(file) };
       for (const doc of data.docs) yield { path: doc.file, content: utf8(doc.versions.at(-1)?.body ?? '') };
       yield { path: 'manifest.json', content: utf8(`${JSON.stringify(manifest, null, 2)}\n`) };
     }

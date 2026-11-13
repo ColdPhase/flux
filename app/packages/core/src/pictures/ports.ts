@@ -9,6 +9,11 @@ export type Renditions = Record<PictureSize, Uint8Array>;
  */
 export interface PictureRenderer {
   render(bytes: Uint8Array): Promise<Renditions>;
+  /**
+   * A video's poster (C-61): the picture a browser drew, decoded under the same pixel bound and re-encoded as one WebP of at most
+   * `FILE_LIMITS.posterEdge` px on its longest side, without metadata. Refused like `render` is.
+   */
+  poster(bytes: Uint8Array): Promise<Uint8Array>;
   /** True while a new picture would be refused as busy: the upload is then refused before its body is read. */
   full(): boolean;
 }

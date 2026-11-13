@@ -312,6 +312,12 @@ plaintext size. `sha256` is a [sealed digest](#digests), and `has` compares it w
 the decrypted bytes. Thumbnails are made only in the browser (`composer/Attachments.tsx`), so nothing
 else is stored.
 
+**Videos (C-61, #1352).** A video in an encrypted space is an ordinary file: 5 MiB, sealed as above, no `video_container`, no
+poster and no playback; it downloads. The sealed object is one AES-GCM message whose tag verifies only after its last byte, so a byte
+range could not be served without releasing unauthenticated bytes or decrypting the whole object for every range. The larger video
+cap (`FLUX_VIDEO_MAX_MIB`), the range route and the poster are for plain spaces only. A chunked sealed format with ranged,
+authenticated reads would lift this; it is not built.
+
 ### Digests
 
 A stored unkeyed SHA-256 of content lets an attacker confirm a guess ("does this workspace hold

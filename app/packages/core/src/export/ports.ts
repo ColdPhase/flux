@@ -56,7 +56,7 @@ export interface ProjectExportAccess {
 }
 
 export interface ProjectExportPorts {
-  files?: { read(id: string): Promise<Uint8Array | null> };
+  files?: { read(id: string): Promise<Uint8Array | null>; stream?(id: string, range: { size: number; start: number; end: number }): Promise<AsyncIterable<Uint8Array> | null> };
   access: ProjectExportAccess;
   rows: ProjectExportRows;
 }
