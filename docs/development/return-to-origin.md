@@ -73,7 +73,7 @@ the [thread reading-position owner](thread-reading-position-2026-10-16.md), whic
 
 ## A search result carries no control (#1424)
 
-Founder review, 2026-11-13: a search result opened with "‹ Conversation" in the computer's header, which moved its name and tabs
+Founder decision (Hubert, 2026-11-13), after the release-gate journey review: a search result opened with "‹ Conversation" in the computer's header, which moved its name and tabs
 by 124 px, and with a filled "‹ Home" pill in place of the phone's round back plus a second back in the thread sheet. A control
 never changes place, so Search is the one reference that does not leave an origin: it flushes the place (as every reference
 does) and navigates with `{ found: true }` as its only state. The destination keeps its header as it is, the phone's back stays

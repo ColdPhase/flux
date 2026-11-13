@@ -17,7 +17,6 @@ import { inComposer } from '../ui/keys';
 import './notifications.css';
 import './needs-you.css';
 
-
 /** From this width the detail panel is no longer an overlay, and the Inbox shows the list and the open item side by side (README §7 Inbox). */
 const TWO_COLUMNS = '(min-width: 1001px)';
 
