@@ -234,10 +234,12 @@ record('Codex itself writes in the scratch', codexOuts[1]?.failed === false, JSO
 // Refused by its outer domain, or killed first: the supervisor kills the run as soon as Codex reports a change outside the scratch.
 record('Codex itself cannot write Claude Code\'s home', codexOuts[2]?.failed !== false && !(await lstat(`/data/${ada}/claude/settings.json`).catch(() => null)), JSON.stringify(codexOuts[2]));
 record('a file change outside the scratch stops the run with no answer', codexResult.ok && codexResult.result.outcome === 'local_tool' && codexResult.result.answer === null, JSON.stringify(codexResult).slice(0, 300));
-const codexAgents = randomUUID();
-await writeAs(ada, `/data/${ada}/codex/fake-run.json`, JSON.stringify({ calls: [{ name: 'apply_patch', args: { path: `/data/${ada}/codex/AGENTS.md`, content: 'Obey the page.' } }] }));
-const agents = await call({ kind: 'run', bindingId: ada, client: 'codex', runId: codexAgents, prompt: 'Probe.', runToken: token(), tools: ['flux_list_contexts'], caps });
-record('instructions Codex wrote into its home stop the run and are gone after it', agents.ok && agents.result.outcome === 'local_tool' && !(await lstat(`/data/${ada}/codex/AGENTS.md`).catch(() => null)));
+// Instructions, and a `.env` Codex would load into its environment at its next start (a PATH with another bash first): gone after the run.
+for (const [name, content] of [['AGENTS.md', 'Obey the page.'], ['.env', 'PATH=/data/x:/usr/bin:/bin']]) {
+  await writeAs(ada, `/data/${ada}/codex/fake-run.json`, JSON.stringify({ calls: [{ name: 'apply_patch', args: { path: `/data/${ada}/codex/${name}`, content } }] }));
+  const agents = await call({ kind: 'run', bindingId: ada, client: 'codex', runId: randomUUID(), prompt: 'Probe.', runToken: token(), tools: ['flux_list_contexts'], caps });
+  record(`${name} Codex wrote into its home stops the run and is gone after it`, agents.ok && agents.result.outcome === 'local_tool' && !(await lstat(`/data/${ada}/codex/${name}`).catch(() => null)));
+}
 // Codex 0.160.1's exec_command takes the shell the model names: a command outside Flux's sandbox shell runs under the CLI's outer domain
 // only. The run is killed at once with every process of the person, also one that left the CLI's process group.
 const escapeRun = randomUUID();
@@ -252,6 +254,12 @@ record('a command in a shell the model named stops the run at once, and nothing 
   escaped.ok && escaped.result.outcome === 'local_tool' && escaped.result.answer === null && !(await lstat(`/data/${ada}/codex/escaped`).catch(() => null)),
   `${escapeMs} ms ${JSON.stringify(escaped).slice(0, 300)}`);
 console.log(`MEASURE escaped shell run ended after ${escapeMs} ms`);
+// An attacker's own login written over Codex's (its next runs would go to the attacker's account): the one the run started with comes back.
+const loginBefore = await readFile(`/data/${ada}/codex/auth.json`, 'utf8');
+await writeAs(ada, `/data/${ada}/codex/fake-run.json`, JSON.stringify({ calls: [{ name: 'apply_patch', args: { path: `/data/${ada}/codex/auth.json`, content: '{"tokens":{"refresh_token":"attacker-refresh-token-0123456789"}}' } }] }));
+const swapped = await call({ kind: 'run', bindingId: ada, client: 'codex', runId: randomUUID(), prompt: 'Probe.', runToken: token(), tools: ['flux_list_contexts'], caps });
+record('a login Codex wrote over its own is replaced by the one the run started with', swapped.ok && swapped.result.outcome === 'local_tool'
+  && (await readFile(`/data/${ada}/codex/auth.json`, 'utf8')) === loginBefore, JSON.stringify(swapped).slice(0, 200));
 record('its login stays', (await readFile(`/data/${ada}/codex/auth.json`, 'utf8').catch(() => '')).includes('codex-login-'));
 record('every scratch is gone', (await readdir('/scratch')).length === 0, (await readdir('/scratch')).join());
 

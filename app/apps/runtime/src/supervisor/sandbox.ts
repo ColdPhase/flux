@@ -81,10 +81,12 @@ export async function removeScratch(path: string, person: Person): Promise<boole
 
 /**
  * What the pinned Codex reads from its home as instructions or settings when a session starts (codex-rs at rust-v0.160.1: `agents_md.rs`,
- * `config/mod.rs`; its rules, skills, prompts, hooks, memories and plugins). Its login is `auth.json`, which stays.
+ * `config/mod.rs`; its rules, skills, prompts, hooks, memories and plugins), and `.env`, whose variables it sets in its own environment at
+ * start (`arg0` crate, dotenvy; #1437 review: a `PATH` there would put another `bash` before Flux's sandbox shell in the next run). Its login is
+ * `auth.json`, which stays.
  */
 export const CODEX_HOME_INSTRUCTIONS = ['AGENTS.md', 'AGENTS.override.md', 'instructions.md', 'config.toml', 'managed_config.toml', 'requirements.toml',
-  'rules', 'skills', 'prompts', 'hooks', 'hooks.json', 'memories', 'plugins'] as const;
+  'rules', 'skills', 'prompts', 'hooks', 'hooks.json', 'memories', 'plugins', '.env'] as const;
 
 /**
  * Codex's home around a run with its own tools (#1437): Codex applies an `apply_patch` it finds in a shell command itself, outside the
