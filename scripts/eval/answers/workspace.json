@@ -1,0 +1,88 @@
+{
+  "_about": "What the answer-accuracy evaluation (#1295) adds to the retrieval bench's 10,000-message space (scripts/eval/retrieval): a ninth person, a handbook space, Wiki pages, tasks with discussions, decisions, maps, files whose facts are only inside the file, and messages placed at ages relative to the day of the run (the relative-date category, founder request 2026-11-13). Times: `days_ago` (that many days before the run, at `time`), `month_offset`+`day` (that day of the month `month_offset` months before the run's month), `last_week_day` (0 = Monday of the week before the run's week). Every fact here is invented.",
+  "people": {"maurycy": ["Maurycy Lis", "member"]},
+  "spaces": {"firma": ["Firma", "workspace", {}]},
+  "timed_messages": [
+    {"key": "budget_q1", "conv": "zarzad-main", "author": "bogdan", "when": {"days_ago": 44, "time": "11:20"}, "text": "Ustaliliśmy budżet marketingowy na pierwszy kwartał: 42 000 zł, z czego połowa idzie na targi."},
+    {"key": "budget_laptops", "conv": "zarzad-main", "author": "ada", "when": {"days_ago": 9, "time": "14:05"}, "text": "Budżet na nowe laptopy dla zespołu: 18 000 zł, zatwierdzony."},
+    {"key": "budget_q3", "conv": "zarzad-main", "author": "bogdan", "when": {"days_ago": 131, "time": "10:40"}, "text": "Budżet marketingowy na trzeci kwartał zostaje bez zmian: 30 000 zł."},
+
+    {"key": "elfa_price", "conv": "dostawy-main", "author": "maurycy", "when": {"month_offset": -1, "day": 5, "time": "09:50"}, "text": "Rozmawiałem z Elfą: od stycznia podnoszą ceny złączy M12 o 7%."},
+    {"key": "elfa_delivery", "conv": "dostawy-main", "author": "maurycy", "when": {"month_offset": -1, "day": 24, "time": "13:15"}, "text": "Elfa potwierdziła, że złącza M12 dojadą 20 listopada."},
+    {"key": "elfa_terms", "conv": "dostawy-main", "author": "maurycy", "when": {"month_offset": -2, "day": 6, "time": "10:30"}, "text": "Elfa daje nam teraz 30 dni terminu płatności zamiast 14."},
+    {"key": "freight_now", "conv": "dostawy-main", "author": "maurycy", "when": {"month_offset": -1, "day": 15, "time": "15:10"}, "text": "Fracht morski z Shenzhen: 2 950 USD za kontener 20', odjazdy co tydzień."},
+    {"key": "freight_old", "conv": "dostawy-main", "author": "maurycy", "when": {"month_offset": -3, "day": 15, "time": "12:00"}, "text": "Fracht z Shenzhen podrożał: 4 100 USD za kontener 20'."},
+
+    {"key": "invoice_two_months", "conv": "dostawy-main", "author": "ola", "when": {"days_ago": 61, "time": "10:25"}, "text": "Faktura FV/0915/2026 od Eurocircuits na 18 230 zł, termin płatności 14 dni, przelew zlecony."},
+    {"key": "invoice_recent", "conv": "dostawy-main", "author": "ola", "when": {"days_ago": 19, "time": "11:40"}, "text": "Faktura FV/1103/2026 od TME na 4 120 zł, zapłacona."},
+
+    {"key": "dostawy_lw_damage", "conv": "dostawy-main", "author": "ola", "when": {"last_week_day": 1, "time": "09:40"}, "text": "Paleta z obudowami od Plastmetu dojechała, 3 kartony uszkodzone. Reklamacja zgłoszona, zdjęcia w wątku."},
+    {"key": "dostawy_lw_inventory", "conv": "dostawy-main", "author": "piotr", "when": {"last_week_day": 2, "time": "15:20"}, "text": "Inwentaryzacja w Pruszczu przesunięta na 20-tego, bo wózek widłowy jest w serwisie."},
+    {"key": "dostawy_lw_courier", "conv": "dostawy-main", "author": "maurycy", "when": {"last_week_day": 3, "time": "11:05"}, "text": "Podpisałem umowę z Raben na transport palet do Gdańska, pierwszy odbiór w przyszłą środę."},
+
+    {"key": "oncall_last_weekend", "conv": "czujniki-main", "author": "piotr", "when": {"last_week_day": 4, "time": "16:30"}, "text": "W ten weekend dyżur ma Jonas, telefon serwisowy już u niego."},
+    {"key": "oncall_earlier", "conv": "czujniki-main", "author": "piotr", "when": {"days_ago": 22, "time": "16:10"}, "text": "W ten weekend dyżur ma Ola, telefon serwisowy przekazany."},
+
+    {"key": "fw_last_month_start", "conv": "czujniki-main", "author": "piotr", "when": {"month_offset": -1, "day": 3, "time": "10:10"}, "text": "Firmware 2.6 przeszedł testy na 20 stacjach: zero restartów przez 72 godziny."},
+    {"key": "fw_last_month_end", "conv": "czujniki-main", "author": "piotr", "when": {"month_offset": -1, "day": 27, "time": "17:45"}, "text": "Firmware 2.7 ma problem z czasem po przejściu na czas zimowy, wstrzymuję wydanie."},
+
+    {"key": "gdansk_shipped_last_month", "conv": "gdansk-main", "author": "ola", "when": {"month_offset": -1, "day": 14, "time": "12:30"}, "text": "Wysłaliśmy do Gdańska kolejne 18 stacji, razem jest ich już 42."},
+    {"key": "gdansk_shipped_earlier", "conv": "gdansk-main", "author": "ola", "when": {"month_offset": -2, "day": 16, "time": "12:00"}, "text": "Wysłaliśmy do Gdańska 24 stacje, pierwsza partia."},
+
+    {"key": "a11y_audit", "conv": "www-main", "author": "sarah", "when": {"days_ago": 21, "time": "13:00"}, "text": "The new site passed the accessibility audit: 96/100 in Lighthouse, two contrast fixes left."},
+    {"key": "lighthouse_drop", "conv": "www-main", "author": "sarah", "when": {"days_ago": 4, "time": "10:15"}, "text": "Lighthouse performance dropped to 71 after we added the map widget."},
+
+    {"key": "www_lw_fonts", "conv": "www-main", "author": "jonas", "when": {"last_week_day": 0, "time": "10:20"}, "text": "Self-hosted the fonts, the CDN is gone from the site."},
+    {"key": "www_lw_newsletter_tool", "conv": "www-main", "author": "sarah", "when": {"last_week_day": 2, "time": "14:45"}, "text": "We moved the newsletter from Mailchimp to Brevo; the 340 subscribers came over."},
+    {"key": "www_lw_cookie", "conv": "www-main", "author": "jonas", "when": {"last_week_day": 3, "time": "12:10"}, "text": "The cookie banner is gone: Plausible needs no consent, legal confirmed."}
+  ],
+  "fillers": [
+    {"conv": "dostawy-main", "space": "dostawy", "count": 30, "from": "this_week", "seed": 1},
+    {"conv": "www-main", "space": "www", "count": 30, "from": "this_week", "seed": 2}
+  ],
+  "docs": [
+    {"key": "w_rma", "space": "czujniki", "author": "ola", "title": "Procedura zwrotów (RMA)", "body": "## Zgłoszenie\n\nKlient ma **30 dni** od dostawy na zgłoszenie zwrotu stacji. Numer zgłoszenia ma format RMA-2026-NNN.\n\n## Koszty\n\nEtykietę kurierską opłacamy tylko przy naprawach gwarancyjnych. Zgłoszenia przyjmuje serwis@zielonydach.eu, odpowiadamy w ciągu 2 dni roboczych."},
+    {"key": "w_onboarding", "space": "firma", "author": "bogdan", "title": "Onboarding: the first week", "body": "## Day one\n\nYour laptop comes from Bogdan, with accounts in Google Workspace and Flux. The VPN is WireGuard; Piotr sends the configuration.\n\n## The first month\n\nEvery new person gets a buddy for the first month. Our core hours are 10:00 to 14:00; outside them, work when it suits you."},
+    {"key": "w_release", "space": "czujniki", "author": "marta", "title": "Firmware release checklist", "body": "1. Every release runs a **72-hour soak test** on 20 stations in the test rack before wave 1.\n2. Images are signed with the release key on the YubiKey kept in the office safe.\n3. Waves go out at least 48 hours apart."},
+    {"key": "w_pricing", "space": "dostawy", "author": "bogdan", "title": "Cennik i rabaty 2027", "body": "Ceny są netto. Rabat ilościowy jak w ustaleniach zarządu. **Samorządy** dostają dodatkowe 3 punkty procentowe rabatu, łącznie z rabatem ilościowym. Transport jest gratis od **20 sztuk**."},
+    {"key": "w_roof_safety", "space": "gdansk", "author": "piotr", "title": "Montaż na dachu: BHP", "body": "- Nie montujemy przy wietrze powyżej **12 m/s**.\n- Na dachu zawsze dwie osoby, w szelkach z linką.\n- Drabina tylko z aktualnym atestem."},
+    {"key": "w_brand", "space": "www", "author": "sarah", "title": "Brand guidelines", "body": "Headings use **Fraunces**, body text uses **Inter**. The logo is at least 24 px high and never sits on a photo without its white plate."},
+    {"key": "w_gdansk_sla", "space": "gdansk", "author": "ada", "title": "Gdańsk: SLA i kontakty", "body": "Czas reakcji na awarię zgłoszoną przez miasto: **48 godzin**. Wymiana stacji: 5 dni roboczych. Kara za przekroczenie SLA: **200 zł za każdy dzień**."},
+    {"key": "w_leave", "space": "firma", "author": "ada", "title": "Urlopy", "body": "Urlop zgłaszamy co najmniej **14 dni wcześniej** w Kadromierzu. W sierpniu z zespołu sprzętowego na urlopie mogą być naraz najwyżej dwie osoby."}
+  ],
+  "tasks": [
+    {"key": "t_antennas", "space": "gdansk", "author": "ada", "title": "Wymiana anten w stacjach na Przymorzu", "discussion": [
+      {"key": "t_antennas_order", "author": "ola", "days_ago": 12, "text": "Zamówiłam 25 anten Taoglas FXP290, dostawa 2 grudnia."},
+      {"key": "t_antennas_plan", "author": "piotr", "days_ago": 11, "text": "Ok, montaż zrobimy w dwóch turach."}]},
+    {"key": "t_red", "space": "czujniki", "author": "jonas", "title": "RED certification", "discussion": [
+      {"key": "t_red_quote", "author": "jonas", "days_ago": 33, "text": "Phoenix Testlab quoted 18,400 EUR for the RED tests, six weeks from sample delivery."}]},
+    {"key": "t_status", "space": "www", "author": "sarah", "title": "Status page", "discussion": [
+      {"key": "t_status_tool", "author": "sarah", "days_ago": 15, "text": "We'll go with Better Stack for the status page, status.zielonydach.eu as a CNAME."}]}
+  ],
+  "decisions": [
+    {"key": "d_warranty", "space": "gdansk", "author": "ada", "title": "Gwarancja 36 miesięcy dla klientów samorządowych", "rationale": "Przetargi wymagają co najmniej 36 miesięcy gwarancji; rezerwa na naprawy to 2% ceny."},
+    {"key": "d_usbc", "space": "czujniki", "author": "jonas", "title": "USB-C as the only service port from hardware revision D", "rationale": "Fewer cables for installers; micro-USB broke in 4% of field returns."}
+  ],
+  "maps": [
+    {"key": "m_2027", "space": "czujniki", "author": "ada", "title": "Pomysły na 2027", "thoughts": [
+      {"key": "m_2027_orchard", "text": "Stacja dla sadowników z czujnikiem zwilżenia liści"},
+      {"key": "m_2027_subscription", "text": "Abonament na dane: 9 zł miesięcznie za stację"},
+      {"key": "m_2027_imgw", "text": "Partnerstwo z IMGW na wymianę danych"}]},
+    {"key": "m_web", "space": "www", "author": "sarah", "title": "Website ideas", "thoughts": [
+      {"key": "m_web_livemap", "text": "Live map of every public station, refreshed every 10 minutes"},
+      {"key": "m_web_blog", "text": "Blog in Polish and English"},
+      {"key": "m_web_stories", "text": "Customer stories: irrigation in Sopot"}]}
+  ],
+  "files": [
+    {"key": "f_plastmet_offer", "conv": "czujniki-main", "author": "bogdan", "when": {"days_ago": 25, "time": "12:40"}, "message": "Oferta od Plastmetu na obudowy w załączniku.", "name": "Oferta_Plastmet_obudowy.pdf", "type": "pdf",
+     "lines": ["Plastmet Sp. z o.o. - Oferta nr 2026/311", "Obudowa ZD-ENC-3, poliweglan UV, kolor grafit.", "Cena: 23,40 zl netto za sztuke przy 1000 sztuk.", "Termin realizacji: 6 tygodni od zamowienia."]},
+    {"key": "f_postmortem", "conv": "czujniki-main", "author": "piotr", "when": {"days_ago": 80, "time": "09:15"}, "message": "Post-mortem po awarii chmury w załączniku.", "name": "postmortem-cloud-outage.md", "type": "md",
+     "text": "# Post-mortem: cloud outage\n\n- Downtime: 3 h 40 min, no data lost (stations buffered).\n- Root cause: the TLS certificate of the MQTT broker expired; renewal was a manual step nobody owned.\n- Fix: cert-manager renews it now, and an alert fires 14 days before expiry.\n"},
+    {"key": "f_st0417", "conv": "gdansk-main", "author": "tomasz", "when": {"days_ago": 18, "time": "08:30"}, "message": "Pomiary ze stacji ST-0417, plik poniżej.", "name": "pomiary_ST-0417.csv", "type": "csv_measurements", "station": "ST-0417", "peak": "41.3"},
+    {"key": "f_nda", "conv": "zarzad-main", "author": "ada", "when": {"days_ago": 52, "time": "16:00"}, "message": "NDA z Sopotem podpisane, dokument w załączniku.", "name": "NDA_Sopot.docx", "type": "docx",
+     "paragraphs": ["Umowa o zachowaniu poufności między Zielony Dach sp. z o.o. a Gminą Miasta Sopot.", "§ 3. Umowa obowiązuje przez 5 lat od dnia podpisania.", "§ 5. Za naruszenie poufności Strona zapłaci karę umowną w wysokości 50 000 zł."]},
+    {"key": "f_emc", "conv": "czujniki-kalibracja", "author": "marta", "when": {"days_ago": 47, "time": "13:20"}, "message": "Raport z badań EMC z Gliwic.", "name": "EMC_report_Gliwice.pdf", "type": "pdf",
+     "lines": ["EMC test report 2026-EMC-0912", "Device: Zielony Dach weather station, rev. C", "Radiated emissions: margin 4.2 dB at 868 MHz.", "Result: PASS"]},
+    {"key": "f_stations", "conv": "gdansk-main", "author": "tomasz", "when": {"days_ago": 40, "time": "10:00"}, "message": "Lista stacji z adresami, do aktualizacji.", "name": "stacje_gdansk.csv", "type": "csv_stations", "station": "ST-0433", "address": "ul. Grunwaldzka 82"}
+  ]
+}

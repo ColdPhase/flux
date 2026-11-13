@@ -4,8 +4,9 @@ import { useSpareHeight } from '../ui/spareHeight';
 import { NewBelow, UNREAD_READ_BACK, UnreadDivider, countBelow, openAtUnread, useNewBelow } from '../app/unreadReading';
 import { MessageDay } from '../app/messageParts';
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import { Link, useLoaderData, useLocation, useNavigate, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
+import { useLoaderData, useLocation, useNavigate, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
 import { NavigateWithNote } from '../app/NavigateWithNote';
+import { NotAvailable } from '../app/NotAvailable';
 import type { Dm, DmMessage, DmPerson, DmTaskCopyResult } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { dmReaders, dmReceipts, getDm, observeDmMessages, olderDmMessages } from '../api/direct-messages';
@@ -64,13 +65,7 @@ export function DmConversation() {
 }
 
 function DmUnavailable() {
-  return (
-    <div className="pane-scroll"><div className="pane-in dm-gone" role="alert">
-      <Icon name="lock" size={16} />
-      <div><h2>This conversation isn’t available</h2><p>It may have been left, or you are no longer in it. Only the people in a direct message can open it.</p>
-        <Link className="ui-btn ui-btn--secondary" to="/dm">Back to direct messages</Link></div>
-    </div></div>
-  );
+  return <NotAvailable title="This conversation isn’t available" back={{ to: '/dm', label: 'Back to Messages' }} />;
 }
 
 function merge(current: DmMessage[], incoming: DmMessage[]) {
@@ -491,7 +486,7 @@ function DmContent({ initial }: { initial: Dm }) {
           <ConnectionLine />
           {composer.draft.cites.map((cite) => <CiteTile key={`${cite.kind}:${cite.id}`} cite={cite} disabled={composer.sending} onRemove={() => composer.removeCite(cite.kind, cite.id)} />)}
           <ComposerBox id="dm-composer" label={`Message ${title}`} fieldRef={textareaRef} value={draft} onChange={(value) => change(value)} onBlur={typing.stop} onKeyDown={onKey}
-            disabled={recipientGone} boxDisabled={recipientGone} placeholder={recipientGone ? 'Nobody else is in this conversation' : `Message ${others.length === 1 ? others[0]!.name.split(/\s+/)[0] : title}…`}
+            disabled={recipientGone} boxDisabled={recipientGone} placeholder={recipientGone ? 'Nobody else is in this conversation' : [`Message ${others.length === 1 ? others[0]!.name.split(/\s+/)[0] : title}…`, 'Message…']}
             fieldProps={{ 'aria-describedby': asking ? audienceId : undefined }} sendLabel={asking ? 'Ask your agent' : 'Send message'} sendDisabled={!canSend} onSend={() => void send()} />
           {asking ? <p className="composer__audience" data-asking="true"><Icon name="lock" size={13} /><span id={audienceId}>Only you see the answer · {firstNames(others.map((person) => person.name)).join(', ') || 'The others'} {others.length === 1 ? 'sees' : 'see'} only a line that AI was used here</span></p>
             : null}

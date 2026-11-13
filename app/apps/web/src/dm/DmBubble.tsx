@@ -110,6 +110,7 @@ export function DmBubble({ dmId, message, pending, mine: authored, name, continu
           ) : null}
           {groupLast ? <MessageTime at={message.createdAt} receipt={receipt} edited={message.editedAt} /> : null}
           {actions ? <MessageActions {...actions} /> : null}
+          {touch.dots}
         </div>
       </div>
       {touch.node}

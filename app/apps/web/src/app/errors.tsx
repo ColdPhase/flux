@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Link, isRouteErrorResponse, useLocation, useRevalidator, useRouteError } from 'react-router';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Link, isRouteErrorResponse, useLocation, useMatches, useRevalidator, useRouteError } from 'react-router';
 import { ApiError, NetworkError } from '../api/client';
 import { getMe } from '../api/auth';
 import { useThoughtDraft } from '../sketch/createdDraft';
@@ -11,24 +11,53 @@ import { NavigateWithNote } from './NavigateWithNote';
 import { spaceLost, useReturning } from '../place/memory';
 import { isWorkspaceLocked, lockedWorkspaceId } from '../encryption/api';
 import { LockedSpace } from '../encryption/LockedSpace';
+import { NotAvailable } from './NotAvailable';
 
 /** Code download/evaluation failed; retry needs a fresh document/module cache, not API revalidation. */
 export class RouteCodeLoadError extends Error {
   constructor(cause: unknown) { super('The page code could not be loaded', { cause }); this.name = 'RouteCodeLoadError'; }
 }
 
-/** Full-page failure when the shell itself can't load (e.g. the server is unreachable). */
-export function RouteErrorPage() {
+/**
+ * What a failed read is called in "<place> couldn’t be loaded" (#1369): the person's word for where they were, from the address.
+ * One word for one place: Messages, the Wiki, the Inbox.
+ */
+export function placeTitle(pathname: string): string {
+  if (/^\/settings\/ai-connections/.test(pathname)) return 'Your API keys';
+  if (pathname.startsWith('/settings/notifications')) return 'Notification settings';
+  if (pathname.startsWith('/settings')) return 'Settings';
+  if (pathname === '/projects') return 'Spaces';
+  if (pathname === '/map' || /^\/map\//.test(pathname)) return 'My map';
+  if (pathname === '/tasks') return 'My tasks';
+  if (/\/map(\/|$)/.test(pathname)) return 'The map';
+  if (/(?:\/docs|\/materials)(\/|$)/.test(pathname)) return 'The Wiki';
+  if (/\/tasks(\/|$)/.test(pathname)) return 'Tasks';
+  if (/\/github(\/|$)/.test(pathname)) return 'GitHub settings';
+  if (/\/live(\/|$)/.test(pathname)) return 'The call';
+  if (/^\/projects\/[^/]+\/settings/.test(pathname)) return 'The space’s settings';
+  if (pathname.startsWith('/inbox')) return 'The Inbox';
+  if (pathname === '/dm') return 'Messages';
+  if (pathname.startsWith('/dm') || pathname.startsWith('/agents')) return 'The conversation';
+  if (pathname.startsWith('/projects/')) return 'The conversation';
+  return 'This page';
+}
+
+/**
+ * The failure of a route's read (#1369). Under the shell (every place of the app) it is said in place, as "<place> couldn’t be loaded" with
+ * Try again, and the sidebar, the header and the tab bar stay. Without a shell (the shell's own read failed, or a sign-in page) it is the whole page.
+ * A place that is gone or closed is the one calm "not available" page (#1371). No raw status text anywhere.
+ */
+function ErrorPage({ shell }: { shell: boolean }) {
   const error = useRouteError();
   const revalidator = useRevalidator();
   const retrying = revalidator.state === 'loading';
   const sketchId = /\/map\/([0-9a-f-]{36})$/i.exec(useLocation().pathname)?.[1];
-  const destination = routeLabel(useLocation().pathname);
+  const pathname = useLocation().pathname;
+  const noun = placeTitle(pathname);
   const codeUnavailable = error instanceof RouteCodeLoadError;
   const unreachable = error instanceof NetworkError;
   // Back, Forward or the way back to a project place that is gone or no longer allowed: not an error page (#592).
   const revoked = (error instanceof ApiError || isRouteErrorResponse(error)) && (error.status === 403 || error.status === 404);
-  const pathname = useLocation().pathname;
   // Or a space the person was just removed from while one of its places was open (#862): the same calm landing, not an error page.
   const space = /^\/projects\/([0-9a-f-]{36})/i.exec(pathname)?.[1];
   const back = useReturning();
@@ -42,45 +71,66 @@ export function RouteErrorPage() {
     const timer = window.setInterval(retry, 10_000);
     return () => { window.removeEventListener('online', retry); window.clearInterval(timer); };
   }, [unreachable, revalidator]);
-  let title = 'Something went wrong';
-  let body = 'Flux hit an unexpected problem while opening this page. You can return to Home and try again.';
-  let detail: string | undefined;
-  if (codeUnavailable) {
-    title = 'This page couldn’t be loaded';
-    body = `Flux couldn’t open ${destination}. Check your connection. Return to your work or reload when this tab can do so safely.`;
-  } else if (error instanceof NetworkError) {
-    title = 'Flux can’t be reached';
-    body = 'Your device couldn’t connect to the Flux server. Check your connection; this page will work again once the server answers.';
-  } else if (error instanceof ApiError && error.status === 429) {
-    // The floor of rate limits (#838): reads already waited and asked again; this is what is left after that. Calm, no raw detail.
-    title = 'Flux is busy right now';
-    body = 'Too many requests came from this connection in a short time. Wait a moment and try again; nothing you wrote is lost.';
-  } else if (error instanceof ApiError && error.status === 404) {
-    title = 'This place isn’t available';
-    body = 'It may have been moved, or you no longer have access to it.';
-  } else if (isRouteErrorResponse(error)) {
-    if (error.status === 404) { title = 'This page doesn’t exist'; body = 'The address may be mistyped, or what it pointed to was moved.'; }
-    detail = `${error.status} ${error.statusText}`;
-  } else if (error instanceof Error) {
-    detail = error.message;
-  }
+  // When Try again brings the place back, the button that had focus goes with this page: focus moves to the place itself (`#content`), not to
+  // the start of the document, so a keyboard or screen reader user goes on where they were (#1369). A place that focuses something of its own keeps it.
+  const tried = useRef(false);
+  useEffect(() => () => {
+    if (!tried.current) return;
+    requestAnimationFrame(() => {
+      if (!document.activeElement || document.activeElement === document.body) document.getElementById('content')?.focus({ preventScroll: true });
+    });
+  }, []);
   if (returning) return <NearestAccessible pathname={pathname} />;
   // F-030 (#655): a place whose workspace is an encrypted one that waits to be unlocked shows the locked panel, not an error.
   if (isWorkspaceLocked(error)) return <LockedSpace workspaceId={lockedWorkspaceId(error)} />;
-  return (
-    <main className="page-center">
-      <ErrorState level={1} title={title} detail={detail}
-        actions={<>
-          {codeUnavailable
-            ? <ReloadRecovery />
-            : <Button variant="primary" size="lg" icon={retrying ? undefined : 'refresh'} busy={retrying} onClick={() => revalidator.revalidate()}>Try again</Button>}
-          <Link className="ui-btn ui-btn--quiet ui-btn--lg" to="/">Go to Home</Link>
-        </>}>
-        <p>{body}</p>
-        {sketchId ? <PrivateThoughtRecovery sketchId={sketchId} /> : null}
-      </ErrorState>
-    </main>
+  if (revoked) {
+    const title = isRouteErrorResponse(error) && error.status === 404 ? 'This page doesn’t exist' : 'This place isn’t available';
+    return <NotAvailable title={title} bare={!shell} />;
+  }
+
+  const tryAgain = <Button variant={shell ? 'secondary' : 'primary'} size={shell ? 'md' : 'lg'} icon={retrying ? undefined : 'refresh'} busy={retrying} onClick={() => { tried.current = true; revalidator.revalidate(); }}>Try again</Button>;
+  const home = <Link className="ui-btn ui-btn--quiet ui-btn--lg" to="/">Go to Home</Link>;
+  let title: string;
+  let body: string;
+  let actions: ReactNode = tryAgain;
+  if (codeUnavailable) {
+    title = 'This page couldn’t be loaded';
+    body = `Flux couldn’t open ${routeLabel(pathname)}. Check your connection. Return to your work or reload when this tab can do so safely.`;
+    actions = <><ReloadRecovery />{home}</>;
+  } else if (unreachable) {
+    title = shell ? `${noun} couldn’t be loaded` : 'Flux can’t be reached';
+    body = 'Your device couldn’t connect to the Flux server. Check your connection; this will load again once the server answers.';
+  } else if (error instanceof ApiError && error.status === 429) {
+    // The floor of rate limits (#838): reads already waited and asked again; this is what is left after that. Calm, no raw detail.
+    title = shell ? `${noun} couldn’t be loaded` : 'Flux is busy right now';
+    body = 'Too many requests came from this connection in a short time. Wait a moment and try again; nothing you wrote is lost.';
+  } else if (error instanceof ApiError) {
+    // A temporary answer of the server is not an unexpected problem (#1369).
+    title = shell ? `${noun} couldn’t be loaded` : 'Flux isn’t answering';
+    body = 'Flux didn’t answer just now. Nothing was lost; try again in a moment.';
+  } else {
+    title = 'Something went wrong';
+    body = 'Flux hit an unexpected problem while opening this page. You can return to Home and try again.';
+    actions = <>{tryAgain}{shell ? null : home}</>;
+  }
+  const state = (
+    <ErrorState level={shell ? 2 : 1} title={title} actions={actions}>
+      <p>{body}</p>
+      {sketchId ? <PrivateThoughtRecovery sketchId={sketchId} /> : null}
+    </ErrorState>
   );
+  return shell ? <div className="pane-scroll"><div className="pane-in">{state}</div></div> : <main className="page-center">{state}</main>;
+}
+
+/** The boundary of the shell's own read, of the root and of the sign-in pages: nothing of the shell is there to keep. */
+export function RouteErrorPage() {
+  return <ErrorPage shell={false} />;
+}
+
+/** The boundary of every place of the app: it is said inside the shell, which stays (#1369); outside the shell it is the whole page. */
+export function PlaceError() {
+  const inShell = useMatches().some((match) => match.id === 'app');
+  return <ErrorPage shell={inShell} />;
 }
 
 /**

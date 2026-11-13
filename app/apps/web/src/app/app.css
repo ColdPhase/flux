@@ -122,7 +122,7 @@ body:has(.app) { background: var(--side); }
 .side__ic { color: var(--t2); width: 18px; flex: none; }
 .side__pj {
   display: inline-flex; align-items: center; justify-content: center; flex: none; border-radius: 6px; background: var(--sub);
-  box-shadow: inset 0 0 0 1px var(--line); font-size: var(--fs-glyph); font-weight: 600; color: var(--t1);
+  box-shadow: inset 0 0 0 1px var(--line); font-size: var(--fs-face); font-weight: 600; color: var(--t1);
 }
 .side__count {
   margin-left: auto; display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 7px;
@@ -306,8 +306,6 @@ a.me__btn[aria-current="page"] { background: var(--sub); }
 :root[data-pwa-update="on"] .app__side .side { padding-top: 14px; }
 :root[data-pwa-update="on"] .phead { padding-top: 6px; }
 @media (max-width: 640px) and (max-height: 480px) { :root[data-pwa-update="on"] .phead, :root[data-pwa-update="on"] .phead--large { padding-top: 4px; } }
-/* A direct message's title menu is a card under the header: it follows the header down by the row's height. */
-:root[data-pwa-update="on"] .ui-overlay--center .phone-menu { top: calc(64px + var(--pwa-update-h, 0px)); max-height: calc(100dvh - 96px - var(--pwa-update-h, 0px)); }
 .me__sec { padding: 8px 4px; border-top: 1px solid var(--line); }
 .me__sec--end { padding-bottom: 2px; }
 .me__item {
@@ -338,6 +336,8 @@ a.me__item { text-decoration: none; }
 .top { display: flex; align-items: center; gap: 8px; min-height: var(--header-h); flex: none; padding: 14px var(--space-page) 6px; }
 .top__title { display: flex; align-items: baseline; gap: 10px; flex: 1; min-width: 0; }
 .top__title h1 { font-size: var(--fs-title); font-weight: 600; letter-spacing: -0.65px; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* A count beside a place's title: a quiet number, never a pill (README §2, §7 Inbox). */
+.top__n { font-size: var(--fs-md); font-weight: 500; color: var(--t3); font-variant-numeric: tabular-nums; }
 .top__crumb, .top__slash { color: var(--t2); font-size: var(--fs-md); white-space: nowrap; }
 .top__topic { min-width: 0; color: var(--t2); font-size: var(--fs-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .top__right { display: flex; align-items: center; gap: 8px; flex: none; }
@@ -377,7 +377,7 @@ a.me__item { text-decoration: none; }
 .top__face { display: inline-flex; flex: none; border-radius: 50%; }
 .top__face .ui-avatar, .top__face.kreska { background: var(--el); }
 /* "+N" is a face of the same size, as drawn: a circle for one digit, a short pill for two. Which one shows is the header pane's width (project-header.css). */
-.top__more-faces { place-items: center; flex: none; min-width: 20px; height: 20px; padding: 0 3px; border-radius: var(--r-pill); background: var(--el); box-shadow: inset 0 0 0 1px var(--line), var(--sh-1); font-size: var(--fs-glyph); font-weight: 600; line-height: 1; color: var(--t1); }
+.top__more-faces { place-items: center; flex: none; min-width: 20px; height: 20px; padding: 0 3px; border-radius: var(--r-pill); background: var(--el); box-shadow: inset 0 0 0 1px var(--line), var(--sh-1); font-size: var(--fs-face); font-weight: 600; line-height: 1; color: var(--t1); }
 .top__face--wide, .top__more-faces--wide { display: none; }
 .top__more-faces--narrow { display: inline-grid; }
 .top__more { position: relative; display: inline-flex; }
@@ -525,7 +525,7 @@ a.me__item { text-decoration: none; }
 .details__rows b { font-weight: 500; color: var(--t1); }
 .details__rows span { font-size: var(--fs-sm); color: var(--t3); }
 .details__rows li.details__person { flex-direction: row; align-items: center; gap: 10px; }
-.details__rows .details__person span.ui-avatar { font-size: var(--fs-xs); color: var(--t2); }
+.details__rows .details__person span.ui-avatar { font-size: var(--fs-face-lg); color: var(--t2); }
 .details__leave { color: var(--t1); margin-left: -8px; }
 .details__confirm p { margin-bottom: 10px; }
 .details__actions { display: flex; gap: 8px; }
@@ -612,20 +612,10 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 .phead__logo { display: inline-flex; flex: none; }
 .phead__title { flex: 1; min-width: 0; }
 .phead__title h1 { margin: 0; font-size: var(--fs-title); font-weight: 600; letter-spacing: -.02em; line-height: 1.25; }
-.phead__menu {
-  display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-height: 44px; padding: 0; border-radius: var(--r-sm);
-  font: inherit; color: var(--t1); text-align: left;
-}
-.phead__menu svg { flex: none; color: var(--t2); }
-/* A direct message's title menu is a 44 px target in the same band as Back and Search; its line sits inside the target's
-   lower band, so the whole header stays one 56 px row (Spokój #507) and the focus ring frames the title and its
-   line instead of crossing it. */
-.phead__title h1:has(> .phead__menu) { position: relative; z-index: 1; margin-block: -1px -20px; }
-.phead__title h1 > .phead__menu { display: flex; width: 100%; padding-bottom: 19px; }
 /* The narrowest phones keep the view's name whole; the people are in Details. */
 @media (max-width: 340px) { .phead__people { display: none; } }
-.phead__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .phead__word { font-size: var(--fs-logo); font-weight: 600; letter-spacing: -.04em; }
+.phead--agent .phead__sub { color: var(--t3); }
 .phead__sub { margin: 0; font-size: var(--fs-xs); line-height: 1.35; color: var(--t2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .phead__meta-slot:empty { display: none; }
 .phead__meta-slot:not(:empty)::before { content: ' · '; }
@@ -653,6 +643,8 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 .phead--space .phead__right .lv-entry:not(:has(.lv-entry__btn--join)) { display: none; }
 /* Join and More never shrink, and the name takes the rest. */
 .phead--space .phead__right { flex: none; gap: 4px; }
+/* A direct message has no views under its title row, so the row closes the header with the 6 px a plain header has under it (#1374). */
+.phead--dm { padding-bottom: 6px; }
 .phead__views { flex: 0 0 calc(100% + 2 * var(--phead-x)); min-width: 0; margin-inline: calc(-1 * var(--phead-x)); --tab-below: 4px; }
 .phead__views .ui-tabs__bar {
   /* The hairline is the row's, under the whole width; the 4 px under it are the tabs' hit area. The first word lines up with the page's gutter. */
@@ -738,24 +730,6 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
   .app--fab .app__pane:has(.pane-scroll) { padding-bottom: 0; }
   .app--fab .app__pane .pane-scroll:not(.pane-scroll .pane-scroll) { padding-bottom: 72px; scroll-padding-bottom: 72px; }
 }
-/* A direct message's title menu: a card under the header. */
-.ui-overlay--center .phone-menu { top: calc(64px + env(safe-area-inset-top)); width: calc(100% - 24px); max-height: calc(100dvh - 96px); border-radius: 26px; padding: 18px 8px 8px; overflow-y: auto; }
-@media (min-width: 641px) { .ui-overlay--center .phone-menu { width: min(400px, calc(100% - 32px)); } }
-.phone-menu__t { margin: 0 12px 10px; font-size: var(--fs-title); font-weight: 600; letter-spacing: -.02em; }
-.phone-menu__list { margin: 0; padding: 0; list-style: none; }
-.phone-menu__item {
-  display: flex; align-items: center; gap: 14px; width: 100%; min-height: 52px; padding: 0 14px; border-radius: 18px;
-  font-size: var(--fs-lg); color: var(--t1); text-decoration: none; text-align: left;
-}
-.phone-menu__item[aria-current="page"] { background: var(--sub); }
-.phone-menu__l { flex: 1; min-width: 0; }
-.phone-menu__n { font-size: var(--fs-xs); color: var(--t2); }
-.phone-menu__ok { flex: none; }
-.phone-menu__details { margin-top: 6px; border-top: 1px solid var(--line); border-radius: 0; color: var(--t2); }
-/* Mute (#1249): the label and one small muted line under it; it shares the separator with "Message info" under it. */
-.phone-menu__mute { margin-top: 6px; padding-block: 8px; border-top: 1px solid var(--line); border-radius: 0; color: var(--t1); }
-.phone-menu__mute + .phone-menu__details { margin-top: 0; border-top: 0; }
-.phone-menu__hint { display: block; margin-top: 2px; font-size: var(--fs-xs); line-height: 1.35; color: var(--t3); }
 .proj-index__dms { display: grid; gap: 10px; margin-top: 22px; justify-items: start; }
 .proj-index__dms h2 { margin: 0; font-size: var(--fs-base); font-weight: 500; color: var(--t2); }
 .proj-index__dms .dm-index { width: 100%; }

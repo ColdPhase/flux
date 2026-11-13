@@ -4,6 +4,7 @@ import type { LivePresentation, LiveSession, ProjectPerson } from '@flux/contrac
 import { ApiError, NetworkError } from '../api/client';
 import { streamLive, useStreamEvents } from '../api/stream';
 import { MEDIA, useMediaQuery, useToast } from '../ui';
+import { announceInboxChange } from '../notifications/api';
 import { listProjectPeople } from '../project/data';
 import { anchorLabel, anchorPath, sameContext, resolveFragment, type LiveAnchor, type Presentable, type ResolvedFragment } from './anchors';
 import {
@@ -288,6 +289,8 @@ export function LiveProvider({ meId, children }: { meId: string; children: React
   const connect = useCallback(async (target: LiveSession, targetAnchor: LiveAnchor | null, mode: 'joining' | 'rejoining') => {
     setPhase(mode);
     const grant = await joinSession(target.id);
+    // Being in the call answers its notice and any invitation: the server read them, so the Inbox and Home read again (#1368).
+    announceInboxChange();
     let next = connectionRef.current;
     if (!next) {
       // The media SDK is loaded only when someone actually joins a session.

@@ -117,7 +117,7 @@ checks. New JWTs match the AS-owned `client_id` to their durable grant; a disabl
 actual OAuth client is rejected by the live reference lookup. Historic singleton
 rows remain stored, but new authorization requests never consult them.
 
-`app/patches/oauth-provider-1.7.18-flux-refresh.patch` (ported from 1.7.6 in #877) is applied by the locked pnpm
+`app/patches/oauth-provider-1.7.19-flux-refresh.patch` (ported from 1.7.6 in #877; the move to 1.7.19 changed only the name of the bundle chunk) is applied by the locked pnpm
 configuration to the exact pinned provider artifact. It restricts replay cleanup
 to `authorizationCodeId`; a legacy row without that lineage can invalidate only
 itself. It also checks current connection authority before serving a cached

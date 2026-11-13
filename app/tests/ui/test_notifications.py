@@ -24,6 +24,7 @@ from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_play
 from app_select import choose, expect_value
 
 from test_app_shell import DESKTOP, MAILPIT, ORIGIN, PHONE, UPSTREAM, start_forwarder
+from inbox_items import open_item
 from test_settings import UI_BROWSER, assert_touch_target, shot
 
 PASSWORD = "a calm inbox for the garden"
@@ -161,7 +162,7 @@ class NotificationJourney(unittest.TestCase):
         page = self.page("ada")
         self.wait_for_inbox(page, 6)
         queue = self.wait_for_needs(page, 3)
-        self.assertEqual([item["kind"] for item in queue["items"]], ["decision", "question", "mention"])
+        self.assertEqual(sorted(item["kind"] for item in queue["items"]), ["decision", "mention", "question"])
         page.goto("/")
         rail = page.get_by_role("navigation", name="Places")
         inbox_link = rail.get_by_role("link", name=re.compile(r"^Inbox, \d+ new$"))
@@ -195,17 +196,16 @@ class NotificationJourney(unittest.TestCase):
     def test_02_open_the_exact_source_and_done_reads_it(self) -> None:
         page = self.page("ada")
         page.goto("/inbox")
-        page.locator(".nyc", has_text="asked you in Garden sensors").get_by_role("button", name="Reply").click()
+        open_item(page.locator(".nyc", has_text="asked you in Garden sensors")).get_by_role("button", name="Reply").click()
         expect(page).to_have_url(re.compile(re.escape(self.urls["question"]) + "$"))
         message = page.locator("#" + self.urls["question"].split("#", 1)[1])
         expect(message).to_be_visible()
         expect(message).to_contain_text("could you check the calibration table before Friday?")
 
-        # A proposed decision opens in Details on its project, and nothing is read or decided by looking.
         page.get_by_role("navigation", name="Places").get_by_role("link", name=re.compile("^Inbox")).click()
-        page.locator(".nyc", has_text="Switch to capacitive probes").get_by_role("button", name="Switch to capacitive probes").click()
-        expect(page.locator("#details")).to_contain_text("Switch to capacitive probes")
-        page.keyboard.press("Escape")
+        # A decision is open as its card in the right column; Discuss goes to where it is talked about, and nothing is decided by looking.
+        proposal = open_item(page.locator(".nyc", has_text="Switch to capacitive probes"))
+        expect(proposal.get_by_role("heading", level=2, name="Switch to capacitive probes")).to_be_visible()
         self.assertEqual(self.api(page, "GET", "/api/v1/needs-you")["count"], 3)
 
         # Done leaves the queue and reads the notification; Undo (Z) brings both back. Nothing is deleted.
@@ -214,7 +214,7 @@ class NotificationJourney(unittest.TestCase):
         mention.locator(".nyc__card > :first-child").click()  # its face: free space, not a link or button
         expect(mention).to_have_attribute("aria-current", "true")
         mention.hover()
-        mention.get_by_role("button", name="Done").click()
+        open_item(mention).get_by_role("button", name="Done").click()
         expect(mention).to_have_count(0)
         expect(page.get_by_role("status").filter(has_text="Marked done")).to_be_visible()
         read = lambda: next(item for item in self.api(page, "GET", "/api/v1/inbox?limit=100")["items"] if "mentioned you" in item["title"])["readAt"]  # noqa: E731
@@ -249,7 +249,7 @@ class NotificationJourney(unittest.TestCase):
         self.assertEqual([re.sub(r"\s+", " ", text).strip() for text in levels.locator(".sset-row__t").all_inner_texts()], ["Only what needs me", "Everything", "Nothing"])
         # #1173: each line names what reaches Ada at that level (pinned against the reasons in notification-level-words.test.ts).
         self.assertEqual([re.sub(r"\s+", " ", text).strip() for text in levels.locator(".sset-row__s").all_inner_texts()], [
-            "Questions, mentions, direct messages, tasks that need you, decisions about your work, invitations to work together and agents waiting for you",
+            "Questions, mentions, messages to you, tasks that need you, decisions about your work, invitations to work together and agents waiting for you",
             "Also every reply in conversations you are part of and calls started in your spaces", "No push or email. Everything still waits in the Inbox"])
         expect(levels.get_by_role("radio", name="Only what needs me")).to_be_checked()
         start = self.api(page, "GET", "/api/v1/notification-preferences")
@@ -402,7 +402,7 @@ class NotificationJourney(unittest.TestCase):
         cards = page.locator(".nyc")
         expect(cards).to_have_count(3)
         self.assertLessEqual(page.evaluate("document.scrollingElement.scrollWidth"), PHONE["width"], "no sideways scroll")
-        first = cards.first.get_by_role("button", name=re.compile("^Accept"))
+        first = open_item(page.locator(".nyc--decision").first).get_by_role("button", name=re.compile("^Accept"))
         assert_touch_target(self, page, first)
         shot(page, "notifications-phone-390-inbox")
         # The capsule marks the Inbox; Settings are one tap on the avatar away (#341).
@@ -513,11 +513,11 @@ class NotificationJourney(unittest.TestCase):
         page.route("**/api/v1/notification-preferences", handler)
         self.addCleanup(lambda: page.unroute_all(behavior="ignoreErrors"))
         page.goto("/settings/notifications")
-        expect(page.get_by_role("heading", name="Notification settings could not load", exact=True)).to_be_visible()
+        expect(page.get_by_role("heading", name="Notification settings couldn’t be loaded", exact=True)).to_be_visible()
         phase["fail"] = False
-        page.get_by_role("button", name="Retry", exact=True).click()
+        page.get_by_role("button", name="Try again", exact=True).click()
         expect(page.get_by_role("radiogroup", name="Tell me about")).to_be_visible()
-        expect(page.get_by_role("heading", name="Notification settings could not load", exact=True)).to_have_count(0)
+        expect(page.get_by_role("heading", name="Notification settings couldn’t be loaded", exact=True)).to_have_count(0)
         self.assertEqual(patches, [])
 
     def test_09_the_expired_link_button_keeps_44_px_and_readable_contrast(self) -> None:
@@ -664,7 +664,7 @@ class NotificationJourney(unittest.TestCase):
         page.goto("/inbox")
         card = page.locator(f'.nyc[data-key="{item["key"]}"]')
         expect(card).to_contain_text("Kai Tanaka asked you in Garden sensors")
-        card.get_by_role("button", name="Reply").tap()
+        open_item(card).get_by_role("button", name="Reply").tap()
         expect(page).to_have_url(re.compile(re.escape(f"/projects/{self.project_id}/conversations/{conversation['id']}")))
         thread = page.get_by_role("dialog", name=re.compile("^Replies"))
         expect(thread.get_by_text(asked).first).to_be_visible()

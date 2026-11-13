@@ -67,7 +67,10 @@
      Wiki reading size, and glyphs. Weights are 400, 500 and 600 only. */
   --font: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  --fs-glyph: .6875rem; /* 11: initials in small avatars, key caps, counts in tight badges, tool labels */
+  --fs-glyph: .6875rem; /* 11: key caps, counts in tight badges, tool labels */
+  --fs-face: 11px;      /* initials in a face of 16-26 px: px on purpose, so the letters stay inside their circle at any text size (#1370) */
+  --fs-face-lg: 12px;   /* initials in the 32 px face */
+  --fs-face-xl: 16px;   /* initials in the 48 px face of Settings › Account */
   --fs-xs: .75rem;      /* 12: meta, times, counts */
   --fs-sm: .75rem;      /* 12 (same size as --fs-xs on purpose; separate names keep meta and labels tunable apart): labels, chips, small buttons */
   --fs-md: .8125rem;    /* 13: navigation, tabs, controls */

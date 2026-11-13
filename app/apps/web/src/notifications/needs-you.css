@@ -1,9 +1,6 @@
 /* The Inbox "Needs you" queue and Home's top three (#342, F-026 S1/S11, P4). Cards rise from the
    screen on --el with --sh-card; the selected card is ringed, not tinted; no accent colour. */
 .pane-in.nyq { max-width: 808px; }
-.nyq__bar { display: flex; align-items: center; justify-content: space-between; gap: 12px 16px; flex-wrap: wrap; padding: 4px 0 16px; }
-.nyq__summary { margin: 0; font-size: var(--fs-sm); color: var(--t3); }
-.nyq__filters { max-width: 100%; }
 .nyq__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
 .nyq__keys { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 14px 4px 0; font-size: var(--fs-xs); color: var(--t3); }
 .nyq__keys kbd { margin-right: 3px; }
@@ -29,7 +26,6 @@
 .nyc__who { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; min-width: 0; flex: 1; font-size: var(--fs-base); }
 .nyc__who b, .nyc__eyebrow b { font-weight: 600; }
 .nyc__meta { font-size: var(--fs-xs); color: var(--t3); }
-.nyc__chip { flex: none; display: inline-flex; align-items: center; height: 22px; padding: 0 10px; border-radius: var(--r-pill); background: var(--inv); color: var(--oninv); font-size: var(--fs-xs); font-weight: 500; }
 .nyc__eyebrow { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; margin: 0; font-size: var(--fs-xs); color: var(--t3); }
 .nyc__eyebrow b { color: var(--t1); font-size: var(--fs-base); }
 .nyc__title { margin: 0; font-size: var(--fs-lg); line-height: 1.35; font-weight: 600; letter-spacing: -.01em; overflow-wrap: anywhere; }
@@ -48,13 +44,11 @@
 .nyc__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .nyc__quiet { display: inline-flex; gap: 2px; }
 .nyc__accept kbd { margin-left: 8px; background: color-mix(in srgb, var(--oninv) 16%, transparent); box-shadow: none; color: inherit; }
-.nyc__nn svg { margin-right: -4px; }
-.nyc__nn--quiet { background: transparent; box-shadow: none; color: var(--t2); }
 .nyc__waiting { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: var(--fs-sm); color: var(--t2); }
 .nyc__waiting b { font-weight: 600; color: var(--t1); }
 .nyc__waiting > span { min-width: 0; overflow-wrap: anywhere; }
 .nyc__waiting-you { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
-.nyc__waiting .ui-avatar { width: 20px; height: 20px; font-size: var(--fs-glyph); }
+.nyc__waiting .ui-avatar { width: 20px; height: 20px; font-size: var(--fs-face); }
 .nyc--note .nyc__actions, .nyc--blocked .nyc__actions, .nyc--mention .nyc__actions, .nyc--question .nyc__actions { margin-top: 2px; }
 @media (pointer: fine) {
   /* A quiet item shows its small buttons when it is the one you are on. */
@@ -78,14 +72,6 @@
 .nyc--compact .nyc__eyebrow .nyc__meta { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .nyc--compact .nyc__card:hover { background: color-mix(in srgb, var(--hov) 40%, var(--el)); }
 
-/* Not now: when should it return */
-.nym { position: absolute; z-index: 5; top: calc(100% - 6px); left: 20px; display: flex; flex-direction: column; min-width: 232px; padding: 6px; border-radius: var(--r); background: var(--el); box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line); }
-.nym__h { padding: 6px 10px 4px; font-size: var(--fs-xs); color: var(--t3); }
-.nym__item { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 36px; padding: 0 10px; border-radius: 10px; font-size: var(--fs-base); color: var(--t1); text-align: left; }
-.nym__item:hover, .nym__item:focus-visible { background: var(--sub); }
-.nym__item--quiet { color: var(--t2); }
-.nym__sep { height: 1px; margin: 4px 6px; background: var(--line); }
-
 @media (hover: none) {
   /* A swipe left slides the card over its tray: Not now and Done (S9). */
   .nyc--card .nyc__scroll { display: flex; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x mandatory; scrollbar-width: none; }
@@ -95,7 +81,6 @@
   .nyc__tray-b { flex-direction: column; justify-content: center; gap: 4px; min-width: 76px; height: auto; min-height: 100%; padding: 8px 10px; border-radius: var(--r-card); font-size: var(--fs-sm); }
   .nyc__tray-b svg { margin: 0; }
   .nyc__tray-done { background: var(--inv); color: var(--oninv); }
-  .nym { left: 12px; right: 12px; min-width: 0; }
   .nyc__card { padding: 16px; grid-template-columns: 32px minmax(0, 1fr); }
   .nyc__foot { flex-direction: column; align-items: stretch; }
   .nyc__foot .nyc__actions .ui-btn { flex: 1; }
@@ -120,16 +105,7 @@
   .nyc__foot .nyc__actions { flex-wrap: wrap; }
   .nyc__card .nyc__foot .nyc__actions > * { flex: 1 1 calc(50% - 4px); }
 }
-@media (pointer: coarse) { .nyc__open { min-height: 44px; } .nym__item { min-height: 44px; } }
-
-/* Filters as chips on a phone */
-@media (max-width: 640px) {
-  .nyq__bar { flex-direction: column; align-items: stretch; gap: 8px; padding-bottom: 12px; }
-  .nyq__filters .ui-tabs__bar { width: auto; max-width: 100%; }
-  /* The filters share the track instead of running past its end (360 px, #763). */
-  .nyq__filters .ui-tabs__bar .ui-tabs__tab { flex: 1 1 auto; min-width: 0; padding: 0 8px; --tab-pad: 8px; }
-}
-.nyq__bar--head { display: flex; align-items: center; gap: 14px; padding: 0; }
+@media (pointer: coarse) { .nyc__open { min-height: 44px; } }
 
 /* One agent run's waiting changes (F-036 AG-7, mockup AiPhone): what waits, and for whom. */
 .nyc__waits { display: grid; gap: 4px; margin: 6px 0 0; padding: 0; list-style: none; font-size: var(--fs-sm); color: var(--t1); }
@@ -139,3 +115,25 @@
 .nyc__waits-for { flex: 0 1 auto; min-width: 0; color: var(--t3); font-size: var(--fs-xs); overflow-wrap: anywhere; }
 /* On a phone the names have their own line under the words. */
 @media (max-width: 640px) { .nyc__waits li > span.nyc__waits-words { flex-basis: 100%; } }
+
+/* Two columns where there is room (README §7 Inbox, #1367): the list on the left, the open item on the right and in view while the list scrolls. */
+.pane-in.nyq.nyq--two { max-width: none; margin: 0; padding: 0; display: grid; grid-template-columns: clamp(300px, 30%, 380px) minmax(0, 1fr); align-items: stretch; }
+.nyq__col { min-width: 0; }
+.nyq__col--list { padding: 16px 12px 28px 16px; }
+.nyq__col--open { border-left: 1px solid var(--line); padding: 0 clamp(20px, 3vw, 40px); }
+.nyq__sticky { position: sticky; top: 0; max-height: calc(100dvh - 5rem); overflow-y: auto; padding: 32px 0 48px; }
+.nyq--two .nyq__list { gap: 4px; }
+.nyq--two .nyq__keys { margin-left: 8px; }
+.nyq__later { margin: 12px 8px 0; font-size: var(--fs-sm); color: var(--t3); }
+/* A row of the list: no box until it is the open one, then the raised row. No button: the open item has them. */
+.nyc--list .nyc__card { padding: 12px 16px; }
+.nyc--list:not(.is-selected) .nyc__card { background: transparent; box-shadow: none; }
+.nyc--list:not(.is-selected) .nyc__card:hover { background: var(--hov); }
+.nyc--list .nyc__title { font-size: var(--fs-base); }
+.nyc--list .nyc__open { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
+.nyc--list .nyc__open:hover { text-decoration: none; }
+.nyc__snippet { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-sm); color: var(--t3); }
+/* The open item is its card with no box around it, in its own column. */
+.nyc--open .nyc__card--pane { max-width: 680px; padding: 0; background: none; box-shadow: none; }
+.nyc--open .nyc__title { font-size: var(--fs-xl); line-height: 1.3; letter-spacing: -.015em; }
+.nyc--open .nyc__body { gap: 12px; }

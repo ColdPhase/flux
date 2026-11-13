@@ -198,13 +198,13 @@ class WorkPaginationJourney(unittest.TestCase):
         page.keyboard.press("Escape")
         page.route("**/work-view**", lambda route: route.fulfill(status=503, json={"code": "WORK_READ_UNAVAILABLE", "error": "Fixture required read unavailable"}))
         page.get_by_role("navigation", name="Work pages").get_by_role("button", name="Refresh", exact=True).click()
-        expect(page.get_by_role("heading", name="Work could not be loaded")).to_be_visible()
+        expect(page.get_by_role("heading", name="Tasks couldn’t be loaded")).to_be_visible()
         expect(page.get_by_role("heading", name="No tasks yet")).to_have_count(0)
         expect(open_from_tasks(page)).to_have_value("Private text survives a failed read")
         page.keyboard.press("Escape")
         self.assertEqual(self.rows(page), [])
         page.unroute("**/work-view**")
-        page.get_by_role("button", name="Refresh work", exact=True).click()
+        page.get_by_role("button", name="Try again", exact=True).click()
         self.ready(page); self.assertEqual(len(self.rows(page)), total)
 
     def test_04_cookie_account_change_fences_held_page_and_private_draft(self):

@@ -34,7 +34,7 @@ const SECTIONS: { to: string; label: string; match: RegExp }[] = [
   { to: '/settings/agents', label: 'AI', match: /^\/settings\/(agents|assistant|background-compute|ai-connections)/ },
   // The company's name and people have one stable place (F-037, #763 PE-1): read-only for members and guests.
   { to: '/settings/company', label: 'Company', match: /^\/settings\/company/ },
-  { to: '/settings/shortcuts', label: 'Keyboard shortcuts', match: /^\/settings\/shortcuts$/ },
+  { to: '/settings/shortcuts', label: 'Shortcuts', match: /^\/settings\/shortcuts$/ },
 ];
 
 /** A guest has no agents and no AI (F-036 AG-2), so Settings shows them no AI section. */
@@ -198,13 +198,16 @@ function AgentsAndAi() {
   const loadKeys = useCallback((signal?: AbortSignal) => {
     listBackgroundConnections(signal).then((list) => { setKeys(list); setKeysFailed(false); }, () => { if (!signal?.aborted) { setKeys([]); setKeysFailed(true); } });
   }, []);
+  const loadConnections = useCallback((signal?: AbortSignal) => {
+    listAgentConnections(signal).then((list) => { setConnections(list); setFailed(false); }, (error: unknown) => { if (!signal?.aborted) { setConnections([]); setFailed(!!error); } });
+  }, []);
   useEffect(() => {
     const controller = new AbortController();
-    listAgentConnections(controller.signal).then(setConnections, (error: unknown) => { if (!controller.signal.aborted) { setConnections([]); setFailed(!!error); } });
+    loadConnections(controller.signal);
     getAssistantStatus(controller.signal).then(setAssistant, () => undefined);
     loadKeys(controller.signal);
     return () => controller.abort();
-  }, [loadKeys]);
+  }, [loadKeys, loadConnections]);
   // An agent's own connection (it answers inside Flux) is not an app on the person's computer.
   const mine = (connections ?? []).filter((connection) => !connection.revokedAt && connection.ownerUserId === me.user.id && connection.computeSource !== 'owner_assistant');
   const dropped = (connectionId: string) => setConnections((current) => (current ?? []).filter((connection) => connection.id !== connectionId));
@@ -221,7 +224,7 @@ function AgentsAndAi() {
             detail="For code on your computer. Same rules as your agents." action={mine.length ? 'Connect another' : 'Connect'} />
         </ul>
         {connections === null ? <p className="sset-note"><Spinner label="Loading your agents" /></p> : null}
-        {failed ? <p className="sset-note" role="note">Your connected apps could not be listed. Try again in a moment.</p> : null}
+        {failed ? <p className="sset-note" role="note">Your connected apps couldn’t be loaded. <button type="button" className="ui-link" onClick={() => loadConnections()}>Try again</button></p> : null}
         <p className="sset-note">{SERVER_AI_OFF_LINE}. Your agents wait until it is on.</p>
       </div>
     );
@@ -231,7 +234,7 @@ function AgentsAndAi() {
       {/* #854, #857 (mockup Main): Connect AI first, with every connection and its usage line, and the person's own Claude Code or Codex as rows of
           the same card (#1363); then the person's agents, each using one of them. */}
       <ConnectAi apiKeys={assistant ? assistant.setup.provider === 'on' : true} keys={keys} keysFailed={keysFailed} onRetryKeys={() => loadKeys()} onListed={setListed} clients={clientRows} />
-      {failed ? <p className="sset-note" role="note">Your connected apps could not be listed. Try again in a moment.</p> : null}
+      {failed ? <p className="sset-note" role="note">Your connected apps couldn’t be loaded. <button type="button" className="ui-link" onClick={() => loadConnections()}>Try again</button></p> : null}
       <AgentsList listed={listed} />
     </>
   );
@@ -447,7 +450,7 @@ export const SHORTCUTS: { keys: string[]; action: string }[] = [
   { keys: ['Z'], action: 'Undo' },
   { keys: ['R'], action: 'Reply in thread' },
   { keys: ['T'], action: 'Create a task from a message' },
-  { keys: ['1', '–', '5'], action: 'Task state' },
+  { keys: ['1', '–', '4'], action: 'Task state' },
   { keys: ['['], action: 'Collapse the sidebar' },
   { keys: ['Esc'], action: 'Close a panel or menu' },
 ];
@@ -456,9 +459,9 @@ export function KeyboardShortcuts() {
   return (
     <div className="pane-scroll">
       <div className="pane-in sset-in">
-        <PageHead title="Keyboard shortcuts" lead="On a computer, or a tablet with a keyboard. The keys also show next to their actions in menus." />
+        <PageHead title="Shortcuts" lead="On a computer, or a tablet with a keyboard. The keys also show next to their actions in menus." />
         <table className="sset-card sset-keys">
-          <caption className="ui-vh">Keyboard shortcuts</caption>
+          <caption className="ui-vh">Shortcuts</caption>
           <thead className="ui-vh"><tr><th scope="col">Keys</th><th scope="col">Action</th></tr></thead>
           <tbody>
             {SHORTCUTS.map((shortcut) => (

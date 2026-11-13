@@ -15,6 +15,8 @@ export function useAgentChat(agentId: string, meId: string) {
   const [lines, setLines] = useState<AgentChatMessage[]>([]);
   const [status, setStatus] = useState<PersonalAssistantStatus | null>(null);
   const [failed, setFailed] = useState(false);
+  // The runs were read and the agent's own lines were not: the history is incomplete, which is never shown as an empty one (#1369).
+  const [incomplete, setIncomplete] = useState(false);
   const [reads, setReads] = useState(0);
   // When the person last had this chat open, as it was when they opened it now (#1246): what the agent said after is new to them. The chat reads
   // itself (below), which moves it; the first read is the one that tells where they left off. Null: never opened, so all the agent said is new.
@@ -30,6 +32,7 @@ export function useAgentChat(agentId: string, meId: string) {
         if (!alive) return;
         setRuns(page.items.reverse());
         if (said) setLines(said.items);
+        setIncomplete(!said);
         setOpening((current) => current ?? { since: said?.readAt ?? null });
         setFailed(false);
         // Opening the chat, or having it open when something arrives, reads it.
@@ -54,7 +57,7 @@ export function useAgentChat(agentId: string, meId: string) {
   }, [working]);
 
   return {
-    runs, lines, status, failed, working, refresh, version: signal, opening,
+    runs, lines, status, failed, incomplete, working, refresh, version: signal, opening,
     async send(prompt: string) {
       const started = await askAssistant({ kind: 'chat', agentId }, { clientRunId: crypto.randomUUID(), kind: 'ask', prompt });
       setRuns((items) => [...(items ?? []).filter((item) => item.id !== started.id), started]);

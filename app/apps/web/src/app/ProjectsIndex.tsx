@@ -101,7 +101,7 @@ export function ProjectsIndex() {
         {/* Direct messages live in Projects on the phone, below the spaces (F-026 S2). */}
         {phone ? (
           <section className="proj-index__dms" aria-labelledby="proj-index-dms">
-            <h2 id="proj-index-dms">Direct messages</h2>
+            <h2 id="proj-index-dms">Messages</h2>
             {/* The same card and grid as the spaces, with a fixed time column, so a long preview never pushes the date out (#763 NV-5). */}
             {directMessages.length || agents.length ? (
               <ul className="set-card proj-index__dmlist" aria-label="Conversations">

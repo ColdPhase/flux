@@ -64,7 +64,7 @@ cleanup() {
   [ ! -f "$artifacts/resources.jsonl" ] || python3 -I docker/public-sim/resources.py "$artifacts/resources.jsonl" > "$artifacts/resources-summary.json" 2>&1 || true
   $compose --profile sim-driver down -v --remove-orphans >/dev/null 2>&1 || true
   docker image rm "flux-foundation:$project" "flux-public-sim-infra:$project" "flux-public-sim-client:$project" >/dev/null 2>&1 || true
-  docker run --rm -v "$work:/work:z" alpine:3.21 rm -rf /work/certs /work/ca /work/ctl >/dev/null 2>&1 || true
+  docker run --rm -v "$work:/work:z" alpine:3.24 rm -rf /work/certs /work/ca /work/ctl >/dev/null 2>&1 || true
   rm -rf "$work/certs" "$work/ca" "$work/ctl"
   exit "$status"
 }

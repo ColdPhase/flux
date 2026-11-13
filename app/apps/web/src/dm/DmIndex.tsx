@@ -51,7 +51,7 @@ export function DmIndex() {
     return (
       <div className="pane-scroll"><div className="pane-in">
         <div className="view-empty">
-          <EmptyState icon="chat" title="No direct messages yet" action={<Link className="ui-btn ui-btn--primary" to="/dm/new"><Icon name="plus" size={14} />New message</Link>}>
+          <EmptyState icon="chat" title="No messages yet" action={<Link className="ui-btn ui-btn--primary" to="/dm/new"><Icon name="plus" size={14} />New message</Link>}>
             <p>Talk with someone one to one, or with a few people, outside any space. Only the people in a conversation can see it, not the company’s owners or admins.</p>
           </EmptyState>
         </div>
@@ -155,7 +155,7 @@ export function NewDm() {
       <div className="pane-scroll"><div className="pane-in dm-gone" role="status">
         <Icon name="lock" size={16} />
         <div><h2>No one to message here</h2><p>{notice}</p>
-          <Link className="ui-btn ui-btn--secondary" to="/dm">Back to direct messages</Link></div>
+          <Link className="ui-btn ui-btn--secondary" to="/dm">Back to Messages</Link></div>
       </div></div>
     );
   }

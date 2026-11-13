@@ -12,6 +12,8 @@ import uuid
 
 from playwright.sync_api import Browser, Page, expect, sync_playwright
 
+from inbox_items import open_item
+
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, start_forwarder
 
 KEY = f"proposal:{uuid.uuid4()}"
@@ -74,12 +76,13 @@ class InboxAgentSuggestion(unittest.TestCase):
     def check(self, phone: bool, choice: str, action: str) -> None:
         page, resolved = self.open(phone)
         page.goto("/inbox")
-        card = page.locator(f'[data-key="{KEY}"]')
-        expect(card.get_by_test_id("agent-suggestion")).to_contain_text("Sensor A failed in dim scenes")
-        expect(card.get_by_test_id("agent-suggestion")).to_contain_text("Exposure may be too short")
-        expect(card.get_by_test_id("agent-suggestion")).to_contain_text("Compare sensor B")
-        expect(card.get_by_test_id("agent-suggestion")).to_contain_text("Low light (version 1)")
-        card.get_by_role("button", name=choice, exact=True).click()
+        card = page.locator(f'.nyc[data-key="{KEY}"]')
+        item = open_item(card)
+        expect(item.get_by_test_id("agent-suggestion")).to_contain_text("Sensor A failed in dim scenes")
+        expect(item.get_by_test_id("agent-suggestion")).to_contain_text("Exposure may be too short")
+        expect(item.get_by_test_id("agent-suggestion")).to_contain_text("Compare sensor B")
+        expect(item.get_by_test_id("agent-suggestion")).to_contain_text("Low light (version 1)")
+        item.get_by_role("button", name=choice, exact=True).click()
         expect(card).to_have_count(0)
         self.assertEqual(resolved, [{"action": action}])
 

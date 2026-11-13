@@ -279,7 +279,8 @@ class NativeDetailsJourney(unittest.TestCase):
             with self.subTest(recovery=recovery):
                 nav.get_by_role("button", name="Next", exact=True).click()
                 self.ready(panel)
-                expect(nav).to_contain_text("No rows on this page · 0 links total")
+                # An empty list says nothing in the bar (#1372); the panel says the page is empty.
+                expect(nav.locator(".ws-pages__range")).to_have_text("")
                 expect(nav.get_by_role("button", name="Previous", exact=True)).to_be_enabled()
                 expect(panel).to_contain_text("No matching links on this page.")
                 shot(page, f"detail-relations-empty-later-{recovery.lower()}")

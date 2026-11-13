@@ -25,6 +25,9 @@
 # Run it alone under the shared Docker lock: a local model is slow, and the run takes hours.
 set -eu
 
+# `--eval`: the answer-accuracy evaluation on a real Anthropic key instead (#1295): scripts/check_ai_eval.sh.
+if [ "${1:-}" = --eval ]; then shift; exec "$(dirname "$0")/check_ai_eval.sh" "$@"; fi
+
 cd "$(dirname "$0")/.."
 project="flux-airm-$(date +%s)-$$"
 stamp=$(date -u +%Y%m%dT%H%M%SZ)

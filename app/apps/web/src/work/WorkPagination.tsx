@@ -10,7 +10,15 @@ export function WorkPagination({ page, busy, onCursor, onRefresh, label = 'Work 
   onCursor: (cursor: string) => void; onRefresh: () => void;
   label?: string; noun?: string; caption?: string; compactComplete?: boolean; stepsWhenPaged?: boolean;
 }) {
-  const range = page ? page.items.length ? `${page.before + 1}–${page.before + page.items.length} of ${page.total} ${noun}` : `No rows on this page · ${page.total} ${noun} total` : busy ? 'Loading work…' : 'Work unavailable';
+  // Plain words (#1372): a whole list says how many it holds ("9 tasks"), a page of a longer one says where it is ("1–50 of 123 tasks"), and an empty one says nothing.
+  const one = !!page && !page.before && !page.previousCursor && !page.nextCursor;
+  const singular = noun.replace(/(ch|sh|x)es$/, '$1').replace(/s$/, '');
+  // A failed read is said by the page itself, with its Try again (#1369); the bar does not say it a second time.
+  const range = !page ? busy ? 'Loading…' : ''
+    : !page.total ? ''
+    : !page.items.length ? `Nothing on this page · ${page.total} ${page.total === 1 ? singular : noun} in all`
+    : one && page.items.length === page.total ? `${page.total} ${page.total === 1 ? singular : noun}`
+    : `${page.before + 1}–${page.before + page.items.length} of ${page.total} ${noun}`;
   return <nav className="ws-pages" aria-label={label} aria-busy={busy}>
     <span className="ws-pages__range" role="status">{caption ? `${caption} · ` : ''}{range}</span>
     {!compactComplete || !page || page.previousCursor || page.nextCursor ? <div className="ws-pages__actions">

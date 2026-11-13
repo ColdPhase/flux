@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { Link, useParams } from 'react-router';
+import { NotAvailable } from '../app/NotAvailable';
 import type { AgentChatMessage, AssistantRun, MyAgent } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
 import { useShellData } from '../app/data';
@@ -29,11 +30,7 @@ export function AgentConversation() {
   const { agents } = useShellData();
   const agent = agents.find((item) => item.id === agentId);
   if (!agent) {
-    return (
-      <div className="pane-scroll"><div className="pane-in agc">
-        <p className="agc__note">This agent isn’t here. It may have been deleted. <Link className="ui-link" to="/dm">Back to Messages</Link></p>
-      </div></div>
-    );
+    return <NotAvailable title="This agent isn’t here" back={{ to: '/dm', label: 'Back to Messages' }} />;
   }
   return <AgentChatPane key={agent.id} agent={agent} />;
 }
@@ -188,6 +185,9 @@ function ReportLine({ line, agent, newDay, onChanged }: { line: AgentChatMessage
 
 function AgentChatPane({ agent }: { agent: MyAgent }) {
   const touch = useMediaQuery(MEDIA.touch);
+  // On the phone the shell's title row is the chat's header (Back, its face, its name and "Your agent · only you talk to it", #1356): the
+  // bar and the lock line below would say the same again.
+  const phone = useMediaQuery(MEDIA.phone);
   const { me } = useShellData();
   const chat = useAgentChat(agent.id, me.user.id);
   const schedules = useAgentSchedules(agent.id, chat.version, chat.refresh);
@@ -296,19 +296,22 @@ function AgentChatPane({ agent }: { agent: MyAgent }) {
       {/* The agent's bar and its schedules line stay above the history, so the line is in view whatever the chat holds (the drawing has it in the header). */}
       <div className="agc__top">
         <div className="dm__in agc">
-          <div className="agc__bar">
-            <span className="agc__who"><Kreska size={24} hue={agent.colour} /><b>{agent.name}</b><span className="agc__tag">Your agent</span></span>
-            <Link className="ui-link agc__settings" to={`/settings/agents/${agent.id}`}>Settings</Link>
-          </div>
+          {phone ? null : (
+            <div className="agc__bar">
+              <span className="agc__who"><Kreska size={24} hue={agent.colour} /><b>{agent.name}</b><span className="agc__tag">Your agent</span></span>
+              <Link className="ui-link agc__settings" to={`/settings/agents/${agent.id}`}>Settings</Link>
+            </div>
+          )}
           <ScheduleHeader agent={agent} state={schedules} />
         </div>
       </div>
       <div className="convo-stream">
       <div className="dm__feed" ref={attachFeed}>
         <div className="dm__in agc" ref={column}>
-          <p className="agc__note"><Icon name="lock" size={13} />Only you talk to {agent.name}. Reports of its work arrive here.</p>
-          {chat.runs === null ? (chat.failed ? <p className="agc__empty" role="alert">Couldn’t read this chat. <button type="button" className="ui-link" onClick={chat.refresh}>Try again</button></p> : null)
-            : entries.length ? (
+          {phone ? null : <p className="agc__note"><Icon name="lock" size={13} />Only you talk to {agent.name}. Reports of its work arrive here.</p>}
+          {chat.runs === null ? (chat.failed ? <p className="agc__empty" role="alert">This chat couldn’t be loaded. <button type="button" className="ui-link" onClick={chat.refresh}>Try again</button></p> : null)
+            : entries.length ? (<>
+              {chat.incomplete ? <p className="agc__empty" role="alert">Some of this chat couldn’t be loaded. <button type="button" className="ui-link" onClick={chat.refresh}>Try again</button></p> : null}
               <ol className="dm__list" aria-label={`Your chat with ${agent.name}`}>
                 {entries.flatMap((entry, index) => {
                   const previous = entries[index - 1];
@@ -319,7 +322,8 @@ function AgentChatPane({ agent }: { agent: MyAgent }) {
                   return entry.key === newFrom ? [newDay ? <MessageDay key={`day-${entry.key}`} label={day(entry.at)} /> : null, <UnreadDivider key="unread" />, item] : item;
                 })}
               </ol>
-            ) : <p className="agc__empty">Nothing here yet. Say what you want {agent.name} to do, or ask it something.</p>}
+            </>) : chat.incomplete ? <p className="agc__empty" role="alert">This chat couldn’t be loaded. <button type="button" className="ui-link" onClick={chat.refresh}>Try again</button></p>
+              : <p className="agc__empty">Nothing here yet. Say what you want {agent.name} to do, or ask it something.</p>}
         </div>
       </div>
       <NewBelow count={newBelow.count} onClick={newBelow.toEnd} />
@@ -327,7 +331,7 @@ function AgentChatPane({ agent }: { agent: MyAgent }) {
       <div className="composer dm__composer">
         <div className="composer__in">
           <ConnectionLine />
-          <ComposerBox id="agent-composer" label={`Message ${agent.name}`} fieldRef={field} value={draft} placeholder={`Message ${agent.name}`}
+          <ComposerBox id="agent-composer" label={`Message ${agent.name}`} fieldRef={field} value={draft} placeholder={[`Message ${agent.name}`, 'Message']}
             onChange={(value) => { setDraft(value); setError(''); }} onKeyDown={onKey} disabled={sending} boxDisabled={sending}
             sendLabel={`Send to ${agent.name}`} sendDisabled={!draft.trim() || sending} onSend={() => void send()} />
           {state.kind === 'blocked' && chat.status ? <p className="composer__audience" role="status"><Icon name="alert" size={13} /><span>{state.note}</span></p> : null}

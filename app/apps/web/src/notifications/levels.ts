@@ -6,7 +6,7 @@ import { NEEDS_YOU_REASONS, type NotificationLevel, type NotificationReason } fr
  * and `notification-level-words.test.ts` pins the lines against the reasons.
  */
 export const REASON_WORDS: Record<NotificationReason, string> = {
-  question: 'questions', mention: 'mentions', dm: 'direct messages', assigned: 'tasks that need you',
+  question: 'questions', mention: 'mentions', dm: 'messages to you', assigned: 'tasks that need you',
   review: 'decisions about your work', invitation: 'invitations to work together', approval: 'agents waiting for you',
   reply: 'every reply in conversations you are part of', call: 'calls started in your spaces',
 };

@@ -136,7 +136,7 @@ class SpaceSettings(unittest.TestCase):
         self.assertEqual(sorted((g["principal"]["id"], g["role"]) for g in grants), sorted([(self.ids["ada"], "manager"), (self.ids["kai"], "contributor")]))
         # There is no page of its own for it any more: /projects/new is a space that does not exist.
         page.goto("/projects/new")
-        expect(page.get_by_role("heading", level=1, name="This place isn’t available")).to_be_visible()
+        expect(page.get_by_role("heading", name="This place isn’t available")).to_be_visible()
         page.goto(f"/projects/{pid}")
         # `/ai` in a space with AI off stays in the field and says so in one line; the words are not sent.
         composer = page.get_by_placeholder(re.compile("^Message")).first

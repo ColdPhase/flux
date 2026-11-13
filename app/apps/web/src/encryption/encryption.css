@@ -114,11 +114,11 @@
 
 /* Home's "Needs you" and search: the spaces that could not be looked into, one quiet row each. */
 .waiting-spaces { list-style: none; margin: 8px 0 0; padding: 0; }
-.waiting-spaces a { display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 4px; border-radius: var(--r-sm); font-size: var(--fs-md); color: var(--t2); text-decoration: none; }
+.waiting-spaces a { display: flex; flex-wrap: wrap; align-items: center; gap: 0 8px; min-height: 32px; padding: 4px 4px; border-radius: var(--r-sm); font-size: var(--fs-md); color: var(--t2); text-decoration: none; }
 .waiting-spaces a:hover { color: var(--t1); background: var(--hov); }
 .waiting-spaces a:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }
 .waiting-spaces__name { color: var(--t1); font-weight: 500; }
-.waiting-spaces__state { color: var(--t3); font-size: var(--fs-sm); }
+.waiting-spaces__state { color: var(--t3); font-size: var(--fs-sm); white-space: nowrap; }
 @media (pointer: coarse) { .waiting-spaces a { min-height: 44px; } }
 .unsearched { list-style: none; margin: 0 0 14px; padding: 0; display: grid; gap: 4px; }
 .unsearched li { display: flex; align-items: baseline; gap: 8px; font-size: var(--fs-sm); color: var(--t2); line-height: 1.5; }

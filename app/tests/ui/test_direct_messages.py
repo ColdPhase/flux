@@ -123,7 +123,7 @@ class DirectMessageJourney(unittest.TestCase):
         page = self.page("ada")
         page.goto("/")
         page.locator("#side-dms").get_by_role("link", name="Messages", exact=True).click()
-        expect(page.get_by_role("heading", name="No direct messages yet")).to_be_visible()
+        expect(page.get_by_role("heading", name="No messages yet")).to_be_visible()
         expect(page.get_by_text("not the company’s owners or admins")).to_be_visible()
         # The Create window's Message tab writes in a project's conversation (#521); a direct message starts here.
         page.locator(".view-empty").get_by_role("link", name="New message").click()
@@ -232,7 +232,7 @@ class DirectMessageJourney(unittest.TestCase):
         status, _ = self.api(page, f"/api/v1/dms/{self.dm_id()}")
         self.assertEqual(status, 404)
         page.goto("/dm")
-        expect(page.get_by_role("heading", name="No direct messages yet")).to_be_visible()
+        expect(page.get_by_role("heading", name="No messages yet")).to_be_visible()
 
     # ---------------------------------------------------------------- phone and groups
 
@@ -244,7 +244,7 @@ class DirectMessageJourney(unittest.TestCase):
         expect(bar.get_by_role("link", name="Messages")).to_have_count(0)
         bar.get_by_role("link", name="Spaces").click()
         expect(page).to_have_url(f"{ORIGIN}/projects")
-        expect(page.get_by_role("heading", name="Direct messages")).to_be_visible()
+        expect(page.get_by_role("heading", name="Messages", exact=True)).to_be_visible()
         row = page.get_by_role("list", name="Conversations").get_by_role("link", name=re.compile("Ada Kowalska"))
         expect(row).to_be_visible()
         shot(page, "dm-phone-390-projects")

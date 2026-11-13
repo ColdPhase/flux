@@ -18,6 +18,7 @@ import uuid
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, box, shot, start_forwarder
+from inbox_items import open_item
 from test_personal_assistant import mock
 
 PASSWORD = "a calm home for the garden"
@@ -125,10 +126,12 @@ class HomeFinal(unittest.TestCase):
         expect(rows).to_have_count(3)
         self.assertEqual(self.queue()["count"], 3, "the heading's count is the Inbox's")
         # The decision is one row ("N decisions waiting") with no Accept on Home; the others say what they are.
-        expect(rows.nth(0)).to_contain_text("1 decision waiting")
-        expect(rows.nth(0)).to_contain_text("Community garden sensors")
-        expect(rows.nth(0)).to_contain_text("from Jonas Berg")
-        expect(rows.nth(1)).to_contain_text("Question")
+        # Newest first, as the Inbox is (#1367): the question came last, then the decision, then the blocked task.
+        decision_row = rows.filter(has_text="1 decision waiting")
+        expect(decision_row).to_contain_text("Community garden sensors")
+        expect(decision_row).to_contain_text("from Jonas Berg")
+        expect(rows.nth(0)).to_contain_text("Question")
+        expect(rows.nth(1)).to_contain_text("1 decision waiting")
         expect(rows.nth(2)).to_contain_text("is blocked")
         expect(need.get_by_role("button")).to_have_count(0)
         link = page.get_by_role("link", name=re.compile("^Open Inbox"))
@@ -179,15 +182,15 @@ class HomeFinal(unittest.TestCase):
         rows = page.get_by_role("region", name=re.compile("^Waiting for you")).locator(".home__row")
         expect(rows).to_have_count(3)
         # The question's row opens the Inbox with that item selected; accepting happens in the Inbox, with Undo.
-        rows.nth(1).click()
+        rows.filter(has_text="Question").click()
         expect(page).to_have_url(re.compile(r"/inbox$"))
         selected = page.locator(".nyc.is-selected")
         expect(selected).to_have_count(1)
         expect(selected).to_contain_text("Question")
         page.go_back()
-        rows.nth(0).click()
+        rows.filter(has_text="decision waiting").click()
         expect(page.locator(".nyc.is-selected")).to_contain_text(DECISION)
-        page.locator(".nyc.is-selected").get_by_role("button", name=re.compile("^Accept")).click()
+        open_item(page.locator(".nyc.is-selected")).get_by_role("button", name=re.compile("^Accept")).click()
         expect(page.get_by_role("status").filter(has_text="Accepted")).to_be_visible()
         page.locator(".ui-toast", has_text="Accepted").get_by_role("button", name="Undo").click()
         expect(page.locator(".nyc")).to_have_count(3)

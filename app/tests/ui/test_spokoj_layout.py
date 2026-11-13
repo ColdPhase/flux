@@ -411,10 +411,10 @@ class SpokojLayout(unittest.TestCase):
                 expect(page.get_by_label("Only mine")).to_have_count(0)
                 expect(page.get_by_role("textbox", name=re.compile("Add a task", re.I))).to_have_count(0)
                 self.assert_same_place(board, controls(), f"{size['width']} list with Mine")
-                # One page of tasks has no Previous and Next (Spokój rule 4); Refresh stays.
+                # One page of tasks has no Previous and Next (Spokój rule 4) and says "3 tasks"; Refresh stays.
                 names["Mine"].click()
                 pages = page.get_by_role("navigation", name="Work pages")
-                expect(pages).to_contain_text("1–3 of 3 tasks")
+                expect(pages).to_contain_text("3 tasks")
                 expect(pages.get_by_role("button", name="Previous", exact=True)).to_have_count(0)
                 expect(pages.get_by_role("button", name="Next", exact=True)).to_have_count(0)
                 expect(pages.get_by_role("button", name="Refresh", exact=True)).to_be_visible()
@@ -542,7 +542,7 @@ class SpokojLayout(unittest.TestCase):
                     page.goto(path)
                     header = page.locator("header.phead")
                     project = path != self.dm_path
-                    expect(header.get_by_role("button", name="More" if project else "Search", exact=True)).to_be_visible()
+                    expect(header.get_by_role("button", name="More", exact=True)).to_be_visible()
                     page.wait_for_function(SETTLED)
                     head = self.box(header)
                     if project:
@@ -561,15 +561,19 @@ class SpokojLayout(unittest.TestCase):
                         expect(header.get_by_role("button", name="Call", exact=True)).to_have_count(0)
                         self.assertEqual(header.locator("button:visible").count(), 2, f"{path}: {header.locator('button:visible').all_inner_texts()}")
                     else:
-                        # A direct message keeps one 56 px row: Back · title · Call · Search, and nothing else.
-                        self.assertAlmostEqual(head["height"], 56, delta=2, msg=path)
+                        # A direct message's title row is a space's without its views (#1374): 8 px above, the 44 px row, 6 px under it; Back · title · More,
+                        # and nothing else (Search and Call are rows of More; Join appears while a call is live). The name is not a menu.
+                        self.assertGreaterEqual(head["height"], 56, path)
+                        self.assertLessEqual(head["height"], 70, path)
                         controls = {
                             "Back": self.box(header.get_by_role("button", name="Back", exact=True)),
-                            "title": self.box(header.get_by_role("heading", level=1).get_by_role("button")),
-                            "Search": self.box(header.get_by_role("button", name="Search", exact=True)),
-                            "Call": self.box(header.get_by_role("button", name="Call", exact=True)),
+                            "title": self.box(header.get_by_role("heading", level=1)),
+                            "More": self.box(header.get_by_role("button", name="More", exact=True)),
                         }
-                        self.assertEqual(header.locator("button:visible").count(), 4, f"{path}: {header.locator('button:visible').all_inner_texts()}")
+                        expect(header.get_by_role("heading", level=1).get_by_role("button")).to_have_count(0)
+                        expect(header.get_by_role("button", name="Search", exact=True)).to_have_count(0)
+                        expect(header.get_by_role("button", name="Call", exact=True)).to_have_count(0)
+                        self.assertEqual(header.locator("button:visible").count(), 2, f"{path}: {header.locator('button:visible').all_inner_texts()}")
                     if path.endswith("/docs") or path.endswith(self.doc_id):
                         expect(header.get_by_role("button", name="Page actions", exact=True)).to_have_count(0)
                         menu = page.locator(".wiki-head").get_by_role("button", name="Page actions", exact=True)
@@ -580,17 +584,13 @@ class SpokojLayout(unittest.TestCase):
                         self.assertLessEqual(menu_box["y"] + menu_box["height"], row["y"] + row["height"] + 0.5, "in the row above the title")
                         self.assertLessEqual(menu_box["x"] + menu_box["width"], size["width"], "inside the screen")
                     for name, box in controls.items():
-                        if project and name == "title":
+                        if name == "title":
                             continue
                         self.assertGreaterEqual(min(box["width"], box["height"]), 44, f"{name} at {path}")
                         self.assertGreaterEqual(box["y"], head["y"] - 0.5, f"{name} stays inside the header at {path}")
                         self.assertLessEqual(box["y"] + box["height"], head["y"] + head["height"] + 0.5, f"{name} stays inside the header at {path}")
                     self.assertLess(controls["Back"]["x"], controls["title"]["x"])
-                    if project:
-                        self.assertLessEqual(controls["title"]["x"] + controls["title"]["width"], controls["More"]["x"] + 0.5)
-                    else:
-                        self.assertLess(controls["title"]["x"] + controls["title"]["width"], controls["Call"]["x"])
-                        self.assertLess(controls["Call"]["x"], controls["Search"]["x"])
+                    self.assertLessEqual(controls["title"]["x"] + controls["title"]["width"], controls["More"]["x"] + 0.5)
                     # The capsule and its round Search stay on Home, Projects and Inbox only.
                     expect(page.locator(".phone-dock__bar, .phone-dock__search")).to_have_count(0)
                     self.assertEqual(page.evaluate("document.documentElement.scrollWidth"), size["width"], path)

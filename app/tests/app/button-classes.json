@@ -6,12 +6,9 @@
       "classes": [
         "newmenu__item",
         "me__item",
-        "phone-menu__item",
-        "phone-menu__details",
         "ui-list-sheet__row",
         "wiki-menu__row",
         "wiki-menu__new",
-        "nym__item",
         "wd-menu__item",
         "aset-where__item",
         "sk-outline-menu__item",
@@ -124,7 +121,6 @@
         "side__add",
         "phone-fab",
         "phone-dock__search",
-        "phead__menu",
         "details__back",
         "ui-panel__back"
       ]

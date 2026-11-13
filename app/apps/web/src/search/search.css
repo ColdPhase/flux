@@ -10,7 +10,7 @@
 .jump__opt.sr.is-active .sr__ic { background: var(--el); }
 .sr__ic--decision, .sr__ic--result, .sr__ic--work { color: var(--t1); }
 .sr__ic--project { color: var(--t1); font-size: var(--fs-md); font-weight: 600; }
-.sr__ic--person { position: relative; border-radius: 50%; font-size: var(--fs-glyph); font-weight: 600; letter-spacing: .02em; }
+.sr__ic--person { position: relative; border-radius: 50%; font-size: var(--fs-face); font-weight: 600; letter-spacing: .02em; }
 .sr__main { display: flex; flex: 1; flex-direction: column; justify-content: center; min-width: 0; }
 .sr__title { font-size: var(--fs-base); font-weight: 500; line-height: var(--lh-tight); color: var(--t1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sr__title--text { font-weight: 400; }

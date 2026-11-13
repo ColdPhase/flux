@@ -339,6 +339,15 @@ class ProjectSurfaceJourney(unittest.TestCase):
             expect(people).to_contain_text(name)
         expect(people).not_to_contain_text("Lee Park")
 
+    def test_04c_the_github_page_says_it_in_plain_words(self) -> None:
+        """#1372: no "verified pull requests", no "server operator", no webhooks: what GitHub gives the space and who can set it up."""
+        page = self.page("ada")
+        page.goto(f"/projects/{self.ids['project']}/github")
+        expect(page.get_by_role("heading", level=2, name="GitHub repositories")).to_be_visible()
+        expect(page.get_by_text("see their pull requests beside your tasks")).to_be_visible()
+        for technical in ("verified pull requests", "server operator", "webhook", "is not configured"):
+            expect(page.locator("main, #content").first.get_by_text(re.compile(technical, re.I))).to_have_count(0)
+
     def test_05_details_overview_links_everything_one_step_away(self) -> None:
         page = self.open_project("ada")
         open_details(page)

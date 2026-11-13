@@ -139,7 +139,7 @@ class TasksReviewJourney(unittest.TestCase):
         phone.on("response", lambda response: statuses.append(response.status) if "/work-view" in response.url else None)
         phone.goto(link)
         expect(phone.locator(".ws-task").first).to_be_visible()
-        expect(phone.get_by_text("Work could not be loaded")).to_have_count(0)
+        expect(phone.get_by_text("Tasks couldn’t be loaded")).to_have_count(0)
         self.assertTrue(statuses and all(status == 200 for status in statuses), f"every phone read succeeded: {statuses}")
         # Resizing a desktop page in the same state behaves the same way.
         resize = self.page("ada")
@@ -147,7 +147,7 @@ class TasksReviewJourney(unittest.TestCase):
         expect(resize.locator(".ws-task").first).to_be_visible()
         resize.set_viewport_size(PHONE)
         expect(resize.locator(".ws-task").first).to_be_visible()
-        expect(resize.get_by_text("Work could not be loaded")).to_have_count(0)
+        expect(resize.get_by_text("Tasks couldn’t be loaded")).to_have_count(0)
 
     def test_03_a_phone_keeps_its_own_continuation_through_next_reload_and_back(self) -> None:
         page = self.page("ada", phone=True)

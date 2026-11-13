@@ -428,8 +428,10 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
     first word of the tabs, as the page's own padding.
   - There are no chip rows.
   - **There is no tab bar in a conversation;** the composer sits at the bottom.
+  - **A direct message's title row is a space's** (founder decision on [#1374](https://github.com/ColdPhase/flux/issues/1374), 2026-11-13): Back, the name with the line "Messages" (a group names its people) under it, Join between the name and ⋯ while a call is live, and ⋯, with **Search** and **Call** as its first rows, then Mute conversation and "Message info". Back and ⋯ are the same plain 44 px icons; there are no Call and Search icons in the row and the name is not a menu (a direct message has one view). A long name wraps to two lines as a space's does. The tablet and the computer keep their own header.
 - **Sheets.** They have a grabber and two heights: half (the conversation stays visible) and full
-  (dragged up).
+  (dragged up). **A choice on the phone opens as a bottom sheet** with the field's name as its title: the Select, and a
+  task's Status and Owner (#1359), whose pop-over ran out of a 320 px window. The rows are 48 px.
 - **Gestures.** Founder amendment 2026-10-16 ([#343](https://github.com/ColdPhase/flux/issues/343)),
   applied to the v0.2 message actions:
   - **In a conversation, long press** on a message opens one sheet with the message and its
@@ -440,6 +442,11 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
   - **Swipe stays only in the Inbox and Tasks lists** (Done and Not now, as in Gmail). Every
     swipe action has a visible button or menu alternative, because a gesture is never the only
     way to an action. On the computer, hover actions are unchanged.
+  - **The visible alternative to long press is a quiet ⋯ on every message** (#763 FT-4, #1357, v0.2.1). It is a
+    44 × 44 px target at the bubble's top, **beside the bubble on the side away from its author** (right of other people's
+    messages, left of your own), the touch twin of the computer's pill. The layout keeps a 32 px lane free beside the bubble
+    (the other 12 px of the 44 px target reach into the pane's own side padding), so the ⋯ never covers a word, a card or a button of the message,
+    in a group or alone, in a space, a thread or a direct message. It opens the same sheet as a long press.
 - **Targets and text.** Touch targets are at least 44 px. Meta text is at least 12.5 px. Body
   text is 15–16 px.
 
@@ -447,7 +454,7 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
 
 Founder direction, Hubert, 2026-11-12 (#1239), replacing the segmented views of #873. **One style on
 every device:** the phone, the tablet and the computer. The segmented control stays for choices
-inside a screen (the Inbox filter, the Create window), not for the views of a space.
+inside a screen (the Create window), not for the views of a space.
 
 - **Left-aligned, each tab as wide as its word.** The words are 22 px apart: 11 px of padding on each
   side of a word, which also makes every tab at least 44 px wide. The row is `--fs-md`.
@@ -507,13 +514,13 @@ The IDs come from the first Prostota canvas; rules that no longer apply are left
 | S8 | Several task updates in a row fold into one expandable line. |
 | S9 | One tap on the state glyph (or `1`–`4`) changes the state. Swipe left, then Done, then a toast with **Undo**. |
 | S10 | Title and properties are edited in place. |
-| S11 | A decision shows who can accept it and who is still waiting. Not now is one button, with no menu. |
+| S11 | A decision shows who can accept it and who is still waiting. Not now is one button, with no menu: it puts the item off until tomorrow morning, with Undo ([Inbox](#inbox)). |
 | S12 | **Giving a task to an agent is its Owner field.** The picker lists people and then "Your agents", only your own. In a space with AI off, "Your agents" disappear from the picker and it lists people only. Each agent shows its Kreska in its own colour. There is no hand-off window. |
 | S13 | A working agent is always visible: one state line under its last message in the task's discussion, with Stop, and its face in the space header while it works. The agent's owner or the space admin can Stop it. |
 | S14 | An agent's question is a message with two to four ready answers, and an Inbox item for the person asked. |
 | S15 | On the phone the map is for viewing and for adding a thought. Connecting and arranging happen on the computer. |
 | S16 | **One search** over spaces, people, messages, tasks, Wiki pages, files and thoughts you can see, grouped by kind, with no filter chips. |
-| S17 | Larger small text on the phone; the phone's text size setting applies. |
+| S17 | Larger small text on the phone; the phone's text size setting applies. At 200 % (Android's font scale, large text; the type tokens are rem) nothing overlaps and nothing is lost (#1370): **initials sit inside their circle at any text size** (the face tokens `--fs-face`, `--fs-face-lg` and `--fs-face-xl` are px on purpose, like `--fs-input-touch`), the space's header folds the people and Call into ⋯ as on a narrow window (its container queries are in rem), and **the composer's hint is one line**: it shortens from "Message · @ mention · / actions" to "Message · @ · /" and then "Message" when the field has no room for more. |
 | S18 | Keyboard shortcuts, shown in menus. |
 | S19 | A collapsible sidebar. Quiet hours, in Notifications, is the only way to pause notifications. |
 | S20 | **A new space is one window:** name, people, AI (on) and Encrypted (off). No template and no goal. |
@@ -810,6 +817,26 @@ Community garden sensors, Rain barrel monitor and Tool library.
 - The list on the left, the open item on the right, with no filters. Each item names its kind,
   who it is from and its space: "Decision · Maja · Community garden sensors", "Question · Jonas",
   "Blocked · waits for you".
+- **No filters, and no pill** (founder decision, Hubert, 2026-11-13, #1367). The Inbox is one list of what needs you (S1), **newest first**,
+  so there is no "All · Decisions · Questions" row and no "6 need you · all spaces" line, and nothing is grouped by kind: the count is the quiet mono number
+  after the title ("Inbox 5", never a pill) and the sidebar's. How much reaches a person is the notification level, which is set in Settings and not
+  in the Inbox. Every item needs you, so none is marked "Needs you" (§2 lists the pill as superseded).
+- **Two columns where there is room, one column on the phone.** From a 1001 px window (the width at which the detail panel stops
+  being an overlay) the list is the left column, about 360 px, and the open item is the right column, as drawn. In the list each
+  item is one row: kind · who · space, the title (two lines at most) and one line of what it says, with no button; the open row is
+  the raised `--el` row, and the first item is open until another is chosen. The right column is the open item as its card with no
+  box around it: the face, who and where and when, the title (`--fs-xl`), its words, its actions, then who can accept it. Nothing in
+  the list moves when another item opens. **In one column** (a tablet in portrait, the phone) the open item is the card that is
+  expanded inside the list, and the others stay one row with their one quiet action, as the phone is drawn.
+  `J` and `K` move between items, and `A`, `E` and `S` act on the open one.
+- **Not now is one button, with no menu** (S11, #1367). It puts the item off until tomorrow at 08:00 and offers Undo ("Not now.
+  Back tomorrow morning"); the item returns then. There is no "Ask me again" menu, no "Next week", no "When #N is done" and no
+  "Decline for good" on a decision: a decision waits until someone accepts it. A line under the list says how many are put off
+  ("2 for later"). The one dark primary of the open item is its first action (Accept, Approve all, Join).
+- **A call is a Call, never a Question** (F-041, #1368). An invitation to a call or a call started in your space is one item,
+  "Call · Nia · Gesture lamp", with **Join** as its primary and Open as its second action; it is on Home and in the Inbox only while
+  someone is in the call and you are not. It leaves when you join (from here, from the notice, from the space's Join or from the
+  call line) and when the call ends.
 - **One item per agent run:** "Planner · Ada's agent · Rain barrel monitor", "3 things wait for
   you", what they are (Delete the page “Old notes” · a task for Jonas · a task for Maja), then
   Approve all and Open. The phone lists the three things and the line "Deleting and other
@@ -908,7 +935,7 @@ screen, setting or mode, and Settings › Notifications stays the overview. Ever
 menu's rows, the sidebar's end slot, the panel head's quiet actions and the existing icons and tokens.
 
 - **Mute and Unmute** are one row of ⋯ in a space's header (the computer's and the phone's) and in a direct message's header menu (the
-  computer's ⋯; on the phone the direct message's title menu, one row above "Message info"). A space reads **Mute space** /
+  computer's ⋯; on the phone the direct message's ⋯, after Search and Call and one row above "Message info"). A space reads **Mute space** /
   **Unmute space**, a direct message **Mute conversation** / **Unmute conversation**. The row has no key, no switch and no
   confirmation: it acts and the menu closes. Under the label, one line of the menu's small muted text says what it does, so the
   person need not guess: "Quiet for ordinary messages. What needs you still arrives." while it is on, and "Muted. What needs you still
@@ -1274,7 +1301,7 @@ the composer. The right-hand phone above shows the sheet.
     "Confirmed", or "Waiting for you to confirm it from that inbox" with Send again. "Add another
     address" sends a confirmation link before any notification goes there.
   - **Sound** (founder decision, 2026-11-12, #1243): two switches in one card after Where.
-    "Sound for messages", "A soft sound for direct messages and mentions while Flux is open", off
+    "Sound for messages", "A soft sound for messages to you and mentions while Flux is open", off
     by default; "Sound when someone calls me", "One soft chime when someone invites you to a
     call", on by default. At Nothing each says "Not used while you hear about Nothing".
   - **Muted places** sit behind Change. They are the same mutes as the ⋯ menus' Mute
@@ -1297,6 +1324,10 @@ the composer. The right-hand phone above shows the sheet.
 | ![Agent states in a task](screens/desktop-agent-states.webp) | ![Undo and waiting for your OK](screens/desktop-undo-approval.webp) |
 | ![Agent reports in Messages](screens/desktop-agent-reports.webp) | ![/ai answered privately](screens/desktop-ai-private.webp) |
 
+- **Settings › AI rows keep whole words on every page width** (#1358): a row measures the page it is in, not the window (beside the
+  section list a portrait tablet's page is about 440 px wide). When a row is too narrow, its control drops under its label (Connect another,
+  New agent, the task-taking Select), names end in an ellipsis, a tag ("Answers /ai", "Agent") is one line and never breaks, a word is never
+  cut, and under 37.5 rem an agent's row is its face, name, line and arrow (the "What it may do" tag and the model are on its page).
 - **Settings › AI** holds:
   - **Connect AI**, with Connect another. Each connection is a card with its name, "Connected" and
     the provider's usage line ("62% of your 5-hour limit left · resets at 14:00"). Change sits on
@@ -1499,6 +1530,9 @@ the composer. The right-hand phone above shows the sheet.
 On the phone the Assistant conversation is a normal conversation. Its header lists the schedule
 ("Every weekday 9:00 · new tasks summary"), and the morning summary arrives in it.
 
+- **The title row is the one of every conversation (#1356, v0.2.1):** Back, the agent's Kreska (32 px, in its colour), its name and, under it in `--t3`, "Your agent · only you talk to it", as the drawing has it. Under it come the schedule row, the conversation and the composer. There is no second name row (the computer's "Kreska, name, Your agent, Settings" bar is the computer's header and is not repeated), no lock line and no tab bar.
+  Back returns to where the person came from (the Spaces list, Home, the Inbox). The agent's Settings are the one row of a ⋯ at the right of the title row, the ⋯ a space has, so the function is the same on the phone as the computer's "Settings" link and the drawing stays as drawn.
+
 ### Spaces
 
 | | |
@@ -1615,6 +1649,26 @@ the toast with Undo, the tokens and the existing icons. No new setting, mode or 
 | | | |
 | --- | --- | --- |
 | ![Sign in](screens/desktop-signin.webp) Sign in | ![Sign in on the phone](screens/phone-signin.webp) Sign in, phone | ![Splash](screens/phone-splash.webp) Splash |
+
+### A place that could not be loaded, and a place that is not available
+
+Founder priorities (calm; plain words), decided by the agents for the v0.2.1 audit ([#1369](https://github.com/ColdPhase/flux/issues/1369), [#1371](https://github.com/ColdPhase/flux/issues/1371)). Nothing here is drawn; it is composed from the empty and error states of the system (`EmptyState`, `ErrorState`, `Button`).
+
+- **A failed read is said where it happened, inside the shell.** One place's read answers badly (a deep link, a reload, Try again's own read): the sidebar, the header
+  and the tab bar stay, and under them the place says **"<place> couldn't be loaded"** (the person's word for it: "The conversation", "Tasks", "The Wiki", "Messages",
+  "My map") with one calm line and one **Try again** (`secondary`, icon refresh). It never says why in server words: no status code, no "Service Unavailable", no
+  "unexpected problem". "Something went wrong" is only for a screen that crashed. Only when the shell's own read fails (or on a sign-in page) is it the whole page, as "Flux isn't answering · Try again".
+- **A part of a page that could not be loaded says so in its own place,** in the same sentence ("This chat couldn't be loaded · Try again", "Schedules couldn't be loaded",
+  "Your API keys couldn't be loaded"), and never shows as an empty list or leaves out its section. Home's **Continue where you left off** keeps its heading and says
+  "This couldn't be loaded · Try again".
+- **A place that is gone, closed to the person, or never existed is one page** (agent, direct message, Inbox item, space, Wiki page, call, address): the search icon in its 40 px tile, **one plain
+  sentence** as the heading ("This conversation isn't available", "This agent isn't here", "This page doesn't exist") and **one way back** as a `secondary` button
+  ("Back to Messages", "Back to the Inbox", "Back to the space", "Go to Home"), under the shell's header, on the page's own column. It never says why (a place nobody
+  may open is not told apart from one that is gone) and has no Try again, which could not succeed.
+- **The header names the place or nothing.** A Wiki page by its own address is "Wiki", a missing agent "Messages", a space that did not open "Spaces". "Home" with the company before it
+  is only Home's own, and Home has no header row on the computer.
+- **A Wiki page by its address** (the old "material") is a card on the page: its back link, "Version 1", the title (`--fs-xl`), "You · Saved 13 Nov 2026, 09:00" in `--t3`, and its words (`--fs-base`) on `--el`.
+- **A sign-in link with nothing behind it** (the agent consent page opened with no request) is a sign-in page: "This sign-in link isn't complete", the way to start again, and "Go to Home", in the column of the other sign-in pages.
 
 ### Not drawn yet
 

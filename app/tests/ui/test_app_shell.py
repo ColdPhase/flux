@@ -152,14 +152,6 @@ def close_modal_thread(page: Page, tap: bool = False) -> None:
     expect(thread).to_have_count(0)
 
 
-def phone_menu(page: Page, tap: bool = False):
-    """The phone's view menu: the title opens it (#341)."""
-    close_modal_thread(page, tap)
-    opener = page.get_by_role("heading", level=1).get_by_role("button")
-    opener.tap() if tap else opener.click()
-    return page.get_by_role("dialog").filter(has=page.locator(".phone-menu__list"))
-
-
 def view_tab(page: Page, name: str, tap: bool = False) -> None:
     """A project view by its name: the underline tabs, the same at every width (#873, #1239); on a phone it is the row under the title."""
     close_modal_thread(page, tap)
@@ -169,19 +161,15 @@ def view_tab(page: Page, name: str, tap: bool = False) -> None:
 
 def open_details(page: Page, tap: bool = False) -> None:
     """Details: More, then Details, in the computer's one-row header (#340); on the phone a space has the same More in
-    its header (#873) and a direct message's title menu ends with "Message info" (#341, #871). Only a space and a direct message
+    its header (#873) and a direct message has the same (#1374: "Message info" is its last row). Only a space and a direct message
     have Details (Home has none, #964)."""
     if page.viewport_size["width"] <= 640:
-        page.locator("header .phead__menu, header.phead button[aria-label='More']").first.wait_for()
+        page.locator("header.phead button[aria-label='More']").first.wait_for()
         more = page.locator("header.phead").get_by_role("button", name="More", exact=True)
-        if more.count():
-            close_modal_thread(page, tap)
-            more.tap() if tap else more.click()
-            item = page.get_by_role("menu", name="More").get_by_role("menuitem", name=re.compile(r"^(Details|Space details|Message info)$"))
-            item.tap() if tap else item.click()
-            return
-        row = phone_menu(page, tap).locator(".phone-menu__details")
-        row.tap() if tap else row.click()
+        close_modal_thread(page, tap)
+        more.tap() if tap else more.click()
+        item = page.get_by_role("menu", name="More").get_by_role("menuitem", name=re.compile(r"^(Details|Space details|Message info)$"))
+        item.tap() if tap else item.click()
         return
     close_modal_thread(page, tap)
     header = page.locator("header.top")
@@ -547,8 +535,8 @@ class AppShellJourney(unittest.TestCase):
         # Direct messages is its own place: the sidebar lists conversations, there are no views.
         sidebar.locator("#side-dms").get_by_role("link", name="Messages", exact=True).click()
         expect(page).to_have_url(f"{ORIGIN}/dm")
-        expect(page.get_by_role("heading", level=1, name="Direct messages")).to_be_visible()
-        expect(page.get_by_role("heading", name="No direct messages yet")).to_be_visible()
+        expect(page.get_by_role("heading", level=1, name="Messages")).to_be_visible()
+        expect(page.get_by_role("heading", name="No messages yet")).to_be_visible()
         expect(sidebar.locator("#side-dms").get_by_role("link", name="Messages", exact=True)).to_have_attribute("aria-current", "page")
         expect(sidebar.get_by_text("No conversations yet", exact=False)).to_have_count(0)  # #763 FR-4
         # On the computer New (C) starts a message; the sidebar has no second "+".

@@ -48,12 +48,12 @@ function GithubProjectSettings({ shell }: { shell: ProjectShell }) {
     catch (cause) { setError(failure(cause)); } finally { setBusy(false); }
   }
   return <div className="pane-scroll"><div className="pane-in github-settings">
-    <div className="github-settings__head"><div><h2>GitHub repositories</h2><p>Connect repositories to {shell.project.name} and keep verified pull requests beside your existing tasks.</p></div>
+    <div className="github-settings__head"><div><h2>GitHub repositories</h2><p>Connect repositories to {shell.project.name} and see their pull requests beside your tasks.</p></div>
       <Link className="ui-link" to={`/projects/${projectId}`}>Back to space</Link></div>
     <p className="github-settings__note">Private repository details are shown only when your own GitHub account and Flux access both permit them.</p>
     {error ? <p role="alert" className="github-settings__error">{error}</p> : null}
     {!capabilities ? error ? <Button variant="secondary" onClick={() => void refresh()}>Check access again</Button> : <Spinner label="Loading GitHub settings" /> : capabilities.status === 'unavailable'
-      ? <section><h3>GitHub is not configured on this server</h3><p>Your server operator can configure a GitHub App with read access. Your tasks and conversations remain available.</p><Button variant="secondary" onClick={() => void refresh()}>Check again</Button></section>
+      ? <section><h3>GitHub isn’t set up on this server</h3><p>Ask whoever runs Flux to set it up. Your tasks and conversations work as usual.</p><Button variant="secondary" onClick={() => void refresh()}>Check again</Button></section>
       : capabilities.authorization !== 'connected'
         ? <section><h3>{capabilities.authorization === 'uncertain' ? 'Reconnect your GitHub account' : 'Authorize your GitHub account'}</h3><p>Choose your own account on GitHub. Signing in to Flux and authorizing GitHub are separate steps.</p><Button busy={busy} onClick={() => void connect('authorize')}>Continue to GitHub</Button></section>
         : <>
@@ -61,7 +61,7 @@ function GithubProjectSettings({ shell }: { shell: ProjectShell }) {
             <Button variant="secondary" disabled={busy} onClick={() => void connect('authorize')}>Reconnect GitHub account</Button>
             {shell.project.access === 'manager' ? <Button variant="secondary" disabled={busy} onClick={() => void connect('install')}>Install App on repositories</Button> : null}
             <Button variant="secondary" disabled={busy} onClick={async () => { setBusy(true); try { await disconnectGithubAccount(); await refresh(); } catch (cause) { setError(failure(cause)); } finally { setBusy(false); } }}>Disconnect your GitHub account</Button></div>
-          <p className="github-settings__note" data-testid="github-delivery">Updates: {capabilities.delivery === 'poll' ? 'Every 2 minutes (no public address)' : 'Live (webhooks)'}</p>
+          <p className="github-settings__note" data-testid="github-delivery">Updates: {capabilities.delivery === 'poll' ? 'every 2 minutes' : 'live'}</p>
           <section><h3>Connected repositories</h3>{bindings.length ? <ul className="github-settings__repos">{bindings.map((binding) => <li key={binding.id}>
             <a href={binding.url} target="_blank" rel="noreferrer">{binding.owner}/{binding.name}</a><span>{binding.private ? 'Private' : 'Public'}</span>
             {shell.project.access === 'manager' ? <Button variant="secondary" disabled={busy} onClick={() => void disconnect(binding.id)}>Disconnect</Button> : null}</li>)}</ul> : <p>{error ? 'Repository access could not be verified. Refresh access or reconnect your account.' : 'No repositories connected to this space yet.'}</p>}</section>
@@ -69,7 +69,8 @@ function GithubProjectSettings({ shell }: { shell: ProjectShell }) {
           {shell.project.access === 'manager' && bindings.length ? <RuleDefault projectId={projectId} current={ruleDefault} onSaved={(value) => setSavedDefault({ value })} /> : null}
           {bindings.length ? <PullReferences projectId={projectId} bindings={bindings} canLink ruleDefault={ruleDefault} /> : null}
         </>}
-    <p className="github-settings__note">Linked PRs move a task only when someone who can edit it turns that on in the task’s Details, or links a required PR while this space’s default below is on. A merge never checks off written criteria. An agent that holds a task hears about its linked PRs at its next safe point.</p>
+    {/* Said only where there are pull requests to link (#1372): on a server without GitHub, or before a repository is connected, it explains nothing. */}
+    {capabilities?.status !== 'unavailable' && bindings.length ? <p className="github-settings__note">A linked pull request moves its task only when someone who can edit the task turns that on in its Details, or links a required pull request while this space’s default is on. A merge never ticks off what a task says must be done. An agent working on a task hears about its pull requests at its next safe point.</p> : null}
   </div></div>;
 }
 /** A manager's default (#74 G-1a): whoever links a required PR to a task without a rule turns its rule on. */
@@ -135,7 +136,7 @@ function PullReferences({ projectId, bindings, canLink, ruleDefault }: { project
     <label htmlFor={`${id}-task`}>Task</label><Select id={`${id}-task`} value={task} disabled={busy || choices.busy || !choices.page} onChange={(next) => void openTask(next)}><Option value="">Choose task…</Option>{chosen && !tasks.some((row) => row.id === chosen.id) ? <Option value={chosen.id}>{chosen.title}</Option> : null}{tasks.map((row) => <Option key={row.id} value={row.id}>{row.title}</Option>)}</Select>
     <WorkPagination {...choices} label="GitHub task choices" noun="tasks" />
     {choices.read.phase === 'unavailable' ? <p role="alert">Tasks could not be loaded. Your selection is kept. <button type="button" className="ui-link" onClick={choices.onRefresh}>Refresh task choices</button></p> : null}</>;
-  return <section><h3>{canLink ? 'Link an existing pull request' : 'Linked pull requests'}</h3><p>{canLink ? 'Select the task, repository and exact PR number. Flux verifies the original PR; your existing tasks remain authoritative.' : 'Choose an existing task to read its verified pull requests under your own current repository access.'}</p>
+  return <section><h3>{canLink ? 'Link an existing pull request' : 'Linked pull requests'}</h3><p>{canLink ? 'Choose the task, the repository and the pull request’s number. Flux checks the pull request on GitHub before it links it.' : 'Choose a task to see its pull requests.'}</p>
     {canLink ?
     <form onSubmit={(event) => void link(event)} className="github-settings__form">
       {taskPicker}

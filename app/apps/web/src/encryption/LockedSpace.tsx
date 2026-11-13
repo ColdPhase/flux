@@ -1,10 +1,10 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { Link, Navigate, useNavigate, useParams, useRevalidator, useRouteError } from 'react-router';
+import { Link, Navigate, useNavigate, useParams, useRevalidator } from 'react-router';
 import { useShellData } from '../app/data';
 import { useShellActions } from '../app/shellContext';
 import { Button, Icon, Input } from '../ui';
 import { ApiError } from '../api/client';
-import { encryptionProblem, isWorkspaceLocked, lockedWorkspaceId, unlockWorkspace, type WorkspaceEncryption } from './api';
+import { encryptionProblem, unlockWorkspace, type WorkspaceEncryption } from './api';
 import { isManagerOf, lockedLine, setLockedPlace, useLockedWorkspaces, useSpace } from './state';
 import './encryption.css';
 
@@ -178,16 +178,6 @@ export function LockedSpacePage() {
   // A space the person is not in (or that is gone) is not a locked one.
   if (!space && !open) return <Navigate to="/" replace />;
   return <LockedSpace workspaceId={workspaceId} />;
-}
-
-/**
- * The error boundary of every place in the app (F-030, #655): a place whose data answered `423 WORKSPACE_LOCKED` shows the
- * locked panel, inside the shell and at the same address. Any other error goes on to the app's own error page.
- */
-export function LockedBoundary() {
-  const error = useRouteError();
-  if (!isWorkspaceLocked(error)) throw error;
-  return <LockedSpace workspaceId={lockedWorkspaceId(error)} />;
 }
 
 /** The Inbox's and Search's quiet line about spaces that wait to be unlocked: what is in them is not listed, and not searched (F-030, #655). */

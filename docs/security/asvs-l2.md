@@ -131,7 +131,7 @@ What was decided when the two P2 findings were fixed (2026-11-08). Each stays he
 | 1.1.7 | Secure coding checklist available | Partial | `docs/development/access-policy.md` and this checklist; no general secure-coding guide for contributors |
 | 1.2.1 | Low-privilege OS accounts per component | Pass | Image runs as `node` (`docker/Dockerfile` `USER node`); keyring with `cap_drop: ALL`, read-only, `no-new-privileges` (`docs/operations/hardening.md`); runtime CLIs under per-person uids with no capabilities |
 | 1.2.2 | Communication between components authenticated | Pass | Keyring bearer, constant-time compare (`apps/keyring/src/server.ts:49-50`); runtime manager and slot secrets (`docker/compose.source.yaml:315-361`); database password |
-| 1.2.3 | One vetted authentication mechanism | Pass | Better Auth 1.7.18 for sessions, OAuth and OIDC (`identity/auth.ts:184-391`) |
+| 1.2.3 | One vetted authentication mechanism | Pass | Better Auth 1.7.19 for sessions, OAuth and OIDC (`identity/auth.ts:184-391`) |
 | 1.2.4 | All authentication pathways equally strong | Partial | The OAuth consent mints a lasting client from any live session without re-authentication. Password recovery now ends client grants ([#989](https://github.com/ColdPhase/flux/issues/989), fixed) |
 | 1.4.1 | Access control enforced at trusted points | Pass | Server-side `evaluateProject` and `evaluateWorkspace` in every use case; the MCP route re-checks before output (`agent-connection/mcp-route.ts:108-128`) |
 | 1.4.4 | Single access-control mechanism | Pass | `packages/core/src/access/policy.ts`; `docs/development/access-policy.md` |
@@ -216,7 +216,7 @@ What was decided when the two P2 findings were fixed (2026-11-08). Each stays he
 | 3.4.4 | `__Host-` prefix | Partial | `__Secure-` on https (Better Auth). `__Host-` would also pin the host |
 | 3.4.5 | Cookie path scoped | Pass | `path=/` on a dedicated origin |
 | 3.5.1 | Users can revoke OAuth grants | Pass (fixed) | Disconnect in Settings › AI revokes; admin and claim paths revoke too (`identity/admin.ts:22-28`). Password recovery and signing out other devices now do ([#989](https://github.com/ColdPhase/flux/issues/989)) |
-| 3.5.2 | Session tokens rather than static API secrets | Pass | Short-lived JWT access tokens with rotating refresh tokens (`app/patches/oauth-provider-1.7.18-flux-refresh.patch`) |
+| 3.5.2 | Session tokens rather than static API secrets | Pass | Short-lived JWT access tokens with rotating refresh tokens (`app/patches/oauth-provider-1.7.19-flux-refresh.patch`) |
 | 3.5.3 | Stateless tokens signed and checked | Pass | EdDSA JWT, audience `/mcp`, issuer checked, then a live grant check on each request (`agent-connection/mcp-route.ts:35-120`). Run tokens: single mint per nonce, bound to one run and place (`apps/server/src/personal-runs/run-tokens.ts:25-69`) |
 | 3.7.1 | Re-authentication before sensitive actions | **Partial** | The address change asks for the password. Connecting a client (consent Allow), creating an encrypted space and changing AI keys do not; a stolen session's client no longer survives the owner's recovery ([#989](https://github.com/ColdPhase/flux/issues/989), [#993](https://github.com/ColdPhase/flux/issues/993)) |
 

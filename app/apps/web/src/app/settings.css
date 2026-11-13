@@ -20,6 +20,14 @@
 .sset-back:hover { color: var(--t1); }
 .sset-back:focus-visible { outline: 2px solid var(--t1); outline-offset: 1px; }
 @media (pointer: coarse) { .sset-back { min-height: 44px; min-width: 44px; } }
+/* Rows measure the page they are in, not the window: beside the section list a portrait tablet's page is only about 440 px wide (#1358). */
+.pane-in.sset-in { container: sset / inline-size; }
+/* A row that holds a wide control (a Select): the control drops under its label when the row is too narrow. */
+@container sset (max-width: 30rem) {
+  .sset-row--field { flex-wrap: wrap; }
+  .sset-row--field > .sset-row__b { flex: 1 1 calc(100% - 36px); }
+  .sset-row--field > :is(.ui-select, .ui-btn) { margin-left: 36px; }
+}
 .sset-head { margin-bottom: 16px; }
 .sset-head h2 { font-size: var(--fs-xl); font-weight: 600; letter-spacing: -.015em; line-height: 1.25; color: var(--t1); }
 .sset-head p { margin-top: 4px; font-size: var(--fs-base); line-height: 1.45; color: var(--t2); max-width: 600px; }
@@ -116,7 +124,7 @@
 .sset-theme[aria-checked="true"] .sset-radio { background: var(--t1); box-shadow: inset 0 0 0 4px var(--t1), inset 0 0 0 6px var(--el); }
 /* Account. */
 .sset-me { display: flex; align-items: center; gap: 14px; padding: 16px 18px; }
-.sset-me .ui-avatar--lg { width: 48px; height: 48px; font-size: var(--fs-lg); }
+.sset-me .ui-avatar--lg { width: 48px; height: 48px; font-size: var(--fs-face-xl); }
 .sset-me__b { display: flex; flex-direction: column; min-width: 0; line-height: 1.35; }
 .sset-me__b b { font-size: var(--fs-lg); font-weight: 600; color: var(--t1); overflow-wrap: anywhere; }
 .sset-me__b span { font-size: var(--fs-sm); color: var(--t2); overflow-wrap: anywhere; }

@@ -275,11 +275,14 @@ class MyAgentsJourney(unittest.TestCase):
         expect(page.get_by_role("link", name="Back to AI")).to_have_count(0)
         page.locator("header.phead").get_by_role("button", name="Back", exact=True).click()
         expect(page).to_have_url(re.compile(r"/settings/agents$"))
-        # The agent's chat: its "Settings" link is a 44 px touch target, and its composer is as wide as a space's (#1377).
+        # The agent's chat: its Settings are in the title row's ⋯ (#1356), a 44 px touch target (#1377).
         page.goto(f"/agents/{self.ids['planner']}")
-        link = page.get_by_role("link", name="Settings", exact=True)
-        box = link.bounding_box()
-        self.assertGreaterEqual(min(box["width"], box["height"]), 44, f"the agent chat's Settings link on touch: {box}")
+        more = page.locator("header.phead").get_by_role("button", name="More")
+        box = more.bounding_box()
+        self.assertGreaterEqual(min(box["width"], box["height"]), 44, f"the agent chat's ⋯ on touch: {box}")
+        more.click()
+        page.get_by_role("menuitem", name="Settings").click()
+        expect(page).to_have_url(re.compile(rf"/settings/agents/{self.ids['planner']}$"))
         # A tablet with touch keeps "‹ AI" above the page's title, 44 px high.
         tablet = self.page(phone=True, viewport={"width": 820, "height": 1180})
         tablet.goto(f"/settings/agents/{self.ids['planner']}")
@@ -336,7 +339,7 @@ class MyAgentsJourney(unittest.TestCase):
         self.api(ben, "DELETE", f"/api/v1/my-agents/{self.ids['planner']}", status=404)
         self.api(ben, "GET", f"/api/v1/my-agents/{self.ids['planner']}/memory", status=404)
         ben.goto(f"/settings/agents/{self.ids['planner']}")
-        expect(ben.get_by_text("This agent isn’t here.")).to_be_visible()
+        expect(ben.get_by_text("This agent isn’t here")).to_be_visible()
 
     def test_07_deleting_an_agent_asks_first_and_removes_it_everywhere(self) -> None:
         page = self.page()

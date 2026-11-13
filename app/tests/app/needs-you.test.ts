@@ -187,6 +187,10 @@ describe('the Inbox needs-you queue', () => {
       return inThread(current).length === 2 && there ? { here: inThread(current), there } : undefined;
     }, 'the question, the mention and the question elsewhere reach the queue');
     assert.deepEqual(waiting.here.map((item) => item.kind).sort(), ['mention', 'question']);
+    // One list for every kind, newest first (README §7 Inbox, founder decision 2026-11-13, #1367): a decision never sits above a newer question.
+    const all = (await queue(owner)).items;
+    assert.ok(all.length >= 3 && new Set(all.map((item) => item.kind)).size >= 2, 'several kinds wait');
+    assert.deepEqual(all.map((item) => item.at), [...all.map((item) => item.at)].sort().reverse(), 'newest first');
     const keys = waiting.here.map((item) => item.key).sort();
     const readAt = async (key: string) => json<InboxResponse>(await owner.browser.request('GET', '/api/v1/inbox'), 200).items.find((item) => item.id === key.slice(5))?.readAt;
 

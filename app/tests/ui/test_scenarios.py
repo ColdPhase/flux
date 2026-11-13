@@ -59,6 +59,7 @@ from create_window import create_other, linked_labels, open_from_tasks, submit_b
 from message_gestures import open_message_menu
 from message_gestures import open_message_menu
 from test_app_shell import show_map_as, DESKTOP, ORIGIN, PHONE, UPSTREAM, open_details, shot, start_forwarder
+from inbox_items import open_item
 from wiki_text import existing_text, has_text, type_at_end, wait_until_shared
 
 UI_BROWSER = os.environ.get("FLUX_UI_BROWSER", "chromium")
@@ -482,7 +483,7 @@ class ScenarioJourney:
         # A private conversation with Jonas, independent of any project.
         page.goto("/")
         self.go_to_place(page, "Messages")
-        expect(page.get_by_role("heading", name="No direct messages yet")).to_be_visible()
+        expect(page.get_by_role("heading", name="No messages yet")).to_be_visible()
         self.tap(page.locator(".pane-scroll").get_by_role("link", name="New message"))
         expect(page.get_by_role("heading", level=1, name="New message")).to_be_visible()
         page.get_by_placeholder("Find people by name or email").fill("jonas")
@@ -914,16 +915,16 @@ class ScenarioJourney:
         # The proposal waits in the one queue; its title opens it in the detail panel or sheet (#342).
         self.wait_for("the decision in Jonas's queue", lambda: any(entry["key"] == f"decision:{s['d2']}" for entry in self.api("jonas", "GET", "/api/v1/needs-you", status=200)["items"]))
         jonas.reload()
-        self.tap(jonas.locator(".nyc", has_text=D2).get_by_role("button", name=D2))
-        panel = self.details(jonas)
-        expect(panel.get_by_text(f"This replaces the decision {D1}")).to_be_visible()
-        expect(panel.get_by_role("heading", name="What happens to current work?")).to_have_count(0)
-        expect(panel.locator(".agent-tag").first).to_be_visible()
-        accept = panel.get_by_role("button", name="Accept", exact=True)
+        # A decision is open as its card (the right column on a computer, expanded in the list on a phone): who proposed it, what it replaces, Accept.
+        card = open_item(jonas.locator(".nyc", has_text=D2))
+        expect(card.get_by_text(f"This replaces the decision {D1}")).to_be_visible()
+        expect(card.locator(".agent-tag").first).to_be_visible()
+        accept = card.get_by_role("button", name=re.compile("^Accept"))
         accept.scroll_into_view_if_needed()
         self.shot(jonas, "3-replaces")
         self.tap(accept)
-        expect(panel.locator(".wd-eyebrow")).to_contain_text("Decision · accepted")
+        # The Inbox's Accept is sent when its Undo window ends (README S11 and P4).
+        self.wait_for("the accept to be sent", lambda: self.api("jonas", "GET", f"/api/v1/decisions/{s['d2']}", status=200)["status"] == "accepted")
         accepted = self.api("jonas", "GET", f"/api/v1/decisions/{s['d2']}", status=200)
         self.assertEqual((accepted["status"], accepted["decidedBy"]["id"], accepted["proposedBy"]["kind"]), ("accepted", self.ids["jonas"], "agent"))
         earlier = self.api("jonas", "GET", f"/api/v1/decisions/{s['d1']}", status=200)
@@ -933,7 +934,6 @@ class ScenarioJourney:
         self.assertNotEqual(camera["status"], "done")
         self.assertFalse(any(link["role"] == "still_applies" for link in accepted["links"]))
         self.assertEqual(self.api("jonas", "GET", f"/api/v1/work/{s['experiment']}", status=200)["cameOfIt"], CAME_OF_IT, "what came of the experiment survives the replacement")
-        self.close_details(jonas)
 
         # Jonas asks Ada to pick up the sensor work while she is away.
         jonas.goto(f"/projects/{lamp}")
