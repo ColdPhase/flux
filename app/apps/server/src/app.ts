@@ -56,6 +56,7 @@ import { sidebarRoutes } from './sidebar/routes.js';
 import { docRoutes } from './docs/routes.js';
 import { notificationRoutes } from './notifications/routes.js';
 import { searchRoutes } from './search/routes.js';
+import { searchQueryVectors } from './search/vectors.js';
 import { personalRunRoutes } from './personal-runs/routes.js';
 import { personalRunServerComposition } from './personal-runs/composition.js';
 import { firstAgentMaker } from './personal-runs/make-agent.js';
@@ -324,9 +325,11 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
     connectTo: (host: string) => config.linkPreviews.testHosts.get(host) ?? null } : {}) });
   // An agent's picture (#1217): the same reader, and the files volume a person's upload goes to.
   configureAgentPictures({ reader: webReader, storage: fileStorage });
+  // The optional embedding container's query hook (F-042, #1294), one for the process: undefined while it is off.
+  const queryVectors = searchQueryVectors(config.embeddings);
   registerMcpRoute(app, db, identity.auth, identityConfig.publicOrigin, config.fixture.failureInjection && !!config.fixture.token,
     identity.standing && identityConfig.oidc ? { checker: identity.standing, label: identityConfig.oidc.label } : null,
-    identity.confirmation, identityConfig.oidc?.label, githubReadProvider, webReader);
+    identity.confirmation, identityConfig.oidc?.label, githubReadProvider, webReader, queryVectors);
   // A personal run's MCP token (F-027 A2): signed here, the authorization server, for the worker only.
   registerPersonalRunTokenRoute(app, db, identity.auth, identityConfig.publicOrigin);
   await app.register(returnRoutes, { db, sessions: identity });
@@ -341,7 +344,7 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   // People's agents take tasks (#856): the setting, the state line and the drain of what the work and the worker wrote.
   await app.register(aiRoutes(agentTaskRoutes), { db, sessions: identity, boss, connectionString,
     composition: { connections: personalRuns.connections, providerEnabled: personalRuns.providerEnabled, runtime: personalRuntimeAvailability(config.agentRuntime, db) } });
-  await app.register(searchRoutes, { db, sessions: identity, cursorSecret: identityConfig.secret, exposeWork });
+  await app.register(searchRoutes, { db, sessions: identity, cursorSecret: identityConfig.secret, exposeWork, vectors: queryVectors });
   await app.register(exportRoutes, { db, sessions: identity, publicOrigin: identityConfig.publicOrigin, storage: fileStorage });
   // The `runtime` transport (F-022 AIM-3): off unless the operator set FLUX_AGENT_RUNTIME.
   await app.register(aiRoutes(agentRuntimeRoutes), { db, sessions: identity, config: config.agentRuntime, secret: identityConfig.secret, publicOrigin: identityConfig.publicOrigin,

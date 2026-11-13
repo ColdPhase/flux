@@ -10,7 +10,8 @@ Each GitHub Release carries these files: `compose.yaml` (the image pinned by dig
 [release installation guide](release-guide.md)), `release.json`, software bills of materials,
 third-party notices, `LICENSE` and `SHA256SUMS`, plus `compose.runtime.yaml` and `runtime.sh` for the
 optional [agent runtime](agent-runtime.md#installing-from-a-release), and `compose.live.yaml` with
-`compose.live.turn.yaml` for optional [calls and screen sharing](#calls-and-screen-sharing). The
+`compose.live.turn.yaml` for optional [calls and screen sharing](#calls-and-screen-sharing) and `compose.embeddings.yaml` for optional
+[local embeddings](#local-embeddings-optional). The
 images are published for `linux/amd64` only; `linux/arm64` is planned for v0.3. Always use the files from the
 release you install: a newer `main` can need other migrations or variables than your image.
 
@@ -128,6 +129,20 @@ TCP/7880 (signaling) is never published: browsers reach it only through the API 
 [configuration reference](configuration.md#live-media-livekit-and-turn). Once calls are on, pass
 `-f compose.live.yaml` to every `docker compose` command. Design and measurements:
 [live media](../development/live-media.md).
+
+## Local embeddings (optional)
+
+Search ranks by BM25 alone. To also rank by meaning, layer the release's optional `compose.embeddings.yaml` (it pins its one image,
+text-embeddings-inference, by digest; `release.json` names it as `embeddings_image`) on `compose.yaml` and pass both files to every
+`docker compose` command ([INSTALL.md](release-guide.md#local-embeddings-optional)):
+
+```sh
+docker compose --env-file .env -f compose.yaml -f compose.embeddings.yaml up -d --wait
+```
+
+It needs about 3.2 GiB of RAM idle and 3.9 GiB at its peak, a 2.3 GB model downloaded on its first start and about 17 minutes of two
+cores for 10,000 existing rows ([requirements](requirements.md#local-embeddings-optional)). Leave the file out again to turn it off:
+the next worker start deletes every vector.
 
 ## Upgrade, backup and restore
 

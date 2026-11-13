@@ -195,6 +195,62 @@ By kind of question (question form): hybrid_bm25 reaches 0.50 across languages a
   it needs about a whole 4 GB server by itself; an agent that searches in both languages gets nearly the same recall from
   BM25 alone.
 
+### Measured in Flux itself (#1294, 2026-11-13)
+
+The optional embeddings ([#1294](https://github.com/ColdPhase/flux/issues/1294), F-042) were measured through Flux's own code, not the
+bench's schema: the same seed (`seed.py`, 10,000 messages, 60 questions, the asker reads all six spaces) was loaded into the
+`search_documents` of a check stack, embedded by the real worker through the pinned container (text-embeddings-inference
+`cpu-1.9.4`, BAAI/bge-m3, the overlay's flags), and searched with the repository's own `ranked`, the question's date range inside the
+statement. Command: `FLUX_CHECK_EMBEDDINGS=on FLUX_CHECK_EMBEDDINGS_CACHE=<dir> FLUX_TEST_RECALL_FILE=<seed.json> ./scripts/check_application.sh tests/app/search-vectors-live.test.ts`
+([raw results](evidence/1294/results-flux-hybrid-bge-m3.json), per question). Recall@10:
+
+| | Question | Keywords | Bilingual |
+|---|---|---|---|
+| BM25 in Flux (`ranked`, no vectors) | 0.583 | 0.567 | 0.733 |
+| **Hybrid in Flux** (`ranked` with the vector hook; 50 + 50, k = 60) | **0.700** | **0.633** | **0.717** |
+| Nearest vectors alone, exact | 0.733 | 0.633 | 0.717 |
+| This note's bench, BM25 / hybrid_bm25 (above) | 0.60 / **0.75** | 0.58 / 0.63 | 0.78 / 0.80 |
+
+- **The acceptance figure is not reached: 0.700 against 0.75 for the question as asked.** The hybrid is above Flux's BM25 for the
+  question (+0.117; the bench's +0.15) and for keywords (+0.067; level with the bench's hybrid), and 0.017 below it for the bilingual
+  keywords, one question (the bench: 0.02 above). Compared question by question with the bench's `hybrid_bm25`, exactly three of the
+  60 questions differ in the question form (3 × 0.017 = 0.05): q16 and q50, where the answer is first in the vector list only and sits
+  at fused rank 12 and 18 here against 10 and 9 on the bench (rows that are mid-list in both lists crowd it out), and q42, where BM25
+  finds the answer first on the bench's freshly built index and 23rd on Flux's (so Flux's BM25 alone is also 0.017 below the bench's).
+  The statement's fusion is the fusion: the same two lists fused outside the database give 0.700 as well. The difference is in the
+  lists, and for q42 in the BM25 index, which this change does not touch.
+- **What moved the number, measured on Flux's statement.** The HNSW index at 100 candidates returned 9.2 to 9.5 of the exact top 10 and
+  cost the hybrid 0.05 (0.650 against 0.700 for the fusion of the same lists); at 400 candidates 0.683, at 1,000 (pgvector's maximum)
+  0.700, the same as an exact scan, so the statement sets `hnsw.ef_search` to 1,000. (The bench's own fused statement scanned exactly,
+  as noted above.) Lists of 100 instead of 50 cost 0.033 in the question and the bilingual forms. Both were measured on the lists of
+  the 60 questions.
+- **Not adopted, on purpose.** Fusing only the best 20 of each list, or k = 10 instead of 60, reaches 0.75 on the question form
+  (and 0.667 / 0.767 with depth 20 for keywords / bilingual). Both were found on the same 60 questions they are judged on, k = 60 is the
+  recorded decision, and a depth of 20 would end every page at 40 results. A larger bench, or real questions, should decide them.
+- **Cost on the same host** (24 threads, shared with other suites; two runs gave the same recall): the worker embedded the 10,000
+  messages in **600 and 654 s (15 to 17 a second)**, the container peaked at **2.77 GiB** and 22 cores (idle 2.2 GiB; the bench above:
+  3.15 idle and 3.9 peak on 2 cores); the vector list alone takes 2.9 ms through the index at 400 candidates and 25.7 ms at 1,000 (the exact scan 28.6 ms, at
+  10,000 rows). An English question about a Polish message that shares none of its words found nothing by BM25 and the message first
+  by the hybrid, through `ranked` and through the API container's `flux_search`.
+- **Changed on review (#1341, 2026-11-13): no HNSW index, exact distances over the visible rows only.** #1293's rule (no statistic of
+  the index and no row the caller may not see influences what they are shown) applies to the vector list too. An HNSW scan walks a
+  graph built over every vector of the instance and filters after its candidate list, so which visible rows it returns can depend on
+  hidden ones. Measured in pgvector 0.8.7 (PostgreSQL 18, synthetic clustered 1,024-dimension vectors, 20 queries, the visible rows
+  filtered by a join as in Flux): at 10,000 visible vectors and `ef_search` 1,000 the list equalled the exact one and 2,000 hidden rows
+  near the queries changed nothing; at 50,000 it differed from the exact list for 6 of 20 queries, and at `ef_search` 100 the 2,000
+  hidden rows changed the visible list of 4 of 20 queries. The statement therefore computes every visible row's distance exactly
+  (`search-vectors.test.ts` holds it with thirty hidden rows nearer to the query than anything visible). Its cost, one distance per
+  visible vector on one core: 23 ms at 10,000 and 170 ms at 50,000 for full-precision vectors read from TOAST, 90 to 100 ms at 50,000
+  kept in the row, **36 to 45 ms at 50,000 at half precision kept in the row** (`halfvec`, the same top 50 for the probed query), which
+  migration 0068 now uses (2 KiB a vector, 132 MiB for 50,000 against 268 MiB). The figures above with "HNSW" describe the statement
+  before this change; the exact scan they compare against is what the statement does now. The BM25 list fused is #1293's, computed
+  over the visible hits only. **Recall measured again with both changes** (the same seed and container, 2026-11-13,
+  [raw results](evidence/1294/results-flux-hybrid-bge-m3-review-1341.json)): question 0.467 BM25 / **0.683 hybrid** / 0.733 vectors
+  alone; keywords 0.450 / 0.583 / 0.633; bilingual 0.567 / 0.667 / 0.717. The vector list alone is unchanged at half precision (0.733,
+  as at full precision above) and takes 11 ms mean, 13 ms p95, over the 10,000 visible messages. The hybrid lost one question of 60
+  against the table above; BM25 alone lost seven, which is #1293's visible-set ranking (term frequency one, statistics over the visible
+  hits), not the vectors. The worker embedded the corpus in 1,554 s this time (6.4 a second; the host was shared with other suites). Probes and their output: [evidence/1294/review-1341](evidence/1294/review-1341/) (`hnsw-probe*.sql`, `storage-probe.sql`, run in `pgvector/pgvector:0.8.7-pg18-trixie`).
+
 ### Cost of each option
 
 | | today | fts_or | fts_lang | trgm | bm25 | vec (e5-small) | Meilisearch |

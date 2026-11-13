@@ -80,6 +80,20 @@ class OpenApi(unittest.TestCase):
         self.assertEqual(paths["/api/auth/sign-in/email"]["post"]["requestBody"]["content"]["application/json"]["schema"]["required"], ["email", "password"])
         self.assertIn("get", paths["/api/auth/get-session"])
 
+    def test_a_preview_carries_its_frame_headers_and_the_uploads_send_raw_bytes(self):
+        routes = [{"method": "GET", "url": "/api/v1/files/:fileId/preview", "body": None, "query": None},
+                  {"method": "PUT", "url": "/api/v1/projects/:projectId/icon", "body": None, "query": None},
+                  {"method": "POST", "url": "/api/v1/projects/:projectId/files", "body": None, "query": None},
+                  {"method": "PUT", "url": "/api/v1/me/photo", "body": None, "query": None}]
+        paths = prepare.openapi(routes, "http://127.0.0.1:8080", {"projectId": UUID, "fileId": "f1"})["paths"]
+        preview = {p["name"]: (p["in"], p["example"]) for p in paths["/api/v1/files/{fileId}/preview"]["get"]["parameters"]}
+        self.assertEqual(preview, {"fileId": ("path", "f1"), "Sec-Fetch-Dest": ("header", "iframe"), "Sec-Fetch-Site": ("header", "same-origin")},
+                         "without the frame headers every request stops at the same 403 (C-60)")
+        bodies = {path: list(paths[path][method]["requestBody"]["content"]) for path, method in (
+            ("/api/v1/projects/{projectId}/icon", "put"), ("/api/v1/projects/{projectId}/files", "post"), ("/api/v1/me/photo", "put"))}
+        self.assertEqual(bodies, {"/api/v1/projects/{projectId}/icon": ["image/png"], "/api/v1/projects/{projectId}/files": ["application/octet-stream"],
+                                  "/api/v1/me/photo": ["image/png"]})
+
     def test_the_document_is_valid_json_with_one_server(self):
         document = json.loads(json.dumps(self.document()))
         self.assertEqual((document["openapi"], document["servers"]), ("3.0.3", [{"url": "http://127.0.0.1:8080"}]))

@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { SEARCH_FILTER_TYPES, SEARCH_LIMITS, SEARCH_PATH, type SearchQuery } from '@flux/contracts';
 import type { SessionResolver } from '../identity/index.js';
 import { commandRunner, useDomainErrors } from '../http/commands.js';
-import { sealedSearchBuilds, sealedSearchIndexedWorkspaces, sealedSearchIndexHeap, type Database } from '@flux/db';
+import { sealedSearchBuilds, sealedSearchIndexedWorkspaces, sealedSearchIndexHeap, type Database, type QueryVectors } from '@flux/db';
 import { searchUseCases } from './adapters.js';
 import { SearchCursorCodec } from './cursor.js';
 
@@ -12,6 +12,8 @@ interface Options {
   cursorSecret: string;
   /** Test only (the fixture module: a fixture token and FLUX_TEST_FAILURE_INJECTION): `GET /api/v1/search/explain` returns the rows examined. */
   exposeWork: boolean;
+  /** Set while the optional embedding container is on (F-042, #1294): ranking by BM25 fuses the nearest vectors in. */
+  vectors?: QueryVectors | undefined;
 }
 
 const querystring = {
@@ -31,10 +33,10 @@ const querystring = {
  * which asks the access policy for the reader's audiences on every request. Answers are never
  * cached: a revocation applies to the next search.
  */
-export async function searchRoutes(app: FastifyInstance, { db, sessions, cursorSecret, exposeWork }: Options) {
+export async function searchRoutes(app: FastifyInstance, { db, sessions, cursorSecret, exposeWork, vectors }: Options) {
   useDomainErrors(app);
   const { principal } = commandRunner(db, sessions);
-  const search = searchUseCases(db, new SearchCursorCodec(cursorSecret));
+  const search = searchUseCases(db, new SearchCursorCodec(cursorSecret), vectors);
   app.get<{ Querystring: SearchQuery }>(SEARCH_PATH, { schema: { querystring } }, async (request, reply) => {
     const answer = await search.search(await principal(request), request.query);
     return reply.header('cache-control', 'no-store').send(answer);

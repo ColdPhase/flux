@@ -53,6 +53,19 @@ export FLUX_KEYRING_TOKEN="$(head -c 32 /dev/urandom | base64 | tr '+/' '-_' | t
 export FLUX_KEY_PIN_SECRET="$(head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=\n')"
 . scripts/test_images.sh
 compose="docker compose --env-file /dev/null -p $project -f docker/compose.source.yaml -f docker/compose.test.yaml --profile test"
+# #1294: FLUX_CHECK_EMBEDDINGS=on adds the optional embedding container itself (docker/compose.embeddings.yaml): the API and worker use it, and the test
+# service is told where it is, which switches on tests/app/search-vectors-live.test.ts. FLUX_CHECK_EMBEDDINGS_CACHE (a host directory) keeps
+# its model between runs; FLUX_TEST_RECALL_FILE (a seed.json of scripts/eval/retrieval/seed.py) is the corpus of that test's recall measurement.
+embeddings_cache=
+if [ "${FLUX_CHECK_EMBEDDINGS:-}" = on ]; then
+  compose="$compose -f docker/compose.embeddings.yaml"
+  export FLUX_TEST_EMBEDDINGS_URL=http://embeddings:8080
+  if [ -n "${FLUX_CHECK_EMBEDDINGS_CACHE:-}" ]; then
+    embeddings_cache="$background_secret_dir/embeddings-cache.yaml"
+    printf 'services:\n  embeddings:\n    volumes:\n      - %s:/data:z\n' "$FLUX_CHECK_EMBEDDINGS_CACHE" > "$embeddings_cache"
+    compose="$compose -f $embeddings_cache"
+  fi
+fi
 . scripts/database_outage.sh
 
 # No password hash and no personal data may reach a log (#1088, found in the reviews of #1093). A failed statement is quoted with its parameters
@@ -90,6 +103,7 @@ cleanup() {
   fi
   $compose down -v || true
   remove_project_images
+  [ -z "$embeddings_cache" ] || rm -f "$embeddings_cache"
   chmod 0600 "$background_secret_dir/background_key"
   unlink "$background_secret_dir/background_key"
   rmdir "$background_secret_dir"
@@ -133,7 +147,9 @@ $compose run --rm test node -e "fetch(process.env.FLUX_API_URL + '/api/auth/sign
   .then(async (r) => { if (!r.ok) { console.error(r.status, await r.text()); process.exit(1); } })"
 
 if [ "$#" -gt 0 ]; then
-  $compose run --rm test node_modules/.bin/tsx --test --test-concurrency=1 "$@"
+  recall_mount=
+  [ -z "${FLUX_TEST_RECALL_FILE:-}" ] || recall_mount="-v $FLUX_TEST_RECALL_FILE:/recall/seed.json:ro,z -e FLUX_TEST_RECALL_CORPUS=/recall/seed.json"
+  $compose run --rm $recall_mount test node_modules/.bin/tsx --test --test-concurrency=1 "$@"
   if $compose logs --no-color api worker providermock | grep -F 'owner-budget-key-' >/dev/null; then
     echo 'Provider key appeared in API, worker or provider-mock logs' >&2
     exit 1

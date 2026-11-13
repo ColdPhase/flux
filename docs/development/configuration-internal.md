@@ -22,6 +22,7 @@ the wiring between services or enables test-only code.
 | `FLUX_DEVELOPMENT_LIVE_EDITING_API_INSTANCE` | Isolated live-editing calibration only. |
 | `FLUX_DEVELOPMENT_LIVE_EDITING_TELEMETRY` | Isolated live-editing calibration only. |
 | `FLUX_DEV_API_URL` | Set by the dev profile: where Vite proxies API requests. |
+| `FLUX_EMBEDDINGS_URL` | Set by the embeddings overlay to `http://embeddings:8080` on `api` and `worker`; empty (every other stack) is off. |
 | `FLUX_EXPORT_FILE` | Passed by `./flux export` to the export command inside the image. |
 | `FLUX_FILES_DIR` | Set by Compose to `/data/files`, the `files` volume. |
 | `FLUX_GIT_COMMIT` | Set by `./flux` from `git`; recorded as an image label and in backup manifests. |

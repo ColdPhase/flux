@@ -1,4 +1,4 @@
-import { searchRows, sealedSearchRows, type SearchExecutor, type SQL, visibleFilter, memberFilter, accessReader, type Database } from '@flux/db';
+import { searchRows, sealedSearchRows, type QueryVectors, type SearchExecutor, type SQL, visibleFilter, memberFilter, accessReader, type Database } from '@flux/db';
 import {
   authorize,
   createSearchUseCases,
@@ -48,8 +48,9 @@ export function policySearchAccess(db: Database): SearchAccess<SQL> {
   };
 }
 
-export function searchRepository(db: SearchExecutor): SearchRepository<SQL> {
-  return searchRows(db);
+/** `vectors` is given while the optional embedding container is on (F-042, #1294): ranked search then fuses in the nearest vectors. */
+export function searchRepository(db: SearchExecutor, vectors?: QueryVectors): SearchRepository<SQL> {
+  return searchRows(db, vectors);
 }
 
 /** Encrypted workspaces answer from the in-memory index of this process (F-030 S2b). */
@@ -58,5 +59,5 @@ export function sealedSearchRepository(db: Database): SealedSearchRepository<SQL
 }
 
 /** The search use cases bound to a connection. */
-export const searchUseCases = (db: Database, cursors: SearchCursors) =>
-  createSearchUseCases({ access: policySearchAccess(db), rows: searchRepository(db), sealed: sealedSearchRepository(db), cursors });
+export const searchUseCases = (db: Database, cursors: SearchCursors, vectors?: QueryVectors) =>
+  createSearchUseCases({ access: policySearchAccess(db), rows: searchRepository(db, vectors), sealed: sealedSearchRepository(db), cursors });
