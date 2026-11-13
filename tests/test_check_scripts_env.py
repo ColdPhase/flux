@@ -27,7 +27,7 @@ NOT_A_RUN = re.compile(r"docker compose version|^\s*(printf|echo|step)\b|^\s*#")
 # Scripts that run an operator-style stack on purpose, each with an env file of its own that replaces docker/.env
 # (a copy of the checkout after `./flux up`, a generated .env from .env.example, a fixture file).
 OWN_ENV = {
-    "check_agent_runtime.sh", "check_backup.sh", "check_flux_cli.sh", "check_operator_compose.sh",
+    "check_agent_runtime.sh", "check_backup.sh", "check_first_up.sh", "check_flux_cli.sh", "check_operator_compose.sh",
     "check_runtime_install.sh", "mobile_push_fixture.sh", "smoke_artifacts.sh", "smoke_runtime.sh",
 }
 # Release assets: an extracted release directory with its own compose.yaml, not the source stack.
