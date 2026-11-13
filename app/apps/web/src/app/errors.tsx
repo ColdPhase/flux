@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, isRouteErrorResponse, useLocation, useMatches, useRevalidator, useRouteError } from 'react-router';
 import { ApiError, NetworkError } from '../api/client';
 import { getMe } from '../api/auth';
@@ -71,6 +71,15 @@ function ErrorPage({ shell }: { shell: boolean }) {
     const timer = window.setInterval(retry, 10_000);
     return () => { window.removeEventListener('online', retry); window.clearInterval(timer); };
   }, [unreachable, revalidator]);
+  // When Try again brings the place back, the button that had focus goes with this page: focus moves to the place itself (`#content`), not to
+  // the start of the document, so a keyboard or screen reader user goes on where they were (#1369). A place that focuses something of its own keeps it.
+  const tried = useRef(false);
+  useEffect(() => () => {
+    if (!tried.current) return;
+    requestAnimationFrame(() => {
+      if (!document.activeElement || document.activeElement === document.body) document.getElementById('content')?.focus({ preventScroll: true });
+    });
+  }, []);
   if (returning) return <NearestAccessible pathname={pathname} />;
   // F-030 (#655): a place whose workspace is an encrypted one that waits to be unlocked shows the locked panel, not an error.
   if (isWorkspaceLocked(error)) return <LockedSpace workspaceId={lockedWorkspaceId(error)} />;
@@ -79,7 +88,7 @@ function ErrorPage({ shell }: { shell: boolean }) {
     return <NotAvailable title={title} bare={!shell} />;
   }
 
-  const tryAgain = <Button variant={shell ? 'secondary' : 'primary'} size={shell ? 'md' : 'lg'} icon={retrying ? undefined : 'refresh'} busy={retrying} onClick={() => revalidator.revalidate()}>Try again</Button>;
+  const tryAgain = <Button variant={shell ? 'secondary' : 'primary'} size={shell ? 'md' : 'lg'} icon={retrying ? undefined : 'refresh'} busy={retrying} onClick={() => { tried.current = true; revalidator.revalidate(); }}>Try again</Button>;
   const home = <Link className="ui-btn ui-btn--quiet ui-btn--lg" to="/">Go to Home</Link>;
   let title: string;
   let body: string;

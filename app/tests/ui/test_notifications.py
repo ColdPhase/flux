@@ -513,11 +513,11 @@ class NotificationJourney(unittest.TestCase):
         page.route("**/api/v1/notification-preferences", handler)
         self.addCleanup(lambda: page.unroute_all(behavior="ignoreErrors"))
         page.goto("/settings/notifications")
-        expect(page.get_by_role("heading", name="Notification settings could not load", exact=True)).to_be_visible()
+        expect(page.get_by_role("heading", name="Notification settings couldn’t be loaded", exact=True)).to_be_visible()
         phase["fail"] = False
-        page.get_by_role("button", name="Retry", exact=True).click()
+        page.get_by_role("button", name="Try again", exact=True).click()
         expect(page.get_by_role("radiogroup", name="Tell me about")).to_be_visible()
-        expect(page.get_by_role("heading", name="Notification settings could not load", exact=True)).to_have_count(0)
+        expect(page.get_by_role("heading", name="Notification settings couldn’t be loaded", exact=True)).to_have_count(0)
         self.assertEqual(patches, [])
 
     def test_09_the_expired_link_button_keeps_44_px_and_readable_contrast(self) -> None:

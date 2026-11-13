@@ -126,7 +126,14 @@ export function WorkDetails({ view }: { view: ObjectView | WorkFormView }) {
     ? <p className="wd-error" role="alert">Space context could not be loaded. Your draft is kept. <button type="button" className="wd-inline" onClick={reload}>Refresh context</button></p>
     : !context ? <p className="wd-muted" role="status">Loading space context…</p> : null;
   if (view.kind === 'propose-decision') return <ProposeDecision key={key} view={view} context={context} contextStatus={contextStatus} revision={tick} isCurrent={commands.isCurrent} />;
-  if (!projectId || unavailable) return <div className="details"><p className="details__eyebrow">Details</p><h3 className="details__title">Not available</h3><p className="details__lead" role="alert">{contextRead.phase === 'unavailable' ? readable(contextRead.error) : own.read.phase === 'unavailable' ? readable(own.read.error) : 'Open this object in its space.'}</p><Button variant="secondary" onClick={reload}>Refresh details</Button></div>;
+  if (!projectId || unavailable) {
+    // A read that failed for now is said as every place says it, with Try again and no server words (#1369); one that is gone or closed is "Not available".
+    const failure = contextRead.phase === 'unavailable' ? contextRead.error : own.read.phase === 'unavailable' ? own.read.error : null;
+    const gone = !projectId || (failure instanceof ApiError && (failure.status === 404 || failure.status === 403));
+    return <div className="details"><p className="details__eyebrow">Details</p><h3 className="details__title">{gone ? 'Not available' : 'The details couldn’t be loaded'}</h3>
+      <p className="details__lead" role="alert">{!projectId ? 'Open this object in its space.' : gone ? 'This is no longer available to you.' : 'Nothing was lost.'}</p>
+      {gone ? null : <Button variant="secondary" icon="refresh" onClick={reload}>Try again</Button>}</div>;
+  }
   // A task's panel appears in its final layout (#899, motion rule 2): its relationships decide which rows and sections it has,
   // so their first read finishes before it is shown. Once shown, a refresh or another page keeps the panel (and its drafts).
   const relationsSettled = relations.read.phase !== 'loading' && relations.read.phase !== 'idle';

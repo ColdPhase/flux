@@ -130,7 +130,7 @@ function AccountNotificationSettings() {
   if (failed) {
     return (
       <div className="pane-scroll"><div className="pane-in">
-        <ErrorState title="Notification settings could not load" actions={<Button onClick={() => { setFailed(false); load(); }}>Retry</Button>}><p>Your inbox still works.</p></ErrorState>
+        <ErrorState title="Notification settings couldn’t be loaded" actions={<Button variant="secondary" icon="refresh" onClick={() => { setFailed(false); load(); }}>Try again</Button>}><p>Nothing was lost. Your Inbox still works.</p></ErrorState>
       </div></div>
     );
   }

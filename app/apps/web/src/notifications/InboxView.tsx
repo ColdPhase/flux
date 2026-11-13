@@ -14,6 +14,7 @@ import { useNeedsYou } from './needsYou';
 import { LockedSpacesNote } from '../encryption/LockedSpace';
 import { SecurityNotices } from '../encryption/SecurityNotices';
 import { useNeedsYouActions } from './useNeedsYouActions';
+import { ApiError } from '../api/client';
 import './notifications.css';
 import './needs-you.css';
 
@@ -167,18 +168,28 @@ export function InboxOpen() {
   // The reference was followed from somewhere: the page it redirects to keeps that origin (#592).
   const arrivalState = useLocation().state as unknown;
   const stateRef = useRef(arrivalState);
-  const [gone, setGone] = useState(false);
+  // Gone or closed to this person is the one "not available" page (#1371); a read that failed for now says so, with Try again (#1369).
+  const [failure, setFailure] = useState<'gone' | 'failed' | null>(null);
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     const controller = new AbortController();
     getInboxItem(id, controller.signal).then(async (item) => {
       if (controller.signal.aborted) return;
       void markInboxRead(item.id).then(announceInboxChange, () => undefined);
       navigate(item.url ?? '/inbox', { replace: true, state: stateRef.current });
-    }, () => { if (!controller.signal.aborted) setGone(true); });
+    }, (error: unknown) => {
+      if (!controller.signal.aborted) setFailure(error instanceof ApiError && (error.status === 404 || error.status === 403) ? 'gone' : 'failed');
+    });
     return () => controller.abort();
-  }, [id, navigate]);
+  }, [id, navigate, attempt]);
+  if (failure === 'gone') return <NotAvailable title="This isn’t available to you" back={{ to: '/inbox', label: 'Back to the Inbox' }} />;
   return (
-    gone ? <NotAvailable title="This isn’t available to you" back={{ to: '/inbox', label: 'Back to the Inbox' }} />
-      : <div className="pane-scroll"><div className="pane-in"><p className="inbox__loading"><Spinner label="Opening" /></p></div></div>
+    <div className="pane-scroll"><div className="pane-in">
+      {failure === 'failed' ? (
+        <ErrorState title="This couldn’t be loaded" actions={<Button variant="secondary" icon="refresh" onClick={() => { setFailure(null); setAttempt((n) => n + 1); }}>Try again</Button>}>
+          <p>Nothing was lost.</p>
+        </ErrorState>
+      ) : <p className="inbox__loading"><Spinner label="Opening" /></p>}
+    </div></div>
   );
 }

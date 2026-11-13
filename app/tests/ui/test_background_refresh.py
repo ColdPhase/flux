@@ -244,9 +244,12 @@ class BackgroundRefresh(unittest.TestCase):
                 self.in_place(page, title)
                 self.assertGreaterEqual(reads["reads"], 1)
                 reads["failing"] = False
-                page.get_by_role("button", name="Try again").click()
+                # By keyboard: once the place is back, focus is on it, not lost to the start of the page.
+                page.get_by_role("button", name="Try again").focus()
+                page.keyboard.press("Enter")
                 expect(page.get_by_text("couldn’t be loaded")).to_have_count(0)
                 expect(page.locator("header.top .top__title h1")).to_have_text(self.state["name"])
+                page.wait_for_function("() => document.activeElement && document.activeElement !== document.body && document.querySelector('#content').contains(document.activeElement)")
         # A reload of an open place whose read now fails: the same, in place, and Try again brings the place back.
         with self.subTest(reload=True):
             page = self.page()

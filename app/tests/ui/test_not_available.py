@@ -155,6 +155,21 @@ class NotAvailable(unittest.TestCase):
         # A minute, not seconds: "Saved 13 Nov 2026, 09:00".
         expect(article.locator(".material-view__meta").last).to_contain_text(re.compile(r"Saved .*\d{1,2}:\d{2}$"))
 
+    def test_04_an_inbox_item_whose_read_fails_for_now_is_not_called_gone(self) -> None:
+        """A 503 on an Inbox item's read says "This couldn't be loaded" with Try again, never the not-available page (#1369, #1371)."""
+        self.world()
+        page = self.page()
+        failing = {"on": True}
+        page.route(re.compile(rf".*/api/v1/inbox/{ZERO}$"), lambda route: route.fulfill(status=503, json={"code": "TEST_UNAVAILABLE"}) if failing["on"] else route.continue_())
+        page.goto(f"/inbox/{ZERO}")
+        expect(page.get_by_role("heading", name="This couldn’t be loaded")).to_be_visible()
+        expect(page.locator("[data-not-available]")).to_have_count(0)
+        failing["on"] = False
+        page.get_by_role("button", name="Try again").click()
+        # The item really is gone: now, and only now, it is the not-available page.
+        expect(page.locator("[data-not-available]")).to_be_visible()
+        expect(page.get_by_role("link", name="Back to the Inbox")).to_be_visible()
+
 
 if __name__ == "__main__":
     unittest.main()
