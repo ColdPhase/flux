@@ -275,7 +275,7 @@ span.photo-grid__open { cursor: default; }
 @media (max-width: 480px) { .file-row__poster { width: 56px; height: 32px; } }
 .file-row__play { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(0, 0, 0, .42); color: #fff; }
 /* The viewer's stage for a video is the black of the viewer itself: no sheet, the player as large as the stage allows. */
-.file-viewer__sheet--video { width: 100%; border-radius: 0; background: none; }
+.file-viewer__sheet--video { width: 100%; border-radius: 0; background: none; color: inherit; }
 /* Its states ("This browser can't play this video.") sit on that black, in the viewer's own light text, not the light sheet's grey. */
 .file-viewer__sheet--video .file-viewer__state { color: inherit; }
 .file-viewer__video { display: block; width: 100%; height: 100%; object-fit: contain; background: #000; }
