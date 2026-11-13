@@ -2,14 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Conversation } from '@flux/contracts';
 import { OPENING_REVEAL_MS } from '../app/messageParts';
 import { currentEntry, isBooted, recall, useArrival } from '../place/memory';
-import { useSpareHeight } from '../ui/spareHeight';
 import { threadPlace, useMessageWork } from '../work/useMessageWork';
 import { useProjectWorkSummary } from '../work/WorkReadContext';
 import { useReferenceWork } from '../work/useReferenceWork';
 import type { PaneCore } from './paneCore';
 
 interface Options {
-  messages: Conversation['messages']; pendingCount: number; rootMessageId: string | null;
+  messages: Conversation['messages']; rootMessageId: string | null;
   accessLost: boolean; hideIfDenied: (cause: unknown) => void;
 }
 
@@ -17,14 +16,12 @@ interface Options {
  * The thread as it is read: its scroll area, the bounded reads of what was made from its replies and of the tasks
  * the task it discusses (#155), where a return left the reader (#592), and when it may be shown at all.
  */
-export function useThreadReading({ me, project, conversation }: PaneCore, { messages, pendingCount, rootMessageId, accessLost, hideIfDenied }: Options) {
+export function useThreadReading({ me, project, conversation }: PaneCore, { messages, rootMessageId, accessLost, hideIfDenied }: Options) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [feedNode, setFeedNode] = useState<HTMLDivElement | null>(null);
   const attachFeed = useCallback((node: HTMLDivElement | null) => { scrollRef.current = node; setFeedNode(node); }, []);
-  // A short thread sits against its reply field instead of at the top of a tall panel (ui/spareHeight.ts).
+  // A short thread starts at the top of its panel, its root whole (S23); only the space's stream and a direct message sit against their field.
   const columnRef = useRef<HTMLDivElement>(null);
-  const liftRef = useRef<HTMLDivElement>(null);
-  useSpareHeight(scrollRef, columnRef, liftRef, conversation ? messages.length + pendingCount : 0, feedNode);
   // The thread shows its root whole at the top (with what was made from it), then the replies: one bounded
   // association read covers the root and the replies around the viewport (#155).
   const sourceIds = useMemo(() => [...(rootMessageId ? [rootMessageId] : []), ...messages.filter((message) => message.sequence > 1 && message.id !== rootMessageId).map((message) => message.id)], [messages, rootMessageId]);
@@ -65,6 +62,6 @@ export function useThreadReading({ me, project, conversation }: PaneCore, { mess
     feed.dispatchEvent(new Event('scroll'));
   };
   const discussedRow = discussedTask ? referenceWork.rows.get(`work:${discussedTask}`) ?? null : null;
-  return { scrollRef, feedNode, attachFeed, columnRef, liftRef, referenceWork, messageWork, threadRestore, revealed, scrollToEnd, discussedRow };
+  return { scrollRef, feedNode, attachFeed, columnRef, referenceWork, messageWork, threadRestore, revealed, scrollToEnd, discussedRow };
 }
 export type ThreadReading = ReturnType<typeof useThreadReading>;

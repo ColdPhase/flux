@@ -568,9 +568,15 @@ class LiveJourney(LiveBase):
         expect(bar.get_by_role("status").first).to_contain_text("Connecting")
         expect(bar.locator(".lv-where")).to_have_text("Call in Quick start")
         expect(bar.get_by_role("button", name="Leave", exact=True)).to_have_count(0)
+        # The strip's items share one centre line: the place's title is level with the live word (#1378), not at the top of the row.
+        centres = bar.evaluate("""el => { const c = (s) => { const r = el.querySelector(s).getBoundingClientRect(); return r.top + r.height / 2; }; return [c('.lv-row__lead'), c('.lv-where__t')]; }""")
+        self.assertLessEqual(abs(centres[0] - centres[1]), 2, f"the title is on the row's centre line: {centres}")
         shot(kai, "live-desktop-1440-connecting")
-        # While it connects, Call does not start a second call: it says it is connecting.
-        header.get_by_role("button", name="Call", exact=True).click()
+        # While it connects, the header shows the call's state, not a Call button again (#1378), and it starts no second call: it says it is connecting.
+        in_call = header.get_by_role("button", name="In call", exact=True)
+        expect(in_call).to_have_text("In call")
+        expect(header.get_by_role("button", name="Call", exact=True)).to_have_count(0)
+        in_call.click()
         expect(kai.locator(".lv-pop__text")).to_have_text("Connecting to the call.")
         kai.keyboard.press("Escape")
         expect(bar.get_by_role("status").first).to_contain_text("Live", timeout=30000)

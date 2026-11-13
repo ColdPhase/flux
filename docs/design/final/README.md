@@ -1110,6 +1110,11 @@ Live strip, someone shares a screen
   Nia", and "Join · Nia · at “Loan rules”" when the call is at another task, map or page than the one open (a call of
   the space itself has no "at"). Below 44 rem the header has moved Call into ⋯: ⋯ carries the live dot and its first row
   is "Join · Nia". On the phone Join is the dark pill between the name and ⋯ (#1239); under 360 px it takes Call's row in ⋯, after Search, with the dot on ⋯.
+- **While you are in the call** the header's slot shows the call's state, not a Call button again ([#1378](https://github.com/ColdPhase/flux/issues/1378)):
+  the live dot (a spinner while it connects) and **In call**, the same quiet button in the same slot, so nothing moves. It explains itself in its popover
+  ("You are in a live session." / "Connecting to the call.") and starts nothing; ⋯'s row reads **In call** the same way.
+- **The strip's row is centred** on every window: the live dot with its word (**Live**, from 360 px), the place's button, the faces, then the devices; every item shares
+  the row's centre line, and a call line's faces sit side by side, 2 px apart, with no overlap (the receipts' rule).
 - **Connecting.** From the click on Call or Join the strip is there, in the place it will keep: the spinner and "Connecting…",
   and the call's place (the same button), with nothing else; its devices, Invite…, ⋯ and Leave come when the call is joined, in the
   same row, so the work below does not move twice. Until then the header's Call (or ⋯'s row) says "Connecting to the call." and
@@ -1176,7 +1181,8 @@ the composer. The right-hand phone above shows the sheet.
   right, "+ Task". Mine includes tasks owned by your agents.
 - **Four columns**, the four states: To do, Doing, Blocked and Done, each with its glyph and count.
   A card holds its title, its number, a due date when it has one, and its owner's face, an agent
-  tag ("Planner · Ada's agent") or "No owner". Cards have no ⋯, and columns have no "+".
+  tag ("Planner · Ada's agent") or "No owner". Cards have no ⋯, and columns have no "+". A column is one card wide and at most 420 px,
+  whatever the window: extra width is margin on the right, never cards flowing sideways inside a state ([#1379](https://github.com/ColdPhase/flux/issues/1379)).
 - **Blocked** cards carry one line saying what they wait for: "Waiting for the decision Use LoRa
   for the far beds", "Waiting for Jonas" or "Waiting for #7". When that resolves, the task returns
   to Doing by itself.
