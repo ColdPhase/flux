@@ -111,6 +111,11 @@ export interface NotificationPreferences {
    * them with the notice, so both follow the level and quiet hours.
    */
   sound: NotificationSound;
+  /**
+   * "Hide previews" (founder decision, Hubert, 2026-11-13, #1346), off by default: a push says only who and where ("Ada mentioned you in
+   * Tool library"), with no message text, file name, task title or link in the payload. The Inbox, the notice and the sound are unchanged.
+   */
+  hidePreviews: boolean;
 }
 
 export interface NotificationSound {
@@ -126,6 +131,7 @@ export interface UpdateNotificationPreferencesCommand {
   accountEnabled?: boolean;
   quietHours?: Partial<QuietHours>;
   sound?: Partial<NotificationSound>;
+  hidePreviews?: boolean;
 }
 
 /** `GET /api/v1/notification-preferences/mutes`: the places the person muted, by id, for the sidebar's mark (no names; Settings has them). */

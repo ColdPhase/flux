@@ -11,6 +11,7 @@ the inbox on a phone. Each step is checked against the API. FLUX_UI_BROWSER sele
 
 from __future__ import annotations
 
+import base64
 import json
 import re
 import time
@@ -33,6 +34,7 @@ PEOPLE = {
     "kai": ("Kai Tanaka", f"kai.n+{STAMP}@example.test"),
 }
 EXTRA = f"ada.home+{STAMP}@example.test"
+PUSH_KEY = base64.urlsafe_b64encode(bytes([4]) + bytes(64)).decode().rstrip("=")
 
 
 def wait_for_mail(address: str, containing: str) -> str:
@@ -696,6 +698,53 @@ class NotificationJourney(unittest.TestCase):
         self.assertIsNone(read())
         self.assertEqual(len(waiting()), before)
         self.api(page, "POST", f"/api/v1/needs-you/{urllib.parse.quote(item['key'], safe='')}", {"action": "done"})
+
+    def test_13_hide_previews_is_one_switch_in_where_that_persists_after_a_reload(self) -> None:
+        """#1346 (founder decision, 2026-11-13): one plain switch in the Where card, off by default, saved at once, still on after a reload; the
+        rest of the page is as it was. It is about push, so a server that cannot push does not offer it; this stack has no push keys, so the page
+        is told push is on (the request for the public key is answered)."""
+        page = self.page("ada")
+        page.route("**/api/v1/push/public-key", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps({"status": "available", "publicKey": PUSH_KEY})))
+        self.addCleanup(lambda: self.api(page, "PATCH", "/api/v1/notification-preferences", {"hidePreviews": False}))
+        page.goto("/settings/notifications")
+        where = page.get_by_role("group", name="Where")
+        hide = where.get_by_role("switch", name="Hide previews")
+        expect(hide).to_have_attribute("aria-checked", "false")
+        self.assertFalse(self.api(page, "GET", "/api/v1/notification-preferences")["hidePreviews"], "off by default")
+        # Plain words, in the Where card, between this device and quiet hours; no other control or sample came with it.
+        row = where.locator(".sset-row").filter(has=hide)
+        expect(row).to_contain_text("Notifications show who and where, never the message")
+        labels = [re.sub(r"\s+", " ", text).strip() for text in where.locator(".sset-row__t").all_inner_texts()]
+        self.assertEqual(labels[labels.index("On this device") + 1:labels.index("On this device") + 3], ["Hide previews", "Quiet hours"])
+        expect(page.get_by_role("switch", name="Hide previews")).to_have_count(1)
+        shot(page, "hide-previews-desktop-1440-off")
+        hide.click()
+        expect(hide).to_have_attribute("aria-checked", "true")
+        expect(page.get_by_role("status").filter(has_text="Saved")).to_be_visible()
+        stored = self.settled(page, lambda prefs: prefs["hidePreviews"] is True)
+        self.assertTrue(stored["hidePreviews"])
+        self.assertEqual((stored["level"], stored["emailMe"]), ("needsYou", True), "nothing else changed")
+        shot(page, "hide-previews-desktop-1440-on")
+        page.reload()
+        expect(page.get_by_role("group", name="Where").get_by_role("switch", name="Hide previews")).to_have_attribute("aria-checked", "true")
+        # At the level Nothing no push is sent, and the line says so; the choice is kept.
+        page.get_by_role("radiogroup", name="Tell me about").get_by_text("Nothing", exact=True).click()
+        self.settled(page, lambda prefs: prefs["level"] == "nothing")
+        expect(page.get_by_role("group", name="Where").locator(".sset-row").filter(has=page.get_by_role("switch", name="Hide previews"))).to_contain_text("Not used while you hear about Nothing")
+        page.get_by_role("radiogroup", name="Tell me about").get_by_text("Only what needs me", exact=True).click()
+        self.settled(page, lambda prefs: prefs["level"] == "needsYou")
+        page.get_by_role("switch", name="Hide previews").click()
+        expect(page.get_by_role("switch", name="Hide previews")).to_have_attribute("aria-checked", "false")
+        self.settled(page, lambda prefs: prefs["hidePreviews"] is False)
+        page.reload()
+        expect(page.get_by_role("switch", name="Hide previews")).to_have_attribute("aria-checked", "false")
+
+    def test_13b_a_server_that_cannot_push_does_not_offer_hide_previews(self) -> None:
+        page = self.page("ada")
+        page.goto("/settings/notifications")
+        expect(page.get_by_text("Push isn’t set up on this Flux server. Your inbox always works.")).to_be_visible()
+        expect(page.get_by_role("switch", name="Hide previews")).to_have_count(0)
+        expect(page.get_by_role("switch", name="Email me too")).to_be_visible()
 
 
 if __name__ == "__main__":

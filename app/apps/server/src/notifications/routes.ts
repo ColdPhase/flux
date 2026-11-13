@@ -62,6 +62,7 @@ export async function notificationRoutes(app: FastifyInstance, { db, sessions, s
         type: 'object', additionalProperties: false,
         properties: {
           emailMe: { type: 'boolean' },
+          hidePreviews: { type: 'boolean' },
           accountEnabled: { type: 'boolean' },
           quietHours: {
             type: 'object', additionalProperties: false,

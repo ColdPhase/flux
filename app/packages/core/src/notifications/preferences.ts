@@ -32,6 +32,8 @@ export interface StoredPreferences {
   soundMessages: boolean;
   /** "Sound when someone calls me" (#1243): on by default. */
   soundCalls: boolean;
+  /** "Hide previews" (#1346): a push says only who and where, never what was written. Off by default. */
+  hidePreviews: boolean;
 }
 
 /**
@@ -48,6 +50,7 @@ export const DEFAULT_PREFERENCES: StoredPreferences = {
   timeZone: 'UTC',
   soundMessages: false,
   soundCalls: true,
+  hidePreviews: false,
 };
 
 const NEEDS_YOU = new Set<NotificationReason>(NEEDS_YOU_REASONS);
@@ -117,6 +120,10 @@ export function applyPreferenceChange(current: StoredPreferences, command: Updat
   if (command.accountEnabled !== undefined) {
     if (typeof command.accountEnabled !== 'boolean') throw new InvalidInputError('accountEnabled must be true or false', 'INVALID_ACCOUNT_ENABLED');
     next.accountEnabled = command.accountEnabled;
+  }
+  if (command.hidePreviews !== undefined) {
+    if (typeof command.hidePreviews !== 'boolean') throw new InvalidInputError('hidePreviews must be true or false', 'INVALID_HIDE_PREVIEWS');
+    next.hidePreviews = command.hidePreviews;
   }
   const sound = command.sound;
   if (sound !== undefined) {

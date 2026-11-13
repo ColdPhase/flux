@@ -40,8 +40,9 @@ export const GENERIC_PUSH_TITLE = 'New activity in Flux';
 
 /**
  * Payload encrypted to the subscription and read by the service worker's push handler.
- * `full` carries the text only when the recipient could read the source at send time;
- * otherwise it is `generic` (fixed title and opaque id). On click the service worker asks
+ * `full` carries the text only when the recipient could read the source at send time (and has not chosen "Hide previews");
+ * `hidden` (#1346) is what "Hide previews" sends: a title that says only who and where, in fixed words, and nothing else (no body,
+ * no link); otherwise it is `generic` (fixed title and opaque id). On click the service worker asks
  * `GET /api/v1/inbox/:id`, which rechecks access, before opening anything.
  */
 export type PushPayload =
@@ -53,6 +54,7 @@ export type PushPayload =
     /** Same-origin path to open, re-authorized by the app when opened. */
     url: string;
   }
+  | { preview: 'hidden'; notificationId: string; title: string }
   | { preview: 'generic'; notificationId: string; title: string };
 
 export type NotificationSourceType = 'workspace' | 'project' | 'dm';

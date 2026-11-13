@@ -56,12 +56,14 @@ export interface StoredPreferenceRow {
   timeZone: string;
   soundMessages: boolean;
   soundCalls: boolean;
+  hidePreviews: boolean;
 }
 
 type PreferenceRecord = typeof schema.notificationPreferences.$inferSelect;
 const storedRow = (row: PreferenceRecord): StoredPreferenceRow => ({
   level: row.level, emailMe: row.emailMe, accountEnabled: row.accountEnabled, quietEnabled: row.quietEnabled, quietStart: row.quietStart,
   quietEnd: row.quietEnd, timeZone: row.timeZone, soundMessages: row.soundMessages, soundCalls: row.soundCalls,
+  hidePreviews: row.hidePreviews,
 });
 
 /** What the generator reads and writes inside its transaction. */

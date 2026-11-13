@@ -118,6 +118,12 @@ export function pushPreferenceCheck(db: Database) {
   };
 }
 
+/** Push reads the person's "Hide previews" at the moment it sends (#1346), so a switch turned on also covers a push already waiting. */
+export function pushHidePreviewsCheck(db: Database) {
+  const preferences = preferenceRepository(notificationPreferenceRows(db));
+  return async (userId: string) => (await preferences.get(userId)).hidePreviews;
+}
+
 /** Push rechecks the person's current quiet hours before sending (#116): inside them nothing is sent, and nothing later (C-31). */
 export function pushQuietCheck(db: Database, now = () => new Date()) {
   const preferences = preferenceRepository(notificationPreferenceRows(db));
