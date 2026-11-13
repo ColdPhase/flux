@@ -207,7 +207,8 @@ for method in claude_account console sso; do
   docker exec "$t_cid" cat "/data/$t_binding/claude/fake-calls.jsonl" | python3 -c '
 import json, sys
 calls = [json.loads(line) for line in sys.stdin if line.strip()]
-commands = [c["argv"] for c in calls if "event" not in c]
+# The plan'"'"'s model list (#1332, `claude -p ... --tools ""`) may be read at any tick after a sign-in: not part of the sign-in itself.
+commands = [c["argv"] for c in calls if "event" not in c and c["argv"][:1] != ["-p"]]
 assert commands == [json.loads(sys.argv[1]), ["auth", "status"]], commands
 login = next(c for c in calls if "event" not in c)
 assert login["tty"] is True and login["env"]["TERM"] == "xterm-256color", login
