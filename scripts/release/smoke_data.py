@@ -7,7 +7,7 @@ installation holds after some use (#1241):
 * the base content: the company, a space, a conversation with a reply and a binary attachment, a document with two
   versions, a task and a private map;
 * people: a member and a guest who signed up through invite links, and a second signed-in device (a session);
-* a restricted space that holds all three, a thread of three people, a file attached to it, a direct message with a thread
+* a restricted space that holds all three, a thread of three people, a file and a short MP4 attached to it, a direct message with a thread
   reply and a group conversation, a wiki page with three versions by two people, a map with three thoughts and two links,
   tasks with due dates, one waiting for another and one for a person, notification settings with a muted space;
 * an encrypted space with a message, locked again (its password is recorded);
@@ -18,7 +18,8 @@ It records exactly what it wrote in a state file. `verify` signs in again on a r
 release, and checks that every recorded item is still there (explicit fields and the exact attachment bytes, never whole
 responses, so a field a newer release adds does not matter), that the second device's session is still valid and that the
 encrypted space unlocks with its password. `verify --write` also proves the instance accepts new work: a message of each kind,
-a task, a new agent run on the provider mock and a message in the encrypted space.
+a task, a new agent run on the provider mock, a message in the encrypted space and, from schema 71, a 6 MiB video that
+answers byte ranges.
 
 Only routes that exist in v0.2.0, the oldest release that is upgraded (#1241), are used by `seed`, because it runs against the
 PREVIOUS release in the upgrade leg of smoke_artifacts.sh. `verify` runs on the previous release too (after a restore of the
@@ -28,6 +29,7 @@ pre-upgrade backup), so it reads only fields that v0.2.0 returns.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import http.cookiejar
 import json
 import secrets
@@ -46,6 +48,10 @@ GARDEN_NAME = "Garden space"
 VAULT_NAME = "Release vault"
 FILE_BYTES = bytes([0, 255, 128, 1, 10, 42, 0, 7, 200, 13])
 GARDEN_FILE_BYTES = bytes([9, 8, 7, 0, 255, 254, 1, 2, 3, 250])
+# A real 2-second MP4 (the UI tests' fixture): v0.2.0 stores it as an ordinary file; from schema 71 (videos, C-61, #1352) a video
+# above the 5 MiB of other files is accepted and streamed by range.
+VIDEO_CLIP = Path(__file__).resolve().parents[2] / "app" / "tests" / "ui" / "fixtures" / "video" / "clip.mp4"
+VIDEOS_SCHEMA = 71
 ANSWER = "UPGRADE-CHECK-ANSWER"  # what scripts/release/provider_mock.mjs says; a run's answer holds it
 WAIT_FOR_RUN_SECONDS = 90
 
@@ -229,9 +235,17 @@ def seed_more(owner: Client, origin: str, company_id: str, tag: str, provider_ur
     if upload_status != 201:
         raise RuntimeError(f"garden file upload returned {upload_status}")
     garden_file_id = json.loads(upload)["id"]
+    clip = VIDEO_CLIP.read_bytes()
+    clip_status, clip_upload = owner.raw(
+        "POST", f"/api/v1/projects/{garden_id}/files?{urllib.parse.urlencode({'uploadId': new_id(), 'name': 'garden-clip.mp4'})}",
+        clip, "application/octet-stream",
+    )
+    if clip_status != 201:
+        raise RuntimeError(f"garden video upload returned {clip_status}")
+    garden_video_id = json.loads(clip_upload)["id"]
     root = f"GARDEN-root-{tag}"
     thread = owner.expect("POST", f"/api/v1/projects/{garden_id}/conversations", {
-        "body": root, "attachmentIds": [garden_file_id], "clientMessageId": new_id(),
+        "body": root, "attachmentIds": [garden_file_id, garden_video_id], "clientMessageId": new_id(),
     })
     member_client.expect("POST", f"/api/v1/conversations/{thread['id']}/messages", {"body": f"GARDEN-ben-{tag}", "clientMessageId": new_id()})
     guest_client.expect("POST", f"/api/v1/conversations/{thread['id']}/messages", {"body": f"GARDEN-gina-{tag}", "clientMessageId": new_id()})
@@ -286,6 +300,7 @@ def seed_more(owner: Client, origin: str, company_id: str, tag: str, provider_ur
 
     return {
         "ben": ben, "gina": gina, "garden_id": garden_id, "garden_file_id": garden_file_id, "garden_file_hex": GARDEN_FILE_BYTES.hex(),
+        "garden_video_id": garden_video_id, "garden_video_sha256": hashlib.sha256(clip).hexdigest(),
         "garden_thread_id": thread["id"], "garden_messages": thread_messages,
         "dm_id": pair["id"], "dm_root_id": dm_root["id"], "dm_bodies": [f"DM-hello-{tag}", f"DM-reply-{tag}"],
         "group_id": group["id"], "group_title": f"Garden crew {tag}", "group_bodies": [f"GROUP-hello-{tag}", f"{UNICODE_WORD} UNICODE-{tag}"],
@@ -429,6 +444,8 @@ def check_more(more: dict[str, Any], observed: dict[str, Any], now: datetime | N
             problems.append(f"garden message {item[0]} {item[2]!r} missing or by another author")
     if observed["garden_file_hex"] != more["garden_file_hex"]:
         problems.append("garden file bytes differ")
+    if more.get("garden_video_sha256") and observed.get("garden_video_sha256") != more["garden_video_sha256"]:
+        problems.append("garden video bytes differ")
     for label, recorded, seen in (("direct", more["dm_bodies"], observed["dm_bodies"]), ("group", more["group_bodies"], observed["group_bodies"])):
         missing = [body for body in recorded if body not in seen]
         if missing:
@@ -529,6 +546,7 @@ def read_more(owner: Client, origin: str, state: dict[str, Any]) -> dict[str, An
     guest_spaces = [item["id"] for item in guest.all(f"/api/v1/workspaces/{company}/projects")]
     thread = owner.expect("GET", f"/api/v1/conversations/{more['garden_thread_id']}?limit=100")["messages"]
     status, garden_file = owner.raw("GET", f"/api/v1/files/{more['garden_file_id']}")
+    video_status, garden_video = owner.raw("GET", f"/api/v1/files/{more['garden_video_id']}") if more.get("garden_video_id") else (0, b"")
     dm_thread = member.expect("GET", f"/api/v1/dms/{more['dm_id']}/threads/{more['dm_root_id']}")
     group = owner.expect("GET", f"/api/v1/dms/{more['group_id']}?limit=100")
     versions = owner.all(f"/api/v1/docs/{more['wiki_id']}/versions")
@@ -562,6 +580,7 @@ def read_more(owner: Client, origin: str, state: dict[str, Any]) -> dict[str, An
         "guest_denied": guest.status("GET", f"/api/v1/projects/{state['project_id']}") in (403, 404),
         "garden_messages": [[m["sequence"], m["authorId"], m["body"]] for m in thread],
         "garden_file_hex": garden_file.hex() if status == 200 else "",
+        "garden_video_sha256": hashlib.sha256(garden_video).hexdigest() if video_status == 200 else "",
         "dm_bodies": [dm_thread["root"]["body"]] + [reply["body"] for reply in dm_thread["replies"]],
         "group_bodies": [m["body"] for m in group["messages"]], "group_title": group.get("title"),
         "wiki_versions": [[item["version"], item["reason"]] for item in versions], "wiki_bodies": bodies,
@@ -616,6 +635,8 @@ def write_more(owner: Client, origin: str, state: dict[str, Any]) -> None:
     bodies = [m["body"] for m in owner.expect("GET", f"/api/v1/conversations/{more['garden_thread_id']}?limit=100")["messages"]]
     if after not in bodies:
         raise RuntimeError("a guest's message written after the restore or upgrade does not read back")
+    if int(owner.expect("GET", "/api/v1/health").get("schemaVersion", 0)) >= VIDEOS_SCHEMA:
+        write_video(member, more["garden_id"], tag)
     if more.get("ai"):
         ask_agent(owner, more["ai"]["agent_id"], f"And what next? ({tag})")
         owner.expect("POST", f"/api/v1/my-agents/{more['ai']['agent_id']}/memory", {"body": f"Written after the upgrade ({tag})"})
@@ -624,6 +645,30 @@ def write_more(owner: Client, origin: str, state: dict[str, Any]) -> None:
         for item in items:
             if item["body"].startswith("Written after the upgrade"):
                 owner.expect("DELETE", f"/api/v1/my-agents/{more['ai']['agent_id']}/memory/{item['id']}", None, (200, 204))
+
+
+def write_video(member: Client, garden_id: str, tag: str) -> None:
+    """From schema 71 (C-61, #1352): a 6 MiB video, above the 5 MiB of other files, is stored as a video, answers byte ranges with 206
+    and goes with a message. The release's default FLUX_VIDEO_MAX_MIB (200) allows it; a reverse proxy is not in this path."""
+    clip = VIDEO_CLIP.read_bytes()
+    video = clip + bytes((i * 31 + 7) & 0xFF for i in range(len(clip), 6 * 1024 * 1024))
+    status, upload = member.raw(
+        "POST", f"/api/v1/projects/{garden_id}/files?{urllib.parse.urlencode({'uploadId': new_id(), 'name': f'GARDEN-video-{tag}.mp4'})}",
+        video, "application/octet-stream",
+    )
+    staged = json.loads(upload)
+    if status != 201 or staged.get("video") != "mp4":
+        raise RuntimeError(f"a 6 MiB video upload after the upgrade returned {status} {staged!r}")
+    for start, end in ((0, 99), (5_000_000, 5_000_099)):
+        status, part = member.raw("GET", f"/api/v1/files/{staged['id']}/video", headers={"Range": f"bytes={start}-{end}"})
+        if status != 206 or part != video[start:end + 1]:
+            raise RuntimeError(f"the video's range {start}-{end} answered {status} with {len(part)} bytes")
+    sent = member.expect("POST", f"/api/v1/projects/{garden_id}/conversations", {
+        "body": f"GARDEN-video-{tag}", "attachmentIds": [staged["id"]], "clientMessageId": new_id(),
+    })
+    status, whole = member.raw("GET", f"/api/v1/files/{staged['id']}")
+    if status != 200 or hashlib.sha256(whole).digest() != hashlib.sha256(video).digest() or not sent.get("id"):
+        raise RuntimeError("the video sent after the upgrade does not read back")
 
 
 def verify(client: Client, state_file: Path, write: bool) -> None:
@@ -666,6 +711,7 @@ def verify(client: Client, state_file: Path, write: bool) -> None:
             write_more(client, client.origin, state)
             print(
                 "New work was accepted: messages of the guest, the member and the owner, a wiki version, a task, a message in the encrypted space"
+                + (", a 6 MiB video streamed by range" if int(client.expect("GET", "/api/v1/health").get("schemaVersion", 0)) >= VIDEOS_SCHEMA else "")
                 + (", a new agent run answered by the provider mock" if state["more"].get("ai") else "")
             )
 
