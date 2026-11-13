@@ -40,7 +40,7 @@ const human = (someone: Person): Principal => ({ kind: 'human', id: someone.id }
  * that find and read around a message: 36 tools, 25,672 bytes (2026-11-12, CI run 43296958864; the bound was 24,000). #1292 adds the tool that
  * summarises a range: 37 tools, 26,734 bytes (2026-11-12, CI run 43305954226).
  */
-const TOOL_DEFINITION_BYTES = 26_800;
+const TOOL_DEFINITION_BYTES = 26_600;
 const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
 const claims = (token: string) => JSON.parse(Buffer.from(token.split('.')[1]!, 'base64url').toString()) as Record<string, unknown>;
 const toolText = (message: Record<string, unknown> | null) => JSON.stringify(message);

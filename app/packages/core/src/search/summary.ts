@@ -100,7 +100,8 @@ export function digestPage(messages: readonly DigestMessage[], limits: { pageCha
 /** What the answer says about where it stopped and how to go on, in words a model follows. */
 export function summaryNote(page: DigestPage, remaining: number, range: SummaryRange): string {
   if (!page.count) return 'No messages in this range. Say so; do not guess what was said.';
-  if (!remaining) return `These are all the messages from ${range.since.toISOString()}${range.until ? ` until ${range.until.toISOString()}` : ' on'}. Summarise them now.`;
+  // The guidance on the summary itself is here, where it costs tokens only when the tool is used, and not in the tool's definition, which travels with every request.
+  if (!remaining) return `These are all the messages from ${range.since.toISOString()}${range.until ? ` until ${range.until.toISOString()}` : ' on'}. Summarise them now, in the language of the request: decisions, open questions, who does what, dates and numbers.`;
   return `Stopped early: this answer ends at ${page.last!.at.toISOString()} and ${remaining} later message${remaining === 1 ? ' is' : 's are'} not in it. `
     + 'To go on, call this tool again with the same arguments and next. Summarise what you have read so far in your own words and add what the rest says; '
     + 'if you do not read on, say that the summary stops at that time.';

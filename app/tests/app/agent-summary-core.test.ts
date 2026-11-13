@@ -68,7 +68,7 @@ test('a long message is cut and says which tool reads it whole; a page stops at 
 test('the note says when the answer stopped early and how to go on, and says plainly that there is nothing', () => {
   const range = summaryRange({ after: '2026-11-02' });
   const page = digestPage([message(1, '2026-11-02T10:00:00Z', 'Ada', 'Hello')]);
-  assert.match(summaryNote(page, 0, range), /^These are all the messages from 2026-11-02T00:00:00\.000Z on\. Summarise them now\.$/);
+  assert.match(summaryNote(page, 0, range), /^These are all the messages from 2026-11-02T00:00:00\.000Z on\. Summarise them now, in the language of the request: decisions, open questions, who does what, dates and numbers\.$/);
   assert.match(summaryNote(page, 3, range), /^Stopped early: this answer ends at 2026-11-02T10:00:00\.000Z and 3 later messages are not in it\..*call this tool again with the same arguments and next/);
   assert.match(summaryNote(page, 1, range), /1 later message is not in it/);
   assert.match(summaryNote(digestPage([]), 0, range), /^No messages in this range\. Say so; do not guess what was said\.$/);
