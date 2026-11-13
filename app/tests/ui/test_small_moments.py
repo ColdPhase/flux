@@ -308,8 +308,9 @@ class SmallMomentsJourney(unittest.TestCase):
         self.ensure_account()
         page = self.page()
         page.goto("/projects/00000000-0000-4000-8000-000000000000")
-        expect(page.locator(".ui-error").first).to_be_visible()
-        expect(page.locator(".ui-error .kreska, .ui-error--mascot")).to_have_count(0)
+        # A space that is not there is "This place isn't available" (#1371), not an error box; neither carries the mascot.
+        expect(page.locator("[data-not-available], .ui-error").first).to_be_visible()
+        expect(page.locator("[data-not-available] .kreska, .ui-error .kreska, .ui-error--mascot")).to_have_count(0)
         expect(page.locator("[role=alert] .kreska")).to_have_count(0)
 
 
