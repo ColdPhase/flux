@@ -1,1 +1,0 @@
-- An idea is a Thought and a canvas is a Map, in every label, in search and in Create. The Sketchbook is now **My map**, your one private map at `/map`; "Your notes" are thoughts on it, and Create's Thought puts a thought there. "Sketch" is "Map" (the default title is "Untitled map"), and the toolbar is "Map tools" ([#866](https://github.com/ColdPhase/flux/issues/866)).

@@ -1,1 +1,0 @@
-- Kreska's hello wave, sleeping "z" and celebration sparkle sit outside the frame, so the mascot's corner no longer looks broken; the design reference board shows the same marks ([#849](https://github.com/ColdPhase/flux/issues/849)).

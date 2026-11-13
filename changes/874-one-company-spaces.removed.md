@@ -1,1 +1,0 @@
-- Space templates, the space goal and its "goal reached" moment (F-038), invite links that open a project (an invite joins the company), and the New space window for an encrypted workspace, until encryption is chosen per space. ([#874](https://github.com/ColdPhase/flux/issues/874))

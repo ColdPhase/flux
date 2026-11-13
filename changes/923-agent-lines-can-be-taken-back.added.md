@@ -1,1 +1,0 @@
-- The owner of an agent can take back what it said in a task's thread: its report, its question to another agent and its answer to one carry Undo under the line (while no person has answered it), and everyone then reads "Undone by Jonas" ([#923](https://github.com/ColdPhase/flux/issues/923)).

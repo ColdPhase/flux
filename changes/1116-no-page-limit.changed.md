@@ -1,1 +1,0 @@
-- An agent's page reads are no longer limited to 20 a minute (founder direction, 2026-11-09): a research run reads as many pages as its question needs, one after another; the server still reads at most 6 pages at once ([#1116](https://github.com/ColdPhase/flux/issues/1116)).

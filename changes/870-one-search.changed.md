@@ -1,1 +1,0 @@
-- Search is one tool: ⌘K, the sidebar's Search and the phone's Search open the same dialog, with the results in groups by kind and a plain sentence for a hint. The Search page, its filter chips, the place filter and the "See all results" row are gone, and so are the Create rows and the `@` and `#` scopes ([#870](https://github.com/ColdPhase/flux/issues/870)).

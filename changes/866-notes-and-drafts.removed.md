@@ -1,1 +1,0 @@
-- Your notes, the note composer with its device captures, "Private drafts" and "Start from a private draft" when adding a material are gone, with the Sketchbook's list of sketches ([#866](https://github.com/ColdPhase/flux/issues/866)).

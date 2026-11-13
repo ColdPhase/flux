@@ -1,1 +1,0 @@
-- An encrypted space's people and keys moved from Home → Details → People to the space's own settings ("People and encryption"). Removing someone from the company now also ends their place in its encrypted spaces, and the only admin of an encrypted space makes another admin before leaving ([#874](https://github.com/ColdPhase/flux/issues/874)).
