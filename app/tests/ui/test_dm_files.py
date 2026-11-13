@@ -78,9 +78,9 @@ class DirectMessageFiles(unittest.TestCase):
         self.addCleanup(lambda: self.assertEqual(errors, [], "no uncaught page errors"))
         return page
 
-    def attach(self, page: Page, files: list[dict]) -> None:
+    def attach(self, page: Page, files: list[dict], within=None) -> None:
         with page.expect_file_chooser() as chooser:
-            page.get_by_role("button", name="Attach files").click()
+            (within or page).get_by_role("button", name="Attach files").click()
         chooser.value.set_files(files)
 
     def test_01_the_paperclip_sends_a_file_and_a_photo_that_both_people_read(self) -> None:
@@ -146,7 +146,7 @@ class DirectMessageFiles(unittest.TestCase):
         kai.locator(".dm-msg", has=kai.get_by_role("link", name="Download only-the-file.txt")).get_by_role("button", name=re.compile("Reply in thread")).first.click()
         thread = kai.locator("#thread")
         expect(thread).to_be_visible()
-        self.attach(kai, [{"name": "answer.txt", "mimeType": "text/plain", "buffer": b"an answer"}])
+        self.attach(kai, [{"name": "answer.txt", "mimeType": "text/plain", "buffer": b"an answer"}], within=thread)
         thread.get_by_role("button", name="Send reply").click()
         expect(thread.get_by_role("link", name="Download answer.txt")).to_be_visible()
 
