@@ -684,9 +684,9 @@ function AppLayoutContent() {
       : notFound
         ? { crumb: null, title: 'Page not found', noDetails: true }
       : { crumb: workspace?.name ?? null, title: 'Home', noDetails: true };
-  const placeCount = 'count' in place && place.count ? <span className="top__n">{place.count}<span className="ui-vh"> need you</span></span> : null;
   // A place without its own Details (Inbox, the DM list) never keeps the generic panel open.
   if ('noDetails' in place && detailsOpen && detailsView === 'place') setDetailsOpen(false);
+  const placeCount = 'count' in place && place.count ? <span className="top__n">{place.count}<span className="ui-vh"> need you</span></span> : null;
 
   // The computer's header is one row (F-026 §4): the name, the place's views as underline tabs,
   // then what needs you, the people and agents, and More.
