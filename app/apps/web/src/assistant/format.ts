@@ -181,6 +181,7 @@ export function unavailableText(status: PersonalAssistantStatus) {
     case 'provider_off': return 'In-app AI is turned off on this Flux server, so nothing is sent.';
     case 'connection_changed': return 'The connection your assistant’s model belonged to was removed. Choose a model of another connection to go on.';
     case 'price_unknown': return 'Your API key’s model has no known price, so its daily budget can’t hold and nothing is sent.';
+    case 'model_retired': return 'Your assistant’s model is no longer offered by its provider. Choose another model to go on.';
     default: return 'Your AI key isn’t connected, so nothing is sent.';
   }
 }

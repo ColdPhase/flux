@@ -50,8 +50,8 @@ export interface ConnectBackgroundComputeCommand {
   /** 1–80 characters; defaults to "<Provider> key". */
   name?: string;
   provider: AiProviderKind;
-  /** The key's default model; for a named provider, Flux's default for it when left out. */
-  model?: string;
+  /** The model the owner chose for the key: Flux has no default (a command without one is a 422, `AI_MODEL_REQUIRED`). */
+  model: string;
   /** Required for `openai_compatible`, refused for the named providers. */
   baseUrl?: string;
   price?: { inputMicrosPerMTok: number; outputMicrosPerMTok: number };

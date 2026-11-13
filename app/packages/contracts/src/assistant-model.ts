@@ -112,18 +112,6 @@ export const ASSISTANT_PLAN_MODELS: Record<'claude_code' | 'codex', { account: A
   },
 };
 
-/**
- * The model a new key of a named provider starts on when the command that adds it names none (#854). It is never a list of
- * models: which models a key offers comes only from its provider's own list, read with the key (founder direction, Hubert,
- * 2026-11-12, #1218).
- */
-const API_DEFAULT_MODEL: Partial<Record<AiProviderKind, string>> = {
-  anthropic: 'claude-sonnet-5-5', openai: 'gpt-6.1-sol', gemini: 'gemini-3.5-flash-lite',
-};
-
-/** The default model of a new key of a named provider, or null where the owner must name one (OpenRouter, an own endpoint). */
-export const apiKeyDefaultModel = (provider: AiProviderKind): string | null => API_DEFAULT_MODEL[provider] ?? null;
-
 const dollars = (micros: number) => {
   const value = micros / 1_000_000;
   return `$${Number.isInteger(value) ? value : value.toFixed(2)}`;

@@ -42,7 +42,8 @@ export async function aiKeyRoutes(app: FastifyInstance, { db, sessions, backgrou
       properties: {
         name: { type: 'string', minLength: 1, maxLength: 80 },
         provider: { type: 'string', enum: [...AI_PROVIDER_KINDS] },
-        model: { type: 'string', minLength: 1, maxLength: 200 },
+        // Without one (or empty) the use case answers 422 AI_MODEL_REQUIRED: Flux never picks a model for a key (#1218).
+        model: { type: 'string', maxLength: 200 },
         baseUrl: { type: 'string', minLength: 1, maxLength: AI_BASE_URL_MAX_LENGTH },
         price: { type: 'object', additionalProperties: false, required: ['inputMicrosPerMTok', 'outputMicrosPerMTok'],
           properties: { inputMicrosPerMTok: microsPerMTok, outputMicrosPerMTok: microsPerMTok } },

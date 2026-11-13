@@ -1243,6 +1243,35 @@ the composer. The right-hand phone above shows the sheet.
   with Use an API key and Try again; an API key with its one daily budget. The API key offers
   F-020's providers: Anthropic, OpenAI, OpenRouter, Gemini or an OpenAI-compatible or self-hosted
   endpoint (C-11).
+  - **Use an API key** asks, top to bottom: Provider, API key, Model, Daily budget, Name, then
+    Connect (#1218). The Model is the app's `Select`, disabled with "Enter the API key first" until
+    the key is typed. Leaving the key field reads the key's models: the help line says "Reading
+    Anthropic's models…", then the `Select` fills, grouped by family with the newest first ("Sonnet", "Fable",
+    "Opus", "Haiku"), each option "Claude Opus 5.5 · $4 / $20" or "Claude Sonnet 5.7 · price
+    unknown, enter it". Its last option, "Other model id…", shows the plain field under it. A model
+    carries the name its provider gives it ("Claude Opus 5.5") here and on the agent's page alike.
+  - Nothing is saved on a model nobody chose. Enter in the key field reads the models, as leaving the
+    field does, instead of saving. Connect before a model is chosen (the list is still being read)
+    puts "Choose a model first. Flux lists the models of your key once you have entered it and left
+    the field." above the form, in the form's error style. The server holds the same line: a key
+    without a model is refused (422), never saved on a default model.
+  - A refused key puts one line under the key field, in the field error style: "This key was
+    refused by Anthropic. Check it and try again." The Model stays empty and Connect stays
+    disabled until the key changes.
+  - A list that can't be read in time shows the plain Model field with "Anthropic's model list
+    couldn't be read. Type the model id from Anthropic's documentation." Connect works.
+  - An unpriced model shows the two price fields under the Model (as for an own endpoint) with
+    "Flux doesn't know this model's price yet. Enter it to use it with a daily budget."
+  - OpenRouter and an OpenAI-compatible endpoint keep "Show available models" and the field.
+- **The Model of an agent with an API key** lists the key's models under its connection, in the
+  same family order, in the app's `Select` (a plan keeps its few models as segments), each with its
+  price line. An unpriced one says "Price unknown, enter it";
+  choosing it opens the two price fields and Save price under the control, and the model is
+  chosen when the price is saved. A list that couldn't be read adds one line under the group,
+  "Couldn't read Anthropic's model list · Try again", and the saved model stays. A model the
+  provider retired reads "Opus 5.5 · no longer offered by Anthropic" in the control (only on the
+  agent that is on it; other agents' lists leave it out) and the agent's line says it is paused
+  until another model is chosen; nothing switches by itself.
 - **Messages:** each agent is a private conversation ("Only you talk to Planner. Others reach it
   by giving you a task.").
   - "Remembered · See what Planner remembers" confirms a memory.

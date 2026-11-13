@@ -7,8 +7,9 @@ import { connectBackgroundCompute } from './api';
 import { ConnectionFields } from './ConnectionFields';
 import './background.css';
 
-// The form that adds one API key with its one daily budget (F-020 PROV-1, #854). The key exists only in this password input and
-// the same-origin request, never in app storage. The page of keys and the Connect AI window share it.
+// The form that adds one API key with its one daily budget (F-020 PROV-1, #854): Provider, API key, Model (#1218), Daily budget,
+// Name. The key exists only in its password input and the same-origin requests, never in app storage. The page of keys and the
+// Connect AI window share it.
 
 export const money = (cents: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
 export const BUDGET_PROBLEM = `Enter a daily budget from ${money(API_KEY_DAILY_BUDGET_CENTS.min)} to ${money(API_KEY_DAILY_BUDGET_CENTS.max)}.`;
@@ -17,6 +18,8 @@ export function budgetCents(value: FormDataEntryValue | null): number | null {
   const cents = Math.round(Number(String(value ?? '').trim()) * 100);
   return Number.isInteger(cents) && cents >= API_KEY_DAILY_BUDGET_CENTS.min && cents <= API_KEY_DAILY_BUDGET_CENTS.max ? cents : null;
 }
+const MODEL_PROBLEM = (provider: AiProviderKind) => (AI_PROVIDERS[provider].keylessModelList
+  ? 'Name the model this key uses.' : 'Choose a model first. Flux lists the models of your key once you have entered it and left the field.');
 const browserZone = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch { return 'UTC'; } };
 /** USD per 1M tokens typed by the owner, in micro-dollars; null when left empty. */
 function ownerPrice(value: FormDataEntryValue | null): number | null {
@@ -30,7 +33,7 @@ export function keyFailure(error: unknown) {
   if (error instanceof ApiError) {
     if (error.code === 'BACKGROUND_KEY_CUSTODY_UNAVAILABLE') return 'This server cannot store background credentials yet. Contact its operator.';
     // Provider, model, endpoint and price refusals carry a safe, specific reason.
-    if (error.status === 400 && error.code?.startsWith('AI_')) return `${error.message.replace(/\.$/, '')}. The key was cleared; enter it again.`;
+    if ((error.status === 400 || error.status === 422) && error.code?.startsWith('AI_')) return `${error.message.replace(/\.$/, '')}. The key was cleared; enter it again.`;
     if (error.status === 401) return 'Your session ended. Sign in again before changing the connection.';
     if (error.status === 404) return 'This connection is no longer available. Reload to see your current connection.';
     if (error.status === 400) return 'Flux could not accept these values. The key was cleared; enter it again, then check the provider, model and daily budget.';
@@ -47,9 +50,8 @@ export const AddKeyForm = forwardRef<AddKeyFormHandle, {
 }>(function AddKeyForm({ onAdded, onCancel }, ref) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  // Only to word the key help for the provider chosen in the form.
-  const [provider, setProvider] = useState<AiProviderKind | ''>('');
-  const keyHelp = provider ? AI_PROVIDERS[provider].keyHint : 'Choose a provider first to see what its keys look like.';
+  // The provider refused the key in the field (#1218): Connect waits until it changes.
+  const [keyRefused, setKeyRefused] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
   const errorRef = useRef<HTMLParagraphElement>(null);
   const focusError = useRef(false);
@@ -79,9 +81,11 @@ export const AddKeyForm = forwardRef<AddKeyFormHandle, {
     if (budget === null) { setError(BUDGET_PROBLEM); return; }
     const name = String(data.get('connectionName') ?? '').trim();
     const model = String(data.get('model') ?? '').trim();
+    // Never saved on a model nobody chose: Enter in the key field, or Connect while the models are still being read, stops here.
+    if (!model) { setError(MODEL_PROBLEM(chosen)); return; }
     const command: ConnectBackgroundComputeCommand = {
       ...(name ? { name } : {}),
-      provider: chosen, ...(model ? { model } : {}),
+      provider: chosen, model,
       ...(chosen === 'openai_compatible' ? { baseUrl: String(data.get('baseUrl') ?? '').trim() } : {}),
       ...(input !== null && output !== null ? { price: { inputMicrosPerMTok: input, outputMicrosPerMTok: output } } : {}),
       apiKey: String(data.get('apiKey') ?? '').trim(),
@@ -104,16 +108,13 @@ export const AddKeyForm = forwardRef<AddKeyFormHandle, {
     <p className="background-settings__help">Anthropic, OpenAI, OpenRouter, Gemini or an OpenAI-compatible endpoint, including a self-hosted model. An Anthropic key from a Console organization linked to a Claude Max, Ultra or Team plan uses that plan’s monthly API credits.</p>
     <form ref={formRef} onSubmit={(event) => void connect(event)}>
       <fieldset disabled={busy} className="background-settings__fields">
-        <ConnectionFields connection={null} disabled={busy} onProvider={setProvider} />
-        <label>API key<input name="apiKey" type="password" autoComplete="off" spellCheck={false} required minLength={8} maxLength={512}
-          aria-describedby={`background-key-help${error ? ' background-connect-error' : ''}`} /></label>
-        <p id="background-key-help" className="background-settings__help">{keyHelp} This field is cleared after every save attempt; enter it again to try again.</p>
+        <ConnectionFields disabled={busy} onKeyRefused={setKeyRefused} keyHelpId="background-key-help" />
         <label>Daily budget (USD)<input name="dailyBudget" type="number" required min={API_KEY_DAILY_BUDGET_CENTS.min / 100} max={API_KEY_DAILY_BUDGET_CENTS.max / 100} step="0.01"
           defaultValue={(API_KEY_DAILY_BUDGET_CENTS.default / 100).toFixed(2)} aria-describedby="background-budget-help" /></label>
         <p id="background-budget-help" className="background-settings__help">Your agents pause for the day when it’s used. It’s the only limit.</p>
         <label>Name<input name="connectionName" autoComplete="off" maxLength={80} placeholder="For example: Work OpenRouter" /></label>
         <div className="background-settings__actions">
-          <Button type="submit" variant="primary" busy={busy}>Connect</Button>
+          <Button type="submit" variant="primary" busy={busy} disabled={keyRefused}>Connect</Button>
           {onCancel ? <Button onClick={onCancel}>Cancel</Button> : null}
         </div>
       </fieldset>

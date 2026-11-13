@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams, useRevalidator } from 'react-router';
-import { AGENT_LIMITS, type AgentMemoryItem, type MyAgent } from '@flux/contracts';
+import { AGENT_LIMITS, groupModelsByFamily, type AgentMemoryItem, type AssistantModelGroup, type MyAgent } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { useShellData } from '../app/data';
 import { MayDoChoice } from '../agent-connection/MayDoChoice';
 import { refreshAssistantModel, useAssistantModel } from '../assistant/model';
-import { Button, Icon, Kreska, Spinner } from '../ui';
+import { Button, Icon, Kreska, Option, OptionGroup, Select, Spinner } from '../ui';
+import { readKeyModelsAgain, setKeyModelPrice } from '../ai/api';
 import { AgentSchedules } from './AgentSchedules';
 import { addAgentMemory, deleteAgentMemory, deleteMyAgent, editAgentMemory, getAgentMemory, updateMyAgent } from './api';
 import './my-agents.css';
@@ -20,6 +21,98 @@ const when = (iso: string) => {
   const now = new Date();
   return date.toDateString() === now.toDateString() ? 'today' : date.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 };
+
+/** "$4" from micro-dollars, for a price the owner types. */
+const dollars = (value: string) => {
+  const number = Number(value.trim());
+  return value.trim() && Number.isFinite(number) && number >= 0 && number <= 1000 ? Math.round(number * 1_000_000) : null;
+};
+
+/**
+ * An API key's models on an agent (CA-2, #1218): one dropdown by family, newest first, each with its price, "Price unknown, enter
+ * it" (choosing it asks for the price first, then chooses it) or "no longer offered" (not choosable). A list that couldn't be
+ * read says so with Try again; the saved model stays.
+ */
+function KeyModels({ group, chosen, agentName, onChoose, onError }: {
+  group: AssistantModelGroup; chosen: string | null; agentName: string; onChoose: (model: string) => Promise<void>; onError: (cause: unknown) => void;
+}) {
+  const [pricing, setPricing] = useState<string | null>(null);
+  const [input, setInput] = useState('');
+  const [output, setOutput] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState('');
+  const company = group.company;
+  const current = chosen ? group.options.find((option) => option.id === chosen) : undefined;
+  // A model its provider stopped offering is listed only on the agent that is on it: there it says why the agent is paused.
+  const families = groupModelsByFamily(group.options.filter((option) => !option.retired || option.id === chosen).map((option) => ({ ...option, family: option.family ?? 'Models' })));
+  const priceFor = pricing ? group.options.find((option) => option.id === pricing) : undefined;
+
+  async function savePrice(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const inputMicros = dollars(input);
+    const outputMicros = dollars(output);
+    if (!pricing || inputMicros === null || outputMicros === null) { setProblem('Enter both prices in US dollars per 1M tokens, from 0 to 1,000.'); return; }
+    setBusy(true); setProblem('');
+    try {
+      await setKeyModelPrice(group.connection, { model: pricing, inputMicrosPerMTok: inputMicros, outputMicrosPerMTok: outputMicros });
+      await onChoose(pricing);
+      setPricing(null); setInput(''); setOutput('');
+    } catch (cause) { onError(cause); }
+    finally { setBusy(false); }
+  }
+  async function tryAgain() {
+    setBusy(true);
+    try { await readKeyModelsAgain(group.connection); await refreshAssistantModel(); }
+    catch (cause) { onError(cause); }
+    finally { setBusy(false); }
+  }
+  const listing = group.listing;
+  return (
+    <div className="agp__key-models">
+      <Select aria-labelledby={`model-${group.connection}`} value={pricing ?? chosen ?? ''} placeholder="Choose a model" disabled={busy}
+        onChange={(next) => {
+          const option = group.options.find((item) => item.id === next);
+          if (!option || next === chosen) return;
+          if (option.priced === false) { setPricing(next); setProblem(''); return; }
+          setPricing(null);
+          void onChoose(next);
+        }}>
+        {families.map((family) => (
+          <OptionGroup key={family.family} label={family.family}>
+            {family.models.map((option) => (
+              <Option key={option.id} value={option.id} disabled={option.retired}>
+                {option.name} · {option.retired ? `no longer offered by ${company}` : option.note}
+              </Option>
+            ))}
+          </OptionGroup>
+        ))}
+      </Select>
+      {current?.retired ? <p className="agp__hint" role="note">{current.name} is {`no longer offered by ${company}`}. {agentName} is paused until you choose another model.</p> : null}
+      {pricing && priceFor ? (
+        <form className="agp__price" onSubmit={(event) => void savePrice(event)} aria-label={`Price of ${priceFor.name}`}>
+          <p className="agp__hint">Flux doesn’t know this model’s price yet. Enter it to use it with a daily budget.</p>
+          <div className="agp__price-fields">
+            <label>Input, USD per 1M tokens<input className="agp__input" name="inputPrice" type="number" min="0" max="1000" step="any" inputMode="decimal" required
+              value={input} onChange={(event) => setInput(event.target.value)} /></label>
+            <label>Output, USD per 1M tokens<input className="agp__input" name="outputPrice" type="number" min="0" max="1000" step="any" inputMode="decimal" required
+              value={output} onChange={(event) => setOutput(event.target.value)} /></label>
+          </div>
+          {problem ? <p className="agp__hint" role="alert">{problem}</p> : null}
+          <div className="agp__price-actions">
+            <Button type="submit" busy={busy}>Save price</Button>
+            <Button variant="quiet" onClick={() => { setPricing(null); setProblem(''); }}>Cancel</Button>
+          </div>
+        </form>
+      ) : null}
+      {listing && (listing.state === 'unavailable' || listing.state === 'key_refused') ? (
+        <p className="agp__hint agp__listing" role="status">
+          {listing.state === 'key_refused' ? `${company} refused this key when Flux last read its models.` : `Couldn’t read ${company}’s model list.`}
+          <Button variant="link" size="sm" busy={busy} onClick={() => void tryAgain()}>Try again</Button>
+        </p>
+      ) : null}
+    </div>
+  );
+}
 
 export function AgentPage() {
   const { agentId = '' } = useParams();
@@ -109,6 +202,10 @@ function AgentSettings({ agent }: { agent: MyAgent }) {
             {choice.groups.map((item) => (
               <div key={item.connection} className="agp__model-group">
                 <span className="agp__group-name" id={`model-${item.connection}`}>{item.label}</span>
+                {item.account === 'api_key' ? (
+                  <KeyModels group={item} chosen={agent.model.connection === item.connection ? agent.model.model : null} agentName={agent.name}
+                    onChoose={(model) => save({ connection: item.connection, model }, 'Model changed')} onError={(cause) => setError(failure(cause))} />
+                ) : (
                 <div className="seg seg--fit" role="radiogroup" aria-labelledby={`model-${item.connection}`}>
                   {item.options.map((option) => {
                     const on = agent.model.connection === item.connection && agent.model.model === option.id;
@@ -118,6 +215,7 @@ function AgentSettings({ agent }: { agent: MyAgent }) {
                     );
                   })}
                 </div>
+                )}
               </div>
             ))}
             {picked && !picked.callsTools ? <p className="agp__hint" role="note">{picked.name}: can answer but can’t make changes.</p> : null}

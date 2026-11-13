@@ -30,7 +30,7 @@ let serial = 0;
 const keyOf = (provider: 'anthropic' | 'openai' | 'gemini', tag = '') => {
   serial += 1;
   const tail = `${tag}${marker}${Date.now().toString(36)}${serial}`;
-  return provider === 'anthropic' ? `sk-ant-api03-${tail}` : provider === 'openai' ? `sk-proj-${tail}` : `AIza${tail}`;
+  return provider === 'anthropic' ? `sk-ant-api03-${tail}` : provider === 'openai' ? `sk-proj-${tail}` : `AIza${tail}-gemini-key-format`;
 };
 const codeOf = (response: { json: unknown }) => (response.json as { code?: string } | null)?.code;
 const human = (someone: Person): Principal => ({ kind: 'human', id: someone.id });
@@ -134,6 +134,22 @@ describe('a key, its models and its agents (#1218)', () => {
     const refused = await owner.browser.request('POST', path, { body: { provider: 'anthropic', model: 'claude-opus-5-5', apiKey: keyOf('anthropic', 'refused-'), dailyBudgetCents: 500 } });
     assert.equal(refused.status, 400);
     assert.deepEqual([codeOf(refused), (refused.json as { error: string }).error], ['AI_KEY_REFUSED', 'This key was refused by Anthropic']);
+    assert.equal((expectStatus(await owner.browser.request('GET', path), 200) as BackgroundComputeConnection[]).length, before);
+  });
+
+  test('a key without a chosen model is refused with a 422 and nothing is saved or sent: Flux has no default model for a key', async () => {
+    const before = (expectStatus(await owner.browser.request('GET', path), 200) as BackgroundComputeConnection[]).length;
+    for (const provider of ['anthropic', 'openai', 'gemini'] as const) {
+      const apiKey = keyOf(provider);
+      for (const model of [undefined, '']) {
+        const refused = await owner.browser.request('POST', path, { body: { provider, apiKey, dailyBudgetCents: 500, ...(model === undefined ? {} : { model }) } });
+        assert.equal(refused.status, 422, `${provider} ${JSON.stringify(model)}: ${refused.text}`);
+        assert.equal(codeOf(refused), 'AI_MODEL_REQUIRED');
+        assert.match((refused.json as { error: string }).error, /^Choose the model this key uses\./);
+        assert.equal(refused.text.includes(apiKey), false);
+      }
+      assert.equal((await askedWith(apiKey)).length, 0, `${provider}: the key was never sent to its provider`);
+    }
     assert.equal((expectStatus(await owner.browser.request('GET', path), 200) as BackgroundComputeConnection[]).length, before);
   });
 
