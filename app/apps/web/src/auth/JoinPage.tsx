@@ -65,31 +65,30 @@ export function JoinPage() {
   const created = useActionData() as FormResult | undefined;
   const handled = useRef<FormResult | undefined>(undefined);
 
-  async function read(signal?: AbortSignal, joinNow = false) {
-    const token = readToken();
-    try {
-      const [me, preview, capabilities] = await Promise.all([getMe(signal).catch(() => null), previewInvite(token, signal),
-        getCapabilities(signal).catch(() => null)]);
-      // A link this account already used, or someone already here: Flux opens, with nothing more to say (#1438).
-      if (me && preview.state !== 'pending') { forgetToken(); navigate('/', { replace: true }); return; }
-      setState({ kind: 'ready', preview, me, signup: capabilities?.signup ?? 'open', sso: capabilities?.sso?.label ?? null });
-      // An account made from this link joins as it is made (#763 FT-3): the person said so when they created it here or on the sign-up page.
-      if (me && preview.state === 'pending' && (joinNow || new URLSearchParams(window.location.search).get('created') === '1')) {
-        window.history.replaceState(window.history.state, '', window.location.pathname);
-        void join();
-      }
-    } catch (error) {
-      if (error instanceof DOMException && error.name === 'AbortError') return;
-      setState({ kind: 'problem', ...problemOf(error) });
+  /** What the page shows for the link and this tab's session; `joinNow`: the account was just made here, so it joins at once. */
+  function show([me, preview, capabilities]: [MeResponse | null, InvitePreview, IdentityCapabilities | null], joinNow: boolean) {
+    // A link this account already used, or someone already here: Flux opens, with nothing more to say (#1438).
+    if (me && preview.state !== 'pending') { forgetToken(); navigate('/', { replace: true }); return; }
+    setState({ kind: 'ready', preview, me, signup: capabilities?.signup ?? 'open', sso: capabilities?.sso?.label ?? null });
+    // An account made from this link joins as it is made (#763 FT-3): the person said so when they created it here or on the sign-up page.
+    if (me && preview.state === 'pending' && (joinNow || new URLSearchParams(window.location.search).get('created') === '1')) {
+      window.history.replaceState(window.history.state, '', window.location.pathname);
+      void join();
     }
   }
+  const failed = (error: unknown) => {
+    if (error instanceof DOMException && error.name === 'AbortError') return;
+    setState({ kind: 'problem', ...problemOf(error) });
+  };
+  const fetchLink = (signal?: AbortSignal) => Promise.all([getMe(signal).catch(() => null), previewInvite(readToken(), signal),
+    getCapabilities(signal).catch(() => null)]);
 
   useEffect(() => {
     if (!readToken()) return undefined;
     // The token is kept in this tab's session storage: take it out of the address and the browser's history.
     if (window.location.hash) window.history.replaceState(window.history.state, '', window.location.pathname + window.location.search);
     const controller = new AbortController();
-    void read(controller.signal);
+    fetchLink(controller.signal).then((read) => show(read, false), failed);
     return () => controller.abort();
     // Read once on arrival; `join` only reads this tab's token.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -99,7 +98,7 @@ export function JoinPage() {
   useEffect(() => {
     if (!created?.created || handled.current === created) return;
     handled.current = created;
-    void read(undefined, true);
+    fetchLink().then((read) => show(read, true), failed);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [created]);
 
