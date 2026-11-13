@@ -206,14 +206,21 @@ COPY --from=codex-catalog /codex-models.json /opt/flux-runtime/codex/models.json
 # TEST ONLY (#1125, scripts/check_cli_runtime.sh): the runtime image above with its REAL pinned Codex behind a wrapper that points
 # its vendor hosts at the local mock, plus the Claude Code wrapper and the install step that puts it in the tools volume
 # (app/tests/cli-runtime). The supervisor, its templates and the binaries are the ones above. Never deployed.
+# The wrapper is a static program, not a script (#1437): the CLI's sandbox domain then holds what production holds, the wrapper file and the
+# real CLI's own file with its loader, and no /bin/sh or directory.
+FROM node@sha256:a34ab6d7f6f4813f4d0c5469d74685604b962fbdbf5793a7bc7b4998ecb867c8 AS cli-mock-wrapper-build
+RUN apk add --no-cache gcc musl-dev
+COPY tests/cli-runtime/wrap.c /native/wrap.c
+RUN cc -std=c11 -O2 -Wall -Wextra -Werror -static /native/wrap.c -o /native/wrap
 FROM agent-runtime AS agent-runtime-cli-mock
 USER root
 COPY tests/cli-runtime/ /opt/flux-cli-mock/
+COPY --from=cli-mock-wrapper-build /native/wrap /opt/flux-cli-mock/wrap
 RUN mv /opt/flux-runtime/codex/bin/codex /opt/flux-cli-mock/codex \
-  && install -m 0755 /opt/flux-cli-mock/codex.sh /opt/flux-runtime/codex/bin/codex \
-  && chmod 0755 /opt/flux-cli-mock/claude.sh /opt/flux-cli-mock/install.sh
-# The wrappers are scripts that start the real CLIs: the CLI's domain (#1437) must execute those too. Never set in a release image.
-ENV FLUX_RUNTIME_TEST_EXEC=/opt/flux-cli-mock:/opt/flux-tools/claude/versions
+  && install -m 0755 /opt/flux-cli-mock/wrap /opt/flux-runtime/codex/bin/codex \
+  && chmod 0755 /opt/flux-cli-mock/wrap /opt/flux-cli-mock/install.sh
+# The one real program each wrapper starts, allowed only in that CLI's own domain (one file each). Never set in a release image.
+ENV FLUX_RUNTIME_TEST_EXEC=codex=/opt/flux-cli-mock/codex,claude_code=/opt/flux-tools/claude/bin/claude-real
 USER node
 
 # The one-shot installer needs gpg to check Anthropic's signed release manifest; slots do not.

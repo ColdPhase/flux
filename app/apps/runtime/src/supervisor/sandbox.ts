@@ -35,8 +35,22 @@ export const RUN_TOOL_LIMITS = {
 
 /** The sandbox as this runtime found it at start: Landlock's ABI version, and where scratches go. */
 export interface SandboxSetup { binary: string; shell: string; bin: string; abi: number; scratchRoot: string;
-  /** TEST ONLY: files or directories a check image's CLI wrapper must also execute (`FLUX_RUNTIME_TEST_EXEC`); never set in a release. */
-  testExec?: readonly string[] }
+  /** TEST ONLY: the one real program a check image's CLI wrapper starts, per CLI (`FLUX_RUNTIME_TEST_EXEC`); never set in a release. */
+  testExec?: Partial<Record<'claude_code' | 'codex', string>> }
+
+/**
+ * TEST ONLY (#1437): `FLUX_RUNTIME_TEST_EXEC` of the check image, `codex=/path,claude_code=/path`: the real program each CLI's wrapper starts.
+ * Each is one program file (the sandbox refuses a directory or a script), allowed only in that CLI's own domain.
+ */
+export function parseTestExec(value: string | undefined): SandboxSetup['testExec'] {
+  if (!value) return undefined;
+  const found: Partial<Record<'claude_code' | 'codex', string>> = {};
+  for (const pair of value.split(',')) {
+    const [client, path] = pair.split('=');
+    if ((client === 'codex' || client === 'claude_code') && path?.startsWith('/')) found[client] = path;
+  }
+  return found;
+}
 
 /** The oldest Landlock the runtime starts on: ABI 4 (Linux 6.7) forbids TCP, so a shell cannot tunnel through the egress (#1437). */
 export const LANDLOCK_ABI_FOR_TOOLS = 4;
