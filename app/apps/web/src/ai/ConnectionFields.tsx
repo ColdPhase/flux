@@ -82,6 +82,9 @@ export function ConnectionFields({ disabled, onKeyRefused, keyHelpId }: {
   const [provider, setProvider] = useState<AiProviderKind | ''>('');
   const [model, setModel] = useState('');
   const [other, setOther] = useState(false);
+  // The model id as typed now, for a list that arrives while the owner types one (OpenRouter's is read as soon as it is chosen).
+  const typed = useRef(model);
+  useEffect(() => { typed.current = model; }, [model]);
   const [baseUrl, setBaseUrl] = useState('');
   const [listing, setListing] = useState<Listing>({ state: 'idle' });
   // The key last listed, so leaving the field again without a change asks nothing; only in memory, like the field itself.
@@ -131,9 +134,12 @@ export function ConnectionFields({ disabled, onKeyRefused, keyHelpId }: {
       if (!result || ask !== asked.current) return;
       setListing({ state: 'done', list: result });
       if (result.status === 'listed' && result.models.length) {
-        // Nothing is preselected: the models are the provider's own, and the owner picks one (#1218).
-        setModel((current) => (result.models.some((entry) => entry.id === current) ? current : ''));
-        setOther(false);
+        // Nothing is preselected: the models are the provider's own, and the owner picks one (#1218). An id typed into the plain field
+        // while a keyless list was read, and not in it, stays as "Other model id…" instead of being wiped.
+        const current = typed.current;
+        const kept = !query.apiKey && current.trim() !== '' && !result.models.some((entry) => entry.id === current);
+        if (!kept) setModel(result.models.some((entry) => entry.id === current) ? current : '');
+        setOther(kept);
       }
     } catch {
       if (ask === asked.current) setListing({ state: 'failed' });
