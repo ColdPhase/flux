@@ -4,7 +4,7 @@ import { after, before, beforeEach, describe, test } from 'node:test';
 import { randomUUID } from 'node:crypto';
 import { aiModelSearchesWeb, WEB_SEARCH_MICROS } from '@flux/contracts';
 import {
-  boundedWebSearch, KEY_WEB_SEARCH_LINE, NO_WEB_SEARCH_LINE, OPEN_ANY_ADDRESS_LINE, runtimeBrief, WebSearchRefusedError,
+  boundedWebSearch, KEY_SEARCH_LIMITS, KEY_WEB_SEARCH_LINE, NO_WEB_SEARCH_LINE, OPEN_ANY_ADDRESS_LINE, runtimeBrief, WebSearchRefusedError,
   type BriefInput, type PersonalCompute, type PersonalComputeRequest, type PersonalComputeResult,
 } from '@flux/core';
 import { personalRunWebReadRows } from '@flux/db';
@@ -247,7 +247,8 @@ describe('an API-key agent in pi searches with flux_web_search, opens any addres
     assert.ok(first!.tools.includes(`${FLUX}flux_web_search`) && first!.tools.includes(`${FLUX}flux_read_web`), 'the run searches and reads (the operator\'s web switch is on, the key\'s provider has a search)');
     assert.ok(first!.prompt.includes(KEY_WEB_SEARCH_LINE), 'and the brief says so, with the rule for its results');
     assert.ok(first!.prompt.includes(OPEN_ANY_ADDRESS_LINE), 'and which addresses open');
-    assert.deepEqual(provider.requests.map((request) => [request.connection.id, request.webSearch, request.tools]), [[scene.connectionId, true, []]], 'one search, on the run\'s own key, with no other tool');
+    assert.deepEqual(provider.requests.map((request) => [request.connection.id, request.webSearch, request.webSearchMaxUses, request.tools]), [[scene.connectionId, true, KEY_SEARCH_LIMITS.searches, undefined]],
+      'one search, on the run\'s own key, with no other tool and a bound number of searches');
     assert.match(provider.requests[0]!.input, /harbour winter timetable/);
     assert.ok((pi.gateway.requests[1]!.results[0] ?? '').includes(PAGE), 'the search result came back to the model');
     assert.ok((pi.gateway.requests[2]!.results[1] ?? '').includes('Harbour & Co: winter timetable'), 'the search result was read');

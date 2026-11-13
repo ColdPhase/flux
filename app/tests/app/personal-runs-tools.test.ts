@@ -184,16 +184,17 @@ describe('an API-key run in the worker is pi in the agent runtime (AST-8.2, AST-
     assert.equal(pi.gateway.requests.length, 0, 'no model request was made');
   });
 
-  test('#854: a request the key\'s day cannot hold waits for the key\'s next day instead of being refused: when it is asked, or when its turn comes with tools', async () => {
+  test('#854: a request the key\'s day cannot hold with the Flux tools waits for the key\'s next day instead of being refused, from when it is asked', async () => {
     // Not even one request fits $0.10 (32,000 × $2/M + 4,000 × $10/M = $0.104): it waits, queued, with its resume time.
     await useConnection({ dailyBudgetCents: 10 });
     const paused = await ask('Too little left');
     assert.deepEqual([paused.run.status, paused.run.endReason, !!paused.run.resumesAt], ['queued', 'budget', true]);
     await runs.stop(human(owner), paused.run.id);
-    // $0.15 holds one request without tools but not the largest with tools (64,000 × $2/M + 4,000 × $10/M = $0.168): asked, then waiting its turn.
+    // $0.15 would hold one request without tools but not one with them (64,000 × $2/M + 4,000 × $10/M = $0.168), and every run is pi with the
+    // Flux tools (#1441): it waits at once too, and its turn sends nothing.
     await useConnection({ dailyBudgetCents: 15 });
     const asked = await ask('Fits only without tools');
-    assert.deepEqual([asked.run.status, asked.run.endReason], ['queued', null]);
+    assert.deepEqual([asked.run.status, asked.run.endReason, !!asked.run.resumesAt], ['queued', 'budget', true]);
     pi.gateway.script([]);
     assert.equal(await processor.process(asked.run.id), 'skipped');
     const waiting = await row(asked.run.id);

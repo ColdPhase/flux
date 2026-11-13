@@ -163,7 +163,7 @@ for (const wire of WIRES) {
         assert.deepEqual(await compute.dispatch(refused, new AbortController().signal), { kind: 'failed', reason: 'provider_error', billed: 'none' }, target);
       }
       for (const bad of [request(wire, { model: 'not a model' }), request(wire, { maxTokens: 4_001 }), request(wire, { effort: 'high' as 'low' })])
-        await assert.rejects(personal(wire).dispatch(bad, new AbortController().signal));
+        assert.deepEqual(await personal(wire).dispatch(bad, new AbortController().signal), { kind: 'failed', reason: 'provider_error', billed: 'none' }, 'never sent, so free');
       assert.equal((await sent()).length, 0, 'no request reached any provider');
     });
 

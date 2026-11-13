@@ -335,7 +335,7 @@ describe('tool calling on every provider wire format (AST-8.1; local mock, docum
     for (const [name, overrides] of refused) {
       for (const wire of [anthropic, openai]) {
         test(`${wire.name}: ${name}`, async () => {
-          await assert.rejects(compute().dispatch(requestFor(wire, overrides), live));
+          assert.deepEqual(await compute().dispatch(requestFor(wire, overrides), live), { kind: 'failed', reason: 'provider_error', billed: 'none' }, 'never sent, so free');
           if (wire.wire === 'anthropic') await assert.rejects(compute().countInputTokens!(requestFor(wire, overrides)));
           assert.equal(seen.length, 0, 'no request reached the provider');
           assert.deepEqual(resolved, [], 'no key was resolved');
