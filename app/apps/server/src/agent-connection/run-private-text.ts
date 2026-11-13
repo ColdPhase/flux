@@ -122,7 +122,7 @@ export async function privateAddressWritten(db: DbExecutor, runId: string, text:
 }
 
 /** Every string a change's arguments hold, one per line. */
-function argumentText(value: unknown, into: string[] = []): string[] {
+export function argumentText(value: unknown, into: string[] = []): string[] {
   if (typeof value === 'string') into.push(value);
   else if (Array.isArray(value)) for (const item of value) argumentText(item, into);
   else if (value && typeof value === 'object') for (const item of Object.values(value)) argumentText(item, into);

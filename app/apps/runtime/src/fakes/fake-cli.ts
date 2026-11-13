@@ -218,9 +218,10 @@ function flagValues(argv: string[], flag: string): string[] {
  * `bash` on its `PATH` and `-lc <command>` (codex-rs `shell_detect.rs`, `derive_exec_args`), in the working directory and the CLI's own
  * environment. The output (stdout and stderr together, as both CLIs give the model) is bounded. No shell: an error, as the real CLI's.
  */
-function ownShell(client: FakeClient, command: string): { shell: string | null; exit: number | null; output: string } {
-  const shell = client === 'claude_code' ? process.env.CLAUDE_CODE_SHELL ?? null
-    : (process.env.PATH ?? '').split(delimiter).map((dir) => join(dir, 'bash')).find((path) => existsSync(path)) ?? null;
+function ownShell(client: FakeClient, command: string, chosen?: string): { shell: string | null; exit: number | null; output: string } {
+  // Codex 0.160.1's `exec_command` takes the shell the model names (`shell`, "Shell binary to launch"), as a hostile prompt could have it do.
+  const shell = chosen ?? (client === 'claude_code' ? process.env.CLAUDE_CODE_SHELL ?? null
+    : (process.env.PATH ?? '').split(delimiter).map((dir) => join(dir, 'bash')).find((path) => existsSync(path)) ?? null);
   if (!shell) return { shell: null, exit: null, output: 'No suitable shell found.' };
   const ran = spawnSync(shell, client === 'claude_code' ? ['-c', '-l', command] : ['-lc', command], { cwd: process.cwd(), env: process.env, encoding: 'utf8',
     timeout: 120_000, maxBuffer: 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -673,9 +674,12 @@ async function codexRun(argv: string[]): Promise<number> {
     if (features.shell_tool !== true) { results.push({ name: planned.name, isError: true, text: `unsupported call: ${planned.name}` }); return; }
     if (planned.name === 'exec_command') {
       const cmd = String(args.cmd ?? '');
-      const ran = ownShell('codex', cmd);
-      const command = `${ran.shell ?? 'bash'} -lc ${JSON.stringify(cmd)}`;
+      const chosen = typeof args.shell === 'string' ? args.shell : undefined;
+      const shellOf = chosen ?? (process.env.PATH ?? '').split(delimiter).map((dir) => join(dir, 'bash')).find((path) => existsSync(path)) ?? 'bash';
+      const command = `${shellOf} -lc ${JSON.stringify(cmd)}`;
+      // As the pinned Codex: the item starts before the command runs.
       emit({ type: 'item.started', item: { id, type: 'command_execution', command, aggregated_output: '', exit_code: null, status: 'in_progress' } });
+      const ran = ownShell('codex', cmd, chosen);
       record('codex', argv, { event: 'own_tool', tool: 'exec_command', command: cmd, shell: ran.shell, exit: ran.exit, output: ran.output });
       results.push({ name: 'exec_command', isError: ran.exit !== 0, text: ran.output });
       emit({ type: 'item.completed', item: { id, type: 'command_execution', command, aggregated_output: ran.output, exit_code: ran.exit, status: ran.exit === 0 ? 'completed' : 'failed' } });

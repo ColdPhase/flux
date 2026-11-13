@@ -5,8 +5,10 @@
  *
  *   bash|sh <args>               (as the person, through the name of a link) the real /bin/bash or /bin/sh, confined to the run's
  *                                scratch FLUX_SANDBOX_DIR: read and write only there, read and run the system's own programs, no
- *                                TCP at all where the kernel can say so (Landlock ABI 4), no signal or abstract socket outside it
- *                                (ABI 6), a clean environment, lower priority and the per-run limits below.
+ *                                TCP at all (Landlock ABI 4, which the shell requires), no socket of any kind (seccomp: no UDP or DNS,
+ *                                which Landlock does not cover, and no Unix socket by path, which Landlock does not see either), no
+ *                                io_uring, no signal or abstract socket outside it (ABI 6), a clean environment, lower priority and
+ *                                the per-run limits below.
  *   flux-sandbox cli <scratch> [--home <dir>]... [--read <dir>]... -- <cli> <args>
  *                                (as the person) the CLI itself, under a domain that lets it write only its own homes and the
  *                                run's scratch and read only those, `--read` directories and the system: never another CLI's home.
@@ -30,6 +32,9 @@
 #include <sys/syscall.h>
 #include <unistd.h>
 
+#ifndef SYS_io_uring_setup
+#define SYS_io_uring_setup 425
+#endif
 #ifndef SYS_landlock_create_ruleset
 #define SYS_landlock_create_ruleset 444
 #define SYS_landlock_add_rule 445
@@ -59,6 +64,29 @@
 #define NET_CONNECT_TCP (1ULL << 1)
 #define SCOPE_ABSTRACT_UNIX (1ULL << 0)
 #define SCOPE_SIGNAL (1ULL << 1)
+
+/* Seccomp's classic BPF (include/uapi/linux/filter.h, seccomp.h, audit.h), spelled out for the same reason. */
+struct sock_filter { uint16_t code; uint8_t jt; uint8_t jf; uint32_t k; };
+struct sock_fprog { unsigned short len; struct sock_filter *filter; };
+#define BPF_STMT(code, k) { (uint16_t)(code), 0, 0, (uint32_t)(k) }
+#define BPF_JUMP(code, k, jt, jf) { (uint16_t)(code), (jt), (jf), (uint32_t)(k) }
+#define BPF_LD_W_ABS 0x20 /* BPF_LD | BPF_W | BPF_ABS */
+#define BPF_JEQ_K 0x15    /* BPF_JMP | BPF_JEQ | BPF_K */
+#define BPF_JGE_K 0x35    /* BPF_JMP | BPF_JGE | BPF_K */
+#define BPF_RET_K 0x06    /* BPF_RET | BPF_K */
+#define SECCOMP_MODE_FILTER_ 2
+#define SECCOMP_RET_KILL_PROCESS_ 0x80000000U
+#define SECCOMP_RET_ERRNO_ 0x00050000U
+#define SECCOMP_RET_ALLOW_ 0x7fff0000U
+#define SECCOMP_DATA_NR 0   /* offsetof(struct seccomp_data, nr) */
+#define SECCOMP_DATA_ARCH 4 /* offsetof(struct seccomp_data, arch) */
+#if defined(__x86_64__)
+#define FLUX_AUDIT_ARCH 0xC000003EU /* AUDIT_ARCH_X86_64 */
+#elif defined(__aarch64__)
+#define FLUX_AUDIT_ARCH 0xC00000B7U /* AUDIT_ARCH_AARCH64 */
+#else
+#error "Flux's sandbox knows the system calls of x86_64 and aarch64 only"
+#endif
 
 struct ruleset_attr { uint64_t handled_access_fs; uint64_t handled_access_net; uint64_t scoped; };
 struct path_beneath_attr { uint64_t allowed_access; int32_t parent_fd; } __attribute__((packed));
@@ -159,6 +187,34 @@ static int set_limit(int resource, rlim_t soft, rlim_t hard) {
   return setrlimit(resource, &next);
 }
 
+/*
+ * No socket at all for the tools (#1437 review): Landlock (ABI 4 to 7) forbids TCP but not UDP, so without this a tool could still ask
+ * the container's DNS or send datagrams on the runtime's network; nor does it see connect() to a Unix socket by its path, such as a CLI's
+ * own messaging socket in its TMPDIR, which is the scratch. `socketpair` (anonymous, what pipes between programs use) stays. io_uring
+ * could open and connect sockets past this filter, so it is gone too. Another architecture's system calls end the process. A socket asked
+ * for gets EAFNOSUPPORT, which C libraries take as "no such thing here" (musl's passwd lookup, for one, then goes on without nscd).
+ */
+static int no_sockets(void) {
+  struct sock_filter filter[] = {
+    BPF_STMT(BPF_LD_W_ABS, SECCOMP_DATA_ARCH),
+    BPF_JUMP(BPF_JEQ_K, FLUX_AUDIT_ARCH, 1, 0),
+    BPF_STMT(BPF_RET_K, SECCOMP_RET_KILL_PROCESS_),
+    BPF_STMT(BPF_LD_W_ABS, SECCOMP_DATA_NR),
+#if defined(__x86_64__)
+    BPF_JUMP(BPF_JGE_K, 0x40000000U, 0, 1), /* the x32 ABI's numbers */
+    BPF_STMT(BPF_RET_K, SECCOMP_RET_ERRNO_ | ENOSYS),
+#endif
+    BPF_JUMP(BPF_JEQ_K, SYS_socket, 0, 1),
+    BPF_STMT(BPF_RET_K, SECCOMP_RET_ERRNO_ | EAFNOSUPPORT),
+    BPF_JUMP(BPF_JEQ_K, SYS_io_uring_setup, 0, 1),
+    BPF_STMT(BPF_RET_K, SECCOMP_RET_ERRNO_ | ENOSYS),
+    BPF_STMT(BPF_RET_K, SECCOMP_RET_ALLOW_),
+  };
+  struct sock_fprog program = { (unsigned short)(sizeof(filter) / sizeof(*filter)), filter };
+  /* PR_SET_NO_NEW_PRIVS is set already (confine). */
+  return prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER_, &program, 0L, 0L);
+}
+
 /* The run's processes go first when memory runs out, before the supervisor. Under the CLI's domain (`cli`, which set it already)
  * /proc cannot be written any more, which is fine. */
 static int raise_oom_score(void) {
@@ -180,9 +236,12 @@ static int shell(const char *real, int argc, char **argv) {
   if (getpriority(PRIO_PROCESS, 0) < NICE && setpriority(PRIO_PROCESS, 0, NICE) != 0) return fail("cannot lower the priority");
   if (set_limit(RLIMIT_CORE, 0, 0) || set_limit(RLIMIT_FSIZE, FILE_BYTES, FILE_BYTES) || set_limit(RLIMIT_NPROC, TASKS, TASKS)
     || set_limit(RLIMIT_CPU, CPU_SECONDS, CPU_SECONDS + 10)) return fail("cannot set the limits");
+  /* Tools only where Landlock forbids TCP (coordinator decision on #1437): on an older kernel a shell could tunnel through the egress. */
+  if (abi_version() < 4) { errno = 0; return fail("this kernel's Landlock cannot forbid TCP (ABI 4, Linux 6.7), so the tools cannot run"); }
   int confined = confine(scratch, WORK_RIGHTS, 1, 1, NULL, 0);
   if (confined == -2) return fail("this kernel has no Landlock, so the tools cannot run");
   if (confined != 0) return fail("cannot confine the tools to the run's scratch");
+  if (no_sockets() != 0) return fail("cannot take sockets away from the tools");
   if (chdir(scratch) != 0 && errno != EACCES) return fail("cannot enter the run's scratch");
   /* A clean environment: nothing of the CLI's (its home, its token, its proxy) reaches the tools. */
   static const char *const kept[] = { "TERM", "TZ", "COLUMNS", "LINES", "NO_COLOR" };
@@ -234,6 +293,7 @@ static int cli(int argc, char **argv) {
   /* What the CLI itself reads besides its homes: its own program, the run's settings, /sys for its limits. */
   static const char *const readable[] = { "/opt", "/sys" };
   for (size_t i = 0; i < sizeof(readable) / sizeof(*readable) && extras < MAX_EXTRA; i += 1) extra[extras++] = (struct grant){ readable[i], READ_RIGHTS };
+  if (abi_version() < 4) { errno = 0; return fail("this kernel's Landlock cannot forbid TCP (ABI 4, Linux 6.7), so the CLI cannot run with its tools"); }
   if (raise_oom_score() != 0) return fail("cannot raise the OOM score");
   if (set_limit(RLIMIT_CORE, 0, 0)) return fail("cannot set the limits");
   int confined = confine(argv[2], WORK_RIGHTS, 1, 0, extra, extras);

@@ -6,6 +6,7 @@ import type { FluxMcpClaims, VerifiedFluxMcpClaims } from './context.js';
 import type { McpManifest } from './mcp-dispatch.js';
 import { isAssistantText, redactCall } from './assistant-changes.js';
 import { refusedPrivateAddress } from './run-private-text.js';
+import { refusedCredential } from './run-credentials.js';
 import { boundRunResult } from './run-token.js';
 import { convertedOnce } from './tool-schema.js';
 
@@ -149,6 +150,9 @@ export function agentToolRegistry(manifest: McpManifest, db: Database, run: bool
             // A picture's address is checked by its own tool, hop by hop, and refused in its own plain words (#1217).
             const refused = place && name !== 'flux_attach_image' ? await refusedPrivateAddress(db, place.id, redacted) : null;
             if (refused) return refused;
+            // A run on the owner's Claude Code or Codex never writes its CLI's own login into Flux (coordinator decision on #1437, RT-7).
+            const credential = place ? await refusedCredential(db, place.id, redacted) : null;
+            if (credential) return credential;
             return plainWords(await original({ ...redacted, assistantCall: { tool: name, args: redacted, ...(private_ ? { view: private_.view } : {}) } }, call) as ToolOutput);
           };
         }

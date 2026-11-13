@@ -1,9 +1,10 @@
 // The network as a run's own tools see it (#1437, RT-5): scripts/check_agent_runtime.sh step 9e has the fake Claude Code run this inside
 // Flux's sandbox shell, on the runtime's real networks, during a real run. Targets come from FLUX_PROBE_* variables the script read with
 // `docker inspect`. Nothing but the runtime's egress is reachable at all; where the kernel has Landlock's network rules (ABI 4,
-// FLUX_PROBE_TCP_RULE=1) not even that: a tool has no TCP. It prints one JSON line and NETPROBE=ok or NETPROBE=failed.
+// FLUX_PROBE_TCP_RULE=1, which the tools now need) not even that: a tool has no socket at all. It prints one JSON line and NETPROBE=ok or NETPROBE=failed.
 import { lookup } from 'node:dns/promises';
 import { existsSync } from 'node:fs';
+import { createSocket } from 'node:dgram';
 import { connect } from 'node:net';
 
 const env = process.env;
@@ -48,9 +49,17 @@ for (const name of ['example.com', 'db', 'api']) {
 }
 record('no Docker or Podman socket', !['/var/run/docker.sock', '/run/docker.sock', '/run/podman/podman.sock'].some((path) => existsSync(path)), '');
 const egress = await tcp('runtime-egress', 3128);
+// No socket at all (seccomp: EAFNOSUPPORT) and no TCP (Landlock ABI 4: EACCES); the tools run only where both hold (#1437).
+const refused = (outcome) => outcome === 'EAFNOSUPPORT' || outcome === 'EACCES';
+const udp = await new Promise((resolve) => {
+  const socket = createSocket('udp4');
+  socket.on('error', (error) => { socket.close(); resolve(error.code ?? 'error'); });
+  socket.send('flux-probe', 53, '127.0.0.11', (error) => { if (!error) { socket.close(); resolve('sent'); } });
+});
+record('no UDP, not even to Docker\'s DNS', udp !== 'sent', udp);
 if (tcpRule) {
-  record('no TCP at all, not even to the egress', egress === 'EACCES', egress);
-  record('nor to its /mcp forwarder', (await tcp('runtime-egress', 8080)) === 'EACCES', '');
+  record('no TCP at all, not even to the egress', refused(egress), egress);
+  record('nor to its /mcp forwarder', refused(await tcp('runtime-egress', 8080)), '');
 } else {
   record('control: the egress is the one way out', egress === 'open', egress);
   for (const target of ['example.com:443', 'db:5432', '169.254.169.254:80']) {
