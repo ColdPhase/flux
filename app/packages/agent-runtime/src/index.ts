@@ -8,3 +8,4 @@ export { aiEndpointPolicyFromEnv, checkEndpoint, classifyAddress, EndpointRefuse
 export { DEFAULT_TRANSPORT_LIMITS, endpointRefusal, guardedFetch, ResponseTooLargeError, type GuardedFetch, type TransportLimits } from './guarded-fetch.js';
 export { endpointPolicyPort, KEY_LISTED_PROVIDERS, keyListingOptions, listKeyModels, listProviderModels, listsWithKey, MODEL_LIST_MAX_BYTES, OPENROUTER_LIST_MAX_BYTES, type ModelListOptions } from './model-list.js';
 export { checkRequestLimits } from './limits.js';
+export { checkToolCalling, largestToolCheckMicros, PING_TOOL, providerToolCheck, TOOL_CHECK_TIMEOUT_MS } from './tool-check.js';

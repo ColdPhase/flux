@@ -440,12 +440,6 @@ export interface PersonalConnection {
   /** `openai_compatible` only; null for a named provider's fixed URL. */
   baseUrl: string | null;
   price: AiPrice | null;
-  /**
-   * `false` when the owner marked this model as unable to call tools (F-027 AST-8.3): it then
-   * answers in one request and cannot change anything. Absent means not marked; Flux's own dated
-   * table of known models without tool calling applies as well (`aiModelCallsTools`).
-   */
-  toolCalling?: boolean;
   /** When the owner added it: Connect AI's default is the connection made first (#854). */
   createdAt?: Date;
   /** The key's one daily budget and the time zone whose midnight starts its day (#854). */

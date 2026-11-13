@@ -17,3 +17,4 @@ export const refuseAllEndpoints: AiEndpointPolicyPort = { check: async () => 'Ow
 export * from './validation.js';
 export * from './estimate.js';
 export * from './price.js';
+export * from './tool-check.js';

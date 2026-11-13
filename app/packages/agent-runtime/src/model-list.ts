@@ -174,7 +174,9 @@ export async function listKeyModels(provider: AiProviderKind, apiKey: string, op
  * TEST ONLY (#1218): `FLUX_TEST_PROVIDER_LISTS`, the http origin of a mock that answers the key listings of Anthropic
  * (`/lists/anthropic/v1/models`), OpenAI (`/lists/openai/v1/models`) and Gemini (`/lists/gemini/v1beta/models`), so the check stacks never send a test
  * key to a real provider. Refused unless `FLUX_TEST_FAILURE_INJECTION=true`; empty in production, where a key is only ever sent to
- * its provider's fixed address. Returns the listing options for the API and the worker alike.
+ * its provider's fixed address. Returns the listing options for the API and the worker alike. The same origin answers the check that a key's model
+ * calls tools (RT-1 rule 2, #1441, `providerToolCheck`) under the same `/lists/<provider>/…` roots, OpenRouter's included
+ * (`/lists/openrouter/v1/chat/completions`), which has no listing with a key.
  */
 export function keyListingOptions(env: NodeJS.ProcessEnv, policy: AiEndpointPolicy): Pick<ModelListOptions, 'policy' | 'baseUrls'> {
   const mock = env.FLUX_TEST_PROVIDER_LISTS ?? '';
@@ -184,7 +186,7 @@ export function keyListingOptions(env: NodeJS.ProcessEnv, policy: AiEndpointPoli
   if (!origin) throw new Error('FLUX_TEST_PROVIDER_LISTS must be the http origin of the mock provider');
   return {
     policy: parsePrivateTargets([env.FLUX_AI_PRIVATE_TARGETS ?? '', origin[1]].join(',')),
-    baseUrls: { anthropic: `${mock}/lists/anthropic`, openai: `${mock}/lists/openai/v1`, gemini: `${mock}/lists/gemini/v1beta/openai` },
+    baseUrls: { anthropic: `${mock}/lists/anthropic`, openai: `${mock}/lists/openai/v1`, gemini: `${mock}/lists/gemini/v1beta/openai`, openrouter: `${mock}/lists/openrouter/v1` },
   };
 }
 

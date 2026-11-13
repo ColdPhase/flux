@@ -135,13 +135,13 @@ describe('the assistant\'s model from any connection (F-027 AST-11, #854)', () =
     assert.deepEqual([choice.current, choice.default, choice.saved], [null, { connection: sonnet5, model: 'claude-sonnet-5' }, false]);
     assert.equal(choice.groups.length, 1);
     assert.deepEqual([choice.groups[0]!.connection, choice.groups[0]!.account, choice.groups[0]!.company], [sonnet5, 'api_key', 'Anthropic']);
-    assert.deepEqual(choice.groups[0]!.options.map((option) => [option.id, option.name, option.note, option.callsTools]), [
+    assert.deepEqual(choice.groups[0]!.options.map((option) => [option.id, option.name, option.note]), [
       // By family, the family with the newest model first (#1218).
-      ['claude-fable-5-2', 'Fable 5.2', 'Input $8, output $40 per 1M tokens', true],
-      ['claude-haiku-5-5', 'Haiku 5.5', 'Input $0.50, output $2.50 per 1M tokens', true],
-      ['claude-sonnet-5-5', 'Sonnet 5.5', 'Input $2, output $10 per 1M tokens', true],
-      ['claude-sonnet-5', 'Sonnet 5', 'Input $2, output $10 per 1M tokens', true],
-      ['claude-opus-5-5', 'Opus 5.5', 'Input $4, output $20 per 1M tokens', true],
+      ['claude-fable-5-2', 'Fable 5.2', 'Input $8, output $40 per 1M tokens'],
+      ['claude-haiku-5-5', 'Haiku 5.5', 'Input $0.50, output $2.50 per 1M tokens'],
+      ['claude-sonnet-5-5', 'Sonnet 5.5', 'Input $2, output $10 per 1M tokens'],
+      ['claude-sonnet-5', 'Sonnet 5', 'Input $2, output $10 per 1M tokens'],
+      ['claude-opus-5-5', 'Opus 5.5', 'Input $4, output $20 per 1M tokens'],
     ]);
     // A model outside the key's list, or another provider's, is refused at turn-on and nothing is turned on.
     for (const bad of ['gpt-6-sol', 'sonnet', '--model']) {
@@ -202,7 +202,7 @@ describe('the assistant\'s model from any connection (F-027 AST-11, #854)', () =
     assert.deepEqual(choice.groups.map((group) => group.connection), [first, second], 'one group per connection, the first made first');
     assert.deepEqual(choice.default, { connection: first, model: 'llama3.1:8b' }, 'Connect AI\'s default is the connection made first');
     assert.deepEqual(choice.groups[0]!.options.map((option) => [option.id, option.name]), [['llama3.1:8b', 'llama3.1:8b']], 'an own endpoint offers only its own model');
-    assert.deepEqual(choice.groups[1]!.options.map((option) => [option.id, option.callsTools]), [['gpt-6-luna', true]],
+    assert.deepEqual(choice.groups[1]!.options.map((option) => option.id), ['gpt-6-luna'],
       'a key whose provider has not listed its models yet offers only its own model: Flux keeps no list of its own (#1218)');
   });
 

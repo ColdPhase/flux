@@ -37,7 +37,7 @@ import {
   type RetryAssistantRunCommand,
   type UpdateMyAgentCommand,
 } from '@flux/contracts';
-import { conversationUseCases, ForbiddenError, InvalidInputError, type FileStorage, type PersonalConnectionLookup, type PersonalRuntimeAvailability } from '@flux/core';
+import { conversationUseCases, ForbiddenError, InvalidInputError, type FileStorage, type PersonalConnectionLookup, type PersonalRuntimeAvailability, type ToolChecking } from '@flux/core';
 import { assistantChangeRows, isCompanyGuest, type Database, type DbExecutor } from '@flux/db';
 import { answerPictureIds } from '../agent-connection/picture-actions.js';
 import type { SessionResolver } from '../identity/index.js';
@@ -59,6 +59,8 @@ interface Options {
   runtime?: PersonalRuntimeAvailability;
   /** The files volume: Show everyone posts the pictures an agent attached to the answer (#1217). */
   storage?: FileStorage;
+  /** The check that a model of a key calls tools, for putting an agent on one (RT-1 rule 2, #1441); absent: no model is checked. */
+  toolChecking?: ToolChecking | null;
 }
 
 /** One of the caller's connections (#854): a plan, or an API key's id. */
@@ -100,12 +102,12 @@ const ownState: ReplayCheck = async (principal, _body, db) => {
  * calls one core use case. Nothing here reads an owner, agent or connection from the request:
  * the session is the owner. The server only queues runs; the worker dispatches them.
  */
-export async function personalRunRoutes(app: FastifyInstance, { db, sessions, boss, connections, providerEnabled, runtime, storage }: Options) {
+export async function personalRunRoutes(app: FastifyInstance, { db, sessions, boss, connections, providerEnabled, runtime, storage, toolChecking }: Options) {
   useDomainErrors(app);
   const { principal, command } = commandRunner(db, sessions);
   const queue = pgBossPersonalRunQueue(boss);
   const modelLists = modelListRefresh(db, boss);
-  const composition = { queue, connections, providerEnabled, ...(runtime ? { runtime } : {}) };
+  const composition = { queue, connections, providerEnabled, ...(runtime ? { runtime } : {}), ...(toolChecking ? { toolChecking } : {}) };
   // A request in an agent's chat may carry files (#1438, C-64): the same composition with the files volume.
   const runs = personalRunUseCases(db, { ...composition, ...(storage ? { storage } : {}) });
   // The owner's schedules (F-027 A8) run on the same composition: the same connection, switch and runtime.

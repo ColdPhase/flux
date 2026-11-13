@@ -53,6 +53,7 @@ import { endedWithWebSources } from './web-sources.js';
 import { sourcesShown } from './cites.js';
 import { unreadAgentChats } from './agent-chat.js';
 import { takeAsk } from '../agent-tasks/ask.js';
+import { toolsRequired, type ToolChecking } from '../ai/tool-check.js';
 import { isPrivateAnswer, placeOf } from './ports.js';
 import { chatFilesOf } from './chat-files.js';
 import {
@@ -298,6 +299,11 @@ export interface PersonalRunDeps {
   providerEnabled: boolean;
   /** The owner's own Claude Code and Codex in the agent runtime (F-022 AIM-3). Without it no plan can be used. */
   runtime?: PersonalRuntimeAvailability;
+  /**
+   * The check that a model of a key calls tools (RT-1 rule 2, #1441), sent when an agent is put on a model of a key that has not passed it. Only
+   * the API, which can open a key, has it; without it no model is checked here (the key's own model was checked when the key was added).
+   */
+  toolChecking?: ToolChecking;
 }
 
 const RUNTIME_OFF: PersonalRuntimeStanding = { state: 'off', payer: null, accountLabel: null };
@@ -320,7 +326,7 @@ export async function stopRunBy(ports: PersonalRunPorts, runId: string, by: stri
   return run;
 }
 
-export function createPersonalRunUseCases({ uow, connections, providerEnabled, runtime }: PersonalRunDeps) {
+export function createPersonalRunUseCases({ uow, connections, providerEnabled, runtime, toolChecking }: PersonalRunDeps) {
   const runtimeStanding = async (owner: string, client?: PersonalRuntimeClient) => (runtime ? await runtime.standing(owner, client).catch(() => RUNTIME_OFF) : RUNTIME_OFF);
   /** Why a runtime assistant cannot run now, or null when it can. */
   const runtimeProblem = (standing: PersonalRuntimeStanding): PersonalAssistantUnavailableReason | null =>
@@ -344,8 +350,42 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
     return found;
   }
 
-  /** The model of one of the owner's connections, or the plain refusal (AST-11): only a model in that connection's list. */
-  async function pick(owner: string, connectionWanted: unknown, modelWanted: unknown, still = ''): Promise<{ item: ConnectionModels; model: string }> {
+  /**
+   * Only a model that calls tools can be an agent (RT-1 rule 2, #1441): one small request with the tool `ping` on this model of the key, unless
+   * the model passed it before. Its cost is charged to the key's day like any request and kept whatever the answer. Sent before the change's
+   * transaction (`checkBeforeChoosing`); inside it, only a model the provider was not asked about yet (a race) waits for it, at most
+   * `TOOL_CHECK_TIMEOUT_MS`. It is recorded on a handle of its own, so a model that is refused still costs what it cost.
+   */
+  async function requireToolCalling(connection: PersonalConnection) {
+    if (!toolChecking || !connection.price) return;
+    if (await toolChecking.passed(connection.id, connection.model)) return;
+    const checked = await toolChecking.check({ provider: connection.provider, baseUrl: connection.baseUrl, model: connection.model, price: connection.price,
+      key: { connectionId: connection.id } });
+    await toolChecking.record({ connectionId: connection.id, model: connection.model, callsTools: checked.callsTools, chargedMicros: checked.chargedMicros });
+    if (!checked.callsTools) throw toolsRequired();
+  }
+
+  /**
+   * The tool check of a model about to be chosen, sent BEFORE the change's transaction (#1441 review): Flux never waits on a provider with
+   * rows locked. A model that does not call tools is refused here; one that does is recorded, so `pick` inside the transaction only reads that
+   * it passed. Anything else (not the owner's key, not in its list, unpriced) is left to `pick`'s own refusals.
+   */
+  async function checkBeforeChoosing(owner: string, connectionWanted: unknown, modelWanted: unknown, current: ModelPick | null = null) {
+    if (!toolChecking || typeof modelWanted !== 'string' || (connectionWanted === undefined && modelWanted === undefined)) return;
+    let ref: string;
+    try { ref = connectionRef(connectionWanted); } catch { return; }
+    if (current?.connection === ref && current.model === modelWanted) return;
+    const item = (await ownConnections(owner)).find((connection) => connection.ref === ref);
+    if (!item?.connection || !item.account.options.some((option) => option.id === modelWanted && !option.retired)) return;
+    const priced = connectionOnModel(item.connection, modelWanted);
+    if (priced?.price) await requireToolCalling(priced);
+  }
+
+  /**
+   * The model of one of the owner's connections, or the plain refusal (AST-11): only a model in that connection's list, priced, that calls tools.
+   * `current`: the model the agent has now; choosing it again changes nothing, so it is not checked again.
+   */
+  async function pick(owner: string, connectionWanted: unknown, modelWanted: unknown, still = '', current: ModelPick | null = null): Promise<{ item: ConnectionModels; model: string }> {
     const ref = connectionRef(connectionWanted);
     // A model that is not even an id is simply one the connection does not offer (the plain refusal below).
     const model = typeof modelWanted === 'string' ? modelWanted : '';
@@ -366,6 +406,7 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
       // With its provider's own web search a request may also make its searches (#954): the budget must hold that too.
       if (runReservationMicros(priced.price, true, aiModelSearchesWeb(priced.provider, option.id))! > centsToMicros(item.connection.dailyBudgetCents))
         throw modelUnavailable(`One request on ${option.name} can cost more than this key's daily budget. Raise the budget in Connect AI.${still}`);
+      if (current?.connection !== item.ref || current.model !== option.id) await requireToolCalling(priced);
     }
     return { item, model: option.id };
   }
@@ -724,6 +765,7 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
     async enable(principal: Principal, command: CreateMyAgentCommand): Promise<MyAgent> {
       const owner = ownerOf(principal);
       const input = normalizeEnable(command);
+      await checkBeforeChoosing(owner, input.connection, input.model);
       return uow.run(async (ports) => {
         const agents = agentsOf(ports);
         await agents.lockOwner(owner);
@@ -759,6 +801,10 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
       const owner = ownerOf(principal);
       if (!isId(agentId)) throw agentNotFound();
       const change = normalizeAgentChange(command);
+      if (change.model) {
+        const before = await uow.run((ports) => agentsOf(ports).get(owner, agentId.toLowerCase()));
+        await checkBeforeChoosing(owner, change.model.connection, change.model.model, before?.model ?? null);
+      }
       return uow.run(async (ports) => {
         const agents = agentsOf(ports);
         await agents.lockOwner(owner);
@@ -769,7 +815,7 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
           // A plan's model goes by the name its CLI gives it (#1332), an API key's by Flux's.
           const plan = clientOfPlan(current.model.connection) ? (await ownConnections(owner)).find((item) => item.ref === current.model.connection) : undefined;
           const was = plan?.account.options.find((option) => option.id === current.model.model)?.name ?? modelNameOf(current.model);
-          const chosen = await pick(owner, change.model.connection, change.model.model, ` It is still ${was}.`);
+          const chosen = await pick(owner, change.model.connection, change.model.model, ` It is still ${was}.`, current.model);
           // Choosing the model it already has changes nothing (no new version of the agent).
           if (current.model.connection !== chosen.item.ref || current.model.model !== chosen.model) await agents.change(current.id, placement(chosen.item, chosen.model));
         }

@@ -1,4 +1,4 @@
-import { AI_PROVIDERS, aiModelCallsTools, PERSONAL_RUN_LIMITS, type AiWireFormat } from '@flux/contracts';
+import { AI_PROVIDERS, PERSONAL_RUN_LIMITS, type AiWireFormat } from '@flux/contracts';
 import { validModelId, type PersonalComputeRequest } from '@flux/core';
 
 /** Turns a connection's `keyRef` into its key, or null when it cannot be used (#124 custody). */
@@ -24,7 +24,6 @@ function checkTools(request: PersonalComputeRequest) {
     if (turns?.length) throw new Error('Earlier turns need the tools they used');
     return;
   }
-  if (!aiModelCallsTools(request.connection.provider, request.model)) throw new Error('This model cannot call tools');
   if (tools.length > MAX_TOOLS) throw new Error('Too many tools');
   const names = new Set<string>();
   for (const tool of tools) {

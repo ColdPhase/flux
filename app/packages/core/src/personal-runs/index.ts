@@ -4,7 +4,7 @@ export * from './processor.js';
 export { postToAgentChat, unreadAgentChats } from './agent-chat.js';
 export { reportTaskRun } from './task-report.js';
 export { recoverLostRuntimeRuns, recoverPersonalRuns } from './recovery.js';
-export { connectionCallsTools, costMicros, parseOutput, runChargeMicros, runReservationMicros, budgetedReservationMicros, type SuppliedSource } from './validation.js';
+export { costMicros, parseOutput, runChargeMicros, runReservationMicros, budgetedReservationMicros, type SuppliedSource } from './validation.js';
 export { briefPrivateText, buildBrief, CHAT_FILES_LINE, NO_PICTURES_LINE, NO_POSTING_LINE, VIEW_PICTURE_LINE, KEY_WEB_SEARCH_LINE, NO_WEB_SEARCH_LINE, OPEN_ANY_ADDRESS_LINE, RUNTIME_WEB_SEARCH_LINE, runtimeBrief, type BriefInput, type BriefPlace, type TaskFacts } from './brief.js';
 export { readBriefFacts, type BriefFacts } from './brief-facts.js';
 export { CITE_LINE } from './brief.js';

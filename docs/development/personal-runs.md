@@ -142,9 +142,16 @@ connect-time tool check of RT-1 (one request with one `ping` tool) will use them
   means `invalid`, never run) and returns one `role: "tool"` message per call, with failures
   starting "Error: ". `tool_choice` is never sent. The provider's own assistant message is sent
   back unchanged, so reasoning blocks and thought signatures survive. `checkRequestLimits` refuses a bad tool name, schema,
-  duplicate, more than 64 tools, a turn whose calls and results do not match one to one, more
-  turns than the cap, and tools offered to a model Flux knows cannot call them, all before a key
-  is resolved.
+  duplicate, more than 64 tools, a turn whose calls and results do not match one to one, and more
+  turns than the cap, all before a key is resolved.
+- **A model that cannot call tools** (RT-1 rule 2, #1441; AST-8.3's answer-only mode and its owner's switch are gone). There is no table
+  of such models and no switch: `checkToolCalling` (`@flux/agent-runtime`, `tool-check.ts`) sends one request on the model with the one tool
+  `ping` (`maxTokens` 256, low effort, "Call the ping tool now") through the provider's own adapter, and the model is accepted when the answer
+  holds a call of `ping`. Connect AI sends it with the key being added (`connect`, after the listing, the price and the budget checks; a model
+  without a known price waits for the first agent put on it), and `pick` sends it when an agent is put on a model of a key that has no passing
+  row in `api_key_checks`. Not called, or the request refused or failed: `AI_TOOLS_REQUIRED` (422), "This model can't use tools. Choose
+  another." The request's cost is the provider's usage at the model's price (the request's largest cost when the usage is unknown, nothing
+  when the provider documents no charge) and counts on the key's day through `apiKeySpendToday`.
 - **Tests.** `provider-tool-calling.test.ts` (AST-8.1: every wire format against documented-shape
   fixtures in `support/provider-tool-fixtures.ts`, a local mock server) and `personal-runs-tools.test.ts` (an API-key run through the real
   worker, runtime manager, supervisor and database with the real pinned pi and a scripted stand-in for the gateway: the standing checks before, during and at the
@@ -823,9 +830,8 @@ went with its company-wide switch (F-037, #874); the per-space AI switch brings 
 ## Not yet done
 
 - The rest of #406/#484: AST-3.2's handoff, catalog and owner-Apply parity, a "Limit reached"
-  status and copy, and the Gemini thought-signature field name (unverified against Google's pages). The owner's tool-calling mark and the
-  account row's note for a model without tool calling are replaced by the connect-time `ping` check of
-  [RT-1](../product/ai-modes.md#rt-1--engines-on-the-server), which is being added separately; the Responses API for OpenAI is done (#954).
+  status and copy, and the Gemini thought-signature field name (unverified against Google's pages). The Responses API for OpenAI is
+  done (#954).
 - A provider pass against the real API (a real key, by its owner), including billing on cancellation and
   lost responses. Not a gate for O-008 (founder direction 2026-10-16, no PROV-6 real-key gate); the operator
   who sets `FLUX_PERSONAL_RUNS=on` first does the price and model check of [Switching production on](#switching-production-on).

@@ -23,7 +23,8 @@ is answered as Server-Sent Events, its text in small pieces).
 
 #1218: it also answers the key listings of Anthropic, OpenAI and Gemini under `/lists/…` (`FLUX_TEST_PROVIDER_LISTS`), like the app
 suite's provider mock (app/tests/app/support/key-list-mock.ts): a key containing `refused` is refused, `broken` fails with a 500,
-`slow` answers after 12 seconds (past the 8-second bound), any other key gets the lists in `KEY_LISTS`.
+`slow` answers after 12 seconds (past the 8-second bound), any other key gets the lists in `KEY_LISTS`. #1441: the same roots answer the
+check that the model of a key being added calls tools (`tool_check_mock.py`; what reached it is at `GET /__checks`).
 """
 
 from __future__ import annotations
@@ -34,6 +35,8 @@ import threading
 import time
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+import tool_check_mock
 
 FIXTURE_KEY = "flux-test-fixture-not-a-provider-key"
 DEFAULT = {"text": "Fact: the camera fails below 5 lux {first}. Interpretation: the ToF sensor is the better next test {message}.",
@@ -73,6 +76,8 @@ KEY_LISTS = {
 lock = threading.Lock()
 script: dict = dict(DEFAULT)
 requests: list[dict] = []
+# The checks that a key's model calls tools (#1441), kept apart: the tests that count `requests` count runs.
+checks: list[dict] = []
 
 
 CITE_MARK = re.compile(r"\[(?:doc|task|decision|message):[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\]")
@@ -175,6 +180,18 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(200, KEY_LISTS[path])
         return self.reply(404, {"error": "not found"})
 
+    def tool_check(self, body: dict) -> None:
+        """#1441: the check that the model of a key being added calls tools, sent where the key's listing goes (`/lists/<provider>/…`); a
+        refused key is refused here as it is by its listing, any other is answered by `tool_check_mock`."""
+        path = self.path.split("?")[0]
+        key = self.headers.get("x-goog-api-key") or (self.headers.get("authorization") or "").removeprefix("Bearer ") or self.headers.get("x-api-key") or ""
+        with lock:
+            checks.append({"path": self.path, "key": key, "body": body, "at": time.time()})
+        if not key or "refused" in key:
+            return self.reply(401, {"type": "error", "error": {"type": "authentication_error", "message": "invalid x-api-key"}})
+        answered = tool_check_mock.answer(path, body)
+        return self.reply(*answered) if answered else self.reply(404, {"error": "not found"})
+
     def do_GET(self) -> None:
         if self.path.startswith("/lists/"):
             return self.key_list()
@@ -183,6 +200,9 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/__requests":
             with lock:
                 return self.reply(200, {"requests": list(requests)})
+        if self.path == "/__checks":
+            with lock:
+                return self.reply(200, {"requests": list(checks)})
         return self.reply(404, {"type": "error", "error": {"type": "not_found_error", "message": "Not found"}})
 
     def do_POST(self) -> None:
@@ -195,6 +215,8 @@ class Handler(BaseHTTPRequestHandler):
                 if body.get("reset"):
                     requests.clear()
             return self.reply(200, {"ok": True})
+        if self.path.startswith("/lists/"):
+            return self.tool_check(body)
         with lock:
             current = dict(script)
             requests.append({"path": self.path, "key_ok": self.presented_key() == FIXTURE_KEY,

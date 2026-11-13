@@ -2,7 +2,7 @@
 
 The browser suite saves an owner connection whose base URL points here (the `openai-mock` Compose
 service of scripts/check_ui.sh, allowed by the test stack's `FLUX_AI_PRIVATE_TARGETS`), and the
-Flux server lists its models without a key. It is never a provider: nothing here proves
+Flux server lists its models without a key and checks a model with one tool call (#1441). It is never a provider: nothing here proves
 compatibility, billing or model behaviour. `GET /__requests` returns what reached it.
 """
 
@@ -11,6 +11,8 @@ from __future__ import annotations
 import json
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+import tool_check_mock
 
 lock = threading.Lock()
 requests: list[dict] = []
@@ -40,6 +42,15 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/v1/models":
             return self.reply(200, MODELS)
         return self.reply(404, {"error": {"message": "not found"}})
+
+    def do_POST(self) -> None:
+        """#1441: the check that the model of a key being added calls tools (Chat Completions with the one tool `ping`)."""
+        length = int(self.headers.get("content-length") or 0)
+        body = json.loads(self.rfile.read(length) or b"{}")
+        with lock:
+            requests.append({"method": "POST", "path": self.path, "authorization": self.headers.get("authorization"), "body": body})
+        answered = tool_check_mock.answer(self.path, body)
+        return self.reply(*answered) if answered else self.reply(404, {"error": {"message": "not found"}})
 
 
 if __name__ == "__main__":

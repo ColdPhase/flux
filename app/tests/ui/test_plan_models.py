@@ -28,7 +28,7 @@ def named(name: str) -> str:
 
 
 def claude(model_id: str, name: str, note: str, **extra) -> dict:
-    return {"id": model_id, "name": name, "note": note, "callsTools": True, **extra}
+    return {"id": model_id, "name": name, "note": note, **extra}
 
 
 # Codex 0.160.1's own list (captured 2026-11-12), under the names it gives: eight models, more than segments hold.

@@ -22,9 +22,9 @@ from test_app_shell import shot
 NOW = base.NOW
 
 CLAUDE = [
-    {"id": "sonnet", "name": "Sonnet", "note": "Everyday work", "callsTools": True},
-    {"id": "opus", "name": "Opus", "note": "Harder requests", "callsTools": True},
-    {"id": "haiku", "name": "Haiku", "note": "Quick, simple requests", "callsTools": True},
+    {"id": "sonnet", "name": "Sonnet", "note": "Everyday work"},
+    {"id": "opus", "name": "Opus", "note": "Harder requests"},
+    {"id": "haiku", "name": "Haiku", "note": "Quick, simple requests"},
 ]
 CLAUDE_PLAN = {"connection": "claude_plan", "account": "claude_plan", "label": "Claude plan", "company": "Claude"}
 

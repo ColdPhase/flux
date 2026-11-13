@@ -185,6 +185,34 @@ class ApiKeyModels(unittest.TestCase):
         self.assertEqual((refused.status, refused.json()["code"]), (422, "AI_MODEL_REQUIRED"), refused.text())
         self.assertEqual(self.connected(waiting), before)
 
+    def test_03c_a_model_that_cannot_use_tools_is_refused_and_the_key_stays_for_another(self) -> None:
+        """RT-1 rule 2 (#1441): the server's one `ping` check refuses the model, not the key, so the key is not cleared."""
+        page = self.page()
+        self.form(page)
+        before = self.connected(page)
+        self.type_key(page, GOOD)
+        expect(page.get_by_role("status").filter(has_text="6 models from Anthropic.")).to_be_visible()
+        model = page.get_by_role("combobox", name="Model")
+        choose(model, value="__other__")
+        page.get_by_label("Model id", exact=True).fill("claude-no-tools-1")
+        page.get_by_label("Input price", exact=True).fill("1")
+        page.get_by_label("Output price", exact=True).fill("5")
+        page.get_by_label("Daily budget (USD)", exact=True).last.fill("5")
+        page.get_by_role("button", name="Connect", exact=True).click()
+        alert = page.get_by_role("alert")
+        expect(alert).to_have_text("This model can't use tools. Choose another.")
+        expect(alert).not_to_contain_text("cleared")
+        expect(page.get_by_label("API key", exact=True)).to_have_value(GOOD)
+        self.assertEqual(self.connected(page), before, "nothing is saved for a model that cannot use tools")
+        shot(page, named("api-key-models-1441-no-tools"))
+        # Another model of the same key, without typing the key again.
+        choose(model, value="claude-opus-5-5")
+        page.get_by_label("Name", exact=True).fill("Ines's second key")
+        page.get_by_role("button", name="Connect", exact=True).click()
+        expect(page.get_by_role("status").filter(has_text="Key saved with a daily budget of $5.00.")).to_be_visible()
+        self.assertIn("Ines's second key", self.connected(page))
+        self.no_key_in_page(page)
+
     def test_04_a_list_that_cannot_be_read_leaves_the_plain_field_with_a_note(self) -> None:
         page = self.page()
         self.form(page)
@@ -231,12 +259,12 @@ class ApiKeyModels(unittest.TestCase):
         connection = (agent.get("model") or {}).get("connection") or "4c1f0a52-7d3e-4b8a-9f61-2e5d8c7b9a10"
         current = (agent.get("model") or {}).get("model") or "claude-sonnet-5"
         options = [
-            {"id": "claude-sonnet-5-7", "name": "Claude Sonnet 5.7", "note": "Price unknown, enter it", "callsTools": True, "family": "Sonnet", "priced": False},
-            {"id": "claude-sonnet-5-5", "name": "Sonnet 5.5", "note": "Input $2, output $10 per 1M tokens", "callsTools": True, "family": "Sonnet", "priced": True},
-            {"id": "claude-opus-5-5", "name": "Opus 5.5", "note": "Input $4, output $20 per 1M tokens", "callsTools": True, "family": "Opus", "priced": True},
-            {"id": "claude-opus-5", "name": "Opus 5", "note": "Input $5, output $25 per 1M tokens", "callsTools": True, "family": "Opus", "priced": True, "retired": True},
+            {"id": "claude-sonnet-5-7", "name": "Claude Sonnet 5.7", "note": "Price unknown, enter it", "family": "Sonnet", "priced": False},
+            {"id": "claude-sonnet-5-5", "name": "Sonnet 5.5", "note": "Input $2, output $10 per 1M tokens", "family": "Sonnet", "priced": True},
+            {"id": "claude-opus-5-5", "name": "Opus 5.5", "note": "Input $4, output $20 per 1M tokens", "family": "Opus", "priced": True},
+            {"id": "claude-opus-5", "name": "Opus 5", "note": "Input $5, output $25 per 1M tokens", "family": "Opus", "priced": True, "retired": True},
             # The agent's own model, which its provider stopped offering (CA-2): shown because the agent is on it.
-            {"id": current, "name": "Sonnet 5", "note": "Input $2, output $10 per 1M tokens", "callsTools": True, "family": "Sonnet", "priced": True, "retired": True},
+            {"id": current, "name": "Sonnet 5", "note": "Input $2, output $10 per 1M tokens", "family": "Sonnet", "priced": True, "retired": True},
         ]
         world = {"listing": {"state": "unavailable", "checkedOn": "2026-11-11"}, "puts": [], "patches": [], "refreshed": 0}
 

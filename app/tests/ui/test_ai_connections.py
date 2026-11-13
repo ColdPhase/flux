@@ -353,7 +353,7 @@ class AiConnectionSettings(unittest.TestCase):
         owned = page.request.get(f"{ORIGIN}/api/v1/background-compute-connections").json()
         self.assertEqual(len(owned), 2, "the endpoint and the Anthropic key from the earlier tests")
         groups = [{"connection": item["id"], "account": "api_key", "label": item["name"], "company": "Anthropic",
-                   "options": [{"id": item["model"], "name": item["model"], "note": "", "callsTools": True}]} for item in owned]
+                   "options": [{"id": item["model"], "name": item["model"], "note": ""}]} for item in owned]
         choice = {"current": None, "default": {"connection": owned[-1]["id"], "model": owned[-1]["model"]}, "groups": groups, "saved": False}
         sent: list[dict] = []
 
