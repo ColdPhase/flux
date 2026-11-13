@@ -115,9 +115,14 @@ class UxSimplicityPartAMenus(unittest.TestCase):
 
     def test_07_a_member_with_nothing_connected_sees_no_new_agent_and_no_plan_the_server_cannot_run(self) -> None:
         page = self.page("jonas")
+        # The test composition gives every person a fixture key (docs/development/personal-runs.md), so "nothing connected" is what the
+        # server says here: its model choice has no connection to run an agent on. A real instance answers this by itself.
+        page.route("**/api/v1/personal-assistant/model", lambda route: route.fulfill(
+            status=200, content_type="application/json", body=json.dumps({"current": None, "default": None, "groups": [], "saved": False})))
         page.goto("/settings/agents")
         connect = page.get_by_role("region", name="Connect AI", exact=True)
         expect(connect).to_be_visible()
+        expect(page.get_by_text("Connect AI first.")).to_be_visible()
         expect(page.get_by_role("button", name="New agent")).to_have_count(0)
         expect(page.get_by_text("Make one with New agent")).to_have_count(0)
         connect.get_by_role("button", name="Connect AI", exact=True).click()
