@@ -144,8 +144,9 @@ describe('files in an agent\'s private chat', () => {
       assert.doesNotMatch(text(read.message), /4711/, label);
       await scene.complete(live.runId);
     };
-    // A run in a direct message of the same owner.
-    const dm = expectStatus(await scene.owner.browser.request('POST', `/api/v1/workspaces/${scene.ws.id}/dms`, { body: { participantIds: [scene.peer.id] } }), 201) as { id: string };
+    // A run in a direct message of the same owner (the one an earlier test opened, or a new one).
+    const opened = await scene.owner.browser.request('POST', `/api/v1/workspaces/${scene.ws.id}/dms`, { body: { participantIds: [scene.peer.id] } });
+    const dm = expectStatus(opened, opened.status === 200 ? 200 : 201) as { id: string };
     await refused(await scene.liveOf((await runs.invoke(human(scene.owner), { kind: 'dm', dmId: dm.id, threadRootId: null },
       { clientRunId: randomUUID(), kind: 'ask', prompt: 'What is the code?' })).run.id), 'a direct message\'s run');
     // A run in the chat of the owner's other agent.
