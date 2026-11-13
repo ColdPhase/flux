@@ -12,7 +12,8 @@ COPY apps/runtime/native/protect.c /native/protect.c
 RUN cc -std=c11 -Wall -Wextra -Werror -fPIC -shared -I/usr/local/include/node /native/protect.c -o /native/protect.node
 # Flux's per-run sandbox for the CLIs' own tools (#1437, RT-5): Landlock, rlimits and a clean environment, no capability needed.
 COPY apps/runtime/native/sandbox.c /native/sandbox.c
-RUN cc -std=c11 -O2 -Wall -Wextra -Werror /native/sandbox.c -o /native/flux-sandbox
+# Static (#1437): the CLI's domain may execute only its own program and this one, so this one needs no loader.
+RUN cc -std=c11 -O2 -Wall -Wextra -Werror -static /native/sandbox.c -o /native/flux-sandbox
 
 # pi (#1441, RT-1): the engine of every API-key agent in the runtime. MIT (earendil-works/pi); its dependencies are MIT, Apache-2.0, BSD,
 # ISC, BlueOak-1.0.0, 0BSD and Unlicense (checked 2026-11-13). Pinned by apps/runtime/pi/package-lock.json, whose sha512 integrity of every
@@ -153,8 +154,8 @@ CMD ["node", "--disable-sigusr1", "apps/runtime/dist/supervisor/main.js"]
 FROM agent-runtime-base AS agent-runtime-test
 USER root
 RUN mkdir -p /opt/flux-fakes \
-  && printf '#!/bin/sh\nexec /usr/local/bin/node /opt/flux-runtime/apps/runtime/dist/fakes/fake-claude.js "$@"\n' > /opt/flux-fakes/claude \
-  && printf '#!/bin/sh\nexec /usr/local/bin/node /opt/flux-runtime/apps/runtime/dist/fakes/fake-codex.js "$@"\n' > /opt/flux-runtime/codex/bin/codex \
+  && printf '#!/usr/local/bin/node\nimport("/opt/flux-runtime/apps/runtime/dist/fakes/fake-claude.js");\n' > /opt/flux-fakes/claude \
+  && printf '#!/usr/local/bin/node\nimport("/opt/flux-runtime/apps/runtime/dist/fakes/fake-codex.js");\n' > /opt/flux-runtime/codex/bin/codex \
   && chmod 0755 /opt/flux-fakes/claude /opt/flux-runtime/codex/bin/codex \
   && /usr/local/bin/node /opt/flux-runtime/apps/runtime/dist/fakes/fake-catalog.js /opt/flux-runtime/codex/models.json
 USER node
@@ -211,6 +212,8 @@ COPY tests/cli-runtime/ /opt/flux-cli-mock/
 RUN mv /opt/flux-runtime/codex/bin/codex /opt/flux-cli-mock/codex \
   && install -m 0755 /opt/flux-cli-mock/codex.sh /opt/flux-runtime/codex/bin/codex \
   && chmod 0755 /opt/flux-cli-mock/claude.sh /opt/flux-cli-mock/install.sh
+# The wrappers are scripts that start the real CLIs: the CLI's domain (#1437) must execute those too. Never set in a release image.
+ENV FLUX_RUNTIME_TEST_EXEC=/opt/flux-cli-mock:/opt/flux-tools/claude/versions
 USER node
 
 # The one-shot installer needs gpg to check Anthropic's signed release manifest; slots do not.

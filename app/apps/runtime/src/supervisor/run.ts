@@ -8,7 +8,7 @@ import { clearClientPaths, clearLeftovers, clearScratch } from './data.js';
 import type { Outcome, Send, SupervisorConfig } from './handlers.js';
 import { asPerson, endProcesses, type Person } from './process.js';
 import { forgetCredentials, restoreCredentials, watchCredentials } from './credentials.js';
-import { createScratch, removeScratch, resetCodexHome, watchRun, type SandboxSetup } from './sandbox.js';
+import { createScratch, removeScratch, resetCodexHome, startBroker, watchRun, type Broker, type SandboxSetup } from './sandbox.js';
 import { catalogForAccount, CLAUDE_OWN_TOOLS, CLAUDE_WEB_SEARCH_TOOL, CLIENT_DIRS, cliEnvironment, CODEX_FEATURE_REVIEW, CODEX_MODEL_CATALOG, codexRunOverrides, RUN_TEMPLATES, sandboxEnvironment } from './templates.js';
 
 // One run of the owner's CLI in their binding directory (F-022 AIM-3 "Run" and "Hardening", T5 #280).
@@ -358,15 +358,28 @@ export async function runCli(config: SupervisorConfig, request: RunRequest, dir:
       return { result: { kind: 'run', runId: request.runId, outcome: early, answer: null, resetsAt: null, turns: 0 } };
     }
   }
-  const env = cliEnvironment(request.client, dir, config.egressHost, { FLUX_RUN_TOKEN: request.runToken, ...(sandbox && scratch ? sandboxEnvironment(request.client, scratch, sandbox) : {}) });
+  // The broker that starts every shell of the run outside the CLI's domain (#1437): without it the CLI would have no shell, so the run does not start.
+  let broker: Broker | null = null;
+  if (sandbox && scratch) {
+    broker = await startBroker(sandbox, scratch, runDir, person).catch(() => null);
+    if (!broker) {
+      runs.delete(request.runId);
+      forgetCredentials(config, request.runId);
+      finishedOf(config).set(request.runId, Date.now());
+      await cleanUp(config, runDir, dir, person, request.client, scratch);
+      return { result: { kind: 'run', runId: request.runId, outcome: 'crashed', answer: null, resetsAt: null, turns: 0 } };
+    }
+  }
+  const env = cliEnvironment(request.client, dir, config.egressHost, { FLUX_RUN_TOKEN: request.runToken, ...(sandbox && scratch && broker ? sandboxEnvironment(request.client, scratch, sandbox, broker.socket) : {}) });
   const allowed = new Set([...request.tools.map((tool) => `${MCP_PREFIX}${tool}`), 'EndConversation', ...(ownTools && !codex ? CLAUDE_OWN_TOOLS : []), ...(webSearch ? [CLAUDE_WEB_SEARCH_TOOL] : [])]);
   /** A path Codex changed lies inside this run's scratch (#1437): an absolute path below it, or a relative one, which Codex reads from its working directory. */
   const inScratch = (path: unknown) => typeof path === 'string' && !!scratch && !path.split('/').includes('..')
     && (path.startsWith(`${scratch}/`) || (!path.startsWith('/') && path.length > 0));
   // The CLI runs inside the sandbox's outer domain (#1437): it writes only its own home and the scratch, and reads neither the other CLI's home nor /data.
+  // It executes nothing but its own program and the sandbox shell, which hands each command to the run's broker.
   const homes = codex ? ['--home', join(dir, CLIENT_DIRS.codex), '--read', join(dir, 'home')] : ['--home', join(dir, CLIENT_DIRS.claude_code), '--home', join(dir, 'home')];
   const [file, args] = sandbox && scratch
-    ? [sandbox.binary, ['cli', scratch, ...homes, '--read', runDir, '--', config.cliPaths[request.client], ...argv]]
+    ? [sandbox.binary, ['cli', scratch, ...homes, '--read', runDir, ...(sandbox.testExec ?? []).flatMap((path) => ['--exec', path]), '--', config.cliPaths[request.client], ...argv]]
     : [config.cliPaths[request.client], argv];
   /** The run's searches the CLI started and whose result has not come back yet: tool use id → the search's number. */
   const searching = new Map<string, number>();
@@ -388,7 +401,7 @@ export async function runCli(config: SupervisorConfig, request: RunRequest, dir:
     const timers: NodeJS.Timeout[] = [];
     const child = spawn(file, args, { env, cwd: scratch ?? dir, shell: false, detached: true, stdio: ['pipe', 'pipe', 'pipe'], ...asPerson(person) });
     // The run's limits (#1437): the supervisor measures its tools every second and kills them past a limit; the CLI goes on.
-    const stopWatching = scratch && person && child.pid ? watchRun({ person, cliPid: child.pid, scratch, scratchRoot: sandbox!.scratchRoot }) : () => undefined;
+    const stopWatching = scratch && person && child.pid ? watchRun({ person, cliPid: child.pid, brokerPid: broker?.pid, scratch, scratchRoot: sandbox!.scratchRoot }) : () => undefined;
     const killGroup = (signal: NodeJS.Signals) => { try { if (child.pid) process.kill(-child.pid, signal); } catch { /* already gone */ } };
     const later = (ms: number, action: () => void) => { const timer = setTimeout(action, ms); timer.unref(); timers.push(timer); return timer; };
     /** Ends the run in `reason` and the CLI's process group: SIGTERM, then kill. */
@@ -670,6 +683,7 @@ export async function runCli(config: SupervisorConfig, request: RunRequest, dir:
   runs.delete(request.runId);
   finishedOf(config).set(request.runId, Date.now());
   if (killing) await killing;
+  broker?.stop();
   await cleanUp(config, runDir, dir, person, request.client, scratch);
   // A run its own tools took outside the sandbox (#1437 review) may have changed the CLI's login (Codex's `apply_patch` writes its home): an
   // attacker's own login put there would carry the person's next runs to the attacker's account. The login the run started with comes back.
