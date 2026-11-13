@@ -161,6 +161,17 @@ class AgentTakesTask(unittest.TestCase):
         choice.get_by_role("radio", name="Give it to Planner").click()
         expect(choice.get_by_role("radio", name="Give it to Planner")).to_be_checked()
         expect(row.get_by_role("status")).to_contain_text("Saved")
+        # The arrow keys move the choice and the focus inside the group, which keeps the focus while it saves (review of #1377).
+        choice.get_by_role("radio", name="Give it to Planner").focus()
+        page.keyboard.press("ArrowLeft")
+        expect(choice.get_by_role("radio", name="Do nothing")).to_be_checked()
+        expect(choice.get_by_role("radio", name="Do nothing")).to_be_focused()
+        self.assertIsNone(self.api(page, "GET", "/api/v1/me/task-taking", status=200)["takes"])
+        page.keyboard.press("ArrowRight")
+        expect(choice.get_by_role("radio", name="Give it to Planner")).to_be_checked()
+        expect(choice.get_by_role("radio", name="Give it to Planner")).to_be_focused()
+        expect(choice.get_by_role("radio", name="Do nothing")).to_have_attribute("tabindex", "-1")
+        expect(row.get_by_role("status")).to_contain_text("Saved")
         self.assertEqual(self.api(page, "GET", "/api/v1/me/task-taking", status=200)["takes"], self.ids["agent"])
 
     # ---------------------------------------------------------------- the journey: assigned, taken, worked, reported, Done

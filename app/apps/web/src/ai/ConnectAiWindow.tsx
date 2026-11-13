@@ -25,11 +25,11 @@ type PlanKind = keyof typeof PLANS;
 /** The window's fourth choice is not an AI connection: it leads to the page that connects Claude Code or Codex on the person's own computer (#1363). */
 type Choice = AiConnectionKind | 'local_client';
 
-const CHOICES: { kind: Choice; title: string; detail: string; icon: 'spark' | 'chat' | 'key' | 'monitor' }[] = [
+const CHOICES: { kind: Choice; title: string; detail: string; icon: 'spark' | 'chat' | 'key' | 'terminal' }[] = [
   { kind: 'claude_plan', title: 'Claude plan', detail: 'Pro, Max or Team · sign in with Claude', icon: 'spark' },
   { kind: 'chatgpt_plan', title: 'ChatGPT plan', detail: 'Plus, Pro or Business · sign in with ChatGPT', icon: 'chat' },
   { kind: 'api_key', title: 'API key', detail: 'Anthropic, OpenAI or another provider · one daily budget', icon: 'key' },
-  { kind: 'local_client', title: 'Claude Code or Codex on your computer', detail: 'For code on your computer · same rules as your agents', icon: 'monitor' },
+  { kind: 'local_client', title: 'Claude Code or Codex on your computer', detail: 'For code on your computer · same rules as your agents', icon: 'terminal' },
 ];
 
 type Step =

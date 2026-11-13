@@ -1261,8 +1261,8 @@ the composer. The right-hand phone above shows the sheet.
   - **Connect AI**, with Connect another. Each connection is a card with its name, "Connected" and
     the provider's usage line ("62% of your 5-hour limit left · resets at 14:00"). Change sits on
     the right, centred, and never overlaps the text.
-  - The local client as one row, in the same card as the connections (#1363): its Kreska in its own
-    colour, "Claude Code on Ada's laptop", "For code on your computer. Same rules as your agents.", its
+  - The local client as one row, in the same card as the connections (#1363): the terminal mark in
+    the same icon tile as the connections (as drawn), "Claude Code on Ada's laptop", "For code on your computer. Same rules as your agents.", its
     "What it may do" tag (a link to the page where it is changed) and Disconnect, which asks in the
     row. A person may connect several, each with its own row. There is no section of its own for it and
     no word "agent app" or "co-work".

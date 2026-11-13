@@ -76,7 +76,8 @@ export function ConnectAi({ apiKeys, keys, keysFailed, onRetryKeys, onListed, cl
       {runtimeFailed ? <p className="sset-note" role="note">Your plans could not be read. <button type="button" className="ui-link" onClick={() => loadRuntime()}>Try again</button></p> : null}
       {keys !== null && !lines.length ? (
         <div className="sset-card cai__empty">
-          <span className="cai__choose-lead">Nothing is connected yet.</span>
+          {/* With Claude Code or Codex listed above, the line must not say nothing is connected (review of #1363). */}
+          <span className="cai__choose-lead">{clients ? 'No plan or API key is connected yet.' : 'Nothing is connected yet.'}</span>
           <Button variant="primary" onClick={() => setWindowOpen(true)}>Connect AI</Button>
         </div>
       ) : null}

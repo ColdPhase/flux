@@ -88,6 +88,8 @@
 .agc__chip { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; margin-top: 8px; padding: 4px 10px; border-radius: var(--r-pill); background: var(--sub); font-size: var(--fs-xs); color: var(--t2); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .agc__chip:hover { background: var(--hov); color: var(--t1); }
 .agc__chip svg { flex: none; }
+/* A task chip in an agent's answer is a 44 px touch target (UI audit, review of #1377). */
+@media (pointer: coarse) { .agc__chip { min-height: 44px; padding: 0 14px; } }
 .agc__line { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; margin-top: 4px; font-size: var(--fs-xs); line-height: 1.4; color: var(--t3); }
 .agc__line svg { flex: none; }
 .agc__line s { color: var(--t3); }

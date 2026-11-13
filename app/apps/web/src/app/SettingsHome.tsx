@@ -217,7 +217,7 @@ function AgentsAndAi() {
       <div data-ai-settings="server-off">
         <ul className="sset-card" aria-busy={connections === null || undefined}>
           {clientRows}
-          <LinkRow to="/settings/agents/connect" icon={<Icon name="monitor" size={16} />} title="Claude Code or Codex on your computer"
+          <LinkRow to="/settings/agents/connect" icon={<Icon name="terminal" size={16} />} title="Claude Code or Codex on your computer"
             detail="For code on your computer. Same rules as your agents." action={mine.length ? 'Connect another' : 'Connect'} />
         </ul>
         {connections === null ? <p className="sset-note"><Spinner label="Loading your agents" /></p> : null}

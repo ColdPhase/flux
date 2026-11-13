@@ -183,7 +183,8 @@ first. On the `./flux demo` data:
 
 1. **Add Flux to your client** with the commands the Connect page shows. Sign in as Ada, the company's
    owner (`./flux demo` prints her password), and open it: your name at the bottom left → **All
-   settings** → **AI** → **Local co-work on this computer**, or go straight to
+   settings** → **AI** → **Connect another** (**Connect AI** while nothing is connected) → **Claude Code or Codex on your computer** (then
+   **Show the command**), or go straight to
    <http://127.0.0.1:8081/connect-agent>. 8081 is the default port; use the one `./flux up` printed.
 
    ```sh
@@ -202,7 +203,7 @@ first. On the `./flux demo` data:
    your own computer and choose **Allow**. That is the whole setup: Flux makes the client's agent and its
    connection, and the client says it is authenticated (`claude mcp list` shows Connected).
 3. **It acts as you.** The client sees and changes what you can, in the spaces where AI is on, and no
-   more. **What it may do** (Settings → AI → Local co-work) starts at **Do it and tell me**; choose
+   more. **What it may do** (its tag on its row in Settings → AI) starts at **Do it and tell me**; choose
    **Only read** or **Ask me first** any time. Deleting something and changing other people's things
    always wait for your OK in your **Inbox**, whatever you choose, and only you can approve them.
 4. **Ask it something**, for example: "Using Flux, what is the Community garden sensors space
