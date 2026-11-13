@@ -272,7 +272,7 @@ class PrivateAiJourney(unittest.TestCase):
 
     def test_03b_the_slash_menu_lists_each_places_own_suggestions_under_ai_and_choosing_one_asks(self) -> None:
         """#1224: no chips above or below a composer. `/` lists the actions, and the `/ai` row is followed by the suggestions of this place only,
-        understand first and then act: a space's conversation, a thread and a task each have two, a direct message none. The rows are compact
+        understand first and then act: a space's conversation, a thread and a task each have two, a direct message none (its menu is `/ai` alone, #1419). The rows are compact
         (at most 30 px with a mouse, at least 44 px on touch) and choosing one asks the assistant at once."""
         mock("/__script", {"reset": True, "text": ANSWER})
         project, work, dm = self.ids["project"], self.ids["work"], self.ids["dm"]
@@ -294,7 +294,10 @@ class PrivateAiJourney(unittest.TestCase):
                         box.fill("/")
                         menu = page.get_by_role("listbox", name="Actions")
                         if not expected:
-                            expect(menu).to_have_count(0)
+                            # #1419 item 11: a direct message opens the same menu, with `/ai` alone and no suggestions.
+                            expect(menu.locator(".cmenu__o")).to_have_count(1)
+                            expect(menu.locator(".cmenu__o--ask")).to_have_count(0)
+                            expect(menu.locator("code")).to_have_text("/ai")
                             continue
                         rows = menu.locator(".cmenu__o--ask")
                         expect(rows).to_have_count(len(expected))
