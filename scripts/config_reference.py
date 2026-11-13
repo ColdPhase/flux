@@ -254,9 +254,10 @@ VARIABLES: dict[str, Var] = {
         "Private addresses an OpenAI-compatible endpoint may use, such as a local model server. Empty allows public "
         "HTTPS endpoints only; cloud metadata addresses are always refused.", "ollama,10.0.0.0/8"),
     # --- runtime
-    "FLUX_AGENT_RUNTIME": Var("runtime", "empty · `claude_code` · `codex` · `claude_code,codex`",
-        "Lets people sign in with their own Claude or ChatGPT subscription and run that CLI, isolated from everyone else. Empty "
-        "is off and no runtime service runs.", "codex"),
+    "FLUX_AGENT_RUNTIME": Var("runtime", "empty · any of `claude_code`, `codex`, `pi`, comma-separated",
+        "Lets people sign in with their own Claude or ChatGPT subscription and run that CLI, isolated from everyone else; `pi` runs "
+        "every API-key agent in pi in the same runtime, with shell and files in a scratch of each run. Empty is off and no runtime "
+        "service runs.", "codex,pi"),
     "FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS": Var("runtime", "date `YYYY-MM-DD`",
         "Required with `claude_code`: the date you agreed to Anthropic's Commercial Terms with Anthropic. Recorded, not verified.",
         "2026-10-01"),

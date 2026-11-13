@@ -22,10 +22,27 @@ further kinds of agent.
 
 ## RT-1 — Engines on the server
 
+**Founder decision (Hubert, 2026-11-13, [#1441](https://github.com/ColdPhase/flux/issues/1441)), on the harness research
+([agent-harness-2026-11](research/agent-harness-2026-11.md)):** a **plan** runs in its vendor's CLI, the only legal way; **every API
+key** (Anthropic, OpenAI, OpenRouter, Gemini, OpenAI-compatible, self-hosted) runs in **pi**. One Flux contract holds for every agent:
+the same Flux tools over MCP, the same per-run sandbox with shell and files (RT-5), `flux_attach_file`, the same network limits and the
+same "Ask me first", which covers changes in Flux only, never commands inside the agent's own sandbox. The key never enters the runtime:
+Flux's model gateway holds it and meters every request against the owner's budget.
+
 | Connection | Who runs the agent's loop | Where the credential lives |
 | --- | --- | --- |
 | Claude plan, ChatGPT plan | The unmodified official CLI, `claude` or `codex`, in the person's isolated runtime | Only the person's directory in the runtime, written by the CLI's own login |
-| API key | The Flux worker's tool loop | Flux, sealed ([CA-4](model-providers.md#ca-4--key-custody-and-endpoints)) |
+| API key, with `pi` in `FLUX_AGENT_RUNTIME` | **pi** (MIT, pinned in the runtime image), in the person's isolated runtime | Flux, sealed ([CA-4](model-providers.md#ca-4--key-custody-and-endpoints)); the runtime holds only the run token |
+| API key, without it | The Flux worker's tool loop (until #1441 removes it, once pi scores at least as well on the #1295 evaluation) | Flux, sealed |
+
+- **One switch decides the engine of every API key:** `pi` in the operator's `FLUX_AGENT_RUNTIME` (RT-9). On, every key run goes to pi
+  in the runtime; off, to the worker's loop. No connection, run or person chooses, and nothing falls back from one to the other.
+- **pi has no sign-in.** A key run needs only the person's own place in the runtime (their directory and user id, RT-3), made the first
+  time they need it; a plan sign-in, if they have one, shares it.
+- **The model gateway** (#1441): pi sends each model request to Flux's model route through the runtime egress (RT-4), in its provider's own
+  wire format (Anthropic Messages, OpenAI Responses, Chat Completions), with the run token as its credential. The gateway swaps it for the
+  sealed key, reserves the owner's daily budget before the request and charges the provider's usage after it on the run (CA-3, #854). A
+  refusal for the budget is final: pi does not retry it, and the run ends "budget" with nothing posted.
 
 - Both reach Flux only through its MCP route, with a short-lived run token bound to the agent, its
   owner, the run and its place. The route lists exactly the run's tools and checks the owner's
@@ -47,6 +64,12 @@ further kinds of agent.
 | Vendor tokens held by the Flux server (database, worker, queue), including hosted Codex app-server authentication | Anthropic: "may not collect, store, or intermediate". OpenAI: app-server authentication "has never been permitted for commercial or hosted services" (2026-10-04) |
 | A modified or wrapped Claude Code binary, or one with an authentication method disabled | Anthropic: the binary "must not be modified", and customers "may not remove, disable, or restrict any authentication method built into it" |
 | Flux, the operator or another person paying for, pooling or spending a person's plan | Anthropic: "Each end user must authenticate with their own … Claude subscription plan credentials"; F-019 |
+
+**pi is not a plan client** (#1441). It runs only on API keys, through Flux's gateway: Flux never runs its `/login`, never gives it a
+vendor credential, and its own subscription logins (which reuse Claude Code's OAuth client) are never reachable, because a pi run has no
+login, no `auth.json` with anything in it and no route to a vendor host. pi is MIT (earendil-works/pi) and pinned in the runtime image by
+its npm lockfile (`app/apps/runtime/pi/package-lock.json`, the sha512 integrity of every package), installed with `npm ci
+--ignore-scripts` when the image is built and never at run time; its updates, package installs and telemetry are off.
 
 **Installation.** Flux does not bundle Claude Code. When the operator turns on Claude Code,
 `runtime-install` downloads Anthropic's official release at the version Flux's flag contract test
@@ -101,6 +124,8 @@ not verify it. A paid hosting service run by the Flux project keeps plan sign-in
     `claude.com`, `platform.claude.com`; Codex: `auth.openai.com`, `chatgpt.com`,
     `api.openai.com`); telemetry, feedback uploads and update checks are not allowed;
   - Flux's MCP route, and no other Flux path;
+  - Flux's model route (`/model`, #1441), for pi's model requests on an API key: the gateway holds the key, so the egress allows no
+    provider host for pi, and pi is given no proxy;
   - nothing else. **Web reads are not through the egress** (#918): an agent reads a page with Flux's own tool `flux_read_web`, which the
     Flux server runs (GET only, public addresses only, the same guard as API base URLs and link cards:
     [CA-4](model-providers.md#ca-4--key-custody-and-endpoints)), so a CLI's own web tools stay off and the egress is not widened to
@@ -124,9 +149,10 @@ shell and file tools, inside a sandbox that exists for one run; every engine can
 - **What a run has.** The run's exact Flux MCP tools (including `flux_read_web`, the Flux server's read-only page reading
   (RT-4), which opens any public address but one that carries private Flux text the run read (C-30)); the CLI's own web
   search, which runs at its vendor; and, on Claude Code and Codex, the CLI's own shell and file tools: Claude Code's `Bash`,
-  `Read`, `Write`, `Edit`, `Glob` and `Grep`, Codex's `exec_command` (with `write_stdin`) and `apply_patch`. No apps, no
-  sub-agents, no other MCP server, and no CLI tool that opens a page from the runtime (`WebFetch` stays off; web reads stay
-  `flux_read_web`). An API-key run (the worker's tool loop) has no shell: it attaches a file by passing its content.
+  `Read`, `Write`, `Edit`, `Glob` and `Grep`, Codex's `exec_command` (with `write_stdin`) and `apply_patch`, pi's `read`, `bash`, `edit`
+  and `write` (#1441). No apps, no sub-agents, no other MCP server, and no tool that opens a page from the runtime (`WebFetch` stays off;
+  web reads stay `flux_read_web`). An API-key run in the worker's tool loop (without `pi`, RT-1) has no shell: it attaches a file by
+  passing its content.
 - **The run's scratch** is the only place a run's tools can write: `/scratch/<run id>` on the runtime's own memory file
   system, created empty for the run (mode `0700`, owned by the person's user id), the CLI's working directory and `TMPDIR`,
   and deleted with everything in it when the run ends, however it ends. At most 256 MiB each. Concurrent runs are different
@@ -195,6 +221,36 @@ shell and file tools, inside a sandbox that exists for one run; every engine can
   the queries and the addresses its answer names that a search returned, as an API-key run lists its
   searches and citations. Since any address opens (founder direction 2026-11-09), nothing waits for a
   search to be recorded.
+- **pi** (#1441, an API key) runs in JSON mode (`pi --mode json`), pinned at 1.5.2, started through Flux's launcher, which reads the run
+  token from the first line of standard input and sets it in pi's own process only (so it is in neither a file, an argument nor the
+  environment `/proc/<pid>/environ` shows to pi's own file tools); the rest of standard input is the request. Flags: `--no-session`,
+  `--no-extensions -e builtin:mcp` (every extension off but pi's own MCP support), `--no-skills`, `--no-prompt-templates`, `--no-themes`,
+  `--no-context-files`, `--no-approve` (no project settings), `--offline`, and `--tools read,bash,edit,write,mcp__flux__*` (without
+  Landlock, `mcp__flux__*` only), with `PI_OFFLINE`, `PI_SKIP_VERSION_CHECK` and `PI_TELEMETRY=0`. Its agent directory is made fresh in
+  the person's place for each run and removed after it, holding only Flux's three files: settings (Flux's sandbox shell as its
+  `shellPath`, no retries of its own, SSE only, project trust never), the run's one model at the gateway (the key's provider's wire
+  format, its compatibility switches set rather than guessed from the address, the credential named `$FLUX_RUN_TOKEN`, never written),
+  and Flux as its only MCP server with the run token named the same way and its tools **exposed directly** (`exposure: direct`, so they are
+  plain tools, not behind pi's tool search or codemode). Flux's brief is appended to pi's own prompt (`--append-system-prompt`). The
+  read-back is pi's own system message: its `toolsAdded` must name exactly the run's Flux tools (`mcp__flux__<tool>`) and, with the
+  sandbox, pi's four tools; anything else, no Flux tool at all, or a call of any other tool stops the run with nothing committed. pi's own
+  `read`, `write` and `edit` run inside pi's process, under the sandbox's outer domain (its agent directory, its home and the scratch
+  writable; the system, the run's folder and those readable); its `bash` runs every command in Flux's sandbox shell, in the scratch, as
+  the CLIs' commands do. Its words stream as Claude Code's do; its answer is its last message. Observed with the pinned pi against a
+  mock gateway and MCP server (2026-11-13, `tests/app/agent-runtime-pi.test.ts`).
+- **pi's web search** (#1441, founder 2026-11-13: an API-key agent must not lose the search it has in the worker's loop). pi has no web
+  search of its own. Its extensions were checked first (2026-11-13), as the rule is to prefer an existing tool: **pi-native-search**
+  0.1.0 (MIT, one release in 2026-05, one maintainer) declares peers on the retired `@mariozechner/*` scope that pi 1.5.2
+  (`@earendil-works/*`) no longer provides, sends OpenAI and Google searches to their fixed public hosts whatever the base URL (so not
+  through the gateway, and not metered), adds a `web_fetch` that opens pages from the runtime, falls back to DuckDuckGo, and can drive
+  Claude Code's subscription through a bridge; **pi-web-access** 0.47.0 (MIT, active) carries about 60 search back-ends, a local page
+  server and a reader of Chrome cookies; **pi-web-extension** (Brave, DuckDuckGo) and Tavily's and Parallel's extensions need open
+  network or keys of their own. None fits safely, so Flux adds its own tool, `flux_web_search`, offered to pi runs only: the Flux server
+  runs the search with the run owner's key through the provider's hosted search (Anthropic's web search tool, OpenAI Responses'
+  `web_search`, Gemini's Google Search grounding, OpenRouter's web plugin), metered against the key's budget like any request, and
+  records the query and the result addresses like a CLI's search (C-30). A key whose provider has no hosted search (OpenAI-compatible,
+  self-hosted) has no such tool; its brief says it can read the pages it is given with `flux_read_web`. `FLUX_WEB_READS=off` removes it.
+  Pages are read with `flux_read_web` only, never from the sandbox's network.
 - **Codex** runs with `--ignore-user-config`, every reviewed default-on feature switched off by
   `-c` (apps, hooks, goals, plugins, memories and the rest of the reviewed list; its shell stays on, #1437), Flux as
   the only, required MCP server with exactly the run's tools, and no persistence. **Its shell and file tools** (#1437) are
@@ -347,7 +403,9 @@ shell and file tools, inside a sandbox that exists for one run; every engine can
 - One operator step turns on agents with plans on the server (today `FLUX_AGENT_RUNTIME`, asked
   once by `./flux up`; Claude Code needs a typed `y` for the Commercial Terms statement). The
   release Compose file keeps it off, so a non-interactive deployment does not change.
-- Each Flux release pins the Claude Code and Codex versions its flag contract test passed;
+- `pi` in `FLUX_AGENT_RUNTIME` (#1441) runs every API-key agent in pi in the runtime (RT-1). It needs no vendor statement; with `pi`
+  alone the runtime runs only API-key agents and no plan can sign in.
+- Each Flux release pins the Claude Code, Codex and pi versions its flag contract test passed;
   `./flux upgrade` reinstalls them. Nothing updates itself.
 - The operator guide states the resources each active agent needs (#860), the number of agents
   that run at once, which Flux computes from memory and the operator can change in the config file
@@ -409,7 +467,10 @@ operator decides for their server through the operator step (RT-9).
    rules, open a tunnel through the egress to an allowed vendor host (and so, with an attacker's own key at that vendor, send
    what the run read there, as the CLI itself always could); read the system's own files and other people's command lines
    (RT-3). Codex applies an `apply_patch` found in a shell command itself, outside the shell sandbox: it is bounded by the outer
-   domain (its own home and the scratch) and the run stops at the first change outside the scratch. What the run attaches is
+   domain (its own home and the scratch) and the run stops at the first change outside the scratch. pi's own `read`, `write` and `edit` (#1441) run inside
+   pi's process under the same outer domain: they can read the system's files, the runtime's code under `/opt` and pi's own agent
+   directory and write only that directory and the scratch; nothing they reach holds a secret (the run token was set after pi started,
+   so pi's `/proc/self/environ` does not have it), and the agent directory is made fresh for each run and removed after it. What the run attaches is
    checked as a person's upload is, and only its asker sees it until they show it to everyone.
 9. **Change without notice.** Anthropic may enforce "without prior notice"; plan eligibility, the
    CLIs' flags and Codex's app-server can change. Mitigations: pinned versions, the flag contract

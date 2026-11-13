@@ -38,6 +38,9 @@ describe('API-key agents run in pi in the runtime (#1441)', () => {
   let slot: TestSlot; let manager: ReturnType<typeof createManagerServer>; let config: AgentRuntimeConfig; let gateway: FakeGateway;
   let owner: Person; let ws: Workspace; let place: Project; let thread: Conversation;
   let runs: ReturnType<typeof personalRunUseCases>;
+  /** What pi printed in the last run, shown when a run does not end as a test expects. */
+  let lastPi: { stderr: string; mcpLog: string; events: string[] } | null = null;
+  const why = async (runId: string) => JSON.stringify({ row: await row(runId), requests: gateway.requests.length, pi: lastPi }, null, 1).slice(0, 20_000);
   let processor: ReturnType<typeof createPersonalRunProcessor>;
 
   const ask = (prompt = 'Make a page of the notes') => runs.invoke(human(owner), thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt });
@@ -46,7 +49,8 @@ describe('API-key agents run in pi in the runtime (#1441)', () => {
 
   before(async () => {
     gateway = await startFakeGateway();
-    slot = await startTestSlot({ slot: `runtime-7${Math.floor(Math.random() * 90 + 10)}`, enabled: [], mcpUrl: `${apiUrl}/mcp`, ownTools: true, pi: { modelUrl: gateway.url } });
+    slot = await startTestSlot({ slot: `runtime-7${Math.floor(Math.random() * 90 + 10)}`, enabled: [], mcpUrl: `${apiUrl}/mcp`, ownTools: true,
+      pi: { modelUrl: gateway.url, diagnostics: (what) => { lastPi = what; } } });
     manager = createManagerServer({ secret: SECRET, slots: new Map([[slot.config.slot, { host: '127.0.0.1', port: portOf(slot.url), secret: slot.config.secret }]]), log: () => undefined });
     await new Promise<void>((done) => manager.listen(0, '127.0.0.1', done));
     config = { clients: [], keys: true, commercialTermsAgreedOn: null, idleDays: null, manager: { url: `http://127.0.0.1:${(manager.address() as AddressInfo).port}`, secret: SECRET } };
@@ -83,7 +87,7 @@ describe('API-key agents run in pi in the runtime (#1441)', () => {
       { text: 'Done: I made notes.html.' },
     ]);
     const started = await ask();
-    assert.equal(await processor.process(started.run.id), 'completed');
+    assert.equal(await processor.process(started.run.id), 'completed', await why(started.run.id));
     const stored = await row(started.run.id);
     assert.deepEqual([stored.status, stored.end_reason, stored.engine], ['completed', null, 'server'], 'an API-key run, run in pi');
     assert.match(String(stored.answer_body), /Done: I made notes\.html\./);
@@ -111,7 +115,7 @@ describe('API-key agents run in pi in the runtime (#1441)', () => {
   test('the gateway\'s budget refusal ends the run at once, with one request and nothing posted', async () => {
     gateway.script([{ status: 402, body: { type: 'error', error: { type: 'flux_budget', message: 'This key\'s daily budget is used up.' } } }]);
     const started = await ask('Summarize the notes');
-    assert.equal(await processor.process(started.run.id), 'cap_reached');
+    assert.equal(await processor.process(started.run.id), 'cap_reached', await why(started.run.id));
     const stored = await row(started.run.id);
     assert.deepEqual([stored.end_reason, stored.answer_body, stored.cost_state], ['budget', null, 'released']);
     assert.equal(gateway.requests.length, 1, 'pi does not retry a refusal');
@@ -126,7 +130,7 @@ describe('API-key agents run in pi in the runtime (#1441)', () => {
         { text: 'Asked first.' },
       ]);
       const started = await ask('Add a task');
-      assert.equal(await processor.process(started.run.id), 'completed');
+      assert.equal(await processor.process(started.run.id), 'completed', await why(started.run.id));
       assert.match(gateway.requests[1]!.results[0] ?? '', /^Waiting for .+'s OK: add task Pi waits for the owner\.$/);
       const [waiting] = (await pool.query(`SELECT id, state, wait_reason, version FROM assistant_changes WHERE run_id = $1`, [started.run.id])).rows as { id: string; state: string; wait_reason: string; version: number }[];
       assert.deepEqual([waiting!.state, waiting!.wait_reason], ['waiting', 'ask']);
@@ -146,6 +150,7 @@ describe('API-key agents run in pi in the runtime (#1441)', () => {
     await processor.process(started.run.id);
     const stored = await row(started.run.id);
     assert.deepEqual([stored.end_reason, stored.answer_body], ['local_tool', null]);
+    assert.ok(gateway.requests.length >= 1 && lastPi?.events.some((line) => line.includes('"tool_execution_start"') && line.includes('"grep"')), await why(started.run.id));
     assert.deepEqual(await readdir(scratchRoot()), []);
   });
 });

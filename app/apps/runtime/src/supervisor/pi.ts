@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { access, chmod, constants, mkdir, rm, writeFile } from 'node:fs/promises';
+import { access, chmod, constants, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   FLUX_TOOL_NAME, INIT_NAME, TEXT_FRAME_LIMITS, type KeyProvider, type RunOutcome, type SupervisorRequest, type SupervisorResult,
@@ -279,6 +279,7 @@ export async function runPi(config: SupervisorConfig, request: PiRequest, dir: s
 
     let pending: Buffer = Buffer.alloc(0);
     let total = 0;
+    const seen: string[] = [];
     child.stdout.on('data', (chunk: Buffer) => {
       total += chunk.length;
       if (total > MAX_STDOUT_BYTES) { terminate('unknown'); return; }
@@ -292,14 +293,16 @@ export async function runPi(config: SupervisorConfig, request: PiRequest, dir: s
         pending = pending.subarray(newline + 1);
         if (!line) continue;
         let event: unknown;
+        if (config.piDiagnostics && seen.length < 400) seen.push(line.slice(0, 600));
         try { event = JSON.parse(line); } catch { terminate('unknown'); return; }
         if (!isObject(event)) { terminate('unknown'); return; }
         handle(event);
       }
       if (pending.length > MAX_LINE_BYTES) terminate('unknown');
     });
-    // pi's stderr is drained and dropped: never read, kept or logged.
-    child.stderr.on('data', () => undefined);
+    // pi's stderr is drained and dropped: never read, kept or logged (a test may ask for it, piDiagnostics).
+    let stderr = '';
+    child.stderr.on('data', (chunk: Buffer) => { if (config.piDiagnostics && stderr.length < 64_000) stderr += chunk.toString('utf8'); });
     child.stdin.on('error', () => undefined);
     // The run token on the first line, for the launcher only; then the request, which pi reads as its prompt.
     child.stdin.end(`${JSON.stringify({ run: request.runToken })}\n${request.prompt}`);
@@ -311,6 +314,7 @@ export async function runPi(config: SupervisorConfig, request: PiRequest, dir: s
       for (const timer of timers) clearTimeout(timer);
       killGroup('SIGKILL');
       if (!outcome) outcome = resultSeen ? 'unknown' : stopping ? 'stopped' : code === 0 || pending.length ? 'unknown' : 'crashed';
+      if (config.piDiagnostics) void readFile(join(home, 'mcp.log'), 'utf8').catch(() => '').then((mcpLog) => config.piDiagnostics!({ stderr, mcpLog, events: [`outcome ${outcome}`, ...seen] }));
       resolve({ kind: 'run', runId: request.runId, outcome, answer: outcome === 'completed' ? answer : null, resetsAt: null, turns });
     };
     child.on('error', () => settle(null));
