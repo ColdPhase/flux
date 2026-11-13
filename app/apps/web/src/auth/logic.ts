@@ -18,7 +18,7 @@ import { forgetRecentPlaces } from '../search/recent';
 import { forgetLastSpace } from '../app/lastSpace';
 import { resetStream } from '../api/stream';
 import { forgetThoughtDrafts } from '../sketch/createdDraft';
-import { forgetComposerDrafts } from '../composer/draft';
+import { forgetComposerDrafts } from '../composer/retirement';
 import { forgetBrowserDrafts } from '../drafts/store';
 import { forgetPlaces } from '../place/memory';
 import { forgetDocumentDrafts } from '../docs/drafts';

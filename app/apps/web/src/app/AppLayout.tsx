@@ -8,13 +8,12 @@ import { Drawer, Icon, IconButton, Kreska, MEDIA, SidePanel, SizeSwap, Tabs, Vie
 import { routeView } from '../ui/motion-rules';
 import { useShellData } from './data';
 import { registerServiceWorker, syncPushSubscription } from '../pwa';
-import { DeferredDetails, DeferredJumpTo, DeferredLiveBar, DeferredLiveStage } from './DeferredSurfaces';
+import { DeferredCreateHost, DeferredDetails, DeferredJumpTo, DeferredLiveBar, DeferredLiveStage, DeferredNotices } from './DeferredSurfaces';
 import { BusyNotice } from './BusyNotice';
 import { RouteProgress } from './RouteProgress';
 import { PendingView, ThreadOpening, useQuietViewKeys, useSwitching } from './PendingView';
 import './pending-view.css';
 import { useInboxDot } from '../notifications/dot';
-import { Notices } from '../notifications/Notices';
 import { useTabSignals } from '../notifications/tabSignals';
 import { useAnsweredInbox } from '../notifications/answered';
 import { placeOf } from './place';
@@ -30,7 +29,6 @@ import { audienceLine, useProjectShell } from '../project/data';
 import { LiveProvider } from '../live/LiveProvider';
 import { LiveCue, LiveEntry, LiveNowRows } from '../live/LiveEntry';
 import '../live/live.css';
-import { CreateHost } from '../create/CreateWindow';
 import './project-header.css';
 import { WorkReadProvider, useProjectWorkSummary } from '../work/WorkReadContext';
 import { OverviewContext } from '../project/OverviewContext';
@@ -921,10 +919,10 @@ function AppLayoutContent() {
         ) : null}
       </div>
 
-      {/* + Create is the one action of every view: its window opens on the click, so its code stays in the first screen (#1178). */}
-      <CreateHost request={create} onClose={() => setCreate(null)} onTask={(projectId) => { keptSpace.current = { projectId, path: pathNow.current }; rememberSpace(me.user.id, projectId); }} />
+      {/* + Create is the one action of every view: its code comes when idle and on the first press, so it is here before a click ends (#1428). */}
+      <DeferredCreateHost request={create} onClose={() => setCreate(null)} onTask={(projectId) => { keptSpace.current = { projectId, path: pathNow.current }; rememberSpace(me.user.id, projectId); }} />
       {/* Someone wrote, mentioned, assigned or called while you are elsewhere: one card, apart from the Undo toasts (#1243). */}
-      <Notices identity={me.user.id} meName={me.user.name} placeName={(id) => projects.find((project) => project.id === id)?.name ?? null} />
+      <DeferredNotices identity={me.user.id} meName={me.user.name} placeName={(id) => projects.find((project) => project.id === id)?.name ?? null} />
       <DeferredJumpTo open={jumpOpen} onClose={() => setJumpOpen(false)} userId={me.user.id} />
     </div>
     </OwnWorkingAgentsProvider>

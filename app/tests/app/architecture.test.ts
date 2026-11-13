@@ -120,7 +120,7 @@ describe('architecture boundaries', () => {
       const lines = nativePickers(readFileSync(path, 'utf8'));
       return until1218.some((allowed) => path.endsWith(`/${allowed}`)) ? [] : lines.map((line) => `${relative(root, path)}:${line}`);
     });
-    assert.deepEqual(found, [], 'use DateField or TimeField from ../ui (apps/web/src/ui), not a native date/time input, a <datalist> or showPicker()');
+    assert.deepEqual(found, [], 'use DateField or TimeField (ui/DateField.tsx, ui/TimeField.tsx, imported from their own files so the first screen does not carry them, #1428), not a native date/time input, a <datalist> or showPicker()');
   });
 
   test('the web app has one transport: no fetch and no hand-written API path outside api/client.ts (#93)', () => {

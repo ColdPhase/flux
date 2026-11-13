@@ -8,8 +8,8 @@ import { contributeToTask, stageFile, type FilePlace } from './api';
 import { fileLimits, fileLimitsKnown, loadFileLimits, uploadPoster } from '../api/files';
 import { drawPoster } from './videoPoster';
 import { assumeReachable, connectionState, onConnectionChange, reportReachable, reportUnreachable } from './connection';
-import { forgetReloadRetention, setReloadRetention } from '../app/reload-retention';
-import { forgetPlaces } from '../place/memory';
+import { setReloadRetention } from '../app/reload-retention';
+import { PREFIX, onRetire, sessionHolds, sessionNumber, storageRetired, uuid } from './retirement';
 
 export interface DraftFile {
   uploadId: string; name: string; size: number;
@@ -66,21 +66,11 @@ export function selectedFile(uploadId: string): File | undefined {
   for (const bytes of selected.values()) { const file = bytes.get(uploadId); if (file) return file; }
   return undefined;
 }
-const PREFIX = 'flux:composer:';
-const RETIREMENT_KEY = 'flux:session:composer-retirement';
-let sessionGeneration = 0;
-let retiredStorage = false;
 export const composerKey = (accountId: string, projectId: string, context: string) => `${PREFIX}${accountId}:${projectId}:${context}`;
 const empty = (): ComposerDraft => ({ version: 1, body: '', files: [], commandId: crypto.randomUUID(), unconfirmed: false });
-const uuid = (value: unknown): value is string => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 const storageFor = (context: string) => context.startsWith('dm:') ? sessionStorage : localStorage;
 const blank = (draft: ComposerDraft) => !draft.body.trim() && !draft.files.length;
 
-const readRetirement = () => { try { return localStorage.getItem(RETIREMENT_KEY) ?? ''; } catch { return ''; } };
-let storageRetirement = readRetirement();
-let retirement = storageRetirement;
-let retirementChannel: BroadcastChannel | null = null;
-let externallyRetired = false;
 const running = new Set<string>();
 const waiters = new Map<string, (outcome: SendOutcome) => void>();
 const sentListeners = new Set<(sent: SentMessage) => void>();
@@ -91,64 +81,18 @@ export function onSent(listener: (sent: SentMessage) => void) {
   return () => { sentListeners.delete(listener); };
 }
 
-function retireDrafts() {
-  sessionGeneration++;
-  retiredStorage = true;
-  for (const storage of [() => localStorage, () => sessionStorage]) {
-    try {
-      const target = storage();
-      for (const key of Object.keys(target)) {
-        if (key.startsWith(PREFIX) || key.startsWith('flux:draft:')) target.removeItem(key);
-      }
-    } catch { /* Memory still clears; this visit never reimports a retired session's records. */ }
-  }
+// What a retired session leaves in memory (the stored copies, the places and the cross-tab fence are `retirement.ts`'s, which is loaded from the first screen on).
+onRetire(() => {
   snapshots.clear();
   selected.clear();
-  // The places the person kept (where they read, which panel was open) go with their drafts (#592).
-  forgetPlaces();
-  forgetReloadRetention('composer');
   running.clear();
   waiters.clear();
   // Keep subscriptions valid until the signed-in tree unmounts; any remaining view reads empty.
   listeners.forEach((set) => set.forEach((listener) => listener()));
-}
-
-function receiveRetirement(id: unknown) {
-  if (!uuid(id) || id === retirement) return;
-  retirement = id;
-  storageRetirement = readRetirement();
-  externallyRetired = true;
-  retireDrafts();
-  // The shared cookie has ended: retire the old account's mounted tree as well.
-  window.location.replace('/sign-in?notice=signed-out');
-}
-if (typeof window !== 'undefined') {
-  window.addEventListener('storage', (event) => { if (event.key === RETIREMENT_KEY) receiveRetirement(event.newValue); });
-  try {
-    retirementChannel = new BroadcastChannel('flux:composer:device-session');
-    retirementChannel.onmessage = (event: MessageEvent<unknown>) => {
-      const value = event.data as { type?: unknown; id?: unknown } | null;
-      if (value?.type === 'retire') receiveRetirement(value.id);
-    };
-  } catch { /* The storage event remains available when browser channels are refused. */ }
-}
-
-/** Called only after confirmed sign-out. Old acknowledgements belong to a retired session. */
-export function forgetComposerDrafts() {
-  retirement = crypto.randomUUID();
-  retireDrafts();
-  try { localStorage.setItem(RETIREMENT_KEY, retirement); } catch { /* Visit-only storage uses the browser channel. */ }
-  // A refused marker write leaves an older durable value; it is not a new remote logout.
-  storageRetirement = readRetirement();
-  try { retirementChannel?.postMessage({ type: 'retire', id: retirement }); } catch { /* Durable marker still fences old writers. */ }
-}
+});
 
 /** A late writer of an earlier session (or a retired record) never writes. */
-function alive(key: string, generation: number) {
-  const observed = readRetirement();
-  if (observed && observed !== storageRetirement) receiveRetirement(observed);
-  return !externallyRetired && generation === sessionGeneration && snapshots.has(key);
-}
+const alive = (key: string, generation: number) => sessionHolds(generation) && snapshots.has(key);
 
 /**
  * The place a draft's files go to: the space (its id), or (#1438 point 10) the direct message a `dm:<dmId>[/<rootId>]` context names, or the
@@ -173,7 +117,7 @@ function load(key: string, accountId: string, projectId: string, context: string
   let pending: PendingSend[] = [];
   let storage: Snapshot['storage'] = 'device';
   try {
-    const stored = retiredStorage ? null : storageFor(context).getItem(key);
+    const stored = storageRetired() ? null : storageFor(context).getItem(key);
     if (stored) {
       const value = JSON.parse(stored) as ComposerDraft & { pending?: PendingSend[] };
       if (value.version === 1 && typeof value.body === 'string' && value.body.length <= 100000 && uuid(value.commandId)
@@ -318,7 +262,7 @@ function kick(key: string) {
     if (snapshot.pending.some(going)) put(key, { ...snapshot, pending: snapshot.pending.map((other) => going(other) ? { ...other, state: 'waiting', waited: true } : other) });
     return;
   }
-  const generation = sessionGeneration;
+  const generation = sessionNumber();
   const failedFiles = item.files.filter((file) => file.state === 'failed');
   if (failedFiles.length) {
     const bytes = selected.get(key);
@@ -424,7 +368,7 @@ async function upload(key: string, projectId: string, uploadId: string, file: Fi
 /** A scope-captured store: late A completions can never write to B, even after A → B → A. */
 export function useComposerDraft(accountId: string, projectId: string, context: string) {
   const key = composerKey(accountId, projectId, context);
-  const generation = sessionGeneration;
+  const generation = sessionNumber();
   const active = () => alive(key, generation);
   const read = useCallback(() => load(key, accountId, projectId, context), [key, accountId, projectId, context]);
   const subscribe = useCallback((listener: () => void) => {

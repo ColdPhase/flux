@@ -154,9 +154,9 @@ The values after #863:
 | The detail panel | `ui/SidePanel.tsx` |
 | Menus and popovers | `ui/pop.ts` (`usePop`) and `[data-pop]` in `ui/ui.css` |
 | Toasts | `ui/Toast.tsx` |
-| Notices | `notifications/Notices.tsx` |
+| Notices | `notifications/Notices.tsx` (its code comes through `DeferredNotices` in `app/DeferredSurfaces.tsx`, #1428) |
 | View and place switches | `ui/ViewFade.tsx` around the routes in `app/AppLayout.tsx`; `ui/motion-rules.ts` |
-| Surfaces that load their code | `app/DeferredSurfaces.tsx` (preloaded when the browser is idle soon after the shell is up, and on the first pointer-down or ⌘/Ctrl); their skeletons in `app/SurfaceSkeletons.tsx` |
+| Surfaces that load their code (Details, Jump to…, the live strip, the Create window, the notice card) | `app/DeferredSurfaces.tsx` (preloaded when the browser is idle soon after the shell is up, and on the first pointer-down or ⌘/Ctrl); their skeletons in `app/SurfaceSkeletons.tsx` |
 | The loading state of a screen a switch goes to | `app/PendingView.tsx` (the loading state, the thread's panel and the hidden view's keys) over the old view, in `app/AppLayout.tsx`; the code of a project's other views is fetched when idle in `app/viewChunks.ts` |
 | The sidebar's fold and unfold | `ui/SizeSwap.tsx` in the `aside` of `app/AppLayout.tsx` |
 | State changes | `ui/StatusGlyph.tsx`, `ui/Morph.tsx`, `ui/motion.ts` |
