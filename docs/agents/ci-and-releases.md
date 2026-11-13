@@ -149,7 +149,8 @@ the release's `SHA256SUMS` with `cosign sign-blob` (the asset `SHA256SUMS.sigsto
 
 [`publish-release.yml`](../../.github/workflows/publish-release.yml) job `verify` runs `scripts/release/verify_signatures.sh` on
 the reviewed image digest and the agent-runtime digest from `release.json` before anything is promoted or published: a digest
-without that workflow's signature stops the publication. Owners can run the same `cosign verify`, and the `cosign verify-blob`
+without that workflow's signature stops the publication, and so does a draft whose `SHA256SUMS.sigstore.json` is missing or does
+not verify with the same identity (`cosign verify-blob`). Owners can run the same `cosign verify`, and the `cosign verify-blob`
 of `SHA256SUMS` ([signatures](../operations/upgrade.md#signatures)).
 The script accepts only `image@sha256:` references (a tag can move).
 

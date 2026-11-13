@@ -246,6 +246,17 @@ class LauncherReleaseTest(unittest.TestCase):
         self.assertIn("already runs Flux v0.2.1", result.stdout)
         self.assertFalse((self.folder / ".flux-upgrade").exists())
 
+    def test_upgrade_refuses_an_older_release_even_with_the_same_schema(self) -> None:
+        self.write_env()
+        old = self.new_release("v0.2.0")
+        before = self.snapshot()
+        result = self.flux("upgrade", "--file", str(old / "flux.tar.gz"), "-y")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Flux v0.2.0 is older than this folder's Flux v0.2.1", result.stderr)
+        self.assertEqual(self.snapshot(), before)
+        self.assertFalse((self.folder / ".flux-upgrade").exists())
+        self.assertFalse([c for c in self.calls() if "pull" in c], "nothing pulled")
+
     def test_upgrade_downloads_from_the_release_url_and_a_source_checkout_refuses_a_version(self) -> None:
         self.write_env()
         self.stub("curl", 'for a; do last=$a; done; printf "%s\\n" "$*" >> "$FLUX_TEST_LOG.curl"; exit 22\n')

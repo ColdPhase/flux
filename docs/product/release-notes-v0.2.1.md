@@ -189,7 +189,8 @@ them. `./flux demo` adds sample data on your own computer.
 
 `SHA256SUMS` lists every other file of the release. `release.json` names the source commit and the exact images
 (`ghcr.io/coldphase/flux@sha256:…`, `ghcr.io/coldphase/flux-agent-runtime@sha256:…` and `ghcr.io/coldphase/flux-database@sha256:…`).
-Check the signatures with `cosign verify` and the build provenance with `gh attestation verify`, as `INSTALL.md` shows.
+`SHA256SUMS.sigstore.json` is the release workflow's keyless signature of `SHA256SUMS`; check it, the images' signatures (`cosign verify`)
+and the build provenance (`gh attestation verify`) as [signatures](https://coldphase.github.io/flux/operate/upgrade/#signatures) shows.
 
 ## Full list of changes
 

@@ -10,13 +10,14 @@ Everything else on this page is for an upgrade from one v0.2 version to a later 
 
 ## Which versions upgrade to which
 
-An instance installed from **any release from v0.2.0 on** upgrades to **any later release** by `./flux upgrade`. Its data, files, settings,
-agents, encrypted spaces and sessions stay. You may skip releases: v0.2.0 goes straight to v0.3.0, and the migrations of the
-releases in between are applied in order.
+A folder installed from **any release from v0.2.1 on** (the first that ships the `flux` launcher in `flux.tar.gz`) upgrades to
+**any later release** by `./flux upgrade`. Its data, files, settings, agents, encrypted spaces and sessions stay. You may skip
+releases, and the migrations of the releases in between are applied in order.
 
 | Installed release | Upgrades to |
 | --- | --- |
-| v0.2.0 | every later release (v0.2.1 also switches the [database image](#v021-the-database-image-changes)) |
+| v0.2.0 | **install v0.2.1 fresh** ([installation](install.md)): v0.2.0 was installed from loose Compose files, and no v0.2.0 installation exists to carry over, so v0.2.1 brings no way to move one into a release folder. Its data would upgrade: every release is tested to upgrade v0.2.0's data (below). |
+| v0.2.1 | every later release |
 
 This table gains a row with each release; the release notes of a release say which versions it was tested to upgrade from.
 Every release proves it before it is drafted ([how it is tested](#tested-with)): each of these releases is installed from its own
@@ -52,7 +53,7 @@ founder decision 5):
    version you name, from `https://github.com/ColdPhase/flux/releases`; `FLUX_RELEASE_URL` names a mirror with the same layout).
    The archive must match its line in `SHA256SUMS`, and, when `cosign` is installed, `SHA256SUMS` must carry the release workflow's
    [signature](#signatures); otherwise it refuses and nothing changes. Without network access, download both files yourself and run
-   `./flux upgrade --file flux.tar.gz` (with `SHA256SUMS` beside it). It refuses a release whose schema is older than the data
+   `./flux upgrade --file flux.tar.gz` (with `SHA256SUMS` beside it). It refuses an older release, or one whose schema is older than the data
    (a downgrade) and says so when this folder already runs that release.
 2. **Pull the new images, while Flux runs.** The images that the new `docker/release.env` names, pinned by digest (the agent
    runtime's only while it is on), so the downtime does not include the download.

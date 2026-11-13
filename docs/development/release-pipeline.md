@@ -107,8 +107,8 @@ one platform (amd64), does not cover a bound slot's sign-out and reuse (they nee
 (#779) plus migration 0002 (#806), and v0.2 does not upgrade it (v0.1 had no users, #1176), so `FLUX_DRYRUN_PREVIOUS`
 must name a revision that has migration 0003, the first of v0.2. From v0.2 on, publish a candidate `-rc.N` first and upgrade from it. Arm64 QEMU build and manifest inspection are not a native arm64 install test. Those
 results remain open until the independent artifact review records them. The source
-workspace and test stack continue using their own Compose path; the attached
-`compose.yaml` is the pull-only operator path.
+workspace and test stack continue using their own Compose path; `flux.tar.gz`'s
+`docker/compose.yaml`, run by its `./flux`, is the pull-only owner path.
 
 ## The upgrade leg
 

@@ -1722,7 +1722,16 @@ release_fetch() {
     say "This folder already runs Flux $current; nothing to upgrade."
     exit 0
   fi
+  # An older release is a downgrade even when its schema is the same: it may lack fixes the running one has (a stale mirror, or an old
+  # release served as the latest). The schema check in cmd_upgrade refuses the rest.
+  ! release_older "$NEW_VERSION" "$current" ||
+    refuse "upgrade: Flux $NEW_VERSION is older than this folder's Flux $current. A downgrade is not supported (docs/operations/upgrade.md); nothing was changed."
   say "Checked Flux $NEW_VERSION (schema $NEW_SCHEMA) against SHA256SUMS."
+}
+# True when version $1 is lower than $2 by major.minor.patch (a pre-release suffix is not compared: v1.0.0-rc.1 to v1.0.0 is not lower).
+release_older() {
+  a=${1#v}; a=${a%%-*}; b=${2#v}; b=${b%%-*}
+  [ "$a" != "$b" ] && [ "$(printf '%s\n%s\n' "$a" "$b" | sort -t. -k1,1n -k2,2n -k3,3n | head -n 1)" = "$a" ]
 }
 # The archive must be named in SHA256SUMS with its exact hash. With cosign on this machine, SHA256SUMS must carry the keyless signature of
 # the release workflow on main (the identity the images are signed with, scripts/release/verify_signatures.sh).

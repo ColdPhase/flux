@@ -117,6 +117,11 @@ jobs:
           bash "$GITHUB_WORKSPACE/scripts/release/verify_signatures.sh" \
             "ghcr.io/coldphase/flux@$IMAGE_DIGEST" "ghcr.io/coldphase/flux-agent-runtime@$runtime_digest" \
             "ghcr.io/coldphase/flux-database@$database_digest"
+          # SHA256SUMS carries the same workflow's keyless signature, the one ./flux upgrade checks (#1471): no release without it.
+          test -f SHA256SUMS.sigstore.json
+          cosign verify-blob --bundle SHA256SUMS.sigstore.json \
+            --certificate-identity-regexp '^https://github\.com/ColdPhase/flux/\.github/workflows/final-release\.yml@refs/heads/main$' \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com SHA256SUMS
           checksums_sha=$(sha256sum SHA256SUMS | cut -d ' ' -f1)
           gh api --paginate --slurp \
             "repos/$GITHUB_REPOSITORY/issues/$REVIEW_ISSUE/comments?per_page=100" \
