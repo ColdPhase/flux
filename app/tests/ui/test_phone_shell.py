@@ -427,7 +427,8 @@ class PhoneShellJourney(unittest.TestCase):
         page.get_by_role("button", name="Search", exact=True).click()
         field = page.get_by_role("combobox", name="Search", exact=True)
         expect(field).to_be_visible()
-        self.assertGreaterEqual(self.box(field)["height"], 44)
+        # A 44 px field can measure 43.99999… while its sheet settles: a rounding tolerance, not a smaller target.
+        self.assertGreaterEqual(round(self.box(field)["height"], 2), 44)
 
     # #438 / #478 asked that the project header's small targets have whole 44 px hit squares that do not
     # reach into each other. The final phone header (#341) moved the audience line into Details; since #1239 its
