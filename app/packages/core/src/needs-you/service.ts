@@ -197,14 +197,14 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
       if (note.reason === 'question' && questionOf(note.url)) continue;
       // Someone asking you something, or to join them, is a question; a mention is a mention.
       const kind: NeedsYouKind = note.reason === 'mention' ? 'mention' : 'question';
-      // Who and where, as for every other kind. What a mention or a question says is then its title and a call's place is its words, since "Maja asked
+      // Who and where, as for every other kind. What a mention or a question says is then its title (a call of a space is no item, #1438 point 11), since "Maja asked
       // you in Community garden sensors" would say the line above again; a notification of an encrypted space has no words, so it keeps its sentence.
       const from = note.from?.id ? { kind: note.from.kind, id: note.from.id, name: note.from.name } : null;
       const project = note.source.type === 'project' ? { id: note.source.id, name: projectNames.get(note.source.id) ?? 'Space' } : null;
       // A message between two people has a sender and no space: its sentence ends with the phrase, where a group's names the group.
       const pair = note.source.type === 'dm' && / (asked|mentioned) you$/.test(note.title);
       const words = from && (project || pair) ? excerpt(note.body) : '';
-      const plain = words && (note.reason === 'mention' || note.reason === 'question' || note.reason === 'call');
+      const plain = words && (note.reason === 'mention' || note.reason === 'question');
       items.push({
         key: `note:${note.id}`, kind, title: plain ? words : note.title, detail: plain ? '' : excerpt(note.body), project, from,
         at: iso(note.createdAt), url: note.url ?? `/inbox/${note.id}`, decision: null, blocked: null, reason: note.reason, snoozeTask: null,
