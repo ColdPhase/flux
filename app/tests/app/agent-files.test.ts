@@ -83,7 +83,7 @@ describe('flux_attach_file: an agent attaches a file to its answer like its aske
     assert.deepEqual((await pool.query(`SELECT name FROM project_files WHERE message_id = $1`, [shown.messageId])).rows, [{ name: 'notes.md' }]);
   });
 
-  test('Ask me first: the file is staged at once (the run\'s files go when it ends) and joins the answer only on Approve; Only read has no tool', async () => {
+  test('Ask me first: the file is staged at once (the run\'s files go when it ends) and joins the answer only on Approve', async () => {
     await scene.setMayDo('ask');
     const run = await scene.liveRun(undefined, 'a page please');
     const said = await run.call('flux_attach_file', { name: 'page.html', content: PAGE });
@@ -96,10 +96,6 @@ describe('flux_attach_file: an agent attaches a file to its answer like its aske
     assert.equal((await fileChanges(run.runId))[0]!.state, 'applied_after_wait');
     const shown = expectStatus(await scene.owner.browser.request('POST', assistantRunShowPath(run.runId)), 200) as ShowAnswerResult;
     assert.deepEqual((await pool.query(`SELECT name FROM project_files WHERE message_id = $1`, [shown.messageId])).rows, [{ name: 'page.html' }]);
-    await scene.setMayDo('read');
-    const reading = await scene.liveRun(undefined, 'a page please');
-    assert.ok(!reading.tools.includes('flux_attach_file'), 'Only read: no tool');
-    await scene.complete(reading.runId);
   });
 
   test('in the agent\'s private chat: the file is its answer\'s at once, only its owner opens it, and it shows with the run', async () => {

@@ -124,7 +124,7 @@ describe('the slow reads\' statements (#1429, #1191)', () => {
     assert.match(JSON.stringify(search.result), /overflow/);
     assert.equal(search.sent.filter((statement) => /synchronous_commit = off/.test(statement.text)).length, 1, listed(search.sent));
     assert.ok(search.sent.some((statement) => /\bfor share\b/i.test(statement.text)), 'the connection and the owner\'s standing are held while it answers');
-    // Whatever the write's own answer (an agent may be set to Only read), its transaction is never told to skip the flush.
+    // Whatever the write's own answer (an agent's change may wait under Ask me first), its transaction is never told to skip the flush.
     const write = await statements(() => withAgentConnection(db, claims, 'write', null, async () => 'done', { onlyReads: true }).catch((error: unknown) => error));
     assert.ok(write.sent.length > 0);
     assert.deepEqual(write.sent.filter((statement) => /synchronous_commit/.test(statement.text)), [], 'only a read commits without a flush');
