@@ -40,7 +40,7 @@ describe('API-key agents run in pi in the runtime (#1441)', () => {
   let runs: ReturnType<typeof personalRunUseCases>;
   /** What pi printed in the last run, shown when a run does not end as a test expects. */
   let lastPi: { stderr: string; mcpLog: string; events: string[] } | null = null;
-  const why = async (runId: string) => JSON.stringify({ row: await row(runId), requests: gateway.requests.length, pi: lastPi }, null, 1).slice(0, 20_000);
+  const why = async (runId: string) => JSON.stringify({ row: await row(runId), requests: gateway.requests.map((request) => ({ path: request.path, tools: request.tools })), pi: lastPi }, null, 1).slice(0, 20_000);
   let processor: ReturnType<typeof createPersonalRunProcessor>;
 
   const ask = (prompt = 'Make a page of the notes') => runs.invoke(human(owner), thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt });
