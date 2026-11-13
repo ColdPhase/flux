@@ -44,7 +44,19 @@
    right edge; the row of the field to add one follows. */
 .sset-card .nset__addr { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto auto; column-gap: 12px; }
 .nset__tick { grid-column: 1; display: grid; place-items: center; }
-.nset__tick input { width: 18px; height: 18px; margin: 0; cursor: pointer; }
+/* The Settings check (a ring, filled and ticked when on), drawn by hand so the box itself can be a 44 px target on touch (--pad) while the mark stays 18 px (#1380). */
+.nset__tick input {
+  --pad: 0px; position: relative; appearance: none; -webkit-appearance: none; flex: none; width: calc(18px + 2 * var(--pad)); height: calc(18px + 2 * var(--pad)); margin: 0;
+  border-radius: 50%; cursor: pointer;
+}
+.nset__tick input:focus-visible { outline-offset: calc(2px - var(--pad)); }
+.nset__tick input::before { content: ""; position: absolute; inset: var(--pad); border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--t3); }
+.nset__tick input:checked::before { background: var(--t1); box-shadow: none; }
+.nset__tick input:checked::after {
+  content: ""; position: absolute; left: calc(var(--pad) + 6px); top: calc(var(--pad) + 3.5px); width: 4px; height: 8px;
+  border: solid var(--el); border-width: 0 1.5px 1.5px 0; transform: rotate(45deg);
+}
+@media (forced-colors: active) { .nset__tick input::before { box-shadow: none; border: 1.5px solid ButtonText; } .nset__tick input:checked::before { background: Highlight; border-color: Highlight; } .nset__tick input:checked::after { border-color: HighlightText; } }
 .nset__tick input:disabled { cursor: not-allowed; }
 .nset__addr > .sset-row__b { grid-column: 2; }
 .nset__send { grid-column: 3; }
@@ -85,6 +97,7 @@
   /* The tick is a 44 px target; the row's own padding gives way to it. */
   .sset-card .nset__addr { grid-template-columns: 44px minmax(0, 1fr) auto auto; padding-left: 4px; }
   .nset__tick { height: 44px; margin-block: -8px; }
+  .nset__tick input { --pad: 13px; }  /* the checkbox itself is 44 × 44 too, its tick stays 18 px in the middle (#1380) */
 }
 @media (max-width: 640px) {
   /* The top bar already names the page: keep the first screen for items. */

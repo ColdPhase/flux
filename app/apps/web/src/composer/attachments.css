@@ -185,8 +185,9 @@ a.ref-chip--thought { text-decoration: none; cursor: pointer; }
 a.ref-chip--thought:hover { background: var(--hov); }
 a.ref-chip--thought:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }
 .ref-chip--thought.is-unavailable { color: var(--t2); font-weight: 400; }
-.ref-chip__face { align-self: center; display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; background: var(--el); font-size: var(--fs-face); font-weight: 600; letter-spacing: .02em; }
-.ref-chip__face::before { content: attr(data-initials); }
+.ref-chip__face { position: relative; align-self: center; flex: none; width: 16px; height: 16px; border-radius: 50%; background: var(--el); font-size: var(--fs-face); font-weight: 600; }
+/* As the 16 px Avatar: the initials are --fs-face (px, #1370) scaled to the circle, so "AK" never runs wider than the face (#1373). */
+.ref-chip__face::before { content: attr(data-initials); position: absolute; left: 50%; top: 50%; line-height: 1; white-space: nowrap; transform: translate(-50%, -50%) scale(.72); }
 .is-mine > .message-bubble .ref-chip { background: rgba(255, 255, 255, .14); color: var(--oninv); }
 .is-mine > .message-bubble .ref-chip__face { background: rgba(255, 255, 255, .2); }
 .msg-link { color: inherit; text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; }

@@ -180,10 +180,10 @@ class SoftVolume(unittest.TestCase):
                     expect(timestamp).to_be_visible()
                     expect(filename).to_have_text("calibration.csv")
                     expect(label).to_have_text("CSV")
-                    # The name is text (Geist); the timestamp and the file's type label are mono.
+                    # The name and the time are text (Geist, #1231, #1373); only the file's type label is mono.
                     self.assert_sans(filename)
-                    for node in (timestamp, label):
-                        self.assert_mono(node)
+                    self.assert_sans(timestamp)
+                    self.assert_mono(label)
                     # Exercise the actual upload draft, not an injected font demonstration.
                     with page.expect_file_chooser() as chooser:
                         replies.get_by_role("button", name="Attach files", exact=True).click()
@@ -261,7 +261,7 @@ class SoftVolume(unittest.TestCase):
                     page = self.page(scheme=scheme, phone=phone)
                     page.goto(f"/dm/{self.ids['dm']}")
                     expect(page.locator(".dm-msg .message-time time").first).to_be_visible()
-                    self.assert_mono(page.locator(".dm-msg .message-time time").first)
+                    self.assert_sans(page.locator(".dm-msg .message-time time").first)
                     open_details(page)
                     page.wait_for_timeout(400)  # the panel finishes fading in before contrast is measured
                     avatar = page.locator(".details__person .ui-avatar--me")

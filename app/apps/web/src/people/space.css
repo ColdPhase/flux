@@ -107,6 +107,11 @@
 .delspace p { margin: 0; font-size: var(--fs-base); line-height: 1.5; color: var(--t2); }
 .delspace p b { font-weight: 600; color: var(--t1); }
 .delspace .newspace__foot .ui-btn { min-height: 36px; }
+/* Touch targets are 44 px (README §2, #1380): the close, the footer's buttons and a space's own Leave and Delete. */
+@media (pointer: coarse) {
+  .newspace__x { width: 44px; height: 44px; }
+  .newspace__foot .ui-btn, .delspace .newspace__foot .ui-btn, .spset__actions .ui-btn { min-height: 44px; }
+}
 @media (max-width: 640px) {
   .newspace, .delspace { padding: 18px 16px 22px; }
   .newspace--pinned { padding: 0; }

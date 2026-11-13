@@ -130,7 +130,7 @@ export function ProjectOverview({ messageId, selection, onBack }: { messageId?: 
   const work = rows.filter((item): item is WorkRowProjection => item.kind === 'work');
   const decisions = rows.filter((item): item is DecisionRowProjection => item.kind === 'decision');
   const workRow = (item: WorkRowProjection): Row => ({ key: `work:${item.id}`, native: item, icon: 'tasks', kind: 'Task', title: item.title, sub: dotted([statusPhrase(item), item.owner ? byline(item.owner) : null]), open: { kind: 'work', id: item.id } });
-  const decisionRow = (item: DecisionRowProjection): Row => ({ key: `decision:${item.id}`, native: item, icon: 'rule', kind: item.status === 'accepted' ? 'Accepted decision' : item.status === 'proposed' ? 'Proposed decision' : 'Replaced decision', title: item.title, sub: decisionLine(item).split(' · ').slice(1).join(' · ') || undefined, need: item.status === 'proposed', open: { kind: 'decision', id: item.id } });
+  const decisionRow = (item: DecisionRowProjection): Row => ({ key: `decision:${item.id}`, native: item, icon: 'flag', kind: item.status === 'accepted' ? 'Accepted decision' : item.status === 'proposed' ? 'Proposed decision' : 'Replaced decision', title: item.title, sub: decisionLine(item).split(' · ').slice(1).join(' · ') || undefined, need: item.status === 'proposed', open: { kind: 'decision', id: item.id } });
   const linked = [...decisions.filter((item) => item.status === 'proposed').map(decisionRow), ...decisions.filter((item) => item.status !== 'proposed').map(decisionRow), ...work.map(workRow)];
   const byRef = new Map(rows.map((row) => [`${row.kind}:${row.id}`, row]));
   const relationItems = read.links?.items ?? [];
