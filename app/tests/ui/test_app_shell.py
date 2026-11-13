@@ -199,6 +199,15 @@ def open_details(page: Page, tap: bool = False) -> None:
     page.goto(f"{urllib.parse.urlsplit(page.url).path}?open=work:{panel_task(page, project.group(1))}")
 
 
+def open_details_in_app(page: Page) -> None:
+    """Like open_details, but through the router, as a link inside the app would (a notification's, a Wiki card's): whatever is open stays loaded,
+    and a thread's panel gives way to the task with a way back to it."""
+    project = re.search(r"/projects/([0-9a-f-]{36})", page.url)
+    assert project, page.url
+    page.evaluate("""([path, id]) => { window.history.pushState({}, '', `${path}?open=work:${id}`); window.dispatchEvent(new PopStateEvent('popstate')); }""",
+                  [urllib.parse.urlsplit(page.url).path, panel_task(page, project.group(1))])
+
+
 def shot(page: Page, name: str) -> None:
     if not SHOTS:
         return
@@ -723,7 +732,7 @@ class AppShellJourney(unittest.TestCase):
         for size in page.locator(".ui-bottomnav__label").evaluate_all("els => els.map(e => parseFloat(getComputedStyle(e).fontSize))"):
             self.assertGreaterEqual(size, 12.5, "places bar label at least 12.5px")
 
-        # Details opens a full-screen sheet (a task's, in Jo's space: the one test_04aa made; a space has no panel of its own, #1419); the views
+        # Details opens a sheet (a task's, in Jo's space: the one test_04aa made; a space has no panel of its own, #1419); the views
         # row of projects is in test_phone_final.
         spaces = [item for workspace in page.request.get(f"{ORIGIN}/api/v1/workspaces").json()
                   for item in page.request.get(f"{ORIGIN}/api/v1/workspaces/{workspace['id']}/projects?limit=100").json()["items"]]
@@ -735,7 +744,7 @@ class AppShellJourney(unittest.TestCase):
         expect(sheet).to_be_visible()
         page.wait_for_timeout(400)
         sheet_box = box(page, sheet)
-        self.assertEqual((round(sheet_box["x"]), round(sheet_box["y"]), round(sheet_box["width"]), round(sheet_box["height"])), (0, 0, PHONE["width"], PHONE["height"]), "Details is a full-screen sheet")
+        self.assertEqual((round(sheet_box["x"]), round(sheet_box["width"]), round(sheet_box["y"] + sheet_box["height"])), (0, PHONE["width"], PHONE["height"]), "Details is a sheet that rests on the bottom edge")
         shot(page, "phone-390-details-light")
         # #433: when a dialog surface itself holds keyboard focus, it shows a visible inset ring.
         # Tab establishes keyboard modality in every engine: the focus ring is for keyboard focus only (final design focus

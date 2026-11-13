@@ -32,7 +32,7 @@ from playwright.sync_api import Locator, Page, expect, sync_playwright
 
 import adaptive_fixture as fx
 from author_columns import assert_author_column
-from test_app_shell import show_map_as, open_map_options, ORIGIN, UPSTREAM, UI_BROWSER, open_details, shot, start_forwarder
+from test_app_shell import show_map_as, open_map_options, ORIGIN, UPSTREAM, UI_BROWSER, open_details, open_details_in_app, shot, start_forwarder
 
 # Width × height fixtures (CSS px). Phones and tablets use a coarse (touch) pointer.
 # Every starting fixture of docs/design/adaptive-workspaces.md, by context: phones, short landscape
@@ -714,7 +714,7 @@ class AdaptiveMatrix(AdaptiveBase):
                 self.primary(page, page.get_by_label("Write a message", exact=True), "the message field beside the thread")
                 self.primary(page, thread.get_by_label("Reply", exact=True), "the reply field beside the stream")
                 self.shot(page, f"adapt-{width}x{height}-thread")
-                open_details(page)
+                open_details_in_app(page)
                 details = page.locator("#details.ui-panel--docked")
                 expect(details).to_be_visible()
                 expect(details.get_by_role("button", name="Thread")).to_be_visible()
