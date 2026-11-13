@@ -72,6 +72,8 @@ export interface SearchPlanRows {
   conversationId?: string | null;
   since?: Date | null;
   until?: Date | null;
+  /** Plain words (F-042, #1293): any of them matches. Read by the in-memory search of encrypted workspaces; the BM25 statement is picked by the caller. */
+  anyWord?: boolean;
 }
 
 export interface SearchRowRecord {

@@ -40,6 +40,8 @@ export interface SearchPlan {
   after: SearchPosition | null;
   limit: number;
   reader: string;
+  /** Plain words (F-042, #1293): any of them matches. The encrypted workspaces' in-memory search follows it; the BM25 statement is chosen by the service. */
+  anyWord?: boolean;
 }
 
 export interface SearchRow {

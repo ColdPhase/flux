@@ -59,8 +59,9 @@ async function writeSet(ws: string, side: 'A' | 'B') {
 }
 
 /**
- * Plain words are answered by the BM25 index in the plain workspace (any of the words, stems, ranked: F-042, #1293) and every word, exactly, in an
- * encrypted one. A canary of several words is the exact thing asked for, so it is a quoted phrase, answered the same on both sides.
+ * Plain words match any of the words in both workspaces (F-042, #1293): in the plain one by the BM25 index, in the encrypted one by the in-memory
+ * index without stems. A canary of several words (`canary followup <uuid>`) shares its first word with every other canary, so a test that wants
+ * that one object asks for exactly it: a quoted phrase, answered the same on both sides.
  */
 const exactly = (words: string) => `"${words}"`;
 const flat = (parts: { text: string; match: boolean }[]) => parts.map((part) => (part.match ? `[${part.text}]` : part.text)).join('');
@@ -103,10 +104,12 @@ before(async () => {
 describe('F-030 S2b: search in an encrypted workspace', () => {
   test('the same query finds the same results and marks in A as in B (parity)', async () => {
     const queries: Record<string, string | number>[] = [
-      { q: 'sensor' }, { q: 'sens' }, { q: 'SENSOR' }, { q: '"sensor" "lamp"' }, { q: '"lamp" "camera"' }, { q: '"sensor comparison"' }, { q: '"comparison sensor"' },
+      { q: 'sensor' }, { q: 'sens' }, { q: 'SENSOR' }, { q: 'sensor lamp' }, { q: 'lamp camera' }, { q: '"sensor" "lamp"' }, { q: '"sensor comparison"' }, { q: '"comparison sensor"' },
       { q: 'sensor -camera' }, { q: 'camera or privacy' }, { q: 'ensor' }, { q: 'omparison' }, { q: 'presentation' }, { q: 'present' }, { q: '#1' }, { q: 'workshop' },
       { q: 'the' }, { q: 'ultrasonic' }, { q: 'ultra' }, { q: 'zzzz' }, { q: 'sensor', type: 'doc' }, { q: 'sensor', type: 'message' }, { q: 'sensor', type: 'work' },
-      { q: 'lamp', type: 'sketch' }, { q: 'noisy', type: 'sketch' }, { q: 'pavilion' }, { q: '"roadmap" "pavilion"' }, { q: '"field" "notes"' }, { q: 'sunlight' },
+      { q: 'lamp', type: 'sketch' }, { q: 'noisy', type: 'sketch' }, { q: 'pavilion' }, { q: 'roadmap pav' }, { q: 'field notes' }, { q: '"field" "notes"' }, { q: 'sunlight' },
+      // Any of the words: one that is nowhere does not hide the others, and a word with a typo in a title still finds it.
+      { q: 'sensor zeppelin' }, { q: 'zeppelin camera' }, { q: 'camera privacy workshop' }, { q: 'sensor lamp camera zeppelin' }, { q: 'comparisn sensor' },
     ];
     for (const query of queries) {
       const [a, b] = [await search(ben, { ...query, place: `project:${ids.A.project}` }), await search(ben, { ...query, place: `project:${ids.B.project}` })];
@@ -121,6 +124,15 @@ describe('F-030 S2b: search in an encrypted workspace', () => {
     const number = [await search(ben, { q: '#1', place: `project:${ids.A.project}` }), await search(ben, { q: '#1', place: `project:${ids.B.project}` })];
     assert.equal(number[0]!.items[0]?.kind, 'work');
     assert.equal(number[1]!.items[0]?.kind, 'work');
+  });
+
+  test('several words rank the rarer word first, in A as in B', async () => {
+    // "sunlight" is in one thought and "lamp" in several objects: whichever side answers, the thought with the rare word leads.
+    for (const place of [ids.A.project, ids.B.project]) {
+      const answer = await search(ben, { q: 'lamp sunlight', place: `project:${place}` });
+      assert.ok(answer.items.length >= 3, 'every object with either word');
+      assert.match(flat(answer.items[0]!.title), /sunlight/, `the rare word first in ${place}`);
+    }
   });
 
   test('a page of results merges the plain and the encrypted source, and the cursor resumes across both', async () => {

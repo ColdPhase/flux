@@ -13,8 +13,11 @@ import { openRows, sealOf } from './sealing.js';
  *
  * The grammar and the refusals are the SQL path's (the core use case checks them first); matching is the `simple`
  * configuration's: lowercase, no stemming, the last word also as a prefix, websearch quotes, `or` and `-word`, and a title
- * trigram match that tolerates typos. Scores approximate `ts_rank` and `word_similarity`, so order between the two sources
- * is approximate. Access is decided before this runs: only the partitions of the audience keys the reader may see are read.
+ * trigram match that tolerates typos. Plain words (`plan.anyWord`, F-042, #1293) match as they do in a plain space, but without
+ * stems and accents: any of the words, the word being typed also as a prefix, and a title with a typo in a word of four letters or
+ * more; a document ranks by the words it holds, a rarer word (within the audience's own documents) weighing more, a word in the
+ * title more than one in the body. Scores approximate `ts_rank` and `word_similarity`, so order between the two sources is
+ * approximate. Access is decided before this runs: only the partitions of the audience keys the reader may see are read.
  */
 
 /**
@@ -84,8 +87,8 @@ function wordSimilarity(query: ReadonlySet<string>, title: string[]): number {
   return best;
 }
 
-interface Clause { words: string[]; phrase: boolean }
-interface Group { positive: Clause[]; negative: Clause[] }
+export interface Clause { words: string[]; phrase: boolean }
+export interface Group { positive: Clause[]; negative: Clause[] }
 
 /** `websearch_to_tsquery` as groups joined by OR; inside a group every positive clause and no negative one must match. */
 export function parseWebSearch(text: string): Group[] {
@@ -114,28 +117,43 @@ export function parseWebSearch(text: string): Group[] {
   return groups.filter((group) => group.positive.length);
 }
 
-interface Compiled {
+export interface Compiled {
   groups: Group[];
   /** The prefix query: every word, the last as a prefix. */
   prefix: { exact: string[]; last: string } | null;
   fuzzy: boolean;
   queryGrams: Set<string>;
+  /** Plain words: any of them matches, and rarer words weigh more. */
+  any: boolean;
+  /** The trigrams a title is compared with: the whole query, or for plain words each word of four letters or more. */
+  typoGrams: Set<string>[];
   /** Positive terms, for scoring and marking. */
   terms: { word: string; prefix: boolean }[];
 }
 
-function compile(plan: SearchPlanRows): Compiled {
-  const groups = parseWebSearch(plan.text);
+/** A word of this many letters or more also matches a title with a typo (the BM25 statement's rule), for this many words at most. */
+const TYPO_MIN_LETTERS = 4;
+const TYPO_MAX_WORDS = 6;
+
+export function compileSealedSearch(plan: SearchPlanRows): Compiled {
+  const any = plan.anyWord === true;
+  const words = any ? [...new Set(plan.words.split(' ').filter(Boolean))] : [];
+  // Plain words: each word is a group of its own (any of them), and the word being typed is one more set, not joined to the others.
+  const groups = any ? words.map((word): Group => ({ positive: [{ words: [word], phrase: false }], negative: [] })) : parseWebSearch(plan.text);
   let prefix: Compiled['prefix'] = null;
   if (plan.prefix) {
     const parts = plan.prefix.split(' & ');
     const last = parts.pop()!.replace(/:\*$/, '');
-    prefix = { exact: parts, last };
+    prefix = { exact: any ? [] : parts, last };
   }
   const terms = new Map<string, boolean>();
   for (const group of groups) for (const clause of group.positive) for (const word of clause.words) if (!terms.has(word)) terms.set(word, false);
   if (prefix) { for (const word of prefix.exact) if (!terms.has(word)) terms.set(word, false); terms.set(prefix.last, true); }
-  return { groups, prefix, fuzzy: plan.fuzzy, queryGrams: new Set(trigramsOf(plan.text)), terms: [...terms].map(([word, isPrefix]) => ({ word, prefix: isPrefix })) };
+  const queryGrams = new Set(trigramsOf(plan.text));
+  // A task number names one task: it gets no typo.
+  const typoGrams = !plan.fuzzy ? [] : !any ? [queryGrams]
+    : plan.number !== null ? [] : words.filter((word) => [...word].length >= TYPO_MIN_LETTERS).slice(0, TYPO_MAX_WORDS).map((word) => new Set(trigramsOf(word)));
+  return { groups, prefix, fuzzy: plan.fuzzy, queryGrams, any, typoGrams, terms: [...terms].map(([word, isPrefix]) => ({ word, prefix: isPrefix })) };
 }
 
 /** What a search read: postings entries and documents examined (the saturation test compares it with and without hidden matches). */
@@ -286,34 +304,40 @@ function searchPartition(part: Partition, compiled: Compiled, plan: SearchPlanRo
     sets.push(lookup.both(compiled.prefix.last, true));
     for (const index of intersect(sets)) matched.add(index);
   }
-  if (compiled.fuzzy && compiled.queryGrams.size) {
+  for (const grams of compiled.typoGrams) {
+    if (!grams.size) continue;
     const shared = new Map<number, number>();
-    for (const gram of compiled.queryGrams) {
+    for (const gram of grams) {
       const list = part.grams.get(gram);
       if (!list) continue;
       work.postings += list.length;
       for (const index of list) if (part.docs[index]) shared.set(index, (shared.get(index) ?? 0) + 1);
     }
-    const needed = Math.ceil(SIMILARITY * compiled.queryGrams.size - 1e-9);
+    const needed = Math.ceil(SIMILARITY * grams.size - 1e-9);
     for (const [index, count] of shared) {
       if (count < needed || matched.has(index)) continue;
-      const value = wordSimilarity(compiled.queryGrams, trigramsOf(part.docs[index]!.title));
-      if (value >= SIMILARITY) { matched.add(index); similarity.set(index, value); }
+      const value = wordSimilarity(grams, trigramsOf(part.docs[index]!.title));
+      if (value >= SIMILARITY) { matched.add(index); similarity.set(index, Math.max(similarity.get(index) ?? 0, value)); }
     }
   }
+  // Plain words: a word's weight is how rare it is among this audience's documents (the BM25 idf), so a document with the rare word ranks first.
+  const weights = new Map<string, number>();
+  if (compiled.any) for (const term of compiled.terms) { const held = lookup.both(term.word, term.prefix).size; weights.set(term.word, Math.log(1 + (part.live - held + 0.5) / (held + 0.5))); }
   const hits: Hit[] = [];
   const queryGrams = compiled.queryGrams;
   for (const index of matched) {
     const doc = part.docs[index]!;
     if (!accept(doc)) continue;
     work.documents++;
-    let rank = 0;
+    let rank = 0; let total = 0;
     for (const term of compiled.terms) {
-      if (lookup.title(term.word, term.prefix).has(index)) rank += 1;
-      else if (lookup.both(term.word, term.prefix).has(index)) rank += 0.4;
+      const weight = weights.get(term.word) ?? 1;
+      total += weight;
+      if (lookup.title(term.word, term.prefix).has(index)) rank += weight;
+      else if (lookup.both(term.word, term.prefix).has(index)) rank += 0.4 * weight;
     }
-    rank = compiled.terms.length ? rank / compiled.terms.length : 0;
-    const closeness = similarity.get(index) ?? (doc.title ? wordSimilarity(queryGrams, trigramsOf(doc.title)) : 0);
+    rank = total ? rank / total : 0;
+    const closeness = similarity.get(index) ?? (doc.title ? Math.max(0, ...(compiled.any ? compiled.typoGrams : [queryGrams]).map((grams) => wordSimilarity(grams, trigramsOf(doc.title)))) : 0);
     let score = Math.round((rank + 0.5 * closeness) * 1e6);
     if (plan.number !== null && doc.kind === 'work' && doc.body.split('\n', 1)[0] === `#${plan.number}`) score += 10 * 1e6;
     hits.push({ doc, score });
@@ -755,7 +779,7 @@ export function sealedSearchRows(db: DbExecutor) {
   return {
     async search(audiences: SearchAudienceRows[], plan: SearchPlanRows): Promise<SealedSearchResult> {
       const result: SealedSearchResult = { rows: [], unavailable: [], work: { postings: 0, terms: 0, documents: 0 } };
-      const compiled = compile(plan);
+      const compiled = compileSealedSearch(plan);
       const hits: Hit[] = [];
       const owners = new Map<Hit, SealedSearchIndex>();
       const visibleByIndex = new Map<SealedSearchIndex, Set<string>>();

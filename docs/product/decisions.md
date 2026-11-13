@@ -576,9 +576,13 @@ asked / bilingual; [research](research/2026-11-ai-context-retrieval.md#answer-ac
   index (every word, no stems). The groups of the dialog, its keys and its one request per debounce are unchanged.
 - **The exact index is not dropped:** BM25's `|||` has no every-word or exclusion semantics, so removing the `keys` index would first
   need those carried over; the drop is left until then (a follow-up inside F-042, not a decision to keep it).
-- **Encrypted spaces** keep their in-memory search (their content is never in the BM25 index): every word required, no stems. So
-  several plain words find more in a plain space than in an encrypted one; the two answer alike for one word, a prefix, quoted words and
-  phrases. A position's score is squashed to (0, 1) so that their rows and the BM25 rows merge in one order.
+- **Encrypted spaces** also match any of the plain words (founder decision, Hubert, 2026-11-12, on #1326), ranked more simply and without
+  stems: their content is never in the BM25 index, so their in-memory index does it (`sealed-search.ts`): any of the words, the word being
+  typed also as a prefix, a title with a typo in a word of four letters or more, and a document ranks by the words it holds, a word that
+  is rarer among the audience's own documents weighing more and a word in the title more than one in the body. No stems and no accent
+  folding there, so a plain space can find a document by another form of a word that an encrypted one cannot; the two answer alike for
+  whole words, a prefix and quoted words or phrases. Quotes, `or` and `-word` stay exact in both. A position's score is squashed to
+  (0, 1) in the plain space so that its rows and the encrypted rows merge in one order.
 
 **Costs.** The database image is about 800 MB instead of the Alpine image's 300 MB (the Debian base about 150 MB more, the `pg_search` library 282 MB). The index is about 4 MiB per 10k short
 messages; a write costs about a quarter of a millisecond more (research). No new container, no new setting, no new polling.
