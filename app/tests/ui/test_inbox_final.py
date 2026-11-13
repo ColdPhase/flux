@@ -27,6 +27,9 @@ PEOPLE = {
 }
 DECISION = "Measure soil moisture first; frost warnings later"
 REASON = "Overwatering is the problem now; frost only matters in spring."
+# What the two messages to Ada say (setUpClass): the title of their Inbox rows, under "Question · Jonas Berg · Community garden sensors" (#1424).
+ASKED = "can you check the shed roof?"
+MENTIONED = "thanks, the dashboard is live now."
 
 
 def mark(page: Page, name: str) -> None:
@@ -336,20 +339,27 @@ class InboxFinal(unittest.TestCase):
         # One person accepts (O-009): the card says who still can, not who "already accepted".
         expect(decision.locator(".nyc__waiting")).to_contain_text("waiting for you")
         expect(decision.locator(".nyc__waiting")).to_contain_text("Jonas Berg can accept too")
-        expect(self.card(page, "asked you")).to_contain_text("Question")
+        expect(self.card(page, ASKED)).to_contain_text("Question")
         expect(self.card(page, "is blocked")).to_contain_text("your task")
-        # One shape for every kind (README §7, #1424): a muted line "Kind · who · space" (a notification's own title says who and where), then the
-        # title. No bold name before the kind, no time in the row, and the kind is always first.
+        # One shape for every kind (README §7, #1424): a muted line "Kind · who · space", then the title (what the mention or the question says). No bold
+        # name before the kind, no time in the row, and the kind is always first.
         eyebrows = [text.strip() for text in cards.locator(".nyc__eyebrow--row").all_inner_texts()]
         self.assertEqual(len(eyebrows), 4, eyebrows)
         self.assertEqual(sorted(text.split(" · ")[0] for text in eyebrows), ["Blocked", "Decision", "Mention", "Question"], eyebrows)
         self.assertIn("Decision · Jonas Berg · Community garden sensors", eyebrows)
+        self.assertIn("Question · Jonas Berg · Community garden sensors", eyebrows)
+        self.assertIn("Mention · Jonas Berg · Community garden sensors", eyebrows)
         self.assertIn("Blocked · your task · Community garden sensors", eyebrows)
+        # The title of a question or a mention is what it says, not "Jonas Berg asked you in Community garden sensors" under a line that says it already.
+        expect(self.card(page, ASKED).locator(".nyc__open")).to_have_text(f"@Ada Kowalska {ASKED}")
+        expect(self.card(page, MENTIONED).locator(".nyc__open")).to_have_text(f"@Ada Kowalska {MENTIONED}")
+        expect(cards.filter(has_text="asked you")).to_have_count(0)
+        expect(cards.filter(has_text="mentioned you")).to_have_count(0)
         self.assertEqual(cards.locator(".nyc__eyebrow--row b").count(), 0, "no bold name leads a row")
         for text in eyebrows:
             self.assertNotRegex(text, r"\d+ ?(min|h|d)\b|ago|yesterday", f"no time in a row: {text}")
         expect(self.item(page, "is blocked")).to_contain_text("waiting for the probe dimensions")
-        expect(self.card(page, "mentioned you")).to_be_visible()
+        expect(self.card(page, MENTIONED)).to_be_visible()
         # The count in the sidebar is the number of things that need you.
         expect(page.get_by_role("navigation", name="Places").get_by_role("link", name="Inbox, 4 new").locator(".side__count")).to_have_text("4")
         self.item(page, DECISION)
@@ -362,8 +372,8 @@ class InboxFinal(unittest.TestCase):
         rows = page.locator(".nyc")
         expect(rows).to_have_count(4)
         before = [round(box(page, rows.nth(i))["y"]) for i in range(4)]
-        self.item(page, "asked you")
-        expect(page.locator(".nyc--open")).to_contain_text("asked you")
+        self.item(page, ASKED)
+        expect(page.locator(".nyc--open")).to_contain_text(ASKED)
         self.assertEqual([round(box(page, rows.nth(i))["y"]) for i in range(4)], before, "choosing another item moves nothing in the list")
         self.item(page, DECISION)
 
@@ -376,7 +386,7 @@ class InboxFinal(unittest.TestCase):
         self.item(page, "is blocked").get_by_role("button", name="Open task").click()
         expect(page.locator("#details")).to_contain_text("Design a weatherproof enclosure")
         page.keyboard.press("Escape")
-        self.item(page, "asked you").get_by_role("button", name="Reply").click()
+        self.item(page, ASKED).get_by_role("button", name="Reply").click()
         expect(page).to_have_url(re.compile(rf"/projects/{self.project_id}/conversations/"))
 
     # ---------------------------------------------------------------- Done, Not now and Undo (AC-2)
@@ -392,7 +402,7 @@ class InboxFinal(unittest.TestCase):
         expect(cards.nth(1)).to_have_attribute("aria-current", "true")
         page.keyboard.press("k")
         expect(cards.nth(0)).to_have_attribute("aria-current", "true")
-        mention = self.card(page, "mentioned you")
+        mention = self.card(page, MENTIONED)
         for _ in range(4):
             if mention.get_attribute("aria-current") == "true":
                 break
@@ -758,8 +768,8 @@ class InboxFinal(unittest.TestCase):
     def test_09_done_on_a_question_reads_it_and_nothing_is_lost(self) -> None:
         page = self.page()
         page.goto("/inbox")
-        question = self.card(page, "asked you")
-        self.item(page, "asked you").get_by_role("button", name="Done").click()
+        question = self.card(page, ASKED)
+        self.item(page, ASKED).get_by_role("button", name="Done").click()
         expect(question).to_have_count(0)
         def asked():
             inbox = self.contexts["ada"].request.get("/api/v1/inbox?limit=100").json()["items"]
@@ -767,7 +777,7 @@ class InboxFinal(unittest.TestCase):
         self.assertEqual(len(asked()), 1, "the notification is still there")
         self.wait_for(lambda: asked()[0]["readAt"], "Done to read the notification")
         page.keyboard.press("z")
-        expect(self.card(page, "asked you")).to_have_count(1)
+        expect(self.card(page, ASKED)).to_have_count(1)
 
     def test_10_the_inbox_is_the_only_list_of_waiting_decisions(self) -> None:
         proposed = self.post("jonas", f"/api/v1/projects/{self.project_id}/decisions", {"title": "Keep the old rule for the shed", "rationale": "It works."})
@@ -843,7 +853,7 @@ class InboxFinal(unittest.TestCase):
         self.assertTrue(clear, "the unread dot does not cover the icon")
         shot(page, "inbox-final-phone-390")
         # A swipe left reveals Not now and Done; Done applies at once and offers Undo.
-        question = self.card(page, "asked you")
+        question = self.card(page, ASKED)
         question.locator(".nyc__scroll").evaluate("element => element.scrollTo({ left: element.scrollWidth, behavior: 'instant' })")
         tray = question.locator(".nyc__tray")
         self.assertGreaterEqual(box(page, tray.get_by_role("button", name="Done"))["height"], 44)
@@ -852,9 +862,9 @@ class InboxFinal(unittest.TestCase):
         expect(page.get_by_role("status").filter(has_text="Marked done")).to_be_visible()
         expect(question).to_have_count(0)
         page.get_by_role("button", name="Undo").tap()
-        expect(self.card(page, "asked you")).to_have_count(1)
+        expect(self.card(page, ASKED)).to_have_count(1)
         # Not now in the tray is one button with no menu: it puts the item off until tomorrow morning (S11).
-        question = self.card(page, "asked you")
+        question = self.card(page, ASKED)
         question.locator(".nyc__scroll").evaluate("element => element.scrollTo({ left: element.scrollWidth, behavior: 'instant' })")
         self.assertGreaterEqual(box(page, question.locator(".nyc__tray").get_by_role("button", name="Not now"))["height"], 44)
         question.locator(".nyc__tray").get_by_role("button", name="Not now").tap()
@@ -862,7 +872,7 @@ class InboxFinal(unittest.TestCase):
         expect(page.get_by_role("status").filter(has_text="Back tomorrow morning")).to_be_visible()
         expect(question).to_have_count(0)
         page.get_by_role("button", name="Undo").tap()
-        expect(self.card(page, "asked you")).to_have_count(1)
+        expect(self.card(page, ASKED)).to_have_count(1)
         # One column on a phone, and no filters.
         expect(page.locator(".nyq--two")).to_have_count(0)
         expect(page.get_by_role("tablist", name="Show")).to_have_count(0)

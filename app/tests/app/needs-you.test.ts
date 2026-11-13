@@ -164,6 +164,10 @@ describe('the Inbox needs-you queue', () => {
     const note = await waitFor(async () => (await queue(owner)).items.find((item) => item.url.includes(question.id)), 'the question reaches the queue');
     assert.equal(note.kind, 'question');
     assert.ok(note.key.startsWith('note:'));
+    // Who and where, like every other kind, so the Inbox row is "Question · who · space" and then what was asked (#1424); the notification keeps its sentence.
+    assert.deepEqual([note.from?.kind, note.from?.id, note.project, note.title, note.detail], ['human', asker.id, { id: lamp.id, name: 'Garden sensors' }, '@Needs Owner can you check the shed roof?', '']);
+    assert.ok(note.from?.name && note.from.name !== 'Someone', 'it names the person');
+    assert.ok(json<InboxResponse>(await owner.browser.request('GET', '/api/v1/inbox'), 200).items.find((item) => item.id === note.key.slice(5))?.title.endsWith(' asked you in Garden sensors'));
 
     json(await resolve(owner, note.key, { action: 'done' }), 200);
     assert.equal(find(await queue(owner), note.key), undefined);
@@ -238,6 +242,8 @@ describe('the Inbox needs-you queue', () => {
       return inDm(current).length === 2 && inDm(current, elsewhere).length === 1 ? current : undefined;
     }, 'the question and the mention of the DM reach the queue, and the question of the other DM');
     assert.deepEqual(inDm(waiting).map((item) => item.kind).sort(), ['mention', 'question'], 'a plain message of the DM is no need');
+    // A message between two people has a sender and no space: its row is "Question · who" and then what was asked (#1424).
+    for (const item of inDm(waiting)) assert.deepEqual([item.from?.id, item.project, item.title.includes('asked you') || item.title.includes('mentioned you')], [partner.id, null, false], item.title);
     const keys = inDm(waiting).map((item) => item.key).sort();
 
     // Opening the conversation answers nothing.

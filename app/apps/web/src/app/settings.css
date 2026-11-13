@@ -168,7 +168,8 @@
   .sset-row__s, .sset-row__meta, .sset-row__go { font-size: var(--fs-md); }
   .sset-themes { gap: 10px; }
   .sset-theme__art { height: auto; aspect-ratio: 1 / 1.05; border-radius: 16px; }
-  .sset-theme__label { justify-content: center; min-height: 44px; font-size: var(--fs-base); }
+  /* "Match system" stays on one line in a third of a 390 px screen (#1424): the label is small and its gap short; wider text sizes may wrap it. */
+  .sset-theme__label { justify-content: center; gap: 6px; min-height: 44px; font-size: var(--fs-md); }
   /* The track is 44 × 28 inside a 44 × 44 box: a transparent border above and below makes the box the target (#763 SG-4). */
   .sset-switch { width: 44px; height: 44px; box-sizing: border-box; border: solid transparent; border-width: 8px 0; background-clip: padding-box; border-radius: 14px / 22px; }
   /* The checked state's `background` shorthand resets the clip, which painted a 44 × 44 disc: it keeps the padding box too. */

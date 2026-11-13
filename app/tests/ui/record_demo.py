@@ -117,7 +117,7 @@ def journey(page: Page, rec: Recorder) -> None:
     messages = page.locator(".project-convo__message")
     # 1. Home: what waits for Ada.
     page.goto("/")
-    question = page.get_by_text("Basia Wrona asked you in Rain barrel monitor")
+    question = page.get_by_text("Ada, can you check the overflow pipe before Friday?")
     expect(question).to_be_visible()
     rec.hold(3000)
 

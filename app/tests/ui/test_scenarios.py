@@ -1014,7 +1014,10 @@ class ScenarioJourney:
         expect(page.get_by_role("heading", level=1, name="Inbox")).to_be_visible()
         # The queue holds what needs Ada (the question); the direct message and the proposal she already
         # decided are notifications, which stay in the API and open from their links.
-        expect(page.locator(".nyc", has_text=f"Jonas Berg asked you in {LAMP}").first).to_be_visible()
+        # Its row is "Question · Jonas Berg · <space>" and then what Jonas asked (#1424).
+        row = page.locator(".nyc", has_text=QUESTION).first
+        expect(row).to_be_visible()
+        expect(row.locator(".nyc__eyebrow--row")).to_have_text(f"Question · Jonas Berg · {LAMP}")
         self.shot(page, "5-inbox")
         note = next(item for item in self.api("ada", "GET", "/api/v1/inbox?limit=100", status=200)["items"] if item["title"] == "Jonas Berg sent you a message")
         page.goto(f"/inbox/{note['id']}")

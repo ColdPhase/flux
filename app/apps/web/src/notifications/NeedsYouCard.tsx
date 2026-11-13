@@ -106,8 +106,8 @@ export function NeedsYouCard({ item, selected = false, compact = false, list = f
   const who = run?.agentName ?? item.from?.name ?? null;
   const asked = item.agentQuestion ?? null;
   // A row of any kind is one muted line, "Kind · who · space", then the title (README §7 Inbox, #1424): a decision "Decision · Maja · Community garden
-  // sensors", an agent's question "Question · Reviewer · Agent · …", a blocked task "Blocked · waits for you · …". A notification's own title says who
-  // and where ("Maja asked you in Community garden sensors"), so its line is its kind. No row carries the time: the open item does.
+  // sensors", a question or a mention "Question · Jonas · Rain barrel monitor", an agent's question "Question · Reviewer · Agent · …", a blocked task
+  // "Blocked · waits for you · …". No row carries the time: the open item does.
   const rowParts: ReactNode[] = [
     word,
     ...(who ? [<Fragment key="who">{who}{item.from?.kind === 'agent' ? <> <AgentTag /></> : null}</Fragment>] : []),

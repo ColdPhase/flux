@@ -830,8 +830,9 @@ Community garden sensors, Rain barrel monitor and Tool library.
 - **Two columns where there is room, one column on the phone.** From a 1001 px window (the width at which the detail panel stops
   being an overlay) the list is the left column, about 360 px, and the open item is the right column, as drawn. In the list each
   item is one row: kind · who · space, the title (two lines at most) and one line of what it says, with no button; every kind has the same shape
-  (a muted line that starts with the kind, no bold name before it and no time; a notification's own title already says who and where, so its line is
-  its kind, #1424); the open row is
+  (a muted line "Kind · who · space" that starts with the kind, no bold name before it and no time, #1424). A question or a mention is titled by what it
+  says, a call by its place ("Call in Gesture lamp", "At “Order sensors”"); the notification's own sentence ("Jonas asked you in Rain barrel monitor") stays in
+  Notices, push and the API. A message between two people has a sender and no space ("Question · Jonas"); a group message keeps its sentence, which names the group; the open row is
   the raised `--el` row, and the first item is open until another is chosen. The right column is the open item as its card with no
   box around it: the face, who and where and when, the title (`--fs-xl`), its words, its actions, then who can accept it. Nothing in
   the list moves when another item opens. **In one column** (a tablet in portrait, the phone) the open item is the card that is
