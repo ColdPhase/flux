@@ -613,8 +613,9 @@ asked / bilingual; [research](research/2026-11-ai-context-retrieval.md#answer-ac
   kept, the nearer to the usual 0.75); the twelve-word cap, longest-words-first, and the weight of a prefix hit (0.25 to 1, people's plan)
   changed nothing; a title's weight and a typo's cannot be measured on this bench (messages have no title). The tuning half did not
   separate the ways of counting a word (the same word only; stems of six letters or more; stems with a length bound), so the simplest is
-  kept: the same word. Counting by the stem of words of four letters or more ("przez" as "prze*" counted "przesunięty") lost a held-out
-  question, which was seen on the held-out half; the other ways count the same on both halves.
+  kept: the same word, chosen without the held-out half. Seen on the held-out half, and not used to choose: counting by the stem of words
+  of four letters or more ("przez" as "prze*" counted "przesunięty") lost a BM25 answer (q56); stems of six letters or more found one
+  hybrid answer more (0.717 for all 60).
 
   | Questions as asked | BM25 alone | Hybrid |
   | --- | --- | --- |
@@ -624,7 +625,11 @@ asked / bilingual; [research](research/2026-11-ai-context-retrieval.md#answer-ac
   | **#1387** | **0.633 / 0.600 / 0.617** | **0.700 / 0.700 / 0.700** |
 
   Keywords: BM25 0.600 / 0.533 / 0.567, hybrid 0.633 / 0.600 / 0.617; bilingual: BM25 0.800 / 0.767 / 0.783, hybrid 0.767 / 0.800 / 0.783.
-  LIVE_RUN_LINE
+  Measured live on the check stack with the real worker and container (`search-vectors-live.test.ts`, the #1341 reviewer's command;
+  raw JSON and the tuning bench in `research/evidence/1387/`); the offline model of the statement gave the same figures for every form.
+  The search request on the performance seed (`check_performance.sh`, 2,885 documents, "LoRa"): warm p50 / p95 12 / 17 ms, at 1 CPU
+  10 / 12 ms, concurrent at 1 CPU 15 / 28 ms. On the bench (10,000 visible messages, 180 searches of up to 15 words) the statement takes
+  16 / 39 ms (median / p95) against 15.5 / 33 ms before.
 - **The exact index is not dropped:** BM25's `|||` has no every-word or exclusion semantics, so removing the `keys` index would first
   need those carried over; the drop is left until then (a follow-up inside F-042, not a decision to keep it).
 - **Encrypted spaces** also match any of the plain words (founder decision, Hubert, 2026-11-12, on #1326), ranked more simply and without
