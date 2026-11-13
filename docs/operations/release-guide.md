@@ -32,9 +32,10 @@ Download **every** asset of the release into an empty directory:
 | `compose.live.turn.yaml` | Optional addition to `compose.live.yaml`: TURN/TLS on TCP/443 for people behind restrictive networks. |
 | `env.example` | Settings template; you copy it to `.env`. GitHub does not keep a leading period in an asset name, so the repository's `.env.example` is published under this name. |
 | `INSTALL.md` | This guide. |
-| `release.json` | Version, source commit and both images (`ghcr.io/coldphase/flux@sha256:…`, `ghcr.io/coldphase/flux-agent-runtime@sha256:…`) with their platforms, the pinned Codex release and the media server image (`live_media_image`). |
+| `release.json` | Version, source commit and the images (`ghcr.io/coldphase/flux@sha256:…`, `ghcr.io/coldphase/flux-agent-runtime@sha256:…` and, from v0.2.1, the database image `ghcr.io/coldphase/flux-database@sha256:…`) with their platforms, the pinned Codex release and the media server image (`live_media_image`). |
 | `sbom.spdx.json`, `THIRD_PARTY_NOTICES.json` | SPDX software bill of materials of the application image and the dependency notices derived from it. |
 | `sbom-agent-runtime.spdx.json`, `THIRD_PARTY_NOTICES.agent-runtime.json` | The same for the agent-runtime image; the notices also record the pinned official Codex (Apache-2.0). |
+| `sbom-database.spdx.json`, `THIRD_PARTY_NOTICES.database.json` | The same for the database image (PostgreSQL 18 with `pg_search`, AGPL-3.0-or-later, and `pgvector`; [F-042](https://github.com/ColdPhase/flux/blob/main/docs/product/decisions.md#f-042--agents-find-what-they-need-with-bm25-search-in-postgresql)). |
 | `LICENSE` | The Flux license. |
 | `SHA256SUMS` | SHA-256 of every other asset. |
 
@@ -47,26 +48,27 @@ sha256sum -c SHA256SUMS      # macOS: shasum -a 256 -c SHA256SUMS
 
 ### Verify the images before you pull them
 
-Both images are **signed** by the release workflow and carry a **build provenance attestation**. Check
-both before the first pull, for the exact digests that `release.json` names (the `image` and
-`runtime_image` fields), with [cosign](https://docs.sigstore.dev/cosign/system_config/installation/) **v3 or later** (the release workflow signs with
+The images are **signed** by the release workflow and carry a **build provenance attestation**. Check
+each before the first pull, for the exact digests that `release.json` names (the `image`, `runtime_image`
+and `database_image` fields), with [cosign](https://docs.sigstore.dev/cosign/system_config/installation/) **v3 or later** (the release workflow signs with
 cosign v3, whose signature format an older `cosign verify` may not find) and the
 [GitHub CLI](https://cli.github.com/):
 
 ```sh
 IMAGE=$(jq -r .image release.json)               # ghcr.io/coldphase/flux@sha256:...
 RUNTIME=$(jq -r .runtime_image release.json)     # ghcr.io/coldphase/flux-agent-runtime@sha256:...
+DATABASE=$(jq -r .database_image release.json)   # ghcr.io/coldphase/flux-database@sha256:...
 
 # 1. The signature. It is keyless (Sigstore, GitHub's OIDC identity): no key to fetch or trust. This asks for a
 #    signature made by this repository's release workflow on main, and fails for anything else.
-for image in "$IMAGE" "$RUNTIME"; do
+for image in "$IMAGE" "$RUNTIME" "$DATABASE"; do
   cosign verify "$image" \
     --certificate-identity-regexp '^https://github\.com/ColdPhase/flux/\.github/workflows/final-release\.yml@refs/heads/main$' \
     --certificate-oidc-issuer https://token.actions.githubusercontent.com
 done
 
 # 2. The build provenance (SLSA): the image was built by that workflow from the source commit in release.json.
-for image in "$IMAGE" "$RUNTIME"; do
+for image in "$IMAGE" "$RUNTIME" "$DATABASE"; do
   gh attestation verify "oci://$image" --repo ColdPhase/flux
 done
 ```
@@ -370,9 +372,11 @@ reversible. If the upgrade fails, restore the paired backup to a fresh deploymen
 **previous** release's files and configuration; do not merely point the old Compose file at a newer
 or older image over a migrated database.
 
-The `postgres@sha256:…` line of `compose.yaml` selects the PostgreSQL version. If it differs between
-the two releases and the major version changes, the data directory does not carry over: restore the
-backup into a fresh installation of the new release instead of upgrading in place.
+The database image line of `compose.yaml` (`ghcr.io/coldphase/flux-database@sha256:…` from v0.2.1, the official
+`postgres@sha256:…` before) selects the PostgreSQL version. If the major version changes between the two releases, the data
+directory does not carry over: restore the backup into a fresh installation of the new release instead of upgrading in place.
+The move from v0.2.0's official image to Flux's own keeps PostgreSQL 18 and the data directory as they are (see
+[the upgrade notes](https://github.com/ColdPhase/flux/blob/main/docs/operations/upgrade.md#v021-the-database-image-changes)).
 
 ## Restore test or recovery
 

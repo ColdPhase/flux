@@ -385,7 +385,7 @@ class ImageScanWorkflowTest(unittest.TestCase):
         return "\n".join(line[10:] for line in found.group(1).splitlines())
 
     FAILING = "Fail on findings, on a scan that did not run, or on a crash"
-    SCANNING = "Scan both images on every platform"
+    SCANNING = "Scan the release's images on every platform"
 
     def fails(self, rc: str | None, event: str) -> bool:
         """Runs the shell of the step that fails the job with the environment the workflow gives it; None leaves RC unset."""

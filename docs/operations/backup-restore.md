@@ -78,7 +78,7 @@ the host except `sh`, `tar` and a SHA-256 tool. The rest of this page is the ref
      "appCommit": "f1fa114…",
      "checkoutDirty": false,
      "image": "sha256:…",
-     "postgresImage": "postgres@sha256:77f5…",
+     "postgresImage": "flux-database@sha256:3c1e…",
      "postgresVersion": "18.6",
      "consistency": "api and worker stopped during dump and files archive",
      "parts": [

@@ -90,7 +90,7 @@ digest replaces the marker.
 
 | Service | Image | Role |
 | --- | --- | --- |
-| `db` | `postgres@sha256:…` | PostgreSQL 18, volume `pgdata`, not published. |
+| `db` | `ghcr.io/coldphase/flux-database@sha256:…` | Flux's database image: PostgreSQL 18 with `pg_search` (F-042), volume `pgdata`, not published. |
 | `migrate` | release digest | One-shot `node tooling/dist/migrate.js`: applies each new `app/packages/db/migrations/NNNN_*.sql` in its own transaction, then exits. |
 | `api` | release digest | HTTP API and web app on `127.0.0.1:${FLUX_PORT}`, volume `files`; its health check verifies the exact migration ledger, the queue schema and a write to the files volume. |
 | `worker` | release digest | Background jobs (notification mail, Web Push, runs), volume `files`. |
@@ -161,7 +161,7 @@ use `docker/compose.source.yaml` and are not the release path.
 
 ## Verify the images
 
-Before you pull, check the signature and the build provenance of the two images with `cosign verify` (cosign v3 or later) and
+Before you pull, check the signature and the build provenance of the images with `cosign verify` (cosign v3 or later) and
 `gh attestation verify`, exactly as the release's `INSTALL.md` shows
 ([the same section](release-guide.md#verify-the-images-before-you-pull-them)). The release workflow signs the digests
 keylessly after its scan and packaged install pass, and `publish-release.yml` refuses a draft whose digests

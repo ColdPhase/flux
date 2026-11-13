@@ -100,6 +100,8 @@ jobs:
             --version "$RELEASE_VERSION" --source-sha "$SOURCE_SHA" --digest "$IMAGE_DIGEST"
           runtime_digest=$(jq -r '.runtime_image | split("@")[1]' release.json)
           [[ "$runtime_digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          database_digest=$(jq -r '.database_image | split("@")[1]' release.json)
+          [[ "$database_digest" =~ ^sha256:[0-9a-f]{64}$ ]]
           platforms=$(jq -r '.platforms | join(" ")' release.json)
           [[ " $platforms " == *" linux/amd64 "* ]]
           for platform in $platforms; do
@@ -107,10 +109,13 @@ jobs:
               jq -e --arg p "${platform#*/}" '[.manifests[].platform | select(.os == "linux" and .architecture == $p)] | length >= 1'
             docker buildx imagetools inspect --raw "ghcr.io/coldphase/flux@$IMAGE_DIGEST" |
               jq -e --arg p "${platform#*/}" '[.manifests[].platform | select(.os == "linux" and .architecture == $p)] | length >= 1'
+            docker buildx imagetools inspect --raw "ghcr.io/coldphase/flux-database@$database_digest" |
+              jq -e --arg p "${platform#*/}" '[.manifests[].platform | select(.os == "linux" and .architecture == $p)] | length >= 1'
           done
-          # Both reviewed digests carry the release workflow's keyless signature (#840): nothing unsigned becomes a release.
+          # Every reviewed digest carries the release workflow's keyless signature (#840): nothing unsigned becomes a release.
           bash "$GITHUB_WORKSPACE/scripts/release/verify_signatures.sh" \
-            "ghcr.io/coldphase/flux@$IMAGE_DIGEST" "ghcr.io/coldphase/flux-agent-runtime@$runtime_digest"
+            "ghcr.io/coldphase/flux@$IMAGE_DIGEST" "ghcr.io/coldphase/flux-agent-runtime@$runtime_digest" \
+            "ghcr.io/coldphase/flux-database@$database_digest"
           checksums_sha=$(sha256sum SHA256SUMS | cut -d ' ' -f1)
           gh api --paginate --slurp \
             "repos/$GITHUB_REPOSITORY/issues/$REVIEW_ISSUE/comments?per_page=100" \
@@ -170,14 +175,19 @@ jobs:
             --version "$RELEASE_VERSION" --source-sha "$SOURCE_SHA" --digest "$IMAGE_DIGEST"
           runtime_digest=$(jq -r '.runtime_image | split("@")[1]' release.json)
           [[ "$runtime_digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          database_digest=$(jq -r '.database_image | split("@")[1]' release.json)
+          [[ "$database_digest" =~ ^sha256:[0-9a-f]{64}$ ]]
           bash "$GITHUB_WORKSPACE/scripts/release/check_release_target.sh" \
             "$RELEASE_VERSION" "$SOURCE_SHA" draft
           bash "$GITHUB_WORKSPACE/scripts/release/promote_image_tag.sh" \
             "$RELEASE_VERSION" "$IMAGE_DIGEST"
           bash "$GITHUB_WORKSPACE/scripts/release/promote_image_tag.sh" \
             "$RELEASE_VERSION" "$runtime_digest" ghcr.io/coldphase/flux-agent-runtime
+          bash "$GITHUB_WORKSPACE/scripts/release/promote_image_tag.sh" \
+            "$RELEASE_VERSION" "$database_digest" ghcr.io/coldphase/flux-database
           mkdir -p "$RUNNER_TEMP/anonymous-docker"
-          for tag in "ghcr.io/coldphase/flux:$RELEASE_VERSION" "ghcr.io/coldphase/flux-agent-runtime:$RELEASE_VERSION"; do
+          for tag in "ghcr.io/coldphase/flux:$RELEASE_VERSION" "ghcr.io/coldphase/flux-agent-runtime:$RELEASE_VERSION" \
+              "ghcr.io/coldphase/flux-database:$RELEASE_VERSION"; do
             DOCKER_CONFIG="$RUNNER_TEMP/anonymous-docker" \
               docker buildx imagetools inspect "$tag" >/dev/null
           done
@@ -207,7 +217,7 @@ jobs:
           python3 "$GITHUB_WORKSPACE/scripts/release/verify_assets.py" . \
             --version "$RELEASE_VERSION" --source-sha "$SOURCE_SHA" --digest "$IMAGE_DIGEST"
           # The public version tags resolve to the digests the public assets pin.
-          for entry in "flux:$IMAGE_DIGEST" "flux-agent-runtime:$runtime_digest"; do
+          for entry in "flux:$IMAGE_DIGEST" "flux-agent-runtime:$runtime_digest" "flux-database:$database_digest"; do
             name=${entry%%:*}
             wanted=${entry#*:}
             actual=$(DOCKER_CONFIG="$RUNNER_TEMP/anonymous-docker" \

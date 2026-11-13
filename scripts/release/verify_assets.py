@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail unless a release asset directory is complete, checksummed and pinned to ONE pair of image digests.
+"""Fail unless a release asset directory is complete, checksummed and pinned to ONE set of image digests.
 
 Used on the freshly prepared assets, on the draft's downloaded assets before publication and on the
 public downloads after it. It reads only files: the registry check of the digests is separate
@@ -15,13 +15,14 @@ import json
 import re
 from pathlib import Path
 
-from prepare_assets import DIGEST, IMAGE, PINNED_IMAGE, RUNTIME_IMAGE, SHA, VERSION, parse_platforms
+from prepare_assets import DATABASE_IMAGE, DIGEST, IMAGE, PINNED_IMAGE, RUNTIME_IMAGE, SHA, VERSION, parse_platforms
 from check_asset_set import verify as verify_asset_set
 
 EXPECTED = {
     "compose.yaml", "compose.runtime.yaml", "runtime.sh", "env.example", "INSTALL.md", "release.json",
     "sbom.spdx.json", "sbom-agent-runtime.spdx.json", "THIRD_PARTY_NOTICES.json",
     "THIRD_PARTY_NOTICES.agent-runtime.json", "LICENSE", "SHA256SUMS",
+    "sbom-database.spdx.json", "THIRD_PARTY_NOTICES.database.json",
     "compose.live.yaml", "compose.live.turn.yaml",
 }
 
@@ -52,24 +53,32 @@ def verify(
         raise ValueError("release.json runtime_image is not a digest of the agent-runtime image")
     if app.split("@", 1)[1] == runtime.split("@", 1)[1]:
         raise ValueError("the application and agent-runtime images must have different digests")
+    database = release["database_image"]
+    if not database.startswith(DATABASE_IMAGE + "@") or not DIGEST.fullmatch(database.split("@", 1)[1]):
+        raise ValueError("release.json database_image is not a digest of the database image")
+    if database.split("@", 1)[1] in (app.split("@", 1)[1], runtime.split("@", 1)[1]):
+        raise ValueError("the database image must have its own digest")
     for key, expected in (("version", version), ("source_sha", source_sha)):
         if expected is not None and release[key] != expected:
             raise ValueError(f"release.json {key} is {release[key]!r}, expected {expected!r}")
     if digest is not None and app != f"{IMAGE}@{digest}":
         raise ValueError("release.json image is not the accepted digest")
     named = release["platforms"]
-    if not isinstance(named, list) or named != parse_platforms(",".join(named)) or release["runtime_platforms"] != named:
-        raise ValueError("release.json must name the same supported platforms, in canonical order, for both images")
+    if (not isinstance(named, list) or named != parse_platforms(",".join(named)) or release["runtime_platforms"] != named
+            or release["database_platforms"] != named):
+        raise ValueError("release.json must name the same supported platforms, in canonical order, for every image")
     if platforms is not None and named != parse_platforms(platforms):
         raise ValueError(f"release.json platforms are {named}, expected {platforms}")
 
     compose = (directory / "compose.yaml").read_text(encoding="utf-8")
     overlay = (directory / "compose.runtime.yaml").read_text(encoding="utf-8")
     for name, text in (("compose.yaml", compose), ("compose.runtime.yaml", overlay)):
-        if re.search(r"RELEASE_DIGEST|RUNTIME_DIGEST|^\s*build\s*:|:latest|docker\.sock", text, re.MULTILINE):
+        if re.search(r"RELEASE_DIGEST|RUNTIME_DIGEST|DATABASE_DIGEST|^\s*build\s*:|:latest|docker\.sock", text, re.MULTILINE):
             raise ValueError(f"{name} holds a digest marker, a source build, a floating tag or a socket")
     if images(compose).count(app) != 4:
         raise ValueError("compose.yaml must pin the application image on api, worker, keyring and migrate")
+    if images(compose).count(database) != 1:
+        raise ValueError("compose.yaml must pin the database image on db")
     # Slot anchor and runtime-install carry the runtime image; runtime-manager and runtime-egress the application image.
     found = images(overlay)
     if sorted(found) != sorted([app, app, runtime, runtime]):
@@ -78,7 +87,7 @@ def verify(
     live = (directory / "compose.live.yaml").read_text(encoding="utf-8")
     turn = (directory / "compose.live.turn.yaml").read_text(encoding="utf-8")
     for name, text in (("compose.live.yaml", live), ("compose.live.turn.yaml", turn)):
-        if re.search(r"RELEASE_DIGEST|RUNTIME_DIGEST|^\s*build\s*:|:latest|docker\.sock|coldphase/flux", text, re.MULTILINE):
+        if re.search(r"RELEASE_DIGEST|RUNTIME_DIGEST|DATABASE_DIGEST|^\s*build\s*:|:latest|docker\.sock|coldphase/flux", text, re.MULTILINE):
             raise ValueError(f"{name} holds a digest marker, a source build, a floating tag, a socket or a Flux image")
     media = release.get("live_media_image", "")
     if not PINNED_IMAGE.fullmatch(media) or images(live) != [media] or images(turn):
@@ -87,13 +96,13 @@ def verify(
         raise ValueError("runtime.sh must not use a container engine socket")
     if release["runtime_claude_code"].split(";")[0] != "not included":
         raise ValueError("release.json must state that Claude Code is not included")
-    for sbom in ("sbom.spdx.json", "sbom-agent-runtime.spdx.json"):
+    for sbom in ("sbom.spdx.json", "sbom-agent-runtime.spdx.json", "sbom-database.spdx.json"):
         if not json.loads((directory / sbom).read_text(encoding="utf-8")).get("packages"):
             raise ValueError(f"{sbom} lists no packages")
     notices = json.loads((directory / "THIRD_PARTY_NOTICES.agent-runtime.json").read_text(encoding="utf-8"))
     if not any(item["name"].lower() in ("codex", "codex-cli") for item in notices):
         raise ValueError("the agent-runtime notices must record the pinned Codex")
-    return {"app": app, "runtime": runtime, "live_media": media, "platforms": ",".join(named)}
+    return {"app": app, "runtime": runtime, "database": database, "live_media": media, "platforms": ",".join(named)}
 
 
 def main() -> None:

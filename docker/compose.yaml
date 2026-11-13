@@ -2,8 +2,8 @@
 #
 # The repository copy (docker/compose.yaml) is the example for a future release. It is NOT
 # what `./flux up` runs (that builds the checked-out source from docker/compose.source.yaml) and does
-# not start as is: its placeholder digest RELEASE_DIGEST is replaced by the release workflow
-# (#77) with the accepted manifest digest of ghcr.io/coldphase/flux. Download compose.yaml and
+# not start as is: its placeholder digests RELEASE_DIGEST and DATABASE_DIGEST are replaced by the release workflow
+# (#77) with the accepted manifest digests of ghcr.io/coldphase/flux and flux-database. Download compose.yaml and
 # .env.example from ONE GitHub Release; their image digest, migrations and variables match.
 #
 #   cp .env.example .env    # then fill in the required values, see .env.example
@@ -14,13 +14,14 @@
 #   docker compose --env-file docker/.env -f docker/compose.yaml up -d --wait
 # Install, upgrade and backup: docs/operations/install-release.md.
 #
-# api, worker, keyring and migrate run one image at one revision (O-002); PostgreSQL is pinned by
+# api, worker, keyring and migrate run one image at one revision (O-002); the database image of the same release is pinned by
 # digest. Only the API is published, on loopback: put a TLS reverse proxy in front of it.
 name: ${FLUX_PROJECT:-flux}
 
 services:
   db:
-    image: postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+    # Flux's database image (F-042): PostgreSQL 18 with pg_search, built by the release from docker/database/Dockerfile.
+    image: ghcr.io/coldphase/flux-database@sha256:DATABASE_DIGEST
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-flux}

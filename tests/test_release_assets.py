@@ -14,7 +14,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts" / "release"))
 from prepare_assets import (  # noqa: E402
-    ASSET_NAME, IMAGE, MARKER, RUNTIME_IMAGE, RUNTIME_MARKER, codex_pin, parse_platforms, prepare, render_compose,
+    ASSET_NAME, DATABASE_IMAGE, DATABASE_MARKER, IMAGE, MARKER, RUNTIME_IMAGE, RUNTIME_MARKER, codex_pin, parse_platforms, prepare, render_compose,
     render_live_compose, render_runtime_compose,
 )
 from verify_assets import EXPECTED, verify as verify_assets  # noqa: E402
@@ -38,6 +38,7 @@ TURN = (
     "      - ${FLUX_LIVEKIT_TURN_CERT_DIR:?Set it}:/run/livekit-turn-certs:ro,z\n"
 )
 RUNTIME_DIGEST = "sha256:" + "c" * 64
+DATABASE_DIGEST = "sha256:" + "9" * 64
 APP_DIGEST = "sha256:" + "b" * 64
 OVERLAY = (
     "x-runtime-slot: &runtime-slot\n  image: " + RUNTIME_MARKER + "\n"
@@ -58,7 +59,7 @@ class ReleaseAssetsTest(unittest.TestCase):
             "  api:\n    image: " + MARKER + "\n"
             "  worker:\n    image: " + MARKER + "\n"
             "  keyring:\n    image: " + MARKER + "\n"
-            "  db:\n    image: postgres@sha256:" + "f" * 64 + "\n",
+            "  db:\n    image: " + DATABASE_MARKER + "\n",
             ".env.example": "POSTGRES_PASSWORD=change-me\n",
             "INSTALL.md": "Install instructions\n",
             "LICENSE": "AGPL-3.0\n",
@@ -69,6 +70,7 @@ class ReleaseAssetsTest(unittest.TestCase):
             "Dockerfile": "ARG CODEX_TAG=rust-v0.9.1\nADD https://github.com/openai/codex/releases/download/${CODEX_TAG}/codex-x86_64.tar.gz /c.tgz\n",
             "sbom-agent-runtime.spdx.json": '{"packages":[{"name":"node","versionInfo":"24","licenseDeclared":"MIT"}]}\n',
             "sbom.spdx.json": '{"packages":[{"name":"postgres","versionInfo":"18.1","licenseDeclared":"PostgreSQL"}]}\n',
+            "sbom-database.spdx.json": '{"packages":[{"name":"pg_search","versionInfo":"0.26.6","licenseDeclared":"AGPL-3.0-or-later"}]}\n',
         }.items():
             path = self.root / name
             path.write_text(content, encoding="utf-8")
@@ -80,6 +82,7 @@ class ReleaseAssetsTest(unittest.TestCase):
             runtime_script=self.sources["runtime.sh"], runtime_sbom=self.sources["sbom-agent-runtime.spdx.json"],
             dockerfile=self.sources["Dockerfile"], live_compose=self.sources["compose.live.yaml"],
             live_turn_compose=self.sources["compose.live.turn.yaml"],
+            database_digest=DATABASE_DIGEST, database_sbom=self.sources["sbom-database.spdx.json"],
         )
 
     def build(self) -> Path:
@@ -99,6 +102,11 @@ class ReleaseAssetsTest(unittest.TestCase):
         self.assertEqual(compose.count("ghcr.io/coldphase/flux@sha256:" + "b" * 64), 4)
         self.assertEqual(json.loads((output / "release.json").read_text())["source_sha"], "a" * 40)
         self.assertEqual(json.loads((output / "THIRD_PARTY_NOTICES.json").read_text())[0]["name"], "postgres")
+        self.assertNotIn("DATABASE_DIGEST", compose)
+        self.assertEqual(compose.count(f"image: {DATABASE_IMAGE}@{DATABASE_DIGEST}\n"), 1)
+        release = json.loads((output / "release.json").read_text())
+        self.assertEqual((release["database_image"], release["database_platforms"]), (f"{DATABASE_IMAGE}@{DATABASE_DIGEST}", ["linux/amd64"]))
+        self.assertEqual(json.loads((output / "THIRD_PARTY_NOTICES.database.json").read_text())[0]["license_declared"], "AGPL-3.0-or-later")
         for line in (output / "SHA256SUMS").read_text().splitlines():
             checksum, filename = line.split("  ")
             self.assertEqual(hashlib.sha256((output / filename).read_bytes()).hexdigest(), checksum)
@@ -111,6 +119,23 @@ class ReleaseAssetsTest(unittest.TestCase):
         compose.write_text(compose.read_text().replace("flux:latest", MARKER) + "  build: .\n")
         with self.assertRaisesRegex(ValueError, "pull-only"):
             self.build()
+
+    def test_rejects_a_missing_or_shared_database_digest(self) -> None:
+        compose = self.sources["compose.yaml"]
+        original = compose.read_text()
+        compose.write_text(original.replace(DATABASE_MARKER, "postgres@sha256:" + "f" * 64))
+        with self.assertRaisesRegex(ValueError, "database image marker"):
+            self.build()
+        compose.write_text(original)
+        for digest, message in (("latest", "database image digest"), (APP_DIGEST, "its own digest"), (RUNTIME_DIGEST, "its own digest")):
+            with self.subTest(digest), self.assertRaisesRegex(ValueError, message):
+                prepare(
+                    version="v1.2.3", source_sha="a" * 40, digest=APP_DIGEST,
+                    compose=compose, env=self.sources[".env.example"],
+                    instructions=self.sources["INSTALL.md"], license_file=self.sources["LICENSE"],
+                    sbom=self.sources["sbom.spdx.json"], destination=self.root / f"db-{message[:4]}-{digest[-1]}",
+                    **{**self.runtime_args(), "database_digest": digest},
+                )
 
     def test_rejects_marker_on_wrong_service(self) -> None:
         compose = self.sources["compose.yaml"]
@@ -163,10 +188,10 @@ class ReleaseAssetsTest(unittest.TestCase):
             "name: ${FLUX_PROJECT:-flux}\n# keep this comment\nservices:\n"
             "  migrate:\n    image: " + MARKER + "\n  api:\n    image: " + MARKER + "\n"
             "  worker:\n    image: " + MARKER + "\n"
-            "  keyring:\n    image: " + MARKER + "\n"
+            "  keyring:\n    image: " + MARKER + "\n  db:\n    image: " + DATABASE_MARKER + "\n"
         )
         pinned = f"{IMAGE}@sha256:" + "c" * 64
-        rendered = render_compose(template, version="v2.0.0", source_sha="d" * 40, digest=pinned.split("@")[1])
+        rendered = render_compose(template, version="v2.0.0", source_sha="d" * 40, digest=pinned.split("@")[1], database_digest=DATABASE_DIGEST)
         self.assertTrue(rendered.startswith("# Flux v2.0.0 operator Compose, built from source commit " + "d" * 40))
         self.assertNotIn("repository header", rendered)
         self.assertNotIn("RELEASE_DIGEST", rendered)
@@ -292,6 +317,9 @@ class ReleaseAssetsTest(unittest.TestCase):
             "sfu floating": ("compose.live.yaml", lambda t: t.replace(SFU, "livekit/livekit-server:latest"), "floating tag"),
             "flux image in the overlay": ("compose.live.turn.yaml", lambda t: t + f"  x:\n    image: {IMAGE}@{APP_DIGEST}\n", "Flux image"),
             "platforms differ": ("release.json", lambda t: t.replace('"runtime_platforms": [\n    "linux/amd64"', '"runtime_platforms": [\n    "linux/arm64"'), "same supported platforms"),
+            "database platforms differ": ("release.json", lambda t: t.replace('"database_platforms": [\n    "linux/amd64"', '"database_platforms": [\n    "linux/arm64"'), "same supported platforms"),
+            "database image swapped": ("compose.yaml", lambda t: t.replace(f"{DATABASE_IMAGE}@{DATABASE_DIGEST}", "postgres@sha256:" + "f" * 64), "database image on db"),
+            "database digest of the application": ("release.json", lambda t: t.replace(f"{DATABASE_IMAGE}@{DATABASE_DIGEST}", f"{DATABASE_IMAGE}@{APP_DIGEST}"), "its own digest"),
         }
         for label, (name, mutate, message) in cases.items():
             with self.subTest(label):
@@ -326,6 +354,7 @@ class RealOperatorAssetsTest(unittest.TestCase):
             license_file=ROOT / "LICENSE", sbom=sbom, destination=self.output,
             runtime_digest=RUNTIME_DIGEST, runtime_compose=REAL_OVERLAY, runtime_script=REAL_SCRIPT,
             runtime_sbom=sbom, dockerfile=DOCKERFILE, live_compose=REAL_LIVE, live_turn_compose=REAL_TURN,
+            database_digest=DATABASE_DIGEST, database_sbom=sbom,
         )
 
     def test_asset_set_and_checksums(self) -> None:
@@ -342,9 +371,11 @@ class RealOperatorAssetsTest(unittest.TestCase):
             return [line for line in text.splitlines() if not line.lstrip().startswith("#")]
 
         packaged = (self.output / "compose.yaml").read_text(encoding="utf-8")
-        expected = [line.replace(MARKER, f"{IMAGE}@{self.digest}") for line in code(REAL_COMPOSE.read_text())]
+        expected = [line.replace(MARKER, f"{IMAGE}@{self.digest}").replace(DATABASE_MARKER, f"{DATABASE_IMAGE}@{DATABASE_DIGEST}")
+                    for line in code(REAL_COMPOSE.read_text())]
         self.assertEqual(code(packaged), expected)
         self.assertNotIn("RELEASE_DIGEST", packaged)
+        self.assertNotIn("DATABASE_DIGEST", packaged)
         self.assertEqual(packaged.count(f"image: {IMAGE}@{self.digest}\n"), 4)
 
     def test_runtime_overlay_and_script_ship_unchanged_but_for_digests_and_header(self) -> None:

@@ -15,6 +15,9 @@ MARKER = f"{IMAGE}@sha256:RELEASE_DIGEST"
 # The separate agent-runtime image (#358): the slot supervisor with the pinned official Codex.
 RUNTIME_IMAGE = "ghcr.io/coldphase/flux-agent-runtime"
 RUNTIME_MARKER = f"{RUNTIME_IMAGE}@sha256:RUNTIME_DIGEST"
+# Flux's database image (F-042): PostgreSQL 18 with pg_search, built from docker/database/Dockerfile.
+DATABASE_IMAGE = "ghcr.io/coldphase/flux-database"
+DATABASE_MARKER = f"{DATABASE_IMAGE}@sha256:DATABASE_DIGEST"
 VERSION = re.compile(r"v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-rc\.[1-9][0-9]*)?\Z")
 SHA = re.compile(r"[0-9a-f]{40}\Z")
 DIGEST = re.compile(r"sha256:[0-9a-f]{64}\Z")
@@ -52,7 +55,8 @@ def release_header(version: str, source_sha: str) -> str:
         "# Install, upgrade, backup and restore: INSTALL.md. The optional agent runtime is the separate\n"
         "# compose.runtime.yaml of the same release and is off unless you opt in there.\n"
         "#\n"
-        "# PostgreSQL is pinned by digest. Only the API is published, on loopback: put a TLS reverse\n"
+        "# The database runs Flux's database image of the same release, also pinned by the digest that\n"
+        "# release.json records. Only the API is published, on loopback: put a TLS reverse\n"
         "# proxy in front of it.\n"
     )
 
@@ -101,7 +105,7 @@ def render_live_compose(name: str, template: str, *, version: str, source_sha: s
     """Ship a live-media overlay as it is, with a release header: digest-pinned third-party images only."""
     if re.search(r"^\s*build\s*:", template, re.MULTILINE):
         raise ValueError(f"{name} must be pull-only")
-    for forbidden in ("RELEASE_DIGEST", "RUNTIME_DIGEST", IMAGE, "docker.sock"):
+    for forbidden in ("RELEASE_DIGEST", "RUNTIME_DIGEST", "DATABASE_DIGEST", IMAGE, "docker.sock"):
         if forbidden in template:
             raise ValueError(f"{name} must not name {forbidden}")
     for image in re.findall(r"^\s*image:\s*(\S+)\s*$", template, re.MULTILINE):
@@ -172,15 +176,19 @@ def codex_pin(dockerfile: str) -> str:
     return tags[0]
 
 
-def render_compose(template: str, *, version: str, source_sha: str, digest: str) -> str:
+def render_compose(template: str, *, version: str, source_sha: str, digest: str, database_digest: str) -> str:
     lines = template.splitlines(keepends=True)
     body = next((i for i, line in enumerate(lines) if not line.startswith("#")), len(lines))
     pinned = f"{IMAGE}@{digest}"
-    rendered = (release_header(version, source_sha) + "".join(lines[body:])).replace(MARKER, pinned)
-    if "RELEASE_DIGEST" in rendered:
-        raise ValueError("release digest marker is left in the rendered Compose file")
-    if re.findall(r"^\s*image:\s*(\S+)\s*$", rendered, re.MULTILINE).count(pinned) != 4:
+    database = f"{DATABASE_IMAGE}@{database_digest}"
+    rendered = (release_header(version, source_sha) + "".join(lines[body:])).replace(MARKER, pinned).replace(DATABASE_MARKER, database)
+    if "RELEASE_DIGEST" in rendered or "DATABASE_DIGEST" in rendered:
+        raise ValueError("a digest marker is left in the rendered Compose file")
+    found = re.findall(r"^\s*image:\s*(\S+)\s*$", rendered, re.MULTILINE)
+    if found.count(pinned) != 4:
         raise ValueError("rendered Compose must pin the release digest on exactly four services")
+    if found.count(database) != 1:
+        raise ValueError("rendered Compose must pin the database image on the db service")
     return rendered
 
 
@@ -190,7 +198,8 @@ def prepare(
     sbom: Path, destination: Path,
     runtime_digest: str, runtime_compose: Path, runtime_script: Path,
     runtime_sbom: Path, dockerfile: Path,
-    live_compose: Path, live_turn_compose: Path, platforms: str = DEFAULT_PLATFORMS,
+    live_compose: Path, live_turn_compose: Path,
+    database_digest: str, database_sbom: Path, platforms: str = DEFAULT_PLATFORMS,
 ) -> None:
     if not VERSION.fullmatch(version):
         raise ValueError("version must be vX.Y.Z or vX.Y.Z-rc.N")
@@ -202,6 +211,10 @@ def prepare(
         raise ValueError("runtime image digest must be a sha256 manifest digest")
     if runtime_digest == digest:
         raise ValueError("the application and runtime images must have different digests")
+    if not DIGEST.fullmatch(database_digest):
+        raise ValueError("database image digest must be a sha256 manifest digest")
+    if database_digest in (digest, runtime_digest):
+        raise ValueError("the database image must have its own digest")
     platform_list = parse_platforms(platforms)
     if destination.exists() and any(destination.iterdir()):
         raise ValueError("destination must be empty to prevent stale assets")
@@ -221,13 +234,15 @@ def prepare(
         service_images.get(name) != MARKER for name in ("api", "worker", "keyring", "migrate")
     ):
         raise ValueError("operator Compose must use the image marker for api, worker, keyring and migrate")
+    if images.count(DATABASE_MARKER) != 1 or service_images.get("db") != DATABASE_MARKER:
+        raise ValueError("operator Compose must use the database image marker for db, and only there")
     if re.search(r"^\s*build\s*:", template, re.MULTILINE):
         raise ValueError("operator Compose must be pull-only")
     if any("latest" in image.lower() for image in images):
         raise ValueError("operator Compose cannot use a floating latest image")
     if MARKER in env.read_text(encoding="utf-8"):
         raise ValueError("environment template must not override the image identity")
-    rendered = render_compose(template, version=version, source_sha=source_sha, digest=digest)
+    rendered = render_compose(template, version=version, source_sha=source_sha, digest=digest, database_digest=database_digest)
     runtime_rendered = render_runtime_compose(
         runtime_compose.read_text(encoding="utf-8"), version=version, source_sha=source_sha,
         digest=digest, runtime_digest=runtime_digest,
@@ -263,6 +278,7 @@ def prepare(
 
     dependency_notices = notices(sbom, "application")
     runtime_notices = notices(runtime_sbom, "agent-runtime")
+    database_notices = notices(database_sbom, "database")
     # The official Codex binary is a vendor download, which a package scanner may not list: record it.
     if not any(item["name"].lower() in ("codex", "codex-cli") for item in runtime_notices):
         runtime_notices.append({
@@ -284,6 +300,7 @@ def prepare(
         (license_file, "LICENSE"),
         (sbom, "sbom.spdx.json"),
         (runtime_sbom, "sbom-agent-runtime.spdx.json"),
+        (database_sbom, "sbom-database.spdx.json"),
         (runtime_script, "runtime.sh"),
     ):
         shutil.copyfile(source, destination / target)
@@ -292,6 +309,9 @@ def prepare(
     )
     (destination / "THIRD_PARTY_NOTICES.agent-runtime.json").write_text(
         json.dumps(runtime_notices, indent=2) + "\n", encoding="utf-8"
+    )
+    (destination / "THIRD_PARTY_NOTICES.database.json").write_text(
+        json.dumps(database_notices, indent=2) + "\n", encoding="utf-8"
     )
     manifest = {
         "version": version,
@@ -303,6 +323,8 @@ def prepare(
         "runtime_codex": codex,
         "runtime_claude_code": "not included; runtime-install installs Anthropic's signed release when the operator enables it",
         "live_media_image": live_images[0],
+        "database_image": f"{DATABASE_IMAGE}@{database_digest}",
+        "database_platforms": platform_list,
     }
     (destination / "release.json").write_text(
         json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
@@ -330,10 +352,12 @@ def main() -> None:
     parser.add_argument("--runtime-script", type=Path, default=Path("docker/runtime.sh"))
     parser.add_argument("--runtime-sbom", type=Path, required=True)
     parser.add_argument("--dockerfile", type=Path, default=Path("docker/Dockerfile"))
+    parser.add_argument("--database-digest", required=True)
+    parser.add_argument("--database-sbom", type=Path, required=True)
     parser.add_argument("--live-compose", type=Path, default=Path("docker/compose.live.yaml"))
     parser.add_argument("--live-turn-compose", type=Path, default=Path("docker/compose.live.turn.yaml"))
     parser.add_argument("--platforms", default=DEFAULT_PLATFORMS,
-                        help="platforms both images were built for, comma-separated (default linux/amd64)")
+                        help="platforms the images were built for, comma-separated (default linux/amd64)")
     parser.add_argument("--destination", type=Path, required=True)
     args = parser.parse_args()
     prepare(
@@ -343,7 +367,8 @@ def main() -> None:
         destination=args.destination, runtime_digest=args.runtime_digest,
         runtime_compose=args.runtime_compose, runtime_script=args.runtime_script,
         runtime_sbom=args.runtime_sbom, dockerfile=args.dockerfile,
-        live_compose=args.live_compose, live_turn_compose=args.live_turn_compose, platforms=args.platforms,
+        live_compose=args.live_compose, live_turn_compose=args.live_turn_compose,
+        database_digest=args.database_digest, database_sbom=args.database_sbom, platforms=args.platforms,
     )
 
 

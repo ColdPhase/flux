@@ -17,7 +17,7 @@ releases in between are applied in order.
 
 | Installed release | Upgrades to |
 | --- | --- |
-| v0.2.0 | every later release |
+| v0.2.0 | every later release (v0.2.1 also switches the [database image](#v021-the-database-image-changes)) |
 
 This table gains a row with each release; the release notes of a release say which versions it was tested to upgrade from.
 Every release proves it before it is drafted ([how it is tested](#tested-with)): each of these releases is installed from its own
@@ -77,6 +77,35 @@ Schema history: v0.1's schema is the baseline migration `0001_v0_1_baseline.sql`
 `0002_first_time_user.sql` (#806), schema version 2. v0.2 starts with `0003_one_company_spaces.sql`, and later versions
 add `0004` onwards. Development databases from before the baseline (pre-release builds) cannot be upgraded either: remove
 them with `./flux clean` and start again.
+
+## v0.2.1: the database image changes
+
+From v0.2.1 the database runs Flux's own image, `ghcr.io/coldphase/flux-database` (a source checkout builds it from
+[`docker/database/Dockerfile`](../../docker/database/Dockerfile)), instead of the official `postgres:18.6-alpine`. It is the
+official PostgreSQL 18 on Debian with the `pg_search` extension, which ranks search by BM25 ([F-042](../product/decisions.md#f-042--agents-find-what-they-need-with-bm25-search-in-postgresql)).
+Nothing to do by hand: the release's `compose.yaml` names the new image, and `./flux upgrade` builds it and restarts the
+database on it before migrating.
+
+- **The data directory stays as it is.** The same PostgreSQL major (18) reads it unchanged. The old image (musl) sorted text
+  byte by byte; the new one (glibc) is built to sort the same way, so ordinary indexes stay valid and `ORDER BY` returns the
+  same order as before. The `postgres` user keeps the old image's id (70), so file owners do not change either.
+- **Case and character classes differ for rare characters.** For letters added to Unicode in recent years, the circled letters
+  and a few others (about 100 characters for `lower`/`upper`, 9,900 for word and trigram splitting), the two C libraries
+  disagree. Polish, English and the common scripts are unaffected. Migration `0065` therefore recomputes what was derived from
+  those functions under the old image: the stored search columns of the rows whose values differ, and every index built from an
+  expression (such as `lower(email)`), a text-dependent condition or a method other than B-tree. Nothing to do by hand.
+- **Migration `0065`** also creates the extension and the search index. It takes seconds for a few hundred thousand messages. On a
+  database that is not running Flux's image (for example your own PostgreSQL), it stops with
+  `FLUX_DATABASE_IMAGE Flux v0.2.1 needs its own database image …` before it changes anything; API and worker do not start.
+  Run the release's `compose.yaml` (or `./flux upgrade`), or install `pg_search` in your PostgreSQL and add it to
+  `shared_preload_libraries`.
+- **Backups** keep working the same way: a dump holds the index's definition, and a restore rebuilds it. A backup from before
+  the upgrade restores with the old release's files, as always ([when it fails](#when-it-fails)).
+- **Settings of your own.** The image's entrypoint adds `pg_search` to `shared_preload_libraries` and turns pg_search's custom
+  scan and planner notes off unless you set them: on the command line, in `postgresql.conf` or with `ALTER SYSTEM`. A list of
+  preloaded libraries you set keeps its entries and gains `pg_search`.
+- **Memory and disk.** The memory limits are unchanged. The image is about 500 MB larger (800 MB); the index adds about 4 MB per
+  10,000 messages.
 
 ## From v0.1: install v0.2 fresh
 

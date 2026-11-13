@@ -244,7 +244,8 @@ ensure_env() {
 
 build_main() {
   say "Building Flux from this checkout (the first build takes a few minutes)..."
-  if [ "${FLUX_NO_CACHE:-}" = 1 ]; then compose_main build --no-cache migrate; else compose_main build migrate; fi
+  # The application image and Flux's database image (F-042, docker/database).
+  if [ "${FLUX_NO_CACHE:-}" = 1 ]; then compose_main build --no-cache migrate db; else compose_main build migrate db; fi
 }
 
 # --- Agent runtime (F-022 AIM-3, T3 #278; docs/operations/agent-runtime.md). FLUX_AGENT_RUNTIME empty,
@@ -947,7 +948,12 @@ write_manifest() {
   image_id=$(docker image inspect -f '{{.Id}}' "$(image_ref)" 2>/dev/null || printf unknown)
   dirty=false
   if [ "$(git_commit)" != unknown ] && ! git -C "$FLUX_ROOT" diff --quiet HEAD 2>/dev/null; then dirty=true; fi
-  pg_image=$(compose_main config --images 2>/dev/null | grep '^postgres@' | head -n 1)
+  pg_image=$(compose_main config --images 2>/dev/null | grep -E '^(postgres@|flux-database:|.*/flux-database@)' | head -n 1)
+  # A checkout builds Flux's database image (F-042) under a local tag: record the image it is, by its id.
+  case "$pg_image" in
+    *@sha256:*|'') ;;
+    *) pg_id=$(docker image inspect -f '{{.Id}}' "$pg_image" 2>/dev/null) && pg_image="${pg_image%%:*}@$pg_id" ;;
+  esac
   cat <<EOF
 {
   "format": "flux-backup",
@@ -1294,6 +1300,8 @@ upgrade_apply() {
   to_schema=$(code_schema)
   say "Building the new version (schema $to_schema, commit $(git_commit))..."
   build_main || upgrade_failed "the build failed"
+  # The database restarts on the image just built when it changed (v0.2.1 moves it to Flux's own image, docs/operations/upgrade.md).
+  compose_main up -d --wait --wait-timeout "$WAIT_TIMEOUT" db >/dev/null || upgrade_failed "the database did not start on the new image"
   compose_main --profile setup run --rm files-init >/dev/null || upgrade_failed "preparing the files volume failed"
   say "Migrating from schema $UPGRADE_FROM_SCHEMA to $to_schema..."
   compose_main run --rm migrate || upgrade_failed "the migration failed"

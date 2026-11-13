@@ -1,0 +1,9 @@
+#!/bin/sh
+# Stands in for the official image's gosu (a Go binary whose old standard library the release's image scan refuses): the one use,
+# `gosu postgres <command>` in docker-entrypoint.sh, becomes util-linux's setpriv with the user's ids, groups and home.
+set -eu
+user=$1
+shift
+HOME=$(getent passwd "$user" | cut -d: -f6)
+export HOME
+exec setpriv --reuid="$user" --regid="$user" --init-groups -- "$@"

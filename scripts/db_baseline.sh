@@ -25,8 +25,11 @@
 set -euo pipefail
 
 here=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd -P)
-# The image docker/compose.yaml runs (postgres 18.6-alpine).
-image=${FLUX_BASELINE_PG_IMAGE:-postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873}
+# The image docker/compose.yaml runs: Flux's database image (F-042), built from docker/database unless FLUX_BASELINE_PG_IMAGE names one.
+image=${FLUX_BASELINE_PG_IMAGE:-}
+if [ -z "$image" ]; then
+  image=$(docker build -q "$here/docker/database") || { echo "db_baseline: the database image did not build" >&2; exit 2; }
+fi
 work=$(mktemp -d "${TMPDIR:-/tmp}/flux-db-baseline.XXXXXX")
 containers=()
 cleanup() {

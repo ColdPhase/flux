@@ -151,18 +151,47 @@ export function visibleKeys(audiences: SearchAudienceRows[]): SQL {
   return sql`ARRAY(${sql.join(audiences.map((audience) => AUDIENCE_KEYS[audience.type](audience)), sql` UNION ALL `)})`;
 }
 
+/**
+ * How a search matches and ranks (F-042). `prefix`: today's index, every word required, the last as a prefix, ranked by `ts_rank`.
+ * `bm25`: the BM25 index of migration 0065 (pg_search): any of the words, Polish and English stems, accents folded, ranked by
+ * word rarity. Both apply the same audiences and filters in the same statement.
+ */
+export type SearchRanking = 'prefix' | 'bm25';
+
+/** The BM25 index's text fields (migration 0065): title and body, each with a Polish and an English stemmer. */
+const BM25_FIELDS = [
+  sql`sd.title::pdb.alias('title_pl')`, sql`sd.title::pdb.alias('title_en')`,
+  sql`sd.body::pdb.alias('body_pl')`, sql`sd.body::pdb.alias('body_en')`,
+];
+
+/** Any of the plan's plain words in any BM25 field. Only letters and digits reach it (`plan.words`), so it carries no query syntax. */
+function bm25Match(plan: SearchPlanRows): SQL {
+  return sql`(${sql.join(BM25_FIELDS.map((field) => sql`${field} ||| ${plan.words}::text`), sql` OR `)})`;
+}
+
+/** The plan's plain words as an "any of them" `tsquery`, to mark them in BM25 snippets. */
+function anyWord(plan: SearchPlanRows): SQL {
+  return sql`to_tsquery('simple', array_to_string(ARRAY(SELECT DISTINCT lexeme FROM unnest(to_tsvector('simple', ${plan.words}))), ' | '))`;
+}
+
 /** Everything a hit must satisfy apart from the cursor. */
-function hitConditions(plan: SearchPlanRows): SQL {
+function hitConditions(plan: SearchPlanRows, ranking: SearchRanking = 'prefix'): SQL {
+  const match = ranking === 'bm25'
+    // The index leaves sealed rows out (WHERE NOT sealed), so the statement says so too, or PostgreSQL could not use it.
+    ? [sql`NOT sd.sealed`, bm25Match(plan)]
+    : [sql`sd.keys && (SELECT lookups FROM aud)`];
   const conditions: SQL[] = [
-    sql`sd.keys && (SELECT lookups FROM aud)`,
+    ...match,
     sql`sd.audience_key = ANY ((SELECT keys FROM aud)::text[])`,
     // Work IDs are UUIDs; other kinds (including people) can carry arbitrary text IDs.
     // Keep the indexed UUID side intact and apply lifecycle before page/count/probe limits.
     // A correlated scalar projection cannot become a hashed scan of unrelated tasks.
     sql`(sd.kind <> 'work' OR COALESCE((SELECT active_work.creation_reverted_at IS NULL FROM project_work_items active_work
       WHERE active_work.id = (CASE WHEN sd.kind = 'work' THEN sd.object_id::uuid END)), false))`,
-    plan.fuzzy ? sql`(sd.tsv @@ ${tsquery(plan)} OR sd.title %> ${plan.text})` : sql`sd.tsv @@ ${tsquery(plan)}`,
   ];
+  if (ranking === 'prefix') {
+    conditions.push(plan.fuzzy ? sql`(sd.tsv @@ ${tsquery(plan)} OR sd.title %> ${plan.text})` : sql`sd.tsv @@ ${tsquery(plan)}`);
+  }
   if (plan.kinds?.length) conditions.push(sql`sd.kind IN (${sql.join(plan.kinds.map((kind) => sql`${kind}`), sql`, `)})`);
   const place = plan.place;
   if (place?.type === 'project') conditions.push(sql`sd.project_id = ${place.id}::uuid`);
@@ -184,21 +213,39 @@ function exactNumber(plan: SearchPlanRows): SQL {
     : sql` + CASE WHEN sd.kind = 'work' AND split_part(sd.body, E'\n', 1) = ${`#${plan.number}`} THEN 10 ELSE 0 END`;
 }
 
-function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows): SQL {
-  const q = tsquery(plan);
+function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows, ranking: SearchRanking = 'prefix'): SQL {
+  const q = ranking === 'bm25' ? anyWord(plan) : tsquery(plan);
+  const score = ranking === 'bm25'
+    ? sql`round(sd.bm25::numeric, 6)`
+    : sql`round((ts_rank(sd.tsv, ${q}) + 0.5 * word_similarity(${plan.text}, sd.title))::numeric, 6)`;
+  const columns = sql`sd.id, sd.kind, sd.workspace_id, sd.object_id, sd.parent_id, sd.project_id, sd.version, sd.status, sd.title, sd.body,
+        sd.author_kind, sd.author_id, sd.at`;
+  // pg_search scores only in its own scan, so BM25 hits are scored in a CTE of their own before the window that keeps one row per object.
+  const scored = ranking === 'bm25'
+    ? sql`scored AS MATERIALIZED (
+      SELECT ${columns}, pdb.score(sd.id) AS bm25 FROM search_documents sd WHERE ${hitConditions(plan, ranking)}
+    ),`
+    : sql``;
+  const from = ranking === 'bm25' ? sql`scored sd` : sql`search_documents sd WHERE ${hitConditions(plan)}`;
+  // The BM25 statement needs only the audiences; the index keys of today's index are not looked up.
+  const audience = ranking === 'bm25' ? sql`aud AS MATERIALIZED (SELECT ${visibleKeys(audiences)} AS keys)` : audienceCte(audiences, plan);
   const after = plan.after
     ? sql`WHERE (hits.score, hits.at, hits.id) < (${plan.after.score}::numeric, ${plan.after.at}::timestamptz, ${plan.after.id}::bigint)`
     : sql``;
   const clean = (column: SQL) => sql`translate(left(${column}, ${HEADLINE_INPUT}), ${START + STOP}, '')`;
+  // The BM25 plan joins the hits from a CTE, where PostgreSQL may cast before it checks the kind: only a task's id is cast there.
+  // The prefix plan keeps its join as it was (its rows examined are what the hidden-work tests pin).
+  const workJoin = ranking === 'bm25'
+    ? sql`wi.id = (CASE WHEN h.kind = 'work' THEN h.object_id::uuid END)`
+    : sql`h.kind = 'work' AND wi.id = h.object_id::uuid`;
   return sql`
-    WITH ${audienceCte(audiences, plan)},
+    WITH ${audience},
+    ${scored}
     matched AS (
-      SELECT sd.id, sd.kind, sd.workspace_id, sd.object_id, sd.parent_id, sd.project_id, sd.version, sd.status, sd.title, sd.body,
-        sd.author_kind, sd.author_id, sd.at,
-        round((ts_rank(sd.tsv, ${q}) + 0.5 * word_similarity(${plan.text}, sd.title))::numeric, 6)${exactNumber(plan)} AS score,
+      SELECT ${columns},
+        ${score}${exactNumber(plan)} AS score,
         row_number() OVER (PARTITION BY sd.kind, sd.object_id ORDER BY sd.version DESC NULLS LAST) AS newest
-      FROM search_documents sd
-      WHERE ${hitConditions(plan)}
+      FROM ${from}
     ),
     -- One result per object: of several matching versions of a material, the newest.
     hits AS (SELECT * FROM matched WHERE newest = 1)
@@ -222,7 +269,7 @@ function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows): S
     LEFT JOIN dm_messages dmv ON dmv.id = (CASE WHEN h.kind = 'dm_message' THEN h.object_id::uuid END)
     LEFT JOIN project_materials pm ON pm.id = (CASE WHEN h.kind IN ('material', 'doc') THEN h.object_id::uuid END)
     LEFT JOIN sketches sk ON h.kind = 'thought' AND sk.id = h.parent_id
-    LEFT JOIN project_work_items wi ON h.kind = 'work' AND wi.id = h.object_id::uuid
+    LEFT JOIN project_work_items wi ON ${workJoin}
     LEFT JOIN dms d ON d.id = (CASE WHEN h.kind = 'dm_message' THEN h.parent_id END)
     ORDER BY h.score DESC, h.at DESC, h.id DESC`;
 }
@@ -235,12 +282,53 @@ interface PageRow {
   title_headline: string | null; body_headline: string | null; dm_name: string | null; work_number: number | null;
 }
 
+function toRecord(row: PageRow): SearchRowRecord {
+  return {
+    position: { score: row.score, at: row.at_key, id: row.id },
+    kind: row.kind,
+    workspaceId: row.workspace_id,
+    workspaceName: row.workspace_name,
+    objectId: row.object_id,
+    parentId: row.parent_id,
+    projectId: row.project_id,
+    projectName: row.project_name,
+    dmName: row.dm_name,
+    sketchTitle: row.sketch_title,
+    workNumber: row.work_number,
+    version: row.version,
+    currentVersion: row.current_version,
+    status: row.status,
+    title: highlightParts(row.title_headline ?? ''),
+    snippet: row.body_headline ? highlightParts(row.body_headline) : null,
+    hasBody: row.has_body,
+    authorName: row.author_name,
+    via: row.via,
+    author: row.author_kind && row.author_id ? { kind: row.author_kind, id: row.author_id } : null,
+    at: row.at instanceof Date ? row.at : new Date(row.at),
+  };
+}
+
 /**
  * Runs a search statement in its own read-only transaction with sequential scans disabled, so
  * PostgreSQL always reaches `search_documents` through the audience-leading GIN indexes, also
  * while the table is small. The work then depends only on the audiences the reader may see.
  */
-async function planned(db: SearchExecutor, statement: SQL) {
+async function planned(db: SearchExecutor, statement: SQL, ranking: SearchRanking = 'prefix') {
+  if (ranking === 'bm25') {
+    // pg_search's custom scan scores BM25 and is off by default in Flux's database image (docker/database, F-042): on for this
+    // statement only. Not read-only: pg_search records each field alias it meets in its own table (paradedb._typmod_cache).
+    // When `db` is itself a transaction this is a savepoint, after which SET LOCAL would stay for the rest of the caller's
+    // transaction (and pg_search's scan would then refuse its other statements on search_documents): the settings are put back.
+    return db.transaction(async (tx) => {
+      const before = await tx.execute(sql`SELECT (SELECT current_setting('enable_seqscan')) AS seq,
+        (SELECT current_setting('paradedb.enable_custom_scan')) AS scan,
+        set_config('enable_seqscan', 'off', true), set_config('paradedb.enable_custom_scan', 'on', true)`);
+      const { seq, scan } = before.rows[0] as { seq: string; scan: string };
+      const result = await tx.execute(statement);
+      await tx.execute(sql`SELECT set_config('enable_seqscan', ${seq}, true), set_config('paradedb.enable_custom_scan', ${scan}, true)`);
+      return result;
+    });
+  }
   return db.transaction(async (tx) => {
     await tx.execute(sql`SET LOCAL enable_seqscan = off`);
     return tx.execute(statement);
@@ -314,29 +402,18 @@ export function searchRows(db: SearchExecutor) {
     async page(audiences: SearchAudienceRows[], plan: SearchPlanRows): Promise<SearchRowRecord[]> {
       if (!audiences.length) return [];
       const result = await planned(db, pageStatement(audiences, plan));
-      return (result.rows as unknown as PageRow[]).map((row) => ({
-        position: { score: row.score, at: row.at_key, id: row.id },
-        kind: row.kind,
-        workspaceId: row.workspace_id,
-        workspaceName: row.workspace_name,
-        objectId: row.object_id,
-        parentId: row.parent_id,
-        projectId: row.project_id,
-        projectName: row.project_name,
-        dmName: row.dm_name,
-        sketchTitle: row.sketch_title,
-        workNumber: row.work_number,
-        version: row.version,
-        currentVersion: row.current_version,
-        status: row.status,
-        title: highlightParts(row.title_headline ?? ''),
-        snippet: row.body_headline ? highlightParts(row.body_headline) : null,
-        hasBody: row.has_body,
-        authorName: row.author_name,
-        via: row.via,
-        author: row.author_kind && row.author_id ? { kind: row.author_kind, id: row.author_id } : null,
-        at: row.at instanceof Date ? row.at : new Date(row.at),
-      }));
+      return (result.rows as unknown as PageRow[]).map(toRecord);
+    },
+
+    /**
+     * One page like `page`, ranked by BM25 (F-042, migration 0065): any of the plan's plain words, Polish and English stems,
+     * accents folded. The same audiences, filters, cursor and one-row-per-object rule; the access policy decides the audiences
+     * on every call, so a lost grant, a space whose AI was turned off, a removed or edited row is reflected by the next call.
+     */
+    async ranked(audiences: SearchAudienceRows[], plan: SearchPlanRows): Promise<SearchRowRecord[]> {
+      if (!audiences.length || !/[\p{L}\p{N}]/u.test(plan.words)) return [];
+      const result = await planned(db, pageStatement(audiences, plan, 'bm25'), 'bm25');
+      return (result.rows as unknown as PageRow[]).map(toRecord);
     },
 
     /** Test support: what the page statement of this plan reads, and the keys each index scan looks up. */

@@ -58,7 +58,7 @@ compose config --quiet
 [ "$(compose config --images | grep -cxF "$runtime_image")" -ge 1 ] || fail "no runtime image $runtime_image in the merged configuration"
 # Outputs are captured before grep -q: under pipefail an early grep exit makes the writer's SIGPIPE fail the pipeline.
 images=$(compose config --images)
-! printf '%s\n' "$images" | grep -Eq 'RELEASE_DIGEST|RUNTIME_DIGEST|:latest' || fail "marker or floating tag in the merged configuration"
+! printf '%s\n' "$images" | grep -Eq 'RELEASE_DIGEST|RUNTIME_DIGEST|DATABASE_DIGEST|:latest' || fail "marker or floating tag in the merged configuration"
 runtime_sh up
 [ -z "$(runtime_containers)" ] || fail "runtime containers exist while FLUX_AGENT_RUNTIME is empty: $(runtime_containers)"
 status_out=$(runtime_sh status)

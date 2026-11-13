@@ -11,7 +11,9 @@ project="flux-operator-$(date +%s)-$$"
 port="${FLUX_OPERATOR_TEST_PORT:-18951}"
 origin="http://127.0.0.1:${port}"
 marker='ghcr.io/coldphase/flux@sha256:RELEASE_DIGEST'
+database_marker='ghcr.io/coldphase/flux-database@sha256:DATABASE_DIGEST'
 image="flux-foundation:${project}"
+database_image="flux-database:${project}"
 work=$(mktemp -d)
 env_file="$work/.env"
 compose_file="$work/compose.yaml"
@@ -27,7 +29,7 @@ cleanup() {
     $compose down -v --remove-orphans || true
     remove_project_images
   fi
-  docker image rm -f "$image" >/dev/null 2>&1 || true
+  docker image rm -f "$image" "$database_image" >/dev/null 2>&1 || true
   rm -rf "$work"
 }
 trap cleanup EXIT
@@ -47,11 +49,15 @@ set_env() {
 # One retry for a transient registry or package download error.
 docker build -q -f docker/Dockerfile -t "$image" app >/dev/null ||
   docker build -q -f docker/Dockerfile -t "$image" app >/dev/null
+# Flux's database image (F-042), as the release builds it.
+docker build -q -t "$database_image" docker/database >/dev/null ||
+  docker build -q -t "$database_image" docker/database >/dev/null
 
 count=$(grep -c "image: $marker\$" docker/compose.yaml) || true
 [ "$count" = 4 ] || fail "expected the release marker on 4 services (migrate, api, worker, keyring), found $count"
-sed "s#$marker#$image#" docker/compose.yaml > "$compose_file"
-! grep -v '^ *#' "$compose_file" | grep -q RELEASE_DIGEST || fail "marker left in the temporary Compose file"
+[ "$(grep -c "image: $database_marker\$" docker/compose.yaml)" = 1 ] || fail "expected the database image marker on db"
+sed -e "s#$marker#$image#" -e "s#$database_marker#$database_image#" docker/compose.yaml > "$compose_file"
+! grep -v '^ *#' "$compose_file" | grep -q -E 'RELEASE_DIGEST|DATABASE_DIGEST' || fail "marker left in the temporary Compose file"
 
 umask 077
 cp docker/.env.example "$env_file"
