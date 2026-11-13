@@ -23,6 +23,9 @@ interface Props {
   readFailure: { message: string; retry: () => void } | null; author: (id: string) => string;
 }
 
+/** The hint of S5, and what it shortens to on a field too narrow for it (a small phone, large text), so it never wraps (#1374). */
+const MESSAGE_HINTS = ['Message · @ mention · / actions', 'Message · @ · /', 'Message'] as const;
+
 /** The pane's composer (F-026 S5): sources, the ask bar or who reads this, the field with its "@" and "/" menu, and its notices. */
 export function PaneComposer({ core, drafts, menu, actions, ask, askBar, materials, typing, readFailure, author }: Props) {
   const { project, conversation, writable, aiOff, composerId } = core;
@@ -39,7 +42,7 @@ export function PaneComposer({ core, drafts, menu, actions, ask, askBar, materia
     {!asking ? <ComposerFiles state={publicComposer} attach="none" /> : null}
     {/* A tap on the card's empty space goes to the field, as in a messenger (#266 PF-3). */}
     <ComposerBox id={composerId} label={asking ? 'Ask your assistant' : conversation ? 'Reply' : 'Write a message'} value={draft}
-      placeholder={asking ? 'Ask your assistant…' : conversation ? 'Reply in thread…' : 'Message · @ mention · / actions'}
+      placeholder={asking ? 'Ask your assistant…' : conversation ? 'Reply in thread…' : MESSAGE_HINTS}
       onChange={(value, position) => menu.changeDraft(value, position)} onSelect={menu.setCaret} onBlur={typing.stop} onKeyDown={actions.onKey} disabled={busy || askBusy}
       fieldProps={{ 'aria-describedby': asking ? 'project-ask' : undefined, 'aria-controls': menuOpen ? `${composerId}-menu` : undefined,
         'aria-activedescendant': menuOpen ? `${composerId}-menu-${options[activeIndex]!.id}` : undefined }}

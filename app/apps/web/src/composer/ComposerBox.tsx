@@ -1,9 +1,10 @@
-import { type ReactNode, type Ref, type KeyboardEvent, type ClipboardEvent, type TextareaHTMLAttributes } from 'react';
+import { useImperativeHandle, useLayoutEffect, useRef, type ReactNode, type Ref, type KeyboardEvent, type ClipboardEvent, type TextareaHTMLAttributes } from 'react';
 import { Icon, useToast } from '../ui';
 import { AttachButton } from './Files';
 import type { ComposerState } from './draft';
 import { formatKey } from './formatKeys';
 import { pastedFiles } from './paste';
+import { useFittingHint } from './useFittingHint';
 
 /**
  * The one composer (Spokój rule 7, #504): "+", the field and the inverted round send button, the same in the
@@ -12,7 +13,9 @@ import { pastedFiles } from './paste';
  */
 export function ComposerBox({ id, label, placeholder, value, onChange, onKeyDown, onSelect, onBlur, disabled, boxDisabled, maxLength, fieldRef, fieldProps,
   attach, attachDisabled, sendLabel, sendDisabled, onSend, menu }: {
-  id: string; label: string; placeholder: string; value: string;
+  id: string; label: string; value: string;
+  /** The hint in the empty field: one text, or several, longest first, of which the first that fits one line is shown. */
+  placeholder: string | readonly string[];
   onChange: (value: string, caret: number) => void;
   onKeyDown?: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
   onSelect?: (caret: number) => void; onBlur?: () => void;
@@ -27,6 +30,11 @@ export function ComposerBox({ id, label, placeholder, value, onChange, onKeyDown
   menu?: ReactNode;
 }) {
   const toast = useToast();
+  const own = useRef<HTMLTextAreaElement>(null);
+  useImperativeHandle(fieldRef, () => own.current as HTMLTextAreaElement);
+  const hint = useFittingHint(own, typeof placeholder === 'string' ? [placeholder] : placeholder);
+  // A place that measures its field's height as it is written to (an empty one is measured with the longer hint) lets the shorter hint size it again.
+  useLayoutEffect(() => { const el = own.current; if (el && !el.value) el.style.height = ''; }, [hint]);
   // A pasted screenshot, picture or file attaches to the draft like the paperclip; pasted text stays text.
   const onPaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
     const files = pastedFiles(event.clipboardData);
@@ -43,7 +51,7 @@ export function ComposerBox({ id, label, placeholder, value, onChange, onKeyDown
           onClick={() => toast({ message: 'Files cannot be added here.', timeout: 3000 })}><Icon name="clip" size={16} /></button>}
       {attach ? null : <span id={`${id}-plus-why`} className="ui-vh">This place takes text only.</span>}
       <label className="ui-vh" htmlFor={id}>{label}</label>
-      <textarea id={id} ref={fieldRef} rows={1} value={value} maxLength={maxLength} placeholder={placeholder} disabled={disabled}
+      <textarea id={id} ref={own} rows={1} value={value} maxLength={maxLength} placeholder={hint} disabled={disabled}
         onChange={(event) => onChange(event.target.value, event.target.selectionStart)} onSelect={onSelect ? (event) => onSelect(event.currentTarget.selectionStart) : undefined}
         onBlur={onBlur} onKeyDown={(event) => { if (!formatKey(event)) onKeyDown?.(event); }} onPaste={onPaste} {...fieldProps} />
       <button type="button" className="composer__send" aria-label={sendLabel} aria-disabled={sendDisabled} onClick={onSend}><Icon name="send" /></button>

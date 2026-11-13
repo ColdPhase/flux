@@ -69,7 +69,7 @@ export function ThreadReply(props: ThreadReplyProps | QueuedReplyProps) {
       {message.contribution ? <ContributionMark contribution={message.contribution} /> : null}
       {stored.groupLast !== false ? <MessageTime at={message.createdAt} receipt={stored.receipt} edited={message.editedAt} /> : null}
       <MessageActions {...actions} />
-      {touch.node}
+      {touch.dots}{touch.node}
     </li>
   );
 }

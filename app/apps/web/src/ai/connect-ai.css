@@ -1,9 +1,10 @@
 /* Connect AI (#854, mockup Main): the section head with "Connect another" on the right, then one row per connection. A row
    is its name and state, one usage line with a short bar, and "Change" on the right, vertically centred, with a gap so it
    never overlaps the text however long the line is. */
-.cai__head { display: flex; align-items: center; gap: 12px; margin: 22px 2px 8px; }
-.cai__title { display: flex; flex: 1; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; min-width: 0; }
+.cai__head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 22px 2px 8px; }
+.cai__title { display: flex; flex: 1 1 15rem; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; min-width: 0; }
 .cai__h { margin: 0; }
+.cai__head > .ui-btn { margin-left: auto; }
 .cai__lead { font-size: var(--fs-xs); line-height: 1.4; color: var(--t3); }
 .cai__row { align-items: center; gap: 12px; }
 .cai__row .sset-row__b { gap: 4px; }

@@ -1,4 +1,4 @@
-import { useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useId, useLayoutEffect, useRef } from 'react';
 import { Link } from 'react-router';
 import { Avatar, BottomNav, FluxLogo, Icon, IconButton, Overlay, publishTopEdge, type BottomNavItem, type IconName } from '../ui';
 import { useShellActions } from './shellContext';
@@ -7,7 +7,7 @@ import { useShellData, type ProjectSummary } from './data';
 /**
  * The phone's chrome (F-026 §4 Phone, S2): one floating tab capsule Home · Projects · Inbox with a
  * round Search beside it, one floating "+" above it, and a header of plain icons. A space's views are the
- * underline tabs in the header's second row (#873, #1239); a direct message's one view is named by its title menu.
+ * underline tabs in the header's second row (#873, #1239); a direct message's header is a space's without them (#1374).
  * A conversation gets the whole screen: the dock is not rendered there.
  */
 
@@ -24,9 +24,10 @@ export function phonePlaces(pathname: string, inboxUnread: number): BottomNavIte
   ];
 }
 
-/** Where the dock is not drawn: a conversation (a project's, a direct message), and forms that start something. */
+/** Where the dock is not drawn: a conversation (a project's, a direct message, an agent's chat), and forms that start something. */
 export function phoneHidesDock(pathname: string): boolean {
   if (pathname === '/dm/new') return true;
+  if (/^\/agents\/[^/]+$/.test(pathname)) return true;
   if (/^\/projects\/[^/]+(\/conversations\/[^/]+)?$/.test(pathname)) return true;
   // Spokój (rule 7): a project's views keep the header's Search, not the capsule.
   if (/^\/projects\/[^/]+\/(tasks|map|docs|agents)(\/|$)/.test(pathname)) return true;
@@ -70,60 +71,6 @@ export function PhoneDock({ places, onSearch, onCreate, create, capsule = true }
 /** A plain chevron (no fill, a 44 px hit area) that leads back to where the person came from. */
 export function PhoneBack({ onBack }: { onBack: () => void }) {
   return <IconButton icon="chevron-left" label="Back" size={24} className="phead__round phead__back" data-tip-align="start" onClick={onBack} />;
-}
-
-export interface PhoneMenuItem { id: string; label: string; to: string; icon: IconName; note?: ReactNode; current?: boolean; end?: boolean }
-
-/**
- * A direct message's title menu: it names the conversation and opens the places inside it. "Message info" is the last row.
- * (A space's title is plain: its views are the underline tabs, #873.)
- */
-export function PhoneTitleMenu({ title, subtitle, items, onDetails, detailsLabel = 'Message info', lead, mute }: {
-  title: string; subtitle: ReactNode; items: PhoneMenuItem[]; onDetails: (() => void) | null; detailsLabel?: string; lead?: ReactNode;
-  /** Mute or Unmute this conversation, with the line that says what still arrives (#1249); the row sits above "Message info". */
-  mute?: { label: string; hint: string; run: () => void };
-}) {
-  const [open, setOpen] = useState(false);
-  const titleId = useId();
-  const menuId = useId();
-  const firstRef = useRef<HTMLAnchorElement>(null);
-  return (
-    <div className="phead__id">
-      {lead}
-      <div className="phead__title">
-        <h1 id={titleId} title={title}>
-          <button type="button" className="phead__menu" aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? menuId : undefined} onClick={() => setOpen(true)}>
-            <span className="phead__name">{title}</span><Icon name="chevron-down" size={14} />
-          </button>
-        </h1>
-        <p className="phead__sub">{subtitle}</p>
-      </div>
-      <Overlay open={open} onClose={() => setOpen(false)} placement="center" labelledBy={`${menuId}-t`} id={menuId} className="phone-menu" initialFocus={firstRef}>
-        <h2 className="phone-menu__t" id={`${menuId}-t`}>{title}<span className="ui-vh">, views</span></h2>
-        <ul className="phone-menu__list">
-          {items.map((item, index) => (
-            <li key={item.id}>
-              <Link ref={index === 0 ? firstRef : undefined} to={item.to} className="phone-menu__item" aria-current={item.current ? 'page' : undefined} onClick={() => setOpen(false)}>
-                <Icon name={item.icon} size={20} /><span className="phone-menu__l">{item.label}</span>
-                {item.note ? <span className="phone-menu__n">{item.note}</span> : null}
-                {item.current ? <Icon name="check" size={18} className="phone-menu__ok" /> : null}
-              </Link>
-            </li>
-          ))}
-        </ul>
-        {mute ? (
-          <button type="button" className="phone-menu__item phone-menu__mute" onClick={() => { setOpen(false); mute.run(); }}>
-            <Icon name="quiet" size={20} /><span className="phone-menu__l">{mute.label}<small className="phone-menu__hint">{mute.hint}</small></span>
-          </button>
-        ) : null}
-        {onDetails ? (
-          <button type="button" className="phone-menu__item phone-menu__details" onClick={() => { setOpen(false); onDetails(); }}>
-            <Icon name="panel" size={20} /><span className="phone-menu__l">{detailsLabel}</span>
-          </button>
-        ) : null}
-      </Overlay>
-    </div>
-  );
 }
 
 /** The account's round avatar: Settings, the account and signing out live behind it. */

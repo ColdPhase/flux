@@ -42,7 +42,7 @@
 .ws-item__r { font-family: var(--mono); display: flex; align-items: center; gap: 8px; flex: none; font-size: var(--fs-sm); color: var(--t3); font-variant-numeric: tabular-nums; }
 /* A word, not a number: the "Blocked" pill is set in Geist, not mono (#763 C5). */
 .ws-item__r .ui-pill { font-family: var(--font); }
-.ws-av { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--el); color: var(--t1); box-shadow: inset 0 0 0 1px var(--line), var(--sh-1); font-family: var(--font); font-size: var(--fs-glyph); font-weight: 600; }
+.ws-av { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--el); color: var(--t1); box-shadow: inset 0 0 0 1px var(--line), var(--sh-1); font-family: var(--font); font-size: var(--fs-face); font-weight: 600; }
 
 /* ---------- Task rows (F-026 S-P-Tasks, S9): glyph that changes the state, swipe left for Done ---------- */
 /* The row clips the swipe, but 8 px wider on the left: the state glyph's 30 px hover circle sits 7 px left of the row so
@@ -306,6 +306,10 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
 .wd-menu__item .ui-glyph { flex: none; }
 .wd-menu__item span { min-width: 0; overflow-wrap: anywhere; }
 @media (hover: none) { .wd-menu__item kbd { display: none; } }
+/* On a phone the choices are the Select's bottom sheet (ui/select.css): its rows, with the property's glyphs and faces (#1359). */
+.wd-menu__list.wd-menu__list--sheet { position: static; flex: 1; min-width: 0; max-height: none; padding: 4px; border-radius: 0; background: none; box-shadow: none; }
+.ui-select-sheet .wd-menu__item { min-height: 48px; padding: 8px 12px; font-size: var(--fs-lg); border-radius: var(--r); }
+.ui-select-sheet .wd-menu__group { margin: 12px 12px 4px; font-size: var(--fs-md); }
 @media (pointer: coarse) { .wd-state { min-height: 44px; } .wd-menu__item { min-height: 44px; } .wd-came__field { min-height: 44px; } .wd-came__dropped { min-height: 44px; } }
 
 /* The blocker is one card: the pill, who or what it waits for, then quiet Edit and Resolve. The field shows only while editing. */
