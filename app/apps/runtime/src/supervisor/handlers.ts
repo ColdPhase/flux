@@ -47,7 +47,10 @@ export interface SupervisorConfig {
   /** F-022 "Limits": the supervisor refuses a run while the binding directory exceeds this. */
   bindingLimitBytes: number;
   cliTimeoutMs: number;
-  /** Flux's sandbox for the CLIs' own tools (#1437, sandbox.ts), as found at start; absent or null: the tools stay off. */
+  /**
+   * Flux's sandbox for every run's own tools (#1437, sandbox.ts), as found at start. The runtime never starts without it (#1441); absent or null
+   * only in a test slot without the stand-in, where a CLI runs with Flux's tools alone and pi does not run.
+   */
   sandbox?: SandboxSetup | null;
   /** The sign-in console's PTY and timers; tests inject them (defaults: node-pty, real timers, 15 min). */
   spawnPty?: SpawnPty;

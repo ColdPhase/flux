@@ -1,9 +1,15 @@
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
-import { resolve } from 'node:path';
+import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import { capacityFromMemory, MAX_RUNS, runCapacity } from '../../apps/runtime/src/supervisor/capacity.js';
 import { hostProblem, SUPERVISOR_CAPABILITIES } from '../../apps/runtime/src/supervisor/requirements.js';
+import type { SupervisorConfig } from '../../apps/runtime/src/supervisor/handlers.js';
+import { runPi } from '../../apps/runtime/src/supervisor/pi.js';
+import { findSandbox, NEWER_LINUX_NEEDED } from '../../apps/runtime/src/supervisor/sandbox.js';
 
 // #860: how many agents run at once, from memory and the operator's number; and what a host must offer, with one clear message
 // when it does not. The queue itself is in agent-runtime-runs.test.ts; separate user ids in scripts/check_runtime_people.sh.
@@ -60,6 +66,24 @@ describe('what the host must offer', () => {
     assert.match(hostProblem({ ...met, effectiveCapabilities: 'garbage' })!, /capabilities/);
     assert.match(hostProblem({ ...met, effectiveCapabilities: '00000000000000ea' })!, /capabilities CHOWN inside/);
     assert.match(hostProblem({ ...met, effectiveCapabilities: '000000000000006b' })!, /capabilities SETUID inside/);
+  });
+
+  test('a kernel without Landlock ABI 4 refuses the runtime in one sentence: agents never run without their own shell and files (#1441)', async () => {
+    assert.equal(NEWER_LINUX_NEEDED, 'Flux AI needs a newer Linux (kernel 6.7 or later, e.g. Ubuntu 24.04 or Debian 13).');
+    const dir = await mkdtemp(join(tmpdir(), 'flux-landlock-'));
+    try {
+      // The sandbox's own `abi` probe: Landlock ABI 3 (Linux 6.2–6.6), none, an unreadable answer, a probe that fails.
+      for (const [name, body] of [['abi3', 'echo 3'], ['none', 'echo 0'], ['garbage', 'echo landlock'], ['fails', 'exit 1']] as const) {
+        const binary = join(dir, name);
+        await writeFile(binary, `#!/bin/sh\n${body}\n`);
+        await chmod(binary, 0o755);
+        assert.deepEqual(await findSandbox(binary, join(dir, 'scratch')), { setup: null, reason: NEWER_LINUX_NEEDED }, name);
+      }
+    } finally { await rm(dir, { recursive: true, force: true }); }
+    // And pi, given no sandbox, never starts a run without its tools: the run ends before anything is written or started.
+    const ended = await runPi({ sandbox: null, egressHost: 'runtime-egress', tmpDir: '/nonexistent' } as unknown as SupervisorConfig,
+      { kind: 'run', client: 'pi', runId: randomUUID() } as never, '/nonexistent', null, () => undefined);
+    assert.equal((ended as { result: { outcome: string } }).result.outcome, 'crashed');
   });
 
   test('the supervisor refuses in one line, stays up without listening and does not exit into a restart loop', async () => {

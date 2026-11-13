@@ -254,8 +254,8 @@ docker exec -u "$(person_of "$t_binding")" "$t_cid" sh -c "rm -f /data/$t_bindin
 
 step "9e. A run's own tools (#1437): from the sandbox shell, on the runtime's real networks, nothing but the egress (and with Landlock ABI 4 not even that); HTML to PDF with pandoc and typst, attached with flux_attach_file"
 abi=$(docker exec "$t_cid" /opt/flux-runtime/sandbox/flux-sandbox abi)
-# The tools need Landlock's network rules (ABI 4, Linux 6.7; coordinator decision on #1437): below that the runtime keeps them off.
-[ "$abi" -ge 4 ] || fail "this host's Landlock (ABI $abi) cannot forbid TCP: the runtime keeps the CLIs' tools off (needs Linux 6.7, ABI 4)"
+# The runtime needs Landlock's network rules (ABI 4, Linux 6.7; #1437, founder decision 2026-11-13 on #1441): below that it does not start.
+[ "$abi" -ge 4 ] || fail "this host's Landlock (ABI $abi) cannot forbid TCP: Flux AI needs a newer Linux (kernel 6.7 or later)"
 tcp_rule=1
 compose --profile runtime logs --no-color runtime-1 | grep -q '"event":"ready".*"landlock":'"$abi" || fail "the runtime did not report Landlock ABI $abi at start"
 python3 - "$here/scripts/agent-runtime/probe-sandbox-net.mjs" "$(docker exec "$t_cid" cat "/data/$t_binding/claude/.credentials.json")" > "$work/sandbox-run.json" <<PY
