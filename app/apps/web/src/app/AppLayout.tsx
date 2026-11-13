@@ -676,7 +676,7 @@ function AppLayoutContent() {
         ? { crumb: null, title: activeDm.title, ...(activeDm.kind === 'group' ? { topic: activeDm.audience } : {}) }
         : dmId === 'new'
           ? { crumb: null, title: 'New message', noDetails: true }
-          : { crumb: null, title: 'Direct messages', noDetails: true }
+          : { crumb: null, title: 'Messages', noDetails: true }
       // Pages reached from Home name themselves (#763 NV-1); only `/` is Home. My tasks span every space, so no single
       // space is named above them (#190).
       : location.pathname === '/tasks'

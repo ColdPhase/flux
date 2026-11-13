@@ -482,7 +482,7 @@ class ScenarioJourney:
         # A private conversation with Jonas, independent of any project.
         page.goto("/")
         self.go_to_place(page, "Messages")
-        expect(page.get_by_role("heading", name="No direct messages yet")).to_be_visible()
+        expect(page.get_by_role("heading", name="No messages yet")).to_be_visible()
         self.tap(page.locator(".pane-scroll").get_by_role("link", name="New message"))
         expect(page.get_by_role("heading", level=1, name="New message")).to_be_visible()
         page.get_by_placeholder("Find people by name or email").fill("jonas")

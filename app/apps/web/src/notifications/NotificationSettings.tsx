@@ -412,7 +412,7 @@ function MutePicker({ places, onMute, pending }: { places: MutedPlace[]; onMute:
       <Select id={selectId} value={choice} disabled={!!pending} onChange={(next) => { choiceVersion.current += 1; setChoice(next); }}>
         <Option value="">Choose a space or conversation…</Option>
         {places.some((item) => item.type === 'project') ? <OptionGroup label="Spaces">{places.filter((item) => item.type === 'project').map((item) => <Option key={item.id} value={`project:${item.id}`}># {item.name}</Option>)}</OptionGroup> : null}
-        {places.some((item) => item.type === 'dm') ? <OptionGroup label="Direct messages">{places.filter((item) => item.type === 'dm').map((item) => <Option key={item.id} value={`dm:${item.id}`}>{item.name}</Option>)}</OptionGroup> : null}
+        {places.some((item) => item.type === 'dm') ? <OptionGroup label="Messages">{places.filter((item) => item.type === 'dm').map((item) => <Option key={item.id} value={`dm:${item.id}`}>{item.name}</Option>)}</OptionGroup> : null}
       </Select>
       <Button disabled={!place && !pending} busy={!!pending} onClick={() => {
         if (!place) return;

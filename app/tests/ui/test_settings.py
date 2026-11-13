@@ -1,5 +1,5 @@
 """Browser tests for Settings (#350, F-026 "Prostota"): Account, Appearance, Notifications, AI and
-Keyboard shortcuts, at 1440 × 900 and on a 390 × 844 touch phone, in light and dark.
+Shortcuts, at 1440 × 900 and on a 390 × 844 touch phone, in light and dark.
 
 Runs with the other tests/ui modules through scripts/check_ui.sh against the running Compose application.
 Every step that changes something is checked in the running app (the root's data attributes, storage and
@@ -26,12 +26,12 @@ if UI_BROWSER not in ("chromium", "webkit"):
 PASSWORD = "settings stay calm and findable"
 STAMP = int(time.time() * 1000)
 NAME, EMAIL = "Ada Kowalska", f"ada.settings+{STAMP}@example.test"
-SECTIONS = ["Account", "Appearance", "Notifications", "AI", "Company", "Keyboard shortcuts"]
+SECTIONS = ["Account", "Appearance", "Notifications", "AI", "Company", "Shortcuts"]
 # Guide §4, in order: every shortcut and its action.
 SHORTCUTS = [
     ("C", "New (task by default)"), ("⌘K", "Search or run"), ("GI", "Go to Inbox"), ("JorK", "Move in a list"), ("E", "Done"),
     ("S", "Not now"), ("A", "Accept"), ("Z", "Undo"), ("R", "Reply in thread"), ("T", "Create a task from a message"),
-    ("1to5", "Task state"), ("[", "Collapse the sidebar"), ("Esc", "Close a panel or menu"),
+    ("1to4", "Task state"), ("[", "Collapse the sidebar"), ("Esc", "Close a panel or menu"),
 ]
 
 
@@ -244,8 +244,8 @@ class SettingsJourney(unittest.TestCase):
     def test_04_keyboard_shortcuts_list_every_key_of_the_guide(self) -> None:
         page = self.page()
         page.goto("/settings/shortcuts")
-        expect(page.get_by_role("heading", level=2, name="Keyboard shortcuts")).to_be_visible()
-        rows = page.get_by_role("table", name="Keyboard shortcuts").locator("tbody tr")
+        expect(page.get_by_role("heading", level=2, name="Shortcuts")).to_be_visible()
+        rows = page.get_by_role("table", name="Shortcuts").locator("tbody tr")
         expect(rows).to_have_count(len(SHORTCUTS))
         found = [(re.sub(r"\s+", "", row.locator("td").inner_text()), row.locator("th").inner_text()) for row in rows.all()]
         self.assertEqual(found, SHORTCUTS)
@@ -305,7 +305,7 @@ class SettingsJourney(unittest.TestCase):
             expect(page.get_by_role("link", name=re.compile(f"^{NAME}"))).to_have_attribute("href", "/settings/account")
             rows = [text.split("\n")[0] for text in page.locator("ul.sset-card a.sset-row").all_inner_texts()]
             self.assertEqual(rows, ["Appearance", "Notifications", "AI", "Company"])
-            expect(page.get_by_role("link", name=re.compile("^Keyboard shortcuts"))).to_have_count(0)
+            expect(page.get_by_role("link", name=re.compile("^Shortcuts"))).to_have_count(0)
             expect(page.get_by_role("button", name=re.compile("^Sign out"))).to_be_visible()
             self.phone_targets(page)
             shot(page, f"settings-phone-390-settings-{'dark' if dark else 'light'}")
@@ -468,7 +468,7 @@ class SettingsJourney(unittest.TestCase):
             self.assertEqual(page.evaluate("document.activeElement?.tagName ?? null"), "H1")
 
     def test_10_a_touch_only_tablet_lists_no_keyboard_shortcuts(self) -> None:
-        """AC-1: Keyboard shortcuts appear only with a keyboard; a touch-only tablet's section list leaves them out."""
+        """AC-1: Shortcuts appear only with a keyboard; a touch-only tablet's section list leaves them out."""
         context = self.browser.new_context(base_url=ORIGIN, storage_state=self.state, viewport={"width": 1024, "height": 768},
                                            device_scale_factor=1, has_touch=True, locale="en-GB")
         self.addCleanup(context.close)
@@ -485,7 +485,7 @@ class SettingsJourney(unittest.TestCase):
         self.addCleanup(mouse.close)
         other = mouse.new_page()
         other.goto("/settings")
-        expect(other.get_by_role("navigation", name="Settings sections").get_by_role("link", name="Keyboard shortcuts")).to_be_visible()
+        expect(other.get_by_role("navigation", name="Settings sections").get_by_role("link", name="Shortcuts")).to_be_visible()
 
 
 if __name__ == "__main__":

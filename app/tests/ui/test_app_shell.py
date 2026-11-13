@@ -547,8 +547,8 @@ class AppShellJourney(unittest.TestCase):
         # Direct messages is its own place: the sidebar lists conversations, there are no views.
         sidebar.locator("#side-dms").get_by_role("link", name="Messages", exact=True).click()
         expect(page).to_have_url(f"{ORIGIN}/dm")
-        expect(page.get_by_role("heading", level=1, name="Direct messages")).to_be_visible()
-        expect(page.get_by_role("heading", name="No direct messages yet")).to_be_visible()
+        expect(page.get_by_role("heading", level=1, name="Messages")).to_be_visible()
+        expect(page.get_by_role("heading", name="No messages yet")).to_be_visible()
         expect(sidebar.locator("#side-dms").get_by_role("link", name="Messages", exact=True)).to_have_attribute("aria-current", "page")
         expect(sidebar.get_by_text("No conversations yet", exact=False)).to_have_count(0)  # #763 FR-4
         # On the computer New (C) starts a message; the sidebar has no second "+".
