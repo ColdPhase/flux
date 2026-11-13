@@ -340,7 +340,7 @@ class FirstRunSettingsPeople(unittest.TestCase):
         expect(page.get_by_role("list", name="People in Maria’s company")).to_contain_text("Maria Nowak (you)")
         # The people come first; Invite opens the ways to add someone.
         page.get_by_role("button", name="Invite", exact=True).click()
-        expect(page.get_by_role("region", name="Add someone")).to_be_visible()
+        expect(page.get_by_role("region", name="Invite people")).to_be_visible()
         expect(page.get_by_text("Guests see only the spaces they’re added to and never have AI.")).to_be_visible()
         expect(page.get_by_role("button", name=re.compile("Turn (off|on) AI"))).to_have_count(0)
         expect(page.get_by_role("button", name="Back to Details")).to_have_count(0)
@@ -368,16 +368,12 @@ class FirstRunSettingsPeople(unittest.TestCase):
         self.assertLessEqual(phone.evaluate("document.documentElement.scrollWidth"), PHONE["width"])
 
     def test_11_someone_new_gets_an_invite_link_with_their_address(self) -> None:
-        """#763 PE-2 / F-035: the address Flux could not find is filled into an invite link that joins the company."""
+        """#763 PE-2 / F-035, #1438: one form; an address Flux cannot find makes an invite link locked to it, at once."""
         page = self.page("maria")
         page.goto("/settings/company?invite=1")
-        add = page.get_by_role("region", name="Add someone")
+        invite = page.get_by_role("region", name="Invite people")
         newcomer = f"piotr.new+{STAMP}@example.test"
-        add.get_by_label("Email").fill(newcomer)
-        add.get_by_role("button", name=re.compile("^Add to ")).click()
-        expect(add.get_by_role("alert")).to_have_text(f"No one has an account with {newcomer} here yet. Create an invite link for them below and send it yourself.")
-        invite = page.get_by_role("region", name="Invite with a link")
-        expect(invite.get_by_label("Only for (optional)")).to_have_value(newcomer)
+        invite.get_by_label("Email (optional)").fill(newcomer)
         invite.get_by_role("button", name="Create invite link").click()
         field = invite.get_by_role("group", name="New invite link").get_by_role("textbox")
         expect(field).to_have_value(re.compile(f"^{re.escape(ORIGIN)}/join#[A-Za-z0-9_-]{{54}}$"))
@@ -386,14 +382,13 @@ class FirstRunSettingsPeople(unittest.TestCase):
         # The link opens the join page; Piotr creates his account there and joins as a member.
         stranger = self.page()
         stranger.goto(field.input_value())
-        stranger.get_by_role("button", name="Create an account").click()
+        # #1438: the invite page is the create-account form; joining lands in the space everyone reads, or Home.
         stranger.get_by_label("Name").fill("Piotr Nowy")
         stranger.get_by_label("Email").fill(newcomer)
         stranger.get_by_label("Password").fill(PASSWORD)
-        stranger.get_by_role("button", name="Create account").click()
-        expect(stranger.get_by_role("heading", level=1, name="You joined Riverside Makers")).to_be_visible()
-        stranger.get_by_role("button", name="Open Riverside Makers").click()
-        expect(stranger.get_by_role("heading", level=1, name="Home")).to_be_visible()
+        stranger.get_by_role("button", name="Create account and join").click()
+        expect(stranger).not_to_have_url(re.compile(r"/join"))
+        expect(stranger.get_by_role("heading", level=1, name="You joined Riverside Makers")).to_have_count(0)
         expect(page.get_by_role("list", name="People in Riverside Makers")).to_contain_text("Piotr Nowy")
 
     # ---------------------------------------------------------------- mention chips (PE-4)

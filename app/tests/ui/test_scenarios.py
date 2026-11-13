@@ -459,9 +459,9 @@ class ScenarioJourney:
         expect(page).to_have_url(re.compile(r"/settings/company$"))
         self.tap(page.get_by_role("button", name="Invite", exact=True))
         for key in ("jonas", "mia", "lee"):
-            form = page.get_by_role("region", name="Add someone")
-            form.get_by_label("Email").fill(self.emails[key])
-            self.tap(form.get_by_role("button", name=re.compile("^Add to ")))
+            form = page.get_by_role("region", name="Invite people")
+            form.get_by_label("Email (optional)").fill(self.emails[key])
+            self.tap(form.get_by_role("button", name="Create invite link"))
             expect(page.locator(".people__done")).to_have_text(f"{NAMES[key]} joined {WORKSPACE} as member.")
         members = {member["userId"]: member["role"] for member in self.api("ada", "GET", f"/api/v1/workspaces/{workspace}/members", status=200)}
         self.assertEqual(members, {self.ids["ada"]: "owner", self.ids["jonas"]: "member", self.ids["mia"]: "member", self.ids["lee"]: "member"})

@@ -93,6 +93,10 @@
 .spset__remove-gap { flex: none; width: 72px; }
 .spset__add { display: grid; gap: 10px; margin: 0 0 14px; padding: 14px; border-radius: var(--r); background: var(--el); box-shadow: inset 0 0 0 1px var(--line2); }
 .spset__add .newspace__foot { justify-content: flex-start; }
+/* #1438: "Someone new?" under the company's people: an email and Invite on one row; its link and status under them. */
+.spset__new { display: grid; gap: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.spset__newform { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 8px; }
+.spset__newform > .ui-field { min-width: 0; }
 .spset__status { min-height: 18px; margin: 8px 2px 0; font-size: var(--fs-sm); color: var(--t2); }
 .spset__status:empty { display: none; }
 .spset__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }

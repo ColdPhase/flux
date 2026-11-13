@@ -107,10 +107,18 @@ class InviteLinksJourney(unittest.TestCase):
         page.goto("/settings/company?invite=1")
         expect(page.get_by_text(re.compile("works in this one Flux"))).to_be_visible()
 
+    def more(self, region) -> None:
+        """#1438: the role and the expiry wait under More (Member, 7 days)."""
+        more = region.get_by_role("button", name="More")
+        if more.get_attribute("aria-expanded") != "true":
+            more.click()
+
     def make_link(self, page: Page, role: str, email: str = "") -> str:
-        region = page.get_by_role("region", name="Invite with a link")
-        choose(region.get_by_label("Joins as"), label=role)
-        region.get_by_label("Only for (optional)").fill(email)
+        region = page.get_by_role("region", name="Invite people")
+        if role != "Member":
+            self.more(region)
+            choose(region.get_by_label("Joins as"), label=role)
+        region.get_by_label("Email (optional)").fill(email)
         region.get_by_role("button", name="Create invite link").click()
         link = region.get_by_role("group", name="New invite link").get_by_role("textbox")
         expect(link).to_have_value(re.compile(f"^{re.escape(ORIGIN)}/join#[A-Za-z0-9_-]{{54}}$"))
@@ -122,7 +130,10 @@ class InviteLinksJourney(unittest.TestCase):
     def test_01_owner_makes_a_link_in_people(self) -> None:
         page = self.page("ada")
         self.open_people(page)
-        region = page.get_by_role("region", name="Invite with a link")
+        region = page.get_by_role("region", name="Invite people")
+        # #1438: one form; More holds the role and the expiry.
+        expect(region.get_by_label("Joins as")).to_have_count(0)
+        self.more(region)
         expect(region.get_by_label("Works for")).to_contain_text("7 days")
         # Ada is an owner: Admin is offered; never Owner.
         self.assertEqual(app_labels(region.get_by_label("Joins as")), ["Member", "Guest", "Admin"])
@@ -140,33 +151,39 @@ class InviteLinksJourney(unittest.TestCase):
         page = self.page(None, phone=True)
         page.goto(self.member_link)
         expect(page.get_by_role("heading", level=1, name="Join Riverside Makers")).to_be_visible()
-        expect(page.get_by_text("Ada Kowalska invited you to Riverside Makers as a member.")).to_be_visible()
+        # #1438: no jargon: who invited them, and a member's ordinary role needs no sentence.
+        expect(page.get_by_text("Ada Kowalska invited you.", exact=True)).to_be_visible()
+        expect(page.get_by_text(re.compile("handoffs|Members are in Everyone"))).to_have_count(0)
         # The token is kept in this tab only: not in the address or the history (#776 review P3-2).
         self.assertEqual(page.evaluate("location.hash"), "")
         self.assertEqual(page.url, f"{ORIGIN}/join")
+        # #1438: the create-account form comes first; signing in is the second way.
+        form = page.get_by_role("form", name="Create account and join")
+        expect(form).to_be_visible()
+        expect(page.get_by_role("link", name="Sign in to join")).to_be_visible()
         shot(page, "invite-join-signed-out-phone-390")
-        page.get_by_role("button", name="Create an account").click()
-        expect(page).to_have_url(re.compile(r"/sign-up\?next=%2Fjoin%3Fcreated%3D1$"))
-        page.get_by_label("Name").fill(NIA[0])
-        page.get_by_label("Email").fill(NIA[1])
-        page.get_by_label("Password").fill(PASSWORD)
-        page.get_by_role("button", name="Create account").click()
-        # #763 FT-3: an account made from the link joins as it is made; there is no second "Join" to press.
-        expect(page.get_by_role("heading", level=1, name="You joined Riverside Makers")).to_be_visible()
-        self.assertEqual(page.url, f"{ORIGIN}/join")
-        expect(page.get_by_text("You’re a member of Riverside Makers.")).to_be_visible()
-        page.get_by_role("button", name="Open Riverside Makers").click()
-        expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+        form.get_by_label("Name").fill(NIA[0])
+        form.get_by_label("Email").fill(NIA[1])
+        form.get_by_label("Password").fill(PASSWORD)
+        form.get_by_role("button", name="Create account and join").click()
+        # #763 FT-3, #1438: an account made from the link joins as it is made, and there is no "You joined" step.
+        expect(page).not_to_have_url(re.compile(r"/join"))
+        expect(page.get_by_role("heading", level=1, name="You joined Riverside Makers")).to_have_count(0)
         self.assertEqual(self.roles(self.riverside).get(NIA[1]), "member")
         self.assertEqual(self.pending(self.riverside), [], "the used link is no longer listed")
-        # The link worked once: opening it again from this account says there is nothing more to do.
+        # The link worked once: opening it again from this account just opens Flux.
         page.goto(self.member_link)
-        expect(page.get_by_role("heading", level=1, name="You’re in Riverside Makers")).to_be_visible()
+        expect(page).not_to_have_url(re.compile(r"/join"))
 
     def test_03_an_email_lock_admits_only_that_address(self) -> None:
         owner = self.page("ada")
         self.open_people(owner)
-        link = self.make_link(owner, "Guest", PEOPLE["ben"][1].upper())
+        # Ben has an account, so the form would add him at once (#1438): the link locked to his address is made through the API.
+        made = owner.request.post(f"/api/v1/workspaces/{self.riverside}/invites", data={"role": "guest", "email": PEOPLE["ben"][1].upper()},
+                                  headers={"origin": ORIGIN, "idempotency-key": str(uuid.uuid4())})
+        self.assertEqual(made.status, 201, made.text())
+        link = made.json()["link"]
+        owner.reload()
         item = owner.get_by_role("list", name=re.compile("^Waiting to be used")).get_by_role("listitem").first
         expect(item).to_contain_text(PEOPLE["ben"][1])
         expect(item).to_contain_text("Guest")
@@ -181,13 +198,13 @@ class InviteLinksJourney(unittest.TestCase):
         # Ben, signed out, signs in through the link and joins as a guest.
         ben = self.page(None)
         ben.goto(link)
-        ben.get_by_role("button", name="Sign in to join").click()
+        expect(ben.get_by_text("You’ll be a guest: you see only the spaces you’re added to.")).to_be_visible()
+        ben.get_by_role("link", name="Sign in to join").click()
         ben.get_by_label("Email").fill(PEOPLE["ben"][1])
         ben.get_by_label("Password").fill(PASSWORD)
         ben.get_by_role("button", name="Sign in").click()
         ben.get_by_role("button", name="Join Riverside Makers").click()
-        expect(ben.get_by_role("heading", level=1, name="You joined Riverside Makers")).to_be_visible()
-        expect(ben.get_by_text("You’re a guest of Riverside Makers.")).to_be_visible()
+        expect(ben).not_to_have_url(re.compile(r"/join"))
         self.assertEqual(self.roles(self.riverside).get(PEOPLE["ben"][1]), "guest")
         # Ada's People shows Ben without a reload (the join is an event of the workspace).
         expect(owner.get_by_role("list", name="People in Riverside Makers")).to_contain_text("Ben Okafor")
@@ -231,7 +248,7 @@ class InviteLinksJourney(unittest.TestCase):
             "sso": {"providerId": "company", "label": "Company SSO", "reachable": True}}))
         owner.goto("/settings/company")
         expect(owner.get_by_text("Everyone who signs in with Company SSO joins automatically")).to_be_visible()
-        expect(owner.get_by_role("region", name="Invite with a link")).to_have_count(0)
+        expect(owner.get_by_role("region", name="Invite people")).to_have_count(0)
         expect(owner.get_by_role("button", name="Invite", exact=True)).to_have_count(0)
         expect(owner.get_by_role("region", name="Add someone")).to_have_count(0)
         # A tab without the token (a sign-in finished in another tab) asks for the link again (#776 review P3-3).
@@ -260,7 +277,7 @@ class InviteLinksJourney(unittest.TestCase):
         shot(dan, "invite-joined-encrypted-phone-390")
         self.assertEqual(self.roles(sealed).get(PEOPLE["dan"][1]), "admin")
         dan.get_by_role("button", name="Open Garden club").click()
-        expect(dan.get_by_role("heading", level=1, name="Home")).to_be_visible()
+        expect(dan).not_to_have_url(re.compile(r"/join"))
 
 
 if __name__ == "__main__":

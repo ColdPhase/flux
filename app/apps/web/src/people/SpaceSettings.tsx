@@ -11,12 +11,14 @@ import { useShellActions } from '../app/shellContext';
 import { useWorkspaceEncryption } from '../encryption/state';
 import { Avatar, Button, Icon, Input, Option, Select, useFocusBack, useToast } from '../ui';
 import { SwitchRow } from '../ui/SwitchRow';
-import { attemptKeys, firstName, grantPerson, isManagerRole, listGrants, listMembers, problemText, revokeGrant } from './api';
+import { attemptKeys, createInvite, firstName, grantPerson, isManagerRole, listGrants, listMembers, problemText, revokeGrant } from './api';
+import type { WorkspaceInvite } from '@flux/contracts';
 import { DeleteSpaceDialog } from './DeleteSpace';
 import { PersonLine } from './LastActive';
 import { PeoplePicker } from './PeoplePicker';
 import '../app/settings.css';
 import './space.css';
+import './people.css';
 
 /** What a person is in a space: its admin (a company owner or admin always is), or a member. */
 const roleWord = (role: ProjectGrantRole | 'manager') => (role === 'manager' ? 'Admin' : 'Member');
@@ -46,11 +48,13 @@ export function SpaceSettings() {
   const shell = useProjectShell();
   const { me, workspace } = useShellData();
   if (!shell) return null;
-  return <SpaceSettingsPage project={shell.project} people={shell.people} meId={me.user.id} meName={me.user.name} companyName={workspace?.name ?? 'the company'} />;
+  // #1438: only the company's owners and admins make invite links, so only they get "Someone new?" in Add people.
+  const inviter = workspace?.id === shell.project.workspaceId && isManagerRole(workspace.role ?? 'guest');
+  return <SpaceSettingsPage project={shell.project} people={shell.people} meId={me.user.id} meName={me.user.name} companyName={workspace?.name ?? 'the company'} inviter={inviter} />;
 }
 
-function SpaceSettingsPage({ project, people, meId, meName, companyName }: {
-  project: Project; people: ProjectPerson[] | null; meId: string; meName: string; companyName: string;
+function SpaceSettingsPage({ project, people, meId, meName, companyName, inviter }: {
+  project: Project; people: ProjectPerson[] | null; meId: string; meName: string; companyName: string; inviter: boolean;
 }) {
   const navigate = useNavigate();
   const revalidator = useRevalidator();
@@ -224,6 +228,8 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName }: {
         {manager && adding && roster ? (
           <div className="spset__add" role="group" aria-label="Add people" onKeyDown={onEscape(() => { setAdding(false); setChosen([]); focusOn('.spset__seclead button'); })}>
             <PeoplePicker listOnly candidates={candidates} value={chosen} onChange={setChosen} disabled={busy === 'add'} companyName={companyName} />
+            {inviter ? <SomeoneNew project={project} members={roster.members} inSpace={(id) => !!grantOf(id)} meId={meId} companyName={companyName}
+              onTick={(id) => setChosen((list) => (list.includes(id) ? list : [...list, id]))} /> : null}
             <div className="newspace__foot">
               <Button variant="primary" busy={busy === 'add'} disabled={!chosen.length} onClick={() => void addChosen()}>{chosen.length ? `Add ${chosen.length === 1 ? '1 person' : `${chosen.length} people`}` : 'Add'}</Button>
               <Button variant="secondary" onClick={() => { setAdding(false); setChosen([]); focusOn('.spset__seclead button'); }}>Cancel</Button>
@@ -369,5 +375,70 @@ function AiCard({ project, manager, onChanged }: { project: Project; manager: bo
       </div>
       {problem ? <p className="people__notice" role="alert"><Icon name="alert" size={13} />{problem}</p> : null}
     </>
+  );
+}
+
+const EMAIL = /^[^\s@]+@[^\s@]+$/;
+
+async function copyText(text: string): Promise<boolean> {
+  try { await navigator.clipboard.writeText(text); return true; } catch { return false; }
+}
+
+/**
+ * "Someone new?" in a space's Add people (founder decision 2026-11-13, #1438): the email of someone not in the company makes the company's
+ * invite link (Member, 7 days, locked to that address) that also adds them to this space when they join. It is copied at once and shown with
+ * Copy link; Flux sends no email. An address of someone already in the company ticks them in the list above instead.
+ */
+function SomeoneNew({ project, members, inSpace, meId, companyName, onTick }: {
+  project: Project; members: WorkspaceMember[]; inSpace: (userId: string) => boolean; meId: string; companyName: string; onTick: (userId: string) => void;
+}) {
+  const [email, setEmail] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState('');
+  const [status, setStatus] = useState('');
+  const [fresh, setFresh] = useState<WorkspaceInvite | null>(null);
+  const keys = useRef(attemptKeys());
+  const linkRef = useRef<HTMLInputElement>(null);
+  async function invite(event: FormEvent) {
+    event.preventDefault();
+    if (busy) return;
+    const address = email.trim().toLowerCase();
+    setStatus(''); setProblem('');
+    if (!EMAIL.test(address)) { setProblem('Enter their email address.'); return; }
+    const known = members.find((member) => member.email.toLowerCase() === address);
+    if (known) {
+      if (known.userId === meId || inSpace(known.userId)) setProblem(`${known.userId === meId ? 'You are' : `${known.name} is`} already in ${project.name}.`);
+      else { onTick(known.userId); setEmail(''); setStatus(`${known.name} is in ${companyName}: ticked above. Add them with Add.`); }
+      return;
+    }
+    setBusy(true);
+    try {
+      const made = await createInvite(project.workspaceId, { role: 'member', email: address, expiresInDays: 7, spaceId: project.id }, keys.current.for(`space:${project.id}:${address}`));
+      keys.current.done();
+      setFresh(made); setEmail('');
+      setStatus(await copyText(made.link) ? 'Invite link created and copied. Send it to them yourself.' : 'Invite link created. Copy it and send it to them yourself.');
+      requestAnimationFrame(() => linkRef.current?.select());
+    } catch (error) {
+      setProblem(problemText(error, { workspace: companyName, email: address }));
+    } finally { setBusy(false); }
+  }
+  return (
+    <div className="spset__new" data-someone-new="">
+      <form className="spset__newform" onSubmit={(event) => void invite(event)} noValidate aria-label="Invite someone new">
+        <Input id="spset-new-email" label="Someone new?" type="email" inputMode="email" autoComplete="off" spellCheck={false} placeholder="name@example.com" value={email}
+          aria-invalid={problem ? true : undefined} aria-describedby="spset-new-hint" onChange={(event) => { setEmail(event.target.value); if (problem) setProblem(''); }} />
+        <Button type="submit" variant="secondary" busy={busy}>Invite</Button>
+      </form>
+      {problem ? <p className="people__notice" role="alert"><Icon name="alert" size={13} />{problem}</p>
+        : <p className="people__hint" id="spset-new-hint">They join {companyName} and {project.name} with the link.</p>}
+      {fresh ? (
+        <div className="people__link" role="group" aria-label="New invite link">
+          <Input ref={linkRef} id="spset-new-link" label={`Link for ${fresh.email ?? 'anyone'}`} readOnly value={fresh.link}
+            onFocus={(event) => event.currentTarget.select()} hint="It works once, for 7 days. Flux doesn’t send it: paste it into your message to them." />
+          <div className="details__actions"><Button variant="secondary" onClick={() => void copyText(fresh.link).then((ok) => setStatus(ok ? 'Link copied.' : 'Copying isn’t allowed here. Select the link and copy it.'))}><Icon name="copy" size={14} />Copy link</Button></div>
+        </div>
+      ) : null}
+      <p className="people__invite-status" role="status">{status ? <><Icon name="check" size={13} />{status}</> : null}</p>
+    </div>
   );
 }

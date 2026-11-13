@@ -35,13 +35,17 @@ export function inviteRoutes(app: FastifyInstance, { db, principal, command, ses
     const names = await inviteNoticeRows(tx as Database).names([joined.userId]);
     const who = names.get(joined.userId) ?? 'Someone';
     const company = (await accessPorts.workspaces(tx as Database).get(joined.workspaceId))?.name ?? 'the company';
+    // #1438: a link made from a space's Add people names that space, and the notice opens it.
+    const { space } = joined;
+    const body = space ? (joined.role === 'guest' ? `They are a guest in ${space.name}, the only space they see.` : `They are in Everyone and ${space.name}.`)
+      : joined.role === 'guest' ? 'They are a guest: they see only the spaces you add them to, in each space’s settings.'
+        : 'They are in Everyone now. Add them to other spaces in each space’s settings.';
     try {
       await createNotification(notificationUnitOfWork(tx as Database, pgBossQueue(boss)), {
         userId: joined.inviterId, source: { type: 'workspace', id: joined.workspaceId },
         title: `${who} joined ${company}`.slice(0, 200),
-        body: joined.role === 'guest' ? 'They are a guest: they see only the spaces you add them to, in each space’s settings.'
-          : 'They are in Everyone now. Add them to other spaces in each space’s settings.',
-        url: '/settings/company', aiOrigin: false,
+        body: body.slice(0, 500),
+        url: space ? `/projects/${space.id}/settings` : '/settings/company', aiOrigin: false,
       });
     } catch (error) { if (!(error instanceof NotFoundError)) throw error; }
   };
@@ -56,7 +60,7 @@ export function inviteRoutes(app: FastifyInstance, { db, principal, command, ses
   app.post<{ Params: { workspaceId: string }; Body: CreateInviteCommand }>(`${WORKSPACES_PATH}/:workspaceId/invites`, {
     schema: { body: { type: 'object', required: ['role'], additionalProperties: false, properties: {
       role: { type: 'string', enum: ['admin', 'member', 'guest'] }, email: { type: ['string', 'null'], maxLength: 320 },
-      expiresInDays: { type: 'integer', enum: [...INVITE_EXPIRY_DAYS] } } } },
+      expiresInDays: { type: 'integer', enum: [...INVITE_EXPIRY_DAYS] }, spaceId: { type: ['string', 'null'], maxLength: 64 } } } },
     // The stored idempotent answer has no link; it is derived again on every answer, replays included.
     preSerialization: async (_request: FastifyRequest, _reply: unknown, payload: unknown) =>
       payload && typeof payload === 'object' && 'expiresAt' in payload && !('link' in payload) ? withLink(signer, payload as CreatedInvite) : payload,

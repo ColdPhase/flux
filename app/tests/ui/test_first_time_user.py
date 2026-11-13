@@ -160,37 +160,37 @@ class FirstTimeUser(unittest.TestCase):
         menu.get_by_role("menuitem", name="Create task").click()
         expect(page.get_by_role("dialog", name="New task").get_by_label("Title", exact=True)).to_have_value(re.compile("Should sign-up ask for a phone number"))
 
-    def test_05_someone_new_joins_the_company_by_link_and_is_then_added_to_the_space(self) -> None:
-        """F-037: an invite link joins the company; the space's people are added from the company afterwards."""
+    def test_05_someone_new_is_invited_from_the_space_and_joins_it_with_one_link(self) -> None:
+        """#1438: a space's Add people takes a new person's email; the link joins the company and the space, and the inviter hears it."""
         anna = self.page("anna")
         anna.goto(f"/projects/{self.ids['project']}/settings")
-        # Someone new is invited to the company first, in Settings › Company; the space's people are chosen from the company.
-        anna.goto("/settings/company?invite=1")
-        anna.get_by_role("button", name="Create invite link").click()
-        link = anna.locator("#people-invite-link").input_value()
-        basia = self.page(None)
-        token = link.split("#", 1)[1]
-        basia.goto(f"/join#{token}")
-        basia.get_by_role("button", name="Create an account").click()
-        basia.get_by_label("Name").fill("Basia Wrona")
-        basia.get_by_label("Email").fill(f"basia.ftu+{STAMP}@example.test")
-        basia.get_by_label("Password").fill(PASSWORD)
-        basia.get_by_role("button", name="Create account").click()
-        expect(basia.get_by_role("heading", level=1, name="You joined Volunteer space")).to_be_visible()
-        basia.get_by_role("button", name="Open Volunteer space").click()
-        expect(basia).to_have_url(re.compile(r"/$"))
-        # The inviter hears it in the Inbox, with the way to the company's people.
-        items = self.api(anna, "GET", "/api/v1/inbox", status=200)["items"]
-        self.assertTrue(any(item["title"] == "Basia Wrona joined Volunteer space" and item["url"] == "/settings/company" for item in items))
-        # The space stays closed to Basia until Anna adds her there.
-        self.api(basia, "GET", f"/api/v1/projects/{self.ids['project']}", status=404)
-        anna.goto(f"/projects/{self.ids['project']}/settings")
-        anna.get_by_role("button", name="Add people", exact=True).click()
+        clicks = 0
+        anna.get_by_role("button", name="Add people", exact=True).click(); clicks += 1
         add = anna.get_by_role("group", name="Add people")
-        add.get_by_role("checkbox", name=re.compile("Basia Wrona")).check()
-        add.get_by_role("button", name="Add 1 person").click()
-        expect(anna.get_by_text("Basia is now in Volunteer sign-up app.")).to_be_visible()
+        new = add.get_by_role("form", name="Invite someone new")
+        basia_email = f"basia.ftu+{STAMP}@example.test"
+        new.get_by_label("Someone new?").fill(basia_email); clicks += 1
+        new.get_by_role("button", name="Invite").click(); clicks += 1
+        link = add.get_by_role("group", name="New invite link").get_by_role("textbox")
+        expect(link).to_have_value(re.compile(r"/join#[A-Za-z0-9_-]{54}$"))
+        expect(add.get_by_role("status")).to_contain_text("Invite link created")
+        listed = self.api(anna, "GET", f"/api/v1/workspaces/{self.ids['workspace']}/invites", status=200)
+        made = next(item for item in listed if item["email"] == basia_email)
+        self.assertEqual((made["role"], made["space"]["id"]), ("member", self.ids["project"]))
+        self.assertLessEqual(clicks + 2, 6, "Settings is ⋯ › Settings: about 6 clicks in all (#1438)")
+        basia = self.page(None)
+        basia.goto(f"/join#{link.input_value().split('#', 1)[1]}")
+        # The invite page is the create-account form first.
+        basia.get_by_label("Name").fill("Basia Wrona")
+        basia.get_by_label("Email").fill(basia_email)
+        basia.get_by_label("Password").fill(PASSWORD)
+        basia.get_by_role("button", name="Create account and join").click()
+        expect(basia).not_to_have_url(re.compile(r"/join"))
+        expect(basia.get_by_role("heading", level=1, name="You joined Volunteer space")).to_have_count(0)
+        # She is in the space at once, and the inviter hears it, naming the space.
         self.assertEqual(self.api(basia, "GET", f"/api/v1/projects/{self.ids['project']}", status=200)["access"], "contributor")
+        items = self.api(anna, "GET", "/api/v1/inbox", status=200)["items"]
+        self.assertTrue(any(item["title"] == "Basia Wrona joined Volunteer space" and item["url"] == f"/projects/{self.ids['project']}/settings" for item in items), items)
 
     def test_06_revoking_a_link_asks_once_and_project_name_is_the_label(self) -> None:
         anna = self.page("anna")

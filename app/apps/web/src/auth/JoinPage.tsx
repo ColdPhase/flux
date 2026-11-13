@@ -1,20 +1,24 @@
-import { useEffect, useState } from 'react';
-import { Link, useNavigate, useRevalidator } from 'react-router';
+import { useEffect, useRef, useState } from 'react';
+import { Form, Link, useActionData, useNavigate, useNavigation, useRevalidator } from 'react-router';
 import type { AcceptInviteResult, IdentityCapabilities, InvitePreview, InviteRole } from '@flux/contracts';
-import { getCapabilities, getMe, type MeResponse } from '../api/auth';
+import { PASSWORD_MIN_LENGTH, getCapabilities, getMe, type MeResponse } from '../api/auth';
 import { ApiError, NetworkError } from '../api/client';
 import { acceptInvite, previewInvite } from '../people/api';
-import { Button, Icon, Spinner } from '../ui';
+import { Button, Icon, Input, Spinner } from '../ui';
+import type { FormResult } from './logic';
 
 // The page an invite link opens (F-035, #763 PE-2): `/join#<token>`. The token stays in the fragment (never sent in a
-// request line) and in this tab's session storage, so signing in or creating an account comes back here with it.
+// request line) and in this tab's session storage, so signing in comes back here with it. Founder decision 2026-11-13 (#1438):
+// the page is the create-account form first (sign in second), joining lands in Everyone with the composer ready, there is no
+// "You joined" step, and a member's ordinary role needs no explaining.
 
 const STORE = 'flux.invite-token';
 const ROLE_NAME: Record<InviteRole, string> = { admin: 'an admin', member: 'a member', guest: 'a guest' };
-const ROLE_SENTENCE: Record<InviteRole, string> = {
-  admin: 'Admins add and remove people and can change every space.',
-  member: 'Members are in Everyone, start spaces and see the ones they’re added to.',
-  guest: 'Guests see only the spaces they’re added to.',
+/** Only a role other than the ordinary one gets a line. */
+const ROLE_SENTENCE: Record<InviteRole, string | null> = {
+  admin: 'You’ll be an admin: you can add people and change every space.',
+  member: null,
+  guest: 'You’ll be a guest: you see only the spaces you’re added to.',
 };
 
 function readToken(): string {
@@ -30,6 +34,7 @@ type State =
   | { kind: 'loading' }
   | { kind: 'problem'; title: string; text: string }
   | { kind: 'ready'; preview: InvitePreview; me: MeResponse | null; signup: IdentityCapabilities['signup']; sso: string | null }
+  /** Only an admin of an encrypted space without an unlock password stops here: everyone else opens the space at once. */
   | { kind: 'joined'; result: AcceptInviteResult };
 
 function problemOf(error: unknown): { title: string; text: string } {
@@ -46,37 +51,57 @@ function problemOf(error: unknown): { title: string; text: string } {
 /** No token in this tab: it was never opened here (signing in in another tab does not carry it). */
 const NO_TOKEN = { title: 'Open the invite link again in this tab', text: 'This tab doesn’t have the invite link. If you signed in in another tab, open the link you were sent again here.' };
 
+/** Where joining lands: the space the server named, with its composer ready, or Home. */
+function landingOf(result: AcceptInviteResult) {
+  return result.landingSpaceId ? `/projects/${result.landingSpaceId}` : '/';
+}
+
 export function JoinPage() {
   const [state, setState] = useState<State>(() => (readToken() ? { kind: 'loading' } : { kind: 'problem', ...NO_TOKEN }));
   const [busy, setBusy] = useState(false);
   const [refusal, setRefusal] = useState('');
   const navigate = useNavigate();
   const revalidator = useRevalidator();
+  const created = useActionData() as FormResult | undefined;
+  const handled = useRef<FormResult | undefined>(undefined);
+
+  async function read(signal?: AbortSignal, joinNow = false) {
+    const token = readToken();
+    try {
+      const [me, preview, capabilities] = await Promise.all([getMe(signal).catch(() => null), previewInvite(token, signal),
+        getCapabilities(signal).catch(() => null)]);
+      // A link this account already used, or someone already here: Flux opens, with nothing more to say (#1438).
+      if (me && preview.state !== 'pending') { forgetToken(); navigate('/', { replace: true }); return; }
+      setState({ kind: 'ready', preview, me, signup: capabilities?.signup ?? 'open', sso: capabilities?.sso?.label ?? null });
+      // An account made from this link joins as it is made (#763 FT-3): the person said so when they created it here or on the sign-up page.
+      if (me && preview.state === 'pending' && (joinNow || new URLSearchParams(window.location.search).get('created') === '1')) {
+        window.history.replaceState(window.history.state, '', window.location.pathname);
+        void join();
+      }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return;
+      setState({ kind: 'problem', ...problemOf(error) });
+    }
+  }
 
   useEffect(() => {
-    const token = readToken();
-    if (!token) return undefined;
+    if (!readToken()) return undefined;
     // The token is kept in this tab's session storage: take it out of the address and the browser's history.
     if (window.location.hash) window.history.replaceState(window.history.state, '', window.location.pathname + window.location.search);
     const controller = new AbortController();
-    Promise.all([getMe(controller.signal).catch(() => null), previewInvite(token, controller.signal),
-      getCapabilities(controller.signal).catch(() => null)])
-      .then(([me, preview, capabilities]) => {
-        setState({ kind: 'ready', preview, me, signup: capabilities?.signup ?? 'open', sso: capabilities?.sso?.label ?? null });
-        // An account made from this link joins as it is made (#763 FT-3): the person said so when they chose "Create an account".
-        if (me && preview.state === 'pending' && new URLSearchParams(window.location.search).get('created') === '1') {
-          window.history.replaceState(window.history.state, '', window.location.pathname);
-          void join();
-        }
-      },
-        (error: unknown) => {
-        if (error instanceof DOMException && error.name === 'AbortError') return;
-        setState({ kind: 'problem', ...problemOf(error) });
-      });
+    void read(controller.signal);
     return () => controller.abort();
     // Read once on arrival; `join` only reads this tab's token.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // The create-account form on this page made the account and signed it in: join now, as the same account (#1438).
+  useEffect(() => {
+    if (!created?.created || handled.current === created) return;
+    handled.current = created;
+    void read(undefined, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [created]);
 
   async function join() {
     const token = readToken();
@@ -84,8 +109,10 @@ export function JoinPage() {
     try {
       const result = await acceptInvite(token);
       forgetToken();
-      // Said here, before the app opens: a toast would not outlive the change from signed-out pages to the app.
-      setState({ kind: 'joined', result });
+      // F-030: an admin of an encrypted space without an unlock password is told so before it opens; a toast would not outlive the change of pages.
+      if (result.needsUnlockPassword) { setState({ kind: 'joined', result }); return; }
+      revalidator.revalidate();
+      navigate(landingOf(result), { replace: true, state: { focusComposer: true } });
     } catch (error) {
       if (error instanceof ApiError && error.code === 'INVITE_WRONG_ACCOUNT') {
         setRefusal('This link was made for a different email address. Sign out and sign in with the address it was sent to, or ask for a link for this account.');
@@ -106,68 +133,118 @@ export function JoinPage() {
   }
   if (state.kind === 'joined') {
     const { result } = state;
-    const open = () => { revalidator.revalidate(); navigate('/', { replace: true }); };
+    const open = () => { revalidator.revalidate(); navigate(landingOf(result), { replace: true, state: { focusComposer: true } }); };
     return (
       <>
-        <div className="auth__head"><h1 className="auth__title">{result.status === 'joined' ? `You joined ${result.workspaceName}` : `You’re in ${result.workspaceName}`}</h1>
+        <div className="auth__head"><h1 className="auth__title">{`You joined ${result.workspaceName}`}</h1>
           <p className="auth__lead">{`You’re ${ROLE_NAME[result.role as InviteRole] ?? `an ${result.role}`} of ${result.workspaceName}.`}</p></div>
-        {result.needsUnlockPassword ? (
-          <div className="auth__notice" role="status" data-invite-keys="needed">
-            <Icon name="lock" />
-            <div>
-              <p><strong>{result.workspaceName} is encrypted. You don’t have an unlock password yet.</strong></p>
-              <p>An owner or admin who has one lets you set yours, together with you. Until then someone else unlocks it after a restart; while it is unlocked you can work in it as usual.</p>
-            </div>
+        <div className="auth__notice" role="status" data-invite-keys="needed">
+          <Icon name="lock" />
+          <div>
+            <p><strong>{result.workspaceName} is encrypted. You don’t have an unlock password yet.</strong></p>
+            <p>An owner or admin who has one lets you set yours, together with you. Until then someone else unlocks it after a restart; while it is unlocked you can work in it as usual.</p>
           </div>
-        ) : null}
+        </div>
         <div className="auth__card"><Button variant="primary" size="lg" block autoFocus onClick={open}>{`Open ${result.workspaceName}`}</Button></div>
       </>
     );
   }
 
   const { preview, me, signup, sso } = state;
-  const already = preview.state !== 'pending';
+  const roleLine = ROLE_SENTENCE[preview.role];
+  const notes = preview.emailLocked || preview.encrypted ? (
+    <div className="auth__notice" role="note">
+      <Icon name={preview.encrypted ? 'lock' : 'mail'} />
+      <div>
+        {preview.emailLocked ? <p>This link works only for the email address it was sent to.</p> : null}
+        {preview.encrypted ? <p>{preview.workspaceName} is encrypted. After a restart it stays locked until an owner or admin unlocks it.
+          {preview.role === 'admin' ? ' As an admin you get your own unlock password only when someone who has one lets you set it.' : ''}</p> : null}
+      </div>
+    </div>
+  ) : null;
+  const head = (
+    <div className="auth__head">
+      <h1 className="auth__title">{`Join ${preview.workspaceName}`}</h1>
+      <p className="auth__lead">{`${preview.invitedBy} invited you.`}{roleLine ? ` ${roleLine}` : ''}</p>
+    </div>
+  );
+  const expires = <p className="auth__alt">Expires on {new Date(preview.expiresAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}.</p>;
+  if (me) {
+    return (
+      <>
+        {head}
+        {notes}
+        <div className="auth__card">
+          <p className="auth__lead">Signed in as <strong>{me.user.email}</strong>.</p>
+          {refusal ? <div className="auth__error" role="alert"><Icon name="alert" /><div><p>{refusal}</p></div></div> : null}
+          <Button variant="primary" size="lg" block busy={busy} onClick={() => void join()}>{`Join ${preview.workspaceName}`}</Button>
+          <p className="auth__alt">Not you? <Link className="ui-link" to="/sign-out">Sign out</Link>, then open the link again.</p>
+        </div>
+        {expires}
+      </>
+    );
+  }
+  // F-024: with single sign-on and password sign-up closed, the first sign-in makes the account; with sign-up closed, someone makes it for them.
+  if (signup === 'off') {
+    return (
+      <>
+        {head}
+        {notes}
+        <div className="auth__card">
+          <Button variant="primary" size="lg" block onClick={() => navigate('/sign-in?next=%2Fjoin')}>Sign in to join</Button>
+          {sso ? <p className="auth__alt">New here? Sign in with {sso}; your account is made the first time.</p>
+            : <p className="auth__alt">New accounts are closed on this Flux server. Ask {preview.invitedBy} to have one made for you.</p>}
+        </div>
+        {expires}
+      </>
+    );
+  }
+  if (created?.verifyEmailAt) {
+    return (
+      <>
+        <div className="auth__head"><h1 className="auth__title">Check your email</h1></div>
+        <div className="auth__sent" role="status">
+          <p>We sent a link to <strong>{created.verifyEmailAt}</strong>. Open it to confirm the address, then open this invite link again.</p>
+          <p>Nothing arrived? Check spam. Signing in with the password sends a new link.</p>
+        </div>
+      </>
+    );
+  }
   return (
     <>
-      <div className="auth__head">
-        <h1 className="auth__title">{already ? `You’re in ${preview.workspaceName}` : `Join ${preview.workspaceName}`}</h1>
-        <p className="auth__lead">{already ? 'This invite link has nothing more to do for this account.'
-          : `${preview.invitedBy} invited you to ${preview.workspaceName} as ${ROLE_NAME[preview.role]}. ${ROLE_SENTENCE[preview.role]}`}</p>
-      </div>
-      {!already && (preview.emailLocked || preview.encrypted) ? (
-        <div className="auth__notice" role="note">
-          <Icon name={preview.encrypted ? 'lock' : 'mail'} />
-          <div>
-            {preview.emailLocked ? <p>This link works only for the email address it was sent to.</p> : null}
-            {preview.encrypted ? <p>{preview.workspaceName} is encrypted. After a restart it stays locked until an owner or admin unlocks it.
-              {preview.role === 'admin' ? ' As an admin you get your own unlock password only when someone who has one lets you set it.' : ''}</p> : null}
-          </div>
-        </div>
-      ) : null}
-      <div className="auth__card">
-        {already ? (
-          <Button variant="primary" size="lg" block onClick={() => { forgetToken(); navigate('/', { replace: true }); }}>Open Flux</Button>
-        ) : me ? (
-          <>
-            <p className="auth__lead">Signed in as <strong>{me.user.email}</strong>.</p>
-            {refusal ? <div className="auth__error" role="alert"><Icon name="alert" /><div><p>{refusal}</p></div></div> : null}
-            <Button variant="primary" size="lg" block busy={busy} onClick={() => void join()}>{`Join ${preview.workspaceName}`}</Button>
-            <p className="auth__alt">Not you? <Link className="ui-link" to="/sign-out">Sign out</Link>, then open the link again.</p>
-          </>
-        ) : (
-          <>
-            <Button variant="primary" size="lg" block onClick={() => navigate('/sign-in?next=%2Fjoin')}>Sign in to join</Button>
-            {sso && signup === 'off'
-              // F-024: with single sign-on the first sign-in makes the account.
-              ? <p className="auth__alt">New here? Sign in with {sso}; your account is made the first time.</p>
-              : signup === 'off'
-              ? <p className="auth__alt">New accounts are closed on this Flux server. Ask {preview.invitedBy} to have one made for you.</p>
-              : <Button variant="secondary" size="lg" block onClick={() => navigate(`/sign-up?next=${encodeURIComponent('/join?created=1')}`)}>Create an account</Button>}
-            {signup === 'verified' ? <p className="auth__alt">After you confirm your email address, open this invite link again.</p> : null}
-          </>
-        )}
-      </div>
-      <p className="auth__alt">Expires on {new Date(preview.expiresAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}.</p>
+      {head}
+      {notes}
+      <JoinSignUp result={created} verified={signup === 'verified'} />
+      <p className="auth__alt">Already have an account? <Link className="ui-link" to="/sign-in?next=%2Fjoin">Sign in to join</Link></p>
+      {expires}
     </>
+  );
+}
+
+/** The create-account form first (#1438): the same fields and rules as the sign-up page; the route's action makes the account, then the page joins. */
+function JoinSignUp({ result, verified }: { result: FormResult | undefined; verified: boolean }) {
+  const navigation = useNavigation();
+  const submitting = navigation.state === 'submitting' || (navigation.state === 'loading' && navigation.formMethod !== undefined) || !!result?.created;
+  const formRef = useRef<HTMLFormElement>(null);
+  const [passwordLength, setPasswordLength] = useState(0);
+  const [editedAfter, setEditedAfter] = useState<typeof result>(undefined);
+  const passwordError = editedAfter === result && passwordLength >= PASSWORD_MIN_LENGTH ? undefined : result?.fieldErrors?.password;
+  useEffect(() => {
+    if (result?.fieldErrors && Object.values(result.fieldErrors).some(Boolean)) formRef.current?.querySelector<HTMLInputElement>('[aria-invalid="true"]')?.focus();
+  }, [result]);
+  return (
+    <Form method="post" className="auth__form" noValidate ref={formRef} aria-label="Create account and join">
+      {result?.formError ? (
+        <div className="auth__error" role="alert"><Icon name="alert" /><div><p>{result.formError}</p>
+          {result.accountExists ? <p><Link className="ui-link" to="/sign-in?next=%2Fjoin">Sign in to join</Link> · <Link className="ui-link" to="/forgot-password">Reset password</Link></p> : null}</div></div>
+      ) : null}
+      <Input label="Name" name="name" autoComplete="name" defaultValue={result?.values?.name} error={result?.fieldErrors?.name} hint="Shown to people you work with." autoFocus />
+      <Input label="Email" name="email" type="email" autoComplete="email" inputMode="email" autoCapitalize="none" spellCheck={false}
+        defaultValue={result?.values?.email} error={result?.fieldErrors?.email} hint={verified ? 'We’ll email a link to confirm it.' : undefined} />
+      <Input label="Password" name="password" type="password" autoComplete="new-password" error={passwordError}
+        onChange={(event) => { setPasswordLength(event.target.value.length); setEditedAfter(result); }}
+        hint={passwordLength >= PASSWORD_MIN_LENGTH ? undefined : `At least ${PASSWORD_MIN_LENGTH} characters. A short sentence works well.`} />
+      <Button type="submit" variant="primary" size="lg" block busy={submitting}>{submitting ? 'Joining…' : 'Create account and join'}</Button>
+    </Form>
   );
 }

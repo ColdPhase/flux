@@ -25,6 +25,9 @@
 .people__field .ui-select { width: 100%; min-height: var(--ctl-lg); padding: 0 10px; border: 0; border-radius: var(--r); background: var(--el); color: var(--t1); font-size: var(--fs-base); box-shadow: inset 0 0 0 1px var(--line2); }
 .people__hint { margin: 0; font-size: var(--fs-sm) !important; color: var(--t3) !important; line-height: 1.45; }
 .people__add { display: grid; gap: 14px; }
+/* #1438: the invite form keeps the role and the expiry under a quiet More. */
+.people__add > .people__more { justify-self: start; }
+.people__more-fields { display: grid; gap: 14px; }
 .people__notice { display: flex; align-items: flex-start; gap: 6px; margin: 0; padding: 8px 10px; border-radius: var(--r); background: var(--sub); font-size: var(--fs-sm) !important; color: var(--t2) !important; line-height: 1.45; overflow-wrap: anywhere; }
 .people__notice svg { flex: none; margin-top: 2px; color: var(--t3); }
 .people__notice .ui-btn { flex: none; margin-left: auto; }

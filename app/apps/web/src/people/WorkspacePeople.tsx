@@ -51,7 +51,7 @@ export function WorkspacePeople({ workspaceId, onBack, page = false }: { workspa
   const rosterRef = useRef<HTMLHeadingElement>(null);
   const [reload, setReload] = useState(0);
   const revalidator = useRevalidator();
-  // Add people in a space leads here with `?invite=1` when the person they want is not in the company yet.
+  // Home's first steps lead here with `?invite=1` (Invite people) or `?name=1` (Name your company), #1438.
   const [params] = useSearchParams();
   const [inviting, setInviting] = useState(() => params.get('invite') === '1');
   // With single sign-on as the way in, people join on their first sign-in and nobody is invited (F-037). While the provider
@@ -139,14 +139,18 @@ export function WorkspacePeople({ workspaceId, onBack, page = false }: { workspa
   // On the company's page the people come first, as drawn: one Invite above them, or with single sign-on one line saying who
   // joins. An encrypted space's panel keeps its form open above its people.
   const canAdd = !(page && sso) && sso !== undefined && manager && !!members;
-  const addPerson = canAdd && members ? <AddPerson workspace={workspace} members={members} myRole={myRole} invitesSeen={invitesSeen} onJoined={load} onAdded={(member) => changed(`${member.name} joined ${workspace.name} as ${ROLE_LABEL[member.role].toLowerCase()}.`, false)} /> : null;
+  const onAdded = (member: WorkspaceMember) => changed(`${member.name} joined ${workspace.name} as ${ROLE_LABEL[member.role].toLowerCase()}.`, false);
+  // #1438: the company's page has one invite form; an encrypted space's panel adds people of the company by email, never by a link (C-24).
+  const addPerson = canAdd && members ? (page
+    ? <InviteForm workspace={workspace} members={members} myRole={myRole} seen={invitesSeen} onJoined={load} onAdded={onAdded} />
+    : <AddPerson workspace={workspace} members={members} myRole={myRole} onAdded={onAdded} />) : null;
   return (
     <div className={`details people${page ? ' people--page' : ''}`}>
       {back}
       {page ? (
         <>
           <p className="details__lead">Everyone in {workspace.name} works in this one Flux. Only admins can change this page.</p>
-          <CompanyName workspace={workspace} manager={manager} onChanged={() => { load(); revalidator.revalidate(); }} />
+          <CompanyName workspace={workspace} manager={manager} startEditing={params.get('name') === '1'} onChanged={() => { load(); revalidator.revalidate(); }} />
         </>
       ) : (
         <>
@@ -296,8 +300,8 @@ function CompanySpaces({ workspaceId }: { workspaceId: string }) {
 }
 
 /** The company's name (Settings › Company): shown on the sign-in page and in emails; owners and admins change it in place. */
-function CompanyName({ workspace, manager, onChanged }: { workspace: Workspace; manager: boolean; onChanged: () => void }) {
-  const [editing, setEditing] = useState(false);
+function CompanyName({ workspace, manager, startEditing = false, onChanged }: { workspace: Workspace; manager: boolean; startEditing?: boolean; onChanged: () => void }) {
+  const [editing, setEditing] = useState(() => startEditing && manager);
   const [value, setValue] = useState(workspace.name);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState('');
@@ -344,13 +348,13 @@ function CompanyName({ workspace, manager, onChanged }: { workspace: Workspace; 
   );
 }
 
-function AddPerson({ workspace, members, myRole, invitesSeen, onJoined, onAdded }: { workspace: Workspace; members: WorkspaceMember[]; myRole: WorkspaceRole;
-  invitesSeen: number; onJoined: () => void; onAdded: (member: WorkspaceMember) => void }) {
+/** An encrypted space's panel (C-24): someone of the company is added by the address of their account; nobody joins it by a link. */
+function AddPerson({ workspace, members, myRole, onAdded }: { workspace: Workspace; members: WorkspaceMember[]; myRole: WorkspaceRole;
+  onAdded: (member: WorkspaceMember) => void }) {
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<WorkspaceRole>('member');
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState('');
-  const [newcomer, setNewcomer] = useState('');
   const keys = useRef(attemptKeys());
   const emailRef = useRef<HTMLInputElement>(null);
   const roleId = useId();
@@ -367,7 +371,6 @@ function AddPerson({ workspace, members, myRole, invitesSeen, onJoined, onAdded 
       setEmail(''); setRole('member');
       onAdded(member);
     } catch (error) {
-      if (error instanceof ApiError && error.code === 'ACCOUNT_NOT_FOUND') setNewcomer(address);
       const known = error instanceof ApiError && error.code === 'ALREADY_MEMBER' ? members.find((member) => member.email.toLowerCase() === address)?.name : undefined;
       setProblem(problemText(error, { workspace: workspace.name, email: address, who: known }));
       emailRef.current?.focus();
@@ -375,14 +378,13 @@ function AddPerson({ workspace, members, myRole, invitesSeen, onJoined, onAdded 
   }
 
   return (
-    <>
     <section className="details__sec" aria-labelledby="people-add">
       <h4 id="people-add">Add someone</h4>
       <form className="people__add" onSubmit={(event) => void submit(event)} noValidate>
         <Input ref={emailRef} id="people-add-email" label="Email" type="email" inputMode="email" autoComplete="off" spellCheck={false} placeholder="name@example.com" value={email}
           aria-invalid={problem ? true : undefined} aria-describedby={problem ? 'people-add-problem people-add-email-hint' : 'people-add-email-hint'}
           onChange={(event) => { setEmail(event.target.value); if (problem) setProblem(''); }}
-          hint="Their Flux account’s address. Someone new? Create an invite link below." />
+          hint="The address of their Flux account in the company." />
         <div className="people__field">
           <label htmlFor={roleId}>Role</label>
           <Select id={roleId} value={role} onChange={(next) => setRole(next as WorkspaceRole)} aria-describedby={`${roleId}-hint`}>
@@ -394,10 +396,6 @@ function AddPerson({ workspace, members, myRole, invitesSeen, onJoined, onAdded 
         <div className="details__actions"><Button type="submit" variant="primary" busy={busy}>Add to {workspace.name}</Button></div>
       </form>
     </section>
-      {/* Someone without an account (#763 PE-2): the address Flux could not find is filled into the invite link (F-035). */}
-      {/* An encrypted space takes only the company's people, never a link (C-24). */}
-      {workspace.spaceOf ? null : <InviteLinks key={newcomer} prefill={newcomer} workspace={workspace} myRole={myRole} seen={invitesSeen} onJoined={onJoined} />}
-    </>
   );
 }
 
@@ -534,16 +532,19 @@ async function copyText(text: string): Promise<boolean> {
 }
 
 /**
- * Invite links (F-035, #763 PE-2): an owner or admin makes a one-time link with a role, optionally for one address,
- * and sends it themselves (Flux sends no email). The new link shows once at the top, ready to copy; every pending link
- * stays listed with Copy and Revoke. Whoever opens it signs in or creates an account and joins with that role.
+ * One invite form (F-035, #763 PE-2; founder decision 2026-11-13, #1438): an optional email and "Create invite link"; the role and how long
+ * the link works are under More (Member and 7 days by default). An address with a Flux account outside the company is added at once; any other
+ * address, or none, makes a one-time link, copied at once, that the owner or admin sends themselves (Flux sends no email). The new link shows
+ * once, ready to copy; every pending link stays listed with Copy and Revoke.
  */
-function InviteLinks({ prefill, workspace, myRole, seen, onJoined }: { prefill: string; workspace: Workspace; myRole: WorkspaceRole; seen: number; onJoined: () => void }) {
+function InviteForm({ workspace, members, myRole, seen, onJoined, onAdded }: { workspace: Workspace; members: WorkspaceMember[]; myRole: WorkspaceRole;
+  seen: number; onJoined: () => void; onAdded: (member: WorkspaceMember) => void }) {
   const [revoking, setRevoking] = useState<string | null>(null);
   const [invites, setInvites] = useState<WorkspaceInvite[] | null>(null);
   const [role, setRole] = useState<InviteRole>('member');
-  const [email, setEmail] = useState(prefill);
+  const [email, setEmail] = useState('');
   const [days, setDays] = useState<InviteExpiryDays>(INVITE_DEFAULT_EXPIRY_DAYS);
+  const [more, setMore] = useState(false);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState('');
   const [fresh, setFresh] = useState<WorkspaceInvite | null>(null);
@@ -551,8 +552,9 @@ function InviteLinks({ prefill, workspace, myRole, seen, onJoined }: { prefill: 
   const keys = useRef(attemptKeys());
   const roleId = useId();
   const daysId = useId();
+  const moreId = useId();
   const linkRef = useRef<HTMLInputElement>(null);
-  const encrypted = workspace.encryption !== null && workspace.encryption !== undefined;
+  const emailRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -565,21 +567,40 @@ function InviteLinks({ prefill, workspace, myRole, seen, onJoined }: { prefill: 
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `seen` is the trigger; `onJoined` reloads the roster.
   }, [workspace.id, seen]);
 
-  async function create(event: FormEvent) {
+  async function makeLink(address: string) {
+    const invite = await createInvite(workspace.id, { role, email: address || null, expiresInDays: days }, keys.current.for(`${role}:${address}:${days}`));
+    keys.current.done();
+    setFresh(invite);
+    setInvites((list) => [invite, ...(list ?? []).filter((item) => item.id !== invite.id)]);
+    setEmail('');
+    const copied = await copyText(invite.link);
+    setStatus(copied ? 'Invite link created and copied. Send it to them yourself.' : 'Invite link created. Copy it and send it to them yourself.');
+    requestAnimationFrame(() => linkRef.current?.select());
+  }
+
+  async function submit(event: FormEvent) {
     event.preventDefault();
     if (busy) return;
     const address = email.trim().toLowerCase();
-    if (address && !/^[^\s@]+@[^\s@]+$/.test(address)) { setProblem('Enter an email address, or leave it empty for anyone with the link.'); return; }
+    if (address && !/^[^\s@]+@[^\s@]+$/.test(address)) { setProblem('Enter an email address, or leave it empty for anyone with the link.'); emailRef.current?.focus(); return; }
+    const known = address ? members.find((member) => member.email.toLowerCase() === address) : undefined;
+    if (known) { setProblem(`${known.name} is already in ${workspace.name}.`); emailRef.current?.focus(); return; }
     setBusy(true); setProblem(''); setStatus('');
     try {
-      const invite = await createInvite(workspace.id, { role, email: address || null, expiresInDays: days }, keys.current.for(`${role}:${address}:${days}`));
-      keys.current.done();
-      setFresh(invite);
-      setInvites((list) => [invite, ...(list ?? []).filter((item) => item.id !== invite.id)]);
-      setEmail('');
-      const copied = await copyText(invite.link);
-      setStatus(copied ? 'Invite link created and copied. Send it to them yourself.' : 'Invite link created. Copy it and send it to them yourself.');
-      requestAnimationFrame(() => linkRef.current?.select());
+      if (address) {
+        // Someone who already has a Flux account joins at once; anyone else gets a link locked to their address.
+        try {
+          const member = await addMember(workspace.id, address, role, keys.current.for(`add:${address}:${role}`));
+          keys.current.done();
+          setEmail(''); setRole('member');
+          onAdded(member);
+          return;
+        } catch (error) {
+          keys.current.done();
+          if (!(error instanceof ApiError && error.code === 'ACCOUNT_NOT_FOUND')) throw error;
+        }
+      }
+      await makeLink(address);
     } catch (error) {
       setProblem(problemText(error, { workspace: workspace.name, email: address }));
     } finally { setBusy(false); }
@@ -603,28 +624,36 @@ function InviteLinks({ prefill, workspace, myRole, seen, onJoined }: { prefill: 
   }
 
   const who = (invite: WorkspaceInvite) => invite.email ?? 'Anyone with the link';
+  const where = (invite: WorkspaceInvite) => (invite.space ? ` · ${invite.space.name}` : '');
   return (
     <section className="details__sec" aria-labelledby="people-invite">
-      <h4 id="people-invite">Invite with a link</h4>
-      <form className="people__add" onSubmit={(event) => void create(event)} noValidate aria-label="Create an invite link">
-        <div className="people__field">
-          <label htmlFor={roleId}>Joins as</label>
-          <Select id={roleId} value={role} onChange={(next) => setRole(next as InviteRole)} aria-describedby={`${roleId}-hint`}>
-            {inviteRoles(myRole).map((option) => <Option key={option} value={option}>{ROLE_LABEL[option]}</Option>)}
-          </Select>
-          <p className="people__hint" id={`${roleId}-hint`}>{ROLE_HINT[role]}{encrypted && role === 'admin' ? ' To unlock this encrypted space, they also need an unlock password from someone who has one.' : ''}</p>
-        </div>
-        <Input id="people-invite-email" label="Only for (optional)" type="email" inputMode="email" autoComplete="off" spellCheck={false} placeholder="name@example.com" value={email}
+      <h4 id="people-invite">Invite people</h4>
+      <form className="people__add" onSubmit={(event) => void submit(event)} noValidate aria-label="Invite people">
+        <Input ref={emailRef} id="people-invite-email" label="Email (optional)" type="email" inputMode="email" autoComplete="off" spellCheck={false} placeholder="name@example.com" value={email}
           onChange={(event) => { setEmail(event.target.value); if (problem) setProblem(''); }}
-          hint="Leave empty and anyone who opens the link first can join." />
-        <div className="people__field">
-          <label htmlFor={daysId}>Works for</label>
-          <Select id={daysId} value={String(days)} onChange={(next) => setDays(Number(next) as InviteExpiryDays)}>
-            {([1, 7, 30] as const).map((option) => <Option key={option} value={String(option)}>{expiryLabel[option]}</Option>)}
-          </Select>
-        </div>
+          hint="Empty: anyone who opens the link first can join." />
+        <Button variant="quiet" size="sm" className="people__more" aria-expanded={more} aria-controls={more ? moreId : undefined} onClick={() => setMore((open) => !open)}>
+          More<Icon name={more ? 'chevron-up' : 'chevron-down'} size={14} />
+        </Button>
+        {more ? (
+          <div id={moreId} className="people__more-fields">
+            <div className="people__field">
+              <label htmlFor={roleId}>Joins as</label>
+              <Select id={roleId} value={role} onChange={(next) => setRole(next as InviteRole)} aria-describedby={`${roleId}-hint`}>
+                {inviteRoles(myRole).map((option) => <Option key={option} value={option}>{ROLE_LABEL[option]}</Option>)}
+              </Select>
+              <p className="people__hint" id={`${roleId}-hint`}>{ROLE_HINT[role]}</p>
+            </div>
+            <div className="people__field">
+              <label htmlFor={daysId}>Works for</label>
+              <Select id={daysId} value={String(days)} onChange={(next) => setDays(Number(next) as InviteExpiryDays)}>
+                {([1, 7, 30] as const).map((option) => <Option key={option} value={String(option)}>{expiryLabel[option]}</Option>)}
+              </Select>
+            </div>
+          </div>
+        ) : null}
         {problem ? <p className="people__notice" role="alert"><Icon name="alert" size={13} />{problem}</p> : null}
-        <div className="details__actions"><Button type="submit" variant="secondary" busy={busy}><Icon name="link" size={14} />Create invite link</Button></div>
+        <div className="details__actions"><Button type="submit" variant="primary" busy={busy}><Icon name="link" size={14} />Create invite link</Button></div>
       </form>
       {fresh ? (
         <div className="people__link" role="group" aria-label="New invite link">
@@ -641,7 +670,7 @@ function InviteLinks({ prefill, workspace, myRole, seen, onJoined }: { prefill: 
             {invites.map((invite) => (
               <li className="people__item" key={invite.id}>
                 <div className="people__row">
-                  <span className="people__who"><b>{who(invite)}</b><span>{ROLE_LABEL[invite.role]} · until {until.format(new Date(invite.expiresAt))} · by {invite.createdBy.name}</span></span>
+                  <span className="people__who"><b>{who(invite)}</b><span>{ROLE_LABEL[invite.role]}{where(invite)} · until {until.format(new Date(invite.expiresAt))} · by {invite.createdBy.name}</span></span>
                   <Button variant="quiet" size="sm" className="people__change" onClick={() => void copy(invite)}>Copy<span className="ui-vh"> link for {who(invite)}</span></Button>
                   {invite.role !== 'admin' || myRole === 'owner'
                     ? <Button variant="quiet" size="sm" className="people__change" aria-expanded={revoking === invite.id} onClick={() => setRevoking(revoking === invite.id ? null : invite.id)}>Revoke<span className="ui-vh"> link for {who(invite)}</span></Button> : null}

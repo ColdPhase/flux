@@ -272,6 +272,8 @@ Endpoints: Better Auth under `/api/auth/*` (`sign-up/email`, `sign-in/email`,
 `sign-in/social` with the provider id and `callback/<provider id>`; a raw `idToken` sign-in is refused); Flux session routes
 `GET /api/v1/me` (with the person's time zone and `showLastActive`), `PUT /api/v1/me/time-zone` (the shell saves its browser's zone when it differs, C-57),
 `PUT /api/v1/me/last-active` (`{ show }`, 204: "Show when I was last active", C-58; off erases `auth_users.last_active_at`, which a used session otherwise writes at most once a minute),
+`GET /api/v1/me/first-steps` and `POST /api/v1/me/first-steps/hide` (Home's first-steps card, #1438: the steps left for the person's
+company role, and Hide, kept in `auth_users.first_steps_hidden_at`),
 `GET /api/v1/sessions` (never returns tokens),
 `DELETE /api/v1/sessions/:id` and `POST /api/v1/sessions/revoke-others`.
 Server code resolves the caller with `requirePrincipal(request)` from

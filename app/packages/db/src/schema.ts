@@ -61,6 +61,8 @@ export const authUsers = pgTable('auth_users', {
   lastActiveAt: timestamp('last_active_at', { withTimezone: true }),
   /** "Show when I was last active" (Settings › Account): on by default; off, nothing writes `lastActiveAt` and the one held was erased. */
   showLastActive: boolean('show_last_active').notNull().default(true),
+  /** Home's first-steps card hidden by the person (migration 0075, #1438): null while it shows; set once, on every device. */
+  firstStepsHiddenAt: timestamp('first_steps_hidden_at', { withTimezone: true }),
   image: text('image'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -510,6 +512,8 @@ export const workspaceInvites = pgTable('workspace_invites', {
   revokedBy: text('revoked_by').references(() => authUsers.id, { onDelete: 'set null' }),
   acceptedAt: timestamp('accepted_at', { withTimezone: true }),
   acceptedBy: text('accepted_by').references(() => authUsers.id, { onDelete: 'set null' }),
+  /** A space the person is also added to on joining (migration 0075, #1438: a space's Add people invites by email); gone with the space. */
+  spaceId: uuid('space_id').references((): AnyPgColumn => projects.id, { onDelete: 'set null' }),
 }, (table) => [
   index('workspace_invites_pending_idx').on(table.workspaceId, table.createdAt.desc()).where(sql`revoked_at IS NULL AND accepted_at IS NULL`),
 ]);

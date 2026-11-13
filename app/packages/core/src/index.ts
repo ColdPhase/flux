@@ -70,6 +70,7 @@ export type { LiveInvitation, LiveInvitationPorts, LiveInvitationTarget, LiveInv
   LiveInvitationCursor, LiveInvitationPage, LiveInvitationPageRow } from './live/invitations.js';
 export * from './agent-connection/proposals.js';
 export * from './returns/index.js';
+export * from './first-steps/index.js';
 export * from './sidebar/index.js';
 export * from './needs-you/index.js';
 export * from './direct-messages/index.js';

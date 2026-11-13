@@ -51,6 +51,7 @@ import { webReader as createWebReader } from './web-reads/reader.js';
 import { configureAgentPictures } from './agent-connection/picture-actions.js';
 import { CLOSED_WORLD_RULES } from './link-previews/safe-fetch.js';
 import { returnRoutes } from './returns/routes.js';
+import { firstStepRoutes } from './first-steps/routes.js';
 import { needsYouRoutes } from './needs-you/routes.js';
 import { sidebarRoutes } from './sidebar/routes.js';
 import { docRoutes } from './docs/routes.js';
@@ -336,6 +337,7 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   // A personal run's MCP token (F-027 A2): signed here, the authorization server, for the worker only.
   registerPersonalRunTokenRoute(app, db, identity.auth, identityConfig.publicOrigin);
   await app.register(returnRoutes, { db, sessions: identity });
+  await app.register(firstStepRoutes, { db, sessions: identity });
   await app.register(needsYouRoutes, { db, sessions: identity });
   await app.register(sidebarRoutes, { db, sessions: identity });
   await app.register(docRoutes, { db, sessions: identity });

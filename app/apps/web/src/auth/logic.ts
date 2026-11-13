@@ -35,6 +35,8 @@ export interface FormResult {
   sentTo?: string;
   /** Sign-up: the email already has an account. */
   accountExists?: boolean;
+  /** Sign-up on an invite link's page (#1438): the account exists and is signed in; the page joins now. */
+  created?: boolean;
   /** Password reset is not configured on this server. */
   resetUnavailable?: boolean;
   /** Sign-up: the account exists but must verify this address before it can sign in. */
@@ -188,6 +190,19 @@ export async function signInAction({ request }: ActionFunctionArgs): Promise<For
 }
 
 export async function signUpAction({ request }: ActionFunctionArgs): Promise<FormResult | Response> {
+  return await signUpFrom(request) ?? redirect(safeNext(new URL(request.url).searchParams.get('next')));
+}
+
+/**
+ * The create-account form on an invite link's page (founder decision 2026-11-13, #1438): the same sign-up, and the page then joins through
+ * the link with the new session (`created`), so the account can only join the company the link is for.
+ */
+export async function joinSignUpAction({ request }: ActionFunctionArgs): Promise<FormResult> {
+  return await signUpFrom(request) ?? { created: true };
+}
+
+/** Creates the account from the form; null when it is made and signed in, else what the form shows. */
+async function signUpFrom(request: Request): Promise<FormResult | null> {
   const form = await request.formData();
   const name = text(form, 'name').trim();
   const email = text(form, 'email').trim();
@@ -207,7 +222,7 @@ export async function signUpAction({ request }: ActionFunctionArgs): Promise<For
     return { formError: describeAuthError(error, 'sign-up'), accountExists, values: { name, email } };
   }
   signingOutHere = false;
-  return redirect(safeNext(new URL(request.url).searchParams.get('next')));
+  return null;
 }
 
 export async function forgotPasswordLoader({ request }: LoaderFunctionArgs) {
