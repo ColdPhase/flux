@@ -82,6 +82,19 @@ export function signInPath(next?: string) {
   return target === '/' ? '/sign-in' : `/sign-in?next=${encodeURIComponent(target)}`;
 }
 
+/**
+ * The address the server accepts (its public origin, named in the 403 ORIGIN_REJECTED body), when it is not the one this page is on:
+ * the old loopback address of a server that has moved to its public one (#1471). Null when the body names none or it is this page's own.
+ */
+function acceptedAddress(body: unknown): string | null {
+  const named = (body as { origin?: unknown } | null)?.origin;
+  if (typeof named !== 'string') return null;
+  try {
+    const url = new URL(named);
+    return /^https?:$/.test(url.protocol) && url.origin !== window.location.origin ? url.origin : null;
+  } catch { return null; }
+}
+
 /** Human wording for identity failures. The server's codes stay out of the interface. */
 export function describeAuthError(error: unknown, context: 'sign-in' | 'sign-up' | 'reset' | 'reset-request' | 'sign-out'): string {
   if (error instanceof NetworkError) return 'Flux can’t be reached right now. Check your connection and try again.';
@@ -89,7 +102,7 @@ export function describeAuthError(error: unknown, context: 'sign-in' | 'sign-up'
   // The account's own back-off (#990) asks to wait a few minutes and does not say which; the other limit is per address and clears in a minute.
   if (error.code === 'SIGN_IN_THROTTLED' && error.message) return `${error.message}. If you have forgotten the password, you can reset it.`;
   if (error.status === 429) return 'Too many attempts in a short time. Wait a minute, then try again.';
-  if (error.code === 'ORIGIN_REJECTED') return 'This page was opened from an address Flux doesn’t accept. Open Flux at its usual address and try again.';
+  if (error.code === 'ORIGIN_REJECTED') return `This page was opened from an address Flux doesn’t accept. Open Flux at ${acceptedAddress(error.body) ?? 'its usual address'} and try again.`;
   const code = error.code ?? '';
   if (context === 'sign-in' && (error.status === 401 || code === 'INVALID_EMAIL_OR_PASSWORD')) return 'That email and password don’t match an account.';
   if (code === 'SSO_ONLY') return 'Password sign-in is closed on this Flux server. Sign in with single sign-on.';

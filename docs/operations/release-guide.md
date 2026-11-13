@@ -106,7 +106,7 @@ you from a tag that moves, which is why `compose.yaml` pins digests.
    | `FLUX_PORT` | kept | Loopback port of the API (`8081`); point the reverse proxy at it. |
    | `FLUX_TRUSTED_PROXIES` | with a proxy | The proxy's IP or CIDR, so client addresses come from `X-Forwarded-For`. |
    | `FLUX_SMTP_URL`, `FLUX_MAIL_FROM` | optional | Password reset and notification mail. |
-   | `FLUX_VAPID_PUBLIC_KEY`, `FLUX_VAPID_PRIVATE_KEY`, `FLUX_VAPID_SUBJECT` | optional | Web Push: all three or none. The subject must be a contact Apple can reach (`mailto:` at your domain or your https origin); otherwise iPhone and iPad notifications fail with 403. |
+   | `FLUX_VAPID_PUBLIC_KEY`, `FLUX_VAPID_PRIVATE_KEY`, `FLUX_VAPID_SUBJECT` | optional | Web Push: both keys or neither. The subject is optional: empty, it is `FLUX_PUBLIC_ORIGIN` when that is https, which Apple can reach; a contact it cannot reach (`localhost`, `.local`, `.test`, a non-https origin) makes iPhone and iPad notifications fail with 403. |
    | `FLUX_FIXTURE_TOKEN` | no | Enables a test-only endpoint. Leave it empty. |
 
    Every value is explained in the comments of `env.example`. Empty required values stop Compose

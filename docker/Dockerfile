@@ -36,9 +36,16 @@ RUN pnpm install --offline --frozen-lockfile
 # The kernel half of the sandbox that reads the text of files for search (C-63, #1382): the worker's child process loads it first. This stage has the
 # compiler; the application image copies the addon, and a worker without it reads no file.
 RUN cc -std=gnu11 -Wall -Wextra -Werror -fPIC -shared -I/usr/local/include/node apps/worker/native/sandbox.c -o apps/worker/native/sandbox.node
-RUN pnpm build && pnpm typecheck && pnpm lint
+RUN pnpm build
 
-FROM build AS test
+# The type check and the lint run here, not in `build` (#1471): `test` is built on this stage, so the application check
+# (scripts/check_application.sh, every service of its Compose project is built) and the pull request's Application validation
+# (--target test) still run both, and the image an operator builds with ./flux up does not wait for them. BuildKit skips a
+# stage no target needs.
+FROM build AS verify
+RUN pnpm typecheck && pnpm lint
+
+FROM verify AS test
 # Fixtures share the private files volume with the runtime API. Use its identity so
 # a fixture's 0700 object shard remains writable by the API, independent of UUID order.
 USER node

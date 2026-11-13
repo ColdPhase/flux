@@ -316,11 +316,11 @@ choice activates it. Placeholder icons are regenerated with
 | --- | --- | --- |
 | `FLUX_VAPID_PUBLIC_KEY` | API, worker | Base64url P-256 public key given to browsers as `applicationServerKey`. Empty on the API means `GET /api/v1/push/public-key` and `POST /api/v1/push/subscriptions` answer `503 PUSH_UNAVAILABLE`. |
 | `FLUX_VAPID_PRIVATE_KEY` | worker only | Signs the VAPID JWT. Keep it secret; it never reaches the API container. |
-| `FLUX_VAPID_SUBJECT` | worker only | Operator contact for push services, `mailto:` or `https:`. Use a contact Apple can reach, such as `mailto:` at your own domain or your public https origin. Apple's push service refuses `localhost`, `.local`, `.test` and similar contacts with 403, so iPhone and iPad notifications fail. The worker warns at startup (#20). `./flux` writes `mailto:admin@localhost.localdomain`; replace it before you serve phones over HTTPS. |
+| `FLUX_VAPID_SUBJECT` | worker only | Optional contact for push services, `mailto:` or `https:`. Empty, it is `FLUX_PUBLIC_ORIGIN` when that is https (#1471); `./flux` writes nothing. Set it only for a `mailto:` at your own domain. Apple's push service refuses `localhost`, `.local`, `.test` and similar contacts with 403, so iPhone and iPad notifications fail. The worker warns at startup (#20) and, on a 403 `BadJwtToken`, says the contact was refused and what to set. Without an https origin the worker uses the placeholder `mailto:admin@localhost.localdomain` (desktop push works; Apple refuses it); a `.env` of v0.2.0 that holds it counts as empty. |
 | `FLUX_PUSH_ALLOW_PRIVATE_NETWORK` | worker | `false` by default: the worker refuses push endpoints that resolve to private, loopback or link-local addresses at connect time. Only the test override sets `true` for its local push mock. |
 
-The worker requires all three VAPID values together, checks that the public key
-matches the private key and stops at startup otherwise. Generate a key pair once
+The worker requires both VAPID keys together (the contact is optional), checks that the
+public key matches the private key and stops at startup otherwise. Generate a key pair once
 per deployment with the pinned `web-push` CLI in the built image and copy both
 values into `docker/.env`:
 

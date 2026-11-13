@@ -1,5 +1,5 @@
 import { GENERIC_PUSH_TITLE, type PushPayload } from '@flux/contracts';
-import { pushEndpointViolation } from './config.js';
+import { PUSH_CONTACT_FIX, pushEndpointViolation } from './config.js';
 import { readsSource } from './notifications.js';
 import type { NotificationRecord, ProviderDeliveryAdmission, PushDeliveryRepository, PushSender, PushSendJob, PushSendResult, SourceReadAuthorizer, SourceReadDecision } from './ports.js';
 
@@ -100,7 +100,7 @@ export async function deliverPushJob(ports: DeliveryPorts, job: PushSendJob): Pr
       await ports.targets.recordFailure(subscription.id, null);
       throw new RetryableDeliveryError(`Push delivery failed: ${result.message}`, null);
     case 'http-error': {
-      const { status } = result;
+      const { status, body } = result;
       if (status === 404 || status === 410) {
         // The push service says this subscription is gone for good.
         await ports.targets.deleteSubscription(subscription.id);
@@ -110,8 +110,10 @@ export async function deliverPushJob(ports: DeliveryPorts, job: PushSendJob): Pr
       if (status === 429 || status >= 500) throw new RetryableDeliveryError(`Push service answered ${status}`, status);
       // 400/401/403/413: retrying cannot help. 403 usually means the VAPID key changed since
       // this browser subscribed; the client re-subscribes with the current key on next start.
-      ports.log?.('Push rejected by push service', { status, subscriptionId: subscription.id });
-      return { outcome: 'rejected', status, reason: `push service answered ${status}` };
+      // Apple answers 403 BadJwtToken for a contact it cannot reach (#1471): the log says so and how to fix it, where an operator looks.
+      const contact = status === 403 && body?.includes('BadJwtToken');
+      ports.log?.(contact ? `The push service refused Flux's push contact (403 BadJwtToken), so this device gets no notifications. ${PUSH_CONTACT_FIX}` : 'Push rejected by push service', { status, subscriptionId: subscription.id });
+      return { outcome: 'rejected', status, reason: contact ? 'push service refused the push contact (FLUX_VAPID_SUBJECT)' : `push service answered ${status}` };
     }
   }
 }

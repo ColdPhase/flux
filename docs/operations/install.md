@@ -170,8 +170,9 @@ rest of the team, open **Settings › Company** and use **Invite with a link**
 
 - **Backups.** Add the daily `./flux backup --keep 14` cron entry from
   [backup and restore](backup-restore.md#backup-schedule) and copy archives off the machine.
-- **Push notifications.** `./flux up` generated VAPID keys with a placeholder contact. Set
-  `FLUX_VAPID_SUBJECT=mailto:you@example.org` in `docker/.env` and run `./flux up`
+- **Push notifications.** `./flux up` generated the VAPID keys. The contact the push services get
+  is your public `https://` address, so iPhone and iPad work once `FLUX_PUBLIC_ORIGIN` is that
+  address and you have run `./flux up` again; there is nothing else to set
   ([phones, tablets and push](mobile-and-push.md)).
 - **Monitoring.** Watch `/api/v1/health` and the containers' health ([monitoring](monitoring.md)).
 - **Hardening.** Go through the [hardening checklist](hardening.md).

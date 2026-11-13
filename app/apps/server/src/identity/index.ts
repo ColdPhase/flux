@@ -168,7 +168,8 @@ export function registerIdentity(app: FastifyInstance, options: IdentityOptions)
     if (violation) {
       // The Origin header is the sender's own text and is not copied: the reason says what was wrong with it (#997).
       securityEvent(request.log, { event: 'origin_refused', outcome: 'refused', reason: violation, route: request.routeOptions?.url ?? '/', ip: request.ip });
-      return reply.code(403).send({ error: 'Forbidden', code: 'ORIGIN_REJECTED', reason: violation } satisfies ApiError & { reason: string });
+      // `origin` is the address Flux accepts, so the page can name it: the old loopback address of an install that has moved to its public one (#1471).
+      return reply.code(403).send({ error: 'Forbidden', code: 'ORIGIN_REJECTED', reason: violation, origin: config.publicOrigin } satisfies ApiError & { reason: string; origin: string });
     }
   });
 

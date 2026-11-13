@@ -63,6 +63,8 @@ the host except `sh`, `tar` and a SHA-256 tool. The rest of this page is the ref
    | `files.tar.gz` | The files volume (uploaded files; the API's own health probe files are transient). |
    | `flux.env` | A copy of `docker/.env`: the database password, signing secret and VAPID keys that sessions and push subscriptions depend on. |
 
+   **Not in the archive: the AI key file** (`FLUX_BACKGROUND_KEY_HOST_FILE`), the 32 random bytes that seal people's AI keys. It stays out of the database backup on purpose, so a leaked archive does not open the keys it holds. `./flux backup` ends with one line naming the file and where it lives. Copy it to the same safe place as the archive; on a new machine, put it at the path the restored `docker/.env` names. Without it people connect their AI keys again.
+
 3. **Manifest** (`formatVersion` 1). One key per line, so the launcher reads it without a JSON
    tool:
 

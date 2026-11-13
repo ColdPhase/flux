@@ -4,6 +4,8 @@ import type { AgentRuntimeStatus, BackgroundComputeConnection } from '@flux/cont
 import { getRuntime } from '../agent-runtime/api';
 import { Button, Icon, Spinner } from '../ui';
 import { refreshAssistantModel } from '../assistant/model';
+import { useShellData } from '../app/data';
+import { isManagerRole } from '../people/api';
 import { connectionLines, type AiConnectionKind, type AiConnectionLine } from './connections';
 import { ConnectAiWindow } from './ConnectAiWindow';
 import './connect-ai.css';
@@ -45,6 +47,7 @@ export function ConnectAi({ apiKeys, keys, keysFailed, onRetryKeys, onListed, cl
   clients?: ReactNode;
 }) {
   const navigate = useNavigate();
+  const manager = isManagerRole(useShellData().workspace?.role);
   const [runtime, setRuntime] = useState<AgentRuntimeStatus | null>(null);
   const [runtimeFailed, setRuntimeFailed] = useState(false);
   const [windowOpen, setWindowOpen] = useState(false);
@@ -81,7 +84,7 @@ export function ConnectAi({ apiKeys, keys, keysFailed, onRetryKeys, onListed, cl
           <Button variant="primary" onClick={() => setWindowOpen(true)}>Connect AI</Button>
         </div>
       ) : null}
-      {windowOpen ? <ConnectAiWindow runtime={runtime} runtimeFailed={runtimeFailed} apiKeys={apiKeys} have={have} onClose={() => setWindowOpen(false)}
+      {windowOpen ? <ConnectAiWindow runtime={runtime} runtimeFailed={runtimeFailed} apiKeys={apiKeys} manager={manager} have={have} onClose={() => setWindowOpen(false)}
         onLocalClient={() => { setWindowOpen(false); void navigate('/settings/agents/connect'); }}
         onConnected={() => {
           setWindowOpen(false); loadRuntime(); onRetryKeys();

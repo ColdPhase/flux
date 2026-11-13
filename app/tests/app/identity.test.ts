@@ -181,6 +181,7 @@ describe('human identity', () => {
       const response = await browser.request('POST', '/api/v1/sessions/revoke-others', { origin });
       assert.equal(response.status, 403, `origin ${origin}`);
       assert.equal((response.json as { code: string }).code, 'ORIGIN_REJECTED');
+      assert.equal((response.json as { origin?: string }).origin, publicOrigin, 'the refusal names the address Flux accepts (#1471)');
     }
     const login = await new Browser().request('POST', '/api/auth/sign-in/email', { body: { email, password }, origin: 'https://evil.example' });
     assert.equal(login.status, 403, 'login CSRF is rejected');
