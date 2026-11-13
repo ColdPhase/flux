@@ -56,7 +56,9 @@ work item, project sketch or doc title, excerpted to 80 characters) and opens
 `/projects/:p/live/:session?invitation=:invitation`. Repeated invites of the same person to
 the same session converge on one invitation row and record no second event, so there is one
 inbox row and one push. Migration `0021_live_invitation_notifications.sql` (`FLUX_SCHEMA_VERSION`
-21) adds the reason to the `notifications.reason` check.
+21) adds the reason to the `notifications.reason` check. Its title is "Ada invited you to a call" (#1424), and in an encrypted
+workspace "Ada invited you to a call in <workspace>": migration `0080_call_invitation_words.sql` makes that the form the content-free
+check accepts, in place of "invited you to work together in".
 
 ### The notice on an open tab (#1243)
 

@@ -69,9 +69,6 @@ export const SEALED_NOTIFICATION_PHRASES: Readonly<Record<Exclude<NotificationRe
   review: 'asked for your review', invitation: 'invited you to a call', approval: 'is waiting for your OK', call: 'started a call',
 };
 export function sealedNotificationTitle(reason: NotificationReason, who: string, workspaceName: string): string {
-  // The database keeps the forms an encrypted workspace's title may take (migration 0056): an invitation's is still "invited you to work
-  // together in …" there until a migration adds "invited you to a call in …" (#1424); every other notice says "a call".
-  if (reason === 'invitation') return `${who} invited you to work together in ${workspaceName}`;
   return hiddenNotificationTitle(reason, who, workspaceName);
 }
 
@@ -316,7 +313,7 @@ async function deliver(ports: GeneratorPorts, event: GeneratorEvent, candidate: 
   // F-030: content was read in RAM to decide the reason; what is stored for a sealed workspace says only who and why.
   const sealed = (await ports.facts.sealedWorkspace?.(event.workspaceId)) ?? null;
   // Who and where, in fixed words: what a push says under "Hide previews" (#1346), and what a sealed workspace stores as its title.
-  const hiddenTitle = sealed ? sealedNotificationTitle(candidate.reason, candidate.who, sealed.name) : hiddenNotificationTitle(candidate.reason, candidate.who, candidate.where);
+  const hiddenTitle = hiddenNotificationTitle(candidate.reason, candidate.who, sealed ? sealed.name : candidate.where);
   const inserted = await ports.insertNotification({
     id: notificationId, userId: candidate.userId, source, reason: candidate.reason, eventId: event.id,
     title: sealed ? hiddenTitle : candidate.title, body: sealed ? '' : candidate.body,
