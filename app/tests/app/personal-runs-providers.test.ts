@@ -372,13 +372,16 @@ describe('no payer switching; the API key\'s one daily budget pauses a request u
     assert.equal(await resets('UTC', '2026-11-07T10:00:00Z'), '2026-11-08T00:00:00.000Z');
   });
 
-  test('#915: where the clocks go back at midnight (Havana, 1 Nov 2026) the day begins at the first midnight, and the day before ends there', async () => {
+  test('#915: where the clocks go back at midnight (Havana, 2 Nov 2025) the day begins at the first midnight, and the day before ends there', async () => {
     const window = async (at: string) => (await apiKeySpendToday(db, randomUUID(), undefined, { dailyBudgetCents: 500, timeZone: 'America/Havana' }, new Date(at)))!.resetsAt.toISOString();
-    // Midnight of 1 Nov comes twice: 04:00Z (summer time) and 05:00Z (winter time). The eve ends at the first.
-    assert.equal(await window('2026-10-31T12:00:00Z'), '2026-11-01T04:00:00.000Z');
+    // This was 1 Nov 2026 until tzdata 2026f (IANA NEWS, "Release 2026f - 2026-10-27": "Cuba will not fall back to -05 on 2026-11-01 and instead
+    // plans to maintain -04 through 2027-11-07"), which Debian's tzdata 2026f-0+deb13u1 in Flux's database image has. The last fall-back at midnight
+    // that is past is 2 Nov 2025; tzdata 2026d and 2026f give it alike, and a future Cuban decision cannot move it.
+    // Midnight of 2 Nov 2025 comes twice: 04:00Z (summer time, -04) and 05:00Z (winter time, -05). The eve ends at the first.
+    assert.equal(await window('2025-11-01T12:00:00Z'), '2025-11-02T04:00:00.000Z');
     // The day that follows begins at the same instant, so its first hour counts in it, and it ends at the next midnight, which is single.
-    assert.equal(await window('2026-11-01T04:30:00Z'), '2026-11-02T05:00:00.000Z');
-    assert.equal(await window('2026-11-01T05:30:00Z'), '2026-11-02T05:00:00.000Z');
-    assert.equal(await window('2026-11-01T20:00:00Z'), '2026-11-02T05:00:00.000Z');
+    assert.equal(await window('2025-11-02T04:30:00Z'), '2025-11-03T05:00:00.000Z');
+    assert.equal(await window('2025-11-02T05:30:00Z'), '2025-11-03T05:00:00.000Z');
+    assert.equal(await window('2025-11-02T20:00:00Z'), '2025-11-03T05:00:00.000Z');
   });
 });
