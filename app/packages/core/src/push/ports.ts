@@ -39,7 +39,7 @@ export interface NotificationRecord {
   /** Why it exists (#116); null for notifications created directly through `createNotification`. */
   reason: NotificationReason | null;
   /** Who it comes from, on the one-item read only (#1243): the actor of the event it was made from. */
-  from?: { kind: 'human' | 'agent'; name: string } | null;
+  from?: { kind: 'human' | 'agent'; name: string; /** Only on the Inbox's list read (#1424). */ id?: string } | null;
 }
 
 /** `aiOrigin` (F-029) is required of every writer: whether the notification came from AI work, by its actor or source. */
@@ -53,7 +53,7 @@ export interface NotificationRepository {
    * Newest first, only rows whose source the recipient may currently read, filtered with the
    * access policy's list conditions before the limit and in the unread count.
    */
-  listReadable(userId: string, limit: number): Promise<{ items: NotificationRecord[]; unread: number }>;
+  listReadable(userId: string, limit: number, options?: { from?: boolean }): Promise<{ items: NotificationRecord[]; unread: number }>;
   /** Sets read_at once; returns the stored time, or null when the row is not the recipient's. */
   markRead(userId: string, id: string): Promise<Date | null>;
   /** Marks every unread inbox row of the recipient read (#116); returns how many changed. */

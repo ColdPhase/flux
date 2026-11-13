@@ -41,6 +41,15 @@ show "who has accepted". It shows `decision.accepters`: the people who can still
 (at most six), as "waiting for you" and "Jonas can accept too". Accepting takes the decision out of everyone's
 queue.
 
+## Who and where on every item (#1424)
+
+Every item has `from` and `project` where it has them to give, so the Inbox draws one line "Kind · who · space" for every kind. A mention, a
+question, a call or an invitation is read from a notification, which stores neither: the list read takes the actor of the event the
+notification was made from (two batched reads, `listForRecipient(..., { from: true })`; no migration) and the space from its source. What a
+mention or a question says is then its `title` (`detail` is empty) and a call's place is its title ("Call in Gesture lamp"); the notification's
+own sentence stays on the notification (`/api/v1/inbox`, push, Notices). A message between two people has a sender and `project: null`; a group
+message keeps its sentence, which names the group. A notification of an encrypted space has no words, so it keeps its sentence too.
+
 ## Done, Not now, Decline and Undo
 
 `POST /api/v1/needs-you/:key` with `{ "action": "done" }`, `{ "action": "decline" }` or

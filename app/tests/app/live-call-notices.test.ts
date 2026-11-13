@@ -60,7 +60,8 @@ test('a call started in a space reaches its other people in the Inbox with Join,
   expectStatus(await ada.browser.request('PATCH', '/api/v1/notification-preferences', { body: { level: 'everything' } }), 200);
   assert.equal(await notifying(ada), 1, 'at "Everything" an open call counts once');
   assert.equal(item.reason, 'call');
-  assert.equal(item.title, 'Nia Call started a call in Gesture lamp');
+  // Who started it and where, like every other kind; its words are the call's place (#1424). The notification keeps its sentence.
+  assert.deepEqual([item.title, item.detail, item.from?.id, item.from?.name, item.project], ['Call in Gesture lamp', '', nia.id, 'Nia Call', { id: place.id, name: 'Gesture lamp' }]);
   assert.deepEqual(item.call, { projectId: place.id, sessionId: call.id });
   // The call glyph of the space: for its people, never for someone outside it.
   assert.ok((await liveSpaces(db, human(ada))).projectIds.includes(place.id));

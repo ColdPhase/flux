@@ -1,4 +1,4 @@
-import { and, count, desc, eq, isNull, sql, type SQL } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, isNull, sql, type SQL } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { assignmentNotificationActive, assignmentNotificationsReverted } from './notification-lifecycle.js';
 import * as schema from '../schema.js';
@@ -105,6 +105,27 @@ async function sender(db: DbExecutor, eventId: string | null): Promise<{ kind: '
   return null;
 }
 
+/**
+ * Who each of a page of notifications comes from, read together (#1424): the actor of the event a notification was made from, with the id the
+ * Inbox draws a face from. Two reads however long the page; a notification made directly, or whose actor is gone, has none.
+ */
+async function sendersOf(db: DbExecutor, eventIds: (string | null)[]): Promise<Map<string, { kind: 'human' | 'agent'; id: string; name: string }>> {
+  const ids = [...new Set(eventIds.filter((id): id is string => !!id))];
+  const found = new Map<string, { kind: 'human' | 'agent'; id: string; name: string }>();
+  if (!ids.length) return found;
+  const events = await db.select({ id: schema.events.id, actorId: schema.events.actorId }).from(schema.events).where(inArray(schema.events.id, ids));
+  const actors = events.map((event) => ({ event: event.id, kind: event.actorId.slice(0, event.actorId.indexOf(':')), id: event.actorId.slice(event.actorId.indexOf(':') + 1) }));
+  const humans = [...new Set(actors.filter((actor) => actor.kind === 'human' && actor.id).map((actor) => actor.id))];
+  const agents = [...new Set(actors.filter((actor) => actor.kind === 'agent' && /^[0-9a-f-]{36}$/i.test(actor.id)).map((actor) => actor.id))];
+  const userNames = new Map(humans.length ? (await db.select({ id: schema.authUsers.id, name: schema.authUsers.name }).from(schema.authUsers).where(inArray(schema.authUsers.id, humans))).map((row) => [row.id, row.name]) : []);
+  const agentNames = new Map(agents.length ? (await db.select({ id: schema.agents.id, name: schema.agents.name }).from(schema.agents).where(inArray(schema.agents.id, agents))).map((row) => [row.id, row.name]) : []);
+  for (const actor of actors) {
+    const name = actor.kind === 'human' ? userNames.get(actor.id) : actor.kind === 'agent' ? agentNames.get(actor.id) : undefined;
+    if (name && (actor.kind === 'human' || actor.kind === 'agent')) found.set(actor.event, { kind: actor.kind, id: actor.id, name });
+  }
+  return found;
+}
+
 /** Notification rows; `audience` is an access-policy condition over `notifications` supplied by the caller. */
 export function notificationRows(db: DbExecutor) {
   const withHistory = (reverted: ReadonlySet<string>) => (row: { notification: NotificationRow }) => {
@@ -131,12 +152,19 @@ export function notificationRows(db: DbExecutor) {
     async workspaceIdsForRecipient(userId: string) {
       return (await db.selectDistinct({ id: n.workspaceId }).from(n).where(eq(n.userId, userId))).map((row) => row.id);
     },
-    async listForRecipient(userId: string, audience: SQL, limit: number) {
+    /** `from`: also who each row comes from (the Inbox's "Kind · who · space", #1424); the notifications list does not ask for it. */
+    async listForRecipient(userId: string, audience: SQL, limit: number, options: { from?: boolean } = {}) {
       // Rows kept only for push or email (the person turned the inbox off for that reason) stay out.
       const rows = await db.select({ notification: n }).from(n)
         .where(and(eq(n.userId, userId), eq(n.inInbox, true), audience, sql`NOT ${hiddenNotice(n)}`))
         .orderBy(desc(n.createdAt), desc(n.id)).limit(limit);
-      return withHistories(rows);
+      const records = await withHistories(rows);
+      if (!options.from) return records;
+      const senders = await sendersOf(db, rows.map((row) => row.notification.eventId));
+      return records.map((record, at) => {
+        const from = senders.get(rows[at]!.notification.eventId ?? '');
+        return from ? { ...record, from } : record;
+      });
     },
     async countUnread(userId: string, audience: SQL) {
       const [row] = await db.select({ unread: count() }).from(n).where(and(eq(n.userId, userId), eq(n.inInbox, true), isNull(n.readAt), audience,
