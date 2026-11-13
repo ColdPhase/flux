@@ -133,6 +133,7 @@
       "description": "A control of the composer, of a message or of an attachment on a photo: icon controls and sheet rows.",
       "classes": [
         "composer__attach",
+        "file-viewer__fold",
         "composer__send",
         "composer-files__add",
         "voice-note__play",
