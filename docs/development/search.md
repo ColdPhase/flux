@@ -26,7 +26,7 @@ The service (`createSearchUseCases`) picks by `usesSearchSyntax(text)`; the curs
   score's bits allow (one for up to four words). The scan is filtered by the reader's audiences only (a set of audiences scores a
   constant); the reader's filters (type, place, author, conversation, time) and the task lifecycle are applied to its rows after it,
   because pg_search scores a filter on one value by that value's rarity over the whole index (`search-hidden-ranking.test.ts` holds it
-  with 40,000 hidden rows). The order is then **BM25 computed in SQL over the visible hits** (`cand`): a word's document frequency, the number of documents and their average length are counted over those hits and
+  with 24,000 hidden rows). The order is then **BM25 computed in SQL over the visible hits** (`cand`): a word's document frequency, the number of documents and their average length are counted over those hits and
   nothing else; a document's own part is its length (`length(tsv)`, stored with the row) and where the word was found. The term
   frequency of a word is one (the index says it matches, not how often). Each word adds `idf × weight × (k1 + 1) / (1 + k1 × (1 − b + b × length / average))`
   with k1 1.2 and b 0.75; the weight is 2 for a whole word in the title and 1 in the body, and a hit found only as the word being typed

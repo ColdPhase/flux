@@ -94,12 +94,14 @@ describe('search: what the reader may not read does not move the order of what t
       text: `${known} ${target}`, prefix: null, fuzzy: false, number: null, words: `${known} ${target}`, kinds: null, place: null, author: null, after: null,
       limit: 20, reader: reader.id, ...narrow,
     })).map((hit) => `${hit.position.score} ${hit.snippet?.map((part) => part.text).join('') ?? ''}`);
-    // Forty thousand rows nobody may read, by other authors, outside this space and conversation: each filtered value becomes rare.
+    // 24,000 rows nobody may read, by other authors, outside this space and conversation: each filtered value becomes rare (a statement
+    // stays under the pool's two-second timeout, so they go in batches).
     const hiddenAudience = `project:${randomUUID()}`;
-    await pool.query(`INSERT INTO search_documents (doc_key, kind, workspace_id, audience_key, object_id, title, body, author_kind, author_id, at)
-      SELECT 'message:' || gen_random_uuid(), 'message', $1, $2, gen_random_uuid()::text, '', 'Hidden filler ' || g, 'human', 'hidden-' || (g % 997), now()
-      FROM generate_series(1, 40000) g`, [ws.id, hiddenAudience]);
     try {
+      for (let batch = 0; batch < 12; batch += 1)
+        await pool.query(`INSERT INTO search_documents (doc_key, kind, workspace_id, audience_key, object_id, title, body, author_kind, author_id, at)
+          SELECT 'message:' || gen_random_uuid(), 'message', $1, $2, gen_random_uuid()::text, '', 'Hidden filler ' || g, 'human', 'hidden-' || (g % 997), now()
+          FROM generate_series(1, 2000) g`, [ws.id, hiddenAudience]);
       const plain = await run({});
       assert.equal(plain.length, 2);
       for (const narrow of [
@@ -110,7 +112,9 @@ describe('search: what the reader may not read does not move the order of what t
         { kinds: ['message' as const] },
       ]) assert.deepEqual(await run(narrow), plain, `the filter ${JSON.stringify(narrow)} ranks as the search without it`);
     } finally {
-      await pool.query('DELETE FROM search_documents WHERE audience_key = $1', [hiddenAudience]);
+      let removed: number | null;
+      do removed = (await pool.query(`DELETE FROM search_documents WHERE id IN (SELECT id FROM search_documents WHERE audience_key = $1 LIMIT 2000)`, [hiddenAudience])).rowCount;
+      while (removed);
     }
   });
 
