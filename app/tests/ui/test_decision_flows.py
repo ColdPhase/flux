@@ -5,8 +5,8 @@ FLUX_UI_BROWSER (run it with chromium and with webkit). One person owns a projec
 decision proposed from that message, a decision with no source, an accepted rule. It checks
 what a person sees and can do, on a computer (1440 x 900) and a phone (390 x 844, touch):
 
-* D1: a proposed decision's panel is its Inbox card first: "Needs you", Accept / Not now / Discuss and
-  who is still waiting; on a phone the answer is inside the half sheet; Not now asks when to return.
+* D1: a proposed decision's panel is its Inbox card first: Accept / Not now / Discuss and who is still waiting, with no "Needs you"
+  pill (#1367); on a phone the answer is inside the half sheet; Not now is one button with no menu: back tomorrow morning.
 * D2: no empty "Based on", "Evidence" or "Reports on" sections; "Shown on the Wiki page …" is a sentence drawn only when it applies (#871).
 * D3: Discuss opens the decision's thread with its reply field focused, or the conversation with the
   composer focused and the decision beside it, from the panel and from the Inbox.
@@ -136,7 +136,7 @@ class DecisionFlows(unittest.TestCase):
         page = self.page()
         page.goto(f"/projects/{self.ids['project']}/tasks?open=decision:{self.ids['sourced']}")
         panel = self.panel(page)
-        expect(panel.locator(".wd-decision-identity")).to_contain_text("Needs you")
+        expect(panel.locator(".wd-decision-identity")).not_to_contain_text("Needs you")
         answer = panel.get_by_role("region", name="Your answer")
         expect(answer.get_by_role("button", name="Accept", exact=True)).to_be_visible()
         expect(answer.get_by_role("button", name="Not now")).to_be_visible()
@@ -150,11 +150,9 @@ class DecisionFlows(unittest.TestCase):
         self.assertEqual(order, ["lead", "based", "answer", "rows"])
         expect(panel.get_by_text("Agents can propose decisions; only people accept them.")).to_have_count(0)
         shot(page, "decision-flows-d1-desktop")
-        # Not now asks when it should return, and takes it out of the Inbox only.
+        # Not now is one button with no menu: it puts the decision off until tomorrow morning, and takes it out of the Inbox only.
         answer.get_by_role("button", name="Not now").click()
-        menu = page.get_by_role("menu", name="Ask me again")
-        expect(menu.get_by_role("menuitem", name=re.compile("^Tomorrow morning"))).to_be_visible()
-        menu.get_by_role("menuitem", name=re.compile("^Tomorrow morning")).click()
+        expect(page.get_by_role("menu")).to_have_count(0)
         expect(page.get_by_text("Not now. Back tomorrow morning")).to_be_visible()
         expect(answer.get_by_role("button", name="Not now")).to_have_count(0)
         expect(answer.get_by_role("button", name="Accept", exact=True)).to_be_visible()
@@ -218,10 +216,10 @@ class DecisionFlows(unittest.TestCase):
         page.goto("/inbox")
         card = page.locator(".nyc", has_text=FROM_MESSAGE)
         expect(card).to_be_visible()
-        if "nyc--compact" in (card.get_attribute("class") or ""):  # #763 LD-1: only the selected item shows Discuss
-            frame = card.locator(".nyc__card").bounding_box()
-            page.mouse.click(frame["x"] + 10, frame["y"] + frame["height"] / 2)
-        card.get_by_role("button", name="Discuss", exact=True).click()
+        # Only the open item shows Discuss: choose the row, then its card in the right column.
+        card.locator(".nyc__open").click()
+        expect(card).to_have_attribute("aria-current", "true")
+        page.locator(".nyc--open").get_by_role("button", name="Discuss", exact=True).click()
         expect(page).to_have_url(re.compile(f"/conversations/{self.ids['conversation']}"))
         expect(page.locator("#thread-composer")).to_be_focused()
 

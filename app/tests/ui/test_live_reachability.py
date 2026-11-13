@@ -21,6 +21,7 @@ import unittest
 from playwright.sync_api import Page, expect, sync_playwright
 
 from test_app_shell import DESKTOP, ORIGIN, SHOTS, UPSTREAM, shot, start_forwarder, view_tab
+from inbox_items import open_item
 from test_live_sessions import INSTRUMENT, LIVE, PEOPLE, LiveBase
 
 # elementFromPoint at the element's centre: the element itself (or one of its children) must be on top.
@@ -473,7 +474,7 @@ class ReachabilityRows(LiveBase):
         page.goto("/inbox")
         item = page.locator(".nyc", has_text="invited you to a call")
         expect(item).to_have_count(1)
-        item.get_by_role("button", name="Open").click()
+        open_item(item).get_by_role("button", name="Open").click()
         card = page.get_by_role("region", name="Invitation to work together")
         expect(card).to_be_visible()
         if page.locator(".ui-panel__close").first.is_visible():

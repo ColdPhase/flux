@@ -150,7 +150,7 @@ class MotionEvidence(unittest.TestCase):
         glyph.last.click(); self.beat(page, 1100)
         add_task(page, "Order the cable ties"); self.beat(page, 1300)
         self.go(page, "/inbox"); self.beat(page, 900)
-        page.locator(".nyc").first.get_by_role("button", name=re.compile("^Accept")).click(); self.beat(page, 1300)
+        page.locator(".nyc--open").get_by_role("button", name=re.compile("^Accept")).click(); self.beat(page, 1300)
 
     def ac5(self, page: Page) -> None:
         """A press is colour (a small button also scales to .98, no spring; rows never scale); hover fills ease."""

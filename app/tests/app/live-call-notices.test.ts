@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { channelsOf, LIVE_STARTED_EVENT } from '@flux/core';
 import { NEEDS_YOU_PATH, type NeedsYouResponse } from '@flux/contracts';
@@ -69,6 +69,37 @@ test('a call started in a space reaches its other people in the Inbox with Join,
   assert.equal((await needsYou(ada)).find((entry) => entry.url === url), undefined, 'an ended call leaves the Inbox');
   assert.equal(await notifying(ada), 0, 'and the tab no longer counts it');
   assert.ok(!(await liveSpaces(db, human(ada))).projectIds.includes(place.id), 'and its space loses the call glyph');
+});
+
+test('joining a call answers its notice and an invitation to it, and nobody else\'s', async () => {
+  const nia = await person('Nia Join');
+  const ada = await person('Ada Join');
+  const lee = await person('Lee Join');
+  const ws = await workspace(nia, 'Join notices');
+  await addMember(nia, ws.id, ada, 'member');
+  await addMember(nia, ws.id, lee, 'member');
+  const place = await project(nia, ws.id, 'Rain barrel', 'restricted');
+  await grant(nia, place.id, ada, 'contributor');
+  await grant(nia, place.id, lee, 'contributor');
+  const store = liveSessionStore(db);
+  const call = await store.createOrGet(human(nia), place.id, { type: 'space', id: place.id }, randomUUID(), noRoom);
+  await pool.query('UPDATE live_sessions SET empty_since = NULL WHERE id = $1', [call.id]);
+  const url = `/projects/${place.id}/live/${call.id}`;
+  await waitFor(async () => { const rows = await callNotes(ada.id); return rows.length ? rows : null; }, 'the call notice');
+  await waitFor(async () => { const rows = await callNotes(lee.id); return rows.length ? rows : null; }, 'the call notice of the other person');
+  // An invitation to the same call (the worker writes it from the invitation; the row is what the queue reads).
+  await pool.query(`INSERT INTO notifications (id, user_id, workspace_id, source_type, source_id, title, body, url, reason, in_inbox, ai_origin)
+    VALUES ($1, $2, $3, 'project', $4, 'Nia Join invited you to a call', 'Call in Rain barrel', $5, 'invitation', true, false)`,
+  [randomUUID(), ada.id, ws.id, place.id, `${url}?invitation=${randomUUID()}`]);
+  assert.ok((await needsYou(ada)).some((item) => item.call?.sessionId === call.id), 'the call asks something of Ada');
+  assert.ok((await needsYou(lee)).some((item) => item.call?.sessionId === call.id), 'and of Lee');
+
+  await store.withAdmission(human(ada), call.id, async () => 'grant issued', { id: randomBytes(16).toString('base64url'), authSessionId: 'join-test' });
+  assert.equal((await needsYou(ada)).filter((item) => item.call).length, 0, 'Ada joined: neither the notice nor the invitation asks anything of her');
+  const read = (await pool.query(`SELECT reason, read_at FROM notifications WHERE user_id = $1 AND reason IN ('call', 'invitation')`, [ada.id])).rows as { reason: string; read_at: Date | null }[];
+  assert.deepEqual(read.map((row) => row.reason).sort(), ['call', 'invitation']);
+  assert.ok(read.every((row) => row.read_at), 'both are read');
+  assert.ok((await needsYou(lee)).some((item) => item.call?.sessionId === call.id), 'Lee has not joined: it still asks him');
 });
 
 test('push for a call follows the level, and a call is never emailed', () => {

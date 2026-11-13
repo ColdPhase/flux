@@ -28,12 +28,3 @@ export function tomorrowMorning(now = new Date()) {
   date.setHours(8, 0, 0, 0);
   return date;
 }
-
-/** The next Monday at 08:00 local time (a week away at most). */
-export function nextWeek(now = new Date()) {
-  const date = new Date(now);
-  const ahead = ((8 - date.getDay()) % 7) || 7;
-  date.setDate(date.getDate() + ahead);
-  date.setHours(8, 0, 0, 0);
-  return date;
-}

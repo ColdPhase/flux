@@ -9,7 +9,7 @@ import { useDiscussDecision } from '../work/discuss';
 import { applyRunChanges } from '../assistant/api';
 import { announceAcceptedInboxItem, announceInboxChange } from './api';
 import type { CardHandlers, SnoozeChoice } from './NeedsYouCard';
-import { nextWeek, tomorrowMorning } from './format';
+import { tomorrowMorning } from './format';
 import { ACCEPT_UNDO_MS, flushAccepts, startAccept, startAnswer } from './pendingAccept';
 import { answerAgentQuestion } from '../agents/api';
 import { rememberQuestion } from '../agents/questions';
@@ -19,7 +19,7 @@ const apiMessage = (error: unknown, fallback: string) => (error instanceof ApiEr
 
 /**
  * What a person does with an item of the queue, shared by the Inbox and Home (#342, F-026 S9/S11).
- * Done, Not now, Decline and Unblock apply at once and offer Undo (`Z`) as a real reversal. A decision
+ * Done, Not now (until tomorrow morning), Decline and Unblock apply at once and offer Undo (`Z`) as a real reversal. A decision
  * cannot be un-accepted, so Accept is a delayed command: the item leaves at once and is sent when the
  * Undo window ends, or when the person leaves this place (see `pendingAccept`).
  */
@@ -78,9 +78,8 @@ export function useNeedsYouActions(queue: Queue): CardHandlers {
 
     snooze(item: NeedsYouItem, choice: SnoozeChoice) {
       if (choice === 'decline') { resolve(item, { action: 'decline' }, 'Declined for good. Only your Inbox changed'); return; }
-      if (choice === 'task' && item.snoozeTask) { resolve(item, { action: 'snooze', untilWorkId: item.snoozeTask.id }, `Not now. Back when #${item.snoozeTask.number} is done`); return; }
-      const week = choice === 'week';
-      resolve(item, { action: 'snooze', until: (week ? nextWeek() : tomorrowMorning()).toISOString() }, week ? 'Not now. Back next week' : 'Not now. Back tomorrow morning');
+      // Not now is one button with no menu (S11): the item comes back tomorrow morning.
+      resolve(item, { action: 'snooze', until: tomorrowMorning().toISOString() }, 'Not now. Back tomorrow morning');
     },
 
     accept(item: NeedsYouItem) {

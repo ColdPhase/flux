@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import type { NeedsYouItem, ReturnNextStep, WorkItem } from '@flux/contracts';
 import { Button, Icon, Kreska, MEDIA, StatusGlyph, useMediaQuery } from '../ui';
-import { Face, KIND_WORD } from '../notifications/NeedsYouCard';
+import { Face, kindWord } from '../notifications/NeedsYouCard';
 import { useNeedsYou } from '../notifications/needsYou';
 import { getReturnSummary, saveReturnPoint } from '../returns/api';
 import { WaitingSpaces } from '../encryption/LockedSpace';
@@ -166,7 +166,7 @@ function WaitingItem({ row }: { row: WaitingRow }) {
   const project = item.project?.name ?? null;
   // A run's changes are always the viewer's own agent's; any other agent in the space can ask, so a question or a suggestion says only "Agent", as the Inbox does.
   const meta = (run ? [run.agentName, 'Your agent', project]
-    : [KIND_WORD[item.kind], item.from?.name ?? null, item.from?.kind === 'agent' ? 'Agent' : null, project]).filter(Boolean).join(' · ');
+    : [kindWord(item), item.from?.name ?? null, item.from?.kind === 'agent' ? 'Agent' : null, project]).filter(Boolean).join(' · ');
   return <HomeRow to="/inbox" state={{ select: item.key }} face={<Face item={item} />} title={item.title} meta={meta} metaFirst />;
 }
 

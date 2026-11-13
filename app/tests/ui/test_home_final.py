@@ -18,6 +18,7 @@ import uuid
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, box, shot, start_forwarder
+from inbox_items import open_item
 from test_personal_assistant import mock
 
 PASSWORD = "a calm home for the garden"
@@ -187,7 +188,7 @@ class HomeFinal(unittest.TestCase):
         page.go_back()
         rows.nth(0).click()
         expect(page.locator(".nyc.is-selected")).to_contain_text(DECISION)
-        page.locator(".nyc.is-selected").get_by_role("button", name=re.compile("^Accept")).click()
+        open_item(page.locator(".nyc.is-selected")).get_by_role("button", name=re.compile("^Accept")).click()
         expect(page.get_by_role("status").filter(has_text="Accepted")).to_be_visible()
         page.locator(".ui-toast", has_text="Accepted").get_by_role("button", name="Undo").click()
         expect(page.locator(".nyc")).to_have_count(3)

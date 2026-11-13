@@ -18,6 +18,7 @@ import uuid
 from playwright.sync_api import Page, expect, sync_playwright
 
 from test_app_shell import ORIGIN, UPSTREAM, shot, start_forwarder
+from inbox_items import open_item
 from test_work_pagination import api
 
 PASSWORD = "return to where the sensor list was"
@@ -478,9 +479,9 @@ class ReturnToOrigin(unittest.TestCase):
         page = self.page(engine, size)
         tap = size != "desktop"
         page.goto("/inbox")
-        self.activate(page.get_by_role("tab", name=re.compile(r"^Decisions")), tap)
+        # No filters (#1367): the list holds every decision that waits, and the open item is in the right column.
         cards = page.locator(".nyc")
-        expect(cards).to_have_count(10)
+        expect(cards.filter(has_text="Proposal ")).to_have_count(10)
         card = cards.filter(has_text="Proposal 04")
         # J selects the next item: the selected item is part of the place.
         for _ in range(12):
@@ -494,7 +495,7 @@ class ReturnToOrigin(unittest.TestCase):
         before = self.row_offset(card)
         self.assertGreater(page.locator("#content .pane-scroll").evaluate("el => el.scrollTop"), 100)
         history = page.evaluate("history.length")
-        self.activate(card.get_by_role("button", name="Discuss"), tap)
+        self.activate(open_item(card).get_by_role("button", name="Discuss"), tap)
         expect(page).to_have_url(f"{ORIGIN}/projects/{self.project}")
         self.assertEqual(page.evaluate("history.length"), history + 1)
         back = self.origin_back(page, "Inbox")
@@ -502,7 +503,6 @@ class ReturnToOrigin(unittest.TestCase):
         shot(page, f"592-inbox-item-{engine}-{size}")
         self.activate(back, tap)
         expect(page).to_have_url(f"{ORIGIN}/inbox")
-        expect(page.get_by_role("tab", name=re.compile(r"^Decisions"))).to_have_attribute("aria-selected", "true")
         card = page.locator(".nyc").filter(has_text="Proposal 04")
         expect(card).to_be_visible()
         expect(card).to_have_attribute("aria-current", "true")
@@ -532,8 +532,7 @@ class ReturnToOrigin(unittest.TestCase):
                 self.jump_to_search(page)
                 places["search result"] = self.box(self.origin_back(page, "Conversation"))
                 page.goto("/inbox")
-                page.get_by_role("tab", name=re.compile(r"^Decisions")).click()
-                page.locator(".nyc").first.get_by_role("button", name="Discuss").click()
+                open_item(page.locator(".nyc").first).get_by_role("button", name="Discuss").click()
                 expect(page).to_have_url(f"{ORIGIN}/projects/{self.project}")
                 places["inbox item"] = self.box(self.origin_back(page, "Inbox"))
                 self.assertEqual(len(set(places.values())), 1, f"the control never changes place: {places}")

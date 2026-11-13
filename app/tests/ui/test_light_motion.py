@@ -23,6 +23,7 @@ from playwright.sync_api import Page, expect, sync_playwright
 from create_window import add_task
 from light_motion_fixture import RECORDER, TRANSFORM_ONLY, LightMotion, clear, moved, numbers, ready, recorded, sample_while, settled
 from test_app_shell import ORIGIN, UI_BROWSER, UPSTREAM, start_forwarder
+from inbox_items import open_item
 from test_work_pagination import api
 
 EASE_OUT = [0.22, 1, 0.36, 1]
@@ -1127,7 +1128,7 @@ class LightMotionJourney(unittest.TestCase):
         settled(page)
         clear(page)
         count = cards.count()
-        first.get_by_role("button", name=re.compile("^Accept")).click()
+        open_item(first).get_by_role("button", name=re.compile("^Accept")).click()
         expect(page.locator(f".nyc[data-key='{gone}']")).to_have_count(0)
         expect(cards).to_have_count(count - 1)
         for entry in recorded(page):
@@ -1149,8 +1150,10 @@ class LightMotionJourney(unittest.TestCase):
         self.open(page, "/inbox")
         pair = re.compile("Order spare batteries|Keep the gateway")
         expect(page.locator(".nyc", has_text=pair)).to_have_count(2)
+        # Each is chosen in the list, then accepted in the open column (#1367), a tenth of a second apart.
         page.evaluate("""async () => { for (const card of [...document.querySelectorAll('.nyc')].filter((c) => /Order spare batteries|Keep the gateway/.test(c.textContent))) {
-          card.querySelector('.nyc__accept').click(); await new Promise((resolve) => setTimeout(resolve, 60)); } }""")
+          card.querySelector('.nyc__open').click(); await new Promise((resolve) => setTimeout(resolve, 40));
+          (document.querySelector('.nyc--open .nyc__accept') || card.querySelector('.nyc__accept')).click(); await new Promise((resolve) => setTimeout(resolve, 60)); } }""")
         expect(page.locator(".nyc", has_text=pair)).to_have_count(0)
         settled(page)
         self.assertEqual(page.locator("[data-row-ghost]").count(), 0, "no outgoing copy is kept")

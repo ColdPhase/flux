@@ -227,9 +227,8 @@ class FinalCheck763(unittest.TestCase):
                     # The label is whole, not clipped by the button.
                     self.assertLessEqual(button.evaluate("el => el.scrollWidth - el.clientWidth"), 1, f"{name}: the label fits")
                 self.assertLessEqual(page.evaluate("document.scrollingElement.scrollWidth"), viewport["width"], "no sideways scroll")
-                # The filter tabs stay inside their track.
-                track = page.locator(".nyq__filters .ui-tabs__bar").first
-                self.assertLessEqual(track.evaluate("el => el.scrollWidth - el.clientWidth"), 1, f"{name}: the filters fit their track")
+                # There are no filters to fit (#1367).
+                expect(page.locator(".nyq__filters")).to_have_count(0)
                 waiting = card.locator(".nyc__waiting").bounding_box()
                 self.assertLessEqual(waiting["x"] + waiting["width"], inner["x"] + inner["width"] - 8, f"{name}: the waiting line stays in the card")
                 # 390 keeps the three on one row (#763 IN-6); under 375 they wrap inside the card.

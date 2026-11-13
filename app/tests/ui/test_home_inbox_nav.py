@@ -178,9 +178,12 @@ class HomeInboxNav(unittest.TestCase):
         card = page.get_by_role("list", name="Needs you").locator(f'.nyc[data-key="{key}"]')
         expect(card).to_contain_text("Offsets per bed, or one value for all six?")
         expect(card).to_contain_text(f"on #{number}")
+        # The open item (the right column at 1440) holds the ready answers; the row of the list has no button (#1367).
+        pane = page.locator(".nyc--open")
+        expect(pane).to_contain_text("Offsets per bed, or one value for all six?")
         shot(page, "inbox-question-1440")
         # An answer leaves at once with Undo; Undo within the window sends nothing.
-        card.get_by_role("button", name="Per bed", exact=True).click()
+        pane.get_by_role("button", name="Per bed", exact=True).click()
         expect(card).to_have_count(0)
         toast = page.locator(".ui-toast").filter(has_text="Answered: Per bed")
         expect(toast).to_be_visible()
@@ -188,7 +191,8 @@ class HomeInboxNav(unittest.TestCase):
         expect(card).to_be_visible()
         self.assertIsNone(next(item for item in self.questions() if item["id"] == asked["questionId"])["answer"], "Undo sent nothing")
         # Answered for real once the window ends: the question itself holds the answer.
-        card.get_by_role("button", name="Per bed", exact=True).click()
+        expect(pane).to_contain_text("Offsets per bed, or one value for all six?")
+        pane.get_by_role("button", name="Per bed", exact=True).click()
         expect(card).to_have_count(0)
         for _ in range(60):
             answer = next(item for item in self.questions() if item["id"] == asked["questionId"])["answer"]
@@ -349,19 +353,17 @@ class HomeInboxNav(unittest.TestCase):
         box = more.bounding_box()
         assert box
         self.assertLessEqual(box["x"] + box["width"], TABLET["width"], "⋯ is on screen")
-        filters = page.get_by_role("tablist", name="Show").or_(page.get_by_role("group", name="Show")).first
-        expect(filters).to_be_visible()
-        self.assertEqual(page.locator("header.top .nyq__filters").count(), 0, "the filters head the list, not the header")
-        filters_box = filters.bounding_box()
-        assert filters_box
-        self.assertLessEqual(filters_box["x"] + filters_box["width"], TABLET["width"])
+        # No filters (#1367): the list is one column under the header, and nothing in the header repeats the count.
+        expect(page.get_by_role("tablist", name="Show")).to_have_count(0)
+        expect(page.locator(".nyq--two")).to_have_count(0)
         self.no_sideways_scroll(page)
         shot(page, "inbox-768")
-        # The computer keeps the summary beside the title, as drawn, with no second line repeating it.
+        # The computer shows the count beside the title, as drawn ("Inbox 4"), with no second line repeating it.
         wide = self.page()
         wide.goto("/inbox")
-        expect(wide.locator("header.top .nyq__summary")).to_contain_text("need")
+        expect(wide.locator("header.top .top__n")).to_contain_text("need you")
         expect(wide.locator("header.top")).not_to_contain_text("What involves you")
+        expect(wide.locator("header.top")).not_to_contain_text("all spaces")
 
     # ---------------------------------------------------------------- NV-5 / NV-6
 

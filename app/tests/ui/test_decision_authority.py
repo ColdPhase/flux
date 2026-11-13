@@ -16,6 +16,7 @@ import unittest
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+from inbox_items import open_item
 
 PASSWORD = "a person decides here"
 STAMP = int(time.time() * 1000)
@@ -120,9 +121,10 @@ class DecisionAuthorityJourney(unittest.TestCase):
         inbox.goto("/inbox")
         card = inbox.locator(".nyc", has_text=TITLE)
         expect(card).to_contain_text("Ada Lind")
-        expect(card.locator(".nyc__waiting")).to_contain_text("waiting for you")
-        expect(card.locator(".nyc__waiting")).to_contain_text("Ada Lind can accept too")
-        expect(card.get_by_role("button", name=re.compile("^Accept"))).to_be_visible()
+        item = open_item(card)
+        expect(item.locator(".nyc__waiting")).to_contain_text("waiting for you")
+        expect(item.locator(".nyc__waiting")).to_contain_text("Ada Lind can accept too")
+        expect(item.get_by_role("button", name=re.compile("^Accept"))).to_be_visible()
         page = self.open_decision("kai")
         panel = self.details(page)
         expect(panel.get_by_role("region", name="Who decides")).to_have_count(0)

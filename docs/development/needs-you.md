@@ -51,11 +51,15 @@ person's own choice (204; idempotent).
 - The choice is **per person**, in `needs_you_states` (migration 0063). A decision stays proposed for others.
   "Decline for good" only removes it from the person's queue (the design's wording); the decision is not
   declined, because v0.1 has no way to reject one (DA-3).
-- A snooze until a time is at least a minute and at most 60 days ahead (the client offers tomorrow at 08:00 and
-  next Monday at 08:00 local time). A snooze until a task is done is offered only for the task the item names:
-  the first unfinished task a decision affects, or the first unfinished prerequisite of a blocked task. It ends
-  when that task is done, set aside or gone.
+- A snooze until a time is at least a minute and at most 60 days ahead. **Not now is one button with no menu**
+  (README S11, #1367): the client sends the snooze until tomorrow at 08:00 local time. The API still accepts a snooze
+  until a task is done (`untilWorkId`, the first unfinished task a decision affects or the first unfinished
+  prerequisite of a blocked task; it ends when that task is done, set aside or gone) and a later time, but no screen offers them.
 - Done on a mention or question also reads its notification; Undo unreads it. Nothing is deleted.
+- **A call is not a question** (F-041, #1368). A call's notice (`reason: call`) and an invitation to a call (`reason: invitation`)
+  are listed with `call: { projectId, sessionId }`, only while someone is in the call, and are named "Call" with Join. They leave the
+  queue when the call ends, and when the person joins it: the join (`POST /api/v1/live/sessions/:id/join`) reads the person's notices
+  and invitations of that session in the same transaction, so every tab's Inbox and Home lose it on their next read.
 - **Answered where it was asked** (#1170): a person's reply in a conversation (`POST /api/v1/conversations/:id/messages`, or
   `POST /api/v1/work/:id/discussion` in a task's discussion) answers their unread `question` and `mention` notifications that open a
   message of that conversation. In the reply's transaction each is
@@ -89,5 +93,5 @@ The Tasks tab lists tasks only: its views take `kinds=work` (`GET …/work-view?
 leaves decisions out of the "All" selection and its total. API readers without `kinds` still get
 the whole mixed view. A decision's history stays in its own details, as plain sentences that appear only when they apply ("This replaces the decision …",
 "This was replaced by the decision …", "Earlier reason", "Shown on the Wiki page …"). Old links to the Decisions view
-(`/projects/:id/tasks?status=needs|rules`) open the Inbox's Decisions filter (`/inbox?show=decisions`); a
+(`/projects/:id/tasks?status=needs|rules`) open the Inbox; a
 decision's own link (`?open=decision:<id>`) opens the decision.

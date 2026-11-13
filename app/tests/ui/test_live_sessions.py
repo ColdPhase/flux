@@ -29,6 +29,7 @@ from contrast import MEASURE
 
 from project_views import project_view
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+from inbox_items import open_item
 
 LIVE = os.environ.get("FLUX_UI_LIVE") == "1"
 PASSWORD = "work on it together calmly"
@@ -634,12 +635,24 @@ class LiveJourney(LiveBase):
         self.assertLess(time.monotonic() - started, 3, "the space's call glyph shows within about 2 s")
         shot(ada, "live-desktop-1440-sidebar-call-on")
         # The Inbox: the call with Join (the notice is written by the worker, a moment after the start).
+        # A call is a Call, never a Question (#1368): Home names it so too, in its one row.
+        ada.goto("/")
+        row = ada.get_by_role("list", name="Top of your Inbox").locator(".home__row", has_text="Lee Park started a call in Repair cafe")
+        expect(row.locator(".home__row-k")).to_have_text("Call")
+        expect(row).not_to_contain_text("Question")
         ada.goto("/inbox")
         card = ada.locator(".nyc", has_text="Lee Park started a call in Repair cafe")
         expect(card).to_be_visible()
+        expect(card).to_contain_text("Call")
+        expect(card).not_to_contain_text("Question")
         shot(ada, "live-desktop-1440-inbox-call")
-        card.get_by_role("button", name="Join").first.click()
+        open_item(card).get_by_role("button", name="Join").first.click()
         expect(self.bar(ada).locator(".lv-where")).to_have_text("Call in Repair cafe")
+        # Joined, it asks nothing more of her: it leaves the Inbox and Home while the call goes on (#1368).
+        expect(card).to_have_count(0)
+        ada.get_by_role("navigation", name="Places").get_by_role("link", name="Home").click()
+        expect(ada.locator(".home__hello")).to_be_visible()
+        expect(ada.locator(".home__row", has_text="started a call in Repair cafe")).to_have_count(0)
         expect(bar.get_by_role("status").filter(has_text="Nobody joined")).to_have_count(0)
 
         # Invite… from the strip opens the panel at the people who can join.
@@ -654,9 +667,12 @@ class LiveJourney(LiveBase):
         nia.keyboard.press("Escape")
         # Each invitation is an Inbox item with Join for its person.
         jonas.goto("/inbox")
-        expect(jonas.locator(".nyc", has_text="invited you to a call").get_by_role("button", name="Join").first).to_be_visible()
+        invitation = jonas.locator(".nyc", has_text="invited you to a call")
+        expect(invitation.first).to_contain_text("Call")
+        expect(invitation.first).not_to_contain_text("Question")
+        expect(open_item(invitation.first).get_by_role("button", name="Join").first).to_be_visible()
         # Opening the invitation: its strip offers to turn notifications on, once, with Home's card and no earlier message (#1243, F-041).
-        jonas.locator(".nyc", has_text="invited you to a call").get_by_role("button", name="Open").first.click()
+        open_item(invitation.first).get_by_role("button", name="Open").first.click()
         strip = jonas.get_by_role("region", name="Invitation to work together")
         offer = strip.locator("section.push-offer")
         expect(offer).to_contain_text("Get notified when someone writes to you or calls")
@@ -845,7 +861,7 @@ class LiveJourney(LiveBase):
         expect(item).to_have_count(1)
         expect(item).to_contain_text(TASK)
         shot(jonas, "live-desktop-1440-inbox")
-        item.get_by_role("button", name="Open").click()
+        open_item(item).get_by_role("button", name="Open").click()
         card = jonas.get_by_role("region", name="Invitation to work together")
         expect(card).to_contain_text("Nia Okafor asked you to work together on")
         expect(card.get_by_role("button", name="Later")).to_be_visible()
