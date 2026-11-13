@@ -557,7 +557,7 @@ asked / bilingual; [research](research/2026-11-ai-context-retrieval.md#answer-ac
 - **pg_search plans only Flux's BM25 statements.** Its custom scan, which scores BM25, refuses any other condition on a column the
   index holds twice ("Query is ambiguous"), so the image turns it off by default and each BM25 statement turns it on for its own
   transaction (`SET LOCAL paradedb.enable_custom_scan = on`); every other statement plans as before. Its planner notes are off too.
-- **A run reaches its own place** (#1290, C-12, C-37): `flux_search` and `flux_read_around` follow `runReaches`, so a run in a space searches that space (its answer may be
+- **A run reaches its own place** (founder decision, Hubert, 2026-11-12, on [#1324](https://github.com/ColdPhase/flux/pull/1324): the #1242 wording "every space it may read" applies to private runs and local clients; #1290, C-12, C-37): `flux_search` and `flux_read_around` follow `runReaches`, so a run in a space searches that space (its answer may be
   shown to everyone who reads it), a run in a DM that DM, a private chat and the owner's local client every space the owner reaches
   ([AG-12](assistant.md#ag-12--finding-older-messages-f-042)).
 - **Access is decided at query time,** never stored in the index: the statement receives the audiences the caller may read

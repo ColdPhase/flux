@@ -489,7 +489,7 @@ searching ([F-042](decisions.md#f-042--agents-find-what-they-need-with-bm25-sear
 - **`flux_read_around`** returns the message and up to 25 before and after it (five by default) in its conversation or direct
   message, oldest first, with the same author labels and the same access check as a search: one answer for a message that
   is not there, one that is deleted and one the caller may not read.
-- **Where a search reaches** is the run's own place, as before ([C-12, C-37](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)): a run in a space or a thread or a task's discussion searches that space,
+- **Where a search reaches** is the run's own place, as before ([C-12, C-37](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override); founder decision, 2026-11-12, #1324): a run in a space or a thread or a task's discussion searches that space,
   because its answer may be shown to everyone who reads it; a run in a DM searches that DM and nothing else, while its owner is
   one of its people; a private chat and the owner's own Claude Code or Codex search every space their owner reaches. The
   agent cannot name a place outside its reach: it is one answer with a place that is not there.
