@@ -115,3 +115,30 @@ test('an invitation that no longer applies when the worker reaches it notifies n
   assert.deepEqual(await invitationRows(ended!.id), [], 'session ended before generation');
   assert.deepEqual(await invitationRows(f.owner.id), []);
 });
+
+test('the same inviter inviting the same person to the same place again within 5 minutes is not noticed twice, with the invitation still there (#1347)', async () => {
+  const f = await fixture('live-invite-repeat', ['recipient', 'other']);
+  const recipient = f.people.recipient!;
+  const store = liveSessionStore(db);
+  const invitedEvents = async (userId: string) => Number((await pool.query(`SELECT count(*)::int AS n FROM events WHERE kind = 'project.live_invited.v1' AND data->>'recipientId' = $1`, [userId])).rows[0].n);
+  const first = await invitations.invite(human(f.owner), f.session.id, recipient.id);
+  assert.equal(await invitedEvents(recipient.id), 1);
+  // The call ends and is started again at the same place: the owner invites the same person, again and again.
+  for (let round = 0; round < 3; round++) {
+    await pool.query(`UPDATE live_sessions SET state = 'ended', ended_at = now() WHERE id = $1`, [(await pool.query(`SELECT id FROM live_sessions WHERE project_id = $1 AND state = 'available' ORDER BY created_at DESC LIMIT 1`, [f.place.id])).rows[0]?.id ?? f.session.id]);
+    const next = await store.createOrGet(human(f.owner), f.place.id, f.anchor, randomUUID(), async () => {});
+    const invitation = await invitations.invite(human(f.owner), next.id, recipient.id);
+    assert.notEqual(invitation.id, first.id, 'the invitation is its own row for its own call');
+    assert.equal(invitation.response, 'pending', 'it is there for the recipient to answer');
+  }
+  assert.equal(await invitedEvents(recipient.id), 1, 'but the recipient is told, and chimed, once');
+  // Another person, or later than the pause, is told as usual.
+  const live = (await pool.query(`SELECT id FROM live_sessions WHERE project_id = $1 AND state = 'available' ORDER BY created_at DESC LIMIT 1`, [f.place.id])).rows[0].id as string;
+  await invitations.invite(human(f.owner), live, f.people.other!.id);
+  assert.equal(await invitedEvents(f.people.other!.id), 1, 'another person is told');
+  await pool.query(`UPDATE live_invitations SET created_at = now() - interval '6 minutes' WHERE recipient_id = $1`, [recipient.id]);
+  await pool.query(`UPDATE live_sessions SET state = 'ended', ended_at = now() WHERE id = $1`, [live]);
+  const later = await store.createOrGet(human(f.owner), f.place.id, f.anchor, randomUUID(), async () => {});
+  await invitations.invite(human(f.owner), later.id, recipient.id);
+  assert.equal(await invitedEvents(recipient.id), 2, 'after 5 minutes the same person is told again');
+});

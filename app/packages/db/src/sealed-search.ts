@@ -3,6 +3,7 @@ import { sql } from 'drizzle-orm';
 import { AUDIENCE_KEYS, type SearchAudienceRows, type SearchKindRow, type SearchPlanRows, type SearchRowRecord, type SearchTextRow } from './repositories/search.js';
 import type { DbExecutor } from './repositories/push.js';
 import { openRows, sealOf } from './sealing.js';
+import { cleanName } from './display-name.js';
 
 /**
  * Search in an encrypted workspace (F-030, #655, S2b; docs/product/encrypted-workspaces.md#search). PostgreSQL cannot index
@@ -729,9 +730,9 @@ async function hydrate(db: DbExecutor, index: SealedSearchIndex, hits: Hit[], co
   const get = async <T>(statement: ReturnType<typeof sql>) => (await db.execute(statement)).rows as T[];
   const workspaceNames = new Map((await get<{ id: string; name: string }>(sql`SELECT id::text AS id, name FROM workspaces WHERE id = ${index.workspaceId}::uuid`)).map((r) => [r.id, r.name]));
   const humans = ids((doc) => (doc.author?.kind === 'human' ? doc.author.id : null));
-  const people = humans.length ? new Map((await get<{ id: string; name: string }>(sql`SELECT id, name FROM auth_users WHERE id = ANY(${sql.param(humans)}::text[])`)).map((r) => [r.id, r.name])) : new Map<string, string>();
+  const people = humans.length ? new Map((await get<{ id: string; name: string }>(sql`SELECT id, ${cleanName(sql`name`)} AS name FROM auth_users WHERE id = ANY(${sql.param(humans)}::text[])`)).map((r) => [r.id, r.name])) : new Map<string, string>();
   const agentIds = ids((doc) => (doc.author?.kind === 'agent' ? doc.author.id : null)).filter((id) => /^[0-9a-f-]{36}$/i.test(id));
-  const agents = agentIds.length ? new Map((await get<{ id: string; name: string }>(sql`SELECT id::text AS id, name FROM agents WHERE id = ANY(${uuids(agentIds)})`)).map((r) => [r.id, r.name])) : new Map<string, string>();
+  const agents = agentIds.length ? new Map((await get<{ id: string; name: string }>(sql`SELECT id::text AS id, ${cleanName(sql`name`)} AS name FROM agents WHERE id = ANY(${uuids(agentIds)})`)).map((r) => [r.id, r.name])) : new Map<string, string>();
   const materialIds = ids((doc) => (doc.kind === 'material' || doc.kind === 'doc' ? doc.objectId : null));
   const versions = materialIds.length ? new Map((await get<{ id: string; current_version: number }>(sql`SELECT id::text AS id, current_version FROM project_materials WHERE id = ANY(${uuids(materialIds)})`)).map((r) => [r.id, Number(r.current_version)])) : new Map<string, number>();
   // A DM is named by its title (sealed), else by the other people in it.
@@ -740,10 +741,10 @@ async function hydrate(db: DbExecutor, index: SealedSearchIndex, hits: Hit[], co
   if (dmIds.length) {
     const dms = await rowsOf(db, 'dms', sql`SELECT id, workspace_id, kind, pair_key, title FROM dms WHERE id = ANY(${uuids(dmIds)})`);
     const bare = dms.filter((dm) => !dm.title);
-    const members = bare.length ? await get<{ dm_id: string; id: string; name: string }>(sql`SELECT dp.dm_id::text AS dm_id, u.id, u.name FROM dm_participants dp JOIN auth_users u ON u.id = dp.user_id
+    const members = bare.length ? await get<{ dm_id: string; id: string; name: string }>(sql`SELECT dp.dm_id::text AS dm_id, u.id, ${cleanName(sql`u.name`)} AS name FROM dm_participants dp JOIN auth_users u ON u.id = dp.user_id
       WHERE dp.dm_id = ANY(${uuids(bare.map((dm) => String(dm.id)))}) AND u.id <> ${reader}`) : [];
     const pairIds = bare.filter((dm) => dm.kind === 'pair').flatMap((dm) => String(dm.pair_key).split(':')).filter((id) => id !== reader);
-    const pairNames = pairIds.length ? new Map((await get<{ id: string; name: string }>(sql`SELECT id, name FROM auth_users WHERE id = ANY(${sql.param(pairIds)}::text[])`)).map((r) => [r.id, r.name])) : new Map<string, string>();
+    const pairNames = pairIds.length ? new Map((await get<{ id: string; name: string }>(sql`SELECT id, ${cleanName(sql`name`)} AS name FROM auth_users WHERE id = ANY(${sql.param(pairIds)}::text[])`)).map((r) => [r.id, r.name])) : new Map<string, string>();
     for (const dm of dms) {
       const id = String(dm.id);
       if (dm.title) dmNames.set(id, String(dm.title));

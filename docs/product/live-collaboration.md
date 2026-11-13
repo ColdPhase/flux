@@ -66,12 +66,15 @@ supersedes the quiet start of #59 (2026-09-27).
    invitation (point 4). Quiet hours hold push as for every notice. The notice is
    never emailed (a call may be over before the mail is read), and it stops asking
    anything when the call ends (the tab's "(N)" counts it only while the call runs, and
-   a call you were invited to once). A muted space (#1249) sends no notice of an open call
+   a call you were invited to once). The same person's notice about the same place (the space, a task, a map or a page) is sent once in
+   **5 minutes**: a call that ends and is started again inside that still starts and still shows its Join in the space, but tells
+   nobody a second time (#1347; `CALL_NOTICE_PAUSE_MINUTES`). A muted space (#1249) sends no notice of an open call
    there; an invitation to a call still arrives. While a call runs, the space's row in
    the sidebar and the Spaces list carries the call glyph (a shape, not a dot).
 4. **Invite.** After starting, the strip offers **Invite…** with the space's people
    who are not in the call. An invitation is an Inbox item and a push with Join / Later,
-   as before, plus one soft chime on the invited person's open tab.
+   as before, plus one soft chime on the invited person's open tab. The same inviter's invitation of the same person to the same place is
+   noticed once in 5 minutes (the pending invitation is there, the Inbox item, the push and the chime are not repeated).
 5. **Sound.** Only for a direct invitation, never for an open call in a space. One
    soft chime, no ringing loop and no answer/reject takeover screen. It is on by
    default and follows the switch "Sound when someone calls me" in Settings ›

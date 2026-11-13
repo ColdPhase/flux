@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { sql, type SQL } from 'drizzle-orm';
 import type { DbExecutor } from './push.js';
+import { cleanName } from '../display-name.js';
 import { envelopeSample } from './key-rotation.js';
 
 /**
@@ -410,7 +411,7 @@ export function workspaceEncryptionRows(db: DbExecutor) {
       const rows = await rowsOf<Omit<EncryptionViewRow, 'unlocks'> & { unlocks: { keyVersion: number; bootId: string; unlockedAt: string; unlockedBy: string | null; unlockedByName: string | null }[] | null }>(db, sql`
         SELECT k.workspace_id AS "workspaceId", k.tampered_at IS NOT NULL AS tampered, k.live_versions AS "liveVersions",
           (SELECT json_agg(json_build_object('keyVersion', u.key_version, 'bootId', u.boot_id, 'unlockedAt', u.unlocked_at, 'unlockedBy', u.unlocked_by,
-             'unlockedByName', a.name) ORDER BY u.key_version) FROM workspace_unlocks u LEFT JOIN auth_users a ON a.id = u.unlocked_by
+             'unlockedByName', ${cleanName(sql`a.name`)}) ORDER BY u.key_version) FROM workspace_unlocks u LEFT JOIN auth_users a ON a.id = u.unlocked_by
              WHERE u.workspace_id = k.workspace_id) AS unlocks,
           EXISTS (SELECT 1 FROM workspace_holders h WHERE h.workspace_id = k.workspace_id AND h.kind = 'password' AND h.user_id = ${userId}) AS "myPassword",
           (SELECT g.expires_at FROM workspace_wrap_grants g WHERE g.workspace_id = k.workspace_id AND g.user_id = ${userId} AND g.expires_at > now()) AS "grantUntil",
@@ -418,19 +419,19 @@ export function workspaceEncryptionRows(db: DbExecutor) {
           (SELECT max(v.created_at) FROM workspace_key_versions v WHERE v.workspace_id = k.workspace_id AND v.key_version > 1) AS "keyChangedAt",
           k.rotation, (SELECT json_build_object('rowsDone', p.rows_done, 'rowsEstimate', p.rows_estimate, 'startedAt', p.started_at, 'stalled', p.stalled_at IS NOT NULL)
             FROM workspace_rotation_progress p WHERE p.workspace_id = k.workspace_id AND p.target_version = k.current_version) AS "rotationProgress",
-          (SELECT coalesce(json_agg(json_build_object('userId', h.user_id, 'name', a.name, 'kind', h.kind) ORDER BY h.kind, a.name), '[]'::json)
+          (SELECT coalesce(json_agg(json_build_object('userId', h.user_id, 'name', ${cleanName(sql`a.name`)}, 'kind', h.kind) ORDER BY h.kind, a.name), '[]'::json)
              FROM workspace_dek_wraps dw JOIN workspace_holders h ON h.id = dw.holder_id LEFT JOIN auth_users a ON a.id = h.user_id
              WHERE dw.workspace_id = k.workspace_id AND dw.key_version = k.current_version AND k.rotation = 'reencrypting') AS "rotationOpenFor",
           CASE WHEN k.rotation <> 'none' AND k.rotation_reason IS NOT NULL THEN json_build_object('kind', k.rotation_reason->>'kind',
-            'userId', k.rotation_reason->>'userId', 'name', (SELECT a.name FROM auth_users a WHERE a.id = k.rotation_reason->>'userId')) END AS "rotationReason",
+            'userId', k.rotation_reason->>'userId', 'name', (SELECT ${cleanName(sql`a.name`)} FROM auth_users a WHERE a.id = k.rotation_reason->>'userId')) END AS "rotationReason",
           CASE WHEN k.key_change_reason IS NOT NULL THEN json_build_object('kind', k.key_change_reason->>'kind',
-            'userId', k.key_change_reason->>'userId', 'name', (SELECT a.name FROM auth_users a WHERE a.id = k.key_change_reason->>'userId')) END AS "keyChangeReason",
-          (SELECT json_build_object('reason', e.data->>'reason', 'at', e.created_at, 'by', a.id, 'byName', a.name)
+            'userId', k.key_change_reason->>'userId', 'name', (SELECT ${cleanName(sql`a.name`)} FROM auth_users a WHERE a.id = k.key_change_reason->>'userId')) END AS "keyChangeReason",
+          (SELECT json_build_object('reason', e.data->>'reason', 'at', e.created_at, 'by', a.id, 'byName', ${cleanName(sql`a.name`)})
              FROM events e LEFT JOIN auth_users a ON e.actor_id LIKE 'human:%' AND a.id = substr(e.actor_id, 7)
              WHERE e.workspace_id = k.workspace_id AND e.kind = 'workspace.locked.v1'
                AND NOT EXISTS (SELECT 1 FROM workspace_unlocks u WHERE u.workspace_id = k.workspace_id)
              ORDER BY e.created_at DESC LIMIT 1) AS "lastLock",
-          (SELECT coalesce(json_agg(json_build_object('id', h.user_id, 'name', a.name) ORDER BY a.name), '[]'::json)
+          (SELECT coalesce(json_agg(json_build_object('id', h.user_id, 'name', ${cleanName(sql`a.name`)}) ORDER BY a.name), '[]'::json)
              FROM workspace_holders h JOIN workspace_members m ON m.workspace_id = h.workspace_id AND m.user_id = h.user_id AND m.role IN ('owner', 'admin')
              JOIN auth_users a ON a.id = h.user_id
              WHERE h.workspace_id = k.workspace_id AND h.kind = 'password') AS "unlockers"

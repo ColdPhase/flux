@@ -92,8 +92,11 @@ export interface PushSubscriptionRepository {
   listForUser(userId: string): Promise<PushSubscriptionRecord[]>;
   countForUser(userId: string): Promise<number>;
   endpointExists(endpoint: string): Promise<boolean>;
-  /** Insert, or move the endpoint's row to these values (new user/session); `created` tells which. */
-  upsertByEndpoint(id: string, values: PushSubscriptionValues): Promise<{ record: PushSubscriptionRecord; created: boolean }>;
+  /**
+   * Insert, or move the endpoint's row to these values (new session; a new user only with the same browser keys); `created` tells which.
+   * Null when the endpoint's row is another account's and the keys differ (#1347).
+   */
+  upsertByEndpoint(id: string, values: PushSubscriptionValues): Promise<{ record: PushSubscriptionRecord; created: boolean } | null>;
   deleteForUser(userId: string, id: string): Promise<boolean>;
   /** Subscriptions of the user whose session is still active. */
   deliverableIdsForUser(userId: string): Promise<string[]>;

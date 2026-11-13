@@ -1,4 +1,4 @@
-import { messagePreview } from '@flux/contracts';
+import { messagePreview, withoutInvisibleFormat } from '@flux/contracts';
 import { and, eq, sql, type SQL } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
@@ -235,8 +235,8 @@ export function returnRows(db: DbExecutor) {
       const humans = keys.filter((item) => item.startsWith('human:')).map((item) => item.slice(6));
       const agents = keys.filter((item) => item.startsWith('agent:')).map((item) => item.slice(6)).filter((id) => /^[0-9a-f-]{36}$/i.test(id));
       const names = new Map<string, string>();
-      if (humans.length) for (const row of (await queryPrepared<{ id: string; name: string }>(db, PEOPLE_NAMES, [humans])).rows) names.set(`human:${row.id}`, row.name);
-      if (agents.length) for (const row of (await queryPrepared<{ id: string; name: string }>(db, AGENT_NAMES, [agents])).rows) names.set(`agent:${row.id}`, row.name);
+      if (humans.length) for (const row of (await queryPrepared<{ id: string; name: string }>(db, PEOPLE_NAMES, [humans])).rows) names.set(`human:${row.id}`, withoutInvisibleFormat(row.name));
+      if (agents.length) for (const row of (await queryPrepared<{ id: string; name: string }>(db, AGENT_NAMES, [agents])).rows) names.set(`agent:${row.id}`, withoutInvisibleFormat(row.name));
       return names;
     },
   };

@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { AI_PROVIDER_KINDS, AI_PROVIDERS, assistantModelName, groupModelsByFamily, tablePrice,
   type AiListedModel, type AiModelList, type AiPrice, type AiProviderKind } from '@flux/contracts';
 import { Button, Select, Option, OptionGroup } from '../ui';
+import { ApiError } from '../api/client';
 import { listAiModels } from './api';
 
 // Provider, API key, model, endpoint and price of an owner's AI connection (F-020, #179; CA-2, #1218), in that order: the key
@@ -58,6 +59,10 @@ function optionText(provider: AiProviderKind, model: AiListedModel) {
 
 type Listing = { state: 'idle' } | { state: 'reading' } | { state: 'done'; list: AiModelList } | { state: 'failed' };
 
+/** A listing refused as busy is asked again after this wait, this many times: more than a listing's 8 s in all. */
+const LIST_BUSY_WAIT_MS = 2_000;
+const LIST_BUSY_TRIES = 5;
+
 export function ConnectionFields({ disabled, onKeyRefused, keyHelpId }: {
   disabled: boolean;
   /** Whether the provider refused the key now in the field: Connect waits for another key (#1218). */
@@ -92,13 +97,27 @@ export function ConnectionFields({ disabled, onKeyRefused, keyHelpId }: {
     setProvider(next); setListing({ state: 'idle' }); setOther(false); listedKey.current = ''; setModel('');
   }
 
+  /**
+   * The server reads one list at a time for a person (#1347): a key typed again while the last one is still being read waits for it, with
+   * "Reading the models…" all along, instead of being told the list could not be read. Null when a newer ask took over while it waited.
+   */
+  async function readList(kind: AiProviderKind, query: { apiKey?: string }, ask: number): Promise<AiModelList | null> {
+    for (let tries = 0; ; tries += 1) {
+      try { return await listAiModels({ provider: kind, ...(kind === 'openai_compatible' ? { baseUrl: baseUrl.trim() } : {}), ...query }); } catch (error) {
+        if (!(error instanceof ApiError && error.code === 'MODEL_LIST_BUSY') || tries >= LIST_BUSY_TRIES) throw error;
+        await new Promise((resolve) => setTimeout(resolve, LIST_BUSY_WAIT_MS));
+        if (ask !== asked.current) return null;
+      }
+    }
+  }
+
   async function read(query: { apiKey?: string }) {
     if (!provider) return;
     const ask = ++asked.current;
     setListing({ state: 'reading' });
     try {
-      const result = await listAiModels({ provider, ...(provider === 'openai_compatible' ? { baseUrl: baseUrl.trim() } : {}), ...query });
-      if (ask !== asked.current) return;
+      const result = await readList(provider, query, ask);
+      if (!result || ask !== asked.current) return;
       setListing({ state: 'done', list: result });
       if (result.status === 'listed' && result.models.length) {
         // Nothing is preselected: the models are the provider's own, and the owner picks one (#1218).

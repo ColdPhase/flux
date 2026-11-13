@@ -11,6 +11,8 @@
  *  - Google: `iss` is https://accounts.google.com; `email_verified` must be true; with an allowed Workspace domain,
  *    `hd` must equal it (hd is absent for personal accounts).
  */
+import { withoutInvisibleFormat } from '@flux/contracts';
+
 
 export type ProviderFamily = 'entra' | 'google' | 'generic';
 
@@ -52,5 +54,6 @@ export function profileFromClaims(issuer: string, claims: Record<string, unknown
   }
   if (family === 'google' && options.allowedDomain && claims.hd !== options.allowedDomain) return { ok: false, reason: 'domain' };
   const name = [claims.name, claims.preferred_username].find((value): value is string => typeof value === 'string' && !!value.trim());
-  return { ok: true, subject, email: rawEmail, name: name ? name.trim().slice(0, 200) : null };
+  // An identity provider's word for a name is cleaned, never refused: the person must still be able to sign in (#1347).
+  return { ok: true, subject, email: rawEmail, name: name ? withoutInvisibleFormat(name).trim().slice(0, 200) || null : null };
 }
