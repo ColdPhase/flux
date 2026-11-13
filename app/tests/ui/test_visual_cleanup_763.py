@@ -164,8 +164,6 @@ class VisualCleanup763(unittest.TestCase):
         self.assertEqual(round(attach["height"]), 32)
         sizes = composer.evaluate("(box) => [...box.querySelectorAll('.composer__send svg, .composer__attach svg')].map((svg) => Math.round(svg.getBoundingClientRect().width))")
         self.assertEqual(set(sizes), {16}, "one icon size among the composer's tools")
-        gear = page.get_by_role("link", name="Settings").first.bounding_box()
-        self.assertEqual((round(gear["width"]), round(gear["height"])), (32, 32))
 
     def test_06_placeholder_without_the_shared_input_style(self) -> None:
         page = self.page(DESKTOP)

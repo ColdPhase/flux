@@ -104,10 +104,12 @@ class NewProject(unittest.TestCase):
         return [text.strip() for text in views.get_by_role("tab").all_inner_texts()]
 
     def open_window(self, page: Page, phone: bool = False):
-        """New › Space: the one New space window, from New (C) on the computer and from the Spaces list on the phone."""
+        """New › Space: the one New space window, from New (C) on the computer and from the phone's "+" (#1419: the Spaces list has no "+ New space" button)."""
         if phone:
             page.goto("/projects")
-            page.get_by_role("button", name=re.compile("^(New space|Create a space)$")).tap()
+            expect(page.get_by_role("button", name="New space")).to_have_count(0)
+            page.get_by_role("button", name="Create", exact=True).tap()
+            page.get_by_role("dialog", name="Create").get_by_role("button", name="Space", exact=True).tap()
         else:
             page.goto("/")
             expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
@@ -187,7 +189,7 @@ class NewProject(unittest.TestCase):
 
     def test_05b_the_phones_create_sheet_offers_space_and_opens_the_new_space_window(self) -> None:
         """S3: "+" opens Create everywhere with Space among its tiles. The phone's Create window has no New space button, so the
-        tile is the way to it from here (the Spaces list is the other)."""
+        tile is the way to it (the Spaces list has no "+ New space" either, #1419)."""
         self.ensure_account()
         page = self.page("light", PHONE)
         page.goto("/")

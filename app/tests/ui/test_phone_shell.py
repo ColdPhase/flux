@@ -341,15 +341,13 @@ class PhoneShellJourney(unittest.TestCase):
         self.assertEqual(page.evaluate("document.documentElement.scrollWidth"), SE["width"])
         shot(page, "266-settings-phone")
 
-    def test_09_desktop_account_menu_leads_to_settings(self):
+    def test_09_desktop_name_leads_to_settings(self):
         page = self.page({"width": 1440, "height": 900}, touch=False)
         page.goto("/")
-        page.get_by_role("button", name=re.compile("account and sign out")).click()
-        menu = page.get_by_role("dialog", name="Account")
-        # Short (C-34): the name, Settings and Sign out; the theme is in Settings.
-        expect(menu.get_by_role("radiogroup")).to_have_count(0)
-        expect(menu.get_by_role("button", name="Sign out")).to_be_visible()
-        menu.get_by_role("link", name="Settings", exact=True).click()
+        # One way to Settings (#1419): the name at the foot of the sidebar is the link; no account menu, no gear.
+        expect(page.locator(".side .me").get_by_role("link")).to_have_count(1)
+        page.locator(".side .me").get_by_role("link", name=re.compile(", Settings$")).click()
+        expect(page.get_by_role("dialog", name="Account")).to_have_count(0)
         expect(page).to_have_url(f"{ORIGIN}/settings")
         expect(page.get_by_role("heading", level=1, name="Settings")).to_be_visible()
         shot(page, "266-settings-desktop")

@@ -5,7 +5,6 @@
       "description": "An option of a menu, a list sheet, a popover list or a picker's grid (a calendar day, an emoji). The container draws it; it is not an action button.",
       "classes": [
         "newmenu__item",
-        "me__item",
         "ui-list-sheet__row",
         "wiki-menu__row",
         "wiki-menu__new",
@@ -24,7 +23,6 @@
         "seen",
         "top__audience",
         "top__faces",
-        "me__btn",
         "lv-disclose",
         "lv-dev",
         "create__more",

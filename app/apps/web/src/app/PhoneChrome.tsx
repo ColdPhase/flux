@@ -34,9 +34,12 @@ export function phoneHidesDock(pathname: string): boolean {
   return /^\/dm\/[^/]+$/.test(pathname);
 }
 
-/** The places that offer "+": lists and views, not editors, sketches, settings or Search. */
+/**
+ * The places that offer "+": lists and views, not editors, sketches, settings or Search. The Messages list is not one: its one "+" is its own
+ * "+ New message", so a "+" never means two things on one screen (#1419).
+ */
 export function phoneOffersCreate(pathname: string): boolean {
-  return /^\/(inbox|dm|projects|tasks|map)?$/.test(pathname) || /^\/projects\/[^/]+\/(tasks|map|docs|agents)$/.test(pathname);
+  return /^\/(inbox|projects|tasks|map)?$/.test(pathname) || /^\/projects\/[^/]+\/(tasks|map|docs|agents)$/.test(pathname);
 }
 
 /**

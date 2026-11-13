@@ -98,8 +98,9 @@ class ComputerShell(unittest.TestCase):
             self.assertEqual(projects.locator(".side__pj").all_inner_texts(), [label.strip()[0].upper() for label in labels])
             self.assertEqual(len(labels), 2)
             expect(side.locator("#side-dms").get_by_role("link", name="Messages", exact=True)).to_be_visible()
-            # The account row ends with Settings.
-            expect(side.locator(".me").get_by_role("link", name="Settings", exact=True)).to_have_attribute("href", "/settings")
+            # The account row, the face and the name, is the one way to Settings (#1419): one link, no gear.
+            expect(side.locator(".me").get_by_role("link")).to_have_count(1)
+            expect(side.locator(".me").get_by_role("link", name=re.compile(", Settings$"))).to_have_attribute("href", "/settings")
             # Nothing works, so no working-agent card claims activity.
             expect(side.locator(".agentlive")).to_have_count(0)
             shot(page, f"340-sidebar-1440-{scheme}")

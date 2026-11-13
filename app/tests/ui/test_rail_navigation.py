@@ -11,6 +11,7 @@ import unittest
 import uuid
 
 from playwright.sync_api import Page, expect, sync_playwright
+from account import sign_out_button
 
 from test_app_shell import ORIGIN, UPSTREAM, shot, start_forwarder
 from test_personal_assistant import mock
@@ -82,26 +83,6 @@ class RailNavigation(unittest.TestCase):
             rect = locator.bounding_box()
             self.assertTrue(has_minimum_touch_size(rect["width"]) and has_minimum_touch_size(rect["height"]), str(rect))
 
-    def assert_account_controls_fit(self, popup):
-        """The short account menu (#872): the name, Settings and Sign out. Light, Dark and Match system are in Settings."""
-        expect(popup.get_by_role("radio")).to_have_count(0)
-        for label, control in (("Settings", popup.get_by_role("link", name="Settings", exact=True)),
-                               ("Sign out", popup.get_by_role("button", name="Sign out", exact=True))):
-            expect(control).to_have_count(1)
-            measured = control.evaluate("""el => {
-              const box = el.getBoundingClientRect(), range = document.createRange();
-              range.selectNodeContents(el);
-              const rects = [...range.getClientRects()].filter(r => r.width > 0 && r.height > 0);
-              return {width: box.width, height: box.height, count: rects.length,
-                fits: rects.every(r => r.left >= box.left - .01 && r.right <= box.right + .01 &&
-                  r.top >= box.top - .01 && r.bottom <= box.bottom + .01),
-                uncovered: rects.every(r => [.25, .5, .75].every(part =>
-                  el.contains(document.elementFromPoint(r.left + r.width * part, r.top + r.height / 2))))};
-            }""")
-            self.assertGreater(measured["count"], 0, label)
-            self.assertTrue(measured["fits"] and measured["uncovered"], f"complete {label} label belongs to its own control: {measured}")
-            self.assertTrue(has_minimum_touch_size(measured["width"]) and has_minimum_touch_size(measured["height"]), f"{label}: {measured}")
-
     def test_01_my_map_and_settings_keep_native_routes_in_the_rail(self):
         for engine in self.browsers:
             for coarse in (False, True):
@@ -114,8 +95,10 @@ class RailNavigation(unittest.TestCase):
                     my_map.press("Enter")
                     expect(page).to_have_url(re.compile(r"/map/[0-9a-f-]{36}$"))  # My map opens at its own address (#866)
                     expect(my_map).to_have_attribute("aria-current", "page")
-                    settings = rail.get_by_role("link", name="Settings", exact=True)
+                    # The face is the one way to Settings, on the rail as in the sidebar (#1419): there is no gear beside it.
+                    settings = rail.get_by_role("link", name=re.compile(r"^Ada Kowalska, Settings$"))
                     self.assertEqual(settings.count(), 1, "the rail must preserve Settings")
+                    self.assertEqual(rail.get_by_role("link", name="Settings", exact=True).count(), 0, "no second way to Settings")
                     self.assert_native_target(page, settings, coarse)
                     settings.press("Enter")
                     expect(page).to_have_url(re.compile(r"/settings$"))
@@ -126,43 +109,26 @@ class RailNavigation(unittest.TestCase):
                     self.assertAlmostEqual(side.bounding_box()["width"], 64, delta=.001)
                     shot(page, f"340-rail-navigation-{engine}-{'dark-coarse' if coarse else 'light'}")
 
-    def test_02_current_account_signs_out_from_the_compact_existing_form(self):
+    def test_02_current_account_opens_settings_and_signs_out_there(self):
         for engine in self.browsers:
             with self.subTest(engine=engine):
                 page, ids = self.setup_owner(engine, coarse=True)
                 rail = page.locator(".side--rail")
-                account = rail.get_by_role("button", name=re.compile("Ada Kowalska.*account and sign out"))
+                account = rail.get_by_role("link", name=re.compile("Ada Kowalska, Settings"))
                 self.assertEqual(account.count(), 1, "the rail must identify the current account")
                 expect(account.locator(".ui-avatar")).to_have_text("AK")
                 self.assert_native_target(page, account, True)
+                # The face opens Settings (#1419): no menu opens, and Sign out is a row of Settings › Account.
                 account.press("Enter")
-                popup = page.get_by_role("dialog", name="Account", exact=True)
-                expect(popup).to_be_visible()
-                expect(popup).to_contain_text(ids["email"])
-                # Measure the actual targets after the account's finite opening animation.
-                # Its initial scale(.98) temporarily turns a genuine 44px control into 43.12px.
-                popup.evaluate("""async el => {
-                  await Promise.all(el.getAnimations().map(animation => animation.finished));
-                  await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-                }""")
+                expect(page.get_by_role("dialog", name="Account", exact=True)).to_have_count(0)
+                expect(page).to_have_url(re.compile(r"/settings$"))
+                expect(page.get_by_text(ids["email"])).to_be_visible()
                 for text200 in (False, True):
                     page.evaluate("large => document.documentElement.style.fontSize = large ? '200%' : ''", text200)
-                    rect = popup.bounding_box()
-                    self.assertGreaterEqual(rect["x"], 0)
-                    self.assertGreaterEqual(rect["y"], 0)
-                    self.assertLessEqual(rect["x"] + rect["width"], page.viewport_size["width"])
-                    self.assertLessEqual(rect["y"] + rect["height"], page.viewport_size["height"])
-                    name = popup.get_by_text("Ada Kowalska", exact=True)
-                    expect(name).to_be_visible()
-                    self.assertTrue(name.evaluate("el => el.scrollWidth <= el.clientWidth && el.scrollHeight <= el.clientHeight"), "current full account name is readable")
-                    self.assert_account_controls_fit(popup)
+                    expect(account).to_be_visible()
                     shot(page, f"340-rail-account-{engine}-{'text200' if text200 else 'default'}")
                 page.evaluate("document.documentElement.style.fontSize = ''")
-                page.keyboard.press("Escape")
-                expect(popup).to_have_count(0)
-                expect(account).to_be_focused()
-                account.press("Enter")
-                popup.get_by_role("button", name="Sign out", exact=True).click()
+                sign_out_button(page).click()
                 expect(page.get_by_role("heading", name="Sign in", exact=True)).to_be_visible()
                 self.api(page, "GET", "/api/v1/me", status=401)
                 page.get_by_label("Email").fill(ids["email"])
@@ -170,7 +136,7 @@ class RailNavigation(unittest.TestCase):
                 page.get_by_role("button", name="Sign in", exact=True).click()
                 expect(page.get_by_role("heading", name="Home", exact=True)).to_be_visible()
                 self.assertEqual(self.api(page, "GET", "/api/v1/me")["user"]["id"], ids["user"])
-                expect(page.locator(".side--rail").get_by_role("button", name=re.compile("Ada Kowalska.*account and sign out"))).to_be_visible()
+                expect(page.locator(".side--rail").get_by_role("link", name=re.compile("Ada Kowalska, Settings"))).to_be_visible()
 
     def test_03_real_messages_and_many_projects_do_not_remove_account_access(self):
         for engine in self.browsers:
@@ -188,9 +154,8 @@ class RailNavigation(unittest.TestCase):
                 dm.press("Enter")
                 expect(page).to_have_url(re.compile(rf"/dm/{ids['dm']}$"))
                 expect(page.get_by_text("Bring the ToF boards for Friday’s dark-room test.", exact=True)).to_be_visible()
-                account = rail.get_by_role("button", name=re.compile("Ada Kowalska.*account and sign out"))
+                account = rail.get_by_role("link", name=re.compile("Ada Kowalska, Settings"))
                 expect(account).to_be_in_viewport()
-                expect(rail.get_by_role("link", name="Settings", exact=True)).to_be_in_viewport()
                 expect(rail.get_by_role("button", name="Expand sidebar")).to_be_in_viewport()
                 self.assertEqual(page.evaluate("document.documentElement.scrollWidth - innerWidth"), 0)
                 shot(page, f"340-rail-populated-messages-{engine}")
@@ -216,8 +181,7 @@ class RailNavigation(unittest.TestCase):
                 expect(stop).to_be_visible()
                 shot(page, f"340-rail-populated-before-controls-{engine}")
                 expect(stop).to_be_in_viewport()
-                expect(rail.get_by_role("button", name=re.compile("Ada Kowalska.*account and sign out"))).to_be_in_viewport()
-                expect(rail.get_by_role("link", name="Settings", exact=True)).to_be_in_viewport()
+                expect(rail.get_by_role("link", name=re.compile("Ada Kowalska, Settings"))).to_be_in_viewport()
                 self.assert_native_target(page, stop, True)
                 shot(page, f"340-rail-populated-working-{engine}")
                 with page.expect_response(lambda response: response.request.method == "POST" and
@@ -228,7 +192,7 @@ class RailNavigation(unittest.TestCase):
                 current = self.api(page, "GET", f"/api/v1/assistant-runs/{run['id']}")
                 self.assertTrue(current["stopRequested"] or current["status"] == "stopped", str(current["status"]))
                 expect(rail.locator(".agentlive")).to_have_count(0, timeout=25000)
-                expect(rail.get_by_role("button", name=re.compile("Ada Kowalska.*account and sign out"))).to_be_in_viewport()
+                expect(rail.get_by_role("link", name=re.compile("Ada Kowalska, Settings"))).to_be_in_viewport()
 
 
 if __name__ == "__main__":

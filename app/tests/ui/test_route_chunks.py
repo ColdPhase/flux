@@ -15,6 +15,7 @@ import unittest
 import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, Route, expect, sync_playwright
+from account import sign_out
 
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, open_details, shot, start_forwarder, view_tab
 
@@ -131,8 +132,7 @@ class RouteChunksJourney(unittest.TestCase):
             # The phone reaches Settings through the account avatar in the header (#341).
             page.get_by_role("link", name="Settings and account", exact=True).click()
         else:
-            page.get_by_role("button", name=re.compile(self.name)).click()
-            page.get_by_role("dialog", name="Account").get_by_role("link", name="Settings", exact=True).click()
+            page.get_by_role("link", name=re.compile(rf"{self.name}, Settings$")).click()
 
     def space_map(self, page: Page):
         """A place whose header has Details in its More menu: a space's, as Space details (#871: Home and My map have none)."""
@@ -312,8 +312,7 @@ class RouteChunksJourney(unittest.TestCase):
                 self.assertTrue(refused, "the save was tried by itself and refused")
                 refused_id = refused[0]["clientCommandId"]
                 # Sign out from this tab without a document reload: the visit copy is retired.
-                page.get_by_role("button", name=re.compile(self.name)).click()
-                page.get_by_role("dialog", name="Account").get_by_role("button", name="Sign out").click()
+                sign_out(page)
                 expect(page).to_have_url(re.compile("/sign-in"))
                 self.assertEqual(page.evaluate("() => Object.keys(sessionStorage).filter((key) => key.startsWith('flux:wiki-live:')).length"), 0)
                 # Ben signs in next in this tab: Ari's text is not on his screen and his session has no copy of it.
@@ -323,8 +322,7 @@ class RouteChunksJourney(unittest.TestCase):
                 page.get_by_role("button", name="Sign in", exact=True).click()
                 expect(page.get_by_role("heading", name="Home", exact=True)).to_be_visible()
                 self.assertNotIn(private, page.content())
-                page.get_by_role("button", name=re.compile("Ben Route Chunks")).click()
-                page.get_by_role("dialog", name="Account").get_by_role("button", name="Sign out").click()
+                sign_out(page)
                 expect(page).to_have_url(re.compile("/sign-in"))
                 # Ari signs in again in the same tab: no private copy from the earlier session, and the next save is a fresh command.
                 page.get_by_label("Email").fill(self.email)

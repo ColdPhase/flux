@@ -15,6 +15,7 @@ import re
 import unittest
 from uuid import uuid4
 from playwright.sync_api import expect, sync_playwright
+from account import sign_out
 from test_app_shell import ORIGIN, UPSTREAM, start_forwarder
 
 ENGINE = os.environ.get('FLUX_UI_BROWSER', 'chromium')
@@ -109,8 +110,7 @@ class CompositionProbe(unittest.TestCase):
         self.fail('the first real A PATCH was not captured')
 
     def signin_swap(self,page,B,epoch):
-        page.get_by_role('button',name=re.compile(r'account and sign out$')).click()
-        page.get_by_role('button',name='Sign out',exact=True).click()
+        sign_out(page)
         expect(page.get_by_role('heading',name='Sign in',exact=True)).to_be_visible()
         page.get_by_label('Email',exact=True).fill(B['email'])
         page.get_by_label('Password',exact=True).fill(PASSWORD)

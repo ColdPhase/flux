@@ -268,14 +268,14 @@ class FirstRunSettingsPeople(unittest.TestCase):
             shot(page, f"763-agents-ai-server-off-{'390' if viewport == PHONE else '1440'}-{UI_BROWSER}")
         page = self.page("maria")
         stub(page)
-        # The account menu holds the name, Settings and Sign out (C-34); the company's people are in Settings › Company, never features that may be off.
+        # The name at the foot of the sidebar is the one way into Settings (#1419): no menu behind it, and the company's people are in
+        # Settings › Company, never features that may be off.
         page.goto("/")
-        page.locator(".me__btn").click()
-        menu = page.get_by_role("dialog", name="Account")
-        expect(menu.get_by_role("link", name="Your assistant")).to_have_count(0)
-        expect(menu.get_by_role("link", name="Settings", exact=True)).to_be_visible()
-        expect(menu.get_by_role("link", name="People")).to_have_count(0)
-        self.assertEqual(menu.get_by_role("link").evaluate_all("links => links.map((l) => getComputedStyle(l).textDecorationLine)"), ["none"])
+        account = page.locator(".me")
+        expect(account.get_by_role("link")).to_have_count(1)
+        expect(account.get_by_role("link", name=re.compile(", Settings$"))).to_be_visible()
+        expect(page.get_by_role("dialog", name="Account")).to_have_count(0)
+        self.assertEqual(account.get_by_role("link").evaluate_all("links => links.map((l) => getComputedStyle(l).textDecorationLine)"), ["none"])
 
     # ---------------------------------------------------------------- Notifications (SG-3, SG-5)
 

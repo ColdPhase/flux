@@ -238,7 +238,7 @@ each with its reason, title, excerpt and time; opening one marks it read and ope
 holds "Tell me about" (Only what needs me, Everything, Nothing), then "Where" (Email me too, On this device and
 Quiet hours as one row each), the email addresses, and muted places behind a link row (#872; the focus pause went
 with F-038, the plain morning summary is gone, F-038, #858). Installing Flux is the last row, when the browser
-offers it. The account menu has no notifications row any more: the name, Settings and Sign out (C-34). `/inbox/:id` (email link) and
+offers it. There is no account menu: the name at the foot of the sidebar opens Settings, and Sign out is in Settings › Account (C-34, superseded by #1419). `/inbox/:id` (email link) and
 `/settings/notifications/verify` are routes of the signed-in app.
 
 ## Tests
