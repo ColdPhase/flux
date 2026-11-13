@@ -38,6 +38,8 @@
 #     FLUX_BACKUP_CASES=encryption runs only this case.
 #  FLUX_BACKUP_CASES=upgrade runs only 2. (and then 3.): the upgrade from the previous version, or the v0.1 refusal.
 set -eu
+# The agent runtime is on by default where the host can run it (#1438); these backups are of Flux without it.
+export FLUX_AGENT_RUNTIME=
 
 here=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd -P)
 unset FLUX_PROJECT FLUX_PUBLIC_ORIGIN

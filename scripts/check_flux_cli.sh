@@ -22,6 +22,9 @@ work=$(mktemp -d "${TMPDIR:-/tmp}/flux-cli-check.XXXXXX")
 work=$(cd "$work" && pwd -P)   # the launcher records physical paths
 # The AI key files ./flux up makes (#1438) go under this run's own state directory, removed with it.
 export XDG_STATE_HOME="$work/state"
+# The agent runtime, on by default where the host can run it (#1438, #1441), is the operator's choice here: off. Its default is
+# tested in tests/test_flux_subscription_question.py and the runtime itself by check_agent_runtime.sh.
+export FLUX_AGENT_RUNTIME=
 copy="$work/a/flux"
 copy2="$work/b/flux"
 copy3="$work/c/flux"

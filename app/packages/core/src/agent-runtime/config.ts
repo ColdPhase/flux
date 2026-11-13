@@ -11,6 +11,8 @@ export interface AgentRuntimeConfig {
   /** FLUX_AGENT_RUNTIME_IDLE_DAYS: release a binding after this many days without a run; null is off. */
   idleDays: number | null;
   manager: { url: string; secret: string } | null;
+  /** FLUX_AGENT_RUNTIME_OFF_REASON (#1438): why `./flux up` left the runtime off on this host; only while it is off. */
+  offReason?: string | null;
 }
 
 /** Both CLIs run in this version: Codex since its hosts and checks were recorded (F-022 T6, #281). */
@@ -39,7 +41,11 @@ export function loadAgentRuntimeConfig(env: NodeJS.ProcessEnv, today = new Date(
   if (idleRaw && !/^[1-9][0-9]{0,2}$/.test(idleRaw)) throw new Error('FLUX_AGENT_RUNTIME_IDLE_DAYS must be empty (off) or a number of days from 1 to 365');
   const idleDays = idleRaw ? Number(idleRaw) : null;
   if (idleDays !== null && idleDays > 365) throw new Error('FLUX_AGENT_RUNTIME_IDLE_DAYS must be at most 365');
-  if (!clients.length) return { clients, commercialTermsAgreedOn: null, idleDays, manager: null };
+  if (!clients.length) {
+    // One plain line from the launcher's host check, bounded so a hand-edited value cannot fill the page.
+    const offReason = (env.FLUX_AGENT_RUNTIME_OFF_REASON ?? '').replace(/\s+/g, ' ').trim().slice(0, 300) || null;
+    return { clients, commercialTermsAgreedOn: null, idleDays, manager: null, offReason };
+  }
   const secret = env.FLUX_RUNTIME_MANAGER_SECRET ?? '';
   if (!SECRET.test(secret)) throw new Error('FLUX_AGENT_RUNTIME is on, but FLUX_RUNTIME_MANAGER_SECRET is missing or shorter than 32 characters (./flux generates it in docker/.env)');
   let commercialTermsAgreedOn: string | null = null;

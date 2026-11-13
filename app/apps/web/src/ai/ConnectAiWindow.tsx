@@ -64,7 +64,10 @@ export function ConnectAiWindow({ runtime, runtimeFailed, apiKeys, have, onClose
   // it), a sign-in could only fail with words nobody can act on (#910).
   const notReady = !!runtime?.enabled && runtime.pool === 'starting';
   const offered = (kind: Choice) => (kind === 'local_client' ? true : kind === 'api_key' ? apiKeys : !!runtime?.enabled && !notReady && runtime.clients[PLANS[kind].client] === 'available');
-  const choices = CHOICES.filter((choice) => choice.kind === 'api_key' || choice.kind === 'local_client' || !have.has(choice.kind));
+  // #1438: no dead controls. A way this server does not run is left out; a plan only waits ("Not ready yet") while the runtime starts, and
+  // is kept when its state could not be read. Settings › AI tells an owner or admin why the plans are missing.
+  const shown = (kind: Choice) => offered(kind) || (kind !== 'api_key' && kind !== 'local_client' && (runtimeFailed || notReady));
+  const choices = CHOICES.filter((choice) => shown(choice.kind) && (choice.kind === 'api_key' || choice.kind === 'local_client' || !have.has(choice.kind)));
   const [chosen, setChosen] = useState<Choice | null>(null);
   const selected = chosen && offered(chosen) ? chosen : choices.find((choice) => offered(choice.kind))?.kind ?? null;
 
@@ -103,7 +106,7 @@ export function ConnectAiWindow({ runtime, runtimeFailed, apiKeys, have, onClose
                   <span className="cai-window__text">
                     <span className="cai-window__name">{choice.title}</span>
                     <span className="cai-window__detail">{on ? choice.detail : runtimeFailed && choice.kind !== 'api_key' ? 'Flux couldn’t check this just now'
-                      : notReady && choice.kind !== 'api_key' ? 'Not ready yet. If this stays, ask whoever runs Flux.' : 'Not offered on this Flux server'}</span>
+                      : 'Not ready yet. If this stays, ask whoever runs Flux.'}</span>
                   </span>
                 </label>
               );

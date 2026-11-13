@@ -110,7 +110,7 @@ export function agentRuntimeUseCases(config: AgentRuntimeConfig, store: AgentRun
   const noConnections = (): AgentRuntimeStatus['connections'] => ({ claude_code: null, codex: null });
   const off = (): AgentRuntimeStatus => ({
     enabled: false, clients: clientAvailability(config), commercialTerms: null, idleReleaseDays: config.idleDays, pool: 'off', binding: null, lastRelease: null,
-    connections: noConnections(),
+    connections: noConnections(), offReason: config.offReason ?? null,
   });
   const requireOn = () => {
     if (!enabled) throw new ConflictError('The agent runtime is off on this instance', AGENT_RUNTIME_ERRORS.off);

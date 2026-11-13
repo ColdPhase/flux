@@ -474,7 +474,7 @@ Off by default. See the [agent runtime guide](agent-runtime.md); `./flux ai on` 
 
 **Type** empty, `claude_code`, `codex`, `claude_code,codex` · **Default** empty · **Used by** api, runtime-1, runtime-egress, runtime-install, worker (release runtime overlay, source, `./flux`)
 
-Lets people sign in with their own Claude or ChatGPT subscription and run that CLI, isolated from everyone else. Empty is off and no runtime service runs. Example: `codex`.
+Lets people sign in with their own Claude or ChatGPT subscription and run that CLI, isolated from everyone else. Empty is off and no runtime service runs. The first `./flux up` writes `codex` where the host can run the runtime (#1438, #1441). Example: `codex`.
 
 ### `FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS`
 
@@ -716,7 +716,7 @@ Password `./flux demo` gives the second demo account.
 
 ## Set by Flux, not by you
 
-The services also read 62 names that Compose, the launcher or the code sets: wiring
+The services also read 63 names that Compose, the launcher or the code sets: wiring
 between services and test switches. Do not set them. They are listed for developers in
 [internal configuration names](../development/configuration-internal.md).
 

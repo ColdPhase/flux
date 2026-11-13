@@ -1403,7 +1403,10 @@ standard switch row in Settings › Notifications, and the rest of the page stay
 - **AI works right after install** (founder decision, Hubert, 2026-11-13, #1438): `./flux up` turns agents on API keys on with
   their key file, so an owner's first step is Connect AI in the app (Home's first-steps row leads there), never a settings file.
   Only an operator who chose `FLUX_PERSONAL_RUNS=off` makes Settings › AI the person's own Claude Code or Codex and one line,
-  "Off on this Flux server. Your agents wait until it is on." Nobody, owner or member, is told to ask an admin.
+  "Off on this Flux server. Your agents wait until it is on." Nobody, owner or member, is told to ask an admin. The agent runtime
+  is on after install too where the host can run it (#1441). **No dead controls:** Connect AI leaves out a plan this server does
+  not run (a plan waits as "Not ready yet" only while the runtime starts), and on a host that cannot run the runtime the company's
+  owners and admins read one quiet line under Connect AI, "Claude and ChatGPT plans can't run on this Flux server: <why>."
 - **Settings › AI** holds:
   - **Connect AI**, with Connect another. Each connection is a card with its name, "Connected" and
     the provider's usage line ("62% of your 5-hour limit left · resets at 14:00"). Change sits on

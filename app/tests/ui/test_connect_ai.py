@@ -186,11 +186,10 @@ class ConnectAiJourney(unittest.TestCase):
         connect.get_by_role("button", name="Connect AI", exact=True).click()
         window = page.get_by_role("dialog", name="Connect your AI")
         expect(window).to_contain_text("Flux adds no limits of its own.")
-        for kind, title in (("claude_plan", "Claude plan"), ("chatgpt_plan", "ChatGPT plan")):
-            row = window.locator(f"[data-choice={kind}]")
-            expect(row).to_contain_text(title)
-            expect(row).to_contain_text("Not offered on this Flux server")
-            expect(row.locator("input")).to_be_disabled()
+        # #1438: no dead controls. Plans this server does not run are not offered at all.
+        for kind in ("claude_plan", "chatgpt_plan"):
+            expect(window.locator(f"[data-choice={kind}]")).to_have_count(0)
+        expect(window).not_to_contain_text("Not offered on this Flux server")
         api_key = window.locator("[data-choice=api_key]")
         expect(api_key).to_contain_text("API key")
         expect(api_key.locator("input")).to_be_checked()
@@ -447,6 +446,38 @@ class ConnectAiJourney(unittest.TestCase):
         window.get_by_role("button", name="Continue").click()
         expect(window.get_by_role("alert")).to_have_text("The agent runtime is starting; try again shortly. If it stays like this, ask whoever runs Flux.")
         page.context.close()
+
+    def test_08h_a_host_without_the_runtime_tells_owners_why_and_offers_no_plans(self) -> None:
+        """#1438, #1441: `./flux up` turns the runtime on where the host can run it; elsewhere the company's owners and admins read the
+        reason in one line, and nobody gets plan choices that could not work."""
+        off = {**RUNTIME_ON, "enabled": False, "pool": "off", "clients": {"claude_code": "disabled", "codex": "disabled"},
+               "offReason": "the Docker engine is not a Linux engine"}
+        for role, shown in (("member", False), ("admin", True), ("owner", True)):
+            with self.subTest(role=role):
+                page = self.page("tom")
+                self.stub_runtime(page, off)
+
+                def as_role(route, role=role):
+                    response = route.fetch()
+                    body = response.json()
+                    for item in body or []:
+                        item["role"] = role  # the shell's company (or only workspace) is the one whose role counts
+                    route.fulfill(response=response, json=body)
+                page.route(re.compile(r".*/api/v1/workspaces(\?.*)?$"), as_role)
+                page.goto("/settings/agents")
+                connect, _, _ = self.sections(page)
+                expect(connect).to_be_visible()
+                line = connect.locator("[data-runtime-off-reason]")
+                if shown:
+                    expect(line).to_have_text("Claude and ChatGPT plans can’t run on this Flux server: the Docker engine is not a Linux engine.")
+                else:
+                    expect(line).to_have_count(0)
+                connect.get_by_role("button", name=re.compile("^Connect (AI|another)$")).first.click()
+                window = page.get_by_role("dialog", name="Connect your AI")
+                for plan in ("claude_plan", "chatgpt_plan"):
+                    expect(window.locator(f"[data-choice={plan}]")).to_have_count(0)
+                expect(window.locator("[data-choice=api_key] input")).to_be_enabled()
+                page.context.close()
 
     def test_08b_a_plan_at_its_limit_says_so_in_one_line_and_nothing_switches(self) -> None:
         """#854: "Claude limit reached, resumes at 14:00", or without a time when the provider gave none. The line stays one

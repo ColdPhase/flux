@@ -258,7 +258,8 @@ class SubscriptionQuestionTest(unittest.TestCase):
         self.assertEqual(self.value("FLUX_AGENT_RUNTIME"), "codex")
         self.assertEqual(self.value("FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS"), "")
 
-    def test_without_a_terminal_nothing_is_asked_checked_or_written(self) -> None:
+    def test_without_a_terminal_the_default_answer_turns_the_runtime_on(self) -> None:
+        # #1441/#1438: the runtime is on by default where the host can run it; nothing is asked, and piped text is no answer.
         for label, run in (("dev-null", lambda: self.plain("up")),
                            ("piped answers", lambda: self.plain("up", stdin="\ny\n"))):
             with self.subTest(label=label):
@@ -268,10 +269,10 @@ class SubscriptionQuestionTest(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                 self.assertNotIn(Q1, result.stdout + result.stderr)
                 self.assertNotIn(STAYS_OFF, result.stdout + result.stderr)
-                self.assertEqual(self.value("FLUX_AGENT_RUNTIME"), "")
-                self.assertEqual(self.value("FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS"), "")
-                self.assertFalse(self.checked_the_host(), "no terminal, so no host check either")
-                self.assertFalse(self.applied())
+                self.assertEqual(self.value("FLUX_AGENT_RUNTIME"), "codex")
+                self.assertEqual(self.value("FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS"), "", "Claude Code needs a typed yes")
+                self.assertTrue(self.checked_the_host(), "the host is checked before the runtime is turned on")
+                self.assertTrue(self.applied())
 
     def test_a_terminal_on_input_only_is_not_enough(self) -> None:
         # stdout is a pipe (./flux up | tee log): the person could not see the question.
@@ -282,7 +283,7 @@ class SubscriptionQuestionTest(unittest.TestCase):
                                 stdin=slave, capture_output=True, text=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertNotIn(Q1, result.stdout)
-        self.assertEqual(self.value("FLUX_AGENT_RUNTIME"), "")
+        self.assertEqual(self.value("FLUX_AGENT_RUNTIME"), "codex", "unseen, the default answer applies")
 
     def test_a_second_up_never_asks_again(self) -> None:
         for answers in (("n\n",), ("\n", "\n"), ("\n", "y\n")):
@@ -350,6 +351,8 @@ class SubscriptionQuestionTest(unittest.TestCase):
                 self.assertEqual(len(reasons), 1, term.output)
                 self.assertIn(reason, reasons[0])
                 self.assertEqual(self.value("FLUX_AGENT_RUNTIME"), "")
+                # Settings › AI says why in one line (#1438), from what the check found.
+                self.assertIn(reason, self.value("FLUX_AGENT_RUNTIME_OFF_REASON"))
                 self.assertFalse(self.applied())
 
     def test_the_host_check_asks_the_engine_and_cleans_up_after_itself(self) -> None:
@@ -379,9 +382,12 @@ class SubscriptionQuestionTest(unittest.TestCase):
         for answers, runtime, terms in ((("\n", "\n"), "codex", ""), (("\n", "y\n"), "codex,claude_code", TODAY)):
             with self.subTest(answers=answers):
                 self.existing_env()
+                # A host that could not run it when Flux was installed, and now can: the reason Settings › AI gave goes (#1438).
+                self.env_file.write_text(self.env_file.read_text() + "FLUX_AGENT_RUNTIME_OFF_REASON=the Docker engine is not a Linux engine\n")
                 self.log.unlink(missing_ok=True)
                 term = self.ai_on(*answers)
                 self.assertEqual(term.finish(), 0, term.output)
+                self.assertEqual(self.value("FLUX_AGENT_RUNTIME_OFF_REASON"), "")
                 self.assertEqual(self.value("FLUX_AGENT_RUNTIME"), runtime)
                 self.assertEqual(self.value("FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS"), terms)
                 self.assertTrue(self.applied(), "ai on applies the answer like ./flux up")

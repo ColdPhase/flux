@@ -89,6 +89,11 @@ export interface AgentRuntimeConnection {
 export interface AgentRuntimeStatus {
   /** False when FLUX_AGENT_RUNTIME is empty: Settings says the instance has not enabled it. */
   enabled: boolean;
+  /**
+   * Why the runtime is off on this server, as `./flux up` found its host (#1438, #1441: it is on by default where the host can run it):
+   * one plain line for Settings › AI, such as "the Docker engine is not a Linux engine". Null when it is on or nothing was found.
+   */
+  offReason?: string | null;
   clients: Record<AgentRuntimeClient, AgentRuntimeClientAvailability>;
   /** The operator's Anthropic Commercial Terms statement, recorded by Flux and not verified. */
   commercialTerms: { agreedOn: string; recordedAt: string } | null;

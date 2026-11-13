@@ -266,7 +266,7 @@ VARIABLES: dict[str, Var] = {
     # --- runtime
     "FLUX_AGENT_RUNTIME": Var("runtime", "empty · `claude_code` · `codex` · `claude_code,codex`",
         "Lets people sign in with their own Claude or ChatGPT subscription and run that CLI, isolated from everyone else. Empty "
-        "is off and no runtime service runs.", "codex"),
+        "is off and no runtime service runs. The first `./flux up` writes `codex` where the host can run the runtime (#1438, #1441).", "codex"),
     "FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS": Var("runtime", "date `YYYY-MM-DD`",
         "Required with `claude_code`: the date you agreed to Anthropic's Commercial Terms with Anthropic. Recorded, not verified.",
         "2026-10-01"),
@@ -354,6 +354,8 @@ VARIABLES: dict[str, Var] = {
 
 # Read by the code or set by the shipped files, but not something an operator sets. Each value says why.
 INTERNAL: dict[str, str] = {
+    "FLUX_AGENT_RUNTIME_OFF_REASON": "Written by the first `./flux up` when its host check finds the agent runtime cannot run (#1438, #1441), cleared by "
+        "`./flux ai on`; the API shows that one line to the company's owners and admins in Settings › AI.",
     "FLUX_FILES_DIR": "Set by Compose to `/data/files`, the `files` volume.",
     "FLUX_OIDC_CLIENT_SECRET_FILE": "Set by Compose to `/run/secrets/flux_oidc_client_secret`; the host file is `FLUX_OIDC_CLIENT_SECRET_HOST_FILE`.",
     "FLUX_KEYRING_URL": "How the API and worker reach the keyring; default `http://keyring:8090`.",

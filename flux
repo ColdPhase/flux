@@ -400,6 +400,7 @@ ask_runtime_questions() {
 # Writes the answer (AI_RUNTIME, AI_TERMS) into the env file $1 and says what it means.
 write_runtime_answer() {
   set_env_line "$1" FLUX_AGENT_RUNTIME "$AI_RUNTIME"
+  ! grep -q '^FLUX_AGENT_RUNTIME_OFF_REASON=.' "$1" || set_env_line "$1" FLUX_AGENT_RUNTIME_OFF_REASON ""
   [ -z "$AI_TERMS" ] || set_env_line "$1" FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS "$AI_TERMS"
   say ""
   say "Subscription sign-in is on for: $AI_RUNTIME."
@@ -408,14 +409,22 @@ write_runtime_answer() {
     *) say "Claude Code stays off until you accept Anthropic's Commercial Terms: ./flux ai on asks again." ;;
   esac
 }
-# The first interactive `./flux up`, while it creates the env file $1. Silent without a terminal, and when
-# FLUX_AGENT_RUNTIME is set in the environment (even empty): the operator has already chosen.
+# The first `./flux up`, while it creates the env file $1. The agent runtime is on by default where the host can run it
+# (founder decisions 2026-11-13, #1441 and #1438: AI works right after install): without a terminal the default answer applies
+# (Codex on; Claude Code never without a typed yes, as it is the operator's Commercial Terms statement), and with one the question
+# is asked with that default. On a host that cannot run it, it stays off and the reason is kept for Settings > AI
+# (FLUX_AGENT_RUNTIME_OFF_REASON). Nothing is asked or checked when FLUX_AGENT_RUNTIME is set in the environment (even empty).
 first_run_runtime_question() {
-  interactive || return 0
   [ -z "${FLUX_AGENT_RUNTIME+x}" ] || return 0
   problem=$(runtime_host_problem)
   if [ -n "$problem" ]; then
     say "Subscription sign-in stays off: $problem. See docs/operations/agent-runtime.md."
+    set_env_line "$1" FLUX_AGENT_RUNTIME_OFF_REASON "$problem"
+    return 0
+  fi
+  if ! interactive; then
+    AI_RUNTIME=codex AI_TERMS=''
+    write_runtime_answer "$1"
     return 0
   fi
   if ask_runtime_questions ''; then
