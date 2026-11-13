@@ -100,6 +100,8 @@ export interface TaskCreationNoticeRecord {
   /** For a blocked line (#550): who the task waits for and the reason, as the line said them. */
   waitingFor?: ActorRef | null;
   reason?: string | null;
+  /** The task's creation was undone (#238): when, by whom, and the notice that says so; read with the line (#1429), not task by task. */
+  reverted: { at: Date; by: ActorRef; noticeId: string } | null;
   createdAt: Date;
 }
 /** One moment of a decision the conversation announces (#694); the title and state are current. */
@@ -167,6 +169,12 @@ export interface TaskPlanRecord {
 
 export interface Paged<T> { items: T[]; total: number }
 export interface PageWindow { limit: number; offset: number }
+/**
+ * A first page of announcements that reaches back to `since` (#1429): every one at or after it and the first one before it, so a reader
+ * that shows them beside messages from `since` on needs no further page; `null` asks for all of them. Never more than `most`, never
+ * fewer than the window's limit.
+ */
+export interface NoticeReach { since: Date | null; most: number }
 
 /** Adapter over the core access policy. It never reveals objects the principal cannot see. */
 export interface WorkAccess {
@@ -207,9 +215,9 @@ export interface WorkRepository extends TaskGraphReader {
   createdWork(projectId: string, by: ActorRef, commandId: string): Promise<{ work: WorkRecord; fingerprint: string } | null>;
   /** Called in the same transaction as the work row, links and stream event. */
   insertCreationNotice(work: WorkRecord, sources: ObjectRef[]): Promise<void>;
-  listTaskNotices(projectId: string, page: PageWindow): Promise<Paged<TaskCreationNoticeRecord>>;
+  listTaskNotices(projectId: string, page: PageWindow, reach?: NoticeReach): Promise<Paged<TaskCreationNoticeRecord>>;
   /** Proposed and accepted decisions of the project as one stream, newest first (#694). */
-  listObjectNotices(projectId: string, page: PageWindow): Promise<Paged<ObjectNoticeRecord>>;
+  listObjectNotices(projectId: string, page: PageWindow, reach?: NoticeReach): Promise<Paged<ObjectNoticeRecord>>;
   /** One "blocked" or "unblocked" line of the conversation (#550), in the transaction of the change. */
   insertTaskUpdate(work: WorkRecord, update: { kind: 'task.blocked' | 'task.unblocked' | 'task.resumed'; by: ActorRef; waitingFor: ActorRef | null; reason: string | null }): Promise<void>;
   /** The blocked tasks that wait for this decision or task (#868), ascending by id. Read under the project's graph lock. */

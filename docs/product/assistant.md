@@ -130,11 +130,21 @@ Hubert, 2026-11-13, [#1419](https://github.com/ColdPhase/flux/issues/1419) item 
 | Off (default) | Makes new things and changes yours at once, then reports them with Undo. |
 | On | Every change waits for the owner's OK. |
 
+**What "a change" is under Ask me first** (founder rule, Hubert, 2026-11-13: "Ask me first covers changes in Flux, not commands in the
+agent's own sandbox"; applied by the coordinator on [#1419](https://github.com/ColdPhase/flux/issues/1419)): everything an agent does
+in Flux that other people can see or that changes shared Flux state, on every engine (server, CLI runtime and a local client over
+MCP). That includes a local client's own work on a task: a line in a task's discussion, a pull-request link, a proposal, and taking a
+task, claiming, pausing (releasing), finishing, declining or handing over a co-work unit. Two things do not wait: **a question to
+the owner alone** (asking the owner is how the agent gets its OK; a question to anyone else waits), and **renewing a claim** the owner
+let it make. What an agent runs in its own sandbox or on its owner's computer (commands, files, builds) is not a Flux change and is
+not governed by this switch.
+
 The switch replaced the three-way "What it may do" (Only read / Do it and tell me / Ask me first).
 "Only read" added little: deleting and other people's things always wait, and an agent that should
 only read can be told so in its instructions. **Mapping of stored values:** "Do it and tell me" is the
 switch off and "Ask me first" is the switch on; an agent or local app that was set to "Only read" is
-on (Ask me first), so nothing it does applies without the owner's OK. The stored value keeps the
+on (Ask me first), so nothing it does in Flux that others see applies without the owner's OK; it may still ask
+its owner a question. The stored value keeps the
 names `act` (off) and `ask` (on).
 
 **Always waits, whatever the choice:**
@@ -342,10 +352,12 @@ Server agents act only inside Flux, with their owner's rights:
 | GitHub | Read the connected repository (issues, pull requests, checks); never write |
 | Web | Search with its own web search tool (the provider's, or the owner's Claude Code's or Codex's), and open any public web page (`flux_read_web`) as much as a question needs, never putting anything from Flux into an address (the server refuses one that carries private text the run read), always citing the sources; never post or fill in anything. On by default; the operator can turn both off ([C-29](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override), [C-30](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)) |
 | Pictures | Attach a public picture from the web to its answer to `/ai` in a space (with the waits and Undo of AG-3) or in its private chat, downloaded by the Flux server under the web rules; look at a picture attached to a message it may read, when its model sees pictures. Never generate one ([#1217](https://github.com/ColdPhase/flux/issues/1217), below) |
-| Not allowed | Code, email, other apps, generating pictures |
+| Files | On the owner's Claude Code or Codex: use the CLI's own shell and file tools in the run's scratch, a sandbox that exists for one run (convert HTML to PDF, make a CSV, run a script), and attach a file it made to its answer with `flux_attach_file`; on an API key, attach a file by its content (HTML, CSV, Markdown, JSON, text). An attached file is the asker's, like their own upload (the same types, size limits and checks, preview, waits and Undo of AG-3, Show everyone), on an answer to `/ai` in a space; on its answer in its private chat it is the owner's alone, at once, like a picture there (coordinator decision 2026-11-13); never in an encrypted space. A local client gives a file's content (text, or base64) to `flux_attach_file`, which stages it as its owner's upload in that space, and names the returned `fileId` in `attachmentIds` of the message it posts next. A file is never refused for being a file; one that holds the CLI's own login is ([#1437](https://github.com/ColdPhase/flux/issues/1437), [RT-5](ai-modes.md#rt-5--tools)) |
+| Not allowed | Code or commands outside the run's sandbox, email, other apps, generating pictures |
 
-Code changes come only from the owner's own Claude Code or Codex on their computer
-([local Claude Code and Codex](mcp-cowork.md)).
+Code changes to the owner's repositories come only from the owner's own Claude Code or Codex on their computer
+([local Claude Code and Codex](mcp-cowork.md)). A server agent's shell (#1437) is a scratch that is deleted after the run: it can
+make a file to attach, never reach a repository, the network beyond its vendor or anything of the owner's outside Flux.
 
 **Web content and prompt injection.** Web pages and search results are untrusted input, like project content and
 other people's messages, and the prompt marks them so. The defence is in the rules, not in the model's obedience: only the
@@ -373,7 +385,7 @@ server asked for, those that failed too, in Flux's own words, written down befor
 addresses its answer cites: under its answer, or in its end line when it ends without one. That list is the only one (#1222): citation marks the model invented and its own "Sources:" block of the same addresses are not stored, and a link card shows only an address the list does not hold. Reading and searching are on by default; the operator turns both
 off with `FLUX_WEB_READS=off` ([C-29](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)). A
 local client reads and searches the web with its own tools and does not get the tool
-([RT-5](ai-modes.md#rt-5--tools-only-flux-tools-the-clis-own-web-search-and-reading-the-web)). Another person's task title that becomes a run's request is the same kind of input: data, never an
+([RT-5](ai-modes.md#rt-5--tools)). Another person's task title that becomes a run's request is the same kind of input: data, never an
 instruction.
 
 **Pictures** (founder decision, Hubert, 2026-11-12, [#1217](https://github.com/ColdPhase/flux/issues/1217); the agents'

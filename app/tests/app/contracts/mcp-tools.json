@@ -275,6 +275,85 @@
       }
     },
     {
+      "name": "flux_attach_file",
+      "title": "Attach a file to your next message",
+      "operation": "answer.file.attach",
+      "classes": [
+        "execute",
+        "plan"
+      ],
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true
+      },
+      "inputSchema": {
+        "type": "object",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "clientCommandId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "sources": {
+            "default": [],
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "materialId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                },
+                "version": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2147483647
+                }
+              },
+              "required": [
+                "materialId",
+                "version"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "content": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 6990512
+          },
+          "encoding": {
+            "type": "string",
+            "enum": [
+              "text",
+              "base64"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "clientCommandId",
+          "content",
+          "name",
+          "projectId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
       "name": "flux_bootstrap",
       "title": "Recover authenticated project context",
       "operation": null,
@@ -2840,6 +2919,16 @@
               "body"
             ],
             "additionalProperties": false
+          },
+          "attachmentIds": {
+            "minItems": 1,
+            "maxItems": 10,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
           }
         },
         "required": [
@@ -2997,6 +3086,16 @@
               "body"
             ],
             "additionalProperties": false
+          },
+          "attachmentIds": {
+            "minItems": 1,
+            "maxItems": 10,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
           }
         },
         "required": [
@@ -3708,7 +3807,6 @@
   },
   "errorCodes": [
     "AGENT_EXECUTION_UNAVAILABLE",
-    "AGENT_ONLY_READS",
     "AGENT_TURN_LIMIT",
     "COWORK_CLAIM_LOST",
     "COWORK_CONNECTION_BUSY",
@@ -3724,6 +3822,7 @@
     "PERSON_AMBIGUOUS",
     "PERSON_NOT_IN_SPACE",
     "PLAYBOOK_VERSION_MISMATCH",
+    "PROJECT_NOT_FOUND",
     "RUNTIME_UNAVAILABLE",
     "SOURCE_VERSION_CONFLICT",
     "TASK_CREATION_REVERTED",

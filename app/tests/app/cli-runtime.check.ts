@@ -94,8 +94,10 @@ const fluxTools = (entry: CliJournalEntry) => (entry.tools ?? []).flatMap((name)
  * (#1065): `web.run` for a Responses Lite model, the hosted `web_search` for another.
  */
 const ALLOWED_OWN: Record<'claude' | 'codex', string[]> = {
-  claude: ['WebSearch', 'EndConversation'],
-  codex: ['functions.list_mcp_resources', 'functions.list_mcp_resource_templates', 'functions.read_mcp_resource', 'web.run', 'web_search'],
+  // #1437: and their own shell and file tools, which run in Flux's per-run sandbox (step `own-tools`).
+  claude: ['WebSearch', 'EndConversation', 'Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep'],
+  codex: ['functions.list_mcp_resources', 'functions.list_mcp_resource_templates', 'functions.read_mcp_resource', 'web.run', 'web_search',
+    'functions.exec_command', 'functions.write_stdin', 'functions.apply_patch'],
 };
 const otherTools = (entry: CliJournalEntry, client: 'claude' | 'codex') => (entry.tools ?? []).filter((name) => !/^mcp__flux(?:__|\.)flux_/.test(name) && !ALLOWED_OWN[client].includes(name));
 type Engine = 'claude' | 'codex';
@@ -315,6 +317,45 @@ const steps: Record<string, (...args: string[]) => Promise<void>> = {
    * Claude Code's own `WebSearch` (#1065, C-30): the slot reports the search when the CLI starts it and its result addresses when they
    * come back; Flux writes them to the run, and `flux_read_web` reads one of them.
    */
+  /**
+   * #1437 (RT-5): the REAL CLI runs its own shell tool in Flux's sandbox shell, in the run's scratch: it makes a page there, and cannot read
+   * the person's login, `/data`, the CLI's environment or open a TCP connection; Claude Code's own file tools stay in the scratch.
+   */
+  async 'own-tools'(engine) {
+    const { who, client } = ENGINES[engine as Engine];
+    const someone = await owner(who);
+    const { projectId, conversationId } = await load();
+    const probe = 'pwd; printf "<h1>Lamp</h1><p>Fails below 5 lux.</p>" > page.html && pandoc page.html -o page.pdf --pdf-engine=typst; ls; id -u; cat /data/*/*/.credentials.json /data/*/*/auth.json; ls /data; '
+      + 'cat /proc/$PPID/environ | tr "\\0" "\\n" | grep -c FLUX_RUN_TOKEN; env | grep -c "FLUX_RUN_TOKEN\\|CLAUDE_CONFIG_DIR\\|CODEX_HOME"; '
+      + 'node -e \'require("net").connect(3128, "runtime-egress").on("connect", () => console.log("TCP-OPEN")).on("error", (e) => console.log("TCP", e.code))\'; sleep 1';
+    // The PDF pandoc and typst made in the scratch, attached by its path (#1437): the server reads it from the run's supervisor.
+    const attach: CliStep = { tool: 'flux_attach_file', args: { projectId, clientCommandId: randomUUID(), path: 'page.pdf' } };
+    const steps: CliStep[] = client === 'claude'
+      ? [{ own: { name: 'Bash', input: { command: probe, description: 'probe' } } }, { own: { name: 'Read', input: { file_path: '/etc/hostname' } } },
+        { own: { name: 'Write', input: { file_path: 'notes.md', content: '# notes' } } }, attach, { text: 'Done.' }]
+      : [{ own: { name: 'exec_command', input: { cmd: probe } } }, attach, { text: 'Done.' }];
+    await script(client, steps);
+    const from = await lastEntry();
+    const run = await askAi(someone, conversationId!, 'Make a page of the notes');
+    assert.equal(run.status, 'completed', JSON.stringify(run));
+    const main = mainRequests(await journalSince(from), client);
+    const results = main.at(-1)!.results!;
+    const shell = results[0]!;
+    assert.ok(/\/scratch\/[0-9a-f-]{36}/.test(shell) && shell.includes('page.html'), `it worked in the run's scratch: ${shell.slice(0, 600)}`);
+    assert.ok(!/"login"|sk-ant-mock|access_token|refresh_token/.test(shell), `no login reached the shell: ${shell.slice(0, 600)}`);
+    assert.ok(/Permission denied/.test(shell) && !shell.includes('TCP-OPEN'), `the sandbox refused: ${shell.slice(0, 900)}`);
+    if (client === 'claude') {
+      assert.ok(/outside .*--restricted/.test(results[1]!), `Read outside the scratch is refused: ${results[1]}`);
+      assert.ok(/created/i.test(results[2]!), `Write in the scratch works: ${results[2]}`);
+    }
+    assert.ok(/attached to your answer/.test(results.at(-1)!), `the PDF was attached: ${results.at(-1)}`);
+    const files = await pool.query<{ id: string; name: string; size: number }>(`SELECT f.id, f.name, f.size FROM assistant_changes c JOIN project_files f ON f.id = c.object_id
+      WHERE c.run_id = $1 AND c.operation = 'answer.file.attach' AND c.state = 'applied'`, [run.id]);
+    assert.equal(files.rows.length, 1, 'one file on the answer');
+    const pdf = Buffer.from(await (await fetch(new URL(`/api/v1/files/${files.rows[0]!.id}`, apiUrl), { headers: { cookie: someone.browser.cookieHeader() } })).arrayBuffer());
+    assert.equal(pdf.subarray(0, 5).toString('latin1'), '%PDF-', 'the asker downloads the PDF the run made');
+    print({ OWN_TOOLS: 'ok', ATTACHED: `${files.rows[0]!.name} ${files.rows[0]!.size}`, SHELL: shell.replace(/\s+/g, ' ').slice(0, 400) });
+  },
   async 'claude-search'() {
     const ada = await owner('ada');
     const { conversationId } = await load();

@@ -19,7 +19,12 @@ import { registerAgentDocActions } from '../agent-connection/doc-actions.js';
 import { registerAgentConversationActions } from '../agent-connection/conversation-actions.js';
 import { registerAgentCoworkActions } from '../agent-connection/cowork-actions.js';
 import { ASSISTANT_UNIT_CREATE_INPUT } from '../agent-connection/tool-registry.js';
+import { registerAgentFileActions } from '../agent-connection/file-actions.js';
 import { registerAgentPictureActions } from '../agent-connection/picture-actions.js';
+import { registerAgentQuestionActions } from '../agent-connection/agent-questions.js';
+import { registerAgentGithubActions } from '../agent-connection/github-actions.js';
+import { registerAgentProposal } from '../agent-connection/mcp-tools.js';
+import type { Provider as GithubProvider } from '../github/adapters.js';
 
 // The owner's side of an agent's changes (F-036 AG-3, AG-7, #855): the change line and Undo on the agent's message, and the
 // waiting changes with Approve, Edit, Skip, Delete and Keep. Only the owner sees or decides a waiting change, in their own
@@ -38,20 +43,24 @@ type ToolOutput = { content?: { text?: string }[]; isError?: boolean };
 type SavedTool = (args: Record<string, unknown>, call: { claims: FluxMcpClaims }) => Promise<ToolOutput>;
 
 /** The change tools' own callbacks, which take a server-owned approval context as the call they serve, for re-executing one saved call. */
-function savedTools(db: Database): Map<string, SavedTool> {
+function savedTools(db: Database, github: GithubProvider | null): Map<string, SavedTool> {
   const callbacks = new Map<string, SavedTool>();
   const registry = { forAccess: () => ({ registerTool: (name: string, _config: unknown, callback: SavedTool) => { callbacks.set(name, callback); } }) };
-  for (const register of [registerAgentWorkActions, registerAgentMapActions, registerAgentDocActions, registerAgentConversationActions, registerAgentPictureActions])
+  for (const register of [registerAgentWorkActions, registerAgentMapActions, registerAgentDocActions, registerAgentConversationActions, registerAgentPictureActions, registerAgentFileActions])
     register(registry as unknown as AgentToolRegistry, db);
   // The hand-off tool of the same registry: only its run-private view is ever stored, and Approve decodes exactly that (below).
   // (Its recovery-cursor secret serves tools a saved change never calls; the registration only needs a well-formed one.)
   registerAgentCoworkActions(registry as unknown as AgentToolRegistry, db);
+  // A local client's own work that waited under Ask me first (#1419): its question, its pull-request link and its proposal.
+  registerAgentQuestionActions(registry as unknown as AgentToolRegistry, db);
+  registerAgentGithubActions(registry as unknown as AgentToolRegistry, db, github);
+  registerAgentProposal(registry as unknown as AgentToolRegistry, db);
   return callbacks;
 }
 
 type Outcome = { ok: true } | { ok: false; code: string; error: string };
 /** Re-executes a saved change's exact call on its owner's Approve; the executor repeats every check and compares the target's version. */
-export async function reexecuteChange(db: Database, change: AssistantChangeRow, decidedBy: string): Promise<Outcome> {
+export async function reexecuteChange(db: Database, change: AssistantChangeRow, decidedBy: string, github: GithubProvider | null = null): Promise<Outcome> {
   const settings = await db.transaction((tx) => assistantChangeRows(tx as DbExecutor).settings(change.ownerUserId, change.agentId));
   const call = change.preparedCommand as AssistantCall | null;
   if (!call || change.runId && !settings || !change.runId && !change.connectionId) return { ok: false, code: 'ASSISTANT_CHANGE_INVALIDATED', error: 'Your assistant is no longer available' };
@@ -61,7 +70,7 @@ export async function reexecuteChange(db: Database, change: AssistantChangeRow, 
   const bearer = !change.runId ? call.bearer : undefined;
   const claims: FluxMcpClaims = { ownerUserId: change.ownerUserId, connectionId: change.runId ? settings!.connectionId : change.connectionId!,
     clientId: bearer?.clientId ?? null, grantReferenceId: bearer?.grantReferenceId ?? null, approval };
-  const tool = savedTools(db).get(call.tool);
+  const tool = savedTools(db, github).get(call.tool);
   if (!tool) return { ok: false, code: 'ASSISTANT_CHANGE_INVALIDATED', error: 'This kind of change is no longer available' };
   // A saved hand-off is decoded by the exact private view it was prepared with: an unknown or unsupported one needs Ask again,
   // and nothing is rebuilt from guessed fields or a bootstrap (R2).
@@ -98,9 +107,11 @@ function toldWords(row: AssistantChangeRow): string | null {
       : row.tool === 'flux_propose_decision' ? [quoted(args.decision?.title)] : [];
   return parts.filter((part): part is string => typeof part === 'string' && part.trim() !== '').join(' · ') || null;
 }
-/** The picture a standing change attached to its run's answer (#1217), as a message's file: what the asker's card shows. */
+/** What a run attaches to its own answer: a picture (#1217) or a file (#1437). */
+const ANSWER_FILES = new Set(['answer.picture.attach', 'answer.file.attach']);
+/** The picture or file a standing change attached to its run's answer (#1217), as a message's file: what the asker's card shows. */
 function pictureOf(row: AssistantChangeRow): { file?: MessageFile } {
-  if (row.operation !== 'answer.picture.attach' || (row.state !== 'applied' && row.state !== 'applied_after_wait')) return {};
+  if (!ANSWER_FILES.has(row.operation) || (row.state !== 'applied' && row.state !== 'applied_after_wait')) return {};
   const value = (row.receipt as { value?: { fileId?: unknown; name?: unknown; size?: unknown } } | null)?.value;
   return typeof value?.fileId === 'string' && typeof value.name === 'string' && typeof value.size === 'number'
     ? { file: { id: value.fileId, name: value.name, size: value.size } } : {};
@@ -112,7 +123,7 @@ const threadLineRemoved = (row: AssistantChangeRow, names: Map<string, string>):
   row.state === 'undone' && isThreadLine(row) ? `Removed by ${row.decidedBy ? names.get(row.decidedBy) ?? 'its owner' : 'its owner'}` : null;
 /** What was done is the message of the conversation, for everyone who can read it; a waiting change or a refusal is the owner's alone. */
 // A picture on a private answer (#1217) is its asker's alone until Show everyone, which posts it as their own attachment: nobody else sees its line.
-const isDone = (row: AssistantChangeRow) => row.operation !== 'answer.picture.attach' && (row.state === 'applied' || row.state === 'applied_after_wait'
+const isDone = (row: AssistantChangeRow) => !ANSWER_FILES.has(row.operation) && (row.state === 'applied' || row.state === 'applied_after_wait'
   || row.state === 'undone' || row.state === 'refused' && !!row.refusal?.startsWith('Skipped'));
 const runStateOf = (run: { status: string; stopRequestedAt: Date | null } | undefined): AssistantChange['runState'] => {
   if (!run) return 'done';
@@ -127,7 +138,7 @@ const statusOf = (row: AssistantChangeRow) => {
   return typeof changes?.status === 'string' ? changes.status : null;
 };
 
-export function assistantChangeUseCases(db: Database, clock: () => Date = () => new Date()) {
+export function assistantChangeUseCases(db: Database, clock: () => Date = () => new Date(), github: GithubProvider | null = null) {
   const rows = () => assistantChangeRows(db as DbExecutor);
   const owner = (principal: Principal) => {
     if (principal.kind !== 'human' || !principal.id) throw missing();
@@ -285,7 +296,7 @@ export function assistantChangeUseCases(db: Database, clock: () => Date = () => 
       await refuse(row, LOST_SPACE);
       return { change: await viewOne((await rows().find(row.id))!), message: LOST_SPACE };
     }
-    const outcome = await reexecuteChange(db, row, owner(principal));
+    const outcome = await reexecuteChange(db, row, owner(principal), github);
     if (outcome.ok) return { change: await viewOne((await rows().find(row.id))!), message: null };
     if (outcome.code === 'ASSISTANT_PAUSED') throw new DomainError(409, outcome.code, outcome.error);
     const message = row.operation.startsWith('cowork.') && CLAIM_ENDED_CODES.has(outcome.code) ? CLAIM_ENDED : stale(outcome.code) ? STALE : outcome.error;
@@ -460,8 +471,8 @@ export function assistantChangeUseCases(db: Database, clock: () => Date = () => 
  * The owner's decisions. Every route takes the signed-in browser session (`requirePrincipal`, cookies only): an MCP bearer or a run
  * token is never a session, so no agent or local client can approve, edit or skip anything, not even its own waiting change (AG-3).
  */
-export function registerAssistantChangeRoutes(app: FastifyInstance, db: Database, sessions: SessionResolver) {
-  const changes = assistantChangeUseCases(db);
+export function registerAssistantChangeRoutes(app: FastifyInstance, db: Database, sessions: SessionResolver, github: GithubProvider | null = null) {
+  const changes = assistantChangeUseCases(db, undefined, github);
   const who = async (request: Parameters<SessionResolver['requirePrincipal']>[0]) => (await sessions.requirePrincipal(request)).principal;
   const noStore = { 'cache-control': 'no-store' };
   app.get<{ Params: { conversationId: string } }>(conversationAssistantChangesPath(':conversationId'), async (request, reply) =>

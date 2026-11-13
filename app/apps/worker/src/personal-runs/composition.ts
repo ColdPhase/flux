@@ -1,4 +1,5 @@
-import { aiEndpointPolicyFromEnv, parsePrivateTargets, providerPersonalCompute } from '@flux/agent-runtime';
+import { aiEndpointPolicyFromEnv, parsePrivateTargets, providerPersonalCompute, type AiEndpointPolicy, type PersonalKeyResolver } from '@flux/agent-runtime';
+import type { AiProviderKind } from '@flux/contracts';
 import {
   TEST_FIXTURE_API_KEY, TEST_FIXTURE_KEY_REF, testFixturePersonalConnections, unavailablePersonalCompute,
   type AgentRuntimeConfig, type PersonalCompute, type PersonalConnectionLookup, type PersonalRunTokenIssuer, type PersonalRuntime, type PersonalToolHost,
@@ -33,6 +34,11 @@ export interface PersonalRunWorkerComposition {
   tools?: PersonalToolHost;
   tokens: PersonalRunTokenIssuer;
   runtime: PersonalRuntime;
+  /**
+   * The model gateway's way to the providers (#1441): the same key resolver, endpoint policy and (test only) provider addresses as the
+   * provider adapters. Absent while API-key runs are off, so the gateway does not listen.
+   */
+  keys?: { resolveKey: PersonalKeyResolver; policy: AiEndpointPolicy; upstreams: Partial<Record<AiProviderKind, string>> };
 }
 
 /** The run token issuer, the `server` tool host (only with the provider on) and the runtime engine (Claude Code's search with the web on, #1065). */
@@ -83,19 +89,20 @@ export function personalRunWorkerComposition(env: NodeJS.ProcessEnv, db: Databas
   if (!mode) {
     const masterKey = switchedOn ? loadBackgroundMasterKey() : null;
     const proxy = anthropicProxyOf(env);
-    const compute = switchedOn && masterKey ? providerPersonalCompute({ enabled: true, resolveKey: personalKeyResolver(db, masterKey), policy, webSearch,
+    const resolveKey = switchedOn && masterKey ? personalKeyResolver(db, masterKey) : null;
+    const compute = resolveKey ? providerPersonalCompute({ enabled: true, resolveKey, policy, webSearch,
       ...(proxy ? { baseUrls: { anthropic: proxy } } : {}) }) : unavailablePersonalCompute;
-    return { connections: personalConnectionLookup(db), compute, mode: 'production', ...runPorts(env, db, compute, runtimeConfig) };
+    return { connections: personalConnectionLookup(db), compute, mode: 'production', ...runPorts(env, db, compute, runtimeConfig),
+      ...(resolveKey ? { keys: { resolveKey, policy, upstreams: proxy ? { anthropic: proxy } : {} } } : {}) };
   }
   if (mode !== 'anthropic-mock') throw new Error('FLUX_TEST_PERSONAL_RUNS must be empty or anthropic-mock');
   if (env.FLUX_TEST_FAILURE_INJECTION !== 'true') throw new Error('FLUX_TEST_PERSONAL_RUNS is test only and needs FLUX_TEST_FAILURE_INJECTION=true');
   const baseURL = env.FLUX_TEST_ANTHROPIC_URL ?? '';
   const mock = /^http:\/\/([a-z0-9.-]+)(:\d+)?$/.exec(baseURL);
   if (!mock) throw new Error('FLUX_TEST_ANTHROPIC_URL must be the http origin of the mock provider');
-  const compute = providerPersonalCompute({
-    enabled: true, timeoutMs: 30_000, baseUrls: { anthropic: baseURL }, webSearch,
-    policy: parsePrivateTargets([env.FLUX_AI_PRIVATE_TARGETS ?? '', mock[1]].join(',')),
-    resolveKey: async (keyRef) => (keyRef === TEST_FIXTURE_KEY_REF ? TEST_FIXTURE_API_KEY : null),
-  });
-  return { connections: testFixturePersonalConnections, compute, mode: 'test-anthropic-mock', ...runPorts(env, db, compute, runtimeConfig) };
+  const mockPolicy = parsePrivateTargets([env.FLUX_AI_PRIVATE_TARGETS ?? '', mock[1]].join(','));
+  const resolveKey: PersonalKeyResolver = async (keyRef) => (keyRef === TEST_FIXTURE_KEY_REF ? TEST_FIXTURE_API_KEY : null);
+  const compute = providerPersonalCompute({ enabled: true, timeoutMs: 30_000, baseUrls: { anthropic: baseURL }, webSearch, policy: mockPolicy, resolveKey });
+  return { connections: testFixturePersonalConnections, compute, mode: 'test-anthropic-mock', ...runPorts(env, db, compute, runtimeConfig),
+    keys: { resolveKey, policy: mockPolicy, upstreams: { anthropic: baseURL } } };
 }

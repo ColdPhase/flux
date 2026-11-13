@@ -19,7 +19,7 @@ export * from './repositories/agent-tasks.js';
 export * from './repositories/personal-run-web-reads.js';
 export * from './session-lock.js';
 export { oneStatementAtATime } from './one-statement-at-a-time.js';
-export { executePrepared, preparedTemplate, queryPrepared } from './prepared.js';
+export { commitWithoutFlush, executePrepared, preparedTemplate, queryPrepared } from './prepared.js';
 export { afterDeadlock, isDeadlock } from './deadlock.js';
 export * from './repositories/space-ai.js';
 export * from './repositories/access.js';
@@ -39,7 +39,7 @@ export * from './repositories/idp-standing.js';
 export * from './repositories/idp-logout.js';
 export * from './migrations/ledger.js';
 // Highest numbered file in packages/db/migrations. The API refuses other versions.
-export const FLUX_SCHEMA_VERSION = 74;
+export const FLUX_SCHEMA_VERSION = 77;
 // pg-boss 12.38.0 declares schema 46. Update this with the pinned package.
 export const PG_BOSS_SCHEMA_VERSION = 46;
 

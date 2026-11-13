@@ -1,7 +1,5 @@
 import type { LoaderFunctionArgs, ShouldRevalidateFunctionArgs } from 'react-router';
 import type { Conversation, ConversationRootWindow, Material, ObjectNotice, Page, Project, TaskCreationNotice, WorkspaceMember } from '@flux/contracts';
-import { ApiError } from '../api/client';
-import { listWorkspaceMembers } from '../project/api';
 import { spaceOf } from '../project/data';
 import { getConversation, getConversationView } from './api';
 
@@ -13,15 +11,11 @@ export async function projectConversationLoader({ params, request }: LoaderFunct
   const projectId = params.projectId!;
   // What the conversation shows comes in one read (#1109); the space is the one its frame is reading, or the kept one.
   const [project, view] = await Promise.all([spaceOf(projectId, request.signal), getConversationView(projectId, request.signal)]);
-  const [members, conversation] = await Promise.all([
-    listWorkspaceMembers(project.workspaceId, request.signal).catch((error: unknown) => {
-      if (error instanceof ApiError && error.status === 403) return [];
-      throw error;
-    }),
-    params.conversationId ? getConversation(params.conversationId, request.signal) : null,
-  ]);
+  const conversation = params.conversationId ? await getConversation(params.conversationId, request.signal) : null;
   if (conversation && conversation.projectId !== projectId) throw new Response('Not found', { status: 404 });
-  return { project, roots: view.roots, notices: view.taskNotices, objectNotices: view.objectNotices, materials: view.materials.items, materialTotal: view.materials.total, members, conversation };
+  return { project, roots: view.roots, notices: view.taskNotices, objectNotices: view.objectNotices, materials: view.materials.items, materialTotal: view.materials.total,
+    // The company's people come with the view (#1429); a guest, who may not read them, gets none.
+    members: view.members ?? [], conversation };
 }
 /** The stream stays mounted while a thread opens or closes; its loader refreshes the open thread then. */
 export function shouldRevalidateProjectConversation({ currentParams, nextParams, defaultShouldRevalidate }: ShouldRevalidateFunctionArgs) {

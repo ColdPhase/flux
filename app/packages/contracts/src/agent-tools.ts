@@ -2,8 +2,8 @@ import type { AgentOperation } from './agent-execution.js';
 
 /**
  * Every Flux tool, resource and prompt of the MCP server, with whether it reads or changes (#859). There are no scopes, switches
- * or project lists: what a client may do is its owner's rights at the moment of the call and the agent's "What it may do", and
- * `write` is what Only read refuses. This list pins the manifest to the actual registrations.
+ * or project lists: what a client may do is its owner's rights at the moment of the call, and a `write` waits for the owner's OK
+ * under Ask me first. This list pins the manifest to the actual registrations.
  */
 export type AgentToolAccess = 'read' | 'write';
 export interface AgentToolEntry {
@@ -78,6 +78,8 @@ export const AGENT_TOOLS: readonly AgentToolEntry[] = [
   effect('flux_create_proposal', null),
   // #1217, AG-8: a public picture the server downloads and attaches to the run's answer to `/ai` in a space.
   effect('flux_attach_image', 'answer.picture.attach'),
+  // #1437, RT-5: a file the run made or wrote, attached to its answer like its asker's own upload.
+  effect('flux_attach_file', 'answer.file.attach'),
   alias('resource', 'flux_cowork_playbook'),
   alias('prompt', 'start_work'),
   alias('prompt', 'resume_work'),

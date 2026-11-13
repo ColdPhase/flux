@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { ASSISTANT_RUN_CHANGED_EVENT, type AssistantRun, type OwnWorkingAgent } from '@flux/contracts';
 import { onPageLive, pageLeaving } from '../api/pageLeaving';
@@ -159,6 +159,30 @@ function useOwnWorkingAgents(identity: string) {
   return { items: state.identity === identity ? state.items : [], reload: useCallback(() => reload.current(), []) };
 }
 
+type OwnAgents = ReturnType<typeof useOwnWorkingAgents>;
+const OwnAgentsContext = createContext<OwnAgents | null>(null);
+const NO_AGENTS: OwnAgents = { items: [], reload: () => { /* nothing is read outside the shell */ } };
+
+/**
+ * One read of the person's own working agents for the whole shell: the sidebar's card, Home, the phone's Stop and the space header's face
+ * all use it, so a stream event asks the server once, not once for each of them.
+ */
+export function OwnWorkingAgentsProvider({ children }: { children: ReactNode }) {
+  const { me } = useShellData();
+  const { items, reload } = useOwnWorkingAgents(me.user.id);
+  const value = useMemo(() => ({ items, reload }), [items, reload]);
+  return <OwnAgentsContext.Provider value={value}>{children}</OwnAgentsContext.Provider>;
+}
+
+const useSharedOwnAgents = () => useContext(OwnAgentsContext) ?? NO_AGENTS;
+
+/** Whether one of the person's own agents works on a task of this space now: its face is in the space header only while it works (F-026 §4, S13). */
+export function useAgentWorkingIn(projectId: string | undefined): boolean {
+  const aiOff = useProjectAiBlocked();
+  const { items } = useSharedOwnAgents();
+  return !!projectId && !aiOff(projectId) && items.some((item) => item.working && item.task.projectId === projectId);
+}
+
 /**
  * A working agent is always visible with Stop (S13): the person's own external agent, with the task it works on. Stop is the
  * project's own command (`POST agent-stops`); the card goes away when the read after it no longer finds the agent working.
@@ -212,8 +236,7 @@ function OwnAgentCard({ item, compact, onChanged }: { item: OwnWorkingAgent; com
 
 /** The working-agent card(s): the person's own assistant (its own Stop) and their own external agents that work on a task. */
 export function WorkingAgent({ compact = false }: { compact?: boolean }) {
-  const { me } = useShellData();
-  const agents = useOwnWorkingAgents(me.user.id);
+  const agents = useSharedOwnAgents();
   const aiOff = useProjectAiBlocked();
   // Agents of a workspace whose AI is off (#614) are not shown. Several at once: online ones first; the card shows the first with how many more are online, so the sidebar never grows.
   const items = agents.items.filter((item) => !aiOff(item.task.projectId));
@@ -287,8 +310,7 @@ export function WorkingAssistant({ compact = false }: { compact?: boolean }) {
  * narrow drawer layout). On the computer the sidebar card is the one place, on Home as everywhere (Spokój rule 7, #763 NV-2).
  */
 export function HomeWorkingAgents() {
-  const { me } = useShellData();
-  const agents = useOwnWorkingAgents(me.user.id);
+  const agents = useSharedOwnAgents();
   const aiOff = useProjectAiBlocked();
   const items = agents.items.filter((item) => !aiOff(item.task.projectId));
   if (!items.length) return null;
@@ -301,8 +323,7 @@ export function HomeWorkingAgents() {
 
 /** The phone conversation header's Stop (S13): the person's own external agent that works in this project, if one does. */
 export function ProjectAgentStop({ projectId }: { projectId: string }) {
-  const { me } = useShellData();
-  const agents = useOwnWorkingAgents(me.user.id);
+  const agents = useSharedOwnAgents();
   const aiOff = useProjectAiBlocked();
   const item = aiOff(projectId) ? undefined : agents.items.find((candidate) => candidate.task.projectId === projectId);
   return item ? <HeaderAgentStop item={item} onChanged={agents.reload} /> : null;

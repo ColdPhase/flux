@@ -105,7 +105,7 @@ export async function removeBinding(dataDir: string, bindingId: string): Promise
 }
 
 /** A fixed shell line as the person, with their directory as `$1`: it can reach only what is theirs, whatever a link there says. */
-async function asThem(person: Person, script: string, dir: string): Promise<boolean> {
+export async function asThem(person: Person, script: string, dir: string): Promise<boolean> {
   const done = await runFixed('/bin/sh', ['-c', script, 'sh', dir], { env: { PATH: '/usr/bin:/bin' }, cwd: '/', timeoutMs: 30_000, person });
   return done.code === 0 && !done.timedOut;
 }
@@ -121,7 +121,7 @@ const REMOVE = '[ -L "$p" ] || chmod -R u+rwx -- "$p" 2>/dev/null; rm -rf -- "$p
  * Removes `path` (a person's own entry) as the person. `rm` first, which is quick; a tree it cannot enter, because it is deeper than
  * PATH_MAX, is then taken down by tree.ts. True only when nothing is left at `path`.
  */
-async function removeAsThem(person: Person, path: string): Promise<boolean> {
+export async function removeAsThem(person: Person, path: string): Promise<boolean> {
   const gone = () => lstat(path).then(() => false, (error: NodeJS.ErrnoException) => error.code === 'ENOENT');
   if (await asThem(person, `p="$1"; ${REMOVE}`, path) && await gone()) return true;
   return (await removeTreeScript(person, path)) && await gone();

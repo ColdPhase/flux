@@ -4,7 +4,7 @@ import type { AgentMayDo, AssistantChangeState, AssistantWaitReason } from '@flu
 // transaction and records the outcome in the change log in that same transaction.
 
 export interface AssistantChangeFacts {
-  /** The agent's "What it may do". */
+  /** The agent's Ask me first. */
   mayDo: AgentMayDo;
   /** The owner can make this change themselves now (current project write access): the agent's rights are exactly the owner's. */
   ownerCanWrite: boolean;
@@ -21,15 +21,14 @@ export interface AssistantChangeFacts {
   tells?: boolean;
 }
 export type AssistantChangeOutcome = { state: 'apply' } | { state: 'waiting'; reason: AssistantWaitReason }
-  | { state: 'refused'; reason: 'only_read' | 'outside_rights' };
+  | { state: 'refused'; reason: 'outside_rights' };
 
 /**
- * F-036 AG-3. "Only read" changes nothing, and nothing outside the owner's rights is ever possible (no suggestion is prepared
- * for anyone). Deleting, other people's things (a task for another person included) and what would tell another person always
- * wait, whatever the choice; "Ask me first" waits for everything else too; "Do it and tell me" applies the rest at once.
+ * F-036 AG-3. Nothing outside the owner's rights is ever possible (no suggestion is prepared for anyone). Deleting, other people's things
+ * (a task for another person included) and what would tell another person always wait, whatever the switch; Ask me first on waits for
+ * everything else too; off ("Do it and tell me") applies the rest at once.
  */
 export function classifyAssistantChange(facts: AssistantChangeFacts): AssistantChangeOutcome {
-  if (facts.mayDo === 'read') return { state: 'refused', reason: 'only_read' };
   if (!facts.ownerCanWrite) return { state: 'refused', reason: 'outside_rights' };
   if (facts.removal) return { state: 'waiting', reason: 'removal' };
   if (!facts.mine || facts.forOther) return { state: 'waiting', reason: 'others' };
@@ -39,8 +38,7 @@ export function classifyAssistantChange(facts: AssistantChangeFacts): AssistantC
 }
 
 /** What the agent says instead of changing, in plain words, when its change cannot be made (F-036 AG-3 "Never possible"). */
-export const REFUSALS: Readonly<Record<'only_read' | 'outside_rights', string>> = {
-  only_read: 'I only read: my owner set "What it may do" to Only read, so I changed nothing',
+export const REFUSALS: Readonly<Record<'outside_rights', string>> = {
   outside_rights: 'My owner can\'t change this, so neither can I',
 };
 

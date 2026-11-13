@@ -384,14 +384,12 @@ test('transfer negative controls: an ineligible, revoked or self assignee and se
   const refuse = (input: AgentExecutionCommand, code: string, run = f.own.run) =>
     refusedWithoutEffects(w, all, () => run(input), code);
   const to = (assignmentConnectionId: string) => f.own.handOver({ ...f.fence, assignmentConnectionId });
-  // Unknown, revoked, another workspace, project not selected, no execute scope — one content-free outcome.
+  // Unknown, revoked, another workspace — one content-free outcome (#1419: there is no Only read to refuse).
   const revoked = await w.connection(w.marek, 'Marek revoked');
   expectStatus(await w.marek.browser.request('DELETE', `/api/v1/agent-connections/${revoked.id}`), 204);
   const elsewhere = await workspace(w.hubert, 'Another workspace');
   const foreign = await w.connection(w.hubert, 'Hubert elsewhere', { space: elsewhere.id });
-  const readOnly = await w.connection(w.marek, 'Marek read only');
-  await pool.query("UPDATE agent_connections SET may_do = 'read' WHERE id = $1", [readOnly.id]);
-  for (const id of [randomUUID(), revoked.id, foreign.id, readOnly.id]) await refuse(to(id), 'COWORK_ASSIGNEE_UNAVAILABLE');
+  for (const id of [randomUUID(), revoked.id, foreign.id]) await refuse(to(id), 'COWORK_ASSIGNEE_UNAVAILABLE');
   // Not to itself.
   await refuse(to(f.codex.connection.id), 'COWORK_ASSIGNMENT_REFUSED');
   // Separation: the author's execute unit cannot go to the run's reviewer, nor the review unit to the run's author.

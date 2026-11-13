@@ -96,13 +96,12 @@ async function liveMcpContract(snapshotCodes: readonly string[]) {
   assert.equal((bootstrap.trusted as Json).playbook.toolContractVersion, COWORK_PLAYBOOK.toolContractVersion,
     'bootstrap reports the current tool contract version');
 
-  // A refused call shows the error envelope: an agent set to Only read (#859; there are no scopes to be refused for).
+  // A refused call shows the error envelope: a space the agent's owner cannot reach (#859; there are no scopes to be refused for).
   const reader = await connectedAgent();
-  expect(await reader.owner.request('PATCH', `/api/v1/agent-connections/${reader.connectionId}`, { body: { mayDo: 'read' } }), 200);
-  const refused = (await reader.call('tools/call', { name: 'flux_create_task', arguments: { projectId: reader.projectId,
-    clientCommandId: randomUUID(), task: { title: 'Refused: the agent only reads' } } })).message!.result as Json;
+  const refused = (await reader.call('tools/call', { name: 'flux_create_task', arguments: { projectId: randomUUID(),
+    clientCommandId: randomUUID(), task: { title: 'Refused: no such space' } } })).message!.result as Json;
   const envelope = JSON.parse(refused.content[0].text);
-  assert.equal(envelope.code, 'AGENT_ONLY_READS');
+  assert.equal(envelope.code, 'PROJECT_NOT_FOUND');
 
   const metadata = await fetch(new URL('/.well-known/oauth-protected-resource/mcp', apiUrl));
   assert.equal(metadata.status, 200);

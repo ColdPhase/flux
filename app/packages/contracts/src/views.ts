@@ -1,4 +1,4 @@
-import type { Page, Project, ProjectPerson } from './access.js';
+import type { Page, Project, ProjectPerson, WorkspaceMember } from './access.js';
 import type { AgentQuestions } from './agent-questions.js';
 import type { ConversationRootWindow, Material } from './conversation.js';
 import type { DocSummary } from './docs.js';
@@ -38,8 +38,12 @@ export interface SpaceShell {
 /** `GET`: what the space's Conversation shows when it opens. */
 export const projectConversationViewPath = (projectId: string) => `/api/v1/projects/${projectId}/conversation-view`;
 
-/** The first page of each list, as its own route answers it with no query. */
-export const CONVERSATION_VIEW_LIMITS = { notices: 100, materials: 100 } as const;
+/**
+ * The first page of each list, as its own route answers it with no query. The notices' first page reaches back as far as the roots do
+ * (#1429): every notice at or after the oldest root of the window and the first one before it, or every notice when the window holds the
+ * oldest root, at least `notices` and at most `noticesReach`. So the stream has what it shows beside its roots without paging back.
+ */
+export const CONVERSATION_VIEW_LIMITS = { notices: 100, noticesReach: 500, materials: 100 } as const;
 
 /**
  * The newest roots of the space's one stream with what the stream shows beside them. The roots and sources are required (a
@@ -51,9 +55,9 @@ export interface ConversationView {
   projectId: string;
   /** `GET /projects/:id/conversation-roots` (the newest window). */
   roots: ConversationRootWindow;
-  /** `GET /projects/:id/task-notices` (first page). */
+  /** `GET /projects/:id/task-notices`, newest first, as far back as the roots reach (`CONVERSATION_VIEW_LIMITS`). */
   taskNotices: Page<TaskCreationNotice>;
-  /** `GET /projects/:id/object-notices` (first page): the decisions the stream announces. */
+  /** `GET /projects/:id/object-notices`, the decisions the stream announces, as far back as the roots reach. */
   objectNotices: Page<ObjectNotice>;
   /** `GET /projects/:id/materials` (first page): the space's sources. */
   materials: Page<Material>;
@@ -64,4 +68,9 @@ export interface ConversationView {
    * the first read the stream makes; `null` when there are no roots.
    */
   workAssociations: WorkAssociations | null;
+  /**
+   * `GET /workspaces/:id/members` of the space's workspace without the last-active times (the stream names its authors with them, #1429);
+   * `null` when the person may not read them (a guest), as that route refuses them.
+   */
+  members: WorkspaceMember[] | null;
 }

@@ -620,8 +620,9 @@ class RouteChunksJourney(unittest.TestCase):
                 expect(page.get_by_role("heading", name="Chunk boundaries", exact=True)).to_be_visible()
                 open_details(page)
                 # The first Space details list their rows (#512): icon, name and the way in. The views are in the view
-                # switch and no longer repeated here (#873); a space's manager has its GitHub repositories.
-                row = page.locator("#details .ov-row", has_text="GitHub repositories")
+                # switch and no longer repeated here (#873); GitHub is offered only where the server has it set up, which this one has not (#1424),
+                # so the space's people and settings are the row to measure.
+                row = page.locator("#details .ov-row", has_text="People and settings")
                 expect(row).to_be_visible()
                 # A first-open native row must keep its icon, readable text and chevron in separate
                 # columns inside the phone panel. Missing lazy surface CSS must not collapse them.

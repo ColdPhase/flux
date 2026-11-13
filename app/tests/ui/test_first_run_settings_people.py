@@ -320,7 +320,7 @@ class FirstRunSettingsPeople(unittest.TestCase):
         for name in ("Change quiet hours", "Change muted places"):
             assert_touch_target(self, page, page.get_by_role("button", name=name))
         page.goto("/settings/appearance")
-        assert_touch_target(self, page, page.get_by_role("switch", name="Kreska in loading and empty screens"))
+        assert_touch_target(self, page, page.get_by_role("switch", name="Show the face on loading and empty screens"))
 
     # ---------------------------------------------------------------- People (PE-1, PE-2)
 

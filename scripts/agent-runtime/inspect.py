@@ -3,7 +3,7 @@
 Usage: docker inspect <every container of the project> | python3 inspect.py <compose project> [<checkout directory>]
 The runtime (runtime-<n>): root inside the container with exactly the six capabilities that give each person their own
 user id (#860), read-only root, cap_drop ALL, no-new-privileges, not privileged, an init, a memory limit without
-swap, a CPU limit, 2048 pids, a 256 MiB tmpfs /tmp, rotated json-file logs (3 x 10 MB), restart
+swap, a CPU limit, 2048 pids, a 256 MiB tmpfs /tmp, a 1 GiB tmpfs /scratch (#1437), rotated json-file logs (3 x 10 MB), restart
 unless-stopped, a health check, only its own data volume and the read-only tools volume, and only its own
 network. runtime-manager and runtime-egress: user 1000:1000, read-only, cap_drop ALL, no capabilities,
 no-new-privileges, no mounts. No container of the project mounts a container engine socket, directly
@@ -60,7 +60,7 @@ for container in containers:
         expect(service, "memory+swap", host["MemorySwap"], host["Memory"])
         expect(service, "a CPU limit", host["NanoCpus"] > 0, True)
         expect(service, "pids", host["PidsLimit"], 2048)
-        expect(service, "tmpfs", host.get("Tmpfs"), {"/tmp": "rw,nosuid,nodev,size=256m,mode=1777", "/dev/shm": "ro,nosuid,nodev,noexec,size=4k"})
+        expect(service, "tmpfs", host.get("Tmpfs"), {"/tmp": "rw,nosuid,nodev,size=256m,mode=1777", "/dev/shm": "ro,nosuid,nodev,noexec,size=4k", "/scratch": "rw,nosuid,nodev,size=1g,mode=0711"})
         expect(service, "health check", bool((container["Config"].get("Healthcheck") or {}).get("Test")), True)
         expect(service, "log driver", host["LogConfig"]["Type"], "json-file")
         expect(service, "log rotation", host["LogConfig"]["Config"], {"max-file": "3", "max-size": "10m"})

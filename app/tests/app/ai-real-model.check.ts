@@ -191,7 +191,7 @@ async function myAgent(who: Person, agentId: string) {
   assert.ok(agent, 'the agent is one of the person\'s');
   return agent;
 }
-async function setMayDo(who: Person, agentId: string, mayDo: 'read' | 'act' | 'ask') {
+async function setMayDo(who: Person, agentId: string, mayDo: 'act' | 'ask') {
   expectStatus(await who.browser.request('PATCH', agentConnectionPath((await myAgent(who, agentId)).connectionId), { body: { mayDo } }), 200);
 }
 

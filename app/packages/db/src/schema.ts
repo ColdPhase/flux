@@ -813,7 +813,7 @@ export const projectFiles = pgTable('project_files', {
   check('project_file_exact_uploader', sql`num_nonnulls(${table.uploaderId}, ${table.uploaderAgentId}) = 1`),
 ]);
 
-// One person's agent for a local MCP client (#52). It reaches what its owner reaches; "What it may do" decides the rest (#859).
+// One person's agent for a local MCP client (#52). It reaches what its owner reaches; Ask me first decides the rest (#859).
 export const agentConnections = pgTable('agent_connections', {
   id: uuid('id').primaryKey(),
   workspaceId: uuid('workspace_id').notNull(),
@@ -822,7 +822,7 @@ export const agentConnections = pgTable('agent_connections', {
   name: displayName('name').notNull().default('External connection'),
   clientDesignation: text('client_designation', { enum: ['claude_code', 'codex', 'other'] }).notNull().default('other'),
   computeSource: text('compute_source', { enum: ['user_operated_claude_code', 'user_operated_external_client', 'owner_assistant'] }).notNull().default('user_operated_external_client'),
-  /** "What it may do" (0003, F-036 AG-3, #855): Only read, Do it and tell me, or Ask me first. */
+  /** Ask me first (0003, F-036 AG-3, #855; 0073, #1419): `act` off (Do it and tell me), `ask` on. "Only read" went in 0073. */
   mayDo: text('may_do', { enum: AGENT_MAY_DO }).notNull().default('act'),
   revokedAt: timestamp('revoked_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -834,7 +834,7 @@ export const agentConnections = pgTable('agent_connections', {
 ]);
 
 /**
- * The AI setup of one of a person's agents (F-036 AG-1, #857): its rights connection (which holds "What it may do", 0003/#855),
+ * The AI setup of one of a person's agents (F-036 AG-1, #857): its rights connection (which holds Ask me first, 0003/#855),
  * its saved instructions, its colour and the model it runs on. The first agent of a person answers `/ai`. An agent without a row
  * here is an identity only (a local client's, or one nobody gave a model).
  */
@@ -1768,8 +1768,12 @@ export const personalRuns = pgTable('personal_runs', {
   /** 0022 (#842): the answer is its owner's alone; Show everyone posted it, Dismiss put it away. */
   shownAt: timestamp('shown_at', { withTimezone: true }),
   dismissedAt: timestamp('dismissed_at', { withTimezone: true }),
+  /** 0075 (#1441): the model gateway's token of a run on an API key in the runtime: its SHA-256 and expiry only, cleared when it closes. */
+  gatewayTokenHash: text('gateway_token_hash'),
+  gatewayTokenExpiresAt: timestamp('gateway_token_expires_at', { withTimezone: true }),
 }, (table) => [
   unique().on(table.ownerUserId, table.clientRunId),
+  uniqueIndex('personal_runs_gateway_token_idx').on(table.gatewayTokenHash).where(sql`${table.gatewayTokenHash} IS NOT NULL`),
   unique().on(table.workspaceId, table.projectId, table.id),
   foreignKey({ columns: [table.workspaceId, table.projectId, table.conversationId], foreignColumns: [projectConversations.workspaceId, projectConversations.projectId, projectConversations.id] }).onDelete('cascade'),
   foreignKey({ columns: [table.workspaceId, table.agentId], foreignColumns: [agents.workspaceId, agents.id] }).onDelete('cascade'),
@@ -1909,7 +1913,7 @@ export const assistantChanges = pgTable('assistant_changes', {
   fingerprint: text('fingerprint').notNull(),
   tool: text('tool').notNull(),
   operation: text('operation').notNull(),
-  objectType: text('object_type', { enum: ['work', 'doc', 'map', 'thought', 'link', 'message', 'decision', 'picture'] }).notNull(),
+  objectType: text('object_type', { enum: ['work', 'doc', 'map', 'thought', 'link', 'message', 'decision', 'picture', 'file'] }).notNull(),
   objectId: uuid('object_id'),
   objectTitle: text('object_title').notNull().default(''),
   state: text('state', { enum: ASSISTANT_CHANGE_STATES }).notNull(),

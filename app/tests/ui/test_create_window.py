@@ -304,7 +304,7 @@ class CreateWindow(unittest.TestCase):
             sheet = page.get_by_role("dialog", name="Create")
             expect(sheet).to_be_visible()
             self.at_rest(page)
-            # #1013: five list rows (not a tile grid), the computer's order, no Space picker of its own, and the guide's line.
+            # #1013: five list rows (not a tile grid), the computer's order, no Space picker of its own, and no line about the computer.
             rows = sheet.locator(".phone-create__rows").get_by_role("button")
             self.assertEqual([item.strip() for item in rows.all_inner_texts()], ["Task", "Thought", "Decision", "Page", "Space"])
             boxes = [row.bounding_box() for row in rows.all()]
@@ -314,7 +314,7 @@ class CreateWindow(unittest.TestCase):
             self.assertEqual(len({round(box["x"]) for box in boxes}), 1, "the rows sit in one column")
             self.assertEqual(sorted(box["y"] for box in boxes), [box["y"] for box in boxes], "in the computer's order, top to bottom")
             expect(sheet.get_by_role("combobox")).to_have_count(0)
-            expect(sheet.get_by_text("The same five on the computer (C).", exact=True)).to_be_visible()
+            expect(sheet.get_by_text("The same five on the computer (C).")).to_have_count(0)  # no line about the computer: the sheet lists what it makes
             self.assertLessEqual(sheet.bounding_box()["x"] + sheet.bounding_box()["width"], PHONE["width"])
             shot(page, f"345-create-sheet-390-{scheme}")
             sheet.get_by_role("button", name="Task", exact=True).tap()

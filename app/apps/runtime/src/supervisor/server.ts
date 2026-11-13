@@ -1,8 +1,10 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { Duplex } from 'node:stream';
-import { CONSOLE_UPGRADE_ANSWER, encodeFrame, isConsoleUpgrade, parseSupervisorRequest, refuseUpgrade, REQUEST_LIMITS, type SupervisorError, type SupervisorFrame } from '@flux/runtime-protocol';
+import { CONSOLE_UPGRADE_ANSWER, encodeFrame, isConsoleUpgrade, isRunFileRequest, isRunScanRequest, parseSupervisorRequest, refuseUpgrade, REQUEST_LIMITS, RUN_SCAN_LIMITS, RUN_SCAN_STATUS, supervisorFilePath, supervisorScanPath, type RunScanError, type SupervisorError, type SupervisorFrame } from '@flux/runtime-protocol';
+import { serveRunFile } from './files.js';
 import { authorized } from '../shared/auth.js';
 import { serveConsole } from './console.js';
+import { holdsCredential } from './credentials.js';
 import { handle, slotReport, type SupervisorConfig } from './handlers.js';
 import { stopPersonRuns } from './run.js';
 
@@ -37,6 +39,23 @@ export class Lane {
 function answer(res: ServerResponse, status: number, frames: SupervisorFrame[]) {
   res.writeHead(status, { 'content-type': 'application/x-ndjson', 'cache-control': 'no-store', connection: 'close' });
   res.end(frames.map(encodeFrame).join(''));
+}
+
+/** `/v1/scan` (#1437): `{ found }` for a run in progress of that person, or `{ error }`; the text is neither kept nor logged. */
+async function serveScan(config: SupervisorConfig, req: IncomingMessage, res: ServerResponse) {
+  const reply = (status: number, body: { found: boolean } | { error: RunScanError }) => {
+    res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store', connection: 'close' });
+    res.end(JSON.stringify(body));
+  };
+  const body = await readBody(req, RUN_SCAN_LIMITS.bodyBytes);
+  let value: unknown;
+  try { value = body ? JSON.parse(body.toString('utf8')) : null; } catch { value = null; }
+  if (!isRunScanRequest(value)) { reply(RUN_SCAN_STATUS.invalid_request, { error: 'invalid_request' }); return; }
+  try {
+    const found = await holdsCredential(config, value.runId, value.bindingId, value.text);
+    if (found === null) reply(RUN_SCAN_STATUS.not_running, { error: 'not_running' });
+    else reply(200, { found });
+  } catch { reply(RUN_SCAN_STATUS.internal, { error: 'internal' }); }
 }
 
 function readBody(req: IncomingMessage, limit: number): Promise<Buffer | null> {
@@ -86,10 +105,19 @@ export function createSupervisorServer(config: SupervisorConfig): SupervisorServ
     const route = /^\/v1\/([a-z]{1,16})$/.exec(req.url ?? '');
     if (req.method !== 'POST' || !route) { refuse(404, 'unknown_request'); return; }
     if (!/^application\/json(;|$)/.test(req.headers['content-type'] ?? '')) { refuse(400, 'invalid_request'); return; }
+    // Whether a text about to leave a run holds its CLI's own login (#1437): one answer, outside the person's lane (their run holds it).
+    if (req.url === supervisorScanPath) { await serveScan(config, req, res); return; }
     const body = await readBody(req, REQUEST_LIMITS.bodyBytes);
     if (!body) { refuse(400, 'invalid_request'); return; }
     let value: unknown;
     try { value = JSON.parse(body.toString('utf8')); } catch { refuse(400, 'invalid_request'); return; }
+    // A file of a run's scratch (#1437): bytes, not frames, outside the person's lane (their run holds it while it asks).
+    if (req.url === supervisorFilePath) {
+      if (!isRunFileRequest(value)) { refuse(400, 'invalid_request'); return; }
+      if (closing.has(value.bindingId)) { refuse(409, 'busy'); return; }
+      await serveRunFile(config, value, res).catch(() => { if (!res.headersSent) refuse(502, 'internal'); else res.destroy(); });
+      return;
+    }
     const parsed = parseSupervisorRequest(route[1], value);
     if (!parsed.ok) { refuse(parsed.code === 'unknown_request' ? 404 : 400, parsed.code); return; }
     const request = parsed.request;

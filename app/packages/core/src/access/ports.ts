@@ -26,6 +26,11 @@ export interface LoadOptions {
    * project and grant rows the decision reads, so a concurrent revocation waits or is seen.
    */
   lock?: boolean;
+  /**
+   * The principal's standing this transaction already read with the same `lock` (#1429): a check of a space in its workspace uses it
+   * instead of reading it again. Locked, its rows cannot change before the transaction ends, so the second read could only repeat it.
+   */
+  known?: Actor;
 }
 
 // What a decision needs to know about each kind of object. The reader returns whole table rows,
@@ -50,6 +55,12 @@ export interface ProjectReads<P extends ProjectFacts = ProjectFacts> {
   lockProjectAccess(actor: Actor, projectId: string): Promise<void>;
   /** The project and the actor's access level (0-3) to it, or null when it does not exist. */
   readProject(actor: Actor, projectId: string): Promise<{ project: P; level: number } | null>;
+  /**
+   * The three reads above for a person's unlocked check, in one statement (#1429): the space's workspace, the person's role there
+   * and, when they are a member, the space with their level, exactly as `locateProject`, `loadActor` and `readProject` answer them.
+   * Null when the space does not exist. Optional: a reader without it is asked the three reads.
+   */
+  readProjectAsPerson?(userId: string, projectId: string): Promise<{ workspaceId: string; role: WorkspaceRole | null; read: { project: P; level: number } | null } | null>;
 }
 
 export interface AgentReads<A extends AgentFacts = AgentFacts> {

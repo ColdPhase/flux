@@ -10,6 +10,9 @@ FROM node@sha256:a34ab6d7f6f4813f4d0c5469d74685604b962fbdbf5793a7bc7b4998ecb867c
 RUN apk add --no-cache gcc musl-dev
 COPY apps/runtime/native/protect.c /native/protect.c
 RUN cc -std=c11 -Wall -Wextra -Werror -fPIC -shared -I/usr/local/include/node /native/protect.c -o /native/protect.node
+# Flux's per-run sandbox for the CLIs' own tools (#1437, RT-5): Landlock, rlimits and a clean environment, no capability needed.
+COPY apps/runtime/native/sandbox.c /native/sandbox.c
+RUN cc -std=c11 -O2 -Wall -Wextra -Werror /native/sandbox.c -o /native/flux-sandbox
 
 # The toolchain shared by the build and the production dependencies: pnpm, the compiler node-pty needs, and the
 # lockfile with its patches. Each stage below downloads its own locked dependencies in a layer that source edits
@@ -106,9 +109,28 @@ COPY --from=build /app/packages/runtime-protocol/dist ./packages/runtime-protoco
 COPY --from=build /app/apps/runtime/package.json ./apps/runtime/package.json
 COPY --from=build /app/apps/runtime/dist ./apps/runtime/dist
 COPY --from=runtime-hardening-build /native/protect.node ./apps/runtime/native/protect.node
+COPY --from=runtime-hardening-build /native/flux-sandbox ./sandbox/flux-sandbox
 COPY --from=build /app/apps/runtime/keys ./apps/runtime/keys
 COPY --from=production-dependencies /app/apps/runtime/node_modules ./apps/runtime/node_modules
-RUN mkdir -p /data /opt/flux-tools /opt/flux-runtime/codex/bin && chown node:node /opt/flux-tools && chmod 0711 /data
+# The toolbox of every harness's own tools (#1437, founder decision 2026-11-13): fixed in the image and pinned to exact Alpine 3.24 package
+# versions (apk checks each against the signed index), so an agent never installs anything at run time (its sandbox has no network for
+# that). Python 3 with pandas, openpyxl, python-docx and matplotlib; Node (the image's own); pandoc, with typst as its PDF engine (no
+# browser: `pandoc page.html -o page.pdf --pdf-engine=typst`); jq; ripgrep; libvips's `vips` for pictures. A real bash too: Claude Code
+# refuses another shell and Codex looks for bash first. python-docx is not packaged by Alpine: pip installs exactly that wheel, by its
+# SHA-256, with no dependencies (lxml and typing_extensions come from apk), and pip goes again. A version Alpine drops makes the build
+# fail: bump the pins together (docs/operations/agent-runtime.md "The toolbox"). Operators who need more build their own image FROM this one.
+RUN apk add --no-cache bash=5.3.9-r1 python3=3.14.10-r1 py3-numpy=2.4.6-r0 py3-pandas=3.0.3-r0 py3-openpyxl=3.1.5-r1 \
+    py3-matplotlib=3.10.6-r2 py3-lxml=6.1.1-r0 py3-typing-extensions=4.15.0-r1 pandoc-cli=3.10-r0 typst=0.14.2-r0 jq=1.8.2-r0 \
+    ripgrep=15.1.0-r0 vips-tools=8.18.2-r0 \
+  && apk add --no-cache --virtual .flux-pip py3-pip=26.1.2-r0 \
+  && printf 'python-docx==1.2.0 --hash=sha256:3fd478f3250fbbbfd3b94fe1e985955737c145627498896a8a6bf81f4baf66c7\n' > /tmp/python-docx.txt \
+  && pip install --no-cache-dir --no-deps --only-binary=:all: --require-hashes --break-system-packages -r /tmp/python-docx.txt \
+  && apk del .flux-pip && rm -f /tmp/python-docx.txt \
+  && python3 -c 'import pandas, openpyxl, docx, matplotlib' && pandoc --version >/dev/null && typst --version >/dev/null \
+  # `sandbox/bin/bash` is Flux's sandbox under that name: the shell the CLIs are given, which confines itself to the run's scratch first.
+  && mkdir -p /data /scratch /opt/flux-tools /opt/flux-runtime/codex/bin /opt/flux-runtime/sandbox/bin \
+  && ln -s ../flux-sandbox /opt/flux-runtime/sandbox/bin/bash \
+  && chown node:node /opt/flux-tools && chmod 0711 /data /scratch
 USER node
 CMD ["node", "--disable-sigusr1", "apps/runtime/dist/supervisor/main.js"]
 

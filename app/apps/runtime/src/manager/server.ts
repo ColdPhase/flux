@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import {
-  callSupervisor, encodeFrame, managerSlotsPath, parseSupervisorRequest, REPORT_FRAME_LIMITS, REQUEST_LIMITS, SLOT_NAME, SUPERVISOR_ERRORS,
+  callSupervisor, encodeFrame, fetchSupervisorFile, isRunFileRequest, isRunScanRequest, RUN_FILE_STATUS, RUN_SCAN_LIMITS, RUN_SCAN_STATUS, scanSupervisorText, managerSlotsPath, parseSupervisorRequest, REPORT_FRAME_LIMITS, REQUEST_LIMITS, SLOT_NAME, SUPERVISOR_ERRORS,
   type ManagedSlot, type ManagerError, type RunFrame, type SupervisorCallOutcome, type SupervisorError, type SupervisorRequest, type SupervisorTarget,
 } from '@flux/runtime-protocol';
 import { authorized } from '../shared/auth.js';
@@ -31,13 +31,13 @@ function json(res: ServerResponse, status: number, body: unknown) {
   res.end(JSON.stringify(body));
 }
 
-function readJson(req: IncomingMessage): Promise<unknown> {
+function readJson(req: IncomingMessage, limit: number = REQUEST_LIMITS.bodyBytes): Promise<unknown> {
   return new Promise((resolve) => {
     const parts: Buffer[] = [];
     let size = 0;
     req.on('data', (chunk: Buffer) => {
       size += chunk.length;
-      if (size > REQUEST_LIMITS.bodyBytes) { resolve(undefined); req.destroy(); return; }
+      if (size > limit) { resolve(undefined); req.destroy(); return; }
       parts.push(chunk);
     });
     req.on('end', () => { try { resolve(JSON.parse(Buffer.concat(parts).toString('utf8'))); } catch { resolve(undefined); } });
@@ -71,6 +71,17 @@ export function createManagerServer(config: ManagerConfig): Server {
     const [, slot, kind] = route as unknown as [string, string, string];
     const target = SLOT_NAME.test(slot) ? config.slots.get(slot) : undefined;
     if (!target) { json(res, 404, { error: 'unknown_slot' }); return; }
+    // A file of a run's scratch (#1437): the slot's bytes are passed on as they come, never buffered or logged.
+    if (kind === 'file') { await relayFile(res, target, await readJson(req), (event) => log({ ...event, slot })); return; }
+    // Whether a text about to leave a run holds its CLI's own login (#1437): asked of the slot, the text neither kept nor logged.
+    if (kind === 'scan') {
+      const body = await readJson(req, RUN_SCAN_LIMITS.bodyBytes);
+      if (!isRunScanRequest(body)) { json(res, 400, { error: 'invalid_request' }); return; }
+      const outcome = await scanSupervisorText(target, body);
+      if (!outcome.ok) log({ event: 'request', kind: 'scan', slot, outcome: outcome.code });
+      json(res, outcome.ok ? 200 : RUN_SCAN_STATUS[outcome.code], outcome.ok ? { found: outcome.found } : { error: outcome.code });
+      return;
+    }
     const parsed = parseSupervisorRequest(kind, await readJson(req));
     if (!parsed.ok) { json(res, STATUS[parsed.code]!, { error: parsed.code }); return; }
     // A sign-in runs only in the console, which is an upgrade (console.ts), never a plain request.
@@ -106,6 +117,21 @@ async function relayRun(res: ServerResponse, call: NonNullable<ManagerConfig['ca
   // A transport failure travels as the slot's own `internal` (the run's frames already told what was seen).
   const code: SupervisorError = outcome.ok ? 'internal' : (SUPERVISOR_ERRORS as readonly string[]).includes(outcome.code) ? outcome.code as SupervisorError : 'internal';
   res.end(encodeFrame(outcome.ok ? { t: 'result', result: outcome.result } : { t: 'error', code }));
+}
+
+/** `flux_attach_file`'s read (#1437): checked against its closed shape, asked of the slot with its own secret, and streamed through. */
+async function relayFile(res: ServerResponse, target: SupervisorTarget, body: unknown, log: (event: Record<string, unknown>) => void) {
+  if (!isRunFileRequest(body)) { json(res, 400, { error: 'invalid_request' }); return; }
+  const started = Date.now();
+  const outcome = await fetchSupervisorFile(target, body);
+  if (!outcome.ok) { log({ event: 'request', kind: 'file', outcome: outcome.code, ms: Date.now() - started }); json(res, RUN_FILE_STATUS[outcome.code], { error: outcome.code }); return; }
+  res.writeHead(200, { 'content-type': 'application/octet-stream', 'cache-control': 'no-store' });
+  outcome.body.on('error', () => res.destroy());
+  // A stream the slot broke off (a file that grew past its bound) is broken here too, never ended as if it were whole.
+  outcome.body.on('close', () => { if (!(outcome.body as IncomingMessage).complete) res.destroy(); });
+  res.on('close', () => outcome.body.destroy());
+  outcome.body.pipe(res);
+  outcome.body.on('end', () => log({ event: 'request', kind: 'file', outcome: 'ok', ms: Date.now() - started }));
 }
 
 /** Slot targets from the manager's environment: `FLUX_RUNTIME_SLOT_<n>=<secret>` names `runtime-<n>`. */

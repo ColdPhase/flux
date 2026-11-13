@@ -4,6 +4,7 @@ import { ASSISTANT_CHANGE_LIMITS, assistantChangeWords, assistantWorkChangeArgs,
 import { agentExecutionRows, agentProjectObjectRows, assistantChangeRows, assistantRemovalRows, eventRepository, sketchRows, taskDiscussionRows, type AssistantChangeRow, type DbExecutor, loadActor, accessReader, type Database, type Transaction } from '@flux/db';
 import { ASSISTANT_REFUSALS, changedParagraphs, classifyAssistantChange, DomainError, fieldWords, principalKey, type UndoRecord, evaluateProject, redactSecrets, requireSpaceAi, SpaceAiOffError, WAITING_CHANGE_EVENT } from '@flux/core';
 import { nativeConversationsInEventSession } from '../conversation/store.js';
+import { agentFileStorage } from './file-storage.js';
 import { nativeDocsInEventSession } from '../docs/adapters.js';
 import { nativeMapRoomExists, prepareNativeMap } from '../editing/native-map-journal.js';
 import { nativeCapacityRefusal, nativeSketchInEventSession } from '../sketches/adapters.js';
@@ -18,7 +19,7 @@ import { createAgentConnectionStore } from './store.js';
 // here by an assistant run or by a local client's connection alike. The authority of a run is the run itself
 // (`owner_request`): it is live and the change is within its owner's current rights, which are exactly the agent's. The
 // authority of a local client is its verified bearer and its connection, with the same owner rights read at the moment of
-// the call. The agent's "What it may do" decides the rest: Only read changes nothing, Ask me first waits for everything, and
+// the call. The agent's Ask me first decides the rest: on, it waits for everything, and
 // deleting or other people's things always wait. Each call is recorded in the change log in the same transaction, as applied,
 // waiting or refused. A waiting change keeps its exact prepared tool call; only the owner's Approve in their own session
 // (`owner_approval`) re-executes exactly that call through this executor, with every check repeated and the target's version
@@ -92,6 +93,8 @@ const OBJECT: Record<string, AssistantObjectType> = {
   'doc.update': 'doc', 'doc.delete': 'doc', 'map.create': 'map', 'map.rename': 'map', 'map.thought.create': 'thought', 'map.thought.update': 'thought',
   'map.thought.delete': 'thought', 'map.positions.update': 'thought', 'map.link.create': 'link', 'map.link.delete': 'link',
   'conversation.create': 'message', 'conversation.reply': 'message', 'cowork.unit.create': 'work', 'cowork.unit.transfer': 'work', 'work.creation.revert': 'work', 'answer.picture.attach': 'picture',
+  // #1437: a file on the run's answer, its own object type (migration 0077).
+  'answer.file.attach': 'file',
 };
 
 interface Target {
@@ -288,6 +291,11 @@ async function describe(tx: Transaction, operation: string, objectId: string | n
       const title = (caption && clipped ? `${caption} from ${clipped}` : caption || (clipped ? `from ${clipped}` : '')).slice(0, 200);
       return { ...base, objectId: null, title, undo: removal(title) };
     }
+    case 'answer.file.attach': {
+      // A file for the run's own answer (#1437, RT-5): the asker's staged upload until their Show everyone, so it is theirs; Undo removes it.
+      const name = text(payload.name).trim().slice(0, 200);
+      return { ...base, objectId: null, title: name, undo: removal(name) };
+    }
     case 'work.creation.revert': {
       // Taking back its own unused task is a deletion (AG-3: deleting always waits). Nothing else about the task is read here.
       const work = objectId ? await rows.work(objectId) : null;
@@ -296,6 +304,12 @@ async function describe(tx: Transaction, operation: string, objectId: string | n
         throw new DomainError(403, 'TASK_CREATION_UNDO_FORBIDDEN', 'Only the agent that created this task can take it back');
       return { ...base, title: work ? `#${work.number} ${work.title}`.slice(0, 200) : '', removal: true, mine: true,
         beforeVersion: typeof payload.expectedVersion === 'number' ? payload.expectedVersion : work?.version ?? null };
+    }
+    case 'cowork.claim': case 'cowork.release': case 'cowork.unit.complete': case 'cowork.unit.decline': {
+      // A client's own step on a unit it was given (#1419): its own work, so it waits only under Ask me first. Named by the unit's task,
+      // when that task is in this space (the owner who decides reads it).
+      const task = objectId ? await rows.unitTask(objectId) : null;
+      return { ...base, objectId, title: task && task.projectId === projectId ? `#${task.number} ${task.title}`.slice(0, 200) : '' };
     }
     case 'cowork.unit.transfer': {
       const to = typeof payload.assignmentConnectionId === 'string' ? await rows.connection(payload.assignmentConnectionId, projectId) : null;
@@ -386,7 +400,7 @@ function natives(tx: Transaction, session: ReturnType<typeof transactionEventSes
   commandId: string, operation: string, fingerprint: string, releases: Set<() => void>): NativeActions {
   return { work: nativeWorkInEventSession(tx, session),
     maps: nativeSketchInEventSession(tx, session, { prepared: live, commandId, operation: `native-agent:${operation}`, fingerprint, retainUntil: (release) => releases.add(release) }),
-    docs: nativeDocsInEventSession(tx, session), conversations: nativeConversationsInEventSession(tx, session),
+    docs: nativeDocsInEventSession(tx, session), conversations: nativeConversationsInEventSession(tx, session, agentFileStorage()),
     transaction: tx, events: session, agent: { kind: 'agent', id: runtime.agentId }, runtime,
     async mapCheckpoint(mapId) {
       const map = await sketchRows(tx).findSketch(mapId);
@@ -421,7 +435,7 @@ interface Authority {
   runtime: AuthenticatedAgentRuntime; workspaceId: string; agentId: string;
   /** The assistant's run; null for a local client's change. */
   run: RunRow | null;
-  /** The agent's "What it may do", read with its connection row held. */
+  /** The agent's Ask me first, read with its connection row held. */
   mayDo: AgentMayDo;
   /** The owner can make this change now: the agent's rights are exactly the owner's (F-036 AG-3). */
   ownerCanWrite: boolean;
@@ -464,7 +478,7 @@ async function currentAuthority(tx: Transaction, claims: FluxMcpClaims, projectI
   }
   const now = new Date();
   if (client) {
-    // A local client: its connection row, held `FOR SHARE`, is the one place "What it may do" is read.
+    // A local client: its connection row, held `FOR SHARE`, is the one place Ask me first is read.
     if (client.ownerUserId !== claims.ownerUserId || client.revokedAt || client.agentId !== agentId || client.workspaceId !== workspaceId) throw invalidated('This client is no longer available');
     const runtime: AuthenticatedAgentRuntime = Object.freeze({ id: claims.connectionId, workspaceId, connectionId: claims.connectionId, ownerUserId: claims.ownerUserId,
       agentId, clientId: claims.clientId ?? 'flux-client', grantReferenceId: claims.grantReferenceId ?? `flux-client:${claims.connectionId}`, bindingGeneration: 0,
@@ -488,8 +502,8 @@ async function currentAuthority(tx: Transaction, claims: FluxMcpClaims, projectI
 }
 
 /**
- * A local client's line in a task's discussion written with flux_discuss_task (#868). That tool goes through the coordination executor,
- * since the agent's own talk about a task never waits, so this records, in the same transaction, the applied `conversation.reply` that
+ * A local client's line in a task's discussion written with flux_discuss_task (#868). That tool goes through the coordination executor
+ * (it waits only under Ask me first, #1419, and then this settles the owner's Approve), so this records, in the same transaction, the applied `conversation.reply` that
  * the change executor records for flux_reply_in_conversation into a task's discussion: the line shows in the discussion with its change
  * and its owner deletes it with no condition, whichever of the two tools wrote it (C-51, TA-3, #961). A command ID already used for
  * another change of this connection conflicts, and the line is not written.
@@ -499,7 +513,8 @@ export async function recordDiscussionLine(tx: Transaction, claims: FluxMcpClaim
   const rows = assistantChangeRows(tx as DbExecutor);
   const fingerprint = assistantCallFingerprint(call);
   const stored = await rows.byConnectionCommand(claims.connectionId, input.clientCommandId);
-  if (stored) {
+  const approved = stored && claims.approval?.changeId === stored.id && stored.state === 'waiting' ? stored : null;
+  if (stored && !approved) {
     if (stored.fingerprint !== fingerprint) throw new DomainError(409, 'IDEMPOTENCY_CONFLICT', 'This command ID belongs to another change');
     return;
   }
@@ -507,9 +522,15 @@ export async function recordDiscussionLine(tx: Transaction, claims: FluxMcpClaim
   const title = redactCall(typeof call.args.body === 'string' ? call.args.body : '').slice(0, 80);
   const removals = assistantRemovalRows(tx as DbExecutor);
   const undo = await removals.messageIsUndoable(messageId, runtime.agentId) && await removals.messageIsInTaskThread(messageId) ? removal(title, { thread: true }) : null;
-  const receipt = { value: produced.value, postconditions: produced.postconditions, ...(undo ? { undo } : {}), authority: 'owner_request', runId: null,
+  const receipt = { value: produced.value, postconditions: produced.postconditions, ...(undo ? { undo } : {}), authority: approved ? 'owner_approval' : 'owner_request', runId: null,
     engine: 'client', payer: 'Your own client', ownerUserId: claims.ownerUserId, agentId: runtime.agentId, assistantConnectionId: claims.connectionId,
-    preparedBy: runtime.agentId } as unknown as Record<string, unknown>;
+    preparedBy: runtime.agentId, ...(approved ? { approvedBy: claims.approval!.decidedBy } : {}) } as unknown as Record<string, unknown>;
+  // A line that waited under Ask me first (#1419): its owner's Approve made it, and its row carries the owner's delete like any line.
+  if (approved) {
+    await rows.update(approved.id, { state: 'applied_after_wait', waitReason: null, authority: 'owner_approval', decidedBy: claims.approval!.decidedBy,
+      decidedAt: new Date(), conversationId, objectId: messageId, receipt });
+    return;
+  }
   await rows.insert({ id: randomUUID(), workspaceId: runtime.workspaceId, projectId: input.projectId, connectionId: claims.connectionId, conversationId,
     ownerUserId: claims.ownerUserId, agentId: runtime.agentId, clientCommandId: input.clientCommandId, fingerprint, tool: call.tool, operation: 'conversation.reply',
     objectType: 'message', objectId: messageId, objectTitle: title, state: 'applied', authority: 'owner_request', preparedCommand: callSummary(call),
@@ -588,7 +609,6 @@ export function assistantChangeExecutor(db: Database, claims: FluxMcpClaims) {
         const target = described;
         const phrase = `${target.words.phrase} ${target.words.noun}`;
         if (!approval) {
-          // An agent whose "What it may do" is Only read changes nothing (F-036 AG-3).
           const told = runId ? await toldPerson(tx, operation, objectId, (payload ?? {}) as Record<string, unknown>, claims.ownerUserId) : null;
           const outcome = classifyAssistantChange({ mayDo: authority.mayDo,
             ownerCanWrite: authority.ownerCanWrite, removal: target.removal, mine: target.mine, forOther: target.forOther, tells: told !== null });
@@ -624,8 +644,6 @@ export function assistantChangeExecutor(db: Database, claims: FluxMcpClaims) {
             [principalKey({ kind: 'human', id: claims.ownerUserId })]);
             return { assistantText: `Waiting for ${ownerName}'s OK: ${phrase}${target.title ? ` ${target.title}` : ''}.` };
           }
-        } else if (authority.mayDo === 'read') {
-          throw invalidated('Its "What it may do" is Only read now. Ask again');
         }
         // The owner's Approve is a person's decision: a line it writes in a task's discussion is not refused by the five-in-a-row limit (C-51, #1094).
         if (approval) await taskDiscussionRows(tx as DbExecutor).markOwnerApproval();

@@ -1,11 +1,12 @@
 import type { CallToolResult, McpServer, StandardSchemaWithJSON, ToolAnnotations } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-import { ASSISTANT_RUN_EFFECT_TOOLS, ASSISTANT_UNIT_CREATE_VIEW, RUN_NEVER_POSTS, AGENT_PEER_REQUEST_CLASSES, AGENT_TOOLS, type AgentMayDo, type AgentOperation, type AgentPeerRequestClass, type AgentToolAccess, type AgentToolCapability } from '@flux/contracts';
+import { ASSISTANT_RUN_EFFECT_TOOLS, ASSISTANT_UNIT_CREATE_VIEW, RUN_NEVER_POSTS, AGENT_PEER_REQUEST_CLASSES, AGENT_TOOLS, type AgentOperation, type AgentPeerRequestClass, type AgentToolAccess, type AgentToolCapability } from '@flux/contracts';
 import type { Database } from '@flux/db';
 import type { FluxMcpClaims, VerifiedFluxMcpClaims } from './context.js';
 import type { McpManifest } from './mcp-dispatch.js';
 import { isAssistantText, redactCall } from './assistant-changes.js';
 import { refusedPrivateAddress } from './run-private-text.js';
+import { refusedCredential } from './run-credentials.js';
 import { boundRunResult } from './run-token.js';
 import { convertedOnce } from './tool-schema.js';
 
@@ -55,11 +56,14 @@ const RUN_PRIVATE: Record<string, { input: z.ZodType; view: string }> = {
 };
 const RUN_EFFECTS = new Set<string>(ASSISTANT_RUN_EFFECT_TOOLS);
 /**
- * The change tools a local client shares with a run, its own posting tools (which no run has, #1063), and the co-work tools that can
- * give something to another person's client: a unit assigned or transferred to it waits for the owner's OK like a task for someone
- * else, and taking back a task it created is a deletion, which always waits (C-18). Their other uses do not wait.
+ * The change tools a local client shares with a run, its own posting tools (which no run has, #1063), the co-work tools that can give
+ * something to another person's client (a unit assigned or transferred to it waits for the owner's OK like a task for someone else, and
+ * taking back a task it created is a deletion, which always waits, C-18), and its own work on a task, which waits under Ask me first
+ * (#1419): its line in a task's discussion, a question to someone else, a pull-request link and its co-work steps. Their calls are kept
+ * like any change's, redacted, and a waiting one answers in plain words.
  */
-const CHANGE_TOOLS = new Set<string>([...ASSISTANT_RUN_EFFECT_TOOLS, ...RUN_NEVER_POSTS, 'flux_transfer_unit', 'flux_undo_task_creation']);
+const CHANGE_TOOLS = new Set<string>([...ASSISTANT_RUN_EFFECT_TOOLS, ...RUN_NEVER_POSTS, 'flux_transfer_unit', 'flux_undo_task_creation',
+  'flux_discuss_task', 'flux_ask_question', 'flux_link_pull_request', 'flux_claim_unit', 'flux_release_unit', 'flux_complete_unit', 'flux_decline_unit']);
 const WAITING_NOTE = ' Some changes wait for your owner\'s OK instead of applying (deleting anything, other people\'s things, a task for someone else, '
   + 'and everything when your owner chose Ask me first): the result then says so in plain words. Do not retry it; carry on with other work.';
 type ToolOutput = { content?: { type: string; text?: string }[]; isError?: boolean };
@@ -104,7 +108,7 @@ interface ToolDefinition {
  * request does for its tools. Capability entries are written only when the corresponding real MCP tool is defined. A personal run's
  * result is bound after every tool (`boundRunResult`: F-022 "Caps"; #1065), and a run's change is checked before it runs
  * (`refusedPrivateAddress`, #1138). Every tool is listed to every client: what a call may do is decided when it is made, by the owner's
- * rights and the agent's "What it may do" (an agent set to Only read gets plain words for a change), never by a scope or a switch
+ * rights and the agent's Ask me first (a change waits for the owner's OK), never by a scope or a switch
  * chosen at sign-in (#859).
  */
 export function agentToolRegistry(manifest: McpManifest, db: Database, run: boolean) {
@@ -156,16 +160,20 @@ export function agentToolRegistry(manifest: McpManifest, db: Database, run: bool
           config: { title: config.title, description: config.description, inputSchema: convertedOnce(config.inputSchema),
             ...(config.annotations ? { annotations: config.annotations } : {}) },
           invoke(input, claims) {
-            const output = claims.dispatch.run('tool', name, () => handler(input as Record<string, unknown>, { claims }));
+            // A run on the owner's Claude Code or Codex never sends its CLI's own login out through Flux (coordinator decision on #1437, RT-7):
+            // not as a change, and not in a read either (a web address `flux_read_web` would fetch, a search).
+            const output = claims.dispatch.run('tool', name, run
+              ? async () => (await refusedCredential(db, claims.run!.id, input as Record<string, unknown>)) ?? handler(input as Record<string, unknown>, { claims })
+              : () => handler(input as Record<string, unknown>, { claims }));
             return run ? Promise.resolve(output).then((result) => boundRunResult(db, claims.run!.id, result as { content?: unknown }, name)) : output;
           },
         });
         entries.set(name, { name, title: config.title, access, operation: effect?.operation ?? null, classes: effect?.classes ?? [] });
       } };
     },
-    /** What the client is told it can do now: a change tool is not available to an agent set to Only read. */
-    capabilities(mayDo: AgentMayDo): AgentToolCapability[] {
-      return [...entries.values()].map((item) => ({ ...item, classes: [...item.classes], available: item.access === 'read' || mayDo !== 'read' }));
+    /** What the client is told it can do now: every tool (Ask me first makes a change wait; it never hides it, #1419). */
+    capabilities(): AgentToolCapability[] {
+      return [...entries.values()].map((item) => ({ ...item, classes: [...item.classes], available: true }));
     },
     /**
      * Registers on one request's server, bound to that request's claims, the tools it may use: all of them, or for a personal run exactly

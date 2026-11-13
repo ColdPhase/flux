@@ -278,22 +278,23 @@ class LiveBase(unittest.TestCase):
 
 @unittest.skipIf(LIVE, "the media server is configured in this run")
 class LiveUnavailable(LiveBase):
-    """Without a media server the interface explains it once and ordinary work continues."""
+    """Without a media server there is no Call anywhere and ordinary work continues (#1424)."""
 
-    def test_01_unavailable_is_explained_and_work_is_unchanged(self) -> None:
+    def test_01_unavailable_shows_no_call_and_work_is_unchanged(self) -> None:
         self.seed()
         page = self.page("nia")
         page.goto(self.task_url())
         panel = page.locator("#details")
         expect(panel.get_by_role("heading", name=TASK)).to_be_visible()
-        # Explained once, behind the header's Call; the task itself does not repeat it (#189).
+        # A server that cannot call shows no Call: not in the header, not in ⋯, not on the task, and nothing says "live sessions" or "media server".
         expect(panel).not_to_contain_text("Live sessions")
+        expect(panel.get_by_role("button", name=re.compile("Work on this together|Join"))).to_have_count(0)
         header = page.locator("header.top, header.phead")
-        header.get_by_role("button", name="Call").click()
-        dialog = page.get_by_role("dialog", name="Live sessions")
-        expect(dialog).to_contain_text("no media server configured")
+        expect(header.get_by_role("button", name="Call")).to_have_count(0)
+        expect(page.get_by_text(re.compile("media server|Live sessions", re.I))).to_have_count(0)
+        header.get_by_role("button", name="More", exact=True).click()
+        expect(page.get_by_role("menu", name="More").get_by_role("menuitem", name=re.compile("^Call"))).to_have_count(0)
         page.keyboard.press("Escape")
-        expect(dialog).to_be_hidden()
         self.assertEqual(page.evaluate("window.__live.gum + window.__live.gdm"), 0, "nothing asked for a device")
         expect(self.bar(page)).to_have_count(0)
         self.assertEqual(self.api(page, "GET", "/api/v1/live-sessions/capabilities", status=200)["status"], "unavailable")
@@ -883,7 +884,7 @@ class LiveJourney(LiveBase):
         self.assertEqual(nia.evaluate("window.__live.gum + window.__live.gdm"), 0, "starting and joining request no microphone, camera or screen")
         mic = bar.get_by_role("button", name=re.compile("^Microphone off"))
         expect(mic).to_have_attribute("aria-pressed", "false")
-        expect(panel).to_contain_text("You are in the live session for this task")
+        expect(panel).to_contain_text("You are in the call for this task")
         work_before = self.api(nia, "GET", f"/api/v1/work/{self.ids['work']}", status=200)
         self.assertEqual(work_before["status"], "blocked", "starting a session changes no work status")
 

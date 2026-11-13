@@ -82,7 +82,6 @@ const CASES: Record<string, BriefInput> = {
   'space-thread': base,
   'space-thread-no-tools': { ...base, tools: [] },
   'space-thread-no-search': { ...base, webSearch: false },
-  'space-thread-only-read': { ...base, tools: [...READS, ...WEB] },
   'space-task-discussion-summary': { ...base, kind: 'summarize', place: space(THREAD_ID, { number: 12, title: 'Calibrate north barrel' }), prompt: 'Summarise this' },
   'space-main-conversation': { ...base, place: space(null), sources: [...MAIN, ...OPEN_TASKS], leftOut: true, prompt: 'What is new since Friday?' },
   'space-map-thought': { ...base, kind: 'map_thought', sources: [{ label: 'S1', ref: { type: 'thought', id: 't-1', sketchId: 'k-1', revision: 2 }, item: { kind: 'thought', text: 'ToF sensor: swipe + hold' } }, ...OPEN_TASKS.map((source, index) => ({ ...source, label: `S${index + 2}` }))], prompt: 'Is this worth a test?' },
@@ -227,7 +226,6 @@ describe('the brief of every run (#1064)', () => {
       assert.equal(system.includes('flux_read_web'), input.tools.includes('flux_read_web'), `${name}: the web rule only with the web tool`);
       if (input.place.kind === 'space' && input.tools.length) assert.ok(system.includes(`space id ${SPACE_ID}`), `${name}: the tools get the space`);
     }
-    assert.match(buildBrief(CASES['space-thread-only-read']!).system, /Ada Nowak set what you may do to Only read/);
     // Review of #1077: general knowledge is not forbidden by "use only"; an answer is written so it can be posted as it is; the marks are explained.
     for (const input of [base, dm]) {
       const { system } = buildBrief(input);

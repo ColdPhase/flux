@@ -58,7 +58,7 @@ export function coworkUnitTransitionRows(tx: DbExecutor) {
      */
     async lock(scope: CoWorkUnitTransitionScope, prepareTasks: (units: readonly CoWorkTaskLockInput[]) => Promise<readonly string[]>) {
       const [assignee] = scope.assigneeConnectionId ? await tx.select({ id: connections.id, ownerUserId: connections.ownerUserId,
-        revokedAt: connections.revokedAt, mayDo: connections.mayDo }).from(connections)
+        revokedAt: connections.revokedAt }).from(connections)
         .where(and(eq(connections.workspaceId, scope.workspaceId), eq(connections.id, scope.assigneeConnectionId))).for('share') : [];
       const slotted = [...new Set([scope.holderConnectionId, ...(assignee ? [assignee.id] : [])])].sort();
       await tx.execute(sql`INSERT INTO cowork_connection_slots(connection_id, workspace_id)
@@ -87,7 +87,7 @@ export function coworkUnitTransitionRows(tx: DbExecutor) {
       const now = await fresh();
       return {
         unit: unit(locked),
-        assignee: assignee && !assignee.revokedAt && assignee.mayDo !== 'read' && await connectionReaches(tx, assignee.id, scope.projectId)
+        assignee: assignee && !assignee.revokedAt && await connectionReaches(tx, assignee.id, scope.projectId)
           ? { id: assignee.id, ownerUserId: assignee.ownerUserId } : null,
         runUnits, now, taskFence,
       };

@@ -1,5 +1,4 @@
 import { AGENT_TOOLS, TOOLS_NOT_FOR_RUNS } from './agent-tools.js';
-import type { AgentMayDo } from './agent-proposals.js';
 import type { MessageFile } from './files.js';
 
 /**
@@ -16,6 +15,8 @@ export const ASSISTANT_RUN_EFFECT_TOOLS = [
   'flux_create_map', 'flux_rename_map', 'flux_add_thought', 'flux_update_thought', 'flux_remove_thought',
   'flux_move_thoughts', 'flux_link_thoughts', 'flux_unlink_thoughts',
   'flux_attach_image',
+  // #1437: a file the run made or wrote, attached to its answer like its asker's own upload.
+  'flux_attach_file',
 ] as const;
 
 /**
@@ -28,7 +29,7 @@ export const ATTACH_PICTURE_TOOL = 'flux_attach_image';
 export const VIEW_PICTURE_TOOL = 'flux_view_image';
 
 /**
- * The tools that post a message in a space's conversation. A run never gets them, whatever its "What it may do" (F-036 AG-3 "Never
+ * The tools that post a message in a space's conversation. A run never gets them, whatever its Ask me first (F-036 AG-3 "Never
  * possible: posting in a conversation with other people", AG-8, C-39; #1063): its answer goes only where Flux puts it, the asker's card
  * (which only their Show everyone posts), the task's discussion for a run on a task, or the agent's private chat. A local client, which
  * only its person prompts, keeps them (LC-2, LC-3) and goes through the same change path.
@@ -36,14 +37,15 @@ export const VIEW_PICTURE_TOOL = 'flux_view_image';
 export const RUN_NEVER_POSTS = ['flux_start_conversation', 'flux_reply_in_conversation'] as const;
 
 /**
- * The exact Flux tools of one assistant run: every read tool the assistant is offered and, unless its "What it may do" is Only
- * read, every change tool of `ASSISTANT_RUN_EFFECT_TOOLS`, sorted (F-036 AG-3). The same list serves `server` and `runtime`
- * runs, so both engines see the same tools and the MCP route lists exactly these to the run's token.
+ * The exact Flux tools of one assistant run: every read tool the assistant is offered and, unless the run only reads (an answer to another
+ * agent's question, or a run with no space), every change tool of `ASSISTANT_RUN_EFFECT_TOOLS`, sorted (F-036 AG-3). Ask me first does not
+ * narrow the list: its changes wait for the owner's OK. The same list serves `server` and `runtime` runs, so both engines see the same
+ * tools and the MCP route lists exactly these to the run's token.
  */
-export function assistantRunTools(mayDo: AgentMayDo): string[] {
+export function assistantRunTools(readOnly: boolean): string[] {
   const effects = new Set<string>(ASSISTANT_RUN_EFFECT_TOOLS);
   return AGENT_TOOLS.filter((entry) => entry.kind === 'tool' && !TOOLS_NOT_FOR_RUNS.has(entry.name)
-    && (entry.access === 'read' || mayDo !== 'read' && effects.has(entry.name))).map((entry) => entry.name).sort();
+    && (entry.access === 'read' || !readOnly && effects.has(entry.name))).map((entry) => entry.name).sort();
 }
 
 /** "Tell whoever runs Flux" (F-027 Journey 6): one Needs-you item to the workspace's owners; the body may name the plan (`claude_code`, the default, or `codex`). */
@@ -58,12 +60,12 @@ export const ASSISTANT_CHANGE_LIMITS = {
 /** `skipped`: the owner chose Skip (or Keep, for a deletion). */
 export type AssistantChangeState = 'applied' | 'waiting' | 'applied_after_wait' | 'skipped' | 'undone' | 'refused';
 /**
- * Why a change waits (F-036 AG-3): the agent's "What it may do" is Ask me first, it deletes something, it changes another
+ * Why a change waits (F-036 AG-3): the agent's Ask me first is Ask me first, it deletes something, it changes another
  * person's thing (including a task for another person), or, for a run, it would tell another person something (`tells`: a task
  * that waits for them, a decision or result about their task, #1089). Nothing else waits, and nothing waiting expires.
  */
 export type AssistantWaitReason = 'ask' | 'removal' | 'others' | 'tells';
-export type AssistantObjectType = 'work' | 'doc' | 'map' | 'thought' | 'link' | 'message' | 'decision' | 'picture';
+export type AssistantObjectType = 'work' | 'doc' | 'map' | 'thought' | 'link' | 'message' | 'decision' | 'picture' | 'file';
 
 /** One row of the change log, as its owner sees it. Nobody else sees a waiting change. */
 export interface AssistantChange {
@@ -162,8 +164,15 @@ const PHRASES: Record<string, { phrase: string; verb: string; noun: string }> = 
   'conversation.reply': { phrase: 'post', verb: 'Post', noun: 'message' },
   'cowork.unit.create': { phrase: 'hand off', verb: 'Hand off', noun: 'task' },
   'cowork.unit.transfer': { phrase: 'hand over', verb: 'Hand over', noun: 'unit' },
+  // A local client's own work, which waits under Ask me first (#1419).
+  'cowork.claim': { phrase: 'take', verb: 'Take', noun: 'task' },
+  'cowork.release': { phrase: 'pause', verb: 'Pause', noun: 'task' },
+  'cowork.unit.complete': { phrase: 'finish', verb: 'Finish', noun: 'task' },
+  'cowork.unit.decline': { phrase: 'decline', verb: 'Decline', noun: 'task' },
+  'proposal.create': { phrase: 'suggest', verb: 'Suggest', noun: 'action' },
   'work.creation.revert': { phrase: 'take back', verb: 'Take back', noun: 'task' },
   'answer.picture.attach': { phrase: 'attach', verb: 'Attach', noun: 'picture' },
+  'answer.file.attach': { phrase: 'attach', verb: 'Attach', noun: 'file' },
 };
 
 /** The run-private view of `flux_create_unit` (AST-3 R2): its strict input has no bootstrap runtime or grant. Stored with a waiting hand-off. */
@@ -205,7 +214,8 @@ export function assistantChangeSummary(changes: readonly Pick<AssistantChange, '
 }
 
 const PAST: Record<string, string> = { add: 'added', change: 'changed', close: 'closed', rename: 'renamed', record: 'recorded', propose: 'proposed',
-  edit: 'edited', delete: 'deleted', remove: 'removed', move: 'moved', post: 'posted', set: 'set', hand: 'handed', send: 'sent', take: 'took', attach: 'attached' };
+  edit: 'edited', delete: 'deleted', remove: 'removed', move: 'moved', post: 'posted', set: 'set', hand: 'handed', send: 'sent', take: 'took', attach: 'attached',
+  pause: 'paused', finish: 'finished', decline: 'declined', suggest: 'suggested' };
 /** "add task" becomes "added task" for a message about what already happened. */
 export function assistantPastPhrase(phrase: string): string {
   const space = phrase.indexOf(' ');
@@ -214,7 +224,7 @@ export function assistantPastPhrase(phrase: string): string {
 
 const STATUS_WORDS: Record<string, string> = { open: 'To do', in_progress: 'Doing', blocked: 'Blocked', done: 'Done' };
 const DONE_NOUNS: Record<string, string> = { work: 'task', doc: 'the Wiki page', map: 'the map', thought: 'the thought', link: 'a link', message: 'a message',
-  decision: 'the decision', picture: 'the picture' };
+  decision: 'the decision', picture: 'the picture', file: 'the file' };
 /**
  * What one applied change did, in past words (F-036 AG-3 change line): "updated the Wiki page Calibration", "moved #4 to Doing",
  * "added task #7 Order sensors". `status` is a task change's new status, when it changed one.
@@ -229,6 +239,7 @@ export function assistantDoneWords(change: { operation: string; objectType: Assi
   if (change.operation === 'doc.create') return `added ${DONE_NOUNS.doc} ${title}`.trim();
   if (change.operation === 'doc.delete') return `deleted ${DONE_NOUNS.doc} ${title}`.trim();
   if (change.operation === 'answer.picture.attach') return `attached ${DONE_NOUNS.picture} ${title}`.trim();
+  if (change.operation === 'answer.file.attach') return `attached ${title || 'a file'}`.trim();
   const past = assistantPastPhrase(change.phrase);
   return title ? `${past} ${change.objectType === 'work' ? title : `${title}`}` : past;
 }

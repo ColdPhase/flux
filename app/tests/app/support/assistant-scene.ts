@@ -82,7 +82,7 @@ export async function assistantScene(label: string) {
   const settings = () => agentSettings(owner, ws.id);
   /** The assistant's own agent connection (the S6 policy and the run tokens belong to it). */
   const assistantConnectionId = async () => (await settings()).connectionId;
-  /** "What it may do" (F-036 AG-3), set by the owner in their own session. */
+  /** Ask me first (F-036 AG-3), set by the owner in their own session. */
   async function setMayDo(mayDo: AgentMayDo) {
     expectStatus(await owner.browser.request('PATCH', agentConnectionPath(await assistantConnectionId()), { body: { mayDo } }), 200);
   }

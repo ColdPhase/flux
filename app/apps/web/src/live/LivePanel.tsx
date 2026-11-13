@@ -74,7 +74,7 @@ export function LivePanel({ live, presentable, focusInvite = false, onShow, onCl
               </li>
             ))}
           </ul>
-        ) : <p className="lv-panel__text">Connecting to the media server…</p>}
+        ) : <p className="lv-panel__text">Connecting to the call…</p>}
         {absent.length ? (
           <>
             <h3 className="lv-panel__sub" ref={canJoin} tabIndex={-1}>Can join</h3>

@@ -180,11 +180,9 @@ class ReadingAndMotion(unittest.TestCase):
         phone.goto("/settings/appearance")
         self.assertEqual(self.root_font_size(phone), "16px")
         self.assertEqual(phone.get_by_role("radiogroup", name="Text size").count(), 0)
-        row = phone.locator(".sset-row", has_text="Text size")
-        expect(row).to_have_count(1)
-        expect(row).to_contain_text("Follows your phone")
-        self.assertFalse(row.evaluate("el => el.matches('a, button, input, [role=radio], [role=switch]')"), "a plain value row, not a control")
-        self.assertGreaterEqual(row.evaluate("el => el.getBoundingClientRect().height"), 44, "the row is at least 44 px tall")
+        # The phone's text size is the phone's: there is no row for it, not even one that only says so (a row that is not a control, #1424).
+        expect(phone.get_by_text("Follows your phone")).to_have_count(0)
+        expect(phone.locator(".sset-row", has_text="Text size")).to_have_count(0)
         self.assertEqual(phone.get_by_role("switch", name="Reduce motion").count(), 0, "Reduce motion is drawn for the computer only")
         shot(phone, "settings-phone-390-text-size-follows")
 

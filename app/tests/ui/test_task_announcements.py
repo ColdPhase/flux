@@ -597,6 +597,14 @@ class TaskAnnouncements(unittest.TestCase):
     def test_13_late_announcements_keep_a_reader_at_the_end(self) -> None:
         page = self.page("ada")
         held = self.hold_earlier_announcements(page)
+        # The view carries every announcement of a space whose roots all fit one window, up to a bound (#1429). This board stands for a
+        # space with more than the view carries: its view comes with the first page only, and the rest arrive after the stream is shown.
+        def first_page_only(route) -> None:
+            response = route.fetch()
+            view = response.json()
+            view["taskNotices"]["items"] = view["taskNotices"]["items"][:100]
+            route.fulfill(response=response, json=view)
+        page.route(re.compile(rf"/api/v1/projects/{self.ids['short']}/conversation-view$"), first_page_only)
         page.goto(f"/projects/{self.ids['short']}")
         feed = page.locator(".project-convo__feed")
         at_end = "feed => feed.scrollHeight - feed.scrollTop - feed.clientHeight < 48"

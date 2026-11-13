@@ -146,7 +146,8 @@ time can change them:
 - The supervisor requires Node's sole startup flag to be `--disable-sigusr1`, empty `NODE_OPTIONS`, and no already active
   inspector. Additional or negated flags refuse the same way. The pinned Node 24.21 supports this flag.
 - Limits for all the agents together: `FLUX_RUNTIME_MEMORY` (no swap) and `FLUX_RUNTIME_CPUS`, 2048 processes, a 256 MiB tmpfs
-  `/tmp`. `./flux` and `runtime.sh` set the two from the server: its memory less 1.25 GiB, and all its CPUs but one.
+  `/tmp` and a 1 GiB tmpfs `/scratch` for the runs' scratches (memory, counted in `FLUX_RUNTIME_MEMORY`; only what runs write
+  there uses any). `./flux` and `runtime.sh` set the two from the server: its memory less 1.25 GiB, and all its CPUs but one.
 - Container logs are rotated at 3 × 10 MB.
 - Only its own volume at `/data` and the read-only tools volume.
 - Only its own `internal` network, shared with `runtime-manager` and `runtime-egress` and nothing else, so it cannot reach the
@@ -155,6 +156,60 @@ time can change them:
   `com.docker.network.bridge.inhibit_ipv4`, so the host has none there.
 
 Docker's local volumes have no size quota, so the supervisor refuses a run while a person's directory exceeds 256 MiB.
+
+- **The CLIs' own tools run in a sandbox per run** (#1437, [RT-5](../product/ai-modes.md#rt-5--tools)). Claude Code and Codex
+  keep their shell and file tools. Each run gets an empty scratch `/scratch/<run id>`, the only place its tools can write, deleted
+  when the run ends. Every command starts in Flux's sandbox shell (`/opt/flux-runtime/sandbox/bin/bash`), which uses Linux
+  **Landlock** to keep it, and all it starts, to the scratch and the system's own programs: not the person's CLI homes (their
+  login), `/data`, `/tmp`, the tools volume or anyone else's scratch, and no other process's environment. It has no TCP (Landlock's
+  network rules) and no socket of any kind (a seccomp filter: no UDP or DNS, no Unix socket by path, no io_uring). **The tools need
+  Linux 6.7 or later** (Landlock ABI 4, with Landlock enabled: the default on Ubuntu 24.04+, Debian 13+, Fedora 40+ and RHEL 10)
+  and Docker's default seccomp profile (Docker Engine 25 allows its system calls); on an older kernel a shell could reach the
+  egress, and through it an allowed vendor host under someone else's account (coordinator decision on #1437). **On a host without
+  Landlock ABI 4 the runtime still starts and logs `{"event":"tools_off"}` once**; its agents then work as before, with Flux's tools
+  and the CLI's own web search only, and cannot attach files they made. Check with
+  `docker compose … exec runtime-1 /opt/flux-runtime/sandbox/flux-sandbox abi` (4 or more: the tools are on).
+
+### The toolbox
+
+The CLIs' own tools (and every harness's, #1437) find a **fixed, pinned toolbox** in the runtime image (founder decision 2026-11-13): an
+agent never installs anything at run time, and its sandbox has no network to do it. Pinned to exact Alpine 3.24 package versions
+(`docker/Dockerfile`, `agent-runtime-base`; apk checks each against Alpine's signed index) and, for python-docx, one wheel by its
+SHA-256:
+
+| Tool | Version | For |
+| --- | --- | --- |
+| Python 3 | 3.14.10 | scripts |
+| pandas, NumPy | 3.0.3, 2.4.6 | tables, CSV |
+| openpyxl | 3.1.5 | XLSX |
+| python-docx (and lxml) | 1.2.0 (6.1.1) | DOCX |
+| matplotlib (and Pillow) | 3.10.6 | charts |
+| Node | the image's own (24.22) | scripts |
+| pandoc | 3.10 | HTML, Markdown, DOCX and more, between each other |
+| typst | 0.14.2 | PDF, as pandoc's engine: `pandoc page.html -o page.pdf --pdf-engine=typst` (no browser) |
+| jq, ripgrep | 1.8.2, 15.1.0 | JSON, search |
+| vips (libvips) | 8.18.2 | pictures: convert, resize |
+| bash | 5.3.9 | the shell both CLIs require |
+
+What it costs is measured by `scripts/check_runtime_sandbox.sh` (its `MEASURE` lines, one CPU as on a 2 vCPU server) and recorded under
+*Resources measured* below. A pin Alpine drops makes the image build fail: move the pins together.
+
+**More tools.** Build your own image on top of Flux's runtime image and point the runtime services at it, for example in
+`docker/compose.override.yaml` (source checkout) or beside `compose.runtime.yaml` (release):
+
+    # Dockerfile.runtime
+    FROM ghcr.io/coldphase/flux-agent-runtime@sha256:<the digest of your release>
+    USER root
+    RUN apk add --no-cache graphviz && pip install --no-cache-dir --break-system-packages --require-hashes -r /tmp/requirements.txt
+    USER node
+
+    # docker/compose.override.yaml
+    services:
+      runtime-1:
+        image: my-flux-agent-runtime:<tag>
+
+Keep the user, the entry point and everything under `/opt/flux-runtime` as they are, and build it again for every Flux release (the
+runtime image is pinned per release). What you add runs inside the same per-run sandbox and limits.
 
 ### What each agent needs
 
@@ -174,8 +229,22 @@ The others wait in order, and their task says "Waiting for room on the server". 
 `FLUX_RUNTIME_MAX_RUNS` in `docker/.env` and run `./flux up`; `./flux runtime status` shows the number in force. There is no
 setting in the app.
 
-The memory limit is shared and there is no bound per run, so one CLI far over its planned 1 GiB can get another person's CLI or the
-supervisor killed for memory, and one person can fill the shared 256 MiB `/tmp`. If that happens, lower `FLUX_RUNTIME_MAX_RUNS`.
+Each run's tools have their own limits (#1437), checked by the supervisor every second and by the kernel:
+
+| Per run | Limit | What happens past it |
+| --- | --- | --- |
+| Memory of the tools (every process of the run but the CLI) | 512 MiB | the supervisor kills the tools; the run goes on and the tool call fails |
+| Scratch (`/scratch/<run id>`, memory) | 256 MiB, and one file at most that | the same; a write past the file size fails |
+| Processes and threads of the person | 256 | a fork fails; past it the supervisor kills the tools |
+| CPU | `nice` 10 below every CLI; 10 minutes for one tool process | the process is killed |
+| Wall clock | the run's hour (below) | the run ends, every process of the person goes and the scratch is deleted |
+| Out of memory | the run's processes are chosen before the supervisor | the kernel kills the largest of them |
+
+So one active agent is planned at 1 GiB: about 256 MiB for its CLI, 512 MiB for its tools and 256 MiB of scratch. **On a 2 vCPU /
+4 GB server** the runtime gets about 2.5 GiB and one CPU (`FLUX_RUNTIME_CPUS`, all the server's CPUs but one): two agents at once,
+sharing that CPU, the tools of each below every CLI, while Flux itself keeps the other CPU. A run that converts or computes for
+minutes slows the other run, never Flux. The memory limit is still shared: a CLI far over its planned 256 MiB can get another
+person's CLI killed for memory, and one person can fill the shared 256 MiB `/tmp`. If that happens, lower `FLUX_RUNTIME_MAX_RUNS`.
 
 Plan for 1 GiB of memory, up to one CPU while it thinks, and 256 MiB of disk for each active agent, plus the tools volume:
 Anthropic's signed manifest lists the Linux x64 binary of 2.1.289 at 246 MB (retrieved 2026-10-05).
@@ -191,8 +260,11 @@ Measured 2026-11-05 in Docker with the runtime's own settings (2560 MiB, one CPU
 | One more person | about 44 KiB of supervisor memory, 5 ms to connect, no process |
 | Claude Code 2.1.285, one start as a person's user id, not signed in, no network | 195 MiB at its peak, 0.44 s of CPU |
 | Codex 0.160.1 `app-server`, idle for 8 s as a person's user id, not signed in, no network | 87 MiB, 0.07 s of CPU |
+| The runtime image with the toolbox (#1437, `agent-runtime`, amd64; 2026-11-13) | 1,000 MB, against 438 MB without it (`main` at the same day): the toolbox adds about 560 MB, once per server |
+| pandoc with typst, a one-page HTML file to PDF, in a run's sandbox on one CPU | 124 MiB at its peak |
+| Python with pandas and matplotlib, one chart to PNG, in a run's sandbox on one CPU | 108 MiB at its peak, 0.9 s |
 
-The first three rows come from `scripts/check_runtime_people.sh`, which uses fake CLIs and works on any Linux engine. The last two
+The toolbox rows come from `docker image inspect` and the `MEASURE toolbox` lines of `scripts/check_runtime_sandbox.sh` (a container with one CPU, as a 2 vCPU server gives the runtime); both fit well inside a run's 512 MiB for its tools. The first three rows come from `scripts/check_runtime_people.sh`, which uses fake CLIs and works on any Linux engine. The last two
 are the real binaries, so they show what a CLI costs before it does any work.
 
 **Not measured:** a real run, with a signed-in CLI talking to its vendor. It needs a vendor sign-in, and the machine these numbers
@@ -328,16 +400,18 @@ chat) then runs their own Claude Code (or Codex) under their own user id, with t
   the Flux server's `Authorization` header. The CLI reaches Flux only through `runtime-egress`'s `/mcp`
   forwarder.
 - **What it can do.** The agent has exactly its owner's rights ([agents](../product/assistant.md)). The route lists exactly the run's
-  tools: every read tool and, unless the agent's **What it may do** is *Only read*, its change tools (deleting and other people's
+  tools: every read tool and its change tools (with **Ask me first** on every change waits; deleting and other people's
   things wait for the owner's OK, and only the owner can approve). It refuses every other tool, reads only what the run's place
   allows (a conversation's audience, a task's people; the owner's whole view only in the agent's private chat), works only in spaces
   where AI is on, refuses the token once the run ends, the owner stops it, revokes the connection, loses access or AI is turned off
   in the space, and returns at most 256 KiB per tool result and 8 MiB per run (safety bounds, below). The runtime itself reaches no
   web page: a server agent's page reading and search go through Flux's own tool and the provider's search
   (`FLUX_WEB_READS`), and the CLI's own web tools are kept only while that switch is on.
+- **Its own tools** (#1437). The CLI's shell and file tools work in the run's scratch, its working directory, inside Flux's
+  sandbox (above). A file it makes there reaches Flux only when the agent attaches it with `flux_attach_file`.
 - **Read-back.** The supervisor checks the CLI's first `system/init`: any tool other than the run's exact Flux
-  tools (and `EndConversation`), or any MCP server other than a connected Flux, stops the CLI with no
-  answer. The worker checks it again.
+  tools, `EndConversation`, the CLI's own shell and file tools (and with the web on its web search), or any MCP server other
+  than a connected Flux, stops the CLI with no answer. The worker checks it again.
 - **Ends.** Each end has its own state on the run: an expired login (*Sign in to Claude again*), a plan
   limit (with the reset time the CLI reported), a crash, a refused request, a busy lane, one of the safety
   bounds below, and a broken stream (`unknown`, never rerun). None falls back to another connection. Stop
@@ -376,10 +450,31 @@ chat) then runs their own Claude Code (or Codex) under their own user id, with t
   request that finds it used waits for the key's next day.
 - **Transcripts.** `--no-session-persistence`, and after every run the supervisor deletes the CLI's session
   directories (`projects`, `todos`, `shell-snapshots`, `session-env`, `transcripts`) from the binding
-  directory and the run's MCP configuration from `/tmp`.
+  directory, the instructions and settings Codex reads from its home, the run's scratch, and the run's MCP configuration from `/tmp`.
 
 The worker reaches the API at `FLUX_API_INTERNAL_URL` (default `http://api:8080`) for the token and, for
 API-key runs, for `/mcp`.
+
+### The model gateway (#1441)
+
+A run on an API key that works in the runtime never holds the key. It gets a gateway token, and its harness sends the provider's
+model requests to `http://runtime-egress:8081/<provider>/…`; the egress passes them on to the worker on the internal
+`runtime-api` network (the worker listens there only, as `worker-gateway:8095`), and the worker, which alone opens keys, sends them
+to the provider and charges the owner's daily budget from the usage each answer reports. The interface, the refusals and the
+metering are in [RT-4](../product/ai-modes.md#the-model-gateway-1441).
+
+| Bound | Value | Where |
+| --- | --- | --- |
+| Request body | 16 MiB | `MODEL_GATEWAY_LIMITS.requestBytes` |
+| Answer | 32 MiB | `MODEL_GATEWAY_LIMITS.responseBytes` |
+| One request | 10 minutes, and for a streamed answer 2 minutes without a byte from the provider | `MODEL_GATEWAY_LIMITS.requestMs`, `idleMs` |
+| Output of one request | 32,000 tokens | `MODEL_GATEWAY_LIMITS.maxOutputTokens` |
+| Requests at once for one run | 4 | `MODEL_GATEWAY_LIMITS.concurrentPerRun` |
+| Request bodies in the worker's memory at once, every run together | 48 MiB (past it: 429, sent again after 2 s) | `MODEL_GATEWAY_LIMITS.bodiesInFlightBytes` |
+
+The worker's log has one line per request: the run, the provider, the path, the status and the charge; never a token, a key or a
+body. `FLUX_MODEL_GATEWAY_LISTEN` (the worker's listening name, default `worker-gateway`) and `FLUX_RUNTIME_EGRESS_GATEWAY` (where
+the egress finds it, default `worker-gateway:8095`) are set by the Compose files; with the runtime off the worker does not listen.
 
 ## Known limits (accepted)
 
@@ -407,8 +502,8 @@ None of them is hidden by the checks.
   connections in all and 32 from one address. All the agents share the runtime's address (#860), so the 32 are shared
   too: enough for the agents that fit in memory on a small server. A large server with many agents at once may need more.
 - **People share one network namespace (#860).** Separate user ids keep them from each other's files, memory and
-  signals, not from each other's loopback ports. A CLI has no tool that could reach one; a CLI that ran arbitrary code could
-  try a port another person's CLI listens on during a sign-in.
+  signals, not from each other's loopback ports. A CLI's own shell (#1437) can neither listen nor connect over TCP on Linux 6.7
+  or later; on an older kernel it could try a port another person's CLI listens on during a sign-in.
 - **Reconciliation decides from sightings that can be a moment old (m8, low, accepted).** A binding missing from the
   sightings is looked for once more before the owner is told to sign in again. What is not serialized is the gap between
   those two reads.
@@ -498,8 +593,12 @@ changes. It proves the flags exist, not how the CLIs behave in a run; the automa
 
 | Check | What it proves |
 | --- | --- |
-| `./scripts/check_agent_runtime.sh` | The whole runtime through `./flux` with fake CLIs: off by default; on; `docker inspect` limits; many owners in one runtime, no cross-owner reach; escape attempts from inside the runtime; the supervisor's closed request set; release and reuse; bind refused with any entry in `/data`; operator release; the sign-in console (each method's exact command in a terminal, the URL, a pasted code, signed in only from `auth status`, sign-out and a failed logout, another member refused, the terminal gone after exit and after the page left, a seeded-secret scan of the database, frames, API answers and logs, and the pages at phone width in a browser); backup without slot volumes; restore reconciliation; switching off; purge; reset. Set `FLUX_RUNTIME_SCREENSHOT_DIR` to keep the browser's screenshots. |
+| `./scripts/check_agent_runtime.sh` | The whole runtime through `./flux` with fake CLIs: off by default; on; `docker inspect` limits; many owners in one runtime, no cross-owner reach; escape attempts from inside the runtime; a run's own shell (#1437, step 9e) on the runtime's real networks reaching nothing but the egress (with Landlock ABI 4 not even that); the supervisor's closed request set; release and reuse; bind refused with any entry in `/data`; operator release; the sign-in console (each method's exact command in a terminal, the URL, a pasted code, signed in only from `auth status`, sign-out and a failed logout, another member refused, the terminal gone after exit and after the page left, a seeded-secret scan of the database, frames, API answers and logs, and the pages at phone width in a browser); backup without slot volumes; restore reconciliation; switching off; purge; reset. Set `FLUX_RUNTIME_SCREENSHOT_DIR` to keep the browser's screenshots. |
+| `./scripts/check_runtime_sandbox.sh` | The per-run sandbox of the CLIs' own tools (#1437) with the real Landlock, in a container with the runtime's settings (any Linux engine with Landlock, also one with `ptrace_scope=0`): from a run's own shell, the person's login, `/data`, another run's scratch, the CLI's and every other process's environment, `/tmp`, the tools volume, links out of the scratch, TCP and listening (ABI 4) all refused; an HTML page, a CSV and a PDF made in the scratch; a file larger than the scratch, a fork bomb and a memory hog stopped while the run goes on; every scratch gone after its run; the reader `flux_attach_file` uses (no link, no `..`, no other person); Codex's shell found as `bash`, its own writes kept to its home and the scratch, a change outside the scratch stopping the run, and the instructions it wrote into its home removed. |
+| `./scripts/check_application.sh` (`agent-runtime-own-tools.test.ts`) | The supervisor's part of #1437 with a pass-through sandbox: the templates with the CLIs' own tools, the scratch as the working directory, the read-back that lets exactly those tools through (Codex: a command not in the sandbox shell, a file change outside the scratch stop the run), and the scratch gone after the run. |
 | `./scripts/check_application.sh` | With the runtime off: the API reports it disabled; no request input selects a runtime or a binding; the runtime tables hold display facts only; core, supervisor, manager and egress tests, including the fuzz tests of the supervisor-stream reader and `runtime-egress`; the sign-in console in process with real terminals (the 15-minute end with injected timers, disconnect, the closed request set, the session-bound ticket). |
+| `./scripts/check_model_gateway.sh` | The model gateway (#1441) with the runtime: a request from inside the runtime under a person's kind of user id, with only a run's gateway token, reaches a mock provider through `runtime-egress` and the worker, which swaps in the key and charges the run; a request without the token and another provider path are refused. Then the key is looked for in the runtime's and the egress's environments, every process's environment and command line, their files and their logs, and in the worker's log, with the token: nowhere (the provider received it: positive control). |
+| `./scripts/check_application.sh` (`model-gateway-core.test.ts`, `model-gateway.test.ts`) | The gateway's routes, tokens, admission, usage of every wire format (whole and streamed, cache fields, malformed and missing) and charges; end to end through the egress forwarder and the worker's gateway to a provider mock for every provider, on real run rows: the key only in the provider's own header, never in an answer, error, log or row; unknown, expired, replaced and closed tokens; stopped and ended runs; the key's day shared with the owner's other runs; four requests at once; size and idle bounds. |
 | `python3 -m unittest tests.test_container_isolation tests.test_runtime_inspect` | No Compose file mounts a Docker or Podman socket, and none binds a host path outside the checkout (so no `/var/run` or `/run` directory mount); `inspect.py` refuses the same on a running project. |
 | `python3 -m unittest tests.test_flux_subscription_question` | The launcher's question with a pseudo-terminal and a stub `docker` as the fake host check: Enter, Enter writes `codex` and no statement; Enter, `y` writes `codex,claude_code` and today's date; `n` writes nothing; no terminal asks and writes nothing; each failing host check shows no question and one reason line; an existing `docker/.env` and a second `./flux up` are never asked; `./flux ai on` asks the same, only adds and refuses without a terminal. It creates no Docker resource. |
 | `./scripts/check_application.sh` (`agent-runtime-runs.test.ts`) | A run end to end with the TEST ONLY fake `claude`: the real worker processor and engine, an in-process `runtime-manager` and supervisor, and real MCP calls to the API with a minted run token. Progress, the commit recheck, the exact argv, the token only in `FLUX_RUN_TOKEN` and the `Authorization` header, no transcript, the read-back (an extra tool or server), every end state, results past the bound, Stop (SIGINT and SIGTERM), a busy slot, redaction, revocation mid-run, switches off before and during a run, no runs a day, a plan limit that pauses and resumes the request by itself, and the DM/private/other-project canaries. |

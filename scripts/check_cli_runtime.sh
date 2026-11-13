@@ -9,7 +9,7 @@
 # each; on Claude Code its own WebSearch with result addresses; on Codex the ChatGPT device sign-in through Flux's console against a
 # mock issuer, a token refresh, the usage limit's reset time, and sign-out with revocation; no vendor credential in the database or
 # the logs; on Codex its own web search (#1065: the standalone `web.run`, on the cached index) with result addresses; on Codex its own MCP
-# resource readers, which reach only Flux and do not end the run (#1165); on each engine a direct-message ask with reading the web off, whose one tool the server does not define: an empty tool list, which still answers (#1155). Assertions are on Flux's side effects, never on model text.
+# resource readers, which reach only Flux and do not end the run (#1165); on each engine its own shell and file tools in Flux's per-run sandbox (#1437); on each engine a direct-message ask with reading the web off, whose one tool the server does not define: an empty tool list, which still answers (#1155). Assertions are on Flux's side effects, never on model text.
 # Not covered (needs a real account, see docs/agents/evaluation.md): the Claude plan sign-in and plan-limit texts, real model quality.
 #
 # Needs internet only to build the images and for Flux's own installer to download the pinned Claude Code (downloads.claude.ai,
@@ -126,6 +126,9 @@ check claude-check
 step "5. Claude Code /ai: read the conversation, create a task, read a page (Flux MCP through runtime-egress)"
 check ai claude
 
+step "5b. Claude Code's own Bash, Read and Write (#1437): in Flux's per-run sandbox, in the run's scratch; no login, /data or TCP from the shell; HTML to PDF with pandoc and typst, attached with flux_attach_file"
+check own-tools claude
+
 step "6. Claude Code's own WebSearch: recorded before its results are read; flux_read_web reads a result"
 check claude-search
 
@@ -147,6 +150,9 @@ check codex-sign-in
 
 step "11. Codex /ai with Flux's tools, plain tools from Flux's model catalog (#1127); the access token refreshed"
 check ai codex
+
+step "11a. Codex's own exec_command (#1437): in Flux's sandbox shell, found as bash on its PATH; no login, /data or TCP; HTML to PDF with pandoc and typst, attached with flux_attach_file"
+check own-tools codex
 
 step "11b. Codex's own MCP resource readers (#1165): they reach only Flux, which has none; the run goes on to a Flux tool and answers. Control: a reader of another server still stops the run"
 check codex-resources

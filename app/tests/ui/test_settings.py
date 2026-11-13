@@ -202,21 +202,21 @@ class SettingsJourney(unittest.TestCase):
     def test_02_kreska_small_moments_switch_persists(self) -> None:
         page = self.page()
         page.goto("/settings")
-        switch = page.get_by_role("switch", name="Kreska in loading and empty screens")
+        switch = page.get_by_role("switch", name="Show the face on loading and empty screens")
         expect(switch).to_have_attribute("aria-checked", "true")
         self.assertIsNone(page.evaluate("document.documentElement.dataset.kreska ?? null"), "on by default")
         switch.click()
         expect(switch).to_have_attribute("aria-checked", "false")
         self.assertEqual(page.evaluate("[document.documentElement.dataset.kreska, localStorage.getItem('flux.kreska')]"), ["off", "off"])
         page.reload()
-        expect(page.get_by_role("switch", name="Kreska in loading and empty screens")).to_have_attribute("aria-checked", "false")
+        expect(page.get_by_role("switch", name="Show the face on loading and empty screens")).to_have_attribute("aria-checked", "false")
         self.assertEqual(page.evaluate("document.documentElement.dataset.kreska"), "off", "applied before the page renders")
         # Negative control: another device (a fresh browser) keeps its own choice, on.
         other = self.page()
         other.goto("/settings")
-        expect(other.get_by_role("switch", name="Kreska in loading and empty screens")).to_have_attribute("aria-checked", "true")
-        page.get_by_role("switch", name="Kreska in loading and empty screens").press("Space")
-        expect(page.get_by_role("switch", name="Kreska in loading and empty screens")).to_have_attribute("aria-checked", "true")
+        expect(other.get_by_role("switch", name="Show the face on loading and empty screens")).to_have_attribute("aria-checked", "true")
+        page.get_by_role("switch", name="Show the face on loading and empty screens").press("Space")
+        expect(page.get_by_role("switch", name="Show the face on loading and empty screens")).to_have_attribute("aria-checked", "true")
         self.assertIsNone(page.evaluate("localStorage.getItem('flux.kreska')"))
 
     def test_03_settings_ai_keeps_every_existing_setting(self) -> None:
@@ -244,7 +244,7 @@ class SettingsJourney(unittest.TestCase):
         self.settle(dark)
         shot(dark, "settings-desktop-1440-agents-dark")
         page.goto("/settings")
-        self.assertNotRegex(page.get_by_role("switch", name="Kreska in loading and empty screens").locator("xpath=..").locator(".kreska").get_attribute("class") or "", r"kreska--")
+        self.assertNotRegex(page.get_by_role("switch", name="Show the face on loading and empty screens").locator("xpath=..").locator(".kreska").get_attribute("class") or "", r"kreska--")
         expect(cards.first).to_be_visible()
     def test_04_keyboard_shortcuts_list_every_key_of_the_guide(self) -> None:
         page = self.page()
@@ -319,9 +319,11 @@ class SettingsJourney(unittest.TestCase):
             expect(page).to_have_url(re.compile(r"/settings/appearance$"))
             themes = page.get_by_role("radiogroup", name="Theme")
             expect(themes).to_be_visible()
-            self.assertEqual(themes.get_by_role("radio").all_inner_texts(), ["Light", "Dark", "System"])
-            expect(page.get_by_text("One neutral palette. There is no accent color to pick.")).to_be_visible()
-            expect(page.get_by_role("switch", name="Kreska in small moments")).to_be_visible()
+            # One word for each theme on every device: the computer's "Match system" (#1424), and no line about an accent colour to pick.
+            self.assertEqual(themes.get_by_role("radio").all_inner_texts(), ["Light", "Dark", "Match system"])
+            expect(page.get_by_text(re.compile("no accent colou?r", re.I))).to_have_count(0)
+            shot(page, f"1424-appearance-phone-390-{'dark' if dark else 'light'}")
+            expect(page.get_by_role("switch", name="Show the face on loading and empty screens")).to_be_visible()
             # This phone's notifications and install steps are under Notifications → This phone (#763 SG-8).
             expect(page.get_by_text("Notifications on this phone")).to_have_count(0)
             self.no_colour_picker(page)
@@ -429,7 +431,7 @@ class SettingsJourney(unittest.TestCase):
 
         page = self.page(phone=True)
         page.goto("/settings/appearance")
-        switch = page.get_by_role("switch", name="Kreska in small moments")
+        switch = page.get_by_role("switch", name="Show the face on loading and empty screens")
         assert_touch_target(self, page, switch)
         # Keep the decorative row unchanged while removing the button's actual extension (#763 SG-4: the switch box is
         # 44 × 44 with a transparent border around its 28 px track). A row-only check would pass; the bare track must fail.

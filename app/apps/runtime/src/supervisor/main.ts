@@ -7,6 +7,7 @@ import { parseRuntimeSwitch, RUNTIME_PORTS, RUNTIME_SECRET, SLOT_NAME } from '@f
 import { runCapacity } from './capacity.js';
 import type { SupervisorConfig } from './handlers.js';
 import { hostProblem } from './requirements.js';
+import { findSandbox } from './sandbox.js';
 import { createSupervisorServer } from './server.js';
 import { CLI_PATHS } from './templates.js';
 
@@ -69,6 +70,10 @@ async function start() {
     capacity = runCapacity(env.FLUX_RUNTIME_MAX_RUNS, limit > 0 ? Math.min(limit, totalmem()) : totalmem());
   } catch (error) { refuse((error as Error).message); }
 
+  // The CLIs keep their own shell and file tools only inside Flux's sandbox (#1437, RT-5); without it they run as before, and it says so once.
+  const sandbox = await findSandbox();
+  if (!sandbox.setup) console.log(JSON.stringify({ event: 'tools_off', reason: sandbox.reason }));
+
   const config: SupervisorConfig = {
     slot,
     secret,
@@ -82,12 +87,13 @@ async function start() {
     egressHost: 'runtime-egress',
     bindingLimitBytes: 256 * 1024 * 1024,
     cliTimeoutMs: 30_000,
+    sandbox: sandbox.setup,
   };
 
   const { server } = createSupervisorServer(config);
   server.listen(RUNTIME_PORTS.supervisor, '0.0.0.0', () => {
     // Only the health check reads it, as root. The container's /tmp is new at each start, so nobody can have put anything here first.
-    void writeFile(READY_FILE, '', { mode: 0o600, flag: 'wx' }).catch(() => undefined).then(() => console.log(JSON.stringify({ event: 'ready', slot, bootId: config.bootId, enabled: config.enabled, capacity })));
+    void writeFile(READY_FILE, '', { mode: 0o600, flag: 'wx' }).catch(() => undefined).then(() => console.log(JSON.stringify({ event: 'ready', slot, bootId: config.bootId, enabled: config.enabled, capacity, landlock: sandbox.setup?.abi ?? 0 })));
   });
   const stop = () => { server.close(); process.exit(0); };
   process.on('SIGTERM', stop);

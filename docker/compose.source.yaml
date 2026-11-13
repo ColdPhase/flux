@@ -39,6 +39,9 @@ x-runtime-slot: &runtime-slot
     - /tmp:rw,nosuid,nodev,size=256m,mode=1777
     # Shared memory would outlive a person and reach the next one with that user id: nobody can write here.
     - /dev/shm:ro,nosuid,nodev,noexec,size=4k
+    # Each run's scratch (#1437, RT-5): /scratch/<run id>, the only place a run's own tools write, deleted after the run. Memory,
+    # counted in the runtime's limit; only what runs write here uses any.
+    - /scratch:rw,nosuid,nodev,size=1g,mode=0711
   restart: unless-stopped
   # The supervisor marks itself ready once it listens. A runtime that refuses to start (an unmet host requirement) stays up
   # without listening: this stays red, so `./flux up` fails, and there is no restart loop (#860).
@@ -345,7 +348,8 @@ services:
         aliases: [runtime-manager-control]
       runtime-1: {}
   runtime-egress:
-    # The runtime's only way out: CONNECT to the enabled CLIs' documented hosts, and the API's /mcp only.
+    # The runtime's only way out: CONNECT to the enabled CLIs' documented hosts, the API's /mcp only, and the
+    # providers' model paths only, to the worker's model gateway (#1441), which alone holds API keys.
     <<: *runtime-hardening
     image: flux-foundation:${FLUX_IMAGE_TAG:-${COMPOSE_PROJECT_NAME:-local}}
     command: ["node", "apps/runtime/dist/egress/main.js"]
@@ -355,6 +359,7 @@ services:
     environment:
       FLUX_AGENT_RUNTIME: ${FLUX_AGENT_RUNTIME:-}
       FLUX_RUNTIME_EGRESS_API: api:8080
+      FLUX_RUNTIME_EGRESS_GATEWAY: worker-gateway:8095
     networks:
       runtime-api: {}
       runtime-egress-out: {}
@@ -524,7 +529,7 @@ networks:
   runtime-control:
     internal: true
     driver_opts: *runtime-network-opts
-  # API and runtime-egress only, for /mcp.
+  # API, worker and runtime-egress only: /mcp on the API, the model gateway on the worker (#1441).
   runtime-api:
     internal: true
     driver_opts: *runtime-network-opts

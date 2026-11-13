@@ -1,17 +1,19 @@
 import { z } from 'zod';
 import { AGENT_OPERATION_CLASSES, type AgentJsonValue } from '@flux/contracts';
 import { NotFoundError, ServiceUnavailableError } from '@flux/core';
-import type { Database } from '@flux/db';
+import { assistantChangeRows, type Database, type DbExecutor } from '@flux/db';
 import { createGithubUseCasesIn, type Provider } from '../github/adapters.js';
 import { workRepository } from '../work/adapters.js';
 import { actionAnnotations as annotations, actionId as id, coordinationExecutor } from './action-execution.js';
+import { sentArgs } from './ask-first.js';
 import type { AgentToolRegistry } from './tool-registry.js';
 import { toolError, toolResult } from './tool-results.js';
 
 /**
  * `flux_link_pull_request` (#160 AC-3): an agent links the pull request it produced to the task it holds, through #74's verified
- * link. It is the agent's own work on the task it holds (TASK_NOT_HELD otherwise), not a change to anyone's things, so it does not
- * wait for its owner. Nothing is added on the GitHub side: the owner's own GitHub authorization verifies the PR through the read-only App.
+ * link (TASK_NOT_HELD otherwise). Everyone who reads the task sees the link, and a required output can move the task, so with Ask me
+ * first on it waits for the owner's OK (#1419). Nothing is added on the GitHub side: the owner's own GitHub authorization verifies the
+ * PR through the read-only App.
  */
 export function registerAgentGithubActions(tools: AgentToolRegistry, db: Database, github: Provider | null) {
   tools.forAccess('write', { operation: 'work.update', classes: AGENT_OPERATION_CLASSES['work.update'] }).registerTool('flux_link_pull_request', {
@@ -35,10 +37,17 @@ export function registerAgentGithubActions(tools: AgentToolRegistry, db: Databas
         .describe('required_output: the pull request is what the task needs. related: it only touches the task.'),
     }),
     annotations,
-  }, async ({ workId, pullRequestUrl, role, ...input }, { claims }) => {
+  }, async (sent, { claims }) => {
+    const args = sentArgs(sent);
+    const { workId, pullRequestUrl, role, ...input } = args;
     try {
       if (!github) throw new ServiceUnavailableError('GitHub App integration is unavailable', 'GITHUB_UNAVAILABLE');
-      return toolResult(await coordinationExecutor(db, claims)({ ...input, sources: [] }, 'work.update', workId, { link: { pullRequestUrl, role } } as unknown as AgentJsonValue,
+      // Named only when it is a task of this space: what waits is shown to the owner, who can read the space (checked before it waits).
+      const task = await assistantChangeRows(db as unknown as DbExecutor).work(workId);
+      const named = task?.projectId === input.projectId ? `#${task.number} ${task.title} · ` : '';
+      const ask = { tool: 'flux_link_pull_request', args, operation: 'work.update', objectType: 'work' as const, objectId: workId,
+        title: `${named}pull request ${pullRequestUrl}` };
+      return toolResult(await coordinationExecutor(db, claims, undefined, ask)({ ...input, sources: [] }, 'work.update', workId, { link: { pullRequestUrl, role } } as unknown as AgentJsonValue,
         async ({ transaction, events, agent, runtime }) => {
           // The owner is the server-issued runtime's, never the tool's input.
           const link = await createGithubUseCasesIn(transaction, events, github)

@@ -32,7 +32,13 @@ export async function startTestSlot(options: { slot?: string; enabled?: RuntimeC
   /** T5: where the CLI reaches the Flux MCP route (the API in the test stack). */
   mcpUrl?: string;
   /** T4: the sign-in console's timers and lifetime. */
-  console?: Pick<SupervisorConfig, 'clock' | 'consoleLifetimeMs'> } = {}): Promise<TestSlot> {
+  console?: Pick<SupervisorConfig, 'clock' | 'consoleLifetimeMs'>;
+  /**
+   * #1437: the CLIs keep their own tools. Landlock needs the runtime container (scripts/check_runtime_sandbox.sh proves it there); here the
+   * sandbox is a stand-in that only passes through (`cli … -- <cli> <args>` starts the CLI, its `bash` is /bin/sh), so the supervisor's own
+   * part (templates, scratch, read-back, clean-up) is what is tested.
+   */
+  ownTools?: boolean } = {}): Promise<TestSlot> {
   const root = await mkdtemp(join(tmpdir(), 'flux-slot-'));
   const dataDir = join(root, 'data');
   const tmpDir = join(root, 'tmp');
@@ -44,6 +50,18 @@ export async function startTestSlot(options: { slot?: string; enabled?: RuntimeC
   // Flux's reviewed copy of the pinned Codex's catalog (the image's `models.json`), which a run cuts its own from (#1332).
   const codexCatalogPath = join(root, 'models.json');
   await writeFile(codexCatalogPath, JSON.stringify(fluxCodexCatalog(FAKE_CODEX_CATALOG)));
+  const scratchRoot = join(root, 'scratch');
+  let sandbox: SupervisorConfig['sandbox'] = null;
+  if (options.ownTools) {
+    await mkdir(scratchRoot, { mode: 0o711 });
+    await mkdir(join(bin, 'sandbox'));
+    const binary = join(bin, 'sandbox', 'flux-sandbox');
+    await writeFile(binary, '#!/bin/sh\n[ "$1" = cli ] || exit 2\nwhile [ "$1" != -- ]; do shift; done\nshift\nexec "$@"\n');
+    await writeFile(join(bin, 'sandbox', 'bash'), '#!/bin/sh\nexec /bin/sh "$@"\n');
+    await chmod(binary, 0o755);
+    await chmod(join(bin, 'sandbox', 'bash'), 0o755);
+    sandbox = { binary, shell: join(bin, 'sandbox', 'bash'), bin: join(bin, 'sandbox'), abi: 6, scratchRoot };
+  }
   const config: SupervisorConfig = {
     slot: options.slot ?? 'runtime-1',
     secret: slotSecret(),
@@ -63,6 +81,7 @@ export async function startTestSlot(options: { slot?: string; enabled?: RuntimeC
     cliTimeoutMs: options.cliTimeoutMs ?? 10_000,
     ...(options.mcpUrl ? { mcpUrl: options.mcpUrl } : {}),
     ...options.console,
+    sandbox,
   };
   const { server } = createSupervisorServer(config);
   await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));

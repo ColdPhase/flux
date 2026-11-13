@@ -333,6 +333,30 @@ const steps: Record<string, (...args: string[]) => Promise<void>> = {
     console.log(`PROJECT=${project.id}`);
   },
   /**
+   * #1437 (RT-5): the same owner asks again; the fake Claude Code runs the commands of the `fake-run.json` the script put in its home through
+   * the sandbox shell it was given, as the real CLI's `Bash` does. The run ends completed; the script reads what each command printed.
+   */
+  async 'sandbox-run'(label) {
+    const someone = await owner(label!);
+    const ws = await company(someone);
+    const project = expectStatus(await someone.browser.request('POST', `/api/v1/workspaces/${ws.id}/projects`, { body: { name: 'Sandbox', visibility: 'restricted' } }), 201) as { id: string };
+    const thread = expectStatus(await someone.browser.request('POST', `/api/v1/projects/${project.id}/conversations`,
+      { body: { body: 'Make a page', clientMessageId: randomUUID() } }), 201) as { id: string };
+    const started = expectStatus(await someone.browser.request('POST', conversationAssistantRunsPath(thread.id),
+      { body: { clientRunId: randomUUID(), kind: 'ask', prompt: 'Make a page of the notes.' } }), 202) as AssistantRun;
+    const run = await until('the run to end', async () => expectStatus(await someone.browser.request('GET', assistantRunPath(started.id)), 200) as AssistantRun,
+      (value) => !['queued', 'reading', 'dispatching'].includes(value.status), 180);
+    assert.equal(run.status, 'completed', JSON.stringify(run));
+    console.log(`RUN=${run.id}`);
+    // #1437: what its flux_attach_file attached, read back as the asker downloads it: the bytes the run made in its scratch.
+    const attached = await pool.query<{ id: string; name: string; size: number }>(`SELECT f.id, f.name, f.size FROM assistant_changes c JOIN project_files f ON f.id = c.object_id
+      WHERE c.run_id = $1 AND c.operation = 'answer.file.attach' AND c.state = 'applied' ORDER BY c.created_at`, [run.id]);
+    for (const file of attached.rows) {
+      const bytes = Buffer.from(await (await fetch(new URL(`/api/v1/files/${file.id}`, apiUrl), { headers: { cookie: someone.browser.cookieHeader() } })).arrayBuffer());
+      console.log(`ATTACHED=${file.name} ${file.size} ${bytes.subarray(0, 5).toString('latin1')}`);
+    }
+  },
+  /**
    * T6 (#281): ChatGPT's device sign-in through the API's console: the card gets the URL and the code the fake
    * `codex login --device-auth` printed, completion is read from `codex login status`, and neither the code
    * nor the URL reaches the database (AST-1.7).

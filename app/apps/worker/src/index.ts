@@ -17,6 +17,7 @@ import { startFileText } from './file-text/index.js';
 import { startWorkspaceEncryption } from './workspace-encryption/index.js';
 import { drainBacklogs } from './drain-backlogs.js';
 import { guardSealedJobs } from './sealed-jobs.js';
+import { startModelGateway } from './model-gateway/index.js';
 
 // The worker's composition root (#82): environment, pool, pg-boss and signals; each job's
 // handler lives in its registrar.
@@ -48,6 +49,8 @@ const agentRuntimeConfig = loadAgentRuntimeConfig(process.env);
 const personalRuns = personalRunWorkerComposition(process.env, db, agentRuntimeConfig);
 if (personalRuns.mode !== 'production') console.warn(JSON.stringify({ warning: 'TEST ONLY: personal runs use fixture connections and a mock provider', mode: personalRuns.mode }));
 const personalRunRecovery = await registerPersonalRunWorker(boss, db, personalRuns);
+// The model gateway (#1441): API-key runs in the runtime reach their provider through the worker, which alone opens keys.
+const modelGateway = await startModelGateway({ db, composition: personalRuns, runtime: agentRuntimeConfig, env: process.env });
 // The owner's schedules (F-027 A8): the same personal-run path, one tick a minute.
 const assistantRuns = { connections: personalRuns.connections, providerEnabled: personalRuns.compute.enabled,
   runtime: workerRuntimeAvailability(agentRuntimeConfig, db) };
@@ -66,6 +69,6 @@ const encryption = await startWorkspaceEncryption(boss, db, process.env, email.a
 // The `runtime` transport (F-022 T3): reconciles slot bindings at start and periodically; off by default.
 const agentRuntime = startAgentRuntimeReconciler({ config: agentRuntimeConfig, db, pool, env: process.env });
 console.log('Flux worker ready');
-const stop = async () => { await searchVectors.stop(); await fileText.stop(); encryption.stop(); await agentRuntime.stop(); await personalRunRecovery.stop(); await generator.stop(); await boss.stop(); email.close(); await pool.end(); process.exit(0); };
+const stop = async () => { await modelGateway.stop(); await searchVectors.stop(); await fileText.stop(); encryption.stop(); await agentRuntime.stop(); await personalRunRecovery.stop(); await generator.stop(); await boss.stop(); email.close(); await pool.end(); process.exit(0); };
 process.on('SIGTERM', stop);
 process.on('SIGINT', stop);
