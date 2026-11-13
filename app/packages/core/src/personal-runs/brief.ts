@@ -261,7 +261,7 @@ export const WEB_SEARCH_LINE = `You can also search the web with the web_search 
  */
 export const RUNTIME_WEB_SEARCH_LINE = `You can also search the web with your own web search tool. ${SEARCH_RULE} Whatever your search tool asks, do not write Markdown links, citation marks such as [1] or 【3†source】, or a list of sources at the end: Flux adds the list. Name each source in plain text, where you use it, and put its address beside it.`;
 /** pi's search (#1441): Flux's own tool, run with the key through its provider's hosted search; the same rules as a CLI's own search. */
-export const FLUX_WEB_SEARCH_LINE = `You can also search the web with flux_web_search. ${SEARCH_RULE} Do not write Markdown links, citation marks such as [1], or a list of sources at the end: Flux adds the list. Name each source in plain text, where you use it, and put its address beside it.`;
+export const KEY_WEB_SEARCH_LINE = `You can also search the web with flux_web_search. ${SEARCH_RULE} Do not write Markdown links, citation marks such as [1], or a list of sources at the end: Flux adds the list. Name each source in plain text, where you use it, and put its address beside it.`;
 /** A run with tools but no search (a provider without one, or the operator's switch off): so it never claims to have searched. */
 export const NO_WEB_SEARCH_LINE = 'You have no web search here: do not say you searched the web.';
 
@@ -289,7 +289,7 @@ function toolRules(input: Placed): string[] {
   const web = tools.includes('flux_read_web')
     ? [`${WEB} ${OPEN_ANY_ADDRESS_LINE}${search ? ' To look something up, use your web search, not the address of a search page.' : ''} When the tool says reading the web is off, carry on without it. Name the page you take a statement from: Flux lists every address you asked for at the end of your ${isAsk(input.kind) ? 'answer' : 'reply'}.${input.engine === 'server' ? ` ${PAGE_NOTE_LINE}` : ''}`]
     : [];
-  const searchLine = tools.length ? [!search ? NO_WEB_SEARCH_LINE : tools.includes('flux_web_search') ? FLUX_WEB_SEARCH_LINE
+  const searchLine = tools.length ? [!search ? NO_WEB_SEARCH_LINE : tools.includes('flux_web_search') ? KEY_WEB_SEARCH_LINE
     : input.engine === 'runtime' ? RUNTIME_WEB_SEARCH_LINE : WEB_SEARCH_LINE] : [];
   if (!tools.length) return place.kind === 'chat' ? ['Flux tools', 'You have no Flux tools here: use the chat so far and general knowledge.']
     : place.kind === 'dm' ? [] : ['Flux tools', 'You have no Flux tools in this run: use what is below.'];
