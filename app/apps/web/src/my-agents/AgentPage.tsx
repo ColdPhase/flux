@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams, useRevalidator } from 'react-router';
 import { AGENT_LIMITS, assistantModelName, groupModelsByFamily, type AgentMemoryItem, type AssistantModelGroup, type MyAgent } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { useShellData } from '../app/data';
+import { SettingsBack } from '../app/SettingsBack';
 import { MayDoChoice } from '../agent-connection/MayDoChoice';
 import { refreshAssistantModel, useAssistantModel } from '../assistant/model';
 import { Button, Icon, Kreska, Option, OptionGroup, Select, Spinner } from '../ui';
@@ -26,6 +27,12 @@ const when = (iso: string) => {
 const dollars = (value: string) => {
   const number = Number(value.trim());
   return value.trim() && Number.isFinite(number) && number >= 0 && number <= 1000 ? Math.round(number * 1_000_000) : null;
+};
+
+/** "Input $2, output $10 per 1M tokens" as the Connect AI window words a model's price, "$2 / $10" (F-026 §7: "Claude Opus 5.5 · $4 / $20"). */
+const shortPrice = (note: string) => {
+  const found = /^Input (\$[\d.,]+), output (\$[\d.,]+) per 1M tokens$/.exec(note);
+  return found ? `${found[1]} / ${found[2]}` : note;
 };
 
 /**
@@ -81,13 +88,14 @@ function KeyModels({ group, chosen, agentName, onChoose, onError }: {
           <OptionGroup key={family.family} label={family.family}>
             {family.models.map((option) => (
               <Option key={option.id} value={option.id} disabled={option.retired}>
-                {option.name} · {option.retired ? `no longer offered by ${company}` : option.note}
+                {option.name} · {option.retired ? `no longer offered by ${company}` : shortPrice(option.note)}
               </Option>
             ))}
           </OptionGroup>
         ))}
       </Select>
       {current?.retired ? <p className="agp__hint" role="note">{current.name} is {`no longer offered by ${company}`}. {agentName} is paused until you choose another model.</p> : null}
+      {group.options.some((option) => option.priced !== false && !option.retired) ? <p className="agp__hint">Prices are US dollars per 1M tokens, input / output.</p> : null}
       {pricing && priceFor ? (
         <form className="agp__price" onSubmit={(event) => void savePrice(event)} aria-label={`Price of ${priceFor.name}`}>
           <p className="agp__hint">Flux doesn’t know this model’s price yet. Enter it to use it with a daily budget.</p>
@@ -167,7 +175,7 @@ export function AgentPage() {
   if (!agent) {
     return (
       <div className="pane-scroll"><div className="pane-in nset agp">
-        <Link className="agp__back" to="/settings/agents"><Icon name="chevron-left" size={12} />AI</Link>
+        <SettingsBack />
         <p className="nset__note">This agent isn’t here. It may have been deleted.</p>
       </div></div>
     );
@@ -222,7 +230,7 @@ function AgentSettings({ agent }: { agent: MyAgent }) {
 
   return (
     <div className="pane-scroll"><div className="pane-in nset agp" data-agent-page={agent.id}>
-      <Link className="agp__back" to="/settings/agents"><Icon name="chevron-left" size={12} />AI</Link>
+      <SettingsBack />
       <header className="agp__head">
         <Kreska size={40} hue={agent.colour} />
         <div className="agp__who">

@@ -159,7 +159,7 @@ function AppLayoutContent() {
   // A page inside Settings (#266 PF-5): on the phone its header leads back instead of opening the drawer.
   const settingsPage = /^\/settings\/./.test(location.pathname);
   // Back from a direct link goes to the page that leads there: the AI pages to Settings › AI (#513).
-  const settingsParent = /^\/settings\/(assistant|ai-connections|agents\/connect)(\/|$)/.test(location.pathname) ? '/settings/agents' : '/settings';
+  const settingsParent = /^\/settings\/(assistant|ai-connections|agents\/.+)/.test(location.pathname) ? '/settings/agents' : '/settings';
   const navDrawer = useMediaQuery(MEDIA.navDrawer);
   const tablet = useMediaQuery(MEDIA.tablet);
   const phone = useMediaQuery(MEDIA.phone);
@@ -658,10 +658,9 @@ function AppLayoutContent() {
     ? { crumb: null, title: lockedSpace.name, noDetails: true }
     : location.pathname === '/projects'
     ? { crumb: null, title: 'Spaces', noDetails: true }
-    : /^\/settings(\/(appearance|account|company|notifications|agents|shortcuts)(\/.*)?)?$/.test(location.pathname)
+    // One header for the whole of Settings, whatever page is open in it (F-026 §4, #1362).
+    : /^\/settings(\/(appearance|account|company|notifications|agents|ai-connections|shortcuts)(\/.*)?)?$/.test(location.pathname)
     ? { crumb: null, title: 'Settings', noDetails: true }
-    : aiConnections
-    ? { crumb: null, title: 'Your API keys', noDetails: true }
     : activeAgent
     ? { crumb: null, title: activeAgent.name, noDetails: true }
     : activeProject

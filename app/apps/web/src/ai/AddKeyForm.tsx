@@ -2,7 +2,7 @@ import { forwardRef, useImperativeHandle, useLayoutEffect, useRef, useState, typ
 import { AI_PROVIDERS, API_KEY_DAILY_BUDGET_CENTS, isAiProviderKind, type AiProviderKind, type BackgroundComputeConnection,
   type ConnectBackgroundComputeCommand } from '@flux/contracts';
 import { ApiError } from '../api/client';
-import { Button } from '../ui';
+import { Button, Input } from '../ui';
 import { connectBackgroundCompute } from './api';
 import { ConnectionFields } from './ConnectionFields';
 import './background.css';
@@ -109,8 +109,8 @@ export const AddKeyForm = forwardRef<AddKeyFormHandle, {
     <form ref={formRef} onSubmit={(event) => void connect(event)}>
       <fieldset disabled={busy} className="background-settings__fields">
         <ConnectionFields disabled={busy} onKeyRefused={setKeyRefused} keyHelpId="background-key-help" />
-        <label>Daily budget (USD)<input name="dailyBudget" type="number" required min={API_KEY_DAILY_BUDGET_CENTS.min / 100} max={API_KEY_DAILY_BUDGET_CENTS.max / 100} step="0.01"
-          defaultValue={(API_KEY_DAILY_BUDGET_CENTS.default / 100).toFixed(2)} aria-describedby="background-budget-help" /></label>
+        <Input label="Daily budget (USD)" name="dailyBudget" inputMode="decimal" autoComplete="off" defaultValue={(API_KEY_DAILY_BUDGET_CENTS.default / 100).toFixed(2)}
+          aria-describedby="background-budget-help" />
         <p id="background-budget-help" className="background-settings__help">Your agents pause for the day when it’s used. It’s the only limit.</p>
         <label>Name<input name="connectionName" autoComplete="off" maxLength={80} placeholder="For example: Work OpenRouter" /></label>
         <div className="background-settings__actions">

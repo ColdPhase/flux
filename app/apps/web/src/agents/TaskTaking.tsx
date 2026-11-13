@@ -1,7 +1,7 @@
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useState, type KeyboardEvent } from 'react';
 import type { TaskTaking as Taking } from '@flux/contracts';
 import { ApiError } from '../api/client';
-import { Icon, Option, Select } from '../ui';
+import { Option, Select } from '../ui';
 import { getTaskTaking, setTaskTaking } from './taskAgents';
 
 // "When someone assigns a task to me" (#856, F-036 AG-5; mockup Main): the one setting that lets an agent take what others give
@@ -30,19 +30,38 @@ export function TaskTaking() {
     catch (cause) { setError(cause instanceof ApiError && cause.status < 500 ? cause.message : 'Couldn’t save. Try again.'); }
     finally { setBusy(false); }
   };
+  const giving = taking.takes !== null;
+  const given = taking.agents.find((agent) => agent.id === taking.takes) ?? taking.agents[0]!;
+  const single = taking.agents.length === 1;
+  // The two segments are one radio group: the arrow keys move the choice and the focus, as in What it may do (review of #1377). The buttons are
+  // never disabled while saving, so the focus stays where it is.
+  const move = (event: KeyboardEvent<HTMLDivElement>) => {
+    const next = event.key === 'ArrowRight' || event.key === 'ArrowDown' ? true : event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? false : null;
+    if (next === null) return;
+    event.preventDefault();
+    event.currentTarget.querySelectorAll<HTMLButtonElement>('[role=radio]')[next ? 1 : 0]?.focus();
+    if (next !== giving && !busy) void choose(next ? given.id : DO_NOTHING);
+  };
+  // "Do nothing / Give it to [agent ▾]" as drawn (F-026 §7): one segmented choice, the second segment naming the agent, with a choice of agents behind it
+  // when the person has several.
   return (
-    <section className="sset-gap" aria-labelledby={label} data-task-taking="">
+    <section className="tt" aria-labelledby="how-ai-works" data-task-taking="">
+      <h3 className="sset-sub" id="how-ai-works">How your AI works</h3>
       <ul className="sset-card">
         <li className="sset-row">
-          <span className="sset-row__ic" aria-hidden="true"><Icon name="inbox" size={16} /></span>
           <span className="sset-row__b">
             <span className="sset-row__t" id={label}>When someone assigns a task to me</span>
             <span className="sset-row__s" id={hint}>The agent starts on it in the task. Only you give your agents instructions.</span>
           </span>
-          <Select value={taking.takes ?? DO_NOTHING} disabled={busy} aria-labelledby={label} aria-describedby={hint} onChange={(next) => void choose(next)}>
-            <Option value={DO_NOTHING}>Do nothing</Option>
-            {taking.agents.map((agent) => <Option key={agent.id} value={agent.id}>Give it to {agent.name}</Option>)}
-          </Select>
+          <div className="seg seg--fit tt__seg" role="radiogroup" aria-labelledby={label} aria-describedby={hint} onKeyDown={single ? move : undefined}>
+            {/* With several agents the second segment is a Select, not a radio, so Do nothing stays in the Tab order (review of #1377). */}
+            <button type="button" role="radio" className="seg__b" aria-checked={!giving} tabIndex={!giving || !single ? 0 : -1} onClick={() => { if (giving && !busy) void choose(DO_NOTHING); }}>Do nothing</button>
+            {single
+              ? <button type="button" role="radio" className="seg__b" aria-checked={giving} tabIndex={giving ? 0 : -1} onClick={() => { if (!giving && !busy) void choose(given.id); }}>Give it to {given.name}</button>
+              : <Select className={`tt__give${giving ? ' is-on' : ''}`} value={taking.takes ?? DO_NOTHING} disabled={busy} aria-label="Give it to" placeholder="Give it to…" onChange={(next) => void choose(next)}>
+                {taking.agents.map((agent) => <Option key={agent.id} value={agent.id}>Give it to {agent.name}</Option>)}
+              </Select>}
+          </div>
         </li>
       </ul>
       <p className="sset-note" role="status" aria-live="polite">{error || (saved ? 'Saved' : '')}</p>

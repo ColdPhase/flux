@@ -1,8 +1,9 @@
 import { useState, type ReactNode } from 'react';
-import { Link, redirect, useLoaderData, type LoaderFunctionArgs } from 'react-router';
+import { redirect, useLoaderData, type LoaderFunctionArgs } from 'react-router';
 import type { AgentConnection } from '@flux/contracts';
 import { getMe } from '../api/auth';
 import { ApiError, NetworkError } from '../api/client';
+import { SettingsBack } from '../app/SettingsBack';
 import { signInPath } from '../auth/logic';
 import { Button, Icon, Kreska, agentHue } from '../ui';
 import { decideAgentConsent, followOAuthRedirect, getConsentContext, listAgentConnections, revokeAgentConnection, type ConsentContext } from './api';
@@ -56,16 +57,16 @@ function describeError(error: unknown) {
   return error instanceof Error && error.message.startsWith('Flux did not return') ? error.message : 'Something went wrong. Try again.';
 }
 
-function Head({ eyebrow, title, children }: { eyebrow: string; title: string; children: ReactNode }) {
+function Head({ eyebrow, title, children }: { eyebrow?: string; title: string; children: ReactNode }) {
   return <header className="connection__head">
     {/* Agents are Kreska (F-026 §3), not the assistant's spark (#763 WF-5). */}
-    <span className="connection__eyebrow"><Kreska size={16} /> {eyebrow}</span>
+    {eyebrow ? <span className="connection__eyebrow"><Kreska size={16} /> {eyebrow}</span> : null}
     <h1>{title}</h1>
     <p>{children}</p>
   </header>;
 }
 
-/** Your agent app, as drawn (F-026): one row per connected client with its "What it may do" and Disconnect. */
+/** The person's own Claude Code or Codex (F-026 §7): each connected one with its "What it may do" and Disconnect, then how to connect another (#1363). */
 export function AgentConnectionPage() {
   const { connections } = useLoaderData() as ConnectionData;
   const [items, setItems] = useState(connections.filter((connection) => !connection.revokedAt));
@@ -86,13 +87,13 @@ export function AgentConnectionPage() {
     finally { setBusy(false); }
   }
 
-  return <section className="connection" aria-label="Your agent app">
-    <Head eyebrow="Your agent app" title="Claude Code, Codex or another app on your computer">
-      It signs in once, with one click, and then acts as you: it sees and changes what you can, and only as far as “What it may do” allows.
-      Deleting and other people’s things always wait for your OK.
+  return <section className="connection" aria-label="Claude Code, Codex or another app">
+    <Head title="Claude Code, Codex or another app on your computer">
+      For code on your computer. It signs in once, with one click, and then acts as you with the same rules as your agents: it sees and changes what you can, only as far as
+      “What it may do” allows. Deleting and other people’s things always wait for your OK.
     </Head>
     {error ? <div className="connection__alert" role="alert">{error}</div> : null}
-    {items.length ? <ul className="connection__list" aria-label="Connected clients">{items.map((connection) => <li className="connection__saved" key={connection.id}>
+    {items.length ? <ul className="connection__list" aria-label="Connected clients">{items.map((connection) => <li className="connection__saved sset-card" key={connection.id}>
       <div className="connection__row">
         <Kreska size={22} hue={agentHue(connection.agentId)} />
         <div className="connection__summary">
@@ -109,10 +110,10 @@ export function AgentConnectionPage() {
           <Button variant="secondary" busy={busy} onClick={() => { void disconnect(connection.id); }}>Disconnect</Button>
           <Button variant="link" onClick={() => setConfirming(null)}>Cancel</Button></div>
         : <Button variant="link" onClick={() => setConfirming(connection.id)}>Disconnect</Button>}
-    </li>)}</ul> : <p className="connection__help">No client is connected yet. Add Flux to the one you use below; it asks you once.</p>}
+    </li>)}</ul> : <p className="connection__help">Nothing is connected yet. Add Flux to the app you use below; it asks you once.</p>}
     {ended.length ? <details className="connection__history">
       <summary>Disconnected ({ended.length})</summary>
-      <p>These can’t sign in again. Connecting the client again makes a new connection; what it did stays where it was.</p>
+      <p>These can’t sign in again. Connecting the app again makes a new connection; what it did stays where it was.</p>
       <ul>{ended.map((connection) => <li key={connection.id}><strong>{connection.name}</strong><span>Disconnected</span></li>)}</ul>
     </details> : null}
     <ClientGuide origin={window.location.origin} />
@@ -124,7 +125,7 @@ export function AgentConnectionSettings() {
   return (
     <div className="pane-scroll">
       <div className="pane-in sset-in connection-settings">
-        <Link className="connection-settings__back" to="/settings/agents"><Icon name="chevron-left" size={14} />AI</Link>
+        <SettingsBack />
         <AgentConnectionPage />
       </div>
     </div>

@@ -8,8 +8,9 @@ import { getAssistantStatus } from '../assistant/api';
 import { listBackgroundConnections } from '../ai/api';
 import { SERVER_AI_OFF_LINE } from '../assistant/format';
 import { AgentsList } from '../my-agents/AgentsList';
-import { AgentTag, Avatar, Button, Icon, Kreska, MEDIA, Spinner, agentHue, setReduceMotion, useMediaQuery, useReduceMotion } from '../ui';
+import { Avatar, Button, Icon, Kreska, MEDIA, Spinner, setReduceMotion, useMediaQuery, useReduceMotion } from '../ui';
 import { ConnectAi } from '../ai/ConnectAi';
+import { ClientRows } from '../agent-connection/ClientRows';
 import { WorkspacePeople } from '../people/WorkspacePeople';
 import { AccountEditing, LastActiveSwitch } from './AccountEditing';
 import '../agent-connection/connection.css';
@@ -178,7 +179,6 @@ function ReduceMotionSwitch() {
   return <SwitchRow label="Reduce motion" checked={reduce} onChange={setReduceMotion} />;
 }
 
-const DESIGNATION: Record<AgentConnection['clientDesignation'], string> = { claude_code: 'Claude Code', codex: 'Codex', other: 'another app' };
 const THEME_LABEL: Record<ThemeChoice, string> = { light: 'Light', dark: 'Dark', system: 'System' };
 
 /**
@@ -207,43 +207,32 @@ function AgentsAndAi() {
   }, [loadKeys]);
   // An agent's own connection (it answers inside Flux) is not an app on the person's computer.
   const mine = (connections ?? []).filter((connection) => !connection.revokedAt && connection.ownerUserId === me.user.id && connection.computeSource !== 'owner_assistant');
-  const coWork = (
-    <ul className="sset-card" aria-busy={connections === null || undefined}>
-      <LinkRow to="/connect-agent" icon={<Icon name="monitor" size={16} />} title="Local co-work on this computer"
-        detail="Claude Code, Codex or another app · connect it to Flux" action="Manage" />
-      {mine.map((connection) => (
-        <LinkRow key={connection.id} to="/connect-agent" icon={<Kreska size={22} hue={agentHue(connection.agentId)} />}
-          title={<><span className="sset-row__identity">{connection.clientDesignation === 'other' ? connection.name : DESIGNATION[connection.clientDesignation]}{' '}<AgentTag /></span></>}
-          detail={`for you · ${connection.clientDesignation === 'other' ? 'another app' : connection.name} · connected`} action="Manage" />
-      ))}
-    </ul>
-  );
-  // In-app AI off on this server (#763 SG-2): no provider and no agent sign-in. The page is E04's two rows: local co-work,
-  // then one status line; no Connect AI with choices nothing could use.
+  const dropped = (connectionId: string) => setConnections((current) => (current ?? []).filter((connection) => connection.id !== connectionId));
+  const clientRows = mine.length ? <ClientRows connections={mine} onDisconnected={dropped} /> : null;
+  // In-app AI off on this server (#763 SG-2): no provider and no agent sign-in, so no Connect AI with choices nothing could use. The page is the person's
+  // own Claude Code or Codex, one row each (or the one row that connects it), then one status line.
   const serverOff = assistant?.setup.provider === 'off' && assistant.setup.runtime?.state === 'off' && !assistant.enablement && keys !== null && !keys.length;
   if (serverOff) {
     return (
       <div data-ai-settings="server-off">
-        {coWork}
+        <ul className="sset-card" aria-busy={connections === null || undefined}>
+          {clientRows}
+          <LinkRow to="/settings/agents/connect" icon={<Icon name="terminal" size={16} />} title="Claude Code or Codex on your computer"
+            detail="For code on your computer. Same rules as your agents." action={mine.length ? 'Connect another' : 'Connect'} />
+        </ul>
         {connections === null ? <p className="sset-note"><Spinner label="Loading your agents" /></p> : null}
-        {failed ? <p className="sset-note" role="note">Your connected agents could not be listed. Manage them under Local co-work.</p> : null}
+        {failed ? <p className="sset-note" role="note">Your connected apps could not be listed. Try again in a moment.</p> : null}
         <p className="sset-note">{SERVER_AI_OFF_LINE}. Your agents wait until it is on.</p>
       </div>
     );
   }
   return (
     <>
-      {/* #854, #857 (mockup Main): Connect AI first, with every connection and its usage line; then the person's agents, each
-          using one of them; then the person's own agent apps. */}
-      <ConnectAi apiKeys={assistant ? assistant.setup.provider === 'on' : true} keys={keys} keysFailed={keysFailed} onRetryKeys={() => loadKeys()} onListed={setListed} />
+      {/* #854, #857 (mockup Main): Connect AI first, with every connection and its usage line, and the person's own Claude Code or Codex as rows of
+          the same card (#1363); then the person's agents, each using one of them. */}
+      <ConnectAi apiKeys={assistant ? assistant.setup.provider === 'on' : true} keys={keys} keysFailed={keysFailed} onRetryKeys={() => loadKeys()} onListed={setListed} clients={clientRows} />
+      {failed ? <p className="sset-note" role="note">Your connected apps could not be listed. Try again in a moment.</p> : null}
       <AgentsList listed={listed} />
-      <section aria-labelledby="ai-agent-app">
-        <h3 className="sset-sub" id="ai-agent-app">Your agent app</h3>
-        <p className="sset-note sset-note--sub">Claude Code, Codex or another app on your own computer, with its own account. Flux never receives its credentials.</p>
-        {coWork}
-        {connections === null ? <p className="sset-note"><Spinner label="Loading your agents" /></p> : null}
-        {failed ? <p className="sset-note" role="note">Your connected agents could not be listed. Manage them under Local co-work.</p> : null}
-      </section>
     </>
   );
 }

@@ -11,10 +11,10 @@
 .agl__error { flex-basis: 100%; margin: 0; }
 .agl__row { align-items: center; gap: 12px; }
 .agl__face { width: 36px; }
-.agl__name { gap: 8px; }
-.agl__tag { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: var(--r-pill); background: var(--el); border: 1px solid var(--line); font-size: var(--fs-xs); font-weight: 400; color: var(--t2); }
+.agl__name { flex-wrap: wrap; gap: 0 8px; overflow-wrap: break-word; }
+.agl__tag { white-space: nowrap; display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: var(--r-pill); background: var(--el); border: 1px solid var(--line); font-size: var(--fs-xs); font-weight: 400; color: var(--t2); }
 .agl__job { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.agl__may { flex: none; display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: var(--r-pill); background: var(--el); font-size: var(--fs-xs); color: var(--t2); white-space: nowrap; }
+.agl__may { flex: none; display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: var(--r-pill); background: var(--sub); font-size: var(--fs-xs); color: var(--t2); white-space: nowrap; }
 .agl__model { flex: none; display: flex; flex-direction: column; align-items: flex-end; min-width: 84px; font-size: var(--fs-xs); line-height: 1.35; color: var(--t3); }
 .agl__model > :first-child { color: var(--t2); }
 .agl__note { display: flex; align-items: center; gap: 6px; margin: 10px 2px 0; font-size: var(--fs-xs); line-height: 1.4; color: var(--t3); }
@@ -27,7 +27,6 @@
 }
 
 /* One agent's page (mockup AiAgents) */
-.agp__back { display: inline-flex; align-items: center; gap: 2px; margin: 0 0 14px; font-size: var(--fs-xs); color: var(--t2); text-decoration: none; }
 .agp__head { display: flex; align-items: center; gap: 14px; margin-bottom: 4px; }
 .agp__who { flex: 1; min-width: 0; }
 .agp__name { margin: 0; font-size: var(--fs-title); font-weight: 600; color: var(--t1); overflow-wrap: anywhere; }
@@ -89,6 +88,8 @@
 .agc__chip { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; margin-top: 8px; padding: 4px 10px; border-radius: var(--r-pill); background: var(--sub); font-size: var(--fs-xs); color: var(--t2); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .agc__chip:hover { background: var(--hov); color: var(--t1); }
 .agc__chip svg { flex: none; }
+/* A task chip in an agent's answer is a 44 px touch target (UI audit, review of #1377). */
+@media (pointer: coarse) { .agc__chip { min-height: 44px; padding: 0 14px; } }
 .agc__line { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; margin-top: 4px; font-size: var(--fs-xs); line-height: 1.4; color: var(--t3); }
 .agc__line svg { flex: none; }
 .agc__line s { color: var(--t3); }
@@ -126,3 +127,9 @@
 .agc__change-when { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 .agc__change-actions { display: flex; flex-wrap: wrap; gap: 4px 10px; }
 .agc__line--failed { color: var(--t2); }
+
+/* An agent's chat is one reading column like a space's conversation (#1377): its bar, the history and the composer share --col, not the direct messages' wider
+   column, so the composer is as wide as a space's. Its "Settings" link is 44 px high on touch. */
+.agc-pane .dm__in, .agc-pane .dm__composer .composer__in { max-width: var(--col); }
+.agc__settings { display: inline-flex; align-items: center; min-height: 28px; }
+@media (pointer: coarse) { .agc__settings { justify-content: center; min-height: 44px; min-width: 44px; } }

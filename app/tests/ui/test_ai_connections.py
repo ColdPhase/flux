@@ -150,7 +150,8 @@ class AiConnectionSettings(unittest.TestCase):
         expect(page.get_by_role("heading", name="Keys", exact=True)).to_be_visible()
         key = page.locator(".background-settings__connection").first
         metadata = key.locator(".background-settings__metadata")
-        expect(metadata).to_contain_text("OpenAI-compatible endpoint · llama3.1:8b")
+        expect(metadata.locator("div").filter(has_text="Provider")).to_contain_text("OpenAI-compatible endpoint")
+        expect(metadata.locator("div").filter(has_text="Model")).to_contain_text("llama3.1:8b")
         expect(metadata).to_contain_text(ENDPOINT)
         expect(metadata).to_contain_text("$0.00 input · $0.00 output per 1M tokens · Entered by you")
         expect(key.get_by_test_id("key-usage")).to_have_text("$0.00 of $5 today")
@@ -185,7 +186,8 @@ class AiConnectionSettings(unittest.TestCase):
         expect(page.get_by_role("heading", name="Use an API key")).to_have_count(0)
         expect(page.locator(".background-settings__connection")).to_have_count(2)
         work = page.locator(".background-settings__connection").filter(has=page.get_by_role("heading", name="Work Anthropic"))
-        expect(work).to_contain_text("Anthropic · claude-sonnet-5")
+        expect(work.locator("div").filter(has_text="Provider")).to_contain_text("Anthropic")
+        expect(work.locator("div").filter(has_text="Model")).to_contain_text("Sonnet 5")
         expect(work.get_by_test_id("key-usage")).to_have_text("$0.00 of $12.50 today")
         current = self.connection(page, name="Work Anthropic")
         self.assertEqual((current["price"]["source"], current["dailyBudgetCents"]), ("table", 1250))
@@ -198,9 +200,15 @@ class AiConnectionSettings(unittest.TestCase):
         budget = work.get_by_label("Daily budget (USD)", exact=True)
         expect(budget).to_have_value("12.50")
         budget.fill("0.05")
-        self.assertTrue(budget.evaluate("input => input.validity.rangeUnderflow"), "the field itself refuses a budget under $0.10")
+        # The app's own field (#1362), not the browser's number box: the refusal is said in words, in the page's own alert.
+        self.assertEqual(budget.evaluate("input => input.type"), "text")
+        self.assertNotEqual(budget.evaluate("input => getComputedStyle(input).borderTopLeftRadius"), "0px", "the field is the app's, with its radius (it was square)")
         work.get_by_role("button", name="Save budget").click()
+        expect(page.get_by_role("alert").filter(has_text="Enter a daily budget from $0.10")).to_be_visible()
         self.assertEqual(self.connection(page, name="Work Anthropic")["dailyBudgetCents"], 1250, "a refused budget changes nothing")
+        # The button sits on the field's centre line (it was 7.6 px off beside the native box).
+        field, button = budget.bounding_box(), work.get_by_role("button", name="Save budget").bounding_box()
+        self.assertAlmostEqual(field["y"] + field["height"] / 2, button["y"] + button["height"] / 2, delta=1.5)
         budget.fill("20")
         work.get_by_role("button", name="Save budget").click()
         expect(page.get_by_role("status").filter(has_text="Work Anthropic: daily budget $20.00.")).to_be_visible()
@@ -250,15 +258,15 @@ class AiConnectionSettings(unittest.TestCase):
         page.goto("/connect-agent")
         # #763 AG-2: managing connections is a Settings page; the way back is first, on the left.
         expect(page).to_have_url(re.compile(r"/settings/agents/connect$"))
-        back = page.locator(".connection-settings__back")
+        back = page.locator(".sset-back")
         expect(back).to_have_text("AI")
         expect(back).to_have_attribute("href", "/settings/agents")
         guide = page.locator(".connection__guide")
-        expect(guide.get_by_role("heading", name="Connect your MCP client")).to_be_visible()
+        expect(guide.get_by_role("heading", name="Connect it to Flux")).to_be_visible()
         self.assertLess(back.bounding_box()["x"], guide.bounding_box()["x"] + 1, "the way back starts at the content's left edge")
         # One client at a time (#763 AG-2): a tab each, with its own commands.
-        tabs = guide.get_by_role("tablist", name="Your client")
-        for client in ("Claude Code", "Codex", "Other client"):
+        tabs = guide.get_by_role("tablist", name="Which app")
+        for client in ("Claude Code", "Codex", "Another app"):
             expect(tabs.get_by_role("tab", name=client, exact=True)).to_be_visible()
         expect(guide).to_contain_text(f"claude mcp add --transport http flux {ORIGIN}/mcp")
         expect(guide).to_contain_text("claude mcp login flux")
@@ -269,8 +277,14 @@ class AiConnectionSettings(unittest.TestCase):
         expect(guide).to_contain_text("codex mcp login flux")
         expect(guide).to_contain_text("Unsupported protocol version")
         expect(guide).not_to_contain_text("claude mcp add")
-        tabs.get_by_role("tab", name="Other client", exact=True).click()
-        expect(guide).to_contain_text("Start it from your client")
+        tabs.get_by_role("tab", name="Another app", exact=True).click()
+        expect(guide).to_contain_text("Ask it to start work in a space in Flux.")
+        # #1363: the commands are behind one quiet "Show the command"; the page says "space", never "project", and none of the jargon.
+        tabs.get_by_role("tab", name="Claude Code", exact=True).click()
+        expect(guide.get_by_text("Show the command", exact=True)).to_be_visible()
+        expect(guide.locator("details").first).not_to_have_attribute("open", "")
+        for word in ("project", "MCP client", "HTTPS address", "operator", "agent app", "Local co-work"):
+            self.assertNotIn(word.lower(), page.locator(".pane-in").first.inner_text().lower().replace("mcp__flux__", ""), f"no {word!r} on the connect page")
         # #763 AG-3: no release-verification notes or tested-version claims on the page.
         body = page.locator("body").inner_text()
         for internal in ("Verified with a real", "is tested with", "pending native", "Flux checkout"):
@@ -278,7 +292,7 @@ class AiConnectionSettings(unittest.TestCase):
         # #320: the quick start's loopback http:// address is the one to use; HTTPS is needed only
         # for a client on another computer, so the guide must not ask for it here.
         self.assertRegex(ORIGIN, r"^http://(127\.\d+\.\d+\.\d+|localhost)(:\d+)?$", "this suite runs on a loopback http origin")
-        expect(guide).to_contain_text("Add this Flux address to the client you already use.")
+        expect(guide).to_contain_text("Add Flux to the app you already use.")
         expect(guide).to_contain_text("This address works only on this computer.")
         expect(guide).not_to_contain_text("Use your self-hosted Flux HTTPS address")
         expect(guide).to_contain_text("only as far as its “What it may do” allows")
@@ -347,12 +361,12 @@ class AiConnectionSettings(unittest.TestCase):
         expect(change).to_have_attribute("href", re.compile(r"^/settings/ai-connections\?key=[0-9a-f-]{36}$"))
         change.click()
         expect(page).to_have_url(re.compile(r"/settings/ai-connections\?key="))
-        expect(page.locator("header.top").get_by_role("heading", level=1, name="Your API keys", exact=True)).to_be_visible()
+        # One header for all of Settings (#1362); the page names itself in its own heading.
+        expect(page.locator("header.top").get_by_role("heading", level=1, name="Settings", exact=True)).to_be_visible()
         expect(page.get_by_role("heading", level=2, name="Your API keys", exact=True)).to_be_visible()
-        # On the phone the header alone names the page (#513: one title).
         phone = self.page(phone=True)
         phone.goto("/settings/ai-connections")
-        expect(phone.locator(".app__main header").get_by_role("heading", level=1, name="Your API keys", exact=True)).to_be_visible()
+        expect(phone.locator(".app__main header").get_by_role("heading", level=1, name="Settings", exact=True)).to_be_visible()
         expect(phone.get_by_role("button", name="Add a key", exact=True)).to_be_visible()
         expect(phone.get_by_role("heading", name="Your API keys", exact=True)).to_have_count(1)
         shot(phone, "ai-connections-390-page")

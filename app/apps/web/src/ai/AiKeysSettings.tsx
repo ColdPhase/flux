@@ -1,10 +1,11 @@
 import { useLayoutEffect, useRef, useState } from 'react';
-import { Link, useLoaderData, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
-import { AI_PROVIDERS, aiConnectionLabel, API_KEY_DAILY_BUDGET_CENTS, type BackgroundComputeConnection } from '@flux/contracts';
+import { useLoaderData, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
+import { AI_PROVIDERS, assistantModelName, type BackgroundComputeConnection } from '@flux/contracts';
 import { keyUsageLine } from '../ai/connections';
 import { ApiError } from '../api/client';
 import { refreshAssistantModel } from '../assistant/model';
-import { Button } from '../ui';
+import { SettingsBack } from '../app/SettingsBack';
+import { Button, Input } from '../ui';
 import { listBackgroundConnections, revokeBackgroundConnection, updateBackgroundConnection } from './api';
 import { AddKeyForm, BUDGET_PROBLEM, budgetCents, keyFailure, money, type AddKeyFormHandle } from './AddKeyForm';
 import { priceSourceText, priceText } from './ConnectionFields';
@@ -94,6 +95,7 @@ function AiConnectionsPage({ initial }: { initial: { connections: BackgroundComp
   }
 
   return <div className="pane-scroll"><div className="pane-in sset-in background-settings">
+    <SettingsBack />
     <header className="background-settings__head">
       <h2>Your API keys</h2>
       <p>Your own keys from AI providers. Each has one daily budget, the only limit on what runs on it. Only you can see or change them.</p>
@@ -112,16 +114,18 @@ function AiConnectionsPage({ initial }: { initial: { connections: BackgroundComp
           </div>
           <p className="background-settings__usage" data-testid="key-usage">{keyUsageLine(item)}</p>
           <dl className="background-settings__metadata">
-            <div><dt>Provider / model</dt><dd>{aiConnectionLabel(item.provider, item.model)}</dd></div>
+            <div><dt>Provider</dt><dd>{AI_PROVIDERS[item.provider].label}</dd></div>
+            <div><dt>Model</dt><dd>{assistantModelName(item.model)}</dd></div>
             {item.baseUrl ? <div><dt>Endpoint</dt><dd>{item.baseUrl}</dd></div> : null}
             <div><dt>Price</dt><dd>{item.price
               ? <>{priceText(item.price)} · {priceSourceText(item.price)}</>
               : 'Unknown. It cannot be used until a price is known; add the key again with a price.'}</dd></div>
             <div><dt>Key</dt><dd>Ending {item.keyLastFour}</dd></div>
           </dl>
-          <form className="background-settings__budget" onSubmit={(event) => { event.preventDefault(); void changeBudget(item, new FormData(event.currentTarget).get('dailyBudget')); }}>
-            <label>Daily budget (USD)<input name="dailyBudget" type="number" required min={API_KEY_DAILY_BUDGET_CENTS.min / 100} max={API_KEY_DAILY_BUDGET_CENTS.max / 100} step="0.01"
-              defaultValue={(item.dailyBudgetCents / 100).toFixed(2)} aria-describedby={`connection-${item.id}-budget`} /></label>
+          <form className="background-settings__budget" noValidate onSubmit={(event) => { event.preventDefault(); void changeBudget(item, new FormData(event.currentTarget).get('dailyBudget')); }}>
+            {/* The app's own field, not the browser's number box (#1362); a bad amount is said in the line above the keys. */}
+            <Input label="Daily budget (USD)" name="dailyBudget" inputMode="decimal" autoComplete="off" defaultValue={(item.dailyBudgetCents / 100).toFixed(2)}
+              aria-describedby={`connection-${item.id}-budget`} />
             <Button type="submit" disabled={busy}>Save budget</Button>
           </form>
           <p id={`connection-${item.id}-budget`} className="background-settings__help">Everything on this key counts against it: your agents. At the budget they pause until the next day, from midnight in {item.timeZone}. Flux prices each request before sending it; the provider’s invoice may still differ slightly.</p>
@@ -147,6 +151,5 @@ function AiConnectionsPage({ initial }: { initial: { connections: BackgroundComp
         announce(`Key saved with a daily budget of ${money(added.dailyBudgetCents)}.`);
       }} />
     </section> : null}
-    <Link className="background-settings__back" to="/settings/agents">Back to AI</Link>
   </div></div>;
 }
