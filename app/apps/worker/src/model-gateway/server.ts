@@ -98,10 +98,24 @@ export function createModelGatewayServer({ gateway, resolveKey, policy = PUBLIC_
       refuse(res, 413, 'flux_request_too_large', 'The request is too large');
       return;
     }
-    const raw = await readBody(req, limits.requestBytes);
-    if (raw === 'too_large') { refuse(res, 413, 'flux_request_too_large', 'The request is too large'); return; }
+    // The run's place is taken before the body is read: an unknown token or a run with all its places taken costs no body in memory.
+    const claimed = await gateway.claim(token);
+    if (!claimed.ok) {
+      req.resume();
+      log({ event: 'model', provider: route.provider, operation: route.operation, status: claimed.refusal.status, refused: claimed.refusal.code });
+      refuse(res, claimed.refusal.status, claimed.refusal.code, claimed.refusal.message);
+      return;
+    }
+    let raw: Buffer | 'too_large';
+    try {
+      raw = await readBody(req, limits.requestBytes);
+    } catch (error) {
+      gateway.unclaim(claimed.claim);
+      throw error;
+    }
+    if (raw === 'too_large') { gateway.unclaim(claimed.claim); refuse(res, 413, 'flux_request_too_large', 'The request is too large'); return; }
 
-    const opened = await gateway.open(token, { provider: route.provider, operation: route.operation, pathModel: route.model, pathStream: route.stream }, raw);
+    const opened = await gateway.open(claimed.claim, { provider: route.provider, operation: route.operation, pathModel: route.model, pathStream: route.stream }, raw);
     if (!opened.ok) {
       log({ event: 'model', provider: route.provider, operation: route.operation, status: opened.refusal.status, refused: opened.refusal.code });
       refuse(res, opened.refusal.status, opened.refusal.code, opened.refusal.message);
@@ -120,7 +134,12 @@ export function createModelGatewayServer({ gateway, resolveKey, policy = PUBLIC_
 
     const controller = new AbortController();
     let idle: NodeJS.Timeout | undefined;
-    const quiet = () => { clearTimeout(idle); idle = setTimeout(() => controller.abort(), limits.idleMs); idle.unref(); };
+    // The idle clock runs only while bytes can arrive: a whole (not streamed) answer comes in one piece at its end, after up to the
+    // request's own clock (a long answer takes minutes), so only the request clock bounds it.
+    const quiet = () => {
+      if (!ticket.request.stream) return;
+      clearTimeout(idle); idle = setTimeout(() => controller.abort(), limits.idleMs); idle.unref();
+    };
     // The harness went away: the provider's answer is not read to its end, so its cost is not known.
     res.on('close', () => { if (!res.writableFinished) controller.abort(); });
     let answer: Response;
@@ -161,7 +180,12 @@ export function createModelGatewayServer({ gateway, resolveKey, policy = PUBLIC_
           if (end) break;
           quiet();
           meter.push(value);
-          if (!res.write(value)) await new Promise<void>((resume) => { res.once('drain', resume); res.once('close', resume); });
+          if (!res.write(value)) {
+            await new Promise<void>((resume) => {
+              const go = () => { res.off('drain', go); res.off('close', go); resume(); };
+              res.on('drain', go); res.on('close', go);
+            });
+          }
           if (res.destroyed) throw new Error('The harness went away');
         }
       }

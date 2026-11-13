@@ -233,6 +233,20 @@ describe('answers whose cost is not known, and the provider\'s error answers', (
     await gateway.close(stalled.id);
   });
 
+  test('a whole answer slower than the idle bound is waited for (a long answer is written before its first byte) and charged its usage', async () => {
+    const run = await runOn('openai_compatible', 'qwen3-coder');
+    script = (_req, _body, res) => { setTimeout(() => whole({ usage: { prompt_tokens: 12, completion_tokens: 7 } })(_req, _body, res), LIMITS.idleMs * 2); };
+    const answer = await call('/openai_compatible/chat/completions', run.token, body, 'authorization');
+    assert.equal(answer.status, 200);
+    assert.equal((await row(run.id)).charged_micros, maxRequestMicros(PRICE, 12, 7));
+    await gateway.close(run.id);
+  });
+
+  test('an unknown token, or a run with all its places taken, is refused before its body is read', async () => {
+    const unknown = await call('/anthropic/v1/messages', `flux_mg_${'A'.repeat(43)}`, { ...body, messages: [{ role: 'user', content: 'x'.repeat(70 * 1024) }] });
+    assert.equal(unknown.status, 401, 'refused for its token, not read to its size');
+  });
+
   test('an error answer is passed back without the key or anything shaped like one, and costs nothing', async () => {
     const run = await runOn('openai', 'gpt-6-mini');
     script = (_req, _body, res) => {

@@ -56,7 +56,7 @@ export const MODEL_GATEWAY_LIMITS = {
   maxOutputTokens: 32_000,
   concurrentPerRun: 4,
   inputAllowanceTokens: 1_024,
-  pictureTokens: 2_500,
+  pictureTokens: 5_000,
   errorBodyBytes: 64 * 1024,
 } as const;
 
