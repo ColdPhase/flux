@@ -215,10 +215,10 @@ interface TouchProps<E extends HTMLElement> {
  * The phone's gestures on one message (S6, founder direction 2026-10-16): a swipe right opens Reply in thread
  * (the WhatsApp, Telegram and iMessage habit) and a long press opens the message sheet. Both belong to the touch
  * pointer only; nothing swipes left. The returned props go on the message's list item and `node` inside it.
- * A visually hidden button opens the same sheet for keyboards and screen readers, who cannot long press, and a
+ * A visible ⋯ (`dots`, beside the bubble) opens the same sheet for keyboards and screen readers, who cannot long press, and a
  * computer's Reply button does the same as the swipe, so a gesture is never the only way to an action.
  */
-export function useTouchActions<E extends HTMLElement = HTMLLIElement>(options: MessageActionOptions | DmActionOptions | null): { props: TouchProps<E>; node: ReactNode } {
+export function useTouchActions<E extends HTMLElement = HTMLLIElement>(options: MessageActionOptions | DmActionOptions | null): { props: TouchProps<E>; node: ReactNode; dots: ReactNode } {
   const touch = useMediaQuery('(hover: none)');
   const items = useMenuItems(options, touch);
   const ref = useRef<E>(null);
@@ -239,7 +239,7 @@ export function useTouchActions<E extends HTMLElement = HTMLLIElement>(options: 
   const clearTimer = (g = gesture.current) => { if (g) window.clearTimeout(g.timer); };
   useEffect(() => () => clearTimer(), []);
 
-  if (!touch || !options) return { props: { ref, className: '' }, node: null };
+  if (!touch || !options) return { props: { ref, className: '' }, node: null, dots: null };
 
   const openPress = (row: HTMLElement) => {
     opener.current = row;
@@ -297,10 +297,14 @@ export function useTouchActions<E extends HTMLElement = HTMLLIElement>(options: 
   const node = (
     <>
       <span className={`msg-swipe${offset >= REPLY_AT ? ' is-ready' : ''}`} aria-hidden="true" hidden={!offset}><Icon name="reply" size={20} /></span>
-      <button type="button" className="msg-touch__sr" aria-haspopup="menu" aria-expanded={menu === 'button'} onClick={(event) => { opener.current = event.currentTarget; setMenu('button'); }}><Icon name="more" size={16} /><span className="msg-touch__label">Message actions</span></button>
       {last ? <MessageSheet open={shown} focusFirst={last === 'button'} items={items} preview={options.kind === 'dm' ? messagePreview(options.body) : messagePreview(options.message.body, options.message.files?.length)}
         onClose={(restore) => { setMenu(null); if (restore) opener.current?.focus({ preventScroll: true }); }} /> : null}
     </>
   );
-  return { props, node };
+  // The visible ⋯ (#763 FT-4, #1357): a 44 px target in the lane beside the message's bubble, where the message puts it (its bubble column
+  // in a direct message, the row itself in a space), so it never covers the words.
+  const dots = (
+    <button type="button" className="msg-touch__sr" aria-haspopup="menu" aria-expanded={menu === 'button'} onClick={(event) => { opener.current = event.currentTarget; setMenu('button'); }}><Icon name="more" size={16} /><span className="msg-touch__label">Message actions</span></button>
+  );
+  return { props, node, dots };
 }

@@ -380,7 +380,7 @@ export function TaskComposer({ state, composer, item, meId, writable, readOnly, 
       <ConnectionLine />
       <ComposerFiles state={composer} attach="none" />
       <ComposerBox id={id} label={hasRoot ? 'Write to this task' : 'First message about this task'} value={composer.draft.body} maxLength={20000}
-        placeholder={`Write about #${item.number} · @ · /`} onChange={(value, position) => { menu.change(position); setAskFailure(''); composer.setBody(value); typing.input(Boolean(value.trim()) && !/^\/ai(\s|$)/.test(value)); }} onSelect={menu.setCaret} onBlur={typing.stop} onKeyDown={onKeyDown}
+        placeholder={[`Write about #${item.number} · @ · /`, `Write about #${item.number}`, 'Write']} onChange={(value, position) => { menu.change(position); setAskFailure(''); composer.setBody(value); typing.input(Boolean(value.trim()) && !/^\/ai(\s|$)/.test(value)); }} onSelect={menu.setCaret} onBlur={typing.stop} onKeyDown={onKeyDown}
         fieldProps={{ 'aria-controls': menu.open ? `${id}-menu` : undefined, 'aria-activedescendant': menu.open ? `${id}-menu-${menu.options[menu.active]!.id}` : undefined }}
         attach={composer} sendLabel={hasRoot ? 'Send to task' : 'Start the discussion'} sendDisabled={!composer.canSend || !discussion} onSend={() => void send()}
         menu={<ComposerMenu open={menu.open} id={`${id}-menu`} options={menu.options} active={menu.active} trigger="/" onPick={menu.pick} onHover={menu.setIndex} />} />

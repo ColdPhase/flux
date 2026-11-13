@@ -268,7 +268,8 @@ export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, others, writ
                   onReply={() => field.current?.focus()} onCreateTask={onCreateTask} />
               </ol>
             ) : <p className="thread__hint" role="status">Opening…</p>}
-            <p className="thread__hint">{count ? `${count} ${count === 1 ? 'reply' : 'replies'}` : writable ? 'Reply to this message. Only the people in this conversation can read it.' : 'No replies yet.'}</p>
+            {/* The head says how many replies there are: the line between the message and them is then only the rule, not the count again (#1374). */}
+            <p className="thread__hint">{count ? null : writable ? 'Reply to this message. Only the people in this conversation can read it.' : 'No replies yet.'}</p>
             {older ? <div className="dm__older"><Button variant="quiet" busy={olderBusy} onClick={() => void loadOlder()}>Show earlier replies</Button></div> : null}
             <ol className="dm__list thread__list" aria-label="Replies">
               {rows.flatMap(({ line, label: dayLabel, newDay, continued, groupLast }) => {

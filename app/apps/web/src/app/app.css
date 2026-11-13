@@ -122,7 +122,7 @@ body:has(.app) { background: var(--side); }
 .side__ic { color: var(--t2); width: 18px; flex: none; }
 .side__pj {
   display: inline-flex; align-items: center; justify-content: center; flex: none; border-radius: 6px; background: var(--sub);
-  box-shadow: inset 0 0 0 1px var(--line); font-size: var(--fs-glyph); font-weight: 600; color: var(--t1);
+  box-shadow: inset 0 0 0 1px var(--line); font-size: var(--fs-face); font-weight: 600; color: var(--t1);
 }
 .side__count {
   margin-left: auto; display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 7px;
@@ -377,7 +377,7 @@ a.me__item { text-decoration: none; }
 .top__face { display: inline-flex; flex: none; border-radius: 50%; }
 .top__face .ui-avatar, .top__face.kreska { background: var(--el); }
 /* "+N" is a face of the same size, as drawn: a circle for one digit, a short pill for two. Which one shows is the header pane's width (project-header.css). */
-.top__more-faces { place-items: center; flex: none; min-width: 20px; height: 20px; padding: 0 3px; border-radius: var(--r-pill); background: var(--el); box-shadow: inset 0 0 0 1px var(--line), var(--sh-1); font-size: var(--fs-glyph); font-weight: 600; line-height: 1; color: var(--t1); }
+.top__more-faces { place-items: center; flex: none; min-width: 20px; height: 20px; padding: 0 3px; border-radius: var(--r-pill); background: var(--el); box-shadow: inset 0 0 0 1px var(--line), var(--sh-1); font-size: var(--fs-face); font-weight: 600; line-height: 1; color: var(--t1); }
 .top__face--wide, .top__more-faces--wide { display: none; }
 .top__more-faces--narrow { display: inline-grid; }
 .top__more { position: relative; display: inline-flex; }
@@ -525,7 +525,7 @@ a.me__item { text-decoration: none; }
 .details__rows b { font-weight: 500; color: var(--t1); }
 .details__rows span { font-size: var(--fs-sm); color: var(--t3); }
 .details__rows li.details__person { flex-direction: row; align-items: center; gap: 10px; }
-.details__rows .details__person span.ui-avatar { font-size: var(--fs-xs); color: var(--t2); }
+.details__rows .details__person span.ui-avatar { font-size: var(--fs-face-lg); color: var(--t2); }
 .details__leave { color: var(--t1); margin-left: -8px; }
 .details__confirm p { margin-bottom: 10px; }
 .details__actions { display: flex; gap: 8px; }
@@ -626,6 +626,7 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 @media (max-width: 340px) { .phead__people { display: none; } }
 .phead__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .phead__word { font-size: var(--fs-logo); font-weight: 600; letter-spacing: -.04em; }
+.phead--agent .phead__sub { color: var(--t3); }
 .phead__sub { margin: 0; font-size: var(--fs-xs); line-height: 1.35; color: var(--t2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .phead__meta-slot:empty { display: none; }
 .phead__meta-slot:not(:empty)::before { content: ' · '; }

@@ -92,7 +92,7 @@ function Toolbar({ mode, onMode, query, onQuery, mine, onMine, onNew, phone }: {
         <Icon name="search" size={14} />
         <span className="tb-search__l" aria-hidden="true">Search</span>
         <label className="ui-vh" htmlFor={searchId}>Search tasks</label>
-        <input id={searchId} type="search" value={query} placeholder="Search tasks" autoComplete="off" maxLength={200}
+        <input id={searchId} type="search" value={query} placeholder={phone ? 'Search' : 'Search tasks'} autoComplete="off" maxLength={200}
           disabled={mode === 'list'} aria-describedby={mode === 'list' ? `${searchId}-note` : undefined}
           onChange={(event) => onQuery(event.target.value)}
           onKeyDown={(event) => { if (event.key === 'Escape' && query) { event.preventDefault(); event.stopPropagation(); onQuery(''); } }} />

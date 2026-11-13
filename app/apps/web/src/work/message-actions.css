@@ -56,21 +56,26 @@
 .msg-swipe { position: absolute; right: 100%; top: 0; bottom: 0; display: grid; place-items: center; width: 48px; color: var(--t3); }
 .msg-swipe[hidden] { display: none; }
 .msg-swipe.is-ready { color: var(--t1); }
-/* For keyboards and screen readers: the same menu, visible when focused. */
-/* #763 FT-4: a visible, quiet "⋯" on each message opens the same menu as a long press, so the actions can be found by tapping.
-   The hit area is 32px; the label is for screen readers and shows beside the icon when focused from a keyboard. */
-.msg-touch__sr { position: absolute; top: 0; right: 0; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  min-width: 32px; height: 32px; padding: 0; border: 0; border-radius: 10px; background: transparent; color: var(--t3); white-space: nowrap; z-index: 1; }
-/* The person's own message "via" a client or an assistant has its mark at the top right, where the ⋯ is: the mark keeps clear of it (#1091). */
-.msg-touch.is-mine > :is(.project-convo__message-meta, .thread__root-meta), .dm-msg.is-mine.msg-touch .dm-msg__meta { padding-right: 36px; }
-/* One's own message has no name line above its bubble, so the ⋯ sits in the bubble's top corner: the bubble keeps that corner free and
-   its first line never runs under the ⋯ (visual review of v0.2, phone and tablet). */
-.project-convo__message.msg-touch.is-mine:not(:has(> .project-convo__message-meta)) > .message-bubble,
-.dm-msg.msg-touch.is-mine:not(:has(.dm-msg__meta)) .message-bubble { padding-right: 34px; }
+/* #763 FT-4, #1357: a visible, quiet "⋯" on each message opens the same menu as a long press, so the actions can be found by tapping.
+   It is a 44 px target (README §4 Targets and text) in the lane beside the bubble, at its top, on the side away from the author like
+   the computer's pill, and the layout keeps that lane free (--dots-room), so it never covers a word, a card or a button of the message.
+   The 44 px box may reach into the pane's own side padding. Its label is for screen readers and shows beside the icon when focused. */
+.msg-touch { --dots-room: 32px; }
+.msg-touch button.msg-touch__sr { position: absolute; top: -3px; left: 100%; right: auto; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  width: 44px; min-width: 44px; max-width: none; height: 44px; padding: 0; border: 0; border-radius: 10px; background: transparent; color: var(--t3); white-space: nowrap; z-index: 1; }
+.msg-touch.is-mine button.msg-touch__sr { left: auto; right: 100%; }
+.msg-touch button.msg-touch__sr:active { background: var(--act); }
 .msg-touch__label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
-.msg-touch__sr:focus-visible { height: 44px; padding: 0 14px; background: var(--el); box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line);
+/* A keyboard shows the label: the pill sits over the bubble's top corner then, inside the pane. */
+.msg-touch button.msg-touch__sr:focus-visible { left: auto; right: 0; width: auto; padding: 0 14px; background: var(--el); box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line);
   font-size: var(--fs-md); color: var(--t1); z-index: 2; }
-.msg-touch__sr:focus-visible .msg-touch__label { position: static; width: auto; height: auto; clip-path: none; }
+.msg-touch button.msg-touch__sr:focus-visible .msg-touch__label { position: static; width: auto; height: auto; clip-path: none; }
+/* The lane: a message's bubble column is the pane's width less --dots-room, and a message with a card keeps as much as that leaves
+   (the computer's --acts-room, for the pill, does the same). */
+.project-convo__message.msg-touch, .thread .project-convo__message.msg-touch { max-width: min(600px, calc(100% - var(--dots-room))); }
+.project-convo__message.msg-touch:has(.message-bubble :is(.ws-chip, .wiki-card, .message-files, .link-preview), > .photo-grid) { min-width: min(344px, calc(100% - var(--dots-room))); }
+.project-convo__message.is-mine.msg-touch:has(.message-bubble :is(.ws-chip, .wiki-card, .message-files, .link-preview), > .photo-grid) { min-width: min(300px, calc(100% - var(--dots-room))); }
+.dm-msg.msg-touch .dm-msg__main { max-width: min(600px, calc(100% - var(--dots-room))); }
 /* A swipe moves its row up to 88px right while the finger is down: that drag, and only that, may not scroll the feed sideways.
    At rest nothing is laid out beyond its pane, so no feed needs overflow-x: hidden (#591). */
 :is(.project-convo__feed, .thread__feed, .dm__feed):has(.msg-touch.is-swiped) { overflow-x: hidden; }

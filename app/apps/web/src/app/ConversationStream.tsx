@@ -889,7 +889,7 @@ function RootItem(props: RootItemProps | QueuedRootProps) {
       <Replies root={root} open={open} onOpen={(reply) => onOpen(root, reply)} />
       {stored.groupLast !== false ? <MessageTime at={message.createdAt} receipt={stored.receipt} edited={message.editedAt} /> : null}
       <MessageActions {...actions} />
-      {touch.node}
+      {touch.dots}{touch.node}
     </li>
   );
 }

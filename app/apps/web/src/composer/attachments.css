@@ -176,7 +176,7 @@ span.photo-grid__open { cursor: default; }
 /* Inline references in text: chips on the text baseline. */
 .ref-chip { display: inline-flex; align-items: baseline; gap: 4px; padding: 1px 7px; margin: 0 1px; border-radius: var(--r-pill); background: var(--sub); color: var(--t1); font-weight: 500; line-height: 1.35; white-space: nowrap; vertical-align: baseline; }
 .ref-chip svg { align-self: center; flex: none; }
-.ref-chip__face { align-self: center; display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; background: var(--el); font-size: var(--fs-glyph); font-weight: 600; letter-spacing: .02em; }
+.ref-chip__face { align-self: center; display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; background: var(--el); font-size: var(--fs-face); font-weight: 600; letter-spacing: .02em; }
 .ref-chip__face::before { content: attr(data-initials); }
 .is-mine > .message-bubble .ref-chip { background: rgba(255, 255, 255, .14); color: var(--oninv); }
 .is-mine > .message-bubble .ref-chip__face { background: rgba(255, 255, 255, .2); }

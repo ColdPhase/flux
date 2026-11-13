@@ -103,7 +103,7 @@ html.tb-is-dragging .tb-card:hover { box-shadow: var(--sh-card); }
 .tb-card__owner--none { color: var(--t3); }
 .tb-av {
   display: grid; place-items: center; flex: none; width: 20px; height: 20px; border-radius: 50%;
-  background: var(--el); box-shadow: inset 0 0 0 1px var(--line), var(--sh-1); font-size: var(--fs-glyph); font-weight: 600; color: var(--t1);
+  background: var(--el); box-shadow: inset 0 0 0 1px var(--line), var(--sh-1); font-size: var(--fs-face); font-weight: 600; color: var(--t1);
 }
 .tb-card--set-aside .tb-card__open { color: var(--t2); }
 .tb-card.is-dragging { opacity: .45; }

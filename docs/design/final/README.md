@@ -428,7 +428,8 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
   - There are no chip rows.
   - **There is no tab bar in a conversation;** the composer sits at the bottom.
 - **Sheets.** They have a grabber and two heights: half (the conversation stays visible) and full
-  (dragged up).
+  (dragged up). **A choice on the phone opens as a bottom sheet** with the field's name as its title: the Select, and a
+  task's Status and Owner (#1359), whose pop-over ran out of a 320 px window. The rows are 48 px.
 - **Gestures.** Founder amendment 2026-10-16 ([#343](https://github.com/ColdPhase/flux/issues/343)),
   applied to the v0.2 message actions:
   - **In a conversation, long press** on a message opens one sheet with the message and its
@@ -439,6 +440,11 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
   - **Swipe stays only in the Inbox and Tasks lists** (Done and Not now, as in Gmail). Every
     swipe action has a visible button or menu alternative, because a gesture is never the only
     way to an action. On the computer, hover actions are unchanged.
+  - **The visible alternative to long press is a quiet ⋯ on every message** (#763 FT-4, #1357, v0.2.1). It is a
+    44 × 44 px target at the bubble's top, **beside the bubble on the side away from its author** (right of other people's
+    messages, left of your own), the touch twin of the computer's pill. The layout keeps that lane free (32 px of the
+    target's 44 may reach into the pane's own side padding), so the ⋯ never covers a word, a card or a button of the message,
+    in a group or alone, in a space, a thread or a direct message. It opens the same sheet as a long press.
 - **Targets and text.** Touch targets are at least 44 px. Meta text is at least 12.5 px. Body
   text is 15–16 px.
 
@@ -512,7 +518,7 @@ The IDs come from the first Prostota canvas; rules that no longer apply are left
 | S14 | An agent's question is a message with two to four ready answers, and an Inbox item for the person asked. |
 | S15 | On the phone the map is for viewing and for adding a thought. Connecting and arranging happen on the computer. |
 | S16 | **One search** over spaces, people, messages, tasks, Wiki pages, files and thoughts you can see, grouped by kind, with no filter chips. |
-| S17 | Larger small text on the phone; the phone's text size setting applies. |
+| S17 | Larger small text on the phone; the phone's text size setting applies. At 200 % (Android's font scale, large text; the type tokens are rem) nothing overlaps and nothing is lost (#1370): **initials sit inside their circle at any text size** (the face tokens `--fs-face`, `--fs-face-lg` and `--fs-face-xl` are px on purpose, like `--fs-input-touch`), the space's header folds the people and Call into ⋯ as on a narrow window (its container queries are in rem), and **the composer's hint is one line**: it shortens from "Message · @ mention · / actions" to "Message · @ · /" and then "Message" when the field has no room for more. |
 | S18 | Keyboard shortcuts, shown in menus. |
 | S19 | A collapsible sidebar. Quiet hours, in Notifications, is the only way to pause notifications. |
 | S20 | **A new space is one window:** name, people, AI (on) and Encrypted (off). No template and no goal. |
@@ -1250,6 +1256,10 @@ the composer. The right-hand phone above shows the sheet.
 | ![Agent states in a task](screens/desktop-agent-states.webp) | ![Undo and waiting for your OK](screens/desktop-undo-approval.webp) |
 | ![Agent reports in Messages](screens/desktop-agent-reports.webp) | ![/ai answered privately](screens/desktop-ai-private.webp) |
 
+- **Settings › AI rows keep whole words on every page width** (#1358): a row measures the page it is in, not the window (beside the
+  section list a portrait tablet's page is about 440 px wide). When a row is too narrow, its control drops under its label (Connect another,
+  New agent, the task-taking Select), names end in an ellipsis, a tag ("Answers /ai", "Agent") is one line and never breaks, a word is never
+  cut, and under 37.5 rem an agent's row is its face, name, line and arrow (the "What it may do" tag and the model are on its page).
 - **Settings › AI** holds:
   - **Connect AI**, with Connect another. Each connection is a card with its name, "Connected" and
     the provider's usage line ("62% of your 5-hour limit left · resets at 14:00"). Change sits on
@@ -1434,6 +1444,9 @@ the composer. The right-hand phone above shows the sheet.
 
 On the phone the Assistant conversation is a normal conversation. Its header lists the schedule
 ("Every weekday 9:00 · new tasks summary"), and the morning summary arrives in it.
+
+- **The title row is the one of every conversation (#1356, v0.2.1):** Back, the agent's Kreska (32 px, in its colour), its name and, under it in `--t3`, "Your agent · only you talk to it", as the drawing has it. Under it come the schedule row, the conversation and the composer. There is no second name row (the computer's "Kreska, name, Your agent, Settings" bar is the computer's header and is not repeated), no lock line and no tab bar.
+  Back returns to where the person came from (the Spaces list, Home, the Inbox). The agent's Settings are the one row of a ⋯ at the right of the title row, the ⋯ a space has, so the function is the same on the phone as the computer's "Settings" link and the drawing stays as drawn.
 
 ### Spaces
 

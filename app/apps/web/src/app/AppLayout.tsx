@@ -4,7 +4,7 @@ import { NavigationType, Outlet, useLocation, useMatches, useNavigate, useNaviga
 import { useStreamEvents } from '../api/stream';
 import { WORKSPACE_LOCKED_DOM_EVENT, isEncryptionEvent } from '../encryption/api';
 import { lockedLine, useLockedPlace } from '../encryption/state';
-import { Drawer, Icon, IconButton, MEDIA, SidePanel, SizeSwap, Tabs, ViewFade, useMediaQuery, useToast, useSidePanelMode } from '../ui';
+import { Drawer, Icon, IconButton, Kreska, MEDIA, SidePanel, SizeSwap, Tabs, ViewFade, useMediaQuery, useToast, useSidePanelMode } from '../ui';
 import { routeView } from '../ui/motion-rules';
 import { useShellData } from './data';
 import { registerServiceWorker, syncPushSubscription } from '../pwa';
@@ -772,7 +772,7 @@ function AppLayoutContent() {
   const backOnly = settingsPage || dmId === 'new' || homePage;
   const spaceHeader = !!activeProject && !!projectViews && !backOnly;
   const phoneHeader = (
-    <header className={`phead${mainPlace ? ' phead--large' : ''}${spaceHeader ? ' phead--space' : ''}`}>
+    <header className={`phead${mainPlace ? ' phead--large' : ''}${spaceHeader ? ' phead--space' : ''}${activeAgent ? ' phead--agent' : ''}`}>
       {backOnly ? (
         <>{phoneBack(settingsPage ? settingsParent : homePage ? '/' : '/projects')}
           <div className="phead__id"><div className="phead__title"><h1>{place.title}</h1></div></div></>
@@ -788,6 +788,14 @@ function AppLayoutContent() {
           <PhoneTitleMenu title={activeDm.title} items={dmViews.map((view) => ({ id: view.id, label: view.label, to: view.to, icon: 'chat' as const, current: true }))}
             onDetails={detailsEntry} detailsLabel={placeDetailsLabel} mute={dmMute ?? undefined}
             subtitle={activeDm.kind === 'group' ? `Messages · ${activeDm.audience}` : 'Messages'} /></>
+      ) : activeAgent ? (
+        // An agent's chat is a normal conversation (F-026 §7 Agents and AI, drawn in phone-assistant, #1356): Back, its face and name,
+        // and the line that says only its owner talks to it. Its Settings are in ⋯, where a space keeps its own.
+        <>{phoneBack('/projects')}
+          <div className="phead__id">
+            <Kreska size={32} hue={activeAgent.colour} />
+            <div className="phead__title"><h1 title={activeAgent.name}>{activeAgent.name}</h1><p className="phead__sub">Your agent · only you talk to it</p></div>
+          </div></>
       ) : location.pathname === '/' ? (
         <div className="phead__id">
           <PhoneHomeLead />
@@ -808,7 +816,8 @@ function AppLayoutContent() {
         {spaceHeader ? <LiveEntry /> : activeProject || activeDm ? <><LiveEntry />{searchButton}</> : null}
         {activeProject && projectId && !backOnly ? <MoreMenu items={phoneMoreItems} className="phead__round" size={24} cue={(id, buttonId) => <LiveCue id={id} buttonId={buttonId} />} /> : null}
         {bulkRead.length && !activeProject && !activeDm ? <MoreMenu items={bulkRead} className="phead__round" size={24} /> : null}
-        {!backOnly && !activeProject && !activeDm && location.pathname !== '/settings' ? <PhoneAvatar id={me.user.id} name={me.user.name} /> : null}
+        {activeAgent ? <MoreMenu items={[{ label: 'Settings', run: () => void navigate(`/settings/agents/${activeAgent.id}`) }]} className="phead__round" size={24} /> : null}
+        {!backOnly && !activeProject && !activeDm && !activeAgent && location.pathname !== '/settings' ? <PhoneAvatar id={me.user.id} name={me.user.name} /> : null}
       </div>
       {spaceHeader && projectViews ? <Tabs className="phead__views" label="Space views" items={projectViews} /> : null}
     </header>

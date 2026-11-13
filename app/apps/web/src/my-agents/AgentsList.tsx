@@ -84,7 +84,7 @@ function AgentRow({ agent, answers, choice }: { agent: MyAgent; answers: boolean
       <Link className="sset-row sset-row--link agl__row" to={`/settings/agents/${agent.id}`} data-agent={agent.id}>
         <span className="sset-row__ic agl__face" aria-hidden="true"><Kreska size={36} hue={agent.colour} /></span>
         <span className="sset-row__b">
-          <span className="sset-row__t agl__name">{agent.name}{answers ? <span className="agl__tag">Answers /ai</span> : null}</span>
+          <span className="sset-row__t agl__name"><span className="agl__name-text">{agent.name}</span>{answers ? <span className="agl__tag">Answers /ai</span> : null}</span>
           {job ? <span className="sset-row__s agl__job">{job}</span> : null}
         </span>
         <span className="agl__may">{mayDoLabel(agent)}</span>

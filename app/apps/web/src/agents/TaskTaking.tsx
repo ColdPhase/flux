@@ -33,7 +33,7 @@ export function TaskTaking() {
   return (
     <section className="sset-gap" aria-labelledby={label} data-task-taking="">
       <ul className="sset-card">
-        <li className="sset-row">
+        <li className="sset-row sset-row--field">
           <span className="sset-row__ic" aria-hidden="true"><Icon name="inbox" size={16} /></span>
           <span className="sset-row__b">
             <span className="sset-row__t" id={label}>When someone assigns a task to me</span>

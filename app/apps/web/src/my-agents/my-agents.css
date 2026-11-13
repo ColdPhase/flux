@@ -1,9 +1,10 @@
 /* A person's agents (F-036 AG-1, #857): the list in Settings › AI, one agent's page, and its private conversation in Messages. */
 
 /* Your agents (mockup Main) */
-.agl__head { display: flex; align-items: center; gap: 12px; margin: 22px 2px 8px; }
-.agl__title { display: flex; flex: 1; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; min-width: 0; }
+.agl__head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 22px 2px 8px; }
+.agl__title { display: flex; flex: 1 1 15rem; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; min-width: 0; }
 .agl__h { margin: 0; }
+.agl__head > .ui-btn { margin-left: auto; }
 .agl__lead { font-size: var(--fs-xs); line-height: 1.4; color: var(--t3); }
 .agl__new { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 12px 14px; margin-bottom: 8px; }
 .agl__label { font-size: var(--fs-xs); color: var(--t3); }
@@ -11,8 +12,10 @@
 .agl__error { flex-basis: 100%; margin: 0; }
 .agl__row { align-items: center; gap: 12px; }
 .agl__face { width: 36px; }
-.agl__name { gap: 8px; }
-.agl__tag { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: var(--r-pill); background: var(--el); border: 1px solid var(--line); font-size: var(--fs-xs); font-weight: 400; color: var(--t2); }
+.agl__name { display: flex; min-width: 0; gap: 8px; }
+/* The name ends in an ellipsis and the tag stays whole (README §2, #1358). */
+.agl__name-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agl__tag { display: inline-flex; flex: none; align-items: center; height: 20px; white-space: nowrap; padding: 0 8px; border-radius: var(--r-pill); background: var(--el); border: 1px solid var(--line); font-size: var(--fs-xs); font-weight: 400; color: var(--t2); }
 .agl__job { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .agl__may { flex: none; display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: var(--r-pill); background: var(--el); font-size: var(--fs-xs); color: var(--t2); white-space: nowrap; }
 .agl__model { flex: none; display: flex; flex-direction: column; align-items: flex-end; min-width: 84px; font-size: var(--fs-xs); line-height: 1.35; color: var(--t3); }
@@ -20,16 +23,19 @@
 .agl__note { display: flex; align-items: center; gap: 6px; margin: 10px 2px 0; font-size: var(--fs-xs); line-height: 1.4; color: var(--t3); }
 .agl__empty { display: flex; padding: 12px 14px; }
 .agl__empty-text { font-size: var(--fs-sm); line-height: 1.45; color: var(--t2); }
+/* On a phone, and on any page that is as narrow (a portrait tablet beside the section list), a row is its name, its line and the arrow. */
+@container sset (max-width: 37.5rem) {
+  .agl__head { align-items: flex-start; }
+  .agl__may, .agl__model { display: none; }
+}
 @media (max-width: 600px) {
   .agl__head { align-items: flex-start; }
-  .agl__row { flex-wrap: wrap; }
-  .agl__may, .agl__model { display: none; }
 }
 
 /* One agent's page (mockup AiAgents) */
 .agp__back { display: inline-flex; align-items: center; gap: 2px; margin: 0 0 14px; font-size: var(--fs-xs); color: var(--t2); text-decoration: none; }
-.agp__head { display: flex; align-items: center; gap: 14px; margin-bottom: 4px; }
-.agp__who { flex: 1; min-width: 0; }
+.agp__head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin-bottom: 4px; }
+.agp__who { flex: 1 1 14rem; min-width: 0; }
 .agp__name { margin: 0; font-size: var(--fs-title); font-weight: 600; color: var(--t1); overflow-wrap: anywhere; }
 .agp__sub { margin: 2px 0 0; font-size: var(--fs-xs); line-height: 1.4; color: var(--t3); }
 .agp__message { flex: none; }
@@ -100,7 +106,9 @@
 .agp__schedule { flex-wrap: wrap; }
 /* The words keep a readable width and the actions drop to their own line on a phone, rather than squeezing the name into a column of letters */
 .agp__schedule .sset-row__b { flex: 1 1 200px; min-width: 0; }
-.agp__schedule-actions { display: inline-flex; flex-wrap: wrap; gap: 2px 6px; margin-left: auto; }
+.agp__schedule-actions { display: inline-flex; flex-wrap: wrap; gap: 2px 2px; margin-left: auto; }
+/* Pause, Change, Run now and Delete stay in one row on the narrowest phone (#1374). */
+.agp__schedule-actions .ui-btn--sm { padding-inline: 8px; }
 .agp__note { margin: 8px 2px 0; padding: 10px 12px; border-radius: 12px; background: var(--el); font-size: var(--fs-sm); color: var(--t2); }
 .agp__note p { margin: 0 0 8px; }
 /* The schedule line in the conversation's header (mockup: clock, the first schedule in words, "1 schedule", chevron) and the one list it opens */

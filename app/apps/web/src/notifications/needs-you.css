@@ -54,7 +54,7 @@
 .nyc__waiting b { font-weight: 600; color: var(--t1); }
 .nyc__waiting > span { min-width: 0; overflow-wrap: anywhere; }
 .nyc__waiting-you { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
-.nyc__waiting .ui-avatar { width: 20px; height: 20px; font-size: var(--fs-glyph); }
+.nyc__waiting .ui-avatar { width: 20px; height: 20px; font-size: var(--fs-face); }
 .nyc--note .nyc__actions, .nyc--blocked .nyc__actions, .nyc--mention .nyc__actions, .nyc--question .nyc__actions { margin-top: 2px; }
 @media (pointer: fine) {
   /* A quiet item shows its small buttons when it is the one you are on. */
