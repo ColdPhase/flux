@@ -19,7 +19,7 @@
   "devDependencies": {
     "@eslint/js": "10.0.1",
     "@fastify/websocket": "11.3.7",
-    "@types/node": "24.6.2",
+    "@types/node": "24.19.2",
     "@types/nodemailer": "8.0.2",
     "@types/pg": "8.23.1",
     "@types/sanitize-html": "2.16.2",
@@ -31,8 +31,8 @@
     "playwright": "1.65.0",
     "tsx": "4.23.15",
     "typescript": "6.0.3",
-    "typescript-eslint": "8.72.1",
-    "ws": "8.22.1",
+    "typescript-eslint": "8.72.2",
+    "ws": "8.22.2",
     "yjs": "13.6.33"
   }
 }
