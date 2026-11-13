@@ -261,6 +261,26 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
   }
   const runtimeRuns = createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, hooks, now, ...(runtimeCaps ? { caps: runtimeCaps } : {}), ...(live ? { live } : {}) });
   /**
+   * API-key agents in pi (#1441, RT-1): with `pi` in FLUX_AGENT_RUNTIME every key run goes to the runtime, under the same standing checks as
+   * a key run here; Flux's model gateway holds the key and meters each request. The worker's own loop below stays for keys until the
+   * #1295 evaluation shows pi does the job at least as well (#1441 workstream 3).
+   */
+  const keyRuns = createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, hooks, now, ...(runtimeCaps ? { caps: runtimeCaps } : {}), ...(live ? { live } : {}),
+    key: {
+      async check(ports, run, stage, lock) {
+        const checked = await recheck(ports, connections, compute, run, stage, lock);
+        return 'refusal' in checked ? checked.refusal : null;
+      },
+      async fits(ports, run) {
+        const named = run.connectionId ? await connections.resolve(run.ownerUserId, run.connectionId) : null;
+        const onModel = named ? connectionOnModel(named, run.model) : null;
+        if (!onModel) return 'unavailable';
+        // One request with tools must fit in what is left of the key's day; nothing is held for the run (`admit`): the gateway reserves each.
+        const held = await reserveOnKey(ports, onModel, true, 1, run.id, true);
+        return 'paused' in held ? { paused: held.paused } : 'ok';
+      },
+    } });
+  /**
    * Aborts the provider request as soon as the owner's stop is recorded. While the asker watches the words (`lost`, #1248), the owner's
    * standing is also read again about once a second, as for a run on the owner's CLI: on a refusal (removed from the place, the agent or
    * the connection taken away) no more words are sent and the request is aborted; the commit then ends the run in that refusal.
@@ -568,6 +588,8 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
       // A run on the owner's own Claude Code goes to the agent runtime (F-022 AIM-3 "Run", #280).
       const engine = (await uow.run((ports) => ports.runs.findRun(id)))?.engine;
       if (engine === 'runtime') return runtimeRuns.process(id);
+      // THE switch between the two engines of an API key (#1441): pi in the runtime, or the loop below.
+      if (engine === 'server' && runtime?.keys) return keyRuns.process(id);
       const claimed = await uow.run(async (ports) => {
         const run = await ports.runs.findRun(id, { lock: true });
         if (!run || run.status !== 'queued') return null;

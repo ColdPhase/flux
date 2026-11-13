@@ -1,0 +1,10 @@
+{
+  "name": "@flux/runtime-pi",
+  "version": "0.0.0",
+  "private": true,
+  "description": "pi (MIT, earendil-works/pi), pinned for the agent runtime's API-key runs (#1441, RT-1). Installed with npm ci from package-lock.json, never at run time.",
+  "license": "AGPL-3.0-only",
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "1.5.2"
+  }
+}

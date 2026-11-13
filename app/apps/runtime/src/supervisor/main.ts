@@ -3,7 +3,7 @@ import { chmod, chown, lstat, readFile, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { url as inspectorUrl } from 'node:inspector';
 import { totalmem } from 'node:os';
-import { parseRuntimeSwitch, RUNTIME_PORTS, RUNTIME_SECRET, SLOT_NAME } from '@flux/runtime-protocol';
+import { parseRuntimeEngines, RUNTIME_PORTS, RUNTIME_SECRET, SLOT_NAME } from '@flux/runtime-protocol';
 import { runCapacity } from './capacity.js';
 import type { SupervisorConfig } from './handlers.js';
 import { hostProblem } from './requirements.js';
@@ -74,6 +74,9 @@ async function start() {
   const sandbox = await findSandbox();
   if (!sandbox.setup) console.log(JSON.stringify({ event: 'tools_off', reason: sandbox.reason }));
 
+  let engines: ReturnType<typeof parseRuntimeEngines> = { clients: [], pi: false };
+  try { engines = parseRuntimeEngines(env.FLUX_AGENT_RUNTIME); } catch (error) { refuse((error as Error).message); }
+
   const config: SupervisorConfig = {
     slot,
     secret,
@@ -82,7 +85,8 @@ async function start() {
     tmpDir: '/tmp',
     separate: true,
     capacity,
-    enabled: parseRuntimeSwitch(env.FLUX_AGENT_RUNTIME),
+    enabled: engines.clients,
+    pi: engines.pi,
     cliPaths: CLI_PATHS,
     egressHost: 'runtime-egress',
     bindingLimitBytes: 256 * 1024 * 1024,
@@ -93,7 +97,7 @@ async function start() {
   const { server } = createSupervisorServer(config);
   server.listen(RUNTIME_PORTS.supervisor, '0.0.0.0', () => {
     // Only the health check reads it, as root. The container's /tmp is new at each start, so nobody can have put anything here first.
-    void writeFile(READY_FILE, '', { mode: 0o600, flag: 'wx' }).catch(() => undefined).then(() => console.log(JSON.stringify({ event: 'ready', slot, bootId: config.bootId, enabled: config.enabled, capacity, landlock: sandbox.setup?.abi ?? 0 })));
+    void writeFile(READY_FILE, '', { mode: 0o600, flag: 'wx' }).catch(() => undefined).then(() => console.log(JSON.stringify({ event: 'ready', slot, bootId: config.bootId, enabled: config.enabled, pi: config.pi, capacity, landlock: sandbox.setup?.abi ?? 0 })));
   });
   const stop = () => { server.close(); process.exit(0); };
   process.on('SIGTERM', stop);

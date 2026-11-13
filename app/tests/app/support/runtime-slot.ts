@@ -8,6 +8,7 @@ import { FAKE_CODEX_CATALOG } from '../../../apps/runtime/src/fakes/fake-models.
 import type { SupervisorConfig } from '../../../apps/runtime/src/supervisor/handlers.js';
 import { createSupervisorServer } from '../../../apps/runtime/src/supervisor/server.js';
 import { fluxCodexCatalog } from '../../../apps/runtime/src/supervisor/templates.js';
+import { PI_PATHS } from '../../../apps/runtime/src/supervisor/pi.js';
 
 // An in-process runtime slot for the core tests (F-022 T3): a real supervisor over temporary `/data`
 // and `/tmp` directories, with the TEST ONLY fake CLIs from the built workspace behind small wrappers.
@@ -38,7 +39,12 @@ export async function startTestSlot(options: { slot?: string; enabled?: RuntimeC
    * sandbox is a stand-in that only passes through (`cli … -- <cli> <args>` starts the CLI, its `bash` is /bin/sh), so the supervisor's own
    * part (templates, scratch, read-back, clean-up) is what is tested.
    */
-  ownTools?: boolean } = {}): Promise<TestSlot> {
+  ownTools?: boolean;
+  /**
+   * #1441: API-key runs in the REAL pinned pi (the test image has it where the runtime does, /opt/flux-runtime/pi), started through the
+   * workspace's built launcher, with its model requests going to `modelUrl` (a fake gateway).
+   */
+  pi?: { modelUrl: string } } = {}): Promise<TestSlot> {
   const root = await mkdtemp(join(tmpdir(), 'flux-slot-'));
   const dataDir = join(root, 'data');
   const tmpDir = join(root, 'tmp');
@@ -82,6 +88,7 @@ export async function startTestSlot(options: { slot?: string; enabled?: RuntimeC
     ...(options.mcpUrl ? { mcpUrl: options.mcpUrl } : {}),
     ...options.console,
     sandbox,
+    ...(options.pi ? { pi: true, modelUrl: options.pi.modelUrl, piPaths: { ...PI_PATHS, node: process.execPath, launcher: resolve('apps/runtime/dist/supervisor/pi-launch.js') } } : {}),
   };
   const { server } = createSupervisorServer(config);
   await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));

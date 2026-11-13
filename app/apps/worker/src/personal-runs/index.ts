@@ -63,7 +63,7 @@ export async function registerPersonalRunWorker(boss: PgBoss, db: Database, opti
   });
   // The lane is free again: the owner's next queued request starts. A duplicate job is harmless (only a queued run is claimed).
   async function startNextRequests() {
-    for (const runId of await uow.run((ports) => ports.runs.startableQueued(20))) await boss.send(PERSONAL_RUN_JOB, { runId });
+    for (const runId of await uow.run((ports) => ports.runs.startableQueued(20, options.runtime?.keys === true))) await boss.send(PERSONAL_RUN_JOB, { runId });
   }
   const recovery = startPersonalRunRecovery({ recover: async () => { const ended = await recoverPersonalRuns(uow); await startNextRequests(); return ended; } });
   return {

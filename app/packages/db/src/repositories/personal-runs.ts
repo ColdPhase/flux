@@ -188,10 +188,12 @@ export function personalRunRows(db: DbExecutor) {
      * until the transaction ends, so the caller's claim counts before the next caller reads. Before any report: room, and the
      * run ends in its own words if the runtime is not there.
      */
-    async roomForRuntimeRun() {
+    /** `keys`: API-key runs are in the runtime too (pi, #1441), so they count against its room. */
+    async roomForRuntimeRun(keys = false) {
       await db.execute(sql`SELECT pg_advisory_xact_lock(hashtext('agent-runtime-room'))`);
+      const engines = keys ? sql`engine IN ('runtime', 'server')` : sql`engine = 'runtime'`;
       const rows = await db.execute(sql`SELECT
-        (SELECT count(*)::int FROM personal_runs WHERE engine = 'runtime' AND status IN ('reading', 'dispatching')) AS running,
+        (SELECT count(*)::int FROM personal_runs WHERE ${engines} AND status IN ('reading', 'dispatching')) AS running,
         (SELECT sum(capacity)::int FROM agent_runtime_slots WHERE state = 'ready') AS capacity`);
       const { running, capacity } = rows.rows[0] as { running: number; capacity: number | null };
       return capacity === null || running < capacity;
@@ -204,9 +206,11 @@ export function personalRunRows(db: DbExecutor) {
     },
 
     /** Queued runs whose owner's lane is free, each owner's requests first, and whoever waited longest first: the next starts when the one before it ends. */
-    async startableQueued(limit: number) {
-      // Heads waiting for room stay out of the list until there is room, so they never crowd out a run on an API key.
-      const room = sql`(SELECT count(*) FROM personal_runs w WHERE w.engine = 'runtime' AND w.status IN ('reading', 'dispatching'))
+    async startableQueued(limit: number, keys = false) {
+      // Heads waiting for room stay out of the list until there is room, so they never crowd out a run on an API key (unless API keys run in
+      // the runtime too, #1441: then they share its room).
+      const engines = keys ? sql`w.engine IN ('runtime', 'server')` : sql`w.engine = 'runtime'`;
+      const room = sql`(SELECT count(*) FROM personal_runs w WHERE ${engines} AND w.status IN ('reading', 'dispatching'))
         < COALESCE((SELECT sum(capacity) FROM agent_runtime_slots WHERE state = 'ready'), 2147483647)`;
       const rows = await db.execute(sql`SELECT id FROM (SELECT DISTINCT ON (q.owner_user_id) q.id, q.created_at, q.end_reason FROM personal_runs q WHERE q.status = 'queued'
         AND (q.resume_at IS NULL OR q.resume_at <= now())

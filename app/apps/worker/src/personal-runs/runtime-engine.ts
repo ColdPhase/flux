@@ -1,8 +1,8 @@
-import { RUN_CAP_BOUNDS, createRuntimeManagerClient, streamManagerRun, type ManagerRunOutcome, type RunFrame } from '@flux/runtime-protocol';
+import { RUN_CAP_BOUNDS, createRuntimeManagerClient, runtimeManagerPort, streamManagerRun, type ManagerRunOutcome, type RunFrame, type SupervisorRequest } from '@flux/runtime-protocol';
 import {
-  clientAvailability, type AgentRuntimeConfig, type PersonalRuntime, type PersonalRuntimeEnd, type PersonalRuntimeEvent,
+  clientAvailability, keyRunPlace, type AgentRuntimeConfig, type PersonalRuntime, type PersonalRuntimeEnd, type PersonalRuntimeEvent,
 } from '@flux/core';
-import { markRuntimeSignInAgain, personalRuntimeRow, recordRuntimeUsage, touchRuntimeBinding, type Database } from '@flux/db';
+import { agentRuntimeStore, markRuntimeSignInAgain, personalRuntimeRow, recordRuntimeUsage, touchRuntimeBinding, type Database } from '@flux/db';
 
 // The worker's side of a personal run on the owner's own Claude Code or Codex (F-022 AIM-3 "Run", #280, #281): it asks
 // runtime-manager to run the CLI in the owner's own slot and binding directory, read from the database for
@@ -42,12 +42,21 @@ function eventOf(frame: RunFrame): PersonalRuntimeEvent {
 export function managerPersonalRuntime(config: AgentRuntimeConfig, db: Database, { webSearch = false }: { webSearch?: boolean } = {}): PersonalRuntime {
   const manager = config.manager;
   const states = clientAvailability(config);
-  const enabled = !!manager && (states.claude_code === 'available' || states.codex === 'available');
+  // API-key agents in pi (#1441): `pi` in FLUX_AGENT_RUNTIME.
+  const keys = !!manager && config.keys === true;
+  const enabled = !!manager && (states.claude_code === 'available' || states.codex === 'available' || keys);
   const client = manager ? createRuntimeManagerClient(manager) : null;
   return {
     enabled,
     webSearch,
+    keys,
     async target(ownerUserId, cli = 'claude_code') {
+      if (cli === 'pi') {
+        // pi needs no sign-in: the owner's place in the runtime, made now when they have none.
+        if (!keys || !client) return { ok: false, reason: 'off' };
+        const place = await keyRunPlace(agentRuntimeStore(db), runtimeManagerPort(client), ownerUserId);
+        return place ? { ok: true, target: { ...place, client: 'pi' } } : { ok: false, reason: 'unavailable' };
+      }
       if (!enabled || states[cli] !== 'available') return { ok: false, reason: 'off' };
       const row = await personalRuntimeRow(db, ownerUserId, [cli]);
       if (row.state === 'signed_in' && row.slot && row.bindingId) return { ok: true, target: { slot: row.slot, bindingId: row.bindingId, client: cli } };
@@ -63,9 +72,15 @@ export function managerPersonalRuntime(config: AgentRuntimeConfig, db: Database,
         maxAnswerBytes: Math.min(Math.max(request.caps.maxAnswerBytes, RUN_CAP_BOUNDS.maxAnswerBytes.min), RUN_CAP_BOUNDS.maxAnswerBytes.max),
       };
       const client = target.client ?? 'claude_code';
-      const outcome = await streamManagerRun(manager, target.slot, { kind: 'run', bindingId: target.bindingId, client, runId: request.runId,
-        prompt: request.prompt, runToken: request.runToken, tools: request.tools, caps, ...(request.model ? { model: request.model } : {}),
-        ...(request.webSearch ? { webSearch: true as const } : {}) }, (frame) => onEvent(eventOf(frame)));
+      const common = { bindingId: target.bindingId, runId: request.runId, prompt: request.prompt, runToken: request.runToken, tools: request.tools, caps,
+        ...(request.webSearch ? { webSearch: true as const } : {}) };
+      // A key run in pi (#1441): the key's provider and model; the key itself stays with Flux's model gateway.
+      const sent: Extract<SupervisorRequest, { kind: 'run' }> | null = client === 'pi'
+        ? (request.key && request.model ? { kind: 'run', client, ...common, model: request.model, provider: request.key.provider, ...(request.key.pictures ? { pictures: true as const } : {}) } : null)
+        : { kind: 'run', client, ...common, ...(request.model ? { model: request.model } : {}) };
+      if (!sent) return { kind: 'ended', reason: 'unavailable' };
+      const outcome = await streamManagerRun(manager, target.slot, sent, (frame) => onEvent(eventOf(frame)));
+      if (client === 'pi') return endOf(outcome);
       // Connect AI's usage line (#854): what the provider reported (Codex's own read), or the limit the run met.
       if (outcome.ok) {
         const result = outcome.result;
