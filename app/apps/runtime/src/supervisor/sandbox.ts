@@ -33,14 +33,19 @@ export const RUN_TOOL_LIMITS = {
 /** The sandbox as this runtime found it at start: Landlock's ABI version, and where scratches go. Null: the CLIs' own tools stay off. */
 export interface SandboxSetup { binary: string; shell: string; bin: string; abi: number; scratchRoot: string }
 
+/** The oldest Landlock that can keep the tools: ABI 4 (Linux 6.7) forbids TCP, so a shell cannot tunnel through the egress (#1437). */
+export const LANDLOCK_ABI_FOR_TOOLS = 4;
+
 /**
- * Whether the CLIs may keep their own tools here: the kernel has Landlock (ABI 1 or later) and the scratch root is a directory only
- * the supervisor can write. Anything else turns the tools off with one log line; the runtime still serves.
+ * Whether the CLIs may keep their own tools here: the kernel has Landlock with network rules (ABI 4 or later; coordinator decision on
+ * #1437: before it a shell could reach the egress and, through it, an allowed vendor host under another account) and the scratch root is
+ * a directory only the supervisor can write. Anything else turns the tools off with one log line; the runtime still serves.
  */
 export async function findSandbox(binary: string = SANDBOX.binary, scratchRoot: string = SCRATCH_ROOT): Promise<{ setup: SandboxSetup | null; reason: string | null }> {
   const probe = await runFixed(binary, ['abi'], { env: { PATH: '/usr/bin:/bin' }, cwd: '/', timeoutMs: 5_000, person: null });
   const abi = probe.code === 0 ? Number(probe.stdout.trim()) : 0;
-  if (!Number.isInteger(abi) || abi < 1) return { setup: null, reason: 'this kernel has no Landlock (Linux 5.13 or later with Landlock enabled)' };
+  if (!Number.isInteger(abi) || abi < 1) return { setup: null, reason: 'this kernel has no Landlock (Linux 6.7 or later with Landlock enabled)' };
+  if (abi < LANDLOCK_ABI_FOR_TOOLS) return { setup: null, reason: `this kernel's Landlock (ABI ${abi}) cannot forbid TCP: Linux 6.7 or later (ABI 4) is needed` };
   const root = await lstat(scratchRoot).catch(() => null);
   if (!root?.isDirectory() || root.isSymbolicLink()) return { setup: null, reason: `${scratchRoot} is missing` };
   try {

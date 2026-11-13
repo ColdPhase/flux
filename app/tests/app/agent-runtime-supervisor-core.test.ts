@@ -5,9 +5,10 @@ import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
-import { callSupervisor, NdjsonReader, parseSupervisorFrame, type ClientStatus, type SupervisorCallOutcome, type SupervisorRequest } from '@flux/runtime-protocol';
+import { callSupervisor, NdjsonReader, RUN_SCAN_LIMITS, scanPieces, parseSupervisorFrame, type ClientStatus, type SupervisorCallOutcome, type SupervisorRequest } from '@flux/runtime-protocol';
 import { clearClientFiles, clearLeftovers, clearScratch, hasUnconfirmed, recordUnconfirmed, removeBinding } from '../../apps/runtime/src/supervisor/data.js';
 import { runFixed } from '../../apps/runtime/src/supervisor/process.js';
+import { credentialFinder, credentialValues } from '../../apps/runtime/src/supervisor/credentials.js';
 import { removeTreeScript, walkTree } from '../../apps/runtime/src/supervisor/tree.js';
 import { Lane } from '../../apps/runtime/src/supervisor/server.js';
 import { catalogForAccount, CLAUDE_MODELS_TEMPLATE, CLAUDE_OWN_TOOLS, CODEX_FEATURE_REVIEW, CODEX_MODEL_CATALOG, CODEX_MODEL_REVIEW, CODEX_NO_OWN_TOOLS, codexListOverrides, codexRunOverrides, fluxCodexCatalog, LOGOUT_TEMPLATES, RUN_TEMPLATES, sandboxEnvironment, STATUS_TEMPLATES } from '../../apps/runtime/src/supervisor/templates.js';
@@ -576,6 +577,25 @@ describe('a run\'s error results (F-022 T5; the wording is first verified agains
     assert.deepEqual(sandboxEnvironment('claude_code', '/scratch/r', { shell: '/s/bin/bash', bin: '/s/bin' }), { FLUX_SANDBOX_DIR: '/scratch/r', TMPDIR: '/scratch/r', CLAUDE_CODE_SHELL: '/s/bin/bash' });
     const codexEnv = sandboxEnvironment('codex', '/scratch/r', { shell: '/s/bin/bash', bin: '/s/bin' });
     assert.ok(codexEnv.PATH!.startsWith('/s/bin:') && codexEnv.TMPDIR === '/scratch/r' && codexEnv.FLUX_SANDBOX_DIR === '/scratch/r', 'Codex finds the sandbox shell first as bash');
+  });
+
+  test('#1437 review: the values of a CLI login are found in a text and in a stream cut anywhere; a long text is asked about in overlapping pieces', () => {
+    const access = `eyJhbGciOiJSUzI1NiJ9.${'a'.repeat(40)}.${'S'.repeat(43)}`;
+    const login = JSON.stringify({ auth_mode: 'chatgpt', OPENAI_API_KEY: null, tokens: { access_token: access, refresh_token: 'rt_' + 'x'.repeat(60), account_id: 'acc-1' }, last_refresh: '2026-11-13T10:00:00Z' });
+    const values = credentialValues(login);
+    assert.ok(values.includes(access) && values.includes('rt_' + 'x'.repeat(60)) && values.includes('S'.repeat(43)), 'the whole token and each long piece of it');
+    assert.ok(!values.some((value) => value === 'chatgpt' || value === 'acc-1' || value.includes('2026-11-13')), 'no short word, id or date');
+    const finder = credentialFinder(values);
+    const text = Buffer.from(`notes ${'S'.repeat(43)} end`);
+    assert.equal(finder.push(text.subarray(0, 20)), false);
+    assert.equal(finder.push(text.subarray(20)), true, 'a value cut between two chunks');
+    assert.equal(credentialFinder(values).push(Buffer.from('an ordinary report about lamps')), false);
+    assert.equal(credentialFinder([]).push(Buffer.from('anything')), false);
+    const long = 'z'.repeat(RUN_SCAN_LIMITS.textCharacters * 2 + 5);
+    const pieces = scanPieces(long);
+    assert.ok(pieces.length === 3 && pieces.every((piece) => piece.length <= RUN_SCAN_LIMITS.textCharacters));
+    assert.equal(pieces[0]!.slice(-RUN_SCAN_LIMITS.overlapCharacters), pieces[1]!.slice(0, RUN_SCAN_LIMITS.overlapCharacters), 'pieces overlap');
+    assert.deepEqual(scanPieces('short'), ['short']);
   });
 
   test('#1065: a search\'s addresses come only from the entries of its structured result, never from the CLI\'s own summary', () => {
