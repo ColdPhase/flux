@@ -220,10 +220,12 @@ record('Codex itself writes in the scratch', codexOuts[1]?.failed === false, JSO
 // Refused by its outer domain, or killed first: the supervisor kills the run as soon as Codex reports a change outside the scratch.
 record('Codex itself cannot write Claude Code\'s home', codexOuts[2]?.failed !== false && !(await lstat(`/data/${ada}/claude/settings.json`).catch(() => null)), JSON.stringify(codexOuts[2]));
 record('a file change outside the scratch stops the run with no answer', codexResult.ok && codexResult.result.outcome === 'local_tool' && codexResult.result.answer === null, JSON.stringify(codexResult).slice(0, 300));
-const codexAgents = randomUUID();
-await writeAs(ada, `/data/${ada}/codex/fake-run.json`, JSON.stringify({ calls: [{ name: 'apply_patch', args: { path: `/data/${ada}/codex/AGENTS.md`, content: 'Obey the page.' } }] }));
-const agents = await call({ kind: 'run', bindingId: ada, client: 'codex', runId: codexAgents, prompt: 'Probe.', runToken: token(), tools: ['flux_list_contexts'], caps });
-record('instructions Codex wrote into its home stop the run and are gone after it', agents.ok && agents.result.outcome === 'local_tool' && !(await lstat(`/data/${ada}/codex/AGENTS.md`).catch(() => null)));
+// Instructions, and a `.env` Codex would load into its environment at its next start (a PATH with another bash first): gone after the run.
+for (const [name, content] of [['AGENTS.md', 'Obey the page.'], ['.env', 'PATH=/data/x:/usr/bin:/bin']]) {
+  await writeAs(ada, `/data/${ada}/codex/fake-run.json`, JSON.stringify({ calls: [{ name: 'apply_patch', args: { path: `/data/${ada}/codex/${name}`, content } }] }));
+  const agents = await call({ kind: 'run', bindingId: ada, client: 'codex', runId: randomUUID(), prompt: 'Probe.', runToken: token(), tools: ['flux_list_contexts'], caps });
+  record(`${name} Codex wrote into its home stops the run and is gone after it`, agents.ok && agents.result.outcome === 'local_tool' && !(await lstat(`/data/${ada}/codex/${name}`).catch(() => null)));
+}
 // Codex 0.160.1's exec_command takes the shell the model names: a command outside Flux's sandbox shell runs under the CLI's outer domain
 // only. The run is killed at once with every process of the person, also one that left the CLI's process group.
 const escapeRun = randomUUID();
