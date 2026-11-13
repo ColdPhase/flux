@@ -46,7 +46,9 @@ motion audit and the coordinator's reading, not from Hubert's decision on #863. 
    own change. The one arrival that animates is a new message at the end of the conversation you are reading (a short
    fade, #155). A state glyph morphs only from a known previous state. A highlight, such as a message you jumped to,
    lasts at most 600 ms and takes its duration from one token. A label that has to be read (the "Source of #1" tag, 2 s)
-   is text, not a highlight, and has no motion.
+   is text, not a highlight, and has no motion. Kreska's expression is the other exception: its one-shot motion plays
+   once when the face appears or its expression changes ([final design §3](final/README.md#3-kreska-logo-agent-icon-and-mascot),
+   [#1342](https://github.com/ColdPhase/flux/issues/1342)).
 6. **A surface opens with its content.** Preload what a surface shows, when the browser is idle or on pointer down.
    Never show a fallback that animates out, or a surface that opens empty and fills in afterwards. When a skeleton is
    needed, it has the final layout's heights, so nothing jumps when the content arrives. A skeleton draws only layout
@@ -66,7 +68,8 @@ motion audit and the coordinator's reading, not from Hubert's decision on #863. 
    `--ease-spring`, `--ease-glide` and `--ease-sheet` are retired.
 9. **Reduced motion sets every duration and delay to zero.** This applies to the system setting and to Settings →
    Appearance → Reduce motion alike, including animation delays, so the end state is there at once. A loop runs only
-   while real work is in progress, and Kreska's expressions keep a static frame ([final design §3](final/README.md#3-kreska-logo-agent-icon-and-mascot)).
+   while real work is in progress or, for Kreska, while its ongoing state lasts; under reduced motion, and with Kreska's
+   small moments off, Kreska's expressions show their static frame ([final design §3](final/README.md#3-kreska-logo-agent-icon-and-mascot)).
 
 ### How the rules apply to existing motion
 
@@ -127,8 +130,8 @@ The values after #863:
 | `--dur-1` | 120 ms | Press, fills, a view's fade-in, indicators, switches |
 | `--dur-in` | 180 ms | A surface enters |
 | `--dur-out` | 120 ms | A surface leaves |
-| `--dur-highlight` | 600 ms | A highlight (rule 5): the most it lasts |
-| `--dur-spin` / `--dur-loop` | 800 ms / 1600 ms | A spinner turns; a calm pulse, wave or blink loops (while real work is in progress) |
+| `--dur-highlight` | 600 ms | A highlight (rule 5): the most it lasts; Kreska's one-shot expression (once or twice it) |
+| `--dur-spin` / `--dur-loop` | 800 ms / 1600 ms | A spinner turns; a calm pulse, wave or blink loops (while real work is in progress, or Kreska's ongoing state lasts) |
 | `--delay-wait` / `--delay-tip` | 350 ms / 450 ms | The wait before a loading skeleton or a tooltip shows, so a quick change never flashes it |
 | `--ease-out` | `cubic-bezier(.22, 1, .36, 1)` | Entering, a view's fade-in, indicators, the release of a press |
 | `--ease-in` | `cubic-bezier(.4, 0, 1, 1)` | Leaving |
@@ -157,6 +160,7 @@ The values after #863:
 | The loading state of a screen a switch goes to | `app/PendingView.tsx` (the loading state, the thread's panel and the hidden view's keys) over the old view, in `app/AppLayout.tsx`; the code of a project's other views is fetched when idle in `app/viewChunks.ts` |
 | The sidebar's fold and unfold | `ui/SizeSwap.tsx` in the `aside` of `app/AppLayout.tsx` |
 | State changes | `ui/StatusGlyph.tsx`, `ui/Morph.tsx`, `ui/motion.ts` |
+| Kreska's expressions (one-shots and loops, #1342) | `ui/Kreska.tsx` and the Kreska rules in `ui/ui.css`; the marks' gap through the motion in `tests/app/kreska-marks.test.ts` |
 | Rows that come, go and move | `ui/rowMotion.ts` (one motion per input, `claimInput` in `ui/motion.ts`) |
 | The press | `ui/press.ts` |
 | Reordering the Spaces list (drag, long press, ⋯ › Move up and Move down) | `ui/reorder.ts` (`useReorder`), used by `app/SpaceOrder.tsx` |

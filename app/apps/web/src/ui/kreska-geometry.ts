@@ -25,3 +25,35 @@ export const MARKS = {
   /** `writing`: the pen, in the face's lower right, inside the frame. */
   pen: { d: 'M17.4 18.2 19.8 15.8M15.6 18.6H17', width: 1.2 },
 } as const;
+
+export type KreskaExpression =
+  | 'idle' | 'working' | 'thinking' | 'writing' | 'reading' | 'waiting' | 'asking' | 'looking'
+  | 'loading' | 'surprised' | 'done' | 'wink' | 'celebrate' | 'hello' | 'asleep' | 'worried';
+
+export type Extra = 'circles' | 'sparkle' | 'wave' | 'z' | 'dots' | 'pen';
+
+/**
+ * Each expression's eyes and brow on the 24 grid, and its extra (marks, the surprised circles or the loading dots). A winking eye
+ * is its own line (`shut`), so the wink can close it; `open` is the eye it closes from, drawn only while the wink plays.
+ */
+export const FACES: Record<KreskaExpression, { eyes: string; brow: string; shut?: string; open?: string; extra?: Extra }> = {
+  idle: { eyes: 'M9.3 11.2V13.8M14.7 11.2V13.8', brow: 'M7.3 8.1 10.5 7.2' },
+  working: { eyes: 'M9.3 12V13.4M14.7 12V13.4', brow: 'M7.3 8.7 10.7 8.5' },
+  thinking: { eyes: 'M10 10.5V13.1M15.4 10.5V13.1', brow: 'M7.4 7.1 10.6 5.9' },
+  waiting: { eyes: 'M8.8 12.2V14.8M14.2 12.2V14.8', brow: 'M7.3 8.4 10.5 7.8' },
+  asking: { eyes: 'M9.3 10.7V13.3M14.7 11.9V13.7', brow: 'M7.2 7.2 10.4 5.7' },
+  reading: { eyes: 'M8.3 12.8V14.4M13.7 12.8V14.4', brow: 'M7.3 9 10.5 8.6' },
+  looking: { eyes: 'M7.9 11.6V14.2M13.3 11.6V14.2', brow: 'M6.6 8.2 9.8 7.5' },
+  surprised: { eyes: '', brow: 'M7.3 6.9 10.5 6.1', extra: 'circles' },
+  done: { eyes: 'M7.9 13.3 9.3 11.7 10.7 13.3M13.3 13.3 14.7 11.7 16.1 13.3', brow: 'M7.3 8 10.5 7.4' },
+  celebrate: { eyes: 'M7.9 13.3 9.3 11.7 10.7 13.3M13.3 13.3 14.7 11.7 16.1 13.3', brow: 'M7.3 7.4 10.5 6.6', extra: 'sparkle' },
+  wink: { eyes: 'M9.3 11.2V13.8', shut: 'M13.4 12.6H16', open: 'M14.7 11.2V13.8', brow: 'M7.3 7.8 10.5 6.8' },
+  hello: { eyes: 'M9.3 11.2V13.8', shut: 'M13.4 12.6H16', brow: 'M7.3 7 10.5 5.9', extra: 'wave' },
+  asleep: { eyes: 'M8 12.8Q9.3 13.8 10.6 12.8M13.4 12.8Q14.7 13.8 16 12.8', brow: 'M7.3 9 10.5 8.8', extra: 'z' },
+  worried: { eyes: 'M9.3 11.8V13.6M14.7 11.8V13.6', brow: 'M7.4 7.3 10.6 8.4' },
+  loading: { eyes: '', brow: 'M7.3 8.1 10.5 7.2', extra: 'dots' },
+  writing: { eyes: 'M10.1 12.4V14.2M15.5 12.4V14.2', brow: 'M7.6 8.6 10.8 8.1', extra: 'pen' },
+};
+
+/** The surprised eyes: two open circles. */
+export const EYE_CIRCLES = [{ cx: 9.3, cy: 12.4, r: 1.25, width: 1.6 }, { cx: 14.7, cy: 12.4, r: 1.25, width: 1.6 }] as const;
