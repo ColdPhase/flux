@@ -174,7 +174,7 @@ export function visibleKeys(audiences: SearchAudienceRows[]): SQL {
  * other people's direct messages, other workspaces), so the order is computed here, in the statement, from the hits the caller may see
  * (see {@link rankedStatement}). Both apply the same audiences and filters in the same statement.
  */
-export type SearchRanking = 'prefix' | 'bm25';
+export type SearchRanking = 'prefix' | 'bm25' | 'latest';
 
 /** The BM25 index's text fields (migration 0065): title and body, each with a Polish and an English stemmer. */
 const BM25_TITLES = [sql`sd.title::pdb.alias('title_pl')`, sql`sd.title::pdb.alias('title_en')`];
@@ -424,13 +424,21 @@ function rankedStatement(plan: SearchPlanRows, vector: string | null = null): SQ
 }
 
 function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows, ranking: SearchRanking = 'prefix', vector: string | null = null): SQL {
-  const bm25 = ranking === 'bm25';
+  const latest = ranking === 'latest';
+  const bm25 = ranking === 'bm25' || latest;
   const q = bm25 ? anyWord(plan) : tsquery(plan);
   const columns = (alias: string) => sql.raw(['id', 'kind', 'workspace_id', 'object_id', 'parent_id', 'project_id', 'version', 'status', 'title', 'body', 'author_kind', 'author_id', 'at']
     .map((column) => `${alias}.${column}`).join(', '));
   // The BM25 statement needs only the audiences; the index keys of today's index are not looked up.
   const audience = bm25 ? sql`aud AS MATERIALIZED (SELECT ${visibleKeys(audiences)} AS keys)` : audienceCte(audiences, plan);
-  const matched = bm25 ? rankedStatement(plan, vector) : sql`
+  // `latest` (#1410): no word is matched; what the plan's filters hold among the visible rows, newest first (an agent's `from` whose words
+  // found nothing). No statistic of any row decides the order, only its time.
+  const matched = latest ? sql`
+    matched AS (
+      SELECT ${columns('sd')}, 0::numeric AS score,
+        row_number() OVER (PARTITION BY sd.kind, sd.object_id ORDER BY sd.version DESC NULLS LAST) AS newest
+      FROM search_documents sd WHERE ${sql.join([AUDIENCE_ANY, WORK_LIFECYCLE, ...scopeConditions(plan)], sql` AND `)}
+    ),` : bm25 ? rankedStatement(plan, vector) : sql`
     matched AS (
       SELECT ${columns('sd')},
         round((ts_rank(sd.tsv, ${q}) + 0.5 * word_similarity(${plan.text}, sd.title))::numeric, 6)${exactNumber(plan)} AS score,
@@ -442,7 +450,8 @@ function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows, ra
     : sql``;
   const clean = (column: SQL) => sql`translate(left(${column}, ${HEADLINE_INPUT}), ${START + STOP}, '')`;
   // The ranked statement ranks narrow rows; the page's rows are read whole by id, so a long body is read for at most `limit + 1` documents.
-  const page = bm25
+  const page = latest ? sql`(SELECT * FROM hits ${after} ORDER BY hits.score DESC, hits.at DESC, hits.id DESC LIMIT ${plan.limit + 1})`
+    : bm25
     ? sql`(SELECT ${columns('x')}, r.score FROM (SELECT hits.id, hits.score FROM hits ${after} ORDER BY hits.score DESC, hits.at DESC, hits.id DESC LIMIT ${plan.limit + 1}) r
       JOIN search_documents x ON x.id = r.id)`
     : sql`(SELECT * FROM hits ${after} ORDER BY hits.score DESC, hits.at DESC, hits.id DESC LIMIT ${plan.limit + 1})`;
@@ -629,6 +638,17 @@ export function searchRows(db: SearchExecutor, vectors?: QueryVectors) {
       if (!audiences.length || !/[\p{L}\p{N}]/u.test(plan.words)) return [];
       const vector = vectors ? await vectors(plan.words) : null;
       const result = await planned(db, pageStatement(audiences, plan, 'bm25', vector ? vectorLiteral(vector) : null), 'bm25');
+      return (result.rows as unknown as PageRow[]).map(toRecord);
+    },
+
+    /**
+     * The plan's filters without its words (#1410): an agent's search for what one author wrote, when none of their rows holds a word of the
+     * query. Only with an author: the visible rows they wrote within the plan's place, kinds and time, newest first, one page; the same
+     * audiences and one-row-per-object rule as `ranked`.
+     */
+    async latest(audiences: SearchAudienceRows[], plan: SearchPlanRows): Promise<SearchRowRecord[]> {
+      if (!audiences.length || (!plan.authorId && !plan.author)) return [];
+      const result = await planned(db, pageStatement(audiences, plan, 'latest'));
       return (result.rows as unknown as PageRow[]).map(toRecord);
     },
 

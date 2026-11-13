@@ -28,6 +28,7 @@ const SEARCH = 'Search everything you may read in Flux at once: messages, Wiki p
 const AROUND = `Read the messages around one message, for the context a search hit lacks: it and up to ${AGENT_SEARCH_LIMITS.aroundMax} before and after it (default 5 each) in its `
   + 'conversation, oldest first. To read further, call it again with the first or last message returned. Authors are named as people see them, as flux_get_conversation names them.';
 const NO_MATCH = 'Nothing matched. Try other words (also in the other language the people here write in), fewer words, or fewer filters.';
+const BY_AUTHOR = 'Nothing this author wrote has these words: these are what they wrote within the other filters, newest first.';
 const annotations = { readOnlyHint: true };
 
 const searchInput = z.object({
@@ -182,7 +183,11 @@ async function search(ctx: FluxAgentReadContext, claims: FluxMcpClaims, input: z
   const plan = agentSearchPlan({ ...input, ...from }, { reader: ctx.connection.ownerUserId, place: where.place, conversationId: where.conversationId });
   // The statement reads one more than asked, to say there is more; the audiences are decided now, in this transaction, and the index applies them before it ranks.
   // With the optional embedding container on (F-042, #1294) the best rows by BM25 and the nearest vectors are fused in the same statement.
-  const rows = await searchRows(ctx.tx, vectors).ranked(where.audiences, plan);
+  const ranked = await searchRows(ctx.tx, vectors).ranked(where.audiences, plan);
+  // What one author wrote holds none of the words (#1410: "what did Maurycy say about the supplier"): what they wrote within the other
+  // filters, newest first, said as such, so the model reads it rather than guessing other words.
+  const byAuthor = !ranked.length && plan.authorId !== null;
+  const rows = byAuthor ? await searchRows(ctx.tx).latest(where.audiences, plan) : ranked;
   const page = rows.slice(0, plan.limit);
   // A task hit says when its discussion holds messages (#1410): the answer is often in what people said about it, not in its title.
   const sizes = await taskDiscussionSizes(ctx.tx, ctx.workspaceId, page.flatMap((row) => (row.kind === 'work' ? [row.objectId] : [])));
@@ -190,7 +195,8 @@ async function search(ctx: FluxAgentReadContext, claims: FluxMcpClaims, input: z
   // Everything told is held to the access it was read under until its bytes are handed over (the delivery fence of the route).
   for (const projectId of new Set(page.flatMap((row) => row.projectId && row.kind !== 'dm_message' ? [row.projectId] : []))) claims.dispatch?.project(projectId, 'project.read');
   if (where.dmId && page.length) claims.dispatch?.dm(where.dmId);
-  return { results: hits, ...(rows.length > plan.limit ? { more: true } : {}), ...(hits.length ? {} : { note: NO_MATCH }) };
+  return { results: hits, ...(rows.length > plan.limit ? { more: true } : {}),
+    ...(hits.length ? (byAuthor ? { note: BY_AUTHOR } : {}) : { note: NO_MATCH }) };
 }
 
 type Located = { kind: 'space'; projectId: string; conversationId: string; sequence: number } | { kind: 'dm'; dmId: string; sequence: number };

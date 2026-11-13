@@ -172,6 +172,12 @@ describe('flux_search and flux_read_around: the owner\'s rights at the moment of
     assert.ok(wera.results.some((item) => item.id === enMessage) && wera.results.every((item) => item.author?.id === scene.viewer.id), 'another person');
     assert.deepEqual(await ids(client.token, scene.peer.id), [plMessage], 'an id works as before');
     assert.equal(failure((await call(client.token, 'flux_search', { q, from: 'Zbigniew' })).message), 'AUTHOR_NOT_FOUND');
+    // None of the author's words match: what they wrote within the other filters, newest first, and said so; never what the caller may not read.
+    const byJonas = await search(client.token, { q: 'zzzyx', from: 'Jonas' });
+    assert.deepEqual([byJonas.results.map((item) => item.id), byJonas.note], [[plMessage], 'Nothing this author wrote has these words: these are what they wrote within the other filters, newest first.']);
+    assert.deepEqual((await search(client.token, { q: 'zzzyx', from: 'Jonas', after: '2099-01-01' })).results, []);
+    const byLena = await call(client.token, 'flux_search', { q: 'zzzyx', from: 'Lena' });
+    assert.ok(!JSON.stringify(byLena.message).includes('tajny') && !JSON.stringify(byLena.message).includes(hiddenThread.id), 'the hidden space she wrote in is not read');
     // Two agents of one name: the tool lists both with whose they are and their ids; the name as people see it picks one.
     const adaAsystent = (expectStatus(await scene.owner.browser.request('POST', `/api/v1/workspaces/${scene.ws.id}/agents`, { body: { name: 'Asystent', owner: 'self' } }), 201) as { id: string }).id;
     const ambiguous = toolFailure((await call(client.token, 'flux_search', { q, from: 'Asystent' })).message);

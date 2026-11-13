@@ -501,7 +501,10 @@ searching ([F-042](decisions.md#f-042--agents-find-what-they-need-with-bm25-sear
   - **`from` by name** (#1410): a name is matched, accents and case aside and in another case ending ("Maurycego"), among those the
     caller may see named where it searches: in a DM its people; elsewhere a person who can read one of the search's spaces now and an
     agent whose owner can (the rule by which reads name them, #1160), so a name never finds someone the caller could not see named.
-    Nobody, or several, is an error the model can act on: several are listed with their ids. An id works as before.
+    Nobody, or several, is an error the model can act on: several are listed with their ids. An id works as before. When none of
+    what the author wrote has the query's words ("what did Maurycy say about the supplier" while he wrote "Elfa raises the price"),
+    the search returns what they wrote within its other filters (place, kind, time), newest first, and says so; the same audiences
+    apply and no statistic of any row decides that order, only its time.
   - **Two sources** (#1410): a task hit, and `flux_get_work`, say how many messages the task's discussion holds and that
     `flux_get_task_discussion` reads them; the search's description asks the agent to check, before it answers, whether the
     question has more than one part and each part its source. Nothing of this is in the brief (founder direction on #1381:
