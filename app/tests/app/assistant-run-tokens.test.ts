@@ -41,8 +41,9 @@ const human = (someone: Person): Principal => ({ kind: 'human', id: someone.id }
  * summarises a range: 37 tools, 26,525 bytes (2026-11-13, CI run 43376634883; the bound was 26,000 with 328 bytes left, and the tool's definition takes 853).
  * #1410 lets `from` take a name, says that a task's discussion is read with its own tool and asks for each part's source before an answer:
  * 26,913 characters, 26,918 UTF-8 bytes as measured since (2026-11-13, CI run 43417197252 and the #1426 review; the bound was 26,600).
+ * #1437 adds the tool that attaches a file the run made or wrote to its answer (founder decision 2026-11-13): its definition is the size below.
  */
-const TOOL_DEFINITION_BYTES = 27_000;
+const TOOL_DEFINITION_BYTES = 27_800;
 const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
 const claims = (token: string) => JSON.parse(Buffer.from(token.split('.')[1]!, 'base64url').toString()) as Record<string, unknown>;
 const toolText = (message: Record<string, unknown> | null) => JSON.stringify(message);
@@ -376,7 +377,7 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
     const names = compute.dispatched[0]!.tools!.map((tool) => tool.name);
     assert.equal(names.length, 22, 'the 21 read tools (flux_view_image, #1217; flux_search and flux_read_around, #1290; flux_summarize, #1292) and a picture for its answer (flux_attach_image, #1217)');
     assert.ok(names.includes('flux_attach_image'), 'its answer in the chat can carry a picture (founder decision on #1217)');
-    assert.ok(ASSISTANT_RUN_EFFECT_TOOLS.filter((tool) => tool !== 'flux_attach_image').every((tool) => !names.includes(tool)), 'no tool that changes anything');
+    assert.ok(ASSISTANT_RUN_EFFECT_TOOLS.filter((tool) => tool !== 'flux_attach_image').every((tool) => !names.includes(tool)), 'no tool that changes anything, nor a file yet (#1437)');
     assert.ok(JSON.stringify(compute.dispatched).includes(OTHER_CANARY), 'another space of its owner is read: nobody else reads this answer');
     assert.ok(results().some((result) => result.isError), 'the call to change something is refused');
     // It can find its owner's spaces itself, with no id given to it (the list of what a run reaches follows its place, not a project it has none of).

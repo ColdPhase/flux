@@ -16,6 +16,8 @@ export const ASSISTANT_RUN_EFFECT_TOOLS = [
   'flux_create_map', 'flux_rename_map', 'flux_add_thought', 'flux_update_thought', 'flux_remove_thought',
   'flux_move_thoughts', 'flux_link_thoughts', 'flux_unlink_thoughts',
   'flux_attach_image',
+  // #1437: a file the run made or wrote, attached to its answer like its asker's own upload.
+  'flux_attach_file',
 ] as const;
 
 /**

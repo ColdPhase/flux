@@ -86,9 +86,14 @@ async function attach(db: Database, input: { projectId: string; clientCommandId:
   if (!runId) refuse('Only an answer to /ai in a space can carry a file.');
   if (claims.run && (input.projectId ?? null) !== claims.run.projectId) throw new DomainError(403, 'OUTSIDE_RUN_PLACE', 'An assistant run changes only the project it was asked in');
   if (claims.run && claims.run.projectId === null) refuse('In your private chat no file can be attached yet; describe it in your answer.');
-  if ((input.path === undefined) === (input.content === undefined)) refuse('Give either `path` (a file in your working directory) or `content` (a text file\'s text), not both.');
+  // An owner's Approve re-executes the call as it was kept: its file is staged already, so it carries neither the content nor anything to read.
+  if (!claims.approval && (input.path === undefined) === (input.content === undefined)) refuse('Give either `path` (a file in your working directory) or `content` (a text file\'s text), not both.');
   const name = (input.name ?? (input.path ? basename(input.path) : '')).trim();
   if (!name) refuse('Give the file a `name`, with its extension.');
+  // What is kept of the call (its change line, a waiting change's OK, the fingerprint a retry and an Approve compare) is its name and path, never
+  // the content: the file is staged, and a change kept for an OK stays small.
+  const kept: AssistantCall | undefined = input.assistantCall ? { ...input.assistantCall, args: Object.fromEntries(Object.entries({ ...input.assistantCall.args, name })
+    .filter(([key]) => key !== 'content')) as AssistantCall['args'] } : undefined;
   const facts = await db.transaction(async (tx) => {
     const r = schema.personalRuns;
     const [run] = await tx.select({ ownerUserId: r.ownerUserId, projectId: r.projectId, workspaceId: r.workspaceId, agentId: r.agentId, kind: r.kind,
@@ -138,7 +143,7 @@ async function attach(db: Database, input: { projectId: string; clientCommandId:
   let made = false;
   let waiting = false;
   try {
-    const value = await nativeActionExecutor(db, claims)(input, OPERATION, null, { name, ...(input.path ? { path: input.path } : {}) } as AgentJsonValue, async ({ transaction }) => {
+    const value = await nativeActionExecutor(db, claims)({ ...input, content: undefined, ...(kept ? { assistantCall: kept } : {}) }, OPERATION, null, { name, ...(input.path ? { path: input.path } : {}) } as AgentJsonValue, async ({ transaction }) => {
       const [row] = await fileRows(transaction as DbExecutor).lockFiles([fileId]);
       if (!row || row.state !== 'ready' || row.messageId !== null || row.uploader.id !== claims.ownerUserId) throw new DomainError(409, 'FILE_NOT_KEPT', 'The file was not kept; attach it again.');
       made = true;
