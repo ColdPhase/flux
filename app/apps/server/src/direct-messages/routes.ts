@@ -113,7 +113,8 @@ export async function dmRoutes(app: FastifyInstance, { db, sessions, storage }: 
   // delete of a deleted message answer the current message again, and nothing stores the words in a replayable answer.
   const MESSAGE = `${DM}/messages/:messageId`;
   app.patch<{ Params: { dmId: string; messageId: string }; Body: EditMessageCommand }>(MESSAGE, {
-    schema: { body: { type: 'object', required: ['body'], additionalProperties: false, properties: { body: { type: 'string', minLength: 1, maxLength: 100_000 } } } },
+    // The words may be edited to nothing only on a message that carries files (#1438 point 10): core decides, with the message in hand.
+    schema: { body: { type: 'object', required: ['body'], additionalProperties: false, properties: { body: { type: 'string', maxLength: 100_000 } } } },
   }, async (request) => {
     const who = await principal(request);
     return (await cited(db, who, request.params.dmId, [await dms.editMessage(who, request.params.dmId, request.params.messageId, request.body)]))[0]!;

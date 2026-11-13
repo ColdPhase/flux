@@ -91,7 +91,10 @@ test('a picture is decoded and written again, and a file over the limit is refus
   assert.equal(staged.status, 201, JSON.stringify(staged.body));
   const stored = Buffer.from(await (await get(f.ada, `/api/v1/files/${staged.body.id}`)).arrayBuffer());
   assert.ok(!stored.includes(Buffer.from('Ada Nowak')) && !stored.includes(Buffer.from('tEXt')), 'what a camera wrote in the picture is not kept');
-  assert.equal((await upload(f.ada, f.pair.id, Buffer.from('not a picture'), 'fake.png')).status, 400, 'bytes named like a picture that are not one');
+  // A file that starts like a picture is read whole by the real decoder, and refused when it cannot be vouched for; any other file is stored as it arrives.
+  const damaged = await upload(f.ada, f.pair.id, photo.subarray(0, 40), 'damaged.png');
+  assert.equal(damaged.status, 400, JSON.stringify(damaged.body));
+  assert.equal(damaged.body.code, 'UNREADABLE_PICTURE');
   const big = await upload(f.ada, f.pair.id, Buffer.alloc(FILE_LIMITS.fileBytes + 1, 1), 'big.bin');
   assert.equal(big.status, 413);
   assert.equal(big.body.code, 'FILE_TOO_LARGE');
