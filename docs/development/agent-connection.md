@@ -4,7 +4,7 @@
 no standing grants. Signing in is one decision on one consent page (`/consent`: who asks, where access goes, **Allow** or
 **Deny**). Looking at the page and Deny make nothing; **Allow** makes the client's agent (the person's own, in their company) and its
 connection, at "Do it and tell me", or finds the connection the same client already holds for that person. The only OAuth scope is
-`offline_access`. At each call the client acts with its owner's rights, under the connection's "What it may do"; deleting and other
+`offline_access`. At each call the client acts with its owner's rights, under the connection's Ask me first; deleting and other
 people's things wait for the owner's OK, in the change log ([mcp-cowork](../product/mcp-cowork.md),
 [access policy](access-policy.md), decisions C-19 to C-23). **Disconnect** ends the token at once and closes what waited; signing in
 again makes a new connection and gives the client's earlier agent back. Everything below that describes scopes as token ceilings,
@@ -35,7 +35,7 @@ seams, not proof of the new exclusive mode or mutable capability controls.
 
 ### Owner MCP controls — removed (#859)
 
-The S6 capability switches and their restrictive policy were removed with the scopes and the project selection; "What it may do"
+The S6 capability switches and their restrictive policy were removed with the scopes and the project selection; Ask me first
 (one row per agent) replaces them. The paragraph below is the v0.1 record.
 
 Every protected projection/read/proposal/effect, delivery recheck and receipt
@@ -389,9 +389,8 @@ Retries and refusals:
   - a stale version (`VERSION_CONFLICT`);
   - an unmet prerequisite (`TASK_PREREQUISITES_UNMET`).
 
-`flux_bootstrap` lists these tools with their operation and whether the agent's
-"What it may do" makes them available. A connection set to Only read sees them
-as unavailable and gets `AGENT_ONLY_READS` (#859: there are no scopes).
+`flux_bootstrap` lists these tools with their operation; each is available (#859: there are no scopes).
+Ask me first makes a change wait for the owner's OK and never hides a tool (#1419).
 
 ### Shared project maps
 

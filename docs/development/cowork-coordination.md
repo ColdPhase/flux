@@ -310,7 +310,7 @@ new public actor/authority parameter or endpoint.
   later Apply requires the separate owner-approval transition below.
 - **Current limits.** Hold/recheck owner rights,
   original consent envelope, S6 Tasks read/operation and selected project, exact
-  run place, "What it may do", run limits and Stop/revocation at execution and
+  run place, Ask me first, run limits and Stop/revocation at execution and
   receipt replay. An expired run token cannot create/replay under direct-run
   authority; stopped/cancelled source runs and Off/narrowed/revoked authority cannot
   authorize pending execution under either purpose. Background runs additionally require their still
@@ -458,7 +458,7 @@ interrupted or unconfirmed preparation supplies no new approval authority.
   versions, separation, task exclusion and native budgets. A changed mode never
   auto-applies an existing waiting item; an explicit Apply still needs these gates.
   The source run must be live without Stop requested or normally completed, not
-  stopped/cancelled/revoked. Off, Only read, binding revocation, Stop/cancel and
+  stopped/cancelled/revoked. Off, binding revocation, Stop/cancel and
   Skip invalidate affected unexecuted intent; enabling/On/new grants cannot revive
   that old authority. Pause blocks pending Apply while paused, with no autonomous
   resume; after an explicit resume, an unchanged non-revoked item still requires
@@ -510,7 +510,7 @@ compatibility. Forced private inputs from ordinary OAuth/native/local callers,
 forged view/purpose/actor fields, missing public runtime/grant IDs and cross-purpose
 catalog caches must fail before adapter execution. Clock-controlled Apply succeeds
 after normal completion and token expiry, with zero CLI/provider calls. Test exact-version duplicate/CAS, cap-overflow approval,
-foreign owner/admin/agent, failed/stopped/cancelled source, Off/Only read, pause,
+foreign owner/admin/agent, failed/stopped/cancelled source, Off, pause,
 revoked/downgraded binding/recipient, stale target and Skip.
 Hold approval versus each revoke/Stop/Skip and claim/Undo boundary; assert
 persisted unit, receipt/actual actor/provenance and exactly-once accounting. Re-enable

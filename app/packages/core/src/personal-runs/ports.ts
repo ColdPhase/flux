@@ -313,7 +313,7 @@ export interface PersonalRunRepository {
    * (the agent was deleted); older isolated fake repositories may omit it.
    */
   assistantConnectionLive?(ownerUserId: string, agentId: string): Promise<boolean>;
-  /** The "What it may do" of this agent of the owner (F-036 AG-3: each agent has its own); null when it is gone. */
+  /** The Ask me first of this agent of the owner (F-036 AG-3: each agent has its own); null when it is gone. */
   assistantMayDo?(ownerUserId: string, agentId: string): Promise<AgentMayDo | null>;
 }
 

@@ -350,7 +350,7 @@ pages, founder direction 2026-11-09, #1113).
   (`boundRunResult`): over 256 KiB per result or 8 MiB per run (safety bounds, #843), the result is replaced by an error and the
   run records `mcp_limit`; the processor ends it `cap_reached` with `end_reason = mcp_results_too_large`.
   The delivery fence rechecks the run, so nothing reaches a token after its run ended.
-- **No run posts (#1063).** An agent's run posts in no conversation by itself, whatever its "What it may do" (F-036 AG-3
+- **No run posts (#1063).** An agent's run posts in no conversation by itself, whatever its Ask me first (F-036 AG-3
   "Never possible", AG-8, C-39). Its tools never include `flux_start_conversation` or `flux_reply_in_conversation`
   (`RUN_NEVER_POSTS`; a local client keeps them, LC-2), and the change executor refuses a run's `conversation.create` and
   `conversation.reply` with `RUN_POSTS_NOWHERE`, on its call and on an Approve of a saved one. Its answer reaches others only
@@ -488,8 +488,8 @@ a task says reaches them as a message in the task's discussion.
 The run's change tools go through `assistantChangeExecutor`
 (`apps/server/src/agent-connection/assistant-changes.ts`): each call is applied, waiting or refused, and
 recorded in `assistant_changes` in the same transaction. `classifyAssistantChange`
-(`packages/core/src/assistant/changes.ts`) decides from the agent's "What it may do" and the facts of the
-change, in this order: Only read refuses; a change the owner cannot make is refused and prepares nothing; a
+(`packages/core/src/assistant/changes.ts`) decides from the agent's Ask me first and the facts of the
+change, in this order: a change the owner cannot make is refused and prepares nothing; a
 deletion waits (`removal`); something of another person's, or a task for another person, waits (`others`); Ask
 me first waits (`ask`); anything else is made at once. "Yours" is what you or any of your agents made and nobody
 else edited. Nothing that waits ever expires.
@@ -500,7 +500,7 @@ else edited. Nothing that waits ever expires.
   refused, and no tool of any agent decides anything, even its own item. Approve re-executes the saved call with
   every check under the server-owned `owner_approval` purpose: the source run must be live or normally completed
   (a stopped, failed or cancelled one supplies nothing); Pause blocks it and a resume does not apply anything by
-  itself; Off, Only read, the owner losing the rights, a revoked binding and Skip close the saved change for good.
+  itself; Off, the owner losing the rights, a revoked binding and Skip close the saved change for good.
   Edit changes the title of a waiting new task and nothing else.
 - **Inbox.** One item per run with something waiting (`assistant:<runId>`, "3 things wait for you", with Approve
   all and Open). A run that only made things reports on its message, not in the Inbox.

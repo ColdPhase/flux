@@ -35,7 +35,7 @@ const PERSON = 'Belongs to a person, not to a space; what an agent does in a spa
 export const AI_HTTP_ROUTES: Readonly<Record<string, AiRouteRule>> = {
   // External agent connections and consent (F-016, #52/#152).
   'GET /api/v1/agent-connections': exempt('The owner\'s own connections, so they can see and remove them'),
-  // "What it may do" (F-036 #855): a setting of the agent itself, which belongs to a person.
+  // Ask me first (F-036 #855): a setting of the agent itself, which belongs to a person.
   'PATCH /api/v1/agent-connections/:connectionId': exempt(PERSON),
   'DELETE /api/v1/agent-connections/:connectionId': exempt(REDUCES),
   'GET /api/v1/projects/:projectId/agent-proposals': gated('params', 'projectId', 'project'),

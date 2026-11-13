@@ -60,7 +60,7 @@ export function agentConnectionRepository(db: Database) {
   /**
    * The live connection of this owner, or null: not revoked, its agent and its owner's account stand, and the owner is still a
    * non-guest member of the connection's company. Nothing here narrows what the client reaches: that is decided at each call by
-   * the owner's rights and by the agent's "What it may do".
+   * the owner's rights and by the agent's Ask me first.
    */
   const resolveCurrent = async (tx: Transaction, ownerUserId: string, connectionId: string) => {
     const [row] = await tx.select().from(schema.agentConnections).where(and(
@@ -157,7 +157,7 @@ export function agentConnectionRepository(db: Database) {
     },
 
     /**
-     * "What it may do" (F-036 AG-3). The row lock serializes it with every change the agent makes, which reads the
+     * Ask me first (F-036 AG-3). The row lock serializes it with every change the agent makes, which reads the
      * connection `FOR SHARE`, so a change decided after this commits uses the new choice.
      */
     setMayDo(ownerUserId: string, connectionId: string, mayDo: AgentConnection['mayDo']): Promise<AgentConnection | null> {

@@ -33,7 +33,7 @@ export async function agentProposalRoutes(app: FastifyInstance, { db, sessions }
   });
   app.get('/api/v1/agent-connections', async (request) => connections.list(
     (await sessions.requirePrincipal(request)).principal));
-  // "What it may do" (F-036 AG-3): a browser session of the owner only; no bearer, run token or MCP client reaches it.
+  // Ask me first (F-036 AG-3): a browser session of the owner only; no bearer, run token or MCP client reaches it.
   app.patch<{ Params: { connectionId: string }; Body: UpdateAgentConnectionCommand }>('/api/v1/agent-connections/:connectionId', {
     schema: { body: { type: 'object', required: ['mayDo'], additionalProperties: false, properties: { mayDo: { type: 'string', enum: [...AGENT_MAY_DO] } } } },
   }, async (request) => connections.update((await sessions.requirePrincipal(request)).principal, request.params.connectionId, request.body));

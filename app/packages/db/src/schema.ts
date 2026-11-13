@@ -813,7 +813,7 @@ export const projectFiles = pgTable('project_files', {
   check('project_file_exact_uploader', sql`num_nonnulls(${table.uploaderId}, ${table.uploaderAgentId}) = 1`),
 ]);
 
-// One person's agent for a local MCP client (#52). It reaches what its owner reaches; "What it may do" decides the rest (#859).
+// One person's agent for a local MCP client (#52). It reaches what its owner reaches; Ask me first decides the rest (#859).
 export const agentConnections = pgTable('agent_connections', {
   id: uuid('id').primaryKey(),
   workspaceId: uuid('workspace_id').notNull(),
@@ -822,7 +822,7 @@ export const agentConnections = pgTable('agent_connections', {
   name: displayName('name').notNull().default('External connection'),
   clientDesignation: text('client_designation', { enum: ['claude_code', 'codex', 'other'] }).notNull().default('other'),
   computeSource: text('compute_source', { enum: ['user_operated_claude_code', 'user_operated_external_client', 'owner_assistant'] }).notNull().default('user_operated_external_client'),
-  /** "What it may do" (0003, F-036 AG-3, #855): Only read, Do it and tell me, or Ask me first. */
+  /** Ask me first (0003, F-036 AG-3, #855; 0073, #1419): `act` off (Do it and tell me), `ask` on. "Only read" went in 0073. */
   mayDo: text('may_do', { enum: AGENT_MAY_DO }).notNull().default('act'),
   revokedAt: timestamp('revoked_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -834,7 +834,7 @@ export const agentConnections = pgTable('agent_connections', {
 ]);
 
 /**
- * The AI setup of one of a person's agents (F-036 AG-1, #857): its rights connection (which holds "What it may do", 0003/#855),
+ * The AI setup of one of a person's agents (F-036 AG-1, #857): its rights connection (which holds Ask me first, 0003/#855),
  * its saved instructions, its colour and the model it runs on. The first agent of a person answers `/ai`. An agent without a row
  * here is an identity only (a local client's, or one nobody gave a model).
  */

@@ -14,7 +14,7 @@ const ids = z.array(id).max(WORK_LIMITS.links);
 const criteria = z.array(text(WORK_LIMITS.criterion)).max(WORK_LIMITS.criteria);
 const dependencyIds = z.array(id).max(WORK_LIMITS.dependencies);
 
-/** Native work actions through the shared one-transaction executor (`action-execution.ts`): the owner's rights, "What it may do" and the change log. */
+/** Native work actions through the shared one-transaction executor (`action-execution.ts`): the owner's rights, Ask me first and the change log. */
 const waitingOnDecisionId = id.describe('Optional: the one decision (of this project, still proposed) a blocked task waits for. When it is accepted the task goes back to Doing by itself. Blocked tasks only; a task waits for one thing.');
 const waitingOnTaskId = id.describe('Optional: the one other task (of this project, not done) a blocked task waits for. When it is done the task goes back to Doing by itself. Blocked tasks only; a task waits for one thing.');
 /** The one thing a task waits for besides a person (#868), from the two ids a tool takes; `undefined` leaves it, `null` clears it. */
