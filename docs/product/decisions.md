@@ -609,6 +609,55 @@ asked / bilingual; [research](research/2026-11-ai-context-retrieval.md#answer-ac
   whole words, a prefix and quoted words or phrases. Quotes, `or` and `-word` stay exact in both. A position's score is squashed to
   (0, 1) in the plain space so that its rows and the encrypted rows merge in one order.
 
+**Engineering choices (#1294, the optional embeddings).**
+
+- **An overlay, off by default.** [`docker/compose.embeddings.yaml`](../../docker/compose.embeddings.yaml) adds one container,
+  text-embeddings-inference `cpu-1.9.4` (by digest) running bge-m3, and points `api` and `worker` at it with `FLUX_EMBEDDINGS_URL`.
+  A source checkout turns it on with `FLUX_EMBEDDINGS=on` (the launcher layers the file); a release install passes the file with `-f`.
+  Without it no container runs and no variable is set. A release ships it as the `compose.embeddings.yaml` asset (coordinator call,
+  2026-11-13, on #1341), its image recorded in `release.json` (`embeddings_image`). It needs about 3.2 GiB idle and 3.9 GiB at its peak (the research's
+  measurement; the Compose limit is 6 GiB, because 4 GiB killed it while warming up), documented in
+  [requirements](../operations/requirements.md#local-embeddings-optional).
+- **Vectors in the same PostgreSQL** (pgvector, already in the database image): migration 0068 adds `search_vectors` (`halfvec(1024)`,
+  cosine distance, kept in the row, no approximate index; see the hybrid ranking below), `search_vector_queue` and `search_vector_state`. The state row, written by the worker when it
+  finds the container, is what switches the triggers on: until then they return at once, so a stack that never turns embeddings on
+  writes no row to any of them, and the worker's first start without `FLUX_EMBEDDINGS_URL` deletes the row and empties the tables.
+  A different model than the stored vectors' drops them all.
+- **What is embedded:** the title and the first 4,000 characters of the body of each `search_documents` row that is not sealed (an
+  encrypted space's placeholder: never embedded), is not a person, has some text and, in a space, has AI on. The last condition follows
+  [AG-10](assistant.md#ag-10--ai-in-a-space) ("its content never reaches a model, including through search") and the research's table
+  ("encrypted spaces and spaces with AI off are never embedded"): turning AI off deletes the space's vectors in the same transaction,
+  turning it on queues its rows. The embedder is the operator's own container, never a person's connection or key.
+- **A vector follows its row in the writer's transaction:** an edit of the title or body deletes the vector and queues the new words; a
+  delete takes it with it (the foreign key); a row that becomes sealed loses it. The worker writes a vector only for words that still
+  hash as they did when it claimed the row, under a share lock on the row and on its space's AI policy, so an edit or a switch that is
+  committing cannot be overtaken.
+- **No new polling.** The triggers NOTIFY `flux_search_vectors` and the worker wakes on it, as the notification generator does; it embeds
+  the queue in batches of 16 until it is empty and keeps no timer while it is. A timer exists only after a failure (2 s doubling to
+  60 s). An idle worker issues no statement for embeddings; a stack with embeddings off issues none at all after its first start.
+- **Hybrid ranking inside `ranked`, under #1293's rule** (no statistic of the index and no row the caller may not see influences what
+  they are shown): with a query vector, the one statement fuses two lists by reciprocal rank fusion, k = 60, each cut at 50 (the
+  research's `hybrid_bm25`): the best 50 of #1293's BM25 **over the visible hits** (`rankedStatement`), and the 50 rows nearest to the
+  query's vector **among the rows the caller may see under the same filters** (audiences, place, author, conversation, dates, task
+  lifecycle), each distance computed exactly. No approximate (HNSW) index is used: its graph is built over every row of the instance and
+  filters after its candidate list, so which visible rows it returns can depend on hidden ones (measured on #1341's review: at 50,000
+  visible vectors and `ef_search` 100, 2,000 hidden rows near the queries changed the visible list of 4 of 20 queries; at 1,000 it
+  differed from the exact list for 6 of 20). The exact list costs one distance per visible vector: about 40 ms at 50,000 at half
+  precision kept in the row (170 ms at full precision in TOAST), on a single core of the review's host. Lists of 100 instead of 50 let rows
+  that are only mid-list in both crowd out a first hit (measured, [research](research/2026-11-ai-context-retrieval.md#measured-in-flux-itself-1294-2026-11-13)).
+  The fused score is scaled to (0, 1] (first in both lists: 1), as the BM25 rank is squashed, so an encrypted space's rows still merge
+  with it, and a task named by its number keeps its added 10. The query's vector is asked of the container with a 1.5 s deadline; after
+  a failure searches rank by BM25 alone for 30 s. People's search and agents' tools take it by passing one hook to `searchRows`; nothing
+  else changes while it is off.
+- **Recall on the bench: 0.700, not the note's 0.75** (founder decision, Hubert, 2026-11-13, on #1341: accepted as the bench result,
+  recorded here against the target; no tuning on the judged questions). Measured through Flux's own statement on the research bench
+  (seed 1242, 10,000 messages, 60 questions as asked, bge-m3): the hybrid's recall@10 0.700 against BM25 alone 0.583; three questions
+  explain the gap to the research's own run. Depth 20 or k = 10 reached 0.75 on these same 60 questions and were not adopted for that
+  reason. Measured again on #1341's review with #1293's visible-set BM25 as the BM25 list and the exact half-precision vector list
+  (same seed, same container): **the hybrid 0.683, BM25 alone 0.467**, the vector list alone 0.733 (keywords 0.583 / 0.450;
+  bilingual 0.667 / 0.567). The hybrid lost one question; BM25 alone lost seven (#1293's ranking, not this change). Recorded as
+  measured; nothing was tuned on the judged questions.
+
 **Costs.** The database image is about 800 MB instead of the Alpine image's 300 MB (the Debian base about 150 MB more, the `pg_search` library 282 MB). The index is about 4 MiB per 10k short
 messages; a write costs about a quarter of a millisecond more (research). No new container, no new setting, no new polling.
 

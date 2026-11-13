@@ -14,6 +14,7 @@ OVERLAY_BASES = {
     "compose.dev.yaml": "compose.source.yaml",
     "compose.test.yaml": "compose.source.yaml",
     "compose.live.yaml": "compose.source.yaml",
+    "compose.embeddings.yaml": "compose.source.yaml",
     "compose.live.test.yaml": "compose.source.yaml",
     "compose.live-editing.test.yaml": "compose.source.yaml",
     "compose.oidc.test.yaml": "compose.source.yaml",

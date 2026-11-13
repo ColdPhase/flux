@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts" / "release"))
 from prepare_assets import (  # noqa: E402
     ASSET_NAME, DATABASE_IMAGE, DATABASE_MARKER, IMAGE, MARKER, RUNTIME_IMAGE, RUNTIME_MARKER, codex_pin, parse_platforms, prepare, render_compose,
-    render_live_compose, render_runtime_compose,
+    render_embeddings_compose, render_live_compose, render_runtime_compose,
 )
 from verify_assets import EXPECTED, verify as verify_assets  # noqa: E402
 
@@ -27,6 +27,13 @@ REAL_SCRIPT = ROOT / "docker" / "runtime.sh"
 DOCKERFILE = ROOT / "docker" / "Dockerfile"
 REAL_LIVE = ROOT / "docker" / "compose.live.yaml"
 REAL_TURN = ROOT / "docker" / "compose.live.turn.yaml"
+REAL_EMBEDDINGS = ROOT / "docker" / "compose.embeddings.yaml"
+TEI = "ghcr.io/huggingface/text-embeddings-inference:cpu-1.9.4@sha256:" + "a" * 64
+EMBEDDINGS = (
+    "# repository header: FLUX_EMBEDDINGS=on in docker/.env\n"
+    "services:\n  embeddings:\n    image: " + TEI + "\n"
+    "  api:\n    environment:\n      FLUX_EMBEDDINGS_URL: http://embeddings:8080\n"
+)
 SFU = "livekit/livekit-server:v1.13.7@sha256:" + "e" * 64
 LIVE = (
     "# repository header: layer with compose.source.yaml\n"
@@ -67,6 +74,7 @@ class ReleaseAssetsTest(unittest.TestCase):
             "runtime.sh": "#!/bin/sh\necho runtime\n",
             "compose.live.yaml": LIVE,
             "compose.live.turn.yaml": TURN,
+            "compose.embeddings.yaml": EMBEDDINGS,
             "Dockerfile": "ARG CODEX_TAG=rust-v0.9.1\nADD https://github.com/openai/codex/releases/download/${CODEX_TAG}/codex-x86_64.tar.gz /c.tgz\n",
             "sbom-agent-runtime.spdx.json": '{"packages":[{"name":"node","versionInfo":"24","licenseDeclared":"MIT"}]}\n',
             "sbom.spdx.json": '{"packages":[{"name":"postgres","versionInfo":"18.1","licenseDeclared":"PostgreSQL"}]}\n',
@@ -81,7 +89,7 @@ class ReleaseAssetsTest(unittest.TestCase):
             runtime_digest=RUNTIME_DIGEST, runtime_compose=self.sources["compose.runtime.yaml"],
             runtime_script=self.sources["runtime.sh"], runtime_sbom=self.sources["sbom-agent-runtime.spdx.json"],
             dockerfile=self.sources["Dockerfile"], live_compose=self.sources["compose.live.yaml"],
-            live_turn_compose=self.sources["compose.live.turn.yaml"],
+            live_turn_compose=self.sources["compose.live.turn.yaml"], embeddings_compose=self.sources["compose.embeddings.yaml"],
             database_digest=DATABASE_DIGEST, database_sbom=self.sources["sbom-database.spdx.json"],
         )
 
@@ -286,6 +294,25 @@ class ReleaseAssetsTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "compose.live.turn.yaml none"):
             self.build()
 
+    def test_embeddings_overlay_ships_digest_pinned_with_a_release_header(self) -> None:
+        output = self.build()
+        packaged = (output / "compose.embeddings.yaml").read_text()
+        self.assertTrue(packaged.startswith("# Flux v1.2.3 local embeddings overlay"))
+        self.assertNotIn("repository header", packaged)
+        self.assertIn("services:\n  embeddings:\n", packaged)
+        self.assertEqual(json.loads((output / "release.json").read_text())["embeddings_image"], TEI)
+        cases = {
+            "pull-only": EMBEDDINGS + "    build: .\n",
+            "not pinned": EMBEDDINGS.replace(TEI, "ghcr.io/huggingface/text-embeddings-inference:cpu-1.9.4"),
+            "source path": EMBEDDINGS + "    volumes:\n      - ./models:/data\n",
+            "must not name": EMBEDDINGS + "  x:\n    image: " + MARKER + "\n",
+            "exactly one": EMBEDDINGS + "  y:\n    image: " + SFU + "\n",
+        }
+        for message, text in cases.items():
+            with self.subTest(message):
+                with self.assertRaisesRegex(ValueError, message):
+                    render_embeddings_compose(text, version="v1.2.3", source_sha="a" * 40)
+
     def test_verify_assets_accepts_the_prepared_set_and_refuses_each_tampering(self) -> None:
         output = self.build()
         self.assertEqual(verify_assets(output, "v1.2.3", "a" * 40, APP_DIGEST)["runtime"], f"{RUNTIME_IMAGE}@{RUNTIME_DIGEST}")
@@ -315,6 +342,8 @@ class ReleaseAssetsTest(unittest.TestCase):
             "claude code claimed": ("release.json", lambda t: t.replace("not included", "bundled"), "Claude Code"),
             "sfu swapped": ("compose.live.yaml", lambda t: t.replace(SFU, SFU.replace("e" * 64, "d" * 64)), "live_media_image"),
             "sfu floating": ("compose.live.yaml", lambda t: t.replace(SFU, "livekit/livekit-server:latest"), "floating tag"),
+            "embedder swapped": ("compose.embeddings.yaml", lambda t: t.replace(TEI, TEI.replace("a" * 64, "d" * 64)), "embeddings_image"),
+            "flux image in the embeddings overlay": ("compose.embeddings.yaml", lambda t: t + f"  x:\n    image: {IMAGE}@{APP_DIGEST}\n", "Flux image"),
             "flux image in the overlay": ("compose.live.turn.yaml", lambda t: t + f"  x:\n    image: {IMAGE}@{APP_DIGEST}\n", "Flux image"),
             "platforms differ": ("release.json", lambda t: t.replace('"runtime_platforms": [\n    "linux/amd64"', '"runtime_platforms": [\n    "linux/arm64"'), "same supported platforms"),
             "database platforms differ": ("release.json", lambda t: t.replace('"database_platforms": [\n    "linux/amd64"', '"database_platforms": [\n    "linux/arm64"'), "same supported platforms"),
@@ -353,7 +382,7 @@ class RealOperatorAssetsTest(unittest.TestCase):
             compose=REAL_COMPOSE, env=REAL_ENV, instructions=GUIDE,
             license_file=ROOT / "LICENSE", sbom=sbom, destination=self.output,
             runtime_digest=RUNTIME_DIGEST, runtime_compose=REAL_OVERLAY, runtime_script=REAL_SCRIPT,
-            runtime_sbom=sbom, dockerfile=DOCKERFILE, live_compose=REAL_LIVE, live_turn_compose=REAL_TURN,
+            runtime_sbom=sbom, dockerfile=DOCKERFILE, live_compose=REAL_LIVE, live_turn_compose=REAL_TURN, embeddings_compose=REAL_EMBEDDINGS,
             database_digest=DATABASE_DIGEST, database_sbom=sbom,
         )
 
@@ -399,7 +428,7 @@ class RealOperatorAssetsTest(unittest.TestCase):
             lines = text.splitlines(keepends=True)
             return "".join(lines[next(i for i, line in enumerate(lines) if not line.startswith("#")):])
 
-        for name, source in (("compose.live.yaml", REAL_LIVE), ("compose.live.turn.yaml", REAL_TURN)):
+        for name, source in (("compose.live.yaml", REAL_LIVE), ("compose.live.turn.yaml", REAL_TURN), ("compose.embeddings.yaml", REAL_EMBEDDINGS)):
             with self.subTest(name):
                 packaged = (self.output / name).read_text(encoding="utf-8")
                 self.assertEqual(body(packaged), body(source.read_text(encoding="utf-8")))
@@ -409,6 +438,7 @@ class RealOperatorAssetsTest(unittest.TestCase):
                     self.assertNotIn(stale, header)
         release = json.loads((self.output / "release.json").read_text())
         self.assertIn(f"image: {release['live_media_image']}\n", REAL_LIVE.read_text())
+        self.assertIn(f"image: {release['embeddings_image']}\n", REAL_EMBEDDINGS.read_text())
 
     def test_codex_pin_is_read_from_the_real_dockerfile(self) -> None:
         self.assertRegex(codex_pin(DOCKERFILE.read_text()), r"^rust-v\d+\.\d+\.\d+$")
@@ -442,10 +472,10 @@ class RealOperatorAssetsTest(unittest.TestCase):
     def test_installation_guide_variables_match_the_operator_files(self) -> None:
         keys = {line.partition("=")[0] for line in REAL_ENV.read_text().splitlines()
                 if line.strip() and not line.startswith("#")}
-        # The live-media settings belong to the optional overlays; INSTALL.md lists them for .env.
+        # The live-media and embeddings settings belong to the optional overlays; INSTALL.md lists them for .env.
         live = REAL_LIVE.read_text() + REAL_TURN.read_text()
         live_keys = set(re.findall(r"\$\{(FLUX_LIVEKIT_[A-Z0-9_]+)", live))
-        keys |= live_keys
+        keys |= live_keys | set(re.findall(r"\$\{(FLUX_EMBEDDINGS_[A-Z0-9_]+)", REAL_EMBEDDINGS.read_text()))
         guide = GUIDE.read_text(encoding="utf-8")
         mentioned = set(re.findall(r"`((?:FLUX|POSTGRES)_[A-Z0-9_]+)`", guide))
         self.assertEqual(sorted(mentioned - keys), [], "INSTALL.md names a variable the template lacks")

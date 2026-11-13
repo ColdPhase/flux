@@ -1,4 +1,4 @@
-import { loadAgentRuntimeConfig, loadPushServerConfig, type AgentRuntimeConfig, type PushServerConfig } from '@flux/core';
+import { loadAgentRuntimeConfig, loadEmbeddingsConfig, loadPushServerConfig, type AgentRuntimeConfig, type EmbeddingsConfig, type PushServerConfig } from '@flux/core';
 import { loadBackgroundMasterKey } from '@flux/db';
 import { loadIdentityConfig, type IdentityConfig } from './identity/index.js';
 import { loadLinkPreviewsConfig, type LinkPreviewsConfig } from './link-previews/config.js';
@@ -44,6 +44,8 @@ export interface ServerConfig {
   linkPreviews: LinkPreviewsConfig;
   /** `FLUX_WEB_READS` (#918, #954, C-29): the agents may read web pages through a Flux tool and search with their provider. On by default. */
   webReads: WebReadsConfig;
+  /** `FLUX_EMBEDDINGS_URL` (F-042, #1294): the optional local embedding container; empty, the default, is off and search ranks by BM25 alone. */
+  embeddings: EmbeddingsConfig;
 }
 
 export function loadServerConfig(env: NodeJS.ProcessEnv = process.env, backgroundKeyPath?: string): ServerConfig {
@@ -68,5 +70,6 @@ export function loadServerConfig(env: NodeJS.ProcessEnv = process.env, backgroun
     agentRuntime: loadAgentRuntimeConfig(env),
     linkPreviews: loadLinkPreviewsConfig(env),
     webReads: loadWebReadsConfig(env),
+    embeddings: loadEmbeddingsConfig(env),
   };
 }

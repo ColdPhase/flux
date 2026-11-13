@@ -1,0 +1,45 @@
+# Optional local embeddings for search (F-042, #1294). OFF unless this file is layered on the stack: without it no container runs, no
+# vector is stored and search ranks by BM25 alone. It adds one container, text-embeddings-inference running BAAI/bge-m3 (MIT) on the
+# CPU, and points `api` and `worker` at it. Needs about 3.2 GiB of RAM idle and 3.9 GiB at its peak (measured 2026-11-12, #1242), on top
+# of the base stack: for servers with 8 GB or more (docs/operations/requirements.md, "Local embeddings").
+#
+# Source checkout:   set FLUX_EMBEDDINGS=on in docker/.env, then ./flux up (the launcher layers this file).
+# Release install:   the release ships this file as compose.embeddings.yaml (its header replaced); pass it after compose.yaml to every command:
+#   docker compose --env-file .env -f compose.yaml -f compose.embeddings.yaml up -d --wait
+#
+# The first start downloads the model (about 2.3 GB, from huggingface.co) into the `embeddings` volume; until it is ready search ranks
+# by BM25 alone and the worker retries by itself. The worker then embeds every searchable row of a space whose AI is on, a few a second
+# on 2 vCPUs: 10,000 messages take about 17 minutes. Encrypted spaces and spaces with AI off are never embedded. The container is
+# internal: no port is published, and nothing is ever embedded through a person's own AI connection.
+# Remove the file (and set FLUX_EMBEDDINGS=off) to turn it off: the next worker start deletes every vector.
+services:
+  embeddings:
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.9.4@sha256:2538ea1c9640d3763b15af668039d24172d063b42337b0c27796fc2be180c78d
+    restart: unless-stopped
+    # 2,048 batch tokens: with the default 8,192 the server was killed for memory while warming up (#1242). Two tokenization workers: it
+    # starts one per CPU, memory grows with them, and a start on a 24-thread host with the default was killed at 6 GiB (once, 2026-11-13;
+    # 2.25 GiB idle with two). Not the privileged port 80, so the container can run without capabilities.
+    command: ["--model-id", "BAAI/bge-m3", "--max-batch-tokens", "2048", "--tokenization-workers", "2", "--auto-truncate", "--port", "8080"]
+    environment:
+      HF_HUB_DISABLE_TELEMETRY: "1"
+    mem_limit: ${FLUX_EMBEDDINGS_MEMORY:-6g}
+    memswap_limit: ${FLUX_EMBEDDINGS_MEMORY:-6g}
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    volumes:
+      - embeddings:/data
+  # They start with it but never wait for its model: until it answers, search ranks by BM25 alone and the worker retries.
+  api:
+    environment:
+      FLUX_EMBEDDINGS_URL: http://embeddings:8080
+    depends_on:
+      embeddings:
+        condition: service_started
+  worker:
+    environment:
+      FLUX_EMBEDDINGS_URL: http://embeddings:8080
+    depends_on:
+      embeddings:
+        condition: service_started
+volumes:
+  embeddings: {}

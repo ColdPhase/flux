@@ -11,6 +11,8 @@ COMPOSE_MAIN="$FLUX_ROOT/docker/compose.source.yaml"
 COMPOSE_DEV="$FLUX_ROOT/docker/compose.dev.yaml"
 # The API and worker's agent-runtime networks (#744); added only while FLUX_AGENT_RUNTIME is set.
 COMPOSE_RUNTIME="$FLUX_ROOT/docker/compose.source.runtime.yaml"
+# The optional local embedding container (F-042, #1294); added only while FLUX_EMBEDDINGS=on.
+COMPOSE_EMBEDDINGS="$FLUX_ROOT/docker/compose.embeddings.yaml"
 # The operator's own override; used when it exists.
 COMPOSE_OVERRIDE="$FLUX_ROOT/docker/compose.override.yaml"
 ENV_EXAMPLE="$FLUX_ROOT/docker/.env.example"
@@ -63,6 +65,7 @@ need_docker() {
 compose_main() {
   if [ -f "$COMPOSE_OVERRIDE" ]; then set -- -f "$COMPOSE_OVERRIDE" "$@"; fi
   if runtime_on; then set -- -f "$COMPOSE_RUNTIME" "$@"; fi
+  if embeddings_on; then set -- -f "$COMPOSE_EMBEDDINGS" "$@"; fi
   FLUX_IMAGE_TAG="$PROJECT" docker --log-level error compose --project-directory "$FLUX_ROOT/docker" \
     --env-file "$ENV_FILE" -p "$PROJECT" -f "$COMPOSE_MAIN" "$@"
 }
@@ -82,6 +85,7 @@ env_value() {
   sed -n "s/^$1=//p" "$ENV_FILE" | tail -n 1 | sed -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'\$/\1/"
 }
 env_file_has() { [ -f "$ENV_FILE" ] && grep -q "^$1=." "$ENV_FILE"; }
+embeddings_on() { [ "$(env_value FLUX_EMBEDDINGS)" = on ]; }
 
 # --- Compose project names. Each checkout gets its own stable default, derived from its
 # absolute path and stored in the env file as FLUX_PROJECT on first use, so two clones never

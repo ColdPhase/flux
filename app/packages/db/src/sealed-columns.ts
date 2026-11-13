@@ -20,7 +20,7 @@ const ai = [
   'agent_chat_messages', 'agent_chat_reads', 'agent_command_receipts', 'agent_connections',
   'agent_memory_items', 'agent_oauth_bindings', 'agent_playbook_acknowledgments',
   'agent_proposals', 'agent_questions', 'agent_runtime_auth_admission', 'agent_runtime_auth_operations', 'agent_runtime_bindings',
-  'agent_runtime_client_history', 'agent_runtime_connections', 'agent_runtime_console_nonces', 'agent_runtime_operator_statements',
+  'agent_runtime_client_history', 'agent_runtime_connections', 'agent_runtime_connection_models', 'agent_runtime_console_nonces', 'agent_runtime_operator_statements',
   'agent_runtime_sessions', 'agent_runtime_slots', 'agent_stops', 'agents', 'assistant_background_notes',
   'assistant_changes', 'assistant_job_runs', 'assistant_jobs',
   'agent_task_taking',
@@ -40,6 +40,8 @@ const system = [
   'live_webhook_events', 'sealed_job_waits', 'workspace_keys', 'workspace_holders', 'workspace_dek_wraps', 'workspace_key_versions',
   'workspace_unlocks', 'workspace_removed_holders', 'workspace_removals', 'workspace_rotation_progress', 'workspace_wrap_grants', 'idempotency_account_operations',
   'event_data_tokens', 'event_data_keys', 'agent_task_events',
+  // F-042 (#1294): vectors of rows that may be embedded (never a sealed placeholder, never a space with AI off) and the queue of rows waiting for one.
+  'search_vectors', 'search_vector_queue', 'search_vector_state',
 ] as const;
 const refused = [
   'github_bindings', 'github_deliveries', 'github_processing', 'github_rule_defaults', 'github_task_links',

@@ -1,6 +1,7 @@
 import { sql, type SQL } from 'drizzle-orm';
 import { foldSearchWord } from '@flux/contracts';
 import * as schema from '../schema.js';
+import { hybridMatched, vectorLiteral, type QueryVectors } from './search-vectors.js';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 
 /** Search needs its own read-only transaction to pin the plan (see {@link planned}). */
@@ -356,7 +357,7 @@ const num = (value: number) => sql.raw(String(value));
  * `(k1 + 1) / (1 + k1 × (1 − b + b × length / average))`; a word that every hit holds counts for little. A document that holds no whole word
  * but matched as the word being typed or with a typo counts half the average rarity of the query's words.
  */
-function rankedStatement(plan: SearchPlanRows): SQL {
+function rankedStatement(plan: SearchPlanRows, vector: string | null = null): SQL {
   const chunks = rankedChunks(plan);
   const scans = chunks.map((chunk, index) => sql`chunk${num(index)} AS MATERIALIZED (${rankedScan(chunk, plan)}),`);
   // A document found by several scans is one row, with the code of each; one scan (the usual case) needs no grouping.
@@ -377,6 +378,15 @@ function rankedStatement(plan: SearchPlanRows): SQL {
   const whole = sql.join(words.map((entry) => sql`CASE WHEN ${present(entry)} THEN ${idf(entry)} * ${weight(entry)} ELSE 0 END`), sql` + `);
   const partial = sql`${num(WEIGHT.part)} * (${sql.join(words.map((entry) => idf(entry)), sql` + `)}) / ${num(words.length)}`;
   const any = sql.join(words.map((entry) => present(entry)), sql` OR `);
+  // With a query vector (the optional embeddings, #1294) the visible BM25 order above is one list of the fusion (see `hybridMatched`).
+  const matched = vector
+    ? hybridMatched({ vector, visible: sql`NOT sd.sealed AND ${AUDIENCE_ANY} AND ${keep}`, number: plan.number })
+    : sql`matched AS (
+      SELECT r.id, r.kind, r.object_id, r.version, r.at,
+        round((r.rank / (r.rank + ${num(SQUASH)}))::numeric, 6) + CASE WHEN r.numbered THEN 10 ELSE 0 END AS score,
+        row_number() OVER (PARTITION BY r.kind, r.object_id ORDER BY r.version DESC NULLS LAST) AS newest
+      FROM ranked r
+    ),`;
   return sql`
     ${sql.join(scans, sql`
     `)}
@@ -386,22 +396,17 @@ function rankedStatement(plan: SearchPlanRows): SQL {
       SELECT c.id, c.kind, c.object_id, c.version, c.at, c.numbered,
         (CASE WHEN ${any} THEN ${whole} ELSE ${partial} END) * ${num(BM25_K1 + 1)} / (1 + ${num(BM25_K1)} * (1 - ${num(BM25_B)} + ${num(BM25_B)} * c.dl / st.avgdl)) AS rank
       FROM cand c CROSS JOIN stats st),
-    matched AS (
-      SELECT r.id, r.kind, r.object_id, r.version, r.at,
-        round((r.rank / (r.rank + ${num(SQUASH)}))::numeric, 6) + CASE WHEN r.numbered THEN 10 ELSE 0 END AS score,
-        row_number() OVER (PARTITION BY r.kind, r.object_id ORDER BY r.version DESC NULLS LAST) AS newest
-      FROM ranked r
-    ),`;
+    ${matched}`;
 }
 
-function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows, ranking: SearchRanking = 'prefix'): SQL {
+function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows, ranking: SearchRanking = 'prefix', vector: string | null = null): SQL {
   const bm25 = ranking === 'bm25';
   const q = bm25 ? anyWord(plan) : tsquery(plan);
   const columns = (alias: string) => sql.raw(['id', 'kind', 'workspace_id', 'object_id', 'parent_id', 'project_id', 'version', 'status', 'title', 'body', 'author_kind', 'author_id', 'at']
     .map((column) => `${alias}.${column}`).join(', '));
   // The BM25 statement needs only the audiences; the index keys of today's index are not looked up.
   const audience = bm25 ? sql`aud AS MATERIALIZED (SELECT ${visibleKeys(audiences)} AS keys)` : audienceCte(audiences, plan);
-  const matched = bm25 ? rankedStatement(plan) : sql`
+  const matched = bm25 ? rankedStatement(plan, vector) : sql`
     matched AS (
       SELECT ${columns('sd')},
         round((ts_rank(sd.tsv, ${q}) + 0.5 * word_similarity(${plan.text}, sd.title))::numeric, 6)${exactNumber(plan)} AS score,
@@ -562,7 +567,11 @@ async function examined(db: SearchExecutor, statement: SQL): Promise<ExaminedWor
   return work;
 }
 
-export function searchRows(db: SearchExecutor) {
+/**
+ * `vectors` is given only while the optional embeddings are on (migration 0068, #1294): `ranked` then fuses its visible BM25 order with
+ * the visible rows nearest to the query's vector. Without it, or when it answers null, nothing changes.
+ */
+export function searchRows(db: SearchExecutor, vectors?: QueryVectors) {
   return {
     /** The workspaces a person belongs to now. */
     async memberWorkspaces(userId: string) {
@@ -589,11 +598,13 @@ export function searchRows(db: SearchExecutor) {
      * One page like `page`, matched by the BM25 index (F-042, migration 0065): any of the plan's plain words, Polish and English stems, accents
      * folded. pg_search only matches; the order is BM25 over the hits the caller may see, computed in the statement, so nothing the caller
      * may not read moves it. The same audiences, filters, cursor and one-row-per-object rule; the access policy decides the audiences on
-     * every call, so a lost grant, a space whose AI was turned off, a removed or edited row is reflected by the next call.
+     * every call, so a lost grant, a space whose AI was turned off, a removed or edited row is reflected by the next call. With embeddings on,
+     * the order is the fusion of that BM25 order and the exact nearest vectors among the same visible, filtered rows.
      */
     async ranked(audiences: SearchAudienceRows[], plan: SearchPlanRows): Promise<SearchRowRecord[]> {
       if (!audiences.length || !/[\p{L}\p{N}]/u.test(plan.words)) return [];
-      const result = await planned(db, pageStatement(audiences, plan, 'bm25'), 'bm25');
+      const vector = vectors ? await vectors(plan.words) : null;
+      const result = await planned(db, pageStatement(audiences, plan, 'bm25', vector ? vectorLiteral(vector) : null), 'bm25');
       return (result.rows as unknown as PageRow[]).map(toRecord);
     },
 

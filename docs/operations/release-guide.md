@@ -17,7 +17,9 @@ the source code and the Node toolchain are not. The optional [agent runtime](#ag
 adds a second image, `ghcr.io/coldphase/flux-agent-runtime`, also pinned by digest and built for the
 same platforms; an installation that never switches the runtime on never pulls it. Optional
 [calls and screen sharing](#calls-and-screen-sharing-optional) add the LiveKit media server, pinned by
-digest in `compose.live.yaml`; an installation that never loads that file runs no media server.
+digest in `compose.live.yaml`; an installation that never loads that file runs no media server. Optional
+[local embeddings](#local-embeddings-optional) add a text-embeddings-inference container, pinned by digest in
+`compose.embeddings.yaml`; an installation that never loads that file runs no embedding container and stores no vector.
 
 ## Files
 
@@ -30,9 +32,10 @@ Download **every** asset of the release into an empty directory:
 | `runtime.sh` | Operator script for the runtime: `on`, `off`, `up`, `status`, `release`, `purge`. Run it with `sh`. |
 | `compose.live.yaml` | Optional Compose file for [calls and screen sharing](#calls-and-screen-sharing-optional): the LiveKit media server (SFU), pinned by digest. |
 | `compose.live.turn.yaml` | Optional addition to `compose.live.yaml`: TURN/TLS on TCP/443 for people behind restrictive networks. |
+| `compose.embeddings.yaml` | Optional Compose file for [local embeddings](#local-embeddings-optional): search also ranks by meaning. One text-embeddings-inference container (bge-m3), pinned by digest. |
 | `env.example` | Settings template; you copy it to `.env`. GitHub does not keep a leading period in an asset name, so the repository's `.env.example` is published under this name. |
 | `INSTALL.md` | This guide. |
-| `release.json` | Version, source commit and the images (`ghcr.io/coldphase/flux@sha256:…`, `ghcr.io/coldphase/flux-agent-runtime@sha256:…` and, from v0.2.1, the database image `ghcr.io/coldphase/flux-database@sha256:…`) with their platforms, the pinned Codex release and the media server image (`live_media_image`). |
+| `release.json` | Version, source commit and the images (`ghcr.io/coldphase/flux@sha256:…`, `ghcr.io/coldphase/flux-agent-runtime@sha256:…` and, from v0.2.1, the database image `ghcr.io/coldphase/flux-database@sha256:…`) with their platforms, the pinned Codex release, the media server image (`live_media_image`) and the embedding server image (`embeddings_image`). |
 | `sbom.spdx.json`, `THIRD_PARTY_NOTICES.json` | SPDX software bill of materials of the application image and the dependency notices derived from it. |
 | `sbom-agent-runtime.spdx.json`, `THIRD_PARTY_NOTICES.agent-runtime.json` | The same for the agent-runtime image; the notices also record the pinned official Codex (Apache-2.0). |
 | `sbom-database.spdx.json`, `THIRD_PARTY_NOTICES.database.json` | The same for the database image (PostgreSQL 18 with `pg_search`, AGPL-3.0-or-later, and `pgvector`; [F-042](https://github.com/ColdPhase/flux/blob/main/docs/product/decisions.md#f-042--agents-find-what-they-need-with-bm25-search-in-postgresql)). |
@@ -312,6 +315,28 @@ switches calls off. To switch calls off on purpose, run
 data, so a backup needs nothing more. Keep `FLUX_LIVEKIT_API_SECRET` as private as `.env`; to rotate it,
 change it and run `up` with both files: the API and LiveKit read the same value. A restart of `livekit`
 interrupts current calls; people rejoin.
+
+## Local embeddings (optional)
+
+Search ranks by BM25 alone. On a server with 8 GB of RAM or more you can also let it rank by meaning: an English question then finds
+a Polish message with no word in common. `compose.embeddings.yaml` adds one container, text-embeddings-inference running BAAI/bge-m3
+on the CPU, pinned by the digest that `release.json` names as `embeddings_image`; it publishes no port and is reached only by `api`
+and `worker`. It needs about 3.2 GiB of RAM idle and 3.9 GiB at its peak (`FLUX_EMBEDDINGS_MEMORY`, default `6g`, is its limit), and
+its first start downloads the model (2.3 GB) from `huggingface.co` into the `embeddings` volume.
+
+```sh
+docker compose --env-file .env -f compose.yaml -f compose.embeddings.yaml config --quiet
+docker compose --env-file .env -f compose.yaml -f compose.embeddings.yaml up -d --wait
+```
+
+Until the model is loaded search ranks by BM25 alone and the worker retries by itself; it then embeds every searchable row of a space
+whose AI is on (about 17 minutes of two cores for 10,000 messages). Encrypted spaces and spaces with AI off are never embedded, and
+nothing is embedded through a person's own AI connection. On the bench of F-042 the fused ranking found 0.683 of the answers in the
+first ten for questions as asked, against 0.467 for BM25 alone.
+
+Once it is on, **pass `-f compose.embeddings.yaml` to every command** in this guide, next to the other overlays you use. To turn it
+off, run `docker compose --env-file .env -f compose.yaml up -d --wait --remove-orphans` without it: the next worker start deletes
+every vector. The vectors are in PostgreSQL, so a backup needs nothing more; the `embeddings` volume holds only the model.
 
 ## Consistent backup
 
