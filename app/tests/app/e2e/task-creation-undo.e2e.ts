@@ -540,8 +540,7 @@ test('desktop and phone-width history render readable actor and time, keyboard l
       // The timeline lists newest first (#601): the Undo line leads and the creation is the oldest line.
       assert.equal(await activity.locator('time').first().getAttribute('datetime'), life.revertedAt);
       assert.equal(await activity.locator('time').last().getAttribute('datetime'), item.createdAt);
-      assert.match(await activity.innerText(), /Trial planning agent/);
-      assert.match(await activity.innerText(), /Ari Task author/);
+      assert.match(await activity.innerText(), /Trial planning agent\s*· Ari's agent/);
       assert.equal(await panel(page).getByRole('region', { name: 'Done when', exact: true }).locator('li').count(), 2);
       const overflow = await page.evaluate(() => {
         const bounds = document.querySelector('.details.wd')!.getBoundingClientRect();
