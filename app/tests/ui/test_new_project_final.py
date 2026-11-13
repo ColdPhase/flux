@@ -139,7 +139,7 @@ class NewProject(unittest.TestCase):
             # AI starts on; one dark button, Create space, beside Cancel of the same height.
             expect(card.get_by_role("switch", name="AI")).to_have_attribute("aria-checked", "true")
             create, cancel = card.get_by_role("button", name="Create space"), card.get_by_role("button", name="Cancel")
-            self.assertEqual(create.bounding_box()["height"], cancel.bounding_box()["height"])
+            self.assertAlmostEqual(create.bounding_box()["height"], cancel.bounding_box()["height"], delta=0.5, msg="Cancel and Create have the same height (WebKit rounds 36 to 35.99997)")
             # No template, no goal, no "Who can see this" step; the Encrypted switch is there and starts off (C-24).
             expect(card.get_by_role("textbox")).to_have_count(1)
             expect(card.get_by_role("radio")).to_have_count(0)
