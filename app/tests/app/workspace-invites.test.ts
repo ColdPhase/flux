@@ -47,11 +47,11 @@ describe('F-035 invite links', () => {
     assert.ok(Math.abs(days - 7) < 0.01, `7 days by default (${days})`);
     const token = tokenOf(invite);
 
-    // A visitor with the link, not signed in, sees what it is for, but never an address.
+    // A visitor with the link, not signed in, sees what it is for; a link for anyone names no address.
     const anonymous = new Browser();
     const seen = expectStatus(await preview(anonymous, token), 200) as InvitePreview;
     assert.deepEqual({ ...seen, expiresAt: undefined }, { workspaceName: 'Riverside Makers', invitedBy: 'Ada Invites', role: 'member', expiresAt: undefined,
-      emailLocked: false, encrypted: false, state: 'pending' });
+      emailLocked: false, email: null, encrypted: false, state: 'pending' });
     assert.equal((await anonymous.request('POST', '/api/v1/invites/accept', { body: { token } })).status, 401, 'accept needs a session');
 
     const email = uniqueEmail('dan-invites');
@@ -216,7 +216,8 @@ describe('F-035 invite links', () => {
     assert.equal(invite.email, cleo.email.toLowerCase());
     const seen = expectStatus(await preview(new Browser(), tokenOf(invite)), 200) as InvitePreview;
     assert.equal(seen.emailLocked, true);
-    assert.ok(!JSON.stringify(seen).includes(cleo.email.toLowerCase()), 'the preview never names the address');
+    // #1471: the preview names the address a locked link is for, so the sign-up form fills it in for the person who holds the link.
+    assert.equal(seen.email, cleo.email.toLowerCase());
     const eve = await person('Fay Invites');
     const wrong = await accept(eve, tokenOf(invite));
     assert.equal(wrong.status, 403); assert.equal(codeOf(wrong), 'INVITE_WRONG_ACCOUNT');

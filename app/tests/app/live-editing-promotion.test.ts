@@ -25,7 +25,7 @@ async function api(mode: 'default' | 'off') {
   const probe = createServer(); probe.listen(0, '127.0.0.1'); await once(probe, 'listening');
   const port = (probe.address() as { port: number }).port; await new Promise<void>(resolve => probe.close(() => resolve()));
   const env: NodeJS.ProcessEnv = { ...process.env, PORT: String(port), FLUX_DEVELOPMENT_LIVE_EDITING_TELEMETRY: '1',
-    FLUX_DEVELOPMENT_LIVE_EDITING_API_INSTANCE: 'promotion-check' };
+    FLUX_DEVELOPMENT_LIVE_EDITING_API_INSTANCE: 'promotion-check', FLUX_TEST_FAILURE_INJECTION: 'true' /* a test deployment: sign-up without a link (#1471) */ };
   delete env.FLUX_LIVE_EDITING; delete env.FLUX_DEVELOPMENT_LIVE_EDITING;
   if (mode === 'off') { env.FLUX_LIVE_EDITING = 'off'; env.FLUX_DEVELOPMENT_LIVE_EDITING = 'true'; }
   const child = spawn(process.execPath, ['apps/server/dist/index.js'], { env, stdio: ['ignore', 'pipe', 'pipe'] });

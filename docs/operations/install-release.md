@@ -28,11 +28,11 @@ they are.
 1. Download every asset of **one** GitHub Release into an empty directory, for example
    `/srv/flux`; the checksum file lists all of them. Check them with `sha256sum -c SHA256SUMS`
    (macOS: `shasum -a 256 -c SHA256SUMS`).
-2. Create the private settings file and fill in the three required values:
+2. Create the private settings file and fill in the required values:
 
    ```sh
    cp env.example .env && chmod 600 .env
-   openssl rand -hex 32    # once for POSTGRES_PASSWORD, once for FLUX_AUTH_SECRET
+   openssl rand -hex 32    # once each for POSTGRES_PASSWORD, FLUX_AUTH_SECRET and FLUX_SETUP_TOKEN
    ```
 
    | Variable | Required | Value |
@@ -42,7 +42,7 @@ they are.
    | `FLUX_PUBLIC_ORIGIN` | yes | The exact URL people open, e.g. `https://flux.example.org`. Plain `http` only for a loopback trial. Start with `http://127.0.0.1:8081` to create your account (step 4), then set the real address (step 5). |
    | `FLUX_PROJECT` | kept | Compose project and volume prefix (`flux`). Keep it across upgrades. |
    | `FLUX_PORT` | kept | Loopback port of the API (`8081`) for the reverse proxy. |
-   | `FLUX_SIGNUP` | after your account | `open` until you have signed up; then decide [who can sign up](install.md#5-decide-who-can-sign-up). |
+   | `FLUX_SETUP_TOKEN` | yes, for the first account | Random hex. The owner's account is made only from `<FLUX_PUBLIC_ORIGIN>/setup#<this value>` (step 4); everyone else's from an invite link or single sign-on ([who can create an account](install.md#5-who-can-create-an-account)). |
    | `FLUX_TRUSTED_PROXIES` | with a proxy | The proxy's IP/CIDR, so client addresses are taken from `X-Forwarded-For`. |
    | `FLUX_SMTP_URL`, `FLUX_MAIL_FROM` | optional | Password reset and notification mail. |
    | `FLUX_VAPID_*` | optional | Web Push, all three or none (step 3). |
@@ -70,10 +70,12 @@ they are.
    curl -fsS http://127.0.0.1:8081/api/v1/health   # {"status":"ok","schemaVersion":N}
    ```
 
-   **Create your account now, while the server is not public.** The first account to sign up sets up the
-   company and becomes its owner. With `FLUX_PUBLIC_ORIGIN=http://127.0.0.1:8081`, open that address through an SSH
-   tunnel (`ssh -L 8081:127.0.0.1:8081 you@server`) and sign up. The API log warns at each start while nobody has
-   signed up and the origin is a public one.
+   **Create the owner's account from the setup link**, `<FLUX_PUBLIC_ORIGIN>/setup#<FLUX_SETUP_TOKEN>`: now through an SSH
+   tunnel (`ssh -L 8081:127.0.0.1:8081 you@server`, then `http://127.0.0.1:8081/setup#…`), or after step 5 on the public
+   address. It sets up the company and its account is the owner. Without the token no account can be made; the API log says
+   so at each start while no company exists. A forgotten password later:
+   `docker compose --env-file .env -f compose.yaml exec api node apps/server/dist/identity/cli.js reset-link <email>` prints a
+   one-time reset link.
 
 5. Set `FLUX_PUBLIC_ORIGIN` in `.env` to the exact `https` address and run the `up -d --wait` command again. Follow the
    tested [HTTPS reverse-proxy example](reverse-proxy.md) to put TLS in front

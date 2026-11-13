@@ -6,8 +6,8 @@ together: the image digest, the migrations and the settings in them match. A new
 can need other migrations or variables than your release.
 
 **v0.2 is installed fresh.** v0.1 had no users, so v0.2 does not upgrade a v0.1 installation: its migration step
-refuses a database that v0.1 wrote and leaves it untouched ([Upgrade](#upgrade)). One Flux is one company: the first account
-to sign up sets it up and owns it.
+refuses a database that v0.1 wrote and leaves it untouched ([Upgrade](#upgrade)). One Flux is one company: the first account,
+made from the setup link (`FLUX_SETUP_TOKEN`), sets it up and owns it; everyone else joins from an invite link or single sign-on.
 
 The release pins one OCI image, `ghcr.io/coldphase/flux`, by its manifest digest for `api`,
 `worker`, `keyring` and the one-shot `migrate` service, plus a separately digest-pinned PostgreSQL. The image
@@ -135,7 +135,7 @@ you from a tag that moves, which is why `compose.yaml` pins digests.
 
 4. Follow the tested [HTTPS reverse-proxy example](https://github.com/ColdPhase/flux/blob/f3a253ce860d7f22b6cd28fa0525a4589df3daf7/docs/operations/reverse-proxy.md)
    to put TLS in front of `127.0.0.1:<FLUX_PORT>` for `FLUX_PUBLIC_ORIGIN`, open that
-   URL and create the first account. If startup fails, read
+   URL's setup link, `<FLUX_PUBLIC_ORIGIN>/setup#<FLUX_SETUP_TOKEN>`, and create the first account. If startup fails, read
    `docker compose --env-file .env -f compose.yaml logs migrate api worker keyring` before changing data.
 
    If `up` stops with `all predefined address pools have been fully subnetted`, the Docker daemon has no

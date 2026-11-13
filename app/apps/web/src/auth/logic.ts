@@ -11,6 +11,8 @@ import {
   signUp,
 } from '../api/auth';
 import { ApiError, NetworkError, forgetKeptReads } from '../api/client';
+import { previewInvite } from '../people/api';
+import { forgetLinkToken, keptLinkToken, takeLinkToken } from './linkTokens';
 import { signOutDevice } from '../pwa';
 import { forgetRecentPlaces } from '../search/recent';
 import { resetStream } from '../api/stream';
@@ -39,11 +41,9 @@ export interface FormResult {
   created?: boolean;
   /** Password reset is not configured on this server. */
   resetUnavailable?: boolean;
-  /** Sign-up: the account exists but must verify this address before it can sign in. */
-  verifyEmailAt?: string;
 }
 
-const AUTH_PATHS = ['/sign-in', '/sign-up', '/sign-out', '/forgot-password', '/reset-password', '/claim'];
+const AUTH_PATHS = ['/sign-in', '/sign-up', '/setup', '/sign-out', '/forgot-password', '/reset-password', '/claim'];
 
 /**
  * The part of an MCP authorization request's address that the server signed (#310): `sig` plus the
@@ -96,6 +96,13 @@ export function describeAuthError(error: unknown, context: 'sign-in' | 'sign-up'
   if (context === 'sign-in' && (error.status === 401 || code === 'INVALID_EMAIL_OR_PASSWORD')) return 'That email and password don’t match an account.';
   if (code === 'SSO_ONLY') return 'Password sign-in is closed on this Flux server. Sign in with single sign-on.';
   if (code === 'SIGNUP_CLOSED') return 'Creating an account with a password is closed on this Flux server. Ask the person who runs it.';
+  if (code === 'SIGNUP_NEEDS_LINK') return 'Accounts on this Flux are made from an invite link. Ask an owner or admin of your company for one.';
+  if (code === 'SETUP_DONE') return 'This Flux is already set up. Sign in, or ask for an invite link.';
+  if (code === 'SETUP_LINK_INVALID' || code === 'SETUP_LINK_MISSING') return 'This setup link doesn’t work. Open the whole link that ./flux up printed on the server.';
+  if (code === 'INVITE_WRONG_ACCOUNT') return 'This invite link is for a different email address.';
+  if (code === 'INVITE_USED') return 'This invite link was already used. Ask whoever sent it for a new one.';
+  if (code === 'INVITE_EXPIRED') return 'This invite link has expired. Ask whoever sent it for a new one.';
+  if (code === 'INVITE_REVOKED' || code === 'INVITE_NOT_FOUND') return 'This invite link no longer works. Ask whoever sent it for a new one.';
   if (context === 'sign-in' && code === 'EMAIL_NOT_VERIFIED') return 'Verify your email address first. We sent a link to it; it works once.';
   if (context === 'sign-up' && code.startsWith('USER_ALREADY_EXISTS')) return 'An account with this email already exists. Sign in instead, or reset its password.';
   if (code === 'PASSWORD_TOO_WEAK' && error.message) return error.message;
@@ -139,12 +146,14 @@ async function capabilitiesOrNull(signal: AbortSignal): Promise<IdentityCapabili
   try { return await getCapabilities(signal); } catch { return null; }
 }
 
-/** `/sign-in`: the capabilities are read beside the session, so the page's first frame is the right one. */
+/** `/sign-in`: the capabilities are read beside the session, so the page's first frame is the right one. A Flux with no company opens Setup (#1471). */
 export async function signInLoader(args: LoaderFunctionArgs) {
   const capabilities = capabilitiesOrNull(args.request.signal);
   const redirectTo = await redirectIfSignedIn(args);
   if (redirectTo) return redirectTo;
-  return { capabilities: await capabilities };
+  const known = await capabilities;
+  if (known?.setup) return redirect('/setup');
+  return { capabilities: known };
 }
 
 /** `/login`, the MCP authorization step: the same page, with no session check of its own. */
@@ -152,15 +161,43 @@ export async function loginLoader({ request }: LoaderFunctionArgs) {
   return { capabilities: await capabilitiesOrNull(request.signal) };
 }
 
-/** The sign-up page needs to know whether sign-up is open, verified by mail, or closed (#313). */
-export async function signUpLoader(args: LoaderFunctionArgs) {
+/**
+ * What the sign-up form is for (#1471): `setup`, the owner's account from the setup link; `invite`, an account from the invite link this
+ * tab opened (its locked address filled in); `open`, a test deployment's form without a link; `closed`, no form (ask for an invite link);
+ * `set-up`, the setup link of a Flux that already has its company; `no-setup-link`, Setup opened without its token.
+ */
+export type SignUpMode =
+  | { kind: 'setup'; token: string }
+  | { kind: 'invite'; token: string; email: string | null; company: string }
+  | { kind: 'open' }
+  | { kind: 'closed' }
+  | { kind: 'set-up' }
+  | { kind: 'no-setup-link' };
+
+export async function setupLoader(args: LoaderFunctionArgs): Promise<Response | { mode: SignUpMode }> {
+  const token = takeLinkToken('setup');
   const redirectTo = await redirectIfSignedIn(args);
   if (redirectTo) return redirectTo;
-  try {
-    return { signup: (await getCapabilities(args.request.signal)).signup };
-  } catch {
-    return { signup: 'open' as const };
+  const capabilities = await capabilitiesOrNull(args.request.signal);
+  if (capabilities && !capabilities.setup) { forgetLinkToken('setup'); return { mode: { kind: 'set-up' } }; }
+  return { mode: token ? { kind: 'setup', token } : { kind: 'no-setup-link' } };
+}
+
+export async function signUpLoader(args: LoaderFunctionArgs): Promise<Response | { mode: SignUpMode }> {
+  const redirectTo = await redirectIfSignedIn(args);
+  if (redirectTo) return redirectTo;
+  const capabilities = await capabilitiesOrNull(args.request.signal);
+  if (capabilities?.setup) return redirect('/setup');
+  const invite = keptLinkToken('invite');
+  if (invite) {
+    try {
+      const preview = await previewInvite(invite, args.request.signal);
+      if (preview.state === 'pending') return { mode: { kind: 'invite', token: invite, email: preview.email, company: preview.workspaceName } };
+    } catch {
+      // A link that stopped working: the join page says why when it is opened again.
+    }
   }
+  return { mode: capabilities?.signup === 'open' ? { kind: 'open' } : { kind: 'closed' } };
 }
 
 export async function signInAction({ request }: ActionFunctionArgs): Promise<FormResult | Response> {
@@ -190,7 +227,9 @@ export async function signInAction({ request }: ActionFunctionArgs): Promise<For
 }
 
 export async function signUpAction({ request }: ActionFunctionArgs): Promise<FormResult | Response> {
-  return await signUpFrom(request) ?? redirect(safeNext(new URL(request.url).searchParams.get('next')));
+  // The owner's account from the setup link (#1471) goes on to Settings › Company, to name the company and invite people.
+  const owner = new URL(request.url).pathname === '/setup';
+  return await signUpFrom(request) ?? redirect(owner ? '/settings/company' : safeNext(new URL(request.url).searchParams.get('next')));
 }
 
 /**
@@ -213,15 +252,16 @@ async function signUpFrom(request: Request): Promise<FormResult | null> {
     password: validatePassword(password),
   };
   if (hasErrors(fieldErrors)) return { fieldErrors, values: { name, email } };
+  const setupToken = text(form, 'setupToken') || undefined;
+  const inviteToken = text(form, 'inviteToken') || undefined;
   try {
-    const created = await signUp({ name, email, password });
-    // Verified sign-up creates the account but no session: the person opens the mailed link first.
-    if (created && created.token === null) return { verifyEmailAt: email, values: { name, email } };
+    await signUp({ name, email, password, ...(setupToken ? { setupToken } : {}), ...(inviteToken ? { inviteToken } : {}) });
   } catch (error) {
     const accountExists = error instanceof ApiError && (error.code ?? '').startsWith('USER_ALREADY_EXISTS');
     return { formError: describeAuthError(error, 'sign-up'), accountExists, values: { name, email } };
   }
   signingOutHere = false;
+  if (setupToken) forgetLinkToken('setup');
   return null;
 }
 

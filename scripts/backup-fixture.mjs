@@ -278,9 +278,14 @@ async function seed() {
   assert.equal(undone.work.lifecycle.state, 'creation_reverted');
   const undo = { workId: created.workId, commandId: undoCommand, noticeId: undone.noticeId, version: createdTask.version, result: undone };
 
-  // An outsider: an account that is not a member of the demo workspace.
+  // An outsider: an account that is not a member of the demo workspace. Accounts come only from a link (#1471), so Olga joins from an
+  // invite link and Ada removes her again, as a person who left the company is.
   const outsider = { email: `outsider-${tag}@example.test`, password: `outsider-${tag}-password` };
-  await new Session().expect('POST', '/api/auth/sign-up/email', { ...outsider, name: 'Olga Outsider' }, [200]);
+  const invite = await ada.expect('POST', `/api/v1/workspaces/${workspaceId}/invites`, { role: 'member', email: outsider.email }, [201]);
+  const olga = new Session();
+  await olga.expect('POST', '/api/auth/sign-up/email', { ...outsider, name: 'Olga Outsider', inviteToken: new URL(invite.link).hash.slice(1) }, [200]);
+  const olgaId = (await olga.expect('GET', '/api/v1/me')).user.id;
+  await ada.expect('DELETE', `/api/v1/workspaces/${workspaceId}/members/${olgaId}`, undefined, [200, 204]);
 
   const state = { tag, workspaceId, projectId, fileId: file.id, fileHex: fileBytes.toString('hex'), adaId, jonasId, dmId: dm.id, noteId: note.id, docId: doc.id, outsider, liveConnection, bearers, undo };
   const expected = await snapshot(ada, jonas, state);

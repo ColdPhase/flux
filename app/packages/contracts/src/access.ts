@@ -274,13 +274,15 @@ export interface WorkspaceInvite {
 
 export interface InviteTokenCommand { token: string }
 
-/** What the link's holder sees before joining: never the locked address itself. */
+/** What the link's holder sees before joining, with the address a locked link is for, so the sign-up form fills it in (#1471). */
 export interface InvitePreview {
   workspaceName: string;
   invitedBy: string;
   role: InviteRole;
   expiresAt: string;
   emailLocked: boolean;
+  /** The address of a link locked to one (lower case), or null. */
+  email: string | null;
   encrypted: boolean;
   /** `joined`: the signed-in account already used this link; `member`: it is already in the workspace. */
   state: 'pending' | 'joined' | 'member';
@@ -299,6 +301,17 @@ export interface AcceptInviteResult {
    * it, an encrypted workspace's own space; null when there is none (a guest without a space opens Home).
    */
   landingSpaceId: string | null;
+}
+
+/**
+ * Password reset links (#1471; docs/development/access-policy.md#password-reset-links-1471): an owner or admin of the company makes a
+ * one-time link for another person in Settings › Company. The answer is the only time the link is shown.
+ */
+export const personResetLinkPath = (userId: string) => `/api/v1/people/${encodeURIComponent(userId)}/reset-link`;
+export interface ResetLink {
+  /** `<origin>/reset-password#<token>`. */
+  link: string;
+  expiresAt: string;
 }
 
 export const INVITE_CREATED_EVENT = 'workspace.invite_created.v1';

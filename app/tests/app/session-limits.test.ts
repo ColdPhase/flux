@@ -4,7 +4,7 @@ import { describe, test } from 'node:test';
 import Fastify from 'fastify';
 import { loadIdentityConfig, registerIdentity } from '../../apps/server/src/identity/index.js';
 import { DEFAULT_SESSION_IDLE_SECONDS, DEFAULT_SESSION_MAX_AGE_SECONDS, parseSessionDuration } from '../../apps/server/src/identity/config.js';
-import { unclaimedCompanyWarning } from '../../apps/server/src/identity/first-owner.js';
+import { setupNotice } from '../../apps/server/src/identity/first-owner.js';
 import { database, pool } from './support/db.js';
 
 // #993 (sessions, sign-up answers) and #994 (the first owner), in-process against the Compose database.
@@ -39,7 +39,7 @@ describe('session limits: FLUX_SESSION_IDLE and FLUX_SESSION_MAX_AGE (#993)', ()
 
   async function app(extra: Record<string, string>) {
     const instance = Fastify();
-    registerIdentity(instance, { db: database.db, config: load(extra), mailer: null });
+    registerIdentity(instance, { db: database.db, config: load(extra), mailer: null, openSignUp: true });
     await instance.ready();
     const email = `session-${randomUUID()}@example.test`;
     const created = await instance.inject({ method: 'POST', url: '/api/auth/sign-up/email', headers: { origin: ORIGIN }, payload: { email, password: PASSWORD, name: 'Session Person' } });
@@ -91,60 +91,26 @@ describe('session limits: FLUX_SESSION_IDLE and FLUX_SESSION_MAX_AGE (#993)', ()
   });
 });
 
-describe('verified sign-up answers an address that has an account like a new one (#993)', () => {
-  test('the page cannot tell; the mailbox\'s owner is mailed, at most once a minute', async () => {
-    const sent: { to: string; subject: string; text: string }[] = [];
-    const instance = Fastify();
-    const config = loadIdentityConfig({ FLUX_PUBLIC_ORIGIN: ORIGIN, FLUX_AUTH_SECRET: SECRET, FLUX_AUTH_RATE_LIMIT: 'false', FLUX_SIGNUP: 'verified',
-      FLUX_SMTP_URL: 'smtp://mailpit:1025', FLUX_MAIL_FROM: 'Flux <flux@example.test>' });
-    registerIdentity(instance, { db: database.db, config, mailer: { send: async (message) => { sent.push(message); }, close: () => undefined } });
-    await instance.ready();
-    const signUp = (email: string) => instance.inject({ method: 'POST', url: '/api/auth/sign-up/email', headers: { origin: ORIGIN }, payload: { email, password: PASSWORD, name: 'Verified Person' } });
-    const shape = (body: string) => Object.keys((JSON.parse(body) as { user: object }).user).sort().join(',') + `|${(JSON.parse(body) as { token: unknown }).token}`;
-    try {
-      const email = `verified-${randomUUID()}@example.test`;
-      const fresh = await signUp(email);
-      assert.equal(fresh.statusCode, 200);
-      assert.equal(sent.filter((message) => message.to === email).length, 1, 'a new address gets the verification link');
-      const link = sent.find((message) => message.to === email)!.text.match(/https?:\/\/\S+/)![0];
-      assert.equal((await instance.inject({ method: 'GET', url: new URL(link).pathname + new URL(link).search })).statusCode, 302, 'the link verifies it');
+describe('the first owner comes from the setup link (#1471)', () => {
+  const TOKEN = 'b7'.repeat(32);
+  const notice = (over: Partial<{ setupToken: string | null; ssoOnly: boolean }> = {}, hasCompany = false) =>
+    setupNotice({ publicOrigin: ORIGIN, setupToken: over.setupToken === undefined ? TOKEN : over.setupToken, ssoOnly: over.ssoOnly ?? false }, hasCompany);
 
-      const again = await signUp(email);
-      assert.equal(again.statusCode, 200, 'an address with an account is not a 422');
-      assert.equal(shape(again.body), shape(fresh.body), 'and the answer has the same shape as for a new address');
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      const notices = sent.filter((message) => message.to === email && message.subject === 'You already have a Flux account');
-      assert.equal(notices.length, 1, 'the owner of the mailbox is told');
-      assert.match(notices[0]!.text, new RegExp(`${ORIGIN}/sign-in`));
-      assert.match(notices[0]!.text, new RegExp(`${ORIGIN}/forgot-password`));
-
-      assert.equal((await signUp(email)).statusCode, 200);
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      assert.equal(sent.filter((message) => message.to === email && message.subject === 'You already have a Flux account').length, 1, 'once a minute, so sign-up cannot mail someone repeatedly');
-
-      const pending = `verified-${randomUUID()}@example.test`;
-      assert.equal((await signUp(pending)).statusCode, 200);
-      assert.equal((await signUp(pending)).statusCode, 200, 'an address still waiting to be verified answers the same too');
-    } finally { await instance.close(); }
-  });
-});
-
-describe('the first owner (#994)', () => {
-  const warn = (publicOrigin: string, over: Partial<{ signup: 'open' | 'verified' | 'off'; ssoOnly: boolean }> = {}, hasCompany = false) =>
-    unclaimedCompanyWarning({ publicOrigin, signup: over.signup ?? 'open', ssoOnly: over.ssoOnly ?? false }, hasCompany);
-
-  test('a public address with open or verified sign-up and no company is warned about, naming the address and the guide', () => {
-    for (const signup of ['open', 'verified'] as const) {
-      const message = warn(ORIGIN, { signup });
-      assert.match(message ?? '', /No company exists yet, so the first person to sign up at https:\/\/flux\.example\.org becomes its owner/);
-      assert.match(message ?? '', /docs\/operations\/install\.md, step 1/);
-    }
+  test('while no company exists the log says where the setup link is, and never the token', () => {
+    const said = notice();
+    assert.equal(said?.level, 'info');
+    assert.match(said?.text ?? '', /open the setup link that \.\/flux up printed \(https:\/\/flux\.example\.org\/setup#…\)/);
+    assert.doesNotMatch(said?.text ?? '', new RegExp(TOKEN));
   });
 
-  test('nothing to say for a local try-out, a company that exists, closed sign-up or single sign-on', () => {
-    for (const local of ['http://127.0.0.1:8081', 'http://localhost:8081', 'http://[::1]:8081']) assert.equal(warn(local), null, local);
-    assert.equal(warn(ORIGIN, {}, true), null);
-    assert.equal(warn(ORIGIN, { signup: 'off' }), null);
-    assert.equal(warn(ORIGIN, { ssoOnly: true }), null);
+  test('without FLUX_SETUP_TOKEN it warns that no first account can be made, and how to set one', () => {
+    const said = notice({ setupToken: null });
+    assert.equal(said?.level, 'warn');
+    assert.match(said?.text ?? '', /FLUX_SETUP_TOKEN is not set, so nobody can create the first account/);
+  });
+
+  test('nothing to say once the company exists, or with single sign-on as the only way in', () => {
+    assert.equal(notice({}, true), null);
+    assert.equal(notice({ ssoOnly: true }), null);
   });
 });

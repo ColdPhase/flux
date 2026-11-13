@@ -12,7 +12,7 @@ import { Avatar, Button, Icon, Input, Spinner, useFocusBack, useRowMotion, useTo
 import { isEncryptionEvent, type EncryptedWorkspace } from '../encryption/api';
 import { EncryptionSection } from '../encryption/EncryptionSection';
 import { listCompanyEncryptedSpaces } from '../encryption/api';
-import { ROLE_HINT, ROLE_LABEL, addMember, attemptKeys, changeRole, createInvite, firstName, getWorkspace, grantPerson, isManagerRole, listRemovedPeople, restorePerson, listInvites, listMembers, problemText, removeMember, renameCompany,
+import { ROLE_HINT, ROLE_LABEL, addMember, attemptKeys, changeRole, createInvite, firstName, getWorkspace, grantPerson, isManagerRole, listRemovedPeople, restorePerson, listInvites, listMembers, makeResetLink, problemText, removeMember, renameCompany,
   revokeInvite } from './api';
 import { DeleteSpaceDialog, type DeletableSpace } from './DeleteSpace';
 import { PersonLine } from './LastActive';
@@ -179,6 +179,8 @@ export function WorkspacePeople({ workspaceId, onBack, page = false }: { workspa
             {ordered.map((member) => (
               <MemberRow key={member.userId} member={member} self={member.userId === me.user.id} workspace={workspace} myRole={myRole} page={page}
                 editable={manager && (member.role !== 'owner' || myRole === 'owner')}
+                // #1471: an owner makes a reset link for anyone else, an admin for members and guests; never with single sign-on.
+                resettable={page && sso === null && member.userId !== me.user.id && (myRole === 'owner' || (myRole === 'admin' && (member.role === 'member' || member.role === 'guest')))}
                 editing={editing === member.userId} onEdit={(open) => { setDone(''); setEditing(open ? member.userId : null); }}
                 onChanged={(message, holderLeft) => changed(message, true, holderLeft)} />
             ))}
@@ -399,8 +401,8 @@ function AddPerson({ workspace, members, myRole, onAdded }: { workspace: Workspa
   );
 }
 
-function MemberRow({ member, self, workspace, myRole, page, editable, editing, onEdit, onChanged }: {
-  member: WorkspaceMember; self: boolean; workspace: EncryptedWorkspace; myRole: WorkspaceRole; page: boolean; editable: boolean;
+function MemberRow({ member, self, workspace, myRole, page, editable, resettable, editing, onEdit, onChanged }: {
+  member: WorkspaceMember; self: boolean; workspace: EncryptedWorkspace; myRole: WorkspaceRole; page: boolean; editable: boolean; resettable: boolean;
   editing: boolean; onEdit: (open: boolean) => void; onChanged: (message: string, holderLeft?: boolean) => void;
 }) {
   const editId = useId();
@@ -422,14 +424,14 @@ function MemberRow({ member, self, workspace, myRole, page, editable, editing, o
           </Button>
         ) : null}
       </div>
-      {editing ? <MemberEditor id={editId} member={member} self={self} workspace={workspace} myRole={myRole} onClose={close} onChanged={onChanged} /> : null}
+      {editing ? <MemberEditor id={editId} member={member} self={self} workspace={workspace} myRole={myRole} resettable={resettable} onClose={close} onChanged={onChanged} /> : null}
     </li>
   );
 }
 
 /** One member's role and removal; mounted fresh each time it opens, so nothing stale carries over. */
-function MemberEditor({ id, member, self, workspace, myRole, onClose, onChanged }: {
-  id: string; member: WorkspaceMember; self: boolean; workspace: EncryptedWorkspace; myRole: WorkspaceRole;
+function MemberEditor({ id, member, self, workspace, myRole, resettable, onClose, onChanged }: {
+  id: string; member: WorkspaceMember; self: boolean; workspace: EncryptedWorkspace; myRole: WorkspaceRole; resettable: boolean;
   onClose: () => void; onChanged: (message: string, holderLeft?: boolean) => void;
 }) {
   const [role, setRole] = useState<WorkspaceRole>(member.role);
@@ -518,6 +520,50 @@ function MemberEditor({ id, member, self, workspace, myRole, onClose, onChanged 
         )
       ) : <Button variant="quiet" className="details__leave people__remove" onClick={() => setConfirm('remove')}>Remove from {workspace.name}</Button>) : null}
       {problem ? <p className="people__notice" role="alert"><Icon name="alert" size={13} />{problem}</p> : null}
+      {resettable ? <ResetLinkGroup id={id} member={member} workspace={workspace} /> : null}
+    </div>
+  );
+}
+
+/**
+ * A one-time password reset link for this person (#1471), made and copied as a new invite link is: Flux sends it nowhere. It is shown
+ * only here, once; making another stops the earlier one.
+ */
+function ResetLinkGroup({ id, member, workspace }: { id: string; member: WorkspaceMember; workspace: EncryptedWorkspace }) {
+  const [busy, setBusy] = useState(false);
+  const [link, setLink] = useState<string | null>(null);
+  const [status, setStatus] = useState('');
+  const [problem, setProblem] = useState('');
+  const linkRef = useRef<HTMLInputElement>(null);
+  const first = firstName(member.name);
+  async function make() {
+    if (busy) return;
+    setBusy(true); setProblem(''); setStatus('');
+    try {
+      const made = await makeResetLink(member.userId);
+      setLink(made.link);
+      const minutes = Math.max(1, Math.round((new Date(made.expiresAt).getTime() - Date.now()) / 60_000));
+      const lasts = minutes >= 60 ? `${Math.round(minutes / 60)} hour${Math.round(minutes / 60) === 1 ? '' : 's'}` : `${minutes} minutes`;
+      setStatus(await copyText(made.link) ? `Reset link made and copied. It stops working when it is used or in ${lasts}.`
+        : `Reset link made. Copy it and send it to ${first} yourself. It stops working when it is used or in ${lasts}.`);
+      requestAnimationFrame(() => linkRef.current?.select());
+    } catch (error) {
+      setProblem(problemText(error, { workspace: workspace.name, who: member.name }));
+    } finally { setBusy(false); }
+  }
+  return (
+    <div className="people__field people__reset" role="group" aria-labelledby={`${id}-reset`}>
+      <label id={`${id}-reset`}>Password</label>
+      <p className="people__hint">Make a one-time link that lets {first} choose a new password.</p>
+      {link ? (
+        <div className="people__link">
+          <Input ref={linkRef} id={`${id}-reset-link`} label={`Reset link for ${member.name}`} readOnly value={link}
+            onFocus={(event) => event.currentTarget.select()} hint="It works once. Flux doesn’t send it: paste it into your message to them." />
+          <div className="details__actions"><Button variant="secondary" onClick={() => void copyText(link).then((copied) => setStatus(copied ? 'Link copied.' : 'Copying isn’t allowed here. Select the link and copy it.'))}><Icon name="copy" size={14} />Copy link</Button></div>
+        </div>
+      ) : <div className="details__actions"><Button variant="secondary" busy={busy} onClick={() => void make()}><Icon name="link" size={14} />Make reset link</Button></div>}
+      {problem ? <p className="people__notice" role="alert"><Icon name="alert" size={13} />{problem}</p> : null}
+      <p className="people__invite-status" role="status">{status ? <><Icon name="check" size={13} />{status}</> : null}</p>
     </div>
   );
 }

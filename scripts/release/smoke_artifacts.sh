@@ -236,7 +236,7 @@ if [ "$legs" = all ]; then
   dc "$source_project" "$source_env" "$assets" up -d --wait --wait-timeout "$wait_timeout"
   health "$source_port" >/dev/null
   echo "running: api $(dc "$source_project" "$source_env" "$assets" exec -T api uname -m), db $(dc "$source_project" "$source_env" "$assets" exec -T db uname -m)"
-  python3 "$root/scripts/release/smoke_data.py" seed --origin "http://127.0.0.1:$source_port" --state "$state_dir/account.json"
+  FLUX_SETUP_TOKEN=$(sed -n 's/^FLUX_SETUP_TOKEN=//p' "$source_env") python3 "$root/scripts/release/smoke_data.py" seed --origin "http://127.0.0.1:$source_port" --state "$state_dir/account.json"
   # The database holds the account; this file in the files volume proves the paired archive too.
   probe=$(python3 -c 'import secrets; print(secrets.token_hex(16))')
   write_probe "$source_project" "$source_env" "$assets" "$probe"
@@ -271,7 +271,7 @@ dc "$source_project" "$up_env" "$previous_assets" config --quiet
 dc "$source_project" "$up_env" "$previous_assets" pull
 dc "$source_project" "$up_env" "$previous_assets" up -d --wait --wait-timeout "$wait_timeout"
 health "$source_port" >/dev/null
-python3 "$root/scripts/release/smoke_data.py" seed --origin "http://127.0.0.1:$source_port" --state "$up_dir/account.json" --provider-url "$provider_url"
+FLUX_SETUP_TOKEN=$(sed -n 's/^FLUX_SETUP_TOKEN=//p' "$up_env") python3 "$root/scripts/release/smoke_data.py" seed --origin "http://127.0.0.1:$source_port" --state "$up_dir/account.json" --provider-url "$provider_url"
 up_probe=$(python3 -c 'import secrets; print(secrets.token_hex(16))')
 write_probe "$source_project" "$up_env" "$previous_assets" "$up_probe"
 if [ -n "${FLUX_SMOKE_DUMP:-}" ]; then

@@ -22,7 +22,8 @@ function config(overrides: Partial<IdentityConfig> = {}): IdentityConfig {
 
 async function app(identity: IdentityConfig, trustProxy: string[] | false = false) {
   const instance = Fastify({ trustProxy });
-  registerIdentity(instance, { db: database.db, config: identity, mailer: null });
+  // A test deployment's sign-up without a link (#1471): these tests are about cookies and proxies, not who may make an account.
+  registerIdentity(instance, { db: database.db, config: identity, mailer: null, openSignUp: true });
   await instance.ready();
   return instance;
 }
@@ -40,26 +41,25 @@ describe('identity configuration', () => {
     assert.equal(await verifiedOauthQuery(expired.toString(), secret), null);
   });
 
-  test('verified sign-up needs mail, and a sign-on provider closes password sign-up (#313)', () => {
+  test('a sign-on provider makes SSO-only the default; FLUX_SETUP_TOKEN is the setup link\'s token (#313, #1471)', () => {
     const smtp = { FLUX_SMTP_URL: 'smtp://mailpit:1025', FLUX_MAIL_FROM: 'Flux <flux@example.test>' };
     const secretDir = mkdtempSync(join(tmpdir(), 'flux-signup-'));
     const secretFile = join(secretDir, 'oidc');
     writeFileSync(secretFile, 'client-secret-value\n');
     const oidc = { FLUX_OIDC_ISSUER: 'https://id.example.org/realms/flux', FLUX_OIDC_CLIENT_ID: 'flux', FLUX_OIDC_CLIENT_SECRET_FILE: secretFile };
-    assert.equal(loadIdentityConfig(base).signup, 'open', 'open is the default');
-    const withoutMail = loadIdentityConfig({ ...base, FLUX_SIGNUP: 'verified' });
-    assert.deepEqual([withoutMail.signupRequested, withoutMail.signup], ['verified', 'off'], 'verified without SMTP behaves as off');
-    const withMail = loadIdentityConfig({ ...base, ...smtp, FLUX_SIGNUP: 'verified' });
-    assert.deepEqual([withMail.signupRequested, withMail.signup], ['verified', 'verified']);
-    const provider = loadIdentityConfig({ ...base, ...smtp, ...oidc, FLUX_SIGNUP: 'open' });
-    assert.equal(provider.signup, 'off', 'with an active provider, ordinary password sign-up is refused');
-    const prepare = loadIdentityConfig({ ...base, ...smtp, ...oidc, FLUX_SSO_MODE: 'prepare', FLUX_SIGNUP: 'open' });
-    assert.deepEqual([prepare.ssoMode, prepare.ssoOnly, prepare.signup], ['prepare', false, 'open'], 'prepare keeps password sign-up while linking');
+    const provider = loadIdentityConfig({ ...base, ...smtp, ...oidc });
+    const prepare = loadIdentityConfig({ ...base, ...smtp, ...oidc, FLUX_SSO_MODE: 'prepare' });
+    assert.deepEqual([prepare.ssoMode, prepare.ssoOnly], ['prepare', false], 'prepare keeps password accounts while linking');
     assert.deepEqual([provider.ssoMode, provider.ssoOnly], ['sso', true], 'SSO-only is the default with a provider');
     assert.equal(loadIdentityConfig({ ...base, ...smtp }).ssoOnly, false, 'no provider, no SSO-only');
     assert.throws(() => loadIdentityConfig({ ...base, FLUX_SSO_MODE: 'prepare' }), /needs a sign-on provider/);
     assert.throws(() => loadIdentityConfig({ ...base, ...oidc, FLUX_SSO_MODE: 'both' }), /FLUX_SSO_MODE must be prepare or sso/);
-    assert.throws(() => loadIdentityConfig({ ...base, FLUX_SIGNUP: 'everyone' }), /FLUX_SIGNUP must be open, verified or off/);
+    assert.equal(loadIdentityConfig(base).setupToken, null, 'unset: no first account can be made');
+    assert.equal(loadIdentityConfig({ ...base, FLUX_SETUP_TOKEN: ` ${'a1'.repeat(32)} ` }).setupToken, 'a1'.repeat(32));
+    for (const bad of ['short', 'x'.repeat(31), `${'a'.repeat(40)} b`, `${'a'.repeat(40)}#`]) {
+      assert.throws(() => loadIdentityConfig({ ...base, FLUX_SETUP_TOKEN: bad }), /FLUX_SETUP_TOKEN must be 32 to 256/, bad);
+    }
+    assert.equal('signup' in loadIdentityConfig({ ...base, FLUX_SIGNUP: 'open' }), false, 'FLUX_SIGNUP is gone and means nothing');
     rmSync(secretDir, { recursive: true, force: true });
   });
 
@@ -190,7 +190,7 @@ describe('identity server behaviour', () => {
   test('password reset reports unavailable when SMTP is not configured', async () => {
     const server = await app(config());
     try {
-      assert.deepEqual((await server.inject({ method: 'GET', url: '/api/v1/auth/capabilities' })).json(), { company: null, passwordReset: 'unavailable', signup: 'open', ssoOnly: false, linkable: false, sso: null });
+      assert.deepEqual((await server.inject({ method: 'GET', url: '/api/v1/auth/capabilities' })).json(), { company: null, setup: false, passwordReset: 'unavailable', signup: 'open', ssoOnly: false, linkable: false, sso: null });
       const response = await server.inject({
         method: 'POST', url: '/api/auth/request-password-reset',
         headers: { origin: 'https://flux.example.org' },

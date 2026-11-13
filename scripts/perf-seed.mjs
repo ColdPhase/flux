@@ -64,9 +64,9 @@ class Session {
   }
 }
 
-async function account(name, email) {
+async function account(name, email, link = {}) {
   const session = new Session();
-  const signUp = await session.request('POST', '/api/auth/sign-up/email', { email, password, name });
+  const signUp = await session.request('POST', '/api/auth/sign-up/email', { email, password, name, ...link });
   if (signUp.status !== 200) {
     const signIn = await session.request('POST', '/api/auth/sign-in/email', { email, password });
     if (signIn.status !== 200) fail(`${email} could not sign up or sign in (${signUp.status}/${signIn.status})`);
@@ -88,11 +88,15 @@ async function lanes(count, job) {
 
 const uuid = () => crypto.randomUUID();
 const started = Date.now();
-const people = [
-  await account('Ada Kowalska', 'ada@perf.flux.test'),
-  await account('Jonas Berg', 'jonas@perf.flux.test'),
-  await account('Maya Okafor', 'maya@perf.flux.test'),
-];
+// #1471: Ada's account comes from the setup link (FLUX_SETUP_TOKEN), the others' from invite links she makes for their addresses.
+const adaFirst = await account('Ada Kowalska', 'ada@perf.flux.test', process.env.FLUX_SETUP_TOKEN ? { setupToken: process.env.FLUX_SETUP_TOKEN } : {});
+const invited = async (name, email) => {
+  const company = (await adaFirst.session.expect('GET', '/api/v1/workspaces')).find((item) => item.company);
+  if (!company) return account(name, email);
+  const invite = await adaFirst.session.request('POST', `/api/v1/workspaces/${company.id}/invites`, { role: 'member', email });
+  return account(name, email, invite.status === 201 ? { inviteToken: new URL(invite.json.link).hash.slice(1) } : {});
+};
+const people = [adaFirst, await invited('Jonas Berg', 'jonas@perf.flux.test'), await invited('Maya Okafor', 'maya@perf.flux.test')];
 const [ada, jonas, maya] = people;
 const ref = (person) => ({ kind: 'human', id: person.id });
 
@@ -107,8 +111,10 @@ if (existing) {
 const company = (await ada.session.expect('GET', '/api/v1/workspaces')).find((item) => item.company);
 if (!company) fail('Ada is not the first account here; start from a fresh stack');
 const ws = await ada.session.expect('PATCH', `/api/v1/workspaces/${company.id}`, { name: WORKSPACE_NAME });
+// They joined from their invite links as their accounts were made (#1471); an account that existed before is added here.
+const members = new Set((await ada.session.expect('GET', `/api/v1/workspaces/${ws.id}/members`)).map((member) => member.userId));
 for (const person of [jonas, maya]) {
-  await ada.session.expect('POST', `/api/v1/workspaces/${ws.id}/members`, { email: person.email, role: 'member' });
+  if (!members.has(person.id)) await ada.session.expect('POST', `/api/v1/workspaces/${ws.id}/members`, { email: person.email, role: 'member' });
 }
 const projectNames = [MAIN_PROJECT, 'School robotics club', 'Tool library', 'Repair café', 'Seed swap',
   'Rainwater barrels', 'Compost rota', 'Bike workshop', 'Pollinator strip', 'Winter market'];

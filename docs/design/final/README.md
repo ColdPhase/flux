@@ -1458,6 +1458,14 @@ the composer. The right-hand phone above shows the sheet.
     owner) and **Works for** (7 days by default; 1 day, 30 days). An address that already has a Flux account is added at once
     ("Maja joined as member"); any other address, or none, makes the link, copied at once, with its card and Copy link as before.
     "Only for", "Add someone" and the second role picker go. Links waiting to be used stay listed under the form.
+  - **A reset link next to a person** (founder decision, Hubert, 2026-11-13, [#1471](https://github.com/ColdPhase/flux/issues/1471)).
+    Without SSO, the person's editor (the role button "Member ▾" opens it under their row) ends with one more group, after Remove:
+    "Password" in the group's label style, the line "Make a one-time link that lets {first name} choose a new password." and a
+    `secondary` **Make reset link** (icon link). The link then shows exactly as a new invite link does, a read-only
+    field "Reset link for {name}" with the hint "It works once. Flux doesn't send it: paste it into your message to them." and
+    **Copy link** under it; the status line says "Reset link made and copied. It stops working when it is used or in 1 hour." (the
+    server's link lifetime).
+    An owner sees it for everyone but themselves, an admin for members and guests. Nothing else on the page changes.
   - There is no AI switch here; AI is per space.
 
 #### Hide previews
@@ -1911,6 +1919,24 @@ Founder priorities (calm; plain words), decided by the agents for the v0.2.1 aud
   is only Home's own, and Home has no header row on the computer.
 - **A Wiki page by its address** (the old "material") is a card on the page: its back link, "Version 1", the title (`--fs-xl`), "You · Saved 13 Nov 2026, 09:00" in `--t3`, and its words (`--fs-base`) on `--el`.
 - **A sign-in link with nothing behind it** (the agent consent page opened with no request) is a sign-in page: "This sign-in link isn't complete", the way to start again, and "Go to Home", in the column of the other sign-in pages.
+
+### Setup and accounts from a link
+
+Founder decision F-044 (Hubert, 2026-11-13, [#1471](https://github.com/ColdPhase/flux/issues/1471)): an account comes only from the setup
+link, an invite link or single sign-on. Nothing new is drawn: these are the sign-up page's column, heading, form and button pair.
+
+- **Setup** (`/setup#<token>`, printed by the first `./flux up`). While no company exists every signed-out page opens here. The
+  heading is "Set up Flux" and the lead "Create the owner's account. You name the company next."; the form is the sign-up form
+  (Name, Email, Password) with the primary **Create owner account**. Opened without its token: "Open the setup link", "Use the
+  whole link that ./flux up printed on the server. Running ./flux up again prints it." and no form. Once the company exists:
+  "This Flux is set up" and **Sign in**.
+- **Create an account from an invite.** The sign-up form under "Join {company}"; an invite for one address fills the Email
+  field in and makes it read-only, with the hint "This invite is for this address."
+- **Sign-up without a link** is no form: the heading "Ask for an invite link", the line "Accounts on this Flux are made from an
+  invite link. Ask an owner or admin of your company for one." and the link line "Sign in" under it. The sign-in page's last line
+  is "New here? Open the invite link you were sent." with no link.
+- **Choose a new password** opens from a reset link of any kind (mailed, made in Settings › Company or by `./flux reset-link`),
+  as it is drawn now.
 
 ### Not drawn yet
 

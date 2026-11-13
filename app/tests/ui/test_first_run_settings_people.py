@@ -384,7 +384,9 @@ class FirstRunSettingsPeople(unittest.TestCase):
         stranger.goto(field.input_value())
         # #1438: the invite page is the create-account form; joining lands in the space everyone reads, or Home.
         stranger.get_by_label("Name").fill("Piotr Nowy")
-        stranger.get_by_label("Email").fill(newcomer)
+        # #1471: the link is for his address, so the form has it filled in and locked.
+        expect(stranger.get_by_label("Email")).to_have_value(newcomer)
+        expect(stranger.get_by_label("Email")).not_to_be_editable()
         stranger.get_by_label("Password").fill(PASSWORD)
         stranger.get_by_role("button", name="Create account and join").click()
         expect(stranger).not_to_have_url(re.compile(r"/join"))

@@ -39,6 +39,10 @@
 .people__link input { font-family: var(--mono, ui-monospace, monospace); font-size: var(--fs-sm); }
 .people__sub { margin: 18px 0 4px !important; }
 .people__confirm { padding-top: 10px; border-top: 1px solid var(--line); }
+/* A reset link next to a person (#1471): the editor's last group, under the same rule as a confirmation; its link box sits flush in it. */
+.people__reset { padding-top: 10px; border-top: 1px solid var(--line); }
+.people__reset .people__link { margin-top: 0; }
+.people__reset .people__hint, .people__reset .people__invite-status { margin: 0; }
 .people__confirm p { font-size: var(--fs-md); color: var(--t2); line-height: 1.5; }
 .people__remove.ui-btn { justify-self: start; margin-left: -8px; }
 .people .details__sec .ov-note { margin-top: 10px; }

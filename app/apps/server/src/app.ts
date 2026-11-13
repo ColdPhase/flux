@@ -13,6 +13,7 @@ import { aiRoutes } from './access/ai-gate.js';
 import { agentTaskRoutes } from './agent-tasks/routes.js';
 import { startIdentity } from './identity/index.js';
 import { accessRoutes } from './access/routes.js';
+import { inviteSignUp } from './access/invites.js';
 import { sketchRoutes } from './sketches/routes.js';
 import { dmRoutes } from './direct-messages/routes.js';
 import { pushRoutes } from './push/index.js';
@@ -172,7 +173,10 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   boss.on('error', (error) => app.log.error(error));
   await boss.start();
   app.addHook('onClose', async () => boss.stop());
-  const identity = await startIdentity(app, { db, config: identityConfig, originExemptPaths: testDeployment ? [CSP_REPORT_PATH] : [] });
+  const inviteSigner = { secret: identityConfig.secret, publicOrigin: identityConfig.publicOrigin };
+  // #1471: an account comes from the setup link or an invite link; a test deployment also makes one without a link.
+  const identity = await startIdentity(app, { db, config: identityConfig, originExemptPaths: testDeployment ? [CSP_REPORT_PATH] : [],
+    invites: identityConfig.ssoOnly ? null : inviteSignUp(db, inviteSigner, boss, identityConfig.oidc !== null), openSignUp: testDeployment });
   gateSessions = identity;
   const encryption = composeEncryption(db, boss, encryptionKeys, { isolatedCompanies: testDeployment });
   // The keyring heartbeat (5 s): swap again, then the boot id; a new boot deletes the stale unlock rows and records the locks.
@@ -195,7 +199,7 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   const lifecycle = liveMedia ? liveLifecycle(db, pool, liveMedia.media) : null;
   const liveRevocation = liveMedia ? liveRevocationCoordinator(db, pool, liveMedia.media, lifecycle!) : null;
   await app.register(accessRoutes, { db, sessions: identity, boss, liveRevocation, verifiedEmailMembers: identityConfig.oidc !== null, encryptionKeys,
-    inviteSigner: { secret: identityConfig.secret, publicOrigin: identityConfig.publicOrigin }, inviteVerifiedEmail: identityConfig.signup === 'verified',
+    inviteSigner,
     ssoOnly: identityConfig.ssoOnly, testDeployment });
   // Live map/wiki editing (#228) is composed below, after media; native map routes reach its backend lazily.
   let editing: Awaited<ReturnType<typeof registerEditing>> = null;

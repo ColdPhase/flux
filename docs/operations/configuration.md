@@ -25,7 +25,7 @@ the variable.
 ## Settings you will probably change
 
 - [`FLUX_PUBLIC_ORIGIN`](#flux_public_origin): origin URL
-- [`FLUX_SIGNUP`](#flux_signup): `open`, `verified`, `off`
+- [`FLUX_SETUP_TOKEN`](#flux_setup_token): secret, 32–256 letters, digits, `-` or `_`
 - [`FLUX_SMTP_URL`](#flux_smtp_url): SMTP URL
 - [`FLUX_MAIL_FROM`](#flux_mail_from): address
 - [`FLUX_TRUSTED_PROXIES`](#flux_trusted_proxies): list of IPs or CIDRs
@@ -109,7 +109,7 @@ the variable.
 | [`FLUX_SEALED_SEARCH_PROCESS_MAX_BYTES`](#flux_sealed_search_process_max_bytes) | Encrypted spaces and the keyring | a quarter of the container memory, 64–512 MiB |
 | [`FLUX_SESSION_IDLE`](#flux_session_idle) | Accounts, sign-up and sessions | empty |
 | [`FLUX_SESSION_MAX_AGE`](#flux_session_max_age) | Accounts, sign-up and sessions | empty |
-| [`FLUX_SIGNUP`](#flux_signup) | Accounts, sign-up and sessions | `open` |
+| [`FLUX_SETUP_TOKEN`](#flux_setup_token) | Accounts, sign-up and sessions | empty |
 | [`FLUX_SMTP_URL`](#flux_smtp_url) | Email | empty (`./flux dev`: `smtp://mailpit:1025`) |
 | [`FLUX_SSO_MODE`](#flux_sso_mode) | Single sign-on (OpenID Connect) | `sso` |
 | [`FLUX_STREAM_HEARTBEAT_MS`](#flux_stream_heartbeat_ms) | Collaboration, link cards and the live stream | `25000` |
@@ -190,17 +190,17 @@ How long a request waits for a database connection (pool of 10 per process) befo
 
 Signs session cookies, invite-link tokens and cursors. Changing it signs everyone out and voids pending invite links.
 
-### `FLUX_SIGNUP`
+### `FLUX_SETUP_TOKEN`
 
-**Type** `open`, `verified`, `off` · **Default** `open` · **Used by** api (release, source)
+**Type** secret, 32–256 letters, digits, `-` or `_` · **Default** empty · **Used by** api (release, source)
 
-Who may create a password account. `open`: anyone who reaches Flux. `verified`: anyone who can confirm an address by mail; it proves a mailbox, not membership of your team (needs email; without it sign-up is closed). `off`: nobody, including you, so create your own account first. A provider in `sso` mode closes password sign-up whatever this says, and an invite link never opens closed sign-up. See [who can sign up](install.md#5-decide-who-can-sign-up). Example: `off`.
+The setup link's token: the first account, the company's owner, is made only from `<origin>/setup#<token>`, and every other account from an invite link or single sign-on. `./flux up` writes a random one and prints the link while no company exists. Empty: no first account can be made. Once the company exists it does nothing. See [install](install.md).
 
 ### `FLUX_PASSWORD_RESET_TTL_SECONDS`
 
 **Type** integer, 60–86400 s · **Default** `3600` · **Used by** api (release, source)
 
-Lifetime of a password reset link. Links are single use and stored hashed. Example: `3600`.
+Lifetime of a password reset link, mailed or made in Settings › Company or by `./flux reset-link`. Links are single use, stored hashed, and stop when a newer one is made or the password changes. Example: `3600`.
 
 ### `FLUX_SESSION_IDLE`
 
@@ -729,7 +729,8 @@ between services and test switches. Do not set them. They are listed for develop
 Flux launcher. Flux runs in Docker; the external cowork action also needs the native Codex CLI.
 
   ./flux up              Create docker/.env with new secrets if it is missing (never overwrites it),
-                         build, migrate, start and print the URL.
+                         build, migrate, start and print the URL; while no company exists, the
+                         setup link that makes the owner's account.
   ./flux demo [--dev]    Seed demo data through the public API and print two logins.
                          Refuses non-loopback (production-looking) origins unless --force.
   ./flux dev [--build]   Hot-reload development in Docker: Vite for the web app, tsx watch
@@ -749,6 +750,9 @@ Flux launcher. Flux runs in Docker; the external cowork action also needs the na
   ./flux export <space> [--as EMAIL] [--output FILE]
                          Write a space's JSON-plus-files bundle to exports/ (as the company
                          owner by default; the account needs project.manage).
+  ./flux reset-link <email>
+                         Print a one-time password reset link for that account, the owner's too
+                         (works once, for FLUX_PASSWORD_RESET_TTL_SECONDS; a newer link stops it).
   ./flux identity link <userId> --subject <sub> --reason "<why>" [--old-issuer <URL>] [--allow-sso]
                          Audited operator recovery by Flux account id; requires the running API.
   ./flux identity unlink <userId> --reason "<why>"

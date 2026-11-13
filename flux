@@ -215,6 +215,8 @@ ensure_env() {
   set_env_line "$draft" POSTGRES_PASSWORD "$(random_hex 32)"
   set_env_line "$draft" FLUX_FIXTURE_TOKEN "$(random_hex 32)"
   set_env_line "$draft" FLUX_AUTH_SECRET "$(random_hex 32)"
+  # The setup link's token (#1471): the first account, the owner, is made only from <origin>/setup#<token>.
+  set_env_line "$draft" FLUX_SETUP_TOKEN "$(random_hex 32)"
   set_env_line "$draft" FLUX_KEYRING_TOKEN "$(random_b64url)"
   set_env_line "$draft" FLUX_KEY_PIN_SECRET "$(random_b64url)"
   set_env_line "$draft" FLUX_DEMO_OWNER_PASSWORD "demo-$(random_hex 8)"
@@ -617,27 +619,43 @@ cmd_up() {
   claim_project "$PROJECT"
   ASK_RUNTIME=1
   ensure_env
+  ensure_setup_token
   start_main
   say ""
   say "Flux is running:  $(public_origin)"
-  if [ "$(env_value FLUX_SIGNUP | tr -d '[:space:]' | tr 'A-Z' 'a-z')" = off ]; then
-    say "Sign-up is closed (FLUX_SIGNUP=off): see \"Decide who can sign up\" in docs/operations/install.md to add people."
-    say "Or run ./flux demo for sample data and two logins."
-  else
-    say "Create an account there, or run ./flux demo for sample data and two logins."
-  fi
-  warn_unclaimed_company
+  print_setup_link
 }
 
-# The first account to sign up becomes the company's owner (F-037). On a public address that must be you: say so while nobody has
-# signed up yet (#994). The question is asked only for a non-loopback origin and never stops `up`.
-warn_unclaimed_company() {
-  is_loopback_origin "$(public_origin)" && return 0
-  [ "$(env_value FLUX_SIGNUP | tr -d '[:space:]' | tr 'A-Z' 'a-z')" = off ] && return 0
-  [ "$(db_query "SELECT count(*) FROM workspaces WHERE company" 2>/dev/null | tr -d '[:space:]')" = 0 ] || return 0
+# A docker/.env from before #1471 has no setup token: one is added (only the missing line; nothing else changes). It matters only while no
+# company exists.
+ensure_setup_token() {
+  env_file_has FLUX_SETUP_TOKEN && return 0
+  printf '# Added by ./flux up (#1471): the setup link'"'"'s token; the first account, the owner, is made from <origin>/setup#<token>.\nFLUX_SETUP_TOKEN=%s\n' "$(random_hex 32)" >> "$ENV_FILE"
+}
+
+# While no company exists, the first account, the company's owner, is made from the setup link (#1471): print it, so the person at this
+# terminal is the one who sets Flux up. With single sign-on as the only way in, the provider's first person sets it up instead (F-037).
+sso_only() {
+  [ -n "$(env_value FLUX_OIDC_ISSUER)" ] && [ "$(env_value FLUX_SSO_MODE | tr 'A-Z' 'a-z')" != prepare ]
+}
+print_setup_link() {
+  # A database that does not answer here never stops `up`: the line is left out.
+  companies=$(db_query "SELECT count(*) FROM workspaces WHERE company" 2>/dev/null | tr -d '[:space:]') || companies=''
+  case "$companies" in ''|*[!0-9]*) return 0 ;; esac
+  if [ "$companies" != 0 ]; then
+    say "Sign in there. People join from the invite links you make in Settings › Company; ./flux reset-link <email> makes a password reset link."
+    return 0
+  fi
+  if sso_only; then
+    say "Sign in there with single sign-on: the first person your identity provider lets in becomes the company's owner."
+    return 0
+  fi
   say ""
-  say "Nobody has signed up yet, and the first account becomes the company's owner. Sign up before anyone else can reach $(public_origin)."
-  say "On a server, do it first at http://127.0.0.1:$(port), with FLUX_PUBLIC_ORIGIN unset or set to that address, then set the public address (docs/operations/install.md, step 1)."
+  say "Set up Flux: open this link and create the owner's account (it works until the company exists; keep it private):"
+  say ""
+  say "  $(public_origin)/setup#$(env_value FLUX_SETUP_TOKEN)"
+  say ""
+  say "Or run ./flux demo for sample data and two logins."
 }
 
 cmd_demo() {
@@ -657,6 +675,7 @@ cmd_demo() {
     die "demo refuses to seed $origin: it looks like a production deployment. Demo data and known passwords belong on a local development instance (use --force only if this really is a throwaway instance)."
   fi
   ensure_demo_passwords
+  ensure_setup_token
   if [ "$target" = dev ]; then
     compose_dev ps --status running --services 2>/dev/null | grep -qx api || die "The dev stack is not running. Start it with ./flux dev."
     run_compose=compose_dev
@@ -666,7 +685,7 @@ cmd_demo() {
   fi
   say "Seeding demo data through the public API..."
   $run_compose exec -T \
-    -e FLUX_PUBLIC_ORIGIN="$origin" -e FLUX_DEMO_JSON="${FLUX_DEMO_JSON:-}" \
+    -e FLUX_PUBLIC_ORIGIN="$origin" -e FLUX_DEMO_JSON="${FLUX_DEMO_JSON:-}" -e FLUX_SETUP_TOKEN="$(env_value FLUX_SETUP_TOKEN)" \
     -e FLUX_DEMO_OWNER_PASSWORD="$(env_value FLUX_DEMO_OWNER_PASSWORD)" \
     -e FLUX_DEMO_PARTNER_PASSWORD="$(env_value FLUX_DEMO_PARTNER_PASSWORD)" \
     api node --input-type=module - < "$DEMO_SEED"
@@ -1390,6 +1409,19 @@ cmd_identity() {
   compose_main exec -T api node apps/server/dist/identity/cli.js "$sub" "$@"
 }
 
+# A one-time password reset link for any password account, the owner's too (#1471). It is printed here, never logged, recorded as made by
+# this command, and it stops working when used, when the password changes, when a newer link is made, or after
+# FLUX_PASSWORD_RESET_TTL_SECONDS (1 hour by default).
+cmd_reset_link() {
+  [ "$#" -eq 1 ] || die "usage: ./flux reset-link <email>"
+  case "$1" in -*|'') die "usage: ./flux reset-link <email>" ;; esac
+  need_docker
+  [ -f "$ENV_FILE" ] || die "No ${ENV_FILE#"$FLUX_ROOT"/}; start Flux with ./flux up first."
+  check_owner "$PROJECT"
+  is_running api || die "Flux is not running. Start it with ./flux up, then run ./flux reset-link again."
+  compose_main exec -T api node apps/server/dist/identity/cli.js reset-link "$1"
+}
+
 cmd_runtime() {
   sub=${1:-status}
   [ $# -gt 0 ] && shift
@@ -1550,7 +1582,8 @@ cmd_help() {
 Flux launcher. Flux runs in Docker; the external cowork action also needs the native Codex CLI.
 
   ./flux up              Create docker/.env with new secrets if it is missing (never overwrites it),
-                         build, migrate, start and print the URL.
+                         build, migrate, start and print the URL; while no company exists, the
+                         setup link that makes the owner's account.
   ./flux demo [--dev]    Seed demo data through the public API and print two logins.
                          Refuses non-loopback (production-looking) origins unless --force.
   ./flux dev [--build]   Hot-reload development in Docker: Vite for the web app, tsx watch
@@ -1570,6 +1603,9 @@ Flux launcher. Flux runs in Docker; the external cowork action also needs the na
   ./flux export <space> [--as EMAIL] [--output FILE]
                          Write a space's JSON-plus-files bundle to exports/ (as the company
                          owner by default; the account needs project.manage).
+  ./flux reset-link <email>
+                         Print a one-time password reset link for that account, the owner's too
+                         (works once, for FLUX_PASSWORD_RESET_TTL_SECONDS; a newer link stops it).
   ./flux identity link <userId> --subject <sub> --reason "<why>" [--old-issuer <URL>] [--allow-sso]
                          Audited operator recovery by Flux account id; requires the running API.
   ./flux identity unlink <userId> --reason "<why>"
@@ -1631,6 +1667,7 @@ case "$command" in
   upgrade) cmd_upgrade "$@" ;;
   runtime) cmd_runtime "$@" ;;
   identity) cmd_identity "$@" ;;
+  reset-link) cmd_reset_link "$@" ;;
   ai) cmd_ai "$@" ;;
   cowork) cmd_cowork "$@" ;;
   _upgrade-apply) upgrade_apply "$@" ;;  # continues ./flux upgrade --pull in the pulled launcher

@@ -5,7 +5,7 @@ import { PASSWORD_MIN_LENGTH, claimAddress, getCapabilities, getPendingClaim, st
 import { whenPageLive } from '../api/pageLeaving';
 import { ApiError, NetworkError } from '../api/client';
 import { Button, ErrorState, FluxLogo, Icon, Input, useToast } from '../ui';
-import { safeNext, signedOauthQuery, type FormResult, type forgotPasswordLoader } from './logic';
+import { safeNext, signedOauthQuery, type FormResult, type SignUpMode, type forgotPasswordLoader } from './logic';
 
 /** The plain Flux logo tile and wordmark, large above the page's title (#351, F-026 S-D/S-P sign-in). */
 function Brand() {
@@ -200,13 +200,17 @@ export function SignInPage() {
           <Button type="submit" variant="primary" size="lg" block busy={submitting}>{submitting ? 'Signing in…' : 'Sign in'}</Button>
         </Form>
       </div>
-      <p className="auth__alt">New to Flux? <Link className="ui-link" to={`/sign-up${suffix}`}>Create an account</Link></p>
+      {/* #1471: accounts come from a link; only a test deployment offers a form without one. */}
+      {capabilities?.signup === 'open'
+        ? <p className="auth__alt">New to Flux? <Link className="ui-link" to={`/sign-up${suffix}`}>Create an account</Link></p>
+        : <p className="auth__alt">New here? Open the invite link you were sent.</p>}
     </>
   );
 }
 
+/** `/setup` and `/sign-up` (#1471): one form for the owner's account from the setup link and for an account from an invite link. */
 export function SignUpPage() {
-  const { signup } = useLoaderData() as { signup: IdentityCapabilities['signup'] };
+  const { mode } = useLoaderData() as { mode: SignUpMode };
   const result = useActionData() as FormResult | undefined;
   const submitting = useSubmitting();
   const formRef = useFocusFirstInvalid(result);
@@ -218,50 +222,49 @@ export function SignUpPage() {
   const [passwordLength, setPasswordLength] = useState(0);
   const [editedAfter, setEditedAfter] = useState<typeof result>(undefined);
   const passwordError = editedAfter === result && passwordLength >= PASSWORD_MIN_LENGTH ? undefined : result?.fieldErrors?.password;
-  if (result?.verifyEmailAt) {
+  if (mode.kind === 'closed') {
     return (
       <>
-        <Heading title="Check your email" />
-        <div className="auth__sent" role="status">
-          <p>We sent a link to <strong>{result.verifyEmailAt}</strong>. Open it to verify the address, then sign in. The link works once.</p>
-          <p>Nothing arrived? Check spam. Signing in with the password sends a new link.</p>
-        </div>
-        <p className="auth__alt"><Link className="ui-link" to={`/sign-in${suffix}`}>Go to sign in</Link></p>
-      </>
-    );
-  }
-  if (signup === 'off') {
-    return (
-      <>
-        <Heading title="Sign-up is closed" />
-        <div className="auth__notice" role="status">
-          <Icon name="alert" />
-          <div>
-            <p><strong>Creating an account with a password is closed on this Flux server.</strong></p>
-            <p>Ask the person who runs it to add you, or sign in if you already have an account.</p>
-          </div>
-        </div>
+        <Heading title="Ask for an invite link">Accounts on this Flux are made from an invite link. Ask an owner or admin of your company for one.</Heading>
         <p className="auth__alt"><Link className="ui-link" to={`/sign-in${suffix}`}>Sign in</Link></p>
       </>
     );
   }
+  if (mode.kind === 'set-up') {
+    return (
+      <>
+        <Heading title="This Flux is set up">Its owner’s account exists. Sign in, or ask an owner or admin for an invite link.</Heading>
+        <div className="auth__card"><Link className="ui-btn ui-btn--primary ui-btn--lg ui-btn--block" to="/sign-in">Sign in</Link></div>
+      </>
+    );
+  }
+  if (mode.kind === 'no-setup-link') {
+    return <Heading title="Open the setup link">Use the whole link that ./flux up printed on the server. Running ./flux up again prints it.</Heading>;
+  }
+  const setup = mode.kind === 'setup';
+  const locked = mode.kind === 'invite' ? mode.email : null;
+  const title = setup ? 'Set up Flux' : mode.kind === 'invite' ? `Join ${mode.company}` : 'Create your Flux account';
+  const lead = setup ? 'Create the owner’s account. You name the company next.' : 'One account for your conversations and your work.';
   return (
     <>
-      <Heading title="Create your Flux account">{signup === 'verified' ? 'We’ll email a link to confirm your address.' : 'One account for your conversations and your work.'}</Heading>
-      <Form method="post" className="auth__form" noValidate ref={formRef} aria-label="Create account">
+      <Heading title={title}>{lead}</Heading>
+      <Form method="post" className="auth__form" noValidate ref={formRef} aria-label={setup ? 'Create the owner’s account' : 'Create account'}>
         <FormError message={result?.formError}>
           {result?.accountExists ? <p><Link className="ui-link" to="/sign-in">Sign in</Link> · <Link className="ui-link" to="/forgot-password">Reset password</Link></p> : null}
         </FormError>
+        {setup ? <input type="hidden" name="setupToken" value={mode.token} /> : null}
+        {mode.kind === 'invite' ? <input type="hidden" name="inviteToken" value={mode.token} /> : null}
         <Input label="Name" name="name" autoComplete="name" defaultValue={result?.values?.name} error={result?.fieldErrors?.name}
           hint="Shown to people you work with." autoFocus />
         <Input label="Email" name="email" type="email" autoComplete="email" inputMode="email" autoCapitalize="none" spellCheck={false}
-          defaultValue={result?.values?.email ?? params.get('email') ?? undefined} error={result?.fieldErrors?.email} />
+          readOnly={locked !== null} hint={locked !== null ? 'This invite is for this address.' : undefined}
+          defaultValue={locked ?? result?.values?.email ?? params.get('email') ?? undefined} error={result?.fieldErrors?.email} />
         <Input label="Password" name="password" type="password" autoComplete="new-password" error={passwordError}
           onChange={(event) => { setPasswordLength(event.target.value.length); setEditedAfter(result); }}
           hint={passwordLength >= PASSWORD_MIN_LENGTH ? undefined : `At least ${PASSWORD_MIN_LENGTH} characters. A short sentence works well.`} />
-        <Button type="submit" variant="primary" size="lg" block busy={submitting}>{submitting ? 'Creating account…' : 'Create account'}</Button>
+        <Button type="submit" variant="primary" size="lg" block busy={submitting}>{submitting ? 'Creating account…' : setup ? 'Create owner account' : 'Create account'}</Button>
       </Form>
-      <p className="auth__alt">Already have an account? <Link className="ui-link" to={`/sign-in${suffix}`}>Sign in</Link></p>
+      {setup ? null : <p className="auth__alt">Already have an account? <Link className="ui-link" to={`/sign-in${suffix}`}>Sign in</Link></p>}
     </>
   );
 }
@@ -336,7 +339,7 @@ function ResetUnavailable() {
       <Icon name="mail" />
       <div>
         <p><strong>Password reset by email isn’t set up on this Flux server.</strong></p>
-        <p>Ask the person who runs it to reset your password, or to connect an email service so you can do it yourself.</p>
+        <p>Ask an owner or admin of your company for a reset link: they make one in Settings › Company. The owner runs ./flux reset-link on the server.</p>
       </div>
     </div>
   );
@@ -382,7 +385,13 @@ export function ResetPasswordPage() {
   const submitting = useSubmitting();
   const formRef = useFocusFirstInvalid(result);
   const [params] = useSearchParams();
-  const token = params.get('token');
+  // A mailed link arrives as `?token=`; one made in Settings › Company or by ./flux reset-link carries it after `#` (#1471), which is
+  // kept for this page and taken out of the address.
+  const [fromHash] = useState(() => window.location.hash.replace(/^#/, '').trim());
+  useEffect(() => {
+    if (window.location.hash) window.history.replaceState(window.history.state, '', window.location.pathname + window.location.search);
+  }, []);
+  const token = params.get('token') || fromHash || null;
   const linkError = params.get('error');
 
   if (!token || linkError) {

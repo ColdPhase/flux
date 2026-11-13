@@ -1,6 +1,8 @@
 import {
   INVITE_ACCEPT_PATH,
   INVITE_PREVIEW_PATH,
+  personResetLinkPath,
+  type ResetLink,
   workspaceInvitePath,
   workspaceInvitesPath,
   type AcceptInviteResult,
@@ -52,6 +54,8 @@ export const createInvite = (workspaceId: string, body: { role: InviteRole; emai
 export const revokeInvite = (workspaceId: string, inviteId: string) => request<null>(workspaceInvitePath(workspaceId, inviteId), { method: 'DELETE' });
 export const previewInvite = (token: string, signal?: AbortSignal) => request<InvitePreview>(INVITE_PREVIEW_PATH, { method: 'POST', body: { token }, signal });
 export const acceptInvite = (token: string) => request<AcceptInviteResult>(INVITE_ACCEPT_PATH, { method: 'POST', body: { token } });
+/** A one-time password reset link for another person of the company (#1471), shown only in this answer. */
+export const makeResetLink = (userId: string) => request<ResetLink>(personResetLinkPath(userId), { method: 'POST' });
 
 export const listGrants = (projectId: string, signal?: AbortSignal) => request<ProjectGrant[]>(projectGrantsPath(projectId), { signal });
 /** Creates or replaces the one grant of this person on the project. */
@@ -121,6 +125,10 @@ export function problemText(error: unknown, context: { workspace: string; email?
       return 'Guests can’t be in an encrypted space.';
     case 'OWNER_REQUIRED':
       return 'Only an owner can add, change or remove an owner.';
+    case 'NO_PASSWORD':
+      return `${who} ${context.who ? 'signs' : 'sign'} in without a password, so there is nothing to reset.`;
+    case 'PERSON_NOT_FOUND':
+      return `${who} ${context.who ? 'is' : 'are'} no longer in ${context.workspace}.`;
     case 'MEMBER_NOT_FOUND':
       return `${who} ${context.who ? 'is' : 'are'} no longer in ${context.workspace}.`;
     case 'NOT_A_MEMBER':

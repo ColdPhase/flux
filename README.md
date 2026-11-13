@@ -55,7 +55,7 @@ what needs you, so you do not have to ask around.
 
 - **Conversations that turn into work.** One action makes a message a task or a decision with its
   reason, and each stays linked to the message it came from.
-- **One company, many spaces.** The first account sets up the company and its default space,
+- **One company, many spaces.** The first account, from the setup link `./flux up` prints, sets up the company and its default space,
   **Everyone**. Everything else happens in spaces, and you see only the spaces you were added to.
   Each space has its own AI switch, and can be encrypted.
 - **Simple AI: everything is an agent.** Connect AI once (a Claude plan, a ChatGPT plan or an API

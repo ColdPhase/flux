@@ -71,7 +71,7 @@ class Var:
 
 
 # The settings most operators change, shown first on the page.
-COMMON = ["FLUX_PUBLIC_ORIGIN", "FLUX_SIGNUP", "FLUX_SMTP_URL", "FLUX_MAIL_FROM", "FLUX_TRUSTED_PROXIES",
+COMMON = ["FLUX_PUBLIC_ORIGIN", "FLUX_SETUP_TOKEN", "FLUX_SMTP_URL", "FLUX_MAIL_FROM", "FLUX_TRUSTED_PROXIES",
           "FLUX_VAPID_SUBJECT", "FLUX_API_MEMORY", "FLUX_WORKER_MEMORY"]
 
 GROUPS = [
@@ -143,14 +143,14 @@ VARIABLES: dict[str, Var] = {
     "FLUX_AUTH_SECRET": Var("identity", "secret, ≥ 32 characters",
         "Signs session cookies, invite-link tokens and cursors. Changing it signs everyone out and voids pending invite "
         "links.", secret=True),
-    "FLUX_SIGNUP": Var("identity", "`open` · `verified` · `off`",
-        "Who may create a password account. `open`: anyone who reaches Flux. `verified`: anyone who can confirm an "
-        "address by mail; it proves a mailbox, not membership of your team (needs email; without it sign-up is closed). "
-        "`off`: nobody, including you, so create your own account first. A provider in `sso` mode closes password "
-        "sign-up whatever this says, and an invite link never opens closed sign-up. See "
-        "[who can sign up](install.md#5-decide-who-can-sign-up).", "off"),
+    "FLUX_SETUP_TOKEN": Var("identity", "secret, 32–256 letters, digits, `-` or `_`",
+        "The setup link's token: the first account, the company's owner, is made only from `<origin>/setup#<token>`, "
+        "and every other account from an invite link or single sign-on. `./flux up` writes a random one and prints the "
+        "link while no company exists. Empty: no first account can be made. Once the company exists it does nothing. See "
+        "[install](install.md).", secret=True),
     "FLUX_PASSWORD_RESET_TTL_SECONDS": Var("identity", "integer, 60–86400 s",
-        "Lifetime of a password reset link. Links are single use and stored hashed.", "3600"),
+        "Lifetime of a password reset link, mailed or made in Settings › Company or by `./flux reset-link`. Links are single "
+        "use, stored hashed, and stop when a newer one is made or the password changes.", "3600"),
     "FLUX_SESSION_IDLE": Var("identity", "number and unit: `30m`, `12h`, `7d` (5m–365d)",
         "How long a signed-in session lasts without use. Using it renews it. Empty is `7d`, or `FLUX_SESSION_MAX_AGE` if that is shorter. Set, it must not be longer than `FLUX_SESSION_MAX_AGE`.", "empty (7d)"),
     "FLUX_SESSION_MAX_AGE": Var("identity", "number and unit: `30m`, `12h`, `7d` (5m–365d)",

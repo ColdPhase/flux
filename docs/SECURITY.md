@@ -11,7 +11,7 @@ agent that did not write the code reviewed v0.2: the [threat model](security/thr
 and an [OWASP ASVS 4.0.3 Level 2 checklist](security/asvs-l2.md) list what was checked, and
 every finding is an issue in the v0.2 milestone (#837). It found no P1, and its P2 and P3 findings (password rules and
 sign-in guessing, local clients after a password reset, error messages, response headers, a security log and the first sign-up on a
-new server) are fixed, or recorded as an accepted risk in the [hardening guide](operations/hardening.md). A [penetration test](security/pentest-v0.2.md) of authorization and isolation between spaces and people
+new server, which since [#1471](https://github.com/ColdPhase/flux/issues/1471) needs the setup link) are fixed, or recorded as an accepted risk in the [hardening guide](operations/hardening.md). A [penetration test](security/pentest-v0.2.md) of authorization and isolation between spaces and people
 found no break, and a dynamic scan with OWASP ZAP (`./scripts/check_dast.sh`) and the repository's dependency, image and
 CodeQL scanning run alongside. Release images are signed. An agent review is not a human audit. The project plans an external human penetration test
 and cryptography review before Flux is offered for production use by companies. The scope is in the threat model's

@@ -190,7 +190,8 @@ class InviteLinksJourney(unittest.TestCase):
 
         cleo = self.page("cleo")
         cleo.goto(link)
-        expect(cleo.get_by_text("This link works only for the email address it was sent to.")).to_be_visible()
+        # #1471: the join page names the address the link is for (the person it was made for holds it).
+        expect(cleo.get_by_role("note")).to_contain_text(f"This link works only for {PEOPLE['ben'][1]}.")
         cleo.get_by_role("button", name="Join Riverside Makers").click()
         expect(cleo.get_by_role("alert")).to_contain_text("This link was made for a different email address.")
         self.assertNotIn(PEOPLE["cleo"][1], self.roles(self.riverside))
@@ -231,14 +232,14 @@ class InviteLinksJourney(unittest.TestCase):
         expect(visitor.get_by_role("heading", level=1, name="This invite link doesn’t work")).to_be_visible()
 
     def test_04b_with_single_sign_on_the_first_sign_in_makes_the_account(self) -> None:
-        """#776 review P2: SSO-only reports sign-up off, yet the first single sign-on creates the account (F-024)."""
+        """#776 review P2: with SSO only there is no password sign-up, yet the first single sign-on creates the account (F-024)."""
         context = self.browser.new_context(base_url=ORIGIN, service_workers="block", storage_state=self.states["ada"])
         self.addCleanup(context.close)
         invite = context.request.post(f"/api/v1/workspaces/{self.riverside}/invites", data={"role": "member"}, headers={"origin": ORIGIN, "idempotency-key": str(uuid.uuid4())})
         self.assertEqual(invite.status, 201, invite.text())
         visitor = self.page(None)
         visitor.route("**/api/v1/auth/capabilities", lambda route: route.fulfill(json={
-            "passwordReset": "unavailable", "signup": "off", "ssoOnly": True, "linkable": False,
+            "setup": False, "passwordReset": "unavailable", "signup": "link", "ssoOnly": True, "linkable": False,
             "sso": {"providerId": "company", "label": "Company SSO", "reachable": True}}))
         visitor.goto(invite.json()["link"])
         expect(visitor.get_by_text("New here? Sign in with Company SSO; your account is made the first time.")).to_be_visible()
@@ -247,7 +248,7 @@ class InviteLinksJourney(unittest.TestCase):
         # F-037: with single sign-on, Settings › Company says who joins and offers no invite links.
         owner = context.new_page()
         owner.route("**/api/v1/auth/capabilities", lambda route: route.fulfill(json={
-            "passwordReset": "unavailable", "signup": "off", "ssoOnly": True, "linkable": False,
+            "setup": False, "passwordReset": "unavailable", "signup": "link", "ssoOnly": True, "linkable": False,
             "sso": {"providerId": "company", "label": "Company SSO", "reachable": True}}))
         owner.goto("/settings/company")
         expect(owner.get_by_text("Everyone who signs in with Company SSO joins automatically")).to_be_visible()

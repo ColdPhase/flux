@@ -1270,8 +1270,8 @@ only to the server's claims hook and the signed access token carries the family 
 **Implemented in #313:** an active provider closes ordinary password sign-in, sign-up
 and reset at the API and in the browser (`SSO_ONLY`, `SIGNUP_CLOSED`); the session
 resolver ends sessions that did not sign in through the provider. The bearer and refresh
-gates also refuse owners without a link to the configured provider. `FLUX_SIGNUP=verified`
-sends a verification mail, and is `off` without email or with a provider. Pre-F-024
+gates also refuse owners without a link to the configured provider. (`FLUX_SIGNUP=verified`, which
+sent a verification mail, was removed by #1471: a password account now comes only from the setup or an invite link.) Pre-F-024
 accounts get a verification mail at their next password sign-in in password mode once email is set
 (migration 0091 adds `auth_users.verification_required` and `auth_email_claims`). A
 provider identity whose verified email is held by a verified or already linked

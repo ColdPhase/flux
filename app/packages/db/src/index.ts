@@ -9,6 +9,7 @@ export { sql } from 'drizzle-orm';
 export type { SQL } from 'drizzle-orm';
 export * from './repositories/sessions.js';
 export * from './repositories/person-time-zone.js';
+export * from './repositories/reset-links.js';
 export * from './repositories/person-photos.js';
 export * from './repositories/space-icons.js';
 export * from './repositories/person-last-active.js';
@@ -39,7 +40,8 @@ export * from './repositories/idp-standing.js';
 export * from './repositories/idp-logout.js';
 export * from './migrations/ledger.js';
 // Highest numbered file in packages/db/migrations. The API refuses other versions.
-export const FLUX_SCHEMA_VERSION = 80;
+// 0082 (#1471) was assigned ahead of 0079 and 0081, which other v0.2.1 changes may add: the version is always the highest file present.
+export const FLUX_SCHEMA_VERSION = 82;
 // pg-boss 12.38.0 declares schema 46. Update this with the pinned package.
 export const PG_BOSS_SCHEMA_VERSION = 46;
 

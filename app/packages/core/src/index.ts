@@ -39,6 +39,7 @@ export { companyDisplayName, createWorkspace, listWorkspaces, getWorkspace, join
 export { roundedLastActive, localDay, type LastActiveOptions, type LastActiveRow } from './access/last-active.js';
 export { listMembers, addMember, changeRole, removeMember, listRemovedPeople, restoreMember } from './access/members.js';
 export { createInvite, listInvites, revokeInvite, previewInvite, acceptInvite, withLink, inviteToken, inviteIdOf, inviteTokenHash, type InviteSigner, type CreatedInvite, type InviteJoined } from './access/invites.js';
+export { checkInviteForSignUp } from './access/invite-sign-up.js';
 export { setSpaceAi, sweepSpaceAi, SpaceAiSweepIncomplete, type SpaceAiSweepQueue } from './access/space-ai.js';
 export { createProject, listProjects, getProject, listProjectPeople, listSpacePeople, renameProject } from './access/projects.js';
 export { deleteProject, leaveProject } from './access/project-exit.js';

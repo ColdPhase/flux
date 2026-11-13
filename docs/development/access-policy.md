@@ -126,8 +126,8 @@ owns the run, while they are active in its workspace. Workspace owners, admins, 
 and agents never see it, so its progress events (`assistant_run.changed.v1`) reach the owner
 alone. The committed answer is a separate project event for the conversation's audience.
 
-**One company and its spaces (F-037, #874).** One Flux is one company: the first account sets
-it up (`joinCompany`, under a transaction-scoped advisory lock) as its owner, with the
+**One company and its spaces (F-037, #874).** One Flux is one company: the first account, made
+from the setup link ([accounts by link](#accounts-only-from-a-link-1471)), sets it up (`joinCompany`, under a transaction-scoped advisory lock) as its owner, with the
 default space **Everyone** (visibility `workspace`, its creator holding a `manager` grant). The
 company is the one `workspaces` row with `company = true` (a partial unique index allows one).
 With single sign-on every later account the provider lets in joins the company as a `member` on
@@ -153,8 +153,7 @@ and `OWNER_REQUIRED` refusals guarded the deny, which is gone). Joining with a p
 on every provider sign-in, so an account that linked it later joins too. Someone who leaves or is
 removed goes on `workspace_removed_people` and stays out, also on a provider sign-in, until an
 owner or admin restores them from Settings › Company. Restore brings them back as a `member`, in
-Everyone; leaving ended their grants, so other spaces are added by hand. With `FLUX_SIGNUP=verified`
-a password account sets up the company when its address is verified, not when it signs up. With
+Everyone; leaving ended their grants, so other spaces are added by hand. With
 single sign-on as the only way in, nobody makes an invite link (`INVITES_OFF_WITH_SSO`).
 Owners and admins rename the company (`PATCH /api/v1/workspaces/:id`, `workspace.rename`).
 
@@ -327,8 +326,9 @@ pending links, newest first: role, email lock, creator, created and expiry time,
 `404 INVITE_NOT_FOUND`). Used, revoked and expired links are not listed.
 
 **Opening.** `POST /api/v1/invites/preview { token }` works without a session. It answers the
-workspace's name, who invited, the role, the expiry, whether the link is locked to an address
-(never the address itself) and whether the workspace is encrypted. An unknown, malformed or
+workspace's name, who invited, the role, the expiry, the address a locked link is for (`email`, so
+the sign-up form can fill it in; the link's holder is the person it was made for) and whether the
+workspace is encrypted. An unknown, malformed or
 forged token is `404 INVITE_NOT_FOUND`, checked in constant time, so someone without the link
 learns nothing. A link that was used, revoked or expired, or whose creator is no longer an owner
 or admin able to grant the role, is `410` with `INVITE_USED`, `INVITE_REVOKED` or
@@ -337,10 +337,9 @@ or admin able to grant the role, is `410` with `INVITE_USED`, `INVITE_REVOKED` o
 
 **Joining.** `POST /api/v1/invites/accept { token }` needs a session. In one transaction it locks
 the workspace row (as `addMember`) and then the invite row, and rechecks everything above. An
-email lock that does not match the account's address, or (with single sign-on configured, or
-`FLUX_SIGNUP=verified`) an address the account has not verified, is `403 INVITE_WRONG_ACCOUNT`.
-Otherwise the lock is only as strong as the install's proof of addresses: with `FLUX_SIGNUP=open`
-an account can name any address, exactly as for adding a member by email. Someone already in the
+email lock that does not match the account's address, or (with single sign-on configured) an
+address the account has not verified, is `403 INVITE_WRONG_ACCOUNT`. Otherwise the lock proves
+holding the link, not the mailbox: Flux sends no invitation email. Someone already in the
 workspace gets `200 { status: "already_member" }` and the link stays unused. Otherwise the
 membership is inserted with the link's role, the invite is marked used by this account, and
 `workspace.member_added.v1` (`{ userId, role, inviteId }`) is recorded by the person who joined;
@@ -359,13 +358,14 @@ Everyone, or for a guest the link's space, or none. In the same transaction the 
 "<name> joined <company>" linking Settings › Company, or the space's settings when the link named one. Settings › Company shows invite links only
 without single sign-on: with it, the provider decides who joins.
 
-**Sign-up rules stay as they are.** A signed-out visitor on `/join` gets the create-account form on the page itself (#1438), or signs
-in and comes back; an account made there joins at once through the same `accept`, so it can only join the link's workspace. The page keeps the token in that tab's session storage and removes it
-from the address and the browser history; a sign-in finished in another tab asks for the link to be
-opened again there. With single sign-on and password sign-up closed, the page says the first
-single sign-on makes the account (F-024). Creating an account follows `FLUX_SIGNUP` and single sign-on exactly
-as without a link: with sign-up closed or verified by mail, the page says what to do. An invite
-never opens closed sign-up, never verifies an address and never links an identity.
+**An invite link always allows creating an account (#1471).** A signed-out visitor on `/join` gets the create-account
+form on the page itself (#1438), or signs in and comes back. The page keeps the token in that tab's session storage and removes it
+from the address and the browser history; a sign-in finished in another tab asks for the link to be opened again there. Creating an
+account sends the token with the sign-up (`inviteToken`): the API checks the link as the preview does and, for a link locked to an
+address, that the sign-up uses that address (the form fills it in, read-only), before any account exists; the new account then
+accepts the link as it is made, so an account made from a link is always in the link's workspace, and the page lands it as any join.
+A link that stopped working, or another address, is refused and no account is made. In SSO-only mode there are no invite links; the
+provider makes accounts (F-024). An invite never verifies an address and never links an identity.
 
 **Rate limits.** Each API process allows 30 previews and 10 accepts a minute per signed-in person
 (or per client address without a session), and 30 creates a minute per person (`429` with
@@ -384,6 +384,39 @@ guest reads the workspace while it is unlocked, like every member. An admin who 
 unlock password until a current holder grants one through the existing
 `unlock-password-grants` flow; the join page and the preview say this. AI stays off
 (F-029 and F-030 are unchanged).
+
+
+## Accounts only from a link (#1471)
+
+[Decision F-044](../product/decisions.md#f-044--accounts-and-password-resets-by-link-1471). `POST /api/auth/sign-up/email` makes an account
+only with one of:
+
+- `setupToken`: while no company exists, equal (compared in constant time) to the server's `FLUX_SETUP_TOKEN`. The account sets
+  up the company as its owner (`joinCompany`, under its advisory lock); if another sign-up set it up first, the new account is
+  deleted again and the answer is `409 SETUP_DONE`. Once a company exists the token is refused (`409 SETUP_DONE`). An unset token
+  refuses the first account (`403 SETUP_LINK_MISSING`) and the API log says how to set it.
+- `inviteToken`: a working [invite link](#invite-links-f-035), checked before the account exists and accepted as it is made.
+
+Anything else is `403 SIGNUP_NEEDS_LINK`; a wrong setup token is `403 SETUP_LINK_INVALID`. With single sign-on as the only way in,
+password sign-up stays `403 SIGNUP_CLOSED`. Neither token is stored with the account, logged or echoed. `GET /api/v1/auth/capabilities`
+answers `setup: true` while no company exists (and the sign-in page then opens Setup) and `signup: "link"`; a test deployment
+answers `signup: "open"` and accepts a sign-up without a link.
+
+## Password reset links (#1471)
+
+A reset link is `<origin>/reset-password#<token>` (a mailed one goes through `/api/auth/reset-password/<token>` first). Its token is
+a Better Auth `reset-password:` verification value, stored as its SHA-256 only, used by `POST /api/auth/reset-password` like any reset.
+
+- `POST /api/v1/people/:userId/reset-link` (owner or admin of the company): an owner for anyone in the company but themselves, an
+  admin for members and guests (`403 OWNER_REQUIRED` otherwise). `404 PERSON_NOT_FOUND` for someone outside the company,
+  `409 NO_PASSWORD` for an account without a password, `409 RESET_LINKS_OFF_WITH_SSO` in SSO-only mode. It answers
+  `201 { link, expiresAt }` once; the link is never listed or shown again. 10 a minute per person and API process.
+- `./flux reset-link <email>` runs the same in the API container for any password account (`via: command`).
+- `POST /api/auth/request-password-reset` with email set up mails a link (`via: email`).
+
+Making a link stops the account's earlier links. Using one, or a change of the password to another one (a reset or Settings › Account), stops
+every other link of the account. `password_reset_links` keeps who made each link, for whom, how and when it was used or stopped,
+never the token; each one also writes a `reset_link_created` security event.
 
 ## Agents have their owner's rights (F-036 AG-3, #855)
 

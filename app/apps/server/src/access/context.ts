@@ -16,8 +16,6 @@ export interface AccessRouteOptions {
   encryptionKeys?: ProcessKeys;
   /** F-035: signs and finds invite links (the identity secret and the public origin). Without it no invite route is registered. */
   inviteSigner?: InviteSigner;
-  /** F-035: an email-locked invite needs a verified address (with a sign-on provider, or sign-up verified by mail). */
-  inviteVerifiedEmail?: boolean;
   /** A test deployment (fixture token and failure injection): only it can create further, isolated workspaces (F-037). */
   testDeployment?: boolean;
   /** Single sign-on is the only way in: people join by signing in, so nobody makes an invite link (F-035, F-037). */
@@ -28,7 +26,7 @@ export interface AccessRouteOptions {
  * What every access route module shares (#85): the session's principal, the command runner, the
  * idempotency scopes, and the media fences around membership and grant changes.
  */
-export function accessContext({ db, sessions, liveRevocation, verifiedEmailMembers = false, inviteVerifiedEmail = false, ssoOnly = false, encryptionKeys }: AccessRouteOptions) {
+export function accessContext({ db, sessions, liveRevocation, verifiedEmailMembers = false, ssoOnly = false, encryptionKeys }: AccessRouteOptions) {
   const workspaceChange = <T>(id: string, mutation: (connection: Database) => Promise<T>): Promise<T> => {
     if (liveRevocation) return liveRevocation.withWorkspaceChange(id, () => mutation(db));
     return withNoMediaAccessChange(db, { workspaceId: id, projectId: null }, mutation);
@@ -41,7 +39,8 @@ export function accessContext({ db, sessions, liveRevocation, verifiedEmailMembe
     db,
     sessions,
     verifiedEmailMembers,
-    inviteVerifiedEmail: inviteVerifiedEmail || verifiedEmailMembers,
+    /** F-035: an email-locked invite needs a verified address with a sign-on provider configured. */
+    inviteVerifiedEmail: verifiedEmailMembers,
     ssoOnly,
     /** How this API reads a workspace's encryption state: its keyring boot (null while unreachable), or rows only. */
     readOptions: () => (encryptionKeys ? { bootId: encryptionKeys.openableBoot } : {}),

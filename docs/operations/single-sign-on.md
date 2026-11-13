@@ -29,9 +29,8 @@ is set by `FLUX_SSO_MODE`:
   new account. The claim page is open for 15 minutes after the provider sign-in.
 - **Email verification of password accounts.** Accounts made before single sign-on are unverified. Once
   email is set (`FLUX_SMTP_URL`), they receive a verification mail the next time they sign in with their
-  password in password or `prepare` mode, and admins can find an account by email only when its address is verified. Setting
-  `FLUX_SIGNUP=verified` makes new password accounts verify by mail before they can sign in; without
-  email it behaves as `off`.
+  password in password or `prepare` mode, and admins can find an account by email only when its address is verified.
+  In `prepare` mode a new password account still comes only from an invite link ([#1471](https://github.com/ColdPhase/flux/issues/1471)).
 - **The provider decides who joins, Flux decides the rest.** Everyone the provider lets in joins the
   company as a member on their first sign-in, with no invitation. Groups, roles and domains in the
   token are ignored: a person's company role and their spaces are set in Flux. An account that
