@@ -258,8 +258,7 @@ is Done with a "dropped" note.
 
 The palette is muted OKLCH with equal lightness: L 0.55 light, 0.80 dark. Each agent has its own
 calm Kreska face colour from it, either chosen when the agent is created or assigned automatically
-(Hubert, 2026-11-03), in the order Teal, Indigo, Ochre, Rose, Sage, Plum, Clay, the colours furthest
-apart first, so a person's first agents differ at the size of a sidebar row (#1377). The colour shows everywhere the agent appears: Messages, the Owner picker, a
+(Hubert, 2026-11-03). The colour shows everywhere the agent appears: Messages, the Owner picker, a
 task's owner and discussion, Home, the Inbox and Settings › AI. It replaces "agent colours only in
 the Agents section" of the first Prostota canvas. The v0.2 screens draw Assistant in ink (`--inv`)
 and Planner, Reviewer and Jonas's Fieldbot in Teal, Indigo and Ochre. Kreska's lines take the
@@ -519,7 +518,7 @@ The IDs come from the first Prostota canvas; rules that no longer apply are left
 | S20 | **A new space is one window:** name, people, AI (on) and Encrypted (off). No template and no goal. |
 | S21 | Every space shows Conversation, Tasks, Map and Wiki from the start. |
 | S22 | Notifications are one level (Only what needs me, Everything, Nothing), Email me too to one or more confirmed addresses, this device, and Quiet hours as one row. |
-| S23 | **Open where you left off** (founder pick by Hubert, 2026-11-10, [#1246](https://github.com/ColdPhase/flux/issues/1246)). One behaviour in every conversation: a space's, a direct message, a thread, a task's discussion and an agent's chat. It opens on its first new message, with a quiet **New** divider above it (one rule with the word, like a day line, in the same place in each), or at its end when nothing is new. The first new message starts its own group, as after a day line: its author is named again, whoever wrote the message above the divider. While you read above the end, what arrives is counted in one line over the foot of the conversation, **↓ 3 new** (a soft pill, the `--own` fill with the pop shadow and the down arrow, 32 px with a mouse and 44 px on touch): a click or tap goes to the end, so does **End** (outside a text field), and the line goes when you reach the end; used from the keyboard it leaves focus on the newest message. Nothing moves under you: a message that arrives while you read above stays below. There is no setting and no screen. What is new is what you had not seen: in a space, what changed since you left it (S7's return point); in a direct message, a thread and a task's discussion, the messages by others after the last one you viewed (the same viewing as "Seen by"); in an agent's chat, what the agent said after you last had the chat open. Everything in a conversation you have never opened is new (founder decision, 2026-11-12, [#1246](https://github.com/ColdPhase/flux/issues/1246)): a direct message, a thread, a task's discussion or an agent's chat opens at its **first** message with the divider above it, from the very top (who is in the conversation, a thread's root shown whole), and **↓ N new** leads to the end. A long one is read back a page or two at most (200 messages beyond the newest 50); past that the divider stands above the oldest message read, with Show earlier above it. A space has no such first message to open on: one you have never visited has no return point and opens at its end. Coming back to a place you left (Back, the way back) is coming back to a screen you have seen: a New divider that would stand inside that screen is not drawn, because it would push down what you were reading ([#1335](https://github.com/ColdPhase/flux/issues/1335)); above the screen or below it, it stays. |
+| S23 | **Open where you left off** (founder pick by Hubert, 2026-11-10, [#1246](https://github.com/ColdPhase/flux/issues/1246)). One behaviour in every conversation: a space's, a direct message, a thread, a task's discussion and an agent's chat. It opens on its first new message, with a quiet **New** divider above it (one rule with the word, like a day line, in the same place in each), or at its end when nothing is new. The first new message starts its own group, as after a day line: its author is named again, whoever wrote the message above the divider. While you read above the end, what arrives is counted in one line over the foot of the conversation, **↓ 3 new** (a soft pill, the `--own` fill with the pop shadow and the down arrow, 32 px with a mouse and 44 px on touch): a click or tap goes to the end, so does **End** (outside a text field), and the line goes when you reach the end; used from the keyboard it leaves focus on the newest message. Nothing moves under you: a message that arrives while you read above stays below. There is no setting and no screen. What is new is what you had not seen: in a space, what changed since you left it (S7's return point); in a direct message, a thread and a task's discussion, the messages by others after the last one you viewed (the same viewing as "Seen by"); in an agent's chat, what the agent said after you last had the chat open. Everything in a conversation you have never opened is new (founder decision, 2026-11-12, [#1246](https://github.com/ColdPhase/flux/issues/1246)): a direct message, a thread, a task's discussion or an agent's chat opens at its **first** message with the divider above it, from the very top (who is in the conversation, a thread's root shown whole), and **↓ N new** leads to the end. A long one is read back a page or two at most (200 messages beyond the newest 50); past that the divider stands above the oldest message read, with Show earlier above it. A space has no such first message to open on: one you have never visited has no return point and opens at its end. |
 | P1 | **Home** has two parts: Waiting for you (the top three, with Open Inbox) and Continue where you left off. Every row is clickable and ends in an arrow. |
 | P3 | Kreska is the agent icon everywhere (section 3). |
 | P4 | **A decision is one card on both devices:** who proposed it, the decision, its reason, then Accept / Not now / Discuss and who can accept it. Plain sentences appear only when they apply: "This replaces the decision **Wi-Fi in every bed** (12 Oct)." and "Shown on the Wiki page **Sensor network**." Accepting only marks the replaced decision "replaced"; Flux never moves or parks tasks. |
@@ -684,29 +683,16 @@ These functional rules from UI116-4 remain required:
   - **The stage** holds the file on one page sheet: `--el` with `--t1` text, radius `--r`, the
     reading column wide (`--col`) for text and Markdown and up to 1200 px for tables, HTML and PDF.
     On the phone the sheet fills the stage edge to edge without a radius. HTML keeps a white page,
-    as its author wrote it; PDF is Flux's own viewer (below), never the browser's own.
+    as its author wrote it; PDF shows the browser's own viewer.
   - **Under the sheet** one quiet meta line in the caption place says what is not shown. HTML:
     "External images and scripts are blocked." followed by a quiet link button **Run scripts**.
     After the press the line reads "Scripts are on for this preview. A script may contact the
     internet." and closing the viewer turns them off again. Markdown and HTML: **View source** /
     **Preview** as the same quiet link button. A file that is not valid UTF-8 adds "Shown as
-    Windows-1252 text." A PDF that needs a password says "This PDF needs a password. Download it
-    to open it."; one that cannot be read says "This file could not be shown. Download it to open
-    it." The sheet shows nothing else then.
-  - **While it opens** the sheet shows the spinner with the file name (a PDF's until its first page
-    is drawn); a person who lost access sees "You no longer have access to this file." and nothing
-    else.
-  - **A PDF** ([#1350](https://github.com/ColdPhase/flux/issues/1350), C-60) is drawn by Flux, never
-    by the browser's own PDF viewer, which follows a link in the file in the top window. The pages
-    stack on the sheet, white, 12 px apart, as wide as the sheet up to 960 px, centred, each drawn
-    only while it is near the view; the sheet scrolls and the text can be selected. The same on the
-    phone, edge to edge. A link in the file is invisible until hovered or focused (then a soft tint
-    of the system highlight over its area). Pressing one never leaves Flux: the line under the
-    sheet reads "This PDF links to https://example.com/x · **Open link** · **Dismiss**", where
-    **Open link** is the quiet link button and opens the address in a new tab; nothing opens
-    before it is pressed. Only `http` and `https` addresses are offered; a link to a place in the
-    PDF, and its next, previous, first and last page actions, scroll the sheet and say nothing.
-    Every other link does nothing at all.
+    Windows-1252 text." A PDF the browser cannot show here says "This browser can't show a PDF
+    here." with Download as the one button on the sheet.
+  - **While it opens** the sheet shows the spinner with the file name; a person who lost access
+    sees "You no longer have access to this file." and nothing else.
   - Text and source: Geist Mono `--fs-base`, wrapped; line numbers stay off until the quiet
     **Show line numbers** under the sheet. JSON: pretty, two-space
     indents, each object and array folds with a chevron; a large file starts folded below the
@@ -715,33 +701,6 @@ These functional rules from UI116-4 remain required:
     `=`, `+`, `-` or `@` shown as written text; the line under the sheet says how many rows. A table
     wider than 200 columns shows the first 200 and says "Showing the first 200 of N columns. Download to see
     them all."
-- **A video** (founder decision 2026-11-13, [#1352](https://github.com/ColdPhase/flux/issues/1352),
-  [C-61](../../product/decisions.md)). MP4, WebM and MOV that the browser plays natively play inside
-  Flux; the drawing adds no new surface, only the row's picture and the viewer's stage.
-  - **The row** is the file row, unchanged in size (56 px, radius `--r`, `--sub`): in place of the
-    page icon a 72 × 40 poster (the first frame the sender's browser drew), radius `--r-sm`, cropped
-    to fill, with the play glyph (the voice note's icon) centred on it over the same dark scrim as a
-    photo grid's "+N", no other colour. The
-    name, "Video · 0:42 · 14.2 MiB" (the playing time only when the file says it) and the download
-    button follow as in any file row. Pressing the poster or the name opens the viewer; the download
-    button downloads. A video without a poster (the sender's browser could not draw one, or an
-    encrypted space) keeps the page icon with its video pictogram and the same row. The phone draws
-    the same row; under 480 px the poster is 56 × 32 so that the name and "Video · 0:42 · 14.2 MiB"
-    keep their room.
-  - **The viewer** is the file preview's frame (always dark, Close at the top left, the name with
-    "Video · size" in the middle, Download in the bottom bar, Esc closes and focus returns to the
-    row). The stage holds the player, `object-fit: contain` on black, up to the stage's size, with
-    the browser's own controls (`controls`, `playsinline`) and the poster shown until Play. It
-    starts at once and seeks without loading the file: the bytes come in ranges. On the phone the
-    stage is the whole screen between the bars, and the browser's controls and full-screen button do
-    the rest. Closing stops the video and its download.
-  - **A video this browser cannot play** (its codec is not one the browser has) shows on the stage
-    "This browser can't play this video." with Download as the one button, as a PDF does. A person
-    who lost access sees "You no longer have access to this file." and nothing else.
-  - **In the composer** a video is a thumbnail like a photo's (its poster once drawn, else the page
-    icon), with its name, "Video · size · Uploading 42%" and ×; Retry upload as for any file. Over the
-    limit it says "A video can be at most 200 MiB." (the operator's number); in an encrypted space a
-    video is an ordinary file ("A file can be at most 5 MiB.") and downloads.
 
 | | |
 | --- | --- |
@@ -1217,6 +1176,17 @@ the composer. The right-hand phone above shows the sheet.
   Each row is 48 px: a tile, the matching text and one line of where it lives. The first result is
   selected, and `↵` opens it. A list that is too long is narrowed by typing more words; there is
   no second page.
+- **A file found by what it says** ([C-63](../../product/decisions.md), #1382) is a row of the Files
+  group, drawn like a Wiki row with the file's own icon: the page icon with its folded corner and
+  its mono label (the one the message shows, 20 px) in the tile, the file's name as the title with
+  its matched words marked, and one line under it with what the file says where it matched, in
+  quotes with the match marked, led by "Page 3" for a PDF. A file found only by its name says
+  where it lives, who sent it and when, as a message row does. `↵` opens the file's message in its
+  conversation with the file's preview open (the photo viewer's frame, F-026 §6), at the page that
+  matched for a PDF; closing it leaves the message in place and takes the preview out of the
+  address. The text of a PDF, a Word document, Markdown, plain text and CSV/TSV is found; images,
+  audio, video and anything in an encrypted space are not. A file counts once however many of its
+  parts match.
 - The hint is one plain sentence: "Finds spaces, people, messages, tasks, Wiki pages, files and
   thoughts you can see." A list of more than 20 ends with one quiet line, "Showing 20 · type more words
   to narrow". There are no filter chips and no Create group.
@@ -1256,12 +1226,6 @@ the composer. The right-hand phone above shows the sheet.
 - **Direction A**, chosen by Hubert: grouped white cards on the grey ground, short rows and text
   buttons such as Change. The sections are Account, Appearance, Notifications, AI, Company and
   Shortcuts, in this order on every device.
-- **One header, one column** (#1362). The header says "Settings" on every page of it (the keys and an
-  agent's page included), and the sections' pages share one column: 640 px of content (728 with its 44 px
-  sides), centred in the area beside the list at every computer width, with the same left edge and
-  width on every page. The renders draw it at 1440 px, where centring puts it about 55 px further right
-  than drawn. A page under AI leads back from "‹ AI" above its title, in one place, 44 px high on touch
-  (the phone has only the header's Back).
 - **Notifications:** "The Inbox always shows everything that waits for you."
   - **Tell me about** is one level. Only what needs me covers decisions, questions, blocked tasks,
     mentions and agents waiting for you. Everything adds new messages and task updates. Nothing
@@ -1301,31 +1265,15 @@ the composer. The right-hand phone above shows the sheet.
   - **Connect AI**, with Connect another. Each connection is a card with its name, "Connected" and
     the provider's usage line ("62% of your 5-hour limit left · resets at 14:00"). Change sits on
     the right, centred, and never overlaps the text.
-  - The local client as one row, in the same card as the connections (#1363): the terminal mark in
-    the same icon tile as the connections (as drawn), "Claude Code on Ada's laptop", "For code on your computer. Same rules as your agents.", its
-    "What it may do" tag (a link to the page where it is changed) and Disconnect, which asks in the
-    row. A person may connect several, each with its own row. There is no section of its own for it and
-    no word "agent app" or "co-work".
-  - **Connecting one** is the fourth choice of the Connect AI window, "Claude Code or Codex on your
-    computer · For code on your computer · same rules as your agents". It leads to the page of these
-    apps (reached with "‹ AI"): each connected app as a card with its What it may do and Disconnect, then
-    "Connect it to Flux" with a tab each for Claude Code, Codex and Another app. A tab says what to do in
-    words (add Flux, sign in, start work in a space) and keeps the terminal text behind one quiet
-    "Show the command". The words are "space" and "app", never "project", "MCP client", "HTTPS address"
-    or "operator". A server with no AI at all shows no window: one row, "Claude Code or Codex on your
-    computer · Connect", leads to the same page.
-  - **Two things are never called by one name.** "Claude plan" and "ChatGPT plan" are the sign-ins Flux
-    runs for the person (the window's first two choices; their pages read "Sign in to Claude" and "Sign
-    in to ChatGPT", and where the server doesn't offer them, "Signing in with a Claude plan isn't offered
-    on this Flux server."). "Claude Code" and "Codex" are only the apps on the person's own computer.
+  - The local client as one row: "Claude Code on Ada's laptop · For code on your computer. Same
+    rules as your agents.", its "What it may do" tag and Disconnect.
   - **Your agents**, with New agent. Each row has the agent's Kreska in its own colour (chosen when
     the agent is created, or assigned automatically), its name, one line about its job, its "What
     it may do" tag and its model with the connection ("Opus · Claude plan").
     Assistant carries an "Answers /ai" tag. Under the list: "Agents never have more rights than
     you. Deleting and other people's things always wait for your OK."
-  - **How your AI works** is the heading before **When someone assigns a task to me:** Do nothing /
-    Give it to [agent ▾], one segmented choice with Do nothing as the default. With one agent the second
-    segment names it; with several it is the app's `Select` dressed as the segment.
+  - **When someone assigns a task to me:** Do nothing / Give it to [agent ▾], with Do nothing as
+    the default.
   - There is no list of spaces with AI off.
 - **An agent's page** (Assistant's is the same):
   - "‹ AI", the agent, and "Your agent · uses your Claude plan · can do only what you can".
@@ -1364,8 +1312,7 @@ the composer. The right-hand phone above shows the sheet.
   - OpenRouter and an OpenAI-compatible endpoint keep "Show available models" and the field.
 - **The Model of an agent with an API key** lists the key's models under its connection, in the
   same family order, in the app's `Select` (a plan keeps its few models as segments), each with its
-  price line worded as in Connect AI, "Opus 5.5 · $4 / $20", and one line under the control that
-  says the unit once: "Prices are US dollars per 1M tokens, input / output." (#1362). An unpriced one says "Price unknown, enter it";
+  price line. An unpriced one says "Price unknown, enter it";
   choosing it opens the two price fields and Save price under the control, and the model is
   chosen when the price is saved. A list that couldn't be read adds one line under the group,
   "Couldn't read Anthropic's model list · Try again", and the saved model stays. A model the
@@ -1516,12 +1463,6 @@ On the phone the Assistant conversation is a normal conversation. Its header lis
   unlock password and Repeat side by side, a strength hint and Download recovery code. Create space
   stays disabled until the code is downloaded. A note explains that after each server restart an
   admin of the space unlocks it.
-  - **The window keeps its head and its footer in view** (#1361): only the middle scrolls, so Cancel
-    and Create space are never below the fold, at 1280 × 800 and 1180 × 820 too. While Create is off the
-    footer says why, "Download the recovery code first.", to the left of the buttons (the same line
-    describes the button to a screen reader). The password and Repeat sit side by side while the window
-    is wide enough (440 px inside the card) and stack below that. The AI row stays, dimmed and off, with
-    "No AI in encrypted spaces" as its line. The scrim covers the sidebar as in Create.
 - **Space settings** (⋯ › Settings) use direction A, a 640 px column centred in the space's pane
   under the header at every computer width (the tablet and phone keep their own padding):
   - "Only people added here, and the company's owners and admins, can open this space." (The drawn line said only the first part, which the details panel and the rules contradict: owners and admins reach every space but an encrypted one, #1116.)
@@ -1534,19 +1475,7 @@ On the phone the Assistant conversation is a normal conversation. Its header lis
 - **A locked space** keeps its header, with the views inactive and no Call, and shows one calm card
   in place of the content. A member sees "Payroll is locked" and the admins who can unlock it, with
   no buttons. A space admin sees the unlock password field, Unlock and Use recovery code. The rest
-  of the company works normally (#1360).
-  - **The header** is the space's own: its name and lock, the four views as the
-    [underline tabs](#underline-tabs-the-views-switch) but inactive (every word `--t3`, none current,
-    no underline, not links, `aria-disabled`), the people's faces (they open People and encryption)
-    and ⋯. There is no line under the name: the card says what the header would. On the phone it is
-    the space header of §4: Back, the name and lock, and the inactive views in the row under it.
-  - **The card** is centred both ways in the space's pane at every window (420 px at most): the
-    lock in a round tile, "Payroll is locked", then one paragraph that says what happened and who can
-    unlock it once ("Ada locked Payroll at 09:00. Ada can unlock it." or "The server restarted at
-    22:15. Ada and Piotr can unlock it."). A space admin's card adds the password field and Unlock on
-    one row, "Use the recovery code" under them and "People and encryption" last, all centred. The line
-    a refusal is said in is kept at the card's foot, under them, so nothing in the card moves when one
-    appears.
+  of the company works normally.
 
 ### Last active
 

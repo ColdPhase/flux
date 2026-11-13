@@ -50,11 +50,11 @@ let pdf: PDFDocumentProxy | null = null;
 const views: View[] = [];
 let announced = false;
 
-function start(bytes: Uint8Array) {
-  void open(bytes).catch(() => say({ frame: PDF_FRAME, type: 'failed', reason: 'damaged' }));
+function start(bytes: Uint8Array, page: number) {
+  void open(bytes, page).catch(() => say({ frame: PDF_FRAME, type: 'failed', reason: 'damaged' }));
 }
 
-async function open(bytes: Uint8Array) {
+async function open(bytes: Uint8Array, firstPage: number) {
   const worker = new PdfWorker();
   // A worker that cannot start would leave the document loading for ever.
   worker.addEventListener('error', () => { if (!pdf) say({ frame: PDF_FRAME, type: 'failed', reason: 'damaged' }); });
@@ -106,6 +106,7 @@ async function open(bytes: Uint8Array) {
   new ResizeObserver(() => relayout()).observe(scroller);
   for (const view of views) observer.observe(view.element);
   void measureAll();
+  if (firstPage > 1) void scrollToPage(firstPage - 1, 0);
 }
 
 /** Every page's size at scale 1, read in the background so the scroll height settles; the pages in view are drawn meanwhile. */
@@ -284,10 +285,10 @@ async function scrollToPage(index: number, offset: number) {
 // Flux's page is the only one that may talk to this one, and only once, with the file.
 let opened = false;
 addEventListener('message', (event: MessageEvent) => {
-  const data = event.data as { frame?: unknown; type?: unknown; bytes?: unknown } | null;
+  const data = event.data as { frame?: unknown; type?: unknown; bytes?: unknown; page?: unknown } | null;
   if (opened || event.source !== parent || parent === window) return;
   if (!data || data.frame !== PDF_FRAME || data.type !== 'open' || !(data.bytes instanceof ArrayBuffer)) return;
   opened = true;
-  start(new Uint8Array(data.bytes));
+  start(new Uint8Array(data.bytes), typeof data.page === 'number' && Number.isInteger(data.page) && data.page > 0 ? data.page : 1);
 });
 if (parent !== window) say({ frame: PDF_FRAME, type: 'ready' });
