@@ -53,6 +53,16 @@ export FLUX_KEYRING_TOKEN="$(head -c 32 /dev/urandom | base64 | tr '+/' '-_' | t
 export FLUX_KEY_PIN_SECRET="$(head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=\n')"
 . scripts/test_images.sh
 compose="docker compose --env-file /dev/null -p $project -f docker/compose.source.yaml -f docker/compose.test.yaml --profile test"
+# FLUX_TEST_PERSONAL_RUNS=anthropic-mock: the real worker runs the fixture key's agents, and every API-key agent runs in pi in the agent
+# runtime (#1441, RT-1). The stack gets the runtime with `pi`; the worker's model gateway sends pi's requests to the mock provider.
+runtime_up=
+if [ "${FLUX_TEST_PERSONAL_RUNS:-}" = anthropic-mock ]; then
+  export FLUX_AGENT_RUNTIME=pi
+  export FLUX_RUNTIME_MANAGER_SECRET="$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')"
+  export FLUX_RUNTIME_SECRET_1="$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')"
+  compose="$compose -f docker/compose.source.runtime.yaml --profile runtime"
+  runtime_up=1
+fi
 # #1294: FLUX_CHECK_EMBEDDINGS=on adds the optional embedding container itself (docker/compose.embeddings.yaml): the API and worker use it, and the test
 # service is told where it is, which switches on tests/app/search-vectors-live.test.ts. FLUX_CHECK_EMBEDDINGS_CACHE (a host directory) keeps
 # its model between runs; FLUX_TEST_RECALL_FILE (a seed.json of scripts/eval/retrieval/seed.py) is the corpus of that test's recall measurement.
@@ -127,6 +137,13 @@ run_browser() {
 $compose build
 $compose up -d db migrate
 $compose --profile setup run --rm files-init
+if [ -n "$runtime_up" ]; then
+  $compose up -d --wait runtime-egress runtime-manager runtime-1
+  attempt=0
+  until $compose logs --no-color worker | grep -q '"event":"model_gateway","state":"listening"'; do
+    attempt=$((attempt + 1)); [ "$attempt" -lt 60 ] || { echo "the worker's model gateway did not listen" >&2; exit 1; }; sleep 1
+  done
+fi
 
 # Fresh VAPID keys per run, created with the same command operators use (docs/development/containers.md).
 keys=$($compose run --rm --no-deps -T migrate apps/worker/node_modules/.bin/web-push generate-vapid-keys --json)

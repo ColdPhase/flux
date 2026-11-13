@@ -255,6 +255,36 @@ class FailClosedTest(unittest.TestCase):
     def test_an_audit_report_with_no_advisories_is_clean(self) -> None:
         self.assertEqual(self.audit_file(json.dumps(audit_report()))[0], scan.EXIT_CLEAN)
 
+    # npm audit --json of pi's own lockfile (#1441, security review of #1452, P3-4)
+
+    def pi_audit(self, pi: str) -> tuple[int, str]:
+        with tempfile.TemporaryDirectory() as directory, mock.patch.dict(os.environ), \
+                mock.patch.object(scan, "ALLOWLIST", allowlist_file(directory, [])):
+            os.environ.pop("GITHUB_STEP_SUMMARY", None)
+            (Path(directory) / "audit.json").write_text(json.dumps(audit_report()), encoding="utf-8")
+            (Path(directory) / "pi.json").write_text(pi, encoding="utf-8")
+            out, err = io.StringIO(), io.StringIO()
+            with redirect_stdout(out), redirect_stderr(err):
+                code = scan.main(["audit", "--json", str(Path(directory) / "audit.json"), "--pi-json", str(Path(directory) / "pi.json")])
+            return code, out.getvalue() + err.getvalue()
+
+    def test_a_high_advisory_in_pis_lockfile_fails_the_audit(self) -> None:
+        report = {"auditReportVersion": 2, "metadata": {"dependencies": {"prod": 120, "total": 120}}, "vulnerabilities": {
+            "undici": {"name": "undici", "severity": "high", "fixAvailable": True, "via": [
+                {"source": 1101, "name": "undici", "title": "undici problem", "url": "https://github.com/advisories/GHSA-aaaa-bbbb-cccc", "severity": "high", "range": "<6.2.0"}]},
+            "pi-dep": {"name": "pi-dep", "severity": "high", "fixAvailable": False, "via": ["undici"]}}}
+        code, output = self.pi_audit(json.dumps(report))
+        self.assertEqual(code, scan.EXIT_FINDINGS, output)
+        self.assertIn("GHSA-aaaa-bbbb-cccc", output)
+        self.assertIn("1 advisories in production dependencies", output, "an advisory inherited through another package counts once")
+
+    def test_pis_report_must_show_a_scan(self) -> None:
+        for report in ({}, {"auditReportVersion": 2, "vulnerabilities": {}, "metadata": {"dependencies": {"total": 0}}}):
+            with self.subTest(report=report):
+                self.assertEqual(self.pi_audit(json.dumps(report))[0], scan.EXIT_UNUSABLE)
+        clean = {"auditReportVersion": 2, "vulnerabilities": {}, "metadata": {"dependencies": {"prod": 120, "total": 120}}}
+        self.assertEqual(self.pi_audit(json.dumps(clean))[0], scan.EXIT_CLEAN)
+
     # Trivy
 
     def trivy(self, report: str | bytes | None, returncode: int = 0) -> tuple[int, str, int, Path]:

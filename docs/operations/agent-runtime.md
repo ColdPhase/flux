@@ -98,9 +98,10 @@ FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS=2026-10-05   # the date you agreed with Anth
 
 Then `./flux up`. The value is a comma-separated list of `claude_code`, `codex` and `pi`, each at most once. Codex needs no
 operator statement; Claude Code needs the Commercial Terms date. **`pi`** (#1441) runs every API-key agent (Anthropic, OpenAI,
-OpenRouter, Gemini, OpenAI-compatible and self-hosted keys) in pi in the runtime instead of the worker's own loop: with shell and
-files in a scratch of each run, like Claude Code and Codex. It needs no statement and no sign-in; `FLUX_AGENT_RUNTIME=pi` alone runs
-the runtime for API keys only. The key stays sealed in Flux: pi reaches the model through the model gateway (`runtime-egress:8081`) with
+OpenRouter, Gemini, OpenAI-compatible and self-hosted keys) in pi in the runtime, with shell and files in a scratch of each run, like
+Claude Code and Codex. **Every agent runs in the runtime** ([RT-1](../product/ai-modes.md#rt-1--engines-on-the-server), founder decision
+2026-11-13, #1441): Flux has no other engine, so without `pi` (or without the runtime) no API key can run an agent. It needs no statement
+and no sign-in; `FLUX_AGENT_RUNTIME=pi` alone runs the runtime for API keys only. The key stays sealed in Flux: pi reaches the model through the model gateway (`runtime-egress:8081`) with
 a gateway token of its run, and the gateway meters every request against the key's daily budget.
 
 `./flux up` then also builds and starts the Compose profile `runtime`:
@@ -515,7 +516,14 @@ None of them is hidden by the checks.
 - **Reconciliation decides from sightings that can be a moment old (m8, low, accepted).** A binding missing from the
   sightings is looked for once more before the owner is told to sign in again. What is not serialized is the gap between
   those two reads.
-- **Docker Desktop is unsupported** (see *What the runtime gets*).
+- **Docker Desktop is unsupported** (see *What the runtime gets*), and with it Flux AI, which needs the runtime (RT-1). Checked
+  2026-11-13 rather than assumed (#1441): the kernel of Docker Desktop 4.99.0 for macOS (and of its Docker VMM engine on Windows),
+  `7.0.14-linuxkit`, has Landlock (`CONFIG_SECURITY_LANDLOCK=y`, `landlock` in `CONFIG_LSM`; ABI 8 from the v7.0 source) but **no Yama**
+  (`# CONFIG_SECURITY_YAMA is not set`, observed in the configs embedded in the 4.99.0 arm64 and amd64 kernels; Docker's release notes say
+  4.93.0 moved to kernel 7.0.14 and 4.60.0 enabled Landlock). `/proc/sys/kernel/yama/ptrace_scope` does not exist there and cannot be set,
+  so the runtime's `ptrace_scope` requirement cannot be met and the launcher's check says so. Docker Desktop on Windows with the WSL2
+  backend uses Microsoft's WSL kernel, whose `config-wsl` at `linux-msft-wsl-6.18.58.1` has both Landlock and Yama (WSL 2.7.5 or later;
+  Yama's default of 1 there is inferred from the kernel source, not observed): not tested with Flux.
 
 ## Installing from a release
 

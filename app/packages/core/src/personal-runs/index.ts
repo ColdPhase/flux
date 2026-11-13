@@ -14,7 +14,7 @@ export { LIVE_TEXT_MS, liveText, type LiveText } from './live-text.js';
 export { TEST_FIXTURE_API_KEY, TEST_FIXTURE_KEY_REF, testFixturePersonalConnections } from './test-fixture.js';
 export { apiModelAccount, connectionOnModel, defaultPick, keyListing, modelGroups, modelRetired, planModelRetired, runtimeModelAccount, runtimeModelFlag } from './model.js';
 export { createRuntimeRunProcessor, localToolInInit, type KeyRunGateway } from './runtime-run.js';
-export { KEY_SEARCH_LIMITS, KEY_SEARCH_SYSTEM, keySearchOffered, searchWithKey, WEB_SEARCH_TOOL, type KeySearchMeter, type KeySearchOutcome } from './key-search.js';
+export { KEY_SEARCH_LIMITS, KEY_SEARCH_SYSTEM, keySearchHoldMicros, keySearchOffered, searchWithKey, WEB_SEARCH_TOOL, type KeySearchMeter, type KeySearchOutcome } from './key-search.js';
 export { redactSecrets, REDACTED_SECRET } from './redaction.js';
 export { answerCleaner, type AnswerCleaner } from './answer-addresses.js';
 export { withoutInventedMarks, withoutOwnSources } from './answer-marks.js';

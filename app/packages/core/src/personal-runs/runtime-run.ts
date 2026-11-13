@@ -336,7 +336,13 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
       if (!grant || !grant.tools.length || (key && !modelToken)) {
         await tokens!.close(run.id).catch(() => undefined);
         if (key && modelToken) await key.gateway?.close(run.id).catch(() => undefined);
-        return finish(run.id, 'dispatching', () => ended('unavailable', 'before_dispatch', free));
+        // The token is refused for a run its owner stopped as it started (a Stop right after a Retry): that run is stopped, not unavailable.
+        return uow.run(async (ports) => {
+          const current = await ports.runs.findRun(run.id, { lock: true });
+          if (!current || current.status !== 'dispatching') return 'skipped';
+          const why = current.stopRequestedAt ? ((await spaceSwitchAllows(ports, current, false)) ? 'stopped' : 'ai_off') : 'unavailable';
+          return (await updateAndAnnounce(ports, run.id, ended(why, 'before_dispatch', free))).status;
+        });
       }
       /** What the gateway said of the run's requests at its end: unknown usage, and a refusal for the money or the run's standing. */
       let gatewayAccount: { unknown: number; stopped: 'budget' | 'ended' | null } | null = null;

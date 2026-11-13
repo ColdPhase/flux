@@ -6,6 +6,7 @@ import type { AddressInfo } from 'node:net';
 // script (call a tool, answer, or refuse with a status and body) and is recorded with its credential headers, the tools it offered and the
 // tool results it carried. Nothing here reaches a provider.
 
+/** A tool step's args may name `{{gatewayToken}}`: the credential the request came with (a run trying to send its own token out, #1441). */
 export type GatewayStep =
   | { tool: string; args: Record<string, unknown> }
   | { text: string }
@@ -75,6 +76,8 @@ export async function startFakeGateway(): Promise<FakeGateway> {
       }
       n += 1;
       const id = `fake-${n}`;
+      const credential = (request.headers['x-api-key'] as string | undefined) ?? (request.headers.authorization ?? '').replace(/^Bearer /, '');
+      if ('tool' in step) step.args = JSON.parse(JSON.stringify(step.args).split('{{gatewayToken}}').join(credential)) as Record<string, unknown>;
       if (messagesApi) {
         const event = (name: string, data: unknown) => `event: ${name}\ndata: ${JSON.stringify(data)}\n\n`;
         const usage = { input_tokens: 100, output_tokens: 10, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };

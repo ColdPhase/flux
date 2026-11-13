@@ -74,8 +74,9 @@ export function failureOf(error: unknown, signal: AbortSignal): Extract<Personal
 
 /**
  * Anthropic's own web search (#954, C-29): the basic `web_search_20250305`, which every Claude model and platform has (dynamic
- * filtering runs the search from code execution, needs Claude 4.6 or later and is not offered on every platform). No `max_uses`: a run
- * searches as much as its question needs (founder direction 2026-11-09, #1113), and each search is charged as the response reports it.
+ * filtering runs the search from code execution, needs Claude 4.6 or later and is not offered on every platform). An agent searches as much as
+ * its question needs (founder direction 2026-11-09, #1113): each `flux_web_search` is one request of at most a few searches (`max_uses`,
+ * #1441), held for that bound, and each search is charged as the response reports it.
  * No domain list and no location: the agent searches the whole web, like a person would.
  */
 export const ANTHROPIC_WEB_SEARCH_TOOL = { type: 'web_search_20250305', name: 'web_search' } as const;
@@ -88,10 +89,12 @@ const EPHEMERAL = { type: 'ephemeral' } as const;
  * from the cache across runs too. The last request of a run offers none to call (`tool_choice: none`), but still carries them.
  */
 const toolsOf = (request: PersonalComputeRequest) => {
-  if (!request.tools?.length) return {};
+  // `flux_web_search`'s request (#1441): the search alone, with its bound number of searches.
+  const search = request.webSearch ? [{ ...ANTHROPIC_WEB_SEARCH_TOOL, ...(request.webSearchMaxUses ? { max_uses: request.webSearchMaxUses } : {}) }] : [];
+  if (!request.tools?.length) return search.length ? { tools: search as unknown as Anthropic.Tool[] } : {};
   const flux = anthropicTools(request.tools);
   if (request.cache) flux[flux.length - 1] = { ...flux.at(-1)!, cache_control: EPHEMERAL };
-  return { tools: [...flux, ...(request.webSearch ? [ANTHROPIC_WEB_SEARCH_TOOL] : [])] as unknown as Anthropic.Tool[],
+  return { tools: [...flux, ...search] as unknown as Anthropic.Tool[],
     ...(request.answerNow ? { tool_choice: { type: 'none' } as const } : {}) };
 };
 
@@ -140,7 +143,8 @@ export function anthropicPersonalCompute({ enabled, resolveKey, baseURL = AI_PRO
     },
 
     async dispatch(request, signal, onText) {
-      checkRequestLimits(request, 'anthropic_messages');
+      // A request outside the limits is never sent, so it costs nothing.
+      try { checkRequestLimits(request, 'anthropic_messages'); } catch { return { kind: 'failed', reason: 'provider_error', billed: 'none' }; }
       try {
         const api = await client(request.connection.keyRef);
         const params = {

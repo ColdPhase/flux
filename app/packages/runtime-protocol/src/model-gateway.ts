@@ -60,6 +60,11 @@ export const MODEL_GATEWAY_LIMITS = {
   errorBodyBytes: 64 * 1024,
   /** Request bodies of every run held in the worker's memory at once (#1441 review: the worker has 512 MiB for all its jobs). */
   bodiesInFlightBytes: 48 * 1024 * 1024,
+  /**
+   * Of those, one run's at once (security review of #1444, P3-3): its four places cannot take the whole bound, so one run never makes
+   * the others wait. One request of the largest size fits.
+   */
+  bodiesInFlightPerRunBytes: 16 * 1024 * 1024,
 } as const;
 
 export interface ModelGatewayRoute {

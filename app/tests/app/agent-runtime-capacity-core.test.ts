@@ -51,7 +51,7 @@ describe('what the host must offer', () => {
   });
 
   test('a kernel without Yama (Docker Desktop) is refused like scope 0: absence never bypasses the gate', () => {
-    assert.match(hostProblem({ ...met, ptraceScope: '' })!, /Docker Desktop is unsupported/);
+    assert.match(hostProblem({ ...met, ptraceScope: '' })!, /this kernel has none: run Flux on a Linux host whose kernel has Yama\./);
   });
 
   test('without root in the container, or without each capability, people cannot be kept apart: refused', () => {

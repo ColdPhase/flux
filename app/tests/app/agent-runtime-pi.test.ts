@@ -132,6 +132,18 @@ describe('API-key agents run in pi in the runtime (#1441)', () => {
     assert.equal((await readdir(join(slot.config.dataDir))).length, 1, 'the owner\'s place in the runtime was made for the run (no sign-in)');
   });
 
+  test('a change that would write the run\'s own gateway token is refused by its supervisor, as a CLI\'s login is (security review of #1452, P3-1)', async () => {
+    gateway.script([
+      { tool: 'mcp__flux__flux_create_task', args: { clientCommandId: randomUUID(), task: { title: 'Note {{gatewayToken}}' } } },
+      { text: 'I could not save it.' },
+    ]);
+    const started = await ask('Save the note as a task');
+    assert.equal(await processor.process(started.run.id), 'completed', await why(started.run.id));
+    assert.match(gateway.requests[1]?.results[0] ?? '', /holds the sign-in of the AI tool you run on/, 'the change was refused');
+    const tasks = await pool.query(`SELECT count(*)::int AS n FROM project_work_items WHERE project_id = $1 AND title LIKE 'Note %'`, [place.id]);
+    assert.equal(tasks.rows[0].n, 0, 'nothing was made');
+  });
+
   test('the gateway\'s budget refusal ends the run at once, with one request and nothing posted', async () => {
     gateway.script([{ status: 402, body: { type: 'error', error: { type: 'flux_budget_exhausted', code: 'flux_budget_exhausted', message: 'The key\'s daily budget cannot hold this request; stop' } } }]);
     const started = await ask('Summarize the notes');

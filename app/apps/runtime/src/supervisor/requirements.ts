@@ -14,14 +14,15 @@ export interface HostFacts {
   effectiveCapabilities: string;
 }
 
-const YAMA_FIX = 'Fix: on the host run `sudo sysctl -w kernel.yama.ptrace_scope=1`, add `kernel.yama.ptrace_scope = 1` to /etc/sysctl.d/90-flux.conf '
-  + 'so it survives a reboot, then run ./flux up again.';
+/** The exact fix, one sentence for now and one for after a restart (founder direction 2026-11-13, #1441). */
+export const YAMA_FIX = 'Fix it now on the host: `sudo sysctl -w kernel.yama.ptrace_scope=1`. '
+  + "Keep it after a restart: `echo 'kernel.yama.ptrace_scope = 1' | sudo tee /etc/sysctl.d/90-flux.conf`.";
 
 /** The one message for the first requirement this host does not meet; null when it meets them all. */
 export function hostProblem(facts: HostFacts): string | null {
   const scope = facts.ptraceScope.trim();
-  if (!scope) return `The agent runtime needs Linux Yama, and this kernel has none (Docker Desktop is unsupported). Use a Linux host with kernel.yama.ptrace_scope=1.`;
-  if (!/^[1-3]$/.test(scope)) return `The agent runtime needs kernel.yama.ptrace_scope of 1 or higher, and this host has ${scope}, so any process could read another's memory. ${YAMA_FIX}`;
+  if (!scope) return 'The agent runtime, which Flux AI needs, needs Linux Yama, and this kernel has none: run Flux on a Linux host whose kernel has Yama.';
+  if (!/^[1-3]$/.test(scope)) return `The agent runtime, which Flux AI needs, needs kernel.yama.ptrace_scope of 1 or higher, and this host has ${scope}. ${YAMA_FIX}`;
   if (facts.uid !== 0) return 'The agent runtime needs its supervisor to start as root inside its container, to run each person under their own user id; this container starts as another user. Use the Compose files of this version without changing `user:`.';
   const effective = BigInt(`0x${/^[0-9a-f]{1,16}$/i.test(facts.effectiveCapabilities) ? facts.effectiveCapabilities : '0'}`);
   const missing = SUPERVISOR_CAPABILITIES.filter((name) => !(effective & (1n << BigInt(BITS[name]))));

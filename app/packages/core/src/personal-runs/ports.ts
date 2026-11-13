@@ -518,6 +518,11 @@ export interface PersonalComputeRequest {
    */
   webSearch?: true;
   /**
+   * The most searches the provider may make for this request (Anthropic `max_uses`, OpenAI Responses `max_tool_calls`): a search-only
+   * request of `flux_web_search` (#1441) is held for exactly this many searches, so its cost has a bound. Absent: not bounded.
+   */
+  webSearchMaxUses?: number;
+  /**
    * Ask the provider to cache the stable prefix (the tool definitions and the brief) and the conversation as it grows (#1410), where
    * Flux asks for caching (`PROMPT_CACHE_RATES`). The tool loop sets it only while the request's largest cost with every input token
    * written to the cache still fits what is left of the run's reservation.

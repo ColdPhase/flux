@@ -223,7 +223,8 @@ the token as its API key; it adds the provider's usual paths:
 - **Limits** (technical safety bounds, like #843's): 16 MiB a request, 32 MiB an answer, 10 minutes a request and, for a streamed
   answer, 2 minutes without a byte from the provider, 4 requests at once for one run (the place is taken before the body is read, so an
   unknown token or a busy run costs the worker no body), 48 MiB of request bodies in the worker's memory at once for every run
-  together (the worker has 512 MiB for all its jobs), and the egress's per-source connection caps.
+  together and 16 MiB of them for one run, each counted until it has been sent to the provider (the worker has 512 MiB for all its
+  jobs), and the egress's per-source connection caps.
 
 ## RT-5 — Tools
 
@@ -362,9 +363,10 @@ shell and file tools, inside a sandbox that exists for one run; every engine can
   network or keys of their own. None fits safely, so Flux adds its own tool, `flux_web_search`, offered to pi runs only (the run token's
   mint adds it when the worker says the run is in pi): the Flux server runs one search request with the run owner's key and model through
   the provider's hosted search, the same search an API key had before pi (#954, C-29: Anthropic's web search tool, OpenAI
-  Responses' `web_search`), with no other tool and Flux's own short instruction; it holds the request's largest cost against the key's
-  daily budget before sending it (a search that does not fit is refused with that reason and nothing is sent) and charges the provider's
-  usage on the run after it, the gateway's rule; and it records the query and the result addresses like a CLI's search (C-30). A key whose
+  Responses' `web_search`), with no other tool and Flux's own short instruction, and at most three searches (Anthropic `max_uses`,
+  OpenAI `max_tool_calls`); it holds the request's largest cost for that bound, the searches' fees included, against the key's daily
+  budget before sending it (a search that does not fit is refused with that reason and nothing is sent) and charges what the provider
+  reported on the run after it, the gateway's rule (a request never sent and a complete error answer cost nothing); and it records the query and the result addresses like a CLI's search (C-30). A key whose
   provider has no hosted search through Flux's adapters (OpenRouter, Gemini's OpenAI-compatible endpoint, OpenAI-compatible and
   self-hosted, CA-6) has no such tool and its brief says it has no web search; it reads the pages it is given with
   `flux_read_web`. `FLUX_WEB_READS=off` removes it. Pages are read with `flux_read_web` only, never from the sandbox's network.
