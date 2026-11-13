@@ -429,11 +429,11 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
     assert.ok(compute.dispatched.length > 75, `over seventy-five turns fit within the tool-run input bound with every tool on, the room for an answer kept (${compute.dispatched.length})`);
     assert.ok(compute.dispatched.at(-1)!.answerNow && compute.dispatched.slice(0, -1).every((request) => !request.answerNow), 'only the last request asks for the answer');
     compute.dispatched = [];
-    // The bound on steps comes first when the steps are fewer than the turns that fit (over a hundred, above). The brief of #1064 (who asks,
+    // The bound on steps comes first when the steps are fewer than the turns that fit (over seventy-five, above). The brief of #1064 (who asks,
     // where, when, how to answer) fills about 2 KB more of every request, so in this loop of empty calls 200 steps do not fit the 64,000-byte
     // input bound; the steps are bounded here through the test seam, and the production bound of 200 is checked with fake tools in
     // personal-runs-tools.test.ts.
-    const STEPS = 90;
+    const STEPS = 70;
     const stepped = createPersonalRunProcessor({ uow: personalRunWorkerUnitOfWork(db), connections, compute, stopPollMs: 20,
       tools: mcpToolHost(tokens, `${apiUrl}/mcp`), tokens, maxTurns: STEPS });
     compute.respond = async () => ({ kind: 'completed', text: 'again', stopReason: 'tool_use', usage: { inputTokens: 500, outputTokens: 20 },
