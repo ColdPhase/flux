@@ -40,14 +40,8 @@ const NOT_OFFERED: Readonly<Record<string, string>> = {
   '403 SPACE_AI_OFF': 'AI is always off in an encrypted workspace (F-030)',
   '409 WORKSPACE_ENCRYPTED_AI_OFF': 'AI is always off in an encrypted workspace: no agent can be made, and the operator is not asked to turn AI on (F-030)',
   '503 GITHUB_UNAVAILABLE': 'GitHub is refused for an encrypted workspace, and not configured on the test server',
+  '403 PREVIEW_FRAME_ONLY': 'a preview answers only a frame of a Flux page (C-60), which this walk is not; inside one, the file is read under the space\'s lock like any other (423)',
 };
-/**
- * A route that refuses a request by where it came from before it reads anything: the walk sends it as the page of Flux that frames it
- * (C-60, #1252: the preview answers 403 PREVIEW_FRAME_ONLY to anything else), so it reaches the lock check like every other route.
- * What a request that is not a frame gets is its own test below.
- */
-const FRAME = { 'sec-fetch-dest': 'iframe', 'sec-fetch-site': 'same-origin', 'sec-fetch-mode': 'navigate' };
-const FRAMED_ROUTES: Readonly<Record<string, Record<string, string>>> = { 'GET /api/v1/files/:fileId/preview': FRAME };
 const codeOf = (text: string) => { try { return (JSON.parse(text) as { code?: string }).code ?? ''; } catch { return ''; } };
 
 let ada: Person; let ben: Person;
@@ -153,7 +147,8 @@ describe('F-030 AC-6: every route, called with a locked workspace\'s objects (S2
   });
 
   test('the preview of a file of a locked workspace: as a frame the lock answers 423; any other request is refused by its headers alone, as for a file that does not exist', async () => {
-    const framed = await ada.browser.request('GET', `/api/v1/files/${objects.fileId}/preview`, { headers: FRAME });
+    const frame = { 'sec-fetch-dest': 'iframe', 'sec-fetch-site': 'same-origin', 'sec-fetch-mode': 'navigate' };
+    const framed = await ada.browser.request('GET', `/api/v1/files/${objects.fileId}/preview`, { headers: frame });
     assert.equal(framed.status, 423, framed.text);
     assert.equal(codeOf(framed.text ?? ''), 'WORKSPACE_LOCKED');
     assert.doesNotMatch(framed.text ?? '', new RegExp(canary));
@@ -192,7 +187,7 @@ describe('F-030 AC-6: every route, called with a locked workspace\'s objects (S2
       for (const [name, value] of Object.entries(query ?? {})) if (value !== null && typeof value !== 'object') path += `${path.includes('?') ? '&' : '?'}${name}=${encodeURIComponent(String(value))}`;
       // Ada created everything; the Inbox and Needs you rows are Ben's.
       const who = /^\/api\/v1\/(inbox|needs-you|search|return)/.test(route.url) ? ben : ada;
-      const response = await who.browser.request(route.method, path, { ...(body === undefined ? {} : { body }), headers: { ...key(), 'if-match': '"1"', ...FRAMED_ROUTES[routeKey] } });
+      const response = await who.browser.request(route.method, path, { ...(body === undefined ? {} : { body }), headers: { ...key(), 'if-match': '"1"' } });
       walked.push(routeKey);
       if (response.status === 423) locked += 1;
       const text = response.text ?? '';
