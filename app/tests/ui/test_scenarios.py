@@ -1101,7 +1101,9 @@ class ScenarioJourney:
         for query in ("89 EUR", "Saturday"):
             self.assertEqual(search("mia", query), [], query)
         found = search("mia", "Saturday market")
-        self.assertEqual({(i["place"]["type"], i["place"].get("id")) for i in found} - {("project", s["market"]), ("project", lamp)}, set(), found)
+        # A space is found under its company (place "workspace", target the project); everything else under its space.
+        space = lambda i: i["place"].get("id") if i["place"]["type"] == "project" else i["target"].get("projectId")  # noqa: E731
+        self.assertEqual({space(i) for i in found} - {s["market"], lamp}, set(), found)
         self.assertNotIn(LEFT_OUT, json.dumps(found))
         self.assertEqual(self.api("ada", "GET", f"/api/v1/decisions/{d3['id']}", status=200)["status"], "proposed")
 
