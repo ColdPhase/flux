@@ -121,12 +121,12 @@ In v0.2 everything that works for a person with AI is an **agent**, and each per
   ("every weekday at 9, summarise what changed"). Only the owner prompts, configures or pays for an agent.
 - **An agent has exactly its owner's rights.** There are no agent grants and no access requests: it reads and changes what its
   owner can, right now, only in spaces where AI is on, and it loses access the moment its owner does. A company owner's or admin's
-  agents see only the spaces that person was added to. Each agent has one setting, **What it may do**: *Only read*, *Do it and
-  tell me* (the default) or *Ask me first*. Deleting anything and changing other people's things always wait for the owner's OK,
+  agents see only the spaces that person was added to. Each agent has one switch, **Ask me first**: off (the
+  default) it does the work and tells its owner, with Undo; on, every change waits for the owner's OK. Deleting anything and changing other people's things always wait for the owner's OK,
   which only the owner can give, in their own signed-in session. Every change has an **Undo** on the agent's message.
 - **Local clients.** A person connects their own Claude Code, Codex or another MCP client to Flux with the commands on the
   connect page (**Settings › AI › Connect AI › Connect another › Claude Code or Codex on your computer**, then **Show the command**) and one click on **Allow**. It acts with the person's
-  rights, has the same **What it may do** row, and **Disconnect** ends it at once. Nobody can make a connection on someone
+  rights, has the same **Ask me first** switch, and **Disconnect** ends it at once. Nobody can make a connection on someone
   else's behalf. [Connect your own agent](../../README.md#connect-your-own-agent) walks through it, and the
   [integration guide](../integrations/README.md) is for people who build clients.
 - **The web.** A server agent searches the web and reads public pages as much as a question needs, and lists every address it

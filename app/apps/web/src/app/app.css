@@ -347,6 +347,8 @@ a.me__item { text-decoration: none; }
 .top { display: flex; align-items: center; gap: 8px; min-height: var(--header-h); flex: none; padding: 14px var(--space-page) 6px; }
 .top__title { display: flex; align-items: baseline; gap: 10px; flex: 1; min-width: 0; }
 .top__title h1 { font-size: var(--fs-title); font-weight: 600; letter-spacing: -0.65px; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* An agent's chat (#1419): its Kreska before its name, centred on the title line. */
+.top__title > .kreska { flex: none; align-self: center; }
 /* A count beside a place's title: a quiet number, never a pill (README §2, §7 Inbox). */
 .top__n { font-size: var(--fs-md); font-weight: 500; color: var(--t3); font-variant-numeric: tabular-nums; }
 .top__crumb, .top__slash { color: var(--t2); font-size: var(--fs-md); white-space: nowrap; }

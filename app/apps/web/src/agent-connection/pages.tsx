@@ -8,7 +8,7 @@ import { signInPath } from '../auth/logic';
 import { Button, Icon, Kreska, agentHue } from '../ui';
 import { decideAgentConsent, followOAuthRedirect, getConsentContext, listAgentConnections, revokeAgentConnection, type ConsentContext } from './api';
 import { ClientGuide } from './ClientGuide';
-import { MayDoChoice } from './MayDoChoice';
+import { AskMeFirst } from './AskMeFirst';
 import './connection.css';
 
 interface ConnectionData { connections: AgentConnection[] }
@@ -67,7 +67,7 @@ function Head({ eyebrow, title, children }: { eyebrow?: string; title: string; c
   </header>;
 }
 
-/** The person's own Claude Code or Codex (F-026 §7): each connected one with its "What it may do" and Disconnect, then how to connect another (#1363). */
+/** The person's own Claude Code or Codex (F-026 §7): each connected one with its Ask me first switch and Disconnect, then how to connect another (#1363). */
 export function AgentConnectionPage() {
   const { connections } = useLoaderData() as ConnectionData;
   const [items, setItems] = useState(connections.filter((connection) => !connection.revokedAt));
@@ -90,8 +90,8 @@ export function AgentConnectionPage() {
 
   return <section className="connection" aria-label="Claude Code, Codex or another app">
     <Head title="Claude Code, Codex or another app on your computer">
-      For code on your computer. It signs in once, with one click, and then acts as you with the same rules as your agents: it sees and changes what you can, only as far as
-      “What it may do” allows. Deleting and other people’s things always wait for your OK.
+      For code on your computer. It signs in once, with one click, and then acts as you with the same rules as your agents: it sees and changes what you can, and with Ask me first
+      on every change waits for your OK. Deleting and other people’s things always wait for your OK.
     </Head>
     {error ? <div className="connection__alert" role="alert">{error}</div> : null}
     {items.length ? <ul className="connection__list" aria-label="Connected clients">{items.map((connection) => <li className="connection__saved sset-card" key={connection.id}>
@@ -102,10 +102,7 @@ export function AgentConnectionPage() {
           <span className="connection__meta">For code on your computer. Same rules as your agents.</span>
         </div>
       </div>
-      <div className="connection__may-do">
-        <p className="connection__may-do-label" id={`may-do-${connection.id}`}>What it may do</p>
-        <MayDoChoice connectionId={connection.id} initial={connection.mayDo} labelledBy={`may-do-${connection.id}`} />
-      </div>
+      <AskMeFirst connectionId={connection.id} initial={connection.mayDo} />
       {confirming === connection.id
         ? <div className="connection__revoke"><span>Disconnect now? Its access stops at once and what it had waiting is dropped.</span>
           <Button variant="secondary" busy={busy} onClick={() => { void disconnect(connection.id); }}>Disconnect</Button>
@@ -193,7 +190,7 @@ function ConsentReview({ context, oauthQuery }: { context: ConsentContext; oauth
     <ConsentDestination context={context} />
     <ul className="connection__scopes" aria-label="What it will be">
       <li><Icon name="check" size={15} /><span><strong>Acts with your rights</strong><small>It sees and changes only what you can, in the spaces where AI is on, and no more.</small></span></li>
-      <li><Icon name="check" size={15} /><span><strong>Does what “What it may do” says</strong><small>It starts at “Do it and tell me”. You can set Only read or Ask me first any time in Settings › AI.</small></span></li>
+      <li><Icon name="check" size={15} /><span><strong>Makes changes and tells you, with Undo</strong><small>Turn on Ask me first any time in Settings › AI, and every change waits for your OK.</small></span></li>
       <li><Icon name="check" size={15} /><span><strong>Deleting and other people’s things wait for your OK</strong><small>Whatever you choose. Only you, here, can approve.</small></span></li>
     </ul>
     <div className="connection__footer">

@@ -1811,7 +1811,10 @@ export const agentChatReads = pgTable('agent_chat_reads', {
   readAt: timestamp('read_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
-/** 0008 (#856, F-036 AG-5): "When someone assigns a task to me: Give it to [agent]". No row is "Do nothing". */
+/**
+ * 0008 (#856, F-036 AG-5): the former setting "When someone assigns a task to me: Give it to [agent]". Nothing reads or writes it since
+ * #1419 (founder decision, 2026-11-13): a task reaches an agent only by its Owner field. The table stays, unused, so no migration drops it.
+ */
 export const agentTaskTaking = pgTable('agent_task_taking', {
   ownerUserId: text('owner_user_id').primaryKey().references(() => authUsers.id, { onDelete: 'cascade' }),
   agentId: uuid('agent_id').notNull().references(() => agents.id, { onDelete: 'cascade' }),

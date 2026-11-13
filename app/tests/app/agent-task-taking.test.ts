@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
-import { taskActivityPath, taskAgentPath, taskAgentRetryPath, taskAgentStopPath, taskDiscussionPath, TASK_TAKING_PATH, workItemPath,
-  type Project, type TaskActivityPage, type TaskAgentState, type TaskDiscussion, type TaskTaking, type WorkItem, type Workspace } from '@flux/contracts';
+import { MY_AGENTS_PATH, taskActivityPath, taskAgentPath, taskAgentRetryPath, taskAgentStopPath, taskDiscussionPath, workItemPath,
+  type MyAgentList, type Project, type TaskActivityPage, type TaskAgentState, type TaskDiscussion, type WorkItem, type Workspace } from '@flux/contracts';
 import { taskAgentState, taskRunClientId, type Principal, type TaskAgentFacts } from '@flux/core';
 import { createAgentTaskDrain } from '../../apps/server/src/agent-tasks/drain.js';
 import { personalRunPorts, personalRunUseCases } from '../../apps/server/src/personal-runs/adapters.js';
@@ -14,7 +14,7 @@ import { FakeConnections, FakeQueue } from './support/personal-runs.js';
 import { waitFor } from './support/wait.js';
 import { setSpaceAi } from './support/space-ai.js';
 
-// People's agents take tasks (#856, F-036 AG-5) and the Owner field offers only your own agents (#904). The API container runs the
+// People's agents take tasks (#856, F-036 AG-5), only by the Owner field (#1419), which offers only your own agents (#904). The API container runs the
 // production composition, where nobody has a key and the provider is off, so an agent that takes a task says it cannot start and gives
 // the task back: that is the path asserted here, through the real routes, the real events and the real drain. The run itself (the
 // agent works, reports in the task, marks it Done or hands it back) is followed in the browser suite on the mock provider
@@ -34,7 +34,7 @@ describe('people\'s agents take tasks (#856, #904)', () => {
   let ws: Workspace; let lamp: Project;
   const agents: Record<string, string> = {};
 
-  const readTaking = async (someone: Person) => expectStatus(await someone.browser.request('GET', TASK_TAKING_PATH), 200) as TaskTaking;
+  const ownAgents = async (someone: Person) => (expectStatus(await someone.browser.request('GET', MY_AGENTS_PATH), 200) as MyAgentList).items.map((agent) => agent.id);
   const readTask = async (id: string) => expectStatus(await ada.browser.request('GET', workItemPath(id)), 200) as WorkItem;
   const createTask = async (by: Person, title: string, owner: { kind: 'human' | 'agent'; id: string } | null) =>
     post<WorkItem>(by, `/api/v1/projects/${lamp.id}/work`, { title, ...(owner ? { owner } : {}) });
@@ -60,8 +60,8 @@ describe('people\'s agents take tasks (#856, #904)', () => {
   });
 
   test('#904: the Owner field offers your own agents, and the server refuses someone else\'s', async () => {
-    assert.deepEqual((await readTaking(kai)).agents.map((agent) => agent.id), [agents.kai], 'Kai is offered Kai\'s agent only');
-    assert.deepEqual((await readTaking(maja)).agents, [], 'a person without an agent is offered none');
+    assert.deepEqual(await ownAgents(kai), [agents.kai], 'Kai is offered Kai\'s agent only');
+    assert.deepEqual(await ownAgents(maja), [], 'a person without an agent is offered none');
     const task = await createTask(ada, 'Calibrate the overflow sensor', null);
     const refused = await ada.browser.request('PATCH', workItemPath(task.id), { body: { owner: { kind: 'agent', id: agents.kai } }, headers: { 'if-match': `"${task.version}"` } });
     assert.equal(refused.status, 422, refused.text);
@@ -75,34 +75,18 @@ describe('people\'s agents take tasks (#856, #904)', () => {
     assert.equal(mine.owner?.id, agents.kai);
   });
 
-  test('the setting names one of your own agents, and Do nothing is the default', async () => {
-    assert.equal((await readTaking(kai)).takes, null, 'Do nothing by default');
-    const foreign = await kai.browser.request('PUT', TASK_TAKING_PATH, { body: { agentId: agents.ada } });
-    assert.equal(foreign.status, 409, foreign.text);
-    assert.equal((foreign.json as { code: string }).code, 'TASK_TAKING_NOT_YOUR_AGENT');
-    const set = expectStatus(await kai.browser.request('PUT', TASK_TAKING_PATH, { body: { agentId: agents.kai } }), 200) as TaskTaking;
-    assert.equal(set.takes, agents.kai);
-    assert.equal((await readTaking(ada)).takes, null, 'it is Kai\'s setting, nobody else\'s');
-    const none = expectStatus(await kai.browser.request('PUT', TASK_TAKING_PATH, { body: { agentId: null } }), 200) as TaskTaking;
-    assert.equal(none.takes, null);
-    assert.equal((await kai.browser.request('PUT', TASK_TAKING_PATH, { body: { agentId: 'not-an-id' } })).status, 400);
-  });
-
-  test('Do nothing: a task given to a person stays with the person and starts nothing', async () => {
+  test('#1419: no rule gives a person\'s task to their agent; the setting and its route are gone', async () => {
+    // Lee has an agent: a task someone else gives Lee stays with Lee and starts nothing.
     const task = await createTask(ada, 'For Lee', { kind: 'human', id: lee.id });
-    assert.deepEqual(await events(task.id), [], 'no standing instruction, no event');
-    expectStatus(await lee.browser.request('PUT', TASK_TAKING_PATH, { body: { agentId: agents.lee } }), 200);
-    const self = await createTask(lee, 'Lee gives it to Lee', { kind: 'human', id: lee.id });
-    assert.deepEqual(await events(self.id), [], 'nobody else gave it: the setting is for what others assign');
-    expectStatus(await lee.browser.request('PUT', TASK_TAKING_PATH, { body: { agentId: null } }), 200);
+    assert.deepEqual(await events(task.id), [], 'no event: nothing is waiting to give it away');
+    assert.equal((await readTask(task.id)).owner?.id, lee.id);
+    for (const method of ['GET', 'PUT'] as const)
+      assert.equal((await lee.browser.request(method, '/api/v1/me/task-taking', method === 'PUT' ? { body: { agentId: agents.lee } } : {})).status, 404, `${method} of the old setting is not a route`);
   });
 
-  test('a task given to a person whose setting names an agent goes to the agent, which cannot start here and gives it back', async () => {
-    expectStatus(await kai.browser.request('PUT', TASK_TAKING_PATH, { body: { agentId: agents.kai } }), 200);
-    const task = await createTask(ada, 'Calibrate the overflow sensor', { kind: 'human', id: kai.id });
-    const rows = await settled(task.id);
-    assert.deepEqual(rows.map((row) => [row.kind, row.owner_user_id ? 'person' : 'agent']), [['assigned', 'person'], ['assigned', 'agent']],
-      'the person was given it; then the setting gave it to the agent');
+  test('giving a task to your own agent with its Owner starts it, and a stranger cannot stop or retry it', async () => {
+    const task = await createTask(kai, 'Compare the readings', { kind: 'agent', id: agents.kai! });
+    assert.deepEqual((await settled(task.id)).map((row) => [row.kind, row.owner_agent_id]), [['assigned', agents.kai]], 'one event, for the agent');
     // The production composition has no provider: the agent says so in the task and the task is back with Kai.
     const back = await waitFor(async () => { const now = await readTask(task.id); return now.owner?.kind === 'human' ? now : null; }, 'the task to come back to Kai');
     assert.equal(back.owner?.id, kai.id);
@@ -112,17 +96,10 @@ describe('people\'s agents take tasks (#856, #904)', () => {
     assert.deepEqual(said, [['agent', 'I can\'t start: AI is switched off on this Flux.']], 'the discussion opens with the refusal, not with a promise it then breaks');
     const activity = expectStatus(await ada.browser.request('GET', taskActivityPath(task.id)), 200) as TaskActivityPage;
     const owners = activity.items.filter((entry) => entry.kind === 'owner');
-    assert.deepEqual(owners.map((entry) => [entry.automation ?? null, entry.owner?.to?.kind]).reverse(), [['agent_rule', 'agent'], ['agent_rule', 'human']],
-      'the setting acted for Kai, and the agent gave it back for him; both are on the task\'s record');
+    assert.deepEqual(owners.map((entry) => [entry.automation ?? null, entry.owner?.to?.kind]), [['agent_rule', 'human']],
+      'the agent gave it back for Kai, on the task\'s record');
     assert.equal((await pool.query('SELECT count(*)::int AS n FROM personal_runs WHERE work_id = $1', [task.id])).rows[0].n, 0, 'no run was made');
-    // It is back with Kai without another take: the give-back is not "someone assigned it to me".
-    assert.equal((await events(task.id)).length, 2);
-    expectStatus(await kai.browser.request('PUT', TASK_TAKING_PATH, { body: { agentId: null } }), 200);
-  });
-
-  test('giving a task to your own agent starts it, and a stranger cannot stop or retry it', async () => {
-    const task = await createTask(kai, 'Compare the readings', { kind: 'agent', id: agents.kai! });
-    await settled(task.id);
+    assert.equal((await events(task.id)).length, 1, 'the give-back is not another assignment');
     const state = expectStatus(await kai.browser.request('GET', taskAgentPath(task.id)), 200) as TaskAgentState;
     // The agent could not start in this composition and handed the task back; the line is quiet.
     assert.equal(state.line, null);
@@ -147,10 +124,9 @@ describe('people\'s agents take tasks (#856, #904)', () => {
   const agentState = async (someone: Person, id: string) => expectStatus(await someone.browser.request('GET', taskAgentPath(id)), 200) as TaskAgentState;
 
   test('B1: a burst of assignments with several drains at once loses none and fails no request', async () => {
-    expectStatus(await kai.browser.request('PUT', TASK_TAKING_PATH, { body: { agentId: agents.kai } }), 200);
     // Two more drains beside the two API replicas, on the same events; the people keep creating tasks meanwhile.
     const extra = [createAgentTaskDrain(db, queue.factory, {}), createAgentTaskDrain(db, queue.factory, {})];
-    const burst = Promise.all(Array.from({ length: 8 }, (_, index) => createTask(maja, `Burst ${index}`, { kind: 'human', id: kai.id })));
+    const burst = Promise.all(Array.from({ length: 8 }, (_, index) => createTask(kai, `Burst ${index}`, { kind: 'agent', id: agents.kai! })));
     const meanwhile = Promise.all(Array.from({ length: 6 }, (_, index) => createTask(maja, `Meanwhile ${index}`, null)));
     const [assigned, others] = await Promise.all([burst, meanwhile]);
     assert.equal(others.length, 6, 'every task a person created meanwhile was created: none answered 500');
@@ -161,10 +137,9 @@ describe('people\'s agents take tasks (#856, #904)', () => {
       assert.equal(now.owner?.kind, 'human', `${task.title} is back with Kai`);
       const talk = expectStatus(await ada.browser.request('GET', taskDiscussionPath(task.id)), 200) as TaskDiscussion;
       assert.deepEqual([...new Set([talk.root, ...talk.messages].filter(Boolean).map((message) => message!.body))], ['I can\'t start: AI is switched off on this Flux.'],
-        `${task.title}: Kai's setting was applied (the agent took it and said why it could not start), not silently lost`);
+        `${task.title}: Kai's agent took it and said why it could not start, not silently lost`);
     }
     assert.equal((await pool.query(`SELECT count(*)::int AS n FROM agent_task_events WHERE handled_at IS NULL AND attempts >= 5`)).rows[0].n, 0, 'no event was given up');
-    expectStatus(await kai.browser.request('PUT', TASK_TAKING_PATH, { body: { agentId: null } }), 200);
   });
 
   test('a task stays To do while its agent waits and is Doing when the run starts', async () => {

@@ -62,9 +62,9 @@ what needs you, so you do not have to ask around.
   key). You get an **Assistant** and can add more agents, each with its own instructions, model and
   memory. `/ai` answers privately in any conversation, an agent can take a task, and you can
   schedule one by asking. An agent searches the web and reads pages, and lists what it used.
-- **An agent has your rights, no more.** Each agent has one setting, **What it may do**: only read,
-  do it and tell me, or ask me first. Deleting and other people's things always wait for your OK in
-  the Inbox, and every change has **Undo**.
+- **An agent has your rights, no more.** Each agent has one switch, **Ask me first**: off, it does
+  the work and tells you; on, every change waits for your OK. Deleting and other people's things
+  always wait for your OK in the Inbox, and every change has **Undo**.
 - **Your own Claude Code or Codex.** Sign in with one click and the client acts with your rights, on
   your computer, with your own model account. Flux never sees it.
 - **What needs you, in one place.** The Inbox holds what waits for you: questions, tasks handed
@@ -203,8 +203,8 @@ first. On the `./flux demo` data:
    your own computer and choose **Allow**. That is the whole setup: Flux makes the client's agent and its
    connection, and the client says it is authenticated (`claude mcp list` shows Connected).
 3. **It acts as you.** The client sees and changes what you can, in the spaces where AI is on, and no
-   more. **What it may do** (its tag on its row in Settings → AI) starts at **Do it and tell me**; choose
-   **Only read** or **Ask me first** any time. Deleting something and changing other people's things
+   more. It starts at **Do it and tell me** (its tag on its row in Settings → AI); turn on **Ask me first**
+   any time and every change waits for your OK. Deleting something and changing other people's things
    always wait for your OK in your **Inbox**, whatever you choose, and only you can approve them.
 4. **Ask it something**, for example: "Using Flux, what is the Community garden sensors space
    working on, and what is still open?" The client reads the space's conversation, tasks and

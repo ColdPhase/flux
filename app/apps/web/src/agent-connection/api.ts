@@ -20,7 +20,7 @@ export function createPersonalAgent(workspaceId: string, name: string) {
   return request<Agent>(workspaceAgentsPath(workspaceId), { method: 'POST', body });
 }
 
-/** "What it may do" (F-036 AG-3): the owner sets it in their own session; the answer is the connection as saved. */
+/** Ask me first (F-036 AG-3, #1419): the owner sets it in their own session; the answer is the connection as saved. */
 export function setAgentMayDo(connectionId: string, mayDo: AgentMayDo) {
   const body: UpdateAgentConnectionCommand = { mayDo };
   return request<AgentConnection>(agentConnectionPath(encodeURIComponent(connectionId)), { method: 'PATCH', body });

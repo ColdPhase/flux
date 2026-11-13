@@ -205,7 +205,7 @@ class ConnectAiJourney(unittest.TestCase):
         expect(assistant).to_contain_text("You have no agents. Make one with New agent.")
         expect(assistant.get_by_role("list", name="Your agents")).to_have_count(0)
         self.assertTrue(self.above(connect, assistant), "Connect AI comes first")
-        # The person's own Claude Code or Codex is one row of Connect AI's card, as drawn (#1363): its name, what it is for, its "What it may do" tag
+        # The person's own Claude Code or Codex is one row of Connect AI's card, as drawn (#1363): its name, what it is for, its tag ("Do it and tell me" or "Ask me first")
         # (a link to where it is changed) and Disconnect. No client guide with command-line words on this page.
         self.assertTrue(self.above(app.first, assistant), "the client's row is in Connect AI's card, above the agents")
         expect(app).to_have_count(1)
@@ -279,13 +279,15 @@ class ConnectAiJourney(unittest.TestCase):
         expect(section).to_contain_text("Test fixture key")
         # #1173: the model line names Opus and the Claude limit only beside a Claude plan that offers Opus; an API key is not one.
         section.get_by_role("link", name=re.compile("Ines personal assistant")).click()
-        expect(ines.locator("#agent-model")).to_have_text("Model · One per agent.")
+        ines.get_by_role("button", name="More settings").click()  # the Model is behind More (#1419)
+        expect(ines.locator("#agent-model")).to_have_text("Model")
         plan = {"connection": "claude_plan", "account": "claude_plan", "label": "Claude plan", "company": "Claude",
                 "options": [{"id": model, "name": name, "note": "", "callsTools": True} for model, name in (("opus", "Opus"), ("sonnet", "Sonnet"), ("haiku", "Haiku"))]}
         with_plan = json.dumps({**choice, "groups": [plan, *choice["groups"]]})
         ines.route(re.compile(r".*/api/v1/personal-assistant/model$"), lambda route: route.fulfill(status=200, content_type="application/json", body=with_plan))
         ines.reload()
-        expect(ines.locator("#agent-model")).to_have_text("Model · One per agent. Opus thinks longest and uses your Claude limit fastest.")
+        ines.get_by_role("button", name="More settings").click()
+        expect(ines.locator("#agent-model")).to_have_text("Model · Opus thinks longest and uses your Claude limit fastest.")
 
     def test_07_a_second_member_never_sees_or_changes_the_first_members_connections(self) -> None:
         ines = self.page("ines")

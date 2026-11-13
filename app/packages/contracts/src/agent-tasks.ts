@@ -1,17 +1,7 @@
 /**
- * People's agents take tasks (#856, F-036 AG-5). A task reaches an agent through its owner: the owner gives it to one of their
- * own agents in the Owner field, or one setting does it when someone assigns a task to them.
+ * People's agents take tasks (#856, F-036 AG-5). A task reaches an agent only through its owner, who gives it to one of their own
+ * agents in the task's Owner field (#1419: no setting does it by itself).
  */
-
-/** `GET`: the signed-in person's own agents a task can be given to, and the one the setting names. `PUT`: change the setting. */
-export const TASK_TAKING_PATH = '/api/v1/me/task-taking';
-export interface TaskTaking {
-  /** The person's own agents that run on the server: the Owner field offers these and no other agent. */
-  agents: { id: string; name: string }[];
-  /** "When someone assigns a task to me: Give it to [agent]". Null is "Do nothing", the default. */
-  takes: string | null;
-}
-export interface SetTaskTaking { agentId: string | null }
 
 /** `GET`: the state of the agent on a task, in one plain line. The same line for everyone who can read the task. */
 export const taskAgentPath = (workId: string) => `/api/v1/work/${workId}/agent`;

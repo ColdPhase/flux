@@ -101,7 +101,7 @@ buttons above, which read as too strong:
 - Destructive actions keep a clear style: a 1 px `--t2` outline with `--t1` text, never the inverted fill.
 - No gradient and no drop shadow on any button; `--grad-btn`, `--sh-btn` and `--sh-pri` are retired.
 - Button radius 10 (`--r-btn`); `--r-pill` stays for chips, avatars and segmented tracks.
-- A segmented choice with options of different lengths (What it may do, Model) sizes each option to
+- A segmented choice with options of different lengths (Model) sizes each option to
   its label with 14 px each side and never gives the longest an equal share (`seg--fit`); where the
   group has no room for one row (a phone) its options wrap onto the next row and keep their label width (an
   option alone on a row is not a bar), and the track takes the large radius (`--r-lg`). Equal slots stay for the views, the map's
@@ -163,7 +163,7 @@ live panel and the connection's permissions (#1238).
   the old off switch (`--hov` track, white knob) was 1.3:1 in light.
 - High-contrast mode (`forced-colors`) draws the edge and knob in `ButtonText` and an on switch in `Highlight`.
 
-**Segmented controls** (#1238) are one style: the Map / List switch, Board / List, What it may do, Model, Text size,
+**Segmented controls** (#1238) are one style: the Map / List switch, Board / List, Model, Text size,
 the live stage and screen mode, and access. (The space views, Conversation | Tasks | Map | Wiki, become underline
 tabs under #1239; until then they read the same three tokens.) A selected state never rests on a 1.1:1 difference
 (WCAG 2.2 1.4.11 asks for 3:1 for a state a person needs to see; the design asks for this much at least, and adds an edge):
@@ -1421,20 +1421,20 @@ standard switch row in Settings › Notifications, and the rest of the page stay
 
 - **Settings › AI rows keep whole words on every page width** (#1358): a row measures the page it is in, not the window (beside the
   section list a portrait tablet's page is about 440 px wide). When a row is too narrow, its control drops under its label (Connect another,
-  New agent, the task-taking Select), names end in an ellipsis, a tag ("Answers /ai", "Agent") is one line and never breaks, a word is never
-  cut, and under 37.5 rem an agent's row is its face, name, line and arrow (the "What it may do" tag and the model are on its page).
+  New agent), names end in an ellipsis, a tag ("Answers /ai", "Agent") is one line and never breaks, a word is never
+  cut, and under 37.5 rem an agent's row is its face, name, line and arrow (its tag and the model are on its page).
 - **Settings › AI** holds:
   - **Connect AI**, with Connect another. Each connection is a card with its name, "Connected" and
     the provider's usage line ("62% of your 5-hour limit left · resets at 14:00"). Change sits on
     the right, centred, and never overlaps the text.
   - The local client as one row, in the same card as the connections (#1363): the terminal mark in
     the same icon tile as the connections (as drawn), "Claude Code on Ada's laptop", "For code on your computer. Same rules as your agents.", its
-    "What it may do" tag (a link to the page where it is changed) and Disconnect, which asks in the
+    tag, "Do it and tell me" or, with the switch on, "Ask me first" (a link to the page where it is changed), and Disconnect, which asks in the
     row. A person may connect several, each with its own row. There is no section of its own for it and
     no word "agent app" or "co-work".
   - **Connecting one** is the fourth choice of the Connect AI window, "Claude Code or Codex on your
     computer · For code on your computer · same rules as your agents". It leads to the page of these
-    apps (reached with "‹ AI"): each connected app as a card with its What it may do and Disconnect, then
+    apps (reached with "‹ AI"): each connected app as a card with its **Ask me first** switch and Disconnect, then
     "Connect it to Flux" with a tab each for Claude Code, Codex and Another app. A tab says what to do in
     words (add Flux, sign in, start work in a space) and keeps the terminal text behind one quiet
     "Show the command". The words are "space" and "app", never "project", "MCP client", "HTTPS address"
@@ -1445,23 +1445,34 @@ standard switch row in Settings › Notifications, and the rest of the page stay
     in to ChatGPT", and where the server doesn't offer them, "Signing in with a Claude plan isn't offered
     on this Flux server."). "Claude Code" and "Codex" are only the apps on the person's own computer.
   - **Your agents**, with New agent. Each row has the agent's Kreska in its own colour (chosen when
-    the agent is created, or assigned automatically), its name, one line about its job, its "What
-    it may do" tag and its model with the connection ("Opus · Claude plan").
+    the agent is created, or assigned automatically), its name, one line about its job, its tag ("Do it
+    and tell me", or "Ask me first" with the switch on) and its model with the connection ("Opus · Claude plan").
     Assistant carries an "Answers /ai" tag. Under the list: "Agents never have more rights than
     you. Deleting and other people's things always wait for your OK."
-  - **How your AI works** is the heading before **When someone assigns a task to me:** Do nothing /
-    Give it to [agent ▾], one segmented choice with Do nothing as the default. With one agent the second
-    segment names it; with several it is the app's `Select` dressed as the segment.
+  - There is no rule that gives the tasks people assign to you to an agent (founder decision, Hubert,
+    2026-11-13, [#1419](https://github.com/ColdPhase/flux/issues/1419) item 8): no "How your AI works"
+    card and no "When someone assigns a task to me". You give a task to one of your agents with the
+    task's **Owner**, where everyone sees it.
   - There is no list of spaces with AI off.
-- **An agent's page** (Assistant's is the same):
+- **An agent's page** (Assistant's is the same). It asks nothing expert before the agent is useful
+  (founder decision, Hubert, 2026-11-13, [#1419](https://github.com/ColdPhase/flux/issues/1419) item 10):
   - "‹ AI", the agent, and "Your agent · uses your Claude plan · can do only what you can".
   - The only dark button, "Message Planner".
   - Name and Instructions.
-  - The Model, grouped by connection ("Claude plan: Opus · Sonnet · Haiku", the models the signed-in
-    CLI itself lists, #1332).
-  - **What it may do:** Only read / Do it and tell me / Ask me first.
+  - **Ask me first**, one switch (the app's `SwitchRow`), off by default. Its line says what it does
+    now: off, "Makes new things and changes yours at once, then tells you, with Undo."; on, "Every
+    change waits for your OK." Deleting and other people's things wait either way (AG-3).
+  - **More**, a quiet disclosure button (`Button` quiet, `chevron-right` / `chevron-down`, `aria-expanded`;
+    a screen reader hears "More settings", apart from the header's ⋯ More) under the card, with the model in words beside it: "Model: Sonnet · Claude plan". A new agent
+    runs on its connection's default model, so most people never open it. Open, it shows the
+    **Model**, grouped by connection ("Claude plan: Opus · Sonnet · Haiku", the models the signed-in
+    CLI itself lists, #1332), as described below. It is open by itself while the agent is paused on a
+    model that is no longer offered, so that line is in view.
+  - Prices appear only in an API key's group, where the person pays per token; a plan's models have
+    none.
   - **Remembers:** each item shows its source and Edit, under "Tell Planner “remember that…” and it
     shows up here".
+  - There is no Schedules section: schedules live only in the agent's chat (below).
   - "Delete Planner. Its tasks go back to you."
 - **Connect AI** is one window in steps: choose a Claude plan, a ChatGPT plan or an API key; sign
   in on claude.ai and paste the code, or enter the device code for ChatGPT; "Couldn't connect"
@@ -1518,7 +1529,12 @@ standard switch row in Settings › Notifications, and the rest of the page stay
   - Reports arrive here: "Done: #4 Calibrate soil sensors · 3 changes · Undo", with a dot in the
     sidebar until read.
   - Schedules are listed in the conversation's header and confirmed in the agent's reply, with
-    Turned on and Change.
+    Turned on and Change. This is the only place they are listed and changed (founder decision,
+    Hubert, 2026-11-13, [#1419](https://github.com/ColdPhase/flux/issues/1419) item 9).
+  - **The morning summary is offered once, by Assistant.** While Assistant (the agent that answers
+    `/ai`) has no schedule, its chat shows, in the place of the schedule line, one row: the `clock`
+    icon, "Morning summary · Every weekday at 9:00" and an outline Turn on. Turned on, it is an ordinary
+    schedule in that line. No other agent offers it, and no page does.
 - **In a task** the agent writes in the one discussion, under its label.
   - An agent may ask another person's agent, and both owners must be in the task.
   - A message that changed something ends with its change line and Undo; after Undo the line is
@@ -1530,8 +1546,8 @@ standard switch row in Settings › Notifications, and the rest of the page stay
   - "Claude limit reached, resumes at 14:00", with no switch to another provider;
   - "Couldn't finish" with Try again / Take it back;
   - "Stopped by you · the task is back with you";
-  - "Marked done · you were told" with Undo (Do it and tell me), or "Back with you to check" with
-    Mark done (Ask me first and Only read).
+  - "Marked done · you were told" with Undo (Ask me first off), or "Back with you to check" with
+    Mark done (Ask me first on).
 - **Waiting for your OK:**
   - A deletion is a card, "Planner wants to delete the page Old notes", with Delete / Keep.
   - A task for another person is a proposal with Approve / Edit / Skip. Several from one run form
@@ -1632,7 +1648,11 @@ standard switch row in Settings › Notifications, and the rest of the page stay
 On the phone the Assistant conversation is a normal conversation. Its header lists the schedule
 ("Every weekday 9:00 · new tasks summary"), and the morning summary arrives in it.
 
-- **The title row is the one of every conversation (#1356, v0.2.1):** Back, the agent's Kreska (32 px, in its colour), its name and, under it in `--t3`, "Your agent · only you talk to it", as the drawing has it. Under it come the schedule row, the conversation and the composer. There is no second name row (the computer's "Kreska, name, Your agent, Settings" bar is the computer's header and is not repeated), no lock line and no tab bar.
+- **The title row is the one of every conversation (#1356, v0.2.1):** Back, the agent's Kreska (32 px, in its colour), its name and, under it in `--t3`, "Your agent · only you talk to it", as the drawing has it. Under it come the schedule row, the conversation and the composer. There is no second name row, no lock line and no tab bar.
+- **The computer says the name once too** ([#1419](https://github.com/ColdPhase/flux/issues/1419) item 14): the window's header is the agent's
+  title row, with its Kreska (24 px, in its colour) before the name, and Settings is a row of the header's ⋯, as on the phone. There is no
+  second bar with the name, "Your agent" and Settings above the schedule line; the conversation's first line, "Only you talk to Planner.
+  Reports of its work arrive here.", stays.
   Back returns to where the person came from (the Spaces list, Home, the Inbox). The agent's Settings are the one row of a ⋯ at the right of the title row, the ⋯ a space has, so the function is the same on the phone as the computer's "Settings" link and the drawing stays as drawn.
 
 ### Spaces
@@ -1818,6 +1838,9 @@ The renders are the approved mockups as drawn; where a later decision differs, f
   - the two-step hand-off with dragging a task onto an agent, and `/handoff`;
   - the working-agent card in the sidebar;
   - one approval switch for all agents, and the Activity list;
+  - "Only read" and the three-way "What it may do" (one Ask me first switch instead), "When someone
+    assigns a task to me", the Schedules section and the "Morning summary" offer on an agent's page
+    (#1419);
   - Flux's own run limits, reactions and background suggestions, and drafts of messages to other
     people;
   - MCP scopes, capability switches and standing grants.
