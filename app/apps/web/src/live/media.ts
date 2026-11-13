@@ -184,8 +184,17 @@ export class LiveMediaConnection {
   private leaving = false;
   private trackDiagnostics = new TrackDiagnostics();
   private screenMode: ScreenMode = storedScreenMode();
-  /** A screen being published again in another mode: its unpublication is not a stop. */
-  private republishing = false;
+  /** Screens being published again in another mode (how many are waiting or running): their unpublication is not a stop. */
+  private republishing = 0;
+  /** The mode the shared screen is being sent in now. */
+  private screenSent: ScreenMode | null = null;
+  /**
+   * What this connection publishes changes one step at a time. Each publication and each unpublication is negotiated with the media
+   * server, and three of them overlapping (a screen published again in another mode, Stop sharing, the camera turned on) left the
+   * server with a screen nobody sent and without the camera (#1339): the others kept seeing a screen that had stopped. A step waits
+   * for the one before it; capture is not part of it, since a permission prompt can take as long as a person likes.
+   */
+  private publications: Promise<unknown> = Promise.resolve();
   private readonly stopDeviceWatch: () => void;
   /** Sound settings of the call: devices, volumes, the meter (#1244). The interface reads it through its own snapshot. */
   readonly audio: CallAudio;
@@ -318,23 +327,32 @@ export class LiveMediaConnection {
       if (stale()) { captured.forEach((track) => track.stop()); return drop(stale()!); }
       const track = captured[0];
       if (!track) return this.set(kind, { state: 'off', note: kind === 'screen' ? 'Nothing was chosen, so nothing is shared.' : null });
-      // A camera keeps moving when the encoder is short of CPU or bandwidth (LiveKit would keep a 1080p camera's resolution).
-      await local.publishTrack(track, kind === 'screen' ? { ...SCREEN_MODES[this.screenMode].publish } : kind === 'camera' ? { degradationPreference: 'balanced' } : {});
-      // Superseded while publishing: the track was already stopped; take the publication back too.
-      if (stale()) { await this.unpublish(track); return drop(stale()!); }
-      this.pending[kind].clear();
-      const publication = local.getTrackPublication(kind === 'mic' ? Track.Source.Microphone : kind === 'camera' ? Track.Source.Camera : Track.Source.ScreenShare);
-      if (!publication?.track) return this.set(kind, { state: 'off', note: kind === 'screen' ? 'Nothing was chosen, so nothing is shared.' : null });
-      const onEnded = () => {
-        const note = kind === 'screen' ? 'Screen sharing stopped from the browser.' : `The ${kind === 'mic' ? 'microphone' : 'camera'} stopped (unplugged or taken by another app).`;
-        void this.stopDevice(kind, { state: 'off', note });
-      };
-      if (kind === 'mic') {
-        // The microphone's capture is replaced when another device or switch is chosen; the track's own event follows each one.
-        publication.track.on(TrackEvent.Ended, onEnded);
-        if (publication.track instanceof LocalAudioTrack) await this.audio.attachMic(publication.track);
-      } else publication.track.mediaStreamTrack.addEventListener('ended', onEnded, { once: true });
-      return this.set(kind, { state: 'on', note: null });
+      const sentAs = this.screenMode;
+      const result = await this.inOrder(async () => {
+        // Asked to stop (or the connection dropped) while this waited its turn: the track was already stopped, nothing is sent.
+        if (stale()) return drop(stale()!);
+        // A camera keeps moving when the encoder is short of CPU or bandwidth (LiveKit would keep a 1080p camera's resolution).
+        await local.publishTrack(track, kind === 'screen' ? { ...SCREEN_MODES[sentAs].publish } : kind === 'camera' ? { degradationPreference: 'balanced' } : {});
+        // Superseded while publishing: the track was already stopped; take the publication back too.
+        if (stale()) { await this.unpublishNow(track); return drop(stale()!); }
+        this.pending[kind].clear();
+        const publication = local.getTrackPublication(kind === 'mic' ? Track.Source.Microphone : kind === 'camera' ? Track.Source.Camera : Track.Source.ScreenShare);
+        if (!publication?.track) return this.set(kind, { state: 'off', note: kind === 'screen' ? 'Nothing was chosen, so nothing is shared.' : null });
+        const onEnded = () => {
+          const note = kind === 'screen' ? 'Screen sharing stopped from the browser.' : `The ${kind === 'mic' ? 'microphone' : 'camera'} stopped (unplugged or taken by another app).`;
+          void this.stopDevice(kind, { state: 'off', note });
+        };
+        if (kind === 'mic') {
+          // The microphone's capture is replaced when another device or switch is chosen; the track's own event follows each one.
+          publication.track.on(TrackEvent.Ended, onEnded);
+          if (publication.track instanceof LocalAudioTrack) await this.audio.attachMic(publication.track);
+        } else publication.track.mediaStreamTrack.addEventListener('ended', onEnded, { once: true });
+        if (kind === 'screen') this.screenSent = sentAs;
+        return this.set(kind, { state: 'on', note: null });
+      });
+      // The mode was chosen again while the screen was being captured or published: it is sent in the one chosen last.
+      if (kind === 'screen' && result.state === 'on' && this.screenSent !== this.screenMode) void this.applyScreenMode();
+      return result;
     } catch (error) {
       captured.forEach((track) => this.pending[kind].delete(track));
       await Promise.all(captured.map((track) => this.unpublish(track)));
@@ -354,12 +372,23 @@ export class LiveMediaConnection {
     this.screenMode = mode;
     try { localStorage.setItem(SCREEN_MODE_KEY, mode); } catch { /* remembered for this session only */ }
     this.emit();
+    if (this.devices.screen.state === 'on') await this.applyScreenMode();
+  }
+
+  private async applyScreenMode() {
+    const request = this.generation.screen;
+    this.republishing += 1;
+    try { await this.inOrder(() => this.republishScreen(request)); } finally { this.republishing -= 1; this.emit(); }
+  }
+
+  /** Sends the shared screen in the mode chosen now (the latest choice, whatever was asked when this was queued). `request` is the share it was asked for. */
+  private async republishScreen(request: number) {
     const local = this.room.localParticipant;
     const track = local.getTrackPublication(Track.Source.ScreenShare)?.track;
-    if (!(track instanceof LocalVideoTrack) || this.devices.screen.state !== 'on' || this.republishing) return;
-    const request = this.generation.screen;
+    const mode = this.screenMode;
+    // Stopped (or shared anew) while this waited its turn: nothing is published again.
+    if (request !== this.generation.screen || !(track instanceof LocalVideoTrack) || this.devices.screen.state !== 'on' || this.screenSent === mode) return;
     const settings = SCREEN_MODES[mode];
-    this.republishing = true;
     try {
       track.mediaStreamTrack.contentHint = settings.contentHint;
       const { width, height, frameRate } = settings.resolution;
@@ -368,14 +397,12 @@ export class LiveMediaConnection {
       // Stopped (Stop sharing, Quiet, leave) while switching: nothing is published again.
       if (request !== this.generation.screen || this.connection !== 'connected') { track.stop(); return; }
       await local.publishTrack(track, { ...settings.publish });
-      if (request !== this.generation.screen) await this.unpublish(track);
+      this.screenSent = mode;
+      if (request !== this.generation.screen) await this.unpublishNow(track);
     } catch {
       track.stop();
-      await this.unpublish(track).catch(() => undefined);
+      await this.unpublishNow(track).catch(() => undefined);
       this.set('screen', { state: 'off', note: 'The screen could not switch and stopped. Nothing is shared.' });
-    } finally {
-      this.republishing = false;
-      this.emit();
     }
   }
 
@@ -399,7 +426,9 @@ export class LiveMediaConnection {
     this.leaving = true;
     this.trackDiagnostics.clear();
     for (const kind of ['mic', 'camera', 'screen'] as const) { this.generation[kind]++; this.stopPending(kind); }
-    await Promise.all((['mic', 'camera', 'screen'] as const).map((kind) => this.release(kind)));
+    // Leaving does not wait behind a publication in progress: every capture stops now and the room's disconnect takes the publications with it.
+    this.audio.detachMic();
+    for (const publication of this.room.localParticipant.trackPublications.values()) publication.track?.stop();
     this.devices = { ...IDLE_DEVICES };
     await this.room.disconnect(true);
     this.connection = 'disconnected';
@@ -478,7 +507,19 @@ export class LiveMediaConnection {
     return status;
   }
 
-  private async release(kind: DeviceKind) {
+  /** Takes a device's publication back, after the steps already waiting. */
+  private release(kind: DeviceKind): Promise<void> {
+    return this.inOrder(() => this.releaseNow(kind));
+  }
+
+  /** Runs one publication step once the earlier ones are over; a step that fails does not stop the ones after it. */
+  private inOrder<T>(step: () => Promise<T>): Promise<T> {
+    const run = this.publications.then(step, step);
+    this.publications = run.catch(() => undefined);
+    return run;
+  }
+
+  private async releaseNow(kind: DeviceKind) {
     const source = kind === 'mic' ? Track.Source.Microphone : kind === 'camera' ? Track.Source.Camera : Track.Source.ScreenShare;
     const publication = this.room.localParticipant.getTrackPublication(source);
     const track = publication?.track;
@@ -488,8 +529,12 @@ export class LiveMediaConnection {
     try { await this.room.localParticipant.unpublishTrack(track, true); } catch { track.stop(); }
   }
 
-  /** Stops a captured track and takes back its publication, if it has one. */
-  private async unpublish(track: LocalTrack) {
+  /** Stops a captured track and takes back its publication, if it has one: after the steps already waiting. */
+  private unpublish(track: LocalTrack): Promise<void> {
+    return this.inOrder(() => this.unpublishNow(track));
+  }
+
+  private async unpublishNow(track: LocalTrack) {
     const published = [...this.room.localParticipant.trackPublications.values()].some((publication) => publication.track === track);
     if (published) { try { await this.room.localParticipant.unpublishTrack(track, true); } catch { /* stopped below */ } }
     track.stop();
@@ -519,8 +564,10 @@ export class LiveMediaConnection {
   private async stopDevice(kind: DeviceKind, status: DeviceStatus): Promise<DeviceStatus> {
     this.generation[kind]++;
     this.stopPending(kind);
+    // The device shows as off at once; its publication is taken back when the steps ahead of it are over.
+    const stopped = this.set(kind, status);
     await this.release(kind);
-    return this.set(kind, status);
+    return stopped;
   }
 
   private async checkDevicesStillThere() {
@@ -536,7 +583,7 @@ export class LiveMediaConnection {
     const kind: DeviceKind | null = publication.source === Track.Source.Microphone ? 'mic'
       : publication.source === Track.Source.Camera ? 'camera' : publication.source === Track.Source.ScreenShare ? 'screen' : null;
     if (kind === 'mic') this.audio.detachMic();
-    if (kind && this.devices[kind].state === 'on' && !(kind === 'screen' && this.republishing))
+    if (kind && this.devices[kind].state === 'on' && !(kind === 'screen' && this.republishing > 0))
       this.devices = { ...this.devices, [kind]: { state: 'off', note: kind === 'screen' ? 'Screen sharing stopped.' : null } };
     this.emit();
   }
