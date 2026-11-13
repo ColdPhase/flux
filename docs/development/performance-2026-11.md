@@ -540,6 +540,43 @@ starts up to a minute after it is due, not half a minute. A job sent now still s
 drains back to back, and a failed handler still wakes its queue after 2 s. A listen connection that dropped silently is
 noticed up to a minute later (the check was every 30 s); until then a job sent meanwhile is found by the backstop poll.
 
+## v0.2.0 against `main` (2026-11-13)
+
+**Method.** `scripts/perf_compare.sh v0.2.0 <sha>` builds both refs on one GitHub runner (4 vCPU) and measures them alternately, three
+rounds each (base, head, base, head...). The database, API and worker of both stacks share CPUs 0–1 (a 2 vCPU host); the measuring
+clients and Chromium run on CPUs 2–3. The `@1.0 cpu` phases also hold the API and the database to 1.0 CPU each, as `check_performance.sh`
+does. The measuring scripts are the same for both refs. Dispatched as `scripts/ci_test.sh <sha> perf chromium v0.2.0 <sha>` (suite
+`perf` of `test-modules.yml`, about 28 minutes). Two runs: [43418386291](https://github.com/ColdPhase/flux/actions/runs/43418386291) and
+[43422798900](https://github.com/ColdPhase/flux/actions/runs/43422798900), `main` at `a0237fbab`.
+
+**Observed** (median of three rounds; run 2, run 1 in brackets where it differs; server times are Fastify's own):
+
+| Metric | v0.2.0 | `main` | Budget |
+| --- | ---: | ---: | --- |
+| p95 of all requests, warm @2 vCPU | 44 ms (57) | 23 ms (30) | ≤ 50 |
+| p95 of all requests, concurrent @1.0 cpu | 65 ms (82) | 32 ms (38) | ≤ 50 |
+| Requests over 50 ms, warm @1.0 cpu / concurrent @1.0 cpu (of 37 distinct requests) | 4 / 15 (8 / 21) | 0 / 3 (0 / 5) | 0 |
+| Statements, one of each distinct request | 611 | 550 | – |
+| People's search p95 @1.0 cpu, six queries | 32 ms (41) | 29 ms (36) | ≤ 50 |
+| `flux_search` p95 @1.0 cpu, the same queries | – | 53 ms (60) | ≤ 50 |
+| Idle statements a minute | 94 | 95 | ≤ 100 |
+| Idle CPU, api + worker + db | 1.5 % | 1.1 % | ≤ 2 % |
+| First screen, brotli (`perf-bundle.mjs`) | 242 KB, 35 files | 269 KB, 39 files | ≤ 250 |
+| Cold first visit in Chromium: JS and CSS before Home is usable / time to usable | 223 KB / 309 ms | 248 KB / 338 ms | – |
+| Home → the seeded space's Conversation (300 tasks), browser: requests / statements | 19 / 350 | 11 / 308 | ≤ 8 requests |
+| Memory, peak under the load: api / db | 301 / 184 MiB | 305 / 256 MiB | mem_limit 1536 / 768 |
+
+**Inferred.**
+- The API reads are about half as slow on `main`: the session fast path and prepared statements of #1264 and one read per screen
+  (#1316). The concurrent @1.0 cpu phase still has 0 to 5 requests over 50 ms (the Tasks work views, root work associations).
+- The first screen grew by 27 KB over many changes, most from the date and time fields (#1287, +5 KB), the Spaces order (#1301, +5 KB),
+  the encrypted-space lock and Settings › AI (#1397/#1398, +3 KB), formatted messages (#1266), the notice card (#1268) and smaller ones;
+  #1287 took it over 250 KB. Measured per commit of `main` by building the web app in a `flux-dev` image.
+- On the perf seed, entering a space reads more than the small scene of `test_navigation_requests` (7): the next pages of task notices
+  (two more at 300 tasks), the members and, once per page load, the file limits.
+- The database takes about 70 MiB more under the load, likely pg_search, which F-042 preloads into every backend.
+- People's search sends 6 statements more (pg_search's `_save_typmod` and `_typmod_cache` lookups) and is still faster.
+
 ## Reproduce
 
 ```sh
@@ -549,6 +586,7 @@ FLUX_PERF_PHASES=restart FLUX_PERF_RESTARTS=10 ./scripts/check_performance.sh   
 FLUX_PERF_CPUS=1.0 ./scripts/check_performance.sh                 # the CPU cap of the limited phase (1.0 stands for 2 vCPU)
 FLUX_PERF_ENFORCE=1 ./scripts/check_performance.sh                # exit 1 when a CPU-limited phase misses the p95 target of 50 ms (only 1 or true; 0 leaves it off)
 ./scripts/check_ui.sh test_navigation_requests                    # requests per move
+./scripts/perf_compare.sh v0.2.0 origin/main                       # two refs back to back on one host (or suite perf of test-modules.yml)
 python3 scripts/perf_report.py perf-results/<time>/measure.jsonl perf-results/<time>/api.log --targets
 ```
 

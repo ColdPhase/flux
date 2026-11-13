@@ -6,8 +6,8 @@ the session cookie opens the app's root and waits until Home is usable (the head
 navigation); then, in the same tab, it clicks that space and waits until its Conversation shows the seed's threads.
 
 Per load it records:
-- the time from navigation start to a usable Home, and the JS and CSS bytes on the wire (encoded body) before that moment and in
-  all until the page was quiet (the service worker's precache included);
+- the time from navigation start to a usable Home, and the JS and CSS bytes on the wire (encoded body) before that moment (the
+  totals until the page is quiet are not kept: with the service worker precaching they came out below the subset before usable);
 - for the move into the space: the API requests from the click until 0.9 s without one (the live stream not counted, as
   app/tests/ui/test_navigation_requests.py counts them), the database statements meanwhile (pg_stat_statements of the stack's
   database, reset at the click; the worker is stopped) and the time until the Conversation's first thread is visible.
@@ -83,7 +83,6 @@ def main() -> None:
                 before = [row for row in finished if row[0] <= usable_at]
                 load = {"usableMs": round(usable_ms, 1), "codeBytesBeforeUsable": code(before), "codeFilesBeforeUsable":
                         sum(1 for _, kind, _, _ in before if kind in ("script", "stylesheet")),
-                        "codeBytesUntilQuiet": code(finished), "allBytesUntilQuiet": sum(size for *_, size in finished),
                         "requestsBeforeUsable": len(before)}
 
                 # The move into the space's Conversation.

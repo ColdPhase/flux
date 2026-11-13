@@ -276,7 +276,7 @@ def main(argv):
     for phase in PHASES:
         row(f"API p95, all requests, {phase} (ms)", f"p95 all|{phase}", "ms", TARGET_P95)
         row(f"API p50, all requests, {phase} (ms)", f"p50 all|{phase}", "ms")
-        row(f"Requests with p95 over 50 ms, {phase} (of 38)", f"over 50|{phase}", "count", 0)
+        row(f"Requests with p95 over 50 ms, {phase} (of 37 distinct requests)", f"over 50|{phase}", "count", 0)
     for phase in ("warm @2 vcpu", "warm @1.0 cpu"):
         for group in GROUP_ORDER:
             row(f"  {group}: p50 / {phase} (ms)", f"p50|{phase}|{group}", "ms")
@@ -291,7 +291,6 @@ def main(argv):
     row("Space + Conversation open: click to threads shown (ms)", "browser|openMs", "ms")
     row("Cold load: time to usable Home, Chromium at 2 vCPU (ms)", "browser|usableMs", "ms")
     row("Cold load: JS+CSS on the wire before usable (KB)", "browser|codeBytesBeforeUsable", "KB", 250 * 1024, "≤ 250 (brotli)")
-    row("Cold load: JS+CSS on the wire until quiet, precache incl. (KB)", "browser|codeBytesUntilQuiet", "KB")
     row("First screen from the build, brotli (KB, perf-bundle.mjs)", "bundle brotli", "count", 250)
     row("Idle: statements a minute (worker running, embeddings off)", "idle statements", "count", 100)
     row("Idle: CPU of api+worker+db (% of one core)", "idle cpu", "%", 2)
