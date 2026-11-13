@@ -353,6 +353,8 @@ async function judgeAll(seed: Seed) {
       const text = message.content.filter((block) => block.type === 'text').map((block) => block.text ?? '').join('');
       try { verdict = JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1)) as typeof verdict; } catch { verdict = { verdict: 'wrong', reason: `unreadable verdict: ${text.slice(0, 200)}` }; }
     }
+    // Where nothing answers the question, saying so is the correct answer, whichever of the two verdicts the judge picked for it.
+    if (q.refuse && verdict.verdict === 'dont_know') verdict = { ...verdict, verdict: 'correct' };
     const ledger = await proxy(`/__eval/ledger?tag=${encodeURIComponent(`judge:${q.id}`)}`);
     await writeFile(`${evidence}/judged/${q.id}.json`, JSON.stringify({ ...verdict, score: SCORE[verdict.verdict] ?? 0, costUsd: ledger.costUsd }, null, 1));
     console.log(`JUDGED ${q.id} ${verdict.verdict}: ${verdict.reason}`);
@@ -427,8 +429,12 @@ async function report(seed: Seed) {
   }
   await writeFile(`${evidence}/results.md`, `${lines.join('\n')}\n`);
   console.log(lines.slice(0, 6 + Object.keys(byCategory).length).join('\n'));
-  const failed = all.filter((row) => row.status === 'provider_failed').map((row) => row.id);
+  // Runs that measure the provider or the run's own limits, not Flux's answers: such a run is never recorded as a result (check_ai_eval.sh).
+  const failed = all.filter((row) => ['provider_failed', 'cap_reached', 'unavailable'].includes(row.status)).map((row) => row.id);
   if (failed.length) console.log(`PROVIDER FAILURES ${failed.length}: ${failed.join(' ')}`);
+  // A question that was never asked (the run's cap stopped the loop, or asking it failed) would silently shrink the denominator.
+  const missing = selected(seed).filter((q) => !rows.some((row) => row.id === q.id)).map((q) => q.id);
+  if (missing.length) console.log(`INCOMPLETE ${missing.length} not asked: ${missing.join(' ')}`);
   console.log(`RESULT accuracy=${results.overall.accuracy} questions=${all.length} agentUsd=${meta.spend.agentUsd} judgeUsd=${meta.spend.judgeUsd}`);
 }
 

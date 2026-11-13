@@ -39,6 +39,14 @@ export FLUX_EVAL_SHA="$(git rev-parse --short=9 HEAD)$(git diff --quiet HEAD -- 
 export FLUX_EVAL_PRODUCT_SHA="$(git rev-parse --short=9 "$(git merge-base HEAD origin/main 2>/dev/null || git rev-parse HEAD)")"
 
 step() { printf '\n== %s\n' "$*"; }
+# No evidence file may hold the key: any that does is removed (the key itself is never printed). The key is matched as it is sent (without
+# a line ending), so a key file saved with CRLF still matches; an empty key file matches everything and removes it all (fail closed).
+scrub_key() {
+  for leaked in $(tr -d '\r\n' < "$key_file" | grep -rlF -f - "$FLUX_EVAL_EVIDENCE_DIR" 2>/dev/null); do
+    rm -f "$leaked"; printf 'WARNING: %s held the key and was removed\n' "$leaked" >&2; key_leaked=1
+  done
+}
+key_leaked=
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 
 [ -r "$key_file" ] || fail "no key file at $key_file (FLUX_EVAL_KEY_FILE)"
@@ -80,8 +88,7 @@ compose="docker compose --env-file /dev/null -p $project --profile test"
 cleanup() {
   status=$?
   $compose logs --no-color api worker evalproxy > "$FLUX_EVAL_EVIDENCE_DIR/stack.log" 2>/dev/null || true
-  # A log must never hold the key; if one somehow does, it is removed (the key itself is not printed).
-  if grep -qF -f "$key_file" "$FLUX_EVAL_EVIDENCE_DIR/stack.log" 2>/dev/null; then rm -f "$FLUX_EVAL_EVIDENCE_DIR/stack.log"; printf 'WARNING: stack.log held the key and was removed\n' >&2; fi
+  scrub_key
   if [ -f "$FLUX_EVAL_EVIDENCE_DIR/proxy/proxy.jsonl" ]; then
     run_cost=$(grep -o '"costUsd":[0-9.e-]*' "$FLUX_EVAL_EVIDENCE_DIR/proxy/proxy.jsonl" | awk -F: '{ total += $2 } END { printf "%.6f", total }')
     printf '%s\t%s\t%s\t%s\t%s\n' "$stamp" "$run_cost" "$FLUX_EVAL_MODEL" "$FLUX_EVAL_SHA" "$FLUX_EVAL_LABEL" >> "$ledger"
@@ -136,6 +143,10 @@ step "7. Results"
 check report | tee "$FLUX_EVAL_EVIDENCE_DIR/summary.txt"
 # A run the provider failed (an outage, an authentication error) measures the provider, not Flux: it is never recorded as a result.
 if grep -q '^PROVIDER FAILURES' "$FLUX_EVAL_EVIDENCE_DIR/summary.txt"; then fail "the provider failed some runs (see summary.txt); run again"; fi
+# Nor is a run in which some questions were never asked (the cap stopped it, or asking failed): its accuracy is over fewer questions.
+if grep -q '^INCOMPLETE' "$FLUX_EVAL_EVIDENCE_DIR/summary.txt"; then fail "some questions were not asked (see summary.txt); run again"; fi
+scrub_key
+[ -z "$key_leaked" ] || fail "an evidence file held the key; nothing is recorded"
 if [ -n "${FLUX_EVAL_RECORD:-}" ]; then
   mkdir -p "$FLUX_EVAL_RECORD"
   cp "$FLUX_EVAL_EVIDENCE_DIR/results.json" "$FLUX_EVAL_RECORD/results-$FLUX_EVAL_LABEL.json"

@@ -42,6 +42,15 @@ def main(paths):
         print("| --- |" + " --- |" * len(runs))
         for name in tools:
             print(f"| {name} | " + " | ".join(f"{run['overall'].get('tools', {}).get(name, 0) / max(1, run['overall']['questions']):.2f}" for _, run in runs) + " |")
+    # A question whose wording or reference changed between runs is not the same measurement: name it, so its verdicts are not compared.
+    texts = {}
+    for label, run in runs:
+        for q in run["questions"]:
+            texts.setdefault(q["id"], set()).add((q.get("question"), q.get("reference")))
+    reworded = sorted(qid for qid, seen in texts.items() if len(seen) > 1)
+    if reworded:
+        print()
+        print(f"Not comparable across these runs (the question or its reference changed): {' '.join(reworded)}")
     verdicts = {}
     for label, run in runs:
         for q in run["questions"]:

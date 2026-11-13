@@ -150,6 +150,26 @@ cheap enough to run every variant twice.
 - **Not in either issue, found here:** runs that end with no answer at the input bound, author names that cannot be searched, and the
   missing link to a search hit in the answer.
 
+### Questions changed in review, after the baseline (2026-11-13)
+
+The independent review of PR #1409 made five relative-date questions well-defined and three references checkable. The baseline above
+was measured on the earlier text, so these ids are **not comparable with it**. `compare.py` names any such id. The next run of main, for
+example the `main` arm of #1381's A/B, is the baseline for them.
+
+- `rel03`, `rel08`: "last week" now says "Monday to Sunday". Read as the last seven days, it held none of the planted events on a
+  Friday run, and both baseline runs read `rel08` that way.
+- `rel04`: "the invoice" is now "an invoice's number and amount". The bench has dozens of "Invoice from X is booked" messages around
+  then, and Sonnet rightly asked which one was meant.
+- `rel06`: now "which firmware version passed testing". Piotr writes many firmware messages in early October, and the old reference
+  wanted only one of them.
+- `rel09`: now asks for the accessibility audit result. Sarah writes many messages about the site in that week.
+- `old03`, `old06`, `old08`: the references now give the firmware version and the reasons the questions ask for. Before, they gave
+  "as in the message", which the judge cannot check. Baseline run 2 graded a right `old06` answer as partial.
+
+The harness changed in the same review. A no-answer question the judge grades "don't know" now scores as correct. A run in which
+some questions were not asked (`INCOMPLETE`), or which ended at Flux's own cap, is never recorded. The key scan now covers every
+evidence file, not only the stack log.
+
 ## Spend
 
 From the provider's usage of every request, at Anthropic's published prices (Haiku 5.5 $0.10 / $0.50 per million input / output tokens
