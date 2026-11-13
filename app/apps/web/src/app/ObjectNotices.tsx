@@ -47,7 +47,7 @@ export function ObjectNoticeItem({ notice, meId, owners, authorOf, inThread = fa
           <time dateTime={notice.createdAt} title={when(notice.createdAt)}>{clock(notice.createdAt)}</time>
         </p>
         {follows ? null : <button type="button" className="convo-notice__task convo-object__card" onClick={() => onOpen(target)} aria-label={`Open decision ${notice.title}, ${state.word.toLowerCase()}`}>
-          <Icon name="rule" size={16} />
+          <Icon name="flag" size={16} />
           <span className="convo-notice__title">{notice.title}</span>
           <span className="convo-object__state" data-state={state.state}>{state.word}</span>
           <Icon name="chevron-right" size={14} />

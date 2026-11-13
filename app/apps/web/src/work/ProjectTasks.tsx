@@ -87,7 +87,7 @@ function Toolbar({ mode, onMode, query, onQuery, mine, onMine, onNew, phone }: {
           </button>
         ))}
       </div>
-      <button type="button" className="tb-mine" aria-pressed={mine} onClick={() => onMine(!mine)}><Icon name="person" size={15} /><span>Mine</span></button>
+      <Button variant="outline" size="sm" icon="person" className="tb-mine" aria-pressed={mine} onClick={() => onMine(!mine)}>Mine</Button>
       <div className={`tb-search${query ? ' has-query' : ''}${mode === 'list' ? ' is-dimmed' : ''}`}>
         <Icon name="search" size={14} />
         <span className="tb-search__l" aria-hidden="true">Search</span>

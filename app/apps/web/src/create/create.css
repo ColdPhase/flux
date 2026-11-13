@@ -31,6 +31,8 @@
 .create__text { width: 100%; border: 0; background: none; resize: none; padding: 4px 0; font: inherit; font-size: var(--fs-lg); line-height: 1.45; color: var(--t1); outline: none; min-height: 76px; max-height: 40vh; field-sizing: content; }
 .create__text::placeholder { color: var(--t3); }
 .create__details { width: 100%; border: 0; background: none; resize: none; padding: 0; font: inherit; font-size: var(--fs-base); line-height: 1.45; color: var(--t1); outline: none; min-height: 40px; max-height: 30vh; field-sizing: content; }
+/* The focus ring of README §2 on the borderless fields (they showed only the caret, #1380). */
+.create__title:focus-visible, .create__name:focus-visible, .create__text:focus-visible, .create__details:focus-visible { outline: 2px solid var(--t1); outline-offset: 3px; border-radius: var(--r-sm); }
 /* The message a decision is proposed from, quoted under its title (#763 WF-3). */
 .create__source { margin: 0 0 10px; padding: 6px 12px; border-left: 2px solid var(--line2); font-size: var(--fs-md); color: var(--t2); overflow-wrap: anywhere; }
 .create__source span { display: block; font-size: var(--fs-xs); font-weight: 500; color: var(--t3); }

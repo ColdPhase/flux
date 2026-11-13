@@ -1,0 +1,1 @@
+- The Inbox's filter counts and the Search match are 4.5:1 or better; Search's Close, the New space window, Leave and Delete space, the Wiki's version links, the notification address tick and a lone "Seen by" face are 44 px targets on touch; Search, the Create window's fields and the theme tiles show the focus ring ([#1380](https://github.com/ColdPhase/flux/issues/1380)).

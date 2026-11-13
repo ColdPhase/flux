@@ -8,20 +8,24 @@
 <script>try { if (localStorage.getItem("flux.kreska") === "off") document.documentElement.dataset.kreska = "off"; } catch (e) {}</script>
 <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
 <style>
-  :root { color-scheme: light dark; --bg: #F4F4F5; --text: #18181B; --muted: #6B6B6B; --inv: #18181B; --on-inv: #FFFFFF; --line: rgba(0, 0, 0, .07); }
+  /* The app's own tokens (docs/design/final/README.md §2): Geist, --t1/--t3/--inv, a 20 px title at 600, and a flat button with radius 10 (--r-btn) at the
+     button height of a row (32 px, 44 on touch). The font is the stable copy the app serves, which its service worker has cached. */
+  @font-face { font-family: "Geist"; font-style: normal; font-weight: 100 900; font-display: swap; src: url("/fonts/Geist-Variable.woff2") format("woff2"); }
+  :root { color-scheme: light dark; --bg: #F4F4F5; --text: #18181B; --muted: #636363; --inv: #18181B; --on-inv: #FFFFFF; --line: rgba(0, 0, 0, .07); --r-btn: 10px; --fs-base: .9375rem; --fs-xl: 1.25rem; }
   @media (prefers-color-scheme: dark) { :root { --bg: #111111; --text: #F0F0F0; --muted: #A1A1A1; --inv: #F0F0F0; --on-inv: #111111; --line: rgba(255, 255, 255, .08); } }
   * { box-sizing: border-box; }
   body { margin: 0; min-height: 100vh; min-height: 100dvh; display: grid; place-items: center; background: var(--bg); color: var(--text);
-    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font: 400 var(--fs-base)/1.5 "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
   main { max-width: 26rem; text-align: left; }
   .app-icon { width: 48px; height: 48px; border-radius: 12px; }
   .face { display: block; color: var(--text); overflow: visible; }
   html[data-kreska="off"] .face { display: none; }
   html:not([data-kreska="off"]) .app-icon { display: none; }
-  h1 { font-size: 1.25rem; margin: 16px 0 4px; }
+  h1 { font-size: var(--fs-xl); font-weight: 600; line-height: 1.25; letter-spacing: -.015em; margin: 16px 0 4px; }
   p { margin: 0 0 16px; color: var(--muted); }
-  button { min-height: 44px; padding: 0 18px; border: 0; border-radius: 999px; background: var(--inv); color: var(--on-inv); font: inherit; font-weight: 600; cursor: pointer; }
+  button { min-height: 32px; padding: 0 14px; border: 0; border-radius: var(--r-btn); background: var(--inv); color: var(--on-inv); font: inherit; font-weight: 500; cursor: pointer; }
+  @media (pointer: coarse) { button { min-height: 44px; } }
   button:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
 </style>
 </head>

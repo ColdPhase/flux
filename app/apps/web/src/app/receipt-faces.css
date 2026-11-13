@@ -2,8 +2,8 @@
    16 px row, the same height for 1 reader or 500, as one button that opens the list of names and times. */
 .seen { position: relative; display: inline-flex; flex: none; align-items: center; gap: 2px; height: 16px; padding: 0; border-radius: var(--r-pill); color: var(--t2); }
 .seen:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }
-/* A finger needs more than 16 px: the target grows, the row does not. */
-@media (pointer: coarse) { .seen::before { content: ""; position: absolute; inset: -14px -8px; } }
+/* A finger needs more than 16 px: the target grows to at least 44 px each way (a lone face too), the row does not. */
+@media (pointer: coarse) { .seen::before { content: ""; position: absolute; inset: -14px; } }
 .seen__more { display: grid; place-items: center; box-sizing: border-box; min-width: 16px; height: 16px; padding: 0 2px; border-radius: var(--r-pill);
   background: var(--sub); box-shadow: inset 0 0 0 1px var(--line); color: var(--t2); font-size: var(--fs-face); font-weight: 600; line-height: 1; letter-spacing: 0; }
 

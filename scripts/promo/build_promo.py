@@ -21,7 +21,7 @@ from fontTools.pens.svgPathPen import SVGPathPen
 from fontTools.ttLib import TTFont
 
 ROOT = Path(__file__).resolve().parents[2]
-FONTS = ROOT / "app/apps/web/src/ui/fonts"
+FONTS = ROOT / "app/apps/web/public/fonts"
 OUT_DIR = ROOT / "docs/assets/promo"
 W, H = 960, 540   # the frame
 T = 16.0          # loop length in seconds

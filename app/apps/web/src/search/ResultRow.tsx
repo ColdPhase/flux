@@ -30,7 +30,7 @@ export function groupResults(items: SearchResult[]): { label: string; items: Sea
 }
 
 const ICONS: Record<Exclude<SearchKind, 'project' | 'message' | 'dm_message' | 'file'>, IconName> = {
-  work: 'tasks', material: 'link', doc: 'doc', decision: 'rule', sketch: 'map', thought: 'map', person: 'people',
+  work: 'tasks', material: 'link', doc: 'doc', decision: 'flag', sketch: 'map', thought: 'map', person: 'people',
 };
 
 const time = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' });
