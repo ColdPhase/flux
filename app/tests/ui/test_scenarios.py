@@ -1093,8 +1093,16 @@ class ScenarioJourney:
         for path in (f"/api/v1/sketches/{draft_id}", f"/api/v1/dms/{s['dm']}"):
             self.assertEqual(self.status("mia", path), 404, f"the member cannot open the private {path}")
         self.assertEqual(self.fetch("mia", "GET", f"/api/v1/projects/{lamp}/export").status, 403, "a member cannot export")
-        for query in ("89 EUR", "Saturday market"):
-            self.assertEqual(self.api("mia", "GET", f"/api/v1/search?q={urllib.parse.quote(query)}", status=200)["items"], [], query)
+        # Neither Ada's private draft nor her DM with Jonas reaches Mia's search. Plain words match any word and the last
+        # one as a prefix (#1293), so "Saturday market" may find what Mia shares (Marketplace stall, the lamp's market
+        # thought), never the DM: the DM's own word finds nothing for her, while it finds the DM for Ada.
+        search = lambda who, q: self.api(who, "GET", f"/api/v1/search?q={urllib.parse.quote(q)}&limit=50", status=200)["items"]  # noqa: E731
+        self.assertIn(("dm_message", s["dm"]), {(i["kind"], i["place"].get("id")) for i in search("ada", "Saturday")})
+        for query in ("89 EUR", "Saturday"):
+            self.assertEqual(search("mia", query), [], query)
+        found = search("mia", "Saturday market")
+        self.assertEqual({(i["place"]["type"], i["place"].get("id")) for i in found} - {("project", s["market"]), ("project", lamp)}, set(), found)
+        self.assertNotIn(LEFT_OUT, json.dumps(found))
         self.assertEqual(self.api("ada", "GET", f"/api/v1/decisions/{d3['id']}", status=200)["status"], "proposed")
 
         # Lee shares only Marketplace: every lamp address is 404 for him.
