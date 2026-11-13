@@ -321,12 +321,13 @@ class SpaceSettings(unittest.TestCase):
         }""")
         self.assertGreater(gaps["left"], 0, f"account Settings is not flush left: {gaps}")
         self.assertAlmostEqual(gaps["left"], gaps["right"], delta=2, msg=f"account Settings centres its column: {gaps}")
-        # Tablet and phone keep their own padding: no centring margin.
+        # Tablet and phone: the same one column, centred where the pane is wider than it (#1362), never wider than the screen.
         for label, viewport in (("820", {"width": 820, "height": 1180}), ("390", PHONE)):
             page = self.page("ada", viewport)
             page.goto(f"/projects/{made['id']}/settings")
             expect(page.get_by_role("heading", name="Space settings")).to_be_visible()
-            self.assertEqual(page.evaluate(self.COLUMN)["margin"], "0px", f"{label}: no centring margin")
+            gaps = page.evaluate(self.COLUMN)
+            self.assertAlmostEqual(gaps["left"], gaps["right"], delta=2, msg=f"{label}: the column is centred in the pane: {gaps}")
             self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), viewport["width"], f"{label}: no sideways scroll")
             shot_both(page, f"1214-space-settings-{label}-{UI_BROWSER}")
 
