@@ -1,0 +1,1 @@
+- A side panel that closes hands focus back to what opened it also when the browser dropped focus to the page while the panel was still loading its content (WebKit), and once more a frame later if the page still has no focus; a control the person moved to keeps it ([#1336](https://github.com/ColdPhase/flux/issues/1336)).

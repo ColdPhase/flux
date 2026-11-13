@@ -227,6 +227,20 @@ function DmContent({ initial }: { initial: Dm }) {
   }, [initial.id, learn, olderCursor]);
   const returned = useReturnPlace({ wanted, loaded: true, have: (id) => messages.some((message) => `message-${message.id}` === id), hasOlder: olderCursor !== null, seek: seekPlace });
   useMessageReadingPosition(feedRef, returned.pending ? null : feedNode, !returned.pending, '', returned.restore, 'dm-stream');
+  // A reader who comes back is on a screen they have seen, whatever their viewing receipts say (leaving a moment after a screen settles loses them):
+  // a "New" divider that would stand inside that screen is not drawn, it would push down what they were reading (S23, nothing moves under you, #1335).
+  // Above the screen or below it the divider moves nothing they look at, so it stays. This runs after the place is restored, in the same frame.
+  useLayoutEffect(() => {
+    if (!returned.restore || !unreadFrom) return;
+    const feed = feedRef.current;
+    const mark = feed?.querySelector('[data-unread-start]');
+    if (!feed || !mark) return;
+    const box = feed.getBoundingClientRect();
+    const top = mark.getBoundingClientRect().top;
+    if (top >= box.top && top < box.bottom) setUnreadFrom(null);
+    // Once, when the place is restored: the divider is judged against the screen the reader comes back to.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [returned.restore]);
   // Older than the loaded window: page back until the message is loaded, then show it. A link names a message; with none, the first new one does (#1246).
   const unreadWanted = !arrived && !wanted && !!unreadFrom;
   const seek = arrived ?? (unreadWanted ? unreadFrom : null);

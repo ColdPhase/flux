@@ -15,7 +15,7 @@ import './unread-reading.css';
  */
 
 /** Within this many pixels of the end a feed counts as being at the end, as the stream always has. */
-const END_SLACK = 48;
+export const END_SLACK = 48;
 /** Where the divider lands when opening scrolls to it: a little below the feed's top, so the message above it is not cut off by a hair. */
 const TOP_GAP = 12;
 /** How long the divider keeps its place while late layout (previews, chips, fonts) settles, unless the reader acts first. */
@@ -103,10 +103,11 @@ export function openAtUnread(feed: HTMLElement, column: HTMLElement | null): (()
  * What arrives below a reader who is above the end of `feed`, and the way to the end (the "↓ N new" line). `add` is told how many
  * entries arrived below the visible part; reaching the end clears the count, whoever got the reader there.
  */
-export function useNewBelow(feed: HTMLElement | null) {
+export function useNewBelow(feed: HTMLElement | null, onToEnd?: () => void) {
   const [count, setCount] = useState(0);
   const node = useRef(feed);
-  useEffect(() => { node.current = feed; }, [feed]);
+  const told = useRef(onToEnd);
+  useEffect(() => { node.current = feed; told.current = onToEnd; });
   const add = useCallback((more: number) => { if (more > 0) setCount((current) => current + more); }, []);
   useEffect(() => {
     if (!feed) return;
@@ -118,6 +119,8 @@ export function useNewBelow(feed: HTMLElement | null) {
     const el = node.current;
     if (!el) return;
     endOpening(el);
+    // A surface that follows the end is told the reader asked for it: what comes after is theirs to see, whatever the layout does first.
+    told.current?.();
     // The line goes with the press: a person who used it from the keyboard keeps their place in the page, on the newest message.
     const fromLine = !!document.activeElement?.closest('.convo-newbelow');
     el.scrollTop = el.scrollHeight;

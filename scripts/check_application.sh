@@ -154,7 +154,12 @@ if [ "$#" -gt 0 ]; then
     echo 'Provider key appeared in API, worker or provider-mock logs' >&2
     exit 1
   fi
-  for file in ${FLUX_E2E_FILES:-}; do run_browser -e FLUX_E2E_BROWSER="${FLUX_E2E_BROWSER:-chromium}" e2e node_modules/.bin/tsx --test "tests/app/e2e/$file"; done
+  for file in ${FLUX_E2E_FILES:-}; do
+    # The component files render the web app's React with its own tsconfig, as the full run does for them below.
+    case "$file" in kreska-component.e2e.ts) config='--tsconfig apps/web/tsconfig.json' ;; *) config='' ;; esac
+    # shellcheck disable=SC2086 # $config is one option and its value, or nothing
+    run_browser -e FLUX_E2E_BROWSER="${FLUX_E2E_BROWSER:-chromium}" e2e node_modules/.bin/tsx $config --test "tests/app/e2e/$file"
+  done
   no_secrets_in_logs
   echo 'Named API test files only: browser, restart and unavailable-configuration checks skipped.'
   exit 0

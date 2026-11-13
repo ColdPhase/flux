@@ -4,7 +4,7 @@ import type { AgentChatMessage, AssistantRun, MyAgent } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
 import { useShellData } from '../app/data';
 import { MessageDay, clock, day } from '../app/messageParts';
-import { NewBelow, UnreadDivider, countBelow, openAtUnread, useNewBelow } from '../app/unreadReading';
+import { END_SLACK, NewBelow, UnreadDivider, countBelow, openAtUnread, useNewBelow } from '../app/unreadReading';
 import { AnswerBody, AnswerTools, WritingWords } from '../assistant/ConversationParts';
 import { shownWords, stepWords, useForgetLiveRun, useLiveRun, useReducedMotion } from '../assistant/liveRun';
 import { MessageText } from '../app/MessageText';
@@ -222,6 +222,8 @@ function AgentChatPane({ agent }: { agent: MyAgent }) {
   const growing = useLiveRun(writingRun).text.length;
   const lastHeight = useRef(0);
   const forced = useRef(false);
+  // The reader is at the end and follows it: reaching the end starts it (the end key and the "N new" line too), their own move away stops it.
+  const following = useRef(false);
   const placed = useRef(false);
   const stopUnread = useRef<(() => void) | null>(null);
   useLayoutEffect(() => {
@@ -230,12 +232,15 @@ function AgentChatPane({ agent }: { agent: MyAgent }) {
     if (!placed.current) {
       placed.current = true;
       stopUnread.current = newFrom ? openAtUnread(el, column.current) : null;
-      if (!stopUnread.current) el.scrollTop = el.scrollHeight;
+      if (!stopUnread.current) { el.scrollTop = el.scrollHeight; following.current = true; }
       lastHeight.current = el.scrollHeight;
       return;
     }
-    const atEnd = el.scrollTop + el.clientHeight >= lastHeight.current - 48;
-    if (forced.current || atEnd) el.scrollTop = el.scrollHeight;
+    const atEnd = el.scrollTop + el.clientHeight >= lastHeight.current - END_SLACK;
+    // A reader who follows the end stays there while it grows, within a screen of it: layout that makes the feed shorter for a moment (a line that
+    // is replaced) takes the position up with it and the browser's scroll event only comes after the feed has grown again.
+    const followed = following.current && el.scrollHeight - el.scrollTop - el.clientHeight <= el.clientHeight;
+    if (forced.current || atEnd || followed) { el.scrollTop = el.scrollHeight; following.current = true; }
     forced.current = false;
     lastHeight.current = el.scrollHeight;
   }, [count, working, chat.opening, newFrom, growing]);
@@ -243,11 +248,29 @@ function AgentChatPane({ agent }: { agent: MyAgent }) {
   useEffect(() => {
     if (!feedNode) return;
     // The height the feed has when the reader scrolls: layout that changes it between renders (a long answer settling) is not the reader's to be moved by.
-    const track = () => { lastHeight.current = feedNode.scrollHeight; };
+    const track = () => {
+      lastHeight.current = feedNode.scrollHeight;
+      const away = feedNode.scrollHeight - feedNode.scrollTop - feedNode.clientHeight;
+      if (away < END_SLACK) following.current = true;
+      // Further than a screen from the end is not the layout's doing: a script, or the scroll bar.
+      else if (away > feedNode.clientHeight) following.current = false;
+    };
+    // The reader's own move up ends it at once, before the browser's scroll event (which comes a frame later) can say so.
+    const leave = () => { following.current = false; };
+    const wheel = (event: WheelEvent) => { if (event.deltaY < 0) leave(); };
+    const key = (event: globalThis.KeyboardEvent) => { if (event.key === 'ArrowUp' || event.key === 'PageUp' || event.key === 'Home' || (event.key === ' ' && event.shiftKey)) leave(); };
+    const press = (event: PointerEvent) => { if (event.target === feedNode) leave(); };
     feedNode.addEventListener('scroll', track, { passive: true });
-    return () => feedNode.removeEventListener('scroll', track);
+    feedNode.addEventListener('wheel', wheel, { passive: true });
+    feedNode.addEventListener('touchmove', leave, { passive: true });
+    feedNode.addEventListener('keydown', key);
+    feedNode.addEventListener('pointerdown', press, { passive: true });
+    return () => {
+      feedNode.removeEventListener('scroll', track); feedNode.removeEventListener('wheel', wheel); feedNode.removeEventListener('touchmove', leave);
+      feedNode.removeEventListener('keydown', key); feedNode.removeEventListener('pointerdown', press);
+    };
   }, [feedNode]);
-  const newBelow = useNewBelow(feedNode);
+  const newBelow = useNewBelow(feedNode, () => { following.current = true; });
   const elementFor = (key: string) => feed.current?.querySelector<HTMLElement>(key.startsWith('run-') ? `[data-run-id="${key.slice(4)}"][data-chat-agent]` : `[data-line-id="${key.slice(5)}"]`) ?? null;
   useArrivals(feed, entries.map((entry) => entry.key), elementFor, (keys, atEnd) => {
     if (!atEnd) newBelow.add(countBelow(feed.current, keys, elementFor));
