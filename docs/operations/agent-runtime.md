@@ -24,8 +24,9 @@ once ([Switch it on](#switch-it-on)), or from a release install with the release
   snapshots. Owners are told so before they sign in. Offer the runtime only where owners trust you.
 - **Vendors may restrict this use.** Both vendors recommend API keys for products and automation and
   may act "without prior notice", possibly on an owner's account
-  ([accepted risks](../product/ai-modes.md#accepted-risks)). `server` connections with an API key are
-  the recommended path; the runtime is for owners who choose it.
+  ([accepted risks](../product/ai-modes.md#accepted-risks)). An API key is the recommended path, and it too runs in the runtime
+  since #1441 (as pi: it needs no operator statement and no sign-in; see [Switch it on](#switch-it-on)); signing in with a plan is
+  for owners who choose it.
 
 ## Switch it on
 
@@ -464,8 +465,8 @@ chat) then runs their own Claude Code (or Codex) under their own user id, with t
   directories (`projects`, `todos`, `shell-snapshots`, `session-env`, `transcripts`) from the binding
   directory, the instructions and settings Codex reads from its home, the run's scratch, and the run's MCP configuration from `/tmp`.
 
-The worker reaches the API at `FLUX_API_INTERNAL_URL` (default `http://api:8080`) for the token and, for
-API-key runs, for `/mcp`.
+The worker reaches the API at `FLUX_API_INTERNAL_URL` (default `http://api:8080`) for the run token. The harness (Claude Code, Codex or
+pi) is the client of `/mcp`, through `runtime-egress`; the worker has no agent loop of its own and does not call `/mcp` in a run.
 
 ### The model gateway (#1441)
 

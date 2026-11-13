@@ -15,7 +15,10 @@ import { createDatabase } from '@flux/db';
 // fixed test string. These tests prove what the adapter sends and how it maps answers and
 // failures; they are not a provider, billing or compatibility pass. The same behaviour of every
 // wire format against the Docker mock provider is `provider-adapters.test.ts` (F-020 PROV-6). The
-// loopback mock is reached only because this test's endpoint policy allows 127.0.0.1.
+// loopback mock is reached only because this test's endpoint policy allows 127.0.0.1. Every API-key
+// agent runs in pi in the agent runtime (#1441, RT-1) and reaches its provider through Flux's model
+// gateway, so the adapter is what the worker uses for the one request of `flux_web_search`, not for
+// a run's own turns; and the compositions below say which apps start the provider and when.
 
 const KEY = 'test-only-not-a-key-7f3a';
 const KEY_REF = 'key-ref-of-owner';
@@ -99,56 +102,6 @@ describe('Anthropic personal compute adapter (#68, local mock server: no provide
     assert.deepEqual(await compute().dispatch(request, new AbortController().signal), { kind: 'completed', text: '', stopReason: 'refusal', usage: { inputTokens: 1_200, outputTokens: 80 } });
   });
 
-  test('a run that asks for caching marks its last Flux tool, its brief and the conversation; reads and writes are charged at their rates (#1410)', async () => {
-    const tools = [{ name: 'flux_search', description: 'Search', inputSchema: { type: 'object', properties: { q: { type: 'string' } } } },
-      { name: 'flux_get_work', description: 'Read a task', inputSchema: { type: 'object', properties: {} } }];
-    const turns = [{ text: '', calls: [{ id: 'toolu_1', name: 'flux_search', input: { q: 'x' } }], results: [{ callId: 'toolu_1', content: '{"results":[]}', isError: false }] }];
-    handler = (_seen, response) => json(response, 200, message({ usage: { input_tokens: 500, cache_creation_input_tokens: 2_000, cache_read_input_tokens: 10_000, output_tokens: 80 } }));
-    const result = await compute().dispatch({ ...request, tools, turns, cache: true }, new AbortController().signal);
-    const body = seen[0]!.body as { system: unknown; tools: Record<string, unknown>[]; cache_control?: unknown; tool_choice?: unknown };
-    assert.deepEqual(body.system, [{ type: 'text', text: BRIEF.system, cache_control: { type: 'ephemeral' } }], 'the brief is a marked block');
-    assert.deepEqual(body.tools.map((tool) => tool.cache_control), [undefined, { type: 'ephemeral' }], 'the last Flux tool is marked');
-    assert.deepEqual(body.cache_control, { type: 'ephemeral' }, 'the conversation is cached as it grows');
-    assert.equal(body.tool_choice, undefined);
-    assert.deepEqual(result.kind === 'completed' && result.usage, { inputTokens: 12_500, outputTokens: 80, cache: { readTokens: 10_000, writeTokens: 2_000, readRate: 0.1, writeRate: 1.25 } });
-    // $2/M: 500 at the full price, 2,000 written at 1.25×, 10,000 read at 0.1×; $10/M out.
-    assert.equal(result.kind === 'completed' && costMicros(result.usage, tablePrice('anthropic', 'claude-sonnet-5')!), (500 + 2_500 + 1_000) * 2 + 80 * 10);
-
-    // The last request of a run: no tool may be called, Flux's words follow the results, and without `cache` nothing is marked.
-    seen = [];
-    await compute().dispatch({ ...request, tools, turns, answerNow: 'Answer now.' }, new AbortController().signal);
-    const last = seen[0]!.body as { system: unknown; tools: Record<string, unknown>[]; cache_control?: unknown; tool_choice?: unknown; messages: { role: string; content: unknown }[] };
-    assert.deepEqual(last.tool_choice, { type: 'none' });
-    assert.equal(last.system, BRIEF.system);
-    assert.ok(last.tools.every((tool) => tool.cache_control === undefined) && last.cache_control === undefined);
-    assert.deepEqual(last.messages.at(-1), { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_1', content: '{"results":[]}' }, { type: 'text', text: 'Answer now.' }] });
-    // With `cache`, the last request keeps the tools' and the brief's marks, but writes no conversation to the cache: its `tool_choice`
-    // starts the messages cache over and nothing reads after it.
-    seen = [];
-    await compute().dispatch({ ...request, tools, turns, cache: true, answerNow: 'Answer now.' }, new AbortController().signal);
-    const lastCached = seen[0]!.body as { system: unknown; tools: Record<string, unknown>[]; cache_control?: unknown; tool_choice?: unknown };
-    assert.deepEqual([lastCached.tool_choice, lastCached.cache_control, lastCached.tools.at(-1)!.cache_control, (lastCached.system as { cache_control?: unknown }[])[0]!.cache_control],
-      [{ type: 'none' }, undefined, { type: 'ephemeral' }, { type: 'ephemeral' }]);
-    seen = [];
-    handler = (_seen, response) => json(response, 200, { input_tokens: 99 });
-    await compute().countInputTokens!({ ...request, tools, turns, cache: true, answerNow: 'Answer now.' });
-    const counted = seen[0]!.body as Record<string, unknown>;
-    assert.equal(counted.cache_control, undefined, 'the count carries no top-level cache mark');
-    assert.deepEqual(counted.tool_choice, { type: 'none' }, 'it counts what is sent');
-  });
-
-  test('the preflight uses the token-counting endpoint with the same input and key', async () => {
-    handler = (_seen, response) => json(response, 200, { input_tokens: 4_321 });
-    assert.equal(await compute().countInputTokens!(request), 4_321);
-    assert.equal(seen.length, 1);
-    assert.equal(seen[0]!.path, '/v1/messages/count_tokens');
-    assert.equal(seen[0]!.headers.authorization, `Bearer ${KEY}`);
-    assert.deepEqual(seen[0]!.body, { model: 'claude-sonnet-5', system: BRIEF.system, messages: [{ role: 'user', content: request.input }] });
-    handler = (_seen, response) => json(response, 500, apiError('api_error'));
-    await assert.rejects(compute().countInputTokens!(request));
-    assert.equal(seen.length, 2, 'a failed count is not retried');
-  });
-
   test('SDK retries are off: every failure is exactly one request; once sent, the charge is unknown', async () => {
     const cases: [number, string, Record<string, string>, { reason: string; billed: string }][] = [
       [429, 'rate_limit_error', { 'retry-after': '0' }, { reason: 'rate_limited', billed: 'unknown' }],
@@ -198,14 +151,12 @@ describe('Anthropic personal compute adapter (#68, local mock server: no provide
   test('nothing is sent without a usable key or outside the O-008 limits', async () => {
     const other = { ...request, connection: { ...request.connection, id: 'connection-2', keyRef: 'someone-else' } };
     assert.deepEqual(await compute().dispatch(other, new AbortController().signal), { kind: 'failed', reason: 'provider_error', billed: 'none' });
-    await assert.rejects(compute().countInputTokens!(other));
     const otherWire = { ...request, connection: { ...request.connection, provider: 'openai' as const } };
     for (const bad of [{ ...request, model: 'not a model id' }, { ...request, maxTokens: 4_001 }, { ...request, effort: 'high' as 'low' }, otherWire]) {
       await assert.rejects(compute().dispatch(bad, new AbortController().signal));
-      await assert.rejects(compute().countInputTokens!(bad));
     }
     assert.equal(seen.length, 0, 'no request reached the provider');
-    assert.deepEqual(resolved, ['someone-else', 'someone-else'], 'an out-of-limit request never even resolves a key');
+    assert.deepEqual(resolved, ['someone-else'], 'an out-of-limit request never even resolves a key');
   });
 
   test('ANTHROPIC_BASE_URL and ANTHROPIC_API_KEY in the environment never redirect or replace the owner\'s key', async () => {
@@ -222,35 +173,43 @@ describe('Anthropic personal compute adapter (#68, local mock server: no provide
   });
 });
 
-describe('personal-run composition: production is off until the operator switches it on, the mock switch is test only', () => {
+describe('personal-run composition: production is off until the operator switches it on and pi runs keys, the mock switch is test only', () => {
   const { db, pool } = createDatabase(process.env.DATABASE_URL!);
   after(() => pool.end());
+  /** The agent runtime as the API sees it with `pi` in FLUX_AGENT_RUNTIME (#1441): every API key runs in pi there. */
+  const withPi = { keys: true, manager: { url: 'http://runtime-manager:8081', secret: 'x'.repeat(32) } };
+  /** Without `pi`, or without the runtime itself, an API key has nowhere to run. */
+  const withoutPi = [{ keys: false, manager: withPi.manager }, { keys: true, manager: null }, { manager: null }];
+
   test('without the operator switch both apps look up the owner\'s own connections and keep the provider off', async () => {
-    const server = personalRunServerComposition({}, db);
+    const server = personalRunServerComposition({}, db, withPi);
     const worker = personalRunWorkerComposition({}, db);
     assert.deepEqual([server.mode, server.providerEnabled, worker.mode, worker.compute.enabled], ['production', false, 'production', false]);
     assert.equal(await server.connections.resolve('someone-without-a-connection'), null);
     assert.equal(await worker.connections.resolve('someone-without-a-connection'), null);
-    assert.equal(personalRunServerComposition({ FLUX_PERSONAL_RUNS: 'off' }, db).providerEnabled, false);
+    assert.equal(personalRunServerComposition({ FLUX_PERSONAL_RUNS: 'off' }, db, withPi).providerEnabled, false);
   });
 
-  test('FLUX_PERSONAL_RUNS=on enables the provider in both apps; any other value refuses to start', () => {
+  test('FLUX_PERSONAL_RUNS=on enables the provider in both apps, and for API keys only where pi runs them; any other value refuses to start', () => {
     const on = { FLUX_PERSONAL_RUNS: 'on' };
-    assert.equal(personalRunServerComposition(on, db).providerEnabled, true);
+    assert.equal(personalRunServerComposition(on, db, withPi).providerEnabled, true);
+    for (const runtime of withoutPi) assert.equal(personalRunServerComposition(on, db, runtime).providerEnabled, false, `no pi in the runtime: ${JSON.stringify(runtime)}`);
     // The worker also needs the instance key that seals connection keys (present in the test stack).
     assert.equal(personalRunWorkerComposition(on, db).compute.enabled, true);
     for (const value of ['yes', 'ON', 'true']) {
-      assert.throws(() => personalRunServerComposition({ FLUX_PERSONAL_RUNS: value }, db));
+      assert.throws(() => personalRunServerComposition({ FLUX_PERSONAL_RUNS: value }, db, withPi));
       assert.throws(() => personalRunWorkerComposition({ FLUX_PERSONAL_RUNS: value }, db));
     }
   });
 
   test('the switch needs the test flag and a plain mock origin, and anything else refuses to start', () => {
     const on = { FLUX_TEST_PERSONAL_RUNS: 'anthropic-mock', FLUX_TEST_FAILURE_INJECTION: 'true', FLUX_TEST_ANTHROPIC_URL: 'http://anthropic-mock:8090' };
-    assert.equal(personalRunServerComposition(on, db).mode, 'test-anthropic-mock');
+    const server = personalRunServerComposition(on, db, withPi);
+    assert.deepEqual([server.mode, server.providerEnabled], ['test-anthropic-mock', true]);
+    for (const runtime of withoutPi) assert.equal(personalRunServerComposition(on, db, runtime).providerEnabled, false, `no pi in the runtime: ${JSON.stringify(runtime)}`);
     assert.equal(personalRunWorkerComposition(on, db).compute.enabled, true);
     for (const env of [{ ...on, FLUX_TEST_FAILURE_INJECTION: 'false' }, { ...on, FLUX_TEST_PERSONAL_RUNS: 'real' }]) {
-      assert.throws(() => personalRunServerComposition(env, db));
+      assert.throws(() => personalRunServerComposition(env, db, withPi));
       assert.throws(() => personalRunWorkerComposition(env, db));
     }
     assert.throws(() => personalRunWorkerComposition({ ...on, FLUX_TEST_ANTHROPIC_URL: 'https://api.anthropic.com' }, db));

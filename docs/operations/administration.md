@@ -110,7 +110,7 @@ In v0.2 everything that works for a person with AI is an **agent**, and each per
 
 - **Connect AI.** A person adds an API key (Anthropic, OpenAI, OpenRouter, Gemini or an OpenAI-compatible
   endpoint) and, when the operator has switched the [agent runtime](agent-runtime.md) on, signs in with their
-  own Claude plan (Claude Code) or ChatGPT plan (Codex). They can hold several at once. Each shows one usage
+  own Claude plan (Claude Code) or ChatGPT plan (Codex). Agents on an API key run in the same runtime (as pi), which the operator turns on with `pi`. They can hold several at once. Each shows one usage
   line. Flux sets no limits of its own: a plan at its limit pauses the agent until the reset, and an API key has the
   one daily budget its owner sets. Nothing switches to another connection by itself. Connections belong to one person and
   are never shared with the company.

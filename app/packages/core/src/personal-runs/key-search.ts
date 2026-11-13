@@ -35,8 +35,8 @@ export const keySearchOffered = (provider: PersonalConnection['provider'], model
 /**
  * How the search meets the key's budget, on the run's own row, by the model gateway's rule (RT-4 "The model gateway", CA-3): the hold is
  * added to `reserved_micros` before the request; after it, the charge is added to `charged_micros` and the rest of the hold released. A
- * request never sent and a complete error answer of the provider are charged nothing; a lost answer, or one without usable usage, the
- * whole hold; a complete answer, what the provider reported, even above the hold.
+ * request never sent and an error answer the provider documents as free (`billed: 'none'`) are charged nothing; any other failure, a lost
+ * answer or one without usable usage, the whole hold; a complete answer, what the provider reported, even above the hold.
  */
 export interface KeySearchMeter {
   /** Holds `micros` on the run if they fit in what is left of the key's day; false: they do not (the budget). */

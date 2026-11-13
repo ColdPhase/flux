@@ -5,7 +5,7 @@ import { after, before, beforeEach, describe, test } from 'node:test';
 import { assistantRunTools, RUN_TOKEN_LIMITS, type Conversation, type Project, type Workspace } from '@flux/contracts';
 import { MODEL_GATEWAY_LIMITS } from '@flux/runtime-protocol';
 import {
-  createModelGateway, createPersonalRunProcessor, KEY_SEARCH_SYSTEM, runReservationMicros, type AgentRuntimeConfig, type PersonalCompute, type PersonalComputeRequest, type PersonalComputeResult, type Principal,
+  createModelGateway, createPersonalRunProcessor, KEY_SEARCH_LIMITS, KEY_SEARCH_SYSTEM, keySearchHoldMicros, runReservationMicros, type AgentRuntimeConfig, type PersonalCompute, type PersonalComputeRequest, type PersonalComputeResult, type Principal,
 } from '@flux/core';
 import { createManagerServer } from '../../apps/runtime/src/manager/server.js';
 import { buildApp } from '../../apps/server/src/app.js';
@@ -105,7 +105,8 @@ describe('an API-key agent in pi searches the web with Flux\'s flux_web_search (
     assert.match(gateway.requests[0]!.prompt, /search the web with flux_web_search/, 'the brief names the tool');
     const [search] = provider.requests;
     assert.ok(search, 'the server ran one search');
-    assert.deepEqual([search.connection.id, search.model, search.webSearch, search.tools], [connectionId, 'claude-sonnet-5', true, []], 'the run\'s own key and model, the hosted search and no other tool');
+    assert.deepEqual([search.connection.id, search.model, search.webSearch, search.webSearchMaxUses, search.tools], [connectionId, 'claude-sonnet-5', true, KEY_SEARCH_LIMITS.searches, undefined],
+      'the run\'s own key and model, the hosted search alone, bounded to a few searches');
     assert.equal(search.system, KEY_SEARCH_SYSTEM);
     assert.match(search.input, /flux agent runtime/);
     assert.match(gateway.requests[1]!.results[0] ?? '', /docs\.example\.org\/runtime/, 'pi got the results');
@@ -120,7 +121,7 @@ describe('an API-key agent in pi searches the web with Flux\'s flux_web_search (
 
   test('a search that does not fit the key\'s budget is refused before anything is sent', async () => {
     // A day's budget that holds the run's own requests but not a search's larger one (its results are input too).
-    const request = runReservationMicros(FAKE_PRICE, true, false)!; const search = runReservationMicros(FAKE_PRICE, true, true)!;
+    const request = runReservationMicros(FAKE_PRICE, true, false)!; const search = keySearchHoldMicros(FAKE_PRICE)!;
     assert.ok(search > request + 20_000, `${search} > ${request}`);
     connections.connect(owner.id, connectionId, { dailyBudgetCents: Math.floor((request + search) / 2 / 10_000) });
     try {

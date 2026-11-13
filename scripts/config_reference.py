@@ -249,7 +249,7 @@ VARIABLES: dict[str, Var] = {
         "([how](release-guide.md#agents-on-your-own-ai-key-optional)).",
         "/etc/flux/background.key"),
     "FLUX_PERSONAL_RUNS": Var("ai", "empty · `off` · `on`",
-        "`on` lets people's agents run on their own API key. A Claude or ChatGPT plan needs the agent runtime instead. Needs `FLUX_BACKGROUND_KEY_HOST_FILE`.", "on"),
+        "`on` lets people's agents run on their own API key, in pi in the agent runtime (`pi` in `FLUX_AGENT_RUNTIME`, which every agent needs). Needs `FLUX_BACKGROUND_KEY_HOST_FILE`.", "on"),
     "FLUX_AI_PRIVATE_TARGETS": Var("ai", "list of hosts, IPs or CIDRs",
         "Private addresses an OpenAI-compatible endpoint may use, such as a local model server. Empty allows public "
         "HTTPS endpoints only; cloud metadata addresses are always refused.", "ollama,10.0.0.0/8"),

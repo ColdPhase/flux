@@ -1,25 +1,29 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { before, describe, test } from 'node:test';
-import { createPersonalRunProcessor, postToAgentChat, type Principal } from '@flux/core';
+import { after, before, describe, test } from 'node:test';
+import { postToAgentChat, type Principal } from '@flux/core';
 import { ME_TIME_ZONE_PATH, type AssistantRun, type Conversation, type ConversationRootWindow, type Dm, type DmMessage, type DmThread, type Page, type Project, type ShowAnswerResult, type Workspace } from '@flux/contracts';
 import { personalRunUseCases } from '../../apps/server/src/personal-runs/adapters.js';
 import { personalRunWorkerUnitOfWork } from '../../apps/worker/src/personal-runs/adapters.js';
 import { db, pool } from './support/db.js';
+import type { GatewayStep } from './support/fake-gateway.js';
 import { addMember, expectStatus, grant, person, project as createProject, type Person } from './support/people.js';
-import { echo, FakeCompute, FakeConnections, FakeQueue } from './support/personal-runs.js';
+import { FakeConnections, FakeQueue } from './support/personal-runs.js';
+import { startPiRuntime, type PiRuntime } from './support/pi-runtime.js';
 import { StreamClient } from './support/stream.js';
 
 // `/ai` in every conversation, answered privately (#842, F-036 AG-4, C-12): a space's conversation and its threads, a direct message and the
 // private chat with an agent. The answer is its asker's alone; Show everyone posts it as the asker's message, "Ada's Assistant". What
 // the answer draws on is only what the place's audience can see; a DM's thread has the DM's people as its audience, and the model is given that
-// thread and nothing else (#1016). Fake compute: no provider pass is claimed.
+// thread and nothing else (#1016). Every agent runs in pi in the agent runtime (#1441, RT-1): the real worker, supervisor and pinned pi, with
+// the fake model gateway as its model (support/pi-runtime.ts), so a test reads what pi was given (its brief, the tools it was offered) and what
+// the Flux tools returned to it in `pi.gateway.requests`. No provider pass is claimed.
 
 const connections = new FakeConnections();
-const compute = new FakeCompute();
 const queue = new FakeQueue();
 const runs = personalRunUseCases(db, { queue: queue.factory, connections, providerEnabled: true });
-const processor = createPersonalRunProcessor({ uow: personalRunWorkerUnitOfWork(db), connections, compute, stopPollMs: 20 });
+/** The Flux tools of a run in a direct message: the one that reads a web page and the two that find and read around its messages (F-042), and the summary. */
+const DM_TOOLS = ['mcp__flux__flux_read_around', 'mcp__flux__flux_read_web', 'mcp__flux__flux_search', 'mcp__flux__flux_summarize'];
 const human = (someone: Person): Principal => ({ kind: 'human', id: someone.id });
 
 const TOKENS = {
@@ -50,9 +54,18 @@ describe('/ai everywhere, answered privately (#842)', () => {
   let dmRoot: DmMessage; let otherRoot: DmMessage;
   let agentId = '';
   const connection = randomUUID();
+  let pi: PiRuntime;
+  let processor: ReturnType<PiRuntime['processor']>;
 
-  const sentToTheModel = () => compute.dispatched.at(-1)!.input;
-  const finish = async (runId: string) => assert.equal(await processor.process(runId), 'completed');
+  /** What pi was given to start with: Flux's brief, in its first user message, and what its prompt carries beside pi's own. */
+  const briefOf = () => pi.gateway.requests[0]!.prompt;
+  /** The run's model is a script: `steps` (by default one answer), then the worker's own run to its end. */
+  const finish = async (runId: string, steps: GatewayStep[] = [{ text: 'An answer.' }]) => {
+    pi.gateway.script(steps);
+    assert.equal(await processor.process(runId), 'completed', JSON.stringify(pi.lastPi()));
+  };
+  /** The Flux tools pi is given, as the model's request names them (without `flux_web_search`, which a stack with the key search on adds). */
+  const fluxTools = () => pi.gateway.requests[0]!.tools.filter((tool) => tool.startsWith('mcp__flux__') && tool !== 'mcp__flux__flux_web_search').sort();
 
   before(async () => {
     [ada, hubert, kai, maurycy, gus] = await Promise.all(['pai-ada', 'pai-hubert', 'pai-kai', 'pai-maurycy', 'pai-gus'].map(person));
@@ -77,7 +90,11 @@ describe('/ai everywhere, answered privately (#842)', () => {
     agentId = (await post<{ id: string }>(hubert, `/api/v1/workspaces/${ws.id}/agents`, { name: 'Assistant', owner: 'self' })).id;
     connections.connect(hubert.id, connection);
     await runs.enable(human(hubert), { agentId, connection, model: 'claude-sonnet-5' });
+    pi = await startPiRuntime();
+    processor = pi.processor(connections);
+    await pi.place(hubert.id);
   });
+  after(async () => { await pi.close(); });
 
   const ask = (place: Parameters<typeof runs.invoke>[1], prompt = 'Summarise this', extra: Record<string, unknown> = {}) =>
     runs.invoke(human(hubert), place, { clientRunId: randomUUID(), kind: 'ask', prompt, ...extra });
@@ -87,15 +104,19 @@ describe('/ai everywhere, answered privately (#842)', () => {
     await live.ready();
     const started = await ask(thread.id);
     assert.deepEqual([started.run.projectId, started.run.conversationId, started.run.dmId], [lamp.id, thread.id, null]);
-    await finish(started.run.id);
-    assert.match(sentToTheModel(), new RegExp(TOKENS.space));
-    for (const hidden of [TOKENS.otherSpace, TOKENS.dm]) assert.equal(sentToTheModel().includes(hidden), false, `the model was given ${hidden}`);
-    // The brief (#1064): who asks, where and when; each message with its author and time; the request last.
-    assert.match(compute.dispatched.at(-1)!.system, /^You are Assistant, the AI agent of pai-hubert in Flux[^]*\nWho reads your answer\nOnly pai-hubert\. They may post it with Show everyone/);
-    assert.match(compute.dispatched.at(-1)!.system, /It is now \w+day, \d{4}-\d\d-\d\d \d\d:\d\d in pai-hubert's time zone, UTC\./);
-    assert.ok(sentToTheModel().startsWith('<place space="Lamp sensor" conversation="thread"/>'), sentToTheModel());
-    assert.match(sentToTheModel(), /^All 2 messages of this thread, oldest first\.\n<conversation>\n<message ref="S1" from="pai-kai" by="person" at="\d{4}-\d\d-\d\d \d\d:\d\d">Camera fails below 5 lux /m);
-    assert.match(sentToTheModel(), /<request from="pai-hubert" at="[^"]+">Summarise this<\/request>$/);
+    await finish(started.run.id, [{ tool: 'mcp__flux__flux_get_conversation', args: { projectId: lamp.id, id: thread.id } },
+      { text: `The camera fails below 5 lux and the ToF sensor kept working. [message:${thread.messages[0]!.id}]` }]);
+    // pi reads the thread with a Flux tool, which returns what the thread's audience can see and nothing else.
+    const read = pi.gateway.requests[1]!.results[0] ?? '';
+    assert.match(read, new RegExp(TOKENS.space));
+    assert.match(read, new RegExp(TOKENS.thread));
+    for (const hidden of [TOKENS.otherSpace, TOKENS.dm]) assert.equal(JSON.stringify(pi.gateway.requests).includes(hidden), false, `pi was given ${hidden}`);
+    // The brief (#1064): who asks, where and when, which tools to read with first; the request last.
+    assert.match(briefOf(), /^You are Assistant, the AI agent of pai-hubert in Flux[^]*\nWho reads your answer\nOnly pai-hubert\. They may post it with Show everyone/);
+    assert.match(briefOf(), /It is now \w+day, \d{4}-\d\d-\d\d \d\d:\d\d in pai-hubert's time zone, UTC\./);
+    assert.ok(briefOf().includes('<place space="Lamp sensor" conversation="thread"/>'), briefOf());
+    assert.ok(briefOf().includes(`conversation id ${thread.id}`), 'the ids pi reads the thread by');
+    assert.match(briefOf(), /<request from="pai-hubert" at="[^"]+">Summarise this<\/request>$/);
 
     // The people of the space see nothing: not the run, not the answer, not that an assistant is working.
     for (const other of [kai, ada, maurycy]) {
@@ -113,6 +134,7 @@ describe('/ai everywhere, answered privately (#842)', () => {
     const own = await get<Page<AssistantRun>>(hubert, `/api/v1/assistant-runs?conversationId=${thread.id}`);
     assert.equal(own.items[0]!.id, started.run.id);
     assert.deepEqual([own.items[0]!.answer?.audience, own.items[0]!.answer?.assistant.label], [{ kind: 'owner' }, 'Assistant']);
+    assert.ok(own.items[0]!.answer?.body.includes('[1]'), 'the asker\'s card cites the message pi read');
 
     // Show everyone: the asker's own message in the thread, naming the agent; a second press posts nothing more.
     const shown = expectStatus(await hubert.browser.request('POST', `/api/v1/assistant-runs/${started.run.id}/show`), 200) as ShowAnswerResult;
@@ -132,10 +154,11 @@ describe('/ai everywhere, answered privately (#842)', () => {
     const started = await ask({ kind: 'space', projectId: lamp.id, conversationId: null });
     assert.deepEqual([started.run.projectId, started.run.conversationId], [lamp.id, null]);
     assert.equal((await row(started.run.id)).ai_epoch !== null, true, 'a space run is admitted under the space\'s AI epoch');
-    await finish(started.run.id);
-    assert.match(sentToTheModel(), new RegExp(TOKENS.space), 'the main conversation is what its roots say');
-    assert.match(sentToTheModel(), new RegExp(`<message ref="S\\d+" thread="Camera fails below 5 lux ${TOKENS.space}" from="pai-kai"`), 'a message names its thread when the thread changes (#1064)');
-    assert.equal(sentToTheModel().includes(TOKENS.otherSpace), false);
+    await finish(started.run.id, [{ tool: 'mcp__flux__flux_list_conversations', args: { projectId: lamp.id, limit: 50 } }, { text: 'The camera fails below 5 lux.' }]);
+    assert.ok(briefOf().includes('<place space="Lamp sensor" conversation="main conversation"/>'), briefOf());
+    assert.ok(briefOf().includes('list its conversations with flux_list_conversations'), 'the brief tells pi to list the space\'s conversations');
+    assert.match(pi.gateway.requests[1]!.results[0] ?? '', new RegExp(TOKENS.space), 'the main conversation is what its roots say');
+    assert.equal(JSON.stringify(pi.gateway.requests).includes(TOKENS.otherSpace), false);
     // The route of the space's main conversation, and a person outside the space.
     // The route exists and reaches the same use case (this API composes no provider, so it answers that, not that the place is unknown).
     const viaRoute = await hubert.browser.request('POST', `/api/v1/projects/${lamp.id}/assistant-runs`, { body: { clientRunId: randomUUID(), kind: 'ask', prompt: 'x' } });
@@ -150,19 +173,13 @@ describe('/ai everywhere, answered privately (#842)', () => {
     assert.deepEqual([root.message.authorId, root.message.via, root.message.viaColour], [hubert.id, 'Assistant', 'ink']);
   });
 
-  test('the brief tells the time in the asker\'s own zone and says when older messages were left out (#1064)', async () => {
+  test('the brief tells the time in the asker\'s own zone (#1064)', async () => {
     // The asker's zone is their browser's, which the web app saves on them (#1168, C-57).
     expectStatus(await hubert.browser.request('PUT', ME_TIME_ZONE_PATH, { body: { timeZone: 'Asia/Tokyo' } }), 204);
-    const long = await post<Conversation>(kai, `/api/v1/projects/${lamp.id}/conversations`, { body: 'Count to twenty-one: 1', clientMessageId: randomUUID() });
-    for (let n = 2; n <= 21; n++) await post(kai, `/api/v1/conversations/${long.id}/messages`, { body: `Count to twenty-one: ${n}`, clientMessageId: randomUUID() });
     try {
-      const started = await ask(long.id, 'Where did the count end?');
+      const started = await ask(thread.id, 'What time is it for me?');
       await finish(started.run.id);
-      assert.match(compute.dispatched.at(-1)!.system, /in pai-hubert's time zone, Asia\/Tokyo\. Every time below is in that zone\./);
-      const input = sentToTheModel();
-      assert.match(input, /^The latest 20 messages of this thread, oldest first\. Older messages were left out\.$/m);
-      assert.equal(input.includes('>Count to twenty-one: 1</message>'), false, 'the oldest is the one left out');
-      assert.ok(input.includes('>Count to twenty-one: 21</message>'));
+      assert.match(briefOf(), /in pai-hubert's time zone, Asia\/Tokyo\. Every time below is in that zone\./);
     } finally {
       expectStatus(await hubert.browser.request('PUT', ME_TIME_ZONE_PATH, { body: { timeZone: 'UTC' } }), 204);
     }
@@ -193,12 +210,14 @@ describe('/ai everywhere, answered privately (#842)', () => {
     }
     assert.match(String((await get<{ items: { lastMessageBody: string }[] }>(kai, `/api/v1/workspaces/${ws.id}/dms`)).items.find((item) => (item as unknown as { id: string }).id === dm.id)?.lastMessageBody), /Between us/, 'the line is no preview');
     await finish(started.run.id);
-    const input = sentToTheModel();
+    // No tool reads a DM, so its messages are in the brief; pi is given nothing else.
+    const input = briefOf();
     assert.match(input, new RegExp(TOKENS.dm));
-    for (const hidden of [TOKENS.space, TOKENS.thread, TOKENS.otherSpace]) assert.equal(input.includes(hidden), false, `the model was given ${hidden}`);
-    assert.ok(input.startsWith('<place direct_message_with="pai-kai"/>'), 'the DM names its other people as data (#1064)');
-    assert.equal(compute.dispatched.at(-1)!.system.includes('pai-kai'), false, 'and never in the instructions');
-    assert.equal(compute.dispatched.at(-1)!.tools?.length ?? 0, 0, 'no tool reads anything of the owner\'s other places');
+    for (const hidden of [TOKENS.space, TOKENS.thread, TOKENS.otherSpace]) assert.equal(JSON.stringify(pi.gateway.requests).includes(hidden), false, `pi was given ${hidden}`);
+    assert.ok(input.includes('<place direct_message_with="pai-kai"/>'), 'the DM names its other people as data (#1064)');
+    assert.equal(input.slice(0, input.indexOf('<place')).includes('pai-kai'), false, 'and never in the instructions');
+    assert.equal(pi.gateway.requests[0]!.system.includes('pai-kai'), false);
+    assert.deepEqual(fluxTools(), DM_TOOLS, 'no tool reads anything of the owner\'s other places');
     // A third person cannot ask in it, and Kai cannot read the run.
     assert.equal((await maurycy.browser.request('POST', `/api/v1/dms/${dm.id}/assistant-runs`, { body: { clientRunId: randomUUID(), kind: 'ask', prompt: 'x' } })).status, 404);
     assert.equal((await kai.browser.request('GET', `/api/v1/assistant-runs/${started.run.id}`)).status, 404);
@@ -230,13 +249,13 @@ describe('/ai everywhere, answered privately (#842)', () => {
       assert.equal(((await get<DmThread>(someone, `/api/v1/dms/${dm.id}/threads/${dmRoot.id}`)).replies).some((item) => item.notice), false, 'the thread holds no line');
     }
     await finish(started.run.id);
-    const input = sentToTheModel();
-    // The model is given this thread: its root and its replies. Not the DM's other messages, another thread, another DM, nor any space.
+    const input = briefOf();
+    // pi is given this thread: its root and its replies. Not the DM's other messages, another thread, another DM, nor any space.
     for (const given of [TOKENS.dmThread, TOKENS.dmReply]) assert.match(input, new RegExp(given));
-    for (const hidden of [TOKENS.dm, TOKENS.otherDmThread, TOKENS.otherDm, TOKENS.space, TOKENS.thread, TOKENS.otherSpace]) assert.equal(input.includes(hidden), false, `the model was given ${hidden}`);
-    assert.equal(compute.dispatched.at(-1)!.tools?.length ?? 0, 0, 'no tool reads anything of the owner\'s other places');
-    assert.match(compute.dispatched.at(-1)!.system, /in a thread of a direct message[^]*Only pai-hubert\. They may post it with Show everyone, as their own message, for the other people of this direct message/);
-    assert.ok(input.startsWith('<place direct_message_with="pai-kai" thread="yes"/>'));
+    for (const hidden of [TOKENS.dm, TOKENS.otherDmThread, TOKENS.otherDm, TOKENS.space, TOKENS.thread, TOKENS.otherSpace]) assert.equal(JSON.stringify(pi.gateway.requests).includes(hidden), false, `pi was given ${hidden}`);
+    assert.deepEqual(fluxTools(), DM_TOOLS, 'no tool reads anything of the owner\'s other places');
+    assert.match(input, /in a thread of a direct message[^]*Only pai-hubert\. They may post it with Show everyone, as their own message, for the other people of this direct message/);
+    assert.ok(input.includes('<place direct_message_with="pai-kai" thread="yes"/>'));
 
     // The answer is the asker's: Kai cannot read, show or dismiss it, and finds no run in this place; the run is listed in its thread and not in the DM's main line.
     for (const [method, path] of [['GET', ''], ['POST', '/show'], ['POST', '/dismiss']] as const)
@@ -316,9 +335,9 @@ describe('/ai everywhere, answered privately (#842)', () => {
     await finish(first.run.id);
     const second = await ask({ kind: 'chat', agentId }, 'What number was it?');
     await finish(second.run.id);
-    assert.match(sentToTheModel(), new RegExp(TOKENS.chat), 'the earlier turn of the chat is told to the model');
-    assert.match(compute.dispatched.at(-1)!.system, /pai-hubert is talking to you in your private chat\.[^]*Only pai-hubert: nobody else reads this chat/);
-    assert.match(sentToTheModel(), new RegExp(`<chat>\\n<turn from="pai-hubert">Remember the number ${TOKENS.chat}</turn>`));
+    assert.match(briefOf(), new RegExp(TOKENS.chat), 'the earlier turn of the chat is told to pi');
+    assert.match(briefOf(), /pai-hubert is talking to you in your private chat\.[^]*Only pai-hubert: nobody else reads this chat/);
+    assert.match(briefOf(), new RegExp(`<chat>\\n<turn from="pai-hubert">Remember the number ${TOKENS.chat}</turn>`));
     const chat = await get<Page<AssistantRun>>(hubert, `/api/v1/assistant-runs?chatAgentId=${agentId}`);
     assert.deepEqual(chat.items.map((item) => item.id), [second.run.id, first.run.id]);
     // The chat's answers are no one else's: not Kai's, not the agent owner's other places.
@@ -330,8 +349,8 @@ describe('/ai everywhere, answered privately (#842)', () => {
     const memories = async () => Number((await pool.query('SELECT count(*)::int AS n FROM agent_memory_items WHERE agent_id = $1', [agentId])).rows[0].n);
     const before = await memories();
     const remembered = await ask({ kind: 'chat', agentId }, `remember that the lamp is blue ${randomUUID()}`);
-    await finish(remembered.run.id);
-    assert.equal(await memories(), before + 1);
+    assert.equal(await memories(), before + 1, 'the memory is added as the request is made');
+    await runs.stop(human(hubert), remembered.run.id);
     await runs.retry(human(hubert), remembered.run.id, { clientRunId: randomUUID() });
     assert.equal(await memories(), before + 1, 'a retry does not remember it again');
     // The same id and the same words are one run; another place is another run.
@@ -423,9 +442,5 @@ describe('/ai everywhere, answered privately (#842)', () => {
     assert.equal((await get<Conversation>(hubert, `/api/v1/conversations/${thread.id}`)).messages.length, before);
     await runs.invoke(human(hubert), thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'x' });
     assert.equal((await get<Conversation>(kai, `/api/v1/conversations/${thread.id}`)).messages.length, before, 'asking posts nothing');
-  });
-
-  test('echo keeps the fake provider honest', () => {
-    assert.equal(compute.respond, echo);
   });
 });

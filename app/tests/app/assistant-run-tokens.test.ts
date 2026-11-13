@@ -1,55 +1,34 @@
 import assert from 'node:assert/strict';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { before, beforeEach, describe, test } from 'node:test';
+import { after, before, beforeEach, describe, test } from 'node:test';
 import {
-  agentConnectionPath, ASSISTANT_RUN_EFFECT_TOOLS, assistantRunTools, PERSONAL_RUN_LIMITS,
+  agentConnectionPath, ASSISTANT_RUN_EFFECT_TOOLS, assistantRunTools,
   personalRunTokenPath, RUN_TOKEN_LIMITS, type AgentMayDo, type Conversation, type Project, type Workspace,
 } from '@flux/contracts';
-import { createPersonalRunProcessor, type PersonalComputeResult, type PersonalToolCall, type Principal } from '@flux/core';
+import type { Principal } from '@flux/core';
 import { personalRunTokenRows } from '@flux/db';
 import { personalRunUseCases } from '../../apps/server/src/personal-runs/adapters.js';
-import { personalRunWorkerUnitOfWork } from '../../apps/worker/src/personal-runs/adapters.js';
-import { mcpToolHost } from '../../apps/worker/src/personal-runs/mcp-session.js';
-import { runTokenIssuer } from '../../apps/worker/src/personal-runs/run-tokens.js';
 import { agentSettings } from './support/agent-settings.js';
 import { db, pool } from './support/db.js';
 import { apiUrl, publicOrigin } from './support/http.js';
 import { mcp } from './support/mcp.js';
 import { addMember, expectStatus, person, project as createProject, workspace as createWorkspace, type Person } from './support/people.js';
-import { FakeCompute, FakeConnections, FakeQueue } from './support/personal-runs.js';
+import { FakeConnections, FakeQueue } from './support/personal-runs.js';
+import { startPiRuntime, type PiRuntime } from './support/pi-runtime.js';
+import { waitFor } from './support/wait.js';
 
 // F-027 A2 (#280) and A6 rest (#484): a personal run's MCP token, minted by the API (the authorization
-// server) for the worker, and the worker as an MCP client of the real `/mcp` route with it. The route
+// server) for the worker, and the agent (pi in the agent runtime) as an MCP client of the real `/mcp` route with it. The route
 // lists exactly the run's switch-derived tools, reaches only the run's place, bounds tool results and
 // refuses the token once the run ended, the connection was revoked or a switch turned off. Driven through
-// the real use cases, worker processor, `/mcp` route and database with a FAKE provider. No model is
-// called; none of this is a provider, billing or compatibility pass.
+// the real use cases, worker processor, `/mcp` route and database; the agent that works a run is pi in the
+// agent runtime (#1441, RT-1) on a scripted model gateway, which reaches the route with the run's token like
+// any client. No model is called; none of this is a provider, billing or compatibility pass.
 
 const connections = new FakeConnections();
-const compute = new FakeCompute();
 const queue = new FakeQueue();
 const runs = personalRunUseCases(db, { queue: queue.factory, connections, providerEnabled: true });
-const tokens = runTokenIssuer(db, apiUrl);
-const processor = createPersonalRunProcessor({ uow: personalRunWorkerUnitOfWork(db), connections, compute, stopPollMs: 20,
-  tools: mcpToolHost(tokens, `${apiUrl}/mcp`), tokens });
 const human = (someone: Person): Principal => ({ kind: 'human', id: someone.id });
-/**
- * The bytes of the tool definitions with every switch on (one token per byte, PROV-3): 18 read tools took 14,464
- * before #484 and 7,729 after (2026-10-16); #400 adds the agents' thread read tool (19 reads). A3 (#403) adds the 16 change tools in their run-private view (no
- * runtime, grant, class or sources; compacted like the reads), measured 21,207 bytes for 34 tools (2026-10-17). #1290 replaces the one-space search by the two tools
- * that find and read around a message: 36 tools, 25,672 bytes (2026-11-12, CI run 43296958864; the bound was 24,000). #1292 adds the tool that
- * summarises a range: 37 tools, 26,525 bytes (2026-11-13, CI run 43376634883; the bound was 26,000 with 328 bytes left, and the tool's definition takes 853).
- * #1410 lets `from` take a name, says that a task's discussion is read with its own tool and asks for each part's source before an answer:
- * 26,913 characters, 26,918 UTF-8 bytes as measured since (2026-11-13, CI run 43417197252 and the #1426 review; the bound was 26,600).
- * #1382 (C-63) adds flux_read_file, the excerpt of a file's text, and the word "file" in flux_search's description and kind: 38 tools, 27,512 UTF-8 bytes
- * (2026-11-13, merge train 11 with #1426, local run; the bound was 27,000 and is 27,600, 88 bytes above).
- * #1381 (C-62) tells the agent in three descriptions to look in the Wiki for how, what and why and how to cite a page, on top of #1410: 37 tools,
- * 27,420 UTF-8 bytes (2026-11-13, local test.sh run of the #1431 review; the bound was 27,000).
- * Both together (merge train 13, #1431 on #1382): 38 tools, 28,014 UTF-8 bytes (2026-11-13, local test.sh run; the bound was 27,600 and is 28,100).
- * #1437 adds the tool that attaches a file the run made or wrote to its answer (founder decision 2026-11-13): with #1431 and #1382 (merge
- * train 14, #1446 on #1442), 39 tools, 28,558 UTF-8 bytes (2026-11-13, local test.sh run; the bound was 28,100 and is 28,650).
- */
-const TOOL_DEFINITION_BYTES = 28_650;
 const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
 const claims = (token: string) => JSON.parse(Buffer.from(token.split('.')[1]!, 'base64url').toString()) as Record<string, unknown>;
 const toolText = (message: Record<string, unknown> | null) => JSON.stringify(message);
@@ -67,6 +46,7 @@ async function row(runId: string) {
 describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #280, #484)', () => {
   let owner: Person; let ws: Workspace; let place: Project; let other: Project; let thread: Conversation;
   let agentId: string; let docId: string; let otherDocId: string; let bigThreadId: string; let dmId: string;
+  let pi: PiRuntime; let processor: ReturnType<PiRuntime['processor']>;
   const WIKI_CANARY = `wiki-canary-${randomBytes(4).toString('hex')}`;
   const OTHER_CANARY = `other-project-canary-${randomBytes(4).toString('hex')}`;
   const DM_CANARY = `dm-canary-${randomBytes(4).toString('hex')}`;
@@ -97,6 +77,8 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
   const end = (runId: string) => pool.query(`UPDATE personal_runs SET status = 'stopped', completed_at = now(), cost_state = 'released', charged_micros = 0 WHERE id = $1`, [runId]);
 
   before(async () => {
+    pi = await startPiRuntime();
+    processor = pi.processor(connections);
     owner = await person('rt-owner');
     ws = await createWorkspace(owner, 'Run tokens');
     place = await createProject(owner, ws.id, 'Lamp sensor', 'workspace');
@@ -124,9 +106,11 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
     connections.connect(owner.id, connectionId);
     // Turning the assistant on creates its one `owner_assistant` connection and joins the projects the owner manages (A1).
     await runs.enable(human(owner), { agentId, connection: connectionId, model: 'claude-sonnet-5' });
+    await pi.place(owner.id);
   });
+  after(async () => { await pi.close(); });
   beforeEach(async () => {
-    compute.dispatched = []; compute.counted = [];
+    pi.gateway.script([]);
     await pool.query(`UPDATE personal_runs SET status = 'stopped', completed_at = now(), cost_state = 'released', charged_micros = 0
       WHERE owner_user_id = $1 AND status IN ('queued', 'reading', 'dispatching')`, [owner.id]);
     if ((await settings()).mayDo !== 'act') await setMayDo('act');
@@ -257,20 +241,14 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
   });
 
   test('a tool result past the route\'s bound is not returned and the run ends in its own state', async () => {
-    const replies: PersonalComputeResult[] = [
-      { kind: 'completed', text: 'reading', stopReason: 'tool_use', usage: { inputTokens: 500, outputTokens: 20 },
-        toolCalls: [{ id: 'c1', name: 'flux_get_conversation', input: { projectId: place.id, id: bigThreadId } }] },
-      { kind: 'completed', text: 'done', stopReason: 'end_turn', usage: { inputTokens: 500, outputTokens: 20 } },
-    ];
-    compute.respond = async () => replies.shift()!;
+    pi.gateway.script([{ tool: 'mcp__flux__flux_get_conversation', args: { projectId: place.id, id: bigThreadId } }, { text: 'done' }]);
     const started = await ask();
     // A safety bound (#843): this run starts close to it instead of reading 8 MiB.
     await pool.query('UPDATE personal_runs SET mcp_result_bytes = $1 WHERE id = $2', [RUN_TOKEN_LIMITS.resultBytesPerRun - 1024, started.run.id]);
-    assert.equal(await processor.process(started.run.id), 'cap_reached');
+    assert.equal(await processor.process(started.run.id), 'cap_reached', JSON.stringify(pi.lastPi()));
     const stored = await row(started.run.id);
     assert.deepEqual([stored.status, stored.end_reason, stored.mcp_limit, stored.answer_body], ['cap_reached', 'mcp_results_too_large', 'run', null]);
-    const second = compute.dispatched.at(-1)!;
-    assert.ok(!JSON.stringify(second.turns ?? []).includes('long message. long message. long message.'), 'the oversized result never reached the provider');
+    assert.ok(!JSON.stringify(pi.gateway.requests).includes('long message. long message. long message.'), 'the oversized result never reached the provider');
   });
 
   test('#484: a run\'s flux_get_doc on a 50,000-character doc returns a first page under 16 KiB with a next-page cursor, and the run does not end', async () => {
@@ -315,151 +293,101 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
     assert.equal((await mcp(grant.token, 2, 'tools/call', { name: 'flux_list_contexts', arguments: {} })).status, 403);
     await end(runId);
     await restore();
-    // The worker: a revocation between two turns ends the run `revoked` before another call or request.
-    compute.respond = async () => {
-      if (compute.dispatched.length === 2) await revoke();
-      return { kind: 'completed', text: 'again', stopReason: 'tool_use', usage: { inputTokens: 500, outputTokens: 20 },
-        toolCalls: [{ id: `c${compute.dispatched.length}`, name: 'flux_list_contexts', input: {} }] };
-    };
+    // The worker: a revocation while pi works ends the run `revoked` at once, and nothing more is sent to the model.
+    pi.gateway.script([{ tool: 'bash', args: { command: 'sleep 20' } }, { text: 'Should not be posted.' }]);
     const started = await ask();
-    assert.equal(await processor.process(started.run.id), 'revoked');
-    assert.equal(compute.dispatched.length, 2, 'nothing more is sent after the revocation');
+    const working = processor.process(started.run.id);
+    await waitFor(async () => pi.gateway.requests.length > 0, 'pi to ask its model');
+    await new Promise((wait) => setTimeout(wait, 300));
+    await revoke();
+    assert.equal(await working, 'revoked', JSON.stringify(pi.lastPi()));
+    assert.equal(pi.gateway.requests.length, 1, 'nothing more is sent after the revocation');
     const stored = await row(started.run.id);
     assert.equal(stored.answer_body, null);
     assert.ok(stored.run_token_closed_at, 'the token is closed');
     await restore();
   });
 
+  /** One step of the run's model: it calls a Flux tool (pi names them `mcp__flux__<tool>`). */
+  const call = (name: string, args: Record<string, unknown>) => ({ tool: `mcp__flux__${name}`, args });
+  /**
+   * The Flux tools a run's model request offers pi (its own `bash`, `read`, `edit` and `write` left out), without pi's prefix, sorted. Flux's web
+   * search, which the run token adds for pi where the API has one (#1441), is not one of the assistant's tools and is left out.
+   */
+  const offered = (request: { tools: string[] }) => request.tools.filter((name) => name.startsWith('mcp__flux__')).map((name) => name.slice('mcp__flux__'.length))
+    .filter((name) => name !== 'flux_web_search').sort();
+  /** What the run's tools returned, in the order they were called: the last request of the run carries them all. */
+  const results = () => pi.gateway.requests.at(-1)?.results ?? [];
+
   test('AST-9.1: a DM, a private map and another project never reach the provider or the tool results', async () => {
-    const calls: PersonalToolCall[] = [
-      { id: 's1', name: 'flux_search', input: { q: 'canary', kind: 'message' } },
-      { id: 's1b', name: 'flux_search', input: { q: 'canary' } },
-      { id: 's2', name: 'flux_list_maps', input: { projectId: place.id } },
-      { id: 's3', name: 'flux_get_doc', input: { projectId: other.id, id: otherDocId } },
-      { id: 's4', name: 'flux_list_contexts', input: {} },
-    ];
-    compute.respond = async () => compute.dispatched.length === 1
-      ? { kind: 'completed', text: 'looking', stopReason: 'tool_use', usage: { inputTokens: 800, outputTokens: 40 }, toolCalls: calls }
-      : { kind: 'completed', text: 'Fact: nothing private here [S1].', stopReason: 'end_turn', usage: { inputTokens: 800, outputTokens: 40 } };
+    pi.gateway.script([call('flux_search', { q: 'canary', kind: 'message' }), call('flux_search', { q: 'canary' }), call('flux_list_maps', { projectId: place.id }),
+      call('flux_get_doc', { projectId: other.id, id: otherDocId }), call('flux_list_contexts', {}), { text: 'Fact: nothing private here.' }]);
     const started = await ask('Summarize the canary');
-    assert.equal(await processor.process(started.run.id), 'completed');
-    const sent = JSON.stringify(compute.dispatched);
+    assert.equal(await processor.process(started.run.id), 'completed', JSON.stringify(pi.lastPi()));
+    assert.equal(pi.gateway.requests.length, 6, 'every step of the model was one request');
+    const sent = JSON.stringify(pi.gateway.requests);
     for (const canary of [DM_CANARY, PRIVATE_CANARY, OTHER_CANARY]) assert.ok(!sent.includes(canary), `${canary} never reaches the provider`);
-    assert.ok(compute.dispatched[0]!.input.includes('Summarize the canary'), 'the owner\'s request is input');
+    assert.ok(pi.gateway.requests[0]!.prompt.includes('Summarize the canary'), 'the owner\'s request is input');
     const stored = await row(started.run.id);
     assert.ok(stored.run_token_closed_at, 'the session closed the token');
   });
 
   test('#842 (C-37): the tools of a run follow its place: a DM run has one and reaches no space, a chat reads like its owner and changes nothing, the main conversation reaches its own space', async () => {
-    const calls = (...tools: PersonalToolCall[]): typeof compute.respond => async () => compute.dispatched.length === 1
-      ? { kind: 'completed', text: 'looking', stopReason: 'tool_use', usage: { inputTokens: 800, outputTokens: 40 }, toolCalls: tools }
-      : { kind: 'completed', text: 'Fact: done [S1].', stopReason: 'end_turn', usage: { inputTokens: 800, outputTokens: 40 } };
-    const asked = async (place: Parameters<typeof runs.invoke>[1]) => {
+    const asked = async (place: Parameters<typeof runs.invoke>[1], steps: Parameters<PiRuntime['gateway']['script']>[0]) => {
       const started = await runs.invoke(human(owner), place, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Summarise what you can' });
-      compute.dispatched = [];
-      assert.equal(await processor.process(started.run.id), 'completed', JSON.stringify(place));
+      pi.gateway.script(steps);
+      assert.equal(await processor.process(started.run.id), 'completed', `${JSON.stringify(place)}: ${JSON.stringify(pi.lastPi())}`);
       return started.run.id;
     };
-    const results = () => compute.dispatched.flatMap((request) => (request.turns ?? []).flatMap((turn) => turn.results));
-    const doc = (project: string, id: string): PersonalToolCall => ({ id: `doc-${id}`, name: 'flux_get_doc', input: { projectId: project, id } });
-
     // A direct message: it reads a web page and finds, reads around and summarises the messages of that DM and of nothing else (F-042, #1290,
     // #1292); the DM itself is given in the request, and no space is reachable.
-    compute.respond = calls(doc(place.id, docId), { id: 'ctx', name: 'flux_list_contexts', input: {} }, { id: 'dm-find', name: 'flux_search', input: { q: 'canary' } });
-    const inDm = await asked({ kind: 'dm', dmId, threadRootId: null });
-    assert.deepEqual(compute.dispatched[0]!.tools?.map((tool) => tool.name).sort(), ['flux_read_around', 'flux_read_web', 'flux_search', 'flux_summarize']);
-    assert.match(compute.dispatched[0]!.input, new RegExp(DM_CANARY), 'the DM is what the model reads');
-    const answered = results().filter((result) => !result.isError);
-    assert.deepEqual(answered.map((result) => result.callId), ['dm-find'], 'the search of its own DM answers; a call of any other tool is refused');
-    assert.ok(answered[0]!.content.includes(`/dm/${dmId}#message-`), 'it finds the message of its DM');
-    assert.ok(!answered[0]!.content.includes('/projects/'), 'and nothing of a space, though the Wiki says "canary" too');
-    for (const canary of [WIKI_CANARY, OTHER_CANARY, PRIVATE_CANARY]) assert.ok(!JSON.stringify(compute.dispatched).includes(canary), `${canary} never reaches the provider`);
+    const inDm = await asked({ kind: 'dm', dmId, threadRootId: null }, [call('flux_search', { q: 'canary' }), { text: 'Fact: done.' }]);
+    assert.deepEqual(offered(pi.gateway.requests[0]!), ['flux_read_around', 'flux_read_web', 'flux_search', 'flux_summarize']);
+    assert.match(pi.gateway.requests[0]!.prompt, new RegExp(DM_CANARY), 'the DM is what the model reads');
+    assert.ok((results()[0] ?? '').includes(`/dm/${dmId}#message-`), 'it finds the message of its DM');
+    assert.ok(!(results()[0] ?? '').includes('/projects/'), 'and nothing of a space, though the Wiki says "canary" too');
+    for (const canary of [WIKI_CANARY, OTHER_CANARY, PRIVATE_CANARY]) assert.ok(!JSON.stringify(pi.gateway.requests).includes(canary), `${canary} never reaches the provider`);
     const dmToken = await pool.query('SELECT run_tools FROM personal_runs WHERE id = $1', [inDm]);
-    assert.deepEqual(dmToken.rows[0].run_tools, ['flux_read_around', 'flux_read_web', 'flux_search', 'flux_summarize']);
+    assert.deepEqual((dmToken.rows[0].run_tools as string[]).filter((name) => name !== 'flux_web_search'), ['flux_read_around', 'flux_read_web', 'flux_search', 'flux_summarize']);
+    // A call of any other tool is refused by the route (pi itself stops a run that asks for a tool it was not given: agent-runtime-pi.test.ts).
+    const dmRun = await runs.invoke(human(owner), { kind: 'dm', dmId, threadRootId: null }, { clientRunId: randomUUID(), kind: 'ask', prompt: 'x' });
+    await pool.query(`UPDATE personal_runs SET status = 'reading' WHERE id = $1`, [dmRun.run.id]);
+    const dmHeld = await token(dmRun.run.id);
+    for (const [name, args] of [['flux_get_doc', { projectId: place.id, id: docId }], ['flux_list_contexts', {}]] as const)
+      assert.equal(refusal((await mcp(dmHeld.token, 1, 'tools/call', { name, arguments: args })).message)?.code, 'MCP_ENTRY_UNAVAILABLE', name);
+    await end(dmRun.run.id);
 
     // A chat: every read tool, in every space its owner reaches, a picture for its own answer, and no tool that changes anything.
-    compute.respond = calls(doc(other.id, otherDocId), { id: 'make', name: 'flux_create_task', input: { projectId: place.id, title: 'From the chat', clientCommandId: randomUUID() } },
-      { id: 'ctx-chat', name: 'flux_list_contexts', input: {} });
-    const inChat = await asked({ kind: 'chat', agentId });
-    const names = compute.dispatched[0]!.tools!.map((tool) => tool.name);
+    const inChat = await asked({ kind: 'chat', agentId }, [call('flux_get_doc', { projectId: other.id, id: otherDocId }), call('flux_list_contexts', {}), { text: 'Fact: done.' }]);
+    const names = offered(pi.gateway.requests[0]!);
+    const chatTools = (await pool.query('SELECT run_tools FROM personal_runs WHERE id = $1', [inChat])).rows[0].run_tools as string[];
+    assert.deepEqual(names, chatTools.filter((name) => name !== 'flux_web_search').sort(), 'pi was offered exactly the tools the run token was minted for');
     assert.equal(names.length, 24, 'the 22 read tools (flux_view_image, #1217; flux_search and flux_read_around, #1290; flux_summarize, #1292; flux_read_file, #1382), a picture and a file for its answer (flux_attach_image, #1217; flux_attach_file, #1437)');
     assert.ok(names.includes('flux_attach_image') && names.includes('flux_attach_file'), 'its answer in the chat can carry a picture (founder decision on #1217) and a file (coordinator decision on #1437)');
     assert.ok(ASSISTANT_RUN_EFFECT_TOOLS.filter((tool) => tool !== 'flux_attach_image' && tool !== 'flux_attach_file').every((tool) => !names.includes(tool)), 'no tool that changes anything');
-    assert.ok(JSON.stringify(compute.dispatched).includes(OTHER_CANARY), 'another space of its owner is read: nobody else reads this answer');
-    assert.ok(results().some((result) => result.isError), 'the call to change something is refused');
+    assert.ok(JSON.stringify(pi.gateway.requests).includes(OTHER_CANARY), 'another space of its owner is read: nobody else reads this answer');
     // It can find its owner's spaces itself, with no id given to it (the list of what a run reaches follows its place, not a project it has none of).
-    const listed = JSON.stringify(compute.dispatched.flatMap((request) => (request.turns ?? []).flatMap((turn) => turn.results.filter((result) => !result.isError))));
-    assert.ok(listed.includes(place.id) && listed.includes(other.id), 'flux_list_contexts lists the spaces of its owner');
+    assert.ok((results()[1] ?? '').includes(place.id) && (results()[1] ?? '').includes(other.id), 'flux_list_contexts lists the spaces of its owner');
     assert.equal((await pool.query(`SELECT count(*)::int AS n FROM project_work_items WHERE title = 'From the chat'`)).rows[0].n, 0);
     const armed = await runs.invoke(human(owner), { kind: 'chat', agentId }, { clientRunId: randomUUID(), kind: 'ask', prompt: 'x' });
     await pool.query(`UPDATE personal_runs SET status = 'reading' WHERE id = $1`, [armed.run.id]);
-    assert.deepEqual(claims((await token(armed.run.id)).token).flux_place, { project: null, conversation: null, dm: null });
+    const armedToken = await token(armed.run.id);
+    assert.deepEqual(claims(armedToken.token).flux_place, { project: null, conversation: null, dm: null });
+    // The call to change something is refused by the route.
+    assert.equal(refusal((await mcp(armedToken.token, 1, 'tools/call', { name: 'flux_create_task', arguments: { projectId: place.id, title: 'From the chat', clientCommandId: randomUUID() } })).message)?.code,
+      'MCP_ENTRY_UNAVAILABLE');
+    assert.equal((await pool.query(`SELECT count(*)::int AS n FROM project_work_items WHERE title = 'From the chat'`)).rows[0].n, 0);
     await end(armed.run.id);
-    assert.ok(inChat);
 
-    // The space's main conversation: its own space and no other (a small space of its own, so that the reading fits one request).
+    // The space's main conversation: its own space and no other, with every switch on: the 22 read tools and every change tool (A3).
     const quiet = await createProject(owner, ws.id, 'Quiet corner', 'workspace');
     const QUIET = `quiet-canary-${randomBytes(4).toString('hex')}`;
     const quietDoc = (expectStatus(await owner.browser.request('POST', `/api/v1/projects/${quiet.id}/docs`, { body: { title: 'Quiet notes', body: QUIET } }), 201) as { id: string }).id;
     expectStatus(await owner.browser.request('POST', `/api/v1/projects/${quiet.id}/conversations`, { body: { body: 'Short hello', clientMessageId: randomUUID() } }), 201);
-    compute.respond = calls(doc(other.id, otherDocId), doc(quiet.id, quietDoc));
-    await asked({ kind: 'space', projectId: quiet.id, conversationId: null });
-    assert.ok(JSON.stringify(compute.dispatched).includes(QUIET), 'its own space is read');
-    assert.ok(!JSON.stringify(compute.dispatched).includes(OTHER_CANARY), 'another space of its owner is not');
-  });
-
-  test('AST-8.2 through /mcp: a provider that keeps calling tools stops at a safety bound, every call made through the route', async (t) => {
-    // With every switch on the run lists 20 read tools. Their definitions travel with every request, so they
-    // are kept short (#484): measured below, bounded here, and over a hundred turns fit the tool-run input bound.
-    compute.respond = async () => ({ kind: 'completed', text: 'again', stopReason: 'tool_use', usage: { inputTokens: 500, outputTokens: 20 },
-      toolCalls: [{ id: `c${compute.dispatched.length}`, name: 'flux_list_contexts', input: {} }] });
-    const full = await ask();
-    const fullOutcome = await processor.process(full.run.id);
-    const fullTools = compute.dispatched[0]?.tools ?? [];
-    const fullBytes = Buffer.byteLength(JSON.stringify(fullTools), 'utf8');
-    t.diagnostic(`all switches on: ${fullOutcome} after ${compute.dispatched.length} requests; ${fullBytes} bytes of tool definitions, ${fullTools.length} tools`);
-    assert.equal(fullTools.length, 22 + ASSISTANT_RUN_EFFECT_TOOLS.length, '22 read tools (flux_read_web, #918; flux_view_image, #1217; flux_search and flux_read_around, #1290; flux_summarize, #1292; flux_read_file, #1382) and every change tool (A3)');
-    assert.ok(fullBytes <= TOOL_DEFINITION_BYTES, `the run's tool definitions take ${fullBytes} bytes; keep them under ${TOOL_DEFINITION_BYTES} (they are input of every request)`);
-    assert.ok(!JSON.stringify(fullTools).includes('"$schema"') && !JSON.stringify(fullTools).includes('"pattern"'), 'no draft URL or uuid regular expression on the wire');
-    assert.ok(fullTools.every((tool) => tool.name !== 'flux_get_conversation' || JSON.stringify(tool.inputSchema).includes('"beforeSequence"')), 'the parameters themselves are kept');
-    assert.equal(fullOutcome, 'input_too_large');
-    // The request that would leave less than a step's room below the bound is the run's last (#1410): it asks for the answer, and a
-    // provider that asks for a tool even then ends the run at the bound.
-    // Merge train 14: flux_attach_file (#1437) with #1431's Wiki words takes the definitions to 28,558 bytes, and 79 turns fit (82 at 28,056).
-    assert.ok(compute.dispatched.length > 75, `over seventy-five turns fit within the tool-run input bound with every tool on, the room for an answer kept (${compute.dispatched.length})`);
-    assert.ok(compute.dispatched.at(-1)!.answerNow && compute.dispatched.slice(0, -1).every((request) => !request.answerNow), 'only the last request asks for the answer');
-    compute.dispatched = [];
-    // The bound on steps comes first when the steps are fewer than the turns that fit (over seventy-five, above). The brief of #1064 (who asks,
-    // where, when, how to answer) fills about 2 KB more of every request, so in this loop of empty calls 200 steps do not fit the 64,000-byte
-    // input bound; the steps are bounded here through the test seam, and the production bound of 200 is checked with fake tools in
-    // personal-runs-tools.test.ts.
-    const STEPS = 70;
-    const stepped = createPersonalRunProcessor({ uow: personalRunWorkerUnitOfWork(db), connections, compute, stopPollMs: 20,
-      tools: mcpToolHost(tokens, `${apiUrl}/mcp`), tokens, maxTurns: STEPS });
-    compute.respond = async () => ({ kind: 'completed', text: 'again', stopReason: 'tool_use', usage: { inputTokens: 500, outputTokens: 20 },
-      toolCalls: [{ id: `c${compute.dispatched.length}`, name: 'flux_list_contexts', input: {} }] });
-    const started = await ask();
-    const outcome = await stepped.process(started.run.id);
-    const sizes = compute.dispatched.map((request) => JSON.stringify(request.tools ?? []).length);
-    assert.ok(STEPS < PERSONAL_RUN_LIMITS.maxTurns);
-    assert.equal(outcome, 'cap_reached');
-    assert.equal(compute.dispatched.length, STEPS, `tool definitions on the wire: ${sizes.join(', ')} bytes`);
-    const last = compute.dispatched.at(-1)!;
-    assert.equal(last.turns!.length, STEPS - 1);
-    assert.ok(last.turns!.every((turn) => turn.results[0]!.isError === false && turn.results[0]!.content.includes(place.id)), 'each call was answered by the real route');
-  });
-
-  test('AST-8.3: a model marked without tool calling gets one request with no tools and no token', async () => {
-    const connectionId = randomUUID();
-    await runs.remove(human(owner));
-    agentId = (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'Ada assistant', owner: 'self' } }), 201) as { id: string }).id;
-    connections.connect(owner.id, connectionId, { toolCalling: false });
-    await runs.enable(human(owner), { agentId, connection: connectionId, model: 'claude-sonnet-5' });
-    compute.respond = async () => ({ kind: 'completed', text: 'Fact: one answer [S1].', stopReason: 'end_turn', usage: { inputTokens: 500, outputTokens: 20 } });
-    const started = await ask();
-    assert.equal(await processor.process(started.run.id), 'completed');
-    assert.equal(compute.dispatched.length, 1);
-    assert.equal(compute.dispatched[0]!.tools, undefined);
-    assert.equal((await row(started.run.id)).run_token_jti, null, 'no run token was minted');
+    await asked({ kind: 'space', projectId: quiet.id, conversationId: null }, [call('flux_get_doc', { projectId: other.id, id: otherDocId }), call('flux_get_doc', { projectId: quiet.id, id: quietDoc }), { text: 'Fact: done.' }]);
+    assert.equal(offered(pi.gateway.requests[0]!).length, 22 + ASSISTANT_RUN_EFFECT_TOOLS.length,
+      '22 read tools (flux_read_web, #918; flux_view_image, #1217; flux_search and flux_read_around, #1290; flux_summarize, #1292; flux_read_file, #1382) and every change tool (A3)');
+    assert.ok(JSON.stringify(pi.gateway.requests).includes(QUIET), 'its own space is read');
+    assert.ok(!JSON.stringify(pi.gateway.requests).includes(OTHER_CANARY), 'another space of its owner is not');
   });
 });

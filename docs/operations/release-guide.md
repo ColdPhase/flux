@@ -149,7 +149,8 @@ you from a tag that moves, which is why `compose.yaml` pins digests.
 
 People connect their own AI in **Settings → AI** (Connect AI): an API key, or a Claude or ChatGPT plan through the
 [agent runtime](#agent-runtime-optional) below. For an **API key**, two switches decide whether this
-installation lets people's agents run on it and which private hosts a connection may use; both are off while empty. Set them in
+installation lets people's agents run on it and which private hosts a connection may use; both are off while empty. An agent on an API key runs in
+`pi` in the agent runtime (#1441), so `FLUX_AGENT_RUNTIME` must include `pi` as well; without it such an agent is unavailable. Set them in
 `.env`; `compose.yaml` passes them to `api` and `worker`:
 
 ```sh

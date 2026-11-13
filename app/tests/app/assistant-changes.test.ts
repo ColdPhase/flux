@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { before, beforeEach, describe, test } from 'node:test';
+import { after, before, beforeEach, describe, test } from 'node:test';
 import * as Y from 'yjs';
 import {
   agentConnectionPath, ASSISTANT_RUN_EFFECT_TOOLS, assistantChangeActionPath, assistantChangeLine, assistantRunChangesPath, assistantRunChangesActionPath, conversationAssistantChangesPath,
   NEEDS_YOU_PATH, personalRunTokenPath, projectExportPath,
   type AgentMayDo, type AssistantChange, type AssistantRunUndone, type Conversation, type NeedsYouResponse, type Project, type Workspace,
 } from '@flux/contracts';
-import { createPersonalRunProcessor, recoverPersonalRuns, type PersonalComputeResult, type Principal } from '@flux/core';
+import { recoverPersonalRuns, type Principal } from '@flux/core';
 import { personalRunTokenRows } from '@flux/db';
 import { wikiAuthority } from '../../apps/server/src/editing/authority.js';
 import type { SessionContext } from '../../apps/server/src/identity/session.js';
@@ -15,31 +15,26 @@ import { personalRunUseCases } from '../../apps/server/src/personal-runs/adapter
 import { assistantChangeUseCases } from '../../apps/server/src/assistant/changes.js';
 import { needsYouUseCases } from '../../apps/server/src/needs-you/adapters.js';
 import { personalRunWorkerUnitOfWork } from '../../apps/worker/src/personal-runs/adapters.js';
-import { mcpToolHost } from '../../apps/worker/src/personal-runs/mcp-session.js';
-import { runTokenIssuer } from '../../apps/worker/src/personal-runs/run-tokens.js';
 import { agentSettings } from './support/agent-settings.js';
 import { db, pool } from './support/db.js';
 import { apiUrl } from './support/http.js';
 import { mcp, toolValue } from './support/mcp.js';
 import { agentConnection, approveWaiting, waits } from './support/mcp-actions.js';
 import { addMember, expectStatus, grant, person, project as createProject, workspace as createWorkspace, type Person } from './support/people.js';
-import { FakeCompute, FakeConnections, FakeQueue } from './support/personal-runs.js';
+import { FakeConnections, FakeQueue } from './support/personal-runs.js';
+import { startPiRuntime, type PiRuntime } from './support/pi-runtime.js';
 import { ensureSpaceAiAllowed, setSpaceAi } from './support/space-ai.js';
 import { waitFor } from './support/wait.js';
 
 // F-027 A3 (#403), F-036 AG-3 (#855): the change log, run authority and Ask me first. An assistant run's change tool goes
-// through the real `/mcp` route with the run's own token (the `runtime` engine's path) and, for "Ask me first", through the
-// worker's tool loop with a FAKE provider (the `server` engine's path). Every call is classified as applied, waiting or refused
+// through the real `/mcp` route with the run's own token and, for "Ask me first", from an API-key agent that is pi in the agent
+// runtime (#1441, RT-1) on a scripted model gateway. Every call is classified as applied, waiting or refused
 // and recorded in `assistant_changes` in the same transaction. Waiting changes are approved by the owner only, with every check
 // repeated. No model, CLI or vendor account is used. The F-036 rules themselves are in assistant-what-it-may-do.test.ts.
 
 const connections = new FakeConnections();
-const compute = new FakeCompute();
 const queue = new FakeQueue();
 const runs = personalRunUseCases(db, { queue: queue.factory, connections, providerEnabled: true });
-const tokens = runTokenIssuer(db, apiUrl);
-const processor = createPersonalRunProcessor({ uow: personalRunWorkerUnitOfWork(db), connections, compute, stopPollMs: 20,
-  tools: mcpToolHost(tokens, `${apiUrl}/mcp`), tokens });
 const human = (someone: Person): Principal => ({ kind: 'human', id: someone.id });
 const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
 type Message = Record<string, unknown> | null;
@@ -54,6 +49,7 @@ const changesOf = async (runId: string) => (await pool.query(`SELECT * FROM assi
 describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A3, #403)', () => {
   let owner: Person; let peer: Person; let outsider: Person; let stranger: Person; let ws: Workspace; let place: Project;
   let thread: Conversation; let agentId: string;
+  let pi: PiRuntime; let processor: ReturnType<PiRuntime['processor']>;
   /** Jonas's workspace, where Ada is a member and contributes to one project. */
   let jonasWs: Workspace; let shared: Project; let sharedThread: Conversation;
 
@@ -92,6 +88,8 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
   const thoughtVersion = (created: Awaited<ReturnType<typeof thought>>) => (created.thought?.version ?? created.version)!;
 
   before(async () => {
+    pi = await startPiRuntime();
+    processor = pi.processor(connections);
     owner = await person('ac-ada');
     peer = await person('ac-jonas');
     outsider = await person('ac-other');
@@ -108,6 +106,7 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     const connectionId = randomUUID();
     connections.connect(owner.id, connectionId);
     await runs.enable(human(owner), { agentId, connection: connectionId, model: 'claude-sonnet-5' });
+    await pi.place(owner.id);
     // Jonas's workspace: Ada is a member and contributes to "Shared rig"; Jonas manages it.
     jonasWs = await createWorkspace(peer, 'Jonas lab');
     await addMember(peer, jonasWs.id, owner, 'member');
@@ -119,8 +118,9 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     sharedThread = expectStatus(await peer.browser.request('POST', `/api/v1/projects/${shared.id}/conversations`,
       { body: { body: 'Rig notes', clientMessageId: randomUUID() } }), 201) as Conversation;
   });
+  after(async () => { await pi.close(); });
   beforeEach(async () => {
-    compute.dispatched = []; compute.counted = [];
+    pi.gateway.script([]);
     await pool.query(`UPDATE personal_runs SET status = 'stopped', completed_at = now(), cost_state = 'released', charged_micros = 0
       WHERE owner_user_id = $1 AND status IN ('queued', 'reading', 'dispatching')`, [owner.id]);
     if ((await settings()).mayDo !== 'act') await setMayDo('act');
@@ -158,19 +158,14 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     await complete(run.runId);
   });
 
-  test('AST-5.2 ("Ask me first") and the server engine: the same effect tool waits; Apply after the run and token ended commits exactly once with no model call', async () => {
+  test('AST-5.2 ("Ask me first") and pi in the agent runtime: the same effect tool waits; Apply after the run and token ended commits exactly once with no model call', async () => {
     await setMayDo('ask');
-    // The `server` engine: a fake provider calls the same tool through the worker's loop and the real /mcp route.
-    const replies: PersonalComputeResult[] = [
-      { kind: 'completed' as const, text: 'adding', stopReason: 'tool_use', usage: { inputTokens: 300, outputTokens: 20 },
-        toolCalls: [{ id: 'c1', name: 'flux_create_task', input: { clientCommandId: randomUUID(), task: { title: 'Label the sensor cables' } } }] },
-      { kind: 'completed' as const, text: 'Asked Ada first.', stopReason: 'end_turn', usage: { inputTokens: 300, outputTokens: 20 } },
-    ];
-    compute.respond = async () => replies.shift()!;
+    // An API-key agent in pi calls the same tool through the real /mcp route, with the run's token.
+    pi.gateway.script([{ tool: 'mcp__flux__flux_create_task', args: { clientCommandId: randomUUID(), task: { title: 'Label the sensor cables' } } }, { text: 'Asked Ada first.' }]);
     const started = await runs.invoke(human(owner), thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Add a task to label the cables' });
-    assert.equal(await processor.process(started.run.id), 'completed');
-    const toolTurn = JSON.stringify(compute.dispatched[1]?.turns ?? []);
-    assert.ok(toolTurn.includes('Waiting for ac-ada') && toolTurn.includes('OK'), 'the provider got the plain result');
+    assert.equal(await processor.process(started.run.id), 'completed', JSON.stringify(pi.lastPi()));
+    const plain = pi.gateway.requests[1]!.results[0] ?? '';
+    assert.ok(plain.includes('Waiting for ac-ada') && plain.includes('OK'), `the provider got the plain result: ${plain}`);
     const [row] = await changesOf(started.run.id);
     assert.deepEqual([row!.state, row!.wait_reason], ['waiting', 'ask']);
     assert.equal((await pool.query(`SELECT count(*)::int AS n FROM project_work_items WHERE title = 'Label the sensor cables'`)).rows[0].n, 0, 'nothing applied yet');
@@ -181,11 +176,11 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     assert.equal(item?.title, '1 thing waits for you');
     assert.equal(item?.assistantChanges?.changes[0]?.waitReason, 'ask');
     // Approve: exactly one task, under owner_approval, with no provider call.
-    const dispatched = compute.dispatched.length;
+    const requests = pi.gateway.requests.length;
     const applied = expectStatus(await owner.browser.request('POST', assistantChangeActionPath(row!.id, 'apply'), { body: { expectedVersion: row!.version } }), 200) as { change: AssistantChange };
     assert.equal(applied.change.state, 'applied_after_wait');
     assert.equal(applied.change.line, 'Approved by ac-ada');
-    assert.equal(compute.dispatched.length, dispatched, 'no model call at Apply');
+    assert.equal(pi.gateway.requests.length, requests, 'no model call at Apply');
     const [after] = await changesOf(started.run.id);
     assert.deepEqual([after!.state, after!.authority, after!.decided_by], ['applied_after_wait', 'owner_approval', owner.id]);
     assert.equal(after!.receipt!.approvedBy, owner.id);
