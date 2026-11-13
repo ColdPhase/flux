@@ -259,6 +259,12 @@ class PhoneConversations(unittest.TestCase):
         page = context.new_page()
         page.goto(f"/dm/{self.ids['dm']}")
         expect(page.get_by_text("Ok, see you at three").first).to_be_visible()
+        page.evaluate("() => document.fonts.ready")
+        # The hint is chosen again when the interface font arrives; give it that moment, then measure.
+        try:
+            page.wait_for_function(f"() => {{ const fit = ({FITS_JS})('#dm-composer'); return fit && fit.width <= fit.room; }}", timeout=5000)
+        except Exception:
+            pass
         fit = page.evaluate(FITS_JS, "#dm-composer")
         self.assertLessEqual(fit["width"], fit["room"], f"the hint fits its line: {fit}")
         self.assertLessEqual(fit["height"], fit["oneLine"] + 2, f"the composer is one line high: {fit}")

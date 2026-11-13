@@ -29,10 +29,11 @@ export function useFittingHint(fieldRef: RefObject<HTMLTextAreaElement | null>, 
     };
     const watch = new ResizeObserver(measure);
     watch.observe(field);
-    // The interface font may arrive after the first measure.
+    // The interface font may arrive after the first measure (WebKit can settle `fonts.ready` before Geist has started loading).
     let alive = true;
     void document.fonts?.ready.then(() => { if (alive) measure(); });
-    return () => { alive = false; watch.disconnect(); };
+    document.fonts?.addEventListener?.('loadingdone', measure);
+    return () => { alive = false; watch.disconnect(); document.fonts?.removeEventListener?.('loadingdone', measure); };
   }, [fieldRef, key]);
   return hints.includes(hint) ? hint : hints[0] ?? '';
 }
