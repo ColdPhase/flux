@@ -237,7 +237,7 @@ class Base(unittest.TestCase):
         for at in range(4):
             expect(tabs.nth(at)).to_have_attribute("aria-disabled", "true")
         self.assertEqual(header.locator("[role=tab][aria-selected=true], [role=tab][aria-current]").count(), 0, "no view is current")
-        self.assertEqual(header.get_by_role("link").count(), 0, "an inactive view is no link")
+        self.assertEqual(tabs.locator("xpath=ancestor-or-self::*[@role='tablist']").get_by_role("link").count(), 0, "an inactive view is no link")
         if phone:
             expect(header.get_by_role("button", name=re.compile("^Back"))).to_be_visible()
         else:

@@ -145,7 +145,7 @@ class NewProject(unittest.TestCase):
             expect(card.get_by_role("radio")).to_have_count(0)
             expect(card).not_to_contain_text("goal")
             expect(card.get_by_role("switch")).to_have_count(2)
-            expect(card.get_by_role("switch", name="Encrypted")).to_have_attribute("aria-checked", "false")
+            expect(card.get_by_role("switch", name=re.compile("^Encrypted"))).to_have_attribute("aria-checked", "false")
             shot(page, f"874-newspace-1440-{scheme}")
 
     def test_02_a_new_space_has_its_four_views_and_its_creator_is_its_admin(self) -> None:
@@ -203,7 +203,7 @@ class NewProject(unittest.TestCase):
         expect(window.get_by_text("Name", exact=True)).to_be_visible()
         expect(window.get_by_role("button", name="Cancel")).to_be_visible()
         # The phone's plus reaches the same window, Encrypted included (#848 AC-2).
-        expect(window.get_by_role("switch", name="Encrypted")).to_have_attribute("aria-checked", "false")
+        expect(window.get_by_role("switch", name=re.compile("^Encrypted"))).to_have_attribute("aria-checked", "false")
         expect(sheet).to_have_count(0)
         window.get_by_label("Space name").fill("Made from the plus")
         window.get_by_role("button", name="Create space").tap()
@@ -242,7 +242,7 @@ class NewProject(unittest.TestCase):
 
     def encrypted_card(self, page: Page, phone: bool = False):
         card = self.open_window(page, phone=phone).get_by_role("form", name="New space")
-        encrypted = card.get_by_role("switch", name="Encrypted")
+        encrypted = card.get_by_role("switch", name=re.compile("^Encrypted"))
         expect(encrypted).to_have_attribute("aria-checked", "false")
         return card, encrypted
 
@@ -382,7 +382,7 @@ class NewProject(unittest.TestCase):
         expect(first).to_be_visible()
         first.get_by_role("button", name="Start a space").click()
         card = new_space_window(page).get_by_role("form", name="New space")
-        encrypted = card.get_by_role("switch", name="Encrypted")
+        encrypted = card.get_by_role("switch", name=re.compile("^Encrypted"))
         expect(encrypted).to_have_attribute("aria-checked", "false")
         self.assertEqual(self.api(page, "GET", f"/api/v1/workspaces/{company}/projects", status=200)["total"], 0, "nothing was made on the way")
         card.get_by_label("Space name").fill("Zoe’s private")

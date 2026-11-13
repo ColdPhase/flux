@@ -71,6 +71,10 @@
 .locked__actions { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px; }
 .locked__status { margin: 0; font-size: var(--fs-sm); font-weight: 500; color: var(--t1); line-height: 1.45; text-align: center; }
 .locked__status:empty { display: none; }
+/* In the centred card the line a refusal appears in is reserved, so the card does not grow and nothing in it moves when one is said (the field and
+   Unlock stay where they were); two lines on a phone, where the longer refusals wrap. */
+.locked__card .locked__status:empty { display: block; min-height: 1.45em; }
+@media (max-width: 640px) { .locked__card .locked__status:empty { min-height: 2.9em; } }
 
 /* A space that waits to be unlocked is one row in place of its projects: the lock where a project has its letter. */
 .side__pj--lock { color: var(--t2); }
