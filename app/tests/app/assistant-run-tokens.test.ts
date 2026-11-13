@@ -375,9 +375,9 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
       { id: 'ctx-chat', name: 'flux_list_contexts', input: {} });
     const inChat = await asked({ kind: 'chat', agentId });
     const names = compute.dispatched[0]!.tools!.map((tool) => tool.name);
-    assert.equal(names.length, 22, 'the 21 read tools (flux_view_image, #1217; flux_search and flux_read_around, #1290; flux_summarize, #1292) and a picture for its answer (flux_attach_image, #1217)');
-    assert.ok(names.includes('flux_attach_image'), 'its answer in the chat can carry a picture (founder decision on #1217)');
-    assert.ok(ASSISTANT_RUN_EFFECT_TOOLS.filter((tool) => tool !== 'flux_attach_image').every((tool) => !names.includes(tool)), 'no tool that changes anything, nor a file yet (#1437)');
+    assert.equal(names.length, 23, 'the 21 read tools (flux_view_image, #1217; flux_search and flux_read_around, #1290; flux_summarize, #1292), a picture and a file for its answer (flux_attach_image, #1217; flux_attach_file, #1437)');
+    assert.ok(names.includes('flux_attach_image') && names.includes('flux_attach_file'), 'its answer in the chat can carry a picture (founder decision on #1217) and a file (coordinator decision on #1437)');
+    assert.ok(ASSISTANT_RUN_EFFECT_TOOLS.filter((tool) => tool !== 'flux_attach_image' && tool !== 'flux_attach_file').every((tool) => !names.includes(tool)), 'no tool that changes anything');
     assert.ok(JSON.stringify(compute.dispatched).includes(OTHER_CANARY), 'another space of its owner is read: nobody else reads this answer');
     assert.ok(results().some((result) => result.isError), 'the call to change something is refused');
     // It can find its owner's spaces itself, with no id given to it (the list of what a run reaches follows its place, not a project it has none of).

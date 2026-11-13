@@ -212,8 +212,10 @@ test('#1437: a local client stages a file with flux_attach_file and posts it wit
   const ownerId = (expect(await f.owner.request('GET', '/api/v1/me'), 200) as unknown as { user: { id: string } }).user.id;
   assert.deepEqual((await pool.query('SELECT uploader_id, message_id FROM project_files WHERE id = $1', [staged.fileId])).rows, [{ uploader_id: ownerId, message_id: null }],
     'staged as the owner\'s own upload, on no message yet');
-  const started = toolValue(await f.tool('flux_start_conversation', { ...command(f.projectId, f), message: { body: 'The baseline, as a page and a PDF.' },
-    attachmentIds: [staged.fileId, pdf.fileId] }));
+  const posted = await f.tool('flux_start_conversation', { ...command(f.projectId, f), message: { body: 'The baseline, as a page and a PDF.' },
+    attachmentIds: [staged.fileId, pdf.fileId] });
+  assert.equal((posted?.result as { isError?: boolean } | undefined)?.isError, undefined, JSON.stringify(posted));
+  const started = toolValue(posted);
   const conversation = await read(f, String(started.conversationId));
   assert.deepEqual(conversation.messages[0]!.files?.map((file) => file.name), ['baseline.html', 'tiny.pdf']);
   assert.equal(conversation.messages[0]!.via, 'Test client');
