@@ -634,7 +634,7 @@ class RouteChunksJourney(unittest.TestCase):
                 self.hold(page, "ProjectViews")
                 self.hold(page, "SketchView")
                 page.goto(f"/dm/{self.dm_id}")
-                expect(page.get_by_role("heading", name="Jonas Route", exact=True)).to_be_visible()
+                expect(page.get_by_role("heading", level=1, name="Jonas Route", exact=True)).to_be_visible()
                 page.get_by_role("button", name="More", exact=True).click()
                 page.get_by_role("menu", name="More").get_by_role("menuitem", name="Message info", exact=True).click()
                 # The first Message info lists its people (a space has no panel of its own, #1419): a face and a name in separate columns inside the

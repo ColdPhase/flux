@@ -20,7 +20,9 @@ import uuid
 
 from playwright.sync_api import Page, expect, sync_playwright
 
-from test_app_shell import ORIGIN, UPSTREAM, shot, start_forwarder
+from urllib.parse import urlsplit
+
+from test_app_shell import ORIGIN, UPSTREAM, panel_task, shot, start_forwarder
 
 PASSWORD = "a calm one row header"
 UI_BROWSER = os.environ.get("FLUX_UI_BROWSER", "chromium")
@@ -141,11 +143,11 @@ class SpokojLayout(unittest.TestCase):
                 boxes[name] = self.box(header.get_by_role("navigation", name="Space views").get_by_role("tab", name=re.compile(f"^{name}")))
         return boxes
 
-    def open_panel(self, page: Page, path: str = "") -> None:
-        """The one panel, on a task of the space: a space has no panel of its own (#1419), so the panel is a task's, opened from its address."""
-        made = page.request.post(f"{ORIGIN}/api/v1/projects/{self.project_id}/work", data={"title": "Check the panel"}, headers={"origin": ORIGIN})
-        self.assertEqual(made.status, 201, made.text())
-        page.goto(f"/projects/{self.project_id}{path}?open=work:{made.json()['id']}")
+    def open_panel(self, page: Page, path: str | None = None) -> None:
+        """The one panel, on a task of the space: a space has no panel of its own (#1419), so the panel is a task's, opened from its address,
+        over the place the test is at (the Wiki's page, for one, is `/docs/:id`)."""
+        here = path if path is not None else urlsplit(page.url).path
+        page.goto(f"{here}?open=work:{panel_task(page, self.project_id)}")
         expect(page.locator("#details")).to_be_visible()
         # The panel slides in from 24 px to the right; measure it once the animation has landed.
         page.wait_for_function(SETTLED)
@@ -198,7 +200,7 @@ class SpokojLayout(unittest.TestCase):
                 page.get_by_role("navigation", name="Space views").get_by_role("tab", name=re.compile("^Wiki")).click()
                 expect(page).to_have_url(re.compile(re.escape(f"/projects/{self.project_id}/docs") + r"(\?|$|/)"))
                 page.wait_for_function(SETTLED)
-                self.open_panel(page, "/docs")
+                self.open_panel(page)
                 expect(page.locator(".ui-panel--docked")).to_be_visible()
                 expect(page.locator(".ui-panel--overlay")).to_have_count(0)
                 self.assert_same_place(closed, self.header_boxes(page), f"{size['width']} Wiki with the panel beside the page")
@@ -266,8 +268,11 @@ class SpokojLayout(unittest.TestCase):
         body = self.box(page.locator(".app__body"))
         leaving = page.evaluate("""async () => {
           document.querySelector('.ui-panel--docked .ui-panel__close').click();
-          await new Promise((done) => requestAnimationFrame(done));
-          const panel = document.querySelector('.ui-panel--docked.is-leaving');
+          let panel = null;
+          for (let frame = 0; frame < 6 && !panel; frame++) {
+            await new Promise((done) => requestAnimationFrame(done));
+            panel = document.querySelector('.ui-panel--docked.is-leaving');
+          }
           if (!panel) return null;
           const box = panel.getBoundingClientRect();
           return {x: box.x, y: box.y, right: box.right, bottom: box.bottom, running: panel.getAnimations().length};

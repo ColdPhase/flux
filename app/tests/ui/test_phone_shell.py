@@ -15,7 +15,7 @@ import uuid
 
 from playwright.sync_api import expect, sync_playwright
 
-from test_app_shell import ORIGIN, UPSTREAM, shot as save_shot, start_forwarder
+from test_app_shell import ORIGIN, UPSTREAM, panel_task, shot as save_shot, start_forwarder
 from test_settings import UI_BROWSER
 
 VIEWS = ("Conversation", "Tasks", "Map", "Wiki")
@@ -107,9 +107,7 @@ class PhoneShellJourney(unittest.TestCase):
 
     def open_details(self, page):
         """The one detail sheet, on a task of the open space: a space has no panel of its own, and More has no "Space details" (#873, #1419)."""
-        made = page.request.post(f"{ORIGIN}/api/v1/projects/{self.project['id']}/work", data={"title": "Check the sheet"}, headers={"origin": ORIGIN})
-        assert made.status == 201, made.text()
-        page.goto(f"/projects/{self.project['id']}/tasks?open=work:{made.json()['id']}")
+        page.goto(f"/projects/{self.project['id']}/tasks?open=work:{panel_task(page, self.project['id'])}")
 
     def test_01_main_places_sit_in_a_floating_capsule_and_views_are_in_a_row_under_the_title(self):
         for width, height in ((320, 568), (375, 667), (390, 844)):
@@ -284,7 +282,9 @@ class PhoneShellJourney(unittest.TestCase):
         sheet = page.get_by_role("dialog", name="Details")
         expect(sheet).to_be_visible()
         self.settle(page)
-        self.swipe(page, (187, 28), (187, 420))
+        # A task's sheet rests on the bottom edge and is dragged down from its top, where the grabber is.
+        top = self.box(sheet)["y"]
+        self.swipe(page, (187, top + 24), (187, top + 24 + 400))
         expect(page.get_by_role("dialog", name="Details")).to_have_count(0)
 
     def test_07_reduced_motion_changes_state_without_animating(self):

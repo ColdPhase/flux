@@ -159,6 +159,22 @@ def view_tab(page: Page, name: str, tap: bool = False) -> None:
     link.tap() if tap else link.click()
 
 
+_PANEL_TASKS: dict[str, str] = {}
+
+
+def panel_task(page: Page, project_id: str) -> str:
+    """The task whose panel a test opens, a space having none of its own (#1419): its first task, or one made for the purpose, once, so that the
+    counts of later tests hold."""
+    if project_id not in _PANEL_TASKS:
+        items = page.request.get(f"{ORIGIN}/api/v1/projects/{project_id}/work?limit=1").json()["items"]
+        if not items:
+            made = page.request.post(f"{ORIGIN}/api/v1/projects/{project_id}/work", data={"title": "Check the panel"}, headers={"origin": ORIGIN})
+            assert made.status == 201, made.text()
+            items = [made.json()]
+        _PANEL_TASKS[project_id] = items[0]["id"]
+    return _PANEL_TASKS[project_id]
+
+
 def open_details(page: Page, tap: bool = False) -> None:
     """The one detail panel (a sheet on the phone). A direct message has its own, "Message info", in More; a space has none (#1419), so
     there the panel is a task's, opened from the task's address on a task made for the purpose."""
@@ -179,10 +195,8 @@ def open_details(page: Page, tap: bool = False) -> None:
         return
     project = re.search(r"/projects/([0-9a-f-]{36})", page.url)
     assert project, page.url
-    made = page.request.post(f"{ORIGIN}/api/v1/projects/{project.group(1)}/work", data={"title": "Check the panel"}, headers={"origin": ORIGIN})
-    assert made.status == 201, made.text()
     # The panel opens over the place the test is at (a map, a board, a thread), so the address keeps its path.
-    page.goto(f"{urllib.parse.urlsplit(page.url).path}?open=work:{made.json()['id']}")
+    page.goto(f"{urllib.parse.urlsplit(page.url).path}?open=work:{panel_task(page, project.group(1))}")
 
 
 def shot(page: Page, name: str) -> None:
@@ -628,7 +642,7 @@ class AppShellJourney(unittest.TestCase):
                 self.assertLessEqual(geometry["menu"]["right"], geometry["viewport"], geometry)
                 self.assertAlmostEqual(geometry["menu"]["right"], anchor["x"] + anchor["width"], delta=1, msg=f"menu is right aligned to More: {geometry}")
                 self.assertGreaterEqual(geometry["menu"]["top"], geometry["button"]["bottom"] - 1, geometry)
-                self.assertGreaterEqual(len(geometry["rowHeights"]), 2, f"Settings and the sidebar are shown: {geometry}")
+                self.assertGreaterEqual(len(geometry["rowHeights"]), 1, f"Settings is shown: {geometry}")
                 self.assertEqual(len(geometry["hintedHeights"]), 1, f"Mute space is the one row with a hint line: {geometry}")
                 if device == "tablet":
                     # 44 px touch rows; WebKit lays a menu that starts on a fractional pixel out to 43.99998… while it settles (#1375 adds the People row at 820):

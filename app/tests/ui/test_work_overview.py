@@ -89,7 +89,7 @@ class OverviewWorkJourney(unittest.TestCase):
         if phone:
             self.ready(page)
             page.set_viewport_size(size)
-            expect(page.get_by_role("dialog", name="Details")).to_be_visible()
+            expect(page.get_by_role("dialog", name="Linked objects")).to_be_visible()
         return self.ready(page)
 
     def identities(self, page):
