@@ -7,7 +7,7 @@ import { NEEDS_YOU_REASONS, type NotificationLevel, type NotificationReason } fr
  */
 export const REASON_WORDS: Record<NotificationReason, string> = {
   question: 'questions', mention: 'mentions', dm: 'messages to you', assigned: 'tasks that need you',
-  review: 'decisions about your work', invitation: 'invitations to work together', approval: 'agents waiting for you',
+  review: 'decisions about your work', invitation: 'invitations to a call', approval: 'agents waiting for you',
   reply: 'every reply in conversations you are part of', call: 'calls started in your spaces',
 };
 /** The order a line names them in. */

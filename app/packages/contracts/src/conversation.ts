@@ -69,6 +69,16 @@ export interface ConversationMessageFields {
 export type MessageReferenceKind = 'thought';
 export interface MessageReference { kind: MessageReferenceKind; id: string }
 /** At most this many references on one message. */
+/**
+ * Who wrote a message posted "via" something, where only text fits (notifications, search results, what an agent reads; #1232, #1424): an
+ * agent's answer its person showed everyone is "Ada's Assistant", the one name it has on the message, and a local client's post stays "Ada ·
+ * via Claude Code" (LC-2). `viaAgent`: the message carries the agent's colour (`viaColour`), which only an agent's answer has.
+ */
+export function viaName(author: string, via?: string | null, viaAgent = false): string {
+  if (!via) return author;
+  return viaAgent ? `${author.trim().split(/\s+/)[0] || author}'s ${via}` : `${author} · via ${via}`;
+}
+
 export const MESSAGE_REFERENCE_LIMIT = 4;
 /** Where a card opens; the same targets search results open (`targetHref` in the web app). */
 export type MessageReferenceTarget = Extract<SearchTarget, { type: 'thought' }>;

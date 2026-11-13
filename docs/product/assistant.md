@@ -201,7 +201,7 @@ retried; it is reported as "Skipped #4: Jonas changed it while I worked".
   posts are [C-36 to C-40](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override).
 - **Who wrote what.** Every message an agent reads names its author as people see them: a person
   by name, an agent with whose it is ("Asystent (Ada's agent)"), and an answer a person posted with
-  Show everyone as that person's ("Ada Nowak · via Asystent"), never the reading agent's own; the
+  Show everyone as that person's, by its one name ("Ada's Asystent", #1424), never the reading agent's own; the
   agent is told its own id and label, which has its owner's full name when another reader of the
   space shares the first name. Only someone who can read the space now is named; anyone else is
   "Former member" ([coordinator default C-56](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override), #1160).

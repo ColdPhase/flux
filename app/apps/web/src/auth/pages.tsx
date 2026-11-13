@@ -247,7 +247,7 @@ export function SignUpPage() {
   }
   return (
     <>
-      <Heading title="Create your Flux account">{signup === 'verified' ? 'We’ll email a link to confirm your address.' : 'One account for your conversations, tasks and decisions.'}</Heading>
+      <Heading title="Create your Flux account">{signup === 'verified' ? 'We’ll email a link to confirm your address.' : 'One account for your conversations, work and handoffs.'}</Heading>
       <Form method="post" className="auth__form" noValidate ref={formRef} aria-label="Create account">
         <FormError message={result?.formError}>
           {result?.accountExists ? <p><Link className="ui-link" to="/sign-in">Sign in</Link> · <Link className="ui-link" to="/forgot-password">Reset password</Link></p> : null}

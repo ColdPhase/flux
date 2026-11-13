@@ -50,7 +50,7 @@ export function joinWords(session: LiveSession, opts: { who: string | null; plac
 }
 
 /**
- * “Work on this together” where the work is (#59 §1): one action starts a call at the current task, map, doc or the space (from its
+ * “Call” where the work is (#59 §1; one name for a call, #1424): one action starts a call at the current task, map, doc or the space (from its
  * conversation, F-041), joins it with every device off and tells the space's people. Any call of the space with someone in it turns the
  * header's Call into Join wherever the person is in the space (#1230): the one at this place first, else the newest elsewhere.
  */
@@ -139,7 +139,7 @@ export function LiveEntry({ variant = 'header', anchor: given, onAction }: {
 
   // Nothing open to start at (Tasks, Map or Wiki without an object open) and no call of the space to join: Call says why (the order of #763:
   // the place first).
-  if (!anchor && !(hereJoinable ?? away)) return dimmed('Open a conversation, task, map or page to work on it together.');
+  if (!anchor && !(hereJoinable ?? away)) return dimmed('Open a conversation, task, map or page to start a call there.');
   if (!configured) return variant === 'more' ? dimmed('Calls are not available on this Flux server.') : null;
 
   const target = hereJoinable ?? away;
@@ -147,7 +147,7 @@ export function LiveEntry({ variant = 'header', anchor: given, onAction }: {
   const audience = audienceOf(projectPeople, live.meId);
   const joinable = !!target;
   const present = target ? (target.participants ?? []).map((p) => p.userId).filter((id) => id !== live.meId) : [];
-  const label = target ? joinWords(target, { who: whoIsIn(target, nameOf, live.meId), place: awayLabel, away: target === away }) : 'Work on this together';
+  const label = target ? joinWords(target, { who: whoIsIn(target, nameOf, live.meId), place: awayLabel, away: target === away }) : 'Call';
 
   const act = () => {
     if (target && target === away) void live.join(away, awayAnchor(away, awayLabel, shell?.project));
@@ -158,7 +158,7 @@ export function LiveEntry({ variant = 'header', anchor: given, onAction }: {
   if (variant === 'more') return (
     <button type="button" role="menuitem" className="newmenu__item top__more-narrow lv-now" data-more-row aria-describedby={noteId} onClick={() => { onAction?.(); act(); }}>
       {joinable ? <LiveDot on /> : null}<span className="lv-now__t">{joinable ? label : 'Call'}</span>
-      <span id={noteId} className="ui-vh">{joinable ? 'Microphone and camera stay off.' : `Work on this ${word} together. ${audience}.`}</span>
+      <span id={noteId} className="ui-vh">{joinable ? 'Microphone and camera stay off.' : `Call about this ${word}. ${audience}.`}</span>
     </button>
   );
 
@@ -181,7 +181,7 @@ export function LiveEntry({ variant = 'header', anchor: given, onAction }: {
         {joinable && present.length ? <span className="lv-faces" aria-hidden="true">{present.slice(0, 2).map((id) => <Avatar key={id} name={nameOf(id)} id={id} size="sm" />)}</span> : null}
         <span className="lv-entry__label">{joinable ? 'Join' : 'Call'}</span>
       </Button>
-      <span id={noteId} className="ui-vh">{joinable ? `${label}. Microphone and camera stay off.` : `Work on this ${word} together. ${audience}. Nothing turns on until you choose.`}</span>
+      <span id={noteId} className="ui-vh">{joinable ? `${label}. Microphone and camera stay off.` : `Call about this ${word}. ${audience}. Nothing turns on until you choose.`}</span>
     </span>
   );
 }

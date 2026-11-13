@@ -14,7 +14,7 @@ import { assistantScene, changesOf, human, result, text, type AssistantScene, ty
 
 // #1160: an agent on its owner's Claude Code or Codex reads a space's thread and a task's discussion with the Flux tools, and the API-key
 // engine reads them in its brief. Both name every message's author as people see them: a person by name, an agent with whose it is
-// ("Asystent (Jonas's agent)"), and a person's post of their agent's answer as theirs ("Jonas Berg · via Asystent"). Only someone who can
+// ("Asystent (Jonas's agent)"), and a person's post of their agent's answer as theirs ("Jonas's Asystent", #1424). Only someone who can
 // read the space now is named; anyone else is a former member. An agent gives a task to a person of the space by name, and a name that
 // fits two people, or nobody there, is refused in words that name nobody outside the space. #1161: an agent sets and clears a task's due
 // day under the same rule and the same approvals as its other fields. #1163: two owners called Ada give their agents labels with their
@@ -66,23 +66,23 @@ describe('#1160 and #1161: who wrote what, a task for a person by name, and its 
       { body: { body: 'Who prepares the contract?', clientMessageId: randomUUID() } }), 201) as Conversation;
     await say(scene.peer, talk, 'I can draft clause 7.');
     await say(scene.guest, talk, 'The client wants a 30-day term.');
-    // An answer of Jonas's agent that Jonas posted with Show everyone: his message, with the agent it came from (`via`).
+    // An answer of Jonas's agent that Jonas posted with Show everyone: his message, by its one name ("Jonas's Asystent", #1424): `via` and the agent's colour.
     const shown = await say(scene.peer, talk, 'Summary: Jonas drafts clause 7, the term is 30 days.');
-    await pool.query('UPDATE project_messages SET via = $1 WHERE id = $2', ['Asystent', shown.id]);
+    await pool.query('UPDATE project_messages SET via = $1, via_colour = $2 WHERE id = $3', ['Asystent', 'teal', shown.id]);
     await leaving('lena', 'Lena Leaver', talk, 'I will check the invoices.', 'space');
     await leaving('gerd', 'Gerd Gone', talk, 'I promised the stamp.', 'company');
 
     const run = await scene.liveRun(talk, 'Who promised what?');
     const read = value((await run.call('flux_get_conversation', { projectId: scene.place.id, id: talk.id })).message) as { messages: Read[] };
     assert.deepEqual(read.messages.map((message) => [message.author.kind, message.author.name]), [
-      ['human', 'Ada Nowak'], ['human', 'Jonas Berg'], ['human', 'Gita Gość'], ['human', 'Jonas Berg · via Asystent'], ['human', 'Former member'], ['human', 'Former member']]);
+      ['human', 'Ada Nowak'], ['human', 'Jonas Berg'], ['human', 'Gita Gość'], ['human', "Jonas's Asystent"], ['human', 'Former member'], ['human', 'Former member']]);
     assert.deepEqual(read.messages.slice(0, 2).map((message) => message.author.id), [scene.owner.id, scene.peer.id], 'the ids the other tools take stay');
     assert.ok(read.messages.every((message) => !('authorId' in message) && !('via' in message)), 'one author field, as people see it');
     for (const gone of ['Lena', 'Gerd']) assert.ok(!JSON.stringify(read).includes(gone), `${gone} is not named`);
     // The tool says how to read it, so a reader never takes a posted answer for its own words.
     const listed = (((await run.raw('tools/list')).message?.result as { tools: { name: string; description: string }[] }).tools);
     for (const name of ['flux_get_conversation', 'flux_get_task_discussion'])
-      assert.match(listed.find((tool) => tool.name === name)!.description, /"Ada Nowak · via Assistant" for an answer of Ada's agent that Ada posted, which is Ada's message, not yours/);
+      assert.match(listed.find((tool) => tool.name === name)!.description, /"Ada's Assistant" for an answer of Ada's agent that Ada posted, which is Ada's message, not yours/);
     await scene.complete(run.runId);
 
     // The API-key engine is given the same names in its <conversation>.
@@ -90,12 +90,12 @@ describe('#1160 and #1161: who wrote what, a task for a person by name, and its 
     const started = await scene.runs.invoke(human(scene.owner), talk.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Who promised what?' });
     assert.equal(await scene.processor.process(started.run.id), 'completed');
     const input = scene.compute.dispatched[0]!.input;
-    for (const from of ['from="Ada Nowak"', 'from="Jonas Berg"', 'from="Gita Gość"', 'from="Jonas Berg · via Asystent"']) assert.ok(input.includes(from), from);
+    for (const from of ['from="Ada Nowak"', 'from="Jonas Berg"', 'from="Gita Gość"', 'from="Jonas\'s Asystent"']) assert.ok(input.includes(from), from);
     assert.equal(input.match(/from="Former member"/g)?.length, 2);
     assert.ok(!input.includes('Lena') && !input.includes('Gerd'), 'who left is not named');
     // Ada Kowalska reads the space too, so the reader's own label has Ada Nowak's full name (#1163); a person's message is by="person".
     assert.ok(scene.compute.dispatched[0]!.system.includes('Your own label is "Asystent (Ada Nowak\'s agent)".'), 'the reader is told its own label');
-    assert.ok(input.includes('from="Jonas Berg · via Asystent" by="person"'), 'a posted answer is a person\'s, as Flux marks it');
+    assert.ok(input.includes('from="Jonas\'s Asystent" by="person"'), 'a posted answer is a person\'s, as Flux marks it');
   });
 
   test('a task\'s discussion and its tasks name an agent with whose it is; an agent whose owner left is a former member\'s', async () => {

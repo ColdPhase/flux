@@ -155,6 +155,8 @@ export interface MessageSource {
   author: { kind: 'human' | 'agent'; id: string; ownerUserId?: string };
   /** #1064: when it was written; whether its author changed the words since; the agent whose answer its author posted with Show everyone. */
   createdAt: Date; edited?: boolean; via?: string | null;
+  /** Set only with `via` when it names an agent (its colour), not a local client: the line then reads "Ada's Assistant" (#1424). */
+  viaColour?: string | null;
   /**
    * #1064, a space's main conversation only: the conversation (thread) it belongs to, and that thread's opening words; null words when
    * its author deleted the opening message.

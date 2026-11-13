@@ -1,4 +1,4 @@
-import { messagePreview } from '@flux/contracts';
+import { messagePreview, viaName } from '@flux/contracts';
 import type {
   ReturnItem, ReturnNextStep, ReturnPlace, ReturnPoint, ReturnSource, ReturnSummary, ReturnSummaryQuery, SaveReturnPointCommand,
 } from '@flux/contracts';
@@ -64,9 +64,9 @@ function excerpt(body: string, max = 90) {
   return line.length > max ? `${line.slice(0, max - 1).trimEnd()}…` : line;
 }
 
-/** A person's message posted through a client or an assistant is named with it, as on the message: "Ada · via Claude Code". */
-function marked<T extends string | null>(name: T, via: string | null | undefined): T | string {
-  return name && via ? `${name} · via ${via}` : name;
+/** A person's message posted through a client is named with it, "Ada · via Claude Code", and an agent's answer they showed everyone by its one name, "Ada's Assistant" (#1424). */
+function marked<T extends string | null>(name: T, message: { via?: string | null; viaAgent?: boolean }): T | string {
+  return name && message.via ? viaName(name, message.via, message.viaAgent) : name;
 }
 function list(names: string[]) {
   const unique = [...new Set(names)];
@@ -399,12 +399,12 @@ export function createReturnUseCases(ports: ReturnPorts) {
       // A question addressed to someone else by name is theirs, even in a conversation you are part of (#763 A2).
       if (!answered && (addressed || (involved && isQuestion(message.body) && !mentionsSomeone(message.body)))) {
         const name = nameOf(`${message.author.kind}:${message.author.id}`)!;
-        const author = marked(name, message.via);
+        const author = marked(name, message);
         items.push({ ...base, kind: 'question', actor: author,
           text: addressed ? `${author} asked you: ${quote(excerpt(message.body))}` : `${author} asked: ${quote(excerpt(message.body))}`,
           detail: `In ${quote(excerpt(conversation.opening, 60))}`, needsYou: true,
           source: { type: 'message', projectId: message.projectId, conversationId: conversation.id, messageId: message.id },
-          step: { priority: addressed ? 1 : 2, text: `Answer ${name}'s question${message.via ? `, posted via ${message.via}` : ''}`,
+          step: { priority: addressed ? 1 : 2, text: message.via && message.viaAgent ? `Answer ${author}'s question` : `Answer ${name}'s question${message.via ? `, posted via ${message.via}` : ''}`,
             // The request itself comes first and is not cut short; where it was asked follows briefly.
             reason: addressed ? `${quote(excerpt(message.body, 200))} ${author} asked you in ${quote(excerpt(conversation.opening, 40))}.`
               : `${quote(excerpt(message.body, 200))} ${author} asked in ${quote(excerpt(conversation.opening, 40))}, a conversation you are part of.` } });
@@ -420,10 +420,10 @@ export function createReturnUseCases(ports: ReturnPorts) {
       grouped.sort((a, b) => a.sequence - b.sequence);
       const first = grouped[0]!;
       const latest = grouped.at(-1)!;
-      const who = list(grouped.map((message) => marked(nameOf(`${message.author.kind}:${message.author.id}`)!, message.via)));
+      const who = list(grouped.map((message) => marked(nameOf(`${message.author.kind}:${message.author.id}`)!, message)));
       const started = grouped.some((message) => message.sequence === 1);
       items.push({
-        id: `conversation:${conversationId}`, kind: 'message', at: latest.createdAt.toISOString(), actor: marked(nameOf(`${latest.author.kind}:${latest.author.id}`), latest.via),
+        id: `conversation:${conversationId}`, kind: 'message', at: latest.createdAt.toISOString(), actor: marked(nameOf(`${latest.author.kind}:${latest.author.id}`), latest),
         project: place(conversation.projectId),
         text: started ? `${who} started ${quote(excerpt(conversation.opening, 70))}` : `${who} replied in ${quote(excerpt(conversation.opening, 70))}`,
         detail: excerpt(messagePreview(latest.body, latest.attachmentCount), 110), needsYou: false,

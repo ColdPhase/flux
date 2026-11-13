@@ -483,7 +483,7 @@ class ReachabilityRows(LiveBase):
         item = page.locator(".nyc", has_text="invited you to a call")
         expect(item).to_have_count(1)
         open_item(item).get_by_role("button", name="Open").click()
-        card = page.get_by_role("region", name="Invitation to work together")
+        card = page.get_by_role("region", name="Invitation to a call")
         expect(card).to_be_visible()
         if page.locator(".ui-panel__close").first.is_visible():
             page.locator(".ui-panel__close").first.click()

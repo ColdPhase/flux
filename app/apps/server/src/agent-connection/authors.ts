@@ -11,8 +11,8 @@ import { projectAuthorOwners } from '../conversation/author-owners.js';
 
 /** How the conversation reads and the search tools name who wrote each message (#1160): as people see it, so a person's posted answer is never taken for the reader's own. */
 export const AUTHORS = 'Each message names its author as people see them (author.name): a person by name ("Former member" once they can no longer read this space); '
-  + 'an agent with whose it is, "Assistant (Ada\'s agent)"; and "Ada Nowak · via Assistant" for an answer of Ada\'s agent that Ada posted, which is Ada\'s message, '
-  + 'not yours. author.id is the person\'s or the agent\'s id.';
+  + 'an agent with whose it is, "Assistant (Ada\'s agent)"; "Ada\'s Assistant" for an answer of Ada\'s agent that Ada posted, which is Ada\'s message, '
+  + 'not yours; and "Ada Nowak · via Claude Code" for what her local client posted for her. author.id is the person\'s or the agent\'s id.';
 
 /** The agent a read names (a message's author, a task's owner or creator, a conversation's starter): `{kind: 'agent', id, name}`. */
 type AgentRef = { kind: 'agent'; id: string; name?: string; projectOwner?: unknown };
@@ -80,20 +80,20 @@ export async function withAgentLabels<T>(db: Executor, projectId: string, worksp
 }
 
 /** A message as a reading agent gets it (#1160): its author, a person or an agent, named as people see them; the rest as stored. */
-export type AgentReadMessage = Omit<ConversationMessage, 'authorId' | 'author' | 'via'> & { author: { kind: 'human' | 'agent'; id: string; name: string } };
+export type AgentReadMessage = Omit<ConversationMessage, 'authorId' | 'author' | 'via' | 'viaColour'> & { author: { kind: 'human' | 'agent'; id: string; name: string } };
 
 /**
  * The messages of a space's conversation or a task's discussion for a reading agent: each with `author: {kind, id, name}`, where a person's
- * post of their agent's answer reads "Ada Nowak · via Assistant" (theirs, never the reader's own words). Agents are labelled with their
+ * post of their agent's answer reads "Ada's Assistant" (theirs, never the reader's own words; #1424). Agents are labelled with their
  * owner by `withAgentLabels`, which the caller applies to the whole result.
  */
 export async function messagesForAgents(db: Executor, projectId: string, messages: readonly ConversationMessage[]): Promise<AgentReadMessage[]> {
   const names = await spaceReadersNamed(db, projectId, messages.flatMap((message) => message.authorId !== null ? [message.authorId] : []));
   return messages.map((message) => {
-    const { authorId: _authorId, author: _author, via, id, conversationId, sequence, createdAt, body, ...rest } = message;
+    const { authorId: _authorId, author: _author, via, viaColour, id, conversationId, sequence, createdAt, body, ...rest } = message;
     void _authorId; void _author;
     return { id, conversationId, sequence, createdAt,
-      author: message.authorId !== null ? { kind: 'human' as const, id: message.authorId, name: authorLabel({ kind: 'human', name: names.get(message.authorId) ?? null, via: via ?? null }) }
+      author: message.authorId !== null ? { kind: 'human' as const, id: message.authorId, name: authorLabel({ kind: 'human', name: names.get(message.authorId) ?? null, via: via ?? null, viaAgent: !!viaColour }) }
         : { kind: 'agent' as const, id: message.author.id, name: message.author.name ?? 'Agent' },
       body, ...rest };
   });

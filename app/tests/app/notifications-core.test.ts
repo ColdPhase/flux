@@ -94,6 +94,23 @@ describe('notification generation cursor', () => {
   });
 });
 
+describe('an answer someone showed everyone has one name, also in a notification (#1424)', () => {
+  test('"ada\'s Assistant" for an agent\'s answer, "ada · via Claude Code" for a local client\'s post', async () => {
+    for (const [via, viaAgent, title] of [['Assistant', true, "ada's Assistant sent you a message"], ['Claude Code', false, 'ada · via Claude Code sent you a message']] as const) {
+      const events = [dmEvent(1)];
+      const { ports } = harness(events, new Map());
+      const titles: string[] = [];
+      const shown: GeneratorPorts = {
+        ...ports,
+        facts: { ...ports.facts, dmMessage: async (_dm, messageId) => ({ id: messageId, workspaceId, dmId, kind: 'pair', title: null, authorId: 'ada', via, viaAgent, body: 'The lid seal is late.', participantIds: ['ada', 'kai'] }) },
+        insertNotification: async (notification) => { titles.push(notification.title); return true; },
+      };
+      await generateNotifications({ run: <T>(work: (p: GeneratorPorts) => Promise<T>) => work(shown) }, { emailAvailable: false });
+      assert.deepEqual(titles, [title], via);
+    }
+  });
+});
+
 describe('F-030 generation failures of a sealed workspace (#712 review P3)', () => {
   test('the failure stored and logged for a sealed workspace\'s event keeps class, code and ids only; a plain one keeps its text', async () => {
     for (const sealed of [true, false]) {

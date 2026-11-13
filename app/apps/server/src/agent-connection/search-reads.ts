@@ -103,14 +103,14 @@ async function told(ctx: FluxAgentReadContext, rows: readonly SearchRowRecord[])
   rows.forEach((row, index) => {
     if (row.kind === 'dm_message' || !row.projectId) {
       // The people of a direct message all see each other's names; its messages are the only ones that are not a space's.
-      hits[index] = agentHit(row, row.author ? { kind: 'human', id: row.author.id, name: authorLabel({ kind: 'human', name: row.authorName, via: row.via ?? null }) } : null);
+      hits[index] = agentHit(row, row.author ? { kind: 'human', id: row.author.id, name: authorLabel({ kind: 'human', name: row.authorName, via: row.via ?? null, viaAgent: row.viaAgent }) } : null);
     } else bySpace.set(row.projectId, [...(bySpace.get(row.projectId) ?? []), index]);
   });
   for (const [projectId, indexes] of bySpace) {
     const names = await spaceReadersNamed(ctx.tx, projectId, indexes.flatMap((index) => rows[index]!.author?.kind === 'human' ? [rows[index]!.author!.id] : []));
     const labelled = indexes.map((index) => {
       const row = rows[index]!;
-      const author = row.author?.kind === 'human' ? { kind: 'human' as const, id: row.author.id, name: authorLabel({ kind: 'human', name: names.get(row.author.id) ?? null, via: row.via ?? null }) }
+      const author = row.author?.kind === 'human' ? { kind: 'human' as const, id: row.author.id, name: authorLabel({ kind: 'human', name: names.get(row.author.id) ?? null, via: row.via ?? null, viaAgent: row.viaAgent }) }
         : row.author ? { kind: 'agent' as const, id: row.author.id, name: row.authorName ?? 'Agent' } : null;
       return agentHit(row, author);
     });
@@ -239,14 +239,14 @@ async function readAround(ctx: FluxAgentReadContext, claims: FluxMcpClaims, inpu
   const from = Math.max(1, found.sequence - input.before);
   const to = found.sequence + input.after;
   const m = schema.dmMessages;
-  const rows = await tx.select({ id: m.id, sequence: m.sequence, body: m.body, createdAt: m.createdAt, editedAt: m.editedAt, via: m.via, authorId: m.authorId, authorName: schema.authUsers.name })
+  const rows = await tx.select({ id: m.id, sequence: m.sequence, body: m.body, createdAt: m.createdAt, editedAt: m.editedAt, via: m.via, viaColour: m.viaColour, authorId: m.authorId, authorName: schema.authUsers.name })
     .from(m).innerJoin(schema.authUsers, eq(schema.authUsers.id, m.authorId))
     .where(and(eq(m.dmId, found.dmId), eq(m.kind, 'text'), isNull(m.removedAt), gte(m.sequence, from), lte(m.sequence, to))).orderBy(asc(m.sequence));
   const [dm] = await tx.select({ next: schema.dms.nextSequence }).from(schema.dms).where(eq(schema.dms.id, found.dmId));
   claims.dispatch?.dm(found.dmId);
   return { aroundMessageId: input.messageId, dmId: found.dmId,
     messages: rows.map((row) => ({ id: row.id, sequence: row.sequence, createdAt: row.createdAt.toISOString(),
-      author: { kind: 'human' as const, id: row.authorId, name: authorLabel({ kind: 'human', name: row.authorName, via: row.via }) }, body: row.body,
+      author: { kind: 'human' as const, id: row.authorId, name: authorLabel({ kind: 'human', name: row.authorName, via: row.via, viaAgent: !!row.viaColour }) }, body: row.body,
       ...(row.editedAt ? { editedAt: row.editedAt.toISOString() } : {}) })),
     hasMoreBefore: from > 1, hasMoreAfter: to < (dm?.next ?? 1) - 1 };
 }

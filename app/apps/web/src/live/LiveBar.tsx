@@ -55,14 +55,14 @@ export function LiveBar() {
   if (live.phase === 'idle' && live.invitation) {
     const invitation = live.invitation;
     return (
-      <section className="lv-bar lv-bar--invite" aria-label="Invitation to work together">
+      <section className="lv-bar lv-bar--invite" aria-label="Invitation to a call">
         <div className="lv-row">
           <span className="lv-row__lead"><Avatar name={live.fullName(invitation.inviterId)} id={invitation.inviterId} size="sm" /></span>
           {invitation.anchor.context.type === 'space' ? (
             <p className="lv-row__text"><b>{live.nameOf(invitation.inviterId)}</b> invited you to the call in <b>{invitation.anchor.label}</b>
               <span className="lv-row__muted"> · microphone and camera stay off</span></p>
           ) : (
-            <p className="lv-row__text"><b>{live.nameOf(invitation.inviterId)}</b> asked you to work together on <b>“{invitation.anchor.label}”</b>
+            <p className="lv-row__text"><b>{live.nameOf(invitation.inviterId)}</b> invited you to a call on <b>“{invitation.anchor.label}”</b>
               <span className="lv-row__muted"> · {KIND_WORD[invitation.anchor.context.type]}, microphone and camera stay off</span></p>
           )}
           <span className="lv-row__acts">
@@ -254,7 +254,7 @@ export function LiveBar() {
         <Popover open={moreOpen} onClose={() => setMoreOpen(false)} anchorRef={moreRef} label="Call details" className="lv-pop--panel">{panel}</Popover>
       )}
       {phone || inviteAs === 'sheet' ? (
-        <Sheet open={inviteOpen} onClose={() => setInviteOpen(false)} label="Invite someone" className="lv-sheet">{invitePanel}</Sheet>
+        <Sheet open={inviteOpen} onClose={() => setInviteOpen(false)} label="Invite someone" className="lv-sheet lv-sheet--half">{invitePanel}</Sheet>
       ) : (
         <Popover open={inviteOpen} onClose={() => setInviteOpen(false)} anchorRef={inviteRef} label="Invite someone" className="lv-pop--panel">{invitePanel}</Popover>
       )}

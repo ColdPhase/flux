@@ -310,7 +310,7 @@ What was decided when the two P2 findings were fixed (2026-11-08). Each stays he
 | 8.2.3 | Client data cleared at sign-out | Pass | Drafts retired on confirmed sign-out (`apps/web/src/docs/drafts.ts:73-78`, `composer/draft.ts:107`) |
 | 8.3.1 | Sensitive data in bodies, not URLs | Pass | Search text is in the query string but never logged (`log-serializers.ts:7-15`). Tokens are never in URLs, except the one-time reset and invite links; the reset link's token sits in the path (`GET /api/auth/reset-password/<token>`) and is logged as `<token>` ([#1030](https://github.com/ColdPhase/flux/issues/1030)), the invite token is in the fragment and never sent |
 | 8.3.2 | Users can export or delete their data | Pass | Space export (`apps/server/src/export/routes.ts`); account and space deletion (`docs/operations/export.md`, `administration.md`) |
-| 8.3.3 | Clear language about data use | Pass | AI use line in DMs (C-2); "Ada · via Assistant"; provider named in Connect AI |
+| 8.3.3 | Clear language about data use | Pass | AI use line in DMs (C-2); "Ada's Assistant"; provider named in Connect AI |
 | 8.3.4 | Sensitive data identified | Pass | As 1.8.1 |
 | 8.3.5 | Access to sensitive data audited | Partial | Event log of changes (`recordEvent`); no read audit. Refused reads are `access_denied` events ([#997](https://github.com/ColdPhase/flux/issues/997)) |
 | 8.3.6 | Sensitive memory cleared | Partial | Swap refused and core dumps off for key holders (F-030, `ulimits: core: 0`); JavaScript strings cannot be wiped. Zeroing of key buffers not verified |

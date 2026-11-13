@@ -34,7 +34,7 @@ export function InvitePanel({ live, invited, onInvited, onClose }: {
   return (
     <div className="lv-panel lv-panel--invite">
       <header className="lv-panel__head">
-        {/* Always in the first screen: on a phone the sheet fills the view and has no Escape. */}
+        {/* Always in the first screen: a phone has no Escape for the sheet. */}
         <IconButton icon="x" label="Close" onClick={onClose} className="lv-panel__close" />
         <h2 className="lv-panel__t">Invite someone</h2>
         <p className="lv-panel__aud"><Icon name="lock" size={12} />Only the people who can open this space can join</p>

@@ -105,7 +105,7 @@ The settings page sends its saves one after another, numbered, and shows only th
   invitation or notice is Inbox and push only, because the call can be over before a mail is read (live-sessions.md). Nothing else is stored per reason: the per-kind
   matrix and the per-reason inbox switches went with C-33. The line under each level in Settings names exactly these reasons
   (`app/apps/web/src/notifications/levels.ts`, #1173): "Questions, mentions, messages to you, tasks that need you, decisions about
-  your work, invitations to work together and agents waiting for you", then "Also every reply in conversations you are part of and calls started in your spaces";
+  your work, invitations to a call and agents waiting for you", then "Also every reply in conversations you are part of and calls started in your spaces";
   `notification-level-words.test.ts` pins the words against `channelsOf`. A task "that needs you" is `assigned`: given to you, waiting
   for you while blocked, ready for you to check or able to continue. An agent's question is a `question`, and an agent waiting for your
   OK is `approval` (#1186).

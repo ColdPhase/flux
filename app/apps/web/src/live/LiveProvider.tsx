@@ -106,7 +106,7 @@ export function useLiveHere(): Here {
 }
 
 /**
- * A view says where the person is (an anchor for "Work on this together") and what it could
+ * A view says where the person is (an anchor for a task's "Call") and what it could
  * show ("Show this"). It never publishes anything by itself: private navigation is private.
  */
 export function useRegisterLiveHere(anchor: LiveAnchor | null, presentable: Presentable | null) {

@@ -52,9 +52,9 @@ const SUMMARY_WORK = `SELECT id, workspace_id AS "workspaceId", project_id AS "p
   owner_user_id AS "ownerUserId", owner_agent_id AS "ownerAgentId", created_by_kind AS "createdByKind", created_by_id AS "createdById", created_at AS "createdAt",
   due_on::text AS "dueOn" FROM project_work_items WHERE id = ANY($1::uuid[])`;
 type SummaryMessageRow = { id: string; workspaceId: string; projectId: string; conversationId: string; authorId: string | null; authorAgentId: string | null;
-  body: string; attachmentCount: number; sequence: number; createdAt: Date; via: string | null };
+  body: string; attachmentCount: number; sequence: number; createdAt: Date; via: string | null; viaAgent: boolean };
 const SUMMARY_MESSAGES = `SELECT id, workspace_id AS "workspaceId", project_id AS "projectId", conversation_id AS "conversationId", author_id AS "authorId",
-  author_agent_id AS "authorAgentId", body, attachment_count AS "attachmentCount", sequence, created_at AS "createdAt", via
+  author_agent_id AS "authorAgentId", body, attachment_count AS "attachmentCount", sequence, created_at AS "createdAt", via, via_colour IS NOT NULL AS "viaAgent"
   FROM project_messages WHERE id = ANY($1::uuid[]) AND removed_at IS NULL`;
 
 // The other lookups of a summary, each one constant statement over an array of ids (#1191): a summary makes one of each, over up to a few
@@ -193,8 +193,8 @@ export function returnRows(db: DbExecutor) {
     async messages(ids: string[]) {
       if (!ids.length) return new Map();
       const rows = await openRows(db, 'project_messages', (await queryPrepared<SummaryMessageRow>(db, SUMMARY_MESSAGES, [ids])).rows);
-      return byId(rows.map(({ authorId, authorAgentId, id, projectId, conversationId, body, attachmentCount, sequence, createdAt, via }) =>
-        ({ id, projectId, conversationId, body, attachmentCount, sequence, createdAt, via, author: actor(authorId, authorAgentId) })));
+      return byId(rows.map(({ authorId, authorAgentId, id, projectId, conversationId, body, attachmentCount, sequence, createdAt, via, viaAgent }) =>
+        ({ id, projectId, conversationId, body, attachmentCount, sequence, createdAt, via, viaAgent: !!via && viaAgent, author: actor(authorId, authorAgentId) })));
     },
 
     async conversations(ids: string[]) {

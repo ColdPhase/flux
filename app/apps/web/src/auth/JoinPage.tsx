@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router';
-import { workspaceProjectsPath, type AcceptInviteResult, type IdentityCapabilities, type InvitePreview, type InviteRole, type Page, type Project } from '@flux/contracts';
+import { Link, useNavigate, useRevalidator } from 'react-router';
+import type { AcceptInviteResult, IdentityCapabilities, InvitePreview, InviteRole } from '@flux/contracts';
 import { getCapabilities, getMe, type MeResponse } from '../api/auth';
-import { ApiError, NetworkError, request } from '../api/client';
+import { ApiError, NetworkError } from '../api/client';
 import { acceptInvite, previewInvite } from '../people/api';
-import { Button, Icon, MEDIA, Spinner, useMediaQuery } from '../ui';
+import { Button, Icon, Spinner } from '../ui';
 
 // The page an invite link opens (F-035, #763 PE-2): `/join#<token>`. The token stays in the fragment (never sent in a
 // request line) and in this tab's session storage, so signing in or creating an account comes back here with it.
@@ -43,19 +43,6 @@ function problemOf(error: unknown): { title: string; text: string } {
   return { title: 'This invite link doesn’t work', text: 'Check that you opened the whole link, or ask whoever sent it for a new one.' };
 }
 
-/**
- * Where joining lands (#1424): in the space the person was joined to, Everyone for the company, so what they do next is write. The page that
- * said "You joined" and its Open button are gone. Nothing readable there yet (a guest with no space, an encrypted space waiting to be unlocked)
- * lands on Home.
- */
-async function landingPath(result: AcceptInviteResult): Promise<string> {
-  try {
-    const spaces = await request<Page<Project>>(`${workspaceProjectsPath(result.workspaceId)}?limit=100`);
-    const space = spaces.items.find((project) => project.visibility === 'workspace') ?? spaces.items[0];
-    return space ? `/projects/${space.id}` : '/';
-  } catch { return '/'; }
-}
-
 /** No token in this tab: it was never opened here (signing in in another tab does not carry it). */
 const NO_TOKEN = { title: 'Open the invite link again in this tab', text: 'This tab doesn’t have the invite link. If you signed in in another tab, open the link you were sent again here.' };
 
@@ -63,10 +50,8 @@ export function JoinPage() {
   const [state, setState] = useState<State>(() => (readToken() ? { kind: 'loading' } : { kind: 'problem', ...NO_TOKEN }));
   const [busy, setBusy] = useState(false);
   const [refusal, setRefusal] = useState('');
-  // An account made from the link joins as it is made: the page shows the wait, not the invitation again (#1424).
-  const [auto, setAuto] = useState(false);
-  const phone = useMediaQuery(MEDIA.phone);
   const navigate = useNavigate();
+  const revalidator = useRevalidator();
 
   useEffect(() => {
     const token = readToken();
@@ -81,7 +66,6 @@ export function JoinPage() {
         // An account made from this link joins as it is made (#763 FT-3): the person said so when they chose "Create an account".
         if (me && preview.state === 'pending' && new URLSearchParams(window.location.search).get('created') === '1') {
           window.history.replaceState(window.history.state, '', window.location.pathname);
-          setAuto(true);
           void join();
         }
       },
@@ -100,12 +84,8 @@ export function JoinPage() {
     try {
       const result = await acceptInvite(token);
       forgetToken();
-      // An admin of an encrypted space with no unlock password yet is told so here, before the app opens: a toast would not outlive the
-      // change from signed-out pages to the app. Everyone else goes straight into the space (#1424), the composer ready on a computer.
-      if (result.needsUnlockPassword) { setState({ kind: 'joined', result }); return; }
-      const to = await landingPath(result);
-      navigate(to, { replace: true, ...(to !== '/' && !phone ? { state: { focusComposer: true } } : {}) });
-      return;
+      // Said here, before the app opens: a toast would not outlive the change from signed-out pages to the app.
+      setState({ kind: 'joined', result });
     } catch (error) {
       if (error instanceof ApiError && error.code === 'INVITE_WRONG_ACCOUNT') {
         setRefusal('This link was made for a different email address. Sign out and sign in with the address it was sent to, or ask for a link for this account.');
@@ -126,7 +106,7 @@ export function JoinPage() {
   }
   if (state.kind === 'joined') {
     const { result } = state;
-    const open = () => { void landingPath(result).then((to) => navigate(to, { replace: true, ...(to !== '/' && !phone ? { state: { focusComposer: true } } : {}) })); };
+    const open = () => { revalidator.revalidate(); navigate('/', { replace: true }); };
     return (
       <>
         <div className="auth__head"><h1 className="auth__title">{result.status === 'joined' ? `You joined ${result.workspaceName}` : `You’re in ${result.workspaceName}`}</h1>
@@ -145,7 +125,6 @@ export function JoinPage() {
     );
   }
 
-  if (auto && busy) return <div className="auth__card" aria-busy="true"><Spinner label={`Joining ${state.preview.workspaceName}`} /></div>;
   const { preview, me, signup, sso } = state;
   const already = preview.state !== 'pending';
   return (
@@ -177,18 +156,13 @@ export function JoinPage() {
           </>
         ) : (
           <>
-            {/* A new person is the one the link is for: Create an account is the primary, and signing in is the second way (#1424). Where new
-                accounts are closed, signing in is the only way and the primary. */}
-            {signup === 'off' ? <Button variant="primary" size="lg" block onClick={() => navigate('/sign-in?next=%2Fjoin')}>Sign in</Button> : <>
-              <Button variant="primary" size="lg" block onClick={() => navigate(`/sign-up?next=${encodeURIComponent('/join?created=1')}`)}>Create an account</Button>
-              <Button variant="secondary" size="lg" block onClick={() => navigate('/sign-in?next=%2Fjoin')}>Sign in</Button>
-            </>}
+            <Button variant="primary" size="lg" block onClick={() => navigate('/sign-in?next=%2Fjoin')}>Sign in to join</Button>
             {sso && signup === 'off'
               // F-024: with single sign-on the first sign-in makes the account.
               ? <p className="auth__alt">New here? Sign in with {sso}; your account is made the first time.</p>
               : signup === 'off'
               ? <p className="auth__alt">New accounts are closed on this Flux server. Ask {preview.invitedBy} to have one made for you.</p>
-              : null}
+              : <Button variant="secondary" size="lg" block onClick={() => navigate(`/sign-up?next=${encodeURIComponent('/join?created=1')}`)}>Create an account</Button>}
             {signup === 'verified' ? <p className="auth__alt">After you confirm your email address, open this invite link again.</p> : null}
           </>
         )}

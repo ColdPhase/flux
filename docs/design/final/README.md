@@ -141,10 +141,6 @@ grey-text "Import a Markdown file" at another height and weight, and a sign-in t
 - **Sign-in, sign-up, an invitation, a password reset and single sign-on use the same pair,** both `lg` and as wide as the form: the
   primary action ("Sign in", "Create account", "Join Acme", "Send reset link"), and, where there is a second way, a `secondary` below it.
   With single sign-on as the only way in, "Sign in with *provider*" is the primary. The page's other actions are links in a line under the form.
-- **An invitation's page leads with the new person's way in** (#1424): signed out, **Create an account** is the primary and **Sign in**
-  the `secondary` below it (where new accounts are closed, Sign in is the primary). Joining, with a new account or with Join, lands in
-  the space: Everyone, with the composer ready on a computer. There is no "You joined" page and no "Open" to press; the one page that
-  stays is the admin of an encrypted space who must be told they have no unlock password yet.
 - **A dialog's Cancel is `secondary`**, beside its one primary.
 - **Not an action button.** Some controls are not buttons of the system and draw themselves: a menu row, a whole row or card that
   opens something, the shell's own controls (the sidebar, the phone's bar), the composer's and a message's controls, an inline text
@@ -1174,7 +1170,7 @@ Live strip, someone shares a screen
 - **The strip's place** is the button it always was; a call of the space reads "Call in Gesture lamp" with no kind
   word, a task's call keeps "Order sensors · task".
 - **Invite someone** is the strip's one invite control, a quiet button before the devices on a computer and a tablet (#1424). It
-  opens a small popover (a sheet on a phone) that holds only the space's people who are not in the call, each with Invite →
+  opens a small popover (on a phone a sheet of half the screen's height, so the call stays in view above it) that holds only the space's people who are not in the call, each with Invite →
   "Invited", and nothing else: it never repeats the microphone, camera or screen, which are the strip's and ⋯'s. The same name
   everywhere: there is no "Invite…" beside it. It is not shown when nobody is left to invite. On a phone the row has no room for
   it: ⋯'s sheet has one "Invite someone" row, which opens that same sheet.
@@ -1480,8 +1476,8 @@ standard switch row in Settings › Notifications, and the rest of the page stay
     couldn't be read. Type the model id from Anthropic's documentation." Connect works.
   - An unpriced model shows the two price fields under the Model (as for an own endpoint) with
     "Flux doesn't know this model's price yet. Enter it to use it with a daily budget." Both are needed (0 is a price):
-    Connect without them puts "Enter this model's price to use it with a daily budget…" above the form and saves nothing, so
-    Settings never shows a key that "can't be used" (#1424).
+    Connect without them puts "Enter this model's price to use it with a daily budget…" above the form and saves nothing, and the
+    server refuses such a key from any client with the same words, so Settings never shows a key that "can't be used" (#1424).
   - OpenRouter and an OpenAI-compatible endpoint keep "Show available models" and the field.
 - **The Model of an agent with an API key** lists the key's models under its connection, in the
   same family order, in the app's `Select` (a plan keeps its few models as segments), each with its
@@ -1607,10 +1603,9 @@ standard switch row in Settings › Notifications, and the rest of the page stay
     it gets the same label and agent message, with the Kreska in the default ink (`--inv`).
   - **The screen reader** reads the message as "Hubert's Assistant, shown by Hubert".
   - **The private card says the same:** "Show everyone posts it as “Hubert's Assistant”".
-  - **Where only text fits** (notifications, search results, what an agent reads) there is no bubble to carry the agent's
-    Kreska, so the line is the person and the agent's own name, "Hubert · via Assistant"; it still names the person as the author.
-    The label drawn on a message is only ever "Hubert's Assistant" (founder decision, 2026-11-12, #1232); the "via" form is
-    the plain-text fallback of the same answer, never a second label on screen.
+  - **Where only text fits** (notifications, search results, the "since you were away" lines, what an agent reads) it is the same
+    name, "Hubert's Assistant" (founder decision, 2026-11-13, #1424: one name everywhere; #1232 for the label). Only a person's
+    local client keeps the "via" form, "Hubert · via Claude Code" (LC-2): that is the person's own message, sent from their tool.
 - **A web answer lists its sources once** (#1222, founder decision, Hubert, 2026-11-12). Flux's own
   list under the answer, "Searched the web for" and "Found on the web", is the only list. The words of
   the model that repeat it are not stored: a closing "Sources:" block whose lines are only addresses

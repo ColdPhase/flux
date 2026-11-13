@@ -1,5 +1,5 @@
 import { redactedError } from '../encryption/redact.js';
-import { messagePreview } from '@flux/contracts';
+import { messagePreview, viaName } from '@flux/contracts';
 import { randomUUID } from 'node:crypto';
 import type { NotificationReason } from '@flux/contracts';
 import type { JobRetryPolicy } from '../push/config.js';
@@ -66,9 +66,12 @@ export interface Candidate {
  */
 export const SEALED_NOTIFICATION_PHRASES: Readonly<Record<Exclude<NotificationReason, 'security'>, string>> = {
   mention: 'mentioned you', question: 'asked you', reply: 'replied', dm: 'sent you a message', assigned: 'assigned you a task',
-  review: 'asked for your review', invitation: 'invited you to work together', approval: 'is waiting for your OK', call: 'started a call',
+  review: 'asked for your review', invitation: 'invited you to a call', approval: 'is waiting for your OK', call: 'started a call',
 };
 export function sealedNotificationTitle(reason: NotificationReason, who: string, workspaceName: string): string {
+  // The database keeps the forms an encrypted workspace's title may take (migration 0056): an invitation's is still "invited you to work
+  // together in …" there until a migration adds "invited you to a call in …" (#1424); every other notice says "a call".
+  if (reason === 'invitation') return `${who} invited you to work together in ${workspaceName}`;
   return hiddenNotificationTitle(reason, who, workspaceName);
 }
 
@@ -129,8 +132,9 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
       const people = [...audience].filter((userId) => userId !== authorId && reachable(userId)
         && (typeof message.onlyNotifies !== 'string' || userId === message.onlyNotifies));
       const names = await facts.names([...(authorId ? [authorId] : []), ...people]);
-      // A person's message posted through a client or an assistant is marked in every notice, like on the message: "Ada · via Claude Code".
-      const author = authorId ? `${names.get(authorId) ?? 'Someone'}${message.via ? ` · via ${message.via}` : ''}` : `${message.authorName ?? 'Agent'} (agent)`;
+      // A person's message posted through a client or an assistant is marked in every notice, like on the message: "Ada · via Claude Code", and an
+      // agent's answer they showed everyone is "Ada's Assistant", its one name (#1424).
+      const author = authorId ? viaName(names.get(authorId) ?? 'Someone', message.via, message.viaAgent) : `${message.authorName ?? 'Agent'} (agent)`;
       const involved = new Set([...(message.conversationCreatedBy.kind === 'human' ? [message.conversationCreatedBy.id] : []), ...message.earlierAuthors]);
       // Who gets the replies of a thread (#1249): the people who follow it. A person's own choice (Follow, Unfollow) wins over the default,
       // which is that its starter and earlier writers follow it.
@@ -163,7 +167,7 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
       const people = message.participantIds.filter((userId) => userId !== message.authorId && reachable(userId));
       const names = await facts.names([message.authorId, ...people]);
       const author = names.get(message.authorId) ?? 'Someone';
-      const marked = message.via ? `${author} · via ${message.via}` : author;
+      const marked = viaName(author, message.via, message.viaAgent);
       const place = message.kind === 'pair' ? '' : ` in ${message.title ? quote(message.title) : 'a group message'}`;
       return people.map((userId) => {
         // A message that names the person with "@" (or opens with their name) is a mention, or a question when it asks something, as in a
@@ -260,7 +264,7 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
       const inviter = (await facts.names([invitation.inviterId])).get(invitation.inviterId) ?? 'Someone';
       return [{
         userId: recipientId, reason: 'invitation', source: { type: 'project', id: invitation.projectId },
-        title: invitation.anchor.type === 'space' ? `${inviter} invited you to a call` : `${inviter} invited you to work together`,
+        title: `${inviter} invited you to a call`,
         body: invitation.anchor.type === 'space' ? `Call in ${invitation.projectName}` : `On ${quote(excerpt(invitation.anchor.label, 80))} in ${invitation.projectName}`,
         url: `/projects/${invitation.projectId}/live/${invitation.sessionId}?invitation=${invitation.id}`, who: inviter,
         where: invitation.projectName,
@@ -312,7 +316,7 @@ async function deliver(ports: GeneratorPorts, event: GeneratorEvent, candidate: 
   // F-030: content was read in RAM to decide the reason; what is stored for a sealed workspace says only who and why.
   const sealed = (await ports.facts.sealedWorkspace?.(event.workspaceId)) ?? null;
   // Who and where, in fixed words: what a push says under "Hide previews" (#1346), and what a sealed workspace stores as its title.
-  const hiddenTitle = hiddenNotificationTitle(candidate.reason, candidate.who, sealed ? sealed.name : candidate.where);
+  const hiddenTitle = sealed ? sealedNotificationTitle(candidate.reason, candidate.who, sealed.name) : hiddenNotificationTitle(candidate.reason, candidate.who, candidate.where);
   const inserted = await ports.insertNotification({
     id: notificationId, userId: candidate.userId, source, reason: candidate.reason, eventId: event.id,
     title: sealed ? hiddenTitle : candidate.title, body: sealed ? '' : candidate.body,

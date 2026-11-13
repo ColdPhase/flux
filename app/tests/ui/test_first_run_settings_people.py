@@ -391,8 +391,9 @@ class FirstRunSettingsPeople(unittest.TestCase):
         stranger.get_by_label("Email").fill(newcomer)
         stranger.get_by_label("Password").fill(PASSWORD)
         stranger.get_by_role("button", name="Create account").click()
-        # #1424: no "You joined" page; this company has no space for everyone yet, so Home says whose it is.
-        expect(stranger.get_by_role("heading", level=3, name="You’re in Riverside Makers")).to_be_visible()
+        expect(stranger.get_by_role("heading", level=1, name="You joined Riverside Makers")).to_be_visible()
+        stranger.get_by_role("button", name="Open Riverside Makers").click()
+        expect(stranger.get_by_role("heading", level=1, name="Home")).to_be_visible()
         expect(page.get_by_role("list", name="People in Riverside Makers")).to_contain_text("Piotr Nowy")
 
     # ---------------------------------------------------------------- mention chips (PE-4)

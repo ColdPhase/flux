@@ -150,7 +150,7 @@ class VisualCleanup763(unittest.TestCase):
         self.assertEqual(together.evaluate("(el) => getComputedStyle(el).opacity"), "1", "not greyed out")
         together.click()
         dialog = page.get_by_role("dialog", name="Call")
-        expect(dialog).to_contain_text("Open a conversation, task, map or page to work on it together.")
+        expect(dialog).to_contain_text("Open a conversation, task, map or page to start a call there.")
         page.keyboard.press("Escape")
         expect(dialog).to_have_count(0)
         expect(together).to_be_focused()

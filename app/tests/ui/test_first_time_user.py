@@ -176,9 +176,8 @@ class FirstTimeUser(unittest.TestCase):
         basia.get_by_label("Email").fill(f"basia.ftu+{STAMP}@example.test")
         basia.get_by_label("Password").fill(PASSWORD)
         basia.get_by_role("button", name="Create account").click()
-        # #1424: no "You joined" page and no Open to press: she lands where she can act (this workspace has no space for everyone, so it is Home,
-        # which says whose it is).
-        expect(basia.get_by_role("heading", level=3, name="You’re in Volunteer space")).to_be_visible()
+        expect(basia.get_by_role("heading", level=1, name="You joined Volunteer space")).to_be_visible()
+        basia.get_by_role("button", name="Open Volunteer space").click()
         expect(basia).to_have_url(re.compile(r"/$"))
         # The inviter hears it in the Inbox, with the way to the company's people.
         items = self.api(anna, "GET", "/api/v1/inbox", status=200)["items"]

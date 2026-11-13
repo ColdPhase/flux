@@ -571,7 +571,7 @@ person, and holds on every device they receive push on.
   | A task for you, waiting for you, or able to continue | `assigned` | "Ada assigned you a task in Tool library" |
   | A decision about your work | `review` | "Ada asked for your review in Tool library" |
   | An agent waiting for your OK | `approval` | "Scout is waiting for your OK in Tool library" |
-  | An invitation to a call or to work together | `invitation` | "Ada invited you to work together in Tool library" |
+  | An invitation to a call | `invitation` | "Ada invited you to a call in Tool library" |
   | A call started in your space | `call` | "Ada started a call in Tool library" |
 
   *Who* is the person's or agent's name, or "Someone" or "An agent" when it is not known;

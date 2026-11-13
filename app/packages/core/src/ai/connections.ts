@@ -56,6 +56,8 @@ function assertBudgetFitsRequest(price: AiPrice | null, budgetCents: number, pro
   if (largest !== null && largest > budgetCents * 10_000)
     throw new InvalidInputError(`One request on ${model ? `${assistantModelName(model)}, your assistant's model on this key,` : 'this model'} can cost up to $${(Math.ceil(largest / 10_000) / 100).toFixed(2)}, so the daily budget must be at least that`, 'AI_BUDGET_TOO_SMALL');
 }
+/** Why a key on a model Flux has no price for is not saved (#1424): the same words as the Connect AI form. */
+export const AI_PRICE_REQUIRED = 'Enter this model’s price to use it with a daily budget: from your provider’s pricing, or 0 for a self-hosted server you pay for otherwise.';
 function connectionName(value: unknown): value is string {
   return typeof value === 'string' && value.trim() === value && value.length >= 1 && value.length <= 80;
 }
@@ -119,6 +121,9 @@ export function backgroundConnectionUseCases(port: BackgroundConnectionPort, sea
       }
       // PROV-3: Flux's dated table or the owner's price; a provider's listing is never a price source.
       const price = resolveConnectionPrice({ provider: input.provider, model, ownerPrice: input.price });
+      // A key on a model with no price could never be used, since the daily budget prices every request before it is sent: it is not saved,
+      // through the form or the API, and the owner is asked for the price (#1424). 0 is a price (a server paid for otherwise).
+      if (!price) throw new RuleViolationError(AI_PRICE_REQUIRED, 'AI_PRICE_REQUIRED');
       assertBudgetFitsRequest(price, input.dailyBudgetCents, input.provider, model);
       // The key's test is the listing of its models (#1218): a key its provider refuses is not saved. A list that couldn't be read
       // leaves the key to be saved with the model typed.

@@ -61,7 +61,7 @@ test('a live invitation reaches only its recipient, once, with who, where and th
 
   const item = await waitFor(async () => (await inbox(recipient)).find((entry: InboxItem) => entry.url === url), 'the invitation in the inbox');
   assert.equal(item.reason, 'invitation');
-  assert.equal(item.title, `${label}-owner invited you to work together`);
+  assert.equal(item.title, `${label}-owner invited you to a call`);
   assert.equal(item.body, `On “${label}: walk through the harbour permit before Friday” in ${label} project`);
   assert.deepEqual(item.source, { workspaceId: f.ws.id, type: 'project', id: f.place.id });
 

@@ -101,7 +101,7 @@ const cases: Case[] = [
     const invitationId = randomUUID();
     const sessionId = randomUUID();
     return {
-      name: 'an invitation to work together', reason: 'invitation' as const, hidden: 'Jonas Berg invited you to work together in Tool library',
+      name: 'an invitation to a call', reason: 'invitation' as const, hidden: 'Jonas Berg invited you to a call in Tool library',
       event: { kind: 'project.live_invited.v1', objectId: projectId, actorId: `human:${jonas}`, data: { invitationId, sessionId, recipientId: ada } },
       facts: {
         liveInvitation: async (id: string) => id === invitationId ? { id, sessionId, projectId, projectName: 'Tool library', inviterId: jonas, recipientId: ada, anchor: { type: 'work' as const, label: 'SECRET-ANCHOR' } } : null,

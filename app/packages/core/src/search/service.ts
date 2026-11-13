@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import {
-  SEARCH_FILTER_TYPES, SEARCH_LIMITS, WORK_STATUSES,
+  SEARCH_FILTER_TYPES, SEARCH_LIMITS, WORK_STATUSES, viaName,
   type SearchFilterType, type SearchQuery, type SearchResponse, type SearchResult,
 } from '@flux/contracts';
 import { InvalidInputError } from '../access/errors.js';
@@ -158,7 +158,7 @@ function toResult(row: SearchRow, marks: SearchMarks | null): SearchResult {
     snippet: source.textIsTitle || !row.snippet ? null : marked(row.snippet),
     ...(task ? { task } : {}),
     place: searchPlaceOf(row),
-    author: row.author?.kind === 'agent' ? `${row.authorName ?? 'Agent'} (agent)` : row.via && row.authorName ? `${row.authorName} · via ${row.via}` : row.authorName,
+    author: row.author?.kind === 'agent' ? `${row.authorName ?? 'Agent'} (agent)` : row.via && row.authorName ? viaName(row.authorName, row.via, row.viaAgent) : row.authorName,
     at: row.at.toISOString(),
     target: source.target(row),
   };

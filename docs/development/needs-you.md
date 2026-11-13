@@ -15,7 +15,7 @@ an item. Access is checked at the moment of reading: an object the person cannot
 | Kind | What it is | Where it comes from |
 | --- | --- | --- |
 | `decision` | A proposed decision the person can accept now | `project_decisions.status = 'proposed'` in projects they can read, kept only when they hold write access (O-009 DA-2) |
-| `question` | A person asked them something (`@name … ?`), or invited them to work together (#62) | their unread `question` and `invitation` notifications, newer than 14 days |
+| `question` | A person asked them something (`@name … ?`), or invited them to a call (#62) | their unread `question` and `invitation` notifications, newer than 14 days |
 | `blocked` | A task they own that is blocked | `project_work_items` they own with status `blocked` |
 | `mention` | Someone mentioned them | their unread `mention` notifications, newer than 14 days |
 

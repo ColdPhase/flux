@@ -48,7 +48,7 @@ supersedes the quiet start of #59 (2026-09-27).
 1. **Place and label.** A call started from a space's conversation (the stream or an
    open thread) is the space's call: the strip says "Call in Gesture lamp", never the
    text of a message. A task, a map or a Wiki page is the call's place only when the
-   call is started from it (the task's Work on this together, or Call while that task,
+   call is started from it (the task's Call, or the header's Call while that task,
    map or page is open). The session's context is then `{ type: 'space', id: <space> }`.
    From the click on Call or Join the strip is there at once, saying "Connecting…", so a
    slow connection never looks like nothing happened (#1304); a second click starts nothing more.
