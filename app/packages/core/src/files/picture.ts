@@ -25,7 +25,13 @@ import { FILE_LIMITS, PICTURE_BOUNDS, pictureBounds, type ThoughtImageType } fro
  */
 export const PICTURE_LIMITS = { bytes: FILE_LIMITS.fileBytes, side: PICTURE_BOUNDS.side, pixels: PICTURE_BOUNDS.pixels, frames: 500,
   /** The pixels of every frame of an animation together. */
-  framePixels: 200_000_000 } as const;
+  framePixels: 200_000_000,
+  /**
+   * The scans of a JPEG (review of #1343). Each scan of a progressive JPEG makes the decoder visit every block of the picture, and a scan of
+   * end-of-band runs costs about 50 bytes: 5 MiB of them held libvips for 4 minutes on 2 CPUs, past its timeout, which only runs between
+   * tiles. Encoders write 1 (baseline) to about 10 (progressive) scans.
+   */
+  scans: 100 } as const;
 
 export type PictureRefusal = 'not_picture' | 'svg' | 'too_large' | 'too_many_pixels' | 'broken';
 export type CleanPicture = { ok: true; type: ThoughtImageType; bytes: Uint8Array; width: number; height: number;
@@ -113,7 +119,7 @@ const isFrame = (marker: number) => marker >= 0xc0 && marker <= 0xcf && marker !
 const JPEG_TABLES = new Set([0xc4, 0xcc, 0xdb, 0xdc, 0xdd]);
 function jpeg(b: Uint8Array): Walked {
   const kept: Uint8Array[] = [b.subarray(0, 2)];
-  let at = 2; let width = 0; let height = 0; let orientation = 1;
+  let at = 2; let width = 0; let height = 0; let orientation = 1; let scans = 0;
   while (true) {
     if (b[at] !== 0xff) broken();
     while (b[at] === 0xff) at++; // fill bytes before a marker
@@ -143,6 +149,7 @@ function jpeg(b: Uint8Array): Walked {
     if (marker === 0xe1 && orientation === 1) orientation = exifOrientation(b, at + 2, end);
     at = end;
     if (marker === 0xda) {
+      if (++scans > PICTURE_LIMITS.scans) broken();
       // The entropy-coded scan: up to the next marker that is neither a stuffed 0xFF00 nor a restart marker.
       const scan = at;
       while (at < b.length) {
@@ -187,7 +194,7 @@ const orientationSegment = (orientation: number) => Uint8Array.of(0xff, 0xe1, 0x
 /** GIF application blocks that only say how an animation loops: kept. Every other application block (XMP among them) and comments go. */
 const LOOPING = new Set(['NETSCAPE2.0', 'ANIMEXTS1.0']);
 function gif(b: Uint8Array): Walked {
-  // The picture is as big as the screen or any frame: a browser draws the screen, and a frame larger than it counts its own size.
+  // The picture is as big as the screen or any frame's edge: a browser draws the screen, grown to a first frame that reaches past it.
   let width = u16le(b, 6); let height = u16le(b, 8);
   const packed = b[10] ?? broken();
   let at = 13 + (packed & 0x80 ? 3 * 2 ** ((packed & 7) + 1) : 0);
@@ -215,12 +222,15 @@ function gif(b: Uint8Array): Walked {
       if (keep) kept.push(b.subarray(at, end));
       at = end;
     } else if (kind === 0x2c) {
+      const left = u16le(b, at + 1); const top = u16le(b, at + 3);
       const frameWidth = u16le(b, at + 5); const frameHeight = u16le(b, at + 7);
-      if (frameWidth > PICTURE_LIMITS.side || frameHeight > PICTURE_LIMITS.side) throw new TooManyPixels();
+      // A frame counts where it ends: Chromium and libvips grow the picture to the first frame's edge (a 1×1 screen with a 1×1 frame at
+      // 7999, 4999 is drawn 8,000×5,000, review of #1343), so every frame's edge is within the bounds and the size is the largest edge.
+      if (left + frameWidth > PICTURE_LIMITS.side || top + frameHeight > PICTURE_LIMITS.side) throw new TooManyPixels();
       // Every frame is decoded: their pixels together are bounded too, and a frame larger than the screen counts its own size.
       decoded += Math.max(frameWidth * frameHeight, 1);
       if (frameWidth * frameHeight > PICTURE_LIMITS.pixels || decoded > PICTURE_LIMITS.framePixels) throw new TooManyPixels();
-      width = Math.max(width, frameWidth); height = Math.max(height, frameHeight);
+      width = Math.max(width, left + frameWidth); height = Math.max(height, top + frameHeight);
       const flags = b[at + 9] ?? broken();
       const data = at + 10 + (flags & 0x80 ? 3 * 2 ** ((flags & 7) + 1) : 0);
       if (data >= b.length) broken();

@@ -70,7 +70,9 @@ async function canonical(input: Uint8Array): Promise<CleanPicture> {
     const image = sharp(source, CANONICAL_PIXELS).timeout({ seconds: SECONDS_PER_PICTURE }).autoOrient();
     const written = await (walked.type === 'image/png' ? image.png(meta.isPalette ? { palette: true, colours: 256, dither: 0, compressionLevel: 9 } : { compressionLevel: 9 })
       : walked.type === 'image/jpeg' ? image.jpeg({ quality: 85 })
-        : walked.lossless ? image.webp({ lossless: true, effort: 2 }) : image.webp({ quality: 85, alphaQuality: 100 })).toBuffer({ resolveWithObject: true });
+        // Lossless WebP at the least effort (review of #1343): libwebp's lossless encoder at effort 2 took 1.4 GiB for a 155 KB, 40 MP file
+        // and the API was killed at its 1.5 GiB limit; at effort 0 it is about 0.6 GiB, like a lossy one.
+        : walked.lossless ? image.webp({ lossless: true, effort: 0, exact: true }) : image.webp({ quality: 85, alphaQuality: 100 })).toBuffer({ resolveWithObject: true });
     if (written.data.byteLength > FILE_LIMITS.fileBytes) return refused('too_large');
     // What libvips wrote is checked the way a file from outside is: one picture, of the size it says.
     const again = cleanPicture(written.data);
@@ -85,6 +87,13 @@ async function render(bytes: Uint8Array): Promise<Renditions> {
   // The bytes say what they are, never a name or a declared type; GIF is a picture Flux shows on a map, not a photo.
   const type = imageTypeOf(bytes);
   if (!type || type === 'image/gif') throw new InvalidInputError('Choose a PNG, JPEG or WebP picture', 'UNSUPPORTED_PICTURE');
+  // The walk every stored picture takes first (review of #1343): one picture to a file, within the bounds, and a JPEG of at most 100 scans
+  // (thousands of progressive scans hold libvips for minutes, past its timeout, in the one line every picture waits in).
+  const walked = cleanPicture(bytes);
+  if (!walked.ok) {
+    if (walked.reason === 'too_many_pixels') throw new PayloadTooLargeError('A picture is at most 40 megapixels', 'PICTURE_TOO_MANY_PIXELS');
+    throw new InvalidInputError('This picture cannot be read', 'UNREADABLE_PICTURE');
+  }
   const input = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   try {
     // The header alone: a picture over the pixel limit is refused here, before anything is decoded.

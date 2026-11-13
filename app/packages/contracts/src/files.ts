@@ -115,7 +115,7 @@ const le32 = (b: Uint8Array, at: number) => le24(b, at) + at8(b, at + 3) * 0x100
 
 /**
  * The largest width and the largest height that any header of a picture's file claims (#1343): a PNG's IHDR and each APNG frame, every
- * JPEG start-of-frame, a GIF's screen and each frame, a WebP's canvas and every image chunk and animation frame in it. Decoders disagree on
+ * JPEG start-of-frame, a GIF's screen and each frame where it ends (its offset and size), a WebP's canvas and every image chunk and animation frame in it. Decoders disagree on
  * which of several sizes they draw (the first image chunk, the last, the canvas), so a file is judged by the largest, and a browser is never
  * asked to allocate more than this says. Reads headers only, in one pass that advances at least a byte a step, never throws: null for
  * bytes that are not one of the four picture types or that give no size.
@@ -154,7 +154,7 @@ export function pictureBounds(b: Uint8Array): { width: number; height: number } 
       let at = 13 + table(at8(b, 10));
       while (at < b.length) {
         const kind = b[at];
-        if (kind === 0x2c) { see(le16(b, at + 5), le16(b, at + 7)); at = skip(at + 11 + table(at8(b, at + 9))); }
+        if (kind === 0x2c) { see(le16(b, at + 1) + le16(b, at + 5), le16(b, at + 3) + le16(b, at + 7)); at = skip(at + 11 + table(at8(b, at + 9))); }
         else if (kind === 0x21) at = skip(at + 2);
         else break;
       }

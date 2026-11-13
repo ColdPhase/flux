@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { drawablePictureType, imageTypeOf, pictureBounds } from '@flux/contracts';
 import { cleanPicture, PICTURE_LIMITS, pictureName } from '@flux/core';
-import { animatedGif, APPENDED, apng, GIF, gifWithComment, jpeg, jpegWithBombThumbnail, png, SVG, WEBP, webp, webpWithExif } from './support/pictures.js';
+import { animatedGif, APPENDED, apng, GIF, gifFrameAt, gifWithComment, jpeg, jpegWithBombThumbnail, jpegWithScans, png, SVG, WEBP, webp, webpWithExif } from './support/pictures.js';
 
 // The picture an agent attaches (#1217, AG-8, C-59) is kept only as a picture: its type by its own bytes, its size from its header before
 // anything decodes it, its metadata and anything after its end dropped, and anything that does not parse refused. Pure: no network.
@@ -72,6 +72,18 @@ describe('cleanPicture', () => {
     assert.deepEqual(cleanPicture(many), { ok: false, reason: 'too_many_pixels' }, '10 frames of 36 Mpx');
     const big = Buffer.concat([screen, frame(7_000, 7_000), Buffer.from([0x3b])]);
     assert.deepEqual(cleanPicture(big), { ok: false, reason: 'too_many_pixels' }, 'one 49 Mpx frame on a 1×1 screen');
+  });
+
+  test('GIF: a frame counts where it ends, as Chromium and libvips draw it; a JPEG of more scans than any encoder writes is refused (review of #1343)', () => {
+    const corner = kept(gifFrameAt(7_999, 4_999));
+    assert.deepEqual([corner.width, corner.height], [8_000, 5_000], 'a 1×1 frame at 7999, 4999 on a 1×1 screen: Chromium draws 8,000×5,000');
+    assert.deepEqual(pictureBounds(gifFrameAt(7_999, 4_999)), { width: 8_000, height: 5_000 });
+    assert.deepEqual(cleanPicture(gifFrameAt(60_000, 60_000)), { ok: false, reason: 'too_many_pixels' }, 'a frame whose edge is past the bounds');
+    assert.equal(drawablePictureType(gifFrameAt(60_000, 60_000)), null, 'and the web app shows it as a file row');
+    assert.deepEqual(Buffer.from(jpegWithScans(1)), jpeg(), 'one scan is the plain JPEG');
+    assert.equal(kept(jpegWithScans(PICTURE_LIMITS.scans)).width, 16);
+    // 5 MiB of progressive scans held libvips for 4 minutes on 2 CPUs, past its timeout.
+    assert.deepEqual(cleanPicture(jpegWithScans(PICTURE_LIMITS.scans + 1)), { ok: false, reason: 'broken' });
   });
 
   test('SVG, a web page and other files are refused by their bytes, whatever they are called', () => {

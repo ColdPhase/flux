@@ -3,7 +3,7 @@ import { describe, test } from 'node:test';
 import { pictureBounds } from '@flux/contracts';
 import { ServiceUnavailableError, type CleanPicture } from '@flux/core';
 import { sharpPictureRenderer } from '../../apps/server/src/pictures/render.js';
-import { animatedGif, APPENDED, apng, jpeg, jpegWithBombThumbnail, png, webp } from './support/pictures.js';
+import { animatedGif, APPENDED, apng, gifFrameAt, jpeg, jpegWithBombThumbnail, jpegWithScans, png, webp } from './support/pictures.js';
 // The test pictures are made, and read back, with the same sharp the server uses (its own dependency, not the test workspace's).
 import sharp from '../../apps/server/node_modules/sharp/dist/index.mjs';
 
@@ -117,6 +117,15 @@ describe('canonical pictures', () => {
     const wide = await kept(webp.animated(6, 4, 3));
     assert.deepEqual([wide.type, wide.width, wide.height, wide.frames], ['image/webp', 6, 4, 3]);
     await refusedAs(apng(8, 8, [[8, 8, 0, 0], [16, 8, 0, 0]]), 'broken', 'an APNG frame wider than its canvas');
+  });
+
+  test('review of #1343: a GIF whose frame reaches past its screen is the size libvips and Chromium draw; a JPEG of 101 scans is refused before libvips reads it, for a stored picture and a photo', async () => {
+    const grown = await kept(gifFrameAt(7, 5));
+    assert.deepEqual([grown.width, grown.height], [8, 6]);
+    await agrees(grown);
+    await refusedAs(jpegWithScans(101), 'broken', 'more scans than any encoder writes');
+    await assert.rejects(pictures.render(jpegWithScans(101)), (error: Error & { code?: string }) => error.code === 'UNREADABLE_PICTURE', 'a profile photo or space icon too');
+    assert.ok((await pictures.render(jpeg()))[256], 'a plain JPEG is still a photo');
   });
 
   test('a burst waits in one line and is refused as busy past it, as photos are', async () => {

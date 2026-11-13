@@ -34,6 +34,10 @@ export function gifWithComment(): Buffer {
   return Buffer.concat([GIF.subarray(0, GIF.length - 1), comment, Buffer.from([0x3b])]);
 }
 
+/** A GIF of a 1×1 screen and one 1×1 frame placed at `left`, `top` (review of #1343): Chromium and libvips grow the picture to the frame's edge. */
+export const gifFrameAt = (left: number, top: number) => Buffer.concat([GIF.subarray(0, 13 + 6),
+  Buffer.from([0x2c, left & 0xff, left >> 8, top & 0xff, top >> 8, 1, 0, 1, 0, 0, 2, 2, 0x44, 0x01, 0, 0x3b])]);
+
 /** A 1×1 lossless WebP, and the same in an extended file with an EXIF chunk that its flags announce. */
 export const WEBP = Buffer.from('UklGRhoAAABXRUJQVlA4TA0AAAAvAAAAEAcQERGIiP4HAA==', 'base64');
 export function webpWithExif(): Buffer {
@@ -69,6 +73,14 @@ export function jpeg(options: { metadata?: boolean; width?: number; height?: num
   const sof = body.indexOf(Buffer.from([0xff, 0xc0, 0x00, 0x11, 0x08]));
   body.writeUInt16BE(height, sof + 5); body.writeUInt16BE(width, sof + 7);
   return Buffer.concat([Buffer.from([0xff, 0xd8]), app0, ...meta, body]);
+}
+
+/** A JPEG of `scans` scans (review of #1343): the real one's scan again and again, as a progressive file's scans follow one another. */
+export function jpegWithScans(scans: number): Buffer {
+  const plain = jpeg();
+  const sos = plain.indexOf(Buffer.from([0xff, 0xda]));
+  const scan = plain.subarray(sos, plain.length - 2);
+  return Buffer.concat([plain.subarray(0, sos), ...Array.from({ length: scans }, () => scan), Buffer.from([0xff, 0xd9])]);
 }
 
 /** A JPEG whose EXIF carries a thumbnail JPEG with a start-of-frame of its own, 60,000×60,000: gone with the rest of the EXIF. */
