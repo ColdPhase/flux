@@ -1,4 +1,5 @@
 import { GlobalWorkerOptions, RenderingCancelledException, TextLayer, getDocument, type PDFDocumentProxy, type PDFPageProxy, type RenderTask } from 'pdfjs-dist';
+import PdfRenderer from 'pdfjs-dist/build/pdf.renderer.min.mjs?worker&inline';
 import PdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?worker&inline';
 import './viewer.css';
 import { PDF_FRAME, externalLink, type ViewerMessage } from './protocol';
@@ -14,8 +15,10 @@ const LARGEST_SCALE = 4;
 const WIDEST_PAGE = 960;
 /** A hostile file can declare millions of pages; the viewer draws at most this many. */
 const MOST_PAGES = 5000;
-/** Pixels in one drawn page, so a page the size of a poster does not take the tab's memory (device pixels). */
+/** Pixels in one drawn page, so a page the size of a poster does not take the tab's memory (device pixels): Safari's own canvas limit. */
 const MOST_PIXELS = 16 * 1024 * 1024;
+/** A canvas side, in device pixels: a page far longer than it is wide (or one a /UserUnit makes huge) is drawn coarser, never larger. */
+const LONGEST_SIDE = 16 * 1024;
 /** What PDF.js is told to do for a page it has not measured yet: a letter page. */
 const LETTER = { width: 612, height: 792 };
 
@@ -37,6 +40,8 @@ interface View {
   turn: number;
   task: RenderTask | null;
   layer: TextLayer | null;
+  /** The page while it is drawn, so that leaving it also lets PDF.js drop what it holds for it (its drawing commands and images). */
+  page: PDFPageProxy | null;
 }
 
 const scroller = document.getElementById('scroller') as HTMLDivElement;
@@ -54,11 +59,16 @@ async function open(bytes: Uint8Array) {
   // A worker that cannot start would leave the document loading for ever.
   worker.addEventListener('error', () => { if (!pdf) say({ frame: PDF_FRAME, type: 'failed', reason: 'damaged' }); });
   GlobalWorkerOptions.workerPort = worker;
+  // Pages are drawn in a second worker, on an OffscreenCanvas, and only the finished picture comes back: this frame shares the Flux tab's
+  // thread in Safari (and wherever a sandboxed frame is not given a process of its own), and one drawing command of a hostile page can
+  // take minutes (#1388 review: one path of 300,000 crossing lines held the tab for 220 s in WebKit and Chromium). A browser that cannot
+  // start it draws here, as before (PDF.js falls back by itself).
+  GlobalWorkerOptions.rendererPorts = [new PdfRenderer()];
   const loading = getDocument({
     data: bytes,
     // Nothing the file says is fetched or run: PDF.js runs a file's scripts only for a viewer that asks (this one does not), no XFA
-    // forms, no fonts or maps by address, no drawing in another thread, and no image of more than 2^25 pixels.
-    enableXfa: false, useWorkerFetch: false, disableWorkerRendering: true, isOffscreenCanvasSupported: false, maxImageSize: 1 << 25, verbosity: 0,
+    // forms, no fonts or maps by address, and no image of more than 2^25 pixels.
+    enableXfa: false, useWorkerFetch: false, maxImageSize: 1 << 25, verbosity: 0,
   });
   try { pdf = await loading.promise; } catch (error) {
     say({ frame: PDF_FRAME, type: 'failed', reason: error instanceof Error && error.name === 'PasswordException' ? 'password' : 'damaged' });
@@ -90,7 +100,7 @@ async function open(bytes: Uint8Array) {
     links.className = 'links';
     element.append(canvas, text, links);
     pages.append(element);
-    views.push({ index, element, canvas, text, links, size: null, scale: 1, near: false, active: false, turn: 0, task: null, layer: null });
+    views.push({ index, element, canvas, text, links, size: null, scale: 1, near: false, active: false, turn: 0, task: null, layer: null, page: null });
   }
   layout();
   new ResizeObserver(() => relayout()).observe(scroller);
@@ -163,6 +173,9 @@ function release(view: View) {
   view.task = null;
   view.layer?.cancel();
   view.layer = null;
+  // Done once any drawing still running has stopped (PDF.js waits for it), so a long file scrolled through does not keep every page's images.
+  view.page?.cleanup();
+  view.page = null;
   view.canvas.width = 0;
   view.canvas.height = 0;
   view.text.replaceChildren();
@@ -172,9 +185,11 @@ function release(view: View) {
 async function draw(view: View, turn: number) {
   const page = await measure(view.index);
   if (!page || turn !== view.turn) return;
+  view.page = page;
   const viewport = page.getViewport({ scale: view.scale });
-  let output = Math.min(window.devicePixelRatio || 1, 2);
-  while (output > 1 && viewport.width * viewport.height * output * output > MOST_PIXELS) output -= 0.25;
+  // Device pixels per CSS pixel: the screen's (at most 2), and less, below 1 if need be, for a page that would pass the pixel or side limit.
+  const output = Math.min(window.devicePixelRatio || 1, 2, Math.sqrt(MOST_PIXELS / (viewport.width * viewport.height)),
+    LONGEST_SIDE / viewport.width, LONGEST_SIDE / viewport.height);
   view.canvas.width = Math.max(1, Math.floor(viewport.width * output));
   view.canvas.height = Math.max(1, Math.floor(viewport.height * output));
   view.canvas.style.width = `${Math.floor(viewport.width)}px`;
