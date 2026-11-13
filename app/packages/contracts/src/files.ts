@@ -13,6 +13,16 @@ export const projectFilesPath = (projectId: string) => `/api/v1/projects/${proje
 export const filePath = (fileId: string) => `/api/v1/files/${fileId}`;
 
 /**
+ * Videos (C-61, #1352): `GET fileVideoPath(id)` plays a video file as its own container type with HTTP Range (206) from disk, as an
+ * attachment under `nosniff` and `sandbox`; access is checked on every request. `POST filePosterPath(projectId, id)` with the raw bytes
+ * of a picture (at most `FILE_LIMITS.posterBytes`) gives a staged video its poster, which the server decodes and re-encodes.
+ * `GET FILE_LIMITS_PATH` says what this instance accepts, as set by its operator.
+ */
+export const fileVideoPath = (fileId: string) => `/api/v1/files/${fileId}/video`;
+export const filePosterPath = (projectId: string, fileId: string) => `/api/v1/projects/${projectId}/files/${fileId}/poster`;
+export const FILE_LIMITS_PATH = '/api/v1/files/limits';
+
+/**
  * A preview of an HTML file in a frame of a Flux page (C-60, #1252): never a tab, never on Flux's origin. The response
  * sandboxes itself (an opaque origin) and fetches nothing; `scripts` turns the page's own inline scripts on for that frame.
  * Other previews read `filePath(id)`: a PDF is drawn by Flux's own viewer frame (#1350), text, Markdown, JSON and CSV/TSV by the web app as text.
@@ -22,6 +32,14 @@ export const filePreviewPath = (fileId: string, scripts = false) => `/api/v1/fil
 export const FILE_LIMITS = {
   /** One file: 1 byte to 5 MiB. Empty files are refused. */
   fileBytes: 5 * 1024 * 1024,
+  /** One video (C-61): the default of the operator's `FLUX_VIDEO_MAX_MIB`, which can be 1 to `videoMaxMib` MiB. A plain space's video only. */
+  videoBytes: 200 * 1024 * 1024,
+  videoMaxMib: 1024,
+  /** A video has this long to arrive; the rest of the files have `receiveSeconds`. */
+  videoReceiveSeconds: 20 * 60,
+  /** A video's poster (C-61): at most this many bytes are taken, and the server keeps a WebP of at most `posterEdge` px on a side. */
+  posterBytes: 512 * 1024,
+  posterEdge: 640,
   /** One message: at most 10 files and 20 MiB together. */
   messageFiles: 10,
   messageBytes: 20 * 1024 * 1024,
@@ -53,6 +71,8 @@ export interface FileDetail {
   pages?: number;
   rows?: number;
   durationMs?: number;
+  /** The container the server recognised from a video's bytes (C-61); absent for every other file and in an encrypted space. */
+  video?: VideoContainer;
 }
 
 /** A file staged by the signed-in person, ready to attach. */
@@ -75,6 +95,77 @@ export interface MessageFile extends FileDetail {
   id: string;
   name: string;
   size: number;
+  /** A video's poster (C-61): the id of its small picture, read through `filePath` like any picture. */
+  poster?: string;
+}
+
+/** What this instance accepts (`FILE_LIMITS_PATH`): the operator's video cap is the only number that varies. */
+export interface FileLimits {
+  fileBytes: number;
+  videoBytes: number;
+  messageFiles: number;
+  messageBytes: number;
+}
+
+/** The containers a video can be (C-61): what the browser plays natively. Matroska, AVI and the rest are ordinary files. */
+export type VideoContainer = 'mp4' | 'webm' | 'mov';
+export const VIDEO_MEDIA_TYPES: Record<VideoContainer, string> = { mp4: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime' };
+const VIDEO_NAMES: Record<string, VideoContainer> = { mp4: 'mp4', m4v: 'mp4', webm: 'webm', mov: 'mov' };
+
+/** The container a file name proposes (`.mp4`, `.m4v`, `.webm`, `.mov`); only a hint: the bytes decide (`videoContainerOf`). */
+export function videoNameContainer(name: string): VideoContainer | null {
+  const dot = name.lastIndexOf('.');
+  return dot > 0 ? VIDEO_NAMES[name.slice(dot + 1).toLowerCase()] ?? null : null;
+}
+export const isVideoName = (name: string) => videoNameContainer(name) !== null;
+
+/** ISO base-media brands that name a picture or a sound, not a video: a HEIC photo, an AVIF, an M4A are not played here. */
+const NOT_VIDEO_BRANDS = new Set(['heic', 'heix', 'hevc', 'hevx', 'heim', 'heis', 'hevm', 'hevs', 'mif1', 'msf1', 'avif', 'avis', 'avio', 'crx ',
+  'M4A ', 'M4B ', 'M4P ', 'F4A ', 'F4B ']);
+const ascii = (bytes: Uint8Array, at: number, length: number) => String.fromCharCode(...bytes.subarray(at, at + length));
+
+/**
+ * The video container these first bytes are, or null (C-61). MP4 and MOV: an ISO base-media `ftyp` box first, 16 to 4,096 bytes long, whose
+ * major brand is not a picture's or a sound's (`qt  ` is a MOV, any other an MP4). WebM: an EBML header whose DocType is `webm`
+ * (Matroska is not one). A name never sets it, and nothing else (SVG, HTML, a ZIP) passes.
+ */
+export function videoContainerOf(head: Uint8Array): VideoContainer | null {
+  if (head.length >= 12 && ascii(head, 4, 4) === 'ftyp') {
+    const size = ((head[0]! << 24) >>> 0) + (head[1]! << 16) + (head[2]! << 8) + head[3]!;
+    if (size < 16 || size > 4096) return null;
+    const brand = ascii(head, 8, 4);
+    return NOT_VIDEO_BRANDS.has(brand) ? null : brand === 'qt  ' ? 'mov' : 'mp4';
+  }
+  if (head.length >= 8 && head[0] === 0x1a && head[1] === 0x45 && head[2] === 0xdf && head[3] === 0xa3) return ebmlDocType(head) === 'webm' ? 'webm' : null;
+  return null;
+}
+
+/** The DocType string of an EBML header at the start of `head` (a size of 1 to 4 bytes, then children), or null. */
+function ebmlDocType(head: Uint8Array): string | null {
+  const vint = (at: number): { value: number; length: number } | null => {
+    const first = head[at];
+    if (first === undefined || first === 0) return null;
+    const length = Math.clz32(first) - 23;
+    if (length > 4 || at + length > head.length) return null; // no EBML header is larger than 4 GiB
+    let value = first & (0xff >> length);
+    for (let i = 1; i < length; i++) value = value * 256 + head[at + i]!;
+    return { value, length };
+  };
+  const size = vint(4);
+  if (!size) return null;
+  let at = 4 + size.length;
+  const end = Math.min(head.length, at + size.value);
+  while (at < end) {
+    const id = vint(at); // an element id keeps its marker bits, which is all the comparison below needs
+    if (!id) return null;
+    const idValue = head.subarray(at, at + id.length).reduce((sum, byte) => sum * 256 + byte, 0);
+    const length = vint(at + id.length);
+    if (!length) return null;
+    const start = at + id.length + length.length;
+    if (idValue === 0x4282) return start + length.value <= head.length ? ascii(head, start, length.value) : null;
+    at = start + length.value;
+  }
+  return null;
 }
 
 const attachedFiles = (count: number) => (count === 1 ? '1 attached file' : count > 1 ? `${count} attached files` : '');

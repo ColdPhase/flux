@@ -796,6 +796,10 @@ export const projectFiles = pgTable('project_files', {
   pageCount: integer('page_count'),
   rowCount: integer('row_count'),
   durationMs: integer('duration_ms'),
+  /** C-61 (0071): the container a video's bytes were recognised as; null for every other file and for any file of an encrypted space. */
+  videoContainer: text('video_container', { enum: ['mp4', 'webm', 'mov'] }),
+  /** C-61 (0071): the staged video this file is the poster of (no foreign key, like a thought's image: a poster never outlives its video's message). */
+  posterOf: uuid('poster_of'),
 }, (table) => [
   unique().on(table.messageId, table.position),
   uniqueIndex('project_files_thought_idx').on(table.thoughtId).where(sql`${table.thoughtId} IS NOT NULL`),
@@ -803,6 +807,7 @@ export const projectFiles = pgTable('project_files', {
   uniqueIndex('project_files_human_upload_idx').on(table.projectId, table.uploaderId, table.uploadId).where(sql`${table.uploaderId} IS NOT NULL`),
   uniqueIndex('project_files_agent_upload_idx').on(table.projectId, table.uploaderAgentId, table.uploadId).where(sql`${table.uploaderAgentId} IS NOT NULL`),
   index('project_files_expiry_idx').on(table.expiresAt).where(sql`${table.publishedAt} IS NULL`),
+  index('project_files_poster_idx').on(table.posterOf).where(sql`${table.posterOf} IS NOT NULL`),
   foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
   foreignKey({ columns: [table.workspaceId, table.uploaderAgentId], foreignColumns: [agents.workspaceId, agents.id] }),
   check('project_file_exact_uploader', sql`num_nonnulls(${table.uploaderId}, ${table.uploaderAgentId}) = 1`),

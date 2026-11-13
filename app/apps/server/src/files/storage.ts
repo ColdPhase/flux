@@ -7,6 +7,8 @@ import { FILE_LIMITS } from '@flux/contracts';
 import { FileReceiveTimeoutError, FileTooLargeError, type FileStorage } from '@flux/core';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+/** One read from disk when a video is streamed: large enough for the disk, small enough that many players cost little memory. */
+const STREAM_CHUNK = 256 * 1024;
 const missing = (error: unknown) => ['ENOENT', 'ELOOP', 'ENOTDIR'].includes((error as NodeJS.ErrnoException).code ?? '');
 
 /** App-owned 0700 directories and random paths, all opened without following symlinks. */
@@ -80,6 +82,20 @@ export async function diskFileStorage(filesDir: string, options: { cipherFor?: O
         } finally { await file.close(); }
       } catch (error) { if (missing(error)) return null; throw error; }
   }
+  /** A plain object opened for reading without following links, with its size on disk; null when missing or not a regular file. */
+  async function openPlain(id: string) {
+    let handle: Awaited<ReturnType<typeof open>> | undefined;
+    try {
+      handle = await open(await objectPath(id), constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+      const stat = await handle.stat();
+      if (!stat.isFile() || stat.size < 1) { await handle.close(); return null; }
+      return { handle, size: stat.size };
+    } catch (error) {
+      await handle?.close().catch(() => undefined);
+      if (missing(error)) return null;
+      throw error;
+    }
+  }
   async function writeAll(file: Awaited<ReturnType<typeof open>>, bytes: Uint8Array) {
     let offset = 0;
     while (offset < bytes.byteLength) offset += (await file.write(bytes, offset, bytes.byteLength - offset)).bytesWritten;
@@ -137,7 +153,29 @@ export async function diskFileStorage(filesDir: string, options: { cipherFor?: O
       if (!cipher) return bytes;
       try { return cipher.open(Buffer.from(bytes)); } catch { return null; } // tampered or truncated: unavailable, never served
     },
+    async stream(id, range) {
+      // A sealed object is one AES-GCM message: its tag is known only after the last byte, so it is opened whole by `read`.
+      if (await cipherFor(id)) return null;
+      const opened = await openPlain(id);
+      if (!opened) return null;
+      const { handle, size } = opened;
+      if (size !== range.size || range.start < 0 || range.end < range.start || range.end >= size) { await handle.close(); return null; }
+      // The handle closes itself when the stream ends, fails or is destroyed (a client that went away).
+      return handle.createReadStream({ start: range.start, end: range.end, autoClose: true, highWaterMark: STREAM_CHUNK });
+    },
     async has(id, size, sha256) {
+      if (!await cipherFor(id)) {
+        // A plain object is checked where it lies: its size, and its digest as a stream (a video is far larger than memory should hold).
+        const opened = await openPlain(id);
+        if (!opened) return false;
+        const { handle } = opened;
+        if (opened.size !== size) { await handle.close(); return false; }
+        if (sha256 === undefined) { await handle.close(); return true; }
+        const hash = createHash('sha256');
+        try { for await (const chunk of handle.createReadStream({ autoClose: false, highWaterMark: STREAM_CHUNK })) hash.update(chunk as Buffer); }
+        finally { await handle.close(); }
+        return hash.digest('hex') === sha256;
+      }
       const bytes = await storage.read(id);
       return bytes !== null && bytes.byteLength === size
         && (sha256 === undefined || createHash('sha256').update(bytes).digest('hex') === sha256);

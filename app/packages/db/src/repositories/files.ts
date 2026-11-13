@@ -1,6 +1,6 @@
-import { and, asc, eq, inArray, isNotNull, isNull, lte, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull, isNull, lte, sql, type SQL } from 'drizzle-orm';
 type ActorRef = { kind: 'human' | 'agent'; id: string };
-import type { FileDetail, MessageFile } from '@flux/contracts';
+import type { FileDetail, MessageFile, VideoContainer } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 import { openRows, sealFor, sealOf } from '../sealing.js';
@@ -16,6 +16,11 @@ const uploaderFilter = (actor: ActorRef) => actor.kind === 'human' ? eq(f.upload
 export function fileRows(db: DbExecutor) {
   // F-030: a sealed workspace's file name and SHA-256 are sealed (a sealed digest); every read opens them.
   const open = <T extends typeof f.$inferSelect>(rows: T[]) => openRows(db, 'project_files', rows);
+  const staged = async (projectId: string, uploader: ActorRef, now: Date, kind: SQL) => {
+    const [row] = await db.select({ bytes: sql<number>`COALESCE(SUM(CASE WHEN ${f.state} = 'receiving' THEN ${f.reservedBytes} ELSE ${f.size} END), 0)::int` })
+      .from(f).where(and(eq(f.projectId, projectId), uploaderFilter(uploader), isNull(f.publishedAt), sql`${f.expiresAt} > ${now}`, kind));
+    return row?.bytes ?? 0;
+  };
   return {
     async lockUploader(projectId: string, uploader: ActorRef) {
       await db.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`files:${projectId.toLowerCase()}:${uploader.kind}:${uploader.kind === 'agent' ? uploader.id.toLowerCase() : uploader.id}`}))`);
@@ -29,11 +34,22 @@ export function fileRows(db: DbExecutor) {
       return row ? wire(row) : null;
     },
     async stagedBytes(projectId: string, uploader: ActorRef, now: Date) {
-      const [row] = await db.select({ bytes: sql<number>`COALESCE(SUM(CASE WHEN ${f.state} = 'receiving' THEN ${f.reservedBytes} ELSE ${f.size} END), 0)::int` })
-        .from(f).where(and(eq(f.projectId, projectId), uploaderFilter(uploader), isNull(f.publishedAt), sql`${f.expiresAt} > ${now}`));
-      return row?.bytes ?? 0;
+      return staged(projectId, uploader, now, isNull(f.videoContainer));
     },
-    async reserve(input: { id: string; workspaceId: string; projectId: string; uploader: ActorRef; uploadId: string; name: string; reservedBytes: number; expiresAt: Date; replayOf?: string }) {
+    /** C-61: the same for the uploader's videos, which have their own allowance. */
+    async stagedVideoBytes(projectId: string, uploader: ActorRef, now: Date) {
+      return staged(projectId, uploader, now, isNotNull(f.videoContainer));
+    },
+    /** F-030: an encrypted workspace's files are sealed and are never played. */
+    async encrypted(workspaceId: string) {
+      const [row] = await db.select({ encrypted: schema.workspaces.encrypted }).from(schema.workspaces).where(eq(schema.workspaces.id, workspaceId));
+      return row?.encrypted === true;
+    },
+    /** C-61: the posters of a staged video (an earlier one is replaced by a new one). */
+    async postersOf(videoId: string) {
+      return (await open(await db.select().from(f).where(eq(f.posterOf, videoId)))).map(wire);
+    },
+    async reserve(input: { id: string; workspaceId: string; projectId: string; uploader: ActorRef; uploadId: string; name: string; reservedBytes: number; expiresAt: Date; replayOf?: string; videoContainer?: VideoContainer; posterOf?: string }) {
       const { uploader, ...fields } = input;
       const seal = await sealOf(db, fields.workspaceId, { write: true });
       const [row] = await open(await db.insert(f).values(await sealFor(db, 'project_files', fields.workspaceId, { ...fields, state: 'receiving' as const,
@@ -59,7 +75,7 @@ export function fileRows(db: DbExecutor) {
         if (!keys || !keys.live.includes(keyVersion)) return 'key_changed';
         stamped = { keyVersion };
       }
-      const rows = await db.update(f).set({ ...fields, ...stamped, state: 'ready', pageCount: detail?.pages ?? null, rowCount: detail?.rows ?? null, durationMs: detail?.durationMs ?? null }).where(and(eq(f.id, id), eq(f.state, 'receiving'),
+      const rows = await db.update(f).set({ ...fields, ...stamped, state: 'ready', pageCount: detail?.pages ?? null, rowCount: detail?.rows ?? null, durationMs: detail?.durationMs ?? null, videoContainer: detail?.video ?? null }).where(and(eq(f.id, id), eq(f.state, 'receiving'),
         isNull(f.publishedAt), sql`${f.expiresAt} > ${input.readyAt}`)).returning({ id: f.id });
       return rows.length === 1;
     },
@@ -113,21 +129,38 @@ export function fileRows(db: DbExecutor) {
       return groupMessageFiles(new Map(), await open(await db.select().from(f).where(and(eq(f.projectId, projectId), isNotNull(f.messageId)))
         .orderBy(asc(f.messageId), asc(f.position))));
     },
+    /**
+     * C-61: gives the posters of these just-published videos to the message they went to (a poster is published with its video, at the
+     * same time, and is read through the download route under the video's own access).
+     */
+    async publishPosters(videoIds: readonly string[], messageId: string, publishedAt: Date): Promise<Map<string, string>> {
+      if (!videoIds.length) return new Map();
+      const rows = await db.update(f).set({ messageId, position: null, publishedAt, expiresAt: null })
+        .where(and(inArray(f.posterOf, [...videoIds]), eq(f.state, 'ready'), isNull(f.publishedAt))).returning({ id: f.id, posterOf: f.posterOf });
+      return new Map(rows.map((row) => [row.posterOf!, row.id]));
+    },
   };
 }
 
 const MESSAGE_ID_BATCH = 10_000;
 
-/** What the bytes said at upload (#469); a key only where there is a value, so every earlier file's JSON is unchanged. */
-export function fileDetail(row: Pick<typeof f.$inferSelect, 'pageCount' | 'rowCount' | 'durationMs'>): FileDetail {
+/** What the bytes said at upload (#469, and a video's container, C-61); a key only where there is a value, so every earlier file's JSON is unchanged. */
+export function fileDetail(row: Pick<typeof f.$inferSelect, 'pageCount' | 'rowCount' | 'durationMs' | 'videoContainer'>): FileDetail {
   return { ...(row.pageCount !== null ? { pages: row.pageCount } : {}), ...(row.rowCount !== null ? { rows: row.rowCount } : {}),
-    ...(row.durationMs !== null ? { durationMs: row.durationMs } : {}) };
+    ...(row.durationMs !== null ? { durationMs: row.durationMs } : {}), ...(row.videoContainer !== null ? { video: row.videoContainer } : {}) };
 }
 
+/**
+ * The files of messages, each message's in attachment order. A poster (C-61) is not a file of the message: it is the `poster` of the
+ * video it belongs to, and a video's poster that was removed leaves the video without one.
+ */
 function groupMessageFiles(grouped: Map<string, MessageFile[]>, rows: readonly (typeof f.$inferSelect)[]) {
+  const posters = new Map(rows.filter((row) => row.posterOf !== null).map((row) => [row.posterOf!, row.id]));
   for (const row of rows) {
+    if (row.posterOf !== null) continue;
     const list = grouped.get(row.messageId!) ?? [];
-    list.push({ id: row.id, name: row.name, size: row.size!, ...fileDetail(row) });
+    const poster = posters.get(row.id);
+    list.push({ id: row.id, name: row.name, size: row.size!, ...fileDetail(row), ...(poster ? { poster } : {}) });
     grouped.set(row.messageId!, list);
   }
   return grouped;

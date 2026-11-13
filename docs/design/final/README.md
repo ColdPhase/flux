@@ -714,6 +714,32 @@ These functional rules from UI116-4 remain required:
     `=`, `+`, `-` or `@` shown as written text; the line under the sheet says how many rows. A table
     wider than 200 columns shows the first 200 and says "Showing the first 200 of N columns. Download to see
     them all."
+- **A video** (founder decision 2026-11-13, [#1352](https://github.com/ColdPhase/flux/issues/1352),
+  [C-61](../../product/decisions.md)). MP4, WebM and MOV that the browser plays natively play inside
+  Flux; the drawing adds no new surface, only the row's picture and the viewer's stage.
+  - **The row** is the file row, unchanged in size (56 px, radius `--r`, `--sub`): in place of the
+    page icon a 72 × 40 poster (the first frame the sender's browser drew), radius `--r-sm`, cropped
+    to fill, with the play glyph (the voice note's icon) centred on it over the same dark scrim as a
+    photo grid's "+N", no other colour. The
+    name, "Video · 0:42 · 14.2 MiB" (the playing time only when the file says it) and the download
+    button follow as in any file row. Pressing the poster or the name opens the viewer; the download
+    button downloads. A video without a poster (the sender's browser could not draw one, or an
+    encrypted space) keeps the page icon with its video pictogram and the same row. The phone draws
+    the same row at the same size.
+  - **The viewer** is the file preview's frame (always dark, Close at the top left, the name with
+    "Video · size" in the middle, Download in the bottom bar, Esc closes and focus returns to the
+    row). The stage holds the player, `object-fit: contain` on black, up to the stage's size, with
+    the browser's own controls (`controls`, `playsinline`) and the poster shown until Play. It
+    starts at once and seeks without loading the file: the bytes come in ranges. On the phone the
+    stage is the whole screen between the bars, and the browser's controls and full-screen button do
+    the rest. Closing stops the video and its download.
+  - **A video this browser cannot play** (its codec is not one the browser has) shows on the stage
+    "This browser can't play this video." with Download as the one button, as a PDF does. A person
+    who lost access sees "You no longer have access to this file." and nothing else.
+  - **In the composer** a video is a thumbnail like a photo's (its poster once drawn, else the page
+    icon), with its name, "Video · size · Uploading 42%" and ×; Retry upload as for any file. Over the
+    limit it says "A video can be at most 200 MiB." (the operator's number); in an encrypted space a
+    video is an ordinary file ("A file can be at most 5 MiB.") and downloads.
 
 | | |
 | --- | --- |

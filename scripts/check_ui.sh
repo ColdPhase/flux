@@ -70,6 +70,8 @@ export FLUX_AI_PRIVATE_TARGETS=openai-mock
 # Link cards (#469): on, with public.test connecting to the Compose link-mock (tests/ui/link_mock.py). Everything else
 # is judged by the production rules: a private address, a non-default port or a redirect there fetches nothing.
 export FLUX_LINK_PREVIEWS=on
+# A small video cap, so a UI test of the limit needs no 200 MiB file (C-61); the page reads it from GET /api/v1/files/limits.
+export FLUX_VIDEO_MAX_MIB=12
 export FLUX_TEST_LINK_PREVIEW_HOSTS=public.test=link-mock:8098
 if [ -n "${FLUX_UI_SCREENSHOT_DIR:-}" ]; then mkdir -p "$FLUX_UI_SCREENSHOT_DIR"; fi
 . scripts/test_images.sh

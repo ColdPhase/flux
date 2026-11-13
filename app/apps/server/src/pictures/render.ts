@@ -37,6 +37,7 @@ export function sharpPictureRenderer({ waiting = 4, picturesWaiting = 16 }: { wa
   }
   return {
     render: (bytes) => turn(() => render(bytes)),
+    poster: (bytes) => turn(() => poster(bytes)),
     full: () => running && queue.length >= waiting,
     // Stored pictures wait in the same line, a few more than photos may: a message carries up to ten files, and each one has already arrived.
     canonical: (bytes) => turn(() => canonical(bytes), picturesWaiting),
@@ -116,6 +117,35 @@ async function render(bytes: Uint8Array): Promise<Renditions> {
         .timeout({ seconds: SECONDS }).resize(size, size, { fit: 'fill' }).webp({ quality: 82, alphaQuality: 90 }).toBuffer();
     }
     return renditions;
+  } catch (error) {
+    if (error instanceof InvalidInputError) throw error;
+    const message = error instanceof Error ? error.message : '';
+    if (/pixel limit/i.test(message)) throw new PayloadTooLargeError('A picture is at most 40 megapixels', 'PICTURE_TOO_MANY_PIXELS');
+    throw new InvalidInputError('This picture cannot be read', 'UNREADABLE_PICTURE');
+  }
+}
+
+/**
+ * A video's poster (C-61) from the picture the sender's browser drew, on the path every stored picture takes (#1343): the bytes say what it
+ * is (PNG, JPEG or WebP, never anything else), the walk (`cleanPicture`) wants one still picture whose headers agree on one size within the
+ * bounds, libvips reads the picture as the walk rebuilt it, and only the pixels leave libvips, as a WebP at most `FILE_LIMITS.posterEdge` px on
+ * its longest side, so no input metadata and nothing appended to the file survives. The stored poster is then canonicalized like any picture.
+ */
+async function poster(bytes: Uint8Array): Promise<Uint8Array> {
+  const type = imageTypeOf(bytes);
+  if (!type || type === 'image/gif') throw new InvalidInputError('The poster must be a PNG, JPEG or WebP picture', 'UNSUPPORTED_PICTURE');
+  const walked = cleanPicture(bytes);
+  if (!walked.ok || walked.frames !== 1) {
+    if (!walked.ok && walked.reason === 'too_many_pixels') throw new PayloadTooLargeError('A picture is at most 8,000 pixels on a side and 40 megapixels', 'PICTURE_TOO_MANY_PIXELS');
+    throw new InvalidInputError('This picture cannot be read', 'UNREADABLE_PICTURE');
+  }
+  const input = Buffer.from(walked.bytes);
+  try {
+    const meta = await sharp(input, DECODE).metadata();
+    if (meta.format !== FORMAT[type]) throw new InvalidInputError('The poster must be a PNG, JPEG or WebP picture', 'UNSUPPORTED_PICTURE');
+    return await sharp(input, DECODE).timeout({ seconds: SECONDS }).autoOrient()
+      .resize(FILE_LIMITS.posterEdge, FILE_LIMITS.posterEdge, { fit: 'inside', withoutEnlargement: true })
+      .toColourspace('srgb').webp({ quality: 78 }).toBuffer();
   } catch (error) {
     if (error instanceof InvalidInputError) throw error;
     const message = error instanceof Error ? error.message : '';

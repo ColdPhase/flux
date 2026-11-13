@@ -1,26 +1,36 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { Readable } from 'node:stream';
-import { FILE_LIMITS } from '@flux/contracts';
+import { FILE_LIMITS, FILE_LIMITS_PATH, VIDEO_MEDIA_TYPES, isVideoName, type FileLimits, type StagedFile } from '@flux/contracts';
 import { type FileStorage, ForbiddenError, InvalidInputError, NotFoundError, PayloadTooLargeError, type PictureCanonicalizer } from '@flux/core';
 import type { Database } from '@flux/db';
 import type { SessionResolver } from '../identity/index.js';
 import { useDomainErrors } from '../http/commands.js';
 import { fileUseCases } from './adapters.js';
 
-export async function fileRoutes(app: FastifyInstance, { db, sessions, storage, pictures }:
-  { db: Database; sessions: SessionResolver; storage: FileStorage; pictures?: PictureCanonicalizer }) {
+export async function fileRoutes(app: FastifyInstance, { db, sessions, storage, pictures, videoBytes = FILE_LIMITS.videoBytes, poster }:
+  { db: Database; sessions: SessionResolver; storage: FileStorage; pictures?: PictureCanonicalizer; videoBytes?: number; poster?: (bytes: Uint8Array) => Promise<Uint8Array> }) {
   useDomainErrors(app);
-  const files = fileUseCases(db, storage, pictures);
+  const files = fileUseCases(db, storage, { videoBytes, ...(pictures ? { pictures } : {}), ...(poster ? { poster } : {}) });
+  // The most any upload may be (a video); the use case holds each file to its own limit once it knows what the file is (C-61).
+  const largest = Math.max(FILE_LIMITS.fileBytes, videoBytes);
   app.addContentTypeParser('application/octet-stream', (_request, stream, done) => done(null, stream));
+  app.get(FILE_LIMITS_PATH, async (request): Promise<FileLimits> => {
+    await sessions.requirePrincipal(request);
+    return files.limits();
+  });
   app.post<{ Params: { projectId: string }; Querystring: { uploadId: string; name: string }; Body: Readable | undefined }>(
-    '/api/v1/projects/:projectId/files', { bodyLimit: FILE_LIMITS.fileBytes,
+    '/api/v1/projects/:projectId/files', { bodyLimit: largest,
       schema: { querystring: { type: 'object', required: ['uploadId', 'name'], additionalProperties: false,
         properties: { uploadId: { type: 'string' }, name: { type: 'string' } } } },
       onRequest: async (request) => {
         if (!/^application\/octet-stream(?:\s*;|$)/i.test(request.headers['content-type'] ?? ''))
           throw new InvalidInputError('Upload raw application/octet-stream bytes', 'INVALID_FILE_CONTENT_TYPE');
         const size = Number(request.headers['content-length']);
-        if (size > FILE_LIMITS.fileBytes) throw new PayloadTooLargeError('A file is at most 5 MiB', 'FILE_TOO_LARGE');
+        if (size > largest) {
+          // Over anything a video may be: said in the words of what the name says it is (the use case says the rest).
+          const name = (request.query as { name?: unknown }).name;
+          throw new PayloadTooLargeError(typeof name === 'string' && isVideoName(name) ? `A video is at most ${Math.round(videoBytes / (1024 * 1024) * 10) / 10} MiB` : 'A file is at most 5 MiB', 'FILE_TOO_LARGE');
+        }
       },
       onSend: async (request, reply, payload) => {
         if (!request.raw.complete) reply.header('connection', 'close');
@@ -38,12 +48,34 @@ export async function fileRoutes(app: FastifyInstance, { db, sessions, storage, 
         size === undefined ? undefined : Number(size));
       return reply.code(201).send(staged);
     });
-  app.get<{ Params: { fileId: string } }>('/api/v1/files/:fileId', async (request, reply) => {
-    const file = await files.download((await sessions.requirePrincipal(request)).principal, request.params.fileId);
-    return reply.header('Content-Type', 'application/octet-stream').header('Content-Length', file.size)
-      .header('Content-Disposition', `attachment; filename="download"; filename*=UTF-8''${encodedName(file.name)}`)
-      .header('X-Content-Type-Options', 'nosniff').header('Cache-Control', 'private, no-store')
-      .header('Content-Security-Policy', 'sandbox').send(Buffer.from(file.bytes));
+  // Every stored file is an attachment, whole or by byte range (C-61: a resumed download), read from disk as a stream. Access is checked
+  // on every request.
+  // HEAD is its own route, not Fastify's automatic one, which would answer a Content-Length of 0.
+  app.route<{ Params: { fileId: string } }>({ method: ['GET', 'HEAD'], url: '/api/v1/files/:fileId', handler: async (request, reply) => {
+    const file = await files.open((await sessions.requirePrincipal(request)).principal, request.params.fileId, openRequest(request));
+    return sendStored(reply, file, 'application/octet-stream');
+  } });
+  // A video played by the page's own `<video>` (C-61): the container type its bytes were recognised as, an attachment under `nosniff` and
+  // `sandbox` all the same (a navigation to it saves it, never shows it), with Range so it starts at once and seeks.
+  app.route<{ Params: { fileId: string } }>({ method: ['GET', 'HEAD'], url: '/api/v1/files/:fileId/video', handler: async (request, reply) => {
+    const file = await files.open((await sessions.requirePrincipal(request)).principal, request.params.fileId, { ...openRequest(request), video: true });
+    return sendStored(reply, file, VIDEO_MEDIA_TYPES[file.video!]);
+  } });
+  // The picture the sender's browser drew from a staged video (C-61): raw bytes, decoded and re-encoded by the server.
+  app.post<{ Params: { projectId: string; fileId: string }; Body: Readable | undefined }>('/api/v1/projects/:projectId/files/:fileId/poster', {
+    bodyLimit: FILE_LIMITS.posterBytes,
+    onRequest: async (request) => {
+      if (!/^application\/octet-stream(?:\s*;|$)/i.test(request.headers['content-type'] ?? ''))
+        throw new InvalidInputError('Upload raw application/octet-stream bytes', 'INVALID_FILE_CONTENT_TYPE');
+      if (Number(request.headers['content-length']) > FILE_LIMITS.posterBytes) throw new PayloadTooLargeError('A poster is at most 512 KiB', 'POSTER_TOO_LARGE');
+    },
+    onSend: async (request, reply, payload) => { if (!request.raw.complete) reply.header('connection', 'close'); return payload; },
+    onResponse: async (request) => { if (!request.raw.complete) request.raw.destroy(); },
+  }, async (request, reply): Promise<StagedFile> => {
+    const principal = (await sessions.requirePrincipal(request)).principal;
+    const size = request.headers['content-length'];
+    const staged = await files.stagePoster(principal, request.params.projectId, request.params.fileId, request.body ?? Readable.from([]), size === undefined ? undefined : Number(size));
+    return reply.code(201).send(staged);
   });
   // A preview of someone else's HTML page (C-60, #1252): only inside a frame of a Flux page, sandboxed to an opaque origin by its own
   // policy, with nothing fetched. The frame's `sandbox` attribute repeats it; access is the download's. A PDF is not framed: Flux draws
@@ -131,3 +163,21 @@ export function previewPolicy(scripts: boolean): string {
 /** A preview may ask the browser for nothing: no camera or microphone (even when Flux holds them for a call), no location, no screen. */
 export const PREVIEW_PERMISSIONS = 'camera=(), microphone=(), display-capture=(), geolocation=(), payment=(), usb=(), serial=(), midi=(), '
   + 'accelerometer=(), gyroscope=(), magnetometer=(), fullscreen=()';
+
+/** What a request asks of a stored file: its byte range, and nothing at all for a HEAD. `If-Range` needs a validator Flux does not send, so it gets the whole file. */
+function openRequest(request: FastifyRequest): { range?: string; head: boolean } {
+  const range = request.headers.range;
+  return { head: request.method === 'HEAD', ...(typeof range === 'string' && !request.headers['if-range'] ? { range } : {}) };
+}
+
+/** A stored file as an attachment of `type` under `nosniff` and `sandbox`: all of it (200), a byte range (206) or a refusal of the range (416). */
+function sendStored(reply: FastifyReply, file: { name: string; size: number; status: 200 | 206 | 416; start: number; end: number; body: AsyncIterable<Uint8Array> | null }, type: string) {
+  reply.header('Content-Type', type).header('Accept-Ranges', 'bytes')
+    .header('Content-Disposition', `attachment; filename="download"; filename*=UTF-8''${encodedName(file.name)}`)
+    .header('X-Content-Type-Options', 'nosniff').header('Cache-Control', 'private, no-store')
+    .header('Content-Security-Policy', 'sandbox').header('Cross-Origin-Resource-Policy', 'same-origin');
+  if (file.status === 416) return reply.code(416).header('Content-Range', `bytes */${file.size}`).header('Content-Length', 0).send();
+  reply.header('Content-Length', file.end - file.start + 1);
+  if (file.status === 206) reply.code(206).header('Content-Range', `bytes ${file.start}-${file.end}/${file.size}`);
+  return reply.send(file.body ? file.body instanceof Readable ? file.body : Readable.from(file.body) : undefined);
+}

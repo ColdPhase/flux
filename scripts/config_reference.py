@@ -84,6 +84,8 @@ GROUPS = [
     ("email", "Email", "Optional. Without it password reset reports unavailable; the in-app Inbox and push keep working."),
     ("push", "Web Push", "Optional, all three or none. See [phones, tablets and push](mobile-and-push.md)."),
     ("collaboration", "Collaboration, link cards and the live stream", ""),
+    ("files", "Files and video",
+     "Every file is at most 5 MiB, except a video, which has its own limit. See [requirements](requirements.md) for the disk."),
     ("media", "Live media: LiveKit and TURN",
      "Only with the optional overlays `compose.live.yaml` and `compose.live.turn.yaml`, layered on the release "
      "`compose.yaml` (both ship with every release; the repository copies are in `docker/`) or on the source Compose "
@@ -202,6 +204,13 @@ VARIABLES: dict[str, Var] = {
         "`on` lets the server fetch the title and description of links in messages for their cards. Only public "
         "`http(s)` addresses on default ports; never in encrypted spaces, and never for a line an agent that runs on the server wrote. "
         "A fetch tells the site this server's address.", "on"),
+    # --- files
+    "FLUX_VIDEO_MAX_MIB": Var("files", "integer, 1–1024 MiB",
+        "The largest video one person can send (#1352, C-61). MP4, WebM and MOV files that a browser plays natively play inside Flux and seek "
+        "without loading in full (the server answers HTTP range requests from disk); they are stored as sent, never converted, and each counts "
+        "against the `files` volume. Every other file stays at 5 MiB, and in an encrypted space a video is an ordinary 5 MiB file that "
+        "downloads. A video is a stream and an upload of this size must get through your reverse proxy: its body limit must be at least this "
+        "(nginx: `client_max_body_size`). Other values stop the API.", "500"),
     "FLUX_WEB_READS": Var("ai", "`on` · `off`",
         "On by default (founder direction 2026-11-08, C-29): a server agent's run reads public web pages and searches the web. "
         "`off` turns both off. Reading is Flux's `flux_read_web` tool (read-only, GET only), with the guard of link cards: public `http(s)` addresses on default "

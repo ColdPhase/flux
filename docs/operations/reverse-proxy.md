@@ -152,7 +152,7 @@ references: [reverse proxy](https://caddyserver.com/docs/caddyfile/directives/re
 The same whole-origin rule with nginx. Put this in a file under `/etc/nginx/conf.d/` (the `map`
 block must be at `http` level, which `conf.d` files are): pass every path, keep `Host`, forward WebSocket upgrades,
 replace the client's `X-Forwarded-For` with the address nginx sees, and let request bodies through
-(nginx accepts 1 MiB by default; Flux takes files up to 5 MiB).
+(nginx accepts 1 MiB by default; Flux takes files up to 5 MiB and a video up to [`FLUX_VIDEO_MAX_MIB`](configuration.md#flux_video_max_mib), 200 MiB by default).
 
 ```nginx
 map $http_upgrade $connection_upgrade {
@@ -168,8 +168,9 @@ server {
     ssl_certificate     /etc/letsencrypt/live/flux.example.org/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/flux.example.org/privkey.pem;
 
-    # Files up to 5 MiB are accepted by Flux; nginx's default is 1 MiB.
-    client_max_body_size 10m;
+    # Files up to 5 MiB, and videos up to FLUX_VIDEO_MAX_MIB (200 MiB by default), are accepted by Flux; nginx's default is 1 MiB.
+    # Keep this at least as large as FLUX_VIDEO_MAX_MIB, or a video fails with 413 from nginx.
+    client_max_body_size 210m;
 
     location / {
         proxy_pass http://127.0.0.1:8081;
@@ -276,7 +277,7 @@ public DNS were not exercised.
 Any proxy works when it serves the whole origin from one host name, passes WebSocket upgrades on any
 path (`/api/v1/stream`, `/api/v1/typing`, `/api/v1/agent-runtime/console`, and `/media/*` with
 live media), does not buffer or time
-out long-lived connections sooner than a few minutes, accepts request bodies of at least 5 MiB, and
+out long-lived connections sooner than a few minutes, accepts request bodies of at least the largest video you allow (5 MiB for everything else), passes `Range` requests and `206 Partial Content` answers through (a video seeks with them), and
 does not rewrite paths, `Host`, cookies or `Authorization`. A CDN or second proxy in front changes
 which address Flux sees: trust only the hop that connects to Flux, and make sure that hop replaces
 any client-supplied `X-Forwarded-For`.

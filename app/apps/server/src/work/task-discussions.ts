@@ -1,5 +1,5 @@
 import { fileRows, needsYouRows, taskDiscussionRows, workRows, type Database, type DbExecutor, type Transaction } from '@flux/db';
-import { lockAttachments, createTaskDiscussionUseCases, type FileStorage, type TaskDiscussionEventIntent, type TaskDiscussionPorts, type TaskDiscussionUnitOfWork } from '@flux/core';
+import { lockAttachments, storedDetail, createTaskDiscussionUseCases, type FileStorage, type TaskDiscussionEventIntent, type TaskDiscussionPorts, type TaskDiscussionUnitOfWork } from '@flux/core';
 import { policyWorkAccess } from './access.js';
 import { transactionEventSession, type TransactionEventSession } from './transaction-events.js';
 import { projectAuthorOwners } from '../conversation/author-owners.js';
@@ -16,7 +16,7 @@ export function taskDiscussionPorts(tx: Transaction, events: TaskDiscussionPorts
       save: (messageId, workspaceId, references) => messageReferences(tx).save({ kind: 'project', id: messageId }, workspaceId, references),
       cards: (principal, workspaceId, messageIds) => messageReferences(tx).cards(principal, { kind: 'project', workspaceId }, messageIds) },
     ...(storage ? { attachments: { lock: async (projectId: string, author: { kind: 'human' | 'agent'; id: string }, ids: readonly string[]) =>
-      (await lockAttachments(fileRows(tx), storage, projectId, author, ids, () => new Date())).map((row) => ({ id: row.id, name: row.name, size: row.size! })) } } : {}),
+      (await lockAttachments(fileRows(tx), storage, projectId, author, ids, () => new Date())).map((row) => ({ id: row.id, name: row.name, size: row.size!, ...storedDetail(row) })) } } : {}),
   };
 }
 
