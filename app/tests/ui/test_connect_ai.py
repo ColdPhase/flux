@@ -185,7 +185,8 @@ class ConnectAiJourney(unittest.TestCase):
         expect(connect.get_by_role("button", name="Connect another")).to_have_count(0)
         connect.get_by_role("button", name="Connect AI", exact=True).click()
         window = page.get_by_role("dialog", name="Connect your AI")
-        expect(window).to_contain_text("Flux adds no limits of its own.")
+        expect(window).to_contain_text("Connect the AI you pay for.")
+        expect(window).not_to_contain_text("each agent uses one")
         for kind, title in (("claude_plan", "Claude plan"), ("chatgpt_plan", "ChatGPT plan")):
             row = window.locator(f"[data-choice={kind}]")
             expect(row).to_contain_text(title)
