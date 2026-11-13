@@ -150,7 +150,7 @@ class AgentPictures(unittest.TestCase):
         shot(jo, "agent-picture-1440-light-private-card")
         # The run asked the provider with the tool, and the server, not the browser, fetched the picture.
         sent = [item for item in mock("/__requests")["requests"] if item["path"] == "/v1/messages"]
-        self.assertTrue(any(tool["name"] == "flux_attach_image" for tool in sent[0]["body"]["tools"]))
+        self.assertTrue(any(tool["name"].removeprefix("mcp__flux__") == "flux_attach_image" for tool in sent[0]["body"]["tools"]))
         self.assertIn("The picture is attached to your answer", json.dumps(sent[-1]["body"]))
         expect(kai.locator(".assistant-private")).to_have_count(0)
         expect(kai.locator(".photo-grid img")).to_have_count(0)
