@@ -717,7 +717,7 @@ class AdaptiveMatrix(AdaptiveBase):
                 open_details_in_app(page)
                 details = page.locator("#details.ui-panel--docked")
                 expect(details).to_be_visible()
-                expect(details.get_by_role("button", name="Thread")).to_be_visible()
+                expect(details.get_by_role("button", name="Thread", exact=True)).to_be_visible()
                 expect(page.locator("#thread")).to_have_count(0)
                 panel = details.bounding_box()
                 stream = page.locator(".project-convo__feed").bounding_box()

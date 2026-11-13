@@ -204,7 +204,11 @@ def open_details_in_app(page: Page) -> None:
     and a thread's panel gives way to the task with a way back to it."""
     project = re.search(r"/projects/([0-9a-f-]{36})", page.url)
     assert project, page.url
-    page.evaluate("""([path, id]) => { window.history.pushState({}, '', `${path}?open=work:${id}`); window.dispatchEvent(new PopStateEvent('popstate')); }""",
+    page.evaluate("""([path, id]) => {
+        const state = window.history.state ?? {};
+        window.history.pushState({ usr: null, key: Math.random().toString(36).slice(2, 10), idx: (state.idx ?? 0) + 1 }, '', `${path}?open=work:${id}`);
+        window.dispatchEvent(new PopStateEvent('popstate'));
+    }""",
                   [urllib.parse.urlsplit(page.url).path, panel_task(page, project.group(1))])
 
 
