@@ -77,10 +77,9 @@ describe('search: what the reader may not read does not move the order of what t
   }
 
   test('an agent of the owner is held to the same: its search ranks by what its owner may read', async () => {
-    const owner = await person('Agent Owner');
+    const [owner, stranger] = await Promise.all(['Agent Owner', 'Agent Stranger'].map(person));
     const ws = await workspace(owner, 'Agent rank workspace');
     const open = await createProject(owner, ws.id, 'Agent open', 'workspace');
-    const hidden = await createProject(owner, ws.id, 'Agent hidden', 'restricted');
     const agent = await createAgent(human(owner), ws.id, { name: 'Rankbot' }, db, accessPorts);
     const bot: Principal = { id: agent.id, kind: 'agent' };
     const known = word('kontrol');
@@ -93,8 +92,11 @@ describe('search: what the reader may not read does not move the order of what t
     const run = async () => (await searchRows(db).ranked(await policySearchAccess(db).audiences(bot), plan())).map((hit) => hit.snippet?.map((part) => part.text).join('') ?? '');
     const before = await run();
     assert.equal(before.length, 2);
-    const hiddenThread = await conversation(owner, hidden.id, 'Hidden agent opener.');
-    await inBatches(40, (index) => say(owner, hiddenThread.id, `Hidden ${target} number ${index}.`));
+    // Another company's space: nothing of it is readable by the owner or by their agent.
+    const other = await workspace(stranger, 'Agent rank other company');
+    const secret = await createProject(stranger, other.id, 'Agent secret', 'workspace');
+    const hiddenThread = await conversation(stranger, secret.id, 'Hidden agent opener.');
+    await inBatches(40, (index) => say(stranger, hiddenThread.id, `Hidden ${target} number ${index}.`));
     assert.deepEqual(await run(), before);
   });
 });
