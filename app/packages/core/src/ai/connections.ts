@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { AI_PROVIDERS, API_KEY_DAILY_BUDGET_CENTS, assistantApiPrice, assistantModelName, isAiProviderKind, PERSONAL_RUN_LIMITS, personalRunMaxInputTokens, aiModelSearchesWeb, type AiPrice, type AiProviderKind, type BackgroundComputeConnection,
-  type AiModelList, type ConnectBackgroundComputeCommand, type UpdateBackgroundComputeConnectionCommand, tablePrice } from '@flux/contracts';
+import { AI_PROVIDERS, API_KEY_DAILY_BUDGET_CENTS, assistantApiPrice, assistantModelName, isAiProviderKind, listPrice, PERSONAL_RUN_LIMITS, personalRunMaxInputTokens, aiModelSearchesWeb, type AiPrice, type AiProviderKind, type BackgroundComputeConnection,
+  type AiModelList, type AiProviderPriceList, type ConnectBackgroundComputeCommand, type UpdateBackgroundComputeConnectionCommand } from '@flux/contracts';
 import { InvalidInputError, NotFoundError, RuleViolationError } from '../access/errors.js';
 import type { Principal } from '../principal.js';
 import { refuseAllEndpoints, type AiEndpointPolicyPort } from '../ai/index.js';
@@ -35,6 +35,8 @@ export interface BackgroundConnectionProviders {
    * for providers listed with a key (Anthropic, OpenAI, Gemini): `needs_key` for the others. Absent: nothing is listed.
    */
   keyModels?(provider: AiProviderKind, apiKey: string): Promise<AiModelList>;
+  /** Flux's price list of a provider as it stands now (#1465); absent or null: Flux knows no price, and the owner enters it. */
+  priceList?(provider: AiProviderKind): Promise<AiProviderPriceList | null>;
 }
 
 function owner(principal: Principal): string {
@@ -117,8 +119,9 @@ export function backgroundConnectionUseCases(port: BackgroundConnectionPort, sea
         const refused = await providers.endpoints.check(baseUrl);
         if (refused) throw new InvalidInputError(`This endpoint cannot be used: ${refused}`, 'AI_ENDPOINT_REFUSED');
       }
-      // PROV-3: Flux's dated table or the owner's price; a provider's listing is never a price source.
-      const price = resolveConnectionPrice({ provider: input.provider, model, ownerPrice: input.price });
+      // PROV-3: Flux's price list (#1465) or the owner's price; a provider's own listing is never a price source.
+      const list = await providers.priceList?.(input.provider) ?? null;
+      const price = resolveConnectionPrice({ model, ownerPrice: input.price, list });
       assertBudgetFitsRequest(price, input.dailyBudgetCents, input.provider, model);
       // The key's test is the listing of its models (#1218): a key its provider refuses is not saved. A list that couldn't be read
       // leaves the key to be saved with the model typed.
@@ -149,11 +152,12 @@ export function backgroundConnectionUseCases(port: BackgroundConnectionPort, sea
         if (key) {
           assertBudgetFitsRequest(key.price, cents, key.provider, key.model);
           // An agent may run on another model of this key (F-027 AST-11): one request on that must fit too, or it would
-          // stay paused on a budget too small for it (#909). A model with no table price cannot be reserved at all. The models are
+          // stay paused on a budget too small for it (#909). A model with no known price cannot be reserved at all. The models are
           // read again inside the change, under the lock a model change also takes first (#915).
+          const list = await providers.priceList?.(key.provider) ?? null;
           guard = (models) => {
             for (const model of models) {
-              const price = model !== key.model ? assistantApiPrice(key.provider, model, key.modelPrices) : null;
+              const price = model !== key.model ? assistantApiPrice(model, key.modelPrices, list) : null;
               if (price) assertBudgetFitsRequest(price, cents, key.provider, model, model);
             }
           };
@@ -167,8 +171,8 @@ export function backgroundConnectionUseCases(port: BackgroundConnectionPort, sea
       return updated;
     },
     /**
-     * The owner's price for one of their key's models that Flux's table does not price (PROV-3, #1218), so an agent can use it with
-     * the daily budget. A model the table prices keeps the table's price. One request at the price must fit the key's budget.
+     * The owner's price for one of their key's models that Flux's price list does not price (PROV-3, #1218, #1465), so an agent can use
+     * it with the daily budget. A model the list prices keeps the list's price. One request at the price must fit the key's budget.
      */
     async setModelPrice(principal: Principal, connectionId: string, input: { model?: unknown; inputMicrosPerMTok?: unknown; outputMicrosPerMTok?: unknown }): Promise<BackgroundComputeConnection> {
       const ownerUserId = owner(principal);
@@ -178,8 +182,8 @@ export function backgroundConnectionUseCases(port: BackgroundConnectionPort, sea
         throw new InvalidInputError('The model id must be 1–200 letters, digits or . _ : / @ + - and no provider-hosted tool variant', 'AI_MODEL_INVALID');
       const price = { inputMicrosPerMTok: input.inputMicrosPerMTok, outputMicrosPerMTok: input.outputMicrosPerMTok };
       if (!validPrice(price)) throw new InvalidInputError('Prices are whole micro-dollars per 1M tokens, from 0 to 1,000,000,000', 'AI_PRICE_INVALID');
-      if (tablePrice(key.provider, input.model) || input.model === key.model)
-        throw new InvalidInputError('Flux’s price table or this key already prices this model', 'AI_PRICE_ALREADY_KNOWN');
+      if (listPrice(await providers.priceList?.(key.provider), input.model) || input.model === key.model)
+        throw new InvalidInputError('Flux’s price list or this key already prices this model', 'AI_PRICE_ALREADY_KNOWN');
       const priced: AiPrice = { inputMicrosPerMTok: price.inputMicrosPerMTok as number, outputMicrosPerMTok: price.outputMicrosPerMTok as number, source: 'owner', checkedOn: null };
       assertBudgetFitsRequest(priced, key.dailyBudgetCents, key.provider, input.model);
       if (!await port.setModelPrice(ownerUserId, connectionId, input.model, { inputMicrosPerMTok: priced.inputMicrosPerMTok, outputMicrosPerMTok: priced.outputMicrosPerMTok }))

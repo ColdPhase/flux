@@ -97,6 +97,16 @@ jobs:
             echo "version=$RELEASE_VERSION"
             echo "platforms=$RELEASE_PLATFORMS"
           } >> "$GITHUB_OUTPUT"
+      - name: The candidate ships a price list fetched within 7 days (#1465)
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+        run: |
+          set -euo pipefail
+          git show "$CANDIDATE_SHA:scripts/update_price_list.py" > "$RUNNER_TEMP/update_price_list.py"
+          mkdir -p "$RUNNER_TEMP/candidate/scripts" "$RUNNER_TEMP/candidate/app/packages/core/src/ai"
+          mv "$RUNNER_TEMP/update_price_list.py" "$RUNNER_TEMP/candidate/scripts/"
+          git show "$CANDIDATE_SHA:app/packages/core/src/ai/price-list-snapshot.ts" > "$RUNNER_TEMP/candidate/app/packages/core/src/ai/price-list-snapshot.ts"
+          python3 "$RUNNER_TEMP/candidate/scripts/update_price_list.py" --check 7
       - name: Releases this version upgrades from (every published release from v0.2.0 on before it; #1241)
         id: upgrade_from
         env:

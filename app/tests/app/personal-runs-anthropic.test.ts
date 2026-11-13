@@ -2,13 +2,14 @@ import assert from 'node:assert/strict';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { after, before, beforeEach, describe, test } from 'node:test';
-import { PERSONAL_RUN_LIMITS, tablePrice } from '@flux/contracts';
+import { PERSONAL_RUN_LIMITS } from '@flux/contracts';
 import { costMicros, type PersonalComputeRequest } from '@flux/core';
 import { BRIEF } from './support/brief.js';
 import { anthropicPersonalCompute, parsePrivateTargets } from '../../packages/agent-runtime/src/index.js';
 import { personalRunServerComposition } from '../../apps/server/src/personal-runs/composition.js';
 import { anthropicProxyOf, personalRunWorkerComposition } from '../../apps/worker/src/personal-runs/composition.js';
 import { createDatabase } from '@flux/db';
+import { FAKE_PRICE } from './support/personal-runs.js';
 
 // The Anthropic adapter behind `PersonalCompute` (#68, O-008 §3–§4), against a LOCAL MOCK HTTP
 // server in this test process. No real provider is called and no key exists: the "key" is a
@@ -81,7 +82,7 @@ describe('Anthropic personal compute adapter (#68, local mock server: no provide
     }, 'no tools, hosted search, MCP or streaming');
     assert.deepEqual(resolved, [KEY_REF]);
     // Usage → cost at the connection's table price ($2/M input, $10/M output).
-    assert.equal(result.kind === 'completed' && costMicros(result.usage, tablePrice('anthropic', 'claude-sonnet-5')!), 1_200 * 2 + 80 * 10);
+    assert.equal(result.kind === 'completed' && costMicros(result.usage, FAKE_PRICE), 1_200 * 2 + 80 * 10);
     assert.equal(JSON.stringify(result).includes(KEY), false, 'the key never appears in the result');
   });
 
@@ -92,7 +93,7 @@ describe('Anthropic personal compute adapter (#68, local mock server: no provide
       kind: 'completed', text: 'Fact: the camera fails below 5 lux [S1].', stopReason: 'max_tokens',
       usage: { inputTokens: 10 + 8 + 7, outputTokens: 3, cache: { readTokens: 7, writeTokens: 8, readRate: 1, writeRate: 1.25 } },
     });
-    assert.equal(unasked.kind === 'completed' && costMicros(unasked.usage, tablePrice('anthropic', 'claude-sonnet-5')!), Math.ceil(((10 + 10 + 7) * 2_000_000 + 3 * 10_000_000) / 1_000_000));
+    assert.equal(unasked.kind === 'completed' && costMicros(unasked.usage, FAKE_PRICE), Math.ceil(((10 + 10 + 7) * 2_000_000 + 3 * 10_000_000) / 1_000_000));
     handler = (_seen, response) => json(response, 200, message({ stop_reason: 'max_tokens' }));
     assert.equal((await compute().dispatch(request, new AbortController().signal) as { stopReason: string }).stopReason, 'max_tokens');
     handler = (_seen, response) => json(response, 200, message({ stop_reason: 'refusal', content: [] }));
@@ -112,7 +113,7 @@ describe('Anthropic personal compute adapter (#68, local mock server: no provide
     assert.equal(body.tool_choice, undefined);
     assert.deepEqual(result.kind === 'completed' && result.usage, { inputTokens: 12_500, outputTokens: 80, cache: { readTokens: 10_000, writeTokens: 2_000, readRate: 0.1, writeRate: 1.25 } });
     // $2/M: 500 at the full price, 2,000 written at 1.25×, 10,000 read at 0.1×; $10/M out.
-    assert.equal(result.kind === 'completed' && costMicros(result.usage, tablePrice('anthropic', 'claude-sonnet-5')!), (500 + 2_500 + 1_000) * 2 + 80 * 10);
+    assert.equal(result.kind === 'completed' && costMicros(result.usage, FAKE_PRICE), (500 + 2_500 + 1_000) * 2 + 80 * 10);
 
     // The last request of a run: no tool may be called, Flux's words follow the results, and without `cache` nothing is marked.
     seen = [];

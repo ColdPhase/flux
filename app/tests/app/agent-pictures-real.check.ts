@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
-import { tablePrice } from '@flux/contracts';
 import { createPersonalRunProcessor, type PersonalComputeRequest } from '@flux/core';
 import { personalRunWorkerUnitOfWork } from '../../apps/worker/src/personal-runs/adapters.js';
 import { mcpToolHost } from '../../apps/worker/src/personal-runs/mcp-session.js';
@@ -11,7 +10,7 @@ import { db, pool } from './support/db.js';
 import { apiUrl } from './support/http.js';
 import { expectStatus, type Person } from './support/people.js';
 import { assistantScene, human, type AssistantScene } from './support/assistant-scene.js';
-import { chooseModel } from './support/personal-runs.js';
+import { chooseModel, FAKE_PRICE } from './support/personal-runs.js';
 import { png } from './support/pictures.js';
 
 // OPT-IN (#1217): the two picture journeys on a REAL model, Anthropic's Claude Sonnet 5.5 on an owner's API key, through the real worker loop,
@@ -38,9 +37,8 @@ describe('#1217 on a real model (Claude Sonnet 5.5, API key)', { skip }, () => {
   before(async () => {
     scene = await assistantScene('real');
     const connectionId = randomUUID();
-    const row = tablePrice('anthropic', MODEL)!;
     scene.connections.connect(scene.owner.id, connectionId, { provider: 'anthropic', model: MODEL, dailyBudgetCents: 200,
-      price: { inputMicrosPerMTok: row.inputMicrosPerMTok, outputMicrosPerMTok: row.outputMicrosPerMTok, source: 'table', checkedOn: row.checkedOn } });
+      price: { ...FAKE_PRICE } });
     await chooseModel(scene.runs, human(scene.owner), { connection: connectionId, model: MODEL }, scene.agentId);
     const real = providerPersonalCompute({ enabled: true, policy: PUBLIC_ONLY, webSearch: false, resolveKey: async () => KEY });
     // What was sent, to see that the picture went as image input (never printed: it holds only Flux's own words and the picture).

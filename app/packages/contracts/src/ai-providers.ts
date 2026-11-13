@@ -76,7 +76,7 @@ export const AI_PROVIDERS: Readonly<Record<AiProviderKind, AiProviderInfo>> = {
  * Models Flux knows cannot make tool calls on the wire format Flux speaks to their provider (F-027
  * AST-8: such a connection answers in one request and cannot change anything). An absent model is
  * not marked: a provider that cannot call tools refuses the request and the run fails closed. This
- * is a dated table like `AI_PRICE_TABLE`; recheck a row before relying on it after its date. It is
+ * is a dated table; recheck a row before relying on it after its date. It is
  * empty since #954: GPT-6 Astra and GPT-6.1 Sol, which OpenAI's function calling guide (read
  * 2026-10-11) says "require the Responses API for tool calling", call tools now that Flux speaks the
  * Responses API to OpenAI.
@@ -101,111 +101,73 @@ export const AI_BASE_URL_MAX_LENGTH = 2048;
 export const AI_PRICE_MAX_MICROS_PER_MTOK = 1_000_000_000;
 
 /**
- * PROV-3: where a connection's price per 1M tokens comes from. A reservation needs a price before
- * any response exists, so only Flux's dated table or the owner sets it.
+ * PROV-3: where a connection's price per 1M tokens comes from. A reservation needs a price before any response exists, so only Flux's
+ * price list (refreshed daily from a maintained public list, #1465) or the owner sets it.
  */
-export type AiPriceSource = 'table' | 'owner';
+export type AiPriceSource = 'list' | 'owner';
 
 export interface AiPrice {
   /** Micro-dollars per 1M input tokens ($2/M is 2,000,000). */
   inputMicrosPerMTok: number;
   outputMicrosPerMTok: number;
   source: AiPriceSource;
-  /** When a table price was read (YYYY-MM-DD); null for an owner-entered price. */
+  /** The day Flux's price list was fetched (YYYY-MM-DD); null for an owner-entered price. */
   checkedOn: string | null;
 }
 
-export interface AiPriceTableEntry {
-  provider: AiProviderKind;
-  model: string;
-  inputMicrosPerMTok: number;
-  outputMicrosPerMTok: number;
-  checkedOn: string;
-  /** The primary source the price was read from on `checkedOn`. */
-  source: string;
-}
-
-const ANTHROPIC_PRICING = 'https://platform.claude.com/docs/en/about-claude/pricing';
-const OPENAI_PRICING = 'https://developers.openai.com/api/docs/pricing';
-const GEMINI_PRICING = 'https://aistudio.google.com/docs/pricing';
-
-/** When every row of {@link AI_PRICE_TABLE} was last read from its provider's pricing page (#1218). */
-const CHECKED_ON = '2026-11-12';
+/** Prices per 1M tokens by model id. */
+export type AiModelPrices = Readonly<Record<string, { inputMicrosPerMTok: number; outputMicrosPerMTok: number }>>;
 
 /**
- * Flux's dated price table for named models (PROV-3, CA-2). It prices a model; it never decides which models exist, which the
- * provider's own list read with the owner's key does (#1218). Each row was read from the provider's own pricing page on `checkedOn`:
- * Anthropic's pricing page and model overview (https://platform.claude.com/docs/en/models/overview), OpenAI's pricing page (undated),
- * and Gemini's pricing page (https://ai.google.dev/gemini-api/docs/pricing, which now redirects to aistudio.google.com/docs/pricing;
- * undated). Standard rates only: no batch, regional, US-only, fast-mode or cache multipliers. Where a price depends on the prompt's
- * length, the row is the tier Flux's largest request can reach: Gemini's <=200k-token tier and OpenAI's <=272k one (a request is at
- * most 64,000 tokens plus 50,000 of web search results), but Claude Haiku 5.5's over-100k tier ($0.50 / $2.50 rather than $0.10 /
- * $0.50), since a request with web search can pass 100,000 tokens; it is counted high, never low. A price the provider has announced
- * will change on a known date is not listed (Gemini 4 Carbon and Argon rise on 2026-12-01, Gemini 3.6 and 3.8 Flash on 2027-01-01,
- * GPT-5.6 Sol's promotional price ends on 2026-11-30), because it would under-reserve; for those the owner enters the price. Claude
- * Mythos models are listed for the verified organizations whose keys can use them. OpenRouter prices vary per model and are shown only
- * as a suggestion (`listedPrice`). A missing row never means free. Recheck a row before relying on it after its date.
+ * Flux's price list (#1465): the standard input and output prices of Anthropic's, OpenAI's and Gemini's models, read every day from
+ * {@link AI_PRICE_LIST_URL} by the worker, and shipped with the release as fetched on its build day. It prices a model; it never decides
+ * which models exist (#1218). A model it lacks (OpenRouter's, an OpenAI-compatible endpoint's, a new or unusual one) is priced by its owner.
  */
-export const AI_PRICE_TABLE: readonly AiPriceTableEntry[] = [
-  { provider: 'anthropic', model: 'claude-fable-5-2', inputMicrosPerMTok: 8_000_000, outputMicrosPerMTok: 40_000_000, checkedOn: CHECKED_ON, source: ANTHROPIC_PRICING },
-  { provider: 'anthropic', model: 'claude-mythos-5-2', inputMicrosPerMTok: 8_000_000, outputMicrosPerMTok: 40_000_000, checkedOn: CHECKED_ON, source: ANTHROPIC_PRICING },
-  { provider: 'anthropic', model: 'claude-fable-5-1', inputMicrosPerMTok: 10_000_000, outputMicrosPerMTok: 50_000_000, checkedOn: CHECKED_ON, source: ANTHROPIC_PRICING },
-  { provider: 'anthropic', model: 'claude-mythos-5-1', inputMicrosPerMTok: 10_000_000, outputMicrosPerMTok: 50_000_000, checkedOn: CHECKED_ON, source: ANTHROPIC_PRICING },
-  { provider: 'anthropic', model: 'claude-fable-5', inputMicrosPerMTok: 10_000_000, outputMicrosPerMTok: 50_000_000, checkedOn: CHECKED_ON, source: ANTHROPIC_PRICING },
-  { provider: 'anthropic', model: 'claude-mythos-5', inputMicrosPerMTok: 10_000_000, outputMicrosPerMTok: 50_000_000, checkedOn: CHECKED_ON, source: ANTHROPIC_PRICING },
-  { provider: 'anthropic', model: 'claude-opus-5-5', inputMicrosPerMTok: 4_000_000, outputMicrosPerMTok: 20_000_000, checkedOn: CHECKED_ON, source: ANTHROPIC_PRICING },
-  { provider: 'anthropic', model: 'claude-opus-5', inputMicrosPerMTok: 5_000_000, outputMicrosPerMTok: 25_000_000, checkedOn: CHECKED_ON, source: ANTHROPIC_PRICING },
-  { provider: 'anthropic', model: 'claude-opus-4-8', inputMicrosPerMTok: 5_000_000, outputMicrosPerMTok: 25_000_000, checkedOn: CHECKED_ON, source: ANTHROPIC_PRICING },
-  { provider: 'anthropic', model: 'claude-opus-4-7', inputMicrosPerMTok: 5_000_000, outputMicrosPerMTok: 25_000_000, checkedOn: CHECKED_ON, source: ANTHROPIC_PRICING },
-  { provider: 'anthropic', model: 'claude-opus-4-6', inputMicrosPerMTok: 5_000_000, outputMicrosPerMTok: 25_000_000, checkedOn: CHECKED_ON, source: ANTHROPIC_PRICING },
-  { provider: 'anthropic', model: 'claude-opus-4-5', inputMicrosPerMTok: 5_000_000, outputMicrosPerMTok: 25_000_000, checkedOn: CHECKED_ON, source: ANTHROPIC_PRICING },
-  { provider: 'anthropic', model: 'claude-opus-4-5-20251101', inputMicrosPerMTok: 5_000_000, outputMicrosPerMTok: 25_000_000, checkedOn: CHECKED_ON, source: ANTHROPIC_PRICING },
-  { provider: 'anthropic', model: 'claude-sonnet-5-5', inputMicrosPerMTok: 2_000_000, outputMicrosPerMTok: 10_000_000, checkedOn: CHECKED_ON, source: ANTHROPIC_PRICING },
-  { provider: 'anthropic', model: 'claude-sonnet-5', inputMicrosPerMTok: 2_000_000, outputMicrosPerMTok: 10_000_000, checkedOn: CHECKED_ON, source: ANTHROPIC_PRICING },
-  { provider: 'anthropic', model: 'claude-sonnet-4-6', inputMicrosPerMTok: 3_000_000, outputMicrosPerMTok: 15_000_000, checkedOn: CHECKED_ON, source: ANTHROPIC_PRICING },
-  { provider: 'anthropic', model: 'claude-sonnet-4-5', inputMicrosPerMTok: 3_000_000, outputMicrosPerMTok: 15_000_000, checkedOn: CHECKED_ON, source: ANTHROPIC_PRICING },
-  { provider: 'anthropic', model: 'claude-sonnet-4-5-20250929', inputMicrosPerMTok: 3_000_000, outputMicrosPerMTok: 15_000_000, checkedOn: CHECKED_ON, source: ANTHROPIC_PRICING },
-  { provider: 'anthropic', model: 'claude-haiku-5-5', inputMicrosPerMTok: 500_000, outputMicrosPerMTok: 2_500_000, checkedOn: CHECKED_ON, source: ANTHROPIC_PRICING },
-  { provider: 'anthropic', model: 'claude-haiku-4-5', inputMicrosPerMTok: 1_000_000, outputMicrosPerMTok: 5_000_000, checkedOn: CHECKED_ON, source: ANTHROPIC_PRICING },
-  { provider: 'anthropic', model: 'claude-haiku-4-5-20251001', inputMicrosPerMTok: 1_000_000, outputMicrosPerMTok: 5_000_000, checkedOn: CHECKED_ON, source: ANTHROPIC_PRICING },
-  { provider: 'openai', model: 'gpt-6-astra', inputMicrosPerMTok: 10_000_000, outputMicrosPerMTok: 50_000_000, checkedOn: CHECKED_ON, source: OPENAI_PRICING },
-  { provider: 'openai', model: 'gpt-6.1-sol', inputMicrosPerMTok: 2_000_000, outputMicrosPerMTok: 10_000_000, checkedOn: CHECKED_ON, source: OPENAI_PRICING },
-  { provider: 'openai', model: 'gpt-6.1-terra', inputMicrosPerMTok: 1_000_000, outputMicrosPerMTok: 5_000_000, checkedOn: CHECKED_ON, source: OPENAI_PRICING },
-  { provider: 'openai', model: 'gpt-6-sol', inputMicrosPerMTok: 2_000_000, outputMicrosPerMTok: 10_000_000, checkedOn: CHECKED_ON, source: OPENAI_PRICING },
-  { provider: 'openai', model: 'gpt-6-luna', inputMicrosPerMTok: 100_000, outputMicrosPerMTok: 500_000, checkedOn: CHECKED_ON, source: OPENAI_PRICING },
-  { provider: 'openai', model: 'gpt-5.6-terra', inputMicrosPerMTok: 2_000_000, outputMicrosPerMTok: 12_000_000, checkedOn: CHECKED_ON, source: OPENAI_PRICING },
-  { provider: 'openai', model: 'gpt-5.6-luna', inputMicrosPerMTok: 200_000, outputMicrosPerMTok: 1_200_000, checkedOn: CHECKED_ON, source: OPENAI_PRICING },
-  { provider: 'openai', model: 'gpt-5.5', inputMicrosPerMTok: 5_000_000, outputMicrosPerMTok: 30_000_000, checkedOn: CHECKED_ON, source: OPENAI_PRICING },
-  { provider: 'openai', model: 'gpt-5.5-pro', inputMicrosPerMTok: 30_000_000, outputMicrosPerMTok: 180_000_000, checkedOn: CHECKED_ON, source: OPENAI_PRICING },
-  { provider: 'openai', model: 'gpt-5.4', inputMicrosPerMTok: 2_500_000, outputMicrosPerMTok: 15_000_000, checkedOn: CHECKED_ON, source: OPENAI_PRICING },
-  { provider: 'openai', model: 'gpt-5.4-pro', inputMicrosPerMTok: 30_000_000, outputMicrosPerMTok: 180_000_000, checkedOn: CHECKED_ON, source: OPENAI_PRICING },
-  { provider: 'openai', model: 'gpt-5.4-mini', inputMicrosPerMTok: 750_000, outputMicrosPerMTok: 4_500_000, checkedOn: CHECKED_ON, source: OPENAI_PRICING },
-  { provider: 'openai', model: 'gpt-5.4-nano', inputMicrosPerMTok: 200_000, outputMicrosPerMTok: 1_250_000, checkedOn: CHECKED_ON, source: OPENAI_PRICING },
-  { provider: 'openai', model: 'gpt-5.2', inputMicrosPerMTok: 1_750_000, outputMicrosPerMTok: 14_000_000, checkedOn: CHECKED_ON, source: OPENAI_PRICING },
-  { provider: 'openai', model: 'gpt-5.2-pro', inputMicrosPerMTok: 21_000_000, outputMicrosPerMTok: 168_000_000, checkedOn: CHECKED_ON, source: OPENAI_PRICING },
-  { provider: 'openai', model: 'gpt-5.1', inputMicrosPerMTok: 1_250_000, outputMicrosPerMTok: 10_000_000, checkedOn: CHECKED_ON, source: OPENAI_PRICING },
-  { provider: 'openai', model: 'gpt-5', inputMicrosPerMTok: 1_250_000, outputMicrosPerMTok: 10_000_000, checkedOn: CHECKED_ON, source: OPENAI_PRICING },
-  { provider: 'openai', model: 'gpt-5-mini', inputMicrosPerMTok: 250_000, outputMicrosPerMTok: 2_000_000, checkedOn: CHECKED_ON, source: OPENAI_PRICING },
-  { provider: 'openai', model: 'gpt-5-nano', inputMicrosPerMTok: 50_000, outputMicrosPerMTok: 400_000, checkedOn: CHECKED_ON, source: OPENAI_PRICING },
-  { provider: 'openai', model: 'gpt-5-pro', inputMicrosPerMTok: 15_000_000, outputMicrosPerMTok: 120_000_000, checkedOn: CHECKED_ON, source: OPENAI_PRICING },
-  { provider: 'openai', model: 'gpt-4.1', inputMicrosPerMTok: 2_000_000, outputMicrosPerMTok: 8_000_000, checkedOn: CHECKED_ON, source: OPENAI_PRICING },
-  { provider: 'openai', model: 'gpt-4.1-mini', inputMicrosPerMTok: 400_000, outputMicrosPerMTok: 1_600_000, checkedOn: CHECKED_ON, source: OPENAI_PRICING },
-  { provider: 'openai', model: 'gpt-4o', inputMicrosPerMTok: 2_500_000, outputMicrosPerMTok: 10_000_000, checkedOn: CHECKED_ON, source: OPENAI_PRICING },
-  { provider: 'openai', model: 'gpt-4o-mini', inputMicrosPerMTok: 150_000, outputMicrosPerMTok: 600_000, checkedOn: CHECKED_ON, source: OPENAI_PRICING },
-  { provider: 'openai', model: 'o3-pro', inputMicrosPerMTok: 20_000_000, outputMicrosPerMTok: 80_000_000, checkedOn: CHECKED_ON, source: OPENAI_PRICING },
-  { provider: 'openai', model: 'o3', inputMicrosPerMTok: 2_000_000, outputMicrosPerMTok: 8_000_000, checkedOn: CHECKED_ON, source: OPENAI_PRICING },
-  { provider: 'gemini', model: 'gemini-3.5-flash-lite', inputMicrosPerMTok: 300_000, outputMicrosPerMTok: 2_500_000, checkedOn: CHECKED_ON, source: GEMINI_PRICING },
-  { provider: 'gemini', model: 'gemini-3.1-pro-preview', inputMicrosPerMTok: 2_000_000, outputMicrosPerMTok: 12_000_000, checkedOn: CHECKED_ON, source: GEMINI_PRICING },
-  { provider: 'gemini', model: 'gemini-3.1-flash-lite', inputMicrosPerMTok: 250_000, outputMicrosPerMTok: 1_500_000, checkedOn: CHECKED_ON, source: GEMINI_PRICING },
-  { provider: 'gemini', model: 'gemini-3-flash-preview', inputMicrosPerMTok: 500_000, outputMicrosPerMTok: 3_000_000, checkedOn: CHECKED_ON, source: GEMINI_PRICING },
-  { provider: 'gemini', model: 'gemini-2.5-pro', inputMicrosPerMTok: 1_250_000, outputMicrosPerMTok: 10_000_000, checkedOn: CHECKED_ON, source: GEMINI_PRICING },
-  { provider: 'gemini', model: 'gemini-2.5-flash', inputMicrosPerMTok: 300_000, outputMicrosPerMTok: 2_500_000, checkedOn: CHECKED_ON, source: GEMINI_PRICING },
-  { provider: 'gemini', model: 'gemini-2.5-flash-lite', inputMicrosPerMTok: 100_000, outputMicrosPerMTok: 400_000, checkedOn: CHECKED_ON, source: GEMINI_PRICING },
-];
-
-export function tablePrice(provider: AiProviderKind, model: string): AiPriceTableEntry | null {
-  return AI_PRICE_TABLE.find((entry) => entry.provider === provider && entry.model === model) ?? null;
+export interface AiPriceList {
+  /** The day the list was fetched (YYYY-MM-DD). */
+  fetchedOn: string;
+  /** Where it was fetched from. */
+  source: string;
+  prices: Partial<Record<AiProviderKind, AiModelPrices>>;
 }
+
+/** Flux's price list of one provider: what the Connect AI form and the model pickers price a model with. */
+export interface AiProviderPriceList {
+  fetchedOn: string;
+  prices: AiModelPrices;
+}
+
+/**
+ * The maintained public list Flux reads its prices from (#1465): LiteLLM's model price file (MIT licence), whose ids are the providers'
+ * own and whose prices matched the providers' pricing pages on every sampled model (docs/product/research/2026-11-13-model-price-list.md).
+ */
+export const AI_PRICE_LIST_URL = 'https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json';
+/** The worker's job that fetches Flux's price list (#1465): every day, and at start when the stored list is older than a day. */
+export const AI_PRICE_LIST_JOB = 'ai-price-list.refresh.v1';
+/** The providers whose prices Flux's list carries. */
+export const AI_PRICE_LIST_PROVIDERS = ['anthropic', 'openai', 'gemini'] as const satisfies readonly AiProviderKind[];
+
+/** The price one provider's part of Flux's list gives a model, or null when the list does not know it. */
+export function listPrice(list: AiProviderPriceList | null | undefined, model: string): AiPrice | null {
+  if (!list || !Object.prototype.hasOwnProperty.call(list.prices, model)) return null;
+  const row = list.prices[model]!;
+  return { inputMicrosPerMTok: row.inputMicrosPerMTok, outputMicrosPerMTok: row.outputMicrosPerMTok, source: 'list', checkedOn: list.fetchedOn };
+}
+
+/**
+ * The price a stored connection runs at (#1465): Flux's price list today when it knows the model, so a price that changed is used the
+ * next day without anyone typing it; otherwise the price stored with the connection (the owner's, or the list's last one for a model
+ * the list stopped carrying); null when there is neither.
+ */
+export function currentConnectionPrice(stored: AiPrice | null, model: string, list: AiProviderPriceList | null | undefined): AiPrice | null {
+  return listPrice(list, model) ?? stored;
+}
+
+/** One provider's part of the whole list. */
+export const providerPriceList = (list: AiPriceList | null | undefined, provider: AiProviderKind): AiProviderPriceList | null =>
+  list ? { fetchedOn: list.fetchedOn, prices: list.prices[provider] ?? {} } : null;
+
+const ANTHROPIC_PRICING = 'https://platform.claude.com/docs/en/about-claude/pricing';
 
 /**
  * What one search of the provider's built-in web search costs (#954): $10 per 1,000 searches on Anthropic (docs.claude.com web search
@@ -306,4 +268,9 @@ export interface AiModelList {
   models: AiListedModel[];
   /** When the list was read (YYYY-MM-DD). */
   checkedOn: string;
+  /**
+   * Flux's price list of this provider (#1465), so the form shows a model's price or asks for it; absent or null when Flux knows no
+   * price for any model of the provider (OpenRouter, an OpenAI-compatible endpoint).
+   */
+  priceList?: AiProviderPriceList | null;
 }

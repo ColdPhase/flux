@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { PERSONAL_RUN_LIMITS, tablePrice, WEB_SEARCH_MICROS } from '@flux/contracts';
+import { PERSONAL_RUN_LIMITS, WEB_SEARCH_MICROS } from '@flux/contracts';
 import { conservativeTokenEstimate } from '../../packages/core/src/ai/estimate.js';
 import {
   ANSWER_NOW, boundedResult, budgetedReservationMicros, connectionCallsTools, emptyAccount, nextRequestFits, notedPageResult, PAGE_NOTE_MIN_CHARS, reconcileRequest, requestParts,
@@ -8,12 +8,13 @@ import {
   type Gate, type LoopOptions, type PersonalCompute, type PersonalComputeRequest, type PersonalComputeResult, type PersonalTool, type PersonalToolCall, type PersonalToolSession,
 } from '@flux/core';
 import { FLUX_TOOLS } from './support/provider-tool-fixtures.js';
+import { FAKE_PRICE } from './support/personal-runs.js';
 
 // The pure rules of the `server` tool loop (F-027 AST-8, PROV-3 revised 2026-10-09): the reservation
 // over the turns, the per-request reconciliation and the loop's limits, with a fake provider and a
 // fake tool session. No database, no provider, no key.
 
-const SONNET = tablePrice('anthropic', 'claude-sonnet-5')!;
+const SONNET = FAKE_PRICE;
 const ONE = runReservationMicros(SONNET, true)!; // 64,000 × $2/M + 4,000 × $10/M (the tool-run bound, #484, #843)
 const MAX_USAGE = { inputTokens: PERSONAL_RUN_LIMITS.maxToolInputTokens, outputTokens: PERSONAL_RUN_LIMITS.maxOutputTokens };
 

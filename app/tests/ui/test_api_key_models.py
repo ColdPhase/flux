@@ -121,7 +121,7 @@ class ApiKeyModels(unittest.TestCase):
         expect(model).to_contain_text("Choose a model")
         expect(page.get_by_test_id("connection-price")).to_have_count(0)
         choose(model, value="claude-opus-5-5")
-        expect(page.get_by_test_id("connection-price")).to_contain_text("$4.00 input · $20.00 output per 1M tokens · Flux price table, checked 2026-11-12")
+        expect(page.get_by_test_id("connection-price")).to_contain_text("$4.00 input · $20.00 output per 1M tokens · Flux’s price list of ")
         # A model Flux has no price for asks its price; "Other model id…" opens the plain field.
         choose(model, value="claude-sonnet-5-7")
         price = page.get_by_role("group", name="Price per 1M tokens (USD)")

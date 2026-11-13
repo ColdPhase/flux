@@ -69,7 +69,7 @@ describe('personal runs on any provider through the same path (#179)', () => {
     { provider: 'openai_compatible' as const, model: 'llama3.1:8b', baseUrl: `${MOCK}/openai/v1`, wire: 'openai',
       price: { inputMicrosPerMTok: 1_000_000, outputMicrosPerMTok: 2_000_000, source: 'owner' as const, checkedOn: null }, reserved: 32_000 + 8_000, paths: ['/openai/v1/chat/completions'] },
     { provider: 'anthropic' as const, model: 'claude-sonnet-5', baseUrl: null, wire: 'anthropic',
-      price: { inputMicrosPerMTok: 2_000_000, outputMicrosPerMTok: 10_000_000, source: 'table' as const, checkedOn: '2026-11-12' }, reserved: 64_000 + 40_000,
+      price: { inputMicrosPerMTok: 2_000_000, outputMicrosPerMTok: 10_000_000, source: 'list' as const, checkedOn: '2026-11-12' }, reserved: 64_000 + 40_000,
       paths: ['/anthropic/v1/messages/count_tokens', '/anthropic/v1/messages'] },
   ]) {
     test(`${target.provider}: the model of a key, a run that reserves against the key's daily budget when it starts, the answer names provider and model`, async () => {

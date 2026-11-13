@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import { after, afterEach, before, beforeEach, describe, test } from 'node:test';
-import { tablePrice, type AiProviderKind } from '@flux/contracts';
+import { type AiProviderKind } from '@flux/contracts';
 import { costMicros, type PersonalCompute, type PersonalComputeRequest } from '@flux/core';
 import { BRIEF } from './support/brief.js';
 import { listProviderModels, parsePrivateTargets, providerPersonalCompute } from '../../packages/agent-runtime/src/index.js';
 import type { RecordedProviderRequest } from './support/provider-mock.js';
+import { FAKE_PRICE } from './support/personal-runs.js';
 
 // The adapter contract suite (F-020 PROV-6): ONE set of cases runs identically against the Docker
 // mock of each wire format (`providermock`, app/tests/app/support/provider-mock.ts): Anthropic
@@ -17,7 +18,7 @@ import type { RecordedProviderRequest } from './support/provider-mock.js';
 const MOCK = process.env.FLUX_PROVIDER_MOCK_URL ?? 'http://providermock:8095';
 // The operator allowlist of this suite: the mock's host only, as `FLUX_AI_PRIVATE_TARGETS` would.
 const policy = parsePrivateTargets(new URL(MOCK).hostname);
-const PRICE = tablePrice('anthropic', 'claude-sonnet-5')!;
+const PRICE = FAKE_PRICE;
 
 interface WireCase {
   wire: 'anthropic' | 'openai';

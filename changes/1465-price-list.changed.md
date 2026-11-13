@@ -1,0 +1,1 @@
+- Model prices update themselves: Flux reads Anthropic's, OpenAI's and Gemini's prices every day from LiteLLM's maintained price list, a release ships the list of its build day for servers without internet, and Connect AI asks you for a price only when Flux knows none ([#1465](https://github.com/ColdPhase/flux/issues/1465)).

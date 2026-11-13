@@ -1,21 +1,23 @@
-import { maxRequestMicros, tablePrice, type AiPrice, type AiProviderKind } from '@flux/contracts';
+import { listPrice, maxRequestMicros, type AiPrice, type AiProviderPriceList } from '@flux/contracts';
 import { InvalidInputError } from '../access/errors.js';
 
 // PROV-3 prices. A reservation needs a price before any response exists, so a connection's price
-// per 1M tokens comes only from Flux's dated price table or from the owner (zero allowed for a
+// per 1M tokens comes only from Flux's price list (refreshed daily, #1465) or from the owner (zero allowed for a
 // self-hosted endpoint). A connection with neither cannot be enabled. A cost a provider reports in
 // a response (OpenRouter's `usage.cost`) never raises or bypasses the reservation; it only
 // reconciles the actual charge of that run (`usageMicros`), and a charge is never stored above the
 // reservation (`boundedUsageMicros`).
 
 export function resolveConnectionPrice(input: {
-  provider: AiProviderKind; model: string;
+  model: string;
   ownerPrice: { inputMicrosPerMTok: number; outputMicrosPerMTok: number } | undefined;
+  /** Flux's price list of the connection's provider. */
+  list: AiProviderPriceList | null;
 }): AiPrice | null {
-  const table = tablePrice(input.provider, input.model);
-  if (table && input.ownerPrice)
-    throw new InvalidInputError('Flux’s price table has this model; leave the price empty', 'AI_PRICE_ALREADY_KNOWN');
-  if (table) return { inputMicrosPerMTok: table.inputMicrosPerMTok, outputMicrosPerMTok: table.outputMicrosPerMTok, source: 'table', checkedOn: table.checkedOn };
+  const known = listPrice(input.list, input.model);
+  if (known && input.ownerPrice)
+    throw new InvalidInputError('Flux’s price list has this model; leave the price empty', 'AI_PRICE_ALREADY_KNOWN');
+  if (known) return known;
   if (input.ownerPrice) return { ...input.ownerPrice, source: 'owner', checkedOn: null };
   return null;
 }

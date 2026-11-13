@@ -2,10 +2,11 @@ import assert from 'node:assert/strict';
 import { createServer, type IncomingMessage } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { after, before, beforeEach, describe, test } from 'node:test';
-import { PERSONAL_RUN_LIMITS, tablePrice } from '@flux/contracts';
+import { PERSONAL_RUN_LIMITS } from '@flux/contracts';
 import { runToolLoop, type PersonalCompute, type PersonalComputeRequest, type PersonalToolCall, type PersonalTurn } from '@flux/core';
 import { BRIEF } from './support/brief.js';
 import { parsePrivateTargets, providerPersonalCompute } from '../../packages/agent-runtime/src/index.js';
+import { FAKE_PRICE } from './support/personal-runs.js';
 import {
   ANTHROPIC_DUPLICATE_IDS, ANTHROPIC_FINAL, ANTHROPIC_TOOL_USE, ANTHROPIC_TWO_CALLS, ANTHROPIC_TOOL_USE_TRUNCATED, ANTHROPIC_TOOL_USE_WITH_THINKING, CHAT_FINAL, CHAT_TOOL_CALLS,
   CHAT_TOOL_CALLS_TRUNCATED, CHAT_TWO_CALLS, FLUX_TOOLS, PROJECT_ID, RESPONSES_FINAL, RESPONSES_TOOL_CALLS, TOOL_WIRE_CASES, type ToolWireCase,
@@ -306,7 +307,7 @@ describe('tool calling on every provider wire format (AST-8.1; local mock, docum
       script = [{ body: ANTHROPIC_DUPLICATE_IDS }];
       const ran: PersonalToolCall[] = [];
       const result = await runToolLoop({
-        compute: compute(), first: requestFor(anthropic), price: tablePrice('anthropic', 'claude-sonnet-5')!, reservedMicros: 470_000, maxTurns: PERSONAL_RUN_LIMITS.maxTurns,
+        compute: compute(), first: requestFor(anthropic), price: FAKE_PRICE, reservedMicros: 470_000, maxTurns: PERSONAL_RUN_LIMITS.maxTurns,
         deadline: Number.MAX_SAFE_INTEGER, now: () => 0, gate: async () => null, signal: live,
         session: { tools: FLUX_TOOLS, call: async (call) => { ran.push(call); return { content: 'ok', isError: false }; }, close: async () => undefined },
       });

@@ -1,9 +1,10 @@
 import { and, asc, desc, eq, isNotNull, isNull, sql } from 'drizzle-orm';
-import type { AiPrice, AiProviderKind } from '@flux/contracts';
+import { providerPriceList, type AiPrice, type AiPriceList, type AiProviderKind, type AiProviderPriceList } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { createDatabase } from '../index.js';
 import { openBackgroundKey } from '../background-key-crypto.js';
 import { connectionPrice } from './background-connections.js';
+import { storedPriceList } from './ai-price-list.js';
 import { companyGuestSql } from './access.js';
 
 const c = schema.backgroundComputeConnections;
@@ -36,15 +37,17 @@ export interface KeyModelsRow {
   status: 'listed' | 'key_refused' | 'unavailable' | 'refused' | null;
   prices: Record<string, { inputMicrosPerMTok: number; outputMicrosPerMTok: number }>;
   retired: string[];
+  /** Flux's price list of the key's provider (#1465). */
+  list: AiProviderPriceList | null;
 }
 
 type Row = typeof c.$inferSelect;
-const connectionOf = (row: Row): PersonalConnectionRow => ({
+const connectionOf = (row: Row, list: AiPriceList | null): PersonalConnectionRow => ({
   id: row.id, ownerUserId: row.ownerUserId, status: 'active', keyRef: row.id, name: row.name,
-  provider: row.provider, model: row.model, baseUrl: row.baseUrl, price: connectionPrice(row), createdAt: row.createdAt,
+  provider: row.provider, model: row.model, baseUrl: row.baseUrl, price: connectionPrice(row, list), createdAt: row.createdAt,
   dailyBudgetCents: row.dailyBudgetCents, timeZone: row.timeZone,
   models: { listed: row.listedModels, listedAt: row.modelsListedAt, checkedAt: row.modelsCheckedAt, status: row.modelsListStatus,
-    prices: row.modelPrices ?? {}, retired: row.retiredModels ?? [] },
+    prices: row.modelPrices ?? {}, retired: row.retiredModels ?? [], list: providerPriceList(list, row.provider) },
 });
 
 /**
@@ -61,14 +64,15 @@ export function personalConnectionLookup(db: Database) {
         .where(and(eq(c.ownerUserId, ownerUserId), isNull(c.revokedAt), isNotNull(c.encryptedKey), sql`NOT ${companyGuestSql(c.ownerUserId)}`,
           ...(connectionId !== undefined ? [eq(c.id, connectionId)] : [])))
         .orderBy(desc(c.createdAt), desc(c.id)).limit(1);
-      return row ? connectionOf(row) : null;
+      return row ? connectionOf(row, await storedPriceList(db)) : null;
     },
     /** Every active key of the owner, in the order they were added (Connect AI's order, #854). */
     async list(ownerUserId: string): Promise<PersonalConnectionRow[]> {
       const rows = await db.select().from(c)
         .where(and(eq(c.ownerUserId, ownerUserId), isNull(c.revokedAt), isNotNull(c.encryptedKey), sql`NOT ${companyGuestSql(c.ownerUserId)}`))
         .orderBy(asc(c.createdAt), asc(c.id));
-      return rows.map(connectionOf);
+      const list = rows.length ? await storedPriceList(db) : null;
+      return rows.map((row) => connectionOf(row, list));
     },
   };
 }

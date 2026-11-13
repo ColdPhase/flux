@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto';
 import type { Database } from '@flux/db';
 import type { FastifyError, FastifyInstance } from 'fastify';
-import { AI_BASE_URL_MAX_LENGTH, AI_MODEL_LISTS_PATH, AI_PROVIDERS, API_KEY_DAILY_BUDGET_CENTS, AI_PRICE_MAX_MICROS_PER_MTOK, AI_PROVIDER_KINDS, type AiModelList, type AiModelListQuery,
-  type AssistantModelListing, type ConnectBackgroundComputeCommand, type SetApiKeyModelPriceCommand, type UpdateBackgroundComputeConnectionCommand } from '@flux/contracts';
-import { backgroundConnectionRepository, personalConnectionLookup, sealBackgroundKey } from '@flux/db';
+import { AI_BASE_URL_MAX_LENGTH, AI_MODEL_LISTS_PATH, AI_PRICE_LIST_PROVIDERS, AI_PROVIDERS, API_KEY_DAILY_BUDGET_CENTS, AI_PRICE_MAX_MICROS_PER_MTOK, AI_PROVIDER_KINDS, type AiModelList, type AiModelListQuery,
+  type AiProviderKind, type AiProviderPriceList, type AssistantModelListing, type ConnectBackgroundComputeCommand, type SetApiKeyModelPriceCommand, type UpdateBackgroundComputeConnectionCommand } from '@flux/contracts';
+import { backgroundConnectionRepository, personalConnectionLookup, sealBackgroundKey, storedProviderPriceList } from '@flux/db';
 import { backgroundConnectionUseCases, baseUrlSyntaxProblem, ConflictError, DomainError, InvalidInputError, keyListing, NotFoundError, normalizeBaseUrl, RateLimitedError, validAiKey } from '@flux/core';
 import type { ModelListRefresh } from './model-refresh.js';
 import type { SessionResolver } from '../identity/index.js';
@@ -27,12 +27,15 @@ const dailyBudget = { type: 'integer', minimum: API_KEY_DAILY_BUDGET_CENTS.min, 
 export async function aiKeyRoutes(app: FastifyInstance, { db, sessions, backgroundMasterKey, ai = aiConnectionServerComposition(process.env), afterConnect, refresh }: Options) {
   const keys = personalConnectionLookup(db);
   const listing = onePerPerson<AiModelList>();
+  // Flux's price list (#1465), as the worker last stored it; only Anthropic, OpenAI and Gemini have one.
+  const priceList = async (provider: AiProviderKind): Promise<AiProviderPriceList | null> =>
+    ((AI_PRICE_LIST_PROVIDERS as readonly AiProviderKind[]).includes(provider) ? storedProviderPriceList(db, provider) : null);
   const connections = backgroundConnectionUseCases(backgroundConnectionRepository(db), {
     seal(plainKey, ownerUserId, connectionId) {
       if (!backgroundMasterKey) throw new ConflictError('Background key custody is unavailable on this instance', 'BACKGROUND_KEY_CUSTODY_UNAVAILABLE');
       return sealBackgroundKey(plainKey, ownerUserId, connectionId, backgroundMasterKey);
     },
-  }, ai.providers);
+  }, { ...ai.providers, priceList });
   app.setErrorHandler((error: FastifyError | DomainError, _request, reply) => {
     if (error instanceof RateLimitedError) reply.header('retry-after', String(error.retryAfterSeconds));
     if (error instanceof DomainError) return reply.code(error.status).send({ error: error.message, code: error.code, ...error.details });
@@ -91,7 +94,9 @@ export async function aiKeyRoutes(app: FastifyInstance, { db, sessions, backgrou
     const address = provider === 'openai_compatible' ? normalizeBaseUrl(baseUrl!) : null;
     // One listing at a time for this person: the same one shares it, another waits for it to end (#1347).
     const same = createHash('sha256').update(JSON.stringify([provider, address, apiKey ?? null])).digest('hex');
-    return listing(principal.id, same, () => ai.listModels(provider, address, apiKey));
+    const list = await listing(principal.id, same, () => ai.listModels(provider, address, apiKey));
+    // The answer carries Flux's prices of the provider, so the form shows a model's price, or asks for it when Flux knows none (#1465).
+    return { ...list, priceList: await priceList(provider) };
   });
   /** How fresh one of the owner's keys' lists is, or 404. */
   async function listingOf(ownerUserId: string, connectionId: string): Promise<{ listing: AssistantModelListing | null }> {
@@ -108,7 +113,7 @@ export async function aiKeyRoutes(app: FastifyInstance, { db, sessions, backgrou
     if (refresh && !(await refresh.refreshNow(principal.id, connectionId))) throw new NotFoundError('Background connection', 'BACKGROUND_CONNECTION_NOT_FOUND');
     return listingOf(principal.id, connectionId);
   });
-  // The owner's price for a model of their key that Flux's table does not price (PROV-3, #1218).
+  // The owner's price for a model of their key that Flux's price list does not price (PROV-3, #1218, #1465).
   app.put<{ Params: { connectionId: string }; Body: SetApiKeyModelPriceCommand }>('/api/v1/background-compute-connections/:connectionId/model-price', {
     schema: { body: { type: 'object', additionalProperties: false, required: ['model', 'inputMicrosPerMTok', 'outputMicrosPerMTok'], properties: {
       model: { type: 'string', minLength: 1, maxLength: 200 }, inputMicrosPerMTok: microsPerMTok, outputMicrosPerMTok: microsPerMTok } } },

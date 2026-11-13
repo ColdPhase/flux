@@ -9,7 +9,7 @@ consent, caps and fail-closed rules are those of
 
 | Path | Role |
 | --- | --- |
-| `app/packages/contracts/src/ai-providers.ts` | Provider kinds, labels, fixed base URLs, key hints, the dated price table, `maxRequestMicros`, the model-list wire types. |
+| `app/packages/contracts/src/ai-providers.ts` | Provider kinds, labels, fixed base URLs, key hints, the price list's types and `listPrice`, `maxRequestMicros`, the model-list wire types. |
 | `app/packages/core/src/ai/` | Key-format, model-id, base-URL and price validation; the conservative token estimate; price resolution; the endpoint-policy port. |
 | `app/packages/core/src/proactive-comparison/dispatch.ts` | The comparison prompt, answer schema and parsing, shared by every provider. |
 | `app/packages/core/src/personal-runs/` | The personal-run prompt, parsing, reservation and commit, shared by every provider. |
@@ -97,28 +97,27 @@ Anthropic was confirmed in O-007/O-008 and is unchanged.
 
 ## Prices, reservations and the input bound
 
-A connection's price per 1M tokens (micro-dollars) comes only from Flux's dated table
-(`AI_PRICE_TABLE`; source `table`) or from the owner
-(`owner`, zero allowed), because a reservation needs a price before any response exists. An owner
-price is refused when the table has the model. A price OpenRouter lists is shown in the form as
-the starting value of the owner's price, never stored as a source of its own. A connection without
-a price can be saved but not enabled: `BACKGROUND_PRICE_UNKNOWN`, `PERSONAL_RUN_PRICE_UNKNOWN`, the
-reservation refusal `CONNECTION_PRICE_UNKNOWN`, and the assistant state `unavailable` /
-`price_unknown`.
+A connection's price per 1M tokens (micro-dollars) comes only from Flux's price list (source `list`, with the day the list was
+fetched) or from the owner (`owner`, zero allowed), because a reservation needs a price before any response exists (#1465,
+[CA-2](../product/model-providers.md#ca-2--models)). An owner price is refused when the list has the model. A price OpenRouter
+lists is shown in the form as the starting value of the owner's price, never stored as a source of its own. A connection without
+a price can be saved but not used: the assistant state `unavailable` / `price_unknown`.
 
-The table rows come from these pages (all vendor claims), all read on 2026-11-12 (#1218):
+How the list moves:
 
-| Provider | Page | What the rows are |
-| --- | --- | --- |
-| Anthropic | [platform.claude.com pricing](https://platform.claude.com/docs/en/about-claude/pricing) and the [model overview](https://platform.claude.com/docs/en/models/overview) | Standard rates of every model the page lists, Mythos (verified organizations only) included; Claude Haiku 5.5 at its over-100k-token tier ($0.50 / $2.50), because a request with web search can pass 100,000 tokens |
-| OpenAI | [developers.openai.com pricing](https://developers.openai.com/api/docs/pricing) (undated) | Standard text rates, the ≤272k-token tier; not batch, flex or fast |
-| Gemini | [aistudio.google.com/docs/pricing](https://aistudio.google.com/docs/pricing) (ai.google.dev's pricing page redirects there; undated) | Paid tier, ≤200k-token prompt tier |
+| Piece | Where |
+| --- | --- |
+| Reading LiteLLM's file into Flux's prices (provider and mode filter, ids, bounds, prompt-length tier, whole-file refusal) | `parsePriceList`, `isPriceList` in `app/packages/core/src/ai/price-list.ts` |
+| The anonymous daily GET through the egress guard (16 MB, 30 s); test stacks ask `<FLUX_TEST_PROVIDER_LISTS>/price-list` | `fetchPriceList`, `priceListFetchOptions` in `app/packages/agent-runtime/src/price-list.ts` |
+| The job: daily at 04:17 UTC and at start when the stored list is a day old; retried 3 times 15 minutes apart; a failure keeps the last good list | `app/apps/worker/src/ai-keys/price-list.ts` (`ai-price-list.refresh.v1`) |
+| The stored list: one row, replaced only by a list fetched the same day or later | `ai_price_list` (migration 0081), `aiPriceListRepository` |
+| The shipped list: LiteLLM's entries for Anthropic, OpenAI and Gemini text models as fetched on the release's build day, stored by the migrator when the database has none or an older one | `scripts/update_price_list.py` writes `app/packages/core/src/ai/price-list-snapshot.ts`; `shippedPriceList()`; `app/tooling/migrate.ts` |
+| A stored connection's price: the list's price of today for its model, else the stored one | `currentConnectionPrice` (contracts), applied by `connectionPrice` in the connection repositories |
+| The Connect AI form's prices: `priceList` of the `POST /api/v1/ai-model-lists` answer | `app/apps/server/src/ai-keys/routes.ts`, `ConnectionFields.tsx` |
 
-Left out because the provider has announced the price will change on a known date (a stale row would under-reserve; the owner
-enters the price): Gemini 4 Carbon and Argon ($2 / $10 until 2026-11-30, $4 / $20 from 2026-12-01), Gemini 3.6 and 3.8 Flash ($0.75 /
-$3.75 until 2026-12-31), and GPT-5.6 Sol (promotional until 2026-11-30). Gone since the last reading: `gemini-3.5-flash` and `o3-mini`
-(no longer on the pages). A listed model without a row is still offered: its owner enters its price for that key
-(`PUT /api/v1/background-compute-connections/:id/model-price`, kept in `model_prices`).
+A listed model the list does not price is still offered: its owner enters its price for that key
+(`PUT /api/v1/background-compute-connections/:id/model-price`, kept in `model_prices`); once the list prices it, the list's price
+is used.
 
 - One request of a personal run is bounded at `32,000 × input + 4,000 × output` at the key's price (`64,000 × input`
   for a request of a run with tools; #484, #843). When the worker starts the run it reserves its turns × that

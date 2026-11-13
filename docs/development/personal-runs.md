@@ -66,10 +66,8 @@ connection lookup is still `noPersonalConnections`.
 
 **Price and model (F-020).** The model and its price belong to the owner's connection
 (see [AI providers](ai-providers.md#prices-reservations-and-the-input-bound)); there is no
-pinned model. Claude Sonnet 5 is in Flux's price table at $2/M input and $10/M output, read
-from the Anthropic [pricing page](https://platform.claude.com/docs/en/about-claude/pricing)
-on 2026-10-02 (2026-09-30: the page called it the standard price, and the scheduled rise to
-$3/$15 "will not occur"). Check again when production dispatch is switched on.
+pinned model. A model's price comes from Flux's daily price list or its owner (#1465); the test
+fixture's Claude Sonnet 5 is fixed at $2/M input and $10/M output, its list price on 2026-11-13.
 
 ## Provider adapters
 

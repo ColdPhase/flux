@@ -38,7 +38,7 @@ A person connects AI once, in Settings › AI. Their connections power all of th
   #854; wave 2 #857 moves it onto every agent).
 - **An API key's models come from the provider, read with that key** (founder direction, Hubert,
   2026-11-10 and 2026-11-12, [#1218](https://github.com/ColdPhase/flux/issues/1218)). There is no
-  model list written into Flux anywhere in the picker: Flux's price table only prices a listed
+  model list written into Flux anywhere in the picker: Flux's price list only prices a listed
   model and never decides which models show, so a newly released model appears without a Flux
   release. Until the provider's list is read (a key added before v0.2.1 waits for its first
   reading), the key offers only its own model.
@@ -67,13 +67,38 @@ A person connects AI once, in Settings › AI. Their connections power all of th
     list at a time for each person: the same listing asked again while it runs shares it, another one
     is answered 429 `MODEL_LIST_BUSY` with `Retry-After` (#1347), and the Connect AI form asks again after
     2 s, up to 5 times, still saying "Reading the models…" (a key typed again while the last one is read).
-- **Price (PROV-3).** The daily budget prices every request before it is sent, so a model needs a
-  price. A listed model with a row in Flux's dated table uses it. A listed model without one stays
-  selectable once the owner enters its price for that key (zero for a self-hosted endpoint): "Flux
-  doesn't know this model's price yet. Enter it to use it with a daily budget." A price a provider
-  lists (OpenRouter) is only offered as the starting value. The table follows the providers'
-  pricing pages, dated, with the primary source; a promotional price that ends on a known date is
-  left out, and a model priced by prompt length uses the tier Flux's largest request can reach.
+- **Price (PROV-3): the prices update themselves** (founder decision, Hubert, 2026-11-13,
+  [#1465](https://github.com/ColdPhase/flux/issues/1465)). The daily budget prices every request
+  before it is sent, so a model needs a price. One rule:
+  - **Flux's price list.** The worker fetches it every day (and at start when the stored one is a
+    day old) from a maintained public list, LiteLLM's
+    [model price file](https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json)
+    (MIT licence), chosen against the providers' own pricing pages and OpenRouter's list on a dated
+    sample ([research](research/2026-11-13-model-price-list.md)). It is an anonymous read through
+    the same egress guard as every AI request (public HTTPS, no redirect, at most 16 MB, 30 s);
+    nothing is sent. Every value is checked (a number from 0 to $1,000 per 1M tokens, a model id
+    Flux accepts, Anthropic, OpenAI and Gemini all present); a list that fails, or a fetch that
+    fails, changes nothing, and the last good list stays. It carries Anthropic's, OpenAI's and
+    Gemini's text models at their standard price; a model priced by prompt length is priced at the
+    tier Flux's largest request can reach (Claude Haiku 5.5's over-100k tier); batch, priority,
+    regional and cache prices are not read.
+  - **Shipped with the release.** Each release carries the list as fetched on its build day
+    (`scripts/update_price_list.py`, run when the release candidate is prepared; the image build
+    itself stays offline), and the migrator stores it when the database has none or an older one,
+    so a server without internet prices with it.
+  - **A price that changes is used the next day.** A connection or a model of a key that the list
+    prices runs at the list's price of the day, shown as "Flux's price list of 14 Nov 2026"; the
+    list wins over a price stored earlier. A model the list stops carrying keeps its last price.
+  - **When Flux knows no price, Connect AI asks the owner**, the same way for every provider: a
+    model the list lacks (OpenRouter's models and an OpenAI-compatible endpoint's always, and a new
+    or unusual model of the others) stays selectable once its owner enters its price for that key
+    (zero for a self-hosted endpoint): "Flux doesn't know this model's price yet. Enter it to use it
+    with a daily budget." A price OpenRouter lists is only offered as the starting value. An owner
+    price is refused for a model the list prices (`AI_PRICE_ALREADY_KNOWN`), and nothing is sent on
+    a model without any price: its agent is unavailable with `price_unknown` (PROV-3).
+  - Neither list Flux examined carries a price the provider has announced for a later date (a
+    promotion's end, a scheduled rise); the daily refresh follows such a change about a day after
+    the list does, and the daily budget still bounds a key's spend.
   Prompt caching (#1410): an Anthropic run's request asks the provider to cache its prefix only while
   its largest cost with every input token written to the cache (1.25×) still fits what is left of the
   run's reservation; a cache write is charged at 1.25× and a read at 0.1× of the input price

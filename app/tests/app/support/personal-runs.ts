@@ -1,4 +1,4 @@
-import { tablePrice, type AiPrice, type AiProviderKind, type AssistantModelPick } from '@flux/contracts';
+import { type AiPrice, type AiProviderKind, type AssistantModelPick } from '@flux/contracts';
 import type {
   createPersonalRunUseCases, Principal, PersonalCompute, PersonalComputeRequest, PersonalComputeResult, PersonalConnection, PersonalConnectionLookup, PersonalRunQueue,
 } from '@flux/core';
@@ -9,9 +9,8 @@ import type { DbExecutor } from '@flux/db';
 // worker compose `noPersonalConnections` and `unavailablePersonalCompute`. Nothing here calls a
 // model, so no test using them counts as a provider, billing or compatibility pass.
 
-const SONNET = tablePrice('anthropic', 'claude-sonnet-5')!;
-/** The table price of the default fake connection's model: $2/M input, $10/M output (checked 2026-10-02). */
-export const FAKE_PRICE: AiPrice = { inputMicrosPerMTok: SONNET.inputMicrosPerMTok, outputMicrosPerMTok: SONNET.outputMicrosPerMTok, source: 'table', checkedOn: SONNET.checkedOn };
+/** The default fake connection's model at its list price: Claude Sonnet 5, $2/M input, $10/M output (Flux's price list of 2026-11-13). */
+export const FAKE_PRICE: AiPrice = { inputMicrosPerMTok: 2_000_000, outputMicrosPerMTok: 10_000_000, source: 'list', checkedOn: '2026-11-13' };
 
 /**
  * Each owner's connections, newest last. `keyRef` stands in for #124's key reference; no key exists.

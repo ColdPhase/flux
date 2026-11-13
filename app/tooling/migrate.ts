@@ -1,9 +1,9 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { assertExactMigrationLedger, assertKnownMigrationVersions, assertMigrationSqlLedgerChange, assertMigrationStepLedger, assertNotV01Database, createDatabase, FLUX_SCHEMA_VERSION, readAppliedMigrationVersions, readMigrationManifest, V01DatabaseError } from '@flux/db';
+import { aiPriceListRepository, assertExactMigrationLedger, assertKnownMigrationVersions, assertMigrationSqlLedgerChange, assertMigrationStepLedger, assertNotV01Database, createDatabase, FLUX_SCHEMA_VERSION, readAppliedMigrationVersions, readMigrationManifest, V01DatabaseError } from '@flux/db';
 import { PgBoss } from 'pg-boss';
-import { API_KEY_MODEL_LIST_JOB, SEARCH_CHANGES_CLEANUP_JOB, SPACE_AI_SWEEP_JOB, WORKSPACE_ENCRYPTION_RESUME_JOB } from '@flux/contracts';
-import { ASSISTANT_TICK_JOB, ASSISTANT_TICK_QUEUE, ASSISTANT_TICK_RETRY, NOTIFICATION_EMAIL_JOB, NOTIFICATION_EMAIL_QUEUE, PERSONAL_RUN_JOB, PERSONAL_RUN_QUEUE, PUSH_SEND_JOB, PUSH_SEND_QUEUE } from '@flux/core';
+import { AI_PRICE_LIST_JOB, API_KEY_MODEL_LIST_JOB, SEARCH_CHANGES_CLEANUP_JOB, SPACE_AI_SWEEP_JOB, WORKSPACE_ENCRYPTION_RESUME_JOB } from '@flux/contracts';
+import { ASSISTANT_TICK_JOB, ASSISTANT_TICK_QUEUE, ASSISTANT_TICK_RETRY, NOTIFICATION_EMAIL_JOB, NOTIFICATION_EMAIL_QUEUE, PERSONAL_RUN_JOB, PERSONAL_RUN_QUEUE, PUSH_SEND_JOB, PUSH_SEND_QUEUE, shippedPriceList } from '@flux/core';
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) throw new Error('DATABASE_URL is required');
@@ -11,7 +11,7 @@ const migrationsDir = 'packages/db/migrations';
 // A migration file is one statement that runs as long as the host needs: the v0.1 baseline takes 3 s on a slow disk or arm64 VPS (#846).
 // The 2 s request timeout of the API's and worker's pools would roll it back on every retry, so the migrator has its own, long bound.
 const MIGRATION_QUERY_TIMEOUT_MS = 30 * 60_000;
-const { pool } = createDatabase(connectionString, undefined, { queryTimeoutMs: MIGRATION_QUERY_TIMEOUT_MS });
+const { pool, db } = createDatabase(connectionString, undefined, { queryTimeoutMs: MIGRATION_QUERY_TIMEOUT_MS });
 try {
   // Numbered files (NNNN_name.sql) apply once, in order, each in its own transaction. 0001 is the
   // v0.1 baseline (#779): the whole schema of a fresh install; later changes are 0002 onwards.
@@ -78,7 +78,13 @@ try {
   // waits for it, so it is not retried.
   await boss.createQueue(API_KEY_MODEL_LIST_JOB, { policy: 'short', retryLimit: 0, ...wake });
   await boss.updateQueue(API_KEY_MODEL_LIST_JOB, { retryLimit: 0, ...wake });
+  // #1465: Flux's price list, fetched daily by the worker; a failed fetch is tried again three times, 15 minutes apart.
+  await boss.createQueue(AI_PRICE_LIST_JOB, { policy: 'singleton', retryLimit: 3, retryDelay: 900, ...wake });
+  await boss.updateQueue(AI_PRICE_LIST_JOB, { retryLimit: 3, retryDelay: 900, ...wake });
   await boss.stop();
+  // The price list this release ships (#1465): stored when the database has none or one fetched before it, so a server without internet
+  // prices with it from its first start.
+  if (await aiPriceListRepository(db).store(shippedPriceList(), 'keep')) console.log(`Stored the shipped price list of ${shippedPriceList().fetchedOn}`);
   console.log(`Flux schema ${FLUX_SCHEMA_VERSION} and pg-boss ready`);
 } catch (error) {
   // The refusal is a message for the operator, not a stack trace.

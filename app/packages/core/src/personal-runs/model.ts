@@ -113,13 +113,13 @@ export const modelRetired = (connection: Pick<PersonalConnection, 'models'>, mod
 
 /**
  * The owner's connection on the model they chose (F-020 PROV-3): the connection's own model and price when the model is
- * its own, or another model of the same key at Flux's table price or the price its owner entered for it (#1218); null when
+ * its own, or another model of the same key at Flux's list price (#1465) or the price its owner entered for it (#1218); null when
  * there is neither, so nothing can be reserved. A model the owner marked as unable to call tools applies to the connection's
  * own model only.
  */
 export function connectionOnModel(connection: PersonalConnection, model: string | null): PersonalConnection | null {
   if (!model || model === connection.model) return connection;
-  const price = assistantApiPrice(connection.provider, model, connection.models?.prices);
+  const price = assistantApiPrice(model, connection.models?.prices, connection.models?.list);
   if (!price) return null;
   const other: PersonalConnection = { ...connection, model, price };
   delete other.toolCalling;

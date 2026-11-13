@@ -418,6 +418,10 @@ retention supplies a permanent download channel.
    from protected `main` and match the tested version.
 2. Choose the agreed version/tag. If the tag already exists, verify it points to
    the same candidate; never silently move or overwrite an existing release tag.
+   On the build day, before the candidate is accepted, refresh the model price list the
+   release ships (#1465): `python3 scripts/update_price_list.py`, committed into the
+   candidate through a PR. The image build stays offline and reproducible; the final
+   release workflow refuses a candidate whose shipped list is more than 7 days old.
 3. Run the build/publication workflow on that exact revision. Build/test jobs use
    read-only permissions. Only the publishing job gets the necessary write scope,
    such as `contents: write` for a GitHub Release or package permission for images.
