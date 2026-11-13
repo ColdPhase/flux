@@ -8,8 +8,8 @@ The checks use the audit's own in-page measurement (`visual_consistency_audit.ME
 - the offline page is Geist, a 20 px title at 600 and a button with radius 10 at 32 px (44 on touch);
 - Search's field and its Close share one height on a tablet, Close is a 44 px target, and the field shows the focus ring of README §2;
 - Mine on the Tasks board is a system button (radius 10, 44 px on touch), not a circle or a pill;
-- a material opened directly has a token-sized title (it drew the browser's 1.5em h2, 21 px), the Inbox's filter counts reach 4.5:1 in both
-  themes, and the notification address tick is a 44 px target on touch.
+- a material opened directly has a token-sized title (it drew the browser's 1.5em h2, 21 px), and the notification address tick is a 44 px
+  target on touch. (The Inbox's filter counts of #1380 went with the filters, #1367.)
 """
 
 from __future__ import annotations
@@ -153,18 +153,13 @@ class TypeTokens(unittest.TestCase):
             self.assertGreaterEqual(look["height"], 44 if touch else 32, look)
             self.assertEqual([flag for flag in self.flags(page, "b", "e") if "Mine" in flag], [])
 
-    def test_05_a_material_title_the_inbox_counts_and_the_address_tick(self) -> None:
+    def test_05_a_material_title_and_the_address_tick(self) -> None:
         page = self.page()
         page.goto(f"/materials/{self.material}")
         title = page.get_by_role("heading", name="Probe datasheet notes")
         expect(title).to_be_visible()
         self.assertEqual(title.evaluate("e => getComputedStyle(e).fontSize"), "20px", "the title is --fs-xl, not the browser's 1.5em h2")
         self.assertEqual([flag for flag in self.flags(page, "d") if "material-view" in flag], [])
-        for dark in (False, True):
-            page = self.page(dark=dark)
-            page.goto("/inbox")
-            expect(page.locator(".ui-tabs__count").first).to_be_visible()
-            self.assertEqual([flag for flag in self.flags(page, "i") if "ui-tabs__count" in flag], [], "the filter counts reach 4.5:1")
         page = self.page(touch=True)
         page.goto("/settings/notifications")
         tick = page.get_by_role("checkbox", name=re.compile("^Notification email to")).first
