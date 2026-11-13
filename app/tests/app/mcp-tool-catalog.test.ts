@@ -108,6 +108,7 @@ describe('the tool definitions are built once and every server shares them (#114
     // F-042, #1290: the two tools that find and read around a message are the same for a client and for a run; the old one-space search is gone.
     assert.ok(client.includes('flux_search') && client.includes('flux_read_around'), 'a client may search and read around');
     assert.ok(client.includes('flux_summarize'), 'and read a range of a conversation to summarise it (#1292)');
+    assert.ok(client.includes('flux_read_file'), 'and read the text of a file someone sent (C-63, #1382)');
     assert.ok(!AGENT_TOOLS.some((entry) => entry.name === 'flux_search_project'), 'flux_search_project is retired');
     assert.deepEqual(offered(tools.server(claimsOf(randomUUID(), { tools: ['flux_read_around', 'flux_read_web', 'flux_search'] }))).sort(), ['flux_read_around', 'flux_search'],
       'a run minted the search tools is served them, whether or not the web read exists');

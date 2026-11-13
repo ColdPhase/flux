@@ -108,6 +108,13 @@ database on it before migrating.
 - **Memory and disk.** The memory limits are unchanged. The image is about 500 MB larger (800 MB); the index adds about 4 MB per
   10,000 messages.
 
+- **The files already sent are read for search (C-63, #1382).** Migration `0072` queues every PDF, DOCX, Markdown, text, CSV and TSV file
+  of the plain spaces and gives each its name as a search row at once; the worker reads their text in the background, one file at a
+  time in a sandboxed child process, as soon as it starts; how long that takes depends on the number and size of the files, and nothing else waits for
+  it. Until a file is read it is found by its name only; one that cannot be read (a scan, a password) stays found by its name. Nothing to
+  do by hand. The sandbox needs the image's `sandbox.node`: a worker started from a source tree without it reads no file and says so
+  once in its log.
+
 ## From v0.1: install v0.2 fresh
 
 v0.1 had no users, so v0.2 converts no data and keeps no compatibility with it (founder direction, 2026-11-09, #1176). A
