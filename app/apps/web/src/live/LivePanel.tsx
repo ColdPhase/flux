@@ -43,7 +43,7 @@ export function LivePanel({ live, presentable, onShow, onClose }: { live: LiveVa
       <header className="lv-panel__head">
         {/* Always in the first screen: on a phone the sheet fills the view and has no Escape. */}
         <IconButton icon="x" label="Back to work" onClick={onClose} className="lv-panel__close" />
-        <p className="lv-panel__k">Working together on this {KIND_WORD[anchor.context.type]}</p>
+        <p className="lv-panel__k">{anchor.context.type === 'space' ? 'Call in the space' : `Working together on this ${KIND_WORD[anchor.context.type]}`}</p>
         <h2 className="lv-panel__t">{anchor.label}</h2>
         <p className="lv-panel__aud"><Icon name="lock" size={12} />{audienceOf(live.people, live.meId)} · the same people who can open it</p>
       </header>

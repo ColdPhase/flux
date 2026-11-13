@@ -45,7 +45,7 @@ header.top:has(.wiki-header-actions) .top__right > .lv-entry { display: none; }
    faces of the people already in the call (they are on the strip once you join). With room (70 rem and up) the slots are 120 px, as wide as
    Join with its live dot and two faces and as three people, the agent and "+N" (4 × 20 + 26 + 12 = 118 px). The faces are 20 px whatever the
    text size, so the slot's least width is in px too. A call elsewhere
-   in the space adds nothing to the row: its dot is on More and its Join rows are in it. */
+   in the space takes the same slot as Join (F-041, #1230); further calls are rows of More, with its dot. */
 .top--project .top__right > .top__faces-slot { min-width: max(6.25rem, 100px); }
 .top--project .top__right > .lv-entry { min-width: 4.5rem; justify-content: center; }
 .top--project .top__right > .lv-entry .lv-faces { display: none; }

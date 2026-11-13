@@ -15,6 +15,7 @@ import {
 import type { LiveContextRef, LivePresentation, LivePresentationRef } from '@flux/contracts';
 import { requireLiveContext, requireLivePresentationSource } from './access.js';
 import { recordLiveChanged } from './events.js';
+import { liveContextColumns, liveContextOf, sameLiveContext } from './context.js';
 
 type SessionRow = typeof schema.liveSessions.$inferSelect;
 const MAX_PROJECT_SESSIONS = 8;
@@ -22,34 +23,15 @@ const MAX_CREATOR_SESSIONS = 3;
 const PRESENTATION_BATCH = 100;
 const MAX_PRESENTATION_SCAN = 500;
 
-function contextColumns(context: LiveContextRef) {
-  return {
-    conversationId: context.type === 'conversation' ? context.id : null,
-    workId: context.type === 'work' ? context.id : null,
-    sketchId: context.type === 'sketch' ? context.id : null,
-    docId: context.type === 'doc' ? context.id : null,
-  };
-}
-
 function sameContext(row: SessionRow, projectId: string, context: LiveContextRef) {
-  if (row.projectId !== projectId) return false;
-  switch (context.type) {
-    case 'conversation': return row.conversationId === context.id;
-    case 'work': return row.workId === context.id;
-    case 'sketch': return row.sketchId === context.id;
-    case 'doc': return row.docId === context.id;
-  }
+  return row.projectId === projectId && sameLiveContext(liveContextOf(row), context);
 }
 
 function record(row: SessionRow): LiveSessionRecord {
-  const context: LiveContextRef = row.conversationId
-    ? { type: 'conversation', id: row.conversationId }
-    : row.workId ? { type: 'work', id: row.workId }
-      : row.sketchId ? { type: 'sketch', id: row.sketchId } : { type: 'doc', id: row.docId! };
   return {
     id: row.id,
     projectId: row.projectId,
-    context,
+    context: liveContextOf(row),
     state: row.state,
     generation: row.generation,
     roomId: row.roomId,
@@ -126,7 +108,7 @@ export function liveSessionStore(db: Database): LiveRepository {
         if ((counts?.project ?? 0) >= MAX_PROJECT_SESSIONS || (counts?.creator ?? 0) >= MAX_CREATOR_SESSIONS)
           throw new RuleViolationError('Too many active live sessions', 'LIVE_SESSION_LIMIT');
         const [inserted] = await tx.insert(sessions).values({
-          id: randomUUID(), workspaceId: project!.workspaceId, projectId, ...contextColumns(context),
+          id: randomUUID(), workspaceId: project!.workspaceId, projectId, ...liveContextColumns(context),
           createdBy: principal.id, clientSessionId, emptySince: new Date(),
           // Fresh random identity per generation; never encode the project or human ID.
           roomId: `live_${randomBytes(24).toString('base64url')}`,

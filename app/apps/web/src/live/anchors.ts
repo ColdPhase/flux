@@ -5,6 +5,7 @@ import { getMaterial } from '../materials/api';
 import { getSketch } from '../api/sketches';
 import { getDoc } from '../docs/api';
 import { getWork } from '../work/api';
+import { getProject } from '../project/api';
 
 /**
  * Where a live session lives and what can be shown in it (#59 §3). Anchors and fragments are
@@ -29,6 +30,7 @@ export interface Presentable {
 }
 
 export const KIND_WORD: Record<AnchorKind, string> = {
+  space: 'space',
   conversation: 'conversation',
   work: 'task',
   sketch: 'map',
@@ -43,11 +45,17 @@ export function excerpt(text: string, max = 72) {
 export function anchorPath(anchor: Pick<LiveAnchor, 'projectId' | 'context'>): string {
   const { projectId, context } = anchor;
   switch (context.type) {
+    case 'space': return `/projects/${projectId}`;
     case 'conversation': return `/projects/${projectId}/conversations/${context.id}`;
     case 'work': return `/projects/${projectId}/tasks?open=work:${context.id}`;
     case 'sketch': return `/projects/${projectId}/map/${context.id}`;
     case 'doc': return `/projects/${projectId}/docs/${context.id}`;
   }
+}
+
+/** How a call is named where it shows: a call of the space is "Call in Gesture lamp" (F-041); any other keeps its object's title. */
+export function callTitle(anchor: Pick<LiveAnchor, 'context' | 'label'>): string {
+  return anchor.context.type === 'space' ? `Call in ${anchor.label}` : anchor.label;
 }
 
 export function sameContext(a: LiveContextRef | null | undefined, b: LiveContextRef | null | undefined) {
@@ -58,6 +66,7 @@ export function sameContext(a: LiveContextRef | null | undefined, b: LiveContext
 export async function anchorLabel(projectId: string, context: LiveContextRef, signal?: AbortSignal): Promise<string | null> {
   try {
     switch (context.type) {
+      case 'space': return context.id === projectId ? (await getProject(context.id, signal)).name : null;
       case 'conversation': return excerpt(plainMessageText((await getConversation(context.id, signal)).firstMessageBody));
       case 'work': return (await getWork(context.id, signal)).title;
       case 'sketch': return (await getSketch(context.id, signal)).title;

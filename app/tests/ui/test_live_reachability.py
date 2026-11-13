@@ -472,7 +472,7 @@ class ReachabilityRows(LiveBase):
         self.api(host, "POST", f"/api/v1/live-sessions/{sessions[0]['id']}/invitations", {"recipientId": PEOPLE["kai"]["id"]}, status=201)
         page = self.page("kai", **context)
         page.goto("/inbox")
-        item = page.locator(".nyc", has_text="invited you to work together")
+        item = page.locator(".nyc", has_text="invited you to a call")
         expect(item).to_have_count(1)
         item.get_by_role("button", name="Open").click()
         card = page.get_by_role("region", name="Invitation to work together")

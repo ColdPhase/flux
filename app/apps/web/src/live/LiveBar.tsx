@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { useNavigate } from 'react-router';
 import { Avatar, Button, duration, Icon, IconButton, MEDIA, Sheet, Spinner, play, useMediaQuery, useStripOnlyModal } from '../ui';
-import { anchorPath, KIND_WORD } from './anchors';
+import { anchorPath, callTitle, KIND_WORD } from './anchors';
 import { useLive, useLiveHere, type LiveValue } from './LiveProvider';
 import { canPublishScreen } from './capture';
 import type { MediaPerson, ScreenMode } from './media';
@@ -48,8 +48,13 @@ export function LiveBar() {
       <section className="lv-bar lv-bar--invite" aria-label="Invitation to work together">
         <div className="lv-row">
           <span className="lv-row__lead"><Avatar name={live.fullName(invitation.inviterId)} id={invitation.inviterId} size="sm" /></span>
-          <p className="lv-row__text"><b>{live.nameOf(invitation.inviterId)}</b> asked you to work together on <b>“{invitation.anchor.label}”</b>
-            <span className="lv-row__muted"> · {KIND_WORD[invitation.anchor.context.type]}, microphone and camera stay off</span></p>
+          {invitation.anchor.context.type === 'space' ? (
+            <p className="lv-row__text"><b>{live.nameOf(invitation.inviterId)}</b> invited you to the call in <b>{invitation.anchor.label}</b>
+              <span className="lv-row__muted"> · microphone and camera stay off</span></p>
+          ) : (
+            <p className="lv-row__text"><b>{live.nameOf(invitation.inviterId)}</b> asked you to work together on <b>“{invitation.anchor.label}”</b>
+              <span className="lv-row__muted"> · {KIND_WORD[invitation.anchor.context.type]}, microphone and camera stay off</span></p>
+          )}
           <span className="lv-row__acts">
             <Button variant="primary" onClick={() => void live.answerInvitation('join')}>Join</Button>
             <Button variant="quiet" onClick={() => void live.answerInvitation('later')}>Later</Button>
@@ -114,9 +119,9 @@ export function LiveBar() {
           <span className="lv-status">{status}</span>
         </span>
         <button type="button" className="lv-where" onClick={() => navigate(anchorPath(where), { state: { liveFollow: true } })}
-          title={`Back to “${where.label}”`}>
-          <span className="lv-where__t">{where.label}</span>
-          <span className="lv-where__k">{KIND_WORD[where.context.type]}</span>
+          title={where.context.type === 'space' ? `Back to ${where.label}` : `Back to “${where.label}”`}>
+          <span className="lv-where__t">{callTitle(where)}</span>
+          {where.context.type === 'space' ? null : <span className="lv-where__k">{KIND_WORD[where.context.type]}</span>}
         </button>
         {!phone ? faces : null}
         <span className="lv-row__acts">

@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import type { LiveContextRef, LiveJoinGrant, LivePresentationRef, LiveSession } from '@flux/contracts';
+import { LIVE_CONTEXT_TYPES, type LiveContextRef, type LiveJoinGrant, type LivePresentationRef, type LiveSession } from '@flux/contracts';
 import { InvalidInputError, NotFoundError, RuleViolationError } from '../access/errors.js';
 import type { Principal } from '../principal.js';
 import type { LivePorts, LiveSessionRecord } from './ports.js';
@@ -31,8 +31,8 @@ export function liveUseCases(ports: LivePorts) {
   return {
     async start(principal: Principal, context: LiveContextRef, clientSessionId: string): Promise<LiveSession> {
       human(principal);
-      if (!context || !['conversation', 'work', 'sketch', 'doc'].includes(context.type))
-        throw new InvalidInputError('context must name a conversation, work item, project sketch or wiki doc');
+      if (!context || !(LIVE_CONTEXT_TYPES as readonly string[]).includes(context.type))
+        throw new InvalidInputError('context must name a space, conversation, work item, project sketch or wiki doc');
       uuid(context.id, 'context.id');
       uuid(clientSessionId, 'clientSessionId');
       const { projectId } = await ports.access.resolveContext(principal, context);

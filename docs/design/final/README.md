@@ -369,7 +369,7 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
 - **Space header.** One row in which every item has a fixed slot, so nothing moves when a count
   or a face is absent: the space's name (a 220 px slot), the views **Conversation · Tasks · Map ·
   Wiki** as [underline tabs](#underline-tabs-the-views-switch), the people's faces (people active now first, then the others, an agent last; with a working agent's
-  face only while it works), **Call** and ⋯. The tabs are as tall as the row, so their underline sits on the
+  face only while it works), **Call** (Join while a call of the space is on, [Calls](#calls)) and ⋯. The tabs are as tall as the row, so their underline sits on the
   header's hairline. The faces sit side by side and touch, as drawn, so two-letter initials stay whole:
   at most three people and one agent (two people and one agent in a header pane narrower than 70 rem, a tablet or a
   computer window of about 1001 to 1380 px), then one "+N" face of the same size (a circle for "+5", "99+" from a
@@ -1012,6 +1012,69 @@ information: it reads as part of the conversation, never as a log line, and it n
   for the newest groups, updated by the live event `project.messages_observed.v1`; the 8 s look
   runs only while the live stream is down.
 
+### Calls
+
+Not in the drawings; composed from the drawn parts for F-041 ([calls are noticed](../../product/live-collaboration.md#calls-are-noticed-f-041),
+founder decision 2026-11-12). Only the live strip's existing parts are used: the live dot (`lv-dot`, the one breathing
+mark, still with reduced motion), `Avatar` faces, `Button` (primary, secondary, quiet), `Sheet` on the phone, the strip's
+one-line rows (`lv-line`) and the existing icons (`call`, `together`, `screen`). No new colour, radius or shadow.
+
+```
+Space header, computer (a call of the space is on; Join keeps Call's fixed slot, nothing moves)
+┌─────────────────────────────────────────────────────────────────────────────────────────────┐
+│ Gesture lamp   [Conversation | Tasks | Map | Wiki]        (A)(J)(N)   [● (N) Join]   ⋯       │
+└─────────────────────────────────────────────────────────────────────────────────────────────┘
+  tooltip and description: "Join · Nia · at “Loan rules” — microphone and camera stay off"
+
+Live strip (the starter, alone)
+┌─────────────────────────────────────────────────────────────────────────────────────────────┐
+│ ● Live   Call in Gesture lamp      (H)          [Invite…]  🎙  📷  🖥   ⋯   [Leave]           │
+│ Nobody joined · [Invite someone]                                                              │
+└─────────────────────────────────────────────────────────────────────────────────────────────┘
+
+Conversation, an event line like a task line (reading column)
+   ── (H) Hubert started a call · (H)(M) 2 people · 4 min · [Join]                    10:42
+   ── Call · 12 min · Hubert, Maurycy                                                 10:54
+   ── Hubert called · nobody joined                                                   11:20
+
+Live strip, someone shares a screen
+│ ● Live   Call in Gesture lamp      (N🖥)(J)     …                                              │
+│ 🖥 Nia is sharing her screen · [View]                                                          │
+```
+
+- **Join in the header.** Any call of the space with someone in it takes Call's slot on every view of the space: the
+  primary pill with the live dot, up to two faces (from 70 rem) and "Join". The slot keeps its width, so the views, the
+  name, the people and ⋯ do not move (#873). Who is in it and where it is are in its tooltip and description: "Join ·
+  Nia", and "Join · Nia · at “Loan rules”" when the call is at another task, map or page than the one open (a call of
+  the space itself has no "at"). Below 44 rem the header has moved Call into ⋯: ⋯ carries the live dot and its first row
+  is "Join · Nia". On the phone Join is the dark pill between the name and ⋯ (#1239); under 360 px it takes Call's row in ⋯, after Search, with the dot on ⋯.
+- **⋯ with calls.** Further calls of the space are rows "Join · Kai · at “Order sensors”" (dot first), and **Start a
+  call here** starts a separate call at the place open. Starting from the conversation joins the space's call instead.
+- **The strip's place** is the button it always was; a call of the space reads "Call in Gesture lamp" with no kind
+  word, a task's call keeps "Order sensors · task".
+- **Invite…** is a quiet button in the strip before the devices (in ⋯'s sheet on the phone). It opens the strip's
+  existing popover (a sheet on the phone) with the space's people who are not in the call, each with Invite → "Invited".
+- **Nobody joined.** While the starter is alone in a call nobody else joined, one `lv-line` under the strip: "Nobody
+  joined" and a quiet **Invite someone**, which opens Invite…. After 10 minutes alone the call ends and the strip's ended
+  row says "Nobody joined, so the call ended. Your work is saved." with Dismiss.
+- **The conversation line** is one line in the reading column, the size, colour and indent of a task line ("Ada created
+  #1 …"): the starter's face, "**Hubert** started a call", then while it runs the faces of who is in it, "N people",
+  how long it has run and a secondary **Join** (absent while you are in it); the time at the end. Ended: "Call · 12 min ·
+  Hubert, Maurycy"; never joined: "Hubert called · nobody joined". It has no hover toolbar, no reply and no reactions. It
+  changes in place with no motion (motion rule 5).
+- **Live dot on a space.** While a call of a space runs, its row in the sidebar and in the phone's Spaces list carries
+  the live dot after the name (before the unread count), in the slot the encrypted lock uses, and "call on" in the row's
+  name for screen readers.
+- **The call notice** is an Inbox item: "Call · Nia · Gesture lamp", "Nia started a call", with **Join** and Open. An
+  invitation is the existing item ("Nia invited you to a call") with Join and Later. The corner notice card is #1243's.
+- **The chime** is one short soft tone (no loop), played only for a direct invitation, on an open tab. Settings ›
+  Notifications has one **Sound** switch under Where ("A soft chime when someone invites you to a call").
+- **A shared screen.** The sharer's face in the strip carries the `screen` icon as a badge, where the muted-microphone
+  badge sits. One `lv-line` (the `screen` icon first): "**Nia** is sharing her screen" and a secondary **View**. The
+  stage opens by itself once per share, with no motion (motion rule 5), and stays closed when you close it for that
+  share. When the share stops, the stage closes and the line reads "Nia stopped sharing" for a few seconds. On a phone
+  the stage does not open by itself: a half-height sheet offers **View Nia's screen** and Not now.
+
 ### Create
 
 The phone's "+" and the computer's New (`C`) open Create with the same five types: Task, Thought,
@@ -1122,7 +1185,9 @@ the composer. The right-hand phone above shows the sheet.
     mentions and agents waiting for you. Everything adds new messages and task updates. Nothing
     shows only the count on the Inbox.
   - **Where:** Email me too, On this device and Quiet hours ("22:00–7:00 · no email or push then;
-    the Inbox keeps everything", Change).
+    the Inbox keeps everything", Change), and **Sound**, the one sound switch (#1243: sound is off
+    by default; the soft chime of a call invitation, F-041, is the exception, on until the switch
+    is turned off).
   - **Email addresses:** the sign-in address first, then the others, each ticked on or off.
     "Confirmed", or "Waiting for you to confirm it from that inbox" with Send again. "Add another
     address" sends a confirmation link before any notification goes there.

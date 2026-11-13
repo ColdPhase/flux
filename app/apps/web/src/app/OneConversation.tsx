@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useRef, useState, type ComponentType, type ReactNode } from 'react';
 import { useLocation, useNavigate, useRevalidator } from 'react-router';
-import { plainMessageText, type Conversation, type ConversationMessage, type ConversationRoot, type NativeWorkRow, type ObjectNotice } from '@flux/contracts';
+import type { Conversation, ConversationMessage, ConversationRoot, NativeWorkRow, ObjectNotice } from '@flux/contracts';
 import type { MessageWorkPreview } from '../work/message-associations';
 import { ApiError } from '../api/client';
 import { PanelMeta } from '../ui';
 import { ThreadFollow } from '../notifications/ThreadFollow';
 import { agentAuthorOwner, useAgentOwners } from '../agents/owners';
 import { useRegisterLiveHere } from '../live/LiveProvider';
-import { excerpt } from '../live/anchors';
 import { audienceLine, useProjectShell } from '../project/data';
 import { useShellData } from './data';
 import { agentAuthorLabel, FORMER_MEMBER } from '../docs/format';
@@ -109,10 +108,9 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
       ?? people?.find((person) => person.kind === 'human' && person.id === message.authorId)?.name ?? FORMER_MEMBER;
   }, [me.user.id, me.user.name, members, people]);
 
-  // "Work on this together" starts at the open thread, or at the newest root as the project page did.
-  const latest = roots.roots.at(-1) ?? null;
-  const live = thread ? { id: thread.id, label: thread.firstMessageBody } : latest ? { id: latest.conversationId, label: latest.message.body } : null;
-  useRegisterLiveHere(live ? { projectId: project.id, context: { type: 'conversation', id: live.id }, label: excerpt(plainMessageText(live.label)) } : null, null);
+  // Call from the conversation, its stream or an open thread, is the space's call: "Call in Gesture lamp" (F-041). It never takes a message's
+  // text, and a message posted after it started does not move it (#1223, #1230).
+  useRegisterLiveHere({ projectId: project.id, context: { type: 'space', id: project.id }, label: project.name }, null);
 
   const opener = useRef<string | null>(null);
   const open = useCallback((item: ConversationRoot, reply: boolean) => {

@@ -255,8 +255,11 @@ export function notificationFactRows(db: DbExecutor) {
         .where(eq(li.id, invitationId));
       if (!row || row.invitation.response !== 'pending' || row.session.state !== 'available') return null;
       const { session } = row;
-      let anchor: { type: 'conversation' | 'work' | 'sketch' | 'doc'; label: string } | null = null;
-      if (session.conversationId) {
+      let anchor: { type: 'space' | 'conversation' | 'work' | 'sketch' | 'doc'; label: string } | null = null;
+      // A call of the space (F-041) is named by the space.
+      const spaceCall = !session.conversationId && !session.workId && !session.sketchId && !session.docId;
+      if (spaceCall) anchor = { type: 'space', label: await projectName(session.projectId) };
+      else if (session.conversationId) {
         const pm = schema.projectMessages;
         const [opening] = await db.select({ body: pm.body, attachmentCount: pm.attachmentCount }).from(pm)
           .where(and(eq(pm.conversationId, session.conversationId), eq(pm.projectId, session.projectId))).orderBy(asc(pm.sequence)).limit(1);

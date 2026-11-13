@@ -7,6 +7,7 @@ import {
 } from '@flux/core';
 import type { LiveContextRef } from '@flux/contracts';
 import { requireLiveContext } from './access.js';
+import { liveContextOf, sameLiveContext } from './context.js';
 import { eventPorts } from '../events.js';
 
 interface InvitationRow {
@@ -29,17 +30,8 @@ function record(row: InvitationRow): LiveInvitation {
   };
 }
 
-function context(row: typeof schema.liveSessions.$inferSelect): LiveContextRef {
-  if (row.conversationId) return { type: 'conversation', id: row.conversationId };
-  if (row.workId) return { type: 'work', id: row.workId };
-  if (row.sketchId) return { type: 'sketch', id: row.sketchId };
-  if (row.docId) return { type: 'doc', id: row.docId };
-  throw new Error('Live session has no context');
-}
-
-function sameContext(left: LiveContextRef, right: LiveContextRef): boolean {
-  return left.type === right.type && left.id === right.id;
-}
+const context = (row: typeof schema.liveSessions.$inferSelect): LiveContextRef => liveContextOf(row);
+const sameContext = sameLiveContext;
 
 const columns = sql`id, session_id, project_id, inviter_id, recipient_id, response, created_at, responded_at`;
 
