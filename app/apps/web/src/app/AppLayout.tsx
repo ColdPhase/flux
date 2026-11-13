@@ -818,7 +818,7 @@ function AppLayoutContent() {
         <span className="top__actions" ref={setActionSlot} />
         {activeProject && /^\/projects\/[^/]+(\/conversations\/|\/?$)/.test(location.pathname) ? <ProjectAgentStop projectId={activeProject.id} /> : null}
         {/* A space's header keeps only Join here, while a call is live (the CSS hides the rest of the entry); Search and Call are in More (#1239).
-            A direct message and a space's settings keep Call and Search, as before; Call is dimmed where it is unavailable. */}
+            A direct message's header is the same (#1374); a space's settings keep Call and Search icons; Call is dimmed where it is unavailable. */}
         {spaceHeader || activeDm ? <LiveEntry /> : activeProject ? <><LiveEntry />{searchButton}</> : null}
         {activeProject && projectId && !backOnly ? <MoreMenu items={phoneMoreItems} className="phead__round" size={24} cue={(id, buttonId) => <LiveCue id={id} buttonId={buttonId} />} /> : null}
         {activeDm ? <MoreMenu items={phoneDmItems} className="phead__round" size={24} cue={(id, buttonId) => <LiveCue id={id} buttonId={buttonId} />} /> : null}
