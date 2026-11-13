@@ -25,7 +25,7 @@ export function DiscussedTask({ task, row }: { task: { workId: string; title: st
 }
 
 /** A calm chip under a message for an object made from it: icon, title and a quiet state. */
-function ObjectChip({ icon, number, state, title, need, onOpen, label, objectKind, objectId, nativeRef }: { icon: 'tasks' | 'rule' | 'map'; number?: number; state: StatePiece[]; title: string; need?: boolean; onOpen: () => void; label: string; objectKind: string; objectId: string; nativeRef?: string }) {
+function ObjectChip({ icon, number, state, title, need, onOpen, label, objectKind, objectId, nativeRef }: { icon: 'tasks' | 'flag' | 'map'; number?: number; state: StatePiece[]; title: string; need?: boolean; onOpen: () => void; label: string; objectKind: string; objectId: string; nativeRef?: string }) {
   return (
     <button type="button" data-work-kind={objectKind} data-work-id={objectId} data-native-ref={nativeRef} className={`ws-chip${need ? ' ws-chip--need' : ''}`} onClick={onOpen} aria-label={`${label}: ${title}`}>
       <Icon name={icon} size={14} />
@@ -55,7 +55,7 @@ export function MessageObjects({ message, projectId, preview, thread = null, thr
   return (
     <div className="ws-attach">
       {discussed ? <DiscussedTask task={discussed} row={threadRow} /> : null}
-      {items.map((item) => <ObjectChip key={`${item.kind}:${item.id}`} objectKind={item.kind} objectId={item.id} icon={item.kind === 'work' ? 'tasks' : 'rule'} number={item.kind === 'work' ? item.number : undefined} state={item.kind === 'work' ? workPieces(item) : decisionPieces(item)} title={item.title} need={item.kind === 'decision' && item.status === 'proposed'} label={item.kind === 'work' ? `Task #${item.number}` : 'Decision'} onOpen={() => openDetails({ kind: item.kind, id: item.id })} />)}
+      {items.map((item) => <ObjectChip key={`${item.kind}:${item.id}`} objectKind={item.kind} objectId={item.id} icon={item.kind === 'work' ? 'tasks' : 'flag'} number={item.kind === 'work' ? item.number : undefined} state={item.kind === 'work' ? workPieces(item) : decisionPieces(item)} title={item.title} need={item.kind === 'decision' && item.status === 'proposed'} label={item.kind === 'work' ? `Task #${item.number}` : 'Decision'} onOpen={() => openDetails({ kind: item.kind, id: item.id })} />)}
       {/* CW-2: the thought made from this message, as its decisions are; it opens the map with the thought selected. */}
       {thoughts.map((thought) => <ObjectChip key={`thought:${thought.thoughtId}`} objectKind="thought" objectId={thought.thoughtId} icon="map" title={thought.text} state={[{ text: `On the map · ${thought.sketchTitle}` }]} label="On the map"
         onOpen={() => navigate(`/projects/${projectId}/map/${thought.sketchId}#thought-${thought.thoughtId}`)} />)}

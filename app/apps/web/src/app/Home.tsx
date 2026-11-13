@@ -170,7 +170,7 @@ function WaitingItem({ row }: { row: WaitingRow }) {
     const places = [...new Set(decisions.map((item) => item.project?.name).filter((name): name is string => !!name))];
     const from = nameList(decisions.map((item) => item.from?.name).filter((name): name is string => !!name));
     return (
-      <HomeRow to="/inbox" state={{ select: decisions[0]!.key }} face={<span className="nyc__face nyc__face--icon"><Icon name="rule" size={16} /></span>}
+      <HomeRow to="/inbox" state={{ select: decisions[0]!.key }} face={<span className="nyc__face nyc__face--icon"><Icon name="flag" size={16} /></span>}
         title={`${decisions.length} ${decisions.length === 1 ? 'decision' : 'decisions'} waiting`}
         meta={[places.slice(0, 2).join(' · '), from ? `from ${from}` : null].filter(Boolean).join(' · ')} />
     );

@@ -217,13 +217,18 @@ circle never stands for a space.
   saved. Errors are one plain line, as for a photo.
 - A change reaches every open sidebar at once (the space's `project.updated` event), with no reload.
 
-**Typography:** Geist 400 / 500 / 600 and Geist Mono for numbers (#12), times, keys and file
-labels.
+**Typography:** Geist 400 / 500 / 600 and Geist Mono for task numbers (#12), keys and file
+labels. A time is Geist with tabular figures, as the line under a message already is ([#1231](https://github.com/ColdPhase/flux/issues/1231),
+[#1373](https://github.com/ColdPhase/flux/issues/1373)), never a monospace. Bold text is 600, never the browser's 700.
 - Title: 32 / 600 on the computer, 28–30 on the phone.
 - Section: 16–17 / 600.
 - Body: 14 / 20 on the computer, 15–16 on the phone.
 - Meta: 12, and at least 12.5 on the phone.
 - The phone follows the system text size.
+- Every size is a `--fs-*` token. The initials of a 16 px face (the `Avatar` `xs`, the faces under a message, the face in a
+  mention chip) are `--fs-face` (px, #1370) scaled by .72 with a transform, so the type stays a token and two letters never run wider than the circle.
+- **The offline page** (`/offline.html`, what an offline navigation shows) uses the same tokens: Geist (the app serves it from `/fonts`,
+  and its service worker caches it), `--t1` and `--t3`, a 20 px title at 600, and one flat primary button, "Try again", with radius 10 (32 px high, 44 on touch).
 
 **Motion:** one rule set, in [Motion in Flux](../motion.md). Feedback comes within 100 ms. A view
 switch shows the new screen at once. Panels, dialogs, menus and sheets enter in 180 ms and leave
@@ -253,6 +258,9 @@ has superseded:
 A task is To do (outline circle), Doing (half-filled circle), Blocked (filled rounded square) or
 Done (filled circle with a check). A word always accompanies the glyph. A task that was dropped
 is Done with a "dropped" note.
+
+A decision is the **flag** glyph wherever it appears (Create's Decision, Home, the Inbox, the conversation's cards, Search and the Wiki
+card), as the renders draw it ([#1373](https://github.com/ColdPhase/flux/issues/1373)); the hexagon with a check is retired.
 
 ### Agent colours
 
@@ -404,7 +412,7 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
 
 ### Phone
 
-- **Tab bar.** Home · Spaces · Inbox, in a floating capsule, with a separate round **Search**
+- **Tab bar.** Home · Spaces (the four-square grid, the same glyph as Create's Space) · Inbox, in a floating capsule, with a separate round **Search**
   button. Spaces lists your spaces and then Messages, with Assistant pinned first.
 - **Home** adds rows under the waiting items, because the phone has no sidebar: "My tasks (N)"
   and, next to it, "My map" (Hubert, 2026-11-03). The tab bar stays at three tabs. Your face at the
@@ -1144,6 +1152,11 @@ Live strip, someone shares a screen
   Nia", and "Join · Nia · at “Loan rules”" when the call is at another task, map or page than the one open (a call of
   the space itself has no "at"). Below 44 rem the header has moved Call into ⋯: ⋯ carries the live dot and its first row
   is "Join · Nia". On the phone Join is the dark pill between the name and ⋯ (#1239); under 360 px it takes Call's row in ⋯, after Search, with the dot on ⋯.
+- **While you are in the call** the header's slot shows the call's state, not a Call button again ([#1378](https://github.com/ColdPhase/flux/issues/1378)):
+  the live dot (a spinner while it connects) and **In call**, the same quiet button in the same slot, so nothing moves. It explains itself in its popover
+  ("You are in a live session." / "Connecting to the call.") and starts nothing; ⋯'s row reads **In call** the same way.
+- **The strip's row is centred** on every window: the live dot with its word (**Live**, from 360 px), the place's button, the faces, then the devices; every item shares
+  the row's centre line, and a call line's faces sit side by side, 2 px apart, with no overlap (the receipts' rule).
 - **Connecting.** From the click on Call or Join the strip is there, in the place it will keep: the spinner and "Connecting…",
   and the call's place (the same button), with nothing else; its devices, Invite…, ⋯ and Leave come when the call is joined, in the
   same row, so the work below does not move twice. Until then the header's Call (or ⋯'s row) says "Connecting to the call." and
@@ -1207,10 +1220,12 @@ the composer. The right-hand phone above shows the sheet.
 | ![Tasks board](screens/desktop-tasks.webp) | ![Task panel with agents](screens/desktop-task-agents.webp) |
 
 - **One control row** for Board and List: the Board / List switch, Mine, Search tasks and, on the
-  right, "+ Task". Mine includes tasks owned by your agents.
+  right, "+ Task". Mine includes tasks owned by your agents. Mine is the system's outline `Button` with the person icon, pressed
+  with the `--t1` edge; it is a 32 px control (44 on touch), never a circle.
 - **Four columns**, the four states: To do, Doing, Blocked and Done, each with its glyph and count.
   A card holds its title, its number, a due date when it has one, and its owner's face, an agent
-  tag ("Planner · Ada's agent") or "No owner". Cards have no ⋯, and columns have no "+".
+  tag ("Planner · Ada's agent") or "No owner". Cards have no ⋯, and columns have no "+". A column is one card wide and at most 420 px,
+  whatever the window: extra width is margin on the right, never cards flowing sideways inside a state ([#1379](https://github.com/ColdPhase/flux/issues/1379)).
 - **Blocked** cards carry one line saying what they wait for: "Waiting for the decision Use LoRa
   for the far beds", "Waiting for Jonas" or "Waiting for #7". When that resolves, the task returns
   to Doing by itself.

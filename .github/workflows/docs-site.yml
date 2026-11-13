@@ -18,7 +18,7 @@ on:
       - docs/product/encrypted-workspaces.md
       - docs/product/licensing.md
       - docs/assets/**
-      - app/apps/web/src/ui/fonts/**
+      - app/apps/web/public/fonts/**
       - scripts/check_docs_site.sh
       - .github/workflows/docs-site.yml
   push:
@@ -35,7 +35,7 @@ on:
       - docs/product/encrypted-workspaces.md
       - docs/product/licensing.md
       - docs/assets/**
-      - app/apps/web/src/ui/fonts/**
+      - app/apps/web/public/fonts/**
       - scripts/check_docs_site.sh
       - .github/workflows/docs-site.yml
   workflow_dispatch:

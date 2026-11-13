@@ -62,6 +62,8 @@ WIDE_CAPS = {
 MEASURE = 90
 # The most empty space between the newest message of a short stream and its message field (ADAPT-2, tall screens).
 MAX_STREAM_GAP = 64
+# The most room above the first row of a short thread (S23: a thread opens from its very top; #1379): the feed's own padding.
+MAX_THREAD_TOP = 48
 # The most room a long stream's opening adds below its newest message so its top message starts whole (#725;
 # WHOLE_MESSAGE_ROOM in app/apps/web/src/app/messageParts.tsx).
 WHOLE_MESSAGE_ROOM = 48
@@ -677,18 +679,21 @@ class AdaptiveMatrix(AdaptiveBase):
                 self.shot(page, f"adapt-{width}x{height}-map-beside-details")
                 self.no_problems()
 
-    def test_03_wider_boards_show_more_cards_per_row(self) -> None:
-        """ADAPT-2: the To do column's three cards take three rows at 1440 px and one at 3840 px."""
-        rows = {}
-        for width, height in [(1440, 900), (3840, 2160)]:
+    def test_03_the_board_keeps_four_readable_columns_of_one_card_each_on_wide_screens(self) -> None:
+        """#1379: the four states stay four columns of at most 420 px at every width, each card on its own row (the To do column's
+        three cards take three rows at 1440 px and at 3840 px); the extra width is margin, never cards flowing sideways."""
+        for width, height in [(1440, 900), (3440, 1440), (3840, 2160)]:
             page = self.page(width, height)
             page.goto(f"/projects/{self.ids['project']}/tasks")
             expect(page.locator(".tb-board")).to_be_visible()
             column = page.get_by_role("region", name=re.compile("^To do"))
             expect(column.locator(".tb-card")).to_have_count(3)
-            rows[width] = len({round(card.bounding_box()["y"]) for card in column.locator(".tb-card").all()})
-        self.assertEqual(rows[1440], 3, rows)
-        self.assertEqual(rows[3840], 1, rows)
+            rows = len({round(card.bounding_box()["y"]) for card in column.locator(".tb-card").all()})
+            self.assertEqual(rows, 3, f"one card per row at {width}")
+            widths = [round(col.bounding_box()["width"]) for col in page.locator(".tb-col").all()]
+            self.assertEqual(len(widths), 4, widths)
+            self.assertLessEqual(max(widths), 420, f"a readable column at {width}: {widths}")
+            self.assertGreaterEqual(min(widths), 240, f"a column wide enough for its cards at {width}: {widths}")
 
     def test_04_on_wide_screens_stream_and_the_one_panel_sit_side_by_side(self) -> None:
         """ADAPT-2 and #488: from 1920 px a reply's source stays beside its thread, and Details take the same
@@ -843,12 +848,13 @@ class AdaptiveMatrix(AdaptiveBase):
                 self.assertLessEqual(gaps[f"{width}×{height}"], MAX_STREAM_GAP, f"the newest message and the field stay together at {width}×{height}: {gaps}")
         print("\n  space between the newest message and the message field (CSS px): " + ", ".join(f"{size} {gap}" for size, gap in gaps.items()), end="")
 
-    def test_09_a_short_thread_and_a_short_direct_message_stay_connected_to_their_fields(self) -> None:
-        """ADAPT-2: the same holds for a thread (its root and one reply), a direct message (two messages), a direct
-        message's private reply thread (its root and one reply) and a task's discussion in its panel (two messages): the newest
-        message sits against its field."""
+    def test_09_a_short_thread_starts_at_the_top_and_a_short_direct_message_stays_connected_to_its_field(self) -> None:
+        """S23 and ADAPT-2: a thread (its root and one reply) and a direct message's private reply thread start at the very top of their
+        panel, the root shown whole (#1379), while a direct message (two messages) keeps its newest message against its field."""
         world = self.short_world()
-        gaps = {"thread": {}, "direct message": {}, "direct message thread": {}}
+        top = "el => Math.round(el.getBoundingClientRect().top - el.parentElement.getBoundingClientRect().top)"
+        gaps = {"direct message": {}}
+        tops = {"thread": {}, "direct message thread": {}}
         for width, height in [(390, 844), (820, 1180), (1440, 900), (2560, 1440), (3440, 1440)]:
             with self.subTest(width=width, height=height):
                 size = f"{width}×{height}"
@@ -857,9 +863,7 @@ class AdaptiveMatrix(AdaptiveBase):
                 thread = page.locator("#thread")
                 expect(thread.locator(".project-convo__message")).to_have_count(1)
                 self.at_rest(page)
-                last = thread.locator(".project-convo__message").last.bounding_box()
-                field = thread.get_by_label("Reply", exact=True).bounding_box()
-                gaps["thread"][size] = round(field["y"] - (last["y"] + last["height"]))
+                tops["thread"][size] = thread.locator(".thread__in").first.evaluate(top)
                 dm = self.page(width, height, state=world["state"])
                 dm.goto(f"/dm/{world['dm']}")
                 expect(dm.locator(".dm__list > li")).to_have_count(2)
@@ -872,14 +876,15 @@ class AdaptiveMatrix(AdaptiveBase):
                 # The one reply; the first time it is read it has its day line and the New divider (#1246) before it, so the rows are counted by message.
                 expect(panel.locator(".thread__list > li[data-message-id]")).to_have_count(1)
                 self.at_rest(dm)
-                last = panel.locator(".thread__list > li").last.bounding_box()
-                field = panel.locator("#dm-thread-composer").bounding_box()
-                gaps["direct message thread"][size] = round(field["y"] - (last["y"] + last["height"]))
+                tops["direct message thread"][size] = panel.locator(".thread__in").first.evaluate(top)
                 # Every surface is measured before any is judged, so one failure still reports the others.
-                for what, values in gaps.items():
-                    self.assertLessEqual(values[size], MAX_STREAM_GAP, f"the newest message of the {what} and its field stay together at {size}: {gaps}")
+                self.assertLessEqual(gaps["direct message"][size], MAX_STREAM_GAP, f"the newest direct message and its field stay together at {size}: {gaps}")
+                for what, values in tops.items():
+                    self.assertLessEqual(values[size], MAX_THREAD_TOP, f"the {what} starts at the top of its panel at {size}: {tops}")
         for what, values in gaps.items():
             print(f"\n  space between the newest message and the field, {what} (CSS px): " + ", ".join(f"{size} {gap}" for size, gap in values.items()), end="")
+        for what, values in tops.items():
+            print(f"\n  space above the first row of the {what} (CSS px): " + ", ".join(f"{size} {gap}" for size, gap in values.items()), end="")
 
 
 class AdaptiveTransitions(AdaptiveBase):

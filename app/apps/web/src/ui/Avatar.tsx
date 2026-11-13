@@ -34,7 +34,7 @@ export function Avatar({ name, id, photo, size = 'md', tone = 'neutral' }: {
 }) {
   return (
     <span className={`ui-avatar ui-avatar--${size} ui-avatar--${tone}`} aria-hidden="true">
-      {initials(name)}
+      {size === 'xs' ? <span className="ui-avatar__i">{initials(name)}</span> : initials(name)}
       {photo ? <img className="ui-avatar__photo" alt="" decoding="async" draggable={false} src={photo} /> : <PersonPhoto id={id} px={PIXELS[size]} />}
     </span>
   );

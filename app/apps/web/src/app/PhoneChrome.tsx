@@ -19,7 +19,7 @@ export function phonePlaces(pathname: string, inboxUnread: number): BottomNavIte
   const projects = /^\/(projects|dm)(\/|$)/.test(pathname);
   return [
     { id: 'home', label: 'Home', to: '/', icon: 'home', current: home },
-    { id: 'projects', label: 'Spaces', to: '/projects', icon: 'board', current: projects },
+    { id: 'projects', label: 'Spaces', to: '/projects', icon: 'grid', current: projects },
     { id: 'inbox', label: 'Inbox', to: '/inbox', icon: 'inbox', current: inbox, ...(inboxUnread ? { countLabel: ', something new', dot: true } : {}) },
   ];
 }

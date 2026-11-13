@@ -73,7 +73,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   const privateItems = [...assistant.privateAnswers.map((item) => item.id), assistant.run?.id ?? ''].join(',');
   useFollowEnd(() => document.querySelector<HTMLElement>(conversation ? '.thread__feed' : '.project-convo__feed.is-stream'), privateItems.replaceAll(',', '') ? privateItems : '', assistant.run?.id ?? null);
   const outbox = outboxView(messages, conversation ? publicComposer.pending : [], publicComposer.sent, me.user.id);
-  const reading = useThreadReading(core, { messages, pendingCount: outbox.pending.length, rootMessageId, accessLost, hideIfDenied });
+  const reading = useThreadReading(core, { messages, rootMessageId, accessLost, hideIfDenied });
   // Typing (#155) is the thread's: an ephemeral signal to the people who can read this conversation. The
   // stream's composer has no conversation yet, so it has no typing scope.
   const typing = useTyping(me.user.id, conversation && !accessLost ? { kind: 'conversation', id: conversation.id } : null, writable && !asking && !drafts.busy);
