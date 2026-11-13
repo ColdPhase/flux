@@ -108,8 +108,8 @@ Each harness ran once in the throwaway image of [`Dockerfile`](evidence/harness-
 `no-new-privileges`, 1 CPU, 1 GiB, on an internal Docker network whose only peer is [`mock.py`](evidence/harness-2026-11/mock.py)
 (a scripted model for Chat Completions, Responses and Messages, plus a streamable-HTTP MCP server with one tool, `flux_echo`,
 behind a bearer token). No API key, no internet. The prompt asks for the Flux tool; the mock calls it and then answers. Raw
-journals, `/usr/bin/time -v` output and the tails of each event stream are in `run-1/` (all eight) and `run-2/` (Claude Code
-with the #1437 tool set, and Codex, after a mock fix).
+journals, `/usr/bin/time -v` output and the tails of each event stream are in `run-1/` (all eight harnesses; the table) and `run-2/` (an earlier run of
+the last two, the same result).
 
 | Harness, as configured | Model requests | Flux tool called | Tools offered | System prompt (chars) | Tool definitions (bytes) | ≈ tokens per request before any work | Largest process RSS | Wall / CPU to the answer |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
