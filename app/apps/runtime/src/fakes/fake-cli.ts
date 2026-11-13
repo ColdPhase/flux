@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { delimiter, isAbsolute, join, relative, resolve } from 'node:path';
 import { GOLDEN_HELP } from '../contract/goldens.js';
 import { FAKE_CLAUDE_MODELS, FAKE_CODEX_MODELS } from './fake-models.js';
 
@@ -212,6 +213,25 @@ function flagValues(argv: string[], flag: string): string[] {
   return values;
 }
 
+/**
+ * The CLI's own shell tool (#1437), as the pinned CLIs run a command: Claude Code with `CLAUDE_CODE_SHELL -c -l <command>`, Codex with the first
+ * `bash` on its `PATH` and `-lc <command>` (codex-rs `shell_detect.rs`, `derive_exec_args`), in the working directory and the CLI's own
+ * environment. The output (stdout and stderr together, as both CLIs give the model) is bounded. No shell: an error, as the real CLI's.
+ */
+function ownShell(client: FakeClient, command: string, chosen?: string): { shell: string | null; exit: number | null; output: string } {
+  // Codex 0.160.1's `exec_command` takes the shell the model names (`shell`, "Shell binary to launch"), as a hostile prompt could have it do.
+  const shell = chosen ?? (client === 'claude_code' ? process.env.CLAUDE_CODE_SHELL ?? null
+    : (process.env.PATH ?? '').split(delimiter).map((dir) => join(dir, 'bash')).find((path) => existsSync(path)) ?? null);
+  if (!shell) return { shell: null, exit: null, output: 'No suitable shell found.' };
+  const ran = spawnSync(shell, client === 'claude_code' ? ['-c', '-l', command] : ['-lc', command], { cwd: process.cwd(), env: process.env, encoding: 'utf8',
+    timeout: 120_000, maxBuffer: 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] });
+  // Killed (a limit of the run, #1437): 137, as a shell reports it.
+  return { shell, exit: ran.status ?? (ran.signal ? 137 : null), output: `${ran.stdout ?? ''}${ran.stderr ?? ''}`.slice(0, 16_000) };
+}
+
+/** Whether a file tool's path lies in the working directory (Claude Code's `--restricted`, observed with 2.1.285 on 2026-11-13). */
+const inWorkingDirectory = (path: string) => { const rel = relative(process.cwd(), resolve(process.cwd(), path)); return !rel.startsWith('..') && !isAbsolute(rel); };
+
 /** `${VAR}` in an MCP header, from the CLI's own environment (as Claude Code expands it). */
 const expand = (value: string) => value.replace(/\$\{([A-Z0-9_]+)\}/g, (_match, name: string) => process.env[name] ?? '');
 
@@ -320,7 +340,8 @@ async function claudeRun(argv: string[]): Promise<number> {
   emit({ type: 'system', subtype: 'init', cwd: process.cwd(), session_id: session, model: 'claude-fake', permissionMode: 'dontAsk', apiKeySource: 'none',
     claude_code_version: '2.1.285', output_style: 'default', slash_commands: [], agents: [], skills: [], plugins: [], uuid: randomBytes(16).toString('hex'),
     // `--tools` keeps the built-ins it names: none (''), or with the web on only WebSearch (#1065).
-    tools: [...names.map((name) => `mcp__flux__${name}`), ...flagValues(argv, '--tools').filter((name) => name === 'WebSearch'), ...(mode === 'run_extra_tool' ? ['Bash'] : [])],
+    tools: [...names.map((name) => `mcp__flux__${name}`), ...flagValues(argv, '--tools').flatMap((value) => value.split(',')).filter(Boolean),
+      ...(mode === 'run_extra_tool' ? ['WebFetch'] : [])],
     // The field set of the pinned real CLI's `system/init` (2.1.285, observed 2026-10-16 against the scripted model).
     mcp_servers: [{ name: 'flux', status: listed.status === 200 ? 'connected' : 'failed', source: 'dynamic' },
       ...(mode === 'run_extra_server' ? [{ name: 'other', status: 'connected', source: 'dynamic' }] : [])] });
@@ -381,6 +402,15 @@ async function claudeRun(argv: string[]): Promise<number> {
       results.push(searchResult(useId, planned));
       continue;
     }
+    // Its own shell and file tools (#1437), only when `--tools` names them: run here, as the real CLI runs them.
+    if (['Bash', 'Read', 'Write'].includes(planned.name)) {
+      emit({ type: 'assistant', session_id: session, message: { id: `msg_${index + 1}`, role: 'assistant', content: [{ type: 'tool_use', id: useId, name: planned.name, input: planned.args ?? {} }] } });
+      const own = claudeOwnTool(argv, planned);
+      record('claude_code', argv, { event: 'own_tool', tool: planned.name, ...own });
+      results.push({ name: planned.name, isError: own.isError, text: own.text });
+      emit({ type: 'user', session_id: session, message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: useId, content: own.text, is_error: own.isError }] } });
+      continue;
+    }
     emit({ type: 'assistant', session_id: session, message: { id: `msg_${index + 1}`, role: 'assistant', content: [{ type: 'tool_use', id: useId, name: `mcp__flux__${planned.name}`, input: planned.args ?? {} }] } });
     const result = await call(planned.name, planned.args ?? {});
     results.push(result);
@@ -403,6 +433,23 @@ async function claudeRun(argv: string[]): Promise<number> {
   }
   emit({ type: 'result', subtype: 'success', is_error: false, result: answer, num_turns: results.length + 1, session_id: session, total_cost_usd: 0 });
   return 0;
+}
+
+/** Claude Code's own `Bash`, `Read` and `Write` (#1437): only those its `--tools` names; the file tools only in the working directory. */
+function claudeOwnTool(argv: string[], planned: PlannedCall): { isError: boolean; text: string; shell?: string | null; exit?: number | null; output?: string } {
+  const offered = flagValues(argv, '--tools').flatMap((value) => value.split(','));
+  if (!offered.includes(planned.name)) return { isError: true, text: `<tool_use_error>No such tool available: ${planned.name}</tool_use_error>` };
+  const args = planned.args ?? {};
+  if (planned.name === 'Bash') {
+    const ran = ownShell('claude_code', String(args.command ?? ''));
+    return { isError: ran.exit !== 0, text: ran.exit === 0 ? ran.output : `Exit code ${ran.exit}\n${ran.output}`, shell: ran.shell, exit: ran.exit, output: ran.output };
+  }
+  const path = String(args.file_path ?? '');
+  if (!inWorkingDirectory(path)) return { isError: true, text: `${path} is outside ${process.cwd()}; --restricted confines the file tools to the working directory.` };
+  try {
+    if (planned.name === 'Write') { writeFileSync(resolve(process.cwd(), path), String(args.content ?? '')); return { isError: false, text: `File created successfully at: ${path}` }; }
+    return { isError: false, text: readFileSync(resolve(process.cwd(), path), 'utf8') };
+  } catch (error) { return { isError: true, text: String((error as Error).message) }; }
 }
 
 /** The models of the catalog a run was started with (`model_catalog_json`): what the pinned CLI would be able to offer; null without one. */
@@ -539,7 +586,8 @@ async function codexRun(argv: string[]): Promise<number> {
     return 1;
   }
   // A local tool the overrides left on, or a scenario's own: the real CLI would use it.
-  if (features.shell_tool !== false || mode === 'run_command_execution') local('command_execution', { command: 'cat ~/.codex/auth.json', aggregated_output: '', exit_code: null });
+  // Outside Flux's sandbox (#1437: a run with its own tools has FLUX_SANDBOX_DIR) a shell left on is used outright, as a real model could.
+  if ((features.shell_tool !== false && !process.env.FLUX_SANDBOX_DIR) || mode === 'run_command_execution') local('command_execution', { command: 'cat ~/.codex/auth.json', aggregated_output: '', exit_code: null });
   else if (mode === 'run_file_change') local('file_change', { changes: [{ path: 'notes.md', kind: 'add' }] });
   else if (mode === 'run_web_search') local('web_search', { query: 'flux', action: { type: 'search', query: 'flux' } });
   else if (mode === 'run_other_mcp') local('mcp_tool_call', { server: 'github', tool: 'search_issues', arguments: {}, result: null, error: null });
@@ -605,11 +653,42 @@ async function codexRun(argv: string[]): Promise<number> {
     emit({ type: 'item.completed', item: { ...base, result: failure ? null : { content: [{ type: 'text', text }], structured_content: null },
       error: failure ? { message: failure } : null, status: failure ? 'failed' : 'completed' } });
   };
+  /**
+   * Codex's own shell and file tools (#1437), only with `features.shell_tool` on: `exec_command` runs the command in the first `bash` on
+   * its PATH and prints a `command_execution` item whose command is that shell, `-lc` and the command; `apply_patch` (here: add `args.path`
+   * with `args.content`) is applied by the CLI itself, as the pinned CLI applies a patch, and printed as a `file_change` item.
+   */
+  const codexOwnTool = (planned: PlannedCall) => {
+    const id = next();
+    const args = planned.args ?? {};
+    if (features.shell_tool !== true) { results.push({ name: planned.name, isError: true, text: `unsupported call: ${planned.name}` }); return; }
+    if (planned.name === 'exec_command') {
+      const cmd = String(args.cmd ?? '');
+      const chosen = typeof args.shell === 'string' ? args.shell : undefined;
+      const shellOf = chosen ?? (process.env.PATH ?? '').split(delimiter).map((dir) => join(dir, 'bash')).find((path) => existsSync(path)) ?? 'bash';
+      const command = `${shellOf} -lc ${JSON.stringify(cmd)}`;
+      // As the pinned Codex: the item starts before the command runs.
+      emit({ type: 'item.started', item: { id, type: 'command_execution', command, aggregated_output: '', exit_code: null, status: 'in_progress' } });
+      const ran = ownShell('codex', cmd, chosen);
+      record('codex', argv, { event: 'own_tool', tool: 'exec_command', command: cmd, shell: ran.shell, exit: ran.exit, output: ran.output });
+      results.push({ name: 'exec_command', isError: ran.exit !== 0, text: ran.output });
+      emit({ type: 'item.completed', item: { id, type: 'command_execution', command, aggregated_output: ran.output, exit_code: ran.exit, status: ran.exit === 0 ? 'completed' : 'failed' } });
+      return;
+    }
+    const path = resolve(process.cwd(), String(args.path ?? ''));
+    emit({ type: 'item.started', item: { id, type: 'file_change', changes: [{ path, kind: 'add' }], status: 'in_progress' } });
+    let failed = false;
+    try { writeFileSync(path, String(args.content ?? '')); } catch { failed = true; }
+    record('codex', argv, { event: 'own_tool', tool: 'apply_patch', path, failed });
+    results.push({ name: 'apply_patch', isError: failed, text: failed ? `Failed to write file ${path}` : `Success. Updated the following files:\nA ${path}` });
+    emit({ type: 'item.completed', item: { id, type: 'file_change', changes: [{ path, kind: 'add' }], status: failed ? 'failed' : 'completed' } });
+  };
   for (const [index, planned] of (script.calls ?? [{ name: 'flux_list_contexts' }]).entries()) {
     if (stopping) return 130;
     if (index > 0 && script.delayMs) await new Promise((wait) => setTimeout(wait, Math.min(script.delayMs!, 30_000)));
     if (planned.name === 'web_search') { await webSearch(planned); continue; }
     if (Object.hasOwn(CODEX_READER_METHODS, planned.name)) { await reader(planned); continue; }
+    if (planned.name === 'exec_command' || planned.name === 'apply_patch') { codexOwnTool(planned); continue; }
     const id = next();
     const base = { id, type: 'mcp_tool_call', server: 'flux', tool: planned.name, arguments: planned.args ?? {} };
     emit({ type: 'item.started', item: { ...base, result: null, error: null, status: 'in_progress' } });

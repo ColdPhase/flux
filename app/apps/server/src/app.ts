@@ -47,6 +47,7 @@ import { agentQuestionRoutes } from './agent-connection/agent-questions.js';
 import { modelListRefresh } from './ai-keys/model-refresh.js';
 import { aiKeyRoutes } from './ai-keys/routes.js';
 import { registerMcpRoute } from './agent-connection/mcp-route.js';
+import { configureRunCredentialScan } from './agent-connection/run-credentials.js';
 import { webReader as createWebReader } from './web-reads/reader.js';
 import { configureAgentPictures } from './agent-connection/picture-actions.js';
 import { CLOSED_WORLD_RULES } from './link-previews/safe-fetch.js';
@@ -328,6 +329,8 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
     connectTo: (host: string) => config.linkPreviews.testHosts.get(host) ?? null } : {}) });
   // An agent's picture (#1217): the same reader, and the files volume a person's upload goes to.
   configureAgentPictures({ reader: webReader, storage: fileStorage });
+  // #1437: a run's change is looked through for its CLI's own login by the run's supervisor (through runtime-manager).
+  configureRunCredentialScan(config.agentRuntime.manager);
   // The optional embedding container's query hook (F-042, #1294), one for the process: undefined while it is off.
   const queryVectors = searchQueryVectors(config.embeddings);
   registerMcpRoute(app, db, identity.auth, identityConfig.publicOrigin, config.fixture.failureInjection && !!config.fixture.token,

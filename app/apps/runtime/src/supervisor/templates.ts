@@ -86,19 +86,30 @@ export function loginArgv(client: RuntimeClient, method: RuntimeLoginMethod): re
  */
 export interface RunTemplateInput {
   tools: readonly string[]; caps: RunCaps; mcpConfigPath: string; mcpUrl: string; brief: string; model?: string | undefined; webSearch?: boolean;
+  /** The CLI keeps its own shell and file tools (#1437, RT-5): only where the runtime has Flux's sandbox (sandbox.ts). */
+  ownTools?: boolean;
   /** Codex only: this run's model catalog, the reviewed one cut down to what the account offers (#1332); default: the image's whole copy. */
   catalog?: string;
 }
 
-/** Claude Code's own web search tool, the one built-in tool a run may keep (#1065). */
+/** Claude Code's own web search tool (#1065). */
 export const CLAUDE_WEB_SEARCH_TOOL = 'WebSearch';
 
+/**
+ * Claude Code's own shell and file tools a run keeps where the runtime has Flux's sandbox (#1437, RT-5). `--restricted` keeps the file
+ * tools in the working directory, the run's scratch (observed with 2.1.285, 2026-11-13); `Bash` runs every command in Flux's sandbox
+ * shell (`CLAUDE_CODE_SHELL`). Never `WebFetch`, `Task` or any other.
+ */
+export const CLAUDE_OWN_TOOLS = ['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep'] as const;
+/** What `--allowedTools` lets them do without a prompt: any command (it runs sandboxed) and reading and editing in the working directory. */
+export const CLAUDE_OWN_ALLOWED = ['Bash', 'Read(./**)', 'Edit(./**)'] as const;
+
 export const RUN_TEMPLATES: { [C in RuntimeClient]: (input: RunTemplateInput) => string[] } = {
-  claude_code: ({ tools, caps, mcpConfigPath, brief, model, webSearch }) => [
+  claude_code: ({ tools, caps, mcpConfigPath, brief, model, webSearch, ownTools }) => [
     '-p', '--output-format', 'stream-json', '--verbose', '--include-partial-messages',
-    '--restricted', '--tools', webSearch ? CLAUDE_WEB_SEARCH_TOOL : '', '--disable-slash-commands',
+    '--restricted', '--tools', [...(ownTools ? CLAUDE_OWN_TOOLS : []), ...(webSearch ? [CLAUDE_WEB_SEARCH_TOOL] : [])].join(','), '--disable-slash-commands',
     '--strict-mcp-config', '--mcp-config', mcpConfigPath,
-    '--allowedTools', ...tools.map((tool) => `mcp__flux__${tool}`), ...(webSearch ? [CLAUDE_WEB_SEARCH_TOOL] : []),
+    '--allowedTools', ...tools.map((tool) => `mcp__flux__${tool}`), ...(ownTools ? CLAUDE_OWN_ALLOWED : []), ...(webSearch ? [CLAUDE_WEB_SEARCH_TOOL] : []),
     '--permission-mode', 'dontAsk', '--permission-prompts', 'none',
     '--no-session-persistence', '--max-turns', String(caps.maxTurns), ...(model ? ['--model', model] : []), '--append-system-prompt', brief,
   ],
@@ -106,9 +117,11 @@ export const RUN_TEMPLATES: { [C in RuntimeClient]: (input: RunTemplateInput) =>
   // (CODEX_FEATURE_REVIEW), web search is on OpenAI's cached index with the web on and disabled with it off (#1065), analytics is off (so no telemetry host is needed), and
   // Flux is the only MCP server, required, with the exact non-empty tool list. The prompt is read from stdin
   // (`-`); Flux's brief is a developer message, so Codex keeps its own instructions.
-  codex: ({ tools, mcpUrl, brief, model, webSearch, catalog }) => [
-    'exec', '--json', '--ephemeral', '--ignore-user-config', '--sandbox', 'read-only', '--skip-git-repo-check',
-    ...(model ? ['-m', model] : []), ...CODEX_FILE_STORE, ...codexRunOverrides(tools, mcpUrl, brief, webSearch, catalog), '-',
+  // With its own tools (#1437): Codex's own sandbox needs bubblewrap, which this container cannot run (observed with 0.160.1, 2026-11-13:
+  // `workspace-write` fails every command and patch), so it runs `danger-full-access` inside Flux's sandbox (RT-5).
+  codex: ({ tools, mcpUrl, brief, model, webSearch, catalog, ownTools }) => [
+    'exec', '--json', '--ephemeral', '--ignore-user-config', '--sandbox', ownTools ? 'danger-full-access' : 'read-only', '--skip-git-repo-check',
+    ...(model ? ['-m', model] : []), ...CODEX_FILE_STORE, ...codexRunOverrides(tools, mcpUrl, brief, webSearch, catalog, ownTools), '-',
   ],
 };
 
@@ -133,10 +146,12 @@ export const CLAUDE_MODELS_TEMPLATE: readonly string[] = [
  * real pinned binary offline on 2026-10-16 (contract/check-codex.ts): every `off` feature is off except
  * `unified_exec` (`staysOn`), and `config/read` reflects the overrides.
  */
-export const CODEX_FEATURE_REVIEW: Record<string, { action: 'off'; staysOn?: string } | { action: 'kept'; why: string }> = {
-  daemon_auto_start: { action: 'off' }, shell_tool: { action: 'off' }, view_image: { action: 'off' }, sleep_tool: { action: 'off' },
+export const CODEX_FEATURE_REVIEW: Record<string, { action: 'off'; staysOn?: string } | { action: 'kept'; why: string } | { action: 'own_tools'; why: string }> = {
+  daemon_auto_start: { action: 'off' }, view_image: { action: 'off' }, sleep_tool: { action: 'off' },
+  shell_tool: { action: 'own_tools', why: 'on where the runtime has Flux\'s sandbox (#1437, RT-5): every command starts in its sandbox shell; off elsewhere' },
   unified_exec: { action: 'off', staysOn: 'the pinned Codex keeps it on whatever -c says (only managed requirements disable it: codex-rs core/src/tools/spec_plan.rs); '
-    + 'harmless here, because no command tool is registered at all while shell_tool is off (same function), and the JSONL check stops any command_execution' },
+    + 'with shell_tool off no command tool is registered at all (same function); with the run\'s own tools (#1437) its `exec_command` is the shell, '
+    + 'which starts every command in Flux\'s sandbox shell, and the JSONL check stops a command that did not' },
   unified_exec_tty: { action: 'off' }, shell_snapshot: { action: 'off' }, code_mode_host: { action: 'off' },
   write_stdin_approval: { action: 'off' }, hooks: { action: 'off' }, worktrees: { action: 'off' }, multi_agent: { action: 'off' },
   apps: { action: 'off' }, tool_suggest: { action: 'off' }, plugins: { action: 'off' }, in_app_browser: { action: 'off' },
@@ -178,9 +193,12 @@ export const CODEX_MODEL_REVIEW = {
   multi_agent_version: null, multi_agent_reasoning_effort: null,
   /** `send_user_message_async` and `clock`. */
   experimental_supported_tools: [],
-  /** No file edits, no shell, no tool search. Web search is the run's own switch (`web_search`, #1065): cached with the web on. */
-  apply_patch_tool_type: null, shell_type: 'disabled', supports_search_tool: false,
+  /** No tool search. Web search is the run's own switch (`web_search`, #1065): cached with the web on. The shell and `apply_patch` stay the vendor's: a run without its own tools turns them off in its own catalog (`CODEX_NO_OWN_TOOLS`, #1437). */
+  supports_search_tool: false,
 } as const;
+
+/** What a run's catalog sets where the runtime has no sandbox (#1437): no shell and no file edits, as before. */
+export const CODEX_NO_OWN_TOOLS = { apply_patch_tool_type: null, shell_type: 'disabled' } as const;
 
 /** The vendor catalog with Flux's review applied to every model; anything that is not a catalog is refused. */
 export function fluxCodexCatalog(vendor: unknown): { models: Record<string, unknown>[] } {
@@ -192,10 +210,10 @@ export function fluxCodexCatalog(vendor: unknown): { models: Record<string, unkn
  * The reviewed catalog cut down to the models the account offers (#1332): a run's catalog is authoritative (a configured one replaces the
  * account's own), so it must hold no model the account lacks. Null when none of the account's models is in it.
  */
-export function catalogForAccount(catalog: unknown, accountModels: readonly string[]): { models: Record<string, unknown>[] } | null {
+export function catalogForAccount(catalog: unknown, accountModels: readonly string[], ownTools = false): { models: Record<string, unknown>[] } | null {
   const full = fluxCodexCatalogShape(catalog);
   const offered = new Set(accountModels);
-  const kept = full.models.filter((model) => offered.has(model.slug as string));
+  const kept = full.models.filter((model) => offered.has(model.slug as string)).map((model) => (ownTools ? model : { ...model, ...CODEX_NO_OWN_TOOLS }));
   return kept.length ? { ...full, models: kept } : null;
 }
 
@@ -215,8 +233,9 @@ function fluxCodexCatalogShape(value: unknown): { models: Record<string, unknown
 export const CODEX_WEB_SEARCH_ON = ['web_search="cached"'] as const;
 
 /** The reviewed features off, no web search, no analytics and no update check: what every Codex process of Flux (a run, a read) is started with. */
-function codexBaseValues(webSearch: boolean): string[] {
-  const features = Object.entries(CODEX_FEATURE_REVIEW).filter(([, review]) => review.action === 'off').map(([key]) => `features.${key}=false`);
+function codexBaseValues(webSearch: boolean, ownTools = false): string[] {
+  const features = Object.entries(CODEX_FEATURE_REVIEW).filter(([, review]) => review.action !== 'kept')
+    .map(([key, review]) => `features.${key}=${review.action === 'own_tools' && ownTools}`);
   return [...features, ...(webSearch ? CODEX_WEB_SEARCH_ON : ['web_search="disabled"']), 'analytics.enabled=false', 'check_for_update_on_startup=false'];
 }
 
@@ -230,10 +249,10 @@ export const codexListOverrides = (): string[] => codexBaseValues(false).flatMap
  * The `-c` overrides of a Codex run, in order. Values are TOML: strings as JSON strings, the tool list as an array. `catalog` is the run's model
  * catalog (#1332): the reviewed copy cut down to the account's models; the image's whole copy where a check has no account.
  */
-export function codexRunOverrides(tools: readonly string[], mcpUrl: string, brief: string, webSearch = false, catalog: string = CODEX_MODEL_CATALOG): string[] {
+export function codexRunOverrides(tools: readonly string[], mcpUrl: string, brief: string, webSearch = false, catalog: string = CODEX_MODEL_CATALOG, ownTools = false): string[] {
   if (!tools.length) throw new Error('A Codex run needs a non-empty tool list');
   return [
-    ...codexBaseValues(webSearch),
+    ...codexBaseValues(webSearch, ownTools),
     // #1127: Flux's reviewed catalog (direct tools, no sub-agents), and no `request_user_input` (nobody answers a run's questions).
     `model_catalog_json=${JSON.stringify(catalog)}`,
     'tools.experimental_request_user_input.enabled=false',
@@ -266,6 +285,19 @@ export const TEMPLATE_FLAGS: { client: RuntimeClient; help: readonly string[]; f
  * secret among them) never reach a CLI; nor does anything from a request except, for a run, the run
  * token in `FLUX_RUN_TOKEN` (T5).
  */
+/**
+ * What a run with its own tools adds to the CLI's environment (#1437): the scratch as its `TMPDIR` (Claude Code's `Bash` writes its working
+ * directory there after every command, which the sandbox shell may only do in the scratch) and as the sandbox's `FLUX_SANDBOX_DIR`, and the
+ * sandbox shell as the CLI's shell: Claude Code's `CLAUDE_CODE_SHELL`, the first `bash` on Codex's `PATH` (codex-rs `shell_detect.rs`: a user
+ * id without a passwd entry gets the first `bash` on `PATH`).
+ */
+export function sandboxEnvironment(client: RuntimeClient, scratch: string, sandbox: { shell: string; bin: string }): Record<string, string> {
+  const base = { FLUX_SANDBOX_DIR: scratch, TMPDIR: scratch };
+  return client === 'claude_code'
+    ? { ...base, CLAUDE_CODE_SHELL: sandbox.shell }
+    : { ...base, PATH: `${sandbox.bin}:/opt/flux-runtime/codex/bin:/usr/local/bin:/usr/bin:/bin` };
+}
+
 export function cliEnvironment(client: RuntimeClient, bindingDir: string, egressHost: string, extra: Record<string, string> = {}): Record<string, string> {
   const proxy = `http://${egressHost}:3128`;
   const base: Record<string, string> = {

@@ -207,7 +207,8 @@ for method in claude_account console sso; do
   docker exec "$t_cid" cat "/data/$t_binding/claude/fake-calls.jsonl" | python3 -c '
 import json, sys
 calls = [json.loads(line) for line in sys.stdin if line.strip()]
-commands = [c["argv"] for c in calls if "event" not in c]
+# The plan'"'"'s model list (#1332, `claude -p ... --tools ""`) may be read at any tick after a sign-in: not part of the sign-in itself.
+commands = [c["argv"] for c in calls if "event" not in c and c["argv"][:1] != ["-p"]]
 assert commands == [json.loads(sys.argv[1]), ["auth", "status"]], commands
 login = next(c for c in calls if "event" not in c)
 assert login["tty"] is True and login["env"]["TERM"] == "xterm-256color", login
@@ -250,6 +251,36 @@ print("the CLI got the run token only in FLUX_RUN_TOKEN, reached /mcp through ru
 [ -z "$(docker exec "$t_cid" ls /tmp)" ] || fail "the run left files in the runtime's /tmp"
 if docker exec "$t_cid" test -e "/data/$t_binding/claude/projects"; then fail "a transcript remains in the binding directory"; fi
 docker exec -u "$(person_of "$t_binding")" "$t_cid" sh -c "rm -f /data/$t_binding/claude/fake-calls.jsonl"
+
+step "9e. A run's own tools (#1437): from the sandbox shell, on the runtime's real networks, nothing but the egress (and with Landlock ABI 4 not even that)"
+abi=$(docker exec "$t_cid" /opt/flux-runtime/sandbox/flux-sandbox abi)
+# The tools need Landlock's network rules (ABI 4, Linux 6.7; coordinator decision on #1437): below that the runtime keeps them off.
+[ "$abi" -ge 4 ] || fail "this host's Landlock (ABI $abi) cannot forbid TCP: the runtime keeps the CLIs' tools off (needs Linux 6.7, ABI 4)"
+tcp_rule=1
+compose --profile runtime logs --no-color runtime-1 | grep -q '"event":"ready".*"landlock":'"$abi" || fail "the runtime did not report Landlock ABI $abi at start"
+python3 - "$here/scripts/agent-runtime/probe-sandbox-net.mjs" > "$work/sandbox-run.json" <<PY
+import json, sys
+probe = open(sys.argv[1]).read()
+env = " ".join(f"{k}={v}" for k, v in {
+  "FLUX_PROBE_TCP_RULE": "$tcp_rule", "FLUX_PROBE_DB": "$(ip_on "$(compose ps -q db)" default)",
+  "FLUX_PROBE_API_DEFAULT": "$(ip_on "$(compose ps -q api)" default)", "FLUX_PROBE_API_RUNTIME": "$(ip_on "$(compose ps -q api)" runtime-api)",
+  "FLUX_PROBE_API_CONTROL": "$(ip_on "$(compose ps -q api)" runtime-control)", "FLUX_PROBE_WORKER": "$(ip_on "$(compose ps -q worker)" default)",
+  "FLUX_PROBE_MANAGER_CONTROL": "$(ip_on "$(cid runtime-manager)" runtime-control)", "FLUX_PROBE_GATEWAY": "${gateway:-}"}.items())
+command = "cat > net.mjs <<'FLUXPROBE'\n" + probe + "FLUXPROBE\n" + env + " node net.mjs"
+print(json.dumps({"calls": [{"name": "Bash", "args": {"command": command}}, {"name": "flux_list_contexts"}]}))
+PY
+docker exec -i -u "$(person_of "$t_binding")" "$t_cid" sh -c "cat > /data/$t_binding/claude/fake-run.json" < "$work/sandbox-run.json"
+out=$(live sandbox-run T); printf '%s\n' "$out"
+docker exec "$t_cid" cat "/data/$t_binding/claude/fake-calls.jsonl" | python3 -c '
+import json, sys
+calls = [json.loads(line) for line in sys.stdin if line.strip()]
+own = [c for c in calls if c.get("event") == "own_tool"]
+assert len(own) == 1 and own[0]["shell"] == "/opt/flux-runtime/sandbox/bin/bash", own
+print(own[0]["output"])
+assert "NETPROBE=ok" in own[0]["output"], own[0]["output"]
+print("the run'"'"'s own shell reached nothing but what the sandbox and the egress allow")'
+[ -z "$(docker exec "$t_cid" ls -A /scratch)" ] || fail "the run left its scratch"
+docker exec -u "$(person_of "$t_binding")" "$t_cid" sh -c "rm -f /data/$t_binding/claude/fake-calls.jsonl /data/$t_binding/claude/fake-run.json"
 
 step "9d. Codex (T6 #281): ChatGPT device sign-in through the console, then a run on the owner's own Codex (fake codex exec --json)"
 out=$(live codex-sign-in T); printf '%s\n' "$out"

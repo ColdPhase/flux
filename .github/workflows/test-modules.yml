@@ -14,13 +14,14 @@ on:
         required: true
         type: string
       suite:
-        description: ui runs scripts/check_ui.sh, live runs scripts/check_live_ui.sh (Chromium), api runs scripts/check_application.sh
+        description: ui runs scripts/check_ui.sh, live runs scripts/check_live_ui.sh (Chromium), api runs scripts/check_application.sh, runtime runs the named agent-runtime checks (scripts/<module>.sh)
         required: true
         type: choice
         options:
           - ui
           - live
           - api
+          - runtime
       modules:
         description: Space-separated, as the local script takes them. ui and live, test modules such as test_docs (ui also Module.Class.test_name); api, files such as tests/app/search.test.ts
         required: true
@@ -81,7 +82,7 @@ jobs:
           set -euo pipefail
           fail() { printf '::error::%s\n' "$1"; exit 1; }
           [[ "$INPUT_REF" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$ ]] && [[ "$INPUT_REF" != *..* ]] || fail 'ref must be a branch, tag or commit SHA (letters, digits, . _ / -).'
-          case "$INPUT_SUITE" in ui|live|api) ;; *) fail 'suite must be ui, live or api.' ;; esac
+          case "$INPUT_SUITE" in ui|live|api|runtime) ;; *) fail 'suite must be ui, live, api or runtime.' ;; esac
           case "$INPUT_BROWSER" in chromium|webkit) ;; *) fail 'browser must be chromium or webkit.' ;; esac
           if [ "$INPUT_SUITE" = live ] && [ "$INPUT_BROWSER" != chromium ]; then
             fail 'The live suite runs Chromium only (scripts/check_live_ui.sh has no engine choice).'
@@ -97,11 +98,14 @@ jobs:
           ui_target='^[A-Za-z0-9_]+(\.[A-Za-z0-9_]+){0,2}$'
           live_target='^[A-Za-z0-9_]+$'
           api_target='^tests/app/[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*\.ts$'
+          # The agent runtime's own Docker checks, which need a host with kernel.yama.ptrace_scope >= 1 (a runner has it; #1437).
+          runtime_target='^check_(agent_runtime|cli_runtime|runtime_sandbox)$'
           for target in "${named[@]}"; do
             case "$INPUT_SUITE" in
               ui) [[ "$target" =~ $ui_target ]] || fail "not a UI test module or Module.Class.test name: $target" ;;
               live) [[ "$target" =~ $live_target ]] || fail "not a live test module (a file name under app/tests/ui/ without .py): $target" ;;
               api) [[ "$target" =~ $api_target ]] || fail "not an API test file under app/tests/app/: $target" ;;
+              runtime) [[ "$target" =~ $runtime_target ]] || fail "not an agent-runtime check (check_agent_runtime, check_cli_runtime or check_runtime_sandbox): $target" ;;
             esac
           done
           printf 'ref=%s\n' "$INPUT_REF" >> "$GITHUB_OUTPUT"
@@ -136,6 +140,7 @@ jobs:
           for target in "${named[@]}"; do
             case "$INPUT_SUITE" in
               api) file="app/$target" ;;
+              runtime) file="scripts/$target.sh" ;;
               *) file="app/tests/ui/${target%%.*}.py" ;;
             esac
             [ -f "$file" ] || fail "Not found at $sha: $file"
@@ -218,6 +223,16 @@ jobs:
               printf './scripts/check_application.sh %s\n' "${named[*]}" > "$out/command.txt"
               ./scripts/check_application.sh "${named[@]}" 2>&1 | tee "$out/run.log"
               ;;
+            runtime)
+              printf 'for each check: ./scripts/<check>.sh   (%s)\n' "${named[*]}" > "$out/command.txt"
+              printf 'kernel %s, kernel.yama.ptrace_scope=%s\n' "$(uname -r)" "$(cat /proc/sys/kernel/yama/ptrace_scope 2>/dev/null || echo none)" | tee "$out/run.log"
+              rc=0
+              for check in "${named[@]}"; do
+                printf '=== runtime check %s ===\n' "$check" | tee -a "$out/run.log"
+                "./scripts/$check.sh" 2>&1 | tee -a "$out/run.log" || rc=1
+              done
+              exit "$rc"
+              ;;
             *)
               echo "::error::unknown suite $SUITE"; exit 1
               ;;
@@ -258,7 +273,7 @@ jobs:
           : > "$keep/result.txt"
           if [ -f "$out/run.log" ]; then
             clean=$(sed -e 's/\x1b\[[0-9;]*[A-Za-z]//g' -e 's/\r//g' -e 's/`//g' "$out/run.log")
-            printf '%s\n' "$clean" | grep -E '^(Ran [0-9]+ tests? in [0-9.]+s|OK( \(.*\))?|FAILED \(.*\)|(FAIL|ERROR): .*|.* \.\.\. (FAIL|ERROR)|(ℹ|#) (tests|suites|pass|fail|cancelled|skipped|todo) [0-9]+|✖ .*|Named API test files only.*|=== live module .* ===)$' > "$keep/result.txt"
+            printf '%s\n' "$clean" | grep -E '^(Ran [0-9]+ tests? in [0-9.]+s|OK( \(.*\))?|FAILED \(.*\)|(FAIL|ERROR): .*|.* \.\.\. (FAIL|ERROR)|(ℹ|#) (tests|suites|pass|fail|cancelled|skipped|todo) [0-9]+|✖ .*|Named API test files only.*|=== live module .* ===|=== runtime check .* ===|kernel .*ptrace_scope.*|.*check (passed|FAILED).*|FAIL: .*|NETPROBE=.*|Sandbox check .*)$' > "$keep/result.txt"
             if [ ! -s "$keep/result.txt" ]; then
               echo 'No test result lines were found; the last log lines:' > "$keep/result.txt"
               printf '%s\n' "$clean" | tail -n 25 >> "$keep/result.txt"
