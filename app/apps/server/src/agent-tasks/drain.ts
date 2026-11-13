@@ -10,13 +10,12 @@ import { policyWorkAccess } from '../work/access.js';
 // The server's side of people's agents taking tasks (#856, F-036 AG-5). `agent_task_events` holds what happened in the
 // transaction that caused it; this drains it as soon as the API is told (NOTIFY), so a task is taken within seconds and
 // nothing is polled while idle:
-//   `assigned`  a task was given to an agent, or to a person who chose an agent. In the second case the person's setting
-//               gives it to that agent (an owner change on their behalf); in the first the agent says it is on it and its run
-//               is queued. The run is the same run as any other of the agent.
+//   `assigned`  a task was given to an agent with its Owner field: the agent says it is on it and its run is queued. The run is
+//               the same run as any other of the agent. Nothing gives a person's task to an agent by itself (#1419).
 //   `started`   the agent's run began working: the task is Doing from then, not while it waits for room (AgentStates 1).
 //   `released`  someone took the task away from an agent that was working on it: its run stops.
 //   `finished`  a run on a task ended. The agent's report goes into the task's discussion, and the task follows the agent's
-//               "What it may do": Done with "Do it and tell me", back with its owner to check otherwise (C-1). A task Stopped
+//               Ask me first switch: Done with it off, back with its owner to check with it on. A task Stopped
 //               or left because AI went off goes back to its owner; a run that failed keeps its task, with Try again.
 // Every step is checked again as the person or agent it acts for: nothing here bypasses the work use cases.
 //
@@ -37,8 +36,6 @@ const human = (id: string): Principal => ({ kind: 'human', id });
 const agent = (id: string): Principal => ({ kind: 'agent', id });
 const FINISHED = new Set(['done']);
 const IN_FLIGHT = ['queued', 'reading', 'dispatching'];
-/** The person's own line when "Give it to" could not give them the task because the agent they named has no access to this space. */
-const notTakenWords = (agentName: string) => `My agent ${agentName} can't work in this space, so it hasn't taken this task. It's still with me.`;
 
 type Event = NonNullable<Awaited<ReturnType<ReturnType<typeof agentTaskRows>['claimNext']>>>;
 type RunRow = NonNullable<Awaited<ReturnType<ReturnType<typeof personalRunRows>['findRun']>>>;
@@ -149,7 +146,7 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
     if (!work) return;
     await workRows(tx).lockTaskGraphs([work.projectId]);
     const run = event.runId ? await personalRunRows(tx).findRun(event.runId) : null;
-    const agentId = event.ownerAgentId ?? run?.agentId ?? (event.ownerUserId ? await rows.taking(event.ownerUserId) : null);
+    const agentId = event.ownerAgentId ?? run?.agentId ?? null;
     const holder = agentId ? await rows.agent(agentId) : null;
     if (!holder?.ownerUserId) return;
     const ports = personalRunPorts(tx, queue);
@@ -184,9 +181,6 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
       await giveBack(tx, current, holder.ownerUserId, holder.ownerUserId);
       // A rule's hand-back writes no `released` event, so the run is stopped here.
       await stopRuns(holder.id, holder.ownerUserId, undefined, true);
-    } else if (event.kind === 'assigned' && event.ownerUserId && current.owner?.kind === 'human' && current.owner.id === holder.ownerUserId) {
-      // The person chose this agent and the setting could not give it: the task is as it was, and they are told.
-      await say(tx, current, holder.id, 'I couldn\'t take this. It\'s still with you.', `gave-up:${event.id}`);
     }
   }
 
@@ -216,27 +210,8 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
     const rows = agentTaskRows(tx);
     const work = await workRows(tx).findWork(event.workId, { lock: true });
     if (!work || FINISHED.has(work.status)) return;
-    if (event.ownerUserId) {
-      // A person was given the task and chose an agent: their setting gives it to that agent, as them.
-      if (work.owner?.kind !== 'human' || work.owner.id !== event.ownerUserId) return;
-      const agentId = await rows.taking(event.ownerUserId);
-      if (!agentId || !(await rows.isOwnServerAgent(event.ownerUserId, agentId))) return;
-      try {
-        await workUseCases(tx as unknown as Database).updateWork(human(event.ownerUserId), work.id, { owner: { kind: 'agent', id: agentId } }, work.version, 'agent_rule');
-      } catch (error) {
-        if (!(error instanceof DomainError)) throw error;
-        log.warn({ error, what: 'give' }, 'An agent task step was refused');
-        // The agent of a company owner or admin who was not added to this space has no access here (C-15), so it cannot speak: the
-        // line is the person's own. The task stays with them, and now they know why it was not taken (#955).
-        // Once for the task and the agent: giving the task to the person again, and again, is the same refusal and the same line.
-        if (error.code === 'OWNER_WITHOUT_ACCESS') {
-          const named = await rows.agent(agentId);
-          await attempt('say', () => taskDiscussionUseCases(tx as unknown as Database).contribute(human(event.ownerUserId!), work.id,
-            { body: notTakenWords(named?.name ?? 'Assistant'), clientMessageId: uuidFrom(`agent-task:not-taken:${work.id}:${agentId}`) }));
-        }
-      }
-      return;
-    }
+    // A task reaches an agent only by its Owner field (#1419): an `assigned` event names the agent. One that names a person (written
+    // before the setting "When someone assigns a task to me" went) has nothing left to do.
     if (!event.ownerAgentId || work.owner?.kind !== 'agent' || work.owner.id !== event.ownerAgentId) return;
     const holder = await rows.agent(event.ownerAgentId);
     if (!holder?.ownerUserId || holder.revokedAt) return;

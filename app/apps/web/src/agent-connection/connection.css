@@ -161,19 +161,16 @@
 .connection__created { display: flex; align-items: center; gap: 6px; color: var(--t2); font-size: var(--fs-sm); margin: 0; }
 .connection__order { color: var(--t2); font-size: var(--fs-sm); margin: 0; }
 
-/* "What it may do" (F-036 AG-3), on the assistant's screen and on each local client. */
-.may-do { margin: 8px 0; align-self: flex-start; width: fit-content; max-width: 100%; }
-/* A segmented choice whose labels differ in length (What it may do, Model): each option is as wide as its label plus 14 px each side, never an equal share
+/* A segmented choice whose labels differ in length (a plan's Model): each option is as wide as its label plus 14 px each side, never an equal share
    of the group, so the longest label keeps its room (#1219). Where the group has no room for one row the options wrap onto the next and keep their
    label width, so an option alone on a row is not a full-width bar; the track takes the large radius so its rows stay inside it. Equal slots stay where
    the design draws them (the map's mode, the live stage). */
 .seg--fit { flex-wrap: wrap; max-width: 100%; border-radius: var(--r-lg); }
 .seg--fit .seg__b { flex: 0 0 auto; min-width: auto; padding: 0 14px; }
-.may-do__hint { display: block; color: var(--t3); font-size: var(--fs-xs); }
-.connection__may-do { width: 100%; padding: 2px 0 8px; }
-.connection__may-do-label { margin: 0; font-size: var(--fs-sm); font-weight: 600; color: var(--t2); }
+/* "Ask me first" (F-036 AG-3, #1419): one switch on an agent's page and on each local app's card, flush with the card's text. */
+.ask-first .sset-row { padding-inline: 0; }
 
-/* A local client's row in Settings › AI (#1363): its "What it may do" tag leads to where it is changed; Disconnect asks in the row. */
+/* A local client's row in Settings › AI (#1363): its "Ask me first" tag leads to where it is changed; Disconnect asks in the row. */
 .client-row__may { text-decoration: none; }
 .client-row__may:hover { background: var(--hov); color: var(--t1); }
 .client-row__may:focus-visible { outline: 2px solid var(--t1); outline-offset: 1px; }
@@ -191,6 +188,4 @@
 .connection__list { display: flex; flex-direction: column; gap: 12px; margin: 0; padding: 0; list-style: none; }
 .connection__saved.sset-card { display: flex; flex-direction: column; align-items: stretch; gap: 10px; padding: 14px 16px; }
 .connection__saved .connection__row { display: flex; align-items: center; gap: 12px; }
-.connection__saved .connection__may-do { padding: 0; }
-.connection__saved .connection__may-do-label { margin-bottom: 6px; }
 .connection__saved.sset-card > * { border-top: 0; }

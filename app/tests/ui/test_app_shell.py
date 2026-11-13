@@ -1422,13 +1422,13 @@ class AppShellJourney(unittest.TestCase):
         saved = page.get_by_role("list", name="Connected clients").get_by_role("listitem")
         expect(saved).to_have_count(1)
         expect(saved.get_by_text("Research laptop", exact=True)).to_be_visible()
-        # "What it may do" starts at "Do it and tell me"; the owner changes it here, and it is kept.
-        may_do = saved.get_by_role("radiogroup", name="What it may do")
-        expect(may_do.get_by_role("radio", name="Do it and tell me")).to_have_attribute("aria-checked", "true")
-        may_do.get_by_role("radio", name="Ask me first").click()
-        expect(may_do.get_by_role("radio", name="Ask me first")).to_have_attribute("aria-checked", "true")
+        # Ask me first (#1419) starts off ("Do it and tell me"); the owner turns it on here, and it is kept.
+        ask = saved.get_by_role("switch", name="Ask me first")
+        expect(ask).to_have_attribute("aria-checked", "false")
+        ask.click()
+        expect(ask).to_have_attribute("aria-checked", "true")
         page.reload()
-        expect(page.get_by_role("list", name="Connected clients").get_by_role("radio", name="Ask me first")).to_have_attribute("aria-checked", "true")
+        expect(page.get_by_role("list", name="Connected clients").get_by_role("switch", name="Ask me first")).to_have_attribute("aria-checked", "true")
         # The connection gave the agent no grant of its own: its access is its owner's.
         grants = page.context.request.get(f"{ORIGIN}/api/v1/projects/{project_id}/grants")
         self.assertEqual(grants.status, 200, grants.text())

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
 import { PgBoss } from 'pg-boss';
-import { TASK_TAKING_PATH, taskDiscussionPath, workItemPath, type Conversation, type Project, type TaskDiscussion, type Workspace, type WorkItem } from '@flux/contracts';
+import { taskDiscussionPath, workItemPath, type Conversation, type Project, type TaskDiscussion, type Workspace, type WorkItem } from '@flux/contracts';
 import { testFixturePersonalConnections } from '@flux/core';
 import { createAgentTaskDrain } from '../../apps/server/src/agent-tasks/drain.js';
 import { pgBossPersonalRunQueue } from '../../apps/server/src/personal-runs/adapters.js';
@@ -31,8 +31,10 @@ describe('agents taking tasks beside the worker and the owner\'s own requests', 
   let ada: Person; let kai: Person; let ws: Workspace; let lamp: Project; let thread: Conversation; let agentId: string; let dmId: string; let boss: PgBoss;
 
   const deadlocks = async () => Number((await pool.query(`SELECT deadlocks FROM pg_stat_database WHERE datname = current_database()`)).rows[0].deadlocks);
-  const createTask = async (title: string, owner: { kind: 'human'; id: string } | null) => expectStatus(await ada.browser.request('POST', `/api/v1/projects/${lamp.id}/work`,
+  const createTask = async (title: string, owner: { kind: 'human' | 'agent'; id: string } | null, by: Person = ada) => expectStatus(await by.browser.request('POST', `/api/v1/projects/${lamp.id}/work`,
     { body: { title, ...(owner ? { owner } : {}) } }), 201, `create ${title}`) as WorkItem;
+  // Kai gives tasks to his agent with the Owner field (the only way since #1419).
+  const forAgent = (title: string) => createTask(title, { kind: 'agent', id: agentId }, kai);
   // Kai asks his own agent from every place there is (#842): a thread, the space's main conversation, a direct message and the agent's private chat.
   const ask = (index: number) => kai.browser.request('POST', [`/api/v1/conversations/${thread.id}/assistant-runs`, `/api/v1/projects/${lamp.id}/assistant-runs`,
     `/api/v1/dms/${dmId}/assistant-runs`, `/api/v1/my-agents/${agentId}/assistant-runs`][index % 4]!,
@@ -48,7 +50,6 @@ describe('agents taking tasks beside the worker and the owner\'s own requests', 
     expectStatus(await kai.browser.request('POST', '/api/v1/my-agents', { body: { agentId, connection, model: 'claude-sonnet-5' } }), 201);
     thread = expectStatus(await kai.browser.request('POST', `/api/v1/projects/${lamp.id}/conversations`, { body: { body: 'The lamp flickers', clientMessageId: randomUUID() } }), 201) as Conversation;
     dmId = (expectStatus(await kai.browser.request('POST', `/api/v1/workspaces/${ws.id}/dms`, { body: { participantIds: [ada.id] } }), 201) as { id: string }).id;
-    expectStatus(await kai.browser.request('PUT', TASK_TAKING_PATH, { body: { agentId } }), 200);
     boss = new PgBoss({ connectionString });
     boss.on('error', () => undefined);
     await boss.start();
@@ -60,7 +61,7 @@ describe('agents taking tasks beside the worker and the owner\'s own requests', 
     const extra = [1, 2].map(() => createAgentTaskDrain(db, queue, { connections: testFixturePersonalConnections, providerEnabled: true }));
     const before = await deadlocks();
     const [assigned, created, own] = await Promise.all([
-      Promise.all(Array.from({ length: TASKS }, (_, index) => createTask(`Burst ${index}`, { kind: 'human', id: kai.id }))),
+      Promise.all(Array.from({ length: TASKS }, (_, index) => forAgent(`Burst ${index}`))),
       Promise.all(Array.from({ length: CREATED }, (_, index) => createTask(`Meanwhile ${index}`, null))),
       Promise.all(Array.from({ length: OWN_REQUESTS }, (_, index) => ask(index))),
       Promise.all(extra.map((drain) => drain.drain())),
@@ -82,7 +83,7 @@ describe('agents taking tasks beside the worker and the owner\'s own requests', 
     const asked = (await pool.query(`SELECT id FROM personal_runs WHERE owner_user_id = $1 AND kind = 'ask' AND dm_id IS NULL AND project_id IS NOT NULL AND committed_at IS NOT NULL`, [kai.id])).rows as { id: string }[];
     assert.ok(asked.length >= 2, 'Kai has answers to show');
     const [more, shown] = await Promise.all([
-      Promise.all(Array.from({ length: 6 }, (_, index) => createTask(`Second wave ${index}`, { kind: 'human', id: kai.id }))),
+      Promise.all(Array.from({ length: 6 }, (_, index) => forAgent(`Second wave ${index}`))),
       Promise.all(asked.map((run) => kai.browser.request('POST', `/api/v1/assistant-runs/${run.id}/show`))),
     ]);
     assert.deepEqual(shown.map((response) => response.status), asked.map(() => 200), `every answer was shown: ${shown.map((response) => response.text).join(' | ')}`);

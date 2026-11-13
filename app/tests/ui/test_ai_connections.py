@@ -295,7 +295,7 @@ class AiConnectionSettings(unittest.TestCase):
         expect(guide).to_contain_text("Add Flux to the app you already use.")
         expect(guide).to_contain_text("This address works only on this computer.")
         expect(guide).not_to_contain_text("Use your self-hosted Flux HTTPS address")
-        expect(guide).to_contain_text("only as far as its “What it may do” allows")
+        expect(guide).to_contain_text("with Ask me first on, every change waits for your OK")
         tabs.get_by_role("tab", name="Claude Code", exact=True).click()
         shot(page, "ai-connection-1440-connect-guide")
         tabs.get_by_role("tab", name="Codex", exact=True).click()
@@ -337,6 +337,7 @@ class AiConnectionSettings(unittest.TestCase):
         page.route("**/api/v1/personal-assistant/model", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(choice))
                    if route.request.method == "GET" else route.continue_())
         page.goto(f"/settings/agents/{agent.json()['id']}")
+        page.get_by_role("button", name="More").click()  # the Model is behind More (#1419)
         # #1218: a key's models are the app's dropdown, named by the key.
         for item in owned:
             expect(page.get_by_role("combobox", name=item["name"])).to_be_visible()

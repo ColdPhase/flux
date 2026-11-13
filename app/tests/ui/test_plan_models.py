@@ -135,6 +135,7 @@ class PlanModels(unittest.TestCase):
         patches: list[dict] = []
         connection = self.stub(page, account="claude_plan", label="Claude plan", company="Claude", options=[CLAUDE[0], {**CLAUDE[1], "id": "@own"}, CLAUDE[2]], patches=patches)
         page.goto(f"/settings/agents/{type(self).agent['id']}")
+        page.get_by_role("button", name="More").click()  # the Model is behind More (#1419)
         models = page.get_by_role("radiogroup", name="Claude plan")
         expect(models.get_by_role("radio")).to_have_count(3)
         self.assertEqual([text.strip() for text in models.get_by_role("radio").all_inner_texts()], ["Opus 5.5", "Sonnet 5.5", "Haiku 4.5"], "the CLI's order and names")
@@ -152,6 +153,7 @@ class PlanModels(unittest.TestCase):
                 patches: list[dict] = []
                 connection = self.stub(page, account="chatgpt_plan", label="ChatGPT plan", company="ChatGPT", options=[{**CODEX[0], "id": "@own"}, *CODEX[1:]], patches=patches)
                 page.goto(f"/settings/agents/{type(self).agent['id']}")
+                page.get_by_role("button", name="More").click()  # the Model is behind More (#1419)
                 model = page.get_by_role("combobox", name="ChatGPT plan")
                 expect(model).to_contain_text("GPT-6.1-Sol · Latest workhorse model for coding and everyday work.")
                 expect(page.get_by_role("group", name=re.compile("^Model")).get_by_role("radio")).to_have_count(0)
@@ -174,6 +176,8 @@ class PlanModels(unittest.TestCase):
         options = [*CLAUDE[:2], claude("@own", "Haiku 4.5", "", retired=True), claude("opus-4-8", "Opus 4.8", "", retired=True)]
         self.stub(page, account="claude_plan", label="Claude plan", company="Claude", options=options)
         page.goto(f"/settings/agents/{type(self).agent['id']}")
+        # Paused on a model no longer offered, the agent's page opens More by itself (#1419), so this line is in view.
+        expect(page.get_by_role("button", name="More")).to_have_attribute("aria-expanded", "true")
         model = page.get_by_role("combobox", name="Claude plan")
         # The agent's own model stays, as "no longer offered"; a retired model that no agent is on is left out of the list.
         expect(model).to_contain_text("Haiku 4.5 · no longer offered by Claude")
@@ -191,6 +195,7 @@ class PlanModels(unittest.TestCase):
         page = self.page()
         self.stub(page, account="claude_plan", label="Claude plan", company="Claude", options=[])
         page.goto(f"/settings/agents/{type(self).agent['id']}")
+        page.get_by_role("button", name="More").click()  # the Model is behind More (#1419)
         expect(page.get_by_role("note").filter(has_text="Flux hasn’t read this plan’s models yet. It reads them when you sign in and again every few hours.")).to_be_visible()
         expect(page.get_by_role("group", name=re.compile("^Model")).get_by_role("radio")).to_have_count(0)
         expect(page.get_by_role("combobox", name="Claude plan")).to_have_count(0)

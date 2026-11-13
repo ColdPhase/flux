@@ -67,7 +67,7 @@ const FROM: Record<NonNullable<Source>, string> = {
 
 /** The text after the actor's name; the actor and the time are shown beside it. */
 function changeText(entry: TaskActivityEntry): string {
-  const rule = entry.automation === 'github_rule' ? ' (a pull request rule)' : entry.automation === 'agent_rule' ? ' (the agent setting)'
+  const rule = entry.automation === 'github_rule' ? ' (a pull request rule)' : entry.automation === 'agent_rule' ? ' (its agent finished)'
     : entry.automation === 'wait_resolved' ? ' (what it waited for is resolved)' : '';
   if (entry.kind === 'status' && entry.status) {
     const { to, blocker, waitingFor, waitingOn, dropped } = entry.status;

@@ -19,7 +19,6 @@ import { Button, Icon, MEDIA, Overlay, Spinner, StatusGlyph, Tabs, useMediaQuery
 import { createDoc, docUrl } from '../docs/api';
 import { holdTyping } from '../docs/typeAhead';
 import { createWork, proposeDecision } from '../work/api';
-import { ownTaskAgents } from '../agents/taskAgents';
 import { STATUS_LABEL } from '../work/format';
 import { useCreatedToast } from '../work/taskState';
 import { ACCEPT_UNDO_MS, startProposal } from '../notifications/pendingAccept';
@@ -234,10 +233,11 @@ function savedForm(records: Unresolved[], title: string, sources: ObjectRef[] | 
   return match?.form ?? null;
 }
 
-interface Context { project: Project; members: { userId: string; name: string }[]; agents: { id: string; name: string }[] }
+interface Context { project: Project; members: { userId: string; name: string }[] }
 
 function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProject, onClose, onTask }: PanelProps & { request: CreateRequest; prefilled: boolean; onTask?: (projectId: string) => void }) {
-  const { me, projects } = useShellData();
+  // The Owner choice offers your own agents and nobody else's (#904, AG-5): another person's agent is reached through that person.
+  const { me, projects, agents: ownAgents } = useShellData();
   const { openDetails, openCreate } = useShellActions();
   const revalidator = useRevalidator();
   const created = useCreatedToast(() => revalidator.revalidate());
@@ -289,13 +289,9 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
     const controller = new AbortController();
     void getProject(projectId, controller.signal).then(async (project) => {
       // The Owner choice offers the people in the space and nobody else (F-037), so nobody is given a task unannounced.
-      const [audience, agents] = await Promise.all([
-        listProjectPeople(projectId, controller.signal).catch(() => [] as ProjectPerson[]),
-        // The Owner choice offers your own agents and nobody else's (#904, AG-5): another person's agent is reached through that person.
-        ownTaskAgents(controller.signal),
-      ]);
+      const audience = await listProjectPeople(projectId, controller.signal).catch(() => [] as ProjectPerson[]);
       const members = audience.filter((person) => person.kind === 'human').map((person) => ({ userId: person.id, name: person.name }));
-      setContext({ projectId, value: { project, members, agents } });
+      setContext({ projectId, value: { project, members } });
     }).catch(() => { if (!controller.signal.aborted) setContext({ projectId, value: null }); });
     return () => controller.abort();
   }, [projectId]);
@@ -305,7 +301,7 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
     : [{ value: `human:${me.user.id}`, label: `${me.user.name} (you)` }]), [loaded, me.user.id, me.user.name]);
   // F-029 (#614): no agent owners while the workspace's AI is off.
   const aiOff = useSpaceAi(loaded?.project.id).blocked;
-  const agents = (aiOff ? [] : loaded?.agents ?? []).map((agent) => ({ value: `agent:${agent.id}`, label: `${agent.name} (agent)` }));
+  const agents = (aiOff || !loaded ? [] : ownAgents).map((agent) => ({ value: `agent:${agent.id}`, label: `${agent.name} (agent)` }));
   const waitingLabel = people.find((o) => o.value === waiting)?.label.replace(/ \((you|agent)\)$/, '') ?? 'No one';
   const ownerLabel = [...people, ...agents].find((o) => o.value === owner)?.label.replace(/ \((you|agent)\)$/, '') ?? 'No owner';
 

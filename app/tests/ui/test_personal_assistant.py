@@ -260,6 +260,8 @@ class PersonalAssistantJourney(unittest.TestCase):
         expect(page.get_by_role("checkbox")).to_have_count(0)
         row.get_by_role("link").click()
         expect(page.get_by_role("heading", level=2, name="Assistant")).to_be_visible()
+        expect(page.locator("[data-agent-model]")).to_contain_text("Sonnet 5")
+        page.get_by_role("button", name="More").click()  # the Model is behind More (#1419)
         # The model is the one control of its group: a dropdown for an API key (#1282), showing the model the assistant has (not "Choose a model").
         model = page.get_by_role("group", name=re.compile("^Model")).get_by_role("combobox")
         expect(model).to_have_count(1)

@@ -3,7 +3,7 @@
 Runs with the other tests/ui journeys through scripts/check_ui.sh. That stack is composed with the TEST-ONLY switch
 `FLUX_TEST_PERSONAL_RUNS=anthropic-mock`: every person has a fixture API key connection, which is not a connection the
 person made, so no agent exists until Ada connects AI herself and the server makes Assistant. Nothing here calls a model. Ada makes
-a second agent, Planner, gives it instructions, a model, "What it may do" and something to remember, finds it in
+a second agent, Planner, gives it instructions, a model (under More), Ask me first and something to remember, finds it in
 Messages and deletes it; Ben, in the same company, never sees any of it. Computer and phone widths.
 """
 
@@ -121,7 +121,7 @@ class MyAgentsJourney(unittest.TestCase):
         expect(side.get_by_label("Pinned")).to_be_visible()
         shot(page, "my-agents-list-1440")
 
-    def test_02_a_new_agent_has_a_name_instructions_a_model_what_it_may_do_and_a_colour(self) -> None:
+    def test_02_a_new_agent_has_a_name_instructions_ask_me_first_a_model_under_more_and_a_colour(self) -> None:
         page = self.page()
         page.goto("/settings/agents")
         page.get_by_role("button", name="New agent").click()
@@ -133,6 +133,11 @@ class MyAgentsJourney(unittest.TestCase):
         page.get_by_label("Instructions").fill(INSTRUCTIONS)
         page.get_by_label("Name", exact=True).click()  # leaving the instructions saves them
         expect(page.get_by_role("status").filter(has_text="Saved")).to_be_visible()
+        # #1419: the agent starts on its connection's default model, named beside More; the choice is behind More.
+        expect(page.get_by_role("group", name=re.compile("^Model"))).to_have_count(0)
+        expect(page.locator("[data-agent-model]")).to_contain_text("Model: ")
+        page.get_by_role("button", name="More").click()
+        expect(page.get_by_role("button", name="More")).to_have_attribute("aria-expanded", "true")
         # A second model, if the connection offers one, is a click; the choice is the one the server kept.
         group = page.get_by_role("group", name=re.compile("^Model"))
         # A plan's few models are segments; a key's models are the app's dropdown (#1218).
@@ -142,19 +147,27 @@ class MyAgentsJourney(unittest.TestCase):
             expect(group.get_by_role("combobox")).to_contain_text(re.compile(r"· \$[\d.]+ / \$[\d.]+"))
             expect(group).not_to_contain_text("Input $")
             expect(group).to_contain_text("Prices are US dollars per 1M tokens, input / output.")
-        page.get_by_role("radio", name="Ask me first").click()
-        expect(page.get_by_role("radio", name="Ask me first")).to_be_checked()
+        # #1419: one switch instead of three choices; off is "Do it and tell me", the default.
+        switch = page.get_by_role("switch", name="Ask me first")
+        expect(switch).not_to_be_checked()
+        expect(page.get_by_role("radio", name="Only read")).to_have_count(0)
+        switch.click()
+        expect(switch).to_be_checked()
+        expect(page.locator("[data-ask-first]")).to_contain_text("Every change waits for your OK.")
         stored = self.api(page, "GET", f"/api/v1/my-agents/{self.ids['planner']}")
         self.assertEqual((stored["name"], stored["instructions"], stored["mayDo"], stored["answersAi"]), ("Planner", INSTRUCTIONS, "ask", False))
         self.assertEqual(stored["colour"], "teal", "the first agent after Assistant gets the colour furthest from ink (#1377)")
         page.reload()
         expect(page.get_by_label("Instructions")).to_have_value(INSTRUCTIONS)
-        expect(page.get_by_role("radio", name="Ask me first")).to_be_checked()
+        expect(page.get_by_role("switch", name="Ask me first")).to_be_checked()
+        # The agent's page lists no schedules and offers no morning summary: they live in its chat (#1419).
+        expect(page.get_by_role("heading", name="Schedules")).to_have_count(0)
+        expect(page.get_by_text("Morning summary")).to_have_count(0)
         shot(page, "my-agent-page-1440")
 
     def test_02b_the_agents_list_matches_its_render_and_the_first_agents_are_told_apart(self) -> None:
         """#1377 (F-026 §7 Agents and AI): Assistant says what it is for before it has instructions, "What it may do" is a tag, a second new agent is
-        Indigo (not another warm brown), and Do nothing / Give it to are one segmented choice under "How your AI works"."""
+        Indigo (not another warm brown), and there is no "When someone assigns a task to me" (#1419)."""
         page = self.page()
         page.goto("/settings/agents")
         page.get_by_role("button", name="New agent").click()
@@ -172,10 +185,7 @@ class MyAgentsJourney(unittest.TestCase):
         self.assertNotEqual(tag.evaluate("el => getComputedStyle(el).backgroundColor"), card, "the tag is drawn against its card")
         hues = rows.locator(".kreska").evaluate_all("els => els.map((el) => [...el.classList].find((name) => name.startsWith('kreska--')) ?? 'ink')")
         self.assertEqual(len(set(hues)), 3, f"three agents, three faces: {hues}")
-        taking = page.locator("[data-task-taking]")
-        expect(taking.get_by_role("heading", name="How your AI works")).to_be_visible()
-        expect(taking.get_by_role("radiogroup", name="When someone assigns a task to me").get_by_role("radio")).to_have_count(1)
-        expect(taking.get_by_role("combobox", name="Give it to")).to_be_visible()
+        expect(page.get_by_text("When someone assigns a task to me")).to_have_count(0)
         shot(page, f"1377-settings-ai-{UI_BROWSER}")
         # Leave the world as the next tests expect it: Assistant and Planner.
         page.goto(f"/settings/agents/{reviewer}")
@@ -234,6 +244,7 @@ class MyAgentsJourney(unittest.TestCase):
         blind = self.page()
         self.stub_models(blind, agent, sees_pictures=False)
         blind.goto(f"/settings/agents/{agent['id']}")
+        blind.get_by_role("button", name="More").click()  # the Model is behind More (#1419)
         # An API key's models are the app's dropdown, named by the key (#1218); it shows the agent's model.
         expect(blind.get_by_role("combobox", name="Ada's Anthropic key")).to_contain_text("Test model")
         expect(blind.get_by_role("note").filter(has_text=note)).to_have_text(f"Test model: {note}")
@@ -244,6 +255,7 @@ class MyAgentsJourney(unittest.TestCase):
                 sighted = self.page()
                 self.stub_models(sighted, agent, sees_pictures=vision)
                 sighted.goto(f"/settings/agents/{agent['id']}")
+                sighted.get_by_role("button", name="More").click()
                 expect(sighted.get_by_role("combobox", name="Ada's Anthropic key")).to_contain_text("Test model")
                 expect(sighted.get_by_role("note").filter(has_text="see pictures")).to_have_count(0)
 
@@ -293,7 +305,7 @@ class MyAgentsJourney(unittest.TestCase):
         self.assertGreaterEqual(min(box["width"], box["height"]), 44, f"‹ AI on touch: {box}")
 
     def test_05b_segmented_choices_size_each_option_to_its_label_and_keep_its_room(self) -> None:
-        """#1219: What it may do and Model give each option its label and 14 px each side, not an equal share of the group, so the longest
+        """#1219: Model (under More, #1419) gives each option its label and 14 px each side, not an equal share of the group, so the longest
         label never fills its pill edge to edge. Where the group has no room for one row (a phone) the options wrap instead of overflowing.
         A plan's models are segments; an API key's are a dropdown (#1218), so the Model group measured here is a Claude plan's."""
         agent = self.api(self.page(), "GET", f"/api/v1/my-agents/{self.ids['planner']}")
@@ -301,10 +313,11 @@ class MyAgentsJourney(unittest.TestCase):
             page = self.page(phone=phone, viewport=viewport)
             self.stub_plan_models(page, agent)
             page.goto(f"/settings/agents/{self.ids['planner']}")
-            expect(page.get_by_role("radiogroup", name=re.compile("^What it may do"))).to_be_visible()
+            expect(page.get_by_role("switch", name="Ask me first")).to_be_visible()
+            page.get_by_role("button", name="More").click()
             # The model choices arrive after the page does.
             expect(page.get_by_role("group", name=re.compile("^Model")).get_by_role("radio").first).to_be_visible()
-            groups = page.evaluate("""() => [...document.querySelectorAll('.agp__card [role=radiogroup]')].map((group) => {
+            groups = page.evaluate("""() => [...document.querySelectorAll('#agent-more [role=radiogroup]')].map((group) => {
               const frame = group.getBoundingClientRect();
               return { name: group.getAttribute('aria-labelledby'), options: [...group.querySelectorAll('[role=radio]')].map((button) => {
                 const range = document.createRange(); range.selectNodeContents(button);
@@ -313,12 +326,9 @@ class MyAgentsJourney(unittest.TestCase):
                   inside: box.left >= frame.left - 0.5 && box.right <= frame.right + 0.5, checked: button.getAttribute('aria-checked') };
               }) };
             })""")
-            may = [group for group in groups if group["name"] == "agent-may-do"]
             models = [group for group in groups if str(group["name"]).startswith("model-")]
-            self.assertEqual(len(may), 1, groups)
-            self.assertEqual([option["label"] for option in may[0]["options"]], ["Only read", "Do it and tell me", "Ask me first"])
             self.assertGreaterEqual(len(models), 1, "the Model choice is on the page")
-            for group in may + models:
+            for group in models:
                 self.assertEqual(sum(option["checked"] == "true" for option in group["options"]), 1, group)
                 for option in group["options"]:
                     where = f"{label}: {group['name']} / {option['label']}"

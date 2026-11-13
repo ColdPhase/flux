@@ -75,6 +75,6 @@ export function ClientGuide({ origin, initial = 'claude_code' }: { origin: strin
       <h3>Start work</h3>
       <p>Ask it to start work in a space in Flux.</p>
     </section>}
-    <p>It uses your own account with the app’s provider, and Flux receives no credentials. It can do only what you can, and only as far as its “What it may do” allows. Deleting anything and other people’s things wait for your OK.</p>
+    <p>It uses your own account with the app’s provider, and Flux receives no credentials. It can do only what you can; with Ask me first on, every change waits for your OK. Deleting anything and other people’s things wait for your OK.</p>
   </div>;
 }

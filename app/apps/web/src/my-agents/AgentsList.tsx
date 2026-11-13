@@ -10,7 +10,7 @@ import { jobLine, mayDoLabel, modelLine } from './agentLabel';
 import './my-agents.css';
 
 // Settings › AI › Your agents (F-036 AG-1, #857; mockup Main): one row per agent with its Kreska in its own colour, its name, one
-// line about its job, its "What it may do" tag and its model with the connection. The first, Assistant, carries "Answers /ai".
+// line about its job, its tag ("Do it and tell me" or "Ask me first", #1419) and its model with the connection. The first, Assistant, carries "Answers /ai".
 // "New agent" asks only for a name; the agent starts on Connect AI's default model and is given a colour, and its page is where
 // the rest is set. Connecting AI the first time gives a person their Assistant: the server makes it once, when the connection is
 // made, so deleting it (or every agent) is never undone by opening this page.

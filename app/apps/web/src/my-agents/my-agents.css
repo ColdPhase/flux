@@ -57,7 +57,9 @@
 .agp__price-fields label { display: grid; gap: 4px; font-size: var(--fs-xs); color: var(--t2); }
 .agp__price-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .agp__listing { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
-.agp__may { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+/* Ask me first (#1419) sits under Instructions as one switch row; More, a quiet disclosure with the model in words beside it, opens the Model. */
+.agp__ask { margin-top: 8px; }
+.agp__more { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 10px 2px 8px; }
 .agp__remembers { margin-top: 18px; }
 .agp__remembers-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; margin: 0 2px 8px; }
 .agp__remembers-head .agp__hint { flex: 1; min-width: 0; }
@@ -66,21 +68,16 @@
 .agp__item-text { overflow-wrap: anywhere; font-weight: 400; }
 .agp__memory-edit, .agp__memory-form { display: flex; flex-direction: column; gap: 8px; width: 100%; }
 .agp__memory-edit { padding: 12px 14px; margin-bottom: 8px; }
-.agp__more { margin: 14px 2px 0; font-size: var(--fs-sm); }
 .agp__delete { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin: 18px 0 8px; }
 .agp__delete-btn { padding-inline: 2px; }
 
 /* An agent as a private conversation (mockup AgentReports) */
-.agc__bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 40px; }
-.agc__who { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
-.agc__tag { display: inline-flex; align-items: center; height: 22px; padding: 0 10px; border-radius: var(--r-pill); background: var(--el); border: 1px solid var(--line); font-size: var(--fs-xs); color: var(--t2); }
 .agc__note { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 0 0 8px; font-size: var(--fs-xs); line-height: 1.4; color: var(--t3); }
 .agc__empty { margin: 0; text-align: center; font-size: var(--fs-sm); color: var(--t3); }
 
 /* The chat itself (#842): the owner's turns and the agent's, in the look of a direct message. */
 .agc-pane { min-height: 0; }
-.agc-pane .agc__bar { margin-bottom: 12px; }
-/* Above the history: the agent's bar and its schedules line do not scroll with it */
+/* Above the history: the schedules line does not scroll with it */
 .agc__top { flex: none; }
 .agc__top .dm__in { padding-bottom: 0; }
 .agc__top .agc__sched { margin-bottom: 4px; }
@@ -120,6 +117,9 @@
 .agc__sched-row svg { flex: none; }
 .agc__sched-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .agc__sched-count { flex: none; font-size: var(--fs-xs); color: var(--t3); }
+/* The morning summary offered by Assistant (#1419): the schedule line's own row, with Turn on in it instead of a count. */
+.agc__sched-offer { cursor: default; padding-block: 6px; }
+.agc__sched-offer:hover { background: var(--el); }
 .agc__sched-panel { margin-top: 8px; max-height: 45vh; overflow-y: auto; overscroll-behavior: contain; }
 .agc__sched-panel .agp__memory { margin: 0; }
 /* What a prepared schedule will do, with Turn on and Change (mockup: the card under the agent's reply) */
@@ -136,8 +136,6 @@
 .agc__change-actions { display: flex; flex-wrap: wrap; gap: 4px 10px; }
 .agc__line--failed { color: var(--t2); }
 
-/* An agent's chat is one reading column like a space's conversation (#1377): its bar, the history and the composer share --col, not the direct messages' wider
-   column, so the composer is as wide as a space's. Its "Settings" link is 44 px high on touch. */
+/* An agent's chat is one reading column like a space's conversation (#1377): the history and the composer share --col, not the direct messages' wider
+   column, so the composer is as wide as a space's. */
 .agc-pane .dm__in, .agc-pane .dm__composer .composer__in { max-width: var(--col); }
-.agc__settings { display: inline-flex; align-items: center; min-height: 28px; }
-@media (pointer: coarse) { .agc__settings { justify-content: center; min-height: 44px; min-width: 44px; } }

@@ -5,9 +5,9 @@ Runs with the other tests/ui journeys through scripts/check_ui.sh, whose stack i
 real `@flux/agent-runtime` Anthropic adapter to `tests/ui/anthropic_mock.py`. Nothing here calls a model; no test is a provider,
 billing or compatibility pass.
 
-The journey: Ada assigns Kai a task. Kai chose "Give it to <his agent>" in Settings > AI, so his agent takes it, says it is on it,
-works, writes its report in the task and, with "Do it and tell me", marks it Done. With "Ask me first" it hands the task back to
-Kai instead. The Owner field offers a person's own agents and nobody else's.
+The journey: Ada assigns Kai a task. Kai gives it to his agent with the task's Owner field (the only way since #1419: no setting
+does it by itself), so his agent takes it, says it is on it, works, writes its report in the task and, with Ask me first off, marks
+it Done. With Ask me first on it hands the task back to Kai instead. The Owner field offers a person's own agents and nobody else's.
 """
 
 from __future__ import annotations
@@ -90,6 +90,11 @@ class AgentTakesTask(unittest.TestCase):
             body["owner"] = {"kind": "human", "id": owner_id}
         return self.api(page, "POST", f"/api/v1/projects/{self.ids['project']}/work", body, status=201)
 
+    def give(self, task: dict) -> dict:
+        """Kai gives a task he was assigned to his agent with its Owner field (#1419), as the Owner menu does."""
+        return self.api(self.page("kai"), "PATCH", f"/api/v1/work/{task['id']}", {"owner": {"kind": "agent", "id": self.ids["agent"]}},
+                        status=200, headers={"if-match": f"\"{task['version']}\""})
+
     def agent_line(self, page: Page, work: str, wanted: str, timeout: float = 60) -> dict:
         """The agent's state on a task, read until it is the wanted line (the worker is real, so it takes a moment)."""
         deadline = time.time() + timeout
@@ -147,41 +152,32 @@ class AgentTakesTask(unittest.TestCase):
                            status=422, headers={"if-match": f"\"{task['version']}\""})
         self.assertEqual(refused["code"], "OWNER_NOT_YOUR_AGENT")
 
-    # ---------------------------------------------------------------- the setting
+    # ---------------------------------------------------------------- no setting gives tasks away (#1419)
 
-    def test_03_kai_chooses_to_give_assigned_tasks_to_his_agent(self) -> None:
+    def test_03_settings_ai_has_no_rule_that_gives_assigned_tasks_away(self) -> None:
         page = self.page("kai")
         page.goto("/settings/agents")
-        row = page.locator("[data-task-taking]")
-        expect(row).to_contain_text("When someone assigns a task to me")
-        # "Do nothing / Give it to [agent]" is one segmented choice under "How your AI works" (F-026 §7, #1377); Do nothing is the default.
-        expect(row.get_by_role("heading", name="How your AI works")).to_be_visible()
-        choice = row.get_by_role("radiogroup", name="When someone assigns a task to me")
-        expect(choice.get_by_role("radio", name="Do nothing")).to_be_checked()
-        choice.get_by_role("radio", name="Give it to Planner").click()
-        expect(choice.get_by_role("radio", name="Give it to Planner")).to_be_checked()
-        expect(row.get_by_role("status")).to_contain_text("Saved")
-        # The arrow keys move the choice and the focus inside the group, which keeps the focus while it saves (review of #1377).
-        choice.get_by_role("radio", name="Give it to Planner").focus()
-        page.keyboard.press("ArrowLeft")
-        expect(choice.get_by_role("radio", name="Do nothing")).to_be_checked()
-        expect(choice.get_by_role("radio", name="Do nothing")).to_be_focused()
-        self.assertIsNone(self.api(page, "GET", "/api/v1/me/task-taking", status=200)["takes"])
-        page.keyboard.press("ArrowRight")
-        expect(choice.get_by_role("radio", name="Give it to Planner")).to_be_checked()
-        expect(choice.get_by_role("radio", name="Give it to Planner")).to_be_focused()
-        expect(choice.get_by_role("radio", name="Do nothing")).to_have_attribute("tabindex", "-1")
-        expect(row.get_by_role("status")).to_contain_text("Saved")
-        self.assertEqual(self.api(page, "GET", "/api/v1/me/task-taking", status=200)["takes"], self.ids["agent"])
+        expect(page.get_by_role("heading", name="Your agents")).to_be_visible()
+        expect(page.locator("[data-task-taking]")).to_have_count(0)
+        expect(page.get_by_text("When someone assigns a task to me")).to_have_count(0)
+        expect(page.get_by_role("heading", name="How your AI works")).to_have_count(0)
+        self.api(page, "GET", "/api/v1/me/task-taking", status=404)
 
     # ---------------------------------------------------------------- the journey: assigned, taken, worked, reported, Done
 
-    def test_04_ada_assigns_kai_a_task_and_his_agent_does_it(self) -> None:
+    def test_04_ada_assigns_kai_a_task_and_he_gives_it_to_his_agent_which_does_it(self) -> None:
         mock("/__script", {"reset": True, "text": REPORT})
         ada = self.page("ada")
         task = self.task(ada, "Calibrate the overflow sensor", KAI["id"])
         type(self).ids["task"] = task["id"]
         type(self).ids["number"] = str(task["number"])
+        # Assigned to Kai, it stays with Kai: nothing starts until he gives it to Planner with the Owner field, where everyone sees it.
+        kai = self.open_task("kai", task["id"])
+        kai.wait_for_timeout(1500)
+        self.assertEqual(self.api(kai, "GET", f"/api/v1/work/{task['id']}", status=200)["owner"]["kind"], "human")
+        panel = kai.get_by_role("complementary", name="Details")
+        panel.get_by_role("button", name="Owner").click()
+        kai.get_by_role("menu", name="Owner").get_by_role("menuitemradio", name=re.compile(r"Planner")).click()
         state = self.agent_line(self.page("kai"), task["id"], "done")
         self.assertEqual(state["agent"]["name"], "Planner")
         # The task is the agent's, Doing became Done, and Kai is told in the task: the agent's words and one plain line.
@@ -230,7 +226,7 @@ class AgentTakesTask(unittest.TestCase):
         panel.locator("[data-agent-line='done']").get_by_role("button", name="Undo").click()
         expect(panel.locator("[data-agent-line='done']")).to_have_count(0)
         task = self.api(page, "GET", f"/api/v1/work/{self.ids['task']}", status=200)
-        self.assertEqual((task["status"], task["owner"]["id"]), ("in_progress", KAI["id"]), "reopened and back with Kai, and not taken again by his own setting")
+        self.assertEqual((task["status"], task["owner"]["id"]), ("in_progress", KAI["id"]), "reopened and back with Kai, and not taken again")
         page.wait_for_timeout(1500)
         self.assertEqual(self.api(page, "GET", f"/api/v1/work/{self.ids['task']}", status=200)["owner"]["kind"], "human")
 
@@ -242,6 +238,7 @@ class AgentTakesTask(unittest.TestCase):
         self.api(kai, "PATCH", f"/api/v1/agent-connections/{mine['connectionId']}", {"mayDo": "ask"}, status=200)
         mock("/__script", {"reset": True, "text": REPORT})
         task = self.task(self.page("ada"), "Re-check the south barrel wiring", KAI["id"])
+        self.give(task)
         state = self.agent_line(kai, task["id"], "handed_back")
         self.assertEqual(state["text"], "Back with you to check")
         current = self.api(kai, "GET", f"/api/v1/work/{task['id']}", status=200)
@@ -262,11 +259,10 @@ class AgentTakesTask(unittest.TestCase):
         expect(line).to_have_count(0)
         self.assertEqual(self.api(kai, "GET", f"/api/v1/work/{task['id']}", status=200)["status"], "done")
 
-    # ---------------------------------------------------------------- Do nothing: the default
+    # ---------------------------------------------------------------- a task assigned to a person stays with them
 
-    def test_07_without_the_setting_nothing_starts(self) -> None:
+    def test_07_a_task_assigned_to_kai_starts_nothing(self) -> None:
         kai = self.page("kai")
-        self.api(kai, "PUT", "/api/v1/me/task-taking", {"agentId": None}, status=200)
         runs_before = len(self.api(kai, "GET", "/api/v1/assistant-runs?limit=50", status=200)["items"])
         task = self.task(self.page("ada"), "Order six capacitive probes", KAI["id"])
         self.page("kai").wait_for_timeout(2500)
@@ -279,9 +275,9 @@ class AgentTakesTask(unittest.TestCase):
 
     def test_08_a_space_admin_stops_the_agent_and_the_owner_is_told_who(self) -> None:
         kai = self.page("kai")
-        self.api(kai, "PUT", "/api/v1/me/task-taking", {"agentId": self.ids["agent"]}, status=200)
         mock("/__script", {"reset": True, "text": REPORT, "delay": 20})
         task = self.task(self.page("ada"), "Weigh the full barrel on Thursday", KAI["id"])
+        self.give(task)
         self.agent_line(kai, task["id"], "working")
         # Ada owns the space: she may stop Kai's agent, though she may not prompt it.
         page = self.open_task("ada", task["id"])
@@ -291,7 +287,7 @@ class AgentTakesTask(unittest.TestCase):
         self.assertEqual(state["text"], "Stopped by Ada Kowalska · the task is back with you")
         self.assertEqual(state["stoppedBy"]["id"], ADA["id"])
         current = self.api(kai, "GET", f"/api/v1/work/{task['id']}", status=200)
-        self.assertEqual((current["owner"]["kind"], current["owner"]["id"]), ("human", KAI["id"]), "back with Kai, and not taken again by his own setting")
+        self.assertEqual((current["owner"]["kind"], current["owner"]["id"]), ("human", KAI["id"]), "back with Kai, and not taken again")
         mock("/__script", {"reset": True})
         page.wait_for_timeout(1500)
         self.assertEqual(self.api(kai, "GET", f"/api/v1/work/{task['id']}", status=200)["owner"]["kind"], "human")
@@ -309,6 +305,7 @@ class AgentTakesTask(unittest.TestCase):
         self.api(kai, "PATCH", f"/api/v1/agent-connections/{mine['connectionId']}", {"mayDo": "act"}, status=200)
         mock("/__script", {"reset": True, "status": 500})
         task = self.task(self.page("ada"), "Re-check the north barrel", KAI["id"])
+        self.give(task)
         state = self.agent_line(kai, task["id"], "failed")
         self.assertEqual((state["canTryAgain"], state["canTakeBack"]), (True, True))
         self.assertEqual(self.api(self.page("ada"), "GET", f"/api/v1/work/{task['id']}/agent", status=200)["canTryAgain"], False, "only the owner tries again")

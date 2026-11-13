@@ -725,6 +725,8 @@ function AppLayoutContent() {
     ...(activeProject ? [{ label: 'Call', node: <LiveEntry variant="more" /> }, { label: 'Live now', node: <LiveNowRows /> }] : []),
     ...(activeProject && projectId ? [{ label: 'Settings', run: () => void navigate(`/projects/${projectId}/settings`) }] : []),
     ...(placeMute ? [{ label: placeMute.label, hint: placeMute.hint, run: placeMute.run }] : []),
+    // An agent's chat keeps its Settings in ⋯ on the computer as on the phone (#1419 item 14): the header names it once.
+    ...(activeAgent ? [{ label: 'Settings', run: () => void navigate(`/settings/agents/${activeAgent.id}`) }] : []),
     ...('noDetails' in place ? [] : [{ label: placeDetailsLabel, run: () => shell.openDetails('place') }]),
     tablet ? { label: 'Show the sidebar', keys: '[', run: () => setNavOpen(true) } : { label: railed ? 'Show the sidebar' : 'Hide the sidebar', keys: '[', run: toggleRail },
   ];
@@ -878,6 +880,7 @@ function AppLayoutContent() {
           {routeOrigin ? <RouteOriginBack origin={routeOrigin} className="origin-back--header" /> : null}
           <div className="top__title">
             {place.crumb && !activeProject ? <><span className="top__crumb">{place.crumb}</span><span className="top__slash" aria-hidden="true">/</span></> : null}
+            {activeAgent ? <Kreska size={24} hue={activeAgent.colour} /> : null}
             <h1 title={place.title}>{place.title}</h1>
             {placeCount}
             {encryptedMark}
