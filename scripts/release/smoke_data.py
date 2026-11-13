@@ -656,9 +656,9 @@ def write_video(member: Client, garden_id: str, tag: str) -> None:
         "POST", f"/api/v1/projects/{garden_id}/files?{urllib.parse.urlencode({'uploadId': new_id(), 'name': f'GARDEN-video-{tag}.mp4'})}",
         video, "application/octet-stream",
     )
-    staged = json.loads(upload)
+    staged = json.loads(upload) if status == 201 else {}
     if status != 201 or staged.get("video") != "mp4":
-        raise RuntimeError(f"a 6 MiB video upload after the upgrade returned {status} {staged!r}")
+        raise RuntimeError(f"a 6 MiB video upload after the upgrade returned {status} {upload[:300]!r}")
     for start, end in ((0, 99), (5_000_000, 5_000_099)):
         status, part = member.raw("GET", f"/api/v1/files/{staged['id']}/video", headers={"Range": f"bytes={start}-{end}"})
         if status != 206 or part != video[start:end + 1]:

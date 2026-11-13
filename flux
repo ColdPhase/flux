@@ -547,6 +547,8 @@ remove_embeddings_when_off() {
   embeddings_on && return 0
   ids=$(docker ps -aq --filter "label=com.docker.compose.project=$PROJECT" --filter "label=com.docker.compose.service=embeddings")
   [ -n "$ids" ] || return 0
+  # A service of that name that docker/compose.override.yaml defines is the operator's own: Compose knows it, so it is no orphan.
+  ! compose_main config --services 2>/dev/null | grep -qx embeddings || return 0
   say "Local embeddings are off: removing their container (the downloaded model stays in its volume)."
   # shellcheck disable=SC2086 # one id per word
   docker rm -f $ids >/dev/null || warn "Could not remove the local embeddings container; remove it with: docker rm -f $ids"
