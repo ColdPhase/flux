@@ -2,8 +2,9 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { AUTH_SIGN_OUT_PATH, REVOKE_OTHER_SESSIONS_PATH, SESSIONS_PATH } from '@flux/contracts';
 import { pool } from './support/db.js';
-import { Browser, publicOrigin } from './support/http.js';
-import { person, secondSession, type Person } from './support/people.js';
+import { Browser, publicOrigin, signIn } from './support/http.js';
+import { person, password, secondSession, type Person } from './support/people.js';
+import { StreamClient, upgradeStatus } from './support/stream.js';
 
 // #1178: a session cookie Better Auth accepted is read again on later requests as one statement on its session row, in each API
 // process. Revocation must not wait for anything: a sign-out, a revoked session, an expiry or a deleted account is refused on the very
@@ -100,4 +101,70 @@ test('the fast path reads the person afresh and hands a session due for renewal 
   for (const browser of browsers) assert.equal((await browser.request('GET', '/api/v1/me')).status, 200);
   const { rows: [after] } = await pool.query<{ left: number }>('SELECT extract(epoch FROM expires_at - clock_timestamp())::int AS left FROM auth_sessions WHERE id = $1', [id]);
   assert.ok(after!.left > 120, `Better Auth renewed the session (it has ${after!.left} s left)`);
+});
+
+// #1313: a WebKit page's stream got 401 on every reconnect while the same person's HTTP reads were 200. The upgrade reads the session with the
+// same function as every HTTP request (`resolveSession` → `read`), so the two must agree in every state of the session read: the first read of a
+// cookie on a process (Better Auth), a cookie the fast path knows, a session due for renewal, one that is expired or revoked, and on both API
+// processes; and an open stream, which reads the session again on every heartbeat (1 s in this stack), must survive its session's renewal.
+test('the live stream reads the session exactly as an HTTP request does, on both API processes, and an open stream survives its session being renewed', async () => {
+  const owner = await person('session-fast-path-stream');
+  const bases = [undefined, api2Url] as const;
+  const twins = (browser: Browser) => [copy(browser), onApi2(browser)];
+  const statuses = (browsers: Browser[]) => Promise.all(browsers.map(async (browser, i) => ({
+    http: (await browser.request('GET', '/api/v1/me')).status, stream: await upgradeStatus(browser, { base: bases[i] }),
+  })));
+  const same = (rows: { http: number; stream: number }[], http: number, stream: number, why: string) => assert.deepEqual(rows, [{ http, stream }, { http, stream }], why);
+
+  // A session nobody has read on either process: the upgrade is the first read, then HTTP; and the other way round.
+  const first = (await signIn(owner.email, password)).browser;
+  const firstTwins = twins(first);
+  const coldStream = await Promise.all(firstTwins.map((browser, i) => upgradeStatus(browser, { base: bases[i] })));
+  assert.deepEqual(coldStream, [101, 101], 'the first read of a cookie on each process is the upgrade, and it is accepted');
+  same(await statuses(firstTwins), 200, 101, 'then both read it from the fast path');
+  const second = (await signIn(owner.email, password)).browser;
+  const secondTwins = twins(second);
+  for (const browser of secondTwins) assert.equal((await browser.request('GET', '/api/v1/me')).status, 200);
+  assert.deepEqual(await Promise.all(secondTwins.map((browser, i) => upgradeStatus(browser, { base: bases[i] }))), [101, 101], 'the first read was HTTP, the upgrade follows');
+
+  // Due for renewal: an open stream (each heartbeat reads the session again) stays open, and so does a new one.
+  const third = await secondSession(owner);
+  const thirdTwins = twins(third.browser);
+  await warm(...thirdTwins);
+  const open = await Promise.all(thirdTwins.map((browser, i) => StreamClient.connect(browser, { base: bases[i] })));
+  await Promise.all(open.map((client) => client.ready()));
+  const due = () => pool.query("UPDATE auth_sessions SET expires_at = clock_timestamp() + interval '1 minute' WHERE id = $1", [third.sessionId]);
+  const secondsLeft = async () => (await pool.query<{ left: number }>('SELECT extract(epoch FROM expires_at - clock_timestamp())::int AS left FROM auth_sessions WHERE id = $1', [third.sessionId])).rows[0]!.left;
+  // The upgrade is the read that renews it, on one process and then on the other.
+  for (const [i, browser] of thirdTwins.entries()) {
+    await due();
+    assert.equal(await upgradeStatus(browser, { base: bases[i] }), 101, `a session due for renewal is accepted by the upgrade on ${i ? 'api2' : 'api'}`);
+    const left = await secondsLeft();
+    assert.ok(left > 120, `and the upgrade renewed it (${left} s left)`);
+  }
+  await due();
+  same(await statuses(thirdTwins), 200, 101, 'a session due for renewal is accepted by HTTP and by the upgrade, on both');
+  // The stream opened before the renewal reads the session on its heartbeats and is still open after several of them.
+  const pings = open.map((client) => client.pings);
+  await Promise.all(open.map((client, i) => client.until(() => client.pings >= pings[i]! + 3, 8000, 'three heartbeats after the renewal')));
+  for (const client of open) assert.equal(client.closeCode, null, 'the open stream was not closed by its session being renewed');
+  for (const client of open) await client.close();
+
+  // Ended: HTTP and the upgrade are both refused on the very next read, and an open stream is closed with 4401.
+  const fourth = await secondSession(owner);
+  const fourthTwins = twins(fourth.browser);
+  await warm(...fourthTwins);
+  const watching = await Promise.all(fourthTwins.map((browser, i) => StreamClient.connect(browser, { base: bases[i] })));
+  await Promise.all(watching.map((client) => client.ready()));
+  await pool.query("UPDATE auth_sessions SET expires_at = clock_timestamp() - interval '1 second' WHERE id = $1", [fourth.sessionId]);
+  same(await statuses(fourthTwins), 401, 401, 'an expired session is refused by both');
+  for (const client of watching) assert.equal((await client.closed).code, 4401, 'and an open stream is closed as unauthenticated');
+  const revoked = await secondSession(owner);
+  const revokedTwins = twins(revoked.browser);
+  await warm(...revokedTwins);
+  assert.equal((await onApi2(owner.browser).request('DELETE', `${SESSIONS_PATH}/${revoked.sessionId}`)).status, 204);
+  same(await statuses(revokedTwins), 401, 401, 'a revoked session is refused by both');
+  // No cookie at all is the same refusal, and it is what a browser that did not send its cookie gets.
+  assert.equal(await upgradeStatus(null), 401);
+  assert.equal(await upgradeStatus(new Browser()), 401);
 });

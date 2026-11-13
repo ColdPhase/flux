@@ -1,0 +1,1 @@
+- When the live stream refuses a connection because it carried no session, the API log says whether the session cookie came and which cookies did (names only, never a value), so a stream that was refused while the same person's other requests worked can be told from a session that ended ([#1313](https://github.com/ColdPhase/flux/issues/1313)).

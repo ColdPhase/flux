@@ -73,7 +73,7 @@ class SpaceSettings(unittest.TestCase):
         return json.loads(response.text()) if response.text() else {}
 
     def sign_up(self, who: str, name: str, email: str) -> None:
-        context = self.browser.new_context(base_url=ORIGIN, locale="en-GB")
+        context = self.browser.new_context(base_url=ORIGIN, locale="en-GB", service_workers="block")
         self.addCleanup(context.close)
         response = context.request.post("/api/auth/sign-up/email", data={"email": email, "password": PASSWORD, "name": name}, headers={"origin": ORIGIN})
         self.assertEqual(response.status, 200, response.text())
@@ -337,6 +337,74 @@ class SpaceSettings(unittest.TestCase):
         expect(card.get_by_label("Role of Kai Tanaka")).to_be_visible()
         expect(ada.get_by_text("Who is in this space couldn’t be loaded")).to_have_count(0)
         shot_both(ada, f"1214-everyone-settings-1440-{UI_BROWSER}")
+
+    MEMBERS = re.compile(r"/api/v1/workspaces/[^/]+/members$")
+
+    def everyone_settings(self, name: str) -> tuple[Page, str]:
+        """A space for the whole company, made by its owner; the test opens its settings page once it has set its route."""
+        ada = self.page("ada")
+        made = self.api(ada, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects", {"name": name, "visibility": "workspace"}, status=201)
+        return ada, made["id"]
+
+    def test_02e_a_people_read_that_fails_for_a_moment_is_asked_again_and_says_nothing(self) -> None:
+        """#1272: a read of who is in the space that fails for a reason that passes (a dead connection after a long idle, a busy or restarting
+        server) is asked again on its own; the person sees the list and never a notice."""
+        self.ensure_world()
+        ada, pid = self.everyone_settings("Open door")
+        answers = {"failed": 0}
+
+        def moment(route) -> None:
+            if answers["failed"] < 1:
+                answers["failed"] += 1
+                route.fulfill(status=503, content_type="application/json", body='{"error":"Service Unavailable"}')
+            else:
+                route.continue_()
+
+        ada.route(self.MEMBERS, moment)
+        ada.goto(f"/projects/{pid}/settings")
+        expect(ada.get_by_role("heading", name="Space settings")).to_be_visible()
+        card = ada.get_by_role("list", name="People in Open door")
+        # The roster's own controls (the shell's fallback has none) arrive with the second ask, with nobody pressing anything.
+        expect(card.get_by_label("Role of Kai Tanaka")).to_be_visible()
+        expect(card.get_by_role("listitem")).to_have_count(3)
+        expect(ada.get_by_text("Who is in this space couldn’t be loaded")).to_have_count(0)
+        self.assertEqual(answers["failed"], 1, "the first read failed and the page asked again")
+
+    def test_02f_a_people_read_that_keeps_failing_shows_the_notice_alone_and_try_again_recovers(self) -> None:
+        """#1272: the section shows the list or the notice, never both: while the read fails nobody is listed (not even the owner from the
+        shell), and Try again shows the list once the read works."""
+        self.ensure_world()
+        ada, pid = self.everyone_settings("Open yard")
+        ada.route(self.MEMBERS, lambda route: route.abort())
+        ada.goto(f"/projects/{pid}/settings")
+        expect(ada.get_by_role("heading", name="Space settings")).to_be_visible()
+        notice = ada.get_by_role("alert").filter(has_text="Who is in this space couldn’t be loaded")
+        expect(notice).to_be_visible(timeout=15_000)
+        expect(ada.get_by_role("list", name="People in Open yard")).to_have_count(0)
+        shot_both(ada, f"1272-everyone-people-failed-1440-{UI_BROWSER}")
+        ada.unroute(self.MEMBERS)
+        notice.get_by_role("button", name="Try again").click()
+        card = ada.get_by_role("list", name="People in Open yard")
+        expect(card.get_by_label("Role of Kai Tanaka")).to_be_visible()
+        expect(card.get_by_role("listitem")).to_have_count(3)
+        expect(notice).to_have_count(0)
+
+    def test_02g_a_refused_people_read_is_not_asked_again(self) -> None:
+        """#1272: only a read that failed for a reason that passes is asked again; a refusal says so at once and stays asked once."""
+        self.ensure_world()
+        ada, pid = self.everyone_settings("Open gate")
+        asked = {"n": 0}
+
+        def refuse(route) -> None:
+            asked["n"] += 1
+            route.fulfill(status=403, content_type="application/json", body='{"error":"Forbidden","code":"FORBIDDEN"}')
+
+        ada.route(self.MEMBERS, refuse)
+        ada.goto(f"/projects/{pid}/settings")
+        expect(ada.get_by_role("alert").filter(has_text="Who is in this space couldn’t be loaded")).to_be_visible()
+        before = asked["n"]
+        ada.wait_for_timeout(3600)  # longer than the page's two waits together
+        self.assertEqual(asked["n"], before, "no further ask after a refusal")
 
     def test_03_a_member_reads_the_settings_and_can_leave(self) -> None:
         self.ensure_world()

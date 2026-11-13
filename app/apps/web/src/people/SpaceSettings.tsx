@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { useNavigate, useRevalidator } from 'react-router';
 import type { Project, ProjectGrant, ProjectGrantRole, ProjectPerson, WorkspaceMember } from '@flux/contracts';
-import { ApiError } from '../api/client';
+import { ApiError, NetworkError } from '../api/client';
 import { whenPageLive } from '../api/pageLeaving';
 import { useShellData } from '../app/data';
 import { useProjectShell } from '../project/data';
@@ -23,6 +23,17 @@ const roleWord = (role: ProjectGrantRole | 'manager') => (role === 'manager' ? '
 
 /** The last admin of a space cannot leave, step down or be removed: the words the server's refusal gets (C-16). */
 const lastAdmin = (error: unknown) => (error instanceof ApiError && error.code === 'LAST_SPACE_ADMIN' ? 'Add another admin first: a space always keeps one.' : null);
+
+/**
+ * A read that failed for a reason that passes (#1272): nothing answered (a connection that died while the tab was idle, a server restarting),
+ * or the server said it was busy or broke for a moment. A refusal (403, 404) is not one: asking again changes nothing.
+ */
+const transient = (error: unknown) => error instanceof NetworkError
+  // The connection broke while the answer's body was read: `fetch` had resolved, so the body's own read throws a TypeError.
+  || error instanceof TypeError
+  || (error instanceof ApiError && (error.status === 408 || error.status === 425 || error.status === 429 || error.status >= 500));
+/** How long the page waits before it asks again for who is in the space, by attempt; after the last one it says it could not. */
+export const ROSTER_RETRY_MS = [800, 2400];
 
 interface Row { userId: string; name: string; email: string | null; role: 'manager' | 'contributor'; company: boolean; guest: boolean; grantId: string | null; lastActiveAt?: string }
 
@@ -79,19 +90,26 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName }: {
   useEffect(() => { if (adding) focusOn('.spset__add input[type="checkbox"], .spset__add input[type="search"]'); }, [adding]);
   const changed = (message: string) => { setStatus(message); setProblem(''); load(); void revalidator.revalidate(); };
 
-  // A space's admins read the company's people and the space's grants: who is in it, and who could be added.
+  // A space's admins read the company's people and the space's grants: who is in it, and who could be added. A read that fails for a reason
+  // that passes (see `transient`) is asked again on its own, twice; the notice comes only when that did not help (#1272).
   useEffect(() => {
     if (!manager) return undefined;
     const controller = new AbortController();
-    const waiting = whenPageLive(() => {
-      Promise.all([listMembers(project.workspaceId, controller.signal), listGrants(project.id, controller.signal)]).then(([members, grants]) => {
-        setRoster({ members, grants }); setRosterFailed(false);
-      }, (error: unknown) => {
-        if (error instanceof DOMException && error.name === 'AbortError') return;
-        setRosterFailed(true);
+    let stopWaiting: () => void = () => undefined;
+    let timer = 0;
+    const read = (attempt: number) => {
+      stopWaiting = whenPageLive(() => {
+        Promise.all([listMembers(project.workspaceId, controller.signal), listGrants(project.id, controller.signal)]).then(([members, grants]) => {
+          setRoster({ members, grants }); setRosterFailed(false);
+        }, (error: unknown) => {
+          if (error instanceof DOMException && error.name === 'AbortError') return;
+          if (transient(error) && attempt < ROSTER_RETRY_MS.length) { timer = window.setTimeout(() => read(attempt + 1), ROSTER_RETRY_MS[attempt]); return; }
+          setRosterFailed(true);
+        });
       });
-    });
-    return () => { waiting(); controller.abort(); };
+    };
+    read(0);
+    return () => { stopWaiting(); window.clearTimeout(timer); controller.abort(); };
   }, [manager, project.id, project.workspaceId, reload]);
 
   const memberOf = (id: string) => roster?.members.find((member) => member.userId === id) ?? null;
@@ -99,6 +117,9 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName }: {
   const myGrant = manager ? grantOf(meId) : null;
   // "Leave space" is for someone added to the space; a company admin who only reaches it, or anyone in Everyone, has nothing to leave.
   const canLeave = !everyone && !encrypted && (manager ? !!myGrant : true);
+
+  // A space's admins see its people from the server's read: when it failed the page says so and lists nobody, never both (#1272).
+  const listFailed = manager && rosterFailed && !roster;
 
   const rows: Row[] = (() => {
     if (manager && roster) {
@@ -197,7 +218,7 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName }: {
         <NameCard project={project} manager={manager} companyName={companyName} onRenamed={(name) => changed(`Renamed to ${name}.`)} onIconChanged={changed} />
 
         <div className="spset__seclead">
-          <h3 className="sset-sec" id="space-people">People{!everyone ? <span className="spset__count">{rows.length}</span> : null}</h3>
+          <h3 className="sset-sec" id="space-people">People{!everyone && !listFailed ? <span className="spset__count">{rows.length}</span> : null}</h3>
           {manager && !everyone ? <Button variant="secondary" size="sm" icon="plus" aria-expanded={adding} disabled={!roster} onClick={() => { setAdding((open) => !open); setChosen([]); }}>Add people</Button> : null}
         </div>
         {manager && adding && roster ? (
@@ -209,10 +230,9 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName }: {
             </div>
           </div>
         ) : null}
-        {manager && rosterFailed && !roster ? (
-          <p className="people__notice" role="alert"><Icon name="alert" size={13} />Who is in this space couldn’t be loaded.<Button variant="link" size="sm" onClick={load}>Try again</Button></p>
-        ) : null}
-        {everyone && !manager ? (
+        {listFailed ? (
+          <p className="people__notice" role="alert"><Icon name="alert" size={13} />Who is in this space couldn’t be loaded.<Button variant="link" size="sm" onClick={() => { setRosterFailed(false); load(); }}>Try again</Button></p>
+        ) : everyone && !manager ? (
           <ul className="sset-card" aria-label="People of this space"><li className="sset-row"><span className="sset-row__b"><span className="sset-row__t">Everyone in {companyName}</span>
             <span className="sset-row__s">Whoever joins the company is in this space.</span></span></li></ul>
         ) : (
