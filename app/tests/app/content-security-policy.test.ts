@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { describe, test } from 'node:test';
 import { documentPolicy, inlineHandlers, inlineScriptHashes, socketOrigins, WORKER_POLICY } from '../../apps/server/src/http/content-security-policy.js';
+import { PDF_VIEWER_POLICY } from '../../apps/server/src/http/pdf-viewer.js';
 import { apiUrl, publicOrigin } from './support/http.js';
 
 // The Content-Security-Policy of Flux's pages (#979): what it says, that each page's inline scripts are exactly the ones it hashes, and
@@ -115,6 +116,36 @@ describe('what the server sends', () => {
       assert.equal(directives(shipped).has('report-uri'), testDeployment, 'only a test deployment reports');
     });
   }
+
+  test('the PDF viewer frame has its own policy, only a Flux page may frame it, and its files can be read by an opaque origin (C-60, #1350)', async () => {
+    for (const encoding of ['identity', 'br', 'gzip']) {
+      const { response, text } = await page('/pdf-viewer/index.html', { accept: 'text/html', 'accept-encoding': encoding });
+      assert.equal(response.status, 200, encoding);
+      assert.equal(response.headers.get('content-security-policy'), PDF_VIEWER_POLICY, encoding);
+      assert.equal(response.headers.get('content-security-policy-report-only'), null, 'it is not an app page: no report address');
+      assert.equal(response.headers.get('x-frame-options'), 'SAMEORIGIN');
+      assert.equal(response.headers.get('content-type')?.split(';')[0], 'text/html');
+      if (encoding !== 'identity') continue;
+      const policy = directives(PDF_VIEWER_POLICY);
+      assert.deepEqual(policy.get('sandbox'), ['allow-scripts'], 'an opaque origin: no allow-same-origin, no navigation, popups, forms or downloads');
+      assert.deepEqual(policy.get('default-src'), ["'none'"]);
+      assert.equal(policy.has('connect-src'), false, 'nothing is fetched');
+      assert.ok(!PDF_VIEWER_POLICY.includes('unsafe-eval') && !(policy.get('script-src') ?? []).includes("'unsafe-inline'"), 'nothing is evaluated or inline');
+      assert.deepEqual(inlineHandlers(text), []);
+      assert.deepEqual(inlineScriptHashes(text), [], 'one script file, nothing inline');
+      for (const address of [...text.matchAll(/(?:src|href)="(\/pdf-viewer\/[^"]+)"/g)].map((match) => match[1]!)) {
+        const file = await fetch(new URL(address, apiUrl), { headers: { origin: 'null' } });
+        assert.equal(file.status, 200, address);
+        assert.equal(file.headers.get('access-control-allow-origin'), '*', `${address} is read by an opaque origin`);
+        assert.equal(file.headers.get('cross-origin-resource-policy'), 'cross-origin', address);
+        assert.equal(file.headers.get('content-security-policy'), "frame-ancestors 'none'", 'a script or style file carries only the framing policy');
+      }
+    }
+    // The app's own files keep the strict same-origin policy.
+    const app = await fetch(new URL('/', apiUrl), { headers: { accept: 'text/html' } });
+    assert.equal(app.headers.get('cross-origin-resource-policy'), 'same-origin');
+    assert.equal(app.headers.get('access-control-allow-origin'), null);
+  });
 
   test('the page names the origin its sockets use', async () => {
     const response = (await page('/')).response;

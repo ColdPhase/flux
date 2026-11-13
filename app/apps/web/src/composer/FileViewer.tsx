@@ -1,8 +1,9 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { filePath, filePreviewPath, type MessageFile } from '@flux/contracts';
 import { send } from '../api/client';
 import { readFileBytes } from '../api/files';
+import { PDF_FRAME, PDF_VIEWER_URL, readViewerMessage } from '../pdf-viewer/protocol';
 import { Button, Icon, Spinner, trapTab } from '../ui';
 import { fileKind, fileSize, fileWord, type PreviewFormat } from './fileKind';
 import type { ParsedFormat, PreviewModel } from './previewParse';
@@ -10,8 +11,9 @@ import { JsonErrorView, JsonView, MarkdownView, TableView, TextView, hiddenColum
 
 // A file preview in the photo viewer's frame (C-60, #1252, F-026 §6): always dark, Close, the name with "type · size", Download.
 // Someone else's HTML never runs on Flux's origin: it is framed from the preview route, which sandboxes it to an opaque origin
-// and lets it fetch nothing; the frame's own `sandbox` attribute says the same. Text, Markdown, JSON and tables are read through the
-// download route, parsed in a Web Worker and drawn by React (Markdown by the message renderer, #1247), never as HTML.
+// and lets it fetch nothing; the frame's own `sandbox` attribute says the same. A PDF is drawn by Flux's own viewer page, framed the same
+// way, from the bytes of the download route (#1350). Text, Markdown, JSON and tables are read through the download route, parsed in a Web
+// Worker and drawn by React (Markdown by the message renderer, #1247), never as HTML.
 
 /** No feature a page could ask the browser for: Flux may hold the camera and microphone for a call, the preview never does. */
 const NOTHING_ALLOWED = "camera 'none'; microphone 'none'; display-capture 'none'; geolocation 'none'; fullscreen 'none'; payment 'none'; usb 'none'; serial 'none'; clipboard-read 'none'; clipboard-write 'none'";
@@ -70,18 +72,66 @@ function HtmlPage({ file, scripts }: { file: MessageFile; scripts: boolean }) {
     src={filePreviewPath(file.id, scripts)} sandbox={scripts ? 'allow-scripts' : ''} allow={NOTHING_ALLOWED} referrerPolicy="no-referrer" />;
 }
 
+type PdfBytes = { status: 'loading' } | { status: 'denied' } | { status: 'failed' } | { status: 'ready'; bytes: Uint8Array };
+
+/** A PDF's bytes through the download route (its access check), for the viewer frame to draw. */
+function usePdfBytes(fileId: string, enabled: boolean): PdfBytes {
+  const [state, setState] = useState<{ id: string; bytes: PdfBytes }>({ id: '', bytes: { status: 'loading' } });
+  useEffect(() => {
+    if (!enabled) return;
+    const controller = new AbortController();
+    const settle = (bytes: PdfBytes) => { if (!controller.signal.aborted) setState({ id: fileId, bytes }); };
+    readFileBytes(fileId, { signal: controller.signal, cache: 'no-store' })
+      .then((read) => settle(read ? { status: 'ready', bytes: read } : { status: 'denied' }))
+      .catch(() => settle({ status: 'failed' }));
+    return () => controller.abort();
+  }, [fileId, enabled]);
+  return state.id === fileId ? state.bytes : { status: 'loading' };
+}
+
+/** How long the viewer frame has to say it is ready before the preview gives up on it. */
+const PDF_FRAME_WAIT = 15_000;
+
 /**
- * A PDF in the browser's own viewer. The frame is sandboxed by the preview's policy only: Chromium shows no PDF in a frame with the
- * `sandbox` attribute (C-60). A browser without a PDF viewer (Android) says so and offers Download.
+ * A PDF drawn by Flux's own viewer page (#1350): a frame with the `sandbox` attribute (an opaque origin: no cookie, storage, API or
+ * parent access, and no navigation or window of its own) and the page's own policy, which lets it fetch nothing. A browser's built-in
+ * PDF viewer is not used: it follows a link in the file in the top window. The frame gets the bytes by message once it says it is
+ * ready, and says back only that it drew, that it failed, or which http(s) address the person pressed. Nothing opens until they
+ * press Open under the sheet.
  */
-function PdfPage({ file }: { file: MessageFile }) {
-  if (navigator.pdfViewerEnabled === false) return (
-    <div className="file-viewer__state file-viewer__state--column">
-      <p>This browser can't show a PDF here.</p>
-      <a className="ui-btn ui-btn--primary" href={filePath(file.id)} download={file.name}><Icon name="download" />Download</a>
-    </div>
-  );
-  return <iframe className="file-viewer__frame" title={`Preview of ${file.name}`} src={filePreviewPath(file.id)} allow={NOTHING_ALLOWED} referrerPolicy="no-referrer" />;
+function PdfPage({ file, bytes, drawn, onDrawn, onFailed, onLink }: {
+  file: MessageFile; bytes: Uint8Array; drawn: boolean;
+  /** Stable functions: the effect below must not start over when the viewer re-renders. */
+  onDrawn: () => void; onFailed: (reason: 'password' | 'damaged') => void; onLink: (url: string) => void;
+}) {
+  const frame = useRef<HTMLIFrameElement>(null);
+  const sent = useRef(false);
+  // A layout effect, so the listener is in place when the frame is inserted, before its first message can arrive.
+  useLayoutEffect(() => {
+    const timer = window.setTimeout(() => { if (!sent.current) onFailed('damaged'); }, PDF_FRAME_WAIT);
+    const listen = (event: MessageEvent) => {
+      const target = frame.current?.contentWindow;
+      if (!target || event.source !== target) return;
+      const message = readViewerMessage(event.data);
+      if (!message) return;
+      if (message.type === 'ready') {
+        if (sent.current) return;
+        sent.current = true;
+        window.clearTimeout(timer);
+        const buffer = bytes.buffer as ArrayBuffer;
+        target.postMessage({ frame: PDF_FRAME, type: 'open', bytes: buffer }, '*', [buffer]);
+      } else if (message.type === 'drawn') onDrawn();
+      else if (message.type === 'link') onLink(message.url);
+      else onFailed(message.reason);
+    };
+    window.addEventListener('message', listen);
+    return () => { window.removeEventListener('message', listen); window.clearTimeout(timer); };
+  }, [bytes, onDrawn, onFailed, onLink]);
+  return <>
+    {drawn ? null : <p className="file-viewer__state file-viewer__cover"><Spinner label={`Opening ${file.name}`} />{file.name}</p>}
+    <iframe ref={frame} className="file-viewer__frame file-viewer__frame--pdf" title={`Preview of ${file.name}`} src={PDF_VIEWER_URL}
+      sandbox="allow-scripts" allow={NOTHING_ALLOWED} referrerPolicy="no-referrer" />
+  </>;
 }
 
 const PARSED: Partial<Record<PreviewFormat, ParsedFormat>> = { text: 'text', markdown: 'markdown', json: 'json', csv: 'csv', tsv: 'tsv' };
@@ -93,9 +143,15 @@ export function FileViewer({ file, format, onClose }: { file: MessageFile; forma
   const [scripts, setScripts] = useState(false);
   const [source, setSource] = useState(false);
   const [numbers, setNumbers] = useState(false);
-  const framed = (format === 'html' && !source) || format === 'pdf';
+  const framed = format === 'html' && !source;
   const access = useAccess(file.id, framed);
-  const parsed = useParsed(file.id, framed ? null : source ? 'text' : PARSED[format] ?? null);
+  const pdf = usePdfBytes(file.id, format === 'pdf');
+  const [drawn, setDrawn] = useState(false);
+  const [pdfFailed, setPdfFailed] = useState<'password' | 'damaged' | null>(null);
+  const [link, setLink] = useState<string | null>(null);
+  const onDrawn = useCallback(() => setDrawn(true), []);
+  const onLink = useCallback((url: string) => setLink(url), []);
+  const parsed = useParsed(file.id, framed || format === 'pdf' ? null : source ? 'text' : PARSED[format] ?? null);
   useEffect(() => {
     returnTo.current = document.activeElement;
     root.current?.querySelector<HTMLElement>('.photo-viewer__close')?.focus();
@@ -107,19 +163,25 @@ export function FileViewer({ file, format, onClose }: { file: MessageFile; forma
     if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); onClose(); return; }
     trapTab(event, root.current);
   };
-  const state = framed ? (access === 'ready' ? 'ready' : access === 'denied' ? 'denied' : 'loading') : parsed.status;
+  const state = framed ? (access === 'ready' ? 'ready' : access === 'denied' ? 'denied' : 'loading')
+    : format === 'pdf' ? (pdfFailed ? 'failed' : pdf.status) : parsed.status;
   const quiet = (label: string, run: () => void) => <Button variant="link" onClick={run}>{label}</Button>;
   const notes: ReactNode[] = [];
   let body: ReactNode = null;
   if (state === 'denied') body = <p className="file-viewer__state" role="alert">You no longer have access to this file.</p>;
-  else if (state === 'failed') body = <p className="file-viewer__state" role="alert">This file could not be shown. Download it to open it.</p>;
+  else if (state === 'failed') body = <p className="file-viewer__state" role="alert">
+    {pdfFailed === 'password' ? 'This PDF needs a password. Download it to open it.' : 'This file could not be shown. Download it to open it.'}</p>;
   else if (state === 'loading') body = <p className="file-viewer__state"><Spinner label={`Opening ${file.name}`} />{file.name}</p>;
   else if (format === 'html' && !source) {
     body = <HtmlPage file={file} scripts={scripts} />;
     notes.push(scripts ? 'Scripts are on for this preview. A script may contact the internet.'
       : <>External images and scripts are blocked. {quiet('Run scripts', () => setScripts(true))}</>);
-  } else if (format === 'pdf') body = <PdfPage file={file} />;
-  else if (parsed.status === 'ready') {
+  } else if (format === 'pdf' && pdf.status === 'ready') {
+    body = <PdfPage file={file} bytes={pdf.bytes} drawn={drawn} onDrawn={onDrawn} onFailed={setPdfFailed} onLink={onLink} />;
+    // A link in the file only shows where it goes: it opens in a new tab, without this page as its opener, when the person presses Open.
+    if (link) notes.push(<>This PDF links to {link}</>, <a className="ui-btn ui-btn--link" href={link} target="_blank" rel="noopener noreferrer">Open link</a>,
+      quiet('Dismiss', () => setLink(null)));
+  } else if (parsed.status === 'ready') {
     const model = parsed.model;
     const label = `Contents of ${file.name}`;
     body = model.kind === 'markdown' ? <MarkdownView model={model} label={label} />

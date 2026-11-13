@@ -363,7 +363,7 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   const webRoot = join(process.cwd(), 'apps/web/dist');
   // A real Content-Security-Policy on the pages and the service worker (#979); a test deployment's pages also report what they refuse.
   const documentPolicies = loadDocumentPolicies(webRoot, identityConfig.publicOrigin, collectCspReports ? { reportUri: CSP_REPORT_PATH, allowEval: config.fixture.cspEval } : undefined);
-  await fastifyStatic(app, { root: webRoot, prefix: '/', cacheControl: false, setHeaders: staticHeaders(documentPolicies), preCompressed: true });
+  await fastifyStatic(app, { root: webRoot, prefix: '/', cacheControl: false, setHeaders: staticHeaders(documentPolicies, webRoot), preCompressed: true });
   app.setNotFoundHandler(async (request, reply) => {
     if (isRouted(request, '/api/')) return reply.code(404).send({ error: 'Not Found' });
     if (!request.headers.accept?.includes('text/html')) return reply.code(404).send({ error: 'Not Found' });

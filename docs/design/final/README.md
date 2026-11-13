@@ -683,16 +683,29 @@ These functional rules from UI116-4 remain required:
   - **The stage** holds the file on one page sheet: `--el` with `--t1` text, radius `--r`, the
     reading column wide (`--col`) for text and Markdown and up to 1200 px for tables, HTML and PDF.
     On the phone the sheet fills the stage edge to edge without a radius. HTML keeps a white page,
-    as its author wrote it; PDF shows the browser's own viewer.
+    as its author wrote it; PDF is Flux's own viewer (below), never the browser's own.
   - **Under the sheet** one quiet meta line in the caption place says what is not shown. HTML:
     "External images and scripts are blocked." followed by a quiet link button **Run scripts**.
     After the press the line reads "Scripts are on for this preview. A script may contact the
     internet." and closing the viewer turns them off again. Markdown and HTML: **View source** /
     **Preview** as the same quiet link button. A file that is not valid UTF-8 adds "Shown as
-    Windows-1252 text." A PDF the browser cannot show here says "This browser can't show a PDF
-    here." with Download as the one button on the sheet.
-  - **While it opens** the sheet shows the spinner with the file name; a person who lost access
-    sees "You no longer have access to this file." and nothing else.
+    Windows-1252 text." A PDF that needs a password says "This PDF needs a password. Download it
+    to open it."; one that cannot be read says "This file could not be shown. Download it to open
+    it." The sheet shows nothing else then.
+  - **While it opens** the sheet shows the spinner with the file name (a PDF's until its first page
+    is drawn); a person who lost access sees "You no longer have access to this file." and nothing
+    else.
+  - **A PDF** ([#1350](https://github.com/ColdPhase/flux/issues/1350), C-60) is drawn by Flux, never
+    by the browser's own PDF viewer, which follows a link in the file in the top window. The pages
+    stack on the sheet, white, 12 px apart, as wide as the sheet up to 960 px, centred, each drawn
+    only while it is near the view; the sheet scrolls and the text can be selected. The same on the
+    phone, edge to edge. A link in the file is invisible until hovered or focused (then a soft tint
+    of the system highlight over its area). Pressing one never leaves Flux: the line under the
+    sheet reads "This PDF links to https://example.com/x · **Open link** · **Dismiss**", where
+    **Open link** is the quiet link button and opens the address in a new tab; nothing opens
+    before it is pressed. Only `http` and `https` addresses are offered; a link to a place in the
+    PDF, and its next, previous, first and last page actions, scroll the sheet and say nothing.
+    Every other link does nothing at all.
   - Text and source: Geist Mono `--fs-base`, wrapped; line numbers stay off until the quiet
     **Show line numbers** under the sheet. JSON: pretty, two-space
     indents, each object and array folds with a chevron; a large file starts folded below the

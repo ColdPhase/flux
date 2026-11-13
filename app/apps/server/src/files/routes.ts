@@ -45,8 +45,10 @@ export async function fileRoutes(app: FastifyInstance, { db, sessions, storage, 
       .header('X-Content-Type-Options', 'nosniff').header('Cache-Control', 'private, no-store')
       .header('Content-Security-Policy', 'sandbox').send(Buffer.from(file.bytes));
   });
-  // A preview of someone else's HTML page or PDF (C-60, #1252): only inside a frame of a Flux page, sandboxed to an opaque origin
-  // by its own policy, with nothing fetched. The frame's `sandbox` attribute repeats the HTML sandbox; access is the download's.
+  // A preview of someone else's HTML page (C-60, #1252): only inside a frame of a Flux page, sandboxed to an opaque origin by its own
+  // policy, with nothing fetched. The frame's `sandbox` attribute repeats it; access is the download's. A PDF is not framed: Flux draws
+  // it itself from the download's bytes in a viewer frame (`http/pdf-viewer.ts`, #1350), because a browser's own PDF viewer follows a
+  // link in the PDF in the top window.
   app.get<{ Params: { fileId: string }; Querystring: { scripts?: '1' } }>('/api/v1/files/:fileId/preview', {
     schema: { querystring: { type: 'object', additionalProperties: false, properties: { scripts: { type: 'string', enum: ['1'] } } } },
   }, async (request, reply) => {
@@ -55,13 +57,12 @@ export async function fileRoutes(app: FastifyInstance, { db, sessions, storage, 
     if (request.headers['sec-fetch-dest'] !== 'iframe' || request.headers['sec-fetch-site'] !== 'same-origin')
       throw new ForbiddenError('A preview opens only inside Flux', 'PREVIEW_FRAME_ONLY');
     const file = await files.download((await sessions.requirePrincipal(request)).principal, request.params.fileId);
-    const kind = previewKind(file.name);
-    if (!kind) throw new NotFoundError('Preview', 'FILE_NO_PREVIEW');
-    const scripts = kind === 'html' && request.query.scripts === '1';
-    const body = kind === 'html' ? inertHead(file.bytes) : Buffer.from(file.bytes);
-    return reply.header('Content-Type', kind === 'html' ? 'text/html; charset=utf-8' : 'application/pdf').header('Content-Length', body.byteLength)
+    if (!/\.html?$/i.test(file.name)) throw new NotFoundError('Preview', 'FILE_NO_PREVIEW');
+    const scripts = request.query.scripts === '1';
+    const body = inertHead(file.bytes);
+    return reply.header('Content-Type', 'text/html; charset=utf-8').header('Content-Length', body.byteLength)
       .header('Content-Disposition', `inline; filename="preview"; filename*=UTF-8''${encodedName(file.name)}`)
-      .header('Content-Security-Policy', previewPolicy(kind, scripts))
+      .header('Content-Security-Policy', previewPolicy(scripts))
       .header('X-Frame-Options', 'SAMEORIGIN').header('X-Content-Type-Options', 'nosniff').header('Cache-Control', 'private, no-store')
       .header('Referrer-Policy', 'no-referrer').header('X-DNS-Prefetch-Control', 'off').header('Permissions-Policy', PREVIEW_PERMISSIONS)
       .header('Cross-Origin-Resource-Policy', 'same-origin').send(body);
@@ -80,11 +81,15 @@ export async function fileRoutes(app: FastifyInstance, { db, sessions, storage, 
 
 const encodedName = (name: string) => encodeURIComponent(name).replace(/[!'()*]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
 /**
- * Every `<link>` and `<meta>` of a previewed page becomes an inert, unknown element (`<x-link>`, `<x-meta>`) before it is sent (C-60).
- * WebKit opens a connection for `<link rel="preconnect">` without asking the Content-Security-Policy, and DNS prefetch, prefetch and
- * preload are hints a browser may act on before any policy; a `<meta http-equiv>` could turn DNS prefetch back on. A still page loses
- * nothing it could use: the policy already refuses every stylesheet, icon and font a link names, and the response's own header sets the
- * charset. A tag name ends at a space, `/` or `>`.
+ * A previewed HTML page is sent with every element that could reach out or hold another document made inert (C-60): `<link>` and
+ * `<meta>`, and `<iframe>`, `<frame>`, `<object>`, `<embed>`, `<portal>` and `<fencedframe>`, each as an unknown element (`<x-link>`, `<x-iframe>`, ...), and
+ * every `srcdoc=` as `x-srcdoc=`. WebKit opens a connection for `<link rel="preconnect">` without asking the Content-Security-Policy, and DNS
+ * prefetch, prefetch and preload are hints a browser may act on before any policy; a `<meta http-equiv>` could turn DNS prefetch back on.
+ * The same hint hides in an `<iframe srcdoc="&lt;link rel=preconnect ...&gt;">` (#1349): the browser decodes the attribute into a nested
+ * `about:srcdoc` document, which `frame-src` does not govern, and WebKit acts on that document's hints too, to any depth. Entity-encoded
+ * text cannot be matched reliably, so the element that decodes it is made inert instead. A still page loses nothing it could use: the policy
+ * already refuses every stylesheet, icon, font and framed address a page names, and the response's own header sets the charset. A tag name
+ * ends at a space, `/` or `>`; an end tag is left alone (a stray one is ignored).
  *
  * The rewrite must see the page as the browser decodes it. The response says UTF-8, and only a byte-order mark overrides that (the
  * WHATWG encoding sniff puts the BOM first; a `<meta charset>` is ignored after a header, and is made inert anyway). So:
@@ -92,14 +97,16 @@ const encodedName = (name: string) => encodeURIComponent(name).replace(/[!'()*]/
  *   and sent as UTF-8 without a BOM, which is what the header says;
  * - anything else is ASCII-compatible to the browser (UTF-8, with or without its BOM): the bytes are read as Latin-1, so that every
  *   other byte is sent exactly as stored.
+ * With Run scripts on, a script can still build such an element itself; that choice is the person's and the note says so.
  */
-const INERT = /<(link|meta)(?=[\t\n\f\r />])/gi;
+const INERT = /<(link|meta|iframe|frame|object|embed|portal|fencedframe)(?=[\t\n\f\r />])/gi;
+const SRCDOC = /(?<![\w:.-])srcdoc(?=[\t\n\f\r ]*=)/gi;
+const inert = (text: string) => text.replace(INERT, '<x-$1').replace(SRCDOC, 'x-srcdoc');
 export function inertHead(bytes: Uint8Array): Buffer {
   const utf16 = bytes[0] === 0xff && bytes[1] === 0xfe ? 'utf-16le' : bytes[0] === 0xfe && bytes[1] === 0xff ? 'utf-16be' : null;
-  if (utf16) return Buffer.from(new TextDecoder(utf16).decode(bytes).replace(INERT, '<x-$1'), 'utf8');
-  return Buffer.from(Buffer.from(bytes).toString('latin1').replace(INERT, '<x-$1'), 'latin1');
+  if (utf16) return Buffer.from(inert(new TextDecoder(utf16).decode(bytes)), 'utf8');
+  return Buffer.from(inert(Buffer.from(bytes).toString('latin1')), 'latin1');
 }
-const previewKind = (name: string): 'html' | 'pdf' | null => /\.html?$/i.test(name) ? 'html' : /\.pdf$/i.test(name) ? 'pdf' : null;
 
 /**
  * The preview's own Content-Security-Policy (C-60). `sandbox` without `allow-same-origin` gives the page an opaque origin (no Flux
@@ -107,11 +114,12 @@ const previewKind = (name: string): 'html' | 'pdf' | null => /\.html?$/i.test(na
  * `allow-modals` none of those. `default-src 'none'` with only `data:` images and inline styles: nothing is fetched, so no third
  * party learns the file was read. Run scripts adds `allow-scripts` and inline scripts only; there is still no `connect-src`.
  */
-export function previewPolicy(kind: 'html' | 'pdf', scripts: boolean): string {
+export function previewPolicy(scripts: boolean): string {
   const directives = [
     `sandbox${scripts ? ' allow-scripts' : ''}`,
     "default-src 'none'",
-    ...(kind === 'html' ? ["img-src data:", "style-src 'unsafe-inline'"] : []),
+    "img-src data:",
+    "style-src 'unsafe-inline'",
     ...(scripts ? ["script-src 'unsafe-inline' 'unsafe-eval'"] : []),
     "base-uri 'none'",
     "form-action 'none'",

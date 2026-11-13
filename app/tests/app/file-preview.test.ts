@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { filePreviewPath, type Conversation, type StagedFile } from '@flux/contracts';
+import { inertHead } from '../../apps/server/src/files/routes.js';
 import { addMember, expectStatus, grant, person, project, removeFromSpace, workspace, type Person } from './support/people.js';
 
 // File previews (C-60, #1252): someone else's HTML or PDF is served only to a frame of a Flux page, sandboxed to an opaque origin by its
@@ -31,6 +32,32 @@ const PAGE16 = '<link rel="preconnect" href="https://leak.example"><LINK rel=pre
 const utf16be = (text: string) => { const le = Buffer.from(text, 'utf16le'); for (let i = 0; i + 1 < le.length; i += 2) [le[i], le[i + 1]] = [le[i + 1]!, le[i]!]; return le; };
 /** A page with a UTF-16 byte-order mark, which the browser decodes as UTF-16 whatever the header says. */
 const HTML16 = { le: Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(PAGE16, 'utf16le')]), be: Buffer.concat([Buffer.from([0xfe, 0xff]), utf16be(PAGE16)]) };
+
+/**
+ * A nested document needs no fetch (#1349): an iframe's `srcdoc` is entity-encoded text the browser decodes into an `about:srcdoc` page,
+ * and WebKit acts on that page's `<link rel=preconnect>` without asking the policy, to any depth. The preview makes every element that
+ * can hold one inert, so the rewrite never has to read encoded text.
+ */
+const encode = (markup: string) => markup.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const HINT = '<link rel=preconnect href=http://leak.example/>';
+const NESTED = [
+  // The audit's pages: one level, and a srcdoc inside a srcdoc.
+  [`<iframe hidden srcdoc="${encode(HINT)}"></iframe>`, `<x-iframe hidden x-srcdoc="${encode(HINT)}"></iframe>`],
+  [`<iframe srcdoc="${encode(`<iframe srcdoc='${encode(HINT)}'></iframe>`)}"></iframe>`,
+    // The text of the outer attribute is rewritten too (its own srcdoc is read as an attribute name where it is decoded), which only makes it more inert.
+    `<x-iframe x-srcdoc="${encode(`<iframe x-srcdoc='${encode(HINT)}'></iframe>`)}"></iframe>`],
+  // Case, whitespace (a newline, a slash, tabs) and quoting of the tag and the attribute.
+  [`<IFRAME\nSRCDOC\t=\t'${encode(HINT)}'></IFRAME>`, `<x-IFRAME\nx-srcdoc\t=\t'${encode(HINT)}'></IFRAME>`],
+  [`<iFrame/srcDoc=${encode(HINT).replace(/["\s]/g, '')}>`, `<x-iFrame/x-srcdoc=${encode(HINT).replace(/["\s]/g, '')}>`],
+  [`<iframe a="b"srcdoc="${encode(HINT)}">`, `<x-iframe a="b"x-srcdoc="${encode(HINT)}">`],
+  // Every other element that can hold a document, in a noscript (parsed as elements when scripts are off) too.
+  ['<frame src="data:text/html,x"><object data="data:text/html,x"></object><embed src="data:text/html,x"><portal src="//leak.example/"></portal><fencedframe></fencedframe>',
+    '<x-frame src="data:text/html,x"><x-object data="data:text/html,x"></object><x-embed src="data:text/html,x"><x-portal src="//leak.example/"></portal><x-fencedframe></fencedframe>'],
+  [`<noscript><iframe srcdoc="${encode(HINT)}"></iframe></noscript>`, `<noscript><x-iframe x-srcdoc="${encode(HINT)}"></iframe></noscript>`],
+  // Not those elements: other names, other attributes, an already inert tag.
+  ['<iframeset><framework><objects><embedded><portals><p data-srcdoc="x" xsrcdoc=y srcdocs>iframe srcdoc</p><x-iframe x-srcdoc="x">',
+    '<iframeset><framework><objects><embedded><portals><p data-srcdoc="x" xsrcdoc=y srcdocs>iframe srcdoc</p><x-iframe x-srcdoc="x">'],
+] as const;
 
 async function scene() {
   const owner = await person('Preview owner');
@@ -103,14 +130,40 @@ test('a UTF-16 page is decoded, made inert and sent as UTF-8 without its byte-or
   }
 });
 
-test('a PDF preview is sandboxed by its policy; other files have none; the download is unchanged', async () => {
+test('every element that can hold a nested document is made inert, whatever its case, spacing or quoting (#1349)', () => {
+  for (const [page, inertPage] of NESTED) {
+    const sent = inertHead(Buffer.from(`<!doctype html><h1>Report</h1>${page}<p>Zażółć</p>`)).toString('utf8');
+    assert.equal(sent, `<!doctype html><h1>Report</h1>${inertPage}<p>Zażółć</p>`);
+    assert.equal(inertHead(Buffer.from(sent)).toString('utf8'), sent, 'the rewrite is idempotent');
+  }
+});
+
+test('a nested document in a UTF-16 page is made inert too, and the preview of the page is served that way (#1349)', async () => {
+  const markup = `<!doctype html><h1>sixteen</h1>${NESTED.map(([page]) => page).join('\n')}`;
+  const sixteen = { le: Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(markup, 'utf16le')]), be: Buffer.concat([Buffer.from([0xfe, 0xff]), utf16be(markup)]) };
+  const expected = `<!doctype html><h1>sixteen</h1>${NESTED.map(([, inertPage]) => inertPage).join('\n')}`;
+  const owner = await person('Preview nested');
+  const ws = await workspace(owner, 'Nested');
+  const place = await project(owner, ws.id, 'Nested pages', 'restricted');
+  for (const [name, bytes] of [['utf8', Buffer.from(markup)], ['le', sixteen.le], ['be', sixteen.be]] as const) {
+    const file = await upload(owner, place.id, bytes, `nested-${name}.html`);
+    const response = await preview(owner, file.id);
+    assert.equal(response.status, 200);
+    const sent = Buffer.from(await response.arrayBuffer());
+    assert.equal(sent.toString('utf8'), expected, name);
+    assert.doesNotMatch(sent.toString('latin1'), /<(link|meta|iframe|frame|object|embed|portal|fencedframe)[\s/>]|(?<![\w-])srcdoc\s*=/i, name);
+  }
+});
+
+test('a PDF is not served by the preview route (Flux draws it, #1350); other files have none; the download is unchanged', async () => {
   const f = await scene();
+  // A browser's own PDF viewer follows a link in the file in the top window, so a PDF is never framed: the viewer reads the download's bytes.
   const pdf = await preview(f.reader, f.pdf.id, FRAME, true);
-  assert.equal(pdf.status, 200);
-  assert.equal(pdf.headers.get('content-type'), 'application/pdf');
-  assert.equal(pdf.headers.get('content-security-policy'), "sandbox; default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'",
-    'a PDF never gets scripts, whatever the query says');
-  assert.deepEqual(Buffer.from(await pdf.arrayBuffer()), PDF);
+  assert.equal(pdf.status, 404);
+  assert.equal((await pdf.json() as { code: string }).code, 'FILE_NO_PREVIEW');
+  const bytes = await fetch(new URL(`/api/v1/files/${f.pdf.id}`, f.reader.browser.base), { headers: { cookie: f.reader.browser.cookieHeader() } });
+  assert.equal(bytes.status, 200);
+  assert.deepEqual(Buffer.from(await bytes.arrayBuffer()), PDF, 'the viewer gets the stored bytes through the download route');
   const text = await preview(f.reader, f.text.id);
   assert.equal(text.status, 404);
   assert.equal((await text.json() as { code: string }).code, 'FILE_NO_PREVIEW');
@@ -123,7 +176,7 @@ test('a PDF preview is sandboxed by its policy; other files have none; the downl
   assert.equal(download.headers.get('content-security-policy'), 'sandbox');
   assert.equal(download.headers.get('x-frame-options'), 'DENY');
   const head = await fetch(new URL(`/api/v1/files/${f.html.id}`, f.reader.browser.base), { method: 'HEAD', headers: { cookie: f.reader.browser.cookieHeader() } });
-  assert.equal(head.status, 200, 'the viewer asks for access with a HEAD of the download');
+  assert.equal(head.status, 200, 'the HTML viewer asks for access with a HEAD of the download');
 });
 
 test('a preview is refused to someone without access and after their access is removed (#592)', async () => {
