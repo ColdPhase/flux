@@ -1,0 +1,1 @@
+- The sidebar, the drawer and the rail fade at the edge they can still scroll towards and open with the current place in view, the drawer has the sidebar's items (the Spaces ⋯, no "+" beside Spaces or Messages, no email under the name, no frame around it) and the rail's people are faces, not underlined links.

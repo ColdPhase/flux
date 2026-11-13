@@ -682,6 +682,37 @@ class SpaceOrder(unittest.TestCase):
         self.until(self.server_order, self.ids("Release check", "Barrel", "Library", "Garden", "Tool shed"))
         tablet.screenshot(path=str(OUT / f"{self.browser.browser_type.name}-light-660-drawer-more.png"))
 
+    def test_a_sidebar_that_scrolls_shows_where_and_keeps_the_current_place_in_view_and_the_drawer_holds_the_same_items(self):
+        """#1375: where the sidebar's list can scroll its edge fades (there was no sign of rows below the fold), the open space stays in view
+        when its address is opened, and the drawer has the sidebar's items: the Spaces ⋯ (no "+" beside Spaces or Messages) and no email."""
+        page = self.open(self.context(touch_screen=True, viewport={"width": 1180, "height": 460}), "/")
+        scroll = page.locator(".side__scroll")
+        expect(scroll).to_have_attribute("data-scroll-down", "")
+        expect(scroll).not_to_have_attribute("data-scroll-up", "")
+        self.assertNotEqual(scroll.evaluate("el => getComputedStyle(el).maskImage"), "none", "a fade at the lower edge shows the list goes on")
+        last = NAMES[-1]
+        page.goto(f"/projects/{self.spaces[last]}")
+        ready(page)
+        page.wait_for_function(
+            """(name) => { const label = [...document.querySelectorAll('.side__scroll .side__project.is-open .side__label')].find((el) => el.textContent.trim() === name);
+                if (!label) return false; const r = label.getBoundingClientRect(); const s = document.querySelector('.side__scroll').getBoundingClientRect();
+                return r.top >= s.top - 1 && r.bottom <= s.bottom + 1; }""", arg=last)
+        expect(scroll).to_have_attribute("data-scroll-up", "")
+        # The tablet's rail: its list of spaces fades the same way where a tile is cut (it was cut behind the account face).
+        rail = self.open(self.context(touch_screen=True, viewport={"width": 820, "height": 520}), "/")
+        expect(rail.locator(".side__rail-scroll")).to_have_attribute("data-scroll-down", "")
+        self.assertNotEqual(rail.locator(".side__rail-scroll").evaluate("el => getComputedStyle(el).maskImage"), "none")
+        # The drawer (a narrow touch screen) holds what the sidebar holds.
+        tablet = self.open(self.context(touch_screen=True, viewport={"width": 660, "height": 844}), "/")
+        tablet.get_by_role("button", name="Open navigation").tap()
+        drawer = tablet.locator("#nav-drawer")
+        expect(drawer.get_by_role("button", name="More for Spaces", exact=True)).to_be_visible()
+        expect(drawer.get_by_role("button", name="New space", exact=True)).to_have_count(0)
+        expect(drawer.get_by_role("link", name="New message", exact=True)).to_have_count(0)
+        mail = drawer.locator(".me__text span").bounding_box()
+        self.assertLessEqual(mail["width"], 1, "the email is not drawn under the name")
+        self.assertEqual(tablet.evaluate("getComputedStyle(document.getElementById('nav-drawer')).outlineStyle"), "none", "no frame around the whole drawer")
+
     def test_mark_all_as_read_on_the_phone_from_the_inbox_and_the_spaces_tab(self):
         self.say("Garden", "The sensors arrived.")
         self.say("Library", "Shelves are up.")

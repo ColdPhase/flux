@@ -388,6 +388,10 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
   - **Messages**: your agents and people. Assistant is pinned first, then your other agents, then
     people. A dot marks an unread report or message;
   - your name at the bottom. It opens the account menu: your name, Settings and Sign out.
+  - **The drawer (a narrow window) holds the sidebar's items in the same places** (#1375): no "+" beside
+    Spaces or Messages (New is the one way to create), the ⋯ beside Spaces, no email under the name,
+    and no frame around the drawer; the rail's people are faces, not links. Where a list is longer than the window, the edge it can still
+    scroll towards fades softly, and it opens with the current place in view.
 - **Collapsed rail (64 px).** Icons only. Folding to the rail and unfolding animate the sidebar's
   width smoothly, and the content beside it adapts during the fold. This is the one named exception
   to "opacity and transform only" ([motion](../motion.md), Hubert, 2026-11-03, #720).
