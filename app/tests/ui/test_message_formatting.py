@@ -294,7 +294,8 @@ class MessageFormatting(unittest.TestCase):
                 expect(composer).to_be_visible()
                 expect(page.get_by_text("Checking your assistant")).to_have_count(0)
                 chat = page.get_by_role("list", name=re.compile(r"^Your chat with "))
-                answers = chat.locator(".assistant-answer__body", has_text="Soil moisture")
+                # The finished answer: since #1307 the words being written share the class (data-writing-words) and hold only part of it.
+                answers = chat.locator(".assistant-answer__body:not([data-writing-words])", has_text="Soil moisture")
                 earlier = answers.count()
                 composer.fill(f"What is on for the beds {'on the phone' if phone else 'today'}{' (dark)' if dark else ''}?")
                 composer.press("Enter") if not phone else page.get_by_role("button", name="Send to Assistant").tap()
