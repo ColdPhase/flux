@@ -98,7 +98,7 @@ const probes = [
     + 'python3 -c "import socket; socket.socket(socket.AF_INET, socket.SOCK_DGRAM)" 2>&1 | tail -1'],
   ['a Unix socket by its path', `node -e 'require("net").connect(${JSON.stringify(unixPath)}).on("data", (d) => console.log(String(d).trim())).on("error", (e) => console.log("UNIX", e.code))'; `
     + `python3 -c "import socket; s = socket.socket(socket.AF_UNIX); s.connect(${JSON.stringify(unixPath)}); print(s.recv(64))" 2>&1 | tail -1`],
-  ['what any process\'s command line says (it is readable)', 'cat /proc/[0-9]*/cmdline 2>/dev/null | tr "\\0" " " | grep -c -E "login-|SLOT_SECRET|FLUX_RUN_TOKEN"'],
+  ['what any process\'s command line says (it is readable)', 'cat /proc/[0-9]*/cmdline 2>/dev/null | tr "\\0" " " | grep -c -E "logi[n]-|SLOT_SECRE[T]|FLUX_RUN_TOKE[N]"'],
   ['a pipe between programs still works (socketpair)', 'printf "a\\nb\\n" | sort -r | tr -d "\\n"; echo; python3 -c "import socket; a, b = socket.socketpair(); a.send(b\'ok\'); print(b.recv(2).decode())"'],
   ['an HTML page, a CSV and a PDF made in the scratch', 'printf "<h1>Report</h1><p>Lamp sensor</p>" > report.html && printf "a,b\\n1,2\\n" > table.csv'
     + ' && printf "%%PDF-1.4\\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj 2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj 3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 200]>>endobj\\ntrailer<</Root 1 0 R>>\\n%%%%EOF\\n" > report.pdf && ls report.html table.csv report.pdf && head -c 8 report.pdf'],
@@ -149,6 +149,7 @@ record(`refused: ${probes[udp][0]}`, /UDP EAFNOSUPPORT|SENT EAFNOSUPPORT/.test(o
   && /Address family not supported|OSError/.test(out(udp)), shown(udp));
 const unix = at('a Unix socket');
 record(`refused: ${probes[unix][0]}`, !out(unix).includes('UNIX-REACHED') && /UNIX EAFNOSUPPORT/.test(out(unix)), shown(unix));
+// (The pattern is written so that the shell's own command line, which holds it, does not match it.)
 const cmdline = at('what any process');
 record(`no secret in ${probes[cmdline][0]}`, out(cmdline).trim() === '0', shown(cmdline));
 const pipe = at('a pipe between');
