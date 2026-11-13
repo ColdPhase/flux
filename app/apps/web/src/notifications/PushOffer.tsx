@@ -48,7 +48,7 @@ function blockedSteps() {
   return 'To allow them, click the icon left of the address, open Notifications and choose Allow.';
 }
 
-export function PushOffer({ userId, ready }: { userId: string; ready: boolean }) {
+export function PushOffer({ userId, ready, hidden = false }: { userId: string; ready: boolean; hidden?: boolean }) {
   const toast = useToast();
   const [view, setView] = useState<View>({ kind: 'hidden' });
   const [heard, setHeard] = useState(false);
@@ -79,7 +79,8 @@ export function PushOffer({ userId, ready }: { userId: string; ready: boolean })
     return () => { live = false; };
   }, [userId, due]);
 
-  if (view.kind === 'hidden') return null;
+  // Home's first-steps card offers the same thing as a row (#1438): one offer at a time.
+  if (view.kind === 'hidden' || hidden) return null;
   const notNow = () => { remember(userId, { notNowAt: Date.now() }); setView({ kind: 'hidden' }); };
   const turnOn = (publicKey: string) => {
     // Called directly in the tap's handler: the browser asks only after a gesture, and this is the request's first step.

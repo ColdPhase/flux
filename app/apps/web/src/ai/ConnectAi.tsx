@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { Link, useNavigate, useRevalidator } from 'react-router';
+import { Link, useNavigate, useRevalidator, useSearchParams } from 'react-router';
 import type { AgentRuntimeStatus, BackgroundComputeConnection } from '@flux/contracts';
 import { getRuntime } from '../agent-runtime/api';
 import { Button, Icon, Spinner } from '../ui';
@@ -47,7 +47,9 @@ export function ConnectAi({ apiKeys, keys, keysFailed, onRetryKeys, onListed, cl
   const navigate = useNavigate();
   const [runtime, setRuntime] = useState<AgentRuntimeStatus | null>(null);
   const [runtimeFailed, setRuntimeFailed] = useState(false);
-  const [windowOpen, setWindowOpen] = useState(false);
+  // Home's first step "Connect AI" opens the window at once (`?connect=1`, #1438).
+  const [params] = useSearchParams();
+  const [windowOpen, setWindowOpen] = useState(() => params.get('connect') === '1');
   const revalidator = useRevalidator();
   const loadRuntime = useCallback((signal?: AbortSignal) => {
     getRuntime(signal).then((next) => { setRuntime(next); setRuntimeFailed(false); }, () => { if (!signal?.aborted) { setRuntime(null); setRuntimeFailed(true); } });

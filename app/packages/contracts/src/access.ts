@@ -250,6 +250,11 @@ export interface CreateInviteCommand {
   /** Locks the link to this address (compared case-insensitively). */
   email?: string | null;
   expiresInDays?: InviteExpiryDays;
+  /**
+   * A space of the workspace the person is also added to when they join (founder decision 2026-11-13, #1438: a space's Add people takes
+   * a new person's email). Needs `project.manage` on it; never Everyone or an encrypted space.
+   */
+  spaceId?: string | null;
 }
 
 /** A pending invite as its workspace's owners and admins see it. */
@@ -261,6 +266,8 @@ export interface WorkspaceInvite {
   createdBy: { id: string; name: string };
   createdAt: string;
   expiresAt: string;
+  /** The space the person is also added to on joining (#1438), while it exists. */
+  space: { id: string; name: string } | null;
   /** The full link to copy: `<origin>/join#<token>`. */
   link: string;
 }
@@ -287,6 +294,11 @@ export interface AcceptInviteResult {
   encrypted: boolean;
   /** An admin of an encrypted workspace without an unlock password: a current holder grants one (F-030). */
   needsUnlockPassword: boolean;
+  /**
+   * The space the join page opens with its composer ready (#1438): Everyone for a member or admin, the link's space for a guest added to
+   * it, an encrypted workspace's own space; null when there is none (a guest without a space opens Home).
+   */
+  landingSpaceId: string | null;
 }
 
 export const INVITE_CREATED_EVENT = 'workspace.invite_created.v1';

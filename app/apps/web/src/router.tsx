@@ -24,6 +24,7 @@ import {
   signOutAction,
   signOutLoader,
   signUpAction,
+  joinSignUpAction,
   signUpLoader,
 } from './auth/logic';
 
@@ -122,7 +123,7 @@ export const router = createBrowserRouter([
           { path: 'reset-password', action: resetPasswordAction, ...lazyComponent(authPages, (page) => page.ResetPasswordPage) },
           { path: 'claim', ...lazyComponent(authPages, (page) => page.ClaimPage) },
           // An invite link (F-035): `/join#<token>`, signed in or not.
-          { path: 'join', ...secondary(async () => ({ Component: (await import('./auth/JoinPage')).JoinPage })) },
+          { path: 'join', action: joinSignUpAction, ...secondary(async () => ({ Component: (await import('./auth/JoinPage')).JoinPage })) },
           { path: 'sign-out', loader: signOutLoader, action: signOutAction, ...lazyComponent(authPages, (page) => page.SignOutPage) },
           { path: 'connect-agent', ...secondary(async () => { const page = await import('./agent-connection/pages'); return { Component: page.AgentConnectionPage, loader: page.agentConnectionEntryLoader }; }) },
           { path: 'consent', ...secondary(async () => { const page = await import('./agent-connection/pages'); return { Component: page.AgentConsentPage, loader: page.agentConsentLoader }; }) },

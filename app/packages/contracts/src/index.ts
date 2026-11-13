@@ -65,6 +65,24 @@ export const ME_TIME_ZONE_PATH = '/api/v1/me/time-zone';
  * for the person, stops writing it and the people lists show no line for them. `MeResponse.user.showLastActive` holds it.
  */
 export const ME_LAST_ACTIVE_PATH = '/api/v1/me/last-active';
+/** Home's first-steps card (founder decision 2026-11-13, #1438): `GET` the steps left, `POST …/hide` hides the card for good. */
+export const ME_FIRST_STEPS_PATH = '/api/v1/me/first-steps';
+export const ME_FIRST_STEPS_HIDE_PATH = `${ME_FIRST_STEPS_PATH}/hide`;
+/**
+ * A step the server can tell is left. An owner or admin: `name_company` (still the name setup gave it), `invite_people` (nobody else is in
+ * the company and no invite link was ever made), `connect_ai` (no AI connection of their own). A member: `first_message` (none written in
+ * any space), `photo` (no profile photo). The member's third row, notifications on this device, is the browser's to know (`offerPush`).
+ * Only a new person has a card: someone who joined the company in the last 30 days and has a step left, until it is hidden or done once.
+ */
+export type FirstStep = 'name_company' | 'invite_people' | 'connect_ai' | 'first_message' | 'photo';
+export interface FirstSteps {
+  /** The steps left, in the card's order; empty for a guest, someone outside the company, someone who joined it long ago, and once the card was hidden or done. */
+  steps: FirstStep[];
+  /** A member whose card has a step left: the browser may add "Get notifications on this device" while it is not subscribed. Never alone: with no step left there is no card. */
+  offerPush: boolean;
+  /** Everyone, for "Write your first message" (opens it with the composer ready); null when there is none. */
+  everyoneSpaceId: string | null;
+}
 /** Better Auth's own endpoints the web client calls, below AUTH_BASE_PATH. */
 export const AUTH_SIGN_UP_EMAIL_PATH = `${AUTH_BASE_PATH}/sign-up/email`;
 export const AUTH_SIGN_IN_EMAIL_PATH = `${AUTH_BASE_PATH}/sign-in/email`;
