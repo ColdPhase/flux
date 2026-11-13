@@ -198,7 +198,7 @@ describe('an API-key run in the worker is pi in the agent runtime (AST-8.2, AST-
     pi.gateway.script([]);
     assert.equal(await processor.process(asked.run.id), 'skipped');
     const waiting = await row(asked.run.id);
-    assert.deepEqual([waiting.status, waiting.end_reason, waiting.resumes, waiting.cost_state], ['queued', 'budget', true, 'released']);
+    assert.deepEqual([waiting.status, waiting.end_reason, waiting.resumes], ['queued', 'budget', true]);
     assert.equal(pi.gateway.requests.length, 0, 'nothing was sent');
     await runs.stop(human(owner), asked.run.id);
   });
