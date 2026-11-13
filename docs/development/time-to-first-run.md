@@ -79,6 +79,23 @@ README, listed in the [2026-10-11 section](#macos-arm64-2026-10-11-cold-and-warm
 2026-10-06 run is kept below. Its step 4 figure is the only macOS first-message number. The
 shallow candidate measurement above records only the source clone, not application startup.
 
+## Linux x86_64, 2026-11-13: the image no longer runs the type check and the lint (#1471)
+
+`./flux up` builds the application image (the Dockerfile's last stage). Its `build` stage ran `pnpm build && pnpm typecheck && pnpm lint`; the
+type check and the lint now run in a `verify` stage that only `test` is built on (CI's Application validation and
+`scripts/check_application.sh` build it, `./flux up` does not). Measured with `docker build --no-cache --progress=plain -f docker/Dockerfile app`
+(the last stage, nothing cached, base images present), once each, on the 24-thread development host while other agents' suites ran, so the
+network part (`pnpm fetch`) and the CPU part carry that noise. Logs: `~/flux-evidence/v021/1471/build-before.log` and `build-after.log` on the
+coordinator host.
+
+| | before (main at 925b5f69e) | after (#1471) |
+| --- | --- | --- |
+| The `build` step (`RUN pnpm build …`) | 111.4 s | 29.2 s |
+| The whole cold image build | 230 s | 174 s |
+
+The step is about 82 s shorter here. The whole build is 56 s shorter, not 82: everything else took 26 s longer in the second run (119 s before, 145 s
+after), which is the noise of two separate runs, mostly the download. On a 2 vCPU server the type check and the lint take a larger share, so the saving there is larger in absolute time; it was not measured.
+
 ## Linux x86_64, 2026-10-30 (evening): the first agent reply from a clean clone (#320)
 
 The whole README quick start, T1 to T7, from a fresh clone to the first answer of a real Claude Code with a model
