@@ -7,12 +7,15 @@ The checks use the audit's own in-page measurement (`visual_consistency_audit.ME
   and of the mention chip stay inside their circle;
 - the offline page is Geist, a 20 px title at 600 and a button with radius 10 at 32 px (44 on touch);
 - Search's field and its Close share one height on a tablet, Close is a 44 px target, and the field shows the focus ring of README §2;
-- Mine on the Tasks board is a system button (radius 10, 44 px on touch), not a circle or a pill.
+- Mine on the Tasks board is a system button (radius 10, 44 px on touch), not a circle or a pill;
+- a material opened directly has a token-sized title (it drew the browser's 1.5em h2, 21 px), the Inbox's filter counts reach 4.5:1 in both
+  themes, and the notification address tick is a 44 px target on touch.
 """
 
 from __future__ import annotations
 
 import json
+import re
 import time
 import unittest
 import uuid
@@ -33,6 +36,7 @@ class TypeTokens(unittest.TestCase):
     browser: Browser
     states: dict[str, dict] = {}
     project = ""
+    material = ""
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -51,6 +55,8 @@ class TypeTokens(unittest.TestCase):
         cls.api("ada", "POST", f"/api/v1/workspaces/{workspace}/members", {"email": PEOPLE["kai"][1], "role": "member"})
         cls.project = cls.api("ada", "POST", f"/api/v1/workspaces/{workspace}/projects", {"name": "Community garden sensors", "visibility": "workspace"})["id"]
         cls.api("ada", "POST", f"/api/v1/projects/{cls.project}/work", {"title": "Calibrate the probes", "owner": {"kind": "human", "id": cls.me("ada")}})
+        cls.material = cls.api("ada", "POST", f"/api/v1/projects/{cls.project}/materials", {"clientMutationId": str(uuid.uuid4()), "title": "Probe datasheet notes",
+                                                                                         "body": "The capacitive probe drifts with humidity."})["materialId"]
         mine = cls.api("kai", "POST", f"/api/v1/projects/{cls.project}/conversations", {"body": "@Ada Kowalska the rota is in the Wiki now.", "clientMessageId": str(uuid.uuid4())})
         theirs = cls.api("ada", "POST", f"/api/v1/projects/{cls.project}/conversations", {"body": "Thanks, I will read it.", "clientMessageId": str(uuid.uuid4())})
         # Kai reads both, so the line under Ada's message carries his face.
@@ -146,6 +152,26 @@ class TypeTokens(unittest.TestCase):
             self.assertEqual(look["border"], "1px", "an outline button")
             self.assertGreaterEqual(look["height"], 44 if touch else 32, look)
             self.assertEqual([flag for flag in self.flags(page, "b", "e") if "Mine" in flag], [])
+
+    def test_05_a_material_title_the_inbox_counts_and_the_address_tick(self) -> None:
+        page = self.page()
+        page.goto(f"/materials/{self.material}")
+        title = page.get_by_role("heading", name="Probe datasheet notes")
+        expect(title).to_be_visible()
+        self.assertEqual(title.evaluate("e => getComputedStyle(e).fontSize"), "20px", "the title is --fs-xl, not the browser's 1.5em h2")
+        self.assertEqual([flag for flag in self.flags(page, "d") if "material-view" in flag], [])
+        for dark in (False, True):
+            page = self.page(dark=dark)
+            page.goto("/inbox")
+            expect(page.locator(".ui-tabs__count").first).to_be_visible()
+            self.assertEqual([flag for flag in self.flags(page, "i") if "ui-tabs__count" in flag], [], "the filter counts reach 4.5:1")
+        page = self.page(touch=True)
+        page.goto("/settings/notifications")
+        tick = page.get_by_role("checkbox", name=re.compile("^Notification email to")).first
+        expect(tick).to_be_visible()
+        box = tick.bounding_box()
+        self.assertGreaterEqual(min(box["width"], box["height"]), 44, box)
+        self.assertEqual([flag for flag in self.flags(page, "b") if "nset__tick" in flag], [])
 
 
 if __name__ == "__main__":
