@@ -40,13 +40,14 @@ describe('the plan of a search', () => {
     const plan = agentSearchPlan({ q: 'Czujnik kalibracja' }, { ...scope, place: { type: 'project', id: 'p-1' }, conversationId: 'c-1' });
     assert.deepEqual([plan.words, plan.limit, plan.place, plan.conversationId, plan.reader, plan.after, plan.authorId, plan.since, plan.until],
       ['czujnik kalibracja', 10, { type: 'project', id: 'p-1' }, 'c-1', 'u-ada', null, null, null, null]);
-    assert.deepEqual(plan.kinds, ['message', 'dm_message', 'doc', 'material', 'work', 'decision', 'sketch', 'thought'], 'every kind an agent finds: never a person or a space\'s own row');
+    assert.deepEqual(plan.kinds, ['message', 'dm_message', 'doc', 'material', 'file', 'work', 'decision', 'sketch', 'thought'], 'every kind an agent finds, the text of files too (C-63): never a person or a space\'s own row');
   });
   test('a kind, an author and a range narrow it; a range backwards, a limit out of bounds and an unknown kind are refused', () => {
     const plan = agentSearchPlan({ q: 'x', kind: 'task', from: ' u-jonas ', after: '2026-03-01', before: '2026-04-01', limit: 25 }, scope);
     assert.deepEqual([plan.kinds, plan.authorId, plan.since?.toISOString(), plan.until?.toISOString(), plan.limit], [['work'], 'u-jonas', '2026-03-01T00:00:00.000Z', '2026-04-01T00:00:00.000Z', 25]);
     assert.deepEqual(agentSearchPlan({ q: 'x', kind: 'map' }, scope).kinds, ['sketch', 'thought']);
     assert.deepEqual(agentSearchPlan({ q: 'x', kind: 'message' }, scope).kinds, ['message', 'dm_message']);
+    assert.deepEqual(agentSearchPlan({ q: 'x', kind: 'file' }, scope).kinds, ['file']);
     assert.throws(() => agentSearchPlan({ q: 'x', after: '2026-04-01', before: '2026-03-01' }, scope), { code: 'INVALID_TIME' });
     assert.throws(() => agentSearchPlan({ q: 'x', after: '2026-04-01', before: '2026-04-01' }, scope), { code: 'INVALID_TIME' });
     for (const limit of [0, 26, 1.5]) assert.throws(() => agentSearchPlan({ q: 'x', limit }, scope), { code: 'INVALID_LIMIT' }, String(limit));
