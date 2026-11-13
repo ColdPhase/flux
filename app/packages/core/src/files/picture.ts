@@ -373,15 +373,18 @@ function looksLikeSvg(b: Uint8Array): boolean {
   return head.startsWith('<') && head.includes('<svg');
 }
 
-/** The picture these bytes are, rebuilt without metadata or anything after its end, or why not. Never throws. */
-export function cleanPicture(input: Uint8Array): CleanPicture {
+/**
+ * The picture these bytes are, rebuilt without metadata or anything after its end, or why not. Never throws. `side` is the longest side a
+ * stored picture may have; a profile photo or a space icon passes no limit (F-039: any shape within the pixels, cropped to a square).
+ */
+export function cleanPicture(input: Uint8Array, { side = PICTURE_LIMITS.side }: { side?: number } = {}): CleanPicture {
   if (input.length > PICTURE_LIMITS.bytes) return { ok: false, reason: 'too_large' };
   const type = signature(input);
   if (!type) return { ok: false, reason: looksLikeSvg(input) ? 'svg' : 'not_picture' };
   try {
     const walked = type === 'image/png' ? png(input) : type === 'image/jpeg' ? jpeg(input) : type === 'image/gif' ? gif(input) : webp(input);
     if (!walked.width || !walked.height) return { ok: false, reason: 'broken' };
-    if (walked.width > PICTURE_LIMITS.side || walked.height > PICTURE_LIMITS.side || walked.width * walked.height > PICTURE_LIMITS.pixels
+    if (walked.width > side || walked.height > side || walked.width * walked.height > PICTURE_LIMITS.pixels
       || (walked.frames ?? 1) > PICTURE_LIMITS.frames || walked.width * walked.height * (walked.frames ?? 1) > PICTURE_LIMITS.framePixels)
       return { ok: false, reason: 'too_many_pixels' };
     // What a browser would be asked to allocate for what is kept is what was checked: no header of the rebuilt file claims more.

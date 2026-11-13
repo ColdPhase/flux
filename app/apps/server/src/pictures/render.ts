@@ -87,9 +87,10 @@ async function render(bytes: Uint8Array): Promise<Renditions> {
   // The bytes say what they are, never a name or a declared type; GIF is a picture Flux shows on a map, not a photo.
   const type = imageTypeOf(bytes);
   if (!type || type === 'image/gif') throw new InvalidInputError('Choose a PNG, JPEG or WebP picture', 'UNSUPPORTED_PICTURE');
-  // The walk every stored picture takes first (review of #1343): one picture to a file, within the bounds, and a JPEG of at most 100 scans
-  // (thousands of progressive scans hold libvips for minutes, past its timeout, in the one line every picture waits in).
-  const walked = cleanPicture(bytes);
+  // The walk every stored picture takes first (review of #1343): one picture to a file, within the pixels, and a JPEG of at most 100 scans
+  // (thousands of progressive scans hold libvips for minutes, past its timeout, in the one line every picture waits in). Any side: a photo
+  // is cropped to its middle square, so a 30,000 × 1 strip is a 1 × 1 one (F-039).
+  const walked = cleanPicture(bytes, { side: Number.POSITIVE_INFINITY });
   if (!walked.ok) {
     if (walked.reason === 'too_many_pixels') throw new PayloadTooLargeError('A picture is at most 40 megapixels', 'PICTURE_TOO_MANY_PIXELS');
     throw new InvalidInputError('This picture cannot be read', 'UNREADABLE_PICTURE');
