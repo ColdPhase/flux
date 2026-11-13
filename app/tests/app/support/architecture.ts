@@ -22,7 +22,7 @@ const PERSISTENCE = ['@flux/db', 'drizzle-orm', 'pg', 'pg-boss'];
 const HTTP = ['fastify', '@fastify/*'];
 const APPS = ['@flux/server', '@flux/worker', '@flux/web', '@flux/runtime', '@flux/keyring'];
 /** The browser libraries `apps/web/src` may import; each is a declared dependency of `apps/web/package.json`. */
-export const WEB_LIBRARIES = ['react', 'react-dom', 'react-router', '@codemirror/state', '@codemirror/view', '@lezer/common', '@lezer/markdown', '@xterm/*', 'diff', 'livekit-client', 'y-codemirror.next', 'y-protocols', 'yjs'];
+export const WEB_LIBRARIES = ['react', 'react-dom', 'react-router', '@codemirror/state', '@codemirror/view', '@lezer/common', '@lezer/markdown', '@xterm/*', 'diff', 'livekit-client', 'pdfjs-dist', 'y-codemirror.next', 'y-protocols', 'yjs'];
 
 export const LAYERS: Layer[] = [
   // Public wire types, Apache-2.0: portable, no runtime dependencies at all.

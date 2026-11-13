@@ -1,0 +1,21 @@
+/* The PDF viewer frame (C-60, #1350): a page of its own in a sandboxed, opaque-origin frame, so it cannot read Flux's tokens. It draws
+   pages on a transparent ground, so the viewer's sheet shows between them, and keeps to system colours. */
+html, body { margin: 0; height: 100%; background: transparent; }
+#scroller { position: absolute; inset: 0; overflow: auto; overscroll-behavior: contain; outline: none; }
+#pages { position: relative; padding: 12px 0; }
+.page { position: relative; margin: 0 auto 12px; background: #fff; overflow: hidden; }
+.page:last-child { margin-bottom: 0; }
+.page canvas { position: absolute; inset: 0; display: block; }
+/* The text, invisible over the drawing, so it can be selected and read aloud (the layout PDF.js's own viewer uses). */
+.textLayer { position: absolute; inset: 0; overflow: clip; line-height: 1; text-align: initial; transform-origin: 0 0; z-index: 0; forced-color-adjust: none;
+  -webkit-text-size-adjust: none; text-size-adjust: none; --min-font-size: 1; --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size)); --min-font-size-inv: calc(1 / var(--min-font-size)); }
+.textLayer span, .textLayer br { color: transparent; position: absolute; white-space: pre; cursor: text; transform-origin: 0 0; -webkit-user-select: text; user-select: text; }
+.textLayer > :not(.markedContent), .textLayer .markedContent span:not(.markedContent) { z-index: 1; --font-height: 0; font-size: calc(var(--text-scale-factor) * var(--font-height));
+  --scale-x: 1; --rotate: 0deg; transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv)); }
+.textLayer .markedContent { display: contents; }
+.textLayer ::selection { background: color-mix(in srgb, Highlight 45%, transparent); }
+/* A link is a button over its area, never an anchor: pressing it asks Flux's page, which shows where it goes (#1350). It shows when hovered or focused. */
+.links { position: absolute; inset: 0; z-index: 2; }
+.links button { position: absolute; margin: 0; padding: 0; border: 0; border-radius: 2px; background: transparent; cursor: pointer; }
+.links button:hover { background: color-mix(in srgb, Highlight 16%, transparent); }
+.links button:focus-visible { outline: 2px solid Highlight; outline-offset: 1px; }

@@ -154,14 +154,15 @@ test('a nested document in a UTF-16 page is made inert too, and the preview of t
   }
 });
 
-test('a PDF preview is sandboxed by its policy; other files have none; the download is unchanged', async () => {
+test('a PDF is not served by the preview route (Flux draws it, #1350); other files have none; the download is unchanged', async () => {
   const f = await scene();
+  // A browser's own PDF viewer follows a link in the file in the top window, so a PDF is never framed: the viewer reads the download's bytes.
   const pdf = await preview(f.reader, f.pdf.id, FRAME, true);
-  assert.equal(pdf.status, 200);
-  assert.equal(pdf.headers.get('content-type'), 'application/pdf');
-  assert.equal(pdf.headers.get('content-security-policy'), "sandbox; default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'",
-    'a PDF never gets scripts, whatever the query says');
-  assert.deepEqual(Buffer.from(await pdf.arrayBuffer()), PDF);
+  assert.equal(pdf.status, 404);
+  assert.equal((await pdf.json() as { code: string }).code, 'FILE_NO_PREVIEW');
+  const bytes = await fetch(new URL(`/api/v1/files/${f.pdf.id}`, f.reader.browser.base), { headers: { cookie: f.reader.browser.cookieHeader() } });
+  assert.equal(bytes.status, 200);
+  assert.deepEqual(Buffer.from(await bytes.arrayBuffer()), PDF, 'the viewer gets the stored bytes through the download route');
   const text = await preview(f.reader, f.text.id);
   assert.equal(text.status, 404);
   assert.equal((await text.json() as { code: string }).code, 'FILE_NO_PREVIEW');
@@ -174,7 +175,7 @@ test('a PDF preview is sandboxed by its policy; other files have none; the downl
   assert.equal(download.headers.get('content-security-policy'), 'sandbox');
   assert.equal(download.headers.get('x-frame-options'), 'DENY');
   const head = await fetch(new URL(`/api/v1/files/${f.html.id}`, f.reader.browser.base), { method: 'HEAD', headers: { cookie: f.reader.browser.cookieHeader() } });
-  assert.equal(head.status, 200, 'the viewer asks for access with a HEAD of the download');
+  assert.equal(head.status, 200, 'the HTML viewer asks for access with a HEAD of the download');
 });
 
 test('a preview is refused to someone without access and after their access is removed (#592)', async () => {

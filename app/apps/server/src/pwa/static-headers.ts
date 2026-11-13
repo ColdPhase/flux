@@ -1,5 +1,6 @@
 import { basename } from 'node:path';
 import type { DocumentPolicies } from '../http/content-security-policy.js';
+import { isPdfViewerFile, setPdfViewerHeaders } from '../http/pdf-viewer.js';
 
 /**
  * Cache policy for the built web app (issue #41). Vite's hashed /assets/* never change, so
@@ -22,12 +23,14 @@ export function setStaticHeaders(reply: { header(name: string, value: string): u
 }
 
 /**
- * The static headers plus the Content-Security-Policy of the pages and the service worker (#979). The policy is set here, on the
+ * The static headers plus the Content-Security-Policy of the pages and the service worker (#979), or the PDF viewer's own headers. The policy is set here, on the
  * response of the file, and not in the hook every response passes (framing.ts), because it names the hashes of that file's inline scripts.
  */
-export function staticHeaders(policies: DocumentPolicies) {
+export function staticHeaders(policies: DocumentPolicies, root: string) {
   return (reply: { header(name: string, value: string): unknown }, filePath: string) => {
     setStaticHeaders(reply, filePath);
+    // The PDF viewer frame (C-60, #1350) has its own policy and framing, not the app's.
+    if (isPdfViewerFile(root, filePath)) { setPdfViewerHeaders(reply, filePath); return; }
     const policy = policies.forFile(filePath);
     if (!policy) return;
     reply.header('Content-Security-Policy', policy.enforced);

@@ -1,0 +1,1 @@
+- A link inside a PDF preview can no longer replace the Flux tab: PDFs are drawn by Flux's own viewer in a sandboxed frame instead of the browser's PDF viewer, a link shows its address under the sheet and opens in a new tab only when you press Open link, and links to places in the PDF scroll in place (#1350).
