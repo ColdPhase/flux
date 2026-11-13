@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, type RefObject } from 'react';
 import { Link, NavLink, useLocation, useNavigation } from 'react-router';
 import { useProjectNews } from './projectNews';
 import { Avatar, FluxLogo, Icon, IconButton, Kreska, choosesInPlace, useTravelingHighlight } from '../ui';
@@ -46,6 +46,38 @@ function ProjectTile({ name, icon, size = 20 }: { name: string; icon?: SpaceIcon
 /** The tile of a space that waits to be unlocked: the lock glyph where a project has its letter (F-030, #655). */
 function LockTile({ size = 20 }: { size?: number }) {
   return <span className="side__pj side__pj--lock" style={{ width: size, height: size }} aria-hidden="true"><Icon name="lock" size={Math.round(size * 0.6)} /></span>;
+}
+
+/**
+ * Where a list that scrolls can still go (#1375): its lower edge fades while there is more below, its upper edge while it is scrolled, so
+ * a row cut by the edge reads as "more", not as the end. The marks are set when the size, the contents or the position change; the
+ * fade itself is static (app.css `data-scroll-down`, `data-scroll-up`).
+ */
+function useScrollEdges(ref: RefObject<HTMLElement | null>, deps: readonly unknown[]) {
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    const check = () => {
+      el.toggleAttribute('data-scroll-down', el.scrollTop + el.clientHeight < el.scrollHeight - 1);
+      el.toggleAttribute('data-scroll-up', el.scrollTop > 1);
+    };
+    check();
+    el.addEventListener('scroll', check, { passive: true });
+    const observer = new ResizeObserver(check);
+    observer.observe(el);
+    for (const child of el.children) observer.observe(child);
+    return () => { el.removeEventListener('scroll', check); observer.disconnect(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ref, ...deps]);
+}
+
+/** The place the person is in stays in view in a list that scrolls: a long list opens on it, and moving to it scrolls only as far as needed. */
+function useCurrentInView(ref: RefObject<HTMLElement | null>, key: string, deps: readonly unknown[]) {
+  useEffect(() => {
+    const current = ref.current?.querySelector<HTMLElement>('[aria-current="page"], .is-open');
+    current?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ref, key, ...deps]);
 }
 
 /**
@@ -117,6 +149,16 @@ export function Sidebar({ directMessages, agents = [], user, onClose, titleId, i
     for (const child of band.children) observer.observe(child);
     return () => observer.disconnect();
   }, [collapsed, onClose, projects.length, directMessages.length, agents.length]);
+  // The expanded list and the drawer scroll as one (#1375): they show where they can go and keep the current place in view, as the rail does.
+  const scroller = useRef<HTMLDivElement>(null);
+  const lists = [collapsed, onClose, projects.length, directMessages.length, agents.length] as const;
+  const railScroll = useRef<HTMLDivElement>(null);
+  useScrollEdges(scroller, lists);
+  useScrollEdges(railScroll, lists);
+  useScrollEdges(railMiddle, lists);
+  useCurrentInView(scroller, location.pathname, lists);
+  useCurrentInView(railScroll, location.pathname, lists);
+  useCurrentInView(railMiddle, location.pathname, lists);
   const railProjects = useRef<HTMLElement>(null);
   const railGlide = useRef<HTMLSpanElement>(null);
   const glideRailTo = useTravelingHighlight(railProjects, railGlide, ['.side__rail-project[data-pending]', '.side__rail-project.is-open']);
@@ -154,7 +196,7 @@ export function Sidebar({ directMessages, agents = [], user, onClose, titleId, i
           <Link to="/tasks" className="side__ib" aria-label="My tasks" aria-current={myTasks ? 'page' : undefined}><Icon name="tasks" size={18} /></Link>
           <Link to="/map" className="side__ib" aria-label="My map" title="Only you can see your map" aria-current={sketchbook ? 'page' : undefined}><Icon name="map" size={18} /></Link>
         </nav>
-        <div className="side__rail-scroll">
+        <div className="side__rail-scroll" ref={railScroll}>
         <nav className="side__rail-projects" aria-label="Spaces" ref={railProjects}>
           <span className="side__rail-glide" ref={railGlide} aria-hidden="true" />
           {projects.map((project) => (
@@ -207,7 +249,7 @@ export function Sidebar({ directMessages, agents = [], user, onClose, titleId, i
           <Icon name="search" size={16} />
         </button>
       </div>
-      <div className="side__scroll">
+      <div className="side__scroll" ref={scroller}>
         <nav className="side__places" aria-label="Places">
           {/* Plain links with an explicit current place: NavLink would also mark a parent path current. */}
           <Link to="/" className="side__item" aria-current={home ? 'page' : undefined} onClick={navigate}>
@@ -225,16 +267,14 @@ export function Sidebar({ directMessages, agents = [], user, onClose, titleId, i
           </Link>
         </nav>
 
-        {/* An empty section is not shown (Spokój rule 4, #763 FR-4); the narrow drawer keeps its heading for its "+". A space
-            waiting to be unlocked is a row of it (F-030). */}
-        {projects.length || locked.length || onClose ? <nav className="side__sec" aria-labelledby="side-projects">
+        {/* An empty section is not shown (Spokój rule 4, #763 FR-4), in the drawer as in the sidebar. A space waiting to be unlocked is a row
+            of it (F-030). The drawer holds the same items as the sidebar: New in the actions above creates, so neither has a "+" here (#1375). */}
+        {projects.length || locked.length ? <nav className="side__sec" aria-labelledby="side-projects">
           <div className="side__head">
             <h2 className="side__h" id="side-projects">Spaces</h2>
             <span className="side__head-end">
               {/* One action for everything unread (#1250), in the heading's ⋯ and in the Inbox's. */}
               {projects.length ? <MoreMenu label="More for Spaces" size={14} className="side__add side__more-head" items={[{ label: 'Mark all as read', run: markAll }]} /> : null}
-              {/* On the computer New (C) creates; the narrow-tablet drawer keeps its own "+". */}
-              {onClose ? <button type="button" className="side__add" aria-label="New space" onClick={() => { onClose(); openCreate({ kind: 'space' }); }}><Icon name="plus" size={14} /></button> : null}
             </span>
           </div>
           {projects.length || locked.length ? (
@@ -277,16 +317,13 @@ export function Sidebar({ directMessages, agents = [], user, onClose, titleId, i
                 </li>
               ))}
             </ul>
-          ) : (
-            <p className="side__empty">No spaces yet. Use + to start one, or it appears here when someone adds you to one.</p>
-          )}
+          ) : null}
           <span className="ui-vh" role="status" aria-live="polite">{moves.status}</span>
         </nav> : null}
 
         <nav className="side__sec" aria-labelledby="side-dms">
           <div className="side__head">
             <h2 className="side__h" id="side-dms"><Link to="/dm" className="side__h-link" aria-current={location.pathname === '/dm' ? 'page' : undefined} onClick={navigate}>Messages</Link></h2>
-            {onClose ? <Link to="/dm/new" className="side__add" aria-label="New message" onClick={navigate}><Icon name="plus" size={14} /></Link> : null}
           </div>
           {directMessages.length || agents.length ? (
             <ul className="side__list">

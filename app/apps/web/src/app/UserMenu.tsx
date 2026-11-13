@@ -19,7 +19,7 @@ function AccountLink({ id, name, email, onNavigate }: { id: string; name: string
     <div className="me">
       <Link to="/settings" className="me__btn" aria-current={current ? 'page' : undefined} onClick={onNavigate}>
         <Avatar name={name} id={id} tone="me" />
-        <span className="me__text"><b>{name}</b><span>{email}</span></span>
+        <span className="me__text"><b>{name}</b><span className="ui-vh">{email}</span></span>
         <Icon name="gear" className="me__chev" />
         <span className="ui-vh">, settings and sign out</span>
       </Link>

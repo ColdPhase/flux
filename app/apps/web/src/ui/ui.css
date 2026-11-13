@@ -224,6 +224,8 @@ input::placeholder, textarea::placeholder { color: var(--t3); opacity: 1; }
 .ui-overlay--bottom .ui-overlay__surface { inset: 0; box-shadow: none; }
 .ui-overlay--right .ui-overlay__surface { border-radius: var(--r-panel) 0 0 var(--r-panel); }
 .ui-drawer { background: var(--side); }
+/* The drawer is where focus lands as it opens, not a control: no frame around the whole panel (it read as a focus ring, #1375). */
+.ui-drawer.ui-overlay__surface:focus-visible { outline: none; }
 /* Horizontal drags inside the drawer (its scroll box included) reach the dismiss gesture; vertical ones scroll. */
 .ui-drawer, .ui-drawer * { touch-action: pan-y pinch-zoom; }
 /* The phone sheet's header is its handle: a grabber shows it can be pulled down to close (#266 PF-4). */
