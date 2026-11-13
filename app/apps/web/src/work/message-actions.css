@@ -69,6 +69,9 @@
 /* A keyboard shows the label: the pill sits over the bubble's top corner then, inside the pane. */
 .msg-touch button.msg-touch__sr:focus-visible { left: auto; right: 0; width: auto; padding: 0 14px; background: var(--el); box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line);
   font-size: var(--fs-md); color: var(--t1); z-index: 2; }
+/* In a direct message the ⋯ sits in the bubble's column, which a short message makes narrower than the pill: someone else's pill starts at
+   the bubble's left edge, so it never runs out of the window (one's own ends at the bubble's right edge, as above). */
+.dm-msg.msg-touch:not(.is-mine) button.msg-touch__sr:focus-visible { left: 0; right: auto; }
 .msg-touch button.msg-touch__sr:focus-visible .msg-touch__label { position: static; width: auto; height: auto; clip-path: none; }
 /* The lane: a message's bubble column is the pane's width less --dots-room, and a message with a card keeps as much as that leaves
    (the computer's --acts-room, for the pill, does the same). */

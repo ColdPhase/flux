@@ -19,6 +19,7 @@ import uuid
 from playwright.sync_api import expect, sync_playwright
 
 from phone_audit import call, window
+from test_phone_text_fit import FITS_JS
 from test_app_shell import ORIGIN, UPSTREAM, start_forwarder
 
 PASSWORD = "phones deserve room to work"
@@ -232,6 +233,35 @@ class PhoneConversations(unittest.TestCase):
         page.get_by_role("button", name="Message actions").last.tap()
         expect(page.get_by_role("menu", name="Message actions")).to_be_visible()
         expect(page.get_by_role("menuitem", name="Copy text")).to_be_visible()
+
+    def test_04a_a_keyboard_shows_the_label_inside_the_window(self) -> None:
+        """A keyboard focus shows the ⋯ as a pill with its label; on a short message of someone else's ("Yes") the pill stays inside the window."""
+        page = self.phone(390, 844)
+        page.goto(f"/dm/{self.ids['dm']}")
+        expect(page.get_by_text("Ok, see you at three").first).to_be_visible()
+        page.locator("header.phead").get_by_role("button", name="More").focus()
+        seen = 0
+        for _ in range(16):
+            page.keyboard.press("Tab")
+            focused = page.evaluate("""() => { const el = document.activeElement; const b = el.getBoundingClientRect();
+              return { label: el.getAttribute('aria-label') || el.textContent.trim(), left: b.left, right: b.right, popup: el.getAttribute('aria-haspopup') }; }""")
+            if focused["label"] != "Message actions":
+                continue
+            seen += 1
+            self.assertEqual(focused["popup"], "menu", focused)
+            self.assertGreaterEqual(focused["left"], -0.5, f"the focused ⋯ is inside the window: {focused}")
+            self.assertLessEqual(focused["right"], 390.5, f"the focused ⋯ is inside the window: {focused}")
+        self.assertGreaterEqual(seen, 5, "every message's ⋯ is reached by Tab")
+
+    def test_04c_a_direct_message_s_hint_is_one_line_with_large_text(self) -> None:
+        context = window(self.pw, self.browser, UI_BROWSER, ORIGIN, self.states["ada"], 320, 640, text=200)
+        self.addCleanup(context.close)
+        page = context.new_page()
+        page.goto(f"/dm/{self.ids['dm']}")
+        expect(page.get_by_text("Ok, see you at three").first).to_be_visible()
+        fit = page.evaluate(FITS_JS, "#dm-composer")
+        self.assertLessEqual(fit["width"], fit["room"], f"the hint fits its line: {fit}")
+        self.assertLessEqual(fit["height"], fit["oneLine"] + 2, f"the composer is one line high: {fit}")
 
     def test_04b_a_direct_message_s_title_row_is_a_space_s(self) -> None:
         """#1374 (founder decision): Back, the name and ⋯, with Search and Call as the first rows of ⋯; no icons for them, and the name is no menu."""

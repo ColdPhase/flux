@@ -443,8 +443,8 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
     way to an action. On the computer, hover actions are unchanged.
   - **The visible alternative to long press is a quiet ⋯ on every message** (#763 FT-4, #1357, v0.2.1). It is a
     44 × 44 px target at the bubble's top, **beside the bubble on the side away from its author** (right of other people's
-    messages, left of your own), the touch twin of the computer's pill. The layout keeps that lane free (32 px of the
-    target's 44 may reach into the pane's own side padding), so the ⋯ never covers a word, a card or a button of the message,
+    messages, left of your own), the touch twin of the computer's pill. The layout keeps a 32 px lane free beside the bubble
+    (the other 12 px of the 44 px target reach into the pane's own side padding), so the ⋯ never covers a word, a card or a button of the message,
     in a group or alone, in a space, a thread or a direct message. It opens the same sheet as a long press.
 - **Targets and text.** Touch targets are at least 44 px. Meta text is at least 12.5 px. Body
   text is 15–16 px.

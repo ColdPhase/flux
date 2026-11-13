@@ -477,7 +477,7 @@ function DmContent({ initial }: { initial: Dm }) {
           <ConnectionLine />
           {composer.draft.cites.map((cite) => <CiteTile key={`${cite.kind}:${cite.id}`} cite={cite} disabled={composer.sending} onRemove={() => composer.removeCite(cite.kind, cite.id)} />)}
           <ComposerBox id="dm-composer" label={`Message ${title}`} fieldRef={textareaRef} value={draft} onChange={(value) => change(value)} onBlur={typing.stop} onKeyDown={onKey}
-            disabled={recipientGone} boxDisabled={recipientGone} placeholder={recipientGone ? 'Nobody else is in this conversation' : `Message ${others.length === 1 ? others[0]!.name.split(/\s+/)[0] : title}…`}
+            disabled={recipientGone} boxDisabled={recipientGone} placeholder={recipientGone ? 'Nobody else is in this conversation' : [`Message ${others.length === 1 ? others[0]!.name.split(/\s+/)[0] : title}…`, 'Message…']}
             fieldProps={{ 'aria-describedby': asking ? audienceId : undefined }} sendLabel={asking ? 'Ask your agent' : 'Send message'} sendDisabled={!canSend} onSend={() => void send()} />
           {asking ? <p className="composer__audience" data-asking="true"><Icon name="lock" size={13} /><span id={audienceId}>Only you see the answer · {firstNames(others.map((person) => person.name)).join(', ') || 'The others'} {others.length === 1 ? 'sees' : 'see'} only a line that AI was used here</span></p>
             : null}
