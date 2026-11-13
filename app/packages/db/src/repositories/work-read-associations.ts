@@ -3,7 +3,7 @@ import type { LinkRole, ObjectLink, ObjectRef, SourceAssociationCounts, WorkObje
 import type { DbExecutor } from './push.js';
 import { sealOf } from '../sealing.js';
 import { workRows } from './work.js';
-import { nativeReadKeyWindow } from './work-read-keys.js';
+import { nativeReadKeyWindow, type NativeReadKeyPage } from './work-read-keys.js';
 import { nativeVisibleWorkEdges, nativeWorkEndpointVisible, type NativeWorkReadObject, type NativeWorkSourceScope } from './work-read-visibility.js';
 import { executePrepared } from '../prepared.js';
 
@@ -81,7 +81,9 @@ export function nativeWorkAssociationRows(db: DbExecutor) {
         WHERE (${objectPredicate(selection.objects, true)}) AND (${selection.role ? sql`e.role = ${selection.role}` : sql`true`})`;
       return nativeReadKeyWindow<'edge'>(db, selected, limit, cursor, true, true);
     },
-    associationEdgeKeys(projectId: string, selection: NativeWorkAssociationSelector, objects: readonly NativeWorkReadObject[], limit: number, cursor?: WorkReadCursor) {
+    async associationEdgeKeys(projectId: string, selection: NativeWorkAssociationSelector, objects: readonly NativeWorkReadObject[], limit: number, cursor?: WorkReadCursor): Promise<NativeReadKeyPage<'edge'>> {
+      // No object on the page has an edge to read (#1429: the statement only ever answered an empty page).
+      if (!objects.length) return { items: [], total: 0, before: 0, hasBefore: false, hasAfter: false };
       return nativeReadKeyWindow<'edge'>(db, sql`WITH matched AS (${matching(projectId, selection)}) SELECT 'edge'::text AS kind, e.id, e.created_at, 0 AS rank FROM matched e WHERE (${objectPredicate(objects, false)})`, limit, cursor, true, true);
     },
     async edgeTotal(projectId: string, selection: NativeWorkAssociationSelector) {

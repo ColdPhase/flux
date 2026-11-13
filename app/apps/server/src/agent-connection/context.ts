@@ -1,7 +1,7 @@
 import type { AgentMayDo, AgentToolAccess } from '@flux/contracts';
 import { agentProjectReads, DomainError, enforce, evaluateProject, requireAgentProject, requireSpaceAi, type AgentConnectionContext,
   type AgentProjectObjectKind } from '@flux/core';
-import { agentProjectObjectRows, reachableProjectIds, accessReader, type Database, type Transaction } from '@flux/db';
+import { agentProjectObjectRows, commitWithoutFlush, reachableProjectIds, accessReader, type Database, type Transaction } from '@flux/db';
 import { createAgentConnectionStore } from './store.js';
 import type { McpDispatch } from './mcp-dispatch.js';
 import { requireLiveRun, runReaches, type RunTokenClaims } from './run-token.js';
@@ -43,10 +43,16 @@ export interface FluxAgentReadContext {
   requireObject(projectId: string, kind: AgentProjectObjectKind, id: string): Promise<void>;
 }
 
-/** Hold live binding, connection and central access locks throughout content projection/effect. */
+/**
+ * Hold live binding, connection and central access locks throughout content projection/effect. `onlyReads`: the tool writes nothing, so
+ * its COMMIT, which only ends those locks, does not wait for a disk flush (#1429).
+ */
 export function withAgentConnection<T>(db: Database, claims: FluxMcpClaims, access: AgentToolAccess,
-  projectId: string | null, read: (context: FluxAgentReadContext) => Promise<T>): Promise<T> {
-  return db.transaction(async (tx) => read(await agentConnectionInTransaction(tx, claims, access, projectId)));
+  projectId: string | null, read: (context: FluxAgentReadContext) => Promise<T>, options: { onlyReads?: boolean } = {}): Promise<T> {
+  return db.transaction(async (tx) => {
+    if (options.onlyReads && access === 'read') await commitWithoutFlush(tx);
+    return read(await agentConnectionInTransaction(tx, claims, access, projectId));
+  });
 }
 
 /**
@@ -78,7 +84,8 @@ export async function agentConnectionInTransaction(tx: Transaction, claims: Flux
       if (claims.run && !runReaches(claims.run, id) || claims.boundProjectId && id !== claims.boundProjectId) throw new DomainError(404, 'PROJECT_NOT_FOUND', 'Project not found');
       // AG-10: every tool, resource and prompt that names a space refuses while AI is off there.
       await requireSpaceAi(accessReader(tx), id, { lock: true });
-      const checked = enforce(await evaluateProject({ kind: 'agent', id: row.agentId }, action, id, accessReader(tx), { lock: true }), 'project');
+      // The agent's standing was read and locked when the connection was checked, in this transaction (#1429).
+      const checked = enforce(await evaluateProject({ kind: 'agent', id: row.agentId }, action, id, accessReader(tx), { lock: true, known: actor }), 'project');
       if (checked.project!.workspaceId !== row.workspaceId) throw new DomainError(404, 'PROJECT_NOT_FOUND', 'Project not found');
       claims.dispatch?.project(id, action);
     };

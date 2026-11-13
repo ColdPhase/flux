@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { fillPlaceholders, type SQL } from 'drizzle-orm';
+import { fillPlaceholders, sql, type SQL } from 'drizzle-orm';
 import type { DbExecutor } from './repositories/push.js';
 
 /** What `executePrepared` reaches of a Drizzle database or transaction: its session, which builds and runs a query on its connection. */
@@ -54,4 +54,14 @@ export function preparedTemplate<T extends Record<string, unknown>>(build: () =>
     if (!built) { const query = session.dialect.sqlToQuery(build()); built = { ...query, name: statementName(query.sql) }; }
     return session.client.query({ name: built.name, text: built.sql }, fillPlaceholders(built.params, values));
   };
+}
+
+/**
+ * For a transaction that writes nothing but row locks (an authorization check held `FOR SHARE` while an answer is made or handed over):
+ * its COMMIT does not wait for its commit record to reach disk (#1429; the editing fences do the same, `EditingCommit` `transient`). A
+ * row lock gives the transaction an id and a WAL record, so its COMMIT waited for a flush, 12-18 ms on a busy disk, three times in every
+ * MCP tool call. A crash loses nothing but locks that end with it anyway. Never for a transaction that writes data.
+ */
+export async function commitWithoutFlush(tx: DbExecutor): Promise<void> {
+  await tx.execute(sql`SET LOCAL synchronous_commit = off`);
 }

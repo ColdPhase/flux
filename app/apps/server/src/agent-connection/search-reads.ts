@@ -270,7 +270,8 @@ async function readFile(ctx: FluxAgentReadContext, claims: FluxMcpClaims, input:
 
 export function registerAgentSearchReads(server: AgentToolRegistrar, db: Database, vectors?: QueryVectors) {
   const answer = async <T>({ claims }: ToolCall, read: (ctx: FluxAgentReadContext) => Promise<T>) => {
-    try { return toolResult(await withAgentConnection(db, claims, 'read', null, read)); } catch (error) { return toolError(error); }
+    // Searching and reading around write nothing (#1429).
+    try { return toolResult(await withAgentConnection(db, claims, 'read', null, read, { onlyReads: true })); } catch (error) { return toolError(error); }
   };
   server.registerTool('flux_search', { title: 'Search everything you may read', description: SEARCH, inputSchema: searchInput, annotations },
     (input, call) => answer(call, (ctx) => search(ctx, call.claims, input, vectors)));

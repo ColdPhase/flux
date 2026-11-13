@@ -35,13 +35,14 @@ export type NativeWorkRelationFacts = NativeWorkReadObject & { edges: number; so
  */
 const project = sql.placeholder('project');
 function fingerprintOf(sourceFacts: SQL) {
-  return preparedTemplate<{ fingerprint: string }>(() => sql`WITH link_facts AS (SELECT
+  return preparedTemplate<{ fingerprint: string; observedAt: string }>(() => sql`WITH link_facts AS (SELECT
         'link:' || e.id::text || ':' || e.from_type || ':' || e.from_id::text || ':' || e.to_type || ':' || e.to_id::text || ':' || coalesce(e.to_version::text, '') || ':' || e.role || ':' ||
         (${nativeWorkEndpointVisible(project, sql`e.from_type`, sql`e.from_id`)})::text || ':' ||
         (${nativeWorkEndpointVisible(project, sql`e.to_type`, sql`e.to_id`, sql`e.to_version`)})::text AS fact
         FROM project_object_links e WHERE e.project_id = ${project}::uuid), source_facts AS (${sourceFacts}), facts AS (
           SELECT fact FROM link_facts UNION ALL SELECT fact FROM source_facts)
-        SELECT encode(sha256(convert_to(coalesce(string_agg(fact, ',' ORDER BY fact COLLATE "C"), ''), 'UTF8')), 'hex') AS fingerprint FROM facts`);
+        SELECT encode(sha256(convert_to(coalesce(string_agg(fact, ',' ORDER BY fact COLLATE "C"), ''), 'UTF8')), 'hex') AS fingerprint,
+          to_char(transaction_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS "observedAt" FROM facts`);
 }
 const fingerprints = {
   none: fingerprintOf(sql`SELECT NULL::text AS fact WHERE false`),
@@ -68,19 +69,24 @@ const relationCounts = preparedTemplate<NativeWorkRelationFacts>(() => sql`WITH 
         GROUP BY g.kind, g.id`);
 
 export function nativeWorkVisibilityRows(db: DbExecutor) {
+  /** The fingerprint with the read's observation time (the transaction's), in the same statement (#1429). */
+  async function observation(projectId: string, sources?: NativeWorkSourceScope) {
+    if (sources && 'messageIds' in sources && (sources.messageIds.length < 1 || sources.messageIds.length > 100)) throw new Error('Invalid bounded source fingerprint selector');
+    const result = !sources ? await fingerprints.none(db, { project: projectId })
+      : 'conversationId' in sources ? await fingerprints.conversation(db, { project: projectId, conversation: sources.conversationId })
+        : await fingerprints.messages(db, { project: projectId, messages: sources.messageIds });
+    const { fingerprint, observedAt } = result.rows[0] ?? {};
+    if (!fingerprint || !/^[0-9a-f]{64}$/.test(fingerprint) || !observedAt) throw new Error('Native source visibility could not be observed');
+    return { fingerprint, observedAt };
+  }
   return {
     /** Fixed-size SQL aggregate covers all counted/uncounted native link endpoints,
      * including sources outside the returned object/edge window. No graph leaves DB.
      */
     async fingerprint(projectId: string, sources?: NativeWorkSourceScope) {
-      if (sources && 'messageIds' in sources && (sources.messageIds.length < 1 || sources.messageIds.length > 100)) throw new Error('Invalid bounded source fingerprint selector');
-      const result = !sources ? await fingerprints.none(db, { project: projectId })
-        : 'conversationId' in sources ? await fingerprints.conversation(db, { project: projectId, conversation: sources.conversationId })
-          : await fingerprints.messages(db, { project: projectId, messages: sources.messageIds });
-      const fingerprint = result.rows[0]?.fingerprint;
-      if (!fingerprint || !/^[0-9a-f]{64}$/.test(fingerprint)) throw new Error('Native source visibility could not be observed');
-      return fingerprint;
+      return (await observation(projectId, sources)).fingerprint;
     },
+    observation,
 
     /** Exactly one scalar aggregate row per bounded native object; never hydrate its links. */
     async relations(projectId: string, objects: readonly NativeWorkReadObject[]): Promise<NativeWorkRelationFacts[]> {
