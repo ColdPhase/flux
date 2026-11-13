@@ -20,6 +20,8 @@ export interface GatewayRequest {
   /** The text of each tool result the request carries, in order. */
   results: string[];
   system: string;
+  /** The first user message's text: Flux's request on pi's standard input (the brief). */
+  prompt: string;
 }
 
 export interface FakeGateway {
@@ -64,7 +66,7 @@ export async function startFakeGateway(): Promise<FakeGateway> {
         : messages.filter((message) => message.role === 'tool').map((message) => textOf(message.content));
       const system = messagesApi ? textOf(body.system) : textOf(messages.find((message) => message.role === 'system' || message.role === 'developer')?.content);
       requests.push({ path, authorization: request.headers.authorization ?? null, apiKey: (request.headers['x-api-key'] as string | undefined) ?? null,
-        model: String(body.model ?? ''), tools, results, system });
+        model: String(body.model ?? ''), tools, results, system, prompt: textOf(messages.find((message) => message.role === 'user')?.content) });
       const step = steps.shift() ?? { text: 'Done.' };
       if ('status' in step) {
         response.writeHead(step.status, { 'content-type': 'application/json' });

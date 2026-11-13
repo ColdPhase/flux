@@ -102,7 +102,7 @@ describe('an API-key agent in pi searches the web with Flux\'s flux_web_search (
     const started = await ask();
     assert.equal(await processor.process(started.run.id), 'completed', JSON.stringify(await row(started.run.id)));
     assert.ok(gateway.requests[0]!.tools.includes('mcp__flux__flux_web_search'), JSON.stringify(gateway.requests[0]!.tools));
-    assert.match(gateway.requests[0]!.system, /flux_web_search/, 'the brief names the tool');
+    assert.match(gateway.requests[0]!.prompt, /search the web with flux_web_search/, 'the brief names the tool');
     const [search] = provider.requests;
     assert.ok(search, 'the server ran one search');
     assert.deepEqual([search.connection.id, search.model, search.webSearch, search.tools], [connectionId, 'claude-sonnet-5', true, []], 'the run\'s own key and model, the hosted search and no other tool');
