@@ -708,7 +708,8 @@ class SpaceOrder(unittest.TestCase):
         drawer = tablet.locator("#nav-drawer")
         expect(drawer.get_by_role("button", name="More for Spaces", exact=True)).to_be_visible()
         expect(drawer.get_by_role("button", name="New space", exact=True)).to_have_count(0)
-        expect(drawer.get_by_role("link", name="New message", exact=True)).to_have_count(0)
+        # No "+" of its own (New creates, #1375); this person has no message and no agent yet, so Messages has the computer sidebar's "+" (#1424).
+        expect(drawer.get_by_role("link", name="New message", exact=True)).to_have_count(1)
         mail = drawer.locator(".me__text span").bounding_box()
         self.assertLessEqual(mail["width"], 1, "the email is not drawn under the name")
         self.assertEqual(tablet.evaluate("getComputedStyle(document.getElementById('nav-drawer')).outlineStyle"), "none", "no frame around the whole drawer")
