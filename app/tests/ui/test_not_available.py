@@ -117,10 +117,11 @@ class NotAvailable(unittest.TestCase):
                         title = page.locator("header.top h1").inner_text().strip()
                         self.assertNotEqual(title, "Home", f"the header of {name} names the place, not Home")
                         expect(page.locator(".app__side").get_by_role("link", name="Home", exact=True)).not_to_have_attribute("aria-current", "page")
-                    # All of them sit in the same place, whatever kind of place is gone.
+                    # All of them sit in the same place under their header, whatever kind of place is gone.
                     box = gone.locator(".ui-empty").bounding_box()
+                    content = page.locator("#content").bounding_box()
                     self.assertIsNotNone(box)
-                    self.state.setdefault("boxes", {}).setdefault(phone, []).append((round(box["x"]), round(box["y"])))
+                    self.state.setdefault("boxes", {}).setdefault(phone, []).append((round(box["x"] - content["x"]), round(box["y"] - content["y"])))
             self.assertEqual(len(set(self.state["boxes"][phone])), 1, f"one layout for every kind of place: {self.state['boxes'][phone]}")
 
     def test_02_the_agent_sign_in_page_with_no_request_is_a_sign_in_page_not_an_error(self) -> None:
@@ -131,12 +132,12 @@ class NotAvailable(unittest.TestCase):
         for raw in ("400", "Something went wrong", "Try again"):
             expect(page.get_by_text(raw, exact=False)).to_have_count(0)
         expect(page.get_by_role("link", name="Go to Home")).to_be_visible()
-        # It sits where the other sign-in pages put their body: the column's own left edge, not indented from the logo.
-        logo = page.locator(".auth__col .brand, .auth__col > :first-child").first.bounding_box()
+        # It sits where the other sign-in pages put their body: at the column's own left edge, not indented (the error page was about 60 px in).
+        column = page.locator(".auth__col").bounding_box()
         head = page.locator(".auth__head").bounding_box()
-        self.assertIsNotNone(logo)
+        self.assertIsNotNone(column)
         self.assertIsNotNone(head)
-        self.assertLessEqual(abs(head["x"] - logo["x"]), 2, "the body starts at the logo's edge")
+        self.assertLessEqual(abs(head["x"] - column["x"]), 2, "the body starts at the column's left edge")
 
     def test_03_a_wiki_page_that_exists_is_in_the_apps_type_scale(self) -> None:
         self.world()
