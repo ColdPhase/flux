@@ -11,7 +11,7 @@ or **inference** (my reasoning). Evidence: [`evidence/harness-2026-11/`](evidenc
 
 - **The discrepancy is real and has one cause:** today the payer picks the engine. A Claude or ChatGPT plan runs the vendor CLI in
   Flux's runtime; every API key runs Flux's own tool loop in the worker, which has no shell or files and never will
-  ([RT-1](../ai-modes.md#rt-1--engines-on-the-server), [RT-5](../ai-modes.md#rt-5--tools-only-flux-tools-the-clis-own-web-search-and-reading-the-web)).
+  ([RT-1](../ai-modes.md#rt-1--engines-on-the-server), [RT-5](../ai-modes.md#rt-5--tools)).
   #1437 gives the CLIs shell and files, which widens the gap for API keys.
 - **No single harness can serve every payer.** Plans legally enter only through the vendors' own unmodified CLIs
   ([RT-2](../ai-modes.md#rt-2--the-unmodified-cli-no-plan-token-no-impersonation)), and those CLIs speak only their vendor's models:
