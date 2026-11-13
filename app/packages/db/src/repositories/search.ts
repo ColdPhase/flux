@@ -180,13 +180,18 @@ export type SearchRanking = 'prefix' | 'bm25';
 const BM25_TITLES = [sql`sd.title::pdb.alias('title_pl')`, sql`sd.title::pdb.alias('title_en')`];
 const BM25_BODIES = [sql`sd.body::pdb.alias('body_pl')`, sql`sd.body::pdb.alias('body_en')`];
 /**
- * What a word counts in a hit, by where and how it was found: a whole word in the title (twice a body word, as in the exact search), in the
- * body, or only as the word being typed (a prefix of one) or a title with one typo.
+ * What a word counts in a hit (BM25F, F-042, #1387): each time it occurs in the title counts twice each time in the body, as in the exact
+ * search. A hit that holds none of the query's whole words but matched only as the word being typed (a prefix of one) or as a title with one
+ * typo counts `part` of the average rarity of the query's words, once.
  */
 const WEIGHT = { title: 2, body: 1, part: 0.5 } as const;
-/** Okapi BM25's constants, applied to the visible hits only. */
+/**
+ * Okapi BM25's constants, applied to the visible hits only. Chosen on the research bench (#1387: 10,000 messages, 60 questions, tuned on the
+ * odd half, reported on the even half and on all; F-042): k1 changed nothing between 0.9 and 2, and b 0 or 0.1 found one more answer on
+ * the tuning half than 0.2 to 0.75; of the two, 0.1 keeps some length normalisation for long documents.
+ */
 const BM25_K1 = 1.2;
-const BM25_B = 0.75;
+const BM25_B = 0.1;
 /** The query words that are looked up (a longer query keeps its first words and the word being typed), and the words that also match a title with a typo. */
 const MATCH_WORDS = 12;
 const TYPO_MIN_LETTERS = 4;
@@ -271,32 +276,33 @@ function lookedUpWords(plan: SearchPlanRows): { words: string[]; typed: string |
 }
 
 /**
- * The ranked statement's evidence (F-042): which of the query's words each visible document holds, and how well. The BM25 index decides what
+ * The ranked statement's evidence (F-042): which of the query's words each visible document holds, and where. The BM25 index decides what
  * a word matches (stems, accents, a prefix, a typo); how rare a word is, is decided from these facts alone, never from the index's statistics.
  *
  * pg_search can tell which clause matched only through the score. Every clause is therefore a constant-score query (`pdb.const`), so a hit's
  * score is the sum of the constants of the clauses that matched and nothing else: no term frequency, no rarity of any word, no other
  * document. A constant is a power of two, one bit for each time a clause of a kind can match (a word in the title may match through the
- * Polish and through the English field: two clauses, two bits), above the one unit the audience filter adds (`FILTER_BASE`). The scan holds
- * no other filter: pg_search scores a filter it is given on a single value (a kind, a place, an author, a conversation) by BM25, with that
- * value's rarity over the whole index, which can exceed any fixed margin (a person who wrote few of an instance's documents) and would
- * then flip the bits above it. The caller's filters and the work lifecycle are therefore applied to the scan's rows, after it, in `cand`
- * (a set of audiences scores a constant 1, so the audience filter stays in the scan). The words are packed into as few scans
- * as the 24 bits of a score allow (one for a query of up to five words), and each hit's score is decoded into the words it holds and where:
- * for each word, whole in the title or whole in the body; and for the document, matched only as the word being typed (a prefix) or as a
- * title with a typo, which is not tied to one word.
+ * Polish and through the English field: two clauses, two bits). pg_search keeps a constant only up to 2048 (a larger one scores 2048: before
+ * #1387 every word after the third was read as the third), and a score is a 32-bit float, exact over 24 binary digits; the audience filter
+ * adds exactly 1 (a set of audiences scores a constant 1). The constants are therefore 2^-12 to 2^10, and `score × 2^12 − 2^12` is the
+ * code, 23 bits (`SCORE_BITS`). The scan holds no other filter:
+ * pg_search scores a filter it is given on a single value (a kind, a place, an author, a conversation) by BM25, with that value's rarity over
+ * the whole index, which would flip the bits. The caller's filters and the work lifecycle are therefore applied to the scan's rows, after
+ * it, in `cand`. The words are packed into as few scans as the 23 bits allow (five words a scan), and each hit's score is decoded into the
+ * words it holds and where: for each word, whole in the title or whole in the body; and for the document, matched only as the word being
+ * typed (a prefix) or as a title with a typo, which is not tied to one word.
  */
 interface RankedField { shift: number; bits: number }
 /** A clause of a scan: the query for a constant, and the field of the score that constant belongs to (null: the document-level partial match of the chunk). */
 interface RankedClause { query: (constant: SQL) => SQL; at: RankedField | null }
-interface RankedWord { w: number; title: RankedField; body: RankedField }
-interface RankedChunk { words: RankedWord[]; clauses: RankedClause[]; base: number; part: RankedField | null }
+interface RankedWord { w: number; word: string; title: RankedField; body: RankedField }
+interface RankedChunk { words: RankedWord[]; clauses: RankedClause[]; part: RankedField | null }
 
-/** What the audience filter adds to a hit's score is exactly 1 (a set of terms scores a constant); the constants are multiples of this power of two above it. */
-const FILTER_BASE = 4;
 const bitsFor = (count: number) => Math.ceil(Math.log2(count + 1));
-/** A score is a 32-bit float: whole numbers are exact up to 2^24. One bit stays unused. */
+/** The bits of a decoded score (see the evidence above): code bit `k` is the constant 2^(k − 12), so the largest is 2^10. */
 const SCORE_BITS = 23;
+const FRACTION_BITS = 12;
+const constantOf = (bit: number) => 2 ** (bit - FRACTION_BITS);
 
 /** The clauses that match a word only partly: the word being typed as a prefix of what is indexed, and a title with one typo. */
 function partialClauses(plan: SearchPlanRows): RankedClause[] {
@@ -313,19 +319,19 @@ function partialClauses(plan: SearchPlanRows): RankedClause[] {
   return clauses;
 }
 
+const num = (value: number) => sql.raw(String(value));
+
 function rankedChunks(plan: SearchPlanRows): RankedChunk[] {
   const { words } = lookedUpWords(plan);
-  const base = FILTER_BASE;
-  const capacity = SCORE_BITS - Math.log2(base);
   const partial = partialClauses(plan);
-  const chunks: RankedChunk[] = [{ words: [], clauses: [...partial], base, part: partial.length ? { shift: 0, bits: bitsFor(partial.length) } : null }];
+  const chunks: RankedChunk[] = [{ words: [], clauses: [...partial], part: partial.length ? { shift: 0, bits: bitsFor(partial.length) } : null }];
   let used = chunks[0]!.part ? chunks[0]!.part.bits : 0;
   words.forEach((word, w) => {
-    if (used + 4 > capacity) { chunks.push({ words: [], clauses: [], base, part: null }); used = 0; }
+    if (used + 4 > SCORE_BITS) { chunks.push({ words: [], clauses: [], part: null }); used = 0; }
     const chunk = chunks[chunks.length - 1]!;
     const title = { shift: used, bits: 2 };
     const body = { shift: used + 2, bits: 2 };
-    chunk.words.push({ w, title, body });
+    chunk.words.push({ w, word, title, body });
     for (const field of BM25_TITLES) chunk.clauses.push({ at: title, query: (constant) => sql`${field} ||| ${word}::text::pdb.const(${constant})` });
     for (const field of BM25_BODIES) chunk.clauses.push({ at: body, query: (constant) => sql`${field} ||| ${word}::text::pdb.const(${constant})` });
     used += 4;
@@ -333,30 +339,29 @@ function rankedChunks(plan: SearchPlanRows): RankedChunk[] {
   return chunks;
 }
 
-/** The scan of one chunk: each visible hit, read once, with the sum of the constants of the clauses it matched (`code`). */
+/** The scan of one chunk: each visible hit, read once, with the sum of the constants of the clauses it matched (decoded in `cand`), and its own tsvector. */
 function rankedScan(chunk: RankedChunk, plan: SearchPlanRows): SQL {
-  const clauses = chunk.clauses.map((clause) => {
-    const at = clause.at ?? chunk.part!;
-    return clause.query(sql.raw(String(chunk.base * 2 ** at.shift)));
-  });
+  const clauses = chunk.clauses.map((clause) => clause.query(sql.raw(String(constantOf((clause.at ?? chunk.part!).shift)))));
   const numbered = plan.number === null ? sql`false` : sql`(sd.kind = 'work' AND split_part(sd.body, E'\n', 1) = ${`#${plan.number}`})`;
   // Only the audiences filter the scan; the caller's filters read these columns after it, in `cand` (see the evidence above `RankedField`).
-  return sql`SELECT sd.id, sd.kind, sd.object_id, sd.version, sd.at, length(sd.tsv) AS dl, ${numbered} AS numbered,
+  return sql`SELECT sd.id, sd.kind, sd.object_id, sd.version, sd.at, sd.tsv, ${numbered} AS numbered,
         sd.audience_key, sd.project_id, sd.parent_id, sd.author_kind, sd.author_id,
-        floor(pdb.score(sd.id) / ${sql.raw(String(chunk.base))})::bigint AS code
+        (pdb.score(sd.id)::float8 * ${num(2 ** FRACTION_BITS)})::bigint AS raw
       FROM search_documents sd WHERE NOT sd.sealed AND ${AUDIENCE_ANY} AND (${sql.join(clauses, sql` OR `)})`;
 }
 
-const num = (value: number) => sql.raw(String(value));
+/** A scan's score as its code bits: the audience filter's 1 taken out. */
+const decoded = (raw: SQL) => sql`(${raw} - ${num(2 ** FRACTION_BITS)})`;
 
 /**
- * The ranked statement's CTEs: BM25 over the visible hits only, in SQL. `cand` holds the documents that match any word and may be shown (the
- * audiences are in every scan; the caller's filters and the work lifecycle are applied to its rows); a word's document frequency, the number
- * of documents and their average length are counted over `cand` and nothing else, so what the caller cannot read, in this space, in another or in another workspace, moves nothing. A
- * document's own part is its length, `length(tsv)`, stored with the row (the term frequency of a word is one: the index says only that it
- * matches). Each word the document holds adds `idf × weight`, the title's twice the body's, and the sum is scaled by
- * `(k1 + 1) / (1 + k1 × (1 − b + b × length / average))`; a word that every hit holds counts for little. A document that holds no whole word
- * but matched as the word being typed or with a typo counts half the average rarity of the query's words.
+ * The ranked statement's CTEs: BM25 over the visible hits only, in SQL (#1326, #1387). `cand` holds the documents that match any word and may
+ * be shown (the audiences are in every scan; the caller's filters and the work lifecycle are applied to its rows). A word's document
+ * frequency, the number of documents and their average length are counted over `cand` and nothing else, so what the caller cannot read, in
+ * this space, in another or in another workspace, moves nothing. A document's own part comes from its own tsvector (`tsv`, stored with the
+ * row) and nothing else: its length (`length(tsv)`, its distinct words) and, for each query word the index found in it, how often the word
+ * occurs in the title and in the body (at least once where the index found it). With `tf = 2 × title + body`, each word adds
+ * `idf × tf × (k1 + 1) / (tf + k1 × (1 − b + b × length / average))`; a word that every hit holds counts for little. A document that holds
+ * no whole word but matched as the word being typed or with a typo counts `part` of the average rarity of the query's words, once.
  */
 function rankedStatement(plan: SearchPlanRows, vector: string | null = null): SQL {
   const chunks = rankedChunks(plan);
@@ -364,21 +369,36 @@ function rankedStatement(plan: SearchPlanRows, vector: string | null = null): SQ
   // A document found by several scans is one row, with the code of each; one scan (the usual case) needs no grouping.
   // The caller's filters and the work lifecycle, on each scan's rows (a MATERIALIZED scan keeps them out of pg_search's query and score).
   const keep = sql.join([WORK_LIFECYCLE, ...scopeConditions(plan)], sql` AND `);
-  const cand = chunks.length === 1
-    ? sql`SELECT sd.id, sd.kind, sd.object_id, sd.version, sd.at, sd.dl, sd.numbered, sd.code AS c0 FROM chunk0 sd WHERE ${keep}`
-    : sql`SELECT id, min(kind) AS kind, min(object_id) AS object_id, min(version) AS version, min(at) AS at, min(dl) AS dl, bool_or(numbered) AS numbered,
-        ${sql.join(chunks.map((_, index) => sql`max(code) FILTER (WHERE k = ${num(index)}) AS c${num(index)}`), sql`, `)}
-      FROM (${sql.join(chunks.map((_, index) => sql`SELECT ${num(index)} AS k, sd.id, sd.kind, sd.object_id, sd.version, sd.at, sd.dl, sd.numbered, sd.code
-        FROM chunk${num(index)} sd WHERE ${keep}`), sql` UNION ALL `)}) u GROUP BY id`;
-  const words = chunks.flatMap((chunk, index) => chunk.words.map((word) => ({ word, code: sql.raw(`coalesce(c.c${index}, 0)`) })));
-  const field = (code: SQL, f: RankedField) => sql`((${code} >> ${num(f.shift)}) & ${num(2 ** f.bits - 1)})`;
-  const present = ({ word, code }: (typeof words)[number]) => sql`((${code} >> ${num(word.title.shift)}) & ${num(15)}) > 0`;
-  const weight = ({ word, code }: (typeof words)[number]) => sql`(CASE WHEN ${field(code, word.title)} > 0 THEN ${num(WEIGHT.title)} ELSE ${num(WEIGHT.body)} END)`;
+  const hits = chunks.length === 1
+    ? sql`SELECT sd.id, sd.kind, sd.object_id, sd.version, sd.at, sd.tsv, sd.numbered, ${decoded(sql`sd.raw`)} AS c0 FROM chunk0 sd WHERE ${keep}`
+    : sql`SELECT id, min(kind) AS kind, min(object_id) AS object_id, min(version) AS version, min(at) AS at, (array_agg(tsv))[1] AS tsv,
+        bool_or(numbered) AS numbered, ${sql.join(chunks.map((_, index) => sql`max(code) FILTER (WHERE k = ${num(index)}) AS c${num(index)}`), sql`, `)}
+      FROM (${sql.join(chunks.map((_, index) => sql`SELECT ${num(index)} AS k, sd.id, sd.kind, sd.object_id, sd.version, sd.at, sd.tsv, sd.numbered,
+        ${decoded(sql`sd.raw`)} AS code FROM chunk${num(index)} sd WHERE ${keep}`), sql` UNION ALL `)}) u GROUP BY id`;
+  const words = chunks.flatMap((chunk, index) => chunk.words.map((word) => ({ word, code: sql.raw(`coalesce(h.c${index}, 0)`) })));
+  const field = (code: SQL, f: RankedField) => sql`((${code} >> ${num(f.shift)}) & ${num(2 ** f.bits - 1)}) > 0`;
+  // The document's own counts, from its tsvector: how often the word occurs in the title (weight A) and in the body (weight B), as typed or
+  // folded (`ts_rank_cd` of a query of one word, without normalisation, is that count). Only the fields where the index found the word count,
+  // each at least once: another form of it (a stem, an accent) is found by the index but is not this word.
+  const own = words.map(({ word, code }) => {
+    const title = sql`ts_rank_cd('{0,0,0,1}', h.tsv, q.q${num(word.w)}, 0)`;
+    const body = sql`ts_rank_cd('{0,0,1,0}', h.tsv, q.q${num(word.w)}, 0)`;
+    return sql`(CASE WHEN ${field(code, word.title)} THEN ${num(WEIGHT.title)} * greatest(${title}, 1) ELSE 0 END
+        + CASE WHEN ${field(code, word.body)} THEN ${num(WEIGHT.body)} * greatest(${body}, 1) ELSE 0 END)::float8 AS tf${num(word.w)}`;
+  });
+  const queries = words.map(({ word }) => {
+    const typed = word.word.toLowerCase();
+    const folded = foldSearchWord(word.word);
+    const query = typed === folded ? sql`plainto_tsquery('simple', ${typed})` : sql`(plainto_tsquery('simple', ${typed}) || plainto_tsquery('simple', ${folded}))`;
+    return sql`${query} AS q${num(word.w)}`;
+  });
+  const tf = (entry: (typeof words)[number]) => sql.raw(`c.tf${entry.word.w}`);
   const idf = (entry: (typeof words)[number]) => sql`ln(1 + (st.n - st.n${num(entry.word.w)} + 0.5) / (st.n${num(entry.word.w)} + 0.5))`;
-  const counts = words.map((entry) => sql`count(*) FILTER (WHERE ${present(entry)})::float8 AS n${num(entry.word.w)}`);
-  const whole = sql.join(words.map((entry) => sql`CASE WHEN ${present(entry)} THEN ${idf(entry)} * ${weight(entry)} ELSE 0 END`), sql` + `);
-  const partial = sql`${num(WEIGHT.part)} * (${sql.join(words.map((entry) => idf(entry)), sql` + `)}) / ${num(words.length)}`;
-  const any = sql.join(words.map((entry) => present(entry)), sql` OR `);
+  const counts = words.map((entry) => sql`count(*) FILTER (WHERE ${tf(entry)} > 0)::float8 AS n${num(entry.word.w)}`);
+  const norm = sql`${num(BM25_K1)} * (1 - ${num(BM25_B)} + ${num(BM25_B)} * c.dl / st.avgdl)`;
+  const whole = sql.join(words.map((entry) => sql`${idf(entry)} * ${tf(entry)} * ${num(BM25_K1 + 1)} / (${tf(entry)} + ${norm})`), sql` + `);
+  const partial = sql`${num(WEIGHT.part)} * (${sql.join(words.map((entry) => idf(entry)), sql` + `)}) / ${num(words.length)} * ${num(BM25_K1 + 1)} / (1 + ${norm})`;
+  const any = sql.join(words.map((entry) => sql`${tf(entry)} > 0`), sql` OR `);
   // With a query vector (the optional embeddings, #1294) the visible BM25 order above is one list of the fusion (see `hybridMatched`).
   const matched = vector
     ? hybridMatched({ vector, visible: sql`NOT sd.sealed AND ${AUDIENCE_ANY} AND ${keep}`, number: plan.number })
@@ -391,11 +411,14 @@ function rankedStatement(plan: SearchPlanRows, vector: string | null = null): SQ
   return sql`
     ${sql.join(scans, sql`
     `)}
-    cand AS MATERIALIZED (${cand}),
+    q AS MATERIALIZED (SELECT ${sql.join(queries, sql`, `)}),
+    cand AS MATERIALIZED (
+      SELECT h.id, h.kind, h.object_id, h.version, h.at, h.numbered, length(h.tsv)::float8 AS dl, ${sql.join(own, sql`, `)}
+      FROM (${hits}) h CROSS JOIN q),
     stats AS (SELECT count(*)::float8 AS n, greatest(avg(c.dl)::float8, 1) AS avgdl, ${sql.join(counts, sql`, `)} FROM cand c),
     ranked AS (
       SELECT c.id, c.kind, c.object_id, c.version, c.at, c.numbered,
-        (CASE WHEN ${any} THEN ${whole} ELSE ${partial} END) * ${num(BM25_K1 + 1)} / (1 + ${num(BM25_K1)} * (1 - ${num(BM25_B)} + ${num(BM25_B)} * c.dl / st.avgdl)) AS rank
+        CASE WHEN ${any} THEN ${whole} ELSE ${partial} END AS rank
       FROM cand c CROSS JOIN stats st),
     ${matched}`;
 }

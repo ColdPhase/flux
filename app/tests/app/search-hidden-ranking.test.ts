@@ -76,6 +76,31 @@ describe('search: what the reader may not read does not move the order of what t
     });
   }
 
+  test('how often a word occurs in hidden documents, and how long they are, changes neither the order nor a score (#1387)', async () => {
+    // A document's own counts (how often a word occurs in it, its length) come from its own tsvector; the average length and the rarity are
+    // counted over the visible hits. Hidden documents that repeat the words many times, at every length, move nothing, not even a score.
+    const [owner, reader] = await Promise.all(['Freq Owner', 'Freq Reader'].map(person));
+    const ws = await workspace(owner, 'Freq workspace');
+    await addMember(owner, ws.id, reader, 'member');
+    const open = await createProject(owner, ws.id, 'Freq open', 'workspace');
+    const known = word('kontrol');
+    const target = word('sekret');
+    const thread = await conversation(reader, open.id, 'Freq opener.');
+    await say(reader, thread.id, `Note ${known} here, ${known} twice.`);
+    await say(reader, thread.id, `Note ${target} here.`);
+    const q = `${known} ${target}`;
+    const audiences = await policySearchAccess(db).audiences(human(reader));
+    const scored = async () => (await searchRows(db).ranked(audiences, {
+      text: q, prefix: null, fuzzy: false, number: null, words: q, kinds: null, place: null, author: null, after: null, limit: 20, reader: reader.id,
+    })).map((hit) => `${hit.position.score} ${hit.snippet?.map((part) => part.text).join('') ?? ''}`);
+    const before = { scored: await scored(), orders: await orders(reader, q) };
+    assert.equal(before.scored.length, 2);
+    const hidden = await createProject(owner, ws.id, 'Freq hidden', 'restricted');
+    const hiddenThread = await conversation(owner, hidden.id, 'Hidden opener.');
+    await inBatches(20, (index) => say(owner, hiddenThread.id, `${`${target} `.repeat(30)}${`${known} `.repeat(index)}${'filler words '.repeat(index * 8)}number ${index}.`));
+    assert.deepEqual({ scored: await scored(), orders: await orders(reader, q) }, before, 'no count of a hidden document reaches a visible score');
+  });
+
   test('a filter (an author, a space, a conversation) lets no rarity of the index into the order', async () => {
     // pg_search scores a filter on one value by BM25, with that value's rarity over the whole index: a person who wrote few of an
     // instance's documents, a small space or a short conversation. The statement applies the caller's filters after its scan, so a
