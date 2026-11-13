@@ -145,6 +145,8 @@ describe('F-030 registry against the live catalog', () => {
       search_index_dm_message: 'as search_index_decision', search_index_material_version: 'as search_index_decision',
       search_index_message: 'as search_index_decision', search_index_project: 'as search_index_decision',
       search_index_sketch: 'as search_index_decision', search_index_thought: 'as search_index_decision', search_index_work: 'as search_index_decision',
+      // C-63 (0072): a file's name decides only whether its text is read; it returns first for a sealed workspace, and nothing of a sealed row is stored or queued.
+      search_index_file: 'returns for a sealed workspace before it stores the name row or queues the file (0072)',
     };
     const found = new Set<string>();
     for (const [table, entry] of Object.entries(SEALED_COLUMNS)) {
