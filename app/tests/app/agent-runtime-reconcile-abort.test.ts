@@ -12,6 +12,7 @@ function scene(options: { sightings: ReturnType<typeof sighting>[]; known?: Runt
   const writes: string[] = [];
   const store = {
     async recoverAbandonedAuth() { return 0; },
+    async modelsDue() { return []; },
     async slotsWithBindings() { return (options.known ?? []).map((slot) => ({ slot, bindings: [] })); },
     async saveSlot(slot: RuntimeSlotRow) { writes.push(`save:${slot.slot}:${slot.state}`); options.duringSave?.(slot); },
   } as unknown as AgentRuntimeStore;
