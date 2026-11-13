@@ -108,7 +108,7 @@ export function loadPushSenderConfig(env: NodeJS.ProcessEnv = process.env): Push
 }
 
 /** What to do about a contact Apple refuses (#1471); the same words at startup and when a push service refuses a send. */
-export const PUSH_CONTACT_FIX = 'Set FLUX_PUBLIC_ORIGIN to your public https address and leave FLUX_VAPID_SUBJECT empty (Flux then uses that address), or set FLUX_VAPID_SUBJECT to a mailto: address at your own domain; then run ./flux up again.';
+export const PUSH_CONTACT_FIX = 'Set FLUX_PUBLIC_ORIGIN to your public https address and leave FLUX_VAPID_SUBJECT empty (Flux then uses that address), or set FLUX_VAPID_SUBJECT to a mailto: address at your own domain; then start Flux again so the worker reads it.';
 
 /** Host suffixes that cannot receive mail or serve a public site: localhost, mDNS and the RFC 2606/6761 reserved names. */
 const UNREACHABLE_CONTACT_HOST = /(^|\.)(localhost|localdomain|local|test|example|invalid|internal|home\.arpa)$/;
