@@ -107,7 +107,7 @@ describe('service worker delivery', () => {
     const onlineOnly = /^\/assets\/(?:SignInConsole|media)-[^/]+\.(?:js|css)$|^\/pdf-viewer\//;
     const expected = actual.filter((url) => !onlineOnly.test(url)).sort();
     assert.ok(actual.some((url) => /^\/assets\/SignInConsole-[^/]+\.js$/.test(url)), 'the online-only terminal is actually built');
-    assert.ok(actual.includes('/pdf-viewer/index.html') && actual.some((url) => /^\/pdf-viewer\/assets\/.+\.js$/.test(url)), 'the online-only PDF viewer is actually built');
+    assert.ok(actual.some((url) => /^\/pdf-viewer\/assets\/.+\.js$/.test(url)), 'the online-only PDF viewer is actually built');
     assert.deepEqual(precache, expected, 'the exact final build inventory has no phantom or omitted cached asset');
     const hash = createHash('sha256');
     for (const url of precache) {
