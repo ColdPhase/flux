@@ -78,7 +78,8 @@ export function AgentsList({ listed = false }: { listed?: boolean } = {}) {
 
 function AgentRow({ agent, answers, choice }: { agent: MyAgent; answers: boolean; choice: ReturnType<typeof useAssistantModel>['choice'] }) {
   const model = modelLine(agent, choice);
-  const job = jobLine(agent);
+  // Assistant says what it is for even before it has instructions (F-026 §7: "Answers your questions and runs your schedules.").
+  const job = jobLine(agent) || (answers ? 'Answers your questions and runs your schedules.' : '');
   return (
     <li>
       <Link className="sset-row sset-row--link agl__row" to={`/settings/agents/${agent.id}`} data-agent={agent.id}>

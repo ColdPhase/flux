@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams, useRevalidator } from 'react-router';
 import { AGENT_LIMITS, assistantModelName, groupModelsByFamily, type AgentMemoryItem, type AssistantModelGroup, type MyAgent } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { useShellData } from '../app/data';
+import { SettingsBack } from '../app/SettingsBack';
 import { MayDoChoice } from '../agent-connection/MayDoChoice';
 import { refreshAssistantModel, useAssistantModel } from '../assistant/model';
 import { Button, Icon, Kreska, Option, OptionGroup, Select, Spinner } from '../ui';
@@ -167,7 +168,7 @@ export function AgentPage() {
   if (!agent) {
     return (
       <div className="pane-scroll"><div className="pane-in nset agp">
-        <Link className="agp__back" to="/settings/agents"><Icon name="chevron-left" size={12} />AI</Link>
+        <SettingsBack />
         <p className="nset__note">This agent isn’t here. It may have been deleted.</p>
       </div></div>
     );
@@ -222,7 +223,7 @@ function AgentSettings({ agent }: { agent: MyAgent }) {
 
   return (
     <div className="pane-scroll"><div className="pane-in nset agp" data-agent-page={agent.id}>
-      <Link className="agp__back" to="/settings/agents"><Icon name="chevron-left" size={12} />AI</Link>
+      <SettingsBack />
       <header className="agp__head">
         <Kreska size={40} hue={agent.colour} />
         <div className="agp__who">

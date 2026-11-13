@@ -228,7 +228,12 @@ class SettingsJourney(unittest.TestCase):
         page.get_by_role("navigation", name="Settings sections").get_by_role("link", name="AI", exact=True).click()
         expect(page).to_have_url(re.compile(r"/settings/agents$"))
         cards = page.locator(".sset-card")
-        expect(page.get_by_role("link", name=re.compile("^Local co-work on this computer"))).to_have_attribute("href", "/connect-agent")
+        # The person's own Claude Code or Codex is a fourth choice in the Connect AI window (#1363), not a section of its own.
+        page.get_by_role("button", name=re.compile("^Connect (AI|another)$")).click()
+        window = page.get_by_role("dialog", name="Connect your AI")
+        expect(window.locator("[data-choice=local_client]")).to_contain_text("Claude Code or Codex on your computer")
+        window.get_by_role("button", name="Cancel").click()
+        expect(window).to_have_count(0)
         # Your agents (F-036 AG-1, #857): the person's agents, each with its own colour, under Connect AI.
         expect(page.get_by_role("region", name="Your agents")).to_be_visible()
         self.settle(page)
@@ -457,7 +462,7 @@ class SettingsJourney(unittest.TestCase):
         for phone in (False, True):
             page = self.page(phone=phone)
             page.goto("/settings/ai-connections")
-            expect(page.locator(".app__main header").get_by_role("heading", level=1, name="Your API keys", exact=True)).to_be_visible()
+            expect(page.locator(".app__main header").get_by_role("heading", level=1, name="Settings", exact=True)).to_be_visible()
             focused = page.evaluate("document.activeElement?.tagName ?? null")
             self.assertNotIn(focused, ("H1", "H2", "H3", "H4"), "no heading has focus on load")
             self.assertEqual(page.evaluate("[...document.querySelectorAll('h1,h2,h3,h4')].filter((h) => h.matches(':focus-visible')).length"), 0,
@@ -466,6 +471,33 @@ class SettingsJourney(unittest.TestCase):
             page.evaluate("document.querySelector('.app__main header h1').setAttribute('tabindex', '-1')")
             page.evaluate("document.querySelector('.app__main header h1').focus()")
             self.assertEqual(page.evaluate("document.activeElement?.tagName ?? null"), "H1")
+
+    def test_09b_every_settings_page_keeps_the_settings_header_and_one_column_at_every_computer_width(self) -> None:
+        """#1362: Settings has one header that never changes, whatever page is open in it, and its pages share one column: the same width and the same
+        left edge on every page at one window, centred in the page's area at 1440 and at 3440."""
+        pages = ("/settings/agents", "/settings/ai-connections", "/settings/agents/connect", "/settings/notifications", "/settings/appearance")
+        for width, height in ((1440, 900), (3440, 1440)):
+            with self.subTest(window=f"{width}x{height}"):
+                context = self.browser.new_context(base_url=ORIGIN, storage_state=self.state, viewport={"width": width, "height": height}, locale="en-GB")
+                self.addCleanup(context.close)
+                page = context.new_page()
+                columns = []
+                for path in pages:
+                    page.goto(path)
+                    expect(page.locator(".app__main header").get_by_role("heading", level=1, name="Settings", exact=True)).to_be_visible()
+                    self.settle(page)
+                    inner = page.locator(".sset__page .pane-scroll > .pane-in").first
+                    expect(inner).to_be_visible()
+                    box, frame = inner.bounding_box(), page.locator(".sset__page").bounding_box()
+                    columns.append((path, round(box["x"], 1), round(box["width"], 1)))
+                    self.assertAlmostEqual(box["x"] - frame["x"], frame["x"] + frame["width"] - (box["x"] + box["width"]), delta=24,
+                                           msg=f"{path}: the column is centred in the page's area: {box} in {frame}")
+                self.assertEqual(len({(left, wide) for _, left, wide in columns}), 1, f"one column position and width on every page: {columns}")
+                # A sub-page leads back from one place: "‹ AI" above its title, never "Back to AI" at the bottom.
+                page.goto("/settings/ai-connections")
+                back = page.get_by_role("link", name="Back to AI")
+                expect(back).to_have_count(1)
+                self.assertLess(back.bounding_box()["y"], page.get_by_role("heading", level=2, name="Your API keys").bounding_box()["y"])
 
     def test_10_a_touch_only_tablet_lists_no_keyboard_shortcuts(self) -> None:
         """AC-1: Keyboard shortcuts appear only with a keyboard; a touch-only tablet's section list leaves them out."""

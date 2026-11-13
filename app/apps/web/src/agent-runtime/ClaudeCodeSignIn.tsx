@@ -5,6 +5,7 @@ import { ApiError } from '../api/client';
 import { Button, ErrorState, Icon, Spinner } from '../ui';
 import { consoleTicket, getRuntime, resumeConsole } from './api';
 import { METHODS, PAYER, signInFailure } from './copy';
+import { SettingsBack } from '../app/SettingsBack';
 import { BeforeSignIn, PlanConnection, WhichAccount } from './RuntimeSection';
 import type { ConsoleOutcome } from './SignInConsole';
 import '../notifications/notifications.css';
@@ -53,16 +54,18 @@ export function ClaudeCodeSignIn() {
   if (failed) return <div className="pane-scroll"><div className="pane-in"><ErrorState title="This page couldn’t load" actions={<Button variant="secondary" onClick={() => window.location.reload()}>Try again</Button>}><p>Nothing changed.</p></ErrorState></div></div>;
   if (!status) return <div className="pane-scroll"><div className="pane-in"><p className="inbox__loading"><Spinner label="Loading" /></p></div></div>;
   if (!status.enabled || status.clients.claude_code !== 'available') {
-    return <div className="pane-scroll"><div className="pane-in nset rt-page"><p className="nset__problem" role="note"><Icon name="alert" size={14} /><span><b>Claude Code in Flux isn’t offered on this Flux server.</b> The person who runs this server decides that. {back}</span></p></div></div>;
+    // The hosted sign-in is the Claude plan (F-026 §7); "Claude Code" is the client on a person's own computer, which this page says nothing about (#1363).
+    return <div className="pane-scroll"><div className="pane-in nset rt-page"><SettingsBack /><p className="nset__problem" role="note"><Icon name="alert" size={14} /><span><b>Signing in with a Claude plan isn’t offered on this Flux server.</b> The person who runs this server decides that.</span></p></div></div>;
   }
 
   const pending = status.binding?.state === 'releasing' || Boolean(status.auth?.claude_code);
   return (
     <div className="pane-scroll">
       <div className="pane-in nset aset rt-page">
+        <SettingsBack />
         <div className="inbox__head">
           <div>
-            <h2>Sign in to Claude Code</h2>
+            <h2>Sign in to Claude</h2>
             <p>Claude Code signs in with Anthropic exactly as it does in a terminal, inside your own runtime on this server. Flux never sees your password and doesn’t keep the code or the login.</p>
           </div>
         </div>
@@ -79,7 +82,6 @@ export function ClaudeCodeSignIn() {
             {error ? <p className="nset__error" role="alert"><Icon name="alert" size={14} />{error}</p> : null}
             <div className="aset__actions">
               <Button variant="primary" busy={busy === 'claude_account'} disabled={pending} onClick={() => void start('claude_account')}>Sign in with Claude</Button>
-              {back}
             </div>
             <details className="rt-more">
               <summary>Other ways to sign in</summary>

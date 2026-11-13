@@ -154,9 +154,12 @@ class AgentTakesTask(unittest.TestCase):
         page.goto("/settings/agents")
         row = page.locator("[data-task-taking]")
         expect(row).to_contain_text("When someone assigns a task to me")
-        expect(row.get_by_role("combobox")).to_contain_text("Do nothing")
-        row.get_by_role("combobox").click()
-        page.get_by_role("option", name="Give it to Planner").click()
+        # "Do nothing / Give it to [agent]" is one segmented choice under "How your AI works" (F-026 §7, #1377); Do nothing is the default.
+        expect(row.get_by_role("heading", name="How your AI works")).to_be_visible()
+        choice = row.get_by_role("radiogroup", name="When someone assigns a task to me")
+        expect(choice.get_by_role("radio", name="Do nothing")).to_be_checked()
+        choice.get_by_role("radio", name="Give it to Planner").click()
+        expect(choice.get_by_role("radio", name="Give it to Planner")).to_be_checked()
         expect(row.get_by_role("status")).to_contain_text("Saved")
         self.assertEqual(self.api(page, "GET", "/api/v1/me/task-taking", status=200)["takes"], self.ids["agent"])
 

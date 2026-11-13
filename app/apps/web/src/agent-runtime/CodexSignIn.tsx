@@ -5,6 +5,7 @@ import { ApiError } from '../api/client';
 import { Button, ErrorState, Icon, Spinner } from '../ui';
 import { consoleTicket, getRuntime, resumeConsole } from './api';
 import { CODEX_METHODS, PAYER, SIGN_IN_PROBLEM, signInFailure } from './copy';
+import { SettingsBack } from '../app/SettingsBack';
 import { BeforeSignIn, PlanConnection, WhichAccount } from './RuntimeSection';
 import type { ConsoleOutcome } from './SignInConsole';
 import '../notifications/notifications.css';
@@ -53,7 +54,7 @@ export function CodexSignIn() {
   if (failed) return <div className="pane-scroll"><div className="pane-in"><ErrorState title="This page couldn’t load" actions={<Button variant="secondary" onClick={() => window.location.reload()}>Try again</Button>}><p>Nothing changed.</p></ErrorState></div></div>;
   if (!status) return <div className="pane-scroll"><div className="pane-in"><p className="inbox__loading"><Spinner label="Loading" /></p></div></div>;
   if (!status.enabled || status.clients.codex !== 'available') {
-    return <div className="pane-scroll"><div className="pane-in nset rt-page"><p className="nset__problem" role="note"><Icon name="alert" size={14} /><span><b>This Flux doesn’t allow signing in with a subscription yet.</b> The person who runs this server decides that. {back}</span></p></div></div>;
+    return <div className="pane-scroll"><div className="pane-in nset rt-page"><SettingsBack /><p className="nset__problem" role="note"><Icon name="alert" size={14} /><span><b>Signing in with a ChatGPT plan isn’t offered on this Flux server.</b> The person who runs this server decides that.</span></p></div></div>;
   }
   const pending = Boolean(status.auth?.codex) || status.binding?.state === 'releasing';
   const [device, ...others] = CODEX_METHODS;
@@ -61,6 +62,7 @@ export function CodexSignIn() {
   return (
     <div className="pane-scroll">
       <div className="pane-in nset aset rt-page">
+        <SettingsBack />
         <div className="inbox__head">
           <div>
             <h2>Sign in to ChatGPT</h2>
@@ -79,7 +81,6 @@ export function CodexSignIn() {
             {error ? <p className="nset__error" role="alert"><Icon name="alert" size={14} />{error}</p> : null}
             <div className="aset__actions">
               <Button variant="primary" busy={busy === device!.id} disabled={pending} onClick={() => void start(device!.id)}>Get a code</Button>
-              {back}
             </div>
             <details className="rt-more">
               <summary>Other ways to sign in</summary>

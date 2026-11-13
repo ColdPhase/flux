@@ -1409,12 +1409,13 @@ class AppShellJourney(unittest.TestCase):
         page.goto("/connect-agent")
         expect(page).to_have_url(re.compile(r"/settings/agents/connect$"))
         expect(page.get_by_role("heading", level=1, name="Claude Code, Codex or another app on your computer")).to_be_visible()
+        page.get_by_text("Show the command", exact=True).first.click()
         expect(page.get_by_text("claude mcp add --transport http flux", exact=False)).to_be_visible()
-        # Nothing to fill in: no project to choose, no name to give, no capability to switch on.
-        connection_page = page.get_by_role("region", name="Your agent app")
+        # Nothing to fill in: no space to choose, no name to give, no capability to switch on.
+        connection_page = page.get_by_role("region", name="Claude Code, Codex or another app")
         for control in ("checkbox", "textbox", "combobox", "radio"):
             expect(connection_page.get_by_role(control)).to_have_count(0)
-        expect(page.get_by_text("No client is connected yet")).to_be_visible()
+        expect(page.get_by_text("Nothing is connected yet")).to_be_visible()
         shot(page, "agent-first-desktop")
         page.set_viewport_size(PHONE)
         shot(page, "agent-first-phone")

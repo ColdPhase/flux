@@ -10,9 +10,16 @@
 .sset__link[aria-current="page"] { background: var(--el); box-shadow: 0 1px 2px rgba(0,0,0,.05), 0 6px 16px -6px rgba(0,0,0,.12); }
 .sset__link:focus-visible { outline: 2px solid var(--t1); outline-offset: 1px; }
 .sset__page { display: flex; flex: 1; min-width: 0; flex-direction: column; }
-.pane-in.sset-in { max-width: calc(640px + 88px); margin: 0; padding: 30px 44px 48px; }
-/* A very wide window centres the page in its area, as Home, Inbox and the conversation centre theirs (F-015, #763); no cap. */
-@media (min-width: 2000px) { .pane-in.sset-in { margin-inline: auto; } }
+.pane-in.sset-in { max-width: calc(640px + 88px); margin: 0 auto; padding: 30px 44px 48px; }
+/* One column for every page inside Settings (#1362): 640 px of content, centred in the page's area at every computer width as Home, Inbox, the
+   conversation and a space's settings centre theirs (F-015, #763). The sub-pages (an agent, the keys, the clients) and Notifications carry their own
+   classes and used to differ by up to 100 px in width and 130 px in position; one rule here is the one place that sets them. */
+@media (min-width: 641px) { .sset__page .pane-scroll > .pane-in { max-width: calc(640px + 88px); margin: 0 auto; padding: 30px 44px 48px; } }
+/* "‹ AI" above a sub-page's title, in one place on every one of them (#1362); 44 px high on touch. */
+.sset-back { display: inline-flex; align-items: center; gap: 2px; min-height: 28px; margin: -4px 0 10px -4px; padding: 0 4px; border-radius: var(--r-sm); font-size: var(--fs-xs); color: var(--t2); text-decoration: none; }
+.sset-back:hover { color: var(--t1); }
+.sset-back:focus-visible { outline: 2px solid var(--t1); outline-offset: 1px; }
+@media (pointer: coarse) { .sset-back { min-height: 44px; min-width: 44px; } }
 .sset-head { margin-bottom: 16px; }
 .sset-head h2 { font-size: var(--fs-xl); font-weight: 600; letter-spacing: -.015em; line-height: 1.25; color: var(--t1); }
 .sset-head p { margin-top: 4px; font-size: var(--fs-base); line-height: 1.45; color: var(--t2); max-width: 600px; }
@@ -231,3 +238,11 @@
 .sset-acct__done { margin: 0; padding: 0 18px; font-size: var(--fs-sm); color: var(--t2); }
 .sset-acct__done:empty { display: none; }
 .sset-acct__done svg { vertical-align: -2px; margin-right: 4px; }
+
+/* "When someone assigns a task to me" (F-026 §7 Agents and AI, #1377): Do nothing / Give it to [agent ▾] as one segmented choice. With several agents the
+   second segment is the app's Select, dressed as a segment so it sits in the same track and raises when it is the choice. */
+.tt .seg { flex: none; }
+.tt__seg .tt__give.ui-select { min-height: 0; height: var(--seg-h, 30px); padding: 0 12px; border: 0; border-radius: var(--r-pill); background: transparent; box-shadow: none; color: var(--t2); font-size: var(--fs-sm); font-weight: 500; }
+.tt__seg .tt__give.ui-select.is-on { background: var(--seg-on); color: var(--t1); box-shadow: var(--sh-raise), inset 0 0 0 1px var(--line2); }
+.tt__seg .tt__give.ui-select:hover { color: var(--t1); }
+@media (max-width: 640px) { .tt .sset-row { flex-wrap: wrap; } .tt__seg { margin-left: 0; } }

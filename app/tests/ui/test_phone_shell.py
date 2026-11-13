@@ -329,8 +329,11 @@ class PhoneShellJourney(unittest.TestCase):
             back.click()
             expect(page).to_have_url(f"{ORIGIN}/settings")
         page.get_by_role("link", name=re.compile(r"^AI\b")).click()
-        expect(page.get_by_role("link", name=re.compile("^Local co-work on this computer"))).to_be_visible()
-        page.get_by_role("link", name=re.compile("^Local co-work on this computer")).click()
+        # #1363: the person's own Claude Code or Codex is the Connect AI window's fourth choice; it leads to its Settings page.
+        page.get_by_role("button", name=re.compile("^Connect (AI|another)$")).click()
+        window = page.get_by_role("dialog", name="Connect your AI")
+        window.locator("[data-choice=local_client]").click()
+        window.get_by_role("button", name="Continue").click()
         # #763 AG-2: Connect your agent is a Settings page, with the way back to Settings › AI first on the left.
         expect(page).to_have_url(f"{ORIGIN}/settings/agents/connect")
         page.locator("header").get_by_role("button", name="Back", exact=True).click()

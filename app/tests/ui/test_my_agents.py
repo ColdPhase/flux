@@ -141,11 +141,42 @@ class MyAgentsJourney(unittest.TestCase):
         expect(page.get_by_role("radio", name="Ask me first")).to_be_checked()
         stored = self.api(page, "GET", f"/api/v1/my-agents/{self.ids['planner']}")
         self.assertEqual((stored["name"], stored["instructions"], stored["mayDo"], stored["answersAi"]), ("Planner", INSTRUCTIONS, "ask", False))
-        self.assertIn(stored["colour"], ("clay", "ochre", "sage", "teal", "indigo", "plum", "rose"), "a later agent gets a colour of the palette")
+        self.assertEqual(stored["colour"], "teal", "the first agent after Assistant gets the colour furthest from ink (#1377)")
         page.reload()
         expect(page.get_by_label("Instructions")).to_have_value(INSTRUCTIONS)
         expect(page.get_by_role("radio", name="Ask me first")).to_be_checked()
         shot(page, "my-agent-page-1440")
+
+    def test_02b_the_agents_list_matches_its_render_and_the_first_agents_are_told_apart(self) -> None:
+        """#1377 (F-026 §7 Agents and AI): Assistant says what it is for before it has instructions, "What it may do" is a tag, a second new agent is
+        Indigo (not another warm brown), and Do nothing / Give it to are one segmented choice under "How your AI works"."""
+        page = self.page()
+        page.goto("/settings/agents")
+        page.get_by_role("button", name="New agent").click()
+        page.get_by_label("Name", exact=True).fill("Reviewer")
+        page.get_by_role("button", name="Make agent").click()
+        expect(page.get_by_role("heading", level=2, name="Reviewer")).to_be_visible()
+        reviewer = page.url.rsplit("/", 1)[1]
+        self.assertEqual([item["colour"] for item in self.api(page, "GET", "/api/v1/my-agents")["items"]], ["ink", "teal", "indigo"], "colours are told apart")
+        page.goto("/settings/agents")
+        rows = page.get_by_role("list", name="Your agents")
+        expect(rows.locator("[data-agent]").first.locator(".agl__job")).to_have_text("Answers your questions and runs your schedules.")
+        tag = rows.locator("[data-agent]").first.locator(".agl__may")
+        expect(tag).to_have_text("Do it and tell me")
+        card = rows.evaluate("el => getComputedStyle(el).backgroundColor")
+        self.assertNotEqual(tag.evaluate("el => getComputedStyle(el).backgroundColor"), card, "the tag is drawn against its card")
+        hues = rows.locator(".kreska").evaluate_all("els => els.map((el) => [...el.classList].find((name) => name.startsWith('kreska--')) ?? 'ink')")
+        self.assertEqual(len(set(hues)), 3, f"three agents, three faces: {hues}")
+        taking = page.locator("[data-task-taking]")
+        expect(taking.get_by_role("heading", name="How your AI works")).to_be_visible()
+        expect(taking.get_by_role("radiogroup", name="When someone assigns a task to me").get_by_role("radio")).to_have_count(1)
+        expect(taking.get_by_role("combobox", name="Give it to")).to_be_visible()
+        shot(page, f"1377-settings-ai-{UI_BROWSER}")
+        # Leave the world as the next tests expect it: Assistant and Planner.
+        page.goto(f"/settings/agents/{reviewer}")
+        page.get_by_role("button", name="Delete Reviewer").click()
+        page.get_by_role("group", name="Delete Reviewer").get_by_role("button", name="Delete Reviewer").click()
+        expect(page.get_by_role("list", name="Your agents")).to_be_visible()
 
     def test_03_what_an_agent_remembers_is_visible_and_editable(self) -> None:
         page = self.page()
@@ -234,6 +265,22 @@ class MyAgentsJourney(unittest.TestCase):
         for control in page.get_by_role("radio").all():
             self.assertGreaterEqual(control.bounding_box()["height"], 32)
         shot(page, "my-agent-page-phone-390")
+        # One way back on the phone: the header's (#1377). The page itself carries no second "‹ AI".
+        expect(page.locator("header.phead").get_by_role("button", name="Back", exact=True)).to_be_visible()
+        expect(page.get_by_role("link", name="Back to AI")).to_have_count(0)
+        page.locator("header.phead").get_by_role("button", name="Back", exact=True).click()
+        expect(page).to_have_url(re.compile(r"/settings/agents$"))
+        # The agent's chat: its "Settings" link is a 44 px touch target, and its composer is as wide as a space's (#1377).
+        page.goto(f"/agents/{self.ids['planner']}")
+        link = page.get_by_role("link", name="Settings", exact=True)
+        box = link.bounding_box()
+        self.assertGreaterEqual(min(box["width"], box["height"]), 44, f"the agent chat's Settings link on touch: {box}")
+        # A tablet with touch keeps "‹ AI" above the page's title, 44 px high.
+        tablet = self.page(phone=True, viewport={"width": 820, "height": 1180})
+        tablet.goto(f"/settings/agents/{self.ids['planner']}")
+        back = tablet.get_by_role("link", name="Back to AI")
+        box = back.bounding_box()
+        self.assertGreaterEqual(min(box["width"], box["height"]), 44, f"‹ AI on touch: {box}")
 
     def test_05b_segmented_choices_size_each_option_to_its_label_and_keep_its_room(self) -> None:
         """#1219: What it may do and Model give each option its label and 14 px each side, not an equal share of the group, so the longest

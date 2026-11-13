@@ -162,7 +162,7 @@ class RuntimeConsole(unittest.TestCase):
         self.no_credential_fields(page)
         shot(page, "runtime-off-phone-390")
         page.goto("/settings/agents/claude-code")
-        expect(page.get_by_role("note")).to_contain_text("Claude Code in Flux isn’t offered on this Flux server.")
+        expect(page.get_by_role("note")).to_contain_text("Signing in with a Claude plan isn’t offered on this Flux server.")
 
     @unittest.skipUnless(RUNTIME, "needs the runtime profile (scripts/check_agent_runtime.sh)")
     def test_03_before_sign_in_the_notices_are_plain(self) -> None:
@@ -663,7 +663,7 @@ class RuntimeConsole(unittest.TestCase):
                     page.goto("/settings/agents/claude-code")
                     expect(page.get_by_role("button", name="Sign in with Claude", exact=True)).to_be_visible()
                     if not phone:
-                        expect(page.get_by_role("heading", name="Sign in to Claude Code", exact=True)).to_be_visible()
+                        expect(page.get_by_role("heading", name="Sign in to Claude", exact=True)).to_be_visible()
                     self.assertTrue(any("ClaudeCodeSignIn-" in url for url in assets), "the destination imports its actual route")
                     self.assertFalse(any("SignInConsole-" in url for url in assets), "choosing a method does not import the terminal")
                     page.locator("details.rt-more summary").filter(has_text="Other ways to sign in").click()

@@ -87,10 +87,17 @@ export interface AddAgentMemoryCommand { body: string }
 /** `PATCH …/memory/:itemId`. */
 export interface EditAgentMemoryCommand { body: string }
 
+/**
+ * The order colours are given in when they are assigned automatically (final design §2, #1377): the ones furthest apart in hue first, so a person's
+ * first agents (Teal, Indigo, Ochre, as the screens draw them) read as different faces at the size of a sidebar row. Clay and Rose are warm and pale like
+ * Ochre, so they come last; before this order the first three after ink were Clay, Ochre and Sage, which read as one brown.
+ */
+const AUTO_COLOURS: readonly AgentColour[] = ['teal', 'indigo', 'ochre', 'rose', 'sage', 'plum', 'clay'];
+
 /** The least used colour among the colours already in use; the first agent gets ink (final design §2). */
 export function nextAgentColour(inUse: readonly string[]): AgentColour {
   if (!inUse.length) return 'ink';
-  const palette = AGENT_COLOURS.filter((colour) => colour !== 'ink');
+  const palette = AUTO_COLOURS;
   const used = (colour: string) => inUse.filter((item) => item === colour).length;
   return palette.reduce((best, colour) => (used(colour) < used(best) ? colour : best), palette[0]!);
 }
