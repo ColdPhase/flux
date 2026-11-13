@@ -593,6 +593,30 @@ class LiveJourney(LiveBase):
         bar.get_by_role("button", name="Leave", exact=True).click()
         expect(bar).to_have_count(0)
 
+    def test_00i_in_the_call_the_header_shows_it_and_takes_you_to_it(self) -> None:
+        """#1424: while you are in a call the header's slot reads "In call" with the live dot and goes to the call, never "You are in a live
+        session" and a click that does nothing."""
+        self.seed()
+        nia = self.page("nia")
+        nia.goto(f"/projects/{self.ids['project']}")
+        self.call(nia)
+        header = nia.locator("header.top")
+        in_call = header.get_by_role("button", name="In call", exact=True)
+        expect(in_call).to_be_visible()
+        expect(header.get_by_role("button", name="Call", exact=True)).to_have_count(0)
+        # Somewhere else in the space (the Tasks view has no place of the call's), it takes you back to the call's place.
+        project_view(nia, "Tasks")
+        expect(nia).to_have_url(re.compile(r"/tasks"))
+        in_call.click()
+        expect(nia).to_have_url(re.compile(rf"/projects/{self.ids['project']}$"))
+        expect(self.bar(nia)).to_be_visible()
+        # At its own place with nothing shown, the call is already in view: the strip's place button takes the focus.
+        in_call.click()
+        expect(self.bar(nia).locator(".lv-where")).to_be_focused()
+        expect(nia.get_by_text("You are in a live session")).to_have_count(0)
+        self.bar(nia).get_by_role("button", name="Leave", exact=True).click()
+        expect(self.bar(nia)).to_have_count(0)
+
     def test_00d_a_call_is_noticed_in_the_inbox_and_sidebar_and_invitations_reach_people(self) -> None:
         """#1223 points 2 to 6 (F-041): Lee starts a call; Ada's open tab on Home shows the space's call glyph and her Inbox the call with
         Join, within 2 s; Join joins it. Lee alone reads "Nobody joined · Invite someone"; Invite… invites Jonas and Kai. The call leaves
@@ -1292,6 +1316,15 @@ class LiveJourney(LiveBase):
         expect(sheet).to_be_hidden()
         expect(self.bar(phone).get_by_role("status").first).to_contain_text("Live")
         expect(self.bar(phone).get_by_role("button", name="Call details and more")).to_be_focused()
+        # #1424: on a phone ⋯'s sheet has the one "Invite someone" row, which opens the small list of people and nothing else.
+        bar.get_by_role("button", name="Call details and more").tap()
+        phone.get_by_role("dialog", name="Call details", exact=True).get_by_role("button", name="Invite someone").tap()
+        invite = phone.get_by_role("dialog", name="Invite someone", exact=True)
+        expect(invite.locator(".lv-person--absent").first).to_be_visible()
+        expect(invite).not_to_contain_text("Microphone")
+        shot(phone, "live-phone-390-invite")
+        invite.get_by_role("button", name="Close").tap()
+        expect(invite).to_be_hidden()
         # Nia shares her screen; the phone views it and zooms without publishing anything.
         self.bar(nia).get_by_role("button", name="Share a window, tab or screen").click()
         # On a phone a new shared screen is offered in a sheet (F-041), not opened over the work.
