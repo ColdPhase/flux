@@ -22,8 +22,8 @@ export const MARKS = {
   z: { d: 'M21.3 0.9H23.1L21.3 2.7H23.1', width: 1 },
   /** `celebrate`: a sparkle. */
   sparkle: { d: 'M22.1 0.8V3M21 1.9H23.2', width: 1.1 },
-  /** `writing`: the pen, in the face's lower right, inside the frame. */
-  pen: { d: 'M17.4 18.2 19.8 15.8M15.6 18.6H17', width: 1.2 },
+  /** `writing`: the pen, in the face's lower right, inside the frame with the same gap (#1342). */
+  pen: { d: 'M16.9 17.7 19.3 15.3M15.1 18.1H16.5', width: 1.2 },
 } as const;
 
 export type KreskaExpression =

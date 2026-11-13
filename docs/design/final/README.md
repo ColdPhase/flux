@@ -315,8 +315,8 @@ small moment, never noise.
   (Settings → Appearance); every face is then its static frame.
 - A face that shows no state (an agent's icon beside its name, with no expression given) stays still, and so does a
   face of 20 px or less, apart from the three loops that already moved there (Thinking, Loading, Working).
-- A mark keeps its 0.5 px gap from the frame through the whole motion, and the writing pen, drawn closer inside the
-  frame on small faces, never moves toward it (`app/tests/app/kreska-marks.test.ts`).
+- A mark keeps its 0.5 px gap from the frame through the whole motion, the writing pen inside the frame as well as
+  the marks outside it (`app/tests/app/kreska-marks.test.ts`).
 
 | Expression | When | Motion |
 | --- | --- | --- |

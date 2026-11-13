@@ -50,8 +50,8 @@ function gap(mark: { d: string; width: number }, size: number): number {
 
 const SIZES = [24, 32, 40, 48, 56, 64, 80, 88, 112];
 
-test('the hello wave, the asleep z and the celebrate sparkle lie outside the frame with a gap at every size (#849)', () => {
-  for (const [name, mark] of [['hello wave', MARKS.wave], ['asleep z', MARKS.z], ['celebrate sparkle', MARKS.sparkle]] as const) {
+test('the hello wave, the asleep z and the celebrate sparkle lie outside the frame, and the writing pen inside it, with a gap at every size (#849, #1342)', () => {
+  for (const [name, mark] of [['hello wave', MARKS.wave], ['asleep z', MARKS.z], ['celebrate sparkle', MARKS.sparkle], ['writing pen', MARKS.pen]] as const) {
     for (const size of SIZES) assert.ok(gap(mark, size) >= 0.5, `${name} at ${size}px: gap ${gap(mark, size).toFixed(2)}px`);
   }
 });
@@ -192,9 +192,7 @@ test('every moving part of every expression keeps its gap from the frame through
     if (stops.every(([, fns]) => !fns.length)) continue; // opacity only
     for (const size of SIZES) {
       const { gap: measured, min, max } = motionGap(rule, stops, size);
-      // The writing pen is drawn inside the frame closer than 0.5px on small faces; its strokes never bring it any closer.
-      const still = motionGap(rule, [[0, []], [100, []]], size).gap;
-      assert.ok(measured >= Math.min(0.5, still) - 1e-9, `${rule.expression} ${rule.part} (${rule.name}) at ${size}px: gap ${measured.toFixed(2)}px`);
+      assert.ok(measured >= 0.5, `${rule.expression} ${rule.part} (${rule.name}) at ${size}px: gap ${measured.toFixed(2)}px`);
       if (rule.part === '.kreska__extra') assert.ok(min[0] >= 0 && min[1] >= 0 && max[0] <= 24 && max[1] <= 24, `${rule.expression} mark stays in the 24 box while it moves: ${min} ${max}`);
     }
   }
