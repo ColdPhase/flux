@@ -80,6 +80,7 @@ Names in the code that are not settings at all:
 | `FLUX_AGENT_ACCESS` | output marker of the operations tool |
 | `FLUX_GITHUB` | prefix in an error message |
 | `FLUX_LIVE_QUEUE` | log marker |
+| `FLUX_MCP_LEGACY_VERSIONS` | constant: the legacy MCP protocol versions Flux admits |
 | `FLUX_MCP_PROTOCOL_VERSIONS` | constant: supported MCP protocol versions |
 | `FLUX_MIGRATIONS` | output marker of the operations tool |
 | `FLUX_MIGRATION_GATE` | output marker of the operations tool |
