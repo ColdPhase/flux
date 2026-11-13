@@ -369,6 +369,57 @@ class NewProject(unittest.TestCase):
                 self.assertEqual(page.evaluate("() => document.elementFromPoint(20, 300).closest('.ui-overlay') !== null"), True, "the scrim is over the sidebar")
                 shot(page, f"1361-newspace-encrypted-{size['width']}x{size['height']}-{UI_BROWSER}")
 
+    def test_09c_no_way_around_the_download_and_one_space_on_a_slow_double_click(self) -> None:
+        """#1361 (review): keyboard only, Enter in every field, a forced submit, a double-click on a slow network. Nothing is made before the
+        recovery code is downloaded, exactly one space is made after it, and the downloaded code is the one that unlocks it."""
+        self.ensure_account()
+        page = self.page()
+        company = self.ids["workspace"]
+        name = f"Ledger {int(time.time() * 1000)}"
+        made = lambda: [space for space in self.api(page, "GET", f"/api/v1/workspaces/{company}/encrypted-spaces", status=200) if space["name"] == name]
+        card, encrypted = self.encrypted_card(page)
+        card.get_by_label("Space name").fill(name)
+        encrypted.focus()
+        page.keyboard.press("Space")
+        expect(encrypted).to_have_attribute("aria-checked", "true")
+        card.get_by_label("Your unlock password", exact=True).fill(self.UNLOCK)
+        card.get_by_label("Repeat", exact=True).fill(self.UNLOCK)
+        create = card.get_by_role("button", name="Create space")
+        expect(create).to_be_disabled()
+        for field in ("Space name", "Your unlock password", "Repeat"):
+            (card.get_by_label(field) if field == "Space name" else card.get_by_label(field, exact=True)).press("Enter")
+        # Even a submit that bypasses the disabled button is refused in words, and nothing reaches the server.
+        card.evaluate("(form) => form.requestSubmit()")
+        expect(card).to_contain_text("Download the recovery code first: it is the only way back in")
+        page.wait_for_timeout(400)
+        self.assertEqual(made(), [], "nothing is made before the code is downloaded")
+        # The download by keyboard, then a double-click while the server answers slowly.
+        def slow(route) -> None:
+            time.sleep(1.5)
+            route.continue_()
+        page.route("**/api/v1/encrypted-workspaces", slow)
+        download_button = card.get_by_role("button", name="Download recovery code")
+        download_button.focus()
+        with page.expect_download() as download:
+            page.keyboard.press("Enter")
+        found = re.search(r"([A-Z0-9]{4}(?:-[A-Z0-9]{4}){3})\n([A-Z0-9]{4}(?:-[A-Z0-9]{4}){3})", open(download.value.path(), encoding="utf-8").read())
+        self.assertIsNotNone(found)
+        code = f"{found.group(1)}-{found.group(2)}"
+        expect(create).to_be_enabled()
+        create.dblclick()
+        expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}$"), timeout=15000)
+        page.wait_for_timeout(1500)
+        spaces = made()
+        self.assertEqual(len(spaces), 1, f"one double-click on a slow network makes one space: {spaces}")
+        workspace_id = spaces[0]["id"]
+        # The downloaded code is the real one: a wrong code is refused, the file's code unlocks it.
+        self.api(page, "POST", f"/api/v1/workspaces/{workspace_id}/lock", {}, status=200)
+        wrong = page.request.fetch(f"{ORIGIN}/api/v1/workspaces/{workspace_id}/unlock", method="POST", data=json.dumps({"recoveryCode": "AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA"}),
+                                   headers={"origin": ORIGIN, "content-type": "application/json", "idempotency-key": str(uuid.uuid4())})
+        self.assertGreaterEqual(wrong.status, 400, wrong.text())
+        self.assertLess(wrong.status, 500, wrong.text())
+        self.api(page, "POST", f"/api/v1/workspaces/{workspace_id}/unlock", {"recoveryCode": code}, status=200)
+
     def test_10_a_first_time_owner_reaches_encrypted_from_home_before_making_anything(self) -> None:
         """#848 AC-1 and AC-4: a new account with no space and no note opens the New space window from Home's first-run card and finds
         Encrypted there; creating leaves no plain space behind."""

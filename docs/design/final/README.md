@@ -1480,7 +1480,9 @@ On the phone the Assistant conversation is a normal conversation. Its header lis
     lock in a round tile, "Payroll is locked", then one paragraph that says what happened and who can
     unlock it once ("Ada locked Payroll at 09:00. Ada can unlock it." or "The server restarted at
     22:15. Ada and Piotr can unlock it."). A space admin's card adds the password field and Unlock on
-    one row, "Use the recovery code" under them and "People and encryption" last, all centred.
+    one row, and "Use the recovery code" and "People and encryption" side by side under them, centred
+    (they wrap to two lines on a narrow phone). The line a refusal is said in is kept at the card's foot,
+    so nothing in the card moves when one appears.
 
 ### Last active
 
