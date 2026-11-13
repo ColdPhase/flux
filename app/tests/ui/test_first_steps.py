@@ -139,7 +139,8 @@ class FirstStepsJourney(unittest.TestCase):
                 expect(card.get_by_role("heading", name="First steps")).to_be_visible()
                 rows = self.rows(page)
                 self.assertLessEqual(len(rows), 3)
-                self.assertNotIn("Name your company", rows)
+                for admin_row in ("Name your company", "Invite people", "Connect AI"):
+                    self.assertNotIn(admin_row, rows, "a member never sees an owner's or admin's row")
                 self.assertIn("Add your photo", rows)
                 if self.ids["everyone"]:
                     self.assertEqual(rows[0], "Write your first message")
