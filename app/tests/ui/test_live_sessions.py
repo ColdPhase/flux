@@ -681,13 +681,14 @@ class LiveJourney(LiveBase):
         self.assertLess(time.monotonic() - started, 3, "the space's call glyph shows within about 2 s")
         shot(ada, "live-desktop-1440-sidebar-call-on")
         # The Inbox: the call with Join (the notice is written by the worker, a moment after the start).
-        # A call is a Call, never a Question (#1368): Home names it so too, in its one row.
+        # A call is a Call, never a Question (#1368): Home names it so too, in its one row, "Call · Lee Park · Repair cafe" and then its words
+        # (#1424: every row says who and where; a call's sentence is not repeated).
         ada.goto("/")
-        row = ada.get_by_role("list", name="Top of your Inbox").locator(".home__row", has_text="Lee Park started a call in Repair cafe")
-        expect(row.locator(".home__row-k")).to_have_text("Call")
+        row = ada.get_by_role("list", name="Top of your Inbox").locator(".home__row", has_text="Lee Park").filter(has_text="Call in Repair cafe")
+        expect(row.locator(".home__row-k")).to_have_text("Call · Lee Park · Repair cafe")
         expect(row).not_to_contain_text("Question")
         ada.goto("/inbox")
-        card = ada.locator(".nyc", has_text="Lee Park started a call in Repair cafe")
+        card = ada.locator(".nyc", has_text="Lee Park").filter(has_text="Call in Repair cafe")
         expect(card).to_be_visible()
         expect(card).to_contain_text("Call")
         expect(card).not_to_contain_text("Question")
@@ -698,7 +699,7 @@ class LiveJourney(LiveBase):
         expect(card).to_have_count(0)
         ada.get_by_role("navigation", name="Places").get_by_role("link", name="Home").click()
         expect(ada.locator(".home__hello")).to_be_visible()
-        expect(ada.locator(".home__row", has_text="started a call in Repair cafe")).to_have_count(0)
+        expect(ada.locator(".home__row", has_text="Lee Park").filter(has_text="Call in Repair cafe")).to_have_count(0)
         expect(bar.get_by_role("status").filter(has_text="Nobody joined")).to_have_count(0)
 
         # #1424: "Invite someone" is the strip's one invite control (no "Invite…" beside it, and the "Nobody joined" line has no second one on a
@@ -745,7 +746,7 @@ class LiveJourney(LiveBase):
         ada.goto("/")
         expect(ada.locator("aside").get_by_role("link", name=re.compile("^Repair cafe")).locator("svg.side__live[data-call-mark]")).to_have_count(0, timeout=40000)
         ada.goto("/inbox")
-        expect(ada.locator(".nyc", has_text="started a call in Repair cafe")).to_have_count(0)
+        expect(ada.locator(".nyc", has_text="Lee Park").filter(has_text="Call in Repair cafe")).to_have_count(0)
         # The tab stops counting the call once nobody is in it (its card stays until the call ends, as #1268 draws it).
         expect(kai).not_to_have_title(re.compile(r"^\(\d+\) "), timeout=30000)
 
