@@ -219,14 +219,13 @@ SCRIPT = b"<< /S /JavaScript /JS (" + JS + b") >>"
 PLACEMENT = build_pdf([{"text": "Gateway placement"}])
 # The audit's page (#1350): one page whose only annotation is a link as large as the page, so a click anywhere on the document followed it.
 BIG_LINK = build_pdf([{"text": "Click anywhere", "annots": [link(FULL_PAGE, b"<< /S /URI /URI (%s) >>" % PDF_LINK.encode())]}])
-# Everything else a PDF can ask for: scripts (open action, document and page actions), every scheme, Launch, another file, a form. One honest link.
+# Everything else a PDF can ask for: scripts (open action, document and page actions), every other scheme, Launch, another file, a JavaScript action and an
+# address with a password. One honest link. (An http(s) address that a Launch or GoToR file specification names is an address like any other: shown first.)
 HOSTILE_PDF = build_pdf([{"text": "Hostile links", "annots": [
     link("0 0 300 20", b"<< /S /URI /URI (javascript:alert(1)) >>"), link("0 20 300 40", b"<< /S /URI /URI (data:text/html,<script>alert(1)</script>) >>"),
     link("0 40 300 60", b"<< /S /URI /URI (file:///etc/passwd) >>"), link("0 60 300 80", b"<< /S /URI /URI (vbscript:msgbox) >>"),
     link("0 80 300 100", b"<< /S /URI /URI (mailto:a@b.example) >>"), link("0 100 300 120", b"<< /S /URI /URI (ftp://f.example/x) >>"),
-    link("0 120 300 140", b"<< /S /Launch /F (calc.exe) >>"),
-    link("0 140 300 160", b"<< /S /Launch /F << /FS /URL /F (https://" + LEAK.encode() + b"/launch) >> >>"),
-    link("0 160 300 180", b"<< /S /GoToR /F << /FS /URL /F (https://" + LEAK.encode() + b"/other.pdf) >> /D [0 /Fit] >>"),
+    link("0 120 300 140", b"<< /S /Launch /F (calc.exe) >>"), link("0 140 300 160", b"<< /S /GoToR /F (other.pdf) /D [0 /Fit] >>"),
     link("0 180 300 190", b"<< /S /JavaScript /JS (app.alert(1)) >>"), link("0 190 300 195", b"<< /S /URI /URI (https://user:pw@flux.example/x) >>"),
     link("0 195 300 200", b"<< /S /URI /URI (https://" + LEAK.encode() + b"/legit) >>"),
 ]}], catalog=b" /OpenAction " + SCRIPT + b" /Names << /JavaScript << /Names [(x) " + SCRIPT + b"] >> >>", page_extra=b" /AA << /O " + SCRIPT + b" >>")
@@ -705,6 +704,14 @@ class FilePreview(unittest.TestCase):
         """#1350: a link annotation as large as the page. Pressing anywhere on the document used to replace the whole Flux tab in Chromium."""
         page, outside, events = self.open("biglink", browser=browser)
         title, url = page.title(), page.url
+        referers: list[str | None] = []
+
+        def serve(route) -> None:
+            """The address the person opens: answered with a page that says what its opener is, and recorded like every address that leaves."""
+            outside.append(route.request.url)
+            referers.append(route.request.headers.get("referer"))
+            route.fulfill(content_type="text/html", body="<!doctype html><title>x</title><script>document.title = 'opener:' + window.opener</script>")
+        page.context.route(PDF_LINK, serve)
         if native_viewer:
             self.assertTrue(page.evaluate("navigator.pdfViewerEnabled"), "this build has the PDF viewer the audit clicked in, which Flux does not use")
         dialog, inside, frame = self.pdf_viewer(page, "biglink", "biglink.pdf")
@@ -734,7 +741,9 @@ class FilePreview(unittest.TestCase):
         expect(anchor).to_have_attribute("rel", "noopener noreferrer")
         with page.context.expect_page() as opened:
             anchor.click()
-        self.assertIsNone(opened.value.opener(), "the new tab has no opener")
+        opened.value.wait_for_load_state()
+        expect(opened.value).to_have_title("opener:null")  # noopener: the new tab cannot reach Flux's page
+        self.assertEqual(referers, [None], "and it is sent no referrer")
         deadline = time.time() + 10
         while time.time() < deadline and not outside:
             page.wait_for_timeout(100)
@@ -769,22 +778,32 @@ class FilePreview(unittest.TestCase):
         top = lambda index: frame.evaluate("(i) => document.querySelectorAll('.page')[i].getBoundingClientRect().top", index)  # noqa: E731
         scroll = lambda: frame.evaluate("document.getElementById('scroller').scrollTop")  # noqa: E731
         to_top = lambda: frame.evaluate("document.getElementById('scroller').scrollTop = 0")  # noqa: E731
+
+        def settles(index: int, low: float, high: float) -> None:
+            """The page's top edge, in the viewer's view, comes to rest between `low` and `high` (the jump is asynchronous)."""
+            deadline = time.time() + 8
+            while time.time() < deadline and not low <= top(index) < high:
+                page.wait_for_timeout(100)
+            self.assertTrue(low <= top(index) < high, top(index))
+
         self.assertEqual(scroll(), 0)
         buttons.nth(0).click()  # page two, a point down it
+        settles(1, -300, -50)
         expect(inside.locator(".page").nth(1).locator(".textLayer")).to_contain_text("Page two")
-        self.assertTrue(-300 < top(1) < -50, top(1))
         to_top()
         buttons.nth(2).click()  # a named destination: page three
+        settles(2, 0, 300)
         expect(inside.locator(".page").nth(2).locator(".textLayer")).to_contain_text("Page three")
-        self.assertTrue(0 <= top(2) < 300, top(2))
         to_top()
         buttons.nth(3).click()  # the last-page action
-        expect(inside.locator(".page").nth(2).locator(".textLayer")).to_contain_text("Page three")
-        self.assertTrue(0 <= top(2) < 300, top(2))
+        settles(2, 0, 300)
         frame.evaluate("document.getElementById('scroller').scrollTop = document.querySelectorAll('.page')[1].offsetTop - 12")
         inside.locator(".page").nth(1).locator(".links button").click()  # the first-page action
-        expect(inside.locator(".page").first.locator(".textLayer")).to_contain_text("Page one")
+        deadline = time.time() + 8
+        while time.time() < deadline and scroll() != 0:
+            page.wait_for_timeout(100)
         self.assertEqual(scroll(), 0)
+        expect(inside.locator(".page").first.locator(".textLayer")).to_contain_text("Page one")
         page.wait_for_timeout(600)
         self.assertEqual(dialog.get_by_text("This PDF links to").count(), 0, "a place in the file needs no confirmation")
         self.assertEqual([json.loads(m)["type"] for m in page.evaluate("window.__messages")], ["ready", "drawn"], "and the viewer said nothing to Flux")

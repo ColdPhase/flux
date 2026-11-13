@@ -30,6 +30,8 @@ interface View {
   /** The page's size at scale 1, once PDF.js has read it. */
   size: { width: number; height: number } | null;
   scale: number;
+  /** In or near the scroller's view: the page is drawn while it is, and released when it is not. */
+  near: boolean;
   active: boolean;
   /** Bumped when the page stops being drawn, so a drawing that finishes late is thrown away. */
   turn: number;
@@ -66,7 +68,9 @@ async function open(bytes: Uint8Array) {
   const observer = new IntersectionObserver((entries) => {
     for (const entry of entries) {
       const view = views[Number((entry.target as HTMLElement).dataset.index)];
-      if (view) { if (entry.isIntersecting) activate(view); else release(view); }
+      if (!view) continue;
+      view.near = entry.isIntersecting;
+      if (view.near) activate(view); else release(view);
     }
   }, { root: scroller, rootMargin: '100% 0px' });
   for (let index = 0; index < count; index++) {
@@ -76,6 +80,9 @@ async function open(bytes: Uint8Array) {
     element.setAttribute('role', 'group');
     element.setAttribute('aria-label', `Page ${index + 1} of ${count}`);
     const canvas = document.createElement('canvas');
+    // A canvas starts at 300 x 150 pixels: empty until its page is drawn, and again when it is released.
+    canvas.width = 0;
+    canvas.height = 0;
     canvas.setAttribute('aria-hidden', 'true');
     const text = document.createElement('div');
     text.className = 'textLayer';
@@ -83,7 +90,7 @@ async function open(bytes: Uint8Array) {
     links.className = 'links';
     element.append(canvas, text, links);
     pages.append(element);
-    views.push({ index, element, canvas, text, links, size: null, scale: 1, active: false, turn: 0, task: null, layer: null });
+    views.push({ index, element, canvas, text, links, size: null, scale: 1, near: false, active: false, turn: 0, task: null, layer: null });
   }
   layout();
   new ResizeObserver(() => relayout()).observe(scroller);
@@ -131,7 +138,10 @@ function relayout() {
   relayoutTimer = window.setTimeout(() => {
     const before = views.map((view) => view.scale);
     layout();
-    for (const view of views) if (view.active && Math.abs(view.scale - before[view.index]!) > 0.001) { release(view); activate(view); }
+    for (const view of views) {
+      if (view.active && Math.abs(view.scale - before[view.index]!) > 0.001) release(view);
+      if (view.near) activate(view);
+    }
   }, 120);
 }
 

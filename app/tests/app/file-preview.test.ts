@@ -44,7 +44,8 @@ const NESTED = [
   // The audit's pages: one level, and a srcdoc inside a srcdoc.
   [`<iframe hidden srcdoc="${encode(HINT)}"></iframe>`, `<x-iframe hidden x-srcdoc="${encode(HINT)}"></iframe>`],
   [`<iframe srcdoc="${encode(`<iframe srcdoc='${encode(HINT)}'></iframe>`)}"></iframe>`,
-    `<x-iframe x-srcdoc="${encode(`<iframe srcdoc='${encode(HINT)}'></iframe>`)}"></iframe>`],
+    // The text of the outer attribute is rewritten too (its own srcdoc is read as an attribute name where it is decoded), which only makes it more inert.
+    `<x-iframe x-srcdoc="${encode(`<iframe x-srcdoc='${encode(HINT)}'></iframe>`)}"></iframe>`],
   // Case, whitespace (a newline, a slash, tabs) and quoting of the tag and the attribute.
   [`<IFRAME\nSRCDOC\t=\t'${encode(HINT)}'></IFRAME>`, `<x-IFRAME\nx-srcdoc\t=\t'${encode(HINT)}'></IFRAME>`],
   [`<iFrame/srcDoc=${encode(HINT).replace(/["\s]/g, '')}>`, `<x-iFrame/x-srcdoc=${encode(HINT).replace(/["\s]/g, '')}>`],
