@@ -5,6 +5,7 @@ import {
   agentHit, buildBrief, CITE_LINE, fluxMarks, keptCites, parseOutput, resolveCites, resultCites, sourcesShown,
   type BriefInput, type CitedObject, type PersonalRunPorts, type RunRecord, type SearchRow,
 } from '@flux/core';
+import { markdownRenderer } from '../../apps/server/src/docs/markdown.js';
 
 // The Wiki as the space's knowledge base (C-62, #1381), with no database: the headings a page's sections are cited by, the marks an answer carries,
 // how they are resolved and numbered, and the lines of the brief. The persisted path is app/tests/app/wiki-knowledge.test.ts.
@@ -22,7 +23,7 @@ describe('the headings a Wiki page is cited by', () => {
   test('levels 1 to 3 in order, as the page\'s Contents numbers them: without fenced code, closing hashes, marks, empty ones and deeper levels', () => {
     const body = ['# Barrel', 'intro', '## Install ##', '```sh', '# not a heading', '```', '### **Wire** the `camera`', '#### too deep', '#', '## [Link text](https://example.com)',
       '~~~', '## fenced too', '~~~', '    ## indented code is not read here but a space or two is', '  ## Two spaces', 'Setext', '======'].join('\n');
-    assert.deepEqual(docHeadings(body), ['Barrel', 'Install', 'Wire the camera', 'Link text', 'Two spaces']);
+    assert.deepEqual(docHeadings(body), ['Barrel', 'Install', 'Wire the camera', 'Link text', 'Two spaces', 'Setext']);
   });
   test('a long page is read once and a long heading is cut; at most 999 are numbered', () => {
     assert.equal(docHeadings(`## ${'w'.repeat(500)}`)[0]!.length, 80);
@@ -30,6 +31,24 @@ describe('the headings a Wiki page is cited by', () => {
     const started = Date.now();
     docHeadings(`${' '.repeat(100_000)}\n## ${'[ '.repeat(50_000)}`);
     assert.ok(Date.now() - started < 1000, 'no polynomial scan on a hostile line');
+  });
+});
+
+describe('the sections an agent cites are the ones the page numbers', () => {
+  /** The headings the page shows, numbered as its Contents numbers them: the rendered `h1`–`h3` with words (`headingsOfHtml` in the web). */
+  const shown = (markdown: string) => [...markdownRenderer.render(markdown, new Map()).matchAll(/<h([1-3])[^>]*>([\s\S]*?)<\/h\1>/g)]
+    .map((match) => match[2]!.replace(/<[^>]*>/g, '').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim()).filter(Boolean);
+  const pages = [
+    ['# Barrel', 'intro', '', 'Install', '=======', '', 'Wire it', '---', '', 'Not a heading', '', '---', '', '- - -', 'Readings', '==='].join('\n'),
+    ['> ## Quoted', '', '- ## In a list', '- item', 'lazy line', '---', '', 'a | b', '--- | ---', '1 | 2', '---', '', '#### Too deep', '', '    ## code', '', '```', '## fenced', '```', '## Last ##'].join('\n'),
+    ['Two lines', 'of a title', '===', 'text', '', '## [A link](https://example.com) and `code`', '##', '', '* * *', 'After a rule', '---'].join('\n'),
+  ];
+  test('ATX and underlined headings, in quotes and list items; no code, rule, table or lazy line becomes one', () => {
+    for (const page of pages) assert.deepEqual(docHeadings(page).length, shown(page).length, page);
+    assert.deepEqual(docHeadings(pages[0]!), ['Barrel', 'Install', 'Wire it', 'Readings']);
+    assert.deepEqual(docHeadings(pages[1]!), ['Quoted', 'In a list', 'Last']);
+    assert.deepEqual(docHeadings(pages[2]!), ['Two lines of a title', 'A link and code', 'After a rule']);
+    assert.deepEqual(docHeadings(pages[2]!), shown(pages[2]!));
   });
 });
 
