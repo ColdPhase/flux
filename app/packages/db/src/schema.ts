@@ -1308,6 +1308,9 @@ export const agentProposals = pgTable('agent_proposals', {
   foreignKey({ columns: [table.workspaceId, table.projectId, table.sourceMaterialId, table.sourceMaterialVersion], foreignColumns: [projectMaterialVersions.workspaceId, projectMaterialVersions.projectId, projectMaterialVersions.materialId, projectMaterialVersions.version] }),
 ]);
 
+/** One model of a key's stored list (#1218). */
+export interface StoredListedModel { id: string; name: string | null; family: string; createdAt: string | null }
+
 export const backgroundComputeConnections = pgTable('background_compute_connections', {
   id: uuid('id').primaryKey(),
   ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
@@ -1332,6 +1335,16 @@ export const backgroundComputeConnections = pgTable('background_compute_connecti
   timeZone: text('time_zone').notNull().default('UTC'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  /** The last list of models the provider gave for this key (0054, #1218); null before the first. */
+  listedModels: jsonb('listed_models').$type<StoredListedModel[]>(),
+  modelsListedAt: timestamp('models_listed_at', { withTimezone: true }),
+  /** The last attempt to list, whatever its outcome: a key is listed again when this is over 6 hours old. */
+  modelsCheckedAt: timestamp('models_checked_at', { withTimezone: true }),
+  modelsListStatus: text('models_list_status', { enum: ['listed', 'key_refused', 'unavailable', 'refused'] }),
+  /** Prices the owner entered for this key's models that Flux's table does not price, by model id. */
+  modelPrices: jsonb('model_prices').$type<Record<string, { inputMicrosPerMTok: number; outputMicrosPerMTok: number }>>().notNull().default({}),
+  /** Models in an earlier list that a later one no longer had: "no longer offered" (their agents pause). */
+  retiredModels: text('retired_models').array().notNull().default([]),
 }, (table) => [
   index('background_compute_connections_owner_idx').on(table.ownerUserId, table.createdAt, table.id),
 ]);

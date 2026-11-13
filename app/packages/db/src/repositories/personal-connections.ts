@@ -24,6 +24,18 @@ export interface PersonalConnectionRow {
   createdAt: Date;
   dailyBudgetCents: number;
   timeZone: string;
+  /** The key's models as its provider last listed them, the owner's prices for them and the ones no longer offered (#1218). */
+  models: KeyModelsRow;
+}
+
+/** Core's `KeyModels`, structurally. */
+export interface KeyModelsRow {
+  listed: schema.StoredListedModel[] | null;
+  listedAt: Date | null;
+  checkedAt: Date | null;
+  status: 'listed' | 'key_refused' | 'unavailable' | 'refused' | null;
+  prices: Record<string, { inputMicrosPerMTok: number; outputMicrosPerMTok: number }>;
+  retired: string[];
 }
 
 type Row = typeof c.$inferSelect;
@@ -31,6 +43,8 @@ const connectionOf = (row: Row): PersonalConnectionRow => ({
   id: row.id, ownerUserId: row.ownerUserId, status: 'active', keyRef: row.id, name: row.name,
   provider: row.provider, model: row.model, baseUrl: row.baseUrl, price: connectionPrice(row), createdAt: row.createdAt,
   dailyBudgetCents: row.dailyBudgetCents, timeZone: row.timeZone,
+  models: { listed: row.listedModels, listedAt: row.modelsListedAt, checkedAt: row.modelsCheckedAt, status: row.modelsListStatus,
+    prices: row.modelPrices ?? {}, retired: row.retiredModels ?? [] },
 });
 
 /**
@@ -71,5 +85,19 @@ export function personalKeyResolver(db: Database, masterKey: Buffer | null) {
       .where(and(eq(c.id, keyRef), isNull(c.revokedAt), isNotNull(c.encryptedKey), sql`NOT ${companyGuestSql(c.ownerUserId)}`));
     if (!row?.encryptedKey) return null;
     try { return openBackgroundKey(row.encryptedKey, row.ownerUserId, row.id, masterKey); } catch { return null; }
+  };
+}
+
+/**
+ * The worker's opener of a key for listing its models (#1218): the provider and the key of one active connection, or null for a
+ * revoked or unknown one, a guest's, or a missing instance key. Like {@link personalKeyResolver}, only the worker composes it.
+ */
+export function keyForModelListing(db: Database, masterKey: Buffer | null) {
+  return async (connectionId: string): Promise<{ provider: AiProviderKind; apiKey: string } | null> => {
+    if (!masterKey || !/^[0-9a-f-]{36}$/i.test(connectionId)) return null;
+    const [row] = await db.select({ id: c.id, ownerUserId: c.ownerUserId, provider: c.provider, encryptedKey: c.encryptedKey }).from(c)
+      .where(and(eq(c.id, connectionId), isNull(c.revokedAt), isNotNull(c.encryptedKey), sql`NOT ${companyGuestSql(c.ownerUserId)}`));
+    if (!row?.encryptedKey) return null;
+    try { return { provider: row.provider, apiKey: openBackgroundKey(row.encryptedKey, row.ownerUserId, row.id, masterKey) }; } catch { return null; }
   };
 }

@@ -1,4 +1,4 @@
-import type { AgentChatMessage, AgentChatSummary, AssistantPlace, MessageFile, MessageContribution } from '@flux/contracts';
+import type { AgentChatMessage, ApiKeyModels, AgentChatSummary, AssistantPlace, MessageFile, MessageContribution } from '@flux/contracts';
 import type {
   AiPrice, AiProviderKind, AgentRuntimePayer, AgentMayDo, AssistantEngine, AssistantRunCostState, AssistantRunEndReason,
   AssistantRunKind, AssistantRunStatus, AssistantSourceRef, AgentColour, PersonalRunTokenGrant,
@@ -403,6 +403,17 @@ export interface PersonalConnection {
   /** The key's one daily budget and the time zone whose midnight starts its day (#854). */
   dailyBudgetCents: number;
   timeZone: string;
+  /** What the key knows of its models (#1218): the provider's last list, its freshness, the owner's prices, the ones no longer offered. */
+  models?: KeyModels;
+}
+
+/** An API key's models as its provider last listed them (CA-2, #1218). */
+export interface KeyModels extends ApiKeyModels {
+  /** When the list now kept was read; null before the first. */
+  listedAt: Date | null;
+  /** The last attempt, whatever its outcome: the key is listed again when this is over 6 hours old. */
+  checkedAt: Date | null;
+  status: 'listed' | 'key_refused' | 'unavailable' | 'refused' | null;
 }
 
 /**

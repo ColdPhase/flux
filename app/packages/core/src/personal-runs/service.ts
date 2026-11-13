@@ -7,7 +7,7 @@ import {
   ASSISTANT_PLAN_MODELS,
   AI_PROVIDERS,
   aiModelSearchesWeb,
-  assistantModelName,
+  noLongerOffered,
   type AddAgentMemoryCommand,
   type AgentChatMessage,
   type AgentChatSummary,
@@ -44,7 +44,7 @@ import type {
   PersonalRuntimeAvailability, PersonalRuntimeClient, PersonalRuntimeStanding, RunRecord,
 } from './ports.js';
 import {
-  apiModelAccount, CODEX_RUNTIME_MODEL, connectionOnModel, defaultPick, isModelId, modelChoice, modelNameOf, RUNTIME_MODEL, runtimeModelAccount, type ConnectionModels,
+  apiModelAccount, CODEX_RUNTIME_MODEL, connectionOnModel, modelRetired, defaultPick, isModelId, modelChoice, modelNameOf, RUNTIME_MODEL, runtimeModelAccount, type ConnectionModels,
 } from './model.js';
 import { announce, updateAndAnnounce } from './progress.js';
 import { endedWithWebSources } from './web-sources.js';
@@ -89,6 +89,7 @@ export type BackgroundStart =
 const TASK_PROBLEM_LINE: Record<PersonalAssistantUnavailableReason, string> = {
   provider_off: 'I can\'t start: AI is switched off on this Flux.', no_connection: 'I can\'t start: no AI account is connected.',
   connection_changed: 'I can\'t start: your AI account changed.', price_unknown: 'I can\'t start: your AI account has no known price.',
+  model_retired: 'I can\'t start: my model is no longer offered by its provider.',
   runtime_off: 'I can\'t start: subscription sign-in is off on this Flux.', runtime_sign_in: 'I can\'t start: sign in again.',
 };
 /** What the server asks for when an agent takes a task (#856). */
@@ -115,7 +116,7 @@ export type TaskStart = { started: true; run: RunRecord; created: boolean } | { 
 
 const SERVER_PROBLEM_LINE: Record<PersonalAssistantUnavailableReason, string> = {
   provider_off: 'Skipped: AI is switched off on this Flux', no_connection: 'Skipped: no AI account is connected', connection_changed: 'Skipped: your AI account changed',
-  price_unknown: 'Skipped: your AI account has no known price',
+  price_unknown: 'Skipped: your AI account has no known price', model_retired: 'Skipped: the model is no longer offered by its provider',
   runtime_off: 'Skipped: subscription sign-in is off on this Flux', runtime_sign_in: 'Skipped: sign in again',
 };
 /** The provenance model of a runtime answer when no model id reached the CLI (its own default). */
@@ -237,6 +238,8 @@ export async function usableConnection(connections: PersonalConnectionLookup, pr
   if (!providerEnabled) return { problem: 'provider_off' };
   const named = enablement.connectionId ? await connections.resolve(enablement.ownerUserId, enablement.connectionId) : null;
   // On the model the owner chose (F-027 AST-11): the key's own, or another of its provider with a table price.
+  // A model its provider no longer offers pauses the agent until its owner picks another; nothing switches by itself (#1218).
+  if (named && modelRetired(named, enablement.assistantModel ?? named.model)) return { problem: 'model_retired' };
   const connection = named && connectionOnModel(named, enablement.assistantModel);
   if (named && !connection) return { problem: 'price_unknown' };
   if (!connection || connection.status !== 'active' || connection.ownerUserId !== enablement.ownerUserId || connection.id !== enablement.connectionId) {
@@ -348,12 +351,13 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
     const option = isModelId(model, item.account.engine ?? 'runtime') ? item.account.options.find((entry) => entry.id === model) : undefined;
     if (!option) throw modelUnavailable(`Your ${item.connection ? 'API key' : item.label} doesn't offer that model.${still}`);
     if (item.connection) {
+      if (option.retired) throw modelUnavailable(`${option.name} is ${noLongerOffered(item.connection.provider)}.${still}`);
       const priced = connectionOnModel(item.connection, option.id);
-      if (!priced?.price) throw modelUnavailable(`Flux doesn't know the price of ${assistantModelName(option.id)} yet, so its daily budget can't hold.${still}`);
+      if (!priced?.price) throw modelUnavailable(`Flux doesn't know the price of ${option.name} yet. Enter it to use it with a daily budget.${still}`);
       // A budget below one request would wait for a day that never comes.
       // With its provider's own web search a request may also make its searches (#954): the budget must hold that too.
       if (runReservationMicros(priced.price, true, aiModelSearchesWeb(priced.provider, option.id))! > centsToMicros(item.connection.dailyBudgetCents))
-        throw modelUnavailable(`One request on ${assistantModelName(option.id)} can cost more than this key's daily budget. Raise the budget in Connect AI.${still}`);
+        throw modelUnavailable(`One request on ${option.name} can cost more than this key's daily budget. Raise the budget in Connect AI.${still}`);
     }
     return { item, model: option.id };
   }

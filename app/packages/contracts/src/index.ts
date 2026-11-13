@@ -156,6 +156,7 @@ export * from './direct-message.js';
 export * from './docs.js';
 export * from './editing.js';
 export * from './ai-providers.js';
+export * from './ai-model-families.js';
 export * from './background-compute.js';
 export * from './notifications.js';
 export * from './needs-you.js';

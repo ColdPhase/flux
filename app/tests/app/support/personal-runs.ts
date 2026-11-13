@@ -25,13 +25,14 @@ export class FakeConnections implements PersonalConnectionLookup {
 
   /** Adds a connection (or replaces the one with that id); the owner's others stay. Its one daily budget defaults to $10 (#854). */
   connect(ownerUserId: string, id: string, model: { provider?: AiProviderKind; model?: string; baseUrl?: string | null; price?: AiPrice | null; toolCalling?: boolean;
-    dailyBudgetCents?: number; timeZone?: string } = {}): PersonalConnection {
+    dailyBudgetCents?: number; timeZone?: string; models?: PersonalConnection['models'] } = {}): PersonalConnection {
     const connection: PersonalConnection = {
       id, ownerUserId, status: 'active', keyRef: `test-key-ref-${id}`, name: `Key ${id.slice(0, 8)}`,
       dailyBudgetCents: model.dailyBudgetCents ?? 1_000, timeZone: model.timeZone ?? 'UTC', createdAt: new Date(Date.UTC(2026, 0, 1) + this.made++ * 1000),
       provider: model.provider ?? 'anthropic', model: model.model ?? 'claude-sonnet-5', baseUrl: model.baseUrl ?? null,
       price: model.price === undefined ? FAKE_PRICE : model.price,
       ...(model.toolCalling !== undefined ? { toolCalling: model.toolCalling } : {}),
+      ...(model.models ? { models: model.models } : {}),
     };
     this.byOwner.set(ownerUserId, [...(this.byOwner.get(ownerUserId) ?? []).filter((item) => item.id !== id), connection]);
     return connection;

@@ -69,7 +69,7 @@ describe('personal runs on any provider through the same path (#179)', () => {
     { provider: 'openai_compatible' as const, model: 'llama3.1:8b', baseUrl: `${MOCK}/openai/v1`, wire: 'openai',
       price: { inputMicrosPerMTok: 1_000_000, outputMicrosPerMTok: 2_000_000, source: 'owner' as const, checkedOn: null }, reserved: 32_000 + 8_000, paths: ['/openai/v1/chat/completions'] },
     { provider: 'anthropic' as const, model: 'claude-sonnet-5', baseUrl: null, wire: 'anthropic',
-      price: { inputMicrosPerMTok: 2_000_000, outputMicrosPerMTok: 10_000_000, source: 'table' as const, checkedOn: '2026-10-02' }, reserved: 64_000 + 40_000,
+      price: { inputMicrosPerMTok: 2_000_000, outputMicrosPerMTok: 10_000_000, source: 'table' as const, checkedOn: '2026-11-12' }, reserved: 64_000 + 40_000,
       paths: ['/anthropic/v1/messages/count_tokens', '/anthropic/v1/messages'] },
   ]) {
     test(`${target.provider}: the model of a key, a run that reserves against the key's daily budget when it starts, the answer names provider and model`, async () => {
@@ -191,7 +191,13 @@ describe('the assistant\'s model from any connection (F-027 AST-11, #854)', () =
     agentId = (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'My assistant', owner: 'self' } }), 201) as { id: string }).id;
     thread = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/conversations`,
       { body: { body: 'Camera fails below 5 lux in the low-light test', clientMessageId: randomUUID() } }), 201) as Conversation;
-    connections.connect(owner.id, sonnet5, { provider: 'anthropic', model: 'claude-sonnet-5', baseUrl: null });
+    // The key's models as its provider listed them (#1218): the only source of the picker's list.
+    const listed = (id: string, family: string, createdAt: string) => ({ id, name: null, family, createdAt });
+    connections.connect(owner.id, sonnet5, { provider: 'anthropic', model: 'claude-sonnet-5', baseUrl: null, models: {
+      listed: [listed('claude-sonnet-5', 'Sonnet', '2026-06-01T00:00:00Z'), listed('claude-sonnet-5-5', 'Sonnet', '2026-09-28T00:00:00Z'),
+        listed('claude-opus-5-5', 'Opus', '2026-09-21T00:00:00Z'), listed('claude-haiku-5-5', 'Haiku', '2026-10-07T00:00:00Z'),
+        listed('claude-fable-5-2', 'Fable', '2026-11-05T00:00:00Z')],
+      listedAt: new Date(), checkedAt: new Date(), status: 'listed', prices: {}, retired: [] } });
   });
 
   test('AST-11.1/AST-11.5: the grouped list, a choice at turn-on, the request at the chosen model; a change reaches the next request only', async () => {
@@ -200,10 +206,12 @@ describe('the assistant\'s model from any connection (F-027 AST-11, #854)', () =
     assert.equal(choice.groups.length, 1);
     assert.deepEqual([choice.groups[0]!.connection, choice.groups[0]!.account, choice.groups[0]!.company], [sonnet5, 'api_key', 'Anthropic']);
     assert.deepEqual(choice.groups[0]!.options.map((option) => [option.id, option.name, option.note, option.callsTools]), [
-      ['claude-sonnet-5', 'Sonnet 5', 'Your connection\'s model', true],
+      // By family, the family with the newest model first (#1218).
+      ['claude-fable-5-2', 'Fable 5.2', 'Input $8, output $40 per 1M tokens', true],
+      ['claude-haiku-5-5', 'Haiku 5.5', 'Input $0.50, output $2.50 per 1M tokens', true],
       ['claude-sonnet-5-5', 'Sonnet 5.5', 'Input $2, output $10 per 1M tokens', true],
-      ['claude-haiku-4-5', 'Haiku 4.5', 'Input $1, output $5 per 1M tokens', true],
-      ['claude-fable-5-1', 'Fable 5.1', 'Input $10, output $50 per 1M tokens', true],
+      ['claude-sonnet-5', 'Sonnet 5', 'Input $2, output $10 per 1M tokens', true],
+      ['claude-opus-5-5', 'Opus 5.5', 'Input $4, output $20 per 1M tokens', true],
     ]);
     // A model outside the key's list, or another provider's, is refused at turn-on and nothing is turned on.
     for (const bad of ['gpt-6-sol', 'sonnet', '--model']) {
@@ -216,21 +224,21 @@ describe('the assistant\'s model from any connection (F-027 AST-11, #854)', () =
     assert.equal((await runs.status(human(owner))).state, 'not_enabled');
 
     await mock('/__reset', {});
-    const enabled = await runs.enable(human(owner), { agentId, connection: sonnet5, model: 'claude-haiku-4-5' });
-    assert.deepEqual([enabled.model.connection, enabled.model.model], [sonnet5, 'claude-haiku-4-5']);
+    const enabled = await runs.enable(human(owner), { agentId, connection: sonnet5, model: 'claude-haiku-5-5' });
+    assert.deepEqual([enabled.model.connection, enabled.model.model], [sonnet5, 'claude-haiku-5-5']);
     choice = await runs.model(human(owner));
-    assert.deepEqual([choice.current, choice.saved], [{ connection: sonnet5, model: 'claude-haiku-4-5' }, true]);
+    assert.deepEqual([choice.current, choice.saved], [{ connection: sonnet5, model: 'claude-haiku-5-5' }, true]);
 
     await mock('/__script', { wire: 'anthropic', text: 'Fact: the camera fails below 5 lux [S1].', usage: { input: 1_000, output: 100 } });
     const first = await runs.invoke(human(owner), thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Where are we?' });
     // The next request is sent with the new model; this one keeps Haiku even though the choice changes before it runs.
     choice = await chooseModel(runs, human(owner), { connection: sonnet5, model: 'claude-sonnet-5' });
     assert.deepEqual(choice.current, { connection: sonnet5, model: 'claude-sonnet-5' });
-    assert.deepEqual(await row(first.run.id), { status: 'queued', provider: 'anthropic', model: 'claude-haiku-4-5', reserved_micros: 0, charged_micros: 0, cost_state: 'reserved' });
+    assert.deepEqual(await row(first.run.id), { status: 'queued', provider: 'anthropic', model: 'claude-haiku-5-5', reserved_micros: 0, charged_micros: 0, cost_state: 'reserved' });
     assert.equal(await processor.process(first.run.id), 'completed');
     const sent = (await mock('/__requests')).requests.filter((item) => item.path === '/anthropic/v1/messages');
-    assert.equal((sent[0]!.body as { model: string }).model, 'claude-haiku-4-5', 'the request sent before the change used Haiku');
-    assert.deepEqual([(await row(first.run.id)).reserved_micros, (await row(first.run.id)).charged_micros], [32_000 + 20_000, 1_000 + 500], 'reserved and charged at the Haiku table price');
+    assert.equal((sent[0]!.body as { model: string }).model, 'claude-haiku-5-5', 'the request sent before the change used Haiku');
+    assert.deepEqual([(await row(first.run.id)).reserved_micros, (await row(first.run.id)).charged_micros], [16_000 + 10_000, 500 + 250], 'reserved and charged at the Haiku table price');
     const second = await runs.invoke(human(owner), thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'And now?' });
     assert.equal(await processor.process(second.run.id), 'completed');
     assert.equal(((await mock('/__requests')).requests.filter((item) => item.path === '/anthropic/v1/messages').at(-1)!.body as { model: string }).model, 'claude-sonnet-5');
@@ -251,7 +259,7 @@ describe('the assistant\'s model from any connection (F-027 AST-11, #854)', () =
     const version = (await runs.status(human(owner))).enablement!.version;
     await chooseModel(runs, human(owner), { connection: sonnet5, model: 'claude-sonnet-5' });
     assert.equal((await runs.status(human(owner))).enablement!.version, version);
-    await chooseModel(runs, human(owner), { connection: sonnet5, model: 'claude-fable-5-1' });
+    await chooseModel(runs, human(owner), { connection: sonnet5, model: 'claude-fable-5-2' });
     await chooseModel(runs, human(owner), { connection: sonnet5, model: 'claude-sonnet-5' });
   });
 
@@ -266,15 +274,15 @@ describe('the assistant\'s model from any connection (F-027 AST-11, #854)', () =
     assert.deepEqual(choice.groups.map((group) => group.connection), [first, second], 'one group per connection, the first made first');
     assert.deepEqual(choice.default, { connection: first, model: 'llama3.1:8b' }, 'Connect AI\'s default is the connection made first');
     assert.deepEqual(choice.groups[0]!.options.map((option) => [option.id, option.name]), [['llama3.1:8b', 'llama3.1:8b']], 'an own endpoint offers only its own model');
-    assert.deepEqual(choice.groups[1]!.options.map((option) => [option.id, option.callsTools]), [['gpt-6-luna', true], ['gpt-6.1-sol', true], ['gpt-6-sol', true], ['gpt-6-astra', true]],
-      'GPT-6.1 Sol and GPT-6 Astra call tools on the Responses API, which Flux speaks to OpenAI since #954');
+    assert.deepEqual(choice.groups[1]!.options.map((option) => [option.id, option.callsTools]), [['gpt-6-luna', true]],
+      'a key whose provider has not listed its models yet offers only its own model: Flux keeps no list of its own (#1218)');
   });
 
   test('AST-11.2: only the owner reads or changes the model; anyone else gets their own empty answer or a refusal', async () => {
     for (const someone of [viewer, guest]) {
       const theirs = await runs.model(human(someone));
       assert.deepEqual([theirs.groups, theirs.current, theirs.default, theirs.saved], [[], null, null, false]);
-      await assert.rejects(runs.updateAgent(human(someone), agentId, { connection: sonnet5, model: 'claude-haiku-4-5' }), { code: 'AGENT_NOT_FOUND' }, 'another person\'s agent is not found');
+      await assert.rejects(runs.updateAgent(human(someone), agentId, { connection: sonnet5, model: 'claude-haiku-5-5' }), { code: 'AGENT_NOT_FOUND' }, 'another person\'s agent is not found');
     }
     assert.deepEqual((await runs.model(human(owner))).current, { connection: sonnet5, model: 'claude-sonnet-5' }, 'nobody else changed it');
     // Over HTTP (the API container's own lookup does not hold this test's fake keys): a viewer or guest sees nothing of the owner's.
@@ -283,7 +291,7 @@ describe('the assistant\'s model from any connection (F-027 AST-11, #854)', () =
       assert.deepEqual([read.groups, read.current], [[], current], 'the API container offers this account no list; only the owner sees their own stored model');
     }
     for (const someone of [viewer, guest]) {
-      const refused = await someone.browser.request('PATCH', `/api/v1/my-agents/${agentId}`, { body: { connection: sonnet5, model: 'claude-haiku-4-5' } });
+      const refused = await someone.browser.request('PATCH', `/api/v1/my-agents/${agentId}`, { body: { connection: sonnet5, model: 'claude-haiku-5-5' } });
       assert.equal(refused.status, 404, refused.text);
       assert.equal((refused.json as { code: string }).code, 'AGENT_NOT_FOUND');
     }

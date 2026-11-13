@@ -44,6 +44,7 @@ import { joinRateLimiter } from './live/rate-limit.js';
 import { agentProposalRoutes } from './agent-connection/routes.js';
 import { agentStopRoutes } from './agent-connection/agent-stops.js';
 import { agentQuestionRoutes } from './agent-connection/agent-questions.js';
+import { modelListRefresh } from './ai-keys/model-refresh.js';
 import { aiKeyRoutes } from './ai-keys/routes.js';
 import { registerMcpRoute } from './agent-connection/mcp-route.js';
 import { webReader as createWebReader } from './web-reads/reader.js';
@@ -316,7 +317,8 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   if (personalRuns.mode !== 'production') app.log.warn({ mode: personalRuns.mode }, 'TEST ONLY: personal runs use fixture connections and a mock provider');
   const firstAgent = firstAgentMaker(db, { queue: pgBossPersonalRunQueue(boss), connections: personalRuns.connections, providerEnabled: personalRuns.providerEnabled,
     runtime: personalRuntimeAvailability(config.agentRuntime, db) }, app.log);
-  await app.register(aiRoutes(aiKeyRoutes), { db, sessions: identity, backgroundMasterKey: config.backgroundMasterKey, afterConnect: firstAgent });
+  await app.register(aiRoutes(aiKeyRoutes), { db, sessions: identity, backgroundMasterKey: config.backgroundMasterKey, afterConnect: firstAgent,
+    refresh: modelListRefresh(db, boss) });
   // The agents' web page reads (#918): the link cards' guard, a test deployment's closed world, and only when the operator turned them on.
   const webReader = createWebReader({ enabled: config.webReads.enabled, ...(config.linkPreviews.testHosts.size ? { rules: CLOSED_WORLD_RULES,
     connectTo: (host: string) => config.linkPreviews.testHosts.get(host) ?? null } : {}) });

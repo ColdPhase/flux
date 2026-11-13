@@ -17,7 +17,10 @@ consent, caps and fail-closed rules are those of
 | `app/packages/agent-runtime/src/guarded-fetch.ts` | The one HTTP transport of every adapter: guarded lookup, no redirects, size and time bounds. |
 | `app/packages/agent-runtime/src/anthropic.ts`, `responses.ts`, `chat-completions.ts`, `openai-compatible.ts` | The three wire formats of personal runs: Anthropic Messages, OpenAI's Responses API (#954) and Chat Completions. |
 | `app/packages/agent-runtime/src/registry.ts` | `providerPersonalCompute` and `providerComparison`: the adapter chosen by the connection's provider kind. |
-| `app/packages/agent-runtime/src/model-list.ts` | Keyless model listings and the provider price listing. |
+| `app/packages/agent-runtime/src/model-list.ts` | Keyless model listings (OpenRouter, an OpenAI-compatible endpoint) and the listings read with a key (Anthropic, OpenAI, Gemini; #1218). |
+| `app/packages/contracts/src/ai-model-families.ts` | A listed model's family and the newest-first order of the picker (#1218). |
+| `app/apps/server/src/ai-keys/` | The key form's listing and key test (6-hour cache by key digest), Try again and the owner's model prices; `model-refresh.ts` asks the worker to read a stored key's list. |
+| `app/apps/worker/src/ai-keys/model-lists.ts` | Reads a stored key's models (`api-key.model-list.v1`): the only process that opens a stored key. |
 | `app/apps/server/src/proactive-comparison/ai-composition.ts` | The API's endpoint policy, save-time check and listings. |
 | `app/apps/worker/src/proactive-comparison/providers.ts`, `personal-runs/composition.ts` | The worker's adapter registry. |
 | `app/packages/db/migrations/0001_v0_1_baseline.sql` | The schema (the v0.1 baseline, #779). |
@@ -26,10 +29,10 @@ consent, caps and fail-closed rules are those of
 
 | Kind | Wire format | Base URL | Key format | Models |
 | --- | --- | --- | --- | --- |
-| `anthropic` | Anthropic Messages | `https://api.anthropic.com` | `sk-ant-…` | typed (listing needs a key) |
-| `openai` | Responses API (#954) | `https://api.openai.com/v1` | `sk-…`, not `sk-admin-…` | typed |
+| `anthropic` | Anthropic Messages | `https://api.anthropic.com` | `sk-ant-…` | listed with the key: `GET /v1/models?limit=1000` (`Authorization: Bearer` and `anthropic-version: 2026-10-21`, as the adapter), with `display_name`, `line`, `created_at`; retired ones left out |
+| `openai` | Responses API (#954) | `https://api.openai.com/v1` | `sk-…`, not `sk-admin-…` | listed with the key: `GET /models` (`Authorization: Bearer`), chat models only, no dated snapshot beside its alias |
 | `openrouter` | Chat Completions | `https://openrouter.ai/api/v1` | `sk-or-…` | listed without a key (listed prices only prefill the owner's price) |
-| `gemini` | Chat Completions | `https://generativelanguage.googleapis.com/v1beta/openai` | `AIza…` | typed |
+| `gemini` | Chat Completions | `https://generativelanguage.googleapis.com/v1beta/openai` | `AIza…` | listed with the key: `GET /v1beta/models?pageSize=1000` (`x-goog-api-key`), models that `generateContent`, no audio, image or embedding ones |
 | `openai_compatible` | Chat Completions | the owner's URL | any visible ASCII, 8–512 characters | listed when the server answers `GET /models` without a key |
 
 The base URLs are the providers' documented roots, written into the code; no environment
@@ -103,16 +106,19 @@ a price can be saved but not enabled: `BACKGROUND_PRICE_UNKNOWN`, `PERSONAL_RUN_
 reservation refusal `CONNECTION_PRICE_UNKNOWN`, and the assistant state `unavailable` /
 `price_unknown`.
 
-The table rows come from these pages (all vendor claims):
+The table rows come from these pages (all vendor claims), all read on 2026-11-12 (#1218):
 
-| Provider | Read on | Page | What the rows are |
-| --- | --- | --- | --- |
-| Anthropic | 2026-10-02 | platform.claude.com pricing | Standard rates |
-| OpenAI | 2026-10-03 | developers.openai.com pricing (undated) | Standard text rates, not batch, flex or priority |
-| Gemini | 2026-10-03 | ai.google.dev pricing (last updated 2026-10-01) | Paid tier, ≤200k-token prompt tier |
+| Provider | Page | What the rows are |
+| --- | --- | --- |
+| Anthropic | [platform.claude.com pricing](https://platform.claude.com/docs/en/about-claude/pricing) and the [model overview](https://platform.claude.com/docs/en/models/overview) | Standard rates of every model the page lists, Mythos (verified organizations only) included; Claude Haiku 5.5 at its over-100k-token tier ($0.50 / $2.50), because a request with web search can pass 100,000 tokens |
+| OpenAI | [developers.openai.com pricing](https://developers.openai.com/api/docs/pricing) (undated) | Standard text rates, the ≤272k-token tier; not batch, flex or fast |
+| Gemini | [aistudio.google.com/docs/pricing](https://aistudio.google.com/docs/pricing) (ai.google.dev's pricing page redirects there; undated) | Paid tier, ≤200k-token prompt tier |
 
-Gemini's promotional prices that double on 2027-01-01 (3.6–3.8 Flash) are left out. A stale table
-row would under-reserve, so for those models the owner enters the price.
+Left out because the provider has announced the price will change on a known date (a stale row would under-reserve; the owner
+enters the price): Gemini 4 Carbon and Argon ($2 / $10 until 2026-11-30, $4 / $20 from 2026-12-01), Gemini 3.6 and 3.8 Flash ($0.75 /
+$3.75 until 2026-12-31), and GPT-5.6 Sol (promotional until 2026-11-30). Gone since the last reading: `gemini-3.5-flash` and `o3-mini`
+(no longer on the pages). A listed model without a row is still offered: its owner enters its price for that key
+(`PUT /api/v1/background-compute-connections/:id/model-price`, kept in `model_prices`).
 
 - One request of a personal run is bounded at `32,000 × input + 4,000 × output` at the key's price (`64,000 × input`
   for a request of a run with tools; #484, #843). When the worker starts the run it reserves its turns × that

@@ -58,6 +58,8 @@ export FLUX_KEYRING_TOKEN="${FLUX_KEYRING_TOKEN:-$(head -c 32 /dev/urandom | bas
 export FLUX_KEY_PIN_SECRET="${FLUX_KEY_PIN_SECRET:-$(head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=\n')}"
 export FLUX_TEST_PERSONAL_RUNS=anthropic-mock
 export FLUX_TEST_ANTHROPIC_URL=http://anthropic-mock:8090
+# TEST ONLY (#1218): Anthropic, OpenAI and Gemini key listings go to the mock, never to a provider.
+export FLUX_TEST_PROVIDER_LISTS=http://anthropic-mock:8090
 # Owner AI connection settings (#179): a throwaway key-custody secret, and an operator allowlist
 # naming only the local OpenAI-compatible mock (tests/ui/openai_mock.py).
 background_secret_dir=$(mktemp -d)

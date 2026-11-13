@@ -32,7 +32,15 @@ export interface BackgroundComputeConnection {
   /** Today's use of the budget by everything that runs on the key: what was spent, not what work in progress holds. */
   today: { spentMicros: number; resetsAt: string };
   createdAt: string;
+  /** Prices the owner entered for the key's other models that Flux's table does not price, by model id (#1218). */
+  modelPrices?: Readonly<Record<string, { inputMicrosPerMTok: number; outputMicrosPerMTok: number }>>;
 }
+
+/** `PUT` the owner's price for one model of their key (PROV-3, #1218). */
+export const backgroundComputeModelPricePath = (connectionId: string) => `/api/v1/background-compute-connections/${connectionId}/model-price`;
+export interface SetApiKeyModelPriceCommand { model: string; inputMicrosPerMTok: number; outputMicrosPerMTok: number }
+/** `POST` reads the key's models from its provider again (Try again, #1218); the worker does it, and the answer is the key's list. */
+export const backgroundComputeModelListPath = (connectionId: string) => `/api/v1/background-compute-connections/${connectionId}/model-list`;
 
 /**
  * Adds an API key. The price comes from Flux's dated table when it has the model; an owner `price` is accepted only when
@@ -58,3 +66,12 @@ export interface UpdateBackgroundComputeConnectionCommand {
   name?: string;
   dailyBudgetCents?: number;
 }
+
+/**
+ * The worker reads a stored key's models from its provider (#1218): the only process that opens a stored key (CA-4). The payload is
+ * the key's id; the key itself never enters a job.
+ */
+export const API_KEY_MODEL_LIST_JOB = 'api-key.model-list.v1';
+export interface ApiKeyModelListJob { connectionId: string }
+/** A key's list is read again when its picker opens and the last reading is older than this (#1218). */
+export const API_KEY_MODEL_LIST_FRESH_MS = 6 * 3600_000;

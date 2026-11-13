@@ -219,6 +219,8 @@ export interface PersonalRunEnablement {
 export type PersonalAssistantState = 'not_enabled' | 'ready' | 'capped' | 'unavailable';
 /** `price_unknown`: the API key's model has no known price, so its daily budget cannot hold (PROV-3). */
 export type PersonalAssistantUnavailableReason = 'no_connection' | 'connection_changed' | 'provider_off' | 'price_unknown'
+  /** The key's provider no longer offers the agent's model (#1218): it waits until its owner picks another. */
+  | 'model_retired'
   /** A runtime assistant: the operator switched sign-in off, or the owner must sign in again. */
   | 'runtime_off' | 'runtime_sign_in';
 

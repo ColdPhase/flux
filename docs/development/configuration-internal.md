@@ -59,6 +59,7 @@ the wiring between services or enables test-only code.
 | `FLUX_TEST_FAILURE_INJECTION` | Test deployments only, together with `FLUX_FIXTURE_TOKEN`. Never in production. |
 | `FLUX_TEST_LINK_PREVIEW_HOSTS` | Test deployments only; refused without `FLUX_TEST_FAILURE_INJECTION`. |
 | `FLUX_TEST_PERSONAL_RUNS` | Test deployments only. |
+| `FLUX_TEST_PROVIDER_LISTS` | Test deployments only; refused without `FLUX_TEST_FAILURE_INJECTION`. |
 | `FLUX_TEST_ROTATION_HOLD_AFTER_PAGES` | Test deployments only. |
 | `FLUX_TEST_ROTATION_PAGE_SIZE` | Test deployments only. |
 | `FLUX_TEST_ROTATION_SWEEP_MS` | Test deployments only. |

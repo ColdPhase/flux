@@ -56,7 +56,7 @@ describe('provider-neutral owner AI connections (#179)', () => {
     const cases: { body: Record<string, unknown>; key: string; expect: Partial<BackgroundComputeConnection> }[] = [
       { body: { provider: 'anthropic', model: 'claude-sonnet-5' }, key: keys.anthropic,
         expect: { provider: 'anthropic', model: 'claude-sonnet-5', baseUrl: null,
-          price: { inputMicrosPerMTok: 2_000_000, outputMicrosPerMTok: 10_000_000, source: 'table', checkedOn: '2026-10-02' } } },
+          price: { inputMicrosPerMTok: 2_000_000, outputMicrosPerMTok: 10_000_000, source: 'table', checkedOn: '2026-11-12' } } },
       { body: { provider: 'openai', model: 'gpt-model', price: { inputMicrosPerMTok: 400_000, outputMicrosPerMTok: 1_600_000 } }, key: keys.openai,
         expect: { provider: 'openai', model: 'gpt-model', baseUrl: null, price: { inputMicrosPerMTok: 400_000, outputMicrosPerMTok: 1_600_000, source: 'owner', checkedOn: null } } },
       { body: { provider: 'gemini', model: 'gemini-model' }, key: keys.gemini, expect: { provider: 'gemini', model: 'gemini-model', price: null } },

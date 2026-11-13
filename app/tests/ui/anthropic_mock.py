@@ -14,6 +14,10 @@ the text split around a sentence that cites `cite`, with `usage.server_tool_use.
 "input": {...}}` answers a request that carries no `tool_result` yet with one call of that offered Flux tool, `stop_reason` `tool_use`; the
 next request, which carries its result, gets `text`), `stream_gap` (#1248: seconds
 between two events of a streamed answer; a request with `"stream": true` is answered as Server-Sent Events, its text in small pieces).
+
+#1218: it also answers the key listings of Anthropic, OpenAI and Gemini under `/lists/…` (`FLUX_TEST_PROVIDER_LISTS`), like the app
+suite's provider mock (app/tests/app/support/key-list-mock.ts): a key containing `refused` is refused, `broken` fails with a 500,
+`slow` answers after 12 seconds (past the 8-second bound), any other key gets the lists in `KEY_LISTS`.
 """
 
 from __future__ import annotations
@@ -42,6 +46,23 @@ def searched(search: dict, text: str) -> list[dict]:
         {"type": "text", "text": text, "citations": [{"type": "web_search_result_location", "url": search["cite"], "title": "Cited page",
                                                        "encrypted_index": "enc-index", "cited_text": "cited words"}]},
     ]
+
+KEY_LISTS = {
+    "/lists/anthropic/v1/models": {"data": [
+        {"type": "model", "id": "claude-sonnet-5-7", "display_name": "Claude Sonnet 5.7", "line": "sonnet", "created_at": "2026-11-10T00:00:00Z", "lifecycle": "active"},
+        {"type": "model", "id": "claude-fable-5-2", "display_name": "Claude Fable 5.2", "line": "fable", "created_at": "2026-11-05T00:00:00Z", "lifecycle": "active"},
+        {"type": "model", "id": "claude-sonnet-5-5", "display_name": "Claude Sonnet 5.5", "line": "sonnet", "created_at": "2026-09-28T00:00:00Z", "lifecycle": "active"},
+        {"type": "model", "id": "claude-opus-5-5", "display_name": "Claude Opus 5.5", "line": "opus", "created_at": "2026-09-21T00:00:00Z", "lifecycle": "active"},
+        {"type": "model", "id": "claude-sonnet-5", "display_name": "Claude Sonnet 5", "line": "sonnet", "created_at": "2026-06-01T00:00:00Z", "lifecycle": "active"},
+        {"type": "model", "id": "claude-haiku-4-5-20251001", "display_name": "Claude Haiku 4.5", "line": "haiku", "created_at": "2025-10-01T00:00:00Z", "lifecycle": "active"},
+    ], "has_more": False, "first_id": None, "last_id": None},
+    "/lists/openai/v1/models": {"object": "list", "data": [{"id": model, "object": "model", "created": 1790000000 - index, "owned_by": "openai"}
+                                                            for index, model in enumerate(["gpt-6.1-sol", "gpt-6-astra", "gpt-6-luna", "text-embedding-3-large"])]},
+    "/lists/gemini/v1beta/models": {"models": [
+        {"name": "models/gemini-3.1-pro-preview", "displayName": "Gemini 3.1 Pro Preview", "supportedGenerationMethods": ["generateContent"]},
+        {"name": "models/gemini-3.5-flash-lite", "displayName": "Gemini 3.5 Flash-Lite", "supportedGenerationMethods": ["generateContent"]},
+    ]},
+}
 
 lock = threading.Lock()
 script: dict = dict(DEFAULT)
@@ -124,7 +145,24 @@ class Handler(BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError):
             pass  # the adapter aborted the request (Stop)
 
+    def key_list(self) -> None:
+        path = self.path.split("?")[0]
+        key = self.headers.get("x-api-key") or self.headers.get("x-goog-api-key") or (self.headers.get("authorization") or "").removeprefix("Bearer ")
+        if "slow" in key:
+            time.sleep(12)
+        if not key or "refused" in key:
+            if path.startswith("/lists/gemini/"):
+                return self.reply(400, {"error": {"code": 400, "message": "API key not valid. Please pass a valid API key.", "status": "INVALID_ARGUMENT"}})
+            return self.reply(401, {"type": "error", "error": {"type": "authentication_error", "message": "invalid x-api-key"}})
+        if "broken" in key:
+            return self.reply(500, {"error": "scripted failure"})
+        if path in KEY_LISTS:
+            return self.reply(200, KEY_LISTS[path])
+        return self.reply(404, {"error": "not found"})
+
     def do_GET(self) -> None:
+        if self.path.startswith("/lists/"):
+            return self.key_list()
         if self.path == "/__health":
             return self.reply(200, {"ok": True})
         if self.path == "/__requests":

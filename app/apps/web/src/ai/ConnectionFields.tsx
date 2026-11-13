@@ -23,7 +23,8 @@ export const priceText = (price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMic
   `${perMillion(price.inputMicrosPerMTok)} input · ${perMillion(price.outputMicrosPerMTok)} output per 1M tokens`;
 
 const listFailure: Record<Exclude<AiModelList['status'], 'listed'>, string> = {
-  needs_key: 'This provider lists its models only with your key, which this page never uses. Type the model id from the provider’s documentation.',
+  needs_key: 'This provider lists its models only with your key. Type the model id from the provider’s documentation.',
+  key_refused: 'The provider refused this key. Check it and try again.',
   unavailable: 'The model list could not be read. Type the model id.',
   refused: 'This endpoint is not allowed on this server. Use a public HTTPS address, or ask the operator to allow a private one.',
 };
