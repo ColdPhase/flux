@@ -11,12 +11,13 @@
 
 .sk-head { display: flex; align-items: center; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap; }
 .sk-lead { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; min-width: 0; font-size: var(--fs-md); color: var(--t2); }
-.sk-back { color: var(--t3); text-decoration: none; border-radius: 4px; transition: var(--tr); }
-.sk-back:hover { color: var(--t1); }
-.sk-sep { color: var(--t3); }
 .sk-title { min-height: 28px; padding: 0 6px; margin: 0 -6px; border-radius: var(--r-sm); font-weight: 600; color: var(--t1); text-align: left; transition: var(--tr); }
 .sk-title:hover:not(:disabled) { background: var(--hov); }
 .sk-title:disabled { cursor: default; }
+/* The space map's title is the switcher (#1438 point 7); its menu is the Wiki's (docs.css). */
+.sk-switch { position: relative; display: inline-flex; min-width: 0; }
+.sk-switch .wiki-switch { min-height: 32px; margin: 0 0 0 -6px; padding: 0 6px; gap: 4px; border-radius: var(--r-sm); font-weight: 600; }
+.sk-switch .wiki-menu { z-index: var(--z-menu); max-width: calc(100vw - 20px); }
 .sk-title-edit { min-width: 12ch; height: 28px; padding: 0 6px; margin: 0 -6px; border: 0; border-radius: var(--r-sm); font: 600 var(--fs-md)/1 var(--font);
   color: var(--t1); background: var(--bg); box-shadow: inset 0 0 0 1.5px var(--t1), 0 0 0 3px var(--sub); outline: none; }
 .sk-aud { display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-sm); color: var(--t3); }
@@ -215,17 +216,6 @@
 /* The Sketchbook's one privacy line under its title (#508). */
 .sk-book__private { display: flex; align-items: center; gap: 6px; font-size: var(--fs-sm); color: var(--t3); }
 .sk-book__private svg { flex: none; }
-.sk-index-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0 6px; }
-.sk-index-head h2 { font-size: var(--fs-lg); letter-spacing: -0.01em; }
-.sk-index { list-style: none; margin: 0; padding: 0; }
-.sk-index li + li { border-top: 1px solid var(--line); }
-.sk-index__item { display: flex; align-items: flex-start; gap: 12px; margin: 0 -8px; padding: 10px 8px; border-radius: var(--r); color: var(--t1); text-decoration: none; transition: var(--tr); }
-.sk-index__item:hover { background: var(--hov); }
-.sk-index__item > svg { flex: none; margin-top: 2px; color: var(--t3); }
-.sk-index__b { display: flex; flex-direction: column; min-width: 0; }
-.sk-index__t { font-size: var(--fs-md); font-weight: 500; }
-.sk-index__s { font-size: var(--fs-sm); color: var(--t3); }
-.sk-index-more { display: flex; align-items: center; gap: 12px; padding: 12px 0 4px; border-top: 1px solid var(--line); }
 
 
 @media (pointer: coarse) {
@@ -234,7 +224,7 @@
   .sk-plus--labelled { width: auto; }
   .sk-plus--labelled { width: auto; gap: 6px; padding: 0 16px 0 14px; border-radius: var(--r-pill); font-size: var(--fs-md); font-weight: 500; }
 .sk-edit-btn { min-height: 44px; min-width: 44px; padding: 0 16px; font-size: var(--fs-md); }
-  .sk-li-edit, .sk-title { min-height: 44px; }
+  .sk-li-edit, .sk-title, .sk-switch .wiki-switch { min-height: 44px; }
   .sk-zoom button, .sk-zoom .sk-zoom__fit { min-width: 44px; height: 44px; }
   /* The count stays compact inside the thought; its touch target reaches 44px around it. */
   .sk { --sk-work-h: 28px; }
@@ -255,7 +245,6 @@
   .sk-head { flex-wrap: nowrap; align-items: flex-start; }
   .sk-head .sk-lead { flex: 1 1 0; min-width: 0; }
   .sk-lead .sk-aud { flex-basis: 100%; }
-  .sk-back, .sk-sep { display: none; }
   .sk-bar { flex-direction: column; align-items: stretch; padding: 2px; gap: 0; }
   /* One row of tools, each an icon over a short label (#266 PF-6): the canvas gets the second row
      back. Below about 340px the row scrolls sideways instead of wrapping. */
@@ -377,9 +366,11 @@ span.sk-li-img { width: 160px; height: 96px; }
   .sk--map .sk-canvas { position: absolute; inset: 60px 0 calc(var(--sk-phone-tools-height, 150px) + 8px); height: auto; padding: 0 0 24px; }
   /* A draft or rename stays below Map options, so changing views cannot cover its entry. */
   .sk-over { left: auto; right: 10px; top: 64px; align-items: flex-end; }
-  .sk--map .sk-lead:not(:has(.sk-title-edit)) { display: none; }
+  /* A space's map keeps its title, the maps' switcher (#1438 point 7), as the one small pill; My map's title is the header's. */
+  .sk--map .sk-lead:not(:has(.sk-title-edit, .sk-switch)) { display: none; }
   .sk--map .sk-head { padding: 3px; }
-  .sk--map .sk-head:not(:has(.sk-title-edit)) { display: none; }
+  .sk--map .sk-head:not(:has(.sk-title-edit, .sk-switch)) { display: none; }
+  .sk--map .sk-head .sk-lead { flex: none; }
   .sk-over .sk-draft { width: calc(100vw - 20px); }
   /* Composition replaces the Add dock while open and reserves space below the phone
      projection. Map options and the useful map context remain above it. */

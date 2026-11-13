@@ -25,11 +25,9 @@ def linked_labels(page: Page) -> Locator:
 
 
 def open_from_tasks(page: Page) -> Locator:
-    """Opens the window from Tasks and returns the title field: the toolbar's "Task" on the computer, the phone's "+" sheet on the phone."""
+    """Opens the window from Tasks and returns the title field: the toolbar's "Task" on the computer, the phone's "+" on the phone (it opens on Task, #1438)."""
     if (page.viewport_size or {"width": 1500})["width"] <= 640:
         page.get_by_role("button", name="Create", exact=True).click()
-        page.get_by_role("button", name="Task", exact=True).click()
-        expect(dialog(page)).to_have_count(1)  # the "+" sheet has left the screen before the window is checked
     else:
         page.get_by_role("button", name=re.compile("^(New )?Task$")).first.click()
     expect(dialog(page)).to_be_visible()

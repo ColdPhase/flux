@@ -12,6 +12,7 @@ import { NewSpaceForm } from '../project/NewSpace';
 import '../app/settings.css';
 import '../people/space.css';
 import { AccountChangedError, assertSignedInAs } from '../app/personalSpace';
+import { lastSpace } from '../app/lastSpace';
 import { useShellActions, type CreateRequest } from '../app/shellContext';
 import { searchFlux } from '../search/api';
 import { putThoughtOnMyMap } from '../sketch/myMap';
@@ -22,6 +23,7 @@ import { createWork, proposeDecision } from '../work/api';
 import { useWorkChoices } from '../work/useDetailReads';
 import { WorkPagination } from '../work/WorkPagination';
 import { STATUS_LABEL } from '../work/format';
+import { WaitingField } from '../work/WaitingField';
 import { useCreatedToast } from '../work/taskState';
 import { ACCEPT_UNDO_MS, startProposal } from '../notifications/pendingAccept';
 import { SpaceFace } from '../ui/SpaceFace';
@@ -91,7 +93,8 @@ function CreateBody({ request, phone, kind, onKind, onSpace, onClose, onTask }: 
   const location = useLocation();
   const here = location.pathname.match(/^\/projects\/([^/]+)/)?.[1];
   const known = (id: string | undefined) => (id && projects.some((project) => project.id === id) ? id : undefined);
-  const [projectId, setProjectId] = useState(() => known(request.projectId) ?? known(here) ?? projects[0]?.id ?? '');
+  // The space asked for, the one you are in, else the one you last worked in, else the first of the list (#1438 point 6).
+  const [projectId, setProjectId] = useState(() => known(request.projectId) ?? known(here) ?? known(lastSpace(me.user.id) ?? undefined) ?? projects[0]?.id ?? '');
   const prefix = useId();
   // One text for every tab: a task's title, a thought, a message, a decision, a project's name (#521). A blank window keeps
   // it as this project's draft on this device, so closing the window or switching tabs never loses it; a window opened
@@ -304,11 +307,11 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
   // F-029 (#614): no agent owners while the workspace's AI is off.
   const aiOff = useSpaceAi(loaded?.project.id).blocked;
   const agents = (aiOff || !loaded ? [] : ownAgents).map((agent) => ({ value: `agent:${agent.id}`, label: `${agent.name} (agent)` }));
-  const waitingLabel = people.find((o) => o.value === waiting)?.label.replace(/ \((you|agent)\)$/, '') ?? 'No one';
   const ownerLabel = [...people, ...agents].find((o) => o.value === owner)?.label.replace(/ \((you|agent)\)$/, '') ?? 'No owner';
 
   const text = oneLine(title);
-  const needsBlocker = status === 'blocked' && !blocker.trim();
+  // Blocked is one field (#1438 point 12): a person or the reason, one of them says what the task waits for.
+  const needsBlocker = status === 'blocked' && !blocker.trim() && !waiting;
   const ready = !!text && text.length <= WORK_LIMITS.title && !!projectId && !needsBlocker;
   const noPlace = !projects.length;
 
@@ -319,7 +322,7 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
       title: text,
       ...(outcome.trim() ? { outcome: outcome.trim() } : {}),
       ...(status !== 'open' ? { status } : {}),
-      ...(status === 'blocked' ? { blocker: blocker.trim() } : {}),
+      ...(status === 'blocked' && blocker.trim() ? { blocker: blocker.trim() } : {}),
       ...(waiting ? { waitingFor: { kind: 'human' as const, id: waiting.slice('human:'.length) } } : {}),
       ...(owner && !(aiOff && owner.startsWith('agent:')) ? { owner: { kind: owner.startsWith('agent:') ? 'agent' as const : 'human' as const, id: owner.slice(owner.indexOf(':') + 1) } } : {}),
       ...(sources.length ? { sources: sources.map((s) => s.ref) } : {}),
@@ -384,10 +387,6 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
           <OptionGroup label="People">{people.map((p) => <Option key={p.value} value={p.value}>{p.label}</Option>)}</OptionGroup>
           {agents.length ? <OptionGroup label="Your agents" data-ai-surface="create-agent-owners">{agents.map((a) => <Option key={a.value} value={a.value}>{a.label}</Option>)}</OptionGroup> : null}
         </PickChip>
-        {status === 'blocked' ? <PickChip label="Waiting for" icon={<Icon name="person" size={14} />} shown={waitingLabel} value={waiting} onChange={setWaiting}>
-          <Option value="">No one in particular</Option>
-          {people.map((p) => <Option key={p.value} value={p.value}>{p.label}</Option>)}
-        </PickChip> : null}
         <div className="create__prop">
           <span className="create__lab" aria-hidden="true">Link</span>
           <div className="create__links">
@@ -402,8 +401,8 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
           </div>
         </div>
       </div>
-      {status === 'blocked' ? <label className="create__blocker">What is it waiting for?
-        <input className="ui-input" value={blocker} maxLength={WORK_LIMITS.blocker} onChange={(event) => setBlocker(event.target.value)} /></label> : null}
+      {status === 'blocked' ? <WaitingField choices={people.map((p) => ({ value: p.value, label: p.label.replace(/ \((you|agent)\)$/, '') }))} choice={waiting} text={blocker} disabled={busy}
+        onChoice={setWaiting} onText={setBlocker} maxLength={WORK_LIMITS.blocker} /> : null}
       {linking && projectId ? <LinkPicker projectId={projectId} taken={sources.map((s) => s.ref)} onPick={(ref, label) => { setSources([...sources, { ref, label }]); setLinking(false); }} onDone={() => setLinking(false)} /> : null}
       <TooLong text={text} limit={WORK_LIMITS.title} />
       {error ? <p className="create__error" role="alert">{error}</p> : null}

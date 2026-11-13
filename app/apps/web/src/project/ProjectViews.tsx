@@ -1,21 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router';
+import { Navigate, useNavigate } from 'react-router';
 import { UNTITLED_SKETCH, type Sketch } from '@flux/contracts';
-import { Button, EmptyState, Icon, Spinner, useToast } from '../ui';
+import { Button, EmptyState, Spinner, useToast } from '../ui';
 import { useShellData } from '../app/data';
 import { useStreamEvents } from '../api/stream';
-import { thoughtsLine, when } from '../sketch/format';
 import { createProjectSketch, listProjectSketches, useProjectShell } from './data';
 import '../sketch/sketch.css';
 import './project.css';
 
-const PAGE = 50;
-
 /**
- * The project's Map tab (#117): the sketches everyone in the project can see, newest change
- * first, and "New sketch", which starts one for this project's audience. A sketch opens inside
- * the project, so the view tabs and the audience stay in place. Private sketches stay under
- * Home's Map; nothing private appears here.
+ * The project's Map tab (#117, #1438 point 7): it opens the map, the space's most recently changed one, with the other maps in the title's
+ * switcher (`MapSwitcher`); there is no list of maps to pass on every visit. A space with no map shows one empty state with "New map", which
+ * starts a map for this project's audience. Private maps stay under Home's Map; nothing private appears here.
  */
 export function ProjectMap() {
   const shell = useProjectShell()!;
@@ -24,27 +20,21 @@ export function ProjectMap() {
   const navigate = useNavigate();
   const toast = useToast();
   const [state, setState] = useState<{ items: Sketch[]; total: number } | 'loading' | 'failed'>(shell.sketches ?? 'loading');
-  const [pages, setPages] = useState(1);
   const [refresh, setRefresh] = useState(0);
   const [creating, setCreating] = useState(false);
   const attempt = useRef(crypto.randomUUID());
 
   useEffect(() => {
+    // The space's frame already read its maps: with one to open, nothing more is asked.
+    if (refresh === 0 && shell.sketches?.items[0]) return undefined;
     const controller = new AbortController();
-    void (async () => {
-      const items: Sketch[] = [];
-      let total = 0;
-      for (let page = 0; page < pages; page += 1) {
-        const loaded = await listProjectSketches(project.workspaceId, project.id, PAGE, page * PAGE, controller.signal);
-        items.push(...loaded.items); total = loaded.total;
-        if ((page + 1) * PAGE >= loaded.total) break;
-      }
-      setState({ items, total });
-    })().catch((error: unknown) => {
-      if (!(error instanceof DOMException && error.name === 'AbortError')) setState((current) => (typeof current === 'object' ? current : 'failed'));
-    });
+    void listProjectSketches(project.workspaceId, project.id, 1, 0, controller.signal).then((loaded) => setState(loaded))
+      .catch((error: unknown) => {
+        if (!(error instanceof DOMException && error.name === 'AbortError')) setState((current) => (typeof current === 'object' ? current : 'failed'));
+      });
     return () => controller.abort();
-  }, [project.id, project.workspaceId, pages, refresh]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project.id, project.workspaceId, refresh]);
 
   useStreamEvents(me.user.id, (event) => { if (event.objectType === 'sketch') setRefresh((n) => n + 1); }, () => setRefresh((n) => n + 1));
 
@@ -62,55 +52,27 @@ export function ProjectMap() {
     }
   };
 
+  // The newest map replaces this address, so Back leaves the Map tab instead of coming to it again.
+  if (typeof state === 'object' && state.items[0]) return <Navigate to={`/projects/${project.id}/map/${state.items[0].id}`} replace />;
   const action = <Button variant="primary" icon="plus" busy={creating} onClick={() => void start()}>New map</Button>;
 
   return (
     <div className="sk-page">
       <div className="sk sk--index">
-        {state === 'loading' ? <div className="sk-page--center"><Spinner label="Loading maps" /></div> : null}
+        {state === 'loading' ? <div className="sk-page--center"><Spinner label="Opening the map" /></div> : null}
         {state === 'failed' ? (
           <div className="view-empty">
-            <EmptyState icon="map" title="Maps couldn’t be loaded" action={<Button onClick={() => setRefresh((n) => n + 1)}>Try again</Button>}>
+            <EmptyState icon="map" title="The map couldn’t be loaded" action={<Button onClick={() => setRefresh((n) => n + 1)}>Try again</Button>}>
               <p>Flux could not be reached. Nothing was lost.</p>
             </EmptyState>
           </div>
         ) : null}
-        {typeof state === 'object' && !state.items.length ? (
+        {typeof state === 'object' ? (
           <div className="view-empty">
             <EmptyState icon="map" title={`Map ideas for ${project.name}`} action={action}>
               <p>A map is for thinking out loud together: put thoughts down, connect one idea to several options, and move them around. Nothing on a map has to become a task.</p>
             </EmptyState>
           </div>
-        ) : null}
-        {typeof state === 'object' && state.items.length ? (
-          <>
-            <div className="sk-index-head">
-              <div>
-                <h2>Maps</h2>
-              </div>
-              {action}
-            </div>
-            <ul className="sk-index" aria-label={`Maps in ${project.name}`}>
-              {state.items.map((sketch) => (
-                <li key={sketch.id}>
-                  <Link to={`/projects/${project.id}/map/${sketch.id}`} className="sk-index__item">
-                    <Icon name="map" size={16} />
-                    <span className="sk-index__b">
-                      <span className="sk-index__t">{sketch.title}</span>
-                      <span className="sk-index__s">{thoughtsLine(sketch)}Started by {sketch.createdBy.id === me.user.id ? 'you' : sketch.createdBy.name} · changed {when(sketch.updatedAt)}</span>
-                    </span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-            <p className="pv-note">A map is for thinking out loud: one thought can link to several options, and nothing on it has to become a task. Link a thought from a task or a decision to see it in Details.</p>
-            {state.items.length < state.total ? (
-              <div className="sk-index-more">
-                <Button onClick={() => setPages((n) => n + 1)}>Show more maps</Button>
-                <span className="sk-index__s">Showing {state.items.length} of {state.total}</span>
-              </div>
-            ) : null}
-          </>
         ) : null}
       </div>
     </div>

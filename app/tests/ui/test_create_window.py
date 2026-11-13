@@ -19,7 +19,7 @@ from account import sign_out
 from app_select import choose, expect_value
 
 from message_gestures import open_message_menu
-from create_window import create_other, dialog, kind_tab, linked_labels, open_from_tasks, submit_button, title_field, window
+from create_window import create_other, dialog, kind_tab, linked_labels, open_create as open_new, open_from_tasks, submit_button, title_field, window
 from native_work_performance import TASKS_READY, close_create, draft_value, open_create
 from touch_targets import has_minimum_touch_size
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
@@ -201,19 +201,45 @@ class CreateWindow(unittest.TestCase):
                 self.assertEqual(stored[f"First of two {tag}"]["outcome"], "Done when both are listed")
                 self.assertIn(f"Second of two {tag}", stored)
 
-    def test_04_a_blocked_task_needs_its_reason(self) -> None:
+    def test_04_a_blocked_task_has_one_field_a_person_or_the_reason(self) -> None:
+        """#1438 point 12: Blocked adds one field, "Waiting for": type the reason, or pick a person from the list under it. One of the two is needed."""
         self.ensure_account()
         page = self.page()
         page.goto(f"/projects/{self.ids['project']}/tasks")
         field = open_from_tasks(page)
         field.fill("Waiting on the supplier")
+        expect(dialog(page).get_by_role("combobox", name="Waiting for")).to_have_count(0)
         choose(dialog(page).get_by_role("combobox", name="Status"), "blocked")
+        # One field, not two: no second "What is it waiting for?" box and no person chip beside the status.
+        waiting = dialog(page).get_by_role("combobox", name="Waiting for")
+        expect(waiting).to_have_count(1)
+        expect(dialog(page).get_by_label("What is it waiting for?")).to_have_count(0)
         expect(submit_button(page)).to_be_disabled()
-        dialog(page).get_by_label("What is it waiting for?").fill("Probe drawing v2")
+        waiting.fill("Probe drawing v2")
+        expect(dialog(page).get_by_role("listbox")).to_have_count(0)  # words that match no one are a reason
+        expect(submit_button(page)).to_be_enabled()
         submit_button(page).click()
         expect(dialog(page)).to_have_count(0)
         stored = {item["title"]: item for item in self.work(page)}
         self.assertEqual((stored["Waiting on the supplier"]["status"], stored["Waiting on the supplier"]["blocker"]), ("blocked", "Probe drawing v2"))
+        # A person picked from the list is enough: the task waits for them, with no reason typed.
+        page.goto(f"/projects/{self.ids['project']}/tasks")
+        field = open_from_tasks(page)
+        field.fill("Waiting on a person")
+        choose(dialog(page).get_by_role("combobox", name="Status"), "blocked")
+        waiting = dialog(page).get_by_role("combobox", name="Waiting for")
+        waiting.focus()
+        options = dialog(page).get_by_role("listbox", name="Waiting for").get_by_role("option")
+        expect(options.first).to_be_visible()
+        options.first.click()
+        expect(dialog(page).get_by_role("button", name=re.compile("^Stop waiting for "))).to_be_visible()
+        expect(submit_button(page)).to_be_enabled()
+        submit_button(page).click()
+        expect(dialog(page)).to_have_count(0)
+        person = {item["title"]: item for item in self.work(page)}["Waiting on a person"]
+        self.assertEqual(person["status"], "blocked")
+        self.assertIsNotNone(person["waitingFor"])
+        self.assertFalse(person.get("blocker"))
 
     # ---------------------------------------------------------------- AC-4: a message is the task's source
 
@@ -296,32 +322,23 @@ class CreateWindow(unittest.TestCase):
 
     # ---------------------------------------------------------------- the phone's sheet
 
-    def test_08_the_phone_sheet_asks_what_to_create_then_shows_the_same_fields(self) -> None:
+    def test_08_the_phone_plus_opens_create_straight_on_task(self) -> None:
+        """#1438 point 8: the "+" opens the Create window on Task at once; there is no list of types before the tabs, which are the same five."""
         self.ensure_account()
         for scheme in ("light", "dark"):
             page = self.page(scheme, phone=True)
             page.goto("/")
             page.get_by_role("button", name="Create", exact=True).tap()
-            sheet = page.get_by_role("dialog", name="Create")
-            expect(sheet).to_be_visible()
-            self.at_rest(page)
-            # #1013: five list rows (not a tile grid), the computer's order, no Space picker of its own, and no line about the computer.
-            rows = sheet.locator(".phone-create__rows").get_by_role("button")
-            self.assertEqual([item.strip() for item in rows.all_inner_texts()], ["Task", "Thought", "Decision", "Page", "Space"])
-            boxes = [row.bounding_box() for row in rows.all()]
-            for box in boxes:
-                self.assertGreaterEqual(box["height"], 44)
-                self.assertGreaterEqual(box["width"], PHONE["width"] - 48, "a row is as wide as the sheet, not a tile of three in a row")
-            self.assertEqual(len({round(box["x"]) for box in boxes}), 1, "the rows sit in one column")
-            self.assertEqual(sorted(box["y"] for box in boxes), [box["y"] for box in boxes], "in the computer's order, top to bottom")
-            expect(sheet.get_by_role("combobox")).to_have_count(0)
-            expect(sheet.get_by_text("The same five on the computer (C).")).to_have_count(0)  # no line about the computer: the sheet lists what it makes
-            self.assertLessEqual(sheet.bounding_box()["x"] + sheet.bounding_box()["width"], PHONE["width"])
-            shot(page, f"345-create-sheet-390-{scheme}")
-            sheet.get_by_role("button", name="Task", exact=True).tap()
             window = dialog(page)
-            expect(window).to_have_count(1)  # the sheet has left the screen
-            expect(window).to_be_visible()
+            expect(window).to_be_visible()  # "New task": the first thing shown is the task itself
+            self.at_rest(page)
+            expect(page.locator(".phone-create")).to_have_count(0)
+            tabs = window.get_by_role("tablist", name="Create").get_by_role("tab")
+            self.assertEqual([item.strip() for item in tabs.all_inner_texts()], ["Task", "Thought", "Decision", "Page", "Space"])
+            expect(kind_tab(page, "Task")).to_have_attribute("aria-selected", "true")
+            expect(title_field(page)).to_be_focused()
+            self.assertLessEqual(window.bounding_box()["x"] + window.bounding_box()["width"], PHONE["width"])
+            shot(page, f"345-create-sheet-390-{scheme}")
             # Type first, then pick another project: the typed title moves with the task (F2).
             title_field(page).fill("Print labels for the beds")
             choose(window.get_by_role("combobox", name="Space"), self.ids["other"])
@@ -338,23 +355,22 @@ class CreateWindow(unittest.TestCase):
         stored = self.api(page, "GET", f"/api/v1/projects/{self.ids['other']}/work?limit=100", status=200)["items"]
         self.assertTrue([item for item in stored if item["title"] == "Print labels for the beds"])
 
-    def test_08b_the_phone_sheet_fits_a_small_phone(self) -> None:
+    def test_08b_the_phone_window_fits_a_small_phone(self) -> None:
         self.ensure_account()
         page = self.page(phone=True)
         page.set_viewport_size({"width": 320, "height": 568})
         page.goto("/")
         page.get_by_role("button", name="Create", exact=True).tap()
-        sheet = page.get_by_role("dialog", name="Create")
-        expect(sheet).to_be_visible()
+        window = dialog(page)
+        expect(window).to_be_visible()
         self.at_rest(page)
-        rows = sheet.locator(".phone-create__rows").get_by_role("button")
-        self.assertEqual(rows.count(), 5)
-        for box in [row.bounding_box() for row in rows.all()]:
-            self.assertGreaterEqual(box["height"], 44)
+        tabs = window.get_by_role("tablist", name="Create").get_by_role("tab")
+        self.assertEqual(tabs.count(), 5)
+        for box in [tab.bounding_box() for tab in tabs.all()]:
             self.assertGreaterEqual(box["x"], 0)
             self.assertLessEqual(box["x"] + box["width"], 320)
         self.assertLessEqual(page.evaluate("() => document.documentElement.scrollWidth"), 320, "no horizontal scroll")
-        self.assertLessEqual(sheet.bounding_box()["y"] + sheet.bounding_box()["height"], 568.5)
+        self.assertLessEqual(window.bounding_box()["y"] + window.bounding_box()["height"], 568.5)
         shot(page, "1013-create-sheet-320")
 
     # ---------------------------------------------------------------- the phone's Search (S-P-Search, S-P-NoResults)
@@ -482,7 +498,7 @@ class CreateWindow(unittest.TestCase):
         self.assertEqual(len(stored), 1)
         self.assertEqual((stored[0]["outcome"], stored[0]["status"]), ("Blank form details", "in_progress"))
 
-    def test_12_the_phone_sheet_proposes_a_decision_in_the_space_the_window_shows(self) -> None:
+    def test_12_the_phone_window_proposes_a_decision_in_the_space_it_shows(self) -> None:
         self.ensure_account()
         page = self.page(phone=True)
         for start in (f"/projects/{self.ids['project']}/tasks", "/"):
@@ -491,11 +507,7 @@ class CreateWindow(unittest.TestCase):
                 page = self.page(phone=True)
                 page.goto(start)
                 page.get_by_role("button", name="Create", exact=True).tap()
-                sheet = page.get_by_role("dialog", name="Create")
-                expect(sheet.get_by_role("combobox")).to_have_count(0)  # #1013: the sheet has no Space picker, the window has
-                row = sheet.get_by_role("button", name="Decision", exact=True)
-                expect(row).not_to_have_attribute("aria-disabled", "true")
-                row.tap()
+                kind_tab(page, "Decision").tap()  # the "+" opens on Task (#1438); Decision is its tab
                 # The same Create window as the computer's, on its Decision tab (#867): in the space you are in, and its picker moves it.
                 window = page.get_by_role("dialog", name="New decision")
                 if start != "/":
@@ -982,7 +994,6 @@ class CreateWindow(unittest.TestCase):
                     page.goto(f"/projects/{self.ids['project']}/tasks")
                     if phone:
                         page.get_by_role("button", name="Create", exact=True).tap()
-                        page.get_by_role("dialog", name="Create").get_by_role("button", name="Task", exact=True).tap()
                     else:
                         expect(page.get_by_role("heading", level=1, name="Community garden sensors")).to_be_visible()
                         page.locator("body").press("c")
@@ -1017,7 +1028,6 @@ class CreateWindow(unittest.TestCase):
                 page.goto(f"/projects/{self.ids['project']}/tasks")
                 if phone:
                     page.get_by_role("button", name="Create", exact=True).tap()
-                    page.get_by_role("dialog", name="Create").get_by_role("button", name="Task", exact=True).tap()
                 else:
                     expect(page.get_by_role("heading", level=1, name="Community garden sensors")).to_be_visible()
                     page.locator("body").press("c")
@@ -1082,8 +1092,9 @@ class CreateWindow(unittest.TestCase):
         expect(palette.get_by_role("option", name=re.compile("Cargo bike co-op|^Home"))).to_have_count(0)
         expect(palette.locator(".jump__foot")).to_contain_text("Finds spaces, people, messages, tasks, Wiki pages, files and thoughts you can see.")
 
-    def test_18b_a_thought_asked_for_by_someone_with_no_space_opens_as_a_thought(self) -> None:
-        """#866 review: the phone's "+" then Thought opened New space for a member with no space; a thought needs none (it goes on My map)."""
+    def test_18b_the_phone_plus_of_someone_with_no_space_opens_new_space_and_a_thought_asked_for_opens_as_a_thought(self) -> None:
+        """#866 review: a thought needs no space (it goes on My map). #1438 point 8: the phone's "+" opens Create, which for someone with no space is
+        New space, as the computer's New is (a task needs a space); a Thought asked for by name (the Map's "+ Thought", the Create link) still opens as one."""
         context = self.browser.new_context(base_url=ORIGIN, color_scheme="light", locale="en-GB", timezone_id="Europe/Warsaw", service_workers="block",
                                            viewport=PHONE, device_scale_factor=1, is_mobile=True, has_touch=True)
         self.addCleanup(context.close)
@@ -1098,10 +1109,8 @@ class CreateWindow(unittest.TestCase):
         page.goto("/")
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
         page.get_by_role("button", name="Create", exact=True).tap()
-        page.get_by_role("dialog", name="Create").get_by_role("button", name=re.compile("^Thought")).tap()
-        expect(page.get_by_role("dialog", name="New thought")).to_be_visible()
-        expect(page.get_by_role("dialog", name="New space")).to_have_count(0)
-        expect(page.get_by_role("dialog", name="New thought").get_by_role("textbox", name="Thought", exact=True)).to_be_visible()
+        expect(page.get_by_role("dialog", name="New space")).to_be_visible()
+        expect(page.get_by_role("dialog", name="New task")).to_have_count(0)
 
     def test_20_a_guest_sees_why_the_space_tab_cannot_make_a_space(self) -> None:
         """#555, #867: a guest does not start spaces, so the Space tab says so and cannot create one."""
@@ -1199,6 +1208,28 @@ class CreateWindow(unittest.TestCase):
         badge = page.locator(f'.sk-node[data-id="{thought}"] + .sk-work-slot .sk-work')
         expect(badge).to_have_accessible_name(re.compile(r"^1 task linked to "))
         shot(page, "1013-thought-task-count")
+
+    def test_31_a_task_from_home_goes_to_the_space_last_used_not_everyone(self) -> None:
+        """#1438 point 6: outside any space (Home) Create names the space last worked in; inside a space it names that space; the picker still moves it."""
+        self.ensure_account()
+        page = self.page()
+        page.goto(f"/projects/{self.ids['other']}")
+        expect(page.get_by_role("heading", level=1)).to_be_visible()
+        page.goto("/")
+        expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+        open_new(page)
+        expect_value(dialog(page).get_by_role("combobox", name="Space"), self.ids["other"])
+        page.keyboard.press("Escape")
+        # Making a task in another space makes that the last used one, from Home too.
+        page.goto(f"/projects/{self.ids['project']}/tasks")
+        field = open_from_tasks(page)
+        field.fill(f"Last used {uuid.uuid4().hex[:6]}")
+        submit_button(page).click()
+        expect(dialog(page)).to_have_count(0)
+        page.goto("/")
+        expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+        open_new(page)
+        expect_value(dialog(page).get_by_role("combobox", name="Space"), self.ids["project"])
 
 
 if __name__ == "__main__":

@@ -229,7 +229,7 @@ def highlights(browser: Browser, ids: dict) -> None:
     page.goto("/")
     expect(page.get_by_text("Continue where you left off")).to_be_visible()
     page.get_by_role("button", name="Create", exact=True).click()
-    expect(page.get_by_role("dialog", name="Create")).to_be_visible()
+    expect(page.get_by_role("dialog", name="New task")).to_be_visible()
     sheet = grab(page)
     window.close()
     gap = 40

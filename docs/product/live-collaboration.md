@@ -59,14 +59,18 @@ supersedes the quiet start of #59 (2026-09-27).
    at “Loan rules”". More keeps any further calls and **Start a call here** for a
    separate call. Under 360 px, where Call is in More, More carries the live dot and
    Join takes Call's row (after Search, which stays More's first row, #1239).
-3. **Others are told.** Starting a call sends each of the space's other people an
-   in-app notice with **Join**: an Inbox item "Nia started a call in Gesture lamp",
-   live on open tabs and on the phone. Push follows the person's level: "Everything"
-   pushes for any call in their spaces; "Only what needs me" pushes only for an
-   invitation (point 4). Quiet hours hold push as for every notice. The notice is
-   never emailed (a call may be over before the mail is read), and it stops asking
-   anything when the call ends (the tab's "(N)" counts it only while the call runs, and
-   a call you were invited to once). The same person's notice about the same place (the space, a task, a map or a page) is sent once in
+3. **Others are told, and nothing waits** (amended by founder direction, Hubert,
+   2026-11-13, [#1438](https://github.com/ColdPhase/flux/issues/1438) point 11). A call
+   started in a space is no Inbox item and nothing on Home: its people see it where they
+   are, in the header's **Join** (point 2), the call glyph on the space's row and the
+   conversation's line (point 7), and the corner notice of an open tab and push tell
+   them once. Push follows the person's level: "Everything" pushes for any call in
+   their spaces; "Only what needs me" pushes only for an invitation (point 4), and a
+   level that sends no push tells nobody. Quiet hours hold push as for every notice.
+   The notice is never emailed (a call may be over before the mail is read). Only a
+   personal invitation (point 4) waits in the Inbox, and it stops asking anything when the
+   call ends (the tab's "(N)" counts it only while the call runs). The same person's
+   notice about the same place (the space, a task, a map or a page) is sent once in
    **5 minutes**: a call that ends and is started again inside that still starts and still shows its Join in the space, but tells
    nobody a second time (#1347; `CALL_NOTICE_PAUSE_MINUTES`). A muted space (#1249) sends no notice of an open call
    there; an invitation to a call still arrives. While a call runs, the space's row in

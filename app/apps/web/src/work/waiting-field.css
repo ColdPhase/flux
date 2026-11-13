@@ -1,0 +1,14 @@
+/* "Waiting for" (#1438 point 12): the reason and a person in one field, with the choices in flow under it (nothing to clip in a window or a panel). Only the app's tokens. */
+.waiting__box { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-height: var(--ctl-lg); padding: 4px 8px 4px 14px; border-radius: var(--r);
+  background: var(--el); box-shadow: var(--sh-field); transition: var(--tr); }
+.waiting__box:focus-within { outline: 2px solid var(--t1); outline-offset: 1px; }
+.waiting__input { flex: 1 1 140px; min-width: 0; min-height: 32px; padding: 0; border: 0; outline: 0; background: transparent; color: var(--t1); font: inherit; font-size: var(--fs-base); line-height: 1.4; }
+.waiting__pick { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-height: 28px; padding: 0 4px 0 6px; border-radius: var(--r-pill); background: var(--sub); box-shadow: inset 0 0 0 1px var(--line2); font-size: var(--fs-md); font-weight: 500; }
+.waiting__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.waiting__x { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: var(--r-pill); color: var(--t3); }
+.waiting__x:hover { background: var(--hov); color: var(--t1); }
+.waiting__list { padding: 6px; border-radius: 16px; background: var(--el); box-shadow: inset 0 0 0 1px var(--line); max-height: 220px; overflow: auto; overscroll-behavior: contain; }
+.waiting__h { padding: 4px 10px 2px; color: var(--t3); font-size: var(--fs-sm); }
+.waiting__o { display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 0 10px; border-radius: 10px; color: var(--t1); font-size: var(--fs-base); cursor: pointer; }
+.waiting__o.is-active { background: var(--sub); }
+@media (pointer: coarse) { .waiting__o { min-height: 44px; } .waiting__input { font-size: var(--fs-input-touch); min-height: 44px; } .waiting__x { width: 32px; height: 32px; } }

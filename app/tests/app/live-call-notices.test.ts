@@ -10,8 +10,9 @@ import { db, pool } from './support/db.js';
 import { addMember, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
 import { waitFor } from './support/push.js';
 
-// Calls are noticed (F-041, #1223): a call started in a space tells the space's other people in their Inbox, with Join, while someone is in
-// it; push follows the level; it is never emailed. The call glyph of a space and the end of a call nobody joined. (The invitation's chime is #1243's.)
+// Calls are noticed (F-041, #1223): a call started in a space is read in the space (the header's Join, the call glyph, the conversation's line), waits
+// nowhere (no Inbox item, nothing on Home, #1438 point 11) and is pushed only at "Everything"; it is never emailed. A personal invitation waits in the
+// Inbox with Join. The end of a call nobody joined. (The invitation's chime is #1243's.)
 
 const human = (someone: Person) => ({ kind: 'human' as const, id: someone.id });
 const noRoom = async () => {};
@@ -28,15 +29,20 @@ async function notifying(someone: Person) {
   return (expectStatus(await someone.browser.request('GET', NEEDS_YOU_PATH), 200) as NeedsYouResponse).notifying;
 }
 
-test('a call started in a space reaches its other people in the Inbox with Join, only while someone is in it, and never by email', async () => {
+test('a call started in a space waits nowhere: no Inbox item and nothing on Home, only a push at "Everything", never an email', async () => {
   const nia = await person('Nia Call');
   const ada = await person('Ada Call');
-  const outsider = await person('Lee Call');
+  const lee = await person('Lee Call');
+  const outsider = await person('Max Call');
   const ws = await workspace(nia, 'Call notices');
   await addMember(nia, ws.id, ada, 'member');
+  await addMember(nia, ws.id, lee, 'member');
   await addMember(nia, ws.id, outsider, 'member');
   const place = await project(nia, ws.id, 'Gesture lamp', 'restricted');
   await grant(nia, place.id, ada, 'contributor');
+  await grant(nia, place.id, lee, 'contributor');
+  // Ada asked to be told of everything; Lee kept the default, "Only what needs me".
+  expectStatus(await ada.browser.request('PATCH', '/api/v1/notification-preferences', { body: { level: 'everything' } }), 200);
 
   const call = await liveSessionStore(db).createOrGet(human(nia), place.id, { type: 'space', id: place.id }, randomUUID(), noRoom);
   const events = await pool.query(`SELECT data, actor_id FROM events WHERE kind = $1 AND object_id = $2`, [LIVE_STARTED_EVENT, place.id]);
@@ -44,35 +50,31 @@ test('a call started in a space reaches its other people in the Inbox with Join,
   assert.deepEqual(events.rows[0].data, { sessionId: call.id }, 'identifiers only');
 
   const url = `/projects/${place.id}/live/${call.id}`;
-  const [note] = await waitFor(async () => { const rows = await callNotes(ada.id); return rows.length ? rows : null; }, 'the call notice');
-  assert.deepEqual(note, { title: 'Nia Call started a call in Gesture lamp', body: 'Call in Gesture lamp', url, in_inbox: true });
+  const [note] = await waitFor(async () => { const rows = await callNotes(ada.id); return rows.length ? rows : null; }, 'the push of the call');
+  assert.deepEqual(note, { title: 'Nia Call started a call in Gesture lamp', body: 'Call in Gesture lamp', url, in_inbox: false }, 'kept for push, not for the Inbox');
+  assert.deepEqual(await callNotes(lee.id), [], 'at "Only what needs me" nobody is told of an open call');
   assert.deepEqual(await callNotes(nia.id), [], 'the starter is not told of their own call');
   assert.deepEqual(await callNotes(outsider.id), [], 'someone outside the space never hears of it');
   const emails = await pool.query(`SELECT e.id FROM notification_emails e JOIN notifications n ON n.id = e.notification_id WHERE n.reason = 'call'`);
   assert.equal(emails.rows.length, 0, 'a call is never emailed');
 
-  // The Inbox lists it with Join while someone is in the call (the starter's grant clears `empty_since`), and drops it when it is over.
-  assert.equal((await needsYou(ada)).find((item) => item.url === url), undefined, 'an empty room asks nothing');
+  // While someone is in the call (the starter's grant clears `empty_since`) it is still no item for anyone: not in the Inbox, not on Home, not in the tab's "(N)".
   await pool.query('UPDATE live_sessions SET empty_since = NULL WHERE id = $1', [call.id]);
-  const item = (await needsYou(ada)).find((entry) => entry.url === url);
-  assert.ok(item, 'the call is in the Inbox');
-  assert.equal(await notifying(ada), 0, 'at "Only what needs me" an open call does not count in the tab');
-  expectStatus(await ada.browser.request('PATCH', '/api/v1/notification-preferences', { body: { level: 'everything' } }), 200);
-  assert.equal(await notifying(ada), 1, 'at "Everything" an open call counts once');
-  assert.equal(item.reason, 'call');
-  // Who started it and where, like every other kind; its words are the call's place (#1424). The notification keeps its sentence.
-  assert.deepEqual([item.title, item.detail, item.from?.id, item.from?.name, item.project], ['Call in Gesture lamp', '', nia.id, 'Nia Call', { id: place.id, name: 'Gesture lamp' }]);
-  assert.deepEqual(item.call, { projectId: place.id, sessionId: call.id });
+  for (const someone of [ada, lee]) {
+    assert.equal((await needsYou(someone)).find((entry) => entry.url === url), undefined, 'a call of a space is no item of the queue');
+    assert.equal((await needsYou(someone)).filter((entry) => entry.call).length, 0);
+  }
+  assert.equal(await notifying(ada), 0, 'and the tab does not count it');
+  const inbox = expectStatus(await ada.browser.request('GET', '/api/v1/inbox'), 200) as { items: { reason: string | null }[] };
+  assert.ok(!inbox.items.some((entry) => entry.reason === 'call'), 'the Inbox lists no call of a space');
   // The call glyph of the space: for its people, never for someone outside it.
   assert.ok((await liveSpaces(db, human(ada))).projectIds.includes(place.id));
   assert.ok(!(await liveSpaces(db, human(outsider))).projectIds.includes(place.id));
   await pool.query(`UPDATE live_sessions SET state = 'ended', ended_at = now() WHERE id = $1`, [call.id]);
-  assert.equal((await needsYou(ada)).find((entry) => entry.url === url), undefined, 'an ended call leaves the Inbox');
-  assert.equal(await notifying(ada), 0, 'and the tab no longer counts it');
   assert.ok(!(await liveSpaces(db, human(ada))).projectIds.includes(place.id), 'and its space loses the call glyph');
 });
 
-test('joining a call answers its notice and an invitation to it, and nobody else\'s', async () => {
+test('a personal invitation to a call waits in the Inbox with Join, until the call is over or the person joins', async () => {
   const nia = await person('Nia Join');
   const ada = await person('Ada Join');
   const lee = await person('Lee Join');
@@ -86,29 +88,26 @@ test('joining a call answers its notice and an invitation to it, and nobody else
   const call = await store.createOrGet(human(nia), place.id, { type: 'space', id: place.id }, randomUUID(), noRoom);
   await pool.query('UPDATE live_sessions SET empty_since = NULL WHERE id = $1', [call.id]);
   const url = `/projects/${place.id}/live/${call.id}`;
-  await waitFor(async () => { const rows = await callNotes(ada.id); return rows.length ? rows : null; }, 'the call notice');
-  await waitFor(async () => { const rows = await callNotes(lee.id); return rows.length ? rows : null; }, 'the call notice of the other person');
-  // An invitation to the same call (the worker writes it from the invitation; the row is what the queue reads).
+  // An invitation to the call (the worker writes it from the invitation; the row is what the queue reads).
   await pool.query(`INSERT INTO notifications (id, user_id, workspace_id, source_type, source_id, title, body, url, reason, in_inbox, ai_origin)
     VALUES ($1, $2, $3, 'project', $4, 'Nia Join invited you to a call', 'Call in Rain barrel', $5, 'invitation', true, false)`,
   [randomUUID(), ada.id, ws.id, place.id, `${url}?invitation=${randomUUID()}`]);
-  assert.ok((await needsYou(ada)).some((item) => item.call?.sessionId === call.id), 'the call asks something of Ada');
-  assert.ok((await needsYou(lee)).some((item) => item.call?.sessionId === call.id), 'and of Lee');
+  assert.ok((await needsYou(ada)).some((item) => item.call?.sessionId === call.id), 'the invitation asks something of Ada');
+  assert.ok(!(await needsYou(lee)).some((item) => item.call?.sessionId === call.id), 'and nothing of Lee, who was not invited: the call itself is no item');
 
   await store.withAdmission(human(ada), call.id, async () => 'grant issued', { id: randomBytes(16).toString('base64url'), authSessionId: 'join-test' });
-  assert.equal((await needsYou(ada)).filter((item) => item.call).length, 0, 'Ada joined: neither the notice nor the invitation asks anything of her');
-  const read = (await pool.query(`SELECT reason, read_at FROM notifications WHERE user_id = $1 AND reason IN ('call', 'invitation')`, [ada.id])).rows as { reason: string; read_at: Date | null }[];
-  assert.deepEqual(read.map((row) => row.reason).sort(), ['call', 'invitation']);
-  assert.ok(read.every((row) => row.read_at), 'both are read');
-  assert.ok((await needsYou(lee)).some((item) => item.call?.sessionId === call.id), 'Lee has not joined: it still asks him');
+  assert.equal((await needsYou(ada)).filter((item) => item.call).length, 0, 'Ada joined: the invitation asks nothing of her');
+  const read = (await pool.query(`SELECT reason, read_at FROM notifications WHERE user_id = $1 AND reason = 'invitation'`, [ada.id])).rows as { reason: string; read_at: Date | null }[];
+  assert.equal(read.length, 1);
+  assert.ok(read.every((row) => row.read_at), 'it is read');
 });
 
 test('push for a call follows the level, and a call is never emailed', () => {
-  // "Only what needs me" pushes an invitation but not an open call; "Everything" pushes both; neither is ever emailed.
-  assert.deepEqual(channelsOf({ level: 'needsYou', emailMe: true }).call, { inApp: true, push: false, email: false });
-  assert.deepEqual(channelsOf({ level: 'everything', emailMe: true }).call, { inApp: true, push: true, email: false });
+  // "Only what needs me" pushes an invitation but not an open call; "Everything" pushes both; neither is ever emailed, and a call of a space is never in the Inbox (#1438 point 11).
+  assert.deepEqual(channelsOf({ level: 'needsYou', emailMe: true }).call, { inApp: false, push: false, email: false });
+  assert.deepEqual(channelsOf({ level: 'everything', emailMe: true }).call, { inApp: false, push: true, email: false });
   assert.deepEqual(channelsOf({ level: 'needsYou', emailMe: true }).invitation, { inApp: true, push: true, email: false });
-  assert.deepEqual(channelsOf({ level: 'nothing', emailMe: true }).call, { inApp: true, push: false, email: false });
+  assert.deepEqual(channelsOf({ level: 'nothing', emailMe: true }).call, { inApp: false, push: false, email: false });
 
 });
 
@@ -167,6 +166,8 @@ test('a call started again about the same place within 5 minutes tells nobody a 
   const changes = async () => Number((await pool.query(`SELECT count(*)::int AS n FROM events WHERE kind = 'project.live_changed.v1' AND object_id = $1`, [place.id])).rows[0].n);
   const end = (id: string) => pool.query(`UPDATE live_sessions SET state = 'ended', ended_at = now() WHERE id = $1`, [id]);
 
+  // Ada asked to be told of everything: at "Only what needs me" nobody hears of an open call (#1438 point 11).
+  expectStatus(await ada.browser.request('PATCH', '/api/v1/notification-preferences', { body: { level: 'everything' } }), 200);
   const first = await store.createOrGet(human(nia), place.id, space, randomUUID(), noRoom);
   assert.equal(await notices(), 1);
   // The worker tells Ada while the call is on (a notice of a call that is already over is never made).
