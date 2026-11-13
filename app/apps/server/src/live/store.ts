@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from 'node:crypto';
-import { and, asc, eq, inArray, ne, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import { schema, prepareReferencedTaskUse, accessReader, type Database, type Executor } from '@flux/db';
 import {
   ConflictError,
@@ -174,6 +174,12 @@ export function liveSessionStore(db: Database): LiveRepository {
         await requireLiveContext(principal, record(row).context, row.projectId, tx, false);
         if (admission) await tx.insert(schema.liveAdmissions).values({ id: admission.id, liveSessionId: row.id,
           userId: principal.id, authSessionId: admission.authSessionId });
+        // Joining answers the call's notice and any invitation to it (F-041, #1368): neither asks anything of someone who is in the call.
+        if (admission) {
+          const notes = schema.notifications;
+          await tx.update(notes).set({ readAt: sql`now()` }).where(and(eq(notes.userId, principal.id), isNull(notes.readAt),
+            inArray(notes.reason, ['call', 'invitation']), sql`${notes.url} LIKE ${`/projects/${row.projectId}/live/${row.id}%`}`));
+        }
         const result = await issue(record(row));
         // A freshly issued grant gets a full reconnect window. The next
         // authoritative empty observation starts its empty interval anew.

@@ -487,7 +487,7 @@ class EncryptedWorkspaces(Base):
                 shot(page, f"needs-you-waiting-{'phone' if phone else 'computer'}")
                 page.goto("/inbox")
                 expect(page.locator("[data-locked-note]")).to_contain_text(WAITING)
-                expect(page.get_by_text("The Inbox could not load")).to_have_count(0)
+                expect(page.get_by_text("The Inbox couldn’t be loaded")).to_have_count(0)
                 page.goto("/")
                 expect(page.get_by_role("button", name="Search", exact=True).first).to_be_visible()  # the shortcut works once the shell is up
                 if phone:

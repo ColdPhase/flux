@@ -671,8 +671,8 @@ function AppLayoutContent() {
     : where === 'inbox'
       ? location.pathname.startsWith('/settings/')
         ? { crumb: null, title: 'Notification settings', noDetails: true }
-        // The count beside the title says what the Inbox holds ("Inbox · 6 need you", #763 IN-5); no second line repeats it.
-        : { crumb: null, title: 'Inbox', noDetails: true }
+        // The count beside the title says what the Inbox holds ("Inbox 5", a quiet number and never a pill, README §2 and §7, #1367).
+        : { crumb: null, title: 'Inbox', count: location.pathname === '/inbox' ? inboxUnread : 0, noDetails: true }
     : where === 'dm'
       ? activeDm
         // A pair is named by the other person. A group names its people beneath its title, since the title may be a topic (#871).
@@ -689,6 +689,7 @@ function AppLayoutContent() {
       : { crumb: workspace?.name ?? null, title: 'Home', noDetails: true };
   // A place without its own Details (Inbox, the DM list) never keeps the generic panel open.
   if ('noDetails' in place && detailsOpen && detailsView === 'place') setDetailsOpen(false);
+  const placeCount = 'count' in place && place.count ? <span className="top__n">{place.count}<span className="ui-vh"> need you</span></span> : null;
 
   // The computer's header is one row (F-026 §4): the name, the place's views as underline tabs,
   // then what needs you, the people and agents, and More.
@@ -802,7 +803,7 @@ function AppLayoutContent() {
         // installed app has no browser Back (LK-2), so the sidebar row's page (/spaces/:id) leads back to Spaces and a deep link to Home.
         <>{routeOrigin ? <RouteOriginBack origin={routeOrigin} className="origin-back--phone" />
             : lockedHere ? <PhoneBack onBack={() => goBack(location.pathname.startsWith('/spaces/') ? '/projects' : '/')} /> : null}
-          <div className="phead__id"><div className="phead__title">{encryptedMark ? <div className="phead__titlerow"><h1>{place.title}</h1>{encryptedMark}</div> : <h1>{place.title}</h1>}{'topic' in place && place.topic ? <p className="phead__sub">{place.topic}</p> : null}</div></div></>
+          <div className="phead__id"><div className="phead__title">{encryptedMark ? <div className="phead__titlerow"><h1>{place.title}</h1>{encryptedMark}</div> : placeCount ? <div className="phead__titlerow"><h1>{place.title}</h1>{placeCount}</div> : <h1>{place.title}</h1>}{'topic' in place && place.topic ? <p className="phead__sub">{place.topic}</p> : null}</div></div></>
       )}
       <div className="phead__right">
         <span className="top__actions" ref={setActionSlot} />
@@ -855,6 +856,7 @@ function AppLayoutContent() {
           <div className="top__title">
             {place.crumb && !activeProject ? <><span className="top__crumb">{place.crumb}</span><span className="top__slash" aria-hidden="true">/</span></> : null}
             <h1 title={place.title}>{place.title}</h1>
+            {placeCount}
             {encryptedMark}
             {'topic' in place && place.topic ? <span className="top__topic">{place.topic}</span> : null}
           </div>

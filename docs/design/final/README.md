@@ -447,7 +447,7 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
 
 Founder direction, Hubert, 2026-11-12 (#1239), replacing the segmented views of #873. **One style on
 every device:** the phone, the tablet and the computer. The segmented control stays for choices
-inside a screen (the Inbox filter, the Create window), not for the views of a space.
+inside a screen (the Create window), not for the views of a space.
 
 - **Left-aligned, each tab as wide as its word.** The words are 22 px apart: 11 px of padding on each
   side of a word, which also makes every tab at least 44 px wide. The row is `--fs-md`.
@@ -507,7 +507,7 @@ The IDs come from the first Prostota canvas; rules that no longer apply are left
 | S8 | Several task updates in a row fold into one expandable line. |
 | S9 | One tap on the state glyph (or `1`–`4`) changes the state. Swipe left, then Done, then a toast with **Undo**. |
 | S10 | Title and properties are edited in place. |
-| S11 | A decision shows who can accept it and who is still waiting. Not now is one button, with no menu. |
+| S11 | A decision shows who can accept it and who is still waiting. Not now is one button, with no menu: it puts the item off until tomorrow morning, with Undo ([Inbox](#inbox)). |
 | S12 | **Giving a task to an agent is its Owner field.** The picker lists people and then "Your agents", only your own. In a space with AI off, "Your agents" disappear from the picker and it lists people only. Each agent shows its Kreska in its own colour. There is no hand-off window. |
 | S13 | A working agent is always visible: one state line under its last message in the task's discussion, with Stop, and its face in the space header while it works. The agent's owner or the space admin can Stop it. |
 | S14 | An agent's question is a message with two to four ready answers, and an Inbox item for the person asked. |
@@ -810,6 +810,26 @@ Community garden sensors, Rain barrel monitor and Tool library.
 - The list on the left, the open item on the right, with no filters. Each item names its kind,
   who it is from and its space: "Decision · Maja · Community garden sensors", "Question · Jonas",
   "Blocked · waits for you".
+- **No filters, and no pill** (founder decision, Hubert, 2026-11-13, #1367). The Inbox is one list of what needs you (S1), **newest first**,
+  so there is no "All · Decisions · Questions" row and no "6 need you · all spaces" line, and nothing is grouped by kind: the count is the quiet mono number
+  after the title ("Inbox 5", never a pill) and the sidebar's. How much reaches a person is the notification level, which is set in Settings and not
+  in the Inbox. Every item needs you, so none is marked "Needs you" (§2 lists the pill as superseded).
+- **Two columns where there is room, one column on the phone.** From a 1001 px window (the width at which the detail panel stops
+  being an overlay) the list is the left column, about 360 px, and the open item is the right column, as drawn. In the list each
+  item is one row: kind · who · space, the title (two lines at most) and one line of what it says, with no button; the open row is
+  the raised `--el` row, and the first item is open until another is chosen. The right column is the open item as its card with no
+  box around it: the face, who and where and when, the title (`--fs-xl`), its words, its actions, then who can accept it. Nothing in
+  the list moves when another item opens. **In one column** (a tablet in portrait, the phone) the open item is the card that is
+  expanded inside the list, and the others stay one row with their one quiet action, as the phone is drawn.
+  `J` and `K` move between items, and `A`, `E` and `S` act on the open one.
+- **Not now is one button, with no menu** (S11, #1367). It puts the item off until tomorrow at 08:00 and offers Undo ("Not now.
+  Back tomorrow morning"); the item returns then. There is no "Ask me again" menu, no "Next week", no "When #N is done" and no
+  "Decline for good" on a decision: a decision waits until someone accepts it. A line under the list says how many are put off
+  ("2 for later"). The one dark primary of the open item is its first action (Accept, Approve all, Join).
+- **A call is a Call, never a Question** (F-041, #1368). An invitation to a call or a call started in your space is one item,
+  "Call · Nia · Gesture lamp", with **Join** as its primary and Open as its second action; it is on Home and in the Inbox only while
+  someone is in the call and you are not. It leaves when you join (from here, from the notice, from the space's Join or from the
+  call line) and when the call ends.
 - **One item per agent run:** "Planner · Ada's agent · Rain barrel monitor", "3 things wait for
   you", what they are (Delete the page “Old notes” · a task for Jonas · a task for Maja), then
   Approve all and Open. The phone lists the three things and the line "Deleting and other

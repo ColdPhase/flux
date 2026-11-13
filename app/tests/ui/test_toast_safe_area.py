@@ -25,6 +25,7 @@ import uuid
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
 from test_app_shell import ORIGIN, PHONE, UI_BROWSER, UPSTREAM, shot, start_forwarder
+from inbox_items import open_item
 
 PASSWORD = "feedback clears the footer"
 STAMP = int(time.time() * 1000)
@@ -204,8 +205,8 @@ class ToastSafeArea(unittest.TestCase):
                     page = self.phone(dark=dark, inset=inset)
                     # Home lists what waits without its actions (#865); Accept is on the Inbox's card.
                     page.goto("/inbox")
-                    card = page.locator(".nyc").filter(has=page.get_by_role("button", name=re.compile("^Accept"))).first
-                    card.get_by_role("button", name=re.compile("^Accept")).tap()
+                    # The Inbox is one list newest first (#1367): choose the decision, then Accept on its open card.
+                    open_item(page.locator(".nyc--decision").first).get_by_role("button", name=re.compile("^Accept")).tap()
                     toast = page.locator(".ui-toast").filter(has_text="Accepted")
                     expect(toast).to_be_visible()
                     self.assert_clear(page, inset, {"create", "places", "search"}, f"home dark={dark} inset={inset}")

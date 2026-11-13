@@ -370,7 +370,6 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
 .wd-decide { position: relative; margin-top: var(--s-3); }
 .wd-decide > .wd-muted { margin: 0 0 var(--s-2); }
 .wd-decide__foot { padding-top: var(--s-3); }
-.wd-need-chip { margin-left: auto; }
 .wd-decide .wd-error { margin-top: var(--s-2); }
 /* CW-6: done-when criteria read as an unchecked list: Flux never checks one off. */
 .wd-checks { margin: 0 0 6px; padding: 0; list-style: none; font-size: var(--fs-md); line-height: 1.5; }

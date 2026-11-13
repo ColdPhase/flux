@@ -18,6 +18,7 @@ import uuid
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, shot, start_forwarder
+from inbox_items import open_item
 from contrast import MEASURE
 
 PASSWORD = "one calm conversation for the lamp"
@@ -415,7 +416,7 @@ class OneConversationJourney(unittest.TestCase):
             time.sleep(0.25)
         self.assertEqual(url, self.project_url(f"/conversations/{self.ids['c2']}#message-{asked['id']}"), "the notification links the exact message")
         page.goto("/inbox")
-        page.locator(".nyc", has_text="asked you in Night lamp").first.get_by_role("button", name="Reply").click()
+        open_item(page.locator(".nyc", has_text="asked you in Night lamp").first).get_by_role("button", name="Reply").click()
         expect(page).to_have_url(re.compile(re.escape(url) + "$"))
         message = self.thread(page).locator(f"#message-{asked['id']}")
         expect(message).to_have_class(re.compile("is-arrived"))

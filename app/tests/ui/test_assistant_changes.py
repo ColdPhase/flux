@@ -19,6 +19,7 @@ import uuid
 from playwright.sync_api import Browser, BrowserContext, Page, Route, expect, sync_playwright
 
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+from inbox_items import open_item
 
 UI_BROWSER = os.environ.get("FLUX_UI_BROWSER", "chromium")  # chromium (default) or webkit, as in the other journeys (#68 AC-8)
 PASSWORD = "waiting for my ok"
@@ -237,7 +238,9 @@ class AssistantChanges(unittest.TestCase):
             route.fulfill(status=200, content_type="application/json", body=json.dumps({"changes": [{"change": {}, "message": None} for _ in changes]}))
         page.route(re.compile(r".*/api/v1/assistant-runs/[0-9a-f-]{36}/changes/apply$"), apply)
         page.goto("/inbox")
-        card = page.locator(f'[data-key="assistant:{self.ids["run"]}"]')
+        row = page.locator(f'.nyc[data-key="assistant:{self.ids["run"]}"]')
+        expect(row).to_contain_text("3 things wait for you")
+        card = open_item(row)
         expect(card).to_contain_text("Assistant")
         expect(card).to_contain_text("3 things wait for you")
         expect(card).to_contain_text("Delete “Old notes”")
@@ -275,8 +278,8 @@ class AssistantChanges(unittest.TestCase):
         expect(page).to_have_url(re.compile(re.escape(f"/inbox?item=assistant:{run}") + "$"))
         card = page.locator(f'.nyc[data-key="assistant:{run}"]')
         expect(card).to_have_attribute("aria-current", "true")
-        expect(card).to_contain_text("Order 20 soil sensors")
-        expect(card.get_by_role("button", name="Approve all", exact=True)).to_be_visible()
+        expect(open_item(card)).to_contain_text("Order 20 soil sensors")
+        expect(open_item(card).get_by_role("button", name="Approve all", exact=True)).to_be_visible()
         expect(page.locator(f'.nyc[data-key="{question["key"]}"]')).not_to_have_attribute("aria-current", "true")
 
     def test_07_phone_reads_the_cards_without_overflow(self) -> None:
@@ -320,7 +323,7 @@ class AssistantChanges(unittest.TestCase):
         queue = {"items": [item], "count": 1, "later": 0, "doneToday": 0}
         page.route(re.compile(r".*/api/v1/needs-you(\?.*)?$"), lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(queue)))
         page.goto("/inbox")
-        entry = page.locator(f'[data-key="assistant:{self.ids["run"]}"]')
+        entry = open_item(page.locator(f'.nyc[data-key="assistant:{self.ids["run"]}"]'))
         expect(entry).to_contain_text(f"Add {said}")
         expect(entry).to_contain_text("tells Jonas Weber")
         expect(entry.locator(".nyc__reason")).to_have_text(line)
@@ -367,7 +370,7 @@ class AssistantChanges(unittest.TestCase):
             body = json.dumps(queue)
             page.route(re.compile(r".*/api/v1/needs-you(\?.*)?$"), (lambda payload: lambda route: route.fulfill(status=200, content_type="application/json", body=payload))(body))
             page.goto("/inbox")
-            entry = page.locator(f'[data-key="assistant:{self.ids["run"]}"]')
+            entry = open_item(page.locator(f'.nyc[data-key="assistant:{self.ids["run"]}"]'))
             # The title is said once (#1102).
             expect(entry).to_contain_text("Add “Harmless label task” · Third-person words, ship it now")
             expect(entry).not_to_contain_text("Add Harmless label task ·")
@@ -399,7 +402,7 @@ class AssistantChanges(unittest.TestCase):
         body = json.dumps({"items": [item], "count": 1, "later": 0, "doneToday": 0})
         page.route(re.compile(r".*/api/v1/needs-you(\?.*)?$"), (lambda payload: lambda route: route.fulfill(status=200, content_type="application/json", body=payload))(body))
         page.goto("/inbox")
-        entry = page.locator(f'[data-key="assistant:{self.ids["run"]}"]')
+        entry = open_item(page.locator(f'.nyc[data-key="assistant:{self.ids["run"]}"]'))
         expect(entry).to_contain_text("Add “Harmless label task” · Third-person words, ship it now")
         expect(entry).to_contain_text(f"tells {names[0]['name']} and {names[1]['name']}")
         card = entry.bounding_box()

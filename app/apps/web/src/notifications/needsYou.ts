@@ -46,10 +46,8 @@ export interface Queue {
   show: (item: NeedsYouItem, settled?: Promise<unknown>) => LocalQueueChange;
 }
 
-const sorted = (items: NeedsYouItem[]) => {
-  const order = { decision: 0, question: 1, blocked: 2, mention: 3 } as const;
-  return [...items].sort((a, b) => order[a.kind] - order[b.kind] || b.at.localeCompare(a.at));
-};
+/** One list, newest first, as the server sends it (README §7 Inbox). */
+const sorted = (items: NeedsYouItem[]) => [...items].sort((a, b) => b.at.localeCompare(a.at) || a.key.localeCompare(b.key));
 
 /**
  * The queue for Inbox and Home: read on mount, when the tab becomes visible, on stream events and when

@@ -34,7 +34,6 @@ const excerpt = (text: string, max = 200) => {
   return line.length > max ? `${line.slice(0, max - 1).trimEnd()}…` : line;
 };
 const ref = (work: Pick<WorkRecord, 'id' | 'number' | 'title'>): NeedsYouTaskRef => ({ id: work.id, number: work.number, title: work.title });
-const ORDER: Record<NeedsYouKind, number> = { decision: 0, question: 1, blocked: 2, mention: 3 };
 /** Most agent questions read for one person: the open ones and the recently answered ones. */
 const MAX_AGENT_QUESTIONS = 200;
 /** The notification that told the person about an agent question, so Done marks it read as a note's Done does. */
@@ -238,7 +237,8 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
             line: change.line, waitReason: change.waitReason, forPerson: change.forPerson, tells: change.tells, after: change.tells.length ? change.after : null })) },
       });
     }
-    const sorted = items.sort((a, b) => ORDER[a.kind] - ORDER[b.kind] || b.at.localeCompare(a.at));
+    // One list, newest first (README §7 Inbox, founder decision 2026-11-13); the key keeps two items of the same moment in a steady order.
+    const sorted = items.sort((a, b) => b.at.localeCompare(a.at) || a.key.localeCompare(b.key));
     notifyingOf.set(sorted, notifying);
     return sorted;
   }

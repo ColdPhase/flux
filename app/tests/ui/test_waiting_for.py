@@ -14,6 +14,7 @@ from app_select import choose
 
 from create_window import dialog, open_from_tasks, submit_button
 from test_app_shell import ORIGIN, UPSTREAM, shot, start_forwarder
+from inbox_items import open_item
 from test_work_pagination import api
 
 PASSWORD = "Waiting for a person, calmly"
@@ -114,9 +115,9 @@ class WaitingFor(unittest.TestCase):
                 item = page.get_by_role("listitem").filter(has=page.get_by_role("button", name=heading))
                 expect(item.first).to_be_visible()
                 expect(item.first.get_by_role("button", name="Unblock")).to_have_count(0)
-                if not phone: expect(item.first.get_by_role("button", name="Done", exact=True)).to_be_visible()
+                if not phone: expect(open_item(item.first).get_by_role("button", name="Done", exact=True)).to_be_visible()
                 shot(page, f"waiting-for-inbox-{'phone' if phone else 'computer'}")
-                item.first.get_by_role("button", name="Open task").click()
+                open_item(item.first).get_by_role("button", name="Open task").click()
                 expect(page.locator(f".wd[data-detail-id='{task['id']}']")).to_be_visible()
                 expect(page.get_by_role("region", name="Blocker")).to_contain_text("Waiting for Kai Nowak")
 
@@ -201,7 +202,7 @@ class WaitingFor(unittest.TestCase):
                     item.first.locator(".nyc__scroll").evaluate("element => element.scrollTo({ left: element.scrollWidth, behavior: 'instant' })")
                     item.first.locator(".nyc__tray").get_by_role("button", name="Done").tap()
                 else:
-                    item.first.get_by_role("button", name="Done", exact=True).click()
+                    open_item(item.first).get_by_role("button", name="Done", exact=True).click()
                 expect(page.get_by_role("button", name=re.compile(rf"is waiting for you: #{task['number']} "))).to_have_count(0)
                 expect(page.locator(".ui-toast")).to_contain_text(f"#{task['number']} can continue")
                 for _ in range(40):

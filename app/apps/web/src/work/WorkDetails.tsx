@@ -4,7 +4,7 @@ import { useRevalidator } from 'react-router';
 import { waitingPhrase, type ObjectLink, type Project, type ProjectPerson, type WorkspaceMember, type WorkStatus, type WorkDetailObject, type WorkDetailProjection } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { useStreamEvents } from '../api/stream';
-import { AgentIdentity, Avatar, Button, Icon, Input, Kreska, Morph, PanelGlyph, PanelMeta, StatusGlyph, useToast, usePop, Select, Option } from '../ui';
+import { AgentIdentity, Avatar, Button, Icon, Input, Kreska, Morph, PanelGlyph, PanelMeta, StatusGlyph, useToast, Select, Option } from '../ui';
 import { getProject, listWorkspaceMembers } from '../project/api';
 import { useShellData } from '../app/data';
 import { DetailsSkeleton } from '../app/SurfaceSkeletons';
@@ -13,7 +13,7 @@ import { LiveEntry } from '../live/LiveEntry';
 import { useShellActions, type ObjectView, type WorkFormView } from '../app/shellContext';
 import { useNeedsYou, announceInboxChange } from '../notifications/needsYou';
 import { useNeedsYouActions } from '../notifications/useNeedsYouActions';
-import { NotNowButton, NotNowMenu, WaitingLine } from '../notifications/NeedsYouCard';
+import { NotNowButton, WaitingLine } from '../notifications/NeedsYouCard';
 import '../notifications/needs-you.css';
 import { useDiscussDecision } from './discuss';
 import { acceptDecision, proposeDecision, resolveWaiting, undoTaskCreation, updateWork } from './api';
@@ -708,15 +708,11 @@ function DecisionPanel({ decision, context, detail, relations, reload, revision,
   const earlierObject = earlierRead.value?.object.kind === 'decision' ? earlierRead.value.object : null;
   const { busy, error, attempt } = commands.state;
   const { setBusy, setError, setAttempt, isCurrent } = commands;
-  // The panel is the Inbox's decision card first (F-026 P4, S11; #763 D1): Needs you, the reason, what it rests on,
+  // The panel is the Inbox's decision card first (F-026 P4, S11; #763 D1): the reason, what it rests on,
   // Accept / Not now / Discuss and who else can accept. Not now and the waiting line are the Inbox item's, when it has one.
   const queue = useNeedsYou(me.user.id);
   const handlers = useNeedsYouActions(queue);
   const need = decision.status === 'proposed' ? queue.items?.find((entry) => entry.key === `decision:${decision.id}`) ?? null : null;
-  const [notNowOpen, setNotNowOpen] = useState(false);
-  const notNow = useRef<HTMLButtonElement>(null);
-  const notNowAnchors = useMemo(() => [notNow], []);
-  const notNowPop = usePop(notNowOpen);
   const discuss = useDiscussDecision();
   const sources = relations.links.filter((link) => link.from.id === decision.id && link.role === 'source');
 
@@ -742,7 +738,7 @@ function DecisionPanel({ decision, context, detail, relations, reload, revision,
   return (
     <div className="details wd" data-detail-kind="decision" data-detail-id={decision.id}>
       <div className="wd-decision-identity">
-        <p className={`details__eyebrow wd-eyebrow${decision.status === 'proposed' ? ' wd-need' : ''}`}><Icon name="rule" size={13} /><Morph value={decision.status}>{earlier ? decisionLine({ ...decision, supersedes: null }) : decisionLine(decision)}</Morph>{need ? <span className="nyc__chip wd-need-chip">Needs you</span> : null}</p>
+        <p className={`details__eyebrow wd-eyebrow${decision.status === 'proposed' ? ' wd-need' : ''}`}><Icon name="rule" size={13} /><Morph value={decision.status}>{earlier ? decisionLine({ ...decision, supersedes: null }) : decisionLine(decision)}</Morph></p>
         <h3 className={`details__title${decision.status === 'superseded' ? ' wd-was' : ''}`}>{decision.title}</h3>
       </div>
       {decision.rationale ? <p className="details__lead">{decision.rationale}</p> : null}
@@ -757,13 +753,11 @@ function DecisionPanel({ decision, context, detail, relations, reload, revision,
           <div className="nyc__foot wd-decide__foot">
             <div className="nyc__actions">
               <Button variant="primary" busy={busy} onClick={() => void accept()}>Accept</Button>
-              {need ? <NotNowButton buttonRef={notNow} open={notNowOpen} onToggle={() => setNotNowOpen(!notNowOpen)} /> : null}
+              {need ? <NotNowButton onClick={() => handlers.snooze(need, 'tomorrow')} /> : null}
               <Button variant="quiet" onClick={() => void discuss(context.project.id, decision.id, relations.complete ? relations.links : undefined)}>Discuss</Button>
             </div>
             {need ? <WaitingLine item={need} /> : null}
           </div>
-          {need && notNowPop.mounted ? <NotNowMenu item={need} anchors={notNowAnchors} popProps={notNowPop.props}
-            onChoose={(choice) => { setNotNowOpen(false); handlers.snooze(need, choice); }} onClose={() => setNotNowOpen(false)} /> : null}
           {error ? <p className="wd-error" role="alert">{error}</p> : null}
         </section>
       ) : null}
