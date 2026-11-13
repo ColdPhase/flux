@@ -8,7 +8,8 @@ import { asPerson, runFixed, type Person } from './process.js';
 // is the container, its egress and this: a scratch directory that exists for one run, Flux's sandbox shell around every command they
 // run (native/sandbox.c, Linux Landlock applied by the process to itself), an outer domain around the CLI that may execute nothing but
 // the CLI's own program and that shell, the broker that starts each shell outside the CLI's domain, and the limits below, which the
-// supervisor measures while the run lasts. Without Landlock the runtime keeps its CLIs' tools off, as before.
+// supervisor measures while the run lasts. Without Landlock ABI 4 the runtime does not start (founder decision 2026-11-13, #1441): there is
+// no mode where agents run without their own shell and files.
 
 /** Flux's sandbox (native/sandbox.c) in the runtime image: the program, and the directory of the shell names it answers to. */
 export const SANDBOX = {
@@ -32,33 +33,36 @@ export const RUN_TOOL_LIMITS = {
   everyMs: 1000,
 } as const;
 
-/** The sandbox as this runtime found it at start: Landlock's ABI version, and where scratches go. Null: the CLIs' own tools stay off. */
+/** The sandbox as this runtime found it at start: Landlock's ABI version, and where scratches go. */
 export interface SandboxSetup { binary: string; shell: string; bin: string; abi: number; scratchRoot: string;
   /** TEST ONLY: files or directories a check image's CLI wrapper must also execute (`FLUX_RUNTIME_TEST_EXEC`); never set in a release. */
   testExec?: readonly string[] }
 
-/** The oldest Landlock that can keep the tools: ABI 4 (Linux 6.7) forbids TCP, so a shell cannot tunnel through the egress (#1437). */
+/** The oldest Landlock the runtime starts on: ABI 4 (Linux 6.7) forbids TCP, so a shell cannot tunnel through the egress (#1437). */
 export const LANDLOCK_ABI_FOR_TOOLS = 4;
 
+/** The one sentence for a kernel without Landlock ABI 4 (founder decision 2026-11-13, #1441): the runtime, and so Flux AI, does not start. */
+export const NEWER_LINUX_NEEDED = 'Flux AI needs a newer Linux (kernel 6.7 or later, e.g. Ubuntu 24.04 or Debian 13).';
+
 /**
- * Whether the CLIs may keep their own tools here: the kernel has Landlock with network rules (ABI 4 or later; coordinator decision on
- * #1437: before it a shell could reach the egress and, through it, an allowed vendor host under another account) and the scratch root is
- * a directory only the supervisor can write. Anything else turns the tools off with one log line; the runtime still serves.
+ * The sandbox every run's tools work in (RT-5): the kernel has Landlock with network rules (ABI 4 or later; coordinator decision on #1437:
+ * before it a shell could reach the egress and, through it, an allowed vendor host under another account) and the scratch root is a
+ * directory only the supervisor can write. Anything else is the reason the runtime refuses to start (founder decision 2026-11-13, #1441):
+ * agents never run without their own shell and files.
  */
 export async function findSandbox(binary: string = SANDBOX.binary, scratchRoot: string = SCRATCH_ROOT): Promise<{ setup: SandboxSetup | null; reason: string | null }> {
   const probe = await runFixed(binary, ['abi'], { env: { PATH: '/usr/bin:/bin' }, cwd: '/', timeoutMs: 5_000, person: null });
   const abi = probe.code === 0 ? Number(probe.stdout.trim()) : 0;
-  if (!Number.isInteger(abi) || abi < 1) return { setup: null, reason: 'this kernel has no Landlock (Linux 6.7 or later with Landlock enabled)' };
-  if (abi < LANDLOCK_ABI_FOR_TOOLS) return { setup: null, reason: `this kernel's Landlock (ABI ${abi}) cannot forbid TCP: Linux 6.7 or later (ABI 4) is needed` };
+  if (!Number.isInteger(abi) || abi < LANDLOCK_ABI_FOR_TOOLS) return { setup: null, reason: NEWER_LINUX_NEEDED };
   const root = await lstat(scratchRoot).catch(() => null);
-  if (!root?.isDirectory() || root.isSymbolicLink()) return { setup: null, reason: `${scratchRoot} is missing` };
+  if (!root?.isDirectory() || root.isSymbolicLink()) return { setup: null, reason: `The agent runtime needs ${scratchRoot}, which is missing. Use the Compose files of this version.` };
   try {
     if (root.uid !== 0) await chown(scratchRoot, 0, 0);
     await chmod(scratchRoot, 0o711);
     const test = join(scratchRoot, '.probe');
     await mkdir(test);
     await rmdir(test);
-  } catch { return { setup: null, reason: `${scratchRoot} cannot be written (use the Compose files of this version)` }; }
+  } catch { return { setup: null, reason: `The agent runtime cannot write ${scratchRoot}. Use the Compose files of this version.` }; }
   return { setup: { binary, shell: join(SANDBOX.bin, 'bash'), bin: SANDBOX.bin, abi, scratchRoot }, reason: null };
 }
 

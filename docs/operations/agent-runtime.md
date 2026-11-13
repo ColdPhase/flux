@@ -175,9 +175,10 @@ Docker's local volumes have no size quota, so the supervisor refuses a run while
   Linux 6.7 or later** (Landlock ABI 4, with Landlock enabled: the default on Ubuntu 24.04+, Debian 13+, Fedora 40+ and RHEL 10)
   and Docker's default seccomp profile (Docker Engine 25 allows its system calls); on an older kernel a shell could reach the
   egress, and through it an allowed vendor host under someone else's account (coordinator decision on #1437). **On a host without
-  Landlock ABI 4 the runtime still starts and logs `{"event":"tools_off"}` once**; its agents then work as before, with Flux's tools
-  and the CLI's own web search only, and cannot attach files they made. Check with
-  `docker compose … exec runtime-1 /opt/flux-runtime/sandbox/flux-sandbox abi` (4 or more: the tools are on).
+  Landlock ABI 4 the runtime does not start** (founder decision 2026-11-13, #1441: agents never run without their own shell and
+  files), so Flux AI is off: `./flux up` (by the engine's kernel version) and the runtime's start check (by the sandbox's own probe,
+  `{"event":"runtime_refused"}`) say "Flux AI needs a newer Linux (kernel 6.7 or later, e.g. Ubuntu 24.04 or Debian 13)." Check with
+  `docker compose … exec runtime-1 /opt/flux-runtime/sandbox/flux-sandbox abi` (4 or more).
 
 ### The toolbox
 

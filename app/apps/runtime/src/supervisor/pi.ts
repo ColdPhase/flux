@@ -9,12 +9,13 @@ import { forgetCredentials, watchRunSecrets } from './credentials.js';
 import { asThem, clearLeftovers, removeAsThem } from './data.js';
 import type { Outcome, Send, SupervisorConfig } from './handlers.js';
 import { asPerson, endProcesses, runFixed, type Person } from './process.js';
-import { finishedOf, MODEL_NOT_ACCEPTED, RUN_BRIEF, RUN_BRIEF_OWN_TOOLS, runsOf, STOP_GRACE_MS } from './run.js';
+import { finishedOf, MODEL_NOT_ACCEPTED, RUN_BRIEF_OWN_TOOLS, runsOf, STOP_GRACE_MS } from './run.js';
 import { createScratch, removeScratch, startBroker, watchRun, type Broker, type SandboxSetup } from './sandbox.js';
 
 // An API-key agent's run in pi (#1441, RT-1, RT-5): pi 1.5.2 (MIT, pinned with its lockfile in the runtime image), in JSON mode, under the
 // same contract as Claude Code and Codex. Flux is its only MCP server, with exactly the run's tools exposed directly; its own `read`, `bash`,
-// `edit` and `write` run in the run's scratch where the runtime has Flux's sandbox (`bash` is Flux's sandbox shell); no extension, skill,
+// `edit` and `write` run in the run's scratch, inside Flux's sandbox (`bash` is Flux's sandbox shell; the runtime never starts without the
+// sandbox, and pi never runs without its tools, founder decision 2026-11-13); no extension, skill,
 // prompt template, context file, project setting, session file, update check or telemetry. The model is the key's: pi speaks its provider's
 // wire format to Flux's model gateway through the egress with the run token, and the gateway holds the key and meters every request (one
 // adapter: `gatewayProvider`). Nothing pi prints is logged; its words, its Flux tool calls and its answer go on as the CLIs' do.
@@ -29,7 +30,7 @@ export const PI_PATHS = {
 } as const;
 export type PiPaths = { node: string; launcher: string; cli: string };
 
-/** pi's own tools a run keeps where the runtime has Flux's sandbox (#1437, RT-5). Never `grep`, `find`, `ls` (bash does those), `codemode` or `tool_search`. */
+/** pi's own tools, which every run keeps inside Flux's sandbox (#1437, RT-5). Never `grep`, `find`, `ls` (bash does those), `codemode` or `tool_search`. */
 export const PI_OWN_TOOLS = ['read', 'bash', 'edit', 'write'] as const;
 /** The name pi gives a tool of Flux's MCP server. */
 const PI_MCP_PREFIX = 'mcp__flux__';
@@ -38,13 +39,13 @@ const PI_MCP_PREFIX = 'mcp__flux__';
  * Every flag of a pi run (pi 1.5.2's `pi --help`, read 2026-11-13). JSON mode, one prompt read from standard input, nothing persisted,
  * nothing discovered: `--no-extensions` turns off every extension and `-e builtin:mcp` brings back only pi's own MCP support; no skills,
  * prompt templates, themes or context files (`AGENTS.md`, `CLAUDE.md`), project settings ignored, no network of its own (`--offline`).
- * `--tools` names exactly what the model is offered: pi's own tools (with the sandbox) and the tools of the `flux` server.
+ * `--tools` names exactly what the model is offered: pi's own tools and the tools of the `flux` server.
  */
-export function piArgs(ownTools: boolean, brief: string, model: string): string[] {
+export function piArgs(brief: string, model: string): string[] {
   return [
     '--mode', 'json', '--no-session', '--no-extensions', '-e', 'builtin:mcp', '--no-skills', '--no-prompt-templates', '--no-themes',
     '--no-context-files', '--no-approve', '--offline', '--provider', 'flux', '--model', model,
-    '--tools', [...(ownTools ? PI_OWN_TOOLS : []), `${PI_MCP_PREFIX}*`].join(','), '--append-system-prompt', brief,
+    '--tools', [...PI_OWN_TOOLS, `${PI_MCP_PREFIX}*`].join(','), '--append-system-prompt', brief,
   ];
 }
 
@@ -80,10 +81,10 @@ export function gatewayProvider(provider: KeyProvider, origin: string, model: st
 export const PI_MODEL_LIMITS = { contextWindow: 128_000, maxTokens: 8_192 } as const;
 
 /** pi's settings for a run: Flux's sandbox shell, no telemetry, no retries of its own (a refusal is final; the worker decides), SSE only. */
-export function piSettings(model: string, shell: string | null) {
+export function piSettings(model: string, shell: string) {
   return {
     defaultProvider: 'flux', defaultModel: model, defaultProjectTrust: 'never', enableInstallTelemetry: false, enableSkillCommands: false,
-    quietStartup: true, transport: 'sse', retry: { enabled: false }, ...(shell ? { shellPath: shell } : {}),
+    quietStartup: true, transport: 'sse', retry: { enabled: false }, shellPath: shell,
   };
 }
 
@@ -131,20 +132,19 @@ export async function runPi(config: SupervisorConfig, request: PiRequest, dir: s
   const crashed = (): Outcome => ({ result: { kind: 'run', runId: request.runId, outcome: 'crashed', answer: null, resetsAt: null, turns: 0 } });
   const mcpUrl = config.mcpUrl ?? `http://${config.egressHost}:8080/mcp`;
   const modelOrigin = config.modelOrigin ?? MODEL_GATEWAY_ORIGIN;
+  // pi never runs without its own shell and files (founder decision 2026-11-13, #1441): no sandbox, no run.
   const sandbox: SandboxSetup | null = config.sandbox ?? null;
+  if (!sandbox) return crashed();
   const runDir = join(config.tmpDir, `run-${request.runId}`);
   await rm(runDir, { recursive: true, force: true });
   await mkdir(runDir);
   await chmod(runDir, 0o755);
-  let scratch: string | null = null;
-  if (sandbox) {
-    try { scratch = await createScratch(sandbox, request.runId, person); } catch { await rm(runDir, { recursive: true, force: true }).catch(() => undefined); return crashed(); }
-  }
-  const ownTools = scratch !== null;
-  const brief = ownTools ? RUN_BRIEF_OWN_TOOLS : RUN_BRIEF;
+  let scratch: string;
+  try { scratch = await createScratch(sandbox, request.runId, person); } catch { await rm(runDir, { recursive: true, force: true }).catch(() => undefined); return crashed(); }
+  const brief = RUN_BRIEF_OWN_TOOLS;
   // pi's own files hold no secret: the run token is named (`$FLUX_RUN_TOKEN`), never written.
   const files: Record<string, unknown> = {
-    'settings.json': piSettings(request.model, ownTools ? sandbox!.shell : null),
+    'settings.json': piSettings(request.model, sandbox.shell),
     'models.json': { providers: { flux: gatewayProvider(request.provider, modelOrigin, request.model, request.pictures === true) } },
     'mcp.json': piMcp(mcpUrl),
   };
@@ -154,7 +154,7 @@ export async function runPi(config: SupervisorConfig, request: PiRequest, dir: s
     const quiet = await endProcesses(person);
     await rm(runDir, { recursive: true, force: true }).catch(() => undefined);
     if (!quiet) return;
-    if (scratch) await removeScratch(scratch, person);
+    await removeScratch(scratch, person);
     await removeAsThem(person, home);
     await asThem(person, 'rm -rf -- "$1/tmp" && mkdir -m 0700 -- "$1/tmp"', dir);
     await clearLeftovers(config.tmpDir, person);
@@ -163,13 +163,10 @@ export async function runPi(config: SupervisorConfig, request: PiRequest, dir: s
   // The broker that starts every shell of the run outside pi's domain (#1437, #1461), as for the CLIs: pi's domain may execute nothing but
   // node and the sandbox, so its `bash` (Flux's sandbox shell) hands each command to the broker. Without it pi would have no shell: the run
   // does not start.
-  let broker: Broker | null = null;
-  if (sandbox && scratch) {
-    broker = await startBroker(sandbox, scratch, runDir, person).catch(() => null);
-    if (!broker) { await cleanUp(); return crashed(); }
-  }
+  const broker: Broker | null = await startBroker(sandbox, scratch, runDir, person).catch(() => null);
+  if (!broker) { await cleanUp(); return crashed(); }
 
-  const work = scratch ?? join(dir, 'tmp');
+  const work = scratch;
   const env: Record<string, string> = {
     // pi's HOME is its own fresh agent directory (#1441 review): never the person's shared home, where Claude Code keeps its `.claude*`
     // and which Codex reads, so nothing a run of pi writes reaches a later run of any engine.
@@ -179,19 +176,17 @@ export async function runPi(config: SupervisorConfig, request: PiRequest, dir: s
     PI_CODING_AGENT_DIR: home, PI_OFFLINE: '1', PI_SKIP_VERSION_CHECK: '1', PI_TELEMETRY: '0',
     // Node's own compile cache would go to TMPDIR, the scratch: nothing but what the run makes belongs there.
     NODE_DISABLE_COMPILE_CACHE: '1',
-    ...(scratch ? { FLUX_SANDBOX_DIR: scratch } : {}),
-    ...(broker ? { FLUX_SANDBOX_BROKER: broker.socket } : {}),
+    FLUX_SANDBOX_DIR: scratch,
+    FLUX_SANDBOX_BROKER: broker.socket,
   };
-  const argv = [paths.launcher, paths.cli, ...piArgs(ownTools, brief, request.model)];
+  const argv = [paths.launcher, paths.cli, ...piArgs(brief, request.model)];
   // pi runs inside the sandbox's outer domain: it writes only its own agent directory and the scratch, and reads those, the run's folder
   // and the system; never the person's shared home or a CLI's.
-  const [file, args] = sandbox && scratch
-    ? [sandbox.binary, ['cli', scratch, '--home', home, '--read', runDir, ...(sandbox.testExec ?? []).flatMap((path) => ['--exec', path]), '--', paths.node, ...argv]]
-    : [paths.node, argv];
+  const [file, args] = [sandbox.binary, ['cli', scratch, '--home', home, '--read', runDir, ...(sandbox.testExec ?? []).flatMap((path) => ['--exec', path]), '--', paths.node, ...argv]] as const;
   // `flux_attach_file` reads a file of the scratch while the run lasts (#1437, files.ts): looked through for the run's own tokens as it passes.
   watchRunSecrets(config, request.runId, request.bindingId, dir, person, [request.runToken, request.modelToken]);
   const allowedFlux = new Set(request.tools.map((tool) => `${PI_MCP_PREFIX}${tool}`));
-  const allowed = new Set([...allowedFlux, ...(ownTools ? PI_OWN_TOOLS : [])]);
+  const allowed = new Set<string>([...allowedFlux, ...PI_OWN_TOOLS]);
 
   const result = await new Promise<Extract<SupervisorResult, { kind: 'run' }>>((resolve) => {
     let outcome: RunOutcome | null = null;
@@ -203,7 +198,7 @@ export async function runPi(config: SupervisorConfig, request: PiRequest, dir: s
     let done = false;
     const timers: NodeJS.Timeout[] = [];
     const child = spawn(file, args, { env, cwd: work, shell: false, detached: true, stdio: ['pipe', 'pipe', 'pipe'], ...asPerson(person) });
-    const stopWatching = scratch && person && child.pid ? watchRun({ person, cliPid: child.pid, brokerPid: broker?.pid, scratch, scratchRoot: sandbox!.scratchRoot }) : () => undefined;
+    const stopWatching = person && child.pid ? watchRun({ person, cliPid: child.pid, brokerPid: broker.pid, scratch, scratchRoot: sandbox.scratchRoot }) : () => undefined;
     const killGroup = (signal: NodeJS.Signals) => { try { if (child.pid) process.kill(-child.pid, signal); } catch { /* already gone */ } };
     const later = (ms: number, action: () => void) => { const timer = setTimeout(action, ms); timer.unref(); timers.push(timer); return timer; };
     const terminate = (reason: RunOutcome) => { outcome ??= reason; killGroup('SIGTERM'); later(STOP_GRACE_MS, () => killGroup('SIGKILL')); };
@@ -242,7 +237,7 @@ export async function runPi(config: SupervisorConfig, request: PiRequest, dir: s
     let lastAssistant: Record<string, unknown> | null = null;
     /**
      * The read-back (RT-5): every system message lists the tools pi offers the model (`toolsAdded`). Anything but the run's exact Flux tools
-     * and, with the sandbox, pi's four own tools stops the run with nothing committed; so does a run whose Flux server offered no tool.
+     * and pi's four own tools stops the run with nothing committed; so does a run whose Flux server offered no tool.
      */
     const checkTools = (message: Record<string, unknown>) => {
       const offered = (Array.isArray(message.toolsAdded) ? message.toolsAdded : []).map((tool) => (isObject(tool) && typeof tool.name === 'string' ? tool.name : '\u0000'));
@@ -346,7 +341,7 @@ export async function runPi(config: SupervisorConfig, request: PiRequest, dir: s
   runs.delete(request.runId);
   forgetCredentials(config, request.runId);
   finishedOf(config).set(request.runId, Date.now());
-  broker?.stop();
+  broker.stop();
   await cleanUp();
   return { result };
 }

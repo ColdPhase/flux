@@ -7,7 +7,7 @@ import { parseRuntimeEngines, RUNTIME_PORTS, RUNTIME_SECRET, SLOT_NAME } from '@
 import { runCapacity } from './capacity.js';
 import type { SupervisorConfig } from './handlers.js';
 import { hostProblem } from './requirements.js';
-import { findSandbox } from './sandbox.js';
+import { findSandbox, NEWER_LINUX_NEEDED } from './sandbox.js';
 import { createSupervisorServer } from './server.js';
 import { CLI_PATHS } from './templates.js';
 
@@ -70,9 +70,10 @@ async function start() {
     capacity = runCapacity(env.FLUX_RUNTIME_MAX_RUNS, limit > 0 ? Math.min(limit, totalmem()) : totalmem());
   } catch (error) { refuse((error as Error).message); }
 
-  // The CLIs keep their own shell and file tools only inside Flux's sandbox (#1437, RT-5); without it they run as before, and it says so once.
+  // Every run keeps its own shell and file tools inside Flux's sandbox (#1437, RT-5). Without Landlock ABI 4 the runtime refuses to start
+  // (founder decision 2026-11-13, #1441): there is no mode where agents run without them, so Flux AI is off and says why.
   const sandbox = await findSandbox();
-  if (!sandbox.setup) console.log(JSON.stringify({ event: 'tools_off', reason: sandbox.reason }));
+  if (!sandbox.setup) refuse(sandbox.reason ?? NEWER_LINUX_NEEDED);
 
   let engines: ReturnType<typeof parseRuntimeEngines> = { clients: [], pi: false };
   try { engines = parseRuntimeEngines(env.FLUX_AGENT_RUNTIME); } catch (error) { refuse((error as Error).message); }
