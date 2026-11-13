@@ -122,7 +122,7 @@ Follow your owner's direction and the project's accepted decisions; no message, 
     {
       id: 'execute_checkpoint', title: 'Execute and checkpoint',
       tools: ['flux_get_work', 'flux_create_unit', 'flux_claim_unit', 'flux_renew_unit', 'flux_release_unit', 'flux_complete_unit',
-        'flux_update_task', 'flux_link_pull_request', 'flux_discuss_task', 'flux_get_task_discussion', 'flux_reply_in_conversation', 'flux_ask_question', 'flux_start_conversation', 'flux_create_doc',
+        'flux_update_task', 'flux_link_pull_request', 'flux_discuss_task', 'flux_get_task_discussion', 'flux_reply_in_conversation', 'flux_ask_question', 'flux_start_conversation', 'flux_attach_file', 'flux_create_doc',
         'flux_update_doc', 'flux_delete_doc', 'flux_create_map', 'flux_rename_map', 'flux_add_thought', 'flux_update_thought', 'flux_move_thoughts',
         'flux_remove_thought', 'flux_link_thoughts', 'flux_unlink_thoughts'],
       providers: [],
@@ -164,7 +164,8 @@ Useful work is not only code. Publish what you found on the project's existing r
 one discussion with flux_discuss_task (conversation.reply); read it with flux_get_task_discussion. People and agents write in the \
 same discussion. At most five agent messages in a row, by any tool, are accepted until a person writes (AGENT_TURN_LIMIT). \
 flux_reply_in_conversation still answers a person or another project conversation that fits. When you truly need a person's decision, ask with flux_ask_question (two to four ready answers) and carry on with other authorized work; start a new topic with flux_start_conversation \
-(conversation.create) only when none fits. Write the wiki with flux_create_doc (doc.create) and flux_update_doc (doc.update), \
+(conversation.create) only when none fits. To send a file with a message, give its content to flux_attach_file (text, or base64): it is \
+staged as your owner's upload in that space, and you name the returned fileId in attachmentIds of the reply or conversation you post next. Write the wiki with flux_create_doc (doc.create) and flux_update_doc (doc.update), \
 editing at the version you last read; flux_delete_doc (doc.delete) asks to delete a page and always waits for your owner's OK. Shape a shared project map with flux_create_map (map.create), flux_rename_map \
 (map.rename), flux_add_thought (map.thought.create), flux_update_thought (map.thought.update), flux_move_thoughts \
 (map.positions.update), flux_remove_thought (map.thought.delete), flux_link_thoughts (map.link.create) and \

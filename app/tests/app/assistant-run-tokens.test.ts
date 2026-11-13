@@ -425,7 +425,8 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
     assert.equal(fullOutcome, 'input_too_large');
     // The request that would leave less than a step's room below the bound is the run's last (#1410): it asks for the answer, and a
     // provider that asks for a tool even then ends the run at the bound.
-    assert.ok(compute.dispatched.length > 80, 'over eighty turns fit within the tool-run input bound with every tool on, the room for an answer kept');
+    // Merge train 14: flux_attach_file (#1437) with #1431's Wiki words takes the definitions to 28,558 bytes, and 79 turns fit (82 at 28,056).
+    assert.ok(compute.dispatched.length > 75, `over seventy-five turns fit within the tool-run input bound with every tool on, the room for an answer kept (${compute.dispatched.length})`);
     assert.ok(compute.dispatched.at(-1)!.answerNow && compute.dispatched.slice(0, -1).every((request) => !request.answerNow), 'only the last request asks for the answer');
     compute.dispatched = [];
     // The bound on steps comes first when the steps are fewer than the turns that fit (over a hundred, above). The brief of #1064 (who asks,
