@@ -75,12 +75,11 @@ export async function serveRunFile(config: SupervisorConfig, request: RunFileReq
   await new Promise<void>((done) => {
     child.on('error', () => { refuse(res, 'internal'); done(); });
     child.on('close', (code) => {
-      held.length = 0;
       // A file that holds the login is refused; one found past the first MiB ends the stream broken, never as a whole file.
-      if (found) refuse(res, 'file_secret');
+      if (found) { held.length = 0; refuse(res, 'file_secret'); }
       // A file that failed after its first bytes (it grew past its bound) ends the stream broken, never as a whole file.
       else if (code === 0) { if (!started) start(); res.end(); }
-      else refuse(res, READ_ERRORS[code ?? -1] ?? 'internal');
+      else { held.length = 0; refuse(res, READ_ERRORS[code ?? -1] ?? 'internal'); }
       done();
     });
   });
