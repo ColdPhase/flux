@@ -58,8 +58,11 @@ describe('runtime tables hold display facts only', () => {
       // 0003 (#854): the provider's remaining usage as the last run saw it: a share 0–100, a window name, a time, one boolean.
       'usage_left_percent:smallint', 'usage_window:text', 'usage_resets_at:timestamp with time zone', 'usage_limit_reached:boolean',
       'usage_read_at:timestamp with time zone',
-      // 0069 (#1332): the models the signed-in CLI offers the account: ids, names and one-line notes (a jsonb list), whether the last reading worked, and when.
-      'models:jsonb', 'models_status:text', 'models_checked_at:timestamp with time zone'],
+      // 0069 (#1332): whether the last reading of the models the signed-in CLI offers worked, and when; the models are the next table.
+      'models_status:text', 'models_checked_at:timestamp with time zone'],
+    // 0069 (#1332): one typed row per model the CLI offers the account: its id (a plain model id by CHECK), position, name and note in the CLI's own
+    // words (bounded by CHECK), whether it is the CLI's default, takes pictures, or was offered once and is not now. No blob.
+    agent_runtime_connection_models: ['connection_id:uuid', 'model_id:text', 'position:smallint', 'name:text', 'note:text', 'is_default:boolean', 'sees_pictures:boolean', 'retired:boolean'],
     agent_runtime_operator_statements: ['statement:text', 'agreed_on:date', 'recorded_at:timestamp with time zone'],
     // 0097: bounded operation identity/time/phase and digests; no raw ticket, session token or output.
     agent_runtime_auth_operations: ['binding_id:uuid', 'client:text', 'owner_user_id:text', 'operation_id:uuid', 'revision:integer',

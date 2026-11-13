@@ -90,10 +90,13 @@ export function modelGroups(connections: readonly ConnectionModels[]): Assistant
   }));
 }
 
-/** Connect AI's default for a new agent (#854): the connection made first, at its default model. */
+/**
+ * Connect AI's default for a new agent (#854): the connection made first, at its default model. A plan whose CLI has not listed its models
+ * yet has none (#1332), so the first connection that has one is the default meanwhile.
+ */
 export function defaultPick(connections: readonly ConnectionModels[]): AssistantModelPick | null {
-  const first = [...connections].sort((a, b) => a.since - b.since)[0];
-  return first && first.account.default ? { connection: first.ref, model: first.account.default } : null;
+  const first = [...connections].sort((a, b) => a.since - b.since).find((item) => item.account.default);
+  return first ? { connection: first.ref, model: first.account.default } : null;
 }
 
 /** The choice as the owner sees it: every connection's models, the model in force and Connect AI's default. */

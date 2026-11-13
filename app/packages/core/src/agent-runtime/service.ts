@@ -203,7 +203,7 @@ export function agentRuntimeUseCases(config: AgentRuntimeConfig, store: AgentRun
       const binding = (await store.ownerView(ownerUserId)).binding;
       if (!binding || binding.id !== operation.bindingId) return;
       // A status check of a sign-in that already has its list (the sign-in itself clears it) reads nothing again.
-      if ((await store.connections(ownerUserId)).some((row) => row.bindingId === binding.id && row.client === operation.client && row.models)) return;
+      if ((await store.connections(ownerUserId)).some((row) => row.bindingId === binding.id && row.client === operation.client && row.modelsStatus)) return;
       const read = await manager!.models(binding.slot, binding.id, operation.client, operation.bootId);
       if (read.ok) await store.saveModels(binding.id, operation.client, read.value.models, new Date());
     } catch { /* the tick */ }

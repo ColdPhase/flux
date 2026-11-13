@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
 import { assistantPlanModels, ASSISTANT_PLANS, type PlanModelEntry, type PlanModels, type Workspace } from '@flux/contracts';
-import { agentRuntimeUseCases, noPersonalConnections, planModelRetired, runtimeModelAccount, type AgentRuntimeConfig, type PersonalRuntimeAvailability, type PersonalRuntimeStanding, type Principal,
+import { agentRuntimeUseCases, defaultPick, noPersonalConnections, planModelRetired, runtimeModelAccount, type AgentRuntimeConfig, type PersonalRuntimeAvailability, type PersonalRuntimeStanding, type Principal,
   type RuntimeManagerPort } from '@flux/core';
 import { agentRuntimeStore, personalRuntimeRow } from '@flux/db';
 import { personalRunUseCases } from '../../apps/server/src/personal-runs/adapters.js';
@@ -36,8 +36,15 @@ describe('what a sign-in and the worker\'s reading leave in the database', () =>
     async models(_slot, _id, client) { asked.push(client); return reading ? { ok: true, value: { models: reading, bootId } } : { ok: false, code: 'busy' }; },
   };
   const runtime = agentRuntimeUseCases(config, store, manager);
-  const row = async () => (await pool.query<{ models: { listed: { id: string }[]; retired: { id: string; name: string }[] } | null; models_status: string | null; models_checked_at: Date | null }>(
-    'SELECT models, models_status, models_checked_at FROM agent_runtime_connections WHERE binding_id = $1 AND client = $2', [bindingId, 'claude_code'])).rows[0]!;
+  /** What is stored for the owner's Claude Code connection: whether the last reading worked, when, and the models (listed ones, then the ones stopped). */
+  const row = async () => {
+    const connection = (await pool.query<{ id: string; models_status: string | null; models_checked_at: Date | null }>(
+      'SELECT id, models_status, models_checked_at FROM agent_runtime_connections WHERE binding_id = $1 AND client = $2', [bindingId, 'claude_code'])).rows[0]!;
+    const stored = (await pool.query<{ model_id: string; name: string; retired: boolean }>(
+      'SELECT model_id, name, retired FROM agent_runtime_connection_models WHERE connection_id = $1 ORDER BY position', [connection.id])).rows;
+    return { models_status: connection.models_status, models_checked_at: connection.models_checked_at, count: stored.length,
+      listed: stored.filter((model) => !model.retired).map((model) => model.model_id), retired: stored.filter((model) => model.retired).map((model) => ({ id: model.model_id, name: model.name })) };
+  };
   const standing = () => personalRuntimeRow(db, owner.id, ['claude_code']);
   async function signIn(label?: string) {
     const operation = (await runtime.beginConsole({ ownerUserId: owner.id, sessionId }, 'claude_code', { digest: createHash('sha256').update(randomUUID()).digest('hex'), expiresAt: new Date(Date.now() + 60_000) })).operation;
@@ -60,31 +67,33 @@ describe('what a sign-in and the worker\'s reading leave in the database', () =>
     assert.equal((await signIn()).signedIn, true);
     assert.deepEqual(asked, ['claude_code'], 'read once, right after the sign-in');
     const stored = await row();
-    assert.deepEqual([stored.models_status, stored.models?.listed.map((model) => model.id), stored.models?.retired], ['listed', ['opus', 'sonnet', 'haiku'], []]);
+    assert.deepEqual([stored.models_status, stored.listed, stored.retired], ['listed', ['opus', 'sonnet', 'haiku'], []]);
     const shown = (await standing()).models;
     assert.deepEqual(shown, { listed: [OPUS, SONNET, HAIKU], retired: [], state: 'listed', checkedOn: today() });
-    assert.ok(!/token|secret|credential|sk-/i.test(JSON.stringify(stored.models)), 'display facts only');
+    assert.ok(!/token|secret|credential|sk-/i.test(JSON.stringify(stored)), 'display facts only');
   });
 
   test('a later list keeps what the plan stopped offering, with the name its CLI gave it; a model that comes back leaves it', async () => {
     await store.saveModels(bindingId, 'claude_code', [OPUS, SONNET], new Date());
-    assert.deepEqual((await row()).models, { listed: [OPUS, SONNET], retired: [{ id: 'haiku', name: HAIKU.name }] });
+    const stopped = await row();
+    assert.deepEqual([stopped.listed, stopped.retired], [['opus', 'sonnet'], [{ id: 'haiku', name: HAIKU.name }]]);
+    assert.deepEqual((await standing()).models, { listed: [OPUS, SONNET], retired: [{ id: 'haiku', name: HAIKU.name }], state: 'listed', checkedOn: today() }, 'in the CLI\'s order, with its names');
     await store.saveModels(bindingId, 'claude_code', [OPUS, entry('sonnet-6')], new Date());
-    assert.deepEqual((await row()).models?.retired.map((model) => model.id), ['haiku', 'sonnet'], 'models stopped one after the other all stay, the oldest first');
+    assert.deepEqual((await row()).retired.map((model) => model.id), ['haiku', 'sonnet'], 'models stopped one after the other all stay, the oldest first');
     await store.saveModels(bindingId, 'claude_code', [OPUS, SONNET, HAIKU], new Date());
-    assert.deepEqual((await row()).models?.retired.map((model) => model.id), ['sonnet-6'], 'the ones that came back are offered again');
+    assert.deepEqual((await row()).retired.map((model) => model.id), ['sonnet-6'], 'the ones that came back are offered again');
   });
 
   test('a CLI that cannot be read leaves the last list as it was, marked unavailable; the plan with no list says nothing', async () => {
     await store.saveModels(bindingId, 'claude_code', null, new Date());
     const kept = await row();
-    assert.deepEqual([kept.models_status, kept.models?.listed.map((model) => model.id)], ['unavailable', ['opus', 'sonnet', 'haiku']]);
+    assert.deepEqual([kept.models_status, kept.listed], ['unavailable', ['opus', 'sonnet', 'haiku']]);
     assert.equal((await standing()).models?.state, 'unavailable');
     assert.deepEqual((await standing()).models?.listed, [OPUS, SONNET, HAIKU]);
     // Another connection's row is not touched, and a binding that is not the owner's live signed-in one changes nothing.
     await store.saveModels(randomUUID(), 'claude_code', [OPUS], new Date());
     await store.saveModels(bindingId, 'codex', [OPUS], new Date());
-    assert.deepEqual((await row()).models?.listed.map((model) => model.id), ['opus', 'sonnet', 'haiku']);
+    assert.deepEqual((await row()).listed, ['opus', 'sonnet', 'haiku']);
   });
 
   test('signing out clears the list, and so does signing in to another account; the same account keeps it', async () => {
@@ -92,19 +101,19 @@ describe('what a sign-in and the worker\'s reading leave in the database', () =>
     asked.length = 0;
     await signIn();
     assert.deepEqual(asked, [], 'the same account: its list is there, and is not read again');
-    assert.deepEqual((await row()).models?.listed.map((model) => model.id), ['opus', 'sonnet', 'haiku']);
+    assert.deepEqual((await row()).listed, ['opus', 'sonnet', 'haiku']);
     await signIn('b***@example.org');
     assert.deepEqual(asked, ['claude_code'], 'another account: its own models are read');
-    assert.deepEqual((await row()).models?.listed.map((model) => model.id), ['haiku']);
-    assert.deepEqual((await row()).models?.retired, [], 'nothing of the first account stays');
+    assert.deepEqual((await row()).listed, ['haiku']);
+    assert.deepEqual((await row()).retired, [], 'nothing of the first account stays');
     await runtime.signOut(owner.id, 'claude_code', sessionId);
     const out = await row();
-    assert.deepEqual([out.models, out.models_status, out.models_checked_at], [null, null, null]);
+    assert.deepEqual([out.count, out.models_status, out.models_checked_at], [0, null, null]);
     assert.equal((await standing()).models, null);
     // Signed in again: due at once (never read), whatever the first account had.
     reading = null;
     await signIn();
-    assert.equal((await row()).models, null, 'a reading that failed leaves the list unread, for the worker\'s tick');
+    assert.deepEqual([(await row()).count, (await row()).models_status], [0, null], 'a reading that failed leaves the list unread, for the worker\'s tick');
     const due = (await store.modelsDue({ clients: ['claude_code'], refreshBefore: new Date(), retryBefore: new Date(), limit: 1000 })).filter((item) => item.bindingId === bindingId);
     assert.deepEqual(due, [{ bindingId, slot, client: 'claude_code' }]);
   });
@@ -113,7 +122,7 @@ describe('what a sign-in and the worker\'s reading leave in the database', () =>
     const mine = async (clients: ('claude_code' | 'codex')[] = ['claude_code'], limit = 1000) =>
       (await store.modelsDue({ clients, refreshBefore: new Date(Date.now() - 6 * 3600_000), retryBefore: new Date(Date.now() - 5 * 60_000), limit })).filter((item) => item.bindingId === bindingId).length;
     const set = (status: string | null, ago: string | null) => pool.query(
-      `UPDATE agent_runtime_connections SET models = '{"listed":[],"retired":[]}'::jsonb, models_status = $2, models_checked_at = ${ago ? `now() - interval '${ago}'` : 'NULL'} WHERE binding_id = $1 AND client = 'claude_code'`, [bindingId, status]);
+      `UPDATE agent_runtime_connections SET models_status = $2, models_checked_at = ${ago ? `now() - interval '${ago}'` : 'NULL'} WHERE binding_id = $1 AND client = 'claude_code'`, [bindingId, status]);
     await pool.query(`UPDATE agent_runtime_connections SET state = 'signed_in', signed_in_at = now(), revoked_at = NULL WHERE binding_id = $1 AND client = 'claude_code'`, [bindingId]);
     for (const [status, ago, due] of [['listed', '1 hour', 0], ['listed', '7 hours', 1], ['unavailable', '1 minute', 0], ['unavailable', '6 minutes', 1], [null, null, 1]] as const) {
       await set(status, ago);
@@ -129,8 +138,15 @@ describe('what a sign-in and the worker\'s reading leave in the database', () =>
     await pool.query(`UPDATE agent_runtime_bindings SET state = 'active' WHERE id = $1`, [bindingId]);
   });
 
-  test('the column holds at most 64 KiB, so a CLI cannot fill the row', async () => {
-    await assert.rejects(pool.query(`UPDATE agent_runtime_connections SET models = $2::jsonb WHERE binding_id = $1`, [bindingId, JSON.stringify({ listed: 'x'.repeat(70_000) })]), /models_check/);
+  test('a model row is a plain id, a name and a note within bounds, by CHECK, so a CLI cannot put anything else in the table', async () => {
+    const connection = (await pool.query<{ id: string }>('SELECT id FROM agent_runtime_connections WHERE binding_id = $1 AND client = $2', [bindingId, 'claude_code'])).rows[0]!.id;
+    const insert = (id: string, name: string, note: string) => pool.query(
+      'INSERT INTO agent_runtime_connection_models(connection_id, model_id, position, name, note) VALUES ($1, $2, 0, $3, $4)', [connection, id, name, note]);
+    for (const [id, name, note] of [['--flag', 'x', ''], ['Opus', 'x', ''], ['a b', 'x', ''], ['x'.repeat(65), 'x', ''], ['ok', '', ''], ['ok', 'n'.repeat(81), ''], ['ok', 'x', 'n'.repeat(201)]] as const) {
+      await assert.rejects(insert(id, name, note), /violates check constraint/, JSON.stringify([id, name.length, note.length]));
+    }
+    await insert('ok-1.2', 'Fine', 'Fine too');
+    await pool.query('DELETE FROM agent_runtime_connection_models WHERE connection_id = $1', [connection]);
   });
 });
 
@@ -222,7 +238,13 @@ describe('what the owner may choose, and what pauses an agent, comes from the pl
     assert.deepEqual(assistantPlanModels(undefined), { options: [], default: '' });
     const withRetired = assistantPlanModels({ listed: [SONNET, OPUS], retired: [{ id: 'haiku', name: 'Haiku 4.5' }, { id: 'sonnet', name: 'Old name' }, { id: 'claude-fable-5-1', name: 'Fable' }, { id: '--x', name: 'x' }], state: 'listed', checkedOn: today() });
     assert.deepEqual(withRetired.options.map((option) => [option.id, option.name, option.retired ?? false]), [['sonnet', 'Sonnet 5.5', false], ['opus', 'Opus 5.5', false], ['haiku', 'Haiku 4.5', true]]);
-    assert.equal(withRetired.default, 'sonnet');
+    assert.equal(withRetired.default, 'opus', 'the CLI marked Opus as its default, wherever it is in the list');
+    assert.equal(assistantPlanModels({ listed: [SONNET, HAIKU], retired: [], state: 'listed', checkedOn: today() }).default, 'sonnet', 'none marked: the first');
+    // Connect AI's default is the connection made first; one whose models are not read yet has none, so the next one that has is.
+    const connection = (ref: string, models: PlanModels | null, since: number) => ({ ref, label: ref, account: runtimeModelAccount(ref === 'claude_plan' ? 'claude_code' : 'codex', models), connection: null, since });
+    assert.deepEqual(defaultPick([connection('claude_plan', null, 1), connection('chatgpt_plan', listed(['opus']), 2)]), { connection: 'chatgpt_plan', model: 'opus' });
+    assert.deepEqual(defaultPick([connection('chatgpt_plan', listed(['opus']), 2), connection('claude_plan', listed(['haiku']), 1)]), { connection: 'claude_plan', model: 'haiku' });
+    assert.equal(defaultPick([connection('claude_plan', null, 1)]), null);
     assert.equal(runtimeModelAccount('codex', null).company, 'ChatGPT');
     assert.deepEqual(runtimeModelAccount('codex', listed(['opus'])).options.map((option) => option.id), ['opus'], 'the same reading for either CLI');
   });

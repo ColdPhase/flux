@@ -6,7 +6,7 @@ import {
   type AgentRuntimeConfig, type AgentRuntimeStore, type RuntimeBindingRow, type RuntimeClientStatus, type RuntimeConnectionRow, type RuntimeManagerPort,
   type RuntimeSlotRow, type RuntimeSlotSighting, type RuntimeAuthOperation, type AgentRuntimeUseCases,
 } from '@flux/core';
-import type { PlanModelEntry } from '@flux/contracts';
+import type { PlanModelEntry, PlanModels } from '@flux/contracts';
 import { parseRuntimeSwitch } from '@flux/runtime-protocol';
 
 // F-022 T3: the owner's slot binding and the worker's reconciliation, over an in-memory store and a
@@ -45,12 +45,12 @@ function memoryStore() {
   const slots = new Map<string, RuntimeSlotRow>();
   const bindings: (RuntimeBindingRow & { releasedAt: Date | null; logoutFailed?: boolean })[] = [];
   const live = () => bindings.filter((b) => b.state !== ('released' as string));
-  type Connection = RuntimeConnectionRow & { ownerUserId: string; fingerprint: string | null; revoked: boolean; modelsCheckedAt?: Date | null };
+  type Connection = RuntimeConnectionRow & { ownerUserId: string; fingerprint: string | null; revoked: boolean; modelsCheckedAt?: Date | null; models?: PlanModels | null };
   const connections: Connection[] = [];
   const revoke = (bindingId: string) => { for (const c of connections) if (c.bindingId === bindingId && !c.revoked) Object.assign(c, { revoked: true, state: 'signed_out', signedInAt: null }); };
   const view = (c: Connection): RuntimeConnectionRow => ({ client: c.client, bindingId: c.bindingId, state: c.state, signInMethod: c.signInMethod,
     authMethod: c.authMethod, plan: c.plan, accountLabel: c.accountLabel, signedInAt: c.signedInAt, accountChangedAt: c.accountChangedAt,
-    previousAccountLabel: c.previousAccountLabel, signedOutAt: c.signedOutAt, signOutFailed: c.signOutFailed, models: c.models ?? null });
+    previousAccountLabel: c.previousAccountLabel, signedOutAt: c.signedOutAt, signOutFailed: c.signOutFailed, modelsStatus: c.models?.state ?? null });
   // A deterministic port fixture; cross-process clock/CAS behavior is tested with real PostgreSQL.
   const operations = new Map<string, RuntimeAuthOperation>();
   // The durable client history (migration 0118): "bindingId client" while a login may exist for that client.

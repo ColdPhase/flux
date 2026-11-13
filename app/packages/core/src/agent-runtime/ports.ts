@@ -1,4 +1,4 @@
-import type { AgentRuntimeBindingState, AgentRuntimeClient, AgentRuntimeConnectionState, AgentRuntimeReleaseReason, AgentRuntimeSignInMethod, PlanModelEntry, PlanModels } from '@flux/contracts';
+import type { AgentRuntimeBindingState, AgentRuntimeClient, AgentRuntimeConnectionState, AgentRuntimeReleaseReason, AgentRuntimeSignInMethod, PlanModelEntry } from '@flux/contracts';
 import type { RuntimeAuthAdmission, RuntimeAuthClaim, RuntimeAuthOperation } from './auth.js';
 
 // Ports of the `runtime` transport's use cases (F-022 AIM-3). The manager port is implemented over the
@@ -66,8 +66,8 @@ export interface RuntimeUsageRow { leftPercent: number | null; window: 'five_hou
 export interface RuntimeConnectionRow {
   /** Null when the provider reported nothing yet. */
   usage?: RuntimeUsageRow | null;
-  /** The models the CLI last listed for the account (#1332); null until the first reading. */
-  models?: PlanModels | null;
+  /** Whether the CLI's models were read (#1332): `listed`, or `unavailable` (the last list stays); null while never tried. */
+  modelsStatus?: 'listed' | 'unavailable' | null;
   client: AgentRuntimeClient;
   bindingId: string;
   state: AgentRuntimeConnectionState;

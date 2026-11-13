@@ -118,7 +118,8 @@ describe('the closed request set and its answer', () => {
   test('it takes the person\'s lane only when it is free, so it never waits behind a run (#1332)', async () => {
     const lane = new Lane();
     let release!: () => void;
-    const held = lane.run(() => new Promise<void>((done) => { release = done; }));
+    const gate = new Promise<void>((done) => { release = done; });
+    const held = lane.run(() => gate);
     assert.equal(lane.tryRun(async () => 'read'), null, 'busy while something holds it');
     release();
     await held;
