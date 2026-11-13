@@ -218,7 +218,7 @@ ensure_background_key() {
   chmod 700 "$dir"
   if [ ! -e "$key" ]; then
     { head -c 32 /dev/urandom > "$key.flux-new" && mv "$key.flux-new" "$key"; } || { rm -f "$key.flux-new"; die "Could not write the AI key file in $dir."; }
-    say "Created the AI key file $key. It seals people's API keys: back it up with ${ENV_FILE#"$FLUX_ROOT"/}, not with the database."
+    say "Created the AI key file $key. It seals people's API keys: back it up with docker/.env, not with the database."
   fi
   umask "$old_umask"
   [ -f "$key" ] && [ "$(wc -c < "$key" | tr -d ' ')" = 32 ] || die "$key is not a 32-byte key file; move it aside, or set FLUX_BACKGROUND_KEY_HOST_FILE to the right one."
@@ -229,7 +229,7 @@ ensure_background_key() {
   fi
   set_env_line "$ENV_FILE" FLUX_BACKGROUND_KEY_HOST_FILE "$key"
   set_env_line "$ENV_FILE" FLUX_PERSONAL_RUNS on
-  say "Agents can run on people's own API keys: each person connects AI in Settings > AI. Set FLUX_PERSONAL_RUNS=off in ${ENV_FILE#"$FLUX_ROOT"/} to turn that off."
+  say "Agents can run on people's own API keys: each person connects AI in Settings > AI. Set FLUX_PERSONAL_RUNS=off in docker/.env to turn that off."
 }
 
 # Creates the env file once, from the example, with fresh secrets. Never overwrites it.
@@ -284,11 +284,14 @@ ensure_env() {
   else
     warn "VAPID key generation failed; Web Push stays unavailable until you set the three FLUX_VAPID_* values."
   fi
+  # The AI key goes into the draft too, so docker/.env appears complete in one step, right before Flux starts (#1438).
+  ENV_FILE=$draft
+  ensure_background_key
+  ENV_FILE=$final_env
   mv "$draft" "$ENV_FILE"
   trap - EXIT HUP INT TERM
   BUILT=1
   say "Wrote ${ENV_FILE#"$FLUX_ROOT"/}. Keep it private; it holds the database password and signing secret."
-  ensure_background_key
 }
 
 build_main() {
