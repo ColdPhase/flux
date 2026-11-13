@@ -275,11 +275,14 @@ class MyAgentsJourney(unittest.TestCase):
         expect(page.get_by_role("link", name="Back to AI")).to_have_count(0)
         page.locator("header.phead").get_by_role("button", name="Back", exact=True).click()
         expect(page).to_have_url(re.compile(r"/settings/agents$"))
-        # The agent's chat: its "Settings" link is a 44 px touch target, and its composer is as wide as a space's (#1377).
+        # The agent's chat: its Settings are in the title row's ⋯ (#1356), a 44 px touch target (#1377).
         page.goto(f"/agents/{self.ids['planner']}")
-        link = page.get_by_role("link", name="Settings", exact=True)
-        box = link.bounding_box()
-        self.assertGreaterEqual(min(box["width"], box["height"]), 44, f"the agent chat's Settings link on touch: {box}")
+        more = page.locator("header.phead").get_by_role("button", name="More")
+        box = more.bounding_box()
+        self.assertGreaterEqual(min(box["width"], box["height"]), 44, f"the agent chat's ⋯ on touch: {box}")
+        more.click()
+        page.get_by_role("menuitem", name="Settings").click()
+        expect(page).to_have_url(re.compile(rf"/settings/agents/{self.ids['planner']}$"))
         # A tablet with touch keeps "‹ AI" above the page's title, 44 px high.
         tablet = self.page(phone=True, viewport={"width": 820, "height": 1180})
         tablet.goto(f"/settings/agents/{self.ids['planner']}")
