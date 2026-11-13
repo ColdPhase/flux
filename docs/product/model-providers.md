@@ -62,7 +62,10 @@ A person connects AI once, in Settings › AI. Their connections power all of th
     process that opens a stored key (CA-4); a key being added is listed by the API with the key the
     person just typed, before it is sealed. Every listing goes through the same endpoint guard as a
     run (CA-4). A list that can't be read says so, keeps the saved model and offers Try again; no
-    raw error is shown.
+    raw error is shown. A list is read up to 1 MB (OpenRouter's, which carries a description and a price
+    per model, up to 2 MB); a server that answers more has no list ("unavailable"). The API reads one
+    list at a time for each person: the same listing asked again while it runs shares it, another one
+    waits for it (429 `MODEL_LIST_BUSY`, #1347).
 - **Price (PROV-3).** The daily budget prices every request before it is sent, so a model needs a
   price. A listed model with a row in Flux's dated table uses it. A listed model without one stays
   selectable once the owner enters its price for that key (zero for a self-hosted endpoint): "Flux

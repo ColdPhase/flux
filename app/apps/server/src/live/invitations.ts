@@ -5,7 +5,7 @@ import {
   enforce, evaluateProject, NotFoundError, recordEvent, RuleViolationError, type Principal, type LiveInvitation, type LiveInvitationPorts, type LiveInvitationTarget,
   type LiveInvitationCursor, type LiveInvitationPageRow,
 } from '@flux/core';
-import type { LiveContextRef } from '@flux/contracts';
+import { CALL_NOTICE_PAUSE_MINUTES, type LiveContextRef } from '@flux/contracts';
 import { requireLiveContext } from './access.js';
 import { liveContextOf, sameLiveContext } from './context.js';
 import { eventPorts } from '../events.js';
@@ -89,8 +89,20 @@ export function liveInvitationStore(db: Database): LiveInvitationPorts {
             const created = inserted.rows[0] as unknown as (InvitationRow & { workspace_id: string }) | undefined;
             if (created) {
               // Only a new row notifies: a repeated or concurrent invite converges on the
-              // existing row above and records nothing. Identifiers only, never titles. This
+              // existing row above and records nothing. Nor does an invitation of the same person by the same inviter to the same place
+              // within the pause (#1347): the row is there, the recipient is not told twice. Identifiers only, never titles. This
               // is the command's last write (see recordEvent: the seq lock is held to commit).
+              const [repeat] = (await tx.execute(sql`
+                SELECT 1 FROM live_invitations earlier
+                  JOIN live_sessions before_ ON before_.id = earlier.session_id
+                  JOIN live_sessions now_ ON now_.id = ${created.session_id}
+                 WHERE earlier.inviter_id = ${inviterId} AND earlier.recipient_id = ${recipientId} AND earlier.id <> ${created.id}
+                   AND earlier.created_at > now() - ${`${CALL_NOTICE_PAUSE_MINUTES} minutes`}::interval
+                   AND before_.project_id = now_.project_id
+                   AND before_.conversation_id IS NOT DISTINCT FROM now_.conversation_id AND before_.work_id IS NOT DISTINCT FROM now_.work_id
+                   AND before_.sketch_id IS NOT DISTINCT FROM now_.sketch_id AND before_.doc_id IS NOT DISTINCT FROM now_.doc_id
+                 LIMIT 1`)).rows;
+              if (repeat) return record(created);
               await recordEvent(eventPorts(tx), { kind: 'human', id: inviterId }, created.workspace_id, LIVE_INVITED_EVENT, created.project_id,
                 { sessionId: created.session_id, invitationId: created.id, recipientId: created.recipient_id });
               return record(created);

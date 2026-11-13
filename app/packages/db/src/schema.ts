@@ -1,7 +1,14 @@
 import { sql } from 'drizzle-orm';
-import { pgTable, text, timestamp, date, uuid, integer, smallint, jsonb, boolean, bigserial, bigint, index, uniqueIndex, primaryKey, foreignKey, unique, check, type AnyPgColumn, type PgTableExtraConfigValue } from 'drizzle-orm/pg-core';
-import { AGENT_MAY_DO, AGENT_OPERATIONS, type AgentJsonValue, type AgentPostcondition, type CoWorkSourceRef } from '@flux/contracts';
+import { customType, pgTable, text, timestamp, date, uuid, integer, smallint, jsonb, boolean, bigserial, bigint, index, uniqueIndex, primaryKey, foreignKey, unique, check, type AnyPgColumn, type PgTableExtraConfigValue } from 'drizzle-orm/pg-core';
+import { AGENT_MAY_DO, AGENT_OPERATIONS, withoutInvisibleFormat, type AgentJsonValue, type AgentPostcondition, type CoWorkSourceRef } from '@flux/contracts';
 import { AI_PROVIDER_KINDS, ASSISTANT_RUN_END_REASONS, type AiProviderKind } from '@flux/contracts';
+
+/**
+ * The name of a person, an agent or a connection (#1347): plain text in the database, and cleaned of direction controls and invisible format
+ * characters wherever it is read through the schema, so a name stored before they were refused (or one that came from an identity provider or
+ * an OAuth client) can never reorder or hide the text drawn beside it.
+ */
+const displayName = customType<{ data: string; driverData: string }>({ dataType: () => 'text', fromDriver: (value) => withoutInvisibleFormat(value) });
 
 export const samples = pgTable('samples', {
   id: uuid('id').primaryKey(),
@@ -41,7 +48,7 @@ export const sampleResults = pgTable('sample_results', {
 // lifecycle only; Flux grants live in Flux tables. Keys match Better Auth field names.
 export const authUsers = pgTable('auth_users', {
   id: text('id').primaryKey(),
-  name: text('name').notNull(),
+  name: displayName('name').notNull(),
   email: text('email').notNull().unique(),
   emailVerified: boolean('email_verified').notNull().default(false),
   /** Set on a password sign-up while sign-up is `verified` (migration 0091, #313): no password sign-in until the address is verified. */
@@ -540,7 +547,7 @@ export const spaceIcons = pgTable('space_icons', {
 export const agents = pgTable('agents', {
   id: uuid('id').primaryKey(),
   workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
-  name: text('name').notNull(),
+  name: displayName('name').notNull(),
   /** Every agent belongs to one person and acts with exactly that person's rights (F-036, #855). */
   ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
   createdBy: text('created_by').notNull(),
@@ -807,7 +814,7 @@ export const agentConnections = pgTable('agent_connections', {
   workspaceId: uuid('workspace_id').notNull(),
   ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
   agentId: uuid('agent_id').notNull(),
-  name: text('name').notNull().default('External connection'),
+  name: displayName('name').notNull().default('External connection'),
   clientDesignation: text('client_designation', { enum: ['claude_code', 'codex', 'other'] }).notNull().default('other'),
   computeSource: text('compute_source', { enum: ['user_operated_claude_code', 'user_operated_external_client', 'owner_assistant'] }).notNull().default('user_operated_external_client'),
   /** "What it may do" (0003, F-036 AG-3, #855): Only read, Do it and tell me, or Ask me first. */

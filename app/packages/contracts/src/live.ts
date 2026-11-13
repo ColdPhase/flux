@@ -6,6 +6,13 @@ export const LIVE_CAPABILITIES_PATH = `${LIVE_SESSIONS_PATH}/capabilities`;
 export const LIVE_SPACES_PATH = `${LIVE_SESSIONS_PATH}/spaces`;
 export interface LiveSpacesResponse { projectIds: string[] }
 
+/**
+ * A member's notice of a call about the same place, and the invitation of the same person to it, is sent once in this many minutes (F-041,
+ * #1347): a call that ends and is started again, or an invitation sent again, within it makes no new Inbox item, push or chime. The call
+ * itself still starts and still shows its Join in the space.
+ */
+export const CALL_NOTICE_PAUSE_MINUTES = 5;
+
 /** The calls of a space's conversation, or of one task's discussion with `?task=<id>` (F-041 point 6): the conversation's call lines. */
 export const projectCallsPath = (projectId: string) => `/api/v1/projects/${projectId}/calls`;
 

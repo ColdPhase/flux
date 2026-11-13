@@ -1,13 +1,15 @@
+import { createHash } from 'node:crypto';
 import type { Database } from '@flux/db';
 import type { FastifyError, FastifyInstance } from 'fastify';
-import { AI_BASE_URL_MAX_LENGTH, AI_MODEL_LISTS_PATH, AI_PROVIDERS, API_KEY_DAILY_BUDGET_CENTS, AI_PRICE_MAX_MICROS_PER_MTOK, AI_PROVIDER_KINDS, type AiModelListQuery,
+import { AI_BASE_URL_MAX_LENGTH, AI_MODEL_LISTS_PATH, AI_PROVIDERS, API_KEY_DAILY_BUDGET_CENTS, AI_PRICE_MAX_MICROS_PER_MTOK, AI_PROVIDER_KINDS, type AiModelList, type AiModelListQuery,
   type AssistantModelListing, type ConnectBackgroundComputeCommand, type SetApiKeyModelPriceCommand, type UpdateBackgroundComputeConnectionCommand } from '@flux/contracts';
 import { backgroundConnectionRepository, personalConnectionLookup, sealBackgroundKey } from '@flux/db';
-import { backgroundConnectionUseCases, baseUrlSyntaxProblem, ConflictError, DomainError, InvalidInputError, keyListing, NotFoundError, normalizeBaseUrl, validAiKey } from '@flux/core';
+import { backgroundConnectionUseCases, baseUrlSyntaxProblem, ConflictError, DomainError, InvalidInputError, keyListing, NotFoundError, normalizeBaseUrl, RateLimitedError, validAiKey } from '@flux/core';
 import type { ModelListRefresh } from './model-refresh.js';
 import type { SessionResolver } from '../identity/index.js';
 import { requireNotGuest } from '../access/guest-no-ai.js';
 import { aiConnectionServerComposition, type AiConnectionServerComposition } from './ai-composition.js';
+import { onePerPerson } from './one-listing.js';
 
 // A person's own API keys (Connect AI, #854): added, listed, renamed, given a daily budget and removed. The key never comes back.
 
@@ -24,6 +26,7 @@ const dailyBudget = { type: 'integer', minimum: API_KEY_DAILY_BUDGET_CENTS.min, 
 
 export async function aiKeyRoutes(app: FastifyInstance, { db, sessions, backgroundMasterKey, ai = aiConnectionServerComposition(process.env), afterConnect, refresh }: Options) {
   const keys = personalConnectionLookup(db);
+  const listing = onePerPerson<AiModelList>();
   const connections = backgroundConnectionUseCases(backgroundConnectionRepository(db), {
     seal(plainKey, ownerUserId, connectionId) {
       if (!backgroundMasterKey) throw new ConflictError('Background key custody is unavailable on this instance', 'BACKGROUND_KEY_CUSTODY_UNAVAILABLE');
@@ -31,6 +34,7 @@ export async function aiKeyRoutes(app: FastifyInstance, { db, sessions, backgrou
     },
   }, ai.providers);
   app.setErrorHandler((error: FastifyError | DomainError, _request, reply) => {
+    if (error instanceof RateLimitedError) reply.header('retry-after', String(error.retryAfterSeconds));
     if (error instanceof DomainError) return reply.code(error.status).send({ error: error.message, code: error.code, ...error.details });
     if ((error as FastifyError).statusCode === 401) return reply.code(401).send({ error: 'Authentication required', code: 'UNAUTHENTICATED' });
     throw error;
@@ -74,7 +78,8 @@ export async function aiKeyRoutes(app: FastifyInstance, { db, sessions, backgrou
       apiKey: { type: 'string', minLength: 8, maxLength: 512 } } } },
   }, async (request) => {
     // A guest has no AI (AG-2): not even a look-up of a provider's models (#995).
-    await requireNotGuest(db, (await sessions.requirePrincipal(request)).principal.id);
+    const { principal } = await sessions.requirePrincipal(request);
+    await requireNotGuest(db, principal.id);
     const { provider, baseUrl } = request.body;
     if (provider === 'openai_compatible') {
       const problem = baseUrlSyntaxProblem(baseUrl);
@@ -83,7 +88,10 @@ export async function aiKeyRoutes(app: FastifyInstance, { db, sessions, backgrou
     const apiKey = request.body.apiKey?.trim();
     if (apiKey !== undefined && !validAiKey(provider, apiKey))
       throw new InvalidInputError(`The key does not look like a key of this provider. ${AI_PROVIDERS[provider].keyHint}`, 'AI_KEY_FORMAT');
-    return ai.listModels(provider, provider === 'openai_compatible' ? normalizeBaseUrl(baseUrl!) : null, apiKey);
+    const address = provider === 'openai_compatible' ? normalizeBaseUrl(baseUrl!) : null;
+    // One listing at a time for this person: the same one shares it, another waits for it to end (#1347).
+    const same = createHash('sha256').update(JSON.stringify([provider, address, apiKey ?? null])).digest('hex');
+    return listing(principal.id, same, () => ai.listModels(provider, address, apiKey));
   });
   /** How fresh one of the owner's keys' lists is, or 404. */
   async function listingOf(ownerUserId: string, connectionId: string): Promise<{ listing: AssistantModelListing | null }> {

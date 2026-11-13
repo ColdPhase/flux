@@ -21,6 +21,13 @@ export interface ModelListOptions {
 }
 
 const MAX_MODELS = 1_000;
+/**
+ * The most a model list may weigh (#1347): a thousand models of a few hundred bytes each is well under 1 MB, so that is the bound for every
+ * listing but OpenRouter's, whose list carries a description and a price per model (about half a megabyte today, 2 MB here). A server that
+ * answers more is refused ("unavailable"), not read: audit A held 240 listings of 4 MB at once and the API took 910 MiB.
+ */
+export const MODEL_LIST_MAX_BYTES = 1_000_000;
+export const OPENROUTER_LIST_MAX_BYTES = 2_000_000;
 
 function withoutTrailingSlashes(value: string): string {
   let end = value.length;
@@ -40,7 +47,7 @@ function perMillion(value: unknown): number | null {
 }
 
 export async function listProviderModels(provider: AiProviderKind, baseUrl: string | null, options: ModelListOptions = {}): Promise<AiModelList> {
-  const { policy = PUBLIC_ONLY, baseUrls = {}, timeoutMs = 8_000, maxResponseBytes = 4_000_000, resolve = systemResolver } = options;
+  const { policy = PUBLIC_ONLY, baseUrls = {}, timeoutMs = 8_000, maxResponseBytes = provider === 'openrouter' ? OPENROUTER_LIST_MAX_BYTES : MODEL_LIST_MAX_BYTES, resolve = systemResolver } = options;
   const checkedOn = (options.now?.() ?? new Date()).toISOString().slice(0, 10);
   const result = (status: AiModelList['status'], models: AiListedModel[] = []): AiModelList => ({ provider, status, models, checkedOn });
   if (!AI_PROVIDERS[provider].keylessModelList) return result('needs_key');
@@ -97,7 +104,7 @@ const isoDate = (value: unknown): string | null => {
  * comes back in the result.
  */
 export async function listKeyModels(provider: AiProviderKind, apiKey: string, options: ModelListOptions = {}): Promise<AiModelList> {
-  const { policy = PUBLIC_ONLY, baseUrls = {}, timeoutMs = 8_000, maxResponseBytes = 4_000_000, resolve = systemResolver } = options;
+  const { policy = PUBLIC_ONLY, baseUrls = {}, timeoutMs = 8_000, maxResponseBytes = MODEL_LIST_MAX_BYTES, resolve = systemResolver } = options;
   const checkedOn = (options.now?.() ?? new Date()).toISOString().slice(0, 10);
   const result = (status: AiModelList['status'], models: AiListedModel[] = []): AiModelList => ({ provider, status, models, checkedOn });
   if (!listsWithKey(provider)) return result('needs_key');

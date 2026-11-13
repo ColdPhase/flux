@@ -1,6 +1,7 @@
 import type { IncomingHttpHeaders } from 'node:http';
 import { fromNodeHeaders } from 'better-auth/node';
 import { eq } from 'drizzle-orm';
+import { withoutInvisibleFormat } from '@flux/contracts';
 import { queryPrepared, schema, type Database } from '@flux/db';
 import type { Principal } from '@flux/core';
 import { rememberPrincipal } from '../security-log.js';
@@ -105,7 +106,8 @@ export function createSessionResolver(auth: FluxAuth, standing: Pick<IdpStanding
       principal: { id: user.id, kind: 'human' },
       sessionId: session.id,
       expiresAt: new Date(session.expiresAt),
-      user: { id: user.id, email: user.email, name: user.name },
+      // The person's own name, as it is drawn: cleaned of direction controls and invisible characters (#1347), whatever the database holds.
+      user: { id: user.id, email: user.email, name: withoutInvisibleFormat(user.name) },
     };
     // Kept only when the cookie's token part is the session Better Auth returned, so a parser difference over duplicate cookies (first
     // versus last of one name) can never key one session under another cookie value.
@@ -134,7 +136,7 @@ export function createSessionResolver(auth: FluxAuth, standing: Pick<IdpStanding
       return full(cookie, key);
     }
     if (!await stillValid(context.sessionId, context.principal.id, new Date(row.createdAt).getTime(), false)) { forget(key); return null; }
-    const fresh: SessionContext = { ...context, expiresAt: new Date(expiresAt), user: { id: context.principal.id, email: row.email, name: row.name } };
+    const fresh: SessionContext = { ...context, expiresAt: new Date(expiresAt), user: { id: context.principal.id, email: row.email, name: withoutInvisibleFormat(row.name) } };
     return { context: fresh, token: known.token };
   }
 

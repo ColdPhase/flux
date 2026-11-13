@@ -65,11 +65,17 @@ export function pushSubscriptionRepository(db: DbExecutor) {
     async endpointExists(endpoint: string) {
       return (await db.select({ id: s.id }).from(s).where(eq(s.endpoint, endpoint))).length > 0;
     },
+    /**
+     * Inserts the subscription, or moves the endpoint's row to these values. An endpoint another account holds moves only when the same
+     * browser keys (`p256dh` and `auth`) come with it (#1347): the endpoint alone is a URL anyone who saw it could name, and the keys are what
+     * only that browser has. Null when the row is another account's and the keys differ.
+     */
     async upsertByEndpoint(id: string, values: Omit<typeof s.$inferInsert, 'id'>) {
       const [row] = await db.insert(s).values({ id, ...values })
-        .onConflictDoUpdate({ target: s.endpoint, set: { ...values, updatedAt: new Date(), lastFailureAt: null, lastFailureStatus: null } })
+        .onConflictDoUpdate({ target: s.endpoint, set: { ...values, updatedAt: new Date(), lastFailureAt: null, lastFailureStatus: null },
+          setWhere: sql`${s.userId} = ${values.userId} OR (${s.p256dh} = ${values.p256dh} AND ${s.auth} = ${values.auth})` })
         .returning();
-      return { record: toSubscriptionRecord(row!), created: row!.id === id };
+      return row ? { record: toSubscriptionRecord(row), created: row.id === id } : null;
     },
     async deleteForUser(userId: string, id: string) {
       return (await db.delete(s).where(and(eq(s.id, id), eq(s.userId, userId))).returning({ id: s.id })).length > 0;
