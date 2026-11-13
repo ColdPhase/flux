@@ -22,21 +22,36 @@ further kinds of agent.
 
 ## RT-1 — Engines on the server
 
-**Founder decision (Hubert, 2026-11-13, [#1441](https://github.com/ColdPhase/flux/issues/1441)), on the harness research
-([PR #1440](https://github.com/ColdPhase/flux/pull/1440), `docs/product/research/agent-harness-2026-11.md`):** a **plan** runs in its vendor's CLI, the only legal way; **every API
-key** (Anthropic, OpenAI, OpenRouter, Gemini, OpenAI-compatible, self-hosted) runs in **pi**. One Flux contract holds for every agent:
-the same Flux tools over MCP, the same per-run sandbox with shell and files (RT-5), `flux_attach_file`, the same network limits and the
-same "Ask me first", which covers changes in Flux only, never commands inside the agent's own sandbox. The key never enters the runtime:
-Flux's model gateway holds it and meters every request against the owner's budget.
+**Founder decision (Hubert, 2026-11-13, [#1441](https://github.com/ColdPhase/flux/issues/1441#issuecomment-6861942373), replacing
+the option C comment before it), on the harness research ([PR #1440](https://github.com/ColdPhase/flux/pull/1440),
+`docs/product/research/agent-harness-2026-11.md`):**
+
+1. **Every agent runs in the agent runtime.** A **plan** runs in its vendor's CLI, the only legal way; **every API key** (Anthropic,
+   OpenAI, OpenRouter, Gemini, OpenAI-compatible, self-hosted) runs in **pi**. Everywhere with the same capabilities: the same Flux tools
+   over MCP, the same per-run sandbox with shell, files and the toolbox (RT-5), `flux_attach_file`, the same network limits and the same
+   "Ask me first", which covers changes in Flux only, never commands inside the agent's own sandbox. **The agent runtime is a requirement
+   of Flux AI, like Docker.** There is no other engine: the Flux worker has no agent loop of its own (removed in v0.2.1) and never runs
+   pi itself. Where the runtime cannot run, Flux AI is unavailable: `./flux up` checks the host and says in one sentence what to fix
+   (for example `kernel.yama.ptrace_scope=1`), and Settings › AI shows the same reason with the runtime-off wording plans already have.
+2. **Only models that call tools can be agents.** The server refuses a model that cannot call tools the way it refuses an unpriced
+   one, and decides it by **one check, not by tables or owner switches** (founder-approved direction, 2026-11-13): when a key is added
+   in Connect AI, and when a model of a key's list is chosen for an agent, the server sends the provider one small request on that
+   model with one tool, `ping`, that the model is asked to call. Called: the model is accepted. Not called, or the request refused:
+   `AI_TOOLS_REQUIRED` (422), and the form says at once "This model can't use tools. Choose another." The same for every provider
+   (Anthropic, OpenAI, Gemini, OpenRouter, OpenAI-compatible and self-hosted). The check's cost is charged to the key's day like any
+   request (CA-3). There is no "can answer but can't make changes" mode, no owner's tool-calling switch and no table of models without
+   tool calling.
+
+The key never enters the runtime: Flux's model gateway holds it and meters every request against the owner's budget.
 
 | Connection | Who runs the agent's loop | Where the credential lives |
 | --- | --- | --- |
 | Claude plan, ChatGPT plan | The unmodified official CLI, `claude` or `codex`, in the person's isolated runtime | Only the person's directory in the runtime, written by the CLI's own login |
-| API key, with `pi` in `FLUX_AGENT_RUNTIME` | **pi** (MIT, pinned in the runtime image), in the person's isolated runtime | Flux, sealed ([CA-4](model-providers.md#ca-4--key-custody-and-endpoints)); the runtime holds only the run token |
-| API key, without it | The Flux worker's tool loop (until #1441 removes it, once pi scores at least as well on the #1295 evaluation) | Flux, sealed |
+| API key | **pi** (MIT, pinned in the runtime image), in the person's isolated runtime | Flux, sealed ([CA-4](model-providers.md#ca-4--key-custody-and-endpoints)); the runtime holds only the run token |
 
-- **One switch decides the engine of every API key:** `pi` in the operator's `FLUX_AGENT_RUNTIME` (RT-9). On, every key run goes to pi
-  in the runtime; off, to the worker's loop. No connection, run or person chooses, and nothing falls back from one to the other.
+- **`pi` in the operator's `FLUX_AGENT_RUNTIME`** (RT-9) turns API-key agents on; `./flux up` writes it with every answer, so a runtime
+  that runs plans runs keys too. Without it (or without the runtime) every key run ends `unavailable` at zero cost, and Connect AI
+  offers no key. No connection, run or person chooses an engine, and nothing falls back from one to another.
 - **pi has no sign-in.** A key run needs only the person's own place in the runtime (their directory and user id, RT-3), made the first
   time they need it; a plan sign-in, if they have one, shares it.
 - **The [model gateway](#the-model-gateway-1441)** (#1441): pi sends each model request in its provider's own wire format to the gateway
@@ -223,8 +238,7 @@ shell and file tools, inside a sandbox that exists for one run; every engine can
   search, which runs at its vendor; and, on Claude Code and Codex, the CLI's own shell and file tools: Claude Code's `Bash`,
   `Read`, `Write`, `Edit`, `Glob` and `Grep`, Codex's `exec_command` (with `write_stdin`) and `apply_patch`, pi's `read`, `bash`, `edit`
   and `write` (#1441). No apps, no sub-agents, no other MCP server, and no tool that opens a page from the runtime (`WebFetch` stays off;
-  web reads stay `flux_read_web`). An API-key run in the worker's tool loop (without `pi`, RT-1) has no shell: it attaches a file by
-  passing its content.
+  web reads stay `flux_read_web`). Every agent runs in the runtime (RT-1), so every agent has these.
 - **The run's scratch** is the only place a run's tools can write: `/scratch/<run id>` on the runtime's own memory file
   system, created empty for the run (mode `0700`, owned by the person's user id), the CLI's working directory and `TMPDIR`,
   and deleted with everything in it when the run ends, however it ends. At most 256 MiB each. Concurrent runs are different
@@ -275,8 +289,7 @@ shell and file tools, inside a sandbox that exists for one run; every engine can
   while that run is in progress, only a regular file inside that run's scratch (never through a link as its last name, never `..`
   out of it: the kernel refuses), at most the largest file Flux takes, and never one that holds a value of the CLI's own login, or for
   pi, which has no login, the run's own MCP or gateway token (the supervisor looks through the bytes as they pass). A key run keeps its
-  engine `server` whether pi or the worker's own loop runs it, so the server asks the runtime for such a run too; a run of the worker's
-  loop is in no slot, and is told to give the file's content instead. The bytes are streamed through and never kept by the runtime. Any run, an
+  engine `server` and runs in pi in the runtime, so the server asks the runtime for such a run too. The bytes are streamed through and never kept by the runtime. Any run, an
   API-key run included, may instead give a text file's content and name. Either way the server stages it as the asker's own upload
   (`stage`: the same types, limits and checks, a picture decoded and written again, #1343, a video's own limit, C-61, the same
   preview), with the run's change line, Undo and waits: under "Ask me first" it is staged at once, because the scratch goes with the
@@ -339,7 +352,7 @@ shell and file tools, inside a sandbox that exists for one run; every engine can
   writable; the system, the run's folder and those readable); its `bash` runs every command in Flux's sandbox shell, in the scratch, as
   the CLIs' commands do. Its words stream as Claude Code's do; its answer is its last message. Observed with the pinned pi against a
   mock gateway and MCP server (2026-11-13, `tests/app/agent-runtime-pi.test.ts`).
-- **pi's web search** (#1441, founder 2026-11-13: an API-key agent must not lose the search it has in the worker's loop). pi has no web
+- **pi's web search** (#1441, founder 2026-11-13: an API-key agent keeps the web search it had before pi). pi has no web
   search of its own. Its extensions were checked first (2026-11-13), as the rule is to prefer an existing tool: **pi-native-search**
   0.1.0 (MIT, one release in 2026-05, one maintainer) declares peers on the retired `@mariozechner/*` scope that pi 1.5.2
   (`@earendil-works/*`) no longer provides, sends OpenAI and Google searches to their fixed public hosts whatever the base URL (so not
@@ -348,12 +361,12 @@ shell and file tools, inside a sandbox that exists for one run; every engine can
   server and a reader of Chrome cookies; **pi-web-extension** (Brave, DuckDuckGo) and Tavily's and Parallel's extensions need open
   network or keys of their own. None fits safely, so Flux adds its own tool, `flux_web_search`, offered to pi runs only (the run token's
   mint adds it when the worker says the run is in pi): the Flux server runs one search request with the run owner's key and model through
-  the provider's hosted search, the same search the worker's loop offers that key today (#954, C-29: Anthropic's web search tool, OpenAI
+  the provider's hosted search, the same search an API key had before pi (#954, C-29: Anthropic's web search tool, OpenAI
   Responses' `web_search`), with no other tool and Flux's own short instruction; it holds the request's largest cost against the key's
   daily budget before sending it (a search that does not fit is refused with that reason and nothing is sent) and charges the provider's
   usage on the run after it, the gateway's rule; and it records the query and the result addresses like a CLI's search (C-30). A key whose
   provider has no hosted search through Flux's adapters (OpenRouter, Gemini's OpenAI-compatible endpoint, OpenAI-compatible and
-  self-hosted, as in the worker's loop, CA-6) has no such tool and its brief says it has no web search; it reads the pages it is given with
+  self-hosted, CA-6) has no such tool and its brief says it has no web search; it reads the pages it is given with
   `flux_read_web`. `FLUX_WEB_READS=off` removes it. Pages are read with `flux_read_web` only, never from the sandbox's network.
 - **Codex** runs with `--ignore-user-config`, every reviewed default-on feature switched off by
   `-c` (apps, hooks, goals, plugins, memories and the rest of the reviewed list; its shell stays on, #1437), Flux as

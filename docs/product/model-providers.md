@@ -130,8 +130,9 @@ A person connects AI once, in Settings › AI. Their connections power all of th
     longer offered by ChatGPT" and pauses, as above; a run that still names one ends with the line below.
 - A model the plan refuses gives one line: "Your Claude plan didn't accept Opus". Nothing switches
   to another model.
-- An API-key model that cannot call tools can answer but cannot change anything, and the picker
-  says so.
+- Only a model that calls tools can be an agent ([RT-1](ai-modes.md#rt-1--engines-on-the-server), #1441): adding a key, or
+  choosing another model of its list, sends one small request with a `ping` tool the model must call; otherwise the form says
+  "This model can't use tools. Choose another." (`AI_TOOLS_REQUIRED`).
 
 ## CA-3 — The provider's limits, not Flux's
 

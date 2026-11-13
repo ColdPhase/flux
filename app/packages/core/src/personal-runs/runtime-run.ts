@@ -281,7 +281,7 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
         const refusal = await checked(ports, run, 'before_read', true);
         if (refusal) return { done: true as const, status: (await updateAndAnnounce(ports, run.id, ended(refusal, 'before_read', free))).status };
         // The server runs as many agents as fit in its memory; the others wait, in order, with one line (#860).
-        if (!(await ports.runs.roomForRuntimeRun(runtime?.keys === true))) {
+        if (!(await ports.runs.roomForRuntimeRun(true))) {
           if (run.endReason !== 'no_room') await updateAndAnnounce(ports, run.id, { endReason: 'no_room', resumeAt: null, planLimitResetsAt: null });
           return null;
         }

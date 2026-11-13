@@ -167,6 +167,13 @@ The points of #851, with the later answers applied (point 11 comes from #868):
     number in the config file; there is no setting in the app (Hubert, 2026-11-03, #860;
     [where agents run](ai-modes.md#rt-3--isolation-and-capacity)).
 
+13. **Where agents run** (founder decision, Hubert, 2026-11-13, [#1441](https://github.com/ColdPhase/flux/issues/1441#issuecomment-6861942373),
+    replacing the option C comment before it; [RT-1](ai-modes.md#rt-1--engines-on-the-server)). Every agent runs in the agent runtime:
+    API keys in pi, plans in Claude Code or Codex, everywhere with the same capabilities (shell, files, toolbox, Flux tools). The
+    runtime is a requirement of Flux AI, like Docker: the install checks it and says in one sentence what to fix; where it cannot run,
+    AI is unavailable. The worker's own tool loop is removed in v0.2.1. Only models that call tools can be agents, decided by one
+    check with a `ping` tool when a key is added or a model chosen (founder-approved direction, 2026-11-13); there is no answer-only mode.
+
 **What goes away:** Flux's own run limits and the seven reasons a change waits; agent project
 grants and manager requests; MCP scopes, capability switches and standing grants; reactions and
 background suggestions; the local waiter (#754, closed); drafts of messages to other people; the
