@@ -319,6 +319,25 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
         assert.ok(stored.equals(bytes), 'B: stored as it was sent');
         assert.deepEqual(row, { name: false, sha: false, key_version: null });
       }
+      // A direct message's file (#1438 point 10, C-64) is a stored file of the same workspace: sealed in A as it arrives, plain in B.
+      const dmBytes = Buffer.from(`dm file ${c.fileName} ${'y'.repeat(3000)}`);
+      const dmResponse = await fetch(new URL(`/api/v1/dms/${ids[side].dm}/files?uploadId=${randomUUID()}&name=${encodeURIComponent(name)}`, ada.browser.base), {
+        method: 'POST', headers: { 'content-type': 'application/octet-stream', cookie: ada.browser.cookieHeader(), origin: ada.browser.defaultOrigin }, body: dmBytes });
+      assert.equal(dmResponse.status, 201, await dmResponse.clone().text());
+      const dmFile = await dmResponse.json() as { id: string; name: string };
+      assert.equal(dmFile.name, name, `${side}: a direct message's file is served with its name`);
+      const dmServed = await fetch(new URL(`/api/v1/files/${dmFile.id}`, ada.browser.base), { headers: { cookie: ada.browser.cookieHeader() } });
+      assert.deepEqual(Buffer.from(await dmServed.arrayBuffer()), dmBytes, `${side}: a direct message's file downloads as sent`);
+      const dmStored = await readFile((await objectFile(dmFile.id))!);
+      const dmRow = (await pool.query(`SELECT flux_is_sealed(name) AS name, flux_is_sealed(sha256) AS sha, key_version, project_id FROM project_files WHERE id = $1`, [dmFile.id])).rows[0];
+      if (side === 'A') {
+        assert.equal(dmStored.subarray(0, 4).toString('ascii'), 'FXF1', 'A: a direct message\'s file is a sealed object');
+        assert.equal(dmStored.includes(c.fileName), false, 'A: no plaintext of a direct message\'s file on disk');
+        assert.deepEqual(dmRow, { name: true, sha: true, key_version: 1, project_id: null });
+      } else {
+        assert.ok(dmStored.equals(dmBytes), 'B: a direct message\'s file is stored as it was sent');
+        assert.deepEqual(dmRow, { name: false, sha: false, key_version: null, project_id: null });
+      }
     }
   });
 

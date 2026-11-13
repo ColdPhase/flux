@@ -669,7 +669,7 @@ These functional rules from UI116-4 remain required:
   label underneath: PDF (inverted band), CSV, XLSX, DOCX, MD, code, ZIP, audio, video, image,
   other. The row shows the icon, the name, "type · detail · size" and a download button. A voice
   note shows a waveform and a play button.
-- **Files in direct messages** (founder direction, Hubert, 2026-11-13, [#1438](https://github.com/ColdPhase/flux/issues/1438) point 10). The paperclip
+- **Files in direct messages** (founder direction, Hubert, 2026-11-13, [#1438](https://github.com/ColdPhase/flux/issues/1438) point 10, C-64). The paperclip
   of a direct message and of its thread is the one of a space: the same tray under the field with the draft's files, thumbnails, progress and Remove,
   the same photo grid, file rows with Preview and Download, the dark photo viewer and the video player, drag and paste. A message may be files alone
   (no empty bubble of words above them); the conversation's list says "Sent a file" under its name when that was the last message. The paperclip is

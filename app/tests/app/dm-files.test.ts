@@ -7,7 +7,7 @@ import { eq } from 'drizzle-orm';
 import { schema } from '@flux/db';
 import { dmFilePosterPath, dmFilesPath, FILE_LIMITS, fileVideoPath, type Dm, type DmMessage, type StagedFile } from '@flux/contracts';
 import { db, pool } from './support/db.js';
-import { addMember, expectStatus, person, workspace, type Person } from './support/people.js';
+import { addMember, expectStatus, person, removeMember, workspace, type Person } from './support/people.js';
 import { png } from './support/pictures.js';
 
 // Files, photos and videos in direct messages (#1438 point 10): the same stored files, limits, checks, pictures and videos as a space's, with the
@@ -170,4 +170,31 @@ test('a file staged in a space cannot be sent in a direct message, and one stage
   assert.deepEqual(await read(f.ada, f.pair.id), [], 'nothing was sent');
   assert.equal((await send(f.ada, f.pair.id, 'too many', Array.from({ length: FILE_LIMITS.messageFiles + 1 }, () => randomUUID()))).status, 400);
   assert.equal(MiB, 1024 * 1024);
+});
+
+test('someone of another company, a guest outside the conversation and a person removed from the company never reach its files; a conversation\'s file goes into no space', async () => {
+  const f = await scene();
+  const zed = await person('Zed Elsewhere');
+  await workspace(zed, 'Another company');
+  const gus = await person('Gus Guest');
+  await addMember(f.ada, f.ws.id, gus, 'guest');
+  const fileId = (await upload(f.ada, f.pair.id, Buffer.from('for Ben only'), 'ben.txt')).body.id;
+  expectStatus(await send(f.ada, f.pair.id, 'for you', [fileId]), 201);
+  // Checked on every request: neither the file, nor the conversation, nor staging into it.
+  for (const who of [zed, gus]) {
+    assert.equal((await get(who, `/api/v1/files/${fileId}`)).status, 404);
+    assert.equal((await get(who, `/api/v1/files/${fileId}`, { range: 'bytes=0-3' })).status, 404);
+    assert.equal((await get(who, `/api/v1/dms/${f.pair.id}`)).status, 404);
+    assert.equal((await upload(who, f.pair.id, Buffer.from('intruder'))).status, 404);
+  }
+  // A file staged in a conversation cannot be posted into a space, where the space's people would read it.
+  const space = expectStatus(await f.ada.browser.request('POST', `/api/v1/workspaces/${f.ws.id}/projects`, { body: { name: 'Everyone sees', visibility: 'workspace' } }), 201) as { id: string };
+  const dmOnly = (await upload(f.ada, f.pair.id, Buffer.from('dm only'), 'dm-only.txt')).body.id;
+  const posted = await f.ada.browser.request('POST', `/api/v1/projects/${space.id}/conversations`, { body: { body: 'leak?', clientMessageId: randomUUID(), attachmentIds: [dmOnly] } });
+  assert.deepEqual([posted.status, (posted.json as { code?: string } | null)?.code], [404, 'ATTACHMENT_UNAVAILABLE']);
+  // Ben is removed from the company: the conversation's file is gone for him at once, and stays for Ada.
+  assert.equal((await get(f.ben, `/api/v1/files/${fileId}`)).status, 200);
+  await removeMember(f.ada, f.ws.id, f.ben);
+  assert.equal((await get(f.ben, `/api/v1/files/${fileId}`)).status, 404);
+  assert.equal((await get(f.ada, `/api/v1/files/${fileId}`)).status, 200);
 });

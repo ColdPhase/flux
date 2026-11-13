@@ -38,7 +38,7 @@ Migration `0010_direct_messages.sql` adds three tables.
   `project_files` that belongs to the conversation (`dm_id`, migration 0076) instead of a project, so no space's query, export or search sees it. Its
   bytes come from `GET /api/v1/files/:fileId` (`/video`, `/preview`) under `dm.read`, checked on every request: only the conversation's current people;
   a person who left, and anyone else in the company, get 404. A staged file is its sender's alone and goes after 7 days unsent; deleting a message
-  deletes its files (C-48). A direct message's files are not read for search (C-63 reads a space's).
+  deletes its files (C-48). A direct message's files are not read for search (C-64 point 3; C-63 reads a space's).
 - **Citations.** A DM message cannot cite project material yet (`422 DM_SOURCE_UNSUPPORTED`).
   Every participant would first need to be able to read the cited version.
 - **Sketches.** A DM holds no maps (#866, #947). Copying a message excerpt into a space's task is the one way out of a DM.
