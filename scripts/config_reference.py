@@ -94,7 +94,9 @@ GROUPS = [
      "People connect their own AI in **Settings → AI** (Connect AI). These switches decide what the instance allows: "
      "agents that run on an API key, and agents that search and read the web. A Claude or ChatGPT plan needs the agent runtime below instead. "
      "Both Compose files pass the switches to `api` and `worker`; agents on API keys also need the "
-     "key file `FLUX_BACKGROUND_KEY_HOST_FILE`, which the release `compose.yaml` does not mount (see below)."),
+     "key file `FLUX_BACKGROUND_KEY_HOST_FILE`, which the release `compose.yaml` does not mount (see below). On a source checkout "
+     "AI works right after install (founder decision, 2026-11-13, #1438): while both are empty, `./flux up` makes the key file and "
+     "sets `FLUX_PERSONAL_RUNS=on`, and people connect AI in the app; `off` stays off."),
     ("embeddings", "Local embeddings (optional)",
      "Off by default (F-042). Search ranks by BM25 alone; with the overlay `compose.embeddings.yaml` it also ranks by meaning. "
      "See [requirements](requirements.md#local-embeddings-optional) for the memory it needs."),
@@ -246,10 +248,18 @@ VARIABLES: dict[str, Var] = {
         "the checkout and the database backup. Empty leaves agents on API keys unavailable. The "
         "source Compose file mounts it into `api` and `worker` at `/run/secrets/flux_background_key`; with the release "
         "`compose.yaml`, mount the file at that path in both services from a Compose file of your own "
-        "([how](release-guide.md#agents-on-your-own-ai-key-optional)).",
-        "/etc/flux/background.key"),
+        "([how](release-guide.md#agents-on-your-own-ai-key-optional)). While this and `FLUX_PERSONAL_RUNS` are both empty, "
+        "`./flux up` writes 32 random bytes to `${XDG_STATE_HOME:-~/.local/state}/flux/<project>/background.key` and records the "
+        "path here: the directory is `0700`; the file is `0400` when the containers' user 1000 runs `./flux`, given to user 1000 "
+        "when root does, and otherwise `0444` inside that private directory (another host user, a rootless engine). It never "
+        "replaces a file, never prints the bytes and leaves a path you set alone. Back it up with `docker/.env`; it is not in "
+        "the archive of `./flux backup`.",
+        "/etc/flux/background.key", default="empty; made by `./flux up`"),
     "FLUX_PERSONAL_RUNS": Var("ai", "empty · `off` · `on`",
-        "`on` lets people's agents run on their own API key, in pi in the agent runtime (`pi` in `FLUX_AGENT_RUNTIME`, which every agent needs). Needs `FLUX_BACKGROUND_KEY_HOST_FILE`.", "on"),
+        "`on` lets people's agents run on their own API key, in pi in the agent runtime (`pi` in `FLUX_AGENT_RUNTIME`, which "
+        "every agent needs). Needs `FLUX_BACKGROUND_KEY_HOST_FILE`. Empty and `off` keep them unavailable. `./flux up` sets `on` "
+        "while this and the key file are empty (#1438) and never changes `off`, the operator's switch for a Flux without AI on "
+        "API keys; a release install sets it itself.", "off", default="empty; `on` from `./flux up`"),
     "FLUX_AI_PRIVATE_TARGETS": Var("ai", "list of hosts, IPs or CIDRs",
         "Private addresses an OpenAI-compatible endpoint may use, such as a local model server. Empty allows public "
         "HTTPS endpoints only; cloud metadata addresses are always refused.", "ollama,10.0.0.0/8"),
@@ -345,6 +355,8 @@ VARIABLES: dict[str, Var] = {
 
 # Read by the code or set by the shipped files, but not something an operator sets. Each value says why.
 INTERNAL: dict[str, str] = {
+    "FLUX_AGENT_RUNTIME_OFF_REASON": "Written by the first `./flux up` when its host check finds the agent runtime cannot run (#1438, #1441), cleared by "
+        "`./flux ai on`; the API shows that one line to the company's owners and admins in Settings › AI.",
     "FLUX_FILES_DIR": "Set by Compose to `/data/files`, the `files` volume.",
     "FLUX_OIDC_CLIENT_SECRET_FILE": "Set by Compose to `/run/secrets/flux_oidc_client_secret`; the host file is `FLUX_OIDC_CLIENT_SECRET_HOST_FILE`.",
     "FLUX_KEYRING_URL": "How the API and worker reach the keyring; default `http://keyring:8090`.",

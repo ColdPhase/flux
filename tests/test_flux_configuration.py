@@ -36,7 +36,7 @@ class FluxConfigurationTest(unittest.TestCase):
         docker.chmod(0o700)
         self.log = self.base / "docker-calls"
         self.env = {k: v for k, v in os.environ.items() if not k.startswith("FLUX_")}
-        self.env.update(PATH=f"{spy}:{os.environ['PATH']}", FLUX_ENV_TEST_LOG=str(self.log))
+        self.env.update(PATH=f"{spy}:{os.environ['PATH']}", FLUX_ENV_TEST_LOG=str(self.log), XDG_STATE_HOME=str(self.base / "state"))
 
     def write_private(self, path: Path) -> None:
         path.write_bytes(CONFIG)

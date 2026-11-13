@@ -18,6 +18,8 @@ export FLUX_PORT="${FLUX_RUNTIME_TEST_PORT:-19581}"
 export FLUX_DEV_PORT=$((FLUX_PORT + 1))
 export FLUX_MAILPIT_PORT=$((FLUX_PORT + 2))
 work=$(mktemp -d "${TMPDIR:-/tmp}/flux-runtime-install-check.XXXXXX")
+# The AI key files ./flux up makes (#1438) stay in this run's own state directory, removed with it.
+export XDG_STATE_HOME="$work/state"
 work=$(cd "$work" && pwd -P)
 copy="$work/flux"
 project=''
@@ -54,7 +56,7 @@ env_set() {
 compose() { FLUX_IMAGE_TAG="$project" docker compose --project-directory docker --env-file docker/.env -p "$project" -f docker/compose.source.yaml --profile runtime "$@"; }
 
 step "1. Start Flux with the runtime off (this writes docker/.env), then switch claude_code on"
-./flux up </dev/null   # no terminal: the first-run subscription question is not asked
+FLUX_AGENT_RUNTIME= ./flux up </dev/null   # off by the operator's choice (it is on by default where the host can run it, #1438)
 project=$(sed -n 's/^FLUX_PROJECT=//p' docker/.env)
 [ -n "$project" ] || fail "no project name"
 env_set FLUX_AGENT_RUNTIME claude_code

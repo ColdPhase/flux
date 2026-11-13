@@ -5,10 +5,13 @@ optional agent runtime: people connect their own Claude or ChatGPT subscription 
 that CLI (Claude Code or Codex) for their agents, isolated from everyone else, on your server. One runtime serves everyone
 ([product contract](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/ai-modes.md#aim-3--the-runtime-transport)).
 
-**It is off by default.** With `FLUX_AGENT_RUNTIME` empty, no runtime service runs, the API reports the
-feature as not enabled, and nothing below applies. The published release `compose.yaml` does not
-contain it and never asks; the runtime is available from a source checkout with `./flux`, which asks
-once ([Switch it on](#switch-it-on)), or from a release install with the release's optional
+**The first `./flux up` turns it on where the host can run it** (founder decisions, Hubert, 2026-11-13,
+[#1438](https://github.com/ColdPhase/flux/issues/1438) and [#1441](https://github.com/ColdPhase/flux/issues/1441): AI works
+right after install). With `FLUX_AGENT_RUNTIME` empty, no runtime service runs, the API reports the
+feature as not enabled, and nothing below applies; on a host that cannot run it, that is how it stays, and the company's owners
+and admins read why in one line in Settings › AI. The published release `compose.yaml` does not
+contain it and never asks; the runtime is available from a source checkout with `./flux`
+([Switch it on](#switch-it-on)), or from a release install with the release's optional
 `compose.runtime.yaml` and `runtime.sh` ([Installing from a release](#installing-from-a-release)).
 
 ## Before you switch it on
@@ -48,9 +51,11 @@ organization). Have you accepted them?  [y/N]
 - **When it asks.** `./flux up` asks while it *creates* `docker/.env` (a fresh checkout), before the
   build, and only when stdin and stdout are a terminal. An existing `docker/.env` is never asked about,
   and neither is a second `./flux up`, so a deployment that is already running stays as it is. Without a
-  terminal (CI, a pipe, `./flux up > log`) nothing is asked, checked or written, and the runtime stays
-  off. To skip the question in a terminal, set `FLUX_AGENT_RUNTIME` in the environment, even empty
-  (`FLUX_AGENT_RUNTIME= ./flux up`). `./flux dev` never asks.
+  terminal (CI, a pipe, `./flux up > log`) nothing is asked: the host is checked and the default answer applies,
+  `FLUX_AGENT_RUNTIME=codex,pi` (#1438; pi runs agents on API keys, #1441, and comes with every answer that turns the runtime on). Claude Code is never on without a typed yes. A host that fails the check keeps the runtime
+  off and `./flux up` writes the one line it found to `FLUX_AGENT_RUNTIME_OFF_REASON`, which Settings › AI shows the company's
+  owners and admins; `./flux ai on` clears it. To skip the check and the question, set `FLUX_AGENT_RUNTIME` in the environment,
+  even empty (`FLUX_AGENT_RUNTIME= ./flux up` keeps it off). `./flux dev` never asks.
 - **`./flux ai on`** asks the same questions on an existing instance, writes the answer to `docker/.env`
   and applies it like `./flux up` (builds and starts the runtime). It needs a terminal and refuses without
   one; set the variables by hand then. It only adds: if Codex is already on, it asks only the

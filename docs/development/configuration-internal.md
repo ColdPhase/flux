@@ -12,6 +12,7 @@ the wiring between services or enables test-only code.
 | `DATABASE_URL` | Set by Compose from `POSTGRES_USER`, `POSTGRES_PASSWORD` and `POSTGRES_DB`. |
 | `PORT` | Set by Compose to `8080`, the API's port inside its container. |
 | `NODE_EXTRA_CA_CERTS` | Node.js: extra CA certificates, for an SMTP server or provider with a private CA. Set it in an override and mount the file. |
+| `FLUX_AGENT_RUNTIME_OFF_REASON` | Written by the first `./flux up` when its host check finds the agent runtime cannot run (#1438, #1441), cleared by `./flux ai on`; the API shows that one line to the company's owners and admins in Settings › AI. |
 | `FLUX_ANTHROPIC_MOCK_URL` | Browser-test profile only (mock provider). |
 | `FLUX_API_INTERNAL_URL` | How the worker reaches the API inside Compose; default `http://api:8080`. |
 | `FLUX_API_URL` | Test profile only. |

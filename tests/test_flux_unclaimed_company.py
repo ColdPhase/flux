@@ -58,6 +58,7 @@ class UnclaimedCompanyWarningTest(unittest.TestCase):
             "FLUX_RUNTIME_MANAGER_SECRET=" + "a" * 64 + "\nFLUX_RUNTIME_SECRET_1=" + "b" * 64 + "\n")
         env_file.chmod(0o600)
         env = {k: v for k, v in os.environ.items() if not k.startswith("FLUX_")}
+        env.update(XDG_STATE_HOME=str(self.base / "state"))  # the AI key file of `up` (#1438) stays in the test
         env.update(PATH=f"{self.bin_dir}:{os.environ['PATH']}", FLUX_TEST_LOG=str(self.log), FLUX_TEST_INFO=INFO_OK, FLUX_TEST_PSQL=count,
                    FLUX_WAIT_TIMEOUT="5")
         return subprocess.run([str(self.checkout / "flux"), "up"], cwd=self.base, env=env, stdin=subprocess.DEVNULL,

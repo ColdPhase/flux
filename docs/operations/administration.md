@@ -140,8 +140,10 @@ In v0.2 everything that works for a person with AI is an **agent**, and each per
 <p align="center"><sub>Settings › AI of one person: a connection, their agents and their own Claude Code, connected.</sub></p>
 
 What the operator decides, in the [settings file](configuration.md#ai-providers): `FLUX_PERSONAL_RUNS` and a key file for
-agents on API keys, the [agent runtime](agent-runtime.md) for Claude and ChatGPT plans, and `FLUX_WEB_READS`. Until one of the two ways is on,
-Settings › AI says "Off on this Flux server · ask your admin to turn it on". The full model is in
+agents on API keys, the [agent runtime](agent-runtime.md) for Claude and ChatGPT plans, and `FLUX_WEB_READS`. AI works right after
+install (#1438): `./flux up` makes the key file and turns agents on API keys on, so each person, the owner first, connects AI in
+**Settings › AI** without editing a file. An operator who wants no AI sets `FLUX_PERSONAL_RUNS=off`; Settings › AI then says "Off on
+this Flux server" and offers only the person's own Claude Code or Codex, and nobody is told to ask anyone. The full model is in
 [agents: everything is an agent](../product/assistant.md).
 
 ## Personal settings

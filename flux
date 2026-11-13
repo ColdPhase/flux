@@ -195,10 +195,59 @@ set_env_line() {
   cat "$file.flux-tmp" > "$file" && rm -f "$file.flux-tmp"
 }
 
+# Where `./flux up` keeps this project's AI key file (#1438): outside the checkout and the backups, per user.
+background_key_dir() { printf '%s/flux/%s' "${XDG_STATE_HOME:-${HOME:?Set HOME or XDG_STATE_HOME}/.local/state}" "$PROJECT"; }
+
+# Whether the Docker engine runs rootless: there the containers' user 1000 is not this host user.
+docker_rootless() { docker info --format '{{json .SecurityOptions}}' 2>/dev/null | grep -q rootless; }
+
+# AI works right after install (founder decision, 2026-11-13, #1438). While the settings name no key file and the operator has not
+# set FLUX_PERSONAL_RUNS, this makes the 32-byte file that seals people's API keys, once, records its path and turns agents on
+# API keys on (FLUX_PERSONAL_RUNS=on); people then connect AI in the app. `off`, or a key file of the operator's own, is left as
+# it is, and an existing file is never replaced. The directory is private to this user (0700). The file is readable only by the
+# user the containers run as (1000) where that is this user or root makes it theirs; otherwise (another host uid, a rootless
+# engine) it is readable inside that private directory, so the container can open it. Its bytes are never printed.
+ensure_background_key() {
+  if [ -n "$(env_value FLUX_BACKGROUND_KEY_HOST_FILE)" ]; then check_background_key_file; return 0; fi
+  [ -z "$(env_value FLUX_PERSONAL_RUNS | tr -d '[:space:]')" ] || return 0
+  dir=$(background_key_dir)
+  key="$dir/background.key"
+  [ ! -L "$dir" ] && [ ! -L "$key" ] || die "$dir or its background.key is a symlink; remove it, or set FLUX_BACKGROUND_KEY_HOST_FILE yourself."
+  old_umask=$(umask); umask 077
+  mkdir -p "$dir" || die "Could not create $dir for the AI key file."
+  # Only a directory of this user's own: another user could swap the file under it.
+  [ -d "$dir" ] && [ ! -L "$dir" ] && [ -O "$dir" ] || die "$dir is not a directory of this user; remove it, or set FLUX_BACKGROUND_KEY_HOST_FILE yourself."
+  chmod 700 "$dir"
+  if [ ! -e "$key" ]; then
+    rm -f "$key.flux-new"
+    { (set -C; head -c 32 /dev/urandom > "$key.flux-new") && mv "$key.flux-new" "$key"; } || { rm -f "$key.flux-new"; die "Could not write the AI key file in $dir."; }
+    say "Created the AI key file $key. It seals people's API keys: back it up with docker/.env, not with the database."
+  fi
+  umask "$old_umask"
+  [ -f "$key" ] && [ "$(wc -c < "$key" | tr -d ' ')" = 32 ] || die "$key is not a 32-byte key file; move it aside, or set FLUX_BACKGROUND_KEY_HOST_FILE to the right one."
+  uid=$(id -u)
+  if [ "$uid" = 0 ]; then chown 1000:1000 "$key" && chmod 400 "$key"
+  elif [ "$uid" = 1000 ] && ! docker_rootless; then chmod 400 "$key"
+  else chmod 444 "$key"
+  fi
+  set_env_line "$ENV_FILE" FLUX_BACKGROUND_KEY_HOST_FILE "$key"
+  set_env_line "$ENV_FILE" FLUX_PERSONAL_RUNS on
+  say "Agents can run on people's own API keys: each person connects AI in Settings > AI. Set FLUX_PERSONAL_RUNS=off in docker/.env to turn that off."
+}
+
+# A key file named in the settings must be a file on this host before Compose mounts it: Docker would make a missing path a
+# directory, and the API and worker would not start. A copied docker/.env or a restore on another machine names the old one.
+check_background_key_file() {
+  path=$(env_value FLUX_BACKGROUND_KEY_HOST_FILE)
+  case "$path" in /*) ;; *) return 0 ;; esac
+  [ -f "$path" ] || die "FLUX_BACKGROUND_KEY_HOST_FILE names $path, which is not a file on this machine. It seals people's API keys and no backup holds it: copy it here from the machine that made it, or empty FLUX_BACKGROUND_KEY_HOST_FILE and FLUX_PERSONAL_RUNS in ${ENV_FILE#"$FLUX_ROOT"/} so ./flux up makes a new one (people then connect their API keys again)."
+}
+
 # Creates the env file once, from the example, with fresh secrets. Never overwrites it.
 ensure_env() {
   if [ -f "$ENV_FILE" ]; then
     say "Using existing ${ENV_FILE#"$FLUX_ROOT"/} (never overwritten)."
+    ensure_background_key
     return 0
   fi
   [ -f "$ENV_EXAMPLE" ] || die "Missing $ENV_EXAMPLE"
@@ -246,6 +295,10 @@ ensure_env() {
   else
     warn "VAPID key generation failed; Web Push stays unavailable until you set the three FLUX_VAPID_* values."
   fi
+  # The AI key goes into the draft too, so docker/.env appears complete in one step, right before Flux starts (#1438).
+  ENV_FILE=$draft
+  ensure_background_key
+  ENV_FILE=$final_env
   mv "$draft" "$ENV_FILE"
   trap - EXIT HUP INT TERM
   BUILT=1
@@ -346,14 +399,16 @@ ask_commercial_terms() {
   ask_line "organization). Have you accepted them?  [y/N]" || return 1
   case "$ANSWER" in y|Y|yes|Yes|YES) return 0 ;; *) return 1 ;; esac
 }
+# The plan CLIs of a FLUX_AGENT_RUNTIME value: everything but pi, which runs agents on API keys (#1441).
+plan_clients() { printf '%s' ",$1," | sed -e 's/,pi,/,/g' -e 's/^,*//' -e 's/,*$//'; }
 # $1 is the current FLUX_AGENT_RUNTIME. Sets AI_RUNTIME (the value to write) and AI_TERMS (the date of the
 # Commercial Terms statement, or empty). False when nothing is to be written; an existing client is never
 # removed, so `./flux ai on` on a configured instance can only add Claude Code.
 ask_runtime_questions() {
   AI_RUNTIME=$1 AI_TERMS=''
-  if [ -z "$AI_RUNTIME" ]; then
+  if [ -z "$(plan_clients "$AI_RUNTIME")" ]; then
     ask_subscriptions || return 1
-    AI_RUNTIME=codex
+    AI_RUNTIME=${AI_RUNTIME:+$AI_RUNTIME,}codex
     say ""
   fi
   case ",$AI_RUNTIME," in
@@ -362,25 +417,36 @@ ask_runtime_questions() {
   esac
   [ "$AI_RUNTIME" != "$1" ]
 }
-# Writes the answer (AI_RUNTIME, AI_TERMS) into the env file $1 and says what it means.
+# Writes the answer (AI_RUNTIME, AI_TERMS) into the env file $1 and says what it means. The runtime that runs a plan also runs
+# agents on API keys in pi (founder decision 2026-11-13, #1441: every API key runs in pi), so pi comes with every answer.
 write_runtime_answer() {
+  case ",$AI_RUNTIME," in *,pi,*) ;; *) AI_RUNTIME="$AI_RUNTIME,pi" ;; esac
   set_env_line "$1" FLUX_AGENT_RUNTIME "$AI_RUNTIME"
+  ! grep -q '^FLUX_AGENT_RUNTIME_OFF_REASON=.' "$1" || set_env_line "$1" FLUX_AGENT_RUNTIME_OFF_REASON ""
   [ -z "$AI_TERMS" ] || set_env_line "$1" FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS "$AI_TERMS"
   say ""
-  say "Subscription sign-in is on for: $AI_RUNTIME."
+  say "Subscription sign-in is on for: $(plan_clients "$AI_RUNTIME"). Agents on API keys run in pi in the same runtime."
   case ",$AI_RUNTIME," in
     *,claude_code,*) [ -z "$AI_TERMS" ] || say "Your statement that you accepted Anthropic's Commercial Terms on $AI_TERMS is saved in ${ENV_FILE#"$FLUX_ROOT"/}; Flux records it when it starts and does not check it." ;;
     *) say "Claude Code stays off until you accept Anthropic's Commercial Terms: ./flux ai on asks again." ;;
   esac
 }
-# The first interactive `./flux up`, while it creates the env file $1. Silent without a terminal, and when
-# FLUX_AGENT_RUNTIME is set in the environment (even empty): the operator has already chosen.
+# The first `./flux up`, while it creates the env file $1. The agent runtime is on by default where the host can run it
+# (founder decisions 2026-11-13, #1441 and #1438: AI works right after install): without a terminal the default answer applies
+# (Codex on; Claude Code never without a typed yes, as it is the operator's Commercial Terms statement), and with one the question
+# is asked with that default. On a host that cannot run it, it stays off and the reason is kept for Settings > AI
+# (FLUX_AGENT_RUNTIME_OFF_REASON). Nothing is asked or checked when FLUX_AGENT_RUNTIME is set in the environment (even empty).
 first_run_runtime_question() {
-  interactive || return 0
   [ -z "${FLUX_AGENT_RUNTIME+x}" ] || return 0
   problem=$(runtime_host_problem)
   if [ -n "$problem" ]; then
     say "Subscription sign-in stays off: $problem. See docs/operations/agent-runtime.md."
+    set_env_line "$1" FLUX_AGENT_RUNTIME_OFF_REASON "$problem"
+    return 0
+  fi
+  if ! interactive; then
+    AI_RUNTIME=codex,pi AI_TERMS=''
+    write_runtime_answer "$1"
     return 0
   fi
   if ask_runtime_questions ''; then
@@ -1132,6 +1198,8 @@ cmd_restore() {
   else
     env_from_archive "$RESTORE_DIR/flux.env"
   fi
+  # The AI key file is not in the archive (O-007): the settings name the original machine's file (#1438).
+  check_background_key_file
   build_main
   # The exact migration ledger (#118) of the dump, checked against the manifest and this image
   # before anything is replaced.
@@ -1446,9 +1514,9 @@ cmd_ai() {
   check_owner "$PROJECT"
   current=$(runtime_value)
   case ",$current," in
-    *,claude_code,*) say "Subscription sign-in is already on for: $current."; return 0 ;;
+    *,claude_code,*) say "Subscription sign-in is already on for: $(plan_clients "$current")."; return 0 ;;
   esac
-  [ -z "$current" ] || say "Subscription sign-in is on for: $current."
+  [ -z "$(plan_clients "$current")" ] || say "Subscription sign-in is on for: $(plan_clients "$current")."
   problem=$(runtime_host_problem)
   [ -z "$problem" ] || die "subscription sign-in cannot be turned on here: $problem. See docs/operations/agent-runtime.md."
   if ! ask_runtime_questions "$current"; then

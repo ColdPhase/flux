@@ -25,6 +25,8 @@ export FLUX_PORT="${FLUX_RUNTIME_TEST_PORT:-19571}"
 export FLUX_DEV_PORT=$((FLUX_PORT + 1))
 export FLUX_MAILPIT_PORT=$((FLUX_PORT + 2))
 work=$(mktemp -d "${TMPDIR:-/tmp}/flux-runtime-check.XXXXXX")
+# The AI key files ./flux up makes (#1438) stay in this run's own state directory, removed with it.
+export XDG_STATE_HOME="$work/state"
 work=$(cd "$work" && pwd -P)
 copy="$work/flux"
 marker="fake-login-marker-$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
@@ -77,8 +79,9 @@ runtime_containers() { docker ps -aq --filter "label=com.docker.compose.project=
 host_addr() { docker run --rm --network host --cap-drop ALL --read-only --entrypoint ip "flux-test-tools:$project" -4 addr show dev "$1" 2>/dev/null | sed -n 's/^ *inet \([0-9.]*\).*/\1/p'; }
 ip_on() { docker inspect -f "{{ with index .NetworkSettings.Networks \"${project}_$2\" }}{{ .IPAddress }}{{ end }}" "$1"; }
 
-step "1. Off by default: no runtime service starts and the API reports the feature disabled"
-./flux up </dev/null   # no terminal: the first-run subscription question is not asked
+step "1. Off by the operator's choice: no runtime service starts and the API reports the feature disabled"
+# The runtime is on by default where the host can run it (#1438, #1441); an empty FLUX_AGENT_RUNTIME in the environment is the operator saying no.
+FLUX_AGENT_RUNTIME= ./flux up </dev/null
 project=$(sed -n 's/^FLUX_PROJECT=//p' docker/.env)
 [ -n "$project" ] || fail "no project name"
 [ -z "$(runtime_containers)" ] || fail "runtime containers exist while FLUX_AGENT_RUNTIME is empty: $(runtime_containers)"
