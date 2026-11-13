@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { before, beforeEach, describe, test } from 'node:test';
+import { after, before, beforeEach, describe, test } from 'node:test';
 import { agentChatFilesPath, type MessageFile, type StagedFile } from '@flux/contracts';
-import { CHAT_FILES_LINE, type PersonalComputeResult, type PersonalTurn } from '@flux/core';
+import { CHAT_FILES_LINE } from '@flux/core';
 import { fileTextRows } from '@flux/db';
 import { diskFileStorage } from '../../apps/server/src/files/storage.js';
 import { personalRunUseCases } from '../../apps/server/src/personal-runs/adapters.js';
@@ -12,16 +12,13 @@ import { assistantScene, human, result, text, type AssistantScene } from './supp
 import { png } from './support/pictures.js';
 import { agentConnection } from './support/mcp-actions.js';
 import { mcp } from './support/mcp.js';
+import { startPiRuntime, type PiRuntime } from './support/pi-runtime.js';
 
 // Files, photos and videos in an agent's private chat (#1438 point 10, C-64 point 4): the owner stages them in the chat and sends them with a
 // request; only the owner reaches them, and only a run of that chat reads them (flux_view_image, flux_read_file). No space, direct message,
 // search or other run sees them.
 
 const filesDir = process.env.FLUX_TEST_FILES_DIR ?? '/data/files';
-const usage = { inputTokens: 300, outputTokens: 20 };
-const answer = (words: string): PersonalComputeResult => ({ kind: 'completed', text: words, stopReason: 'end_turn', usage });
-const calls = (...list: { name: string; input: Record<string, unknown> }[]): PersonalComputeResult => ({ kind: 'completed', text: 'looking', stopReason: 'tool_use', usage,
-  toolCalls: list.map((call, index) => ({ id: `call-${index}-${randomUUID()}`, name: call.name, input: call.input })) });
 const headers = (who: Person, extra: Record<string, string> = {}) => ({ cookie: who.browser.cookieHeader(), origin: who.browser.defaultOrigin, ...extra });
 /** A request that was never dispatched ends as Stop leaves it: it no longer holds the owner's lane. */
 const end = (runId: string) => pool.query(`UPDATE personal_runs SET status = 'stopped', completed_at = now(), cost_state = 'released', charged_micros = 0 WHERE id = $1`, [runId]);
@@ -36,13 +33,17 @@ async function stage(who: Person, path: string, name: string, bytes: Uint8Array)
 describe('files in an agent\'s private chat', () => {
   let scene: AssistantScene;
   let runs: ReturnType<typeof personalRunUseCases>;
+  let pi: PiRuntime;
   const chat = () => ({ kind: 'chat' as const, agentId: scene.agentId });
   before(async () => {
-    scene = await assistantScene('chatfiles');
+    // An API-key agent runs in pi in the agent runtime (#1441, RT-1); its model is a scripted stand-in for Flux's model gateway.
+    pi = await startPiRuntime();
+    scene = await assistantScene('chatfiles', { pi });
     // The API's own composition, with the files volume: a request in a chat may carry files.
     runs = personalRunUseCases(db, { queue: scene.queue.factory, connections: scene.connections, providerEnabled: true, storage: await diskFileStorage(filesDir) });
   });
-  beforeEach(async () => { await scene.reset(); scene.compute.dispatched.length = 0; });
+  beforeEach(async () => { await scene.reset(); });
+  after(async () => { await pi.close(); });
 
   test('the owner stages a file in the chat and sends it with a request; it is theirs alone and no space\'s', async () => {
     const photo = await stage(scene.owner, agentChatFilesPath(scene.agentId), 'bed.png', png(64, 48, { metadata: true }));
@@ -115,22 +116,20 @@ describe('files in an agent\'s private chat', () => {
     await scene.complete(space.runId);
   });
 
-  test('the worker tells the run the files with their ids, and the model gets the picture it asks for', async () => {
+  test('the run is told the files with their ids, and the model in pi looks at the picture it asks for', async () => {
     const photo = await stage(scene.owner, agentChatFilesPath(scene.agentId), 'leaf.png', png(32, 32));
-    const replies = [calls({ name: 'flux_view_image', input: { fileId: photo.body.id } }), answer('A green leaf.')];
-    scene.compute.respond = async () => replies.shift()!;
+    pi.gateway.script([{ tool: 'mcp__flux__flux_view_image', args: { fileId: photo.body.id } }, { text: 'A green leaf.' }]);
     const started = await runs.invoke(human(scene.owner), chat(), { clientRunId: randomUUID(), kind: 'ask', prompt: 'What is it?', attachmentIds: [photo.body.id] });
-    assert.equal(await scene.processor.process(started.run.id), 'completed');
-    const first = scene.compute.dispatched[0]!;
-    assert.ok(first.input.includes(`<attachment name="leaf.png" bytes="${photo.body.size}" id="${photo.body.id}"/>`), first.input.slice(-600));
-    assert.ok(first.system.includes(CHAT_FILES_LINE));
-    const turn = scene.compute.dispatched[1]!.turns![0]! as PersonalTurn;
-    assert.equal(turn.results[0]!.images?.[0]?.mimeType, 'image/png');
+    assert.equal(await scene.processor!.process(started.run.id), 'completed', JSON.stringify(pi.lastPi()));
+    const [first, second] = pi.gateway.requests;
+    assert.ok(first!.prompt.includes(`<attachment name="leaf.png" bytes="${photo.body.size}" id="${photo.body.id}"/>`), first!.prompt.slice(-600));
+    assert.ok(first!.prompt.includes(CHAT_FILES_LINE));
+    assert.match(second!.results[0] ?? '', /leaf\.png/, 'the model is given the picture it asked for');
     // The next request in the chat is told the earlier exchange's file too.
-    scene.compute.respond = async () => answer('Still a leaf.');
+    pi.gateway.script([{ text: 'Still a leaf.' }]);
     const next = await runs.invoke(human(scene.owner), chat(), { clientRunId: randomUUID(), kind: 'ask', prompt: 'And now?' });
-    assert.equal(await scene.processor.process(next.run.id), 'completed');
-    assert.ok(scene.compute.dispatched.at(-1)!.input.includes(`id="${photo.body.id}"`), 'the earlier turn names its file');
+    assert.equal(await scene.processor!.process(next.run.id), 'completed', JSON.stringify(pi.lastPi()));
+    assert.ok(pi.gateway.requests[0]!.prompt.includes(`id="${photo.body.id}"`), 'the earlier turn names its file');
   });
 
   test('no run of a direct message, of another agent\'s chat or of a local client reaches a chat\'s file, and deleting the agent deletes its files', async () => {

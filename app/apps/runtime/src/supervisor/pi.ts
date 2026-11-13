@@ -181,8 +181,9 @@ export async function runPi(config: SupervisorConfig, request: PiRequest, dir: s
   };
   const argv = [paths.launcher, paths.cli, ...piArgs(brief, request.model)];
   // pi runs inside the sandbox's outer domain: it writes only its own agent directory and the scratch, and reads those, the run's folder
-  // and the system; never the person's shared home or a CLI's.
-  const [file, args] = [sandbox.binary, ['cli', scratch, '--home', home, '--read', runDir, ...(sandbox.testExec ?? []).flatMap((path) => ['--exec', path]), '--', paths.node, ...argv]] as const;
+  // and the system; never the person's shared home or a CLI's. pi is Node itself, never a test image's wrapper, so its domain is production's
+  // set in every image (`FLUX_RUNTIME_TEST_EXEC` names a program for Claude Code and Codex only, #1437).
+  const [file, args] = [sandbox.binary, ['cli', scratch, '--home', home, '--read', runDir, '--', paths.node, ...argv]] as const;
   // `flux_attach_file` reads a file of the scratch while the run lasts (#1437, files.ts): looked through for the run's own tokens as it passes.
   watchRunSecrets(config, request.runId, request.bindingId, dir, person, [request.runToken, request.modelToken]);
   const allowedFlux = new Set(request.tools.map((tool) => `${PI_MCP_PREFIX}${tool}`));
