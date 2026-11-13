@@ -8,7 +8,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { chmod, lstat, readdir, readFile, writeFile } from 'node:fs/promises';
 import http from 'node:http';
 import net from 'node:net';
-import { callSupervisor, scanSupervisorText } from '/opt/flux-runtime/packages/runtime-protocol/dist/index.js';
+import { callSupervisor, fetchSupervisorFile, scanSupervisorText } from '/opt/flux-runtime/packages/runtime-protocol/dist/index.js';
 import { runFixed } from '/opt/flux-runtime/apps/runtime/dist/supervisor/process.js';
 import { findSandbox } from '/opt/flux-runtime/apps/runtime/dist/supervisor/sandbox.js';
 import { createSupervisorServer } from '/opt/flux-runtime/apps/runtime/dist/supervisor/server.js';
@@ -177,7 +177,7 @@ record('Bo\'s scratch is gone after his run', !(await readdir('/scratch')).inclu
 
 // The reader `flux_attach_file` uses: a regular file of the run's scratch, as the person, never through a link or out of the scratch.
 const holdRun = randomUUID();
-await writeAs(ada, `/data/${ada}/claude/fake-run.json`, JSON.stringify({ calls: [{ name: 'Bash', args: { command: 'printf "<h1>Hi</h1>" > page.html; mkdir sub; echo deep > sub/x.txt; sleep 12' } }, { name: 'flux_list_contexts' }] }));
+await writeAs(ada, `/data/${ada}/claude/fake-run.json`, JSON.stringify({ calls: [{ name: 'Bash', args: { command: 'printf "<h1>Hi</h1>" > page.html; mkdir sub; echo deep > sub/x.txt; sleep 25' } }, { name: 'flux_list_contexts' }] }));
 const holding = call({ kind: 'run', bindingId: ada, client: 'claude_code', runId: holdRun, prompt: 'Hold.', runToken: token(), tools: ['flux_list_contexts'], caps });
 for (let i = 0; i < 100 && !(await lstat(`/scratch/${holdRun}/page.html`).catch(() => null)); i += 1) await new Promise((done) => setTimeout(done, 100));
 await asPerson(adaPerson, `ln -s /data/${ada}/claude/.credentials.json "$1/login" && ln -s sub "$1/dir"`, `/scratch/${holdRun}`);
@@ -196,6 +196,20 @@ const foundIt = await scan(ada, holdRun, `Here is the report.\n${adaLogin}\nThan
 record('a text with the run\'s CLI login is found', foundIt.ok && foundIt.found === true, JSON.stringify(foundIt));
 const clean = await scan(ada, holdRun, 'An ordinary report about the lamp sensor, nothing secret in it at all.');
 record('an ordinary text is not', clean.ok && clean.found === false, JSON.stringify(clean));
+// flux_attach_file's read through the supervisor: a file that holds the login is refused, a big one broken off where the login comes.
+await asPerson(adaPerson, `printf 'moved: %s\\n' "$2" > "$1/moved.json"; head -c 2000000 /dev/zero | tr "\\0" "a" > "$1/big.txt"; printf '%s' "$2" >> "$1/big.txt"`, `/scratch/${holdRun}`, adaLogin);
+const viaSupervisor = async (path) => {
+  const got = await fetchSupervisorFile(target, { bindingId: ada, runId: holdRun, path, maxBytes: 5 * 1024 * 1024 });
+  if (!got.ok) return { code: got.code };
+  const chunks = [];
+  try { for await (const chunk of got.body) chunks.push(chunk); return { ok: true, bytes: Buffer.concat(chunks) }; } catch { return { broken: true, bytes: Buffer.concat(chunks) }; }
+};
+const moved = await viaSupervisor('moved.json');
+record('a file that holds the CLI\'s login is not handed over', moved.code === 'file_secret', JSON.stringify(moved).slice(0, 200));
+const bigOne = await viaSupervisor('big.txt');
+record('nor one where the login comes after its first MiB: the stream breaks off before it', !bigOne.ok && !String(bigOne.bytes ?? '').includes(adaLogin), JSON.stringify({ ...bigOne, bytes: bigOne.bytes?.length }));
+const pageVia = await viaSupervisor('page.html');
+record('an ordinary file still is', pageVia.ok && pageVia.bytes.toString() === '<h1>Hi</h1>', JSON.stringify(pageVia).slice(0, 200));
 const notHers = await scan(bo, holdRun, adaLogin);
 record('another person cannot ask about her run', !notHers.ok && notHers.code === 'not_running', JSON.stringify(notHers));
 await holding;

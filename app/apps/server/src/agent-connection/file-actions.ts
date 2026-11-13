@@ -4,10 +4,11 @@ import { sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { and, eq, inArray } from 'drizzle-orm';
 import { AGENT_OPERATION_CLASSES, FILE_LIMITS, PICTURE_RUN_KINDS, type AgentJsonValue, type StagedFile } from '@flux/contracts';
-import { DomainError, derivedUuid, type FileStorage, type FileUseCaseOptions } from '@flux/core';
-import { assistantChangeRows, fileRows, schema, type Database, type DbExecutor } from '@flux/db';
+import { DomainError, derivedUuid, receiveRunOwnFile, type FileStorage, type FileUseCaseOptions } from '@flux/core';
+import { assistantChangeRows, fileRows, runPictureRows, schema, type Database, type DbExecutor } from '@flux/db';
 import { fetchRunFile, type RunFileError } from '@flux/runtime-protocol';
 import { fileUseCases } from '../files/adapters.js';
+import { setAgentFileStorage } from './file-storage.js';
 import { actionAnnotations as annotations, actionInput, nativeActionExecutor } from './action-execution.js';
 import { isAssistantText, type AssistantCall } from './assistant-changes.js';
 import { agentConnectionInTransaction } from './context.js';
@@ -29,7 +30,7 @@ import { toolError, toolResult } from './tool-results.js';
 
 interface FileServices { storage: FileStorage; options: FileUseCaseOptions; manager: { url: string; secret: string } | null }
 let services: FileServices | null = null;
-export function configureAgentFiles(next: FileServices | null) { services = next; }
+export function configureAgentFiles(next: FileServices | null) { services = next; setAgentFileStorage(next?.storage ?? null); }
 
 const OPERATION = 'answer.file.attach' as const;
 const refusal = (words: string) => ({ content: [{ type: 'text' as const, text: `Not attached. ${words}` }], isError: true as const });
@@ -41,6 +42,7 @@ const READ_WORDS: Record<RunFileError, string> = {
   file_missing: 'There is no such file in your working directory.',
   file_not_regular: 'That is not a file (a folder or a link cannot be attached).',
   file_too_large: 'The file is larger than a file in Flux may be.',
+  file_secret: 'The file holds the sign-in of the AI tool you run on (a value of its login file), so it was not attached. Never copy anything of your own login into a file.',
   not_running: 'Your run has ended, so its files are gone.',
   no_sandbox: 'This server runs no tools of your own, so give the file\'s content instead.',
   invalid_request: 'The path is not one Flux can read.',
@@ -50,9 +52,9 @@ const READ_WORDS: Record<RunFileError, string> = {
 };
 
 export function registerAgentFileActions(tools: AgentToolRegistry, db: Database) {
-  // Only a run's answer carries a file: a local client attaches its own files as its person (as with pictures, #1217). The registry an
-  // owner's Approve uses has no `run`: there the tool is always there to re-execute a saved call.
-  if (tools.run === false) { tools.omit('flux_attach_file'); return; }
+  // A local client (the owner's own Claude Code or Codex over MCP; coordinator decision on #1437): the file goes on the message it posts.
+  // The registry an owner's Approve uses has no `run`: there the run's tool is always there to re-execute a saved call.
+  if (tools.run === false) { registerClientFile(tools, db); return; }
   tools.forAccess('write', { operation: OPERATION, classes: AGENT_OPERATION_CLASSES[OPERATION] }).registerTool('flux_attach_file', {
     title: 'Attach a file to your answer',
     // Short on purpose: a run's tool definitions travel with every request.
@@ -78,6 +80,119 @@ async function runtimeTarget(db: Database, ownerUserId: string): Promise<{ bindi
   return row ? { bindingId: row.id, slot: row.slot } : null;
 }
 
+/** The bytes a run attaches: a file of its scratch (a CLI run in the runtime), or the text it gave. */
+async function runFileBody(db: Database, current: FileServices, claims: ToolCall['claims'], runId: string, engine: string,
+  input: { path?: string | undefined; content?: string | undefined }, maxBytes: number): Promise<{ body: Readable; size: number | undefined }> {
+  if (input.path === undefined) {
+    const bytes = Buffer.from(input.content!, 'utf8');
+    return { body: Readable.from([bytes]), size: bytes.length };
+  }
+  if (engine !== 'runtime') refuse('You have no working directory of your own here, so give the file\'s `content` instead.');
+  if (!current.manager) refuse(READ_WORDS.no_sandbox);
+  const target = await runtimeTarget(db, claims.ownerUserId);
+  if (!target) refuse(READ_WORDS.unreachable);
+  const read = await fetchRunFile(current.manager!, target!.slot, { bindingId: target!.bindingId, runId, path: input.path, maxBytes });
+  if (!read.ok) refuse(READ_WORDS[read.code]);
+  return { body: (read as Extract<typeof read, { ok: true }>).body, size: undefined };
+}
+
+/**
+ * A file on the agent's answer in its private chat (coordinator decision on #1437, as #1217's pictures, C-59). The chat changes nothing (C-38)
+ * and has no change log: the file is part of the agent's answer to its owner alone, made at once whatever "What it may do" says. Its bytes get
+ * a person's upload checks (`receiveRunOwnFile`: a name a person could give, at most 5 MiB, no video, a picture written again) and are kept as
+ * the run's own (`personal_run_pictures`), which only its owner can open, with the run. At most 10 to an answer.
+ */
+async function attachInChat(db: Database, current: FileServices, input: { clientCommandId: string; path?: string | undefined; content?: string | undefined; name: string },
+  claims: ToolCall['claims']) {
+  const run = claims.run!;
+  const facts = await db.transaction(async (tx) => {
+    await agentConnectionInTransaction(tx, claims, 'read', null);
+    const r = schema.personalRuns;
+    const [row] = await tx.select({ kind: r.kind, dmId: r.dmId, workspaceId: r.workspaceId, engine: r.engine }).from(r).where(eq(r.id, run.id));
+    const [space] = row ? await tx.select({ encrypted: schema.workspaces.encrypted }).from(schema.workspaces).where(eq(schema.workspaces.id, row.workspaceId)) : [];
+    return { row, encrypted: !space || space.encrypted, files: await runPictureRows(tx as DbExecutor).forRun(run.id) };
+  });
+  if (!facts.row || facts.row.dmId !== null || facts.row.kind !== 'ask') refuse('Only an answer in a space or in your private chat can carry a file.');
+  if (facts.encrypted) refuse('This space is encrypted, so no file can be attached here.');
+  const id = derivedUuid('flux.agent-chat-file.v1', run.id, input.clientCommandId.toLowerCase());
+  const again = facts.files.find((file) => file.id === id);
+  if (again) return toolResult({ attached: again.name, size: again.size, replayed: true });
+  if (facts.files.length >= FILE_LIMITS.messageFiles) refuse(`An answer carries at most ${FILE_LIMITS.messageFiles} files.`);
+  const { body } = await runFileBody(db, current, claims, run.id, facts.row!.engine, input, FILE_LIMITS.fileBytes);
+  let received: Awaited<ReturnType<typeof receiveRunOwnFile>>;
+  try { received = await receiveRunOwnFile(current.storage, current.options, input.name, body); }
+  catch (error) { body.destroy(); if (error instanceof DomainError) refuse(error.message); throw error; }
+  let saved: { name: string; size: number } | null;
+  try {
+    saved = await db.transaction(async (tx) => {
+      // One call of this id at a time (a retry racing the first): the first saves it, the other finds it saved and touches nothing.
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`run-picture:${id}`}))`);
+      // The run is checked live again before the file is its: a run stopped meanwhile keeps nothing.
+      await agentConnectionInTransaction(tx, claims, 'read', null);
+      const rows = runPictureRows(tx as DbExecutor);
+      const existing = await rows.find(id);
+      if (existing) return { name: existing.name, size: existing.size };
+      if ((await rows.forRun(run.id)).length >= FILE_LIMITS.messageFiles) throw new Refused(`An answer carries at most ${FILE_LIMITS.messageFiles} files.`);
+      await received.received.commit(id);
+      await rows.add({ id, runId: run.id, ownerUserId: claims.ownerUserId, name: received.name, size: received.received.size, sha256: received.received.sha256,
+        position: (await rows.forRun(run.id)).length });
+      return null;
+    });
+  } catch (error) {
+    await received.received.discard().catch(() => undefined);
+    const kept = await runPictureRows(db as unknown as DbExecutor).find(id).catch(() => null);
+    if (!kept) await current.storage.remove(id).catch(() => undefined);
+    throw error;
+  }
+  if (saved) {
+    await received.received.discard().catch(() => undefined);
+    return toolResult({ attached: saved.name, size: saved.size, replayed: true });
+  }
+  return toolResult({ attached: received.name, size: received.received.size, note: 'The file is attached to your answer in this chat; only your owner sees it.' });
+}
+
+/**
+ * A local client's file (the owner's own Claude Code or Codex over MCP; coordinator decision on #1437, one contract for every agent, #1441):
+ * it gives the file's content (text, or base64 for any other file), and the server stages it as its owner's own upload in that space, with the
+ * same checks, staged for the owner alone. The message the client then posts names it (`attachmentIds` of `flux_start_conversation` or
+ * `flux_reply_in_conversation`), and the file goes with that message, which is the owner's, marked with the client, like any of their posts.
+ */
+function registerClientFile(tools: AgentToolRegistry, db: Database) {
+  tools.forAccess('write', { operation: OPERATION, classes: AGENT_OPERATION_CLASSES[OPERATION] }).registerTool('flux_attach_file', {
+    title: 'Attach a file to your next message',
+    description: 'Stage a file for the message you post next in this project: its `name` with the extension and its `content` (the text, or with '
+      + '`encoding` "base64" the bytes of any other file, at most 5 MB). It is checked as your owner\'s own upload. The result gives its `fileId`: '
+      + 'name it in `attachmentIds` of flux_start_conversation or flux_reply_in_conversation within 7 days. Until then only your owner sees it.',
+    inputSchema: z.strictObject({ ...actionInput(),
+      content: z.string().min(1).max(Math.ceil(FILE_LIMITS.fileBytes / 3) * 4 + 4),
+      encoding: z.enum(['text', 'base64']).optional().describe('How `content` is written: text (the default) or base64.'),
+      name: z.string().min(1).max(FILE_LIMITS.nameChars).describe('The file name people see, with its extension.') }),
+    annotations,
+  }, async (args, { claims }) => {
+    try {
+      const current = services;
+      if (!current) refuse('Files cannot be attached on this server.');
+      if (claims.run || claims.approval) refuse('Only a client posts its own files.');
+      await db.transaction((tx) => agentConnectionInTransaction(tx, claims, 'write', args.projectId));
+      let bytes: Buffer;
+      if (args.encoding === 'base64') {
+        if (!/^[A-Za-z0-9+/]*={0,2}$/.test(args.content.replace(/\s+/g, ''))) refuse('`content` is not base64.');
+        bytes = Buffer.from(args.content, 'base64');
+      } else bytes = Buffer.from(args.content, 'utf8');
+      const uploadId = derivedUuid('flux.client-file.v1', claims.connectionId.toLowerCase(), args.clientCommandId.toLowerCase());
+      const files = fileUseCases(db, current!.storage, current!.options);
+      let staged: StagedFile;
+      try { staged = await files.stage({ kind: 'human', id: claims.ownerUserId }, args.projectId, { uploadId, name: args.name.trim() }, Readable.from([bytes]), bytes.length); }
+      catch (error) { if (error instanceof DomainError) refuse(error.message); throw error; }
+      return toolResult({ fileId: staged!.id, name: staged!.name, size: staged!.size, expiresAt: staged!.expiresAt,
+        note: 'Staged for your owner alone. Name this fileId in attachmentIds of the message you post next.' });
+    } catch (error) {
+      if (error instanceof Refused) return refusal(error.message);
+      return toolError(error);
+    }
+  });
+}
+
 async function attach(db: Database, input: { projectId: string; clientCommandId: string; sources: { materialId: string; version: number }[]; path?: string | undefined;
   content?: string | undefined; name?: string | undefined; assistantCall?: AssistantCall }, { claims }: ToolCall) {
   const current = services;
@@ -85,11 +200,12 @@ async function attach(db: Database, input: { projectId: string; clientCommandId:
   const runId = claims.run?.id ?? claims.approval?.runId ?? null;
   if (!runId) refuse('Only an answer to /ai in a space can carry a file.');
   if (claims.run && (input.projectId ?? null) !== claims.run.projectId) throw new DomainError(403, 'OUTSIDE_RUN_PLACE', 'An assistant run changes only the project it was asked in');
-  if (claims.run && claims.run.projectId === null) refuse('In your private chat no file can be attached yet; describe it in your answer.');
   // An owner's Approve re-executes the call as it was kept: its file is staged already, so it carries neither the content nor anything to read.
   if (!claims.approval && (input.path === undefined) === (input.content === undefined)) refuse('Give either `path` (a file in your working directory) or `content` (a text file\'s text), not both.');
   const name = (input.name ?? (input.path ? basename(input.path) : '')).trim();
   if (!name) refuse('Give the file a `name`, with its extension.');
+  // The agent's private chat (coordinator decision on #1437, as #1217's pictures): the file is part of its answer to its owner alone.
+  if (claims.run && claims.run.projectId === null) return attachInChat(db, current!, { ...input, name }, claims);
   // What is kept of the call (its change line, a waiting change's OK, the fingerprint a retry and an Approve compare) is its name and path, never
   // the content: the file is staged, and a change kept for an OK stays small.
   const kept: AssistantCall | undefined = input.assistantCall ? { ...input.assistantCall, args: Object.fromEntries(Object.entries({ ...input.assistantCall.args, name })
@@ -118,21 +234,7 @@ async function attach(db: Database, input: { projectId: string; clientCommandId:
   // staged under the same id. Approve itself reads nothing.
   if (!claims.approval) {
     if (facts.attached >= FILE_LIMITS.messageFiles) refuse(`An answer carries at most ${FILE_LIMITS.messageFiles} files.`);
-    const largest = Math.max(FILE_LIMITS.fileBytes, files.limits().videoBytes);
-    let body: Readable; let size: number | undefined;
-    if (input.path !== undefined) {
-      if (facts.engine !== 'runtime') refuse('You have no working directory of your own here, so give the file\'s `content` instead.');
-      if (!current!.manager) refuse(READ_WORDS.no_sandbox);
-      const target = await runtimeTarget(db, claims.ownerUserId);
-      if (!target) refuse(READ_WORDS.unreachable);
-      const read = await fetchRunFile(current!.manager!, target!.slot, { bindingId: target!.bindingId, runId: runId!, path: input.path, maxBytes: largest });
-      if (!read.ok) refuse(READ_WORDS[read.code]);
-      body = (read as Extract<typeof read, { ok: true }>).body;
-    } else {
-      const bytes = Buffer.from(input.content!, 'utf8');
-      body = Readable.from([bytes]);
-      size = bytes.length;
-    }
+    const { body, size } = await runFileBody(db, current!, claims, runId!, facts.engine, input, Math.max(FILE_LIMITS.fileBytes, files.limits().videoBytes));
     try { staged = await files.stage({ kind: 'human', id: claims.ownerUserId }, input.projectId, { uploadId, name }, body, size); }
     catch (error) {
       body.destroy();

@@ -57,11 +57,11 @@ export function registerPersonalRunTokenRoute(app: FastifyInstance, db: Database
       // A picture goes only on an answer to `/ai` in a space (#1217, C-59): its asker's card, its change line and Undo, and their Show everyone.
       const tools = run.dmId !== null ? DM_RUN_TOOLS : assistantRunTools(readOnly ? 'read' : grant.connection.mayDo)
         .filter((tool) => tool !== ATTACH_PICTURE_TOOL || (run.projectId !== null && PICTURE_RUN_KINDS.has(run.kind)))
-        // A file the run made or wrote (#1437) goes on the same answers, and not (yet) on the private chat's.
+        // A file the run made or wrote (#1437) goes on the same answers…
         .filter((tool) => tool !== 'flux_attach_file' || (run.projectId !== null && PICTURE_RUN_KINDS.has(run.kind)))
-        // …and on its answer in the agent's private chat (founder decision on #1217, 2026-11-12): read-only as it is, the chat's answer to its
-        // owner can show a picture. A schedule's report cannot.
-        .concat(run.projectId === null && run.dmId === null && run.kind === 'ask' ? [ATTACH_PICTURE_TOOL] : [])
+        // …and both on its answer in the agent's private chat (founder decision on #1217, 2026-11-12; coordinator decision on #1437,
+        // 2026-11-13): read-only as it is, the chat's answer to its owner can show a picture or carry a file. A schedule's report cannot.
+        .concat(run.projectId === null && run.dmId === null && run.kind === 'ask' ? [ATTACH_PICTURE_TOOL, 'flux_attach_file'] : [])
         // A picture goes to the model only when it sees pictures (#1217): otherwise it is told it sees only the names of attached files.
         .filter((tool) => tool !== VIEW_PICTURE_TOOL || aiModelSeesPictures(run.provider, run.model, run.engine));
       const jti = randomUUID();

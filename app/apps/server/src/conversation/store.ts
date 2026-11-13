@@ -622,8 +622,9 @@ export function conversationStore(db: Database, options: ConversationStoreOption
  * transaction, its single final event batch and the agent as the real author. Same normalization, access,
  * idempotency, task-thread ordering and audience as the person-facing routes; never a direct message.
  */
-export function nativeConversationsInEventSession(tx: Transaction, session: TransactionEventSession) {
-  const commands = conversationUseCases(conversationStore(tx, { events: session, agentAuthors: true }));
+export function nativeConversationsInEventSession(tx: Transaction, session: TransactionEventSession, storage?: FileStorage | null) {
+  // A local client's post may carry its owner's staged files (#1437): checked against the files volume as any person's message's.
+  const commands = conversationUseCases(conversationStore(tx, { events: session, agentAuthors: true, ...(storage ? { storage } : {}) }));
   return {
     createConversation: (...args: Parameters<typeof commands.createConversation>) => session.run(() => commands.createConversation(...args)),
     sendMessage: (...args: Parameters<typeof commands.sendMessage>) => session.run(() => commands.sendMessage(...args)),

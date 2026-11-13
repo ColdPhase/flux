@@ -173,12 +173,16 @@ shell and file tools, inside a sandbox that exists for one run; every engine can
 - **Attaching a file** (`flux_attach_file`, AG-8). A run on Claude Code or Codex names a file of its scratch by its path; the Flux
   server asks runtime-manager, which asks the run's supervisor, which reads it as the run's person with Flux's sandbox reader: only
   while that run is in progress, only a regular file inside that run's scratch (never through a link as its last name, never `..`
-  out of it: the kernel refuses), at most the largest file Flux takes. The bytes are streamed through and never kept by the runtime.
-  Any run, an API-key run included, may instead give a text file's content and name. Either way the server stages it as the asker's
-  own upload (`stage`: the same types, limits and checks, a picture decoded and written again, #1343, a video's own limit, C-61,
-  the same preview), with the run's change line, Undo and waits: under "Ask me first" it is staged at once, because the scratch goes
-  with the run, and joins the answer only on Approve (it goes after 7 days otherwise). Never in an encrypted space; not yet in the
-  agent's private chat. Its stored object type is `picture`, the answer's attachment type (no new type in v0.2.1).
+  out of it: the kernel refuses), at most the largest file Flux takes, and never one that holds a value of the CLI's own login (the
+  supervisor looks through the bytes as they pass). The bytes are streamed through and never kept by the runtime. Any run, an
+  API-key run included, may instead give a text file's content and name. Either way the server stages it as the asker's own upload
+  (`stage`: the same types, limits and checks, a picture decoded and written again, #1343, a video's own limit, C-61, the same
+  preview), with the run's change line, Undo and waits: under "Ask me first" it is staged at once, because the scratch goes with the
+  run, and joins the answer only on Approve (it goes after 7 days otherwise). Its change has its own object type, `file`
+  (migration 0077). On the agent's answer in its private chat the file is the run's own and its owner's alone, made at once like a
+  picture there (`personal_run_pictures`; no video). A local client gives the file's content (text, or base64 for any file) and
+  posts it: the server stages it as its owner's upload and the client names the returned id in `attachmentIds` of the message it
+  posts next (coordinator decisions on #1437, 2026-11-13). Never in an encrypted space.
 - **Prompt injection** ([accepted risk 10](#accepted-risks)): a run that reads hostile content can now run commands, in its
   own sandbox. What that reaches is what the sandbox and the egress allow, nothing more.
 - **Pictures go only through two Flux tools** ([#1217](https://github.com/ColdPhase/flux/issues/1217), founder

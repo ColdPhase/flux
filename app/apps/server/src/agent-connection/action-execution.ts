@@ -11,6 +11,7 @@ import { transactionEventSession } from '../work/transaction-events.js';
 import type { FluxMcpClaims } from './context.js';
 import { agentExecutionInTransaction } from './execution.js';
 import { assistantChangeExecutor, type AssistantCall } from './assistant-changes.js';
+import { agentFileStorage } from './file-storage.js';
 
 export const actionId = z.uuid();
 export const actionVersion = z.int().min(1).max(2_147_483_647);
@@ -91,7 +92,7 @@ export function coordinationExecutor(db: Database, claims: FluxMcpClaims, privat
         }
         return effect({ work: nativeWorkInEventSession(tx, session),
           maps: nativeSketchInEventSession(tx, session, { prepared: false, commandId: input.clientCommandId, operation: `native-agent:${operation}`, fingerprint: requestHash(command), retainUntil: () => undefined }),
-          docs: nativeDocsInEventSession(tx, session), conversations: nativeConversationsInEventSession(tx, session),
+          docs: nativeDocsInEventSession(tx, session), conversations: nativeConversationsInEventSession(tx, session, agentFileStorage()),
           transaction: tx, events: session, agent: { kind: 'agent', id: scope.context.agentId }, runtime: scope.context,
           async mapCheckpoint(mapId) {
             const map = await sketchRows(tx).findSketch(mapId);

@@ -28,7 +28,7 @@ export const isRunFileRequest: Check<RunFileRequest> = object({
 }) as Check<RunFileRequest>;
 
 /** Why a file did not come: the plain cases the agent is told about, then the transport's. */
-export const RUN_FILE_ERRORS = ['file_missing', 'file_not_regular', 'file_too_large', 'not_running', 'no_sandbox', 'invalid_request', 'unauthorized',
+export const RUN_FILE_ERRORS = ['file_missing', 'file_not_regular', 'file_too_large', 'file_secret', 'not_running', 'no_sandbox', 'invalid_request', 'unauthorized',
   'unknown_slot', 'no_binding', 'binding_unsafe', 'internal', 'unreachable', 'timeout', 'protocol'] as const;
 export type RunFileError = (typeof RUN_FILE_ERRORS)[number];
 
@@ -36,7 +36,7 @@ export const supervisorFilePath = '/v1/file';
 export const managerFilePath = (slot: string) => `/v1/slots/${slot}/file`;
 /** The status each refusal travels with; the body is `{ error }` as JSON. A file is 200 with `application/octet-stream`. */
 export const RUN_FILE_STATUS: Record<RunFileError, number> = {
-  file_missing: 404, file_not_regular: 422, file_too_large: 413, not_running: 409, no_sandbox: 501, invalid_request: 400, unauthorized: 401,
+  file_missing: 404, file_not_regular: 422, file_too_large: 413, file_secret: 422, not_running: 409, no_sandbox: 501, invalid_request: 400, unauthorized: 401,
   unknown_slot: 404, no_binding: 409, binding_unsafe: 409, internal: 502, unreachable: 503, timeout: 504, protocol: 502,
 };
 

@@ -92,8 +92,8 @@ const OBJECT: Record<string, AssistantObjectType> = {
   'doc.update': 'doc', 'doc.delete': 'doc', 'map.create': 'map', 'map.rename': 'map', 'map.thought.create': 'thought', 'map.thought.update': 'thought',
   'map.thought.delete': 'thought', 'map.positions.update': 'thought', 'map.link.create': 'link', 'map.link.delete': 'link',
   'conversation.create': 'message', 'conversation.reply': 'message', 'cowork.unit.create': 'work', 'cowork.unit.transfer': 'work', 'work.creation.revert': 'work', 'answer.picture.attach': 'picture',
-  // #1437: a file on the run's answer is kept as the answer's attachment, the object type a picture has (no new type is stored in v0.2.1).
-  'answer.file.attach': 'picture',
+  // #1437: a file on the run's answer, its own object type (migration 0077).
+  'answer.file.attach': 'file',
 };
 
 interface Target {

@@ -3,6 +3,7 @@ import { lstat } from 'node:fs/promises';
 import type { ServerResponse } from 'node:http';
 import { isAbsolute, join, relative } from 'node:path';
 import { RUN_FILE_STATUS, type RunFileError, type RunFileRequest } from '@flux/runtime-protocol';
+import { credentialFinder, runCredentialValues } from './credentials.js';
 import { openBinding } from './data.js';
 import type { SupervisorConfig } from './handlers.js';
 import { asPerson } from './process.js';
@@ -12,6 +13,9 @@ import { runInProgress } from './run.js';
 // sandbox reader (native/sandbox.c `read`) as the person, which opens nothing but a regular file inside the scratch: a link as its last
 // name, `..` out of it, another run's scratch and the person's own login are all refused by the kernel (Landlock), not by this code. The bytes
 // go out as they are read; nothing is kept or logged.
+
+/** What is held back before the first byte goes out, so that a file holding the login is refused whole. */
+const HELD_BYTES = 1024 * 1024;
 
 /** The reader's exit codes (sandbox.c) in the protocol's words. */
 const READ_ERRORS: Record<number, RunFileError> = { 2: 'file_missing', 3: 'file_not_regular', 4: 'file_too_large', 5: 'no_sandbox' };
@@ -39,13 +43,31 @@ export async function serveRunFile(config: SupervisorConfig, request: RunFileReq
   if (!(await lstat(scratch).catch(() => null))?.isDirectory()) { refuse(res, 'not_running'); return; }
   const path = scratchRelative(scratch, request.path);
   if (path === null) { refuse(res, 'file_missing'); return; }
+  // The CLI's own login never leaves (coordinator decision on #1437): the bytes are looked through for its values as they pass. The first
+  // MiB is held back, so a small file that holds one is refused in plain words; past it, a value found breaks the stream off.
+  const values = await runCredentialValues(config, request.runId, request.bindingId);
+  if (!values) { refuse(res, 'not_running'); return; }
+  const finder = credentialFinder(values);
   const child = spawn(sandbox.binary, ['read', scratch, path, String(request.maxBytes)], { env: {}, cwd: '/', shell: false, stdio: ['ignore', 'pipe', 'ignore'],
     ...asPerson(open.person) });
   let started = false;
+  let found = false;
+  const held: Buffer[] = [];
+  let heldBytes = 0;
+  const start = () => {
+    started = true;
+    res.writeHead(200, { 'content-type': 'application/octet-stream', 'cache-control': 'no-store', connection: 'close' });
+    for (const part of held.splice(0)) res.write(part);
+  };
   child.stdout.on('data', (chunk: Buffer) => {
+    if (found) return;
+    if (finder.push(chunk)) { found = true; child.kill('SIGKILL'); return; }
     if (!started) {
-      started = true;
-      res.writeHead(200, { 'content-type': 'application/octet-stream', 'cache-control': 'no-store', connection: 'close' });
+      held.push(chunk);
+      heldBytes += chunk.length;
+      if (heldBytes < HELD_BYTES) return;
+      start();
+      return;
     }
     if (!res.write(chunk)) { child.stdout.pause(); res.once('drain', () => child.stdout.resume()); }
   });
@@ -53,8 +75,11 @@ export async function serveRunFile(config: SupervisorConfig, request: RunFileReq
   await new Promise<void>((done) => {
     child.on('error', () => { refuse(res, 'internal'); done(); });
     child.on('close', (code) => {
+      held.length = 0;
+      // A file that holds the login is refused; one found past the first MiB ends the stream broken, never as a whole file.
+      if (found) refuse(res, 'file_secret');
       // A file that failed after its first bytes (it grew past its bound) ends the stream broken, never as a whole file.
-      if (code === 0) { if (!started) res.writeHead(200, { 'content-type': 'application/octet-stream', 'cache-control': 'no-store', connection: 'close' }); res.end(); }
+      else if (code === 0) { if (!started) start(); res.end(); }
       else refuse(res, READ_ERRORS[code ?? -1] ?? 'internal');
       done();
     });

@@ -297,7 +297,7 @@ function toolRules(input: Placed): string[] {
     return ['Flux tools', `${lead} ${web.join(' ')} ${REFUSED}`.trim(), ...find, ...searchLine];
   }
   if (place.kind === 'chat') return ['Flux tools', `You may call the Flux tools to read what ${owner} can see in their spaces. None of them changes anything. ${REFUSED}`, ...find, ...web,
-    ...(tools.includes('flux_attach_image') ? [PICTURE_LINE] : []), ...searchLine];
+    ...(tools.includes('flux_attach_image') ? [PICTURE_LINE] : []), ...(tools.includes('flux_attach_file') ? [input.engine === 'runtime' ? FILE_LINE : FILE_CONTENT_LINE] : []), ...searchLine];
   const changes = tools.some((name) => EFFECTS.has(name));
   const onTask = input.kind === 'task' || input.kind === 'task_answer';
   const ids = [`space id ${place.spaceId}`, ...(input.task ? [`task id ${input.task.id}`] : []),

@@ -45,6 +45,8 @@ describe('flux_attach_file: an agent attaches a file to its answer like its aske
     assert.match(JSON.stringify(scene.compute.dispatched[1]!.turns), /The file is attached to your answer/);
     const [change] = await fileChanges(started.run.id);
     assert.deepEqual([change!.state, change!.object_title], ['applied', 'lamp-report.html']);
+    assert.deepEqual((await pool.query(`SELECT object_type FROM assistant_changes WHERE id = $1`, [change!.id])).rows, [{ object_type: 'file' }],
+      'its own object type, not a picture (migration 0077)');
     const [file] = await stagedFor(scene.owner.id);
     assert.deepEqual([file!.name, file!.size, change!.object_id], ['lamp-report.html', Buffer.byteLength(PAGE), file!.id]);
     assert.deepEqual(await download(scene.owner, file!.id), { status: 200, text: PAGE }, 'the asker\'s own staged upload, as it was written');
@@ -98,6 +100,28 @@ describe('flux_attach_file: an agent attaches a file to its answer like its aske
     const reading = await scene.liveRun(undefined, 'a page please');
     assert.ok(!reading.tools.includes('flux_attach_file'), 'Only read: no tool');
     await scene.complete(reading.runId);
+  });
+
+  test('in the agent\'s private chat: the file is its answer\'s at once, only its owner opens it, and it shows with the run', async () => {
+    const started = await scene.runs.invoke(human(scene.owner), { kind: 'chat', agentId: scene.agentId }, { clientRunId: randomUUID(), kind: 'ask', prompt: 'a page of my notes' });
+    const run = await scene.liveOf(started.run.id);
+    assert.ok(run.tools.includes('flux_attach_file'), 'the chat run has the tool');
+    const command = randomUUID();
+    const said = await run.call('flux_attach_file', { clientCommandId: command, name: 'notes.html', content: PAGE });
+    assert.equal(result(said.message)?.isError, undefined, text(said.message));
+    assert.match(text(said.message), /only your owner sees it/);
+    assert.match(text(await run.call('flux_attach_file', { clientCommandId: command, name: 'notes.html', content: PAGE }).then((again) => again.message)), /"replayed":true/);
+    const kept = (await pool.query(`SELECT id, name, size FROM personal_run_pictures WHERE run_id = $1`, [run.runId])).rows as { id: string; name: string; size: number }[];
+    assert.deepEqual(kept.map((file) => [file.name, file.size]), [['notes.html', Buffer.byteLength(PAGE)]]);
+    assert.deepEqual(await changesOf(run.runId), [], 'no change log in a chat: it changes nothing');
+    assert.deepEqual(await stagedFor(scene.owner.id), [], 'no space\'s file');
+    assert.deepEqual(await download(scene.owner, kept[0]!.id), { status: 200, text: PAGE });
+    assert.equal((await download(scene.peer, kept[0]!.id)).status, 404, 'nobody else opens it');
+    const video = await run.call('flux_attach_file', { name: 'clip.mp4', content: 'not a video' });
+    assert.match(text(video.message), /^Not attached\. A video cannot be attached in this chat/);
+    await scene.complete(run.runId);
+    const view = await scene.runs.get(human(scene.owner), run.runId);
+    assert.deepEqual(view.pictures, [{ id: kept[0]!.id, name: 'notes.html', size: Buffer.byteLength(PAGE) }]);
   });
 
   test('never in an encrypted space: refused in words, nothing staged', async () => {
