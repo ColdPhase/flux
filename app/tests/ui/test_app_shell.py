@@ -519,15 +519,10 @@ class AppShellJourney(unittest.TestCase):
         expect(page.get_by_role("heading", level=1, name="My map", exact=True)).to_be_visible()
         shot(page, "desktop-1440-map-light")
 
-        # Only a space and a direct message have Details (#871): My map has none, and the header has no Details button.
-        more = page.locator("header.top").get_by_role("button", name="More", exact=True)
+        # Only a space and a direct message have Details (#871): My map has none, and the header has no Details button. It has no row in ⋯ either,
+        # so it has no ⋯ (#1424): no menu opens empty.
         expect(page.locator("header.top").get_by_role("button", name="Details", exact=True)).to_have_count(0)
-        more.click()
-        menu = page.get_by_role("menu", name="More")
-        expect(menu.get_by_role("menuitem", name=re.compile("details|info", re.I))).to_have_count(0)
-        page.keyboard.press("Escape")
-        expect(menu).to_have_count(0)
-        expect(more).to_be_focused()
+        expect(page.locator("header.top").get_by_role("button", name="More", exact=True)).to_have_count(0)
         # "]" is not a key of the final design (§4 keyboard); it opens nothing.
         page.keyboard.press("]")
         expect(page.get_by_role("complementary", name=re.compile("details|info", re.I))).to_have_count(0)
@@ -623,7 +618,7 @@ class AppShellJourney(unittest.TestCase):
                 self.assertLessEqual(geometry["menu"]["right"], geometry["viewport"], geometry)
                 self.assertAlmostEqual(geometry["menu"]["right"], anchor["x"] + anchor["width"], delta=1, msg=f"menu is right aligned to More: {geometry}")
                 self.assertGreaterEqual(geometry["menu"]["top"], geometry["button"]["bottom"] - 1, geometry)
-                self.assertGreaterEqual(len(geometry["rowHeights"]), 3, f"Settings, Space details and the sidebar are shown: {geometry}")
+                self.assertGreaterEqual(len(geometry["rowHeights"]), 2, f"Settings and Space details are shown (no Call row on a server without a media server, #1424): {geometry}")
                 self.assertEqual(len(geometry["hintedHeights"]), 1, f"Mute space is the one row with a hint line: {geometry}")
                 if device == "tablet":
                     # 44 px rows measure 43.99998… while the menu is still settling (WebKit): a rounding tolerance, not a smaller target.

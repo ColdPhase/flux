@@ -269,6 +269,7 @@ class ProjectHeader(unittest.TestCase):
         expect(pill.locator(".kreska")).to_have_count(1)
         expect(pill.locator(".top__face")).to_have_count(4)
         expect(pill.locator(".top__more-faces--wide")).to_have_text("+2")
+        shot_both(page, "1424-header-working-agent-1440")
         # An agent that is on a task but not working now has no face here.
         working[0]["working"] = False
         page.reload()
@@ -283,6 +284,7 @@ class ProjectHeader(unittest.TestCase):
             page.goto(path)
             expect(self.header(page).get_by_role("heading", level=1, name=title)).to_be_visible()
             expect(self.header(page).get_by_role("button", name="More", exact=True)).to_have_count(0)
+            shot(page, f"1424-{title.lower().replace(' ', '-')}-no-more-1440")
         page.goto(f"/projects/{self.ids['project']}")
         expect(self.header(page).get_by_role("button", name="More", exact=True)).to_be_visible()
 

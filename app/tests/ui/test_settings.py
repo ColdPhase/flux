@@ -322,6 +322,7 @@ class SettingsJourney(unittest.TestCase):
             # One word for each theme on every device: the computer's "Match system" (#1424), and no line about an accent colour to pick.
             self.assertEqual(themes.get_by_role("radio").all_inner_texts(), ["Light", "Dark", "Match system"])
             expect(page.get_by_text(re.compile("no accent colou?r", re.I))).to_have_count(0)
+            shot(page, f"1424-appearance-phone-390-{'dark' if dark else 'light'}")
             expect(page.get_by_role("switch", name="Show the face on loading and empty screens")).to_be_visible()
             # This phone's notifications and install steps are under Notifications → This phone (#763 SG-8).
             expect(page.get_by_text("Notifications on this phone")).to_have_count(0)

@@ -94,9 +94,9 @@ export function LiveEntry({ variant = 'header', anchor: given, onAction }: {
       </Popover>
     </span>
   ) : null;
-  if (live.capability === 'loading') return dimmed('Checking whether calls are available.');
   // A server without a media server has no calls, so Call is not shown anywhere: no greyed button, no row and no explanation (founder decision
-  // on #1419 item 4, #1424). Every other member sees what this server can do, nothing more.
+  // on #1419 item 4, #1424). Until the server has said which it is (one short read), nothing is shown either, so a server without calls never
+  // flashes a Call that goes away.
   if (!configured) return null;
   // Nothing open to start at (Tasks, Map or Wiki without an object open) and no call of the space to join: Call says why.
   if (!anchor && !(hereJoinable ?? away)) return dimmed('Open a conversation, task, map or page to work on it together.');

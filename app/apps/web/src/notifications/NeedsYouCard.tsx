@@ -111,6 +111,7 @@ export function NeedsYouCard({ item, selected = false, compact = false, list = f
   const rowParts: ReactNode[] = [
     word,
     ...(who ? [<Fragment key="who">{who}{item.from?.kind === 'agent' ? <> <AgentTag /></> : null}</Fragment>] : []),
+    ...(asked?.task ? [`on #${asked.task.number}`] : []),
     ...(item.kind === 'blocked' ? [item.blocked?.waitedBy ? 'waits for you' : 'your task'] : []),
     ...(project ? [project] : []),
   ];

@@ -353,7 +353,10 @@ class ProjectSurfaceJourney(unittest.TestCase):
         for status, shown in (("configured", True), ("unavailable", False)):
             page = self.page("ada")
             body = json.dumps({"status": status, "authorization": "required", "taskAutomation": "available", "delivery": "poll", "ruleDefault": None})
-            page.route(re.compile(r".*/api/v1/projects/[0-9a-f-]{36}/github/capabilities$"), lambda route, body=body: route.fulfill(status=200, content_type="application/json", body=body))
+
+            def capabilities(route, request, body=body) -> None:
+                route.fulfill(status=200, content_type="application/json", body=body)
+            page.route(re.compile(r".*/api/v1/projects/[0-9a-f-]{36}/github/capabilities$"), capabilities)
             page.goto(f"/projects/{self.ids['project']}")
             open_details(page)
             link = self.details(page).get_by_role("link", name=re.compile("^GitHub repositories"))
