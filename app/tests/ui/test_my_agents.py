@@ -283,7 +283,9 @@ class MyAgentsJourney(unittest.TestCase):
         # A tablet with touch keeps "‹ AI" above the page's title, 44 px high.
         tablet = self.page(phone=True, viewport={"width": 820, "height": 1180})
         tablet.goto(f"/settings/agents/{self.ids['planner']}")
-        back = tablet.get_by_role("link", name="Back to AI")
+        expect(tablet.get_by_label("Instructions")).to_be_visible()
+        back = tablet.locator(".sset-back")
+        expect(back).to_have_count(1)
         box = back.bounding_box()
         self.assertGreaterEqual(min(box["width"], box["height"]), 44, f"‹ AI on touch: {box}")
 
