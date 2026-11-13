@@ -494,7 +494,7 @@ class FilesReferencesPhotos(unittest.TestCase):
             with self.subTest(phone=phone, surface="details"):
                 details_path = f"/projects/{self.ids['project']}/tasks?open=work:{self.ids['task']}"
                 page = self.page("ada", phone=phone, path=details_path)
-                details = page.get_by_role("region", name="Activity")
+                details = page.get_by_role("region", name="Discussion")
                 root = details.locator(f'[data-message-id="{self.ids["task-root"]}"] .wd-act__bubble')
                 self.assert_caption_below(root)
                 self.assert_meta_below_caption(root)
@@ -509,7 +509,7 @@ class FilesReferencesPhotos(unittest.TestCase):
                 page.keyboard.press("Escape")  # a second Escape still closes Details (negative control)
                 expect(details).to_have_count(0)
                 page = self.page("ada", phone=phone, path=details_path)  # Details entered again on a fresh page
-                details = page.get_by_role("region", name="Activity")
+                details = page.get_by_role("region", name="Discussion")
                 _, viewer = self.open_in(page, details, "Open photo IMG_2050.png")
                 viewer.get_by_role("button", name="Reply", exact=True).click()
                 expect(page.locator("#details").get_by_label("Write to this task")).to_be_focused()

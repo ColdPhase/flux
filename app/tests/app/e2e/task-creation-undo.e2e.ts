@@ -172,7 +172,7 @@ async function storedDraft(page: Page, key: string) {
   };
 }
 async function stageDraft(page: Page, f: Scene, item: WorkItem) {
-  await panel(page).getByRole('textbox', { name: 'First message about this task', exact: true }).fill('Unsent measurement notes stay with this task.');
+  await panel(page).getByRole('textbox', { name: 'Write to this task', exact: true }).fill('Unsent measurement notes stay with this task.');
   await panel(page).locator('.composer-files input[type=file]').first().setInputFiles({ name: 'trial-notes.txt', mimeType: 'text/plain', buffer: Buffer.from('Private staged measurement notes\n') });
   await panel(page).getByText(/trial-notes.txt/).waitFor();
   await panel(page).getByText(/Ready, private/).waitFor();
@@ -183,8 +183,8 @@ async function reverted(page: Page, item: WorkItem) {
   await title(page, item).waitFor();
   await panel(page).getByText('Creation undone · read-only history', { exact: true }).waitFor();
   await panel(page).locator('[data-task-lifecycle="creation_reverted"]').waitFor();
-  // Since the unified panel (#601) the task number is the panel header's meta (PanelMeta), not a line in Details.
-  assert.equal(await page.locator('#details-meta').innerText(), `#${item.number}`);
+  // The task's number and its space are the line above the title (#1364).
+  assert.equal(await page.locator('#details .wd__ref .ui-task-number').innerText(), `#${item.number}`);
   assert.equal(await undoButton(page).count(), 0); assert.equal(await panel(page).getByLabel('Status', { exact: true }).count(), 0);
   assert.equal(await panel(page).getByRole('textbox').count(), 0);
   assert.equal(await panel(page).locator('.lv-inline').count(), 0);
@@ -321,8 +321,8 @@ test('pending contribution cannot be retried from undone read-only history and b
     await withHeldContribution(page, matches, handler,
       { release: () => release.resolve(), used: () => used, settled: settled.promise, failure: () => failure }, async () => {
       const unsent = 'This measurement has not been sent to the task.';
-      await panel(page).getByRole('textbox', { name: 'First message about this task', exact: true }).fill(unsent);
-      await panel(page).getByRole('button', { name: 'Start the discussion', exact: true }).click();
+      await panel(page).getByRole('textbox', { name: 'Write to this task', exact: true }).fill(unsent);
+      await panel(page).getByRole('button', { name: 'Send to task', exact: true }).click();
       const command = await finite(held.promise, 'outgoing contribution');
       const original = await stageDraft(page, f, item);
       const pendingBefore = original.pending?.find((entry) => entry.id === command.clientMessageId);
@@ -463,7 +463,7 @@ test('real sign-out and account switch reject a held old-account read and keep t
       await settle(page);
       await page.goto(`/projects/${f.place.id}/tasks?open=work:${item.id}`); await title(page, item).waitFor();
       assert.equal(await undoButton(page).count(), 0);
-      await panel(page).getByRole('textbox', { name: 'First message about this task' }).fill('Blair account draft only');
+      await panel(page).getByRole('textbox', { name: 'Write to this task' }).fill('Blair account draft only');
       const key = `flux:composer:${f.manager.id}:${f.place.id}:task:${item.id}`;
       const before = await storedDraft(page, key); await late.finish();
       assert.deepEqual(await storedDraft(page, key), before); assert.equal(before.body, 'Blair account draft only');

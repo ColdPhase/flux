@@ -242,7 +242,7 @@ the detail):
 - **Wiki:** edited in place on the rendered page, versions saved automatically, History under
   ⋯. There is no pages column: the page title is the page switcher ("Lending rules ▾"), which
   opens a list of the space's pages with search and "+ New page", in the same place with 1 page
-  or 50, and the Wiki keeps to two columns, sidebar and page (Hubert, 2026-11-03). A small
+  or 50, and the Wiki keeps to two columns, sidebar and page (Hubert, 2026-11-03; a detail panel opens beside the page in the one place it has in every view, #1365). A small
   "Contents" button (≡) next to ⋯ opens the list of the page's headings, and a click scrolls to
   that section. It stays in the same place on every page and shows "No headings yet" when there
   are none; there is still no "On this page" column (Hubert, 2026-11-03). Raw Markdown editing,

@@ -320,8 +320,8 @@ class FinalCheck763(unittest.TestCase):
                     self.assertLessEqual(abs((one["y"] + one["height"] / 2) - (two["y"] + two["height"] / 2)), 1, "on one centre line")
                     shot(page, f"final-763-wiki-page-{name}-{theme}-{UI_BROWSER}")
 
-    def test_a_task_opens_over_the_wiki_page_never_beside_it(self) -> None:
-        """1024x768: the Wiki keeps to two columns, the sidebar and the page; a task's Details open over the page (#869)."""
+    def test_a_task_opens_beside_the_wiki_page_in_the_one_panel(self) -> None:
+        """1024x768: a task's Details open in the same right-hand panel beside the Wiki page as everywhere (#1365, was #869)."""
         page = self.page({"width": 1024, "height": 768}, touch=False)
         page.goto(f"/projects/{self.project_id}/docs/{self.doc_id}")
         expect(page.get_by_role("button", name="Contents")).to_be_visible()
@@ -329,11 +329,11 @@ class FinalCheck763(unittest.TestCase):
         page.goto(f"/projects/{self.project_id}/docs/{self.doc_id}?open=work:{self.task['id']}")
         details = page.locator("#details")
         expect(details.get_by_text(TASK).first).to_be_visible()
-        expect(page.locator(".ui-panel--overlay")).to_have_count(1)
-        expect(page.locator(".ui-panel--docked")).to_have_count(0)
-        self.assertEqual(round(page.locator(".wiki-page").bounding_box()["width"]), round(width), "the page keeps its column")
+        expect(page.locator(".ui-panel--docked")).to_have_count(1)
+        expect(page.locator(".ui-panel--float")).to_have_count(0)
+        self.assertLess(page.locator(".wiki-page").bounding_box()["width"], width, "the page gives the panel its room")
         self.assertEqual(page.locator(".ui-btn--primary:visible").count(), 0)
-        shot(page, f"final-763-wiki-task-over-page-{UI_BROWSER}")
+        shot(page, f"final-763-wiki-task-beside-page-{UI_BROWSER}")
 
 
 if __name__ == "__main__":

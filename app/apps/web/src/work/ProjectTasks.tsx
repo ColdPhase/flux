@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { createPortal } from 'react-dom';
 import { useLoaderData, useLocation, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
 import type { Project, ProjectWorkViewQuery, WorkItem, WorkObjectType, WorkRowProjection } from '@flux/contracts';
 import { Button, EmptyState, ErrorState, Icon, MEDIA, useMediaQuery, useRowMotion } from '../ui';
@@ -55,17 +54,13 @@ type Mode = TaskMode;
 
 /**
  * The Tasks toolbar (S6, T2): Board | List, Mine and the search in the same places in both views, then the one
- * primary action, "+ Task". The search filters the board's loaded cards; the List is read in bounded pages from
+ * primary action, "+ Task", at the right end of the row. The search filters the board's loaded cards; the List is read in bounded pages from
  * the server, so its search is dimmed rather than removed, which keeps every other control where it is.
  */
-function Toolbar({ mode, onMode, query, onQuery, mine, onMine, onNew, phone }: {
+function Toolbar({ mode, onMode, query, onQuery, mine, onMine, onNew }: {
   mode: Mode; onMode: (mode: Mode) => void; query: string; onQuery: (query: string) => void;
-  mine: boolean; onMine: (mine: boolean) => void; onNew: () => void; phone: boolean;
+  mine: boolean; onMine: (mine: boolean) => void; onNew: () => void;
 }) {
-  const { actionSlot } = useShellActions();
-  // The header holds it where the panel docks beside the board (a computer), in a slot of its own in every view, so it keeps its place when
-  // the panel docks (#763 C4) and nothing moves when Tasks opens (#873); a tablet's panel overlays, so it stays here.
-  const docks = !useMediaQuery(MEDIA.panelOverlay);
   const searchId = useId();
   const radios = useRef<HTMLDivElement>(null);
   // One radio group: arrows choose and focus the other view, as the Map's Map | List does.
@@ -78,7 +73,7 @@ function Toolbar({ mode, onMode, query, onQuery, mine, onMine, onNew, phone }: {
   };
   // In reading order, as drawn: [Board | List] [Mine] [Search tasks] … [+ Task].
   return (
-    <div className="tb-bar">
+    <div className={`tb-bar tb-bar--${mode}`}>
       <div className="tb-mode" role="radiogroup" aria-label="Show tasks as" ref={radios} onKeyDown={onRadioKey}>
         {(['board', 'list'] as const).map((value) => (
           <button key={value} type="button" role="radio" className="tb-mode__b" data-mode={value} aria-checked={mode === value}
@@ -98,12 +93,9 @@ function Toolbar({ mode, onMode, query, onQuery, mine, onMine, onNew, phone }: {
           onKeyDown={(event) => { if (event.key === 'Escape' && query) { event.preventDefault(); event.stopPropagation(); onQuery(''); } }} />
         {mode === 'list' ? <span className="ui-vh" id={`${searchId}-note`}>Search works on the board</span> : null}
       </div>
-      {/* The one primary action sits at the right of the header row, as drawn, so it keeps its place when a panel docks and
-          the board narrows (#763 C4, Spokój rule 7). A phone keeps it in its toolbar. */}
-      {(() => {
-        const add = <Button variant="secondary" icon="plus" className="tb-add" onClick={onNew}><span className="ui-vh">New </span>Task</Button>;
-        return !phone && docks && actionSlot ? createPortal(add, actionSlot) : add;
-      })()}
+      {/* "+ Task" is the right end of this row on every computer and tablet, in both views and every orientation (§7 Tasks, rule 7, #1366);
+          the space's header holds only its own slots. The phone's floating "+" is its one Create, so the row hides it there. */}
+      <Button variant="secondary" icon="plus" className="tb-add" onClick={onNew}><span className="ui-vh">New </span>Task</Button>
     </div>
   );
 }
@@ -271,7 +263,7 @@ export function ProjectTasks() {
   useRowMotion(scroller, '.ws-task[data-work-id]', (el) => el.dataset.workId, [mode, status ?? 'all', mine, cursor ?? '', phone, read.phase === 'ready' || read.phase === 'refreshing' ? 'ready' : 'loading'].join('|'));
   return (
     <div className="tb-root">
-      <Toolbar mode={mode} onMode={chooseMode} query={boardSearch} onQuery={setBoardSearch} mine={mine} onMine={(next) => setView({ mine: next })} onNew={startNew} phone={phone} />
+      <Toolbar mode={mode} onMode={chooseMode} query={boardSearch} onQuery={setBoardSearch} mine={mine} onMine={(next) => setView({ mine: next })} onNew={startNew} />
       <div className="pane-scroll" ref={scroller} data-own-place="">
       {!listing ? (
         <div className="tb" data-work-observed-at={data?.summary.observedAt}>

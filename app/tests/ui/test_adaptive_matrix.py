@@ -1151,7 +1151,7 @@ class AdaptiveTransitions(AdaptiveBase):
         The object is opened by the link the app itself hands out (Home, Agents), which the app consumes when it opens."""
         pid, task = self.ids["project"], self.ids["tasks"][fx.OPEN_TASK]
         url = f"/projects/{pid}/tasks?open=work:{task}"
-        composer = re.compile("^(Write to this task|First message about this task)$")
+        composer = re.compile("^Write to this task$")
         draft = "PRIVATE-DRAFT only on the laptop"
         laptop = self.page(1440, 900, coarse=False)
         before = self.api(laptop, "GET", f"/api/v1/work/{task}/discussion")["messages"]

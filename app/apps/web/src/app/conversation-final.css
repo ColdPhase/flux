@@ -9,7 +9,7 @@
 .convo-notice__meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; min-width: 0; margin: 0; font-size: var(--fs-base); line-height: var(--lh); color: var(--t2); }
 .convo-notice__meta strong { min-width: 0; max-width: 100%; overflow-wrap: anywhere; font-size: var(--fs-base); font-weight: 600; color: var(--t1); }
 .convo-notice__meta .agent-id { vertical-align: baseline; }
-.convo-notice__meta .agent-id__name { white-space: normal; overflow: visible; overflow-wrap: anywhere; }
+.convo-notice__meta .agent-id__label { white-space: normal; overflow: visible; overflow-wrap: anywhere; }
 .convo-notice__kind { color: var(--t3); font-size: var(--fs-sm); }
 .convo-notice__what { min-width: 0; }
 .convo-notice__src { padding: 0; border: 0; background: none; color: var(--t1); font: inherit; text-decoration: underline; text-decoration-color: var(--line2); text-underline-offset: 2px; }

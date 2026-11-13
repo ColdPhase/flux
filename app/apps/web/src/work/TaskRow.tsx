@@ -14,7 +14,7 @@ const LOCK = 8;
 function meta(item: WorkRowProjection, meId: string, owners: AgentOwners) {
   const waiting = isFinished(item) ? 0 : item.prerequisiteCounts.unmet;
   const owner = item.owner;
-  // An agent keeps its Agent tag and the person it works for in every state; a person with the same name does not get them.
+  // An agent keeps its one label, "Planner · Ada's agent", in every state; a person with the same name does not get it.
   const who = !owner ? 'no owner'
     : owner.kind === 'agent'
       ? <AgentIdentity icon={false} name={owner.name} owner={owners.get(owner.id)} />

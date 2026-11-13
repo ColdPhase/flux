@@ -97,7 +97,7 @@ button.project-convo__contribution { cursor: pointer; }
 .convo-notice > .ui-avatar, .convo-object > .ui-avatar { width: 32px; height: 32px; font-size: var(--fs-xs); font-weight: 500; background: var(--sub); color: var(--t2); box-shadow: inset 0 0 0 1px var(--line); }
 .project-convo__message-meta { flex-wrap: wrap; gap: 4px 9px; margin-bottom: 7px; font-size: var(--fs-xs); }
 .project-convo__message-meta strong { min-width: 0; max-width: 100%; overflow-wrap: anywhere; font-size: var(--fs-sm); font-weight: 600; }
-.project-convo__message-meta .agent-id__name { white-space: normal; overflow: visible; overflow-wrap: anywhere; }
+.project-convo__message-meta .agent-id__label { white-space: normal; overflow: visible; overflow-wrap: anywhere; }
 .project-convo__message-meta > span:not(.agent-tag) { visibility: visible; color: var(--t3); }
 .project-convo__message > p:not(.photo-meta) { max-width: 100%; margin: 0; padding: 9px 13px; border-radius: 6px var(--r-lg) var(--r-lg) var(--r-lg); background: var(--el); box-shadow: var(--sh-1); font-size: var(--fs-base); line-height: var(--lh); }
 /* Everything under a message (sources, linked work, decisions, actions) stays inside its
