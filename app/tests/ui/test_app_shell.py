@@ -21,6 +21,7 @@ import uuid
 from pathlib import Path
 
 from playwright.sync_api import Browser, BrowserContext, Page, TimeoutError as PlaywrightTimeoutError, expect, sync_playwright
+from account import sign_out
 
 from app_select import choose, expect_value
 
@@ -386,7 +387,7 @@ class AppShellJourney(unittest.TestCase):
         page.get_by_role("button", name="Create account").click()
         expect(page).to_have_url(f"{ORIGIN}/")
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
-        expect(page.get_by_role("button", name=re.compile(NAME))).to_be_visible()
+        expect(page.get_by_role("link", name=re.compile(rf"{NAME}, Settings$"))).to_be_visible()
         # F-037: a server's company was set up by its first account (check_ui.sh makes that one); a person who signs up
         # later is in no company until invited. The test deployment's fixture route gives this person their own.
         made = page.request.post(f"{ORIGIN}/api/v1/workspaces", headers={"origin": ORIGIN}, data={"name": "Personal"})
@@ -778,22 +779,16 @@ class AppShellJourney(unittest.TestCase):
     def test_08_theme_choice_persists_and_reduced_motion(self) -> None:
         page = self.page()
         page.goto("/")
-        account = page.get_by_role("button", name=re.compile(NAME))
+        # One way to Settings (#1419): the name at the foot of the sidebar is the link. There is no account menu and no gear beside it.
+        account = page.locator(".side .me").get_by_role("link", name=re.compile(NAME))
+        expect(page.locator(".side .me").get_by_role("link")).to_have_count(1)
+        expect(page.get_by_role("dialog", name="Account")).to_have_count(0)
         account.click()
-        menu = page.get_by_role("dialog", name="Account")
-        expect(menu).to_be_visible()
-        # The account menu is short (C-34): the name with the email, Settings and Sign out. The session line, this device's
-        # notifications and the theme are in Settings.
-        expect(menu.get_by_text(EMAIL)).to_be_visible()
-        expect(menu.get_by_role("link", name="Settings", exact=True)).to_be_visible()
-        expect(menu.get_by_role("button", name="Sign out")).to_be_visible()
-        expect(menu.get_by_text("Signed in on this device until")).to_have_count(0)
-        expect(menu.get_by_text("Notifications on this device")).to_have_count(0)
-        expect(menu.get_by_role("radio")).to_have_count(0)
+        expect(page).to_have_url(f"{ORIGIN}/settings")
+        page.get_by_role("link", name=re.compile(r"^Account")).first.click()
+        expect(page.get_by_role("heading", name="Account", exact=True)).to_be_visible()
+        expect(page.get_by_role("region", name="Signed in as").get_by_text(EMAIL)).to_be_visible()
         shot(page, "desktop-1440-account-light")
-        page.keyboard.press("Escape")
-        expect(menu).to_have_count(0)
-        expect(account).to_be_focused()
         # The theme is Settings > Appearance, and it persists across a reload.
         page.goto("/settings/appearance")
         themes = page.get_by_role("radiogroup", name="Theme")
@@ -925,8 +920,7 @@ class AppShellJourney(unittest.TestCase):
 
     def sign_out_while_loading(self, page: Page, name: str) -> None:
         """Signs out while the tab still waits for answers, then lets every answer arrive."""
-        page.get_by_role("button", name=re.compile(rf"{name}.*account and sign out")).click()
-        page.get_by_role("dialog", name="Account").get_by_role("button", name="Sign out").click()
+        sign_out(page, name)
         expect(page.get_by_role("heading", name="Sign in")).to_be_visible()
         expect(page.get_by_role("status").filter(has_text="You’re signed out.")).to_be_visible()
         # What the tab was loading before sign-out answers now, while the sign-in page's own check
@@ -969,8 +963,7 @@ class AppShellJourney(unittest.TestCase):
     def test_11c_a_failed_sign_out_says_so_and_can_be_retried(self) -> None:
         page, _, _ = self.person_with_a_task("Ida Holm", slow=False, service_workers="block")
         page.route("**/api/auth/sign-out", lambda route: route.fulfill(status=503, json={"code": "TEST_UNAVAILABLE", "message": "test: sign-out unavailable"}))
-        page.get_by_role("button", name=re.compile("Ida Holm.*account and sign out")).click()
-        page.get_by_role("dialog", name="Account").get_by_role("button", name="Sign out").click()
+        sign_out(page, "Ida Holm")
         # The sign-out page says what happened and offers to try again; the session is still live.
         expect(page).to_have_url(f"{ORIGIN}/sign-out")
         expect(page.get_by_role("heading", name="Sign out of Flux?")).to_be_visible()

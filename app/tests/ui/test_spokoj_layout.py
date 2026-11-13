@@ -347,10 +347,10 @@ class SpokojLayout(unittest.TestCase):
         rail = page.locator(".side--rail")
         expect(rail).to_be_visible()
         names = rail.locator("a, button").evaluate_all("els => els.map(el => el.getAttribute('aria-label') || el.getAttribute('title'))")
-        order = ["Expand sidebar", "New", "Search", "Home", "Inbox", "My tasks", "My map", "Community garden sensors", "Messages", "Kai Spokoj", "Ada Spokoj", "Settings"]
+        order = ["Expand sidebar", "New", "Search", "Home", "Inbox", "My tasks", "My map", "Community garden sensors", "Messages", "Kai Spokoj", "Ada Spokoj, Settings"]
         positions = [next((index for index, name in enumerate(names) if name and name.startswith(item)), -1) for item in order]
         self.assertTrue(all(position >= 0 for position in positions), names)
-        self.assertEqual(positions, sorted(positions), f"the sidebar's order, the account and its settings last: {names}")
+        self.assertEqual(positions, sorted(positions), f"the sidebar's order, the account (the one way to Settings, #1419) last: {names}")
         expand = self.box(rail.get_by_role("button", name="Expand sidebar"))
         self.assertAlmostEqual(expand["y"], collapse["y"], delta=1, msg="the toggle stays in the top row")
         page.locator("body").press("[")

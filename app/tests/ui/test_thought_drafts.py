@@ -9,6 +9,7 @@ import unittest
 import uuid
 
 from playwright.sync_api import expect, sync_playwright
+from account import sign_out
 
 from test_app_shell import show_map_as, DESKTOP, ORIGIN, PHONE, SHOTS, UPSTREAM, shot, start_forwarder, view_tab
 from contrast import MEASURE
@@ -394,8 +395,7 @@ class ThoughtDraftJourney(unittest.TestCase):
         page = self.owner
         self.open(page)
         self.capture(page).fill("PRIVATE Ada draft")
-        page.locator(".me__btn").click()
-        page.get_by_role("dialog", name="Account", exact=True).get_by_role("button", name="Sign out", exact=True).click()
+        sign_out(page)
         expect(page).to_have_url(re.compile(r"/sign-in$"))
         self.assertEqual(page.evaluate("Object.keys(sessionStorage).filter(k => k.startsWith('flux:thought-draft:'))"), [])
         page.get_by_label("Email").fill(self.people["writer"]["email"])
@@ -510,8 +510,7 @@ class ThoughtDraftJourney(unittest.TestCase):
         self.exhaust_session_storage(page)
         field.fill(LATEST)
         page.evaluate("window.sameVisit = true")
-        page.locator(".me__btn").click()
-        page.get_by_role("dialog", name="Account", exact=True).get_by_role("button", name="Sign out", exact=True).click()
+        sign_out(page)
         expect(page).to_have_url(re.compile(r"/sign-in$"))
         self.assertEqual(self.stored_drafts(page), [])
         page.get_by_label("Email").fill(self.people["owner"]["email"])

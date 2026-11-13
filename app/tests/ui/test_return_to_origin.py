@@ -17,6 +17,7 @@ import unittest
 import uuid
 
 from playwright.sync_api import Page, expect, sync_playwright
+from account import sign_out
 
 from test_app_shell import ORIGIN, UPSTREAM, shot, start_forwarder
 from inbox_items import open_item
@@ -612,9 +613,8 @@ class ReturnToOrigin(unittest.TestCase):
                 self.assertTrue(kept, "the places are kept while someone reads")
                 self.assertNotIn(secret, page.evaluate("() => JSON.stringify({ ...sessionStorage, ...localStorage })"), "no message text is written to storage")
                 # A confirmed sign-out forgets the places with the drafts.
-                page.get_by_role("button", name=re.compile("Sol Nowak")).click()
                 with page.expect_request(lambda request: request.method == "POST" and request.url.endswith("/api/auth/sign-out")):
-                    page.get_by_role("dialog", name="Account").get_by_role("button", name="Sign out").click(no_wait_after=True)
+                    sign_out(page, no_wait_after=True)
                 expect(page).to_have_url(re.compile(r"/sign-in"))
                 self.assertEqual(page.evaluate("() => Object.keys(sessionStorage).filter((key) => key.startsWith('flux:place:'))"), [], "no place outlives the sign-out")
                 self.assertNotIn(secret, page.evaluate("() => JSON.stringify({ ...sessionStorage, ...localStorage })"))

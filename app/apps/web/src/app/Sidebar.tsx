@@ -240,7 +240,7 @@ export function Sidebar({ directMessages, agents = [], user, onClose, titleId, i
         </div>
         </div>
         <WorkingAgent compact />
-        <UserMenu compact id={user.id} name={user.name} email={user.email} />
+        <UserMenu compact id={user.id} name={user.name} />
       </div>
     );
   }
@@ -358,7 +358,7 @@ export function Sidebar({ directMessages, agents = [], user, onClose, titleId, i
         </nav>
       </div>
       <WorkingAgent />
-      <UserMenu id={user.id} name={user.name} email={user.email} asLink={!!onClose} onNavigate={onClose} />
+      <UserMenu id={user.id} name={user.name} onNavigate={onClose} />
     </div>
   );
 }

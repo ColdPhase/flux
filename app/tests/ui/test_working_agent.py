@@ -15,6 +15,7 @@ import unittest
 import uuid
 
 from playwright.sync_api import Browser, Page, Route, expect, sync_playwright
+from account import sign_out
 
 from test_app_shell import ORIGIN, UPSTREAM, shot, start_forwarder
 from test_personal_assistant import mock
@@ -309,8 +310,7 @@ class WorkingAgentJourney(unittest.TestCase):
                 stopped = self.wait_run(page, run["id"], lambda current: current["status"] == "stopped")
                 self.assertIsNone(stopped["answer"])
                 page.evaluate("window.__sameWorkingDocument = true")
-                page.get_by_role("button", name=re.compile("Ada Kowalska.*account and sign out")).click()
-                page.get_by_role("dialog", name="Account", exact=True).get_by_role("button", name="Sign out", exact=True).click()
+                sign_out(page)
                 expect(page.get_by_role("heading", name="Sign in", exact=True)).to_be_visible()
                 page.get_by_label("Email").fill(other_ids["email"])
                 page.get_by_label("Password", exact=True).fill(PASSWORD)
@@ -362,8 +362,7 @@ class WorkingAgentJourney(unittest.TestCase):
                         page.locator(".agentlive").get_by_role("button", name="Stop your assistant").click()
                         page.wait_for_function("window.__workingWire.gates['late-failure']?.held")
                         self.assertFalse(self.api(page, "GET", f"/api/v1/assistant-runs/{run['id']}")["stopRequested"])
-                        page.get_by_role("button", name=re.compile("Ada Kowalska.*account and sign out")).click()
-                        page.get_by_role("dialog", name="Account", exact=True).get_by_role("button", name="Sign out", exact=True).click()
+                        sign_out(page)
                         expect(page.get_by_role("heading", name="Sign in", exact=True)).to_be_visible()
                         page.get_by_label("Email").fill(other_ids["email"])
                         page.get_by_label("Password", exact=True).fill(PASSWORD)

@@ -287,7 +287,7 @@ SCREENS = [
     Screen("create-phone", "/", steps=[("click", ".phone-fab"), ("wait", "[role='dialog']")], only="phone"),
     Screen("sidebar-rail", "/", steps=[("press", "[")], only="wide", isolated=True),
     Screen("new-project", "/", steps=[("press", "c"), ("click", "button:has-text('New space')"), ("wait", "[role='dialog'] form")], only="wide"),
-    Screen("new-project-phone", "/projects", steps=[("click", "button:has-text('New space')"), ("wait", "[role='dialog'] form")], only="phone"),
+    Screen("new-project-phone", "/projects", steps=[("click", "button[aria-label='Create']"), ("click", "[role='dialog'] button:has-text('Space')"), ("wait", "[role='dialog'] form")], only="phone"),
     Screen("settings", "/settings"),
     Screen("settings-appearance", "/settings/appearance"),
     Screen("settings-account", "/settings/account"),

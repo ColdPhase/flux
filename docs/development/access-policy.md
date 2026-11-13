@@ -278,7 +278,7 @@ filtering. `limit` is 1–100 (default 50) and `offset` is 0–10000.
 **In the web app** ([#188](https://github.com/ColdPhase/flux/issues/188)) these routes back two
 places, with no change to the rules above:
 
-- **People** (Settings › Company, also from the account menu; #763 PE-1)
+- **People** (Settings › Company; #763 PE-1)
   lists the members and roles. Owners and admins add an existing account by email with a role, change roles and remove
   people; anyone leaves. Guests, who may not read the roster, see only their own place. `ACCOUNT_NOT_FOUND` points to an
   [invite link](#invite-links-f-035) for someone without an account (#763 PE-2; Flux sends no invitation email), and

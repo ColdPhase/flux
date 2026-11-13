@@ -14,6 +14,7 @@ import unittest
 import uuid
 
 from playwright.sync_api import Browser, Page, expect, sync_playwright
+from account import sign_out
 
 from app_select import choose, expect_value
 
@@ -1064,8 +1065,7 @@ class CreateWindow(unittest.TestCase):
         self.visit(page, f"/projects/{self.ids['other']}", "Cargo bike co-op")
         self.visit(page, "/", "Home")
         self.assertTrue(page.evaluate("Object.keys(localStorage).some((k) => k.startsWith('flux.places.recent.'))"))
-        page.get_by_role("button", name=re.compile("Ada Create")).click()
-        page.get_by_role("dialog", name="Account").get_by_role("button", name="Sign out").click()
+        sign_out(page)
         expect(page).to_have_url(re.compile(r"/sign-in"))
         self.assertEqual(page.evaluate("Object.keys(localStorage).filter((k) => k.startsWith('flux.places.recent.'))"), [])
         # Signing in again on a project page (not Home): nothing remembered from before, so ⌘K lists only the actions.

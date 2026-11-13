@@ -50,7 +50,6 @@ export function ProjectsIndex() {
       <div className="pane-in set">
         <div className="proj-index__head">
           <p className="proj-index__lead">Each space has one conversation, tasks, a map and a wiki.</p>
-          <Button variant="secondary" onClick={() => openCreate({ kind: 'space' })}><Icon name="plus" />New space</Button>
         </div>
         {projects.length || lockedWorkspaces.length ? (
           <ul className="set-card proj-index__spaces" aria-label="Spaces" ref={list}>

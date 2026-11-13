@@ -388,7 +388,9 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
   - **Messages**: your agents and people. Assistant is pinned first, then your other agents, then
     people. A dot marks an unread report or message. With no agent and no message yet, the heading has the phone's "+" (**New message**),
     so it is never a heading over nothing (#1424);
-  - your name at the bottom. It opens the account menu: your name, Settings and Sign out.
+  - your name at the bottom, with your face. It opens Settings, the one way in, as your face does on the phone
+    (founder decision, Hubert, 2026-11-13, [#1419](https://github.com/ColdPhase/flux/issues/1419)). There is no gear beside it and no
+    account menu; Sign out is in Settings › Account.
   - **The drawer (a narrow window) holds the sidebar's items in the same places** (#1375): no "+" beside
     Spaces or Messages (New is the one way to create; only an empty Messages has its "+", as above), the ⋯ beside Spaces, no email under the name,
     and no frame around the drawer; the rail's people are faces, not links. Where a list is longer than the window, the edge it can still
@@ -436,7 +438,9 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
   and, next to it, "My map" (Hubert, 2026-11-03). The tab bar stays at three tabs. Your face at the
   top of Home opens Settings.
 - **One "+".** A floating soft-fill button above the tab bar opens Create: Task, Thought, Decision,
-  Page, Space. These are the same five types as on the computer.
+  Page, Space. These are the same five types as on the computer. There is one "+" for each thing (founder
+  decision, Hubert, 2026-11-13, #1419): the Spaces tab has no "+ New space" button (the "+" › Space is the one way in), and the
+  Messages list has no floating "+" (it cannot make a message), only its own **+ New message**, which starts a message.
 - **Inside a space.** Founder direction, Hubert, 2026-11-12 (#1239); the approved mock-up is the
   v0.2.1 canvas, boards "Phone header" and "Phone: long names + view switch options", variant A.
   - **Title row: Back, the space's name and ⋯, and nothing else.** Search and Call are the first
@@ -1954,6 +1958,7 @@ The renders are the approved mockups as drawn; where a later decision differs, f
     `/source` opened; **My assistant** and the agents in the `@` list (#1419);
   - the separate "Ask an agent" and "Cite" buttons in the composer (S5), and "+" for attaching;
   - the column "+", the ⌘K Create group, and the Map toolbar's Create task and Note.
+  - the Spaces tab's "+ New space" and the Messages list's floating "+" (#1419).
 - **Tasks:** Not pursued, the Result object, Results and Activity sections, and "Came from". Also
   ⋯ on board cards and the phone's "+" in the Tasks header.
 - **Wiki:**
@@ -1966,7 +1971,8 @@ The renders are the approved mockups as drawn; where a later decision differs, f
   - focus mode and `F`;
   - the per-kind notification matrix and the plain morning summary;
   - the global AI switch;
-  - theme, People and device notifications in the account menu.
+  - theme, People and device notifications in the account menu; the account menu itself and the sidebar's gear (the name opens
+    Settings, #1419).
 - **Looks and words:**
   - accent colour families and the theme colour picker;
   - gradient orbs, robot glyphs and corner status dots for agents (Kreska replaces them);

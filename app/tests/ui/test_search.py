@@ -20,6 +20,7 @@ import uuid
 from urllib.parse import quote
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
+from account import sign_out
 
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
 from touch_targets import has_minimum_touch_size
@@ -305,8 +306,7 @@ class SearchJourney(unittest.TestCase):
         self.assertEqual(page.evaluate("Object.keys(localStorage).filter((k) => k.startsWith('flux.search.recent.'))"), [])
         stored = page.evaluate("Object.keys(localStorage).filter((k) => k.startsWith('flux.places.recent.'))")
         self.assertEqual(stored, [f"flux.places.recent.{PEOPLE['nia']['id']}"])
-        page.get_by_role("button", name=re.compile("Nia Berg")).click()
-        page.get_by_role("dialog", name="Account").get_by_role("button", name="Sign out").click()
+        sign_out(page)
         expect(page).to_have_url(f"{ORIGIN}/sign-in")
         self.assertEqual(page.evaluate("Object.keys(localStorage).filter((k) => k.startsWith('flux.places.recent.'))"), [])
         # Signing in again (the stored session ended) starts with no recent places.

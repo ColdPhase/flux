@@ -15,6 +15,7 @@ import unittest
 import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, Route, expect, sync_playwright
+from account import sign_out
 
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, open_details, shot, start_forwarder, view_tab
 
@@ -131,8 +132,7 @@ class RouteChunksJourney(unittest.TestCase):
             # The phone reaches Settings through the account avatar in the header (#341).
             page.get_by_role("link", name="Settings and account", exact=True).click()
         else:
-            page.get_by_role("button", name=re.compile(self.name)).click()
-            page.get_by_role("dialog", name="Account").get_by_role("link", name="Settings", exact=True).click()
+            page.get_by_role("link", name=re.compile(rf"{self.name}, Settings$")).click()
 
     def space_map(self, page: Page):
         """A place whose header has Details in its More menu: a space's, as Space details (#871: Home and My map have none)."""
@@ -308,13 +308,13 @@ class RouteChunksJourney(unittest.TestCase):
                 deadline = time.monotonic() + 20
                 while not refused and time.monotonic() < deadline:
                     page.wait_for_timeout(200)
-                page.unroute(save_pattern, refuse_save)
                 self.assertTrue(refused, "the save was tried by itself and refused")
                 refused_id = refused[0]["clientCommandId"]
-                # Sign out from this tab without a document reload: the visit copy is retired.
-                page.get_by_role("button", name=re.compile(self.name)).click()
-                page.get_by_role("dialog", name="Account").get_by_role("button", name="Sign out").click()
+                # Sign out from this tab without a document reload: the visit copy is retired. Signing out is a trip through Settings (#1419),
+                # so the page is left first; saves stay refused until the sign-out is done, or leaving the page would store the text.
+                sign_out(page)
                 expect(page).to_have_url(re.compile("/sign-in"))
+                page.unroute(save_pattern, refuse_save)
                 self.assertEqual(page.evaluate("() => Object.keys(sessionStorage).filter((key) => key.startsWith('flux:wiki-live:')).length"), 0)
                 # Ben signs in next in this tab: Ari's text is not on his screen and his session has no copy of it.
                 ben = self.other_account(engine)
@@ -323,8 +323,7 @@ class RouteChunksJourney(unittest.TestCase):
                 page.get_by_role("button", name="Sign in", exact=True).click()
                 expect(page.get_by_role("heading", name="Home", exact=True)).to_be_visible()
                 self.assertNotIn(private, page.content())
-                page.get_by_role("button", name=re.compile("Ben Route Chunks")).click()
-                page.get_by_role("dialog", name="Account").get_by_role("button", name="Sign out").click()
+                sign_out(page)
                 expect(page).to_have_url(re.compile("/sign-in"))
                 # Ari signs in again in the same tab: no private copy from the earlier session, and the next save is a fresh command.
                 page.get_by_label("Email").fill(self.email)
@@ -332,13 +331,15 @@ class RouteChunksJourney(unittest.TestCase):
                 page.get_by_role("button", name="Sign in", exact=True).click()
                 expect(page.get_by_role("heading", name="Home", exact=True)).to_be_visible()
                 # Through the router, not a document load: a load would clear this tab's visit copies anyway.
+                page.locator(".app__side").get_by_role("link", name=re.compile("^Chunk boundaries(?:, new activity)?$")).click()
+                page.get_by_role("navigation", name="Space views").get_by_role("tab", name="Wiki", exact=True).click()
+                page.locator(".wiki-page").get_by_role("heading", level=2).get_by_role("button").click()
+                page.get_by_role("dialog", name=re.compile("^Pages in")).get_by_role("link", name=doc["title"], exact=True).click()
+                expect(page.locator('[data-live-status="live"]')).to_be_visible()
+                expect(page.get_by_text("A private copy from an earlier session is available.", exact=True)).to_have_count(0)
+                # The page's next save is a fresh command of this session, not the refused one resumed (the check the menu's sign-out had).
                 with page.expect_response(lambda response: response.request.method == "POST" and response.url.endswith(f"/api/v1/docs/{doc['id']}/live/save"), timeout=30000) as saved:
-                    page.locator(".app__side").get_by_role("link", name=re.compile("^Chunk boundaries(?:, new activity)?$")).click()
-                    page.get_by_role("navigation", name="Space views").get_by_role("tab", name="Wiki", exact=True).click()
-                    page.locator(".wiki-page").get_by_role("heading", level=2).get_by_role("button").click()
-                    page.get_by_role("dialog", name=re.compile("^Pages in")).get_by_role("link", name=doc["title"], exact=True).click()
-                    expect(page.locator('[data-live-status="live"]')).to_be_visible()
-                    expect(page.get_by_text("A private copy from an earlier session is available.", exact=True)).to_have_count(0)
+                    shared.click(); page.keyboard.press("End"); page.keyboard.insert_text(f" · Ari again {engine}")
                 self.assertEqual(saved.value.status, 200)
                 self.assertNotEqual(saved.value.request.post_data_json["clientCommandId"], refused_id,
                     "a visit copy retired by sign-out must not resume the refused Save")
@@ -476,7 +477,7 @@ class RouteChunksJourney(unittest.TestCase):
                 self.settings(page)
                 expect(page.locator(".ui-error")).to_be_visible()
                 expect(page.locator(".app__side")).to_be_visible()
-                expect(page.get_by_role("button", name=re.compile(self.name))).to_be_visible()
+                expect(page.get_by_role("link", name=re.compile(rf"{self.name}, Settings$"))).to_be_visible()
                 expect(page.get_by_role("heading", name="Sign in")).to_have_count(0)
                 shot(page, f"route-chunks-code-error-{engine}-desktop")
                 page.get_by_role("link", name="Go to Home", exact=True).click()

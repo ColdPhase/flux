@@ -1,0 +1,1 @@
+- One way to Settings and one "+" (founder decisions on [#1419](https://github.com/ColdPhase/flux/issues/1419), part A): the name at the foot of the sidebar opens Settings, and the gear and the account menu are gone (Sign out is in Settings › Account); the phone's Spaces list has no "+ New space" and its Messages list no floating "+" (it has its own "+ New message").

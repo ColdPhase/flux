@@ -14,6 +14,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 
 from playwright.sync_api import expect, sync_playwright
+from account import back_to, open_settings, sign_out_button
 from create_window import submit_button
 from test_app_shell import ORIGIN, UPSTREAM, shot, start_forwarder
 
@@ -754,9 +755,9 @@ class SharedComposerJourney(unittest.TestCase):
                 def fail(route):
                     route.fulfill(status=503, content_type="application/json", body="{}")
                 page.route("**/api/auth/sign-out", fail)
-                page.get_by_role("button", name=re.compile("account and sign out")).click()
+                open_settings(page)
                 with page.expect_response(lambda response: response.url.endswith("/api/auth/sign-out")) as response:
-                    page.get_by_role("button", name="Sign out", exact=True).click()
+                    sign_out_button(page).click()
                 self.assertEqual(response.value.status, 503)
                 # Sign-out is a navigation (#195): a failure lands on the sign-out page, which says so.
                 expect(page).to_have_url(re.compile(r"/sign-out$"))
@@ -764,8 +765,8 @@ class SharedComposerJourney(unittest.TestCase):
                 expect(page.get_by_role("alert")).to_be_visible()
                 self.assertEqual(self.record(page, project, task), persisted)
                 page.unroute("**/api/auth/sign-out", fail)
-                # Back in the conversation, the failed sign-out has kept the newest text.
-                page.go_back()
+                # Back in the conversation (past Settings, where Sign out is), the failed sign-out has kept the newest text.
+                back_to(page, "/conversations/")
                 expect(pane.get_by_label("Reply", exact=True)).to_have_value(newest)
                 self.assertEqual(self.record(page, project, task), persisted)
                 held = []
@@ -777,9 +778,9 @@ class SharedComposerJourney(unittest.TestCase):
                 page.route(f"**/api/v1/projects/{project['id']}/files?*", hold_upload)
                 self.choose(page, [self.file("private-late-signout.bin")], pane)
                 page.wait_for_function("() => window.__fluxSignoutUploadReady === true")
-                page.get_by_role("button", name=re.compile("account and sign out")).click()
+                open_settings(page)
                 with page.expect_response(lambda response: response.url.endswith("/api/auth/sign-out")) as response:
-                    page.get_by_role("button", name="Sign out", exact=True).click()
+                    sign_out_button(page).click()
                 self.assertEqual(response.value.status, 200)
                 expect(page.get_by_role("heading", name="Sign in", exact=True)).to_be_visible()
                 self.assertIsNone(self.record(page, project, task))
@@ -817,9 +818,9 @@ class SharedComposerJourney(unittest.TestCase):
         def fail(route):
             route.fulfill(status=503, content_type='application/json', body='{}')
         page.route('**/api/auth/sign-out', fail)
-        page.get_by_role('button', name=re.compile('account and sign out')).click()
+        open_settings(page)
         with page.expect_response(lambda response: response.url.endswith('/api/auth/sign-out')) as response:
-            page.get_by_role('button', name='Sign out', exact=True).click()
+            sign_out_button(page).click()
         self.assertEqual(response.value.status, 503)
         # Sign-out is a navigation (#195): a failure lands on the sign-out page, which offers to try again.
         expect(page).to_have_url(re.compile(r'/sign-out$'))
