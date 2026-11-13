@@ -140,6 +140,41 @@ def sandbox_refusal(message: str) -> bool:
         "sandboxed" in text and "flag is not set" in text and "/preview" in text or "not allowed in a sandboxed frame" in text)
 
 
+def pdf_bytes() -> bytes:
+    """A real one-page PDF with a line of text."""
+    stream = b"BT /F1 24 Tf 40 100 Td (Gateway placement) Tj ET"
+    objects = [b"<< /Type /Catalog /Pages 2 0 R >>", b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+               b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 200] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
+               b"<< /Length %d >>\nstream\n" % len(stream) + stream + b"\nendstream", b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"]
+    out, offsets = b"%PDF-1.4\n", []
+    for number, body in enumerate(objects, 1):
+        offsets.append(len(out))
+        out += b"%d 0 obj\n" % number + body + b"\nendobj\n"
+    xref = len(out)
+    out += b"xref\n0 %d\n0000000000 65535 f \n" % (len(objects) + 1) + b"".join(b"%010d 00000 n \n" % o for o in offsets)
+    return out + b"trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n" % (len(objects) + 1, xref)
+
+
+LIMIT = 5 * 1024 * 1024
+LOG = b"".join(f"2026-11-07T14:{(n // 60) % 60:02d}:{n % 60:02d}Z gateway-3 uplink fcnt={n} rssi=-{90 + n % 30} snr={n % 11 - 4}.5 sf=9 bw=125 freq=868.{n % 9}\n".encode()
+               for n in range(52_000))[:LIMIT - 4096]
+BIG_CSV = (b"time,bed,rssi,snr,battery,note\n" + b"".join(f"2026-11-07T14:{(n // 60) % 60:02d}:{n % 60:02d}Z,bed {n % 40},-{90 + n % 30},{n % 11 - 4}.5,3.{n % 99:02d},ok\n".encode()
+                                                            for n in range(110_000)))
+BIG_CSV = BIG_CSV[:BIG_CSV.rindex(b"\n", 0, LIMIT - 4096) + 1]
+BIG_CSV_ROWS = BIG_CSV.count(b"\n") - 1
+BIG_JSON = ("[" + ",".join(f'{{"id":{n},"bed":"bed {n % 40}","readings":{{"rssi":-{90 + n % 30},"snr":{n % 11 - 4}.5}},"tags":["lora","sf9"]}}' for n in range(60_000)) + "]").encode()
+COMMAS = b"," * (4 * 1024 * 1024)  # one row of 4,194,305 empty cells: any member can send it
+WIDE = ("\n".join(",".join(f"s{c}" if r == 0 else str((r * c) % 997) for c in range(2000)) for r in range(300)) + "\n").encode()
+assert len(BIG_JSON) < LIMIT and len(LOG) < LIMIT and len(BIG_CSV) < LIMIT and len(COMMAS) < LIMIT and len(WIDE) < LIMIT
+SMALL_LOG = b"gateway-3 boot ok\n\tsf=9 bw=125\nuplink fcnt=1 rssi=-112 snr=-4.5\n" + b"x" * 300 + b"\n"
+LATIN = "Caf\u00e9 north bed, 12\u00b0C\n".encode("windows-1252")
+JSON_OK = b'{"gateway": "gw-3", "beds": [{"name": "far east", "rssi": -112}, {"name": "north", "rssi": -98}], "ok": true, "note": null}'
+JSON_BAD = b'{\n  "gateway": "gw-3",\n  "beds": [1, 2,, 3]\n}\n'
+CSV = b'bed,rssi,note\nfar east,-112,"behind the hedge, low"\nnorth,-98,"=HYPERLINK(""https://leak.invalid/x"",""click"")"\nshed,-87,@SUM(1+1)\nsouth,+5,-2+3\n'
+TSV = b"bed\trssi\nfar east\t-112\nnorth\t-98\n"
+SOURCE = b"def rssi(beds):\n    return {b: -112 for b in beds}\n"
+
+
 class FilePreview(unittest.TestCase):
     pw = None
     browser: Browser
@@ -187,6 +222,12 @@ class FilePreview(unittest.TestCase):
         root("probe", "A page with a script", "probe.html", PROBE)
         for order, data in UTF16.items():
             root(f"utf16{order}", f"A UTF-16{order.upper()} page", f"report-{order}.html", data)
+        for key, name, data in (("log", "gateway.log", SMALL_LOG), ("latin", "notes.txt", LATIN), ("json", "beds.json", JSON_OK),
+                                ("bad", "broken.json", JSON_BAD), ("csv", "range.csv", CSV), ("tsv", "range.tsv", TSV),
+                                ("source", "rssi.py", SOURCE), ("pdf", "placement.pdf", pdf_bytes()),
+                                ("big-log", "uplinks.log", LOG), ("big-csv", "uplinks.csv", BIG_CSV), ("big-json", "uplinks.json", BIG_JSON),
+                                ("commas", "commas.csv", COMMAS), ("wide", "matrix.csv", WIDE)):
+            root(key, f"File {name}", name, data)
         for context in contexts.values():
             context.close()
 
@@ -256,7 +297,7 @@ class FilePreview(unittest.TestCase):
                     page_in_frame = page.frame_locator(".file-viewer iframe")
                     expect(page_in_frame.get_by_role("heading", name="LoRa range, far east beds")).to_be_visible()
                     expect(page_in_frame.get_by_role("cell", name="-112")).to_be_visible()
-                    expect(dialog.get_by_role("status")).to_have_text(re.compile(r"^External images and scripts are blocked\. ?Run scripts$"))
+                    expect(dialog.get_by_role("status")).to_have_text(re.compile(r"^External images and scripts are blocked\. ?Run scripts · View source$"))
                     download = dialog.get_by_role("link", name="Download")
                     expect(download).to_have_attribute("href", f"/api/v1/files/{self.ids['file:report']}")
                     expect(download).to_have_attribute("download", "range-report.html")
@@ -380,7 +421,7 @@ class FilePreview(unittest.TestCase):
         expect(inside.locator("#ran")).to_have_count(0)
         self.shot(page, "file-preview-html-scripts-off-1440-light")
         dialog.get_by_role("button", name="Run scripts").click()
-        expect(dialog.get_by_role("status")).to_have_text("Scripts are on for this preview. A script may contact the internet.")
+        expect(dialog.get_by_role("status")).to_have_text("Scripts are on for this preview. A script may contact the internet. · View source")
         frame = dialog.locator("iframe")
         expect(frame).to_have_attribute("sandbox", "allow-scripts")
         expect(frame).to_have_attribute("src", f"/api/v1/files/{self.ids['file:probe']}/preview?scripts=1")
@@ -413,7 +454,183 @@ class FilePreview(unittest.TestCase):
         self.assertEqual(outside, [])
         self.assert_recorder_sees(page, outside)
 
-    def test_04_a_reader_who_lost_access_sees_nothing(self) -> None:
+    def contents(self, dialog, name: str):
+        return dialog.get_by_role("region", name=f"Contents of {name}")
+
+    def test_05_html_view_source_shows_the_markup_as_text(self) -> None:
+        page, outside, _ = self.open("report")
+        _, dialog = self.viewer(page, "report", "range-report.html")
+        dialog.get_by_role("button", name="View source").click()
+        source = self.contents(dialog, "range-report.html")
+        expect(source).to_contain_text("<h1>LoRa range, far east beds</h1>")
+        expect(dialog.locator("iframe")).to_have_count(0)
+        expect(source.locator("h1")).to_have_count(0)
+        dialog.get_by_role("button", name="Preview", exact=True).click()
+        expect(page.frame_locator(".file-viewer iframe").get_by_role("heading", name="LoRa range, far east beds")).to_be_visible()
+        self.assertEqual(outside, [])
+
+    def test_06_text_log_and_source_are_monospace_and_wrapped(self) -> None:
+        for phone in (False, True):
+            for dark in (False, True):
+                with self.subTest(phone=phone, dark=dark):
+                    page, outside, _ = self.open("log", phone=phone, dark=dark)
+                    _, dialog = self.viewer(page, "log", "gateway.log")
+                    text = self.contents(dialog, "gateway.log")
+                    expect(text).to_contain_text("gateway-3 boot ok")
+                    expect(text).to_contain_text("uplink fcnt=1 rssi=-112 snr=-4.5")
+                    self.assertIn("Geist Mono", text.evaluate("(el) => getComputedStyle(el).fontFamily"))
+                    long = text.locator(".file-viewer__line").nth(3)
+                    self.assertGreater(long.bounding_box()["height"], text.locator(".file-viewer__line").first.bounding_box()["height"] * 1.5, "a long line wraps")
+                    self.assertLessEqual(long.bounding_box()["width"], text.bounding_box()["width"], "and does not scroll sideways")
+                    expect(text.locator(".file-viewer__num")).to_have_count(0)
+                    self.shot(page, f"file-preview-text-{'390' if phone else '1440'}-{'dark' if dark else 'light'}")
+                    dialog.get_by_role("button", name="Show line numbers").click()
+                    expect(text.locator(".file-viewer__num").first).to_have_text("1")
+                    dialog.get_by_role("button", name="Hide line numbers").click()
+                    expect(text.locator(".file-viewer__num")).to_have_count(0)
+                    self.assertEqual(outside, [])
+        page, _, _ = self.open("source")
+        _, dialog = self.viewer(page, "source", "rssi.py")
+        expect(self.contents(dialog, "rssi.py")).to_contain_text("return {b: -112 for b in beds}")
+        page, _, _ = self.open("latin")
+        _, dialog = self.viewer(page, "latin", "notes.txt")
+        expect(self.contents(dialog, "notes.txt")).to_contain_text("Café north bed, 12°C")
+        expect(dialog.get_by_role("status")).to_contain_text("Shown as Windows-1252 text.")
+
+    def test_07_json_is_pretty_and_folds_and_invalid_json_says_where(self) -> None:
+        for phone in (False, True):
+            for dark in (False, True):
+                with self.subTest(phone=phone, dark=dark):
+                    page, outside, _ = self.open("json", phone=phone, dark=dark)
+                    _, dialog = self.viewer(page, "json", "beds.json")
+                    tree = self.contents(dialog, "beds.json")
+                    expect(tree.locator(".file-viewer__line").nth(1)).to_have_text('"gateway": "gw-3",')
+                    expect(tree).to_contain_text('"name": "far east",')
+                    self.shot(page, f"file-preview-json-{'390' if phone else '1440'}-{'dark' if dark else 'light'}")
+                    beds = tree.locator(".file-viewer__line").nth(2)
+                    expect(beds).to_have_text('"beds": [')
+                    beds.get_by_role("button", name="Fold").click()
+                    expect(tree.locator(".file-viewer__line").nth(2)).to_have_text('"beds": [ … 2 items ],')
+                    expect(tree).not_to_contain_text("far east")
+                    tree.locator(".file-viewer__line").nth(2).get_by_role("button", name="Unfold").click()
+                    expect(tree).to_contain_text('"name": "far east",')
+                    self.assertEqual(outside, [])
+        page, _, _ = self.open("bad")
+        _, dialog = self.viewer(page, "bad", "broken.json")
+        expect(dialog.get_by_role("alert")).to_have_text("Not valid JSON: line 3, column 17: Unexpected \",\".")
+        expect(self.contents(dialog, "broken.json")).to_contain_text('"beds": [1, 2,, 3]')
+        self.shot(page, "file-preview-json-invalid-1440-light")
+
+    def test_08_csv_and_tsv_are_tables_whose_formulas_stay_text(self) -> None:
+        for phone in (False, True):
+            for dark in (False, True):
+                with self.subTest(phone=phone, dark=dark):
+                    page, outside, _ = self.open("csv", phone=phone, dark=dark)
+                    _, dialog = self.viewer(page, "csv", "range.csv")
+                    table = dialog.get_by_role("table", name="Contents of range.csv")
+                    expect(table.get_by_role("columnheader")).to_have_text(["bed", "rssi", "note"])
+                    expect(table.get_by_role("cell", name="behind the hedge, low")).to_be_visible()
+                    formula = table.get_by_role("cell", name='=HYPERLINK("https://leak.invalid/x","click")')
+                    expect(formula).to_be_visible()
+                    expect(table.get_by_role("cell", name="@SUM(1+1)")).to_be_visible()
+                    expect(table.get_by_role("cell", name="-2+3")).to_be_visible()
+                    expect(table.get_by_role("link")).to_have_count(0)
+                    expect(dialog.get_by_role("status")).to_have_text("4 rows")
+                    # A wide table scrolls inside its sheet: the viewer keeps the screen's width.
+                    self.assertLessEqual(page.evaluate("document.querySelector('.file-viewer').scrollWidth"), page.viewport_size["width"])
+                    self.assertLessEqual(dialog.locator(".photo-viewer__top").bounding_box()["width"], page.viewport_size["width"])
+                    self.shot(page, f"file-preview-csv-{'390' if phone else '1440'}-{'dark' if dark else 'light'}")
+                    self.assertEqual(outside, [])
+        page, _, _ = self.open("tsv")
+        _, dialog = self.viewer(page, "tsv", "range.tsv")
+        table = dialog.get_by_role("table", name="Contents of range.tsv")
+        expect(table.get_by_role("columnheader")).to_have_text(["bed", "rssi"])
+        expect(table.get_by_role("cell", name="-112")).to_be_visible()
+
+    def test_09_a_pdf_opens_in_the_browsers_viewer_or_says_it_cannot(self) -> None:
+        page, outside, _ = self.open("pdf")
+        _, dialog = self.viewer(page, "pdf", "placement.pdf")
+        if page.evaluate("navigator.pdfViewerEnabled"):
+            frame = dialog.locator("iframe")
+            expect(frame).to_have_attribute("src", f"/api/v1/files/{self.ids['file:pdf']}/preview")
+            self.assertIsNone(frame.get_attribute("sandbox"), "sandboxed by the preview's own policy (C-60)")
+        else:
+            # Playwright's headless Chromium shell has no PDF viewer: the viewer says so and offers Download.
+            expect(dialog.get_by_text("This browser can't show a PDF here.")).to_be_visible()
+            expect(dialog.locator(".file-viewer__sheet").get_by_role("link", name="Download")).to_have_attribute("download", "placement.pdf")
+            self.shot(page, "file-preview-pdf-unsupported-1440-light")
+        self.assertEqual(outside, [])
+
+    @unittest.skipUnless(UI_BROWSER == "chromium", "the full Chromium build carries the PDF viewer")
+    def test_10_chromium_shows_the_pdf_in_its_viewer_inside_the_sandboxed_frame(self) -> None:
+        full = self.pw.chromium.launch(channel="chromium")
+        self.addCleanup(full.close)
+        context = full.new_context(base_url=ORIGIN, storage_state=self.states["jonas"], viewport=DESKTOP, service_workers="block")
+        self.addCleanup(context.close)
+        page = context.new_page()
+        page.goto(f"/projects/{self.ids['project']}")
+        page.locator(f"#message-{self.ids['pdf']}").scroll_into_view_if_needed()
+        _, dialog = self.viewer(page, "pdf", "placement.pdf")
+        expect(dialog.locator("iframe")).to_have_attribute("src", f"/api/v1/files/{self.ids['file:pdf']}/preview")
+        deadline = time.time() + 15
+        while time.time() < deadline and not any(f.url.startswith("chrome-extension://") for f in page.frames):
+            page.wait_for_timeout(250)
+        self.assertTrue(any(f.url.startswith("chrome-extension://") for f in page.frames), [f.url for f in page.frames])
+        self.shot(page, "file-preview-pdf-1440-light")
+
+    @unittest.skipUnless(UI_BROWSER == "chromium", "long tasks are measured in Chromium")
+    def test_11_five_mib_files_open_without_holding_the_page(self) -> None:
+        """A 5 MiB log, CSV (about 100,000 rows, scrolled to its last row) and JSON: no main-thread task over 200 ms."""
+        for key, name in (("big-log", "uplinks.log"), ("big-csv", "uplinks.csv"), ("big-json", "uplinks.json")):
+            with self.subTest(file=name):
+                page, _, _ = self.open(key)
+                page.evaluate("() => { window.__long = []; new PerformanceObserver((list) => { for (const e of list.getEntries()) window.__long.push(Math.round(e.duration)); }).observe({ type: 'longtask' }); }")
+                started = time.time()
+                _, dialog = self.viewer(page, key, name)
+                if key == "big-csv":
+                    table = dialog.get_by_role("table", name=f"Contents of {name}")
+                    expect(table.get_by_role("columnheader").first).to_have_text("time", timeout=20000)
+                    expect(dialog.get_by_role("status")).to_have_text(f"{BIG_CSV_ROWS:,} rows")
+                    for _ in range(3):
+                        table.evaluate("(el) => { el.scrollTop = el.scrollHeight; }")
+                        page.wait_for_timeout(200)
+                    last = BIG_CSV.rstrip(b"\n").rsplit(b"\n", 1)[1].decode().split(",")
+                    row = table.locator(f"[role=row][aria-rowindex='{BIG_CSV_ROWS + 1}']")
+                    expect(row).to_be_visible()
+                    expect(row.get_by_role("cell").first).to_have_text(last[0])
+                    expect(table.get_by_role("columnheader").first).to_be_in_viewport()
+                    self.assertLess(table.locator("[role=row]").count(), 200, "only the rows in view are in the page")
+                else:
+                    region = self.contents(dialog, name)
+                    expect(region.locator(".file-viewer__line").first).to_be_visible(timeout=20000)
+                    region.evaluate("(el) => { el.scrollTop = el.scrollHeight / 2; }")
+                    page.wait_for_timeout(300)
+                    self.assertLess(region.locator(".file-viewer__line").count(), 400, "only the lines in view are in the page")
+                ready = time.time() - started
+                page.wait_for_timeout(300)
+                long = page.evaluate("window.__long")
+                print(f"{name}: ready in {ready:.2f} s, long tasks {long}")
+                self.assertTrue(all(duration <= 200 for duration in long), f"{name}: long tasks {long}")
+                self.shot(page, f"file-preview-{key}-1440-light")
+        # A table as wide as a file allows draws its first 200 columns and says so: no column holds the page either.
+        for key, name, columns in (("commas", "commas.csv", len(COMMAS) + 1), ("wide", "matrix.csv", 2000)):
+            with self.subTest(file=name):
+                page, _, _ = self.open(key)
+                page.evaluate("() => { window.__long = []; new PerformanceObserver((list) => { for (const e of list.getEntries()) window.__long.push(Math.round(e.duration)); }).observe({ type: 'longtask' }); }")
+                started = time.time()
+                _, dialog = self.viewer(page, key, name)
+                table = dialog.get_by_role("table", name=f"Contents of {name}")
+                expect(table.get_by_role("columnheader")).to_have_count(200, timeout=30000)
+                expect(table).to_have_attribute("aria-colcount", str(columns))
+                expect(dialog.get_by_role("status")).to_contain_text(f"Showing the first 200 of {columns:,} columns. Download to see them all.")
+                table.evaluate("(el) => { el.scrollLeft = el.scrollWidth; el.scrollTop = el.scrollHeight; }")
+                page.wait_for_timeout(500)
+                self.assertLess(table.locator("[role=row]").count(), 60, "only the rows in view and a few beyond are drawn")
+                long = page.evaluate("window.__long")
+                print(f"{name}: ready in {time.time() - started:.2f} s, long tasks {long}")
+                self.assertTrue(all(duration <= 200 for duration in long), f"{name}: long tasks {long}")
+
+    def test_99_a_reader_who_lost_access_sees_nothing(self) -> None:
         page, outside, _ = self.open("report", quiet_stream=True)
         message = page.locator(f"#message-{self.ids['report']}")
         context = self.browser.new_context(base_url=ORIGIN, storage_state=self.states["ada"], service_workers="block")
