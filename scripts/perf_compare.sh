@@ -26,7 +26,7 @@
 # Environment: FLUX_PERF_COMPARE_OUT (absolute output directory, default ./perf-results/compare-<UTC time>), FLUX_PERF_COMPARE_WORK
 # (worktrees and the browser's venv, removed afterwards), FLUX_PERF_COMPARE_PORT (base's API port, head's is the next), FLUX_PERF_COMPARE_ROUNDS,
 # FLUX_PERF_RUNS, FLUX_PERF_BROWSER_LOADS, FLUX_PERF_SEARCH_RUNS (default 15), FLUX_PERF_BROWSER_PYTHON (a Python with Playwright
-# and Chromium; default: a venv made from app/tests/ui/requirements.txt, or the browser phase is skipped).
+# and Chromium on the host; default: the head's Playwright image, docker/ui-tests.Dockerfile).
 # The report: <out>/compare.md (also printed, its lines start with "PERF "), and <out>/compare.json.
 # Run it alone: on a shared host the numbers include whatever else the machine does. On GitHub: test-modules.yml, suite `perf`.
 set -eu
@@ -116,6 +116,7 @@ cleanup() {
       docker image rm -f "flux-foundation:$p" "flux-database:$p" >/dev/null 2>&1 || true
     fi
   done
+  [ -z "${browser_image:-}" ] || docker image rm -f "$browser_image" >/dev/null 2>&1 || true
   git worktree remove --force "$dir_a" >/dev/null 2>&1 || true
   git worktree remove --force "$dir_b" >/dev/null 2>&1 || true
   rm -rf "$work"
@@ -147,13 +148,15 @@ for side in a b; do
   dc "$side" build migrate $builds >"$out/$side/build.log" 2>&1 || { tail -n 40 "$out/$side/build.log" >&2; exit 1; }
 done
 
+# The browser: the head's pinned Playwright image (docker/ui-tests.Dockerfile), the same Chromium for both refs. It runs on the host's
+# network (the stacks publish on 127.0.0.1, their FLUX_PUBLIC_ORIGIN) and reaches the database's statistics through this host's
+# Docker CLI and socket. FLUX_PERF_BROWSER_PYTHON (a Python with Playwright and Chromium) runs it on the host instead.
+browser_image=
 if [ -z "${FLUX_PERF_BROWSER_PYTHON:-}" ]; then
-  if python3 -m venv "$work/venv" >/dev/null 2>&1 \
-    && "$work/venv/bin/pip" install -q --only-binary=:all: --require-hashes -r "$dir_b/app/tests/ui/requirements.txt" >"$work/venv.log" 2>&1 \
-    && "$work/venv/bin/python" -m playwright install --with-deps chromium >>"$work/venv.log" 2>&1; then
-    FLUX_PERF_BROWSER_PYTHON="$work/venv/bin/python"
-  else
-    log "No Playwright for the browser phase (see $work/venv.log); it is skipped"
+  browser_image="perfcmp-browser:$$"
+  if ! docker build -q -t "$browser_image" -f "$dir_b/docker/ui-tests.Dockerfile" "$dir_b/app" >"$out/browser-build.log" 2>&1; then
+    log "The browser image did not build (see $out/browser-build.log); the browser phase is skipped"
+    browser_image=
   fi
 fi
 
@@ -242,13 +245,18 @@ measure_round() {
   docker update --cpus 0 $ids >/dev/null
   touch "$dir/.load-done"; wait "$sampler" || true
 
-  if [ -n "${FLUX_PERF_BROWSER_PYTHON:-}" ]; then
+  db_id=$(dc "$side" ps -q db)
+  set -- --origin "http://127.0.0.1:$port" --password "$perf_password" --db-container "$db_id" --loads "$loads"
+  if [ -n "$browser_image" ]; then
     log "Round $round, $side: browser"
-    db_id=$(dc "$side" ps -q db)
-    set -- "$FLUX_PERF_BROWSER_PYTHON" scripts/perf-compare-browser.py --origin "http://127.0.0.1:$port" --password "$perf_password" \
-      --db-container "$db_id" --loads "$loads" --out "$dir/browser.json"
-    if [ -n "$client_cpus" ]; then taskset -c "$client_cpus" "$@" > "$dir/browser.log" 2>&1 || log "browser phase failed (see $dir/browser.log)"
-    else "$@" > "$dir/browser.log" 2>&1 || log "browser phase failed (see $dir/browser.log)"; fi
+    docker run --rm --network host --shm-size 1g ${client_cpus:+--cpuset-cpus "$client_cpus"} \
+      -v /var/run/docker.sock:/var/run/docker.sock -v "$(command -v docker)":/usr/local/bin/docker:ro \
+      -v "$root/scripts/perf-compare-browser.py":/perf/browser.py:ro -v "$dir":/out "$browser_image" \
+      python3 /perf/browser.py "$@" --out /out/browser.json > "$dir/browser.log" 2>&1 || log "browser phase failed (see $dir/browser.log)"
+  elif [ -n "${FLUX_PERF_BROWSER_PYTHON:-}" ]; then
+    log "Round $round, $side: browser"
+    ${client_cpus:+taskset -c "$client_cpus"} "$FLUX_PERF_BROWSER_PYTHON" scripts/perf-compare-browser.py "$@" --out "$dir/browser.json" \
+      > "$dir/browser.log" 2>&1 || log "browser phase failed (see $dir/browser.log)"
   fi
 }
 

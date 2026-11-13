@@ -332,6 +332,11 @@ def main(argv):
         print("| --- | ---: | ---: |")
         for label, x, y in changed:
             print(f"| {label} | {x if x is not None else '–'} | {y if y is not None else '–'} |")
+    for name, side in (("base", "a"), ("head", "b")):
+        bundle_text = (out / side / "bundle.txt").read_text(encoding="utf-8") if (out / side / "bundle.txt").exists() else ""
+        for line in bundle_text.splitlines():
+            if line.startswith(("First-screen files", "Largest chunks")):
+                print(f"\n{name}: {line}")
     for name, details in (("base", a_details), ("head", b_details)):
         if details.get("openAddresses"):
             print(f"\nSpace + Conversation open, {name}: {'; '.join(details['openAddresses'])}")
