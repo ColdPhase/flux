@@ -604,12 +604,12 @@ class PrivateAiJourney(unittest.TestCase):
                 self.no_horizontal_scroll(lee)
                 # The task's thread: the same words are only words, and the line under the box does not promise a private answer.
                 lee.goto(f"/projects/{self.ids['project']}/tasks?open=work:{self.ids['work']}")
-                task_box = lee.get_by_label(re.compile("Write to this task|First message about this task"))
+                task_box = lee.get_by_label(re.compile("Write to this task"))
                 expect(task_box).to_be_visible()
                 task_box.fill("/ai where is this task?")
                 expect(lee.get_by_text(ai_words)).to_have_count(0)
                 expect(lee.locator(".assistant-private, .assistant-working")).to_have_count(0)
-                expect(lee.get_by_role("button", name=re.compile("Send to task|Start the discussion"))).to_be_visible()
+                expect(lee.get_by_role("button", name=re.compile("Send to task"))).to_be_visible()
         # Messages lists no agent of hers.
         desktop = self.page("lee")
         desktop.goto("/")

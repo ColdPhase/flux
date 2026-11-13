@@ -3,6 +3,9 @@
 .wd-skeleton--task { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; }
 .wd-skeleton .wd__scroll { flex: 1; min-height: 0; padding: 18px 22px 20px; overflow: hidden; }
 .wd-skeleton i { display: block; height: 12px; border-radius: var(--r-pill); background: var(--sub); }
+/* The task's number and space above the title (work/work.css .wd__ref): one line of small text. */
+.wd-skeleton__ref { margin: 0; font-size: var(--fs-sm); white-space: nowrap; }
+.wd-skeleton .wd-skeleton__ref i { display: inline-block; width: 150px; height: 10px; vertical-align: middle; }
 /* The title as the task panel sets it (work/work.css .wd--task .details__title and .wd-title__text), so it takes as many lines as the real one. */
 .wd-skeleton .wd-skeleton__name { margin: 2px 0 6px; overflow-wrap: anywhere; }
 .wd-skeleton__name span { display: block; margin: 0 -8px; padding: 2px 8px; font: inherit; letter-spacing: inherit; line-height: inherit; overflow-wrap: anywhere; }

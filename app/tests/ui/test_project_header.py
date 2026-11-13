@@ -179,7 +179,8 @@ class ProjectHeader(unittest.TestCase):
         self.ensure_project()
         engine = UI_BROWSER
         counts = [(h, a) for h in (1, 2, 3, 4, 12, 99) for a in (0, 2)] + [(120, 0)]
-        for width, height in ((820, 1180), (1280, 800), (1440, 900)):
+        # An 820 px tablet in portrait has the people in More, where the name would otherwise be cut under its slot (#1375): 1180 is the tablet here.
+        for width, height in ((1180, 820), (1280, 800), (1440, 900)):
             page = self.page("light", {"width": width, "height": height})
             slots, places = set(), []
             for humans, agents in counts:

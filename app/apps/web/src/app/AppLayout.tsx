@@ -163,10 +163,8 @@ function AppLayoutContent() {
   const navDrawer = useMediaQuery(MEDIA.navDrawer);
   const tablet = useMediaQuery(MEDIA.tablet);
   const phone = useMediaQuery(MEDIA.phone);
-  // A space's Wiki keeps to two columns, the sidebar and the page: a panel opens over the page there, never beside it (#869).
-  const panelOver = /^\/projects\/[^/]+\/docs(\/|$)/.test(location.pathname);
-  const docked = useSidePanelMode();
-  const panelMode = panelOver && docked === 'docked' ? 'overlay' : docked;
+  // The one detail panel is the same right-hand panel in every view of a space, the Wiki included (#1365).
+  const panelMode = useSidePanelMode();
   const [navOpen, setNavOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [detailsView, setDetailsView] = useState<DetailsView>('place');
@@ -382,13 +380,13 @@ function AppLayoutContent() {
     metadataSlot,
   }), [toggleDetails, actionSlot, metadataSlot, projectId, detailsOwner, showPanel, hidePanel, reopenPanel, panelSlot, detailsOpen, detailsView, owned, labelOf]);
 
-  // A link inside an overlaid panel or sheet (#117 overview) leads to its destination.
+  // A link inside the phone's sheet (#117 overview) leads to its destination; the docked and the floating card stay (#1365).
   const [shownPath, setShownPath] = useState(location.pathname);
   if (shownPath !== location.pathname) {
     setShownPath(location.pathname);
     // A link in the panel that leads to a thread or back to a task keeps the panel (its state says so).
     const keep = (location.state as { keepPanel?: boolean } | null)?.keepPanel === true;
-    if (((panelMode !== 'docked' && !keep) || aiConnections) && detailsOpen) setDetailsOpen(false);
+    if (((panelMode === 'sheet' && !keep) || aiConnections) && detailsOpen) setDetailsOpen(false);
     // A docked panel that shows an object or a form of the place being left does not follow the person to another place
     // (#763 H11-8): it closes and its "‹ back" trail goes with it, so Details opened there is that place's. The place's
     // own Details ('place') reads the new place by itself; a view-owned thread or agent is closed by its view.
@@ -719,8 +717,9 @@ function AppLayoutContent() {
   const bulkRead: MoreItem[] = (where === 'inbox' && /^\/inbox(\/|$)/.test(location.pathname)) || location.pathname === '/projects' ? [{ label: 'Mark all as read', run: markAllRead }] : [];
   const moreItems: MoreItem[] = [
     ...bulkRead,
-    // A header with no room for them (Spokój rule 3) moves the people and Call here; the views stay in the row.
-    ...(project?.people ? [{ label: 'People', run: openAudience, narrow: true }] : []),
+    // A header with no room for them (Spokój rule 3) moves the people and Call here; the views stay in the row. The people go first,
+    // where the name would otherwise be cut under its 220 px slot (#1375).
+    ...(project?.people ? [{ label: 'People', run: openAudience, narrow: 'people' as const }] : []),
     ...(activeProject ? [{ label: 'Call', node: <LiveEntry variant="more" /> }, { label: 'Live now', node: <LiveNowRows /> }] : []),
     ...(activeProject && projectId ? [{ label: 'Settings', run: () => void navigate(`/projects/${projectId}/settings`) }] : []),
     ...(placeMute ? [{ label: placeMute.label, hint: placeMute.hint, run: placeMute.run }] : []),
@@ -907,7 +906,7 @@ function AppLayoutContent() {
               <DeferredLiveStage />
             </ViewFade>
           </main>
-          <SidePanel over={panelOver} open={detailsOpen || !!threadOpening} onClose={opening ? cancelThread : closePanel} title={opening ? 'Replies' : ownedShown ? ownedShown.label : heading.title} closeLabel={opening ? 'Cancel opening the thread' : ownedShown ? ownedShown.closeLabel : heading.close} chip={opening ? 'Thread' : objectChip} id="details" back={opening ? undefined : back} startFull={opening ? typeof threadSheet === 'boolean' ? threadSheet : sheetStart ?? false : sheetStart ?? ownedShown?.startFull} onHeight={(full) => keepPlace('sheet', full)}
+          <SidePanel open={detailsOpen || !!threadOpening} onClose={opening ? cancelThread : closePanel} title={opening ? 'Replies' : ownedShown ? ownedShown.label : heading.title} closeLabel={opening ? 'Cancel opening the thread' : ownedShown ? ownedShown.closeLabel : heading.close} chip={opening ? 'Thread' : objectChip} id="details" back={opening ? undefined : back} startFull={opening ? typeof threadSheet === 'boolean' ? threadSheet : sheetStart ?? false : sheetStart ?? ownedShown?.startFull} onHeight={(full) => keepPlace('sheet', full)}
             contentKey={opening ? `owned:thread:${opening}` : ownedShown ? `owned:${ownedShown.key}` : typeof detailsView === 'object' ? JSON.stringify(detailsView) : detailsView}
             context={opening ? undefined : phone && (detailsView === 'place' || typeof detailsView === 'object' && detailsView.kind === 'overview') ? <OverviewContext message={typeof detailsView === 'object' && detailsView.kind === 'overview' && !!detailsView.messageId} /> : undefined}>
             {opening ? <ThreadOpening /> : null}

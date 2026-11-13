@@ -162,7 +162,7 @@ class OneConversationJourney(unittest.TestCase):
         return page.get_by_role("region", name="Messages")
 
     def thread(self, page: Page):
-        # The one panel: a complementary beside the stream on a computer, a dialog (overlay or sheet) on a tablet and a phone.
+        # The one panel: a complementary beside or over the stream on a computer and a tablet (#1365), a dialog (sheet) on a phone.
         return page.get_by_role("complementary", name="Replies").or_(page.get_by_role("dialog", name="Replies"))
 
     def root(self, page: Page, key: str):
@@ -751,7 +751,11 @@ class OneConversationJourney(unittest.TestCase):
         tablet.wait_for_timeout(400)
         box = thread.bounding_box()
         assert box
-        self.assertAlmostEqual(box["x"] + box["width"], 820, delta=2, msg="the thread is the one panel at the right edge, over the conversation")
+        # The one panel is the computer's card over the conversation's right edge (#1365): 10 px inside the work's frame, under the header.
+        frame = tablet.locator(".app__body").bounding_box()
+        self.assertAlmostEqual(box["x"] + box["width"], frame["x"] + frame["width"] - 10, delta=2, msg="the thread is the one panel at the right edge, over the conversation")
+        header = tablet.locator("header.top").bounding_box()
+        self.assertGreaterEqual(box["y"], header["y"] + header["height"] - 1, "the panel leaves the header uncovered")
         self.assertLessEqual(box["width"], 400)
         expect(tablet.locator("aside.ui-panel, [role=dialog].ui-panel")).to_have_count(1)
         self.no_sideways_scroll(tablet)

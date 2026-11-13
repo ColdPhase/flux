@@ -399,13 +399,21 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
   at most three people and one agent (two people and one agent in a header pane narrower than 70 rem, a tablet or a
   computer window of about 1001 to 1380 px), then one "+N" face of the same size (a circle for "+5", "99+" from a
   hundred). The people's button is as wide as its faces and ends at the right edge of its slot, so no grey area shows
-  where there is no face; the slot keeps its width (100 px, 120 px from 70 rem) whatever the number of people. The ⋯ menu holds the space's settings,
+  where there is no face; the slot keeps its width (100 px, 120 px from 70 rem) whatever the number of people. Where the row is
+  too short for the name's 220 px slot beside everything else (a header under 780 px, as on an 820 px tablet in portrait), the
+  people go into ⋯ first, as its People row, and Call stays in the row; under 44 rem Call follows them (#1375). The ⋯ menu holds the space's settings,
   **Mute space** / **Unmute space** and **Space details**, the one way into the space's own panel ([#871](https://github.com/ColdPhase/flux/issues/871),
   [#873](https://github.com/ColdPhase/flux/issues/873); the phone's ⋯ has it too, after Search, Call, Settings and Mute). It has no row for the sidebar:
   the sidebar folds with its own control and `[`, and the rail and the navigation button open it ([#1376](https://github.com/ColdPhase/flux/issues/1376)). There is no Agents view, no Focus, no goal and no "needs you" count.
 - **One detail panel.** A task, a decision or a thread opens in the same right-hand panel, and the
   conversation stays visible. Opening another object replaces the panel's content, with "‹ back".
-  `Esc` closes it.
+  `Esc` closes it. It is **one card in one place on every computer and tablet view** (#1365): under the
+  header, 10 px from the right edge and the window's bottom, in Conversation, Tasks, Map and Wiki alike,
+  and it never covers the header or a call's strip, so the name, the views, the faces, Call and ⋯ stay in
+  view and live. It is never modal: no scrim, the work beside it stays usable, `Esc` in it closes it and
+  focus goes back to what opened it. Above 1000 px it docks beside the work, which narrows (the Tasks
+  board then scrolls its columns sideways inside itself, with a thin bar); from 641 to 1000 px the same
+  card lies over the work's right edge; on the phone it is the sheet below.
 - **Search.** ⌘K, the sidebar's Search and the phone's Search open the same tool (S16).
 - **Settings.** One list of sections on the left and the section on the right, under a header that
   never changes. No section is lost at 820 px.
@@ -1221,7 +1229,11 @@ the composer. The right-hand phone above shows the sheet.
 
 - **One control row** for Board and List: the Board / List switch, Mine, Search tasks and, on the
   right, "+ Task". Mine includes tasks owned by your agents. Mine is the system's outline `Button` with the person icon, pressed
-  with the `--t1` edge; it is a 32 px control (44 on touch), never a circle.
+  with the `--t1` edge; it is a 32 px control (44 on touch), never a circle. "+ Task" is the right end of this row on
+  every computer and tablet, in both views and in either orientation, and the space's header holds
+  only its own slots (#1366). Over the List, a centred column on a wide window (from 2000 px), the row is
+  that same 838 px column, so "+ Task" ends where the list ends; over the Board it stays that column, so
+  nothing in the row moves when the view changes (principle 7).
 - **Four columns**, the four states: To do, Doing, Blocked and Done, each with its glyph and count.
   A card holds its title, its number, a due date when it has one, and its owner's face, an agent
   tag ("Planner · Ada's agent") or "No owner". Cards have no ⋯, and columns have no "+". A column is one card wide and at most 420 px,
@@ -1229,9 +1241,14 @@ the composer. The right-hand phone above shows the sheet.
 - **Blocked** cards carry one line saying what they wait for: "Waiting for the decision Use LoRa
   for the far beds", "Waiting for Jonas" or "Waiting for #7". When that resolves, the task returns
   to Doing by itself.
+- **An agent's label** is one line, "Planner · Ada's agent", on a card, in a List row, in the panel's
+  Owner row and in its discussion (#1364). The word "agent" is in the label, so it has no separate "Agent"
+  tag and no "for <owner>"; only while the owner is not known does the name carry the "Agent" tag.
 - **The task panel**: "#4 · Rain barrel monitor", the title, then Status, Owner (people, then
   Your agents), Due and "In this task" (the people and their agents), then subtasks ("1 of 2
-  done"), the one discussion and "Write about this task…". At Done, an optional "What came of it"
+  done"), the one discussion and "Write about this task…". The discussion has no heading ("Activity" is
+  removed, §8) and is there from the first moment: a new task shows its own first line, "Ada created the
+  task", above the composer, and its Send is "Send to task" whether or not anyone has written yet (#1364). At Done, an optional "What came of it"
   row: one line, edited where it is read ("Add a line"), with a "Dropped, not finished" check; a
   dropped task reads "Done · dropped" in its panel, in the List and on its Board card, and the line is
   also written once in the task's discussion. A blocked task's "Waiting for" menu offers people, the
@@ -1244,7 +1261,9 @@ the composer. The right-hand phone above shows the sheet.
 ![Wiki with the page switcher open](screens/desktop-wiki.webp)
 
 - Two columns only: the sidebar and the page. There is no pages column and no "On this page"
-  column.
+  column. A task, a decision or a thread opens in the one detail panel beside the page, in the same
+  place as in every other view (#1365); the page gives it room and goes back to its width when the
+  panel closes.
 - **The title is the page switcher.** "Lending rules ▾" opens the space's pages with "Find a page"
   and "+ New page" at the bottom. It sits in the same place with 1 page or 50.
 - **The row above the title:** "Saved · just now · Jonas is here too", the faces of people editing,

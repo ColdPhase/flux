@@ -680,7 +680,7 @@ class ScenarioJourney:
 
         # The same task thread from the task and from the map.
         page.goto(f"/projects/{lamp}/tasks?open=work:{experiment['id']}")
-        discussion = page.get_by_role("region", name="Activity")
+        discussion = page.get_by_role("region", name="Discussion")
         expect(discussion).to_contain_text(CAME_OF_IT)
         self.tap(discussion.get_by_role("link", name=re.compile("Open in Conversation")))
         thread = page.get_by_role("complementary", name="Replies").or_(page.get_by_role("dialog", name="Replies"))
@@ -918,7 +918,8 @@ class ScenarioJourney:
         # A decision is open as its card (the right column on a computer, expanded in the list on a phone): who proposed it, what it replaces, Accept.
         card = open_item(jonas.locator(".nyc", has_text=D2))
         expect(card.get_by_text(f"This replaces the decision {D1}")).to_be_visible()
-        expect(card.locator(".agent-tag").first).to_be_visible()
+        expect(card.get_by_role("heading", name="What happens to current work?")).to_have_count(0)
+        expect(card.locator(".agent-id").first).to_be_visible()
         accept = card.get_by_role("button", name=re.compile("^Accept"))
         accept.scroll_into_view_if_needed()
         self.shot(jonas, "3-replaces")
@@ -978,7 +979,7 @@ class ScenarioJourney:
         expect(self.details(page)).to_contain_text(D1)
         self.close_details(page)
         page.goto(f"/projects/{lamp}/tasks?open=work:{s['experiment']}")
-        expect(self.details(page).get_by_role("region", name="Activity")).to_contain_text(CAME_OF_IT)
+        expect(self.details(page).get_by_role("region", name="Discussion")).to_contain_text(CAME_OF_IT)
         self.close_details(page)
         page.goto(f"/projects/{lamp}/tasks?view=list")
         summary = self.api("ada", "GET", f"/api/v1/return?place=project&id={lamp}", status=200)

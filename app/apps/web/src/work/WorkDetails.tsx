@@ -4,7 +4,7 @@ import { useRevalidator } from 'react-router';
 import { waitingPhrase, type ObjectLink, type Project, type ProjectPerson, type WorkspaceMember, type WorkStatus, type WorkDetailObject, type WorkDetailProjection } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { useStreamEvents } from '../api/stream';
-import { AgentIdentity, Avatar, Button, Icon, Input, Kreska, Morph, PanelGlyph, PanelMeta, StatusGlyph, useToast, Select, Option } from '../ui';
+import { AgentIdentity, Avatar, Button, Icon, Input, Kreska, Morph, PanelGlyph, StatusGlyph, useToast, Select, Option } from '../ui';
 import { getProject, listWorkspaceMembers } from '../project/api';
 import { useShellData } from '../app/data';
 import { DetailsSkeleton } from '../app/SurfaceSkeletons';
@@ -444,9 +444,10 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
 
   return (
     <div className="details wd wd--task" data-detail-kind="work" data-detail-id={item.id} data-version={item.version}>
-      <PanelMeta>{taskNumber(item)}</PanelMeta>
       <PanelGlyph><StatusGlyph status={item.status} size={14} /></PanelGlyph>
       <div className="wd__scroll">
+        {/* "#4 · Rain barrel monitor" above the title, as drawn (§7 Tasks): the task's number and the space it belongs to (#1364). */}
+        <p className="wd__ref"><span className="ui-task-number">{taskNumber(item)}</span><span aria-hidden="true"> · </span><span className="ui-vh">, in </span>{context.project.name}</p>
         <TitleField title={item.title} editable={writable} onEdit={() => { titleBase.current = item.version; }}
           onDraftChange={() => { fieldEdits.current.title++; }} onSave={(title) => saveField('title', title)} />
         {item.outcome ? <p className="details__lead">{item.outcome}</p> : null}

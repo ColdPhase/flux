@@ -40,7 +40,7 @@ export function HeaderFaces({ people, meId, audience, onOpen }: { people: Projec
  * does (Mute: what still arrives, #1249). `node` is a row that keeps its own
  * state (the header's Call); a click on its enabled `[data-more-row]` closes the menu.
  */
-export type MoreItem = { label: string; run: () => void; keys?: string; checked?: boolean; narrow?: boolean; hint?: string }
+export type MoreItem = { label: string; run: () => void; keys?: string; checked?: boolean; narrow?: boolean | 'people'; hint?: string }
   | { label: string; node: ReactNode };
 
 /** The menu's rows that are shown: rows a wide header keeps in its own row are in the menu but hidden, and the keys skip them. */
@@ -84,7 +84,7 @@ export function MoreMenu({ items, label = 'More', icon = 'more', className, size
           onClick={(event) => { if ((event.target as Element).closest('[data-more-row]:not([aria-disabled="true"])')) close(); }}>
           {items.map((item) => 'node' in item ? <Fragment key={item.label}>{item.node}</Fragment> : (
             <button key={item.label} type="button" role={item.checked === undefined ? 'menuitem' : 'menuitemcheckbox'} aria-checked={item.checked}
-              className={`newmenu__item${item.narrow ? ' top__more-narrow' : ''}`} aria-keyshortcuts={item.keys} onClick={() => { button.current?.focus(); setOpen(false); item.run(); }}>
+              className={`newmenu__item${item.narrow ? ' top__more-narrow' : ''}${item.narrow === 'people' ? ' top__more-people' : ''}`} aria-keyshortcuts={item.keys} onClick={() => { button.current?.focus(); setOpen(false); item.run(); }}>
               {item.hint ? <span className="top__more-text"><span>{item.label}</span><small>{item.hint}</small></span> : <span>{item.label}</span>}
               {item.keys ? <kbd aria-hidden="true">{item.keys}</kbd> : null}
             </button>
