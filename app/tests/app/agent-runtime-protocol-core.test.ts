@@ -20,6 +20,7 @@ const valid: Record<string, Record<string, unknown>> = {
   login: { bindingId: binding(), bootId: randomUUID(), client: 'claude_code', method: 'console', cols: 80, rows: 24 },
   run: { bindingId: binding(), client: 'claude_code', runId: randomUUID(), prompt: 'Summarize the plan', runToken: token, tools: ['flux_get_doc', 'flux_list_docs'], caps },
   stop: { bindingId: binding(), runId: randomUUID() },
+  models: { bindingId: binding(), bootId: randomUUID(), client: 'claude_code' },
   logout: { bindingId: binding(), bootId: randomUUID(), client: 'codex' },
   release: { bindingId: binding() },
 };
@@ -39,8 +40,8 @@ describe('the operator switch FLUX_AGENT_RUNTIME', () => {
 });
 
 describe('the supervisor\'s closed request set', () => {
-  test('accepts exactly the seven requests with data-only fields', () => {
-    assert.deepEqual([...SUPERVISOR_REQUESTS].sort(), ['bind', 'login', 'logout', 'release', 'run', 'status', 'stop']);
+  test('accepts exactly the eight requests with data-only fields', () => {
+    assert.deepEqual([...SUPERVISOR_REQUESTS].sort(), ['bind', 'login', 'logout', 'models', 'release', 'run', 'status', 'stop']);
     for (const kind of SUPERVISOR_REQUESTS) assert.equal(parseSupervisorRequest(kind, valid[kind]).ok, true, kind);
     assert.equal(parseSupervisorRequest('status', { bindingId: binding(), bootId: randomUUID(), client: 'claude_code' }).ok, true);
   });

@@ -30,6 +30,7 @@ import { agentConnection } from './support/mcp-actions.js';
 import { apiUrl } from './support/http.js';
 import { addMember, expectStatus, person, project as createProject, workspace as createWorkspace, type Person } from './support/people.js';
 import { chooseModel, FakeCompute, FakeQueue } from './support/personal-runs.js';
+import { seedPlanModels } from './support/plan-models.js';
 import { portOf, slotSecret, startTestSlot, type TestSlot } from './support/runtime-slot.js';
 import { waitFor } from './support/wait.js';
 
@@ -109,6 +110,8 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
     await pool.query(`INSERT INTO agent_runtime_bindings(id, owner_user_id, slot, state) VALUES ($1, $2, $3, 'active')`, [bindingId, owner.id, slotName]);
     await pool.query(`INSERT INTO agent_runtime_connections(id, owner_user_id, binding_id, client, state, sign_in_method, auth_method, account_label, signed_in_at)
       VALUES ($1, $2, $3, 'claude_code', 'signed_in', 'claude_account', 'claude.ai', 'o***@example.org', now())`, [randomUUID(), owner.id, bindingId]);
+    // The models its CLI lists (#1332): what the worker's tick reads; a plan has no list of Flux's own.
+    await seedPlanModels(pool, bindingId, 'claude_code');
     assert.ok((await callSupervisor({ host: '127.0.0.1', port: portOf(slot.url), secret: slot.config.secret }, { kind: 'bind', bindingId })).ok);
 
     runs = personalRunUseCases(db, { queue: queue.factory, connections: noPersonalConnections, providerEnabled: false, runtime: personalRuntimeAvailability(config, db) });
@@ -641,7 +644,7 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
     let choice = await runs.model(human(owner));
     assert.deepEqual([choice.current, choice.saved], [{ connection: 'claude_plan', model: 'sonnet' }, true]);
     assert.deepEqual(choice.groups.map((group) => [group.connection, group.account, group.company, group.options.map((option) => option.id)]),
-      [['claude_plan', 'claude_plan', 'Claude', ['sonnet', 'opus', 'haiku']]], 'one group: the signed-in Claude plan');
+      [['claude_plan', 'claude_plan', 'Claude', ['opus', 'sonnet', 'haiku']]], 'one group: the signed-in Claude plan, as its CLI lists it, without Fable');
     const first = await ask();
     assert.equal(await processor.process(first.run.id), 'completed');
     assert.equal(flag(await argvOf()), 'sonnet');
@@ -666,7 +669,7 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
     // Anything outside the account's list is a plain error and the previous model stays; nothing is passed to a command.
     for (const bad of ['fable', 'gpt-6.1-sol', 'default', '--dangerously-skip-permissions', 'opus;id']) {
       await assert.rejects(chooseModel(runs, human(owner), { connection: 'claude_plan', model: bad }), (error: unknown) => (error as { code?: string }).code === 'ASSISTANT_MODEL_UNAVAILABLE'
-        && (error as Error).message === 'Your Claude plan doesn\'t offer that model. It is still Haiku.', bad);
+        && (error as Error).message === 'Your Claude plan doesn\'t offer that model. It is still Haiku 4.5.', bad);
     }
     // Not even an id (an empty or non-text value) is refused as input before the account's list is asked.
     for (const bad of ['', 42]) {

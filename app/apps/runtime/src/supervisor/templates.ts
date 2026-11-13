@@ -84,7 +84,11 @@ export function loginArgv(client: RuntimeClient, method: RuntimeLoginMethod): re
  * Codex searches with its own search on OpenAI's cached index (`codexRunOverrides`). Pages are opened only by `flux_read_web` on the Flux
  * server (RT-4).
  */
-export interface RunTemplateInput { tools: readonly string[]; caps: RunCaps; mcpConfigPath: string; mcpUrl: string; brief: string; model?: string | undefined; webSearch?: boolean }
+export interface RunTemplateInput {
+  tools: readonly string[]; caps: RunCaps; mcpConfigPath: string; mcpUrl: string; brief: string; model?: string | undefined; webSearch?: boolean;
+  /** Codex only: this run's model catalog, the reviewed one cut down to what the account offers (#1332); default: the image's whole copy. */
+  catalog?: string;
+}
 
 /** Claude Code's own web search tool, the one built-in tool a run may keep (#1065). */
 export const CLAUDE_WEB_SEARCH_TOOL = 'WebSearch';
@@ -102,11 +106,22 @@ export const RUN_TEMPLATES: { [C in RuntimeClient]: (input: RunTemplateInput) =>
   // (CODEX_FEATURE_REVIEW), web search is on OpenAI's cached index with the web on and disabled with it off (#1065), analytics is off (so no telemetry host is needed), and
   // Flux is the only MCP server, required, with the exact non-empty tool list. The prompt is read from stdin
   // (`-`); Flux's brief is a developer message, so Codex keeps its own instructions.
-  codex: ({ tools, mcpUrl, brief, model, webSearch }) => [
+  codex: ({ tools, mcpUrl, brief, model, webSearch, catalog }) => [
     'exec', '--json', '--ephemeral', '--ignore-user-config', '--sandbox', 'read-only', '--skip-git-repo-check',
-    ...(model ? ['-m', model] : []), ...CODEX_FILE_STORE, ...codexRunOverrides(tools, mcpUrl, brief, webSearch), '-',
+    ...(model ? ['-m', model] : []), ...CODEX_FILE_STORE, ...codexRunOverrides(tools, mcpUrl, brief, webSearch, catalog), '-',
   ],
 };
+
+/**
+ * Claude Code's headless initialization, to read the models its account offers (#1332, F-022 amended): `--input-format stream-json` makes it
+ * wait for control requests on standard input instead of a prompt, and its answer to one `initialize` request carries `models` (alias, resolved
+ * model, display name, description), observed with 2.1.285 on 2026-11-12, without a model call. The supervisor sends that request, reads the
+ * answer and ends the process. Built-in tools, slash commands and MCP servers stay off, as in a run; nothing is persisted.
+ */
+export const CLAUDE_MODELS_TEMPLATE: readonly string[] = [
+  '-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', '--restricted', '--tools', '',
+  '--disable-slash-commands', '--strict-mcp-config', '--no-session-persistence',
+];
 
 /**
  * The pinned Codex's default-on features (codex-rs/features/src/lib.rs at rust-v0.160.1, c3e23d4, read
@@ -140,8 +155,8 @@ export const CODEX_FEATURE_REVIEW: Record<string, { action: 'off'; staysOn?: str
 };
 
 /**
- * Flux's copy of the pinned Codex's model catalog, in the runtime image (docker/Dockerfile `codex-catalog`), passed to every Codex
- * run as `model_catalog_json` (#1127). The pinned catalog (codex-rs `models-manager/models.json` at rust-v0.160.1, sha256 fd219bd9…,
+ * Flux's copy of the pinned Codex's model catalog, in the runtime image (docker/Dockerfile `codex-catalog`); every Codex run passes a cut of
+ * it as `model_catalog_json` (#1127), cut down to the models the account offers (#1332, `catalogForAccount`), so it offers none the account lacks. The pinned catalog (codex-rs `models-manager/models.json` at rust-v0.160.1, sha256 fd219bd9…,
  * read 2026-11-09) gives every model Flux offers `tool_mode: "code_mode_only"`: Codex then offers MCP tools only inside its code mode
  * `exec` tool, which needs the code-mode host Flux keeps off (RT-5: no code execution), so a run had no Flux tool at all and its first
  * JSONL item was an `error`. `requested_tool_mode` (codex-rs core/src/tools/mod.rs) takes the catalog's `tool_mode` before any
@@ -169,11 +184,27 @@ export const CODEX_MODEL_REVIEW = {
 
 /** The vendor catalog with Flux's review applied to every model; anything that is not a catalog is refused. */
 export function fluxCodexCatalog(vendor: unknown): { models: Record<string, unknown>[] } {
-  const models = typeof vendor === 'object' && vendor !== null && Array.isArray((vendor as { models?: unknown }).models) ? (vendor as { models: unknown[] }).models : null;
+  const full = fluxCodexCatalogShape(vendor);
+  return { ...full, models: full.models.map((model) => ({ ...model, ...CODEX_MODEL_REVIEW })) };
+}
+
+/**
+ * The reviewed catalog cut down to the models the account offers (#1332): a run's catalog is authoritative (a configured one replaces the
+ * account's own), so it must hold no model the account lacks. Null when none of the account's models is in it.
+ */
+export function catalogForAccount(catalog: unknown, accountModels: readonly string[]): { models: Record<string, unknown>[] } | null {
+  const full = fluxCodexCatalogShape(catalog);
+  const offered = new Set(accountModels);
+  const kept = full.models.filter((model) => offered.has(model.slug as string));
+  return kept.length ? { ...full, models: kept } : null;
+}
+
+function fluxCodexCatalogShape(value: unknown): { models: Record<string, unknown>[] } {
+  const models = typeof value === 'object' && value !== null && Array.isArray((value as { models?: unknown }).models) ? (value as { models: unknown[] }).models : null;
   if (!models?.length || !models.every((model) => typeof model === 'object' && model !== null && typeof (model as { slug?: unknown }).slug === 'string')) {
     throw new Error('Not a Codex model catalog');
   }
-  return { ...(vendor as object), models: models.map((model) => ({ ...(model as Record<string, unknown>), ...CODEX_MODEL_REVIEW })) };
+  return { ...(value as object), models: models as Record<string, unknown>[] };
 }
 
 /**
@@ -183,14 +214,28 @@ export function fluxCodexCatalog(vendor: unknown): { models: Record<string, unkn
  */
 export const CODEX_WEB_SEARCH_ON = ['web_search="cached"'] as const;
 
-/** The `-c` overrides of a Codex run, in order. Values are TOML: strings as JSON strings, the tool list as an array. */
-export function codexRunOverrides(tools: readonly string[], mcpUrl: string, brief: string, webSearch = false): string[] {
-  if (!tools.length) throw new Error('A Codex run needs a non-empty tool list');
+/** The reviewed features off, no web search, no analytics and no update check: what every Codex process of Flux (a run, a read) is started with. */
+function codexBaseValues(webSearch: boolean): string[] {
   const features = Object.entries(CODEX_FEATURE_REVIEW).filter(([, review]) => review.action === 'off').map(([key]) => `features.${key}=false`);
+  return [...features, ...(webSearch ? CODEX_WEB_SEARCH_ON : ['web_search="disabled"']), 'analytics.enabled=false', 'check_for_update_on_startup=false'];
+}
+
+/**
+ * The `-c` overrides of the app-server that lists the account's models (#1332): the reviewed features off like a run's, and no catalog, so
+ * `model/list` is the account's own and not Flux's copy (a configured catalog is authoritative: it would answer with Flux's own).
+ */
+export const codexListOverrides = (): string[] => codexBaseValues(false).flatMap((value) => ['-c', value]);
+
+/**
+ * The `-c` overrides of a Codex run, in order. Values are TOML: strings as JSON strings, the tool list as an array. `catalog` is the run's model
+ * catalog (#1332): the reviewed copy cut down to the account's models; the image's whole copy where a check has no account.
+ */
+export function codexRunOverrides(tools: readonly string[], mcpUrl: string, brief: string, webSearch = false, catalog: string = CODEX_MODEL_CATALOG): string[] {
+  if (!tools.length) throw new Error('A Codex run needs a non-empty tool list');
   return [
-    ...features, ...(webSearch ? CODEX_WEB_SEARCH_ON : ['web_search="disabled"']), 'analytics.enabled=false', 'check_for_update_on_startup=false',
+    ...codexBaseValues(webSearch),
     // #1127: Flux's reviewed catalog (direct tools, no sub-agents), and no `request_user_input` (nobody answers a run's questions).
-    `model_catalog_json=${JSON.stringify(CODEX_MODEL_CATALOG)}`,
+    `model_catalog_json=${JSON.stringify(catalog)}`,
     'tools.experimental_request_user_input.enabled=false',
     `developer_instructions=${JSON.stringify(brief)}`,
     `mcp_servers.flux.url=${JSON.stringify(mcpUrl)}`,
@@ -208,7 +253,7 @@ export function codexRunOverrides(tools: readonly string[], mcpUrl: string, brie
 export const TEMPLATE_FLAGS: { client: RuntimeClient; help: readonly string[]; flags: readonly string[]; optional?: readonly string[] }[] = [
   { client: 'claude_code', help: ['--help'], flags: ['--print', '--output-format', '--verbose', '--include-partial-messages', '--restricted', '--tools',
     '--disable-slash-commands', '--strict-mcp-config', '--mcp-config', '--allowedTools', '--permission-mode', '--permission-prompts',
-    '--no-session-persistence', '--max-turns', '--append-system-prompt', '--model'] },
+    '--no-session-persistence', '--max-turns', '--append-system-prompt', '--model', '--input-format'] },
   { client: 'claude_code', help: ['auth', 'login', '--help'], flags: ['--console', '--sso'] },
   { client: 'claude_code', help: ['auth', '--help'], flags: ['login', 'logout', 'status'] },
   { client: 'codex', help: ['exec', '--help'], flags: ['--json', '--ephemeral', '--ignore-user-config', '--sandbox', '--skip-git-repo-check', '--config', '--model'] },

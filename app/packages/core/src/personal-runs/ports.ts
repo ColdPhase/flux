@@ -1,4 +1,4 @@
-import type { AgentChatMessage, ApiKeyModels, AgentChatSummary, AssistantPlace, MessageFile, MessageContribution } from '@flux/contracts';
+import type { AgentChatMessage, ApiKeyModels, AgentChatSummary, AssistantPlace, MessageFile, MessageContribution, PlanModels } from '@flux/contracts';
 import type {
   AiPrice, AiProviderKind, AgentRuntimePayer, AgentMayDo, AssistantEngine, AssistantRunCostState, AssistantRunEndReason,
   AssistantRunKind, AssistantRunStatus, AssistantSourceRef, AgentColour, PersonalRunTokenGrant,
@@ -618,6 +618,8 @@ export interface PersonalRuntimeStanding {
   client?: PersonalRuntimeClient | null;
   /** When the owner signed in, while signed in: Connect AI's default is the connection made first (#854). */
   signedInAt?: Date | null;
+  /** The models the signed-in CLI last listed for the account (#1332); null until the first reading. */
+  models?: PlanModels | null;
 }
 export type PersonalRuntimeClient = 'claude_code' | 'codex';
 export interface PersonalRuntimeAvailability {

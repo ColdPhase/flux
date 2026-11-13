@@ -111,7 +111,8 @@ USER root
 RUN mkdir -p /opt/flux-fakes \
   && printf '#!/bin/sh\nexec /usr/local/bin/node /opt/flux-runtime/apps/runtime/dist/fakes/fake-claude.js "$@"\n' > /opt/flux-fakes/claude \
   && printf '#!/bin/sh\nexec /usr/local/bin/node /opt/flux-runtime/apps/runtime/dist/fakes/fake-codex.js "$@"\n' > /opt/flux-runtime/codex/bin/codex \
-  && chmod 0755 /opt/flux-fakes/claude /opt/flux-runtime/codex/bin/codex
+  && chmod 0755 /opt/flux-fakes/claude /opt/flux-runtime/codex/bin/codex \
+  && /usr/local/bin/node /opt/flux-runtime/apps/runtime/dist/fakes/fake-catalog.js /opt/flux-runtime/codex/models.json
 USER node
 
 # The pinned official Codex CLI (Apache-2.0), checked against the SHA-256 digests GitHub lists for the

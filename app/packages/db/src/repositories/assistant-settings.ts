@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { and, asc, eq, isNull, ne, sql } from 'drizzle-orm';
-import { ASSISTANT_PLAN_MODELS, nextAgentColour, type AgentColour, type AgentMayDo, type AgentMemoryItem, type AiProviderKind, type MyAgent } from '@flux/contracts';
+import { nextAgentColour, type AgentColour, type AgentMayDo, type AgentMemoryItem, type AiProviderKind, type MyAgent } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { createDatabase } from '../index.js';
 import { lockAssistantOwner } from './assistant-lock.js';
@@ -34,8 +34,9 @@ function view(row: Row, first: string | undefined): MyAgent {
   const plan = row.s.engine === 'runtime';
   return {
     id: row.s.agentId, workspaceId: row.s.workspaceId, name: row.name, instructions: row.s.instructions, colour: row.s.colour,
+    // An agent on a plan without a model of its own runs on the CLI's default; Flux holds no model of its own (#1332).
     model: plan
-      ? { connection: planOf(row.s.provider) === 'codex' ? 'chatgpt_plan' : 'claude_plan', model: row.s.model ?? ASSISTANT_PLAN_MODELS[planOf(row.s.provider)].default }
+      ? { connection: planOf(row.s.provider) === 'codex' ? 'chatgpt_plan' : 'claude_plan', model: row.s.model ?? '' }
       : { connection: row.s.apiKeyId ?? '', model: row.s.model ?? '' },
     mayDo: row.mayDo, connectionId: row.s.connectionId, answersAi: row.s.agentId === first, createdAt: row.s.createdAt.toISOString(),
   };

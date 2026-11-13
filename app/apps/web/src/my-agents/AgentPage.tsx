@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams, useRevalidator } from 'react-router';
-import { AGENT_LIMITS, groupModelsByFamily, type AgentMemoryItem, type AssistantModelGroup, type MyAgent } from '@flux/contracts';
+import { AGENT_LIMITS, assistantModelName, groupModelsByFamily, type AgentMemoryItem, type AssistantModelGroup, type MyAgent } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { useShellData } from '../app/data';
 import { MayDoChoice } from '../agent-connection/MayDoChoice';
@@ -114,6 +114,52 @@ function KeyModels({ group, chosen, agentName, onChoose, onError }: {
   );
 }
 
+/** A plan with at most this many models keeps them as segments (the few of a Claude plan); more, the app's Select (#1332). */
+const PLAN_SEGMENTS = 4;
+
+/**
+ * A plan's models on an agent (CA-2, #1332): exactly what the signed-in CLI lists, in its order and under its names. Up to four stay
+ * segments; more, or an agent on a model the plan stopped offering, get the app's Select, where that model reads "no longer offered by
+ * Claude" and cannot be chosen, with the line that says the agent is paused. A plan whose list was never read says so.
+ */
+function PlanModelChoice({ group, chosen, agentName, onChoose }: { group: AssistantModelGroup; chosen: string | null; agentName: string; onChoose: (model: string) => void }) {
+  // A model the plan's list does not hold at all (a list read after a new sign-in, or a Codex model Flux has not reviewed) is no longer offered
+  // either: the agent is paused on it just the same (#1332), so it reads the same way.
+  // The CLI's own default (no model, or the engine's label) is never one of them.
+  const offered = group.options.filter((option) => !option.retired);
+  const listed = chosen ? group.options.find((option) => option.id === chosen) : undefined;
+  const unlisted = !listed && !!chosen && chosen !== 'claude-code' && chosen !== 'codex' && offered.length > 0;
+  const current = unlisted ? { id: chosen, name: assistantModelName(chosen), note: '', callsTools: true, retired: true } : listed;
+  const options = unlisted ? [...group.options, current!] : group.options;
+  if (!group.options.length) return <p className="agp__hint" role="note">Flux hasn’t read this plan’s models yet. It reads them when you sign in and again every few hours.</p>;
+  if (offered.length <= PLAN_SEGMENTS && !current?.retired) {
+    return (
+      <div className="seg seg--fit" role="radiogroup" aria-labelledby={`model-${group.connection}`}>
+        {offered.map((option, index) => {
+          const on = chosen === option.id;
+          // With none on (the CLI's own default), the first is the one the keyboard reaches.
+          const reached = on || (index === 0 && !offered.some((item) => item.id === chosen));
+          return (
+            <button key={option.id} type="button" role="radio" className="seg__b" aria-checked={on} tabIndex={reached ? 0 : -1} data-model={option.id} data-connection={group.connection}
+              onClick={() => { if (!on) onChoose(option.id); }}>{option.name}</button>
+          );
+        })}
+      </div>
+    );
+  }
+  const retired = `no longer offered by ${group.company}`;
+  return (
+    <div className="agp__key-models">
+      <Select aria-labelledby={`model-${group.connection}`} value={chosen ?? ''} placeholder="Choose a model" onChange={(next) => { if (next !== chosen) onChoose(next); }}>
+        {options.filter((option) => !option.retired || option.id === chosen).map((option) => (
+          <Option key={option.id} value={option.id} disabled={option.retired}>{option.name}{option.retired ? ` · ${retired}` : option.note ? ` · ${option.note}` : ''}</Option>
+        ))}
+      </Select>
+      {current?.retired ? <p className="agp__hint" role="note">{current.name} is {retired}. {agentName} is paused until you choose another model.</p> : null}
+    </div>
+  );
+}
+
 export function AgentPage() {
   const { agentId = '' } = useParams();
   const { agents } = useShellData();
@@ -206,15 +252,8 @@ function AgentSettings({ agent }: { agent: MyAgent }) {
                   <KeyModels group={item} chosen={agent.model.connection === item.connection ? agent.model.model : null} agentName={agent.name}
                     onChoose={(model) => save({ connection: item.connection, model }, 'Model changed')} onError={(cause) => setError(failure(cause))} />
                 ) : (
-                <div className="seg seg--fit" role="radiogroup" aria-labelledby={`model-${item.connection}`}>
-                  {item.options.map((option) => {
-                    const on = agent.model.connection === item.connection && agent.model.model === option.id;
-                    return (
-                      <button key={option.id} type="button" role="radio" className="seg__b" aria-checked={on} tabIndex={on ? 0 : -1} data-model={option.id} data-connection={item.connection}
-                        onClick={() => { if (!on) void save({ connection: item.connection, model: option.id }, 'Model changed'); }}>{option.name}</button>
-                    );
-                  })}
-                </div>
+                  <PlanModelChoice group={item} chosen={agent.model.connection === item.connection ? agent.model.model : null} agentName={agent.name}
+                    onChoose={(model) => void save({ connection: item.connection, model }, 'Model changed')} />
                 )}
               </div>
             ))}

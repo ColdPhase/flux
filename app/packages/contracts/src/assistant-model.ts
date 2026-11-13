@@ -5,7 +5,7 @@ import type { AiConnectionRef } from './personal-runs.js';
 // The model of each agent (F-027 AST-11, #596; Connect AI #854): picked from any of the person's connections, with the
 // picker grouped by connection ("Claude plan: Opus · Sonnet · Haiku"). Connect AI sets the default: the connection the
 // person made first, at its default model. The server accepts only a model in a connection's list. Nothing here is an
-// id a person types.
+// id a person types. A plan's list is the signed-in CLI's own (#1332) and an API key's the provider's (#1218); Flux holds none.
 
 /** `GET` the caller's own choices: every connection's models and Connect AI's default; `PUT` changes the first agent's model (the ask bar). An agent's own model is `PATCH /api/v1/my-agents/:id`. */
 export const ASSISTANT_MODEL_PATH = '/api/v1/personal-assistant/model';
@@ -89,28 +89,41 @@ const NAMES: Record<string, string> = {
 /** The short name of a model, or its id for one Flux does not know (an owner's own endpoint or model). */
 export const assistantModelName = (model: string) => (Object.prototype.hasOwnProperty.call(NAMES, model) ? NAMES[model]! : model);
 
-/**
- * The models of a subscription, from the vendor's own pages, read 2026-10-17 (AST-11): Claude Code's
- * `--model` aliases, and Codex's `-m` ids. Fable is not listed: it can bill to usage credits that Flux cannot see.
- */
-export const ASSISTANT_PLAN_MODELS: Record<'claude_code' | 'codex', { account: AssistantModelAccount; company: string; plan: string; default: string; models: readonly Omit<AssistantModelOption, 'callsTools'>[] }> = {
-  claude_code: {
-    account: 'claude_plan', company: 'Claude', plan: 'Claude plan', default: 'sonnet',
-    models: [
-      { id: 'sonnet', name: 'Sonnet', note: 'Everyday work' },
-      { id: 'opus', name: 'Opus', note: 'Harder requests' },
-      { id: 'haiku', name: 'Haiku', note: 'Quick, simple requests' },
-    ],
-  },
-  codex: {
-    account: 'chatgpt_plan', company: 'ChatGPT', plan: 'ChatGPT plan', default: 'gpt-6.1-sol',
-    models: [
-      { id: 'gpt-6.1-sol', name: 'GPT-6.1 Sol', note: 'Everyday work' },
-      { id: 'gpt-6-astra', name: 'GPT-6 Astra', note: 'The hardest requests' },
-      { id: 'gpt-6-luna', name: 'GPT-6 Luna', note: 'Quick, simple requests' },
-    ],
-  },
+/** What names each subscription: its connection kind, who it is from and what Connect AI calls it. Its models are not here: the signed-in CLI lists them (#1332). */
+export const ASSISTANT_PLANS: Record<'claude_code' | 'codex', { account: AssistantModelAccount; company: string; plan: string }> = {
+  claude_code: { account: 'claude_plan', company: 'Claude', plan: 'Claude plan' },
+  codex: { account: 'chatgpt_plan', company: 'ChatGPT', plan: 'ChatGPT plan' },
 };
+
+/** One model of a plan's stored list, as the runtime's supervisor reduced the CLI's own (#1332): the id the CLI's model option takes, its name and note. */
+export interface PlanModelEntry { id: string; name: string; note: string; default: boolean; seesPictures: boolean }
+
+/**
+ * What Flux knows of a plan's models (#1332, CA-2): the last list the signed-in CLI gave, the models an earlier list had that the latest lacks
+ * (the plan stopped offering them) and whether the last reading worked. `unavailable`: the CLI could not be read, so the list shown is the last
+ * known one. There is no list in Flux: before the first reading the plan has no models.
+ */
+export interface PlanModels { listed: readonly PlanModelEntry[]; retired: readonly { id: string; name: string }[]; state: 'listed' | 'unavailable'; checkedOn: string }
+
+/** Fable can bill usage credits that Flux cannot see (founder direction, 2026-11-12, #1332): no plan offers it, whatever its CLI lists. */
+export const isFableModel = (id: string) => /fable/i.test(id);
+
+/**
+ * A plan's choices: exactly what its CLI listed, in the CLI's order and under the names it gave, without Fable and an id a command could
+ * misread; then the models it stopped offering, as `retired` (an agent on one is paused, CA-2). The default is the CLI's own, else the first
+ * listed. Nothing here is a model written into Flux: without a reading there are no options and no default.
+ */
+export function assistantPlanModels(models: PlanModels | null | undefined): { options: AssistantModelOption[]; default: string } {
+  const listed = (models?.listed ?? []).filter((entry) => ASSISTANT_PLAN_MODEL_PATTERN.test(entry.id) && !isFableModel(entry.id) && !isFableModel(entry.name));
+  const options: AssistantModelOption[] = listed.map((entry) => ({
+    id: entry.id, name: entry.name, note: entry.note, callsTools: true, ...(entry.seesPictures ? {} : { seesPictures: false }),
+  }));
+  const shown = new Set(listed.map((entry) => entry.id));
+  for (const { id, name } of models?.retired ?? []) {
+    if (!shown.has(id) && ASSISTANT_PLAN_MODEL_PATTERN.test(id) && !isFableModel(id)) options.push({ id, name: name || assistantModelName(id), note: '', callsTools: true, retired: true });
+  }
+  return { options, default: (listed.find((entry) => entry.default) ?? listed[0])?.id ?? '' };
+}
 
 const dollars = (micros: number) => {
   const value = micros / 1_000_000;
@@ -178,5 +191,7 @@ export function assistantApiPrice(provider: AiProviderKind, model: string, price
   return owner ? { inputMicrosPerMTok: owner.inputMicrosPerMTok, outputMicrosPerMTok: owner.outputMicrosPerMTok, source: 'owner', checkedOn: null } : null;
 }
 
+/** "no longer offered by Claude" (#1218, #1332): a plan names its company, an API key its provider. */
+export const noLongerOfferedBy = (company: string) => `no longer offered by ${company}`;
 /** "no longer offered by Anthropic" (#1218). */
-export const noLongerOffered = (provider: AiProviderKind) => `no longer offered by ${AI_PROVIDERS[provider].label}`;
+export const noLongerOffered = (provider: AiProviderKind) => noLongerOfferedBy(AI_PROVIDERS[provider].label);

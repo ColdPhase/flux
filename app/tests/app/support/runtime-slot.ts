@@ -4,8 +4,10 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import type { RuntimeClient } from '@flux/runtime-protocol';
+import { FAKE_CODEX_CATALOG } from '../../../apps/runtime/src/fakes/fake-models.js';
 import type { SupervisorConfig } from '../../../apps/runtime/src/supervisor/handlers.js';
 import { createSupervisorServer } from '../../../apps/runtime/src/supervisor/server.js';
+import { fluxCodexCatalog } from '../../../apps/runtime/src/supervisor/templates.js';
 
 // An in-process runtime slot for the core tests (F-022 T3): a real supervisor over temporary `/data`
 // and `/tmp` directories, with the TEST ONLY fake CLIs from the built workspace behind small wrappers.
@@ -39,6 +41,9 @@ export async function startTestSlot(options: { slot?: string; enabled?: RuntimeC
   await mkdir(tmpDir);
   await mkdir(bin);
   const withClis = options.withClis ?? true;
+  // Flux's reviewed copy of the pinned Codex's catalog (the image's `models.json`), which a run cuts its own from (#1332).
+  const codexCatalogPath = join(root, 'models.json');
+  await writeFile(codexCatalogPath, JSON.stringify(fluxCodexCatalog(FAKE_CODEX_CATALOG)));
   const config: SupervisorConfig = {
     slot: options.slot ?? 'runtime-1',
     secret: slotSecret(),
@@ -52,6 +57,7 @@ export async function startTestSlot(options: { slot?: string; enabled?: RuntimeC
     cliPaths: withClis
       ? { claude_code: await fakeWrapper(bin, 'claude'), codex: await fakeWrapper(bin, 'codex') }
       : { claude_code: join(bin, 'missing-claude'), codex: join(bin, 'missing-codex') },
+    codexCatalogPath,
     egressHost: 'runtime-egress',
     bindingLimitBytes: options.bindingLimitBytes ?? 256 * 1024 * 1024,
     cliTimeoutMs: options.cliTimeoutMs ?? 10_000,

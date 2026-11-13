@@ -1,4 +1,4 @@
-import type { AgentRuntimeBindingState, AgentRuntimeClient, AgentRuntimeConnectionState, AgentRuntimeReleaseReason, AgentRuntimeSignInMethod } from '@flux/contracts';
+import type { AgentRuntimeBindingState, AgentRuntimeClient, AgentRuntimeConnectionState, AgentRuntimeReleaseReason, AgentRuntimeSignInMethod, PlanModelEntry } from '@flux/contracts';
 import type { RuntimeAuthAdmission, RuntimeAuthClaim, RuntimeAuthOperation } from './auth.js';
 
 // Ports of the `runtime` transport's use cases (F-022 AIM-3). The manager port is implemented over the
@@ -21,6 +21,8 @@ export interface RuntimeManagerPort {
   bind(slot: string, bindingId: string): Promise<RuntimeCall<void>>;
   /** The CLI's own status (`claude auth status`) in the owner's binding directory. */
   status(slot: string, bindingId: string, client: AgentRuntimeClient, bootId: string): Promise<RuntimeCall<RuntimeClientStatus & { bootId: string }>>;
+  /** The models the signed-in CLI offers the account (#1332), as the slot reduced them; `busy` while the person's lane is taken. */
+  models(slot: string, bindingId: string, client: AgentRuntimeClient, bootId: string): Promise<RuntimeCall<{ models: PlanModelEntry[]; bootId: string }>>;
   /** The CLI's own logout; the supervisor deletes that CLI's files whatever its outcome. */
   logout(slot: string, bindingId: string, client: AgentRuntimeClient, bootId: string): Promise<RuntimeCall<{ logout: string; bootId: string }>>;
   /**
@@ -64,6 +66,8 @@ export interface RuntimeUsageRow { leftPercent: number | null; window: 'five_hou
 export interface RuntimeConnectionRow {
   /** Null when the provider reported nothing yet. */
   usage?: RuntimeUsageRow | null;
+  /** Whether the CLI's models were read (#1332): `listed`, or `unavailable` (the last list stays); null while never tried. */
+  modelsStatus?: 'listed' | 'unavailable' | null;
   client: AgentRuntimeClient;
   bindingId: string;
   state: AgentRuntimeConnectionState;
@@ -147,4 +151,11 @@ export interface AgentRuntimeStore {
   dropStaleReservation(bindingId: string, olderThan: Date): Promise<boolean>;
   /** Active places unused since `before`, except a guest of the company's: theirs is kept, hidden, until they are a member again (C-50, #1090). */
   idleBindings(before: Date): Promise<RuntimeBindingRow[]>;
+  /**
+   * Signed-in plans whose model list is due (#1332): never read, last read before `refreshBefore`, or last tried before `retryBefore` and not
+   * read (a failed reading is tried again sooner). Oldest first, at most `limit`, so many people never start many CLIs at once.
+   */
+  modelsDue(options: { clients: readonly AgentRuntimeClient[]; refreshBefore: Date; retryBefore: Date; limit: number }): Promise<{ bindingId: string; slot: string; client: AgentRuntimeClient }[]>;
+  /** The list the CLI gave (`read`), or that it could not be read (`null`: the last list stays). Only the owner's live, signed-in connection changes. */
+  saveModels(bindingId: string, client: AgentRuntimeClient, read: readonly PlanModelEntry[] | null, at: Date): Promise<void>;
 }

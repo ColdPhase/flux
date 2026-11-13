@@ -174,6 +174,7 @@ export * from './agent-tasks.js';
 export * from './agent-questions.js';
 export * from './agent-runtime.js';
 export * from './agent-tools.js';
+export * from './agent-summary.js';
 
 export * from './agents.js';
 export * from './assistant.js';

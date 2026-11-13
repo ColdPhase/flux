@@ -1,4 +1,4 @@
-import { BINDING_ID, BOOT_ID, FLUX_TOOL_NAME, RUNTIME_CLIENTS, SLOT_NAME, UUID, type RuntimeClient } from './names.js';
+import { BINDING_ID, BOOT_ID, FLUX_TOOL_NAME, MODEL_ID, RUNTIME_CLIENTS, SLOT_NAME, UUID, type RuntimeClient } from './names.js';
 import { RUN_CAP_BOUNDS, SUPERVISOR_REQUESTS, type SupervisorRequestKind } from './requests.js';
 import { arrayOf, bool, int, isPlainObject, literal, object, oneOf, str, text, type Check } from './shape.js';
 
@@ -69,6 +69,16 @@ export interface ClientStatus {
 }
 
 /**
+ * One model the signed-in CLI offers its account (#1332), reduced in the slot: the id Flux stores and passes to the CLI's own model option
+ * (`opus`, `gpt-6.1-sol`), the name and the one-line note the CLI gives it, whether it is the CLI's own default, and whether it takes pictures.
+ * Hidden models and Fable never get here (the slot drops them).
+ */
+export interface PlanModel { id: string; name: string; note: string; default: boolean; seesPictures: boolean }
+/** The most models one CLI's list may carry; a longer one is cut by the slot, not refused. */
+export const MAX_PLAN_MODELS = 64;
+export const PLAN_MODEL_LIMITS = { name: 80, note: 200 } as const;
+
+/**
  * How a run ended in the slot (F-022 T5: each end has its own state). `completed`: the CLI's result is the
  * answer. `local_tool`: its start-up tool list named anything but the run's exact Flux tools or a connected
  * Flux server, and it was stopped. `unknown`: its stream broke; nothing is known about what it did.
@@ -125,6 +135,8 @@ export type SupervisorResult =
     usage?: RunUsage | null }
   | { kind: 'status'; slot: SlotReport }
   | { kind: 'status'; client: ClientStatus }
+  /** The models the CLI offers the signed-in account, at least one (a CLI that lists none is `not_available`). */
+  | { kind: 'models'; client: RuntimeClient; models: PlanModel[] }
   | { kind: 'logout'; client: RuntimeClient; logout: StepOutcome }
   /** `deleted`: nothing of the person is left: no directory and no process under their user id. */
   | { kind: 'release'; bindingId: string; logout: Record<RuntimeClient, StepOutcome>; deleted: boolean }
@@ -184,6 +196,7 @@ const isClientStatus = object({
   bindingBytes: int(0, Number.MAX_SAFE_INTEGER), bindingOverLimit: bool,
 }) as unknown as Check<ClientStatus>;
 
+const isPlanModel = object({ id: str(MODEL_ID, 64), name: text(PLAN_MODEL_LIMITS.name, 1), note: text(PLAN_MODEL_LIMITS.note), default: bool, seesPictures: bool }) as unknown as Check<PlanModel>;
 const nullableIso = nullable(str(ISO_INSTANT, 30));
 const isRunUsage = object({ leftPercent: int(0, 100), window: nullable(oneOf(['five_hour', 'weekly'] as const)), resetsAt: nullableIso }) as unknown as Check<RunUsage>;
 const RESULTS: Check<SupervisorResult>[] = [
@@ -192,6 +205,7 @@ const RESULTS: Check<SupervisorResult>[] = [
     resetsAt: nullableIso, turns: int(0, 1000) }, { usage: nullable(isRunUsage) }),
   object({ kind: literal('status'), slot: isSlotReport }),
   object({ kind: literal('status'), client: isClientStatus }),
+  object({ kind: literal('models'), client, models: (value: unknown): value is PlanModel[] => arrayOf(isPlanModel, MAX_PLAN_MODELS, 1)(value) && new Set(value.map((model) => model.id)).size === value.length }),
   object({ kind: literal('logout'), client, logout: outcome }),
   object({ kind: literal('release'), bindingId: str(BINDING_ID, 36), logout: perClient(outcome), deleted: bool }),
   object({ kind: literal('stop'), runId: str(UUID, 36), state: oneOf(['not_running', 'stopping'] as const) }),

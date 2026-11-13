@@ -1252,7 +1252,8 @@ the composer. The right-hand phone above shows the sheet.
   - "‹ AI", the agent, and "Your agent · uses your Claude plan · can do only what you can".
   - The only dark button, "Message Planner".
   - Name and Instructions.
-  - The Model, grouped by connection ("Claude plan: Opus · Sonnet · Haiku").
+  - The Model, grouped by connection ("Claude plan: Opus · Sonnet · Haiku", the models the signed-in
+    CLI itself lists, #1332).
   - **What it may do:** Only read / Do it and tell me / Ask me first.
   - **Remembers:** each item shows its source and Edit, under "Tell Planner “remember that…” and it
     shows up here".
@@ -1291,6 +1292,20 @@ the composer. The right-hand phone above shows the sheet.
   provider retired reads "Opus 5.5 · no longer offered by Anthropic" in the control (only on the
   agent that is on it; other agents' lists leave it out) and the agent's line says it is paused
   until another model is chosen; nothing switches by itself.
+- **The Model of an agent with a plan** lists what the signed-in Claude Code or Codex offers that
+  account (#1332, [CA-2](../../product/model-providers.md#ca-2--models)), in the CLI's own order and
+  under the names it gives. Up to four models stay segments (`seg seg--fit`, each option sized to its
+  label). A CLI that lists more, or an agent on a model the plan stopped offering, gets the app's
+  `Select` instead, flat (no family groups, no prices), each option "GPT-6.1-Sol · Latest workhorse
+  model for coding and everyday work". A model the plan stopped offering reads "GPT-5.5 · no longer
+  offered by ChatGPT" in the control (only on the agent that is on it, not choosable) and one hint
+  under it says "GPT-5.5 is no longer offered by ChatGPT. Planner is paused until you choose another
+  model." Nothing switches by itself. A plan whose models Flux has not read yet shows one hint in
+  place of the control, "Flux hasn't read this plan's models yet. It reads them when you sign in and
+  again every few hours."; a CLI that can't be reached leaves the last list as it was, with no
+  notice. Fable never shows (it can bill usage credits Flux can't see), nor does a Codex model Flux's
+  pinned catalog has no review for. An agent on a model the list does not hold at all (a list read
+  after a new sign-in, or such a Codex model) reads the same "no longer offered" line and is paused.
 - **Messages:** each agent is a private conversation ("Only you talk to Planner. Others reach it
   by giving you a task.").
   - "Remembered · See what Planner remembers" confirms a memory.

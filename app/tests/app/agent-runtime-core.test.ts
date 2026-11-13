@@ -6,6 +6,7 @@ import {
   type AgentRuntimeConfig, type AgentRuntimeStore, type RuntimeBindingRow, type RuntimeClientStatus, type RuntimeConnectionRow, type RuntimeManagerPort,
   type RuntimeSlotRow, type RuntimeSlotSighting, type RuntimeAuthOperation, type AgentRuntimeUseCases,
 } from '@flux/core';
+import type { PlanModelEntry, PlanModels } from '@flux/contracts';
 import { parseRuntimeSwitch } from '@flux/runtime-protocol';
 
 // F-022 T3: the owner's slot binding and the worker's reconciliation, over an in-memory store and a
@@ -44,12 +45,12 @@ function memoryStore() {
   const slots = new Map<string, RuntimeSlotRow>();
   const bindings: (RuntimeBindingRow & { releasedAt: Date | null; logoutFailed?: boolean })[] = [];
   const live = () => bindings.filter((b) => b.state !== ('released' as string));
-  type Connection = RuntimeConnectionRow & { ownerUserId: string; fingerprint: string | null; revoked: boolean };
+  type Connection = RuntimeConnectionRow & { ownerUserId: string; fingerprint: string | null; revoked: boolean; modelsCheckedAt?: Date | null; models?: PlanModels | null };
   const connections: Connection[] = [];
   const revoke = (bindingId: string) => { for (const c of connections) if (c.bindingId === bindingId && !c.revoked) Object.assign(c, { revoked: true, state: 'signed_out', signedInAt: null }); };
   const view = (c: Connection): RuntimeConnectionRow => ({ client: c.client, bindingId: c.bindingId, state: c.state, signInMethod: c.signInMethod,
     authMethod: c.authMethod, plan: c.plan, accountLabel: c.accountLabel, signedInAt: c.signedInAt, accountChangedAt: c.accountChangedAt,
-    previousAccountLabel: c.previousAccountLabel, signedOutAt: c.signedOutAt, signOutFailed: c.signOutFailed });
+    previousAccountLabel: c.previousAccountLabel, signedOutAt: c.signedOutAt, signOutFailed: c.signOutFailed, modelsStatus: c.models?.state ?? null });
   // A deterministic port fixture; cross-process clock/CAS behavior is tested with real PostgreSQL.
   const operations = new Map<string, RuntimeAuthOperation>();
   // The durable client history (migration 0118): "bindingId client" while a login may exist for that client.
@@ -132,6 +133,8 @@ function memoryStore() {
       }
       const before = [row, ...connections.filter((c) => c.revoked).reverse()].find((c) => c.ownerUserId === record.ownerUserId && c.client === record.client && (c.accountLabel || c.fingerprint));
       const changed = Boolean(before) && (before!.fingerprint && record.fingerprint ? before!.fingerprint !== record.fingerprint : (before!.accountLabel ?? '') !== (record.facts.accountLabel ?? ''));
+      // A new sign-in or another account has other models: the list is read again (#1332).
+      if (changed || row.state !== 'signed_in') Object.assign(row, { models: null, modelsCheckedAt: null });
       Object.assign(row, { state: 'signed_in', signedInAt: new Date(), authMethod: record.facts.authMethod, plan: record.facts.plan, accountLabel: record.facts.accountLabel,
         fingerprint: record.fingerprint, signedOutAt: null, signOutFailed: null,
         ...(changed ? { accountChangedAt: new Date(), previousAccountLabel: before!.accountLabel } : {}) });
@@ -147,7 +150,7 @@ function memoryStore() {
           accountChangedAt: null, previousAccountLabel: null, signedOutAt: null, signOutFailed: null, fingerprint: null, revoked: false };
         connections.push(row);
       }
-      Object.assign(row, { state: 'signed_out', signedInAt: null, signedOutAt: new Date(), signOutFailed: failed });
+      Object.assign(row, { state: 'signed_out', signedInAt: null, signedOutAt: new Date(), signOutFailed: failed, models: null, modelsCheckedAt: null });
       if (!failed) history.delete(bindingId + client);
       return true;
     },
@@ -169,8 +172,27 @@ function memoryStore() {
       return true;
     },
     async idleBindings(before) { return live().filter((b) => b.state === 'active' && (b.lastUsedAt ?? b.createdAt) < before); },
+    async modelsDue({ clients, refreshBefore, retryBefore, limit }) {
+      return connections.filter((c) => c.state === 'signed_in' && !c.revoked && clients.includes(c.client) && bindings.some((b) => b.id === c.bindingId && b.state === 'active')
+        && (!c.modelsCheckedAt || c.modelsCheckedAt < (c.models?.state === 'listed' ? refreshBefore : retryBefore)))
+        .sort((a, b) => (a.modelsCheckedAt?.getTime() ?? 0) - (b.modelsCheckedAt?.getTime() ?? 0)).slice(0, limit)
+        .map((c) => ({ bindingId: c.bindingId, slot: bindings.find((b) => b.id === c.bindingId)!.slot, client: c.client }));
+    },
+    async saveModels(bindingId, client, read, at) {
+      const row = connections.find((c) => c.bindingId === bindingId && c.client === client && c.state === 'signed_in' && !c.revoked);
+      if (!row) return;
+      const day = at.toISOString().slice(0, 10);
+      row.modelsCheckedAt = at;
+      row.models = read ? { listed: [...read], retired: [], state: 'listed', checkedOn: day } : { listed: row.models?.listed ?? [], retired: row.models?.retired ?? [], state: 'unavailable', checkedOn: day };
+    },
   };
   return { store, slots, bindings, connections, history };
+}
+
+/** The in-memory store and a scripted manager together, for tests that need several owners (#1332). */
+function memoryStore2() {
+  const stored = memoryStore();
+  return { ...stored, ...fakeManager(['runtime-1', 'runtime-2']) };
 }
 
 /** A scripted runtime-manager: each runtime holds people's directories and a boot id. */
@@ -205,9 +227,14 @@ function fakeManager(names: string[]) {
       if (!reported.reachable) return { ok: false, code: 'unreachable' };
       return { ok: true, value: { logout: reported.logout, bootId: state.get(slot)!.bootId } };
     },
+    async models(slot, id, client) {
+      calls.push(`models ${slot} ${client}`);
+      if (!reported.reachable || !reported.models) return { ok: false, code: reported.reachable ? 'busy' : 'unreachable' };
+      return { ok: true, value: { models: [...reported.models], bootId: state.get(slot)!.bootId } };
+    },
   };
-  /** What the slot's CLI reports next (T4): its status and the outcome of its own logout. */
-  const reported: { reachable: boolean; status: RuntimeClientStatus; logout: string } = { reachable: true, status: { signedIn: false, facts: null }, logout: 'ok' };
+  /** What the slot's CLI reports next (T4): its status and the outcome of its own logout; `models` (#1332): the list it gives, or null when it cannot be read. */
+  const reported: { reachable: boolean; status: RuntimeClientStatus; logout: string; models: PlanModelEntry[] | null } = { reachable: true, status: { signedIn: false, facts: null }, logout: 'ok', models: null };
   return { manager, state, calls, reported };
 }
 
@@ -412,7 +439,7 @@ describe('release and reuse', () => {
   test('a manager that cannot be reached changes nothing', async () => {
     const { store, slots } = memoryStore();
     const report = await reconcileAgentRuntime({ config: on, store, manager: { slots: async () => ({ ok: false, code: 'unreachable' }), bind: async () => ({ ok: false, code: 'x' }), release: async () => ({ ok: false, code: 'x' }),
-      status: async () => ({ ok: false, code: 'x' }), logout: async () => ({ ok: false, code: 'x' }) } });
+      status: async () => ({ ok: false, code: 'x' }), logout: async () => ({ ok: false, code: 'x' }), models: async () => ({ ok: false, code: 'x' }) } });
     assert.equal(report.error, 'unreachable');
     assert.equal(slots.size, 0);
   });
@@ -555,6 +582,104 @@ describe('sign-in to Claude Code (T4 #279)', () => {
       assert.equal(after.connections.claude_code?.signOut?.failed, outcome !== 'ok');
     });
   }
+
+  describe('a plan\'s models are read from its CLI (#1332)', () => {
+    const entry = (id: string, extra: Partial<PlanModelEntry> = {}): PlanModelEntry => ({ id, name: id.toUpperCase(), note: '', default: false, seesPictures: true, ...extra });
+    const list = [entry('opus', { default: true }), entry('sonnet')];
+    const modelsOf = (connections: { client: string; models?: unknown }[], client = 'claude_code') => connections.find((c) => c.client === client)?.models;
+
+    test('they are read right after a sign-in, and a status check of a sign-in that has its list reads nothing again', async () => {
+      const { runtime, connections, reported, calls } = await owned();
+      reported.models = list;
+      await record(runtime, 'claude_account', facts('ada@example.org'));
+      assert.deepEqual(calls.filter((call) => call.startsWith('models')), ['models runtime-1 claude_code']);
+      assert.deepEqual(modelsOf(connections), { listed: list, retired: [], state: 'listed', checkedOn: new Date().toISOString().slice(0, 10) });
+      reported.status = facts('ada@example.org');
+      await runtime.check('ada', 'claude_code', 'ada-session');
+      assert.equal(calls.filter((call) => call.startsWith('models')).length, 1, 'the check did not read them again');
+    });
+
+    test('a reading that fails at sign-in leaves the list unread and the worker\'s next tick reads it; a list read is not read again', async () => {
+      const { runtime, store, manager, connections, reported, calls } = await owned();
+      reported.models = null;
+      await record(runtime, 'claude_account', facts('ada@example.org'));
+      assert.equal(modelsOf(connections), null, 'nothing is made up while the CLI cannot say');
+      reported.models = list;
+      const first = await reconcileAgentRuntime({ config: on, store, manager });
+      assert.deepEqual([first.modelsRead, first.modelsFailed], [1, 0]);
+      assert.deepEqual((modelsOf(connections) as { listed: unknown }).listed, list);
+      const second = await reconcileAgentRuntime({ config: on, store, manager });
+      assert.deepEqual([second.modelsRead, second.modelsFailed], [0, 0], 'not due again for hours');
+      assert.equal(calls.filter((call) => call.startsWith('models')).length, 2);
+    });
+
+    test('about every six hours; a failed reading is tried again after five minutes and the last list stays', async () => {
+      const { runtime, store, manager, connections, reported, calls } = await owned();
+      reported.models = list;
+      await record(runtime, 'claude_account', facts('ada@example.org'));
+      const start = Date.now();
+      const tick = (afterMs: number) => reconcileAgentRuntime({ config: on, store, manager, now: () => new Date(start + afterMs) });
+      const reads = () => calls.filter((call) => call.startsWith('models')).length;
+      assert.equal((await tick(5 * 3600_000)).modelsRead, 0, 'five hours after: not yet');
+      reported.models = null;
+      const late = await tick(6 * 3600_000 + 60_000);
+      assert.deepEqual([late.modelsRead, late.modelsFailed], [0, 1], 'six hours after it is read again, and the CLI cannot be reached');
+      assert.deepEqual(modelsOf(connections), { listed: list, retired: [], state: 'unavailable', checkedOn: new Date(start + 6 * 3600_000 + 60_000).toISOString().slice(0, 10) }, 'the last list stays');
+      const before = reads();
+      await tick(6 * 3600_000 + 2 * 60_000);
+      assert.equal(reads(), before, 'a minute later: not tried again');
+      reported.models = [entry('opus')];
+      const retry = await tick(6 * 3600_000 + 7 * 60_000);
+      assert.equal(retry.modelsRead, 1, 'five minutes later it is');
+      assert.deepEqual((modelsOf(connections) as { listed: unknown; state: string }).listed, [entry('opus')]);
+    });
+
+    test('one plan per tick, the oldest first, and only a CLI the operator listed', async () => {
+      const { store, manager, connections, bindings, reported, calls } = memoryStore2();
+      reported.models = list;
+      const runtime = agentRuntimeUseCases(on, store, manager);
+      await reconcileAgentRuntime({ config: on, store, manager });
+      for (const owner of ['ada', 'bob']) await runtime.bind(owner);
+      for (const [owner, client] of [['ada', 'claude_code'], ['bob', 'claude_code'], ['bob', 'codex']] as const) {
+        const binding = bindings.find((b) => b.ownerUserId === owner)!;
+        connections.push({ ownerUserId: owner, client, bindingId: binding.id, state: 'signed_in', signInMethod: null, authMethod: null, plan: null, accountLabel: null, signedInAt: new Date(),
+          accountChangedAt: null, previousAccountLabel: null, signedOutAt: null, signOutFailed: null, fingerprint: null, revoked: false });
+      }
+      for (const expected of [1, 1, 0]) assert.equal((await reconcileAgentRuntime({ config: on, store, manager })).modelsRead, expected);
+      assert.deepEqual(calls.filter((call) => call.startsWith('models')).map((call) => call.split(' ')[2]), ['claude_code', 'claude_code'], 'Codex is not on, so it is not read');
+    });
+
+    test('a plan whose slot does not answer does not keep the others waiting behind it', async () => {
+      const { store, manager, connections, bindings, reported, calls, state } = memoryStore2();
+      reported.models = list;
+      const runtime = agentRuntimeUseCases(on, store, manager);
+      await reconcileAgentRuntime({ config: on, store, manager });
+      for (const owner of ['ada', 'bob']) await runtime.bind(owner);
+      for (const owner of ['ada', 'bob']) {
+        const binding = bindings.find((b) => b.ownerUserId === owner)!;
+        connections.push({ ownerUserId: owner, client: 'claude_code', bindingId: binding.id, state: 'signed_in', signInMethod: null, authMethod: null, plan: null, accountLabel: null,
+          signedInAt: new Date(), accountChangedAt: null, previousAccountLabel: null, signedOutAt: null, signOutFailed: null, fingerprint: null, revoked: false });
+      }
+      const down = bindings.find((b) => b.ownerUserId === 'ada')!.slot;
+      state.get(down)!.reachable = false;
+      assert.equal((await reconcileAgentRuntime({ config: on, store, manager })).modelsRead, 1, 'the other plan is read');
+      assert.deepEqual(calls.filter((call) => call.startsWith('models')).map((call) => call.split(' ')[1]), [bindings.find((b) => b.ownerUserId === 'bob')!.slot]);
+    });
+
+    test('signing out, or signing in to another account, clears the list; the next tick reads the new account\'s', async () => {
+      const { runtime, store, manager, connections, reported } = await owned();
+      reported.models = list;
+      await record(runtime, 'claude_account', facts('ada@example.org'));
+      reported.models = null;
+      await record(runtime, 'claude_account', facts('bea@example.org'));
+      assert.equal(modelsOf(connections), null, 'another account: its own models are not known yet');
+      reported.models = [entry('haiku')];
+      assert.equal((await reconcileAgentRuntime({ config: on, store, manager })).modelsRead, 1);
+      assert.deepEqual((modelsOf(connections) as { listed: unknown }).listed, [entry('haiku')]);
+      await runtime.signOut('ada', 'claude_code', 'ada-session');
+      assert.equal(modelsOf(connections), null, 'signed out: nothing of that account stays');
+    });
+  });
 
   describe('a missing CLI is confirmed only by the durable client history (#480)', () => {
     /** The owner's runtime is removed and the worker releases it while the slot answers `not_installed` for these clients. */

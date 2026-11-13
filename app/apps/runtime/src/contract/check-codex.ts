@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { promisify } from 'node:util';
 import { allowedAppServerMethod, openAppServer } from '../supervisor/app-server.js';
+import { collectCodexModels, reduceCodexModels } from '../supervisor/models.js';
 import { effectiveConfigHolds, RUN_BRIEF } from '../supervisor/run.js';
 import { CLI_PATHS, CODEX_FEATURE_REVIEW, codexRunOverrides } from '../supervisor/templates.js';
 
@@ -14,6 +15,8 @@ import { CLI_PATHS, CODEX_FEATURE_REVIEW, codexRunOverrides } from '../superviso
 //    premise), so effectiveConfigHolds accepts it; and without them it does not. With the web on (#1065)
 //    it reads `web_search: "cached"`, which only the web-on preflight accepts.
 // 4. The app-server client refuses `command/exec` before writing anything.
+// 5. `model/list` (#1332), with no catalog of Flux's: the pinned CLI's own list answers without an account and reduces to at least one
+//    model (what a signed-in account is offered is read the same way).
 // Usage: node check-codex.js [path-to-codex]. Prints one JSON summary; exit 1 on any failure.
 
 const run = promisify(execFile);
@@ -69,6 +72,9 @@ try {
   if (effectiveConfigHolds(readOn?.config, tools, mcpUrl)) failures.push('the web-off preflight accepted the cached search');
   const plain = await openAppServer(codex, home, '127.0.0.1', { timeoutMs: 30_000, person: null });
   const bare = await plain.request('config/read', {}) as { config?: unknown };
+  const offered = reduceCodexModels(await collectCodexModels((method, params) => plain.request(method, params)));
+  report.modelList = offered.map((model) => model.id);
+  if (!offered.length) failures.push('model/list listed no model Flux can offer');
   report.refusedCommandExec = await plain.request('command/exec', { command: ['true'] }).then(() => false, (error: Error) => error.name === 'AppServerMethodRefused');
   plain.close();
   if (effectiveConfigHolds(bare?.config, tools, mcpUrl)) failures.push('config/read without overrides passed the preflight');

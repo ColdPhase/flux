@@ -4,12 +4,13 @@ import { cliEnvironment, CODEX_FILE_STORE } from './templates.js';
 
 // The allowlisted Codex app-server client (F-022 "Hardening: no local tool" and "Caps", T6 #281). It starts
 // `codex app-server` in the owner's binding directory with the CLI's own environment (never the run token),
-// speaks its JSON-RPC over stdio (one JSON object per line) and may send ONLY `initialize`, `config/read` and
-// `account/rateLimits/read`. Every other method, `command/exec` included, is refused here before anything is
-// written, because wenext measured that app-server's `command/exec` still runs with the shell features off.
+// speaks its JSON-RPC over stdio (one JSON object per line) and may send ONLY `initialize`, `config/read`,
+// `account/rateLimits/read` and `model/list` (#1332: the models the signed-in account offers; observed with 0.160.1, 2026-11-12). Every other
+// method, `command/exec` included, is refused here before anything is written, because wenext measured that app-server's
+// `command/exec` still runs with the shell features off.
 // The server's own requests and notifications are never answered. Nothing it prints is logged.
 
-export const APP_SERVER_METHODS = ['initialize', 'config/read', 'account/rateLimits/read'] as const;
+export const APP_SERVER_METHODS = ['initialize', 'config/read', 'account/rateLimits/read', 'model/list'] as const;
 export type AppServerMethod = (typeof APP_SERVER_METHODS)[number];
 
 export class AppServerMethodRefused extends Error {
@@ -19,7 +20,7 @@ export class AppServerMethodRefused extends Error {
   }
 }
 
-/** Refuses any method but the three; exported for the contract test. */
+/** Refuses any method but the four; exported for the contract test. */
 export function allowedAppServerMethod(method: string): method is AppServerMethod {
   return (APP_SERVER_METHODS as readonly string[]).includes(method);
 }

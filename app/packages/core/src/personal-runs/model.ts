@@ -1,7 +1,8 @@
 import {
-  ASSISTANT_PLAN_MODEL_PATTERN, ASSISTANT_PLAN_MODELS, AI_MODEL_ID_PATTERN, AI_PROVIDERS,
-  assistantApiModels, assistantApiPrice, assistantModelName,
+  ASSISTANT_PLAN_MODEL_PATTERN, ASSISTANT_PLANS, AI_MODEL_ID_PATTERN, AI_PROVIDERS,
+  assistantApiModels, assistantApiPrice, assistantModelName, assistantPlanModels,
   type AiConnectionRef, type AssistantModelAccount, type AssistantModelListing, type AssistantModelChoice, type AssistantModelGroup, type AssistantModelOption, type AssistantModelPick,
+  type PlanModels,
 } from '@flux/contracts';
 import type { PersonalConnection, PersonalRuntimeClient } from './ports.js';
 
@@ -15,15 +16,6 @@ export const CODEX_RUNTIME_MODEL = 'codex';
 /** Whether `model` is a well-formed id for the account's engine, before it is compared with the list. */
 export const isModelId = (value: unknown, engine: 'runtime' | 'server'): value is string =>
   typeof value === 'string' && (engine === 'runtime' ? ASSISTANT_PLAN_MODEL_PATTERN : AI_MODEL_ID_PATTERN).test(value);
-
-/** What a subscription's list holds and which model is preselected. */
-export function planModels(client: PersonalRuntimeClient) {
-  const plan = ASSISTANT_PLAN_MODELS[client];
-  return {
-    account: plan.account, company: plan.company, plan: plan.plan, default: plan.default,
-    options: plan.models.map((model): AssistantModelOption => ({ ...model, callsTools: true })),
-  };
-}
 
 export interface ModelAccount {
   engine: 'runtime' | 'server' | null;
@@ -39,11 +31,22 @@ export interface ModelAccount {
 
 export const NO_MODEL_ACCOUNT: ModelAccount = { engine: null, account: null, company: null, plan: 'account', default: '', options: [] };
 
-/** The list of a signed-in subscription. */
-export function runtimeModelAccount(client: PersonalRuntimeClient): ModelAccount {
-  const plan = planModels(client);
-  return { engine: 'runtime', account: plan.account, company: plan.company, plan: plan.plan, default: plan.default, options: plan.options };
+/**
+ * The list of a signed-in subscription (#1332): what its CLI last listed for the account (`models`), nothing of Flux's own. Before the first
+ * reading it has no models and no default.
+ */
+export function runtimeModelAccount(client: PersonalRuntimeClient, models: PlanModels | null | undefined): ModelAccount {
+  const plan = ASSISTANT_PLANS[client];
+  const listed = assistantPlanModels(models);
+  return { engine: 'runtime', account: plan.account, company: plan.company, plan: plan.plan, default: listed.default, options: listed.options };
 }
+
+/**
+ * Whether the plan stopped offering `model` (#1332): its CLI's list is known and lacks it. An unread list says nothing, so nothing is paused
+ * for a list Flux could not read; the CLI's own default (a run recorded with the engine's label) is no model of the list.
+ */
+export const planModelRetired = (models: PlanModels | null | undefined, model: string | null): boolean =>
+  !!model && runtimeModelFlag(model) !== undefined && !!models?.listed.length && !assistantPlanModels(models).options.some((option) => option.id === model && !option.retired);
 
 /** Providers whose models Flux reads with the owner's key (#1218); the others list without one, in the key form. */
 export const KEY_LISTED = new Set(['anthropic', 'openai', 'gemini']);
@@ -87,10 +90,13 @@ export function modelGroups(connections: readonly ConnectionModels[]): Assistant
   }));
 }
 
-/** Connect AI's default for a new agent (#854): the connection made first, at its default model. */
+/**
+ * Connect AI's default for a new agent (#854): the connection made first, at its default model. A plan whose CLI has not listed its models
+ * yet has none (#1332), so the first connection that has one is the default meanwhile.
+ */
 export function defaultPick(connections: readonly ConnectionModels[]): AssistantModelPick | null {
-  const first = [...connections].sort((a, b) => a.since - b.since)[0];
-  return first && first.account.default ? { connection: first.ref, model: first.account.default } : null;
+  const first = [...connections].sort((a, b) => a.since - b.since).find((item) => item.account.default);
+  return first ? { connection: first.ref, model: first.account.default } : null;
 }
 
 /** The choice as the owner sees it: every connection's models, the model in force and Connect AI's default. */
