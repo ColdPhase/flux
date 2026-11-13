@@ -1596,6 +1596,13 @@ standard switch row in Settings › Notifications, and the rest of the page stay
   the model that repeat it are not stored: a closing "Sources:" block whose lines are only addresses
   Flux lists, and citation marks that point at nothing Flux supplied (`[8]`, `[S2]`, `【3†source】`). A link
   card is drawn only for an address the list does not already hold, so each address shows once.
+- **An answer cites what it used from Flux as the same numbered chips** (#1381, [C-62](../../product/decisions.md), founder decision, Hubert, 2026-11-13). A Wiki page,
+  a section of a page, a task, a decision or a message the agent read with its tools is the small `[n]` chip of any other source, in the one list, in the order the answer
+  cites them, each object once; nothing new is drawn. The chip's label says what it opens ("Source 2: Wiki page “Calibration”, section “Install”"), and it opens exactly that:
+  the page, a section at its heading in the version it was numbered in (the Contents' `section-N`), the task or decision in Details, the message in its conversation. An answer
+  that used nothing from Flux has no chip, and Show everyone keeps the words and drops the chips, as for every source.
+  A chip of a private chat's answer whose space its owner no longer reads keeps its number, opens nothing and says only what it was ("Source 3: a Wiki page in a space you
+  no longer read"); it looks like every other chip.
 
 ![Assistant on the phone](screens/phone-assistant.webp)
 

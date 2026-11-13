@@ -12,7 +12,7 @@ error status to return instead), `stop_reason`, `input_tokens`, `output_tokens`,
 "cite": url}` answers with Anthropic's own web search in its documented shape: a `server_tool_use` block, a `web_search_tool_result` block and
 the text split around a sentence that cites `cite`, with `usage.server_tool_use.web_search_requests` 1), `tool` (#1217: `{"name": "...",
 "input": {...}}` answers a request that carries no `tool_result` yet with one call of that offered Flux tool, `stop_reason` `tool_use`; the
-next request, which carries its result, gets `text`), `stream_gap` (#1248: seconds
+next request, which carries its result, gets `text`; a list of such calls makes one call per request, in order, #1381), `stream_gap` (#1248: seconds
 between two events of a streamed answer; a request with `"stream": true` is answered as Server-Sent Events, its text in small pieces).
 
 #1218: it also answers the key listings of Anthropic, OpenAI and Gemini under `/lists/…` (`FLUX_TEST_PROVIDER_LISTS`), like the app
@@ -202,9 +202,12 @@ class Handler(BaseHTTPRequestHandler):
                 wanted = str(rule.get("text", ""))
                 break
         text = wanted.format(**labels(text_in))
-        tool = current.get("tool")
-        answered = '"tool_result"' in haystack
-        if tool and not answered and any(offered.get("name") == tool["name"] for offered in body.get("tools") or []):
+        planned = current.get("tool")
+        planned = planned if isinstance(planned, list) else [planned] if planned else []
+        # Each request carries the results of the calls before it: the next call is the one after them.
+        done = haystack.count('"tool_result"')
+        tool = planned[done] if done < len(planned) else None
+        if tool and any(offered.get("name") == tool["name"] for offered in body.get("tools") or []):
             called = {
                 "id": f"msg_{uuid.uuid4().hex}", "type": "message", "role": "assistant", "model": body.get("model"),
                 "content": [{"type": "tool_use", "id": f"toolu_ui_mock_{uuid.uuid4().hex[:8]}", "name": tool["name"], "input": tool.get("input") or {}}],

@@ -1,4 +1,4 @@
-import type { ConversationMessage } from '@flux/contracts';
+import { citeMark, type ConversationMessage } from '@flux/contracts';
 import { authorLabel, evaluateProject, firstName, sharedFirstNames } from '@flux/core';
 import { accessReader, personalRunRows, schema, type Executor } from '@flux/db';
 import { inArray } from 'drizzle-orm';
@@ -80,7 +80,7 @@ export async function withAgentLabels<T>(db: Executor, projectId: string, worksp
 }
 
 /** A message as a reading agent gets it (#1160): its author, a person or an agent, named as people see them; the rest as stored. */
-export type AgentReadMessage = Omit<ConversationMessage, 'authorId' | 'author' | 'via'> & { author: { kind: 'human' | 'agent'; id: string; name: string } };
+export type AgentReadMessage = Omit<ConversationMessage, 'authorId' | 'author' | 'via'> & { author: { kind: 'human' | 'agent'; id: string; name: string }; /** The mark that cites it in an answer (C-62). */ cite: string };
 
 /**
  * The messages of a space's conversation or a task's discussion for a reading agent: each with `author: {kind, id, name}`, where a person's
@@ -92,7 +92,7 @@ export async function messagesForAgents(db: Executor, projectId: string, message
   return messages.map((message) => {
     const { authorId: _authorId, author: _author, via, id, conversationId, sequence, createdAt, body, ...rest } = message;
     void _authorId; void _author;
-    return { id, conversationId, sequence, createdAt,
+    return { id, conversationId, sequence, createdAt, cite: citeMark('message', id),
       author: message.authorId !== null ? { kind: 'human' as const, id: message.authorId, name: authorLabel({ kind: 'human', name: names.get(message.authorId) ?? null, via: via ?? null }) }
         : { kind: 'agent' as const, id: message.author.id, name: message.author.name ?? 'Agent' },
       body, ...rest };

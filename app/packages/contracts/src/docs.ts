@@ -20,6 +20,77 @@ export const docSectionsPath = (docId: string) => `${docPath(docId)}/sections`;
 
 export const DOC_LIMITS = { title: 200, body: 100_000, reason: 500, mentions: 200, fileName: 200 } as const;
 
+/** The most headings of a page that a section citation can name (C-62): a mark carries at most three digits. */
+export const DOC_SECTIONS_MAX = 999;
+/** A heading is shown to an agent in at most this many characters. */
+const SECTION_WORDS = 80;
+
+/** The line under a table's header row (`| --- | :-: |`, `--- | ---`). */
+const TABLE_RULE = /^ {0,3}\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)+\|?[ \t]*$/;
+
+/** A heading's words as the page shows them: links as their text, without the marks `* _ ~`, backticks and escapes, cut at `SECTION_WORDS`. */
+function headingWords(raw: string): string {
+  const words = raw.replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/[*_`~\\]/g, '').replace(/\s+/g, ' ').trim();
+  return words.length > SECTION_WORDS ? `${words.slice(0, SECTION_WORDS - 1)}…` : words;
+}
+
+/**
+ * The headings of levels 1 to 3 of a page's Markdown, in order, as the page's Contents numbers them (`section-1`, `section-2`, …; F-026 Wiki,
+ * from the rendered page's `h1`–`h3`) and as an agent cites them (`[doc:ID#2]`, C-62): ATX headings (`## Install`), also inside a quote (`> ## …`)
+ * or a list item (`- ## …`), and a paragraph underlined with `===` (level 1) or `---` (level 2), never inside fenced or indented code. Their
+ * words without the closing hashes and the marks `* _ ~` and backticks. A heading with no words is not numbered, as in the page. Each line is
+ * looked at once and cut at 400 characters first, so a page of 100,000 characters costs no more than its length.
+ */
+export function docHeadings(markdown: string): string[] {
+  const found: string[] = [];
+  let fence: string | null = null;
+  /** The lines of the paragraph above, which an underline makes a heading. */
+  let paragraph: string[] = [];
+  /** Inside a quote, a list item or a table until a blank line: a line there continues it, and an underline under it is a rule, not a heading. */
+  let inBlock = false;
+  const add = (raw: string) => { const words = headingWords(raw); if (words) found.push(words); };
+  for (const whole of markdown.split('\n')) {
+    const line = whole.slice(0, 400);
+    const edge = /^ {0,3}(`{3,}|~{3,})/.exec(line);
+    if (fence !== null) {
+      if (edge && edge[1]![0] === fence[0] && edge[1]!.length >= fence.length && !line.slice(edge[0].length).trim()) fence = null;
+      continue;
+    }
+    if (edge) { fence = edge[1]!; paragraph = []; continue; }
+    if (!line.trim()) { paragraph = []; inBlock = false; continue; }
+    // An underline: the paragraph above is a heading (a `---` under no paragraph is a rule).
+    const under = /^ {0,3}(=+|-+)[ \t]*$/.exec(line);
+    if (under && paragraph.length) {
+      add(paragraph.join(' '));
+      paragraph = [];
+    } else if (/^ {4}|^\t/.test(line) && !paragraph.length) {
+      // Indented code, unless it continues a paragraph.
+      continue;
+    } else {
+      // A quote's or a list item's marks before the line's own start.
+      const inner = line.replace(/^(?: {0,3}>[ \t]?)+/, '').replace(/^ {0,3}(?:[-+*]|\d{1,9}[.)])[ \t]+/, '');
+      const head = /^ {0,3}(#{1,3})(?:[ \t]+|$)/.exec(inner);
+      if (head) {
+        let words = inner.slice(head[0].length).trimEnd();
+        let end = words.length;
+        while (end > 0 && words[end - 1] === '#') end--;
+        if (end < words.length && (end === 0 || words[end - 1] === ' ' || words[end - 1] === '\t')) words = words.slice(0, end).trimEnd();
+        add(words);
+        paragraph = [];
+      } else if (/^ {0,3}(?:#{4,6}(?:[ \t]|$)|[-*_](?:[ \t]*[-*_]){2,}[ \t]*$)/.test(line)) {
+        // A deeper heading or a rule (`- - -` too) ends the paragraph above.
+        paragraph = [];
+      } else if (inner !== line || TABLE_RULE.test(line)) {
+        // A quote, a list item or a table: what follows until a blank line belongs to it.
+        paragraph = [];
+        inBlock = true;
+      } else if (!inBlock) paragraph.push(line.trim());
+    }
+    if (found.length >= DOC_SECTIONS_MAX) return found.slice(0, DOC_SECTIONS_MAX);
+  }
+  return found;
+}
+
 /**
  * Why a person's save is the version it is, when the change itself does not say. The server checks the cause against the
  * page and writes the sentence History shows ("Restored version 3"); a person never writes a version's reason. Without a

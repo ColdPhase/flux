@@ -1,5 +1,6 @@
 import type { AgentToolRegistrar, ToolCall } from './tool-registry.js';
 import { z } from 'zod';
+import { citeMark, docHeadings, type CiteKind } from '@flux/contracts';
 import { conversationUseCases, DomainError, getProject, NotFoundError } from '@flux/core';
 import { accessPorts, schema, type Database } from '@flux/db';
 import { eq } from 'drizzle-orm';
@@ -27,6 +28,8 @@ const TEXT_CHUNK = 20_000;
 const RUN_TEXT_CHUNK = 12_000;
 const RUN_TEXT_ENCODED_BYTES = 12 * 1024;
 const RUN_PAGE_LIMIT = 10;
+/** How many of a page's headings a read lists: enough to cite a section of a long page, few enough to cost little (C-62). */
+const SECTIONS_SHOWN = 40;
 const annotations = { readOnlyHint: true };
 /** Chunking always reports coverage; a continuation cannot silently switch source versions. */
 function textChunk(body: string, version: number, offset: number, expected: number | undefined, run: boolean) {
@@ -49,6 +52,10 @@ function runChunkEnd(body: string, offset: number) {
   if (end < body.length && end - 1 > offset && /[\uD800-\uDBFF]/.test(body[end - 1]!)) end -= 1;
   return end;
 }
+
+/** An object a tool returns, with the mark that cites it in an answer (C-62): the agent copies `cite` and never composes one. */
+const cited = <T extends { id: string }>(kind: CiteKind, item: T): T & { cite: string } => ({ ...item, cite: citeMark(kind, item.id) });
+const citedItems = <T extends { id: string }>(kind: CiteKind, page: { items: T[] }) => ({ ...page, items: page.items.map((item) => cited(kind, item)) });
 
 /** Canonical readers under the owner's rights. No separate MCP object model. */
 export function registerAgentDomainReads(server: AgentToolRegistrar, db: Database) {
@@ -95,33 +102,36 @@ export function registerAgentDomainReads(server: AgentToolRegistrar, db: Databas
 
   server.registerTool('flux_list_work', { title: 'List native project tasks',
     description: 'A page of the project board\'s tasks, with versions and links.',
-    inputSchema: projectPage, annotations }, ({ projectId, ...query }, call) => result(call, projectId, ({ tx, principal }) => workUseCases(tx).listWork(principal, projectId, capped(call, query))));
+    inputSchema: projectPage, annotations }, ({ projectId, ...query }, call) => result(call, projectId, async ({ tx, principal }) => citedItems('task', await workUseCases(tx).listWork(principal, projectId, capped(call, query)))));
   server.registerTool('flux_get_work', { title: 'Read a native task',
     description: 'Read one task. With discussion.messages, flux_get_task_discussion reads what people said about it.',
     inputSchema: object, annotations }, ({ projectId, id }, call) => result(call, projectId, async ({ tx, principal, requireObject, workspaceId }) => {
     await requireObject(projectId, 'work', id);
-    const work = await workUseCases(tx).getWork(principal, id);
+    const work = cited('task', await workUseCases(tx).getWork(principal, id));
     // The task's discussion, when it holds messages (#1410): its facts are often there and not in the task itself.
     const messages = (await taskDiscussionSizes(tx, workspaceId, [id])).get(id);
     return messages ? { ...work, discussion: { messages } } : work;
   }));
   server.registerTool('flux_list_decisions', { title: 'List project decisions', description: 'A page of decisions: proposed, accepted and superseded.',
-    inputSchema: projectPage, annotations }, ({ projectId, ...query }, call) => result(call, projectId, ({ tx, principal }) => workUseCases(tx).listDecisions(principal, projectId, capped(call, query))));
+    inputSchema: projectPage, annotations }, ({ projectId, ...query }, call) => result(call, projectId, async ({ tx, principal }) => citedItems('decision', await workUseCases(tx).listDecisions(principal, projectId, capped(call, query)))));
   server.registerTool('flux_get_decision', { title: 'Read a project decision', description: 'Read one decision, its authors and status.',
     inputSchema: object, annotations }, ({ projectId, id }, call) => result(call, projectId, async ({ tx, principal, requireObject }) => {
-    await requireObject(projectId, 'decision', id); return workUseCases(tx).getDecision(principal, id);
+    await requireObject(projectId, 'decision', id); return cited('decision', await workUseCases(tx).getDecision(principal, id));
   }));
 
-  server.registerTool('flux_list_docs', { title: 'List project wiki', description: 'A page of wiki titles, versions and publication states.',
-    inputSchema: projectPage, annotations }, ({ projectId, ...query }, call) => result(call, projectId, ({ tx, principal }) => docUseCases(tx).listProjectDocs(principal, projectId, capped(call, query))));
+  server.registerTool('flux_list_docs', { title: 'List project wiki',
+    description: 'The space\'s Wiki: a page of titles, versions and states, newest change first. For how, what or why in the space, look here before you say you do not know.',
+    inputSchema: projectPage, annotations }, ({ projectId, ...query }, call) => result(call, projectId, async ({ tx, principal }) => citedItems('doc', await docUseCases(tx).listProjectDocs(principal, projectId, capped(call, query)))));
   server.registerTool('flux_get_doc', { title: 'Read project wiki text',
-    description: 'Read a wiki document in 20,000-character pages; continue with nextOffset and the same version.',
+    description: 'Read a Wiki page in 20,000-character pages; continue with nextOffset and the same version. For a how, what or why question about the space, read the page that fits, '
+      + 'not only a search snippet. To cite it, copy its cite, or with a section from its sections (first page, in order) [doc:ID#2].',
     inputSchema: z.object({ projectId: z.uuid(), id: z.uuid(), ...chunk }), annotations },
   ({ projectId, id, offset, version }, call) => result(call, projectId, async ({ tx, principal, requireObject }) => {
     await requireObject(projectId, 'doc', id);
     const { body, html: _html, ...doc } = await docUseCases(tx).getDoc(principal, id);
     void _html;
-    return { ...doc, ...textChunk(body, doc.version, offset, version, isRun(call)) };
+    // The page's headings, as its Contents numbers them (C-62): an answer cites a section by its place in this list.
+    return { ...doc, cite: citeMark('doc', doc.id), ...(offset === 0 ? { sections: docHeadings(body).slice(0, SECTIONS_SHOWN) } : {}), ...textChunk(body, doc.version, offset, version, isRun(call)) };
   }));
 
   server.registerTool('flux_list_conversations', { title: 'List project conversations', description: 'A page of project conversations.',
