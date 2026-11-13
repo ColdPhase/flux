@@ -787,7 +787,11 @@ def phase_a11y(pw, engine: str, data: dict) -> None:
                         # Reduced motion: nothing keeps moving (spinners excepted are reported too, for a person to judge).
                         rec["motion_reduce"] = page.evaluate(MOTION_JS)
                         if theme == THEMES[0] and win == A11Y_WINDOWS[0]:
+                            # Rule 8 is about motion as people see it by default: measured without reduced motion, which zeroes every duration.
+                            page.emulate_media(reduced_motion="no-preference")
+                            page.wait_for_timeout(200)
                             rec["transitions"] = page.evaluate(TRANSITIONS_JS)
+                            page.emulate_media(reduced_motion="reduce")
                         # Focus: Tab through up to 30 stops (keyboard-only on a computer; on a tablet with a keyboard too).
                         if not screen.steps or screen.name in ("create", "search", "new-project", "project-more", "message-actions"):
                             stops = []
