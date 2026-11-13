@@ -97,11 +97,8 @@ class DirectMessageFiles(unittest.TestCase):
                 self.assertGreaterEqual(min(box["width"], box["height"]), 44 if phone else 24)
                 name = f"notes-{'phone' if phone else 'desk'}.csv"
                 self.attach(ada, [{"name": name, "mimeType": "text/csv", "buffer": NOTES}, {"name": "bed.png", "mimeType": "image/png", "buffer": PHOTO}])
-                if phone:
-                    sheet = ada.get_by_role("dialog", name="Choose files to send")
-                    for item in (name, "bed.png"):
-                        sheet.get_by_role("button", name=item).click()
-                    sheet.get_by_role("button", name="Add 2").click()
+                # On the phone too the chosen files go straight into the draft: there is no sheet to pick them again (#1419, train 16).
+                expect(ada.get_by_text("Choose files to send")).to_have_count(0)
                 draft = ada.get_by_role("list", name="Files in your draft")
                 expect(draft.get_by_role("listitem")).to_have_count(2)
                 expect(draft.get_by_text("Ready, private", exact=False)).to_have_count(2)
