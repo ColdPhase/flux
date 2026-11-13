@@ -405,9 +405,8 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
   the sidebar folds with its own control and `[`, and the rail and the navigation button open it ([#1376](https://github.com/ColdPhase/flux/issues/1376)). There is no Agents view, no Focus, no goal and no "needs you" count.
 - **One detail panel.** A task, a decision or a thread opens in the same right-hand panel, and the
   conversation stays visible. Opening another object replaces the panel's content, with "‹ back".
-  `Esc` closes it. In the phone's thread sheet the root stands at the top of the list with no gap above it (the sheet's
-  height is its own, not spare screen), and a reply the person has just sent stays whole above the field
-  ([#1424](https://github.com/ColdPhase/flux/issues/1424)).
+  `Esc` closes it. A reply the person has just sent stays whole above the field in a thread, also in the phone's sheet, whatever the
+  engine does with the list as the reply is stored ([#1424](https://github.com/ColdPhase/flux/issues/1424)).
 - **Search.** ⌘K, the sidebar's Search and the phone's Search open the same tool (S16).
 - **Settings.** One list of sections on the left and the section on the right, under a header that
   never changes. No section is lost at 820 px.
