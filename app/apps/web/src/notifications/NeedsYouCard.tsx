@@ -100,7 +100,10 @@ export function NeedsYouCard({ item, selected = false, compact = false, list = f
   const run = item.assistantChanges ?? null;
   // A call's notice or an invitation to a call is a Call (F-041), with Join.
   const word = kindWord(item);
-  const label = run ? `${run.agentName}, your agent: ${item.title}` : `${word}: ${item.title}`;
+  // Its name says who and where as its muted line does ("Question from Jonas in Rain barrel monitor: …"), also on a phone row, which has no room
+  // to draw the space (#1424): a question's title is what was asked, not a sentence that names them.
+  const label = run ? `${run.agentName}, your agent: ${item.title}`
+    : `${[word, item.from?.name ? `from ${item.from.name}` : null, item.project ? `in ${item.project.name}` : null].filter(Boolean).join(' ')}: ${item.title}`;
   const meta = (run ? ['Your agent', project]
     : decision ? ['Decision', project] : item.kind === 'blocked' ? [item.blocked?.waitedBy ? 'Waiting on you' : 'Your task', project, ago(item.at)] : [word, project]).filter(Boolean).join(' · ');
   const who = run?.agentName ?? item.from?.name ?? null;

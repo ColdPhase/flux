@@ -356,6 +356,8 @@ class InboxFinal(unittest.TestCase):
         expect(self.card(page, MENTIONED).locator(".nyc__open")).to_have_text(f"@Ada Kowalska {MENTIONED}")
         expect(cards.filter(has_text="asked you")).to_have_count(0)
         expect(cards.filter(has_text="mentioned you")).to_have_count(0)
+        # Its name says who and where too, since the title no longer does (a screen reader hears what the muted line shows).
+        expect(cards.filter(has_text=ASKED).first).to_have_attribute("aria-label", f"Question from Jonas Berg in Community garden sensors: @Ada Kowalska {ASKED}")
         self.assertEqual(cards.locator(".nyc__eyebrow--row b").count(), 0, "no bold name leads a row")
         for text in eyebrows:
             self.assertNotRegex(text, r"\d+ ?(min|h|d)\b|ago|yesterday", f"no time in a row: {text}")
