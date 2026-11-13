@@ -7,7 +7,7 @@ import { parseRuntimeSwitch, RUNTIME_PORTS, RUNTIME_SECRET, SLOT_NAME } from '@f
 import { runCapacity } from './capacity.js';
 import type { SupervisorConfig } from './handlers.js';
 import { hostProblem } from './requirements.js';
-import { findSandbox } from './sandbox.js';
+import { findSandbox, parseTestExec } from './sandbox.js';
 import { createSupervisorServer } from './server.js';
 import { CLI_PATHS } from './templates.js';
 
@@ -87,9 +87,8 @@ async function start() {
     egressHost: 'runtime-egress',
     bindingLimitBytes: 256 * 1024 * 1024,
     cliTimeoutMs: 30_000,
-    // TEST ONLY (#1437): the check images run the real CLIs through wrapper scripts, whose programs the CLI's domain must also execute.
-    sandbox: sandbox.setup && env.FLUX_RUNTIME_TEST_EXEC
-      ? { ...sandbox.setup, testExec: env.FLUX_RUNTIME_TEST_EXEC.split(':').filter((path) => path.startsWith('/')) } : sandbox.setup,
+    // TEST ONLY (#1437): the check image starts each real CLI through a static wrapper, so that CLI's domain must also execute the real program.
+    sandbox: sandbox.setup && env.FLUX_RUNTIME_TEST_EXEC ? { ...sandbox.setup, testExec: parseTestExec(env.FLUX_RUNTIME_TEST_EXEC) } : sandbox.setup,
   };
 
   const { server } = createSupervisorServer(config);

@@ -365,7 +365,7 @@ INTERNAL: dict[str, str] = {
     "FLUX_MODEL_GATEWAY_TOKEN": "Per-run model gateway token the runtime gives the harness of an API-key run (#1441).",
     "FLUX_SANDBOX_DIR": "The run's scratch the runtime gives the CLI it starts, for its sandbox shell (#1437); never an operator setting.",
     "FLUX_SANDBOX_BROKER": "The socket of the run's broker the runtime gives the CLI it starts, for its sandbox shell (#1437); never an operator setting.",
-    "FLUX_RUNTIME_TEST_EXEC": "Test image only: what the check images' CLI wrappers must also execute inside the CLI's sandbox domain (#1437).",
+    "FLUX_RUNTIME_TEST_EXEC": "Test image only: `codex=<file>,claude_code=<file>`, the real program each check wrapper starts, allowed in that CLI's sandbox domain (#1437).",
     "FLUX_IMAGE_TAG": "Set by `./flux` to the Compose project, so each checkout builds its own image tag.",
     "FLUX_GIT_COMMIT": "Set by `./flux` from `git`; recorded as an image label and in backup manifests.",
     "FLUX_ROOT": "The launcher's own directory.",

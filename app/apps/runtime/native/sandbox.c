@@ -3,7 +3,7 @@
  * a file of the run's scratch to `flux_attach_file`. No capability is needed: Landlock, rlimits, nice and a higher OOM score are all
  * things a process may do to itself. Everything it starts inherits them, and nothing it starts can undo them.
  *
- *   flux-sandbox cli <scratch> [--home <dir>]... [--read <dir>]... [--exec <path>]... -- <cli> <args>
+ *   flux-sandbox cli <scratch> [--home <dir>]... [--read <dir>]... [--exec <program>]... -- <cli> <args>
  *                                (as the person) the CLI itself, under a domain that lets it write only its own homes and the
  *                                run's scratch and read only those, `--read` directories and the system: never another CLI's home.
  *                                It may run nothing but its own program (with the loader or interpreter that program names) and
@@ -21,6 +21,8 @@
  *                                of any kind (seccomp: no UDP or DNS, which Landlock does not cover, and no Unix socket by path, which
  *                                Landlock does not see either), no io_uring, no signal or abstract socket outside it (ABI 6), a clean
  *                                environment, lower priority and the per-run limits below.
+ *   flux-sandbox starts [--exec <program>]... -- <program>
+ *                                prints, resolved, every file the CLI's domain for <program> may execute (for the checks).
  *   flux-sandbox read <dir> <path> <max>   (as the person) writes the regular file <path> of the scratch <dir> to stdout, if it has
  *                                at most <max> bytes, reading under a Landlock domain that holds that directory only.
  *   flux-sandbox abi             prints the kernel's Landlock ABI version (0: none), for the supervisor's start.
@@ -567,6 +569,49 @@ static int shim(const char *name, int argc, char **argv) {
   return 1;
 }
 
+/* TEST ONLY `--exec`: 1 a program file (an ELF, never a script, so no interpreter comes with it), 0 missing (nothing to allow), -1 anything else. */
+static int test_program(const char *path) {
+  struct stat st;
+  if (!path || path[0] != '/') return -1;
+  if (stat(path, &st) != 0) return errno == ENOENT ? 0 : -1;
+  if (!S_ISREG(st.st_mode)) return -1;
+  int fd = open(path, O_RDONLY | O_CLOEXEC);
+  unsigned char head[4] = { 0 };
+  ssize_t got = fd >= 0 ? pread(fd, head, sizeof(head), 0) : -1;
+  if (fd >= 0) close(fd);
+  return got == 4 && memcmp(head, ELFMAG, SELFMAG) == 0 ? 1 : -1;
+}
+
+/* Every file the CLI's domain may execute: its program with what that one needs to start, the TEST ONLY programs with theirs, and this sandbox. */
+static size_t exec_set(const char *program, const char *const *test, size_t tests, struct grant *out, size_t room) {
+  if (room < 2) return 0;
+  size_t count = starts_with(program, out, room - 1, 0);
+  for (size_t i = 0; i < tests && count < room - 1; i += 1) count += starts_with(test[i], out + count, room - 1 - count, 1);
+  out[count++] = (struct grant){ "/proc/self/exe", FS_EXECUTE | FS_READ_FILE };
+  return count;
+}
+
+/* `flux-sandbox starts [--exec <program>]... -- <program>`: the files a CLI's domain may execute, resolved, one a line (for the checks). */
+static int starts(int argc, char **argv) {
+  const char *test[2];
+  size_t tests = 0;
+  int at = 2;
+  for (; at + 1 < argc && strcmp(argv[at], "--exec") == 0; at += 2) {
+    int kind = test_program(argv[at + 1]);
+    if (kind < 0) { errno = 0; return fail("starts: --exec takes one program file (not a directory, not a script)"); }
+    if (kind > 0 && tests < sizeof(test) / sizeof(*test)) test[tests++] = argv[at + 1];
+  }
+  if (at + 1 != argc - 1 || strcmp(argv[at], "--") != 0) { errno = 0; return fail("starts: --exec <program>... -- <program>"); }
+  struct grant set[8];
+  size_t count = exec_set(argv[at + 1], test, tests, set, sizeof(set) / sizeof(*set));
+  for (size_t i = 0; i < count; i += 1) {
+    char *real = realpath(set[i].path, NULL);
+    printf("%s\n", real ? real : set[i].path);
+    free(real);
+  }
+  return 0;
+}
+
 /* A home of the person's CLI: a real directory of this user's, mode 0700, directly below their binding directory. */
 static int home_ok(const char *dir) {
   if (!dir || strncmp(dir, "/data/", 6) != 0 || strstr(dir, "/..") || strlen(dir) > 200) return 0;
@@ -577,15 +622,18 @@ static int home_ok(const char *dir) {
 static int cli(int argc, char **argv) {
   if (argc < 5 || !scratch_ok(argv[2])) { errno = 0; return fail("cli: the first argument must be the run's scratch directory"); }
   struct grant extra[MAX_EXTRA];
-  size_t extras = 0;
+  size_t extras = 0, tests = 0;
+  const char *test[2];
   int at = 3;
   /* Nothing the CLI may write or read can be executed: its homes, the scratch and every directory are without EXECUTE (#1437). */
   for (; at + 1 < argc && strcmp(argv[at], "--") != 0; at += 2) {
     int home = strcmp(argv[at], "--home") == 0, readable = strcmp(argv[at], "--read") == 0;
     struct stat st;
-    /* TEST ONLY (the check images' wrappers, FLUX_RUNTIME_TEST_EXEC): one more file or directory the CLI may execute. */
+    /* TEST ONLY (the check image's wrapper starts the real CLI, FLUX_RUNTIME_TEST_EXEC): one more program the CLI may execute. */
     if (strcmp(argv[at], "--exec") == 0) {
-      if (extras < 6 && argv[at + 1][0] == '/' && stat(argv[at + 1], &st) == 0) extra[extras++] = (struct grant){ argv[at + 1], FS_EXECUTE | FS_READ_FILE | FS_READ_DIR };
+      int kind = test_program(argv[at + 1]);
+      if (kind < 0) { errno = 0; return fail("cli: --exec takes one program file (not a directory, not a script)"); }
+      if (kind > 0 && tests < sizeof(test) / sizeof(*test)) test[tests++] = argv[at + 1];
       continue;
     }
     if (extras >= 6 || (!home && !readable)) { errno = 0; return fail("cli: unknown or too many options"); }
@@ -603,8 +651,7 @@ static int cli(int argc, char **argv) {
    * sandbox, which under the names bash and sh hands every command to the broker. A shell, interpreter or any other program a model
    * names (Codex 0.160.1's `exec_command` takes a `shell`) is refused by the kernel, so no command runs in this domain.
    */
-  extras += starts_with(argv[at + 1], extra + extras, MAX_EXTRA - extras - 1, 0);
-  extra[extras++] = (struct grant){ "/proc/self/exe", FS_EXECUTE | FS_READ_FILE };
+  extras += exec_set(argv[at + 1], test, tests, extra + extras, MAX_EXTRA - extras);
   if (abi_version() < 4) { errno = 0; return fail("this kernel's Landlock cannot forbid TCP (ABI 4, Linux 6.7), so the CLI cannot run with its tools"); }
   if (raise_oom_score() != 0) return fail("cannot raise the OOM score");
   if (set_limit(RLIMIT_CORE, 0, 0)) return fail("cannot set the limits");
@@ -656,8 +703,9 @@ int main(int argc, char **argv) {
   if (argc == 2 && strcmp(argv[1], "abi") == 0) { printf("%d\n", abi_version()); return 0; }
   if (argc >= 2 && strcmp(argv[1], "cli") == 0) return cli(argc, argv);
   if (argc == 4 && strcmp(argv[1], "broker") == 0) return broker(argv[2], argv[3]);
+  if (argc >= 4 && strcmp(argv[1], "starts") == 0) return starts(argc, argv);
   if (argc == 5 && strcmp(argv[1], "read") == 0) return read_file(argv[2], argv[3], argv[4]);
-  fprintf(stderr, "usage: flux-sandbox abi | flux-sandbox cli <scratch> [--home|--read <dir>|--exec <path>]... -- <cli> <args> | flux-sandbox broker <scratch> <socket>"
-    " | flux-sandbox read <scratch> <path> <max-bytes>, or as bash or sh\n");
+  fprintf(stderr, "usage: flux-sandbox abi | flux-sandbox cli <scratch> [--home|--read <dir>|--exec <program>]... -- <cli> <args> | flux-sandbox broker <scratch> <socket>"
+    " | flux-sandbox starts [--exec <program>]... -- <program> | flux-sandbox read <scratch> <path> <max-bytes>, or as bash or sh\n");
   return 2;
 }

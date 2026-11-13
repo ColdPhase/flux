@@ -126,6 +126,24 @@ check claude-check
 step "5. Claude Code /ai: read the conversation, create a task, read a page (Flux MCP through runtime-egress)"
 check ai claude
 
+step "5a. What each real CLI's sandbox domain may execute (#1437): production's set and the test wrapper's one file, no /bin/sh, no directory"
+# The supervisor passes exactly these (FLUX_RUNTIME_TEST_EXEC, per CLI); `flux-sandbox starts` prints the files that domain may execute, resolved.
+sandbox=/opt/flux-runtime/sandbox/flux-sandbox
+claude_real=$(docker exec "$(slot_cid)" readlink -f /opt/flux-tools/claude/bin/claude-real)
+for pair in "claude:/opt/flux-tools/claude/bin/claude:/opt/flux-tools/claude/bin/claude-real:$claude_real" "codex:/opt/flux-runtime/codex/bin/codex:/opt/flux-cli-mock/codex:/opt/flux-cli-mock/codex"; do
+  IFS=: read -r name wrapper real resolved <<EOF2
+$pair
+EOF2
+  set_test=$(docker exec "$(slot_cid)" "$sandbox" starts --exec "$real" -- "$wrapper") || fail "flux-sandbox starts failed for $name"
+  set_prod=$(docker exec "$(slot_cid)" "$sandbox" starts -- "$real") || fail "flux-sandbox starts failed for $name's own program"
+  printf '%s domain (test): %s\n%s domain (production, the CLI as its own program): %s\n' "$name" "$(printf '%s' "$set_test" | tr '\n' ' ')" "$name" "$(printf '%s' "$set_prod" | tr '\n' ' ')"
+  # The test's set is production's plus the wrapper file, nothing else.
+  [ "$(printf '%s\n' "$set_test" | grep -vxF "$wrapper" | sort)" = "$(printf '%s\n' "$set_prod" | sort)" ] || fail "$name: the test domain is not production's plus the wrapper"
+  printf '%s\n' "$set_prod" | grep -qxF "$resolved" || fail "$name: its own program is not in its domain"
+  if printf '%s\n' "$set_test" | grep -qE '^/bin/(sh|bash|busybox)$|^/usr/bin/'; then fail "$name: a shell or system program is executable in its domain"; fi
+done
+[ "$(docker exec "$(slot_cid)" "$sandbox" starts -- /opt/flux-cli-mock/codex)" = "$(printf '/opt/flux-cli-mock/codex\n%s' "$sandbox")" ] || fail "the pinned Codex needs a loader (it is static)"
+
 step "5b. Claude Code's own Bash, Read, Write, Edit, Grep and Glob (#1437): in Flux's per-run sandbox, under a CLI domain that runs only its own program and the sandbox, in the run's scratch; no login, /data or TCP from the shell; HTML to PDF with pandoc and typst, attached with flux_attach_file"
 check own-tools claude
 

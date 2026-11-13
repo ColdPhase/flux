@@ -379,7 +379,7 @@ export async function runCli(config: SupervisorConfig, request: RunRequest, dir:
   // It executes nothing but its own program and the sandbox shell, which hands each command to the run's broker.
   const homes = codex ? ['--home', join(dir, CLIENT_DIRS.codex), '--read', join(dir, 'home')] : ['--home', join(dir, CLIENT_DIRS.claude_code), '--home', join(dir, 'home')];
   const [file, args] = sandbox && scratch
-    ? [sandbox.binary, ['cli', scratch, ...homes, '--read', runDir, ...(sandbox.testExec ?? []).flatMap((path) => ['--exec', path]), '--', config.cliPaths[request.client], ...argv]]
+    ? [sandbox.binary, ['cli', scratch, ...homes, '--read', runDir, ...(sandbox.testExec?.[request.client] ? ['--exec', sandbox.testExec[request.client]!] : []), '--', config.cliPaths[request.client], ...argv]]
     : [config.cliPaths[request.client], argv];
   /** The run's searches the CLI started and whose result has not come back yet: tool use id → the search's number. */
   const searching = new Map<string, number>();

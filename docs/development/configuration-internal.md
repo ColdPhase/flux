@@ -57,7 +57,7 @@ the wiring between services or enables test-only code.
 | `FLUX_RUNTIME_SLOT` | Set by Compose on the runtime to its own name. |
 | `FLUX_RUNTIME_SLOT_1` | Set by Compose on the runtime manager from `FLUX_RUNTIME_SECRET_1`. |
 | `FLUX_RUNTIME_SLOT_SECRET` | Set by Compose on the runtime from `FLUX_RUNTIME_SECRET_1`. |
-| `FLUX_RUNTIME_TEST_EXEC` | Test image only: what the check images' CLI wrappers must also execute inside the CLI's sandbox domain (#1437). |
+| `FLUX_RUNTIME_TEST_EXEC` | Test image only: `codex=<file>,claude_code=<file>`, the real program each check wrapper starts, allowed in that CLI's sandbox domain (#1437). |
 | `FLUX_RUN_TOKEN` | Per-run bearer the runtime gives the CLI it starts. |
 | `FLUX_SANDBOX_BROKER` | The socket of the run's broker the runtime gives the CLI it starts, for its sandbox shell (#1437); never an operator setting. |
 | `FLUX_SANDBOX_DIR` | The run's scratch the runtime gives the CLI it starts, for its sandbox shell (#1437); never an operator setting. |
