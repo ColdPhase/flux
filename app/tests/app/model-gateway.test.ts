@@ -233,6 +233,31 @@ describe('answers whose cost is not known, and the provider\'s error answers', (
     await gateway.close(stalled.id);
   });
 
+  test('a whole answer slower than the idle bound is waited for (a long answer is written before its first byte) and charged its usage', async () => {
+    const run = await runOn('openai_compatible', 'qwen3-coder');
+    script = (_req, _body, res) => { setTimeout(() => whole({ usage: { prompt_tokens: 12, completion_tokens: 7 } })(_req, _body, res), LIMITS.idleMs * 2); };
+    const answer = await call('/openai_compatible/chat/completions', run.token, body, 'authorization');
+    assert.equal(answer.status, 200);
+    assert.equal((await row(run.id)).charged_micros, maxRequestMicros(PRICE, 12, 7));
+    await gateway.close(run.id);
+  });
+
+  test('an unknown token, or a run with all its places taken, is refused before its body is read', async () => {
+    const big = { ...body, messages: [{ role: 'user', content: 'x'.repeat(40 * 1024) }] };
+    const unknown = await call('/anthropic/v1/messages', `flux_mg_${'A'.repeat(43)}`, big);
+    assert.equal(unknown.status, 401, 'refused for its token before its body is read');
+    const run = await runOn('openai_compatible', 'qwen3-coder');
+    const waiting: ServerResponse[] = [];
+    script = (_req, _body, res) => { waiting.push(res); };
+    const calls = [0, 1, 2, 3].map(() => call('/openai_compatible/chat/completions', run.token, body, 'authorization'));
+    while (waiting.length < 4) await new Promise((done) => setTimeout(done, 20));
+    const fifth = await call('/openai_compatible/chat/completions', run.token, { ...big, model: 'qwen3-coder' }, 'authorization');
+    assert.equal(fifth.status, 429, 'a fifth request of the run is refused before its body is read');
+    for (const res of waiting) whole({ usage: { prompt_tokens: 1, completion_tokens: 1 } })(null as never, '', res);
+    await Promise.all(calls);
+    await gateway.close(run.id);
+  });
+
   test('an error answer is passed back without the key or anything shaped like one, and costs nothing', async () => {
     const run = await runOn('openai', 'gpt-6-mini');
     script = (_req, _body, res) => {
@@ -281,11 +306,17 @@ describe('tokens', () => {
 
   test('a run that was stopped or ended refuses its token and is told to stop; tokens are only for working runtime runs on a key', async () => {
     const run = await runOn('anthropic', 'claude-sonnet-5');
+    // The run's engine watches its run (#1441 review): told at once, and only once, so it stops pi there.
+    const told: string[] = [];
+    const unwatch = gateway.watch(run.id, (reason) => told.push(reason));
     await pool.query('UPDATE personal_runs SET stop_requested_at = now() WHERE id = $1', [run.id]);
     const answer = await call('/anthropic/v1/messages', run.token, body);
     assert.equal(answer.status, 403);
     assert.equal((JSON.parse(answer.text) as { error: { code: string } }).error.code, 'flux_run_ended');
     assert.ok(stops.some(([id, reason]) => id === run.id && reason === 'ended'));
+    assert.equal((await call('/anthropic/v1/messages', run.token, body)).status, 403);
+    assert.deepEqual(told, ['ended'], 'the engine is told once');
+    unwatch();
     const done = await runOn('anthropic', 'claude-sonnet-5');
     await pool.query("UPDATE personal_runs SET status = 'completed', completed_at = now() WHERE id = $1", [done.id]);
     assert.equal((await call('/anthropic/v1/messages', done.token, body)).status, 403);
@@ -337,6 +368,8 @@ describe('money and limits', () => {
     // Another runtime run on the same key, finished today, spent 100,000: it counts against the day (#854, #1441).
     await pool.query("UPDATE personal_runs SET status = 'completed', cost_state = 'observed', charged_micros = 100000, reserved_micros = 100000 WHERE id = $1", [first.id]);
     const second = await runOn('anthropic', 'claude-sonnet-5', { connectionId, dailyBudgetCents: budgetCents });
+    const told: string[] = [];
+    const unwatch = gateway.watch(second.id, (reason) => told.push(reason));
     const before = received.length;
     const refused = await call('/anthropic/v1/messages', second.token, body);
     assert.equal(refused.status, 402);
@@ -345,6 +378,8 @@ describe('money and limits', () => {
     assert.equal(received.length, before, 'nothing reached the provider');
     assert.equal(gateway.account(second.id).stopped, 'budget');
     assert.ok(stops.some(([id, reason]) => id === second.id && reason === 'budget'));
+    assert.deepEqual(told, ['budget'], 'the run\'s engine is told at once, so it stops pi');
+    unwatch();
     await gateway.close(second.id);
   });
 
@@ -363,6 +398,21 @@ describe('money and limits', () => {
     assert.deepEqual((await Promise.all(calls)).map((answer) => answer.status), [200, 200, 200, 200]);
     const each = maxRequestMicros(PRICE, 10, 10);
     assert.deepEqual([(await row(run.id)).charged_micros, (await row(run.id)).reserved_micros], [4 * each, 4 * each]);
+    await gateway.close(run.id);
+  });
+
+  test('the bodies of all requests in flight share one bound in the worker\'s memory: past it, send again shortly', async () => {
+    const run = await runOn('anthropic', 'claude-sonnet-5');
+    const small = createModelGatewayServer({ gateway, policy: parsePrivateTargets('127.0.0.1'), limits: { ...LIMITS, bodiesInFlightBytes: 1024 },
+      resolveKey: async () => KEY, upstreams: { anthropic: `${mockUrl}/anthropic` } });
+    const port = await listen(small);
+    try {
+      const answer = await fetch(`http://127.0.0.1:${port}/anthropic/v1/messages`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': run.token },
+        body: JSON.stringify({ ...body, messages: [{ role: 'user', content: 'x'.repeat(4096) }] }) });
+      assert.equal(answer.status, 429);
+      assert.deepEqual([answer.headers.get('x-should-retry'), answer.headers.get('retry-after')], ['true', '2']);
+      assert.equal((await row(run.id)).reserved_micros, 0, 'nothing held');
+    } finally { small.close(); }
     await gateway.close(run.id);
   });
 

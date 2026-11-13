@@ -78,9 +78,11 @@ test('every operation has a registered postcondition entry; an incomplete sample
       lineageTaskId: uuid(), runId: uuid(), role: 'execute', assignmentConnectionId: uuid(), version: 4, state: 'paused' }],
     // #1217: a picture on a run's answer is no object of the space, so no coordination command can produce it.
     'answer.picture.attach': [],
+    'answer.file.attach': [],
   };
-  for (const operation of AGENT_OPERATIONS) if (operation !== 'answer.picture.attach') validateAgentPostconditions(operation, samples[operation]);
+  for (const operation of AGENT_OPERATIONS) if (operation !== 'answer.picture.attach' && operation !== 'answer.file.attach') validateAgentPostconditions(operation, samples[operation]);
   assert.throws(() => validateAgentPostconditions('answer.picture.attach', [{ kind: 'message', id: uuid() }]), /produced post-state/);
+  assert.throws(() => validateAgentPostconditions('answer.file.attach', [{ kind: 'message', id: uuid() }]), /produced post-state/);
   // @ts-expect-error a table without its cowork.claim entry must not satisfy the exhaustive operation record
   const incomplete: Record<AgentOperation, AgentPostcondition[]> = {} as Omit<typeof samples, 'cowork.claim'>;
   assert.equal(incomplete['cowork.claim'], undefined);

@@ -183,13 +183,13 @@ async function fetchPicture(db: Database, reader: WebReader, runId: string, url:
 }
 
 /**
- * The pictures Show everyone posts with an answer (#1217, C-59): those its changes attached and nobody undid, still staged for its asker and
+ * The pictures and files (#1437) Show everyone posts with an answer (#1217, C-59): those its changes attached and nobody undid, still staged for its asker and
  * not expired, in the order they were attached. The asker posts them as their own attachments, so the message's own checks apply to them.
  */
 export async function answerPictureIds(db: DbExecutor, runId: string, ownerUserId: string): Promise<string[]> {
   const c = schema.assistantChanges; const f = schema.projectFiles;
   const rows = await db.select({ id: f.id }).from(c).innerJoin(f, eq(f.id, c.objectId))
-    .where(and(eq(c.runId, runId), eq(c.operation, OPERATION), inArray(c.state, ['applied', 'applied_after_wait']), eq(f.uploaderId, ownerUserId),
+    .where(and(eq(c.runId, runId), inArray(c.operation, [OPERATION, 'answer.file.attach']), inArray(c.state, ['applied', 'applied_after_wait']), eq(f.uploaderId, ownerUserId),
       eq(f.state, 'ready'), isNull(f.publishedAt), gt(f.expiresAt, new Date())))
     .orderBy(asc(c.createdAt), asc(c.id));
   return rows.map((row) => row.id).slice(0, FILE_LIMITS.messageFiles);

@@ -17,6 +17,7 @@ import { registerAgentCoworkActions } from './cowork-actions.js';
 import { registerAgentGithubActions } from './github-actions.js';
 import { registerAgentWebReads } from './web-reads.js';
 import { registerAgentWebSearch, type KeyWebSearcher } from './web-search.js';
+import { registerAgentFileActions } from './file-actions.js';
 import { registerAgentPictureActions } from './picture-actions.js';
 import { registerAgentPictureViews } from './picture-views.js';
 import type { WebReader } from '../web-reads/reader.js';
@@ -93,6 +94,7 @@ function serverFactory(db: Database, github: GithubActionProvider | null, webRea
   // pi's web search (#1441): only with the web on, and only where this API can open a key.
   registerAgentWebSearch(tools, db, webReader?.enabled ? searcher : null);
   registerAgentPictureActions(tools, db);
+  registerAgentFileActions(tools, db);
   registerAgentPictureViews(tools, db);
   registerAgentProposal(tools, db);
   tools.verifyManifest();

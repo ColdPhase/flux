@@ -49,6 +49,8 @@ export type RuntimeCaps = PersonalRuntimeRunRequest['caps'];
 export interface KeyRunGateway {
   issue(runId: string): Promise<{ token: string } | null>;
   close(runId: string): Promise<{ unknown: number; stopped: 'budget' | 'ended' | null }>;
+  /** Called the moment the gateway refuses one of the run's requests for the key's budget or the run's standing; returns the unwatch. */
+  watch?(runId: string, listener: (reason: 'budget' | 'ended') => void): () => void;
 }
 
 export interface KeyRunDeps {
@@ -339,10 +341,14 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
       let gatewayAccount: { unknown: number; stopped: 'budget' | 'ended' | null } | null = null;
 
       // `/ai` and a chat are shown to the asker while the CLI writes them (#1248); the run token is never shown, even half.
-      const shown = live && isAsked(run) ? liveText(live, run, { secrets: [grant.token] }) : undefined;
-      let stopWhy: 'owner' | 'limit' | 'standing' | 'local_tool' | null = null;
+      // A key run's gateway token is never shown either (#1441): pi's own tools cannot read it, and an answer that held it still would not.
+      const runSecrets = [grant.token, ...(modelToken ? [modelToken.token] : [])];
+      const shown = live && isAsked(run) ? liveText(live, run, { secrets: runSecrets }) : undefined;
+      // `budget` and `gateway`: the model gateway refused a request of a key run for the key's day (402) or the run's standing (403).
+      type StopWhy = 'owner' | 'limit' | 'standing' | 'local_tool' | 'budget' | 'gateway';
+      let stopWhy: StopWhy | null = null;
       let stopSent: Promise<void> | null = null;
-      const stop = (why: 'owner' | 'limit' | 'standing' | 'local_tool') => {
+      const stop = (why: StopWhy) => {
         stopWhy ??= why;
         // Once the run is to stop, the asker is sent no more of its words (#1248): not through the CLI's grace, and none after a refusal.
         shown?.abandon();
@@ -388,6 +394,8 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
           { status: 'dispatching', step: 'tool', tool: event.name })).catch(() => undefined);
       };
       const stopWatching = watch(run, { stop });
+      // The gateway's refusal stops pi at once (#1441 review): pi does not retry it, and nothing waits for pi to give up on its own.
+      const stopGatewayWatch = key?.gateway?.watch?.(run.id, (reason) => stop(reason === 'budget' ? 'budget' : 'gateway')) ?? (() => undefined);
       let end: PersonalRuntimeEnd;
       try {
         // The model is the one recorded when the request was sent (F-027 AST-11), never the owner's current choice.
@@ -414,12 +422,14 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
         end = { kind: 'ended', reason: 'unknown' };
       } finally {
         stopWatching();
+        stopGatewayWatch();
         await shown?.close();
         await tokens!.close(run.id).catch(() => undefined);
         if (key) gatewayAccount = await key.gateway!.close(run.id).catch(() => ({ unknown: 1, stopped: null }));
       }
-      // The gateway refused a request for the key's day (402): pi stops at it, and the run ends "budget", whatever pi made of the refusal.
-      if (gatewayAccount?.stopped === 'budget' && end.kind === 'ended' && end.reason !== 'stopped') end = { kind: 'ended', reason: 'budget' };
+      // The gateway refused a request for the key's day (402): Flux stopped pi there, and the run ends "budget" (its calm end with the
+      // key's day, as a key run of the worker's loop), whatever pi made of the refusal or of the stop. An owner's stop says stopped.
+      if ((gatewayAccount?.stopped === 'budget' || stopWhy === 'budget') && end.kind === 'ended' && stopWhy !== 'owner') end = { kind: 'ended', reason: 'budget' };
       await stopSent;
       // Every search the CLI reported is written before the run's end is.
       await recorded;
@@ -429,7 +439,7 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
       // "[removed: looked like a secret]"; then its final text is cleaned (#1143, #1149, C-30): after its schedule block is taken out (and the
       // schedule's instruction cleaned), before Flux lists its sources; the `<ask>` question decoded and cleaned.
       const prepare = async (text: string) => {
-        const redacted = redactSecrets(text, [grant.token]);
+        const redacted = redactSecrets(text, runSecrets);
         const cleaner = answerCleaner(() => uow.run((ports) => ports.runs.privateTexts(run.id)));
         const searches = await uow.run((ports) => ports.runs.webSearches(run.id));
         // Claude Code and Codex are given no source to cite (#1222): every mark in their answer is the model's own and is taken out.
@@ -470,6 +480,9 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
         if (current.mcpLimit) return save(ended('cap_reached', 'before_commit', { ...spent, endReason: 'mcp_results_too_large' }));
         // Access, pause, removal or a revoked connection after the start: nothing is posted.
         if (refusal) return save(ended(refusal, 'before_commit', spent));
+        // The gateway found the run may no longer use the key (403) for a reason the commit's checks no longer see (the key's model lost
+        // its price): the key is unavailable to the run, not a crash.
+        if (stopWhy === 'gateway' && end.kind === 'ended' && end.reason !== 'budget') return save(ended('unavailable', null, spent));
         if (end.kind === 'ended') {
           const status = await save(endChanges(end.reason, end.planResetsAt, spent));
           if (end.reason === 'plan_limit') await pauseUntilReset(ports, current, end.planResetsAt, now());

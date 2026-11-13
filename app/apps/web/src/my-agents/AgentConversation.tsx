@@ -11,7 +11,7 @@ import { shownWords, stepWords, useForgetLiveRun, useLiveRun, useReducedMotion }
 import { MessageText } from '../app/MessageText';
 import { undoRunChanges } from '../assistant/api';
 import { askError, askState, canRetry, endedText, isWorking, workingText } from '../assistant/format';
-import { MessageBubble, PhotoGrid } from '../composer/Attachments';
+import { MessageBubble, MessageFiles } from '../composer/Attachments';
 import { ComposerBox } from '../composer/ComposerBox';
 import { ConnectionLine } from '../composer/Outbox';
 import { Button, Icon, Kreska, MEDIA, sendsOnEnter, useArrivals, useMediaQuery } from '../ui';
@@ -75,7 +75,8 @@ function Turn({ run, agent, chat, schedules, first, newDay }: { run: AssistantRu
           <div className="dm-msg__main">
             {first ? <p className="dm-msg__meta"><b>{agent.name}</b></p> : null}
             {/* The pictures the agent attached to its answer (#1217), as a message's photos: above its words. */}
-            {run.answer && run.pictures?.length ? <PhotoGrid photos={run.pictures} context={{ author: agent.name }} /> : null}
+            {/* Pictures (#1217) and files (#1437) its agent attached: photos in the grid, other files as rows that open in the preview. */}
+            {run.answer && run.pictures?.length ? <MessageFiles files={run.pictures} context={{ author: agent.name }} /> : null}
             {run.answer ? <MessageBubble><div className="dm-msg__body agc__answer"><AnswerBody answer={run.answer} lookups={lookups} /></div></MessageBubble>
               : writing ? <MessageBubble><div className="dm-msg__body agc__answer" data-writing-run={run.id} aria-busy="true"><WritingWords words={shownWords(live.text, reduced)} reduced={reduced} people={lookups.people} /></div></MessageBubble>
                 : <div className="dm-msg__body agc__state" data-run-status={run.status}>{working ? step ?? workingText(run) : ended ?? 'Nothing to say.'}</div>}

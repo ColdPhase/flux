@@ -5,6 +5,7 @@ import {
   FLUX_TOOL_NAME, INIT_NAME, MODEL_GATEWAY_ORIGIN, MODEL_GATEWAY_TOKEN_ENV, modelGatewayBaseUrl, TEXT_FRAME_LIMITS, type KeyProvider, type RunOutcome,
   type SupervisorRequest, type SupervisorResult,
 } from '@flux/runtime-protocol';
+import { forgetCredentials, watchRunSecrets } from './credentials.js';
 import { asThem, clearLeftovers, removeAsThem } from './data.js';
 import type { Outcome, Send, SupervisorConfig } from './handlers.js';
 import { asPerson, endProcesses, runFixed, type Person } from './process.js';
@@ -162,7 +163,9 @@ export async function runPi(config: SupervisorConfig, request: PiRequest, dir: s
 
   const work = scratch ?? join(dir, 'tmp');
   const env: Record<string, string> = {
-    PATH: '/usr/local/bin:/usr/bin:/bin', HOME: join(dir, 'home'), LANG: 'C.UTF-8', TMPDIR: work, NO_COLOR: '1',
+    // pi's HOME is its own fresh agent directory (#1441 review): never the person's shared home, where Claude Code keeps its `.claude*`
+    // and which Codex reads, so nothing a run of pi writes reaches a later run of any engine.
+    PATH: '/usr/local/bin:/usr/bin:/bin', HOME: home, LANG: 'C.UTF-8', TMPDIR: work, NO_COLOR: '1',
     // The gateway is plain HTTP on runtime-egress, never through its CONNECT proxy (RT-4); pi is given no proxy at all.
     NO_PROXY: config.egressHost, no_proxy: config.egressHost,
     PI_CODING_AGENT_DIR: home, PI_OFFLINE: '1', PI_SKIP_VERSION_CHECK: '1', PI_TELEMETRY: '0',
@@ -171,10 +174,13 @@ export async function runPi(config: SupervisorConfig, request: PiRequest, dir: s
     ...(scratch ? { FLUX_SANDBOX_DIR: scratch } : {}),
   };
   const argv = [paths.launcher, paths.cli, ...piArgs(ownTools, brief, request.model)];
-  // pi runs inside the sandbox's outer domain: it writes only its own home and the scratch, and reads those, the run's folder and the system.
+  // pi runs inside the sandbox's outer domain: it writes only its own agent directory and the scratch, and reads those, the run's folder
+  // and the system; never the person's shared home or a CLI's.
   const [file, args] = sandbox && scratch
-    ? [sandbox.binary, ['cli', scratch, '--home', home, '--home', join(dir, 'home'), '--read', runDir, '--', paths.node, ...argv]]
+    ? [sandbox.binary, ['cli', scratch, '--home', home, '--read', runDir, '--', paths.node, ...argv]]
     : [paths.node, argv];
+  // `flux_attach_file` reads a file of the scratch while the run lasts (#1437, files.ts): looked through for the run's own tokens as it passes.
+  watchRunSecrets(config, request.runId, request.bindingId, dir, person, [request.runToken, request.modelToken]);
   const allowedFlux = new Set(request.tools.map((tool) => `${PI_MCP_PREFIX}${tool}`));
   const allowed = new Set([...allowedFlux, ...(ownTools ? PI_OWN_TOOLS : [])]);
 
@@ -329,6 +335,7 @@ export async function runPi(config: SupervisorConfig, request: PiRequest, dir: s
     child.on('close', (code) => settle(code));
   });
   runs.delete(request.runId);
+  forgetCredentials(config, request.runId);
   finishedOf(config).set(request.runId, Date.now());
   await cleanUp();
   return { result };

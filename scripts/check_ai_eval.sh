@@ -20,6 +20,12 @@
 # (a directory, e.g. docs/product/research/evidence/1295: results-<label>.json and .md are copied there), FLUX_EVAL_TODAY (the seed's day),
 # FLUX_EVAL_VARIANT (a named engine variant under evaluation, given to the API and worker as FLUX_TEST_AI_VARIANT; empty = main as it is),
 # FLUX_TEST_PORT / FLUX_TEST_MAILPIT_PORT (18790 / 18791). Run it under the shared Docker slot limiter.
+#
+# FLUX_EVAL_ENGINE (#1441): empty runs the questions in the worker's own agent loop (the 0.847 baseline); `pi` runs them in pi in the
+# agent runtime (FLUX_AGENT_RUNTIME=pi: runtime-egress, runtime-manager and runtime-1 join the stack), with the same key, model and
+# questions. pi's model requests go through the worker's model gateway, whose Anthropic upstream is the same recording proxy, so the
+# ledger and the cap see every request. The runtime needs a host with kernel.yama.ptrace_scope >= 1 and Landlock ABI 4 (a GitHub runner:
+# .github/workflows/ai-eval.yml); on another host runtime-1 stays unhealthy and the run stops before any question.
 set -eu
 
 cd "$(dirname "$0")/.."
@@ -34,6 +40,7 @@ export FLUX_EVAL_MODEL="${FLUX_EVAL_MODEL:-claude-haiku-5-5}"
 export FLUX_EVAL_JUDGE_MODEL="${FLUX_EVAL_JUDGE_MODEL:-claude-haiku-5-5}"
 export FLUX_EVAL_QUESTIONS="${FLUX_EVAL_QUESTIONS:-}"
 export FLUX_EVAL_LABEL="${FLUX_EVAL_LABEL:-$stamp}"
+export FLUX_EVAL_ENGINE="${FLUX_EVAL_ENGINE:-}"
 export FLUX_EVAL_SHA="$(git rev-parse --short=9 HEAD)$(git diff --quiet HEAD -- app docker scripts || echo '+changes')"
 # The product code measured: the main commit this checkout stands on (the harness adds only test files and a test-only switch).
 export FLUX_EVAL_PRODUCT_SHA="$(git rev-parse --short=9 "$(git merge-base HEAD origin/main 2>/dev/null || git rev-parse HEAD)")"
@@ -49,6 +56,7 @@ scrub_key() {
 key_leaked=
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 
+case "$FLUX_EVAL_ENGINE" in ''|pi) ;; *) fail "FLUX_EVAL_ENGINE must be empty (the worker's own loop) or pi" ;; esac
 [ -r "$key_file" ] || fail "no key file at $key_file (FLUX_EVAL_KEY_FILE)"
 [ "$(stat -c %a "$key_file")" = 600 ] || fail "$key_file must be mode 600"
 mkdir -p "$FLUX_EVAL_EVIDENCE_DIR/proxy" "$(dirname "$ledger")"
@@ -78,16 +86,24 @@ export FLUX_AUTH_RATE_LIMIT=false
 export FLUX_VAPID_PUBLIC_KEY= FLUX_VAPID_PRIVATE_KEY= FLUX_VAPID_SUBJECT=
 export FLUX_KEYRING_TOKEN="$(head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=\n')"
 export FLUX_KEY_PIN_SECRET="$(head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=\n')"
-# Production personal runs on the owner's key, no CLI runtime, no web search: the questions are about the workspace, and the cost stays bounded.
-export FLUX_PERSONAL_RUNS=on FLUX_TEST_PERSONAL_RUNS= FLUX_AGENT_RUNTIME= FLUX_WEB_READS="${FLUX_WEB_READS:-off}"
+# Production personal runs on the owner's key, no plan CLI, no web search: the questions are about the workspace, and the cost stays bounded.
+# FLUX_EVAL_ENGINE=pi: the key's runs go to pi in the agent runtime (#1441), the production runtime image and services.
+export FLUX_PERSONAL_RUNS=on FLUX_TEST_PERSONAL_RUNS= FLUX_AGENT_RUNTIME="$FLUX_EVAL_ENGINE" FLUX_WEB_READS="${FLUX_WEB_READS:-off}"
 export FLUX_IMAGE_TAG="$project"
 export COMPOSE_FILE="docker/compose.source.yaml:docker/compose.test.yaml:docker/compose.ai-eval.test.yaml"
+runtime_profile=
+if [ "$FLUX_EVAL_ENGINE" = pi ]; then
+  export COMPOSE_FILE="docker/compose.source.yaml:docker/compose.source.runtime.yaml:docker/compose.test.yaml:docker/compose.ai-eval.test.yaml"
+  export FLUX_RUNTIME_MANAGER_SECRET="$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')"
+  export FLUX_RUNTIME_SECRET_1="$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')"
+  runtime_profile="--profile runtime"
+fi
 . scripts/test_images.sh
-compose="docker compose --env-file /dev/null -p $project --profile test"
+compose="docker compose --env-file /dev/null -p $project --profile test $runtime_profile"
 
 cleanup() {
   status=$?
-  $compose logs --no-color api worker evalproxy > "$FLUX_EVAL_EVIDENCE_DIR/stack.log" 2>/dev/null || true
+  $compose logs --no-color api worker evalproxy ${runtime_profile:+runtime-egress runtime-1} > "$FLUX_EVAL_EVIDENCE_DIR/stack.log" 2>/dev/null || true
   scrub_key
   if [ -f "$FLUX_EVAL_EVIDENCE_DIR/proxy/proxy.jsonl" ]; then
     run_cost=$(grep -o '"costUsd":[0-9.e-]*' "$FLUX_EVAL_EVIDENCE_DIR/proxy/proxy.jsonl" | awk -F: '{ total += $2 } END { printf "%.6f", total }')
@@ -120,11 +136,20 @@ docker run --rm --network none -u "$(id -u):$(id -g)" -v "$root/scripts/eval:/ev
   python:3.12-slim@sha256:f77ac9e44ae96ef2c90b8053ea08c31f8be030f824196b0ae4db6d462c84e51f \
   python3 -I /eval/answers/workspace.py --out /out/eval-seed.json ${FLUX_EVAL_TODAY:+--today "$FLUX_EVAL_TODAY"}
 
-step "2. Images and the stack (production personal runs, the recording proxy, cap \$$cap)"
-$compose build migrate test
+step "2. Images and the stack (production personal runs${FLUX_EVAL_ENGINE:+ in $FLUX_EVAL_ENGINE}, the recording proxy, cap \$$cap)"
+$compose build migrate test ${runtime_profile:+runtime-1 runtime-install}
 $compose up -d db migrate
 $compose --profile setup run --rm files-init
 $compose up -d --wait api worker mailpit evalproxy
+if [ "$FLUX_EVAL_ENGINE" = pi ]; then
+  # The runtime: its supervisor marks itself ready only on a host that meets its requirements (ptrace_scope, Landlock).
+  printf 'Host: kernel %s, kernel.yama.ptrace_scope=%s\n' "$(uname -r)" "$(cat /proc/sys/kernel/yama/ptrace_scope 2>/dev/null || echo none)"
+  $compose up -d --wait runtime-egress runtime-manager runtime-1 || fail "the agent runtime did not start (it needs kernel.yama.ptrace_scope >= 1 and Landlock ABI 4)"
+  attempt=0
+  until $compose logs --no-color worker | grep -q '"event":"model_gateway","state":"listening"'; do
+    attempt=$((attempt + 1)); [ "$attempt" -lt 60 ] || fail "the worker's model gateway did not listen"; sleep 1
+  done
+fi
 check wait-ready
 
 step "3. The workspace, loaded through the API and dated"

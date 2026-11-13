@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { endpointRefusal, guardedFetch, PUBLIC_ONLY, type AiEndpointPolicy, type PersonalKeyResolver } from '@flux/agent-runtime';
-import { usageMeter, type GatewayTicket, type ModelGateway } from '@flux/core';
+import { usageMeter, type GatewayClaim, type GatewayTicket, type ModelGateway } from '@flux/core';
 import type { AiProviderKind } from '@flux/contracts';
 import {
   MODEL_GATEWAY_LIMITS, MODEL_GATEWAY_UPSTREAMS, modelGatewayError, modelGatewayToken, parseModelGatewayUrl, type ModelGatewayErrorCode, type ModelGatewayRoute,
@@ -42,13 +42,16 @@ const refuse = (res: ServerResponse, status: number, code: ModelGatewayErrorCode
  * The body, up to `limit` bytes; `too_large` past it. A body a little past the bound is read to its end unkept, so the refusal reaches
  * the sender; one far past it is cut.
  */
-async function readBody(req: IncomingMessage, limit: number): Promise<Buffer | 'too_large'> {
+async function readBody(req: IncomingMessage, limit: number, keep: (bytes: number) => boolean): Promise<Buffer | 'too_large' | 'busy'> {
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const chunk of req) {
     size += (chunk as Buffer).length;
     if (size > 2 * limit) return 'too_large';
-    if (size <= limit) chunks.push(chunk as Buffer);
+    if (size <= limit) {
+      if (!keep((chunk as Buffer).length)) return 'busy';
+      chunks.push(chunk as Buffer);
+    }
   }
   return size > limit ? 'too_large' : Buffer.concat(chunks);
 }
@@ -85,6 +88,8 @@ const RESPONSE_HEADERS = ['content-type', 'retry-after', 'request-id', 'x-reques
 export function createModelGatewayServer({ gateway, resolveKey, policy = PUBLIC_ONLY, upstreams = {}, limits: given = {}, log = () => undefined }: ModelGatewayServerOptions): Server {
   const limits = { ...MODEL_GATEWAY_LIMITS, ...given };
   const transport = guardedFetch(policy, { timeoutMs: limits.requestMs, maxResponseBytes: limits.responseBytes });
+  /** Bytes of request bodies held in memory by every request in flight. */
+  let bodiesInFlight = 0;
 
   async function handle(req: IncomingMessage, res: ServerResponse) {
     const route = parseModelGatewayUrl(req.url);
@@ -98,10 +103,47 @@ export function createModelGatewayServer({ gateway, resolveKey, policy = PUBLIC_
       refuse(res, 413, 'flux_request_too_large', 'The request is too large');
       return;
     }
-    const raw = await readBody(req, limits.requestBytes);
-    if (raw === 'too_large') { refuse(res, 413, 'flux_request_too_large', 'The request is too large'); return; }
+    // The run's place is taken before the body is read: an unknown token or a run with all its places taken costs no body in memory.
+    const claimed = await gateway.claim(token);
+    if (!claimed.ok) {
+      req.resume();
+      log({ event: 'model', provider: route.provider, operation: route.operation, status: claimed.refusal.status, refused: claimed.refusal.code });
+      refuse(res, claimed.refusal.status, claimed.refusal.code, claimed.refusal.message);
+      return;
+    }
+    // The bodies of every run's requests in flight share one bound in the worker's memory (its other jobs run in the same 512 MiB):
+    // a request past it is told to wait and send again.
+    let kept = 0;
+    try {
+      await relay(req, res, route, claimed.claim, (bytes) => {
+        if (bodiesInFlight + bytes > limits.bodiesInFlightBytes) return false;
+        bodiesInFlight += bytes; kept += bytes;
+        return true;
+      });
+    } finally {
+      bodiesInFlight -= kept;
+    }
+  }
 
-    const opened = await gateway.open(token, { provider: route.provider, operation: route.operation, pathModel: route.model, pathStream: route.stream }, raw);
+  async function relay(req: IncomingMessage, res: ServerResponse, route: ModelGatewayRoute, claim: GatewayClaim, keep: (bytes: number) => boolean) {
+    let raw: Buffer | 'too_large' | 'busy';
+    try {
+      raw = await readBody(req, limits.requestBytes, keep);
+    } catch (error) {
+      gateway.unclaim(claim);
+      throw error;
+    }
+    if (raw === 'too_large') { gateway.unclaim(claim); refuse(res, 413, 'flux_request_too_large', 'The request is too large'); return; }
+    if (raw === 'busy') {
+      gateway.unclaim(claim);
+      req.resume();
+      log({ event: 'model', provider: route.provider, operation: route.operation, status: 429, refused: 'flux_gateway_busy' });
+      const busy = modelGatewayError(429, 'flux_run_busy', 'The model gateway is busy; send the request again shortly');
+      send(res, { ...busy, headers: { ...busy.headers, 'x-should-retry': 'true', 'retry-after': '2' } });
+      return;
+    }
+
+    const opened = await gateway.open(claim, { provider: route.provider, operation: route.operation, pathModel: route.model, pathStream: route.stream }, raw);
     if (!opened.ok) {
       log({ event: 'model', provider: route.provider, operation: route.operation, status: opened.refusal.status, refused: opened.refusal.code });
       refuse(res, opened.refusal.status, opened.refusal.code, opened.refusal.message);
@@ -120,13 +162,19 @@ export function createModelGatewayServer({ gateway, resolveKey, policy = PUBLIC_
 
     const controller = new AbortController();
     let idle: NodeJS.Timeout | undefined;
-    const quiet = () => { clearTimeout(idle); idle = setTimeout(() => controller.abort(), limits.idleMs); idle.unref(); };
+    // The idle clock runs only while bytes can arrive: a whole (not streamed) answer comes in one piece at its end, after up to the
+    // request's own clock (a long answer takes minutes), so only the request clock bounds it.
+    const quiet = () => {
+      if (!ticket.request.stream) return;
+      clearTimeout(idle); idle = setTimeout(() => controller.abort(), limits.idleMs); idle.unref();
+    };
     // The harness went away: the provider's answer is not read to its end, so its cost is not known.
     res.on('close', () => { if (!res.writableFinished) controller.abort(); });
     let answer: Response;
     try {
       quiet();
-      answer = await transport(url, { method: 'POST', headers: upstreamHeaders(route, req, key), body: new Uint8Array(ticket.request.body), signal: controller.signal });
+      // The admitted body itself, not a copy (the transport sends a Buffer as it is).
+      answer = await transport(url, { method: 'POST', headers: upstreamHeaders(route, req, key), body: ticket.request.body as unknown as Uint8Array<ArrayBuffer>, signal: controller.signal });
     } catch (error) {
       clearTimeout(idle);
       // Sent, or perhaps sent: what it may have cost stays charged. Refused before a byte left (the address guard): nothing.
@@ -161,7 +209,12 @@ export function createModelGatewayServer({ gateway, resolveKey, policy = PUBLIC_
           if (end) break;
           quiet();
           meter.push(value);
-          if (!res.write(value)) await new Promise<void>((resume) => { res.once('drain', resume); res.once('close', resume); });
+          if (!res.write(value)) {
+            await new Promise<void>((resume) => {
+              const go = () => { res.off('drain', go); res.off('close', go); resume(); };
+              res.on('drain', go); res.on('close', go);
+            });
+          }
           if (res.destroyed) throw new Error('The harness went away');
         }
       }

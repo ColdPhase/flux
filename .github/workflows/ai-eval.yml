@@ -1,0 +1,160 @@
+name: AI evaluation
+
+# On demand only (#1295, #1441): the answer-accuracy evaluation of Flux AI on a REAL Anthropic key, run by
+# scripts/check_ai_eval.sh exactly as locally. Its reason to exist on a runner: FLUX_EVAL_ENGINE=pi needs the agent runtime, which needs
+# kernel.yama.ptrace_scope >= 1 and Landlock ABI 4 (a runner has both; many developer hosts do not).
+#
+# It costs money, so: dispatch only (never a push, a PR or a schedule), one run at a time, a cap per run (max_usd, at most 2 dollars,
+# enforced by the recording proxy, which refuses any request that could pass it), and the spend printed and kept in the artifact so
+# the harness ledger (.worktrees/ai-eval-evidence/spend.tsv) gets its line. The key is the `FLUX_EVAL_ANTHROPIC_KEY` secret of the
+# `ai-eval` environment: it reaches only the step that writes the script's key file (mode 600), never a command line, a log or an
+# artifact (the script removes any evidence file that holds it, and this workflow checks again before the upload). The tested ref's
+# own scripts run with that key: dispatch refs you have read.
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch, tag or full commit SHA to evaluate
+        required: true
+        type: string
+      engine:
+        description: server runs the questions in the worker's own agent loop (the baseline), pi in pi in the agent runtime (#1441)
+        required: true
+        type: choice
+        options:
+          - server
+          - pi
+      questions:
+        description: Question ids or categories, comma separated (empty, all)
+        required: false
+        type: string
+        default: ""
+      label:
+        description: The run's label in the results and the ledger
+        required: false
+        type: string
+        default: ""
+      max_usd:
+        description: This run's cap in dollars (at most 2)
+        required: false
+        type: string
+        default: "1.50"
+
+run-name: ai-eval ${{ inputs.engine }} @ ${{ inputs.ref }} ${{ inputs.label }}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ai-eval
+  cancel-in-progress: false
+
+jobs:
+  evaluate:
+    name: Evaluate (${{ inputs.engine }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    environment: ai-eval
+    steps:
+      # Inputs reach the shell only through env, and only values that pass these checks go on.
+      - name: Validate inputs
+        id: validate
+        shell: bash
+        env:
+          INPUT_REF: ${{ inputs.ref }}
+          INPUT_ENGINE: ${{ inputs.engine }}
+          INPUT_QUESTIONS: ${{ inputs.questions }}
+          INPUT_LABEL: ${{ inputs.label }}
+          INPUT_MAX_USD: ${{ inputs.max_usd }}
+        run: |
+          set -euo pipefail
+          fail() { printf '::error::%s\n' "$1"; exit 1; }
+          [[ "$INPUT_REF" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$ ]] && [[ "$INPUT_REF" != *..* ]] || fail 'ref must be a branch, tag or commit SHA (letters, digits, . _ / -).'
+          case "$INPUT_ENGINE" in server|pi) ;; *) fail 'engine must be server or pi.' ;; esac
+          [[ "$INPUT_QUESTIONS" =~ ^[A-Za-z0-9_,-]{0,400}$ ]] || fail 'questions may contain only letters, digits, _ - and commas.'
+          [[ "$INPUT_LABEL" =~ ^[A-Za-z0-9_.-]{0,60}$ ]] || fail 'label may contain only letters, digits, _ . and -.'
+          [[ "$INPUT_MAX_USD" =~ ^[0-9]\.[0-9]{1,2}$|^[0-9]$ ]] || fail 'max_usd must be a number of dollars such as 1.50.'
+          awk -v max="$INPUT_MAX_USD" 'BEGIN { exit !(max > 0 && max <= 2) }' || fail 'max_usd must be more than 0 and at most 2.'
+          printf 'ref=%s\n' "$INPUT_REF" >> "$GITHUB_OUTPUT"
+
+      - name: Check out the ref
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.validate.outputs.ref }}
+          # check_ai_eval.sh records the product commit as the merge base with origin/main.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Write the key file
+        shell: bash
+        env:
+          FLUX_EVAL_ANTHROPIC_KEY: ${{ secrets.FLUX_EVAL_ANTHROPIC_KEY }}
+        run: |
+          set -euo pipefail
+          [ -n "$FLUX_EVAL_ANTHROPIC_KEY" ] || { echo '::error::The ai-eval environment has no FLUX_EVAL_ANTHROPIC_KEY secret.'; exit 1; }
+          umask 077
+          mkdir -p "$RUNNER_TEMP/ai-eval"
+          printf '%s' "$FLUX_EVAL_ANTHROPIC_KEY" > "$RUNNER_TEMP/ai-eval/anthropic.key"
+
+      - name: Run the evaluation
+        id: run
+        shell: bash
+        env:
+          ENGINE: ${{ inputs.engine }}
+          QUESTIONS: ${{ inputs.questions }}
+          LABEL: ${{ inputs.label }}
+          MAX_USD: ${{ inputs.max_usd }}
+          # No operator .env on a runner; the keys are blank, as in the locally documented runs.
+          FLUX_VAPID_PUBLIC_KEY: ""
+          FLUX_VAPID_PRIVATE_KEY: ""
+          FLUX_VAPID_SUBJECT: ""
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/ai-eval"
+          printf 'kernel %s, kernel.yama.ptrace_scope=%s\n' "$(uname -r)" "$(cat /proc/sys/kernel/yama/ptrace_scope 2>/dev/null || echo none)"
+          export FLUX_EVAL_KEY_FILE="$out/anthropic.key"
+          export FLUX_EVAL_LEDGER="$out/spend.tsv"
+          export FLUX_EVAL_EVIDENCE_DIR="$out/evidence"
+          export FLUX_EVAL_MAX_USD="$MAX_USD" FLUX_EVAL_BUDGET_USD="$MAX_USD"
+          export FLUX_EVAL_QUESTIONS="$QUESTIONS"
+          export FLUX_EVAL_LABEL="${LABEL:-$ENGINE-$GITHUB_RUN_ID}"
+          if [ "$ENGINE" = pi ]; then export FLUX_EVAL_ENGINE=pi; else export FLUX_EVAL_ENGINE=; fi
+          ./scripts/check_ai_eval.sh 2>&1 | tee "$out/run.log"
+
+      # Only the results, the summary, the spend and the log's tail; never the key (checked again here) and never the requests' bodies.
+      - name: Collect the evidence
+        if: always()
+        shell: bash
+        env:
+          ENGINE: ${{ inputs.engine }}
+          REF: ${{ steps.validate.outputs.ref }}
+          RUN_OUTCOME: ${{ steps.run.outcome }}
+        run: |
+          set -u +e
+          out="$RUNNER_TEMP/ai-eval"
+          keep="$RUNNER_TEMP/ai-eval-result"
+          mkdir -p "$keep"
+          for file in results.json results.md summary.txt; do [ ! -f "$out/evidence/$file" ] || cp "$out/evidence/$file" "$keep/$file"; done
+          [ ! -f "$out/spend.tsv" ] || cp "$out/spend.tsv" "$keep/spend.tsv"
+          [ ! -f "$out/run.log" ] || tail -c 2000000 "$out/run.log" > "$keep/run.log"
+          if [ -s "$out/anthropic.key" ]; then
+            for leaked in $(grep -rlF -f "$out/anthropic.key" "$keep" 2>/dev/null); do rm -f "$leaked"; echo "::warning::$(basename "$leaked") held the key and was left out"; done
+          fi
+          rm -f "$out/anthropic.key"
+          {
+            echo "## AI evaluation ($ENGINE), ${RUN_OUTCOME:-skipped}"
+            echo
+            echo "- Ref: \`$REF\` at \`$(git rev-parse HEAD)\`"
+            echo "- Spend (provider usage, \$): \`$(awk -F '\t' '{ total += $2 } END { printf "%.4f", total }' "$keep/spend.tsv" 2>/dev/null || echo unknown)\` — add the line of spend.tsv to the harness ledger"
+            echo
+            grep -E '^(RESULT|PROVIDER FAILURES|INCOMPLETE|\| \*\*all\*\*)' "$keep/summary.txt" 2>/dev/null | sed 's/^/    /'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ai-eval-${{ inputs.engine }}-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/ai-eval-result/
+          if-no-files-found: warn
+          retention-days: 7

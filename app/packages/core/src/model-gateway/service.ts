@@ -29,6 +29,9 @@ export interface GatewayTicket {
   readonly slot: string;
 }
 
+/** A run's place for one request, taken before its body is read (`claim`). */
+export interface GatewayClaim { readonly slot: string; readonly runId: string }
+
 /** What a run's requests through the gateway came to, for the run's engine at its end. */
 export interface GatewayAccount {
   requests: number;
@@ -79,11 +82,14 @@ export function createModelGateway({ uow, connections, limits, tokenLifetimeMs, 
     const left = (inFlight.get(slot) ?? 1) - 1;
     if (left <= 0) inFlight.delete(slot); else inFlight.set(slot, left);
   };
+  /** The run's engine, told at once when a request of the run is refused for its money or standing (`watch`). */
+  const watchers = new Map<string, (reason: 'budget' | 'ended') => void>();
   const stop = (runId: string, reason: 'budget' | 'ended') => {
     const account = accountOf(runId);
     if (account.stopped) return;
     account.stopped = reason;
     try { onStop?.(runId, reason); } catch { /* the run's own checks still stop it */ }
+    try { watchers.get(runId)?.(reason); } catch { /* the run's own checks still stop it */ }
   };
 
   const gateway = {
@@ -113,20 +119,51 @@ export function createModelGateway({ uow, connections, limits, tokenLifetimeMs, 
       return { ...account };
     },
 
+    /**
+     * The run's engine is told the moment a request is refused for the key's budget (402) or the run's standing (403), and stops the
+     * harness then, instead of waiting for it to give up (#1441 review). One listener per run; the returned function removes it.
+     */
+    watch(runId: string, listener: (reason: 'budget' | 'ended') => void): () => void {
+      watchers.set(runId, listener);
+      return () => { if (watchers.get(runId) === listener) watchers.delete(runId); };
+    },
+
     /** What the run's requests came to so far. */
     account: (runId: string): GatewayAccount => ({ ...accountOf(runId) }),
 
-    /** Checks a request and holds its money; the caller must `settle` (or `release`) the ticket. */
-    async open(token: string, facts: GatewayRequestFacts, raw: Buffer): Promise<{ ok: true; ticket: GatewayTicket } | { ok: false; refusal: GatewayRefusal }> {
+    /**
+     * Takes one of the run's places for a request before its body is read (#1441 review): the token must name a working run's
+     * unexpired token and the run must have a place left, so a body of up to 16 MiB is held in memory only for a run's own few
+     * requests, never for an unknown token. The caller passes the claim to `open`, or gives it back with `unclaim`.
+     */
+    async claim(token: string): Promise<{ ok: true; claim: GatewayClaim } | { ok: false; refusal: GatewayRefusal }> {
       if (!MODEL_GATEWAY_TOKEN_PATTERN.test(token)) return { ok: false, refusal: refusals.token };
       const hash = sha256(token);
       if ((inFlight.get(hash) ?? 0) >= limits.concurrentPerRun) return { ok: false, refusal: refusals.busy };
       inFlight.set(hash, (inFlight.get(hash) ?? 0) + 1);
+      let runId: string | null;
+      try {
+        runId = await uow.run((ports) => gatewayRows(ports).gatewayRunId(hash));
+      } catch (error) {
+        release(hash);
+        throw error;
+      }
+      if (!runId) { release(hash); return { ok: false, refusal: refusals.token }; }
+      return { ok: true, claim: { slot: hash, runId } };
+    },
+
+    /** Gives back a claim whose request is not opened (its body was refused or never arrived). */
+    unclaim: (claim: GatewayClaim): void => release(claim.slot),
+
+    /** Checks a claimed request and holds its money; the caller must `settle` (or `release`) the ticket. The claim is used up. */
+    async open(claim: GatewayClaim, facts: GatewayRequestFacts, raw: Buffer): Promise<{ ok: true; ticket: GatewayTicket } | { ok: false; refusal: GatewayRefusal }> {
+      const hash = claim.slot;
       let outcome: { ok: true; ticket: GatewayTicket } | { ok: false; refusal: GatewayRefusal; stop?: { runId: string; reason: 'budget' | 'ended' } };
       try {
         outcome = await uow.run(async (ports) => {
+          // The token is looked up again inside the lock: it may have closed while the body arrived.
           const runId = await gatewayRows(ports).gatewayRunId(hash);
-          if (!runId) return { ok: false as const, refusal: refusals.token };
+          if (!runId || runId !== claim.runId) return { ok: false as const, refusal: refusals.token };
           const run = await ports.runs.findRun(runId, { lock: true });
           const ended = { ok: false as const, refusal: refusals.ended, stop: { runId, reason: 'ended' as const } };
           if (!run || run.status !== 'dispatching' || run.stopRequestedAt || !run.connectionId) return ended;
@@ -183,10 +220,13 @@ export function createModelGateway({ uow, connections, limits, tokenLifetimeMs, 
       } finally {
         release(ticket.slot);
       }
-      const account = accountOf(ticket.runId);
-      if (usage !== 'not_billed') account.requests += 1;
-      account.chargedMicros += charge.micros;
-      if (!charge.known) account.unknown += 1;
+      // A request that ends after its run's token closed is on the run row only: its account was already given to the engine.
+      const account = accounts.get(ticket.runId);
+      if (account) {
+        if (usage !== 'not_billed') account.requests += 1;
+        account.chargedMicros += charge.micros;
+        if (!charge.known) account.unknown += 1;
+      }
       return charge;
     },
 

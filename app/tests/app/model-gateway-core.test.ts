@@ -125,10 +125,25 @@ describe('what a request may ask', () => {
       [facts('gemini', 'gemini_generate', runModel, false), { contents: [{ parts: [{ fileData: { fileUri: 'https://youtube.com/x' } }] }] }],
       [facts('gemini', 'gemini_generate', runModel, false), { contents: [], generationConfig: { candidateCount: 3 } }],
       [facts('gemini', 'gemini_generate', 'gemini-3-pro', false), { contents: [] }],
+      // Price and model changers the prices cannot follow (#1441 review).
+      [anthropic, { model: runModel, max_tokens: 10, messages: [], speed: 'fast' }],
+      [anthropic, { model: runModel, max_tokens: 10, messages: [], inference_geo: 'us' }],
+      [anthropic, { model: runModel, max_tokens: 10, messages: [], cache_control: { type: 'ephemeral', ttl: '1h' } }],
+      [anthropic, { model: runModel, max_tokens: 10, system: [{ type: 'text', text: 'x', cache_control: { type: 'ephemeral', ttl: '1h' } }], messages: [] }],
+      [facts('openai', 'openai_chat'), { model: runModel, messages: [], service_tier: 'priority' }],
+      [facts('openai', 'openai_responses'), { model: runModel, input: 'x', service_tier: 'priority' }],
+      [facts('openai', 'openai_responses'), { model: runModel, prompt: { id: 'pmpt_1' } }],
+      [facts('openai', 'openai_responses'), { model: runModel, input: [{ type: 'item_reference', id: 'msg_1' }] }],
+      [facts('openrouter', 'openai_chat'), { model: runModel, messages: [], models: [runModel, 'openai/gpt-5-pro'] }],
+      [facts('openrouter', 'openai_chat'), { model: runModel, messages: [], route: 'fallback' }],
+      [facts('gemini', 'openai_chat'), { model: runModel, messages: [], extra_body: { google: { cached_content: 'cachedContents/1' } } }],
     ];
     for (const [given, body] of refused) assert.equal(admitGatewayRequest(given, json(body), runModel, limits).ok, false, JSON.stringify(body));
     const functions = admitGatewayRequest(anthropic, json({ model: runModel, max_tokens: 10, messages: [], tools: [{ name: 'flux_read', input_schema: { type: 'object' } }] }), runModel, limits);
     assert.ok(functions.ok, 'the harness\'s own tools go through');
+    const fiveMinutes = admitGatewayRequest(anthropic, json({ model: runModel, max_tokens: 10, messages: [], speed: 'standard', inference_geo: 'global',
+      system: [{ type: 'text', text: 'x', cache_control: { type: 'ephemeral', ttl: '5m' } }] }), runModel, limits);
+    assert.ok(fiveMinutes.ok, 'the standard speed, global inference and the 5-minute cache go through');
   });
 
   test('each wire format\'s output bound and stream; a Chat Completions stream is asked for its usage, OpenRouter for its cost', () => {
@@ -139,6 +154,10 @@ describe('what a request may ask', () => {
     const legacy = admitGatewayRequest(facts('openai_compatible', 'openai_chat'), json({ model: runModel, messages: [], max_tokens: 500 }), runModel, limits);
     assert.ok(legacy.ok);
     assert.deepEqual([JSON.parse(legacy.request.body.toString()).max_tokens, legacy.request.maxOutputTokens], [500, 500]);
+    assert.equal(sentChat.service_tier, 'default', 'OpenAI is asked for its standard tier, whatever the project\'s default');
+    const both = admitGatewayRequest(facts('openai_compatible', 'openai_chat'), json({ model: runModel, messages: [], max_tokens: 10, max_completion_tokens: 20_000 }), runModel, limits);
+    assert.ok(both.ok);
+    assert.equal(both.request.maxOutputTokens, 20_000, 'with both bounds the larger is held: a server may honour either');
     const compatible = admitGatewayRequest(facts('openai_compatible', 'openai_chat'), json({ model: runModel, messages: [] }), runModel, limits);
     assert.ok(compatible.ok);
     assert.equal(JSON.parse(compatible.request.body.toString()).max_tokens, 32_000, 'a compatible server reads max_tokens');

@@ -201,3 +201,29 @@ test('the person-facing conversation commands still refuse an agent principal; o
   await assert.rejects(people.sendMessage(agent, opened.id, { body: 'Agent reply', clientMessageId: randomUUID() }), personOnly);
   assert.deepEqual([await messages(opened.id), await projectMessages(f.projectId)], [1, 1], 'nothing was written');
 });
+
+test('#1437: a local client stages a file with flux_attach_file and posts it with its message, as its owner\'s own attachment', async () => {
+  const f = await actionScene(pool);
+  const page = '<!doctype html><h1>Baseline</h1><script>alert(1)</script>';
+  const staged = toolValue(await f.tool('flux_attach_file', { projectId: f.projectId, clientCommandId: randomUUID(), name: 'baseline.html', content: page }));
+  assert.equal(staged.name, 'baseline.html');
+  const pdf = toolValue(await f.tool('flux_attach_file', { projectId: f.projectId, clientCommandId: randomUUID(), name: 'tiny.pdf', encoding: 'base64',
+    content: Buffer.from('%PDF-1.4\n%%EOF\n').toString('base64') }));
+  const ownerId = (expect(await f.owner.request('GET', '/api/v1/me'), 200) as unknown as { user: { id: string } }).user.id;
+  assert.deepEqual((await pool.query('SELECT uploader_id, message_id FROM project_files WHERE id = $1', [staged.fileId])).rows, [{ uploader_id: ownerId, message_id: null }],
+    'staged as the owner\'s own upload, on no message yet');
+  const posted = await f.tool('flux_start_conversation', { ...command(f.projectId, f), message: { body: 'The baseline, as a page and a PDF.' },
+    attachmentIds: [staged.fileId, pdf.fileId] });
+  assert.equal((posted?.result as { isError?: boolean } | undefined)?.isError, undefined, JSON.stringify(posted));
+  const started = toolValue(posted);
+  const conversation = await read(f, String(started.conversationId));
+  assert.deepEqual(conversation.messages[0]!.files?.map((file) => file.name), ['baseline.html', 'tiny.pdf']);
+  assert.equal(conversation.messages[0]!.via, 'Test client');
+  const download = await fetch(new URL(`/api/v1/files/${staged.fileId}`, f.owner.base), { headers: { cookie: f.owner.cookieHeader() } });
+  assert.equal(await download.text(), page);
+  // A file that is not the owner's staged upload of this project is refused with the post, which then makes nothing.
+  assert.ok(toolFailure(await f.tool('flux_start_conversation', { ...command(f.projectId, f), message: { body: 'again' }, attachmentIds: [staged.fileId] })).code);
+  const refused = (await f.tool('flux_attach_file', { projectId: f.projectId, clientCommandId: randomUUID(), name: '../x.txt', content: 'x' }))?.result as { isError?: boolean; content?: { text?: string }[] };
+  assert.equal(refused.isError, true);
+  assert.match(refused.content![0]!.text!, /^Not attached\. /);
+});

@@ -269,7 +269,8 @@ async function askOne(q: Question, state: State, seed: Seed) {
   const ledger = await proxy(`/__eval/ledger?tag=${encodeURIComponent(q.id)}`);
   const results = await toolResultsOf(q.id);
   const answer = row.answer_body ?? '';
-  const calls = ledger.turns.flatMap((turn) => turn.calls);
+  // pi names a Flux tool by its MCP server (`mcp__flux__flux_search`, #1441): the same tool as the worker's loop's `flux_search`.
+  const calls = ledger.turns.flatMap((turn) => turn.calls).map((call) => ({ ...call, name: call.name.replace(/^mcp__flux__/, '') }));
   const gold = q.gold.map((key) => ({ key, source: state.sources[key] })).filter((item): item is { key: string; source: Source } => !!item.source);
   const snippet = (text: string) => fold(text).replace(/[*_`]/g, '').slice(0, 36);
   const foldedResults = fold(results).replace(/\*\*/g, '');
@@ -408,7 +409,7 @@ async function report(seed: Seed) {
   const judgeUsd = all.reduce((sum, row) => sum + (row.judge?.costUsd ?? 0), 0);
   const meta = {
     issue: 1295, label: process.env.FLUX_EVAL_LABEL ?? null, sha: process.env.FLUX_EVAL_SHA ?? null, productSha: process.env.FLUX_EVAL_PRODUCT_SHA ?? null, date: new Date().toISOString(), seedToday: seed.today, shiftDays: seed.shiftDays,
-    model: MODEL, judgeModel: JUDGE_MODEL, engine: 'server (API key)', variant: process.env.FLUX_EVAL_VARIANT || 'main', webSearch: process.env.FLUX_WEB_READS ?? 'off', window: seed.window,
+    model: MODEL, judgeModel: JUDGE_MODEL, engine: process.env.FLUX_EVAL_ENGINE === 'pi' ? 'pi in the agent runtime (API key, #1441)' : 'server (API key)', variant: process.env.FLUX_EVAL_VARIANT || 'main', webSearch: process.env.FLUX_WEB_READS ?? 'off', window: seed.window,
     connectDefault: (await load()).connectDefault ?? null,
     spend: { agentUsd: round(all.reduce((sum, row) => sum + row.usage.costUsd, 0), 4), judgeUsd: round(judgeUsd, 4) },
   };

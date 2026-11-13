@@ -42,8 +42,9 @@ Flux's model gateway holds it and meters every request against the owner's budge
 - **The [model gateway](#the-model-gateway-1441)** (#1441): pi sends each model request in its provider's own wire format to the gateway
   through `runtime-egress:8081`, with the run's own gateway token as its API key. The gateway swaps it for the sealed key, holds the
   request's worst cost against the key's day before it and charges the provider's usage after it on the run (CA-3, #854). A refusal for
-  the budget (402 `flux_budget_exhausted`) or of an ended run (403) is final: pi does not retry it, and the run ends calmly ("budget" for
-  the day's money) with nothing posted. A key run keeps its engine `server` (the payer is the key); the gateway issues its token because
+  the budget (402 `flux_budget_exhausted`) or of an ended run (403) is final: pi does not retry it, the gateway tells the run's engine at
+  once and the engine stops pi there (#1441 review), and the run ends calmly ("budget" for the day's money; for an ended run the reason
+  the commit's checks find, else unavailable) with nothing posted. A key run keeps its engine `server` (the payer is the key); the gateway issues its token because
   the run has a key (`connection_id`) and the worker runs it in pi.
 
 - Both reach Flux only through its MCP route, with a short-lived run token bound to the agent, its
@@ -177,12 +178,24 @@ the token as its API key; it adds the provider's usual paths:
 - **What a request may ask.** A JSON body of at most 16 MiB; the run's model (the body's `model`, or the path's on Gemini's native
   API); at most 32,000 output tokens (a larger or missing bound is set to that); only the harness's own function tools (a provider's
   hosted tools — web search, code execution, file search, connectors, computer use — are refused); one answer (`n` 1); no OpenAI
-  `background`, `previous_response_id` or `conversation`, whose cost cannot be bounded before it is sent. Streaming is allowed; a Chat
+  `background`, `previous_response_id`, `conversation`, stored `prompt` or `item_reference`, whose cost cannot be bounded before it is
+  sent; nothing that changes the price or the model past Flux's prices: no Anthropic fast mode (`speed`) or US-only inference
+  (`inference_geo`), only the default 5-minute prompt cache (a one-hour write costs twice the input price), no OpenAI tier but the
+  standard one or `flex` (a request to OpenAI is sent with `service_tier: "default"` unless it asks for `flex`, so a project default of
+  priority does not apply), no OpenRouter fallback `models` or `route`, no provider-side settings (`extra_body`, `google`). A provider's
+  hosted web search may go through only as the run's configured web search (decided in the #1444 review, 2026-11-13): with the
+  operator's web switch on, on a model that searches (`aiModelSearchesWeb`), in exactly the server engine's tool shape (Anthropic
+  `web_search_20250305`, OpenAI Responses `web_search` with `external_web_access: false`), each search charged as a server run's (#954,
+  #1113) and its sources recorded for the answer (C-30). Until the run's engine for API keys (#1441 workstream 2) gives the gateway the
+  run's search flag and records those sources, the gateway refuses every hosted tool; no other hosted tool is ever offered. With both Chat Completions bounds
+  (`max_completion_tokens`, `max_tokens`) the larger is held, since a server may honour either. Streaming is allowed; a Chat
   Completions stream is asked to report its usage (`stream_options.include_usage`), and OpenRouter its cost.
 - **Refusals** are JSON errors that a harness does not retry (`x-should-retry: false`), shaped like both vendors' errors:
   `{"type":"error","error":{"type":"<code>","code":"<code>","message":"…"}}` — 401 `flux_token_invalid`, 402
   `flux_budget_exhausted` (the key's day cannot hold the request), 403 `flux_run_ended` (stopped, ended, AI turned off, the connection
-  gone), 400 `flux_request_refused`, 404 `flux_not_found`, 413 `flux_request_too_large`, 429 `flux_run_busy`. After a 402 or 403 the
+  gone), 400 `flux_request_refused`, 404 `flux_not_found`, 413 `flux_request_too_large`, 429 `flux_run_busy` (the run's four places are taken;
+  when the worker's shared bound on request bodies in memory is full instead, the same code comes with `x-should-retry: true` and
+  `retry-after: 2`, and the harness sends it again). After a 402 or 403 the
   harness gets no further answer and stops; Flux ends the run calmly, as on a server run ("budget" for the day's money).
 - **Metering** ([CA-3](model-providers.md#ca-3--the-providers-limits-not-fluxs)). Before a request is sent, the most it can cost
   (its body's bytes as input tokens plus 1,024, at the cache-write rate where the provider has one, and its output bound, at the run
@@ -192,8 +205,10 @@ the token as its API key; it adds the provider's usual paths:
   otherwise at the full price; counts that cannot be right count the input twice; OpenRouter's reported cost reconciles. A request
   whose usage is missing, malformed, beyond its bounds or cut off by a broken stream is charged the whole of what it held. A
   complete error answer of the provider (an HTTP error status) is charged nothing.
-- **Limits** (technical safety bounds, like #843's): 16 MiB a request, 32 MiB an answer, 10 minutes a request and 2 minutes without a
-  byte from the provider, 4 requests at once for one run, and the egress's per-source connection caps.
+- **Limits** (technical safety bounds, like #843's): 16 MiB a request, 32 MiB an answer, 10 minutes a request and, for a streamed
+  answer, 2 minutes without a byte from the provider, 4 requests at once for one run (the place is taken before the body is read, so an
+  unknown token or a busy run costs the worker no body), 48 MiB of request bodies in the worker's memory at once for every run
+  together (the worker has 512 MiB for all its jobs), and the egress's per-source connection caps.
 
 ## RT-5 — Tools
 
@@ -221,8 +236,10 @@ shell and file tools, inside a sandbox that exists for one run; every engine can
   and run the system's programs and libraries (`/bin`, `/usr`, `/lib`, `/etc`) and read `/proc`; it cannot read the person's
   CLI homes (their vendor login), `/data`, `/tmp`, the tools volume or another run's scratch, cannot read another process's
   environment or memory (Landlock scopes ptrace to the sandbox, so the CLI's own environment with its run token is out of reach
-  too), cannot make links or devices, and starts with a clean environment (no run token, vendor setting or proxy). Where the
-  kernel supports it (Landlock ABI 4, Linux 6.7), it also has **no TCP at all**, and (ABI 6, Linux 6.12) cannot signal or reach
+  too), cannot make links or devices, and starts with a clean environment (no run token, vendor setting or proxy). It has
+  **no TCP at all** (Landlock ABI 4, Linux 6.7, which the tools require: coordinator decision on #1437) and **no socket of any
+  kind** (a seccomp filter: Landlock does not cover UDP, so no DNS or datagram leaves, nor a connection to a Unix socket by its
+  path, such as Claude Code's own messaging socket in its `TMPDIR`; no io_uring), and (ABI 6, Linux 6.12) cannot signal or reach
   an abstract socket outside the sandbox. The CLI itself runs under an outer domain: it writes only its own home and the run's
   scratch and reads only those, the system and the run's settings, never the other CLI's home. Claude Code's own file tools
   are confined to its working directory by `--restricted` as well.
@@ -237,12 +254,37 @@ shell and file tools, inside a sandbox that exists for one run; every engine can
   fails). The run's own wall clock (RT-3, one hour) bounds everything; at its end the supervisor ends every process of the
   person and deletes the scratch.
 - **The network is unchanged** (RT-4): the runtime reaches only its egress, and the egress only the vendors' hosts and Flux's
-  `/mcp`; no Flux database, Redis, Docker API, metadata address or LAN. A shell has no route beyond that, and none at all where
-  Landlock can forbid TCP.
+  `/mcp`; no Flux database, Redis, Docker API, metadata address or LAN. A shell has no network at all.
 - **No new credential is readable.** The run token stays in the CLI's own environment and the vendor login in the CLI's home;
   neither reaches the tools. The supervisor's secret is in a non-dumpable root process.
-- **Without Landlock** (a kernel before 5.13, or one where it is not enabled), the runtime keeps its CLIs as before: Flux's
-  tools and the CLI's own web search only, and `flux_attach_file` has nothing to attach. The supervisor logs it once at start.
+- **The CLI's own login never leaves through Flux** (coordinator decision on #1437). Codex applies an `apply_patch` itself, outside
+  the shell sandbox, and its `exec_command` starts the shell the model names, so a steered Codex can reach its own home. So the
+  supervisor reads the run's login file as the person when the run starts and keeps its values (every run of 20 or more token
+  characters, and each long piece of a dotted one) in memory while the run lasts; every Flux tool call of the run (`flux_attach_file`,
+  every change, and every read, such as an address `flux_read_web` would fetch) is refused when what it would send holds one (the server asks the run's supervisor through runtime-manager, and only "found"
+  or "not found" comes back; a file is looked through as it is read). A change of files outside the scratch, or a command outside
+  the sandbox shell, kills every process of the person at once, with no grace (RT-7 still holds: nothing of the login is persisted,
+  logged or sent). What this cannot catch: a value the model rewrites (encoded, split) before sending it; accepted risk 10. What Codex reads from
+  its home at start (instructions, settings, skills, hooks, its `.env`) is removed before and after every run with its own tools, and a login the run wrote over its own (an attacker's account, which would
+  carry the person's next runs there) is replaced by the one the run started with.
+- **Without Landlock's network rules** (a kernel before 6.7, ABI 4, or one where Landlock is not enabled), the runtime keeps its
+  CLIs as before: Flux's tools and the CLI's own web search only, and `flux_attach_file` has nothing to attach. The supervisor logs
+  `tools_off` once at start.
+- **Attaching a file** (`flux_attach_file`, AG-8). A run on Claude Code or Codex, or an API-key run in pi (#1441), names a file of its scratch by its path; the Flux
+  server asks runtime-manager, which asks the run's supervisor, which reads it as the run's person with Flux's sandbox reader: only
+  while that run is in progress, only a regular file inside that run's scratch (never through a link as its last name, never `..`
+  out of it: the kernel refuses), at most the largest file Flux takes, and never one that holds a value of the CLI's own login, or for
+  pi, which has no login, the run's own MCP or gateway token (the supervisor looks through the bytes as they pass). A key run keeps its
+  engine `server` whether pi or the worker's own loop runs it, so the server asks the runtime for such a run too; a run of the worker's
+  loop is in no slot, and is told to give the file's content instead. The bytes are streamed through and never kept by the runtime. Any run, an
+  API-key run included, may instead give a text file's content and name. Either way the server stages it as the asker's own upload
+  (`stage`: the same types, limits and checks, a picture decoded and written again, #1343, a video's own limit, C-61, the same
+  preview), with the run's change line, Undo and waits: under "Ask me first" it is staged at once, because the scratch goes with the
+  run, and joins the answer only on Approve (it goes after 7 days otherwise). Its change has its own object type, `file`
+  (migration 0077). On the agent's answer in its private chat the file is the run's own and its owner's alone, made at once like a
+  picture there (`personal_run_pictures`; no video). A local client gives the file's content (text, or base64 for any file) and
+  posts it: the server stages it as its owner's upload and the client names the returned id in `attachmentIds` of the message it
+  posts next (coordinator decisions on #1437, 2026-11-13). Never in an encrypted space.
 - **Prompt injection** ([accepted risk 10](#accepted-risks)): a run that reads hostile content can now run commands, in its
   own sandbox. What that reaches is what the sandbox and the egress allow, nothing more.
 - **Pictures go only through two Flux tools** ([#1217](https://github.com/ColdPhase/flux/issues/1217), founder
@@ -433,7 +475,8 @@ shell and file tools, inside a sandbox that exists for one run; every engine can
 
 ## RT-7 — Secrets, sign-out and backups
 
-- Flux never persists, logs or parses a vendor credential. The login exists only in the person's
+- Flux never persists, logs or sends a vendor credential. (The supervisor reads a run's login file in memory, as the person, only
+  to refuse a Flux change or attachment that holds one of its values: RT-5, #1437.) The login exists only in the person's
   runtime directory, written by the CLI's own flow, never in the database, queue payloads, API
   responses, stream frames, logs, exports or admin screens. A schema test refuses a runtime column
   that could hold a token, and a seeded-secret absence test covers the database, logs and frames.
@@ -525,14 +568,20 @@ operator decides for their server through the operator step (RT-9).
    file) can be steered to run commands in its own sandbox and to attach what it made. The boundary is the container, the
    egress and the per-run sandbox (RT-5), not the tool list: no command reaches the vendor login, the run token, another
    person, another run, `/data`, the database or the LAN, and nothing it writes outside the scratch outlives the run. What a
-   shell can still do: use the run's CPU, memory and scratch up to the run's limits; on a kernel without Landlock's network
-   rules, open a tunnel through the egress to an allowed vendor host (and so, with an attacker's own key at that vendor, send
-   what the run read there, as the CLI itself always could); read the system's own files and other people's command lines
-   (RT-3). Codex applies an `apply_patch` found in a shell command itself, outside the shell sandbox: it is bounded by the outer
-   domain (its own home and the scratch) and the run stops at the first change outside the scratch. pi's own `read`, `write` and `edit` (#1441) run inside
+   shell can still do: use the run's CPU, memory and scratch up to the run's limits; read the system's own files and other
+   people's command lines (RT-3). It has no network (the tools are off on a kernel without Landlock's network rules). Codex is
+   the weaker side: it applies an `apply_patch` itself, outside the shell sandbox, and its `exec_command` (0.160.1) starts the
+   shell the model names, which then runs under Codex's outer domain only (its own home, its login included, the scratch and
+   the egress). Flux kills every process of the person the moment Codex reports such a change or command, refuses a Flux change
+   or attachment that holds a value of the login, and removes what Codex wrote into its home; a command that does its harm in
+   the milliseconds before that kill, or a value the model rewrites before sending, is not caught (#1437 review). pi's own `read`, `write` and `edit` (#1441) run inside
    pi's process under the same outer domain: they can read the system's files, the runtime's code under `/opt` and pi's own agent
-   directory and write only that directory and the scratch; nothing they reach holds a secret (the run token was set after pi started,
-   so pi's `/proc/self/environ` does not have it), and the agent directory is made fresh for each run and removed after it. What the run attaches is
+   directory (also its `HOME`) and write only that directory and the scratch, never the person's shared home where Claude Code keeps
+   its `.claude*` and which Codex reads (#1452 review); nothing they reach holds a secret (the run's tokens are set after pi starts,
+   so pi's `/proc/self/environ` does not have them), and the agent directory is made fresh for each run and removed after it. A residual:
+   pi hands its environment, tokens included, to the sandbox shell it starts, which drops it before the command runs; in that instant
+   the starting shell's `/proc/<pid>/environ` is readable by pi's own `read` (same user, same domain). Hitting it means guessing the pid
+   within about a millisecond, and the tokens end with the run and reach only this run's own tools and model. What the run attaches is
    checked as a person's upload is, and only its asker sees it until they show it to everyone.
 9. **Change without notice.** Anthropic may enforce "without prior notice"; plan eligibility, the
    CLIs' flags and Codex's app-server can change. Mitigations: pinned versions, the flag contract

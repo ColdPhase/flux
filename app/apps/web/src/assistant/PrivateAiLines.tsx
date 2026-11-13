@@ -8,7 +8,7 @@ import { isWorking } from './format';
 import { useForgetLiveRun, useLiveRun } from './liveRun';
 import type { ConversationAssistant } from './useConversationAssistant';
 import { useRunChanges, WaitingChanges } from './WaitingChanges';
-import { PhotoGrid } from '../composer/Attachments';
+import { MessageFiles } from '../composer/Attachments';
 import './assistant.css';
 
 // The answer to `/ai` (#842, F-036 AG-4; mockup AiPrivate): a card only its asker sees, in the place they asked. Show everyone posts it as their
@@ -54,7 +54,8 @@ export function PrivateAnswer({ run, assistant, meId, meName, others, composerId
     finally { setBusy(''); }
   }
   const answer = run.answer!;
-  // The pictures its agent attached (#1217): the asker's alone until Show everyone posts them with the answer, shown as a message's photos are.
+  // The pictures (#1217) and files (#1437) its agent attached: the asker's alone until Show everyone posts them with the answer, shown as a
+  // message's attachments are (photos in a grid, other files as rows that open in the preview).
   const pictures = changes.flatMap((change) => (change.file && (change.state === 'applied' || change.state === 'applied_after_wait') ? [change.file] : []));
   useForgetLiveRun(run.id, true);
   return (
@@ -66,7 +67,7 @@ export function PrivateAnswer({ run, assistant, meId, meName, others, composerId
       </div>
       <p className="assistant-private__asked">You asked: <code>/ai</code> {run.prompt}</p>
       <AnswerBody answer={answer} lookups={lookups} />
-      {pictures.length ? <PhotoGrid photos={pictures} context={{ author: name }} /> : null}
+      {pictures.length ? <MessageFiles files={pictures} context={{ author: name }} /> : null}
       {answer.truncated ? <p className="assistant-answer__truncated"><Icon name="alert" size={13} />Stopped at the length limit, so this answer is incomplete.</p> : null}
       {run.status === 'stopped' ? <p className="assistant-answer__truncated" data-stopped-answer=""><Icon name="alert" size={13} />Stopped by you, so this answer is incomplete.</p> : null}
       <AnswerTools answer={answer} onRetry={() => assistant.retry(run.id)} />

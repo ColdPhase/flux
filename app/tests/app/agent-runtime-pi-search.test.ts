@@ -132,6 +132,27 @@ describe('an API-key agent in pi searches the web with Flux\'s flux_web_search (
     } finally { connections.connect(owner.id, connectionId); }
   });
 
+  test('with the web off the run is not given it, so its brief never names a search it does not have (#1452 review)', async () => {
+    const env: NodeJS.ProcessEnv = { ...process.env, FLUX_WEB_READS: 'off', FLUX_AUTH_SECRET: process.env.FLUX_AUTH_SECRET ?? `pi-search-${'x'.repeat(40)}`,
+      FLUX_PUBLIC_ORIGIN: process.env.FLUX_PUBLIC_ORIGIN ?? 'http://127.0.0.1:8080' };
+    const off = await buildApp(loadServerConfig(env, '/nonexistent/flux_background_key'), 'packages/db/migrations', { keySearcher: { compute: provider, connections } });
+    await off.listen({ port: 0, host: '127.0.0.1' });
+    try {
+      const offBase = `http://127.0.0.1:${(off.server.address() as AddressInfo).port}`;
+      const issue = async (url: string) => {
+        const started = await ask('Anything new?');
+        await pool.query(`UPDATE personal_runs SET status = 'dispatching', dispatched_at = now() WHERE id = $1`, [started.run.id]);
+        const grant = await runTokenIssuer(db, url).issue(started.run.id, { pi: true });
+        await pool.query(`UPDATE personal_runs SET status = 'stopped', completed_at = now(), cost_state = 'released' WHERE id = $1`, [started.run.id]);
+        return grant?.tools ?? null;
+      };
+      const on = await issue(base);
+      assert.ok(on?.includes('flux_web_search'), JSON.stringify(on));
+      const without = await issue(offBase);
+      assert.ok(without && without.length > 0 && !without.includes('flux_web_search'), JSON.stringify(without));
+    } finally { await off.close(); }
+  });
+
   test('only a key run in pi gets it: a run in the worker\'s own loop and a plan CLI\'s never list it', () => {
     for (const mayDo of ['read', 'act', 'ask'] as const) assert.ok(!assistantRunTools(mayDo).includes('flux_web_search'));
   });
