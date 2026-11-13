@@ -167,7 +167,8 @@ shell and file tools, inside a sandbox that exists for one run; every engine can
   or "not found" comes back; a file is looked through as it is read). A change of files outside the scratch, or a command outside
   the sandbox shell, kills every process of the person at once, with no grace (RT-7 still holds: nothing of the login is persisted,
   logged or sent). What this cannot catch: a value the model rewrites (encoded, split) before sending it; accepted risk 10. What Codex reads from
-  its home at start (instructions, settings, skills, hooks, its `.env`) is removed before and after every run with its own tools.
+  its home at start (instructions, settings, skills, hooks, its `.env`) is removed before and after every run with its own tools, and a login the run wrote over its own (an attacker's account, which would
+  carry the person's next runs there) is replaced by the one the run started with.
 - **Without Landlock's network rules** (a kernel before 6.7, ABI 4, or one where Landlock is not enabled), the runtime keeps its
   CLIs as before: Flux's tools and the CLI's own web search only, and `flux_attach_file` has nothing to attach. The supervisor logs
   `tools_off` once at start.
