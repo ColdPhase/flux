@@ -149,10 +149,7 @@ class AgentChatFiles(unittest.TestCase):
         with jo.expect_file_chooser() as chooser:
             jo.get_by_role("button", name="Attach files").click()
         chooser.value.set_files([{"name": "alone.txt", "mimeType": "text/plain", "buffer": b"only a file"}])
-        # On the phone the picked files are confirmed in a sheet first, as in a space (#348).
-        sheet = jo.get_by_role("dialog", name="Choose files to send")
-        sheet.get_by_role("button", name="alone.txt").click()
-        sheet.get_by_role("button", name="Add 1").click()
+        # One file joins the draft at once, as in a space (several are ordered in a sheet on the phone, #348).
         expect(jo.get_by_role("list", name="Files in your draft").get_by_text("Ready, private", exact=False)).to_have_count(1)
         send = jo.get_by_role("button", name=f"Send to {self.ids['agent_name']}")
         expect(send).not_to_have_attribute("aria-disabled", "true")
