@@ -5,6 +5,7 @@ import type { Principal } from '../principal.js';
 import type { ActorRef } from '../work/ports.js';
 import { id } from '../work/validation.js';
 import { fileDetailOf, readsDetail } from './detail.js';
+import type { CleanPicture, PictureCanonicalizer } from './picture.js';
 import { FileReceiveTimeoutError, FileTooLargeError, type FileRepository, type FileStorage, type FileUnitOfWork, type StoredFileRow } from './ports.js';
 
 const MINUTE = 60_000;
@@ -39,11 +40,10 @@ export const isPublished = (row: Pick<StoredFileRow, 'messageId' | 'thoughtId'>)
 const unavailable = () => new NotFoundError('File', 'FILE_UNAVAILABLE');
 const attachmentUnavailable = () => new NotFoundError('Attachment', 'ATTACHMENT_UNAVAILABLE');
 
-/** Verifies a ready UUID without a second disk copy, including at a full staging quota. */
-async function digestOnly(bytes: AsyncIterable<Uint8Array>, limits: { maxBytes: number; deadline: number }) {
+/** The bytes of an upload, until more than `maxBytes` arrive (`FileTooLargeError`) or its deadline passes (`FileReceiveTimeoutError`). */
+async function* bounded(bytes: AsyncIterable<Uint8Array>, limits: { maxBytes: number; deadline: number }): AsyncGenerator<Uint8Array> {
   const iterator = bytes[Symbol.asyncIterator]();
-  const hash = createHash('sha256');
-  let size = 0;
+  let size = 0; let ended = false;
   try {
     while (true) {
       const remaining = limits.deadline - Date.now();
@@ -52,14 +52,55 @@ async function digestOnly(bytes: AsyncIterable<Uint8Array>, limits: { maxBytes: 
       const item = await Promise.race([iterator.next(), new Promise<never>((_, reject) => {
         timer = setTimeout(() => reject(new FileReceiveTimeoutError()), remaining);
       })]).finally(() => { if (timer) clearTimeout(timer); });
-      if (item.done) break;
+      if (item.done) { ended = true; return; }
       size += item.value.byteLength;
       if (size > limits.maxBytes) throw new FileTooLargeError();
-      hash.update(item.value);
+      yield item.value;
     }
-  } catch (error) { void iterator.return?.().catch(() => undefined); throw error; }
+  } finally { if (!ended) void iterator.return?.().catch(() => undefined); }
+}
+
+/** Verifies a ready UUID without a second disk copy, including at a full staging quota. */
+async function digestOnly(bytes: AsyncIterable<Uint8Array>, limits: { maxBytes: number; deadline: number }) {
+  const hash = createHash('sha256');
+  let size = 0;
+  for await (const chunk of bounded(bytes, limits)) { size += chunk.byteLength; hash.update(chunk); }
   return { size, sha256: hash.digest('hex'), discard: async () => undefined,
     commit: async () => { throw new Error('A digest verification cannot publish bytes'); } };
+}
+
+/** What a person is told when the real decoder cannot vouch for a picture they sent (#1343). */
+function pictureRefused(reason: Extract<CleanPicture, { ok: false }>['reason']): Error {
+  if (reason === 'too_many_pixels') return new PayloadTooLargeError('A picture is at most 8,000 pixels on a side and 40 megapixels', 'PICTURE_TOO_MANY_PIXELS');
+  // The upload itself was within 5 MiB (that is refused before this); the picture written again is not.
+  if (reason === 'too_large') return new PayloadTooLargeError('A file is at most 5 MiB, and this picture is larger once it is cleaned. Save it smaller and send it again', 'FILE_TOO_LARGE');
+  return new InvalidInputError('This picture cannot be read: it is damaged, or its parts do not agree on one image', 'UNREADABLE_PICTURE');
+}
+
+/**
+ * Looks at the first bytes of an upload (#1343, C-59): a file that starts like a PNG, JPEG, GIF or WebP is read whole, decoded and written again
+ * by the real decoder (`PictureCanonicalizer`), so what every reader's browser draws is exactly what was checked, and goes on as that picture;
+ * a picture it cannot vouch for is refused. Any other file passes through unchanged, as it arrived.
+ */
+async function canonicalUpload(bytes: AsyncIterable<Uint8Array>, canonicalizer: PictureCanonicalizer): Promise<AsyncIterable<Uint8Array>> {
+  const iterator = bytes[Symbol.asyncIterator]();
+  const chunks: Uint8Array[] = [];
+  let seen = 0; let finished = false;
+  const more = async () => { const item = await iterator.next(); if (item.done) finished = true; else { chunks.push(item.value); seen += item.value.byteLength; } };
+  try { while (seen < 12 && !finished) await more(); }
+  catch (error) { void iterator.return?.().catch(() => undefined); throw error; }
+  if (!imageTypeOf(Buffer.concat(chunks))) {
+    return (async function* () {
+      yield* chunks;
+      try { while (!finished) { const item = await iterator.next(); if (item.done) { finished = true; return; } yield item.value; } }
+      finally { if (!finished) void iterator.return?.().catch(() => undefined); }
+    })();
+  }
+  try { while (!finished) await more(); }
+  catch (error) { void iterator.return?.().catch(() => undefined); throw error; }
+  const picture = await canonicalizer.canonical(Buffer.concat(chunks));
+  if (!picture.ok) throw pictureRefused(picture.reason);
+  return (async function* () { yield picture.bytes; })();
 }
 
 
@@ -153,7 +194,7 @@ export async function placeThoughtImage(files: FileRepository, storage: Pick<Fil
  * private scratch, then a short generation-fenced finalization rechecks access and makes local bytes durable before the row is
  * ready. A ready row therefore always names durable bytes.
  */
-export function createFileUseCases(unit: FileUnitOfWork, storage: FileStorage, clock: () => Date = () => new Date()) {
+export function createFileUseCases(unit: FileUnitOfWork, storage: FileStorage, clock: () => Date = () => new Date(), pictures?: PictureCanonicalizer) {
   /** Best effort: frees a reservation whose bytes never became ready. */
   const release = (projectId: string, uploader: ActorRef, fileId: string) => unit.run(async (ports) => {
     await ports.files.lockUploader(projectId, uploader);
@@ -205,7 +246,9 @@ export function createFileUseCases(unit: FileUnitOfWork, storage: FileStorage, c
       const plaintext: Uint8Array[] = [];
       try {
         const limits = { maxBytes: FILE_LIMITS.fileBytes, deadline: Date.now() + FILE_LIMITS.receiveSeconds * 1000 };
-        received = admitted.replay ? await digestOnly(bytes, limits) : await storage.receive(readsDetail(name) ? observed(bytes, plaintext) : bytes, limits, admitted.reserved!.id);
+        // A picture is decoded and written again before anything is stored or hashed, so a retry of the same upload finds the same bytes (#1343).
+        const arriving = pictures ? await canonicalUpload(bounded(bytes, limits), pictures) : bytes;
+        received = admitted.replay ? await digestOnly(arriving, limits) : await storage.receive(readsDetail(name) ? observed(arriving, plaintext) : arriving, limits, admitted.reserved!.id);
       } catch (error) {
         if (admitted.reserved ?? admitted.verification) await release(projectId, uploader, (admitted.reserved ?? admitted.verification)!.id);
         if (error instanceof FileTooLargeError) throw new PayloadTooLargeError('A file is at most 5 MiB', 'FILE_TOO_LARGE');

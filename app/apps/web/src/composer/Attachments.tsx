@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { filePath, imageTypeOf, type MessageFile, type MessageReferenceCard } from '@flux/contracts';
+import { drawablePictureType, filePath, pictureBounds, type MessageFile, type MessageReferenceCard } from '@flux/contracts';
 import { readFileBytes } from '../api/files';
 import { Icon, trapTab, type IconName } from '../ui';
 import { detailLine, extensionOf, fileKind, fileLabel, fileSize, fileWord, looksLikePhoto, playTime, previewFormat, type FileKind } from './fileKind';
@@ -71,8 +71,12 @@ export function FileRow({ file }: { file: MessageFile }) {
   );
 }
 
-/** Bytes of one stored file, read through the access-checked route. A photo is one only when its bytes are an image. */
-type Bytes = { status: 'idle' | 'loading' } | { status: 'ready'; url: string; type: string; blob: Blob } | { status: 'other' } | { status: 'denied' };
+/**
+ * Bytes of one stored file, read through the access-checked route. A photo is one only when its bytes are an image within `PICTURE_BOUNDS`
+ * by every size its headers claim (#1343): a file stored under an earlier rule, or never cleaned, is a file row, never a bitmap a browser
+ * must allocate. A photo's own size comes with it, so its tile reserves its place.
+ */
+type Bytes = { status: 'idle' | 'loading' } | { status: 'ready'; url: string; type: string; blob: Blob; width?: number; height?: number } | { status: 'other' } | { status: 'denied' };
 const AUDIO_TYPE: Record<string, string> = { m4a: 'audio/mp4', mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', oga: 'audio/ogg', opus: 'audio/ogg', aac: 'audio/aac', flac: 'audio/flac', weba: 'audio/webm' };
 export function useFileBytes(fileId: string | null, as: 'image' | 'audio', enabled = true, name = ''): Bytes {
   const key = fileId && enabled ? `${fileId}:${as}:${name}` : '';
@@ -84,11 +88,12 @@ export function useFileBytes(fileId: string | null, as: 'image' | 'audio', enabl
     const settle = (bytes: Bytes) => setResult({ key, bytes });
     readFileBytes(fileId, { signal: controller.signal, cache: 'no-store' }).then((data) => {
       if (!data) { settle({ status: 'denied' }); return; }
-      const type = as === 'image' ? imageTypeOf(data) : AUDIO_TYPE[extensionOf(name)] ?? 'audio/mpeg';
+      const type = as === 'image' ? drawablePictureType(data) : AUDIO_TYPE[extensionOf(name)] ?? 'audio/mpeg';
       if (!type) { settle({ status: 'other' }); return; }
+      const size = as === 'image' ? pictureBounds(data) : null;
       const blob = new Blob([data as BlobPart], { type });
       url = URL.createObjectURL(blob);
-      settle({ status: 'ready', url, type, blob });
+      settle({ status: 'ready', url, type, blob, ...(size ?? {}) });
     }).catch(() => { if (!controller.signal.aborted) settle({ status: 'denied' }); });
     return () => { controller.abort(); if (url) URL.revokeObjectURL(url); };
   }, [key, fileId, as, name]);
@@ -198,7 +203,7 @@ function PhotoTile({ file, index, count, more, onOpen }: { file: MessageFile; in
     <li className="photo-grid__tile" data-photo-state={bytes.status === 'ready' ? 'ready' : 'loading'}>
       <button type="button" className="photo-grid__open" onClick={() => onOpen(index)} disabled={bytes.status !== 'ready'}
         aria-label={`Open photo ${file.name}${count > 1 ? `, ${index + 1} of ${count}` : ''}${more ? `, ${more} more` : ''}`}>
-        {bytes.status === 'ready' ? <img src={bytes.url} alt="" draggable={false} /> : null}
+        {bytes.status === 'ready' ? <img src={bytes.url} alt="" draggable={false} decoding="async" width={bytes.width} height={bytes.height} /> : null}
         {more ? <span className="photo-grid__more" aria-hidden="true">+{more}</span> : null}
       </button>
     </li>
@@ -281,7 +286,7 @@ export function PhotoViewer({ photos, start, context, onClose }: { photos: Messa
       </div>
       <div className="photo-viewer__stage">
         {photos.length > 1 ? <button type="button" className="photo-viewer__round photo-viewer__prev" onClick={() => step(-1)} disabled={index === 0} aria-label="Previous photo"><Icon name="chevron-left" size={18} /></button> : null}
-        {bytes.status === 'ready' ? <img src={bytes.url} alt={context?.caption || file.name} />
+        {bytes.status === 'ready' ? <img src={bytes.url} alt={context?.caption || file.name} decoding="async" />
           : <p className="photo-viewer__empty" role={bytes.status === 'denied' ? 'alert' : undefined}>{bytes.status === 'denied' ? 'You no longer have access to this photo.' : bytes.status === 'other' ? 'This file is not a photo.' : 'Loading…'}</p>}
         {photos.length > 1 ? <button type="button" className="photo-viewer__round photo-viewer__next" onClick={() => step(1)} disabled={index === photos.length - 1} aria-label="Next photo"><Icon name="chevron-right" size={18} /></button> : null}
       </div>

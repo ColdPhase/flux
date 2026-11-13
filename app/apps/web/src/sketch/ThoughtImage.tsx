@@ -1,10 +1,10 @@
 import { useEffect, useState, type CSSProperties } from 'react';
-import { imageTypeOf } from '@flux/contracts';
+import { drawablePictureType } from '@flux/contracts';
 import { readFileBytes } from '../api/files';
 
 // Images of map thoughts (#252). Stored files always download as attachments, so the bytes are fetched with the
-// session, accepted only as PNG, JPEG, GIF or WebP by their own signature (never SVG) and shown from a local object
-// URL. Stored files never change, so one URL serves every view of the same file in this visit.
+// session, accepted only as PNG, JPEG, GIF or WebP by their own signature (never SVG) and within `PICTURE_BOUNDS` by every
+// size their headers claim (#1343), and shown from a local object URL. Stored files never change, so one URL serves every view of the same file in this visit.
 
 const LIMIT = 60;
 
@@ -22,7 +22,7 @@ function imageUrl(fileId: string): Promise<string | null> {
   let url = urls.get(fileId);
   if (!url) {
     url = fileBytes(fileId).then((bytes) => {
-      const type = bytes ? imageTypeOf(bytes) : null;
+      const type = bytes ? drawablePictureType(bytes) : null;
       if (!bytes || !type) { urls.delete(fileId); return null; }
       return URL.createObjectURL(new Blob([bytes as BlobPart], { type }));
     });
@@ -53,5 +53,5 @@ export function ThoughtImage({ fileId, name, className, style }: { fileId: strin
   const current = loaded?.id === fileId ? loaded : null;
   if (!current) return <span className={`${className} is-loading`} style={style} aria-hidden="true" />;
   if (!current.url) return <span className={`${className} is-missing`} style={style}>Image unavailable</span>;
-  return <img className={className} style={style} src={current.url} alt={name} draggable={false} />;
+  return <img className={className} style={style} src={current.url} alt={name} draggable={false} decoding="async" />;
 }

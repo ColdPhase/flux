@@ -1,12 +1,15 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, beforeEach, describe, test } from 'node:test';
-import { assistantChangeActionPath, assistantRunShowPath, filePath, imageTypeOf, type ShowAnswerResult } from '@flux/contracts';
+import { assistantChangeActionPath, assistantRunShowPath, filePath, imageTypeOf, pictureBounds, type ShowAnswerResult } from '@flux/contracts';
 import { type PersonalComputeResult } from '@flux/core';
 import { pool } from './support/db.js';
 import { expectStatus } from './support/people.js';
 import { assistantScene, changesOf, human, result, text, type AssistantScene } from './support/assistant-scene.js';
 import { png } from './support/pictures.js';
+import { assertSamePixels } from './support/picture-pixels.js';
+// The pictures are read back with the same sharp the server uses (its own dependency, not the test workspace's).
+import sharp from '../../apps/server/node_modules/sharp/dist/index.mjs';
 
 // An agent attaches a picture to its answer (#1217, F-036 AG-8, C-59), on the real /mcp route with a run's token and through the real worker
 // loop with a fake provider. The API of the check stack reaches the link mock as `public.test` (a closed world: every other address, and
@@ -58,7 +61,9 @@ describe('flux_attach_image: an agent attaches a public picture to its answer', 
     assert.equal(own.status, 200);
     const bytes = own.bytes;
     assert.equal(imageTypeOf(bytes), 'image/png');
-    assert.deepEqual(bytes, png(96, 64), 'the picture without its text chunks or what was appended to it');
+    // The picture is decoded and written again (#1343): the same pixels, with none of its text chunks and nothing that was appended to it.
+    await assertSamePixels(bytes, png(96, 64), 'the picture as the site sent it');
+    for (const secret of ['Ada Nowak', 'GPS', 'tIME', 'PK\x03\x04', '<script>']) assert.ok(!own.text.includes(secret), `${secret} is gone`);
     assert.equal((await download(scene.peer, file!.id)).status, 404, 'nobody else sees a private answer\'s picture');
     // Show everyone: the asker's own message, "via" the agent, with the picture as its attachment.
     const shown = expectStatus(await scene.owner.browser.request('POST', assistantRunShowPath(started.run.id)), 200) as ShowAnswerResult;
@@ -107,6 +112,28 @@ describe('flux_attach_image: an agent attaches a public picture to its answer', 
     await scene.complete(run.runId);
   });
 
+  test('a stored picture is decoded and written again: a turned JPEG is upright without its EXIF or what hid in it, a GIF keeps its frames, a WebP is the picture it says (#1343)', async () => {
+    const run = await scene.liveRun(undefined, 'pictures please');
+    for (const path of ['/pic/jpeg-turned.jpg', '/pic/jpeg-thumbnail.jpg', '/pic/moving.gif', '/pic/solid-64x48.webp']) {
+      const said = await run.call('flux_attach_image', { url: at(path) });
+      assert.equal(result(said.message)?.isError, undefined, `${path}: ${text(said.message)}`);
+    }
+    const files = await stagedFor(scene.owner.id);
+    assert.deepEqual(files.map((file) => file.name), ['jpeg-turned.jpg', 'jpeg-thumbnail.jpg', 'moving.gif', 'solid-64x48.webp']);
+    const [turned, thumbnail, moving, small] = await Promise.all(files.map((file) => download(scene.owner, file.id)));
+    // What libvips reads from each stored file is what the server reported and every header of the file says: nothing else is left to draw.
+    const sizes = await Promise.all([turned!, thumbnail!, moving!, small!].map(async ({ bytes }) => {
+      const meta = await sharp(bytes).metadata();
+      assert.deepEqual(pictureBounds(bytes), { width: meta.width, height: meta.height }, 'no header claims another size');
+      return [meta.format, meta.width, meta.height, meta.pages ?? 1];
+    }));
+    assert.deepEqual(sizes, [['jpeg', 8, 16, 1], ['jpeg', 16, 8, 1], ['gif', 1, 1, 3], ['webp', 64, 48, 1]], 'the 16×8 picture was held a quarter turn');
+    for (const secret of ['Exif', 'GPS', 'Ada Nowak', 'xmpmeta', 'Taken at home', '<script>']) assert.ok(!turned!.text.includes(secret), `${secret} is gone`);
+    assert.ok(!thumbnail!.text.includes('Exif'), 'the thumbnail with a size of its own went with the EXIF');
+    assert.ok(moving!.text.includes('NETSCAPE2.0') && !moving!.text.includes('GPS'), 'the animation loops, its comment is gone');
+    await scene.complete(run.runId);
+  });
+
   test('every refusal is plain words, nothing is kept and no change is made: private addresses and redirects to them, non-pictures, SVG, too large, a bomb', async () => {
     const run = await scene.liveRun(undefined, 'attach these');
     const refusals: [string, RegExp, boolean][] = [
@@ -132,6 +159,15 @@ describe('flux_attach_image: an agent attaches a public picture to its answer', 
       [at('/pic/huge.png'), /larger than 5 MB/, true],
       [at('/pic/huge-declared.png'), /larger than 5 MB/, true],
       [at('/pic/bomb.png'), /too big to show: at most 8,000 pixels/, true],
+      // #1343, the audit of #1270: files a header check and a decoder read differently. None of them is stored, whatever a browser would draw.
+      [at('/pic/two-chunks.webp'), /damaged and cannot be read/, true],
+      [at('/pic/two-chunks-reversed.webp'), /damaged and cannot be read/, true],
+      [at('/pic/two-lossy-chunks.webp'), /damaged and cannot be read/, true],
+      [at('/pic/vp8x-still.webp'), /damaged and cannot be read/, true],
+      [at('/pic/vp8x-anim.webp'), /damaged and cannot be read/, true],
+      [at('/pic/apng-wide.png'), /damaged and cannot be read/, true],
+      [at('/pic/solid-16383.webp'), /too big to show: at most 8,000 pixels/, true],
+      [at('/pic/jpeg-bomb.jpg'), /too big to show: at most 8,000 pixels/, true],
       [at('/pic/missing.png'), /did not answer with the picture/, true],
       ['not an address', /not a web address/, false],
     ];

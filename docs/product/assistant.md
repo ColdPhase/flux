@@ -376,8 +376,9 @@ inferences are [C-59](decisions.md#coordinator-defaults-and-inferences-not-found
   addresses only, the name resolved once and the connection made to that answer, at most three redirects each judged again, short
   timeouts, and an address that carries private Flux text the run read is refused (C-30); every address asked is listed with the
   run's sources. Only PNG, JPEG, WebP and GIF, recognised by their bytes and not by the site's word; never SVG; at most 5 MiB, the
-  size of any file a person attaches, and at most 8,000 pixels on a side and 40 million pixels. The server keeps only the picture:
-  text, location and camera metadata and anything after the picture's end are dropped, and a file whose structure does not parse is
+  size of any file a person attaches, and at most 8,000 pixels on a side and 40 million pixels. The server keeps only the picture,
+  decoded and written again by its own decoder (#1343, C-59): text, location and camera metadata and anything after the picture's end are
+  dropped, a file with more than one image or sizes that disagree is refused, and a file whose structure does not parse is
   refused. It is stored like a file the asker attached and not yet sent, which only they can open, and shows in their private answer
   card; Show everyone posts it with the answer as an ordinary attachment of the asker's message, which every member then sees.
   Attaching is a change of AG-3: under "Do it and tell me" it is made at once with "Attached a picture · Undo"; under "Ask me first"

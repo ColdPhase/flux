@@ -38,6 +38,13 @@ export const FILE_LIMITS = {
 } as const;
 
 /**
+ * How big a picture may be (#1343, C-59): at most 8,000 pixels on a side and 40 million in all. A stored picture is checked against this
+ * when it arrives (an agent's from the web, a person's upload), and the web app checks it again, from the file's own headers, before it asks
+ * a browser to draw one inline: a file stored under an earlier rule, or one that was never cleaned, is then a file row, not a picture.
+ */
+export const PICTURE_BOUNDS = { side: 8_000, pixels: 40_000_000 } as const;
+
+/**
  * What the server read from the bytes at upload (#469, F-026 §6): the pages of a PDF, the data rows of a
  * CSV or TSV (the header line is not one), the playing time of a voice note or recording. Each is absent when
  * the file is another kind or its bytes did not say; a name alone never sets one.
@@ -94,4 +101,88 @@ export function imageTypeOf(bytes: Uint8Array): ThoughtImageType | null {
   if (bytes.length >= 6 && (starts(0x47, 0x49, 0x46, 0x38, 0x37, 0x61) || starts(0x47, 0x49, 0x46, 0x38, 0x39, 0x61))) return 'image/gif';
   if (bytes.length >= 12 && starts(0x52, 0x49, 0x46, 0x46) && bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50) return 'image/webp';
   return null;
+}
+
+const ascii4 = (b: Uint8Array, at: number) => String.fromCharCode(b[at] ?? 0, b[at + 1] ?? 0, b[at + 2] ?? 0, b[at + 3] ?? 0);
+/** A byte that must be there: reading past the end stops the walk (`pictureBounds` keeps what it had read). */
+class Short extends Error {}
+const at8 = (b: Uint8Array, at: number) => b[at] ?? (() => { throw new Short(); })();
+const be16 = (b: Uint8Array, at: number) => (at8(b, at) << 8) | at8(b, at + 1);
+const be32 = (b: Uint8Array, at: number) => at8(b, at) * 0x1000000 + ((at8(b, at + 1) << 16) | (at8(b, at + 2) << 8) | at8(b, at + 3));
+const le16 = (b: Uint8Array, at: number) => at8(b, at) | (at8(b, at + 1) << 8);
+const le24 = (b: Uint8Array, at: number) => at8(b, at) | (at8(b, at + 1) << 8) | (at8(b, at + 2) << 16);
+const le32 = (b: Uint8Array, at: number) => le24(b, at) + at8(b, at + 3) * 0x1000000;
+
+/**
+ * The largest width and the largest height that any header of a picture's file claims (#1343): a PNG's IHDR and each APNG frame, every
+ * JPEG start-of-frame, a GIF's screen and each frame, a WebP's canvas and every image chunk and animation frame in it. Decoders disagree on
+ * which of several sizes they draw (the first image chunk, the last, the canvas), so a file is judged by the largest, and a browser is never
+ * asked to allocate more than this says. Reads headers only, in one pass that advances at least a byte a step, never throws: null for
+ * bytes that are not one of the four picture types or that give no size.
+ */
+export function pictureBounds(b: Uint8Array): { width: number; height: number } | null {
+  const type = imageTypeOf(b);
+  if (!type) return null;
+  let width = 0; let height = 0;
+  const see = (w: number, h: number) => { if (w > width) width = w; if (h > height) height = h; };
+  try {
+    if (type === 'image/png') {
+      let at = 8; let first = true;
+      while (at + 8 <= b.length) {
+        const length = be32(b, at); const kind = ascii4(b, at + 4);
+        if (first) { if (kind !== 'IHDR' || length < 8) return null; see(be32(b, at + 8), be32(b, at + 12)); first = false; }
+        else if (kind === 'fcTL' && length >= 26) see(be32(b, at + 12) + be32(b, at + 20), be32(b, at + 16) + be32(b, at + 24));
+        if (kind === 'IEND') break;
+        at += 12 + length;
+      }
+    } else if (type === 'image/jpeg') {
+      let at = 2;
+      while (at < b.length) {
+        if (b[at] !== 0xff) { at++; continue; } // entropy-coded data
+        while (b[at] === 0xff) at++;
+        const marker = b[at++];
+        if (marker === undefined || marker === 0xd9) break;
+        if (marker === 0 || marker === 0x01 || (marker >= 0xd0 && marker <= 0xd8)) continue;
+        const length = be16(b, at);
+        if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc && length >= 8) see(be16(b, at + 5), be16(b, at + 3));
+        at += Math.max(length, 2);
+      }
+    } else if (type === 'image/gif') {
+      see(le16(b, 6), le16(b, 8));
+      const skip = (from: number) => { let p = from; while (true) { const size = at8(b, p); p += 1 + size; if (size === 0) return p; } };
+      const table = (packed: number) => (packed & 0x80 ? 3 * 2 ** ((packed & 7) + 1) : 0);
+      let at = 13 + table(at8(b, 10));
+      while (at < b.length) {
+        const kind = b[at];
+        if (kind === 0x2c) { see(le16(b, at + 5), le16(b, at + 7)); at = skip(at + 11 + table(at8(b, at + 9))); }
+        else if (kind === 0x21) at = skip(at + 2);
+        else break;
+      }
+    } else {
+      const walk = (from: number, to: number, nested: boolean) => {
+        let at = from;
+        while (at + 8 <= to) {
+          const kind = ascii4(b, at); const size = le32(b, at + 4); const data = at + 8;
+          if (kind === 'VP8X' && size >= 10) see(le24(b, data + 4) + 1, le24(b, data + 7) + 1);
+          else if (kind === 'VP8 ' && size >= 10) see(le16(b, data + 6) & 0x3fff, le16(b, data + 8) & 0x3fff);
+          else if (kind === 'VP8L' && size >= 5) { const bits = le32(b, data + 1); see((bits & 0x3fff) + 1, ((bits >>> 14) & 0x3fff) + 1); }
+          else if (kind === 'ANMF' && size >= 16 && !nested) {
+            see(le24(b, data) * 2 + le24(b, data + 6) + 1, le24(b, data + 3) * 2 + le24(b, data + 9) + 1);
+            walk(data + 16, Math.min(data + size, to), true);
+          }
+          at = data + size + (size & 1);
+        }
+      };
+      walk(12, Math.min(le32(b, 4) + 8, b.length), false);
+    }
+  } catch (error) { if (!(error instanceof Short)) return null; }
+  return width && height ? { width, height } : null;
+}
+
+/** The image type these bytes are, only when it is within `PICTURE_BOUNDS`: what the web app may ask a browser to draw inline (#1343). */
+export function drawablePictureType(bytes: Uint8Array): ThoughtImageType | null {
+  const type = imageTypeOf(bytes);
+  const size = type ? pictureBounds(bytes) : null;
+  if (!type || !size || size.width > PICTURE_BOUNDS.side || size.height > PICTURE_BOUNDS.side || size.width * size.height > PICTURE_BOUNDS.pixels) return null;
+  return type;
 }
