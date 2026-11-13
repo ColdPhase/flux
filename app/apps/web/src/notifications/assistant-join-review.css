@@ -3,4 +3,6 @@
 .assistant-join-review p { margin: 0; color: var(--t2); line-height: 1.5; }
 .assistant-join-review .agent-id { flex-wrap: wrap; }
 .assistant-join-review .agent-id__label { white-space: normal; overflow: visible; overflow-wrap: anywhere; }
+/* Where the label may wrap, its owner part is one box, so it stays a rectangle a pointer can hit when it wraps as a whole (#1364). */
+.assistant-join-review .agent-for { display: inline-block; max-width: 100%; }
 .assistant-join-review__actions { display: flex; justify-content: flex-end; gap: var(--s-2); }

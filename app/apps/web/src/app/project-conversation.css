@@ -98,6 +98,8 @@ button.project-convo__contribution { cursor: pointer; }
 .project-convo__message-meta { flex-wrap: wrap; gap: 4px 9px; margin-bottom: 7px; font-size: var(--fs-xs); }
 .project-convo__message-meta strong { min-width: 0; max-width: 100%; overflow-wrap: anywhere; font-size: var(--fs-sm); font-weight: 600; }
 .project-convo__message-meta .agent-id__label { white-space: normal; overflow: visible; overflow-wrap: anywhere; }
+/* Where the label may wrap, its owner part is one box, so it stays a rectangle a pointer can hit when it wraps as a whole (#1364). */
+.project-convo__message-meta .agent-for { display: inline-block; max-width: 100%; }
 .project-convo__message-meta > span:not(.agent-tag) { visibility: visible; color: var(--t3); }
 .project-convo__message > p:not(.photo-meta) { max-width: 100%; margin: 0; padding: 9px 13px; border-radius: 6px var(--r-lg) var(--r-lg) var(--r-lg); background: var(--el); box-shadow: var(--sh-1); font-size: var(--fs-base); line-height: var(--lh); }
 /* Everything under a message (sources, linked work, decisions, actions) stays inside its
