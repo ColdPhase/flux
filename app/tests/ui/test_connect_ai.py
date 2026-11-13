@@ -457,7 +457,7 @@ class ConnectAiJourney(unittest.TestCase):
                 page = self.page("tom")
                 self.stub_runtime(page, off)
 
-                def as_role(route, role=role):
+                def as_role(route, _request=None, role=role):
                     response = route.fetch()
                     body = response.json()
                     for item in body or []:
