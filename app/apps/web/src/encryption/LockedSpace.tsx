@@ -2,7 +2,7 @@ import { useEffect, useId, useLayoutEffect, useRef, useState, type FormEvent } f
 import { Link, Navigate, useNavigate, useParams, useRevalidator, useRouteError } from 'react-router';
 import { useShellData } from '../app/data';
 import { useShellActions } from '../app/shellContext';
-import { Button, EmptyState, Icon, Input } from '../ui';
+import { Button, Icon, Input } from '../ui';
 import { ApiError } from '../api/client';
 import { encryptionProblem, isWorkspaceLocked, lockedWorkspaceId, unlockWorkspace, type WorkspaceEncryption } from './api';
 import { isManagerOf, lockedLine, setLockedPlace, useLockedWorkspaces, useSpace } from './state';
@@ -74,24 +74,23 @@ export function LockedSpace({ workspaceId }: { workspaceId: string | null }) {
   useLayoutEffect(() => { revalidate.current = revalidator.revalidate; });
   useEffect(() => { if (unlockedNow) void revalidate.current(); }, [unlockedNow]);
 
+  // One calm card in the middle of the space's pane (F-026 §7 Spaces): the lock, "<name> is locked", what happened and who can unlock it. A
+  // member only waits; a space admin who can unlock it has the field, Unlock and the recovery code in the same card. The header above it
+  // is the space's own, so nothing here repeats it.
+  const text = manager
+    ? hasPassword ? `${reason} Type your unlock password to open it for everyone.`
+      : unlocker ? `${reason} You don’t have an unlock password for ${name} yet. ${whoCanUnlock(encryption, me.user.id)}${codeExists ? ' Or use the recovery code.' : ''}`
+        : `${reason} You don’t have an unlock password for ${name} yet. ${whoCanUnlock(encryption, me.user.id)}`
+    : `${reason} ${space?.role === 'guest' ? 'An admin of this space unlocks it.' : whoCanUnlock(encryption, me.user.id)}`;
   return (
     <div className="pane-scroll"><div className="pane-in locked">
       <div className="locked__card" data-locked-space={workspaceId ?? ''}>
-        {manager ? (
-          <EmptyState icon="lock" level={2} title={`Unlock ${name}`}>
-            <p data-locked-reason="">{reason}{' '}
-              {hasPassword ? 'Type your unlock password to open it for everyone.'
-                : unlocker ? `You don’t have an unlock password for ${name} yet. ${whoCanUnlock(encryption, me.user.id)}${codeExists ? ' Or use the recovery code.' : ''}`
-                  : `You don’t have an unlock password for ${name} yet. ${whoCanUnlock(encryption, me.user.id)}`}</p>
-            {unlocker && workspaceId ? <UnlockForm workspaceId={workspaceId} name={name} encryption={encryption} autoFocus={focusIsFree()} /> : null}
-            {/* A locked space has no settings page to reach its keys from: its admins open them here (who has a password, a rotation waiting). */}
-            {workspaceId ? <Button variant="quiet" data-encrypted-keys="" onClick={() => openDetails({ kind: 'people', workspaceId })}>People and encryption</Button> : null}
-          </EmptyState>
-        ) : (
-          <EmptyState icon="lock" level={2} title={`${name} is locked`}>
-            <p data-locked-reason="">{reason} Waiting for an admin. {space?.role === 'guest' ? 'An admin of this space unlocks it.' : whoCanUnlock(encryption, me.user.id)} You can come back then.</p>
-          </EmptyState>
-        )}
+        <span className="locked__icon" aria-hidden="true"><Icon name="lock" size={20} /></span>
+        <h2 className="locked__title">{name} is locked</h2>
+        <p className="locked__text" data-locked-reason="">{text}</p>
+        {manager && unlocker && workspaceId ? <UnlockForm workspaceId={workspaceId} name={name} encryption={encryption} autoFocus={focusIsFree()} /> : null}
+        {/* A locked space has no settings page to reach its keys from: its admins open them here (who has a password, a rotation waiting). */}
+        {manager && workspaceId ? <Button variant="quiet" data-encrypted-keys="" onClick={() => openDetails({ kind: 'people', workspaceId })}>People and encryption</Button> : null}
       </div>
     </div></div>
   );
@@ -144,12 +143,14 @@ export function UnlockForm({ workspaceId, name, encryption, autoFocus = false, o
   return (
     <form className="locked__form" onSubmit={(event) => void unlock(event)} noValidate aria-label={`Unlock ${name}`}
       onKeyDown={onCancel ? (event) => { if (event.key === 'Escape') { event.stopPropagation(); onCancel(); } } : undefined}>
-      <Input ref={fieldRef} label={usingRecovery ? 'Recovery code' : 'Your unlock password'} type={usingRecovery ? 'text' : 'password'}
-        autoComplete={usingRecovery ? 'off' : 'current-password'} autoCapitalize="none" autoCorrect="off" spellCheck={false} autoFocus={autoFocus}
-        value={secret} aria-invalid={problem ? true : undefined} aria-describedby={problem ? statusId : undefined}
-        onChange={(event) => { setSecret(event.target.value); if (problem) setProblem(''); }} />
-      <div className="locked__actions">
+      <div className="locked__row">
+        <Input ref={fieldRef} label={usingRecovery ? 'Recovery code' : 'Your unlock password'} type={usingRecovery ? 'text' : 'password'}
+          autoComplete={usingRecovery ? 'off' : 'current-password'} autoCapitalize="none" autoCorrect="off" spellCheck={false} autoFocus={autoFocus}
+          value={secret} aria-invalid={problem ? true : undefined} aria-describedby={problem ? statusId : undefined}
+          onChange={(event) => { setSecret(event.target.value); if (problem) setProblem(''); }} />
         <Button type="submit" variant="primary" busy={busy}>Unlock</Button>
+      </div>
+      <div className="locked__actions">
         {hasPassword && codeExists ? <Button variant="quiet" onClick={() => { setRecovery(!recovery); setSecret(''); setProblem(''); requestAnimationFrame(() => fieldRef.current?.focus()); }}>{recovery ? 'Use my unlock password' : 'Use the recovery code'}</Button> : null}
         {onCancel ? <Button variant="secondary" onClick={onCancel}>Cancel</Button> : null}
       </div>

@@ -254,7 +254,9 @@ class NewProject(unittest.TestCase):
         expect(card.get_by_role("switch", name="AI")).to_have_attribute("aria-checked", "true")
         encrypted.click()
         expect(encrypted).to_have_attribute("aria-checked", "true")
-        expect(card.get_by_role("switch", name="AI")).to_have_count(0)
+        # The AI row stays, dimmed and off, and says why (F-026 §7 Spaces).
+        expect(card.get_by_role("switch", name="AI")).to_be_disabled()
+        expect(card.get_by_role("switch", name="AI")).to_have_attribute("aria-checked", "false")
         expect(card).to_contain_text("No AI in encrypted spaces")
         expect(card.get_by_label("Your unlock password", exact=True)).to_be_visible()
         expect(card.get_by_label("Repeat", exact=True)).to_be_visible()
@@ -269,7 +271,8 @@ class NewProject(unittest.TestCase):
         shot_both(page, f"1216-newspace-encrypted-1440-{UI_BROWSER}")
         # Off again before Create: the AI switch is back, and nothing is asked.
         encrypted.click()
-        expect(card.get_by_role("switch", name="AI")).to_be_visible()
+        expect(card.get_by_role("switch", name="AI")).to_be_enabled()
+        expect(card.get_by_role("switch", name="AI")).to_have_attribute("aria-checked", "true")
         expect(card.get_by_label("Your unlock password", exact=True)).to_have_count(0)
         expect(card.locator("[data-admins-see-name]")).to_have_count(0)
         # The phone says the same, inside the width of the card and the screen.
@@ -297,12 +300,15 @@ class NewProject(unittest.TestCase):
         encrypted.click()
         card.get_by_label("Your unlock password", exact=True).fill(self.UNLOCK)
         card.get_by_label("Repeat", exact=True).fill("something else entirely different")
-        card.get_by_role("button", name="Create space").click()
-        expect(card).to_contain_text("The two passwords don’t match.")
-        card.get_by_label("Repeat", exact=True).fill(self.UNLOCK)
-        card.get_by_role("button", name="Create space").click()
-        expect(card).to_contain_text("Download the recovery code first")
-        self.assert_download_block_is_spaced(card, "with the refusal")
+        # #1361: Create space is off, and says why, until the recovery code is downloaded: neither a click nor Enter in a field makes the space.
+        create = card.get_by_role("button", name="Create space")
+        expect(create).to_be_disabled()
+        expect(card.locator("[data-create-needs-code]")).to_have_text("Download the recovery code first.")
+        expect(create).to_have_accessible_description("Download the recovery code first.")
+        card.get_by_label("Repeat", exact=True).press("Enter")
+        page.wait_for_timeout(400)
+        self.assertEqual(self.api(page, "GET", f"/api/v1/workspaces/{company}/projects?limit=100", status=200)["total"], before, "nothing is made without the code")
+        self.assert_download_block_is_spaced(card, "before the download")
         with page.expect_download() as download:
             card.get_by_role("button", name="Download recovery code").click()
         text = open(download.value.path(), encoding="utf-8").read()
@@ -310,7 +316,14 @@ class NewProject(unittest.TestCase):
         self.assertIsNotNone(found, text)
         code = f"{found.group(1)}-{found.group(2)}"
         expect(card.get_by_role("button", name="Recovery code downloaded")).to_be_visible()
-        card.get_by_role("button", name="Create space").click()
+        expect(card.locator("[data-create-needs-code]")).to_have_count(0)
+        expect(create).to_be_enabled()
+        # A mismatching repeat is still said in the field, now that Create is on.
+        card.get_by_label("Repeat", exact=True).fill("something else entirely different")
+        create.click()
+        expect(card).to_contain_text("The two passwords don’t match.")
+        card.get_by_label("Repeat", exact=True).fill(self.UNLOCK)
+        create.click()
         expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}$"))
         pid = re.search(r"/projects/([0-9a-f-]{36})", page.url).group(1)
         project = self.api(page, "GET", f"/api/v1/projects/{pid}", status=200)
@@ -327,6 +340,34 @@ class NewProject(unittest.TestCase):
         expect(page.get_by_role("switch", name="AI")).to_have_count(0)
         expect(page.locator("[data-encrypted-keys]")).to_be_visible()
         shot(page, f"874-encrypted-settings-1440-{UI_BROWSER}")
+
+    def test_09b_the_encrypted_window_keeps_its_footer_in_view_and_puts_the_password_beside_its_repeat(self) -> None:
+        """#1361 (F-026 §7 Spaces): at 1280 × 800 and 1180 × 820 Cancel and Create space stay visible with the form scrolled to its top and to its end,
+        Create says why it is off, and the unlock password and Repeat sit side by side."""
+        self.ensure_account()
+        for size in ({"width": 1280, "height": 800}, {"width": 1180, "height": 820}):
+            with self.subTest(window=f"{size['width']}x{size['height']}"):
+                page = self.page("light", size)
+                card, encrypted = self.encrypted_card(page)
+                encrypted.click()
+                create, cancel = card.get_by_role("button", name="Create space"), card.get_by_role("button", name="Cancel")
+                for where in ("top", "end"):
+                    card.locator(".newspace__body").evaluate("(el, where) => { el.scrollTop = where === 'top' ? 0 : el.scrollHeight; }", where)
+                    for button in (create, cancel):
+                        box = button.bounding_box()
+                        self.assertIsNotNone(box)
+                        self.assertGreaterEqual(box["y"], 0, f"{where}: inside the window")
+                        self.assertLessEqual(box["y"] + box["height"], size["height"], f"{where}: the footer is in the viewport")
+                self.assertAlmostEqual(create.bounding_box()["height"], cancel.bounding_box()["height"], delta=0.6, msg="Cancel and Create have the same height")
+                expect(create).to_be_disabled()
+                expect(card.locator("[data-create-needs-code]")).to_be_visible()
+                password, repeat = card.get_by_label("Your unlock password", exact=True).bounding_box(), card.get_by_label("Repeat", exact=True).bounding_box()
+                self.assertAlmostEqual(password["y"], repeat["y"], delta=1, msg="the password and Repeat are side by side")
+                self.assertLess(password["x"] + password["width"], repeat["x"] + 1)
+                # The footer stays put while the middle scrolls, and the scrim covers the sidebar too.
+                self.assertTrue(card.locator(".newspace__foot").evaluate("el => el.getBoundingClientRect().bottom <= innerHeight"))
+                self.assertEqual(page.evaluate("() => document.elementFromPoint(20, 300).closest('.ui-overlay') !== null"), True, "the scrim is over the sidebar")
+                shot(page, f"1361-newspace-encrypted-{size['width']}x{size['height']}-{UI_BROWSER}")
 
     def test_10_a_first_time_owner_reaches_encrypted_from_home_before_making_anything(self) -> None:
         """#848 AC-1 and AC-4: a new account with no space and no note opens the New space window from Home's first-run card and finds

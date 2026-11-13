@@ -9,6 +9,10 @@
 .newspace__encrypt p { grid-column: 2; margin: 0; font-size: var(--fs-md); color: var(--t2); line-height: 1.5; }
 .newspace__secret { display: grid; gap: 12px; padding: 14px; border-radius: var(--r-lg); background: var(--sub); }
 .newspace__secret .ui-input, .newspace__secret .newspace__phrase { background: var(--el); }
+/* Inside the switches' card, under the Encrypted row (F-026 §7 Spaces): the password and Repeat side by side while the window is wide enough. */
+.newspace__switches > .newspace__secret { container-type: inline-size; padding: 14px 16px 16px; border-radius: 0; background: none; border-top: 1px solid var(--line); }
+.newspace__pair { display: grid; gap: 12px; }
+@container (min-width: 440px) { .newspace__pair { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
 .newspace__phrase { min-height: 64px; padding: 10px 12px; resize: none; font-family: var(--mono); font-size: var(--fs-base); line-height: 1.5; overflow: hidden; }
 /* The download button, what it is for, and its refusal: one column with the same 8 px between a control and its hint as elsewhere in the window (#1216). */
 .newspace__download { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
@@ -51,10 +55,21 @@
 }
 
 /* ---------- The locked panel ---------- */
-.locked__card { padding: 36px 0 32px; }
-.locked__form { display: grid; gap: 12px; width: min(100%, 360px); margin-top: 18px; }
-.locked__actions { display: flex; align-items: center; gap: 8px; }
-.locked__status { margin: 0; font-size: var(--fs-sm); font-weight: 500; color: var(--t1); line-height: 1.45; }
+/* One calm card in the middle of the space's pane at every width (F-026 §7 Spaces, #1360): the pane is the card's frame, so it sits centred both ways. */
+.pane-scroll:has(> .pane-in.locked) { display: flex; }
+.pane-in.locked { flex: 1; display: grid; place-items: center; max-width: none; margin: 0; }
+.locked__card {
+  display: flex; flex-direction: column; align-items: center; gap: 8px; width: min(100%, 420px); padding: 28px 28px 24px; text-align: center;
+  border-radius: var(--r-lg); background: var(--el); box-shadow: var(--sh-card);
+}
+.locked__icon { display: grid; place-items: center; width: 40px; height: 40px; margin-bottom: 4px; border-radius: var(--r-pill); background: var(--sub); color: var(--t1); }
+.locked__title { margin: 0; font-size: var(--fs-lg); font-weight: 600; letter-spacing: -.01em; color: var(--t1); }
+.locked__text { margin: 0; font-size: var(--fs-md); line-height: 1.55; color: var(--t2); text-wrap: balance; }
+.locked__form { display: grid; gap: 8px; width: 100%; margin-top: 12px; text-align: left; }
+.locked__row { display: flex; align-items: flex-end; gap: 8px; }
+.locked__row .ui-field { flex: 1; min-width: 0; margin: 0; }
+.locked__actions { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px; }
+.locked__status { margin: 0; font-size: var(--fs-sm); font-weight: 500; color: var(--t1); line-height: 1.45; text-align: center; }
 .locked__status:empty { display: none; }
 
 /* A space that waits to be unlocked is one row in place of its projects: the lock where a project has its letter. */

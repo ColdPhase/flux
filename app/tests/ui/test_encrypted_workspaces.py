@@ -209,7 +209,7 @@ class Base(unittest.TestCase):
         settings page: its admins find the same button in the locked panel."""
         if locked:
             page.goto(f"/spaces/{self.world.a}")
-            expect(page.get_by_role("heading", name=f"Unlock {space}")).to_be_visible()
+            expect(page.get_by_role("heading", name=f"{space} is locked")).to_be_visible()
         else:
             page.goto(f"/projects/{self.world.a_project}/settings")
             expect(page.get_by_role("heading", name="Space settings")).to_be_visible()
@@ -225,6 +225,29 @@ class Base(unittest.TestCase):
 
     def section(self, page: Page):
         return page.get_by_role("region", name="Encryption")
+
+    def assert_locked_shape(self, page: Page, phone: bool) -> None:
+        """#1360 (F-026 §7 Spaces): the locked space keeps its header (name and lock, the four views inactive, the people as faces, Back on the
+        phone) and shows one card in the middle of its pane, centred both ways."""
+        header = page.locator("header.phead" if phone else "header.top")
+        expect(header.get_by_role("heading", level=1)).to_have_text(re.compile(f"^{A_NAME}$"))
+        expect(header.locator("[data-encrypted-mark]")).to_have_count(1)
+        tabs = header.get_by_role("tablist", name="Space views").get_by_role("tab")
+        expect(tabs).to_have_text(["Conversation", "Tasks", "Map", "Wiki"])
+        for at in range(4):
+            expect(tabs.nth(at)).to_have_attribute("aria-disabled", "true")
+        self.assertEqual(header.locator("[role=tab][aria-selected=true], [role=tab][aria-current]").count(), 0, "no view is current")
+        self.assertEqual(header.get_by_role("link").count(), 0, "an inactive view is no link")
+        if phone:
+            expect(header.get_by_role("button", name=re.compile("^Back"))).to_be_visible()
+        else:
+            expect(header.get_by_role("button", name=re.compile("who can see this space"))).to_be_visible()
+        card, pane = page.locator(".locked__card"), page.locator("#content")
+        expect(card).to_be_visible()
+        box, frame = self.on_page(card), self.on_page(pane)
+        self.assertAlmostEqual(box["x"] + box["width"] / 2, frame["x"] + frame["width"] / 2, delta=2, msg=f"the card is centred across its pane: {box} in {frame}")
+        self.assertAlmostEqual(box["y"] + box["height"] / 2, frame["y"] + frame["height"] / 2, delta=frame["height"] * 0.15, msg=f"and sits mid-height in it: {box} in {frame}")
+        self.assertEqual(card.evaluate("el => getComputedStyle(el).textAlign"), "center")
 
     @staticmethod
     def place(locator) -> dict:
@@ -280,10 +303,12 @@ class EncryptedWorkspaces(Base):
                 expect(page).to_have_url(re.compile(rf"/spaces/{world.a}$"))
                 expect(page.get_by_role("heading", name=f"{A_NAME} is locked")).to_be_visible()
                 # LK-1: the known reason, and who can unlock it (Ada is the only one with an unlock password).
-                expect(page.locator("[data-locked-reason]")).to_have_text(re.compile(rf"^Ada locked {A_NAME} {AT}\. Waiting for an admin\. Ada can unlock it\. You can come back then\.$"))
+                # #1360: the reason and who can unlock it, once each (no "Waiting for an admin" beside the header's own state).
+                expect(page.locator("[data-locked-reason]")).to_have_text(re.compile(rf"^Ada locked {A_NAME} {AT}\. Ada can unlock it\.$"))
                 expect(page.get_by_role("textbox")).to_have_count(0)
                 expect(page.get_by_role("button", name="Unlock")).to_have_count(0)
                 self.assertEqual(page.locator("[data-ai-surface]").count(), 0)
+                self.assert_locked_shape(page, phone)
                 shot(page, f"locked-member-{'phone' if phone else 'computer'}")
 
     def test_11_a_deep_link_into_a_locked_space_keeps_its_address_and_back_works(self) -> None:
@@ -299,7 +324,6 @@ class EncryptedWorkspaces(Base):
                 self.assertEqual(page.get_by_text(A_ROOT).count(), 0, "no content, no partial body")
                 if not phone:
                     expect(page.locator("header.top")).to_contain_text(A_NAME)
-                    expect(page.locator("header.top")).to_contain_text(LOCKED_LINE)
                 else:
                     # LK-2: an installed app has no browser Back, so the locked panel keeps the header's Back and the tab bar.
                     expect(page.locator("header.phead").get_by_role("button", name=re.compile("^Back"))).to_be_visible()
@@ -327,7 +351,7 @@ class EncryptedWorkspaces(Base):
                 self.lock(world)
                 page = self.page(world, "ada", phone=phone)
                 page.goto(f"/projects/{world.a_project}")
-                expect(page.get_by_role("heading", name=f"Unlock {A_NAME}")).to_be_visible()
+                expect(page.get_by_role("heading", name=f"{A_NAME} is locked")).to_be_visible()
                 # LK-1: the holder reads why, and that she is the one to unlock it.
                 expect(page.locator("[data-locked-reason]")).to_have_text(re.compile(rf"^You locked {A_NAME} {AT}\. Type your unlock password to open it for everyone\.$"))
                 field = page.get_by_role("textbox", name="Your unlock password")
@@ -336,6 +360,9 @@ class EncryptedWorkspaces(Base):
                 expect(field).to_be_focused()
                 at = (self.on_page(field), self.on_page(button))
                 shot(page, f"locked-owner-{'phone' if phone else 'computer'}")
+                self.assert_locked_shape(page, phone)
+                # The field and Unlock share one row, and the recovery link sits under them, centred in the card.
+                self.assertAlmostEqual(self.on_page(field)["y"] + self.on_page(field)["height"], self.on_page(button)["y"] + self.on_page(button)["height"], delta=1.5)
                 # Keyboard only: type, Enter. A wrong password says so in place, empties the field and keeps focus there.
                 page.keyboard.type("not the password at all")
                 page.keyboard.press("Enter")
@@ -371,7 +398,7 @@ class EncryptedWorkspaces(Base):
                 self.lock(world)
                 page = self.page(world, "ben", phone=phone)
                 page.goto(f"/spaces/{world.a}")
-                expect(page.get_by_role("heading", name=f"Unlock {A_NAME}")).to_be_visible()
+                expect(page.get_by_role("heading", name=f"{A_NAME} is locked")).to_be_visible()
                 expect(page.locator("[data-locked-reason]")).to_have_text(re.compile(rf"^Ada locked {A_NAME} {AT}\. You don’t have an unlock password for {A_NAME} yet\. Ada can unlock it\. Or use the recovery code\.$"))
                 expect(page.get_by_role("textbox", name="Recovery code")).to_be_visible()
                 expect(page.get_by_role("textbox", name="Your unlock password")).to_have_count(0)
@@ -476,7 +503,7 @@ class EncryptedWorkspaces(Base):
                     page.goto(place)
                     expect(page.locator("#content")).to_be_visible()
                     expect(page.get_by_role("alert")).to_have_count(0)
-                    expect(page.get_by_role("heading", name=f"Unlock {A_NAME}")).to_have_count(0)
+                    expect(page.get_by_role("heading", name=f"{A_NAME} is locked")).to_have_count(0)
 
     def test_17_an_answer_that_names_a_locked_space_turns_its_rows_to_waiting_without_a_reload(self) -> None:
         """No stream: the first word of the lock is the Inbox's own answer (`lockedWorkspaces`)."""
@@ -958,7 +985,7 @@ class EncryptedWorkspaces(Base):
                 expect(option).to_be_visible()
                 option.click()
                 expect(page).to_have_url(re.compile(rf"/spaces/{world.a}$"))
-                expect(page.get_by_role("heading", name=f"Unlock {A_NAME}")).to_be_visible()
+                expect(page.get_by_role("heading", name=f"{A_NAME} is locked")).to_be_visible()
                 page.goto("/inbox")
                 note = page.locator("[data-locked-note]")
                 expect(note).to_contain_text(WAITING)
