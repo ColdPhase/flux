@@ -331,7 +331,7 @@ const steps: Record<string, (...args: string[]) => Promise<void>> = {
     // The PDF pandoc and typst made in the scratch, attached by its path (#1437): the server reads it from the run's supervisor.
     const attach: CliStep = { tool: 'flux_attach_file', args: { projectId, clientCommandId: randomUUID(), path: 'page.pdf' } };
     // Every own tool the run keeps, under the CLI's domain that may execute only its own program and Flux's sandbox (#1437): Claude Code's Grep and
-    // Glob search the scratch with the ripgrep the CLI brings, Edit and Read work on what Write made; Codex runs one command in a terminal (tty).
+    // Glob search the scratch with the ripgrep the CLI brings, Edit and Read work on what Write made; Codex is asked for one command in a terminal (tty).
     const steps: CliStep[] = client === 'claude'
       ? [{ own: { name: 'Bash', input: { command: probe, description: 'probe' } } }, { own: { name: 'Read', input: { file_path: '/etc/hostname' } } },
         { own: { name: 'Write', input: { file_path: 'notes.md', content: '# notes\n' } } },
@@ -363,8 +363,9 @@ const steps: Record<string, (...args: string[]) => Promise<void>> = {
       assert.ok(results[6]!.includes('notes.md') && !refused.test(results[6]!), `Glob finds the file: ${results[6]}`);
       more = { GREP: results[5]!.replace(/\s+/g, ' ').slice(0, 160), GLOB: results[6]!.replace(/\s+/g, ' ').slice(0, 160) };
     } else {
-      // A command in a terminal of its own (exec_command's tty) runs in Flux's sandbox shell too: the broker gets the terminal as its streams.
-      assert.ok(/TTY-RAN \/scratch\/[0-9a-f-]{36}/.test(results[1]!), `the tty command ran in the run's scratch: ${results[1]}`);
+      // A command in a terminal of its own (exec_command's `tty`): Flux's run turns `features.unified_exec_tty` off (CODEX_FEATURE_REVIEW), so the
+      // pinned Codex refuses it before anything starts, and the run goes on. (Were it on, the sandbox would hand the terminal to the broker as its streams.)
+      assert.ok(/TTY execution is disabled/.test(results[1]!) && !results[1]!.includes('TTY-RAN'), `the tty command is refused by Codex's own config: ${results[1]}`);
       more = { TTY: results[1]!.replace(/\s+/g, ' ').slice(0, 200) };
     }
     assert.ok(/attached to your answer/.test(results.at(-1)!), `the PDF was attached: ${results.at(-1)}`);
