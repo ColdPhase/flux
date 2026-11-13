@@ -89,7 +89,8 @@ live off
 step "2. Switch on (claude_code with the Commercial Terms date)"
 # The live steps sign the same test owners in many times from one address.
 env_set FLUX_AUTH_RATE_LIMIT false
-env_set FLUX_AGENT_RUNTIME claude_code,codex
+# pi (#1441): every API-key agent runs in the same runtime, with its shell through the run's broker like the CLIs' (#1461).
+env_set FLUX_AGENT_RUNTIME claude_code,codex,pi
 if ./flux up 2>"$work/up.err"; then fail "claude_code started without the Commercial Terms statement"; fi
 grep -q 'FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS' "$work/up.err" || fail "the refusal does not name FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS"
 env_set FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS 2026-10-05
@@ -258,6 +259,7 @@ abi=$(docker exec "$t_cid" /opt/flux-runtime/sandbox/flux-sandbox abi)
 [ "$abi" -ge 4 ] || fail "this host's Landlock (ABI $abi) cannot forbid TCP: the runtime keeps the CLIs' tools off (needs Linux 6.7, ABI 4)"
 tcp_rule=1
 compose --profile runtime logs --no-color runtime-1 | grep -q '"event":"ready".*"landlock":'"$abi" || fail "the runtime did not report Landlock ABI $abi at start"
+compose --profile runtime logs --no-color runtime-1 | grep -q '"event":"ready".*"pi":true' || fail "the runtime did not start ready for API keys in pi"
 python3 - "$here/scripts/agent-runtime/probe-sandbox-net.mjs" "$(docker exec "$t_cid" cat "/data/$t_binding/claude/.credentials.json")" > "$work/sandbox-run.json" <<PY
 import json, sys
 probe = open(sys.argv[1]).read()
