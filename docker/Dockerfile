@@ -10,6 +10,9 @@ FROM node@sha256:a34ab6d7f6f4813f4d0c5469d74685604b962fbdbf5793a7bc7b4998ecb867c
 RUN apk add --no-cache gcc musl-dev
 COPY apps/runtime/native/protect.c /native/protect.c
 RUN cc -std=c11 -Wall -Wextra -Werror -fPIC -shared -I/usr/local/include/node /native/protect.c -o /native/protect.node
+# Flux's per-run sandbox for the CLIs' own tools (#1437, RT-5): Landlock, rlimits and a clean environment, no capability needed.
+COPY apps/runtime/native/sandbox.c /native/sandbox.c
+RUN cc -std=c11 -O2 -Wall -Wextra -Werror /native/sandbox.c -o /native/flux-sandbox
 
 # The toolchain shared by the build and the production dependencies: pnpm, the compiler node-pty needs, and the
 # lockfile with its patches. Each stage below downloads its own locked dependencies in a layer that source edits
@@ -98,9 +101,15 @@ COPY --from=build /app/packages/runtime-protocol/dist ./packages/runtime-protoco
 COPY --from=build /app/apps/runtime/package.json ./apps/runtime/package.json
 COPY --from=build /app/apps/runtime/dist ./apps/runtime/dist
 COPY --from=runtime-hardening-build /native/protect.node ./apps/runtime/native/protect.node
+COPY --from=runtime-hardening-build /native/flux-sandbox ./sandbox/flux-sandbox
 COPY --from=build /app/apps/runtime/keys ./apps/runtime/keys
 COPY --from=production-dependencies /app/apps/runtime/node_modules ./apps/runtime/node_modules
-RUN mkdir -p /data /opt/flux-tools /opt/flux-runtime/codex/bin && chown node:node /opt/flux-tools && chmod 0711 /data
+# The CLIs' tools need a real bash (Claude Code refuses another shell; Codex looks for bash first). `sandbox/bin/bash` is Flux's sandbox
+# under that name: the shell both CLIs are given, which confines itself to the run's scratch before it starts /bin/bash (#1437).
+RUN apk add --no-cache bash \
+  && mkdir -p /data /scratch /opt/flux-tools /opt/flux-runtime/codex/bin /opt/flux-runtime/sandbox/bin \
+  && ln -s ../flux-sandbox /opt/flux-runtime/sandbox/bin/bash \
+  && chown node:node /opt/flux-tools && chmod 0711 /data /scratch
 USER node
 CMD ["node", "--disable-sigusr1", "apps/runtime/dist/supervisor/main.js"]
 

@@ -123,7 +123,7 @@ A person connects AI once, in Settings › AI. Their connections power all of th
     API key; the agents on it pause until their owner picks another model, and Flux never switches
     the model by itself.
   - **Codex runs only models its account lists.** Flux's reviewed copy of the pinned catalog
-    ([RT-5](ai-modes.md#rt-5--tools-only-flux-tools-the-clis-own-web-search-and-reading-the-web))
+    ([RT-5](ai-modes.md#rt-5--tools))
     is cut down for each run to the models the account's own `model/list` returns just before the
     run, so it can never offer a model the account lacks. A model the account lists that the pinned
     catalog does not hold is not offered until the pin moves, and an agent already on it reads "no

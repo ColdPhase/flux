@@ -333,6 +333,23 @@ const steps: Record<string, (...args: string[]) => Promise<void>> = {
     console.log(`PROJECT=${project.id}`);
   },
   /**
+   * #1437 (RT-5): the same owner asks again; the fake Claude Code runs the commands of the `fake-run.json` the script put in its home through
+   * the sandbox shell it was given, as the real CLI's `Bash` does. The run ends completed; the script reads what each command printed.
+   */
+  async 'sandbox-run'(label) {
+    const someone = await owner(label!);
+    const ws = await company(someone);
+    const project = expectStatus(await someone.browser.request('POST', `/api/v1/workspaces/${ws.id}/projects`, { body: { name: 'Sandbox', visibility: 'restricted' } }), 201) as { id: string };
+    const thread = expectStatus(await someone.browser.request('POST', `/api/v1/projects/${project.id}/conversations`,
+      { body: { body: 'Make a page', clientMessageId: randomUUID() } }), 201) as { id: string };
+    const started = expectStatus(await someone.browser.request('POST', conversationAssistantRunsPath(thread.id),
+      { body: { clientRunId: randomUUID(), kind: 'ask', prompt: 'Make a page of the notes.' } }), 202) as AssistantRun;
+    const run = await until('the run to end', async () => expectStatus(await someone.browser.request('GET', assistantRunPath(started.id)), 200) as AssistantRun,
+      (value) => !['queued', 'reading', 'dispatching'].includes(value.status), 180);
+    assert.equal(run.status, 'completed', JSON.stringify(run));
+    console.log(`RUN=${run.id}`);
+  },
+  /**
    * T6 (#281): ChatGPT's device sign-in through the API's console: the card gets the URL and the code the fake
    * `codex login --device-auth` printed, completion is read from `codex login status`, and neither the code
    * nor the URL reaches the database (AST-1.7).

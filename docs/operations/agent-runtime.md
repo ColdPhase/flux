@@ -146,7 +146,8 @@ time can change them:
 - The supervisor requires Node's sole startup flag to be `--disable-sigusr1`, empty `NODE_OPTIONS`, and no already active
   inspector. Additional or negated flags refuse the same way. The pinned Node 24.21 supports this flag.
 - Limits for all the agents together: `FLUX_RUNTIME_MEMORY` (no swap) and `FLUX_RUNTIME_CPUS`, 2048 processes, a 256 MiB tmpfs
-  `/tmp`. `./flux` and `runtime.sh` set the two from the server: its memory less 1.25 GiB, and all its CPUs but one.
+  `/tmp` and a 1 GiB tmpfs `/scratch` for the runs' scratches (memory, counted in `FLUX_RUNTIME_MEMORY`; only what runs write
+  there uses any). `./flux` and `runtime.sh` set the two from the server: its memory less 1.25 GiB, and all its CPUs but one.
 - Container logs are rotated at 3 × 10 MB.
 - Only its own volume at `/data` and the read-only tools volume.
 - Only its own `internal` network, shared with `runtime-manager` and `runtime-egress` and nothing else, so it cannot reach the
@@ -155,6 +156,17 @@ time can change them:
   `com.docker.network.bridge.inhibit_ipv4`, so the host has none there.
 
 Docker's local volumes have no size quota, so the supervisor refuses a run while a person's directory exceeds 256 MiB.
+
+- **The CLIs' own tools run in a sandbox per run** (#1437, [RT-5](../product/ai-modes.md#rt-5--tools)). Claude Code and Codex
+  keep their shell and file tools. Each run gets an empty scratch `/scratch/<run id>`, the only place its tools can write, deleted
+  when the run ends. Every command starts in Flux's sandbox shell (`/opt/flux-runtime/sandbox/bin/bash`), which uses Linux
+  **Landlock** to keep it, and all it starts, to the scratch and the system's own programs: not the person's CLI homes (their
+  login), `/data`, `/tmp`, the tools volume or anyone else's scratch, and no other process's environment. On Linux 6.7 or later
+  it has no TCP at all. Landlock needs Linux 5.13 or later with Landlock enabled (the default on Ubuntu 22.04+, Debian 12+, Fedora
+  and RHEL 9.3+) and Docker's default seccomp profile (Docker Engine 25 allows its system calls). **On a host without Landlock the
+  runtime still starts and logs `{"event":"tools_off"}` once**; its agents then work as before, with Flux's tools and the CLI's own
+  web search only, and cannot attach files they made. Check with
+  `docker compose … exec runtime-1 /opt/flux-runtime/sandbox/flux-sandbox abi` (0: none; 4 or more: no TCP for tools).
 
 ### What each agent needs
 
@@ -174,8 +186,22 @@ The others wait in order, and their task says "Waiting for room on the server". 
 `FLUX_RUNTIME_MAX_RUNS` in `docker/.env` and run `./flux up`; `./flux runtime status` shows the number in force. There is no
 setting in the app.
 
-The memory limit is shared and there is no bound per run, so one CLI far over its planned 1 GiB can get another person's CLI or the
-supervisor killed for memory, and one person can fill the shared 256 MiB `/tmp`. If that happens, lower `FLUX_RUNTIME_MAX_RUNS`.
+Each run's tools have their own limits (#1437), checked by the supervisor every second and by the kernel:
+
+| Per run | Limit | What happens past it |
+| --- | --- | --- |
+| Memory of the tools (every process of the run but the CLI) | 512 MiB | the supervisor kills the tools; the run goes on and the tool call fails |
+| Scratch (`/scratch/<run id>`, memory) | 256 MiB, and one file at most that | the same; a write past the file size fails |
+| Processes and threads of the person | 256 | a fork fails; past it the supervisor kills the tools |
+| CPU | `nice` 10 below every CLI; 10 minutes for one tool process | the process is killed |
+| Wall clock | the run's hour (below) | the run ends, every process of the person goes and the scratch is deleted |
+| Out of memory | the run's processes are chosen before the supervisor | the kernel kills the largest of them |
+
+So one active agent is planned at 1 GiB: about 256 MiB for its CLI, 512 MiB for its tools and 256 MiB of scratch. **On a 2 vCPU /
+4 GB server** the runtime gets about 2.5 GiB and one CPU (`FLUX_RUNTIME_CPUS`, all the server's CPUs but one): two agents at once,
+sharing that CPU, the tools of each below every CLI, while Flux itself keeps the other CPU. A run that converts or computes for
+minutes slows the other run, never Flux. The memory limit is still shared: a CLI far over its planned 256 MiB can get another
+person's CLI killed for memory, and one person can fill the shared 256 MiB `/tmp`. If that happens, lower `FLUX_RUNTIME_MAX_RUNS`.
 
 Plan for 1 GiB of memory, up to one CPU while it thinks, and 256 MiB of disk for each active agent, plus the tools volume:
 Anthropic's signed manifest lists the Linux x64 binary of 2.1.289 at 246 MB (retrieved 2026-10-05).
@@ -335,9 +361,11 @@ chat) then runs their own Claude Code (or Codex) under their own user id, with t
   in the space, and returns at most 256 KiB per tool result and 8 MiB per run (safety bounds, below). The runtime itself reaches no
   web page: a server agent's page reading and search go through Flux's own tool and the provider's search
   (`FLUX_WEB_READS`), and the CLI's own web tools are kept only while that switch is on.
+- **Its own tools** (#1437). The CLI's shell and file tools work in the run's scratch, its working directory, inside Flux's
+  sandbox (above). A file it makes there reaches Flux only when the agent attaches it with `flux_attach_file`.
 - **Read-back.** The supervisor checks the CLI's first `system/init`: any tool other than the run's exact Flux
-  tools (and `EndConversation`), or any MCP server other than a connected Flux, stops the CLI with no
-  answer. The worker checks it again.
+  tools, `EndConversation`, the CLI's own shell and file tools (and with the web on its web search), or any MCP server other
+  than a connected Flux, stops the CLI with no answer. The worker checks it again.
 - **Ends.** Each end has its own state on the run: an expired login (*Sign in to Claude again*), a plan
   limit (with the reset time the CLI reported), a crash, a refused request, a busy lane, one of the safety
   bounds below, and a broken stream (`unknown`, never rerun). None falls back to another connection. Stop
@@ -376,7 +404,7 @@ chat) then runs their own Claude Code (or Codex) under their own user id, with t
   request that finds it used waits for the key's next day.
 - **Transcripts.** `--no-session-persistence`, and after every run the supervisor deletes the CLI's session
   directories (`projects`, `todos`, `shell-snapshots`, `session-env`, `transcripts`) from the binding
-  directory and the run's MCP configuration from `/tmp`.
+  directory, the instructions and settings Codex reads from its home, the run's scratch, and the run's MCP configuration from `/tmp`.
 
 The worker reaches the API at `FLUX_API_INTERNAL_URL` (default `http://api:8080`) for the token and, for
 API-key runs, for `/mcp`.
@@ -407,8 +435,8 @@ None of them is hidden by the checks.
   connections in all and 32 from one address. All the agents share the runtime's address (#860), so the 32 are shared
   too: enough for the agents that fit in memory on a small server. A large server with many agents at once may need more.
 - **People share one network namespace (#860).** Separate user ids keep them from each other's files, memory and
-  signals, not from each other's loopback ports. A CLI has no tool that could reach one; a CLI that ran arbitrary code could
-  try a port another person's CLI listens on during a sign-in.
+  signals, not from each other's loopback ports. A CLI's own shell (#1437) can neither listen nor connect over TCP on Linux 6.7
+  or later; on an older kernel it could try a port another person's CLI listens on during a sign-in.
 - **Reconciliation decides from sightings that can be a moment old (m8, low, accepted).** A binding missing from the
   sightings is looked for once more before the owner is told to sign in again. What is not serialized is the gap between
   those two reads.

@@ -39,6 +39,9 @@ x-runtime-slot: &runtime-slot
     - /tmp:rw,nosuid,nodev,size=256m,mode=1777
     # Shared memory would outlive a person and reach the next one with that user id: nobody can write here.
     - /dev/shm:ro,nosuid,nodev,noexec,size=4k
+    # Each run's scratch (#1437, RT-5): /scratch/<run id>, the only place a run's own tools write, deleted after the run. Memory,
+    # counted in the runtime's limit; only what runs write here uses any.
+    - /scratch:rw,nosuid,nodev,size=1g,mode=0711
   restart: unless-stopped
   # The supervisor marks itself ready once it listens. A runtime that refuses to start (an unmet host requirement) stays up
   # without listening: this stays red, so `./flux up` fails, and there is no restart loop (#860).

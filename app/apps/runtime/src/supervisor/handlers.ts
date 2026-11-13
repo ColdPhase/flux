@@ -9,6 +9,7 @@ import { statusFacts } from './status.js';
 import { cliEnvironment, LOGOUT_TEMPLATES, STATUS_TEMPLATES } from './templates.js';
 import { reportedRuns, runCli, stopRun } from './run.js';
 import { readPlanModels } from './models.js';
+import type { SandboxSetup } from './sandbox.js';
 
 // One handler per request of the closed set. A handler answers with zero or more `step` frames and
 // exactly one `result` or `error`. Login runs only in the sign-in console (console.ts, T4): as a plain
@@ -37,6 +38,8 @@ export interface SupervisorConfig {
   /** F-022 "Limits": the supervisor refuses a run while the binding directory exceeds this. */
   bindingLimitBytes: number;
   cliTimeoutMs: number;
+  /** Flux's sandbox for the CLIs' own tools (#1437, sandbox.ts), as found at start; absent or null: the tools stay off. */
+  sandbox?: SandboxSetup | null;
   /** The sign-in console's PTY and timers; tests inject them (defaults: node-pty, real timers, 15 min). */
   spawnPty?: SpawnPty;
   clock?: ConsoleClock;

@@ -334,10 +334,12 @@ Server agents act only inside Flux, with their owner's rights:
 | GitHub | Read the connected repository (issues, pull requests, checks); never write |
 | Web | Search with its own web search tool (the provider's, or the owner's Claude Code's or Codex's), and open any public web page (`flux_read_web`) as much as a question needs, never putting anything from Flux into an address (the server refuses one that carries private text the run read), always citing the sources; never post or fill in anything. On by default; the operator can turn both off ([C-29](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override), [C-30](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)) |
 | Pictures | Attach a public picture from the web to its answer to `/ai` in a space (with the waits and Undo of AG-3) or in its private chat, downloaded by the Flux server under the web rules; look at a picture attached to a message it may read, when its model sees pictures. Never generate one ([#1217](https://github.com/ColdPhase/flux/issues/1217), below) |
-| Not allowed | Code, email, other apps, generating pictures |
+| Files | On the owner's Claude Code or Codex: use the CLI's own shell and file tools in the run's scratch, a sandbox that exists for one run (convert HTML to PDF, make a CSV, run a script), and attach a file it made to its answer with `flux_attach_file`; on an API key, attach a file by its content (HTML, CSV, Markdown, JSON, text). An attached file is the asker's, like their own upload (the same types, size limits and checks, preview, waits and Undo of AG-3, Show everyone), never in an encrypted space ([#1437](https://github.com/ColdPhase/flux/issues/1437), [RT-5](ai-modes.md#rt-5--tools)) |
+| Not allowed | Code or commands outside the run's sandbox, email, other apps, generating pictures |
 
-Code changes come only from the owner's own Claude Code or Codex on their computer
-([local Claude Code and Codex](mcp-cowork.md)).
+Code changes to the owner's repositories come only from the owner's own Claude Code or Codex on their computer
+([local Claude Code and Codex](mcp-cowork.md)). A server agent's shell (#1437) is a scratch that is deleted after the run: it can
+make a file to attach, never reach a repository, the network beyond its vendor or anything of the owner's outside Flux.
 
 **Web content and prompt injection.** Web pages and search results are untrusted input, like project content and
 other people's messages, and the prompt marks them so. The defence is in the rules, not in the model's obedience: only the
@@ -365,7 +367,7 @@ server asked for, those that failed too, in Flux's own words, written down befor
 addresses its answer cites: under its answer, or in its end line when it ends without one. That list is the only one (#1222): citation marks the model invented and its own "Sources:" block of the same addresses are not stored, and a link card shows only an address the list does not hold. Reading and searching are on by default; the operator turns both
 off with `FLUX_WEB_READS=off` ([C-29](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)). A
 local client reads and searches the web with its own tools and does not get the tool
-([RT-5](ai-modes.md#rt-5--tools-only-flux-tools-the-clis-own-web-search-and-reading-the-web)). Another person's task title that becomes a run's request is the same kind of input: data, never an
+([RT-5](ai-modes.md#rt-5--tools)). Another person's task title that becomes a run's request is the same kind of input: data, never an
 instruction.
 
 **Pictures** (founder decision, Hubert, 2026-11-12, [#1217](https://github.com/ColdPhase/flux/issues/1217); the agents'

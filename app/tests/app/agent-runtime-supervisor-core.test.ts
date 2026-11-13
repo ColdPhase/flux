@@ -10,7 +10,7 @@ import { clearClientFiles, clearLeftovers, clearScratch, hasUnconfirmed, recordU
 import { runFixed } from '../../apps/runtime/src/supervisor/process.js';
 import { removeTreeScript, walkTree } from '../../apps/runtime/src/supervisor/tree.js';
 import { Lane } from '../../apps/runtime/src/supervisor/server.js';
-import { catalogForAccount, CLAUDE_MODELS_TEMPLATE, CODEX_FEATURE_REVIEW, CODEX_MODEL_CATALOG, CODEX_MODEL_REVIEW, codexListOverrides, codexRunOverrides, fluxCodexCatalog, LOGOUT_TEMPLATES, RUN_TEMPLATES, STATUS_TEMPLATES } from '../../apps/runtime/src/supervisor/templates.js';
+import { catalogForAccount, CLAUDE_MODELS_TEMPLATE, CLAUDE_OWN_TOOLS, CODEX_FEATURE_REVIEW, CODEX_MODEL_CATALOG, CODEX_MODEL_REVIEW, CODEX_NO_OWN_TOOLS, codexListOverrides, codexRunOverrides, fluxCodexCatalog, LOGOUT_TEMPLATES, RUN_TEMPLATES, sandboxEnvironment, STATUS_TEMPLATES } from '../../apps/runtime/src/supervisor/templates.js';
 import { classifyCodexError, classifyError, CODEX_RESOURCE_READERS, codexResourceReader, codexSearchFound, effectiveConfigHolds, searchQuery, searchResultAddresses } from '../../apps/runtime/src/supervisor/run.js';
 import { APP_SERVER_METHODS, openAppServer, readRateLimits } from '../../apps/runtime/src/supervisor/app-server.js';
 import { claudeSignInReader, deviceSignInReader } from '../../apps/runtime/src/supervisor/device.js';
@@ -559,6 +559,25 @@ describe('a run\'s error results (F-022 T5; the wording is first verified agains
     assert.ok(RUN_TEMPLATES.codex(input).includes('web_search="disabled"'), 'with the web off it has none');
   });
 
+  test('#1437: with Flux\'s sandbox, Claude Code keeps its own shell and file tools and Codex its shell, in the run\'s scratch; never WebFetch', () => {
+    const input = { tools: ['flux_get_doc'], caps: { maxTurns: 10, wallClockSeconds: 300, idleSeconds: 60, maxAnswerBytes: 16384 }, mcpConfigPath: '/tmp/mcp.json', mcpUrl: 'http://x:8080/mcp', brief: 'brief' };
+    const claude = RUN_TEMPLATES.claude_code({ ...input, ownTools: true, webSearch: true });
+    assert.deepEqual(claude.slice(claude.indexOf('--tools'), claude.indexOf('--tools') + 2), ['--tools', 'Bash,Read,Write,Edit,Glob,Grep,WebSearch']);
+    assert.ok(claude.includes('--restricted'), 'its file tools stay in the working directory');
+    assert.deepEqual(claude.slice(claude.indexOf('--allowedTools') + 1, claude.indexOf('--permission-mode')), ['mcp__flux__flux_get_doc', 'Bash', 'Read(./**)', 'Edit(./**)', 'WebSearch']);
+    assert.ok(!claude.some((arg) => /WebFetch|Task|Agent/.test(arg)));
+    const offline = RUN_TEMPLATES.claude_code({ ...input, ownTools: true });
+    assert.deepEqual(offline.slice(offline.indexOf('--tools'), offline.indexOf('--tools') + 2), ['--tools', CLAUDE_OWN_TOOLS.join(',')]);
+    const codex = RUN_TEMPLATES.codex({ ...input, ownTools: true });
+    assert.deepEqual(codex.slice(codex.indexOf('--sandbox'), codex.indexOf('--sandbox') + 2), ['--sandbox', 'danger-full-access'], 'Codex\'s own sandbox needs bubblewrap: Flux\'s is the one');
+    assert.ok(codex.includes('features.shell_tool=true') && codex.includes('features.apps=false') && codex.includes('features.unified_exec=false'));
+    const without = RUN_TEMPLATES.codex(input);
+    assert.ok(without.includes('features.shell_tool=false') && without.includes('read-only'), 'without the sandbox, as before');
+    assert.deepEqual(sandboxEnvironment('claude_code', '/scratch/r', { shell: '/s/bin/bash', bin: '/s/bin' }), { FLUX_SANDBOX_DIR: '/scratch/r', TMPDIR: '/scratch/r', CLAUDE_CODE_SHELL: '/s/bin/bash' });
+    const codexEnv = sandboxEnvironment('codex', '/scratch/r', { shell: '/s/bin/bash', bin: '/s/bin' });
+    assert.ok(codexEnv.PATH!.startsWith('/s/bin:') && codexEnv.TMPDIR === '/scratch/r' && codexEnv.FLUX_SANDBOX_DIR === '/scratch/r', 'Codex finds the sandbox shell first as bash');
+  });
+
   test('#1065: a search\'s addresses come only from the entries of its structured result, never from the CLI\'s own summary', () => {
     const result = { query: 'island ferry', durationSeconds: 1.2, results: [
       { tool_use_id: 'srvtoolu_1', content: [{ title: 'Harbour', url: 'https://harbour.example/timetable' }, { title: 'Dup', url: 'https://harbour.example/timetable' }, { title: 'Bad', url: 'javascript:alert(1)' }, { title: 'No url' }] },
@@ -635,7 +654,7 @@ describe('Codex in the slot (F-022 T6, #281): its JSONL words, status, preflight
   test('the preflight accepts only the effective config with every reviewed feature off, web search disabled and Flux alone with the exact tools', () => {
     const tools = ['flux_list_contexts', 'flux_get_doc'];
     const url = 'http://runtime-egress:8080/mcp';
-    const config = { features: Object.fromEntries(Object.entries(CODEX_FEATURE_REVIEW).filter(([, review]) => review.action === 'off').map(([key]) => [key, false])),
+    const config = { features: Object.fromEntries(Object.entries(CODEX_FEATURE_REVIEW).filter(([, review]) => review.action !== 'kept').map(([key]) => [key, false])),
       web_search: 'disabled', model_catalog_json: CODEX_MODEL_CATALOG,
       mcp_servers: { flux: { url, bearer_token_env_var: 'FLUX_RUN_TOKEN', required: true, enabled_tools: tools, default_tools_approval_mode: 'approve' } } };
     assert.equal(effectiveConfigHolds(config, tools, url), true);
@@ -644,6 +663,11 @@ describe('Codex in the slot (F-022 T6, #281): its JSONL words, status, preflight
     assert.equal(effectiveConfigHolds({ ...config, model_catalog_json: '/tmp/models.json' }, tools, url), false);
     assert.equal(effectiveConfigHolds({ ...config, mcp_servers: { flux: { ...config.mcp_servers.flux, default_tools_approval_mode: 'auto' } } }, tools, url), false);
     assert.equal(effectiveConfigHolds({ ...config, features: { ...config.features, shell_tool: true } }, tools, url), false);
+    // #1437: with the run's own tools the shell is on, exactly then; every other reviewed feature stays off.
+    const own = { ...config, features: { ...config.features, shell_tool: true } };
+    assert.equal(effectiveConfigHolds(own, tools, url, false, CODEX_MODEL_CATALOG, true), true);
+    assert.equal(effectiveConfigHolds(config, tools, url, false, CODEX_MODEL_CATALOG, true), false, 'the shell off where the run should have it is not the run Flux started');
+    assert.equal(effectiveConfigHolds({ ...own, features: { ...own.features, apps: true } }, tools, url, false, CODEX_MODEL_CATALOG, true), false);
     assert.equal(effectiveConfigHolds({ ...config, web_search: 'cached' }, tools, url), false);
     // #1065: with the web on, exactly the cached index; disabled or live is refused.
     assert.equal(effectiveConfigHolds({ ...config, web_search: 'cached' }, tools, url, true), true);
@@ -678,8 +702,10 @@ describe('Codex in the slot (F-022 T6, #281): its JSONL words, status, preflight
       'skill_search', 'mentions_v2', 'guardian_approval', 'guardian_reuse_parent_compaction', 'goals', 'tool_call_mcp_elicitation', 'auth_elicitation', 'fast_mode',
       'realtime_conversation', 'compaction_image_budget', 'workspace_dependencies'];
     assert.deepEqual(PINNED_DEFAULT_ON.filter((key) => !Object.hasOwn(CODEX_FEATURE_REVIEW, key)), [], 'an unreviewed default-on feature');
-    for (const key of ['shell_tool', 'unified_exec', 'apps', 'multi_agent', 'skill_mcp_dependency_install', 'hooks', 'goals', 'remote_plugin', 'memories', 'view_image',
+    for (const key of ['unified_exec', 'apps', 'multi_agent', 'skill_mcp_dependency_install', 'hooks', 'goals', 'remote_plugin', 'memories', 'view_image',
       'code_mode_host', 'browser_use', 'computer_use', 'image_generation', 'plugins', 'daemon_auto_start']) assert.equal(CODEX_FEATURE_REVIEW[key]?.action, 'off', key);
+    // #1437: the shell is the run's own tool where the runtime has Flux's sandbox, and off everywhere else.
+    assert.equal(CODEX_FEATURE_REVIEW.shell_tool?.action, 'own_tools');
     const argv = codexRunOverrides(['flux_get_doc'], 'http://x:8080/mcp', 'brief');
     assert.ok(argv.includes('web_search="disabled"') && argv.includes('mcp_servers.flux.required=true') && argv.includes('mcp_servers.flux.enabled_tools=["flux_get_doc"]'));
     assert.ok(!argv.some((value) => value.startsWith('tools.view_image')), '`tools.view_image` is not a key of the pinned Codex; features.view_image is');
@@ -687,7 +713,7 @@ describe('Codex in the slot (F-022 T6, #281): its JSONL words, status, preflight
       && argv.includes('mcp_servers.flux.default_tools_approval_mode="approve"'), '#1127');
   });
 
-  test('#1127: Flux\'s Codex model catalog gives every model plain tools, no sub-agents, no file edits, shell, tool search or extra tools', () => {
+  test('#1127, #1437: Flux\'s Codex model catalog gives every model plain tools, no sub-agents, tool search or extra tools; a run without its own tools also no shell or file edits', () => {
     // The shape of the pinned catalog (codex-rs models-manager/models.json at rust-v0.160.1): Flux's models are `code_mode_only`, `v2`.
     const vendor = { models: [
       { slug: 'gpt-6.1-sol', tool_mode: 'code_mode_only', multi_agent_version: 'v2', multi_agent_reasoning_effort: 'xhigh', apply_patch_tool_type: 'freeform',
@@ -698,9 +724,13 @@ describe('Codex in the slot (F-022 T6, #281): its JSONL words, status, preflight
     assert.deepEqual(catalog.models.map((model) => model.slug), ['gpt-6.1-sol', 'gpt-5.5']);
     for (const model of catalog.models) {
       assert.deepEqual({ tool_mode: model.tool_mode, multi_agent_version: model.multi_agent_version, multi_agent_reasoning_effort: model.multi_agent_reasoning_effort,
-        experimental_supported_tools: model.experimental_supported_tools, apply_patch_tool_type: model.apply_patch_tool_type, shell_type: model.shell_type,
-        supports_search_tool: model.supports_search_tool }, { ...CODEX_MODEL_REVIEW, experimental_supported_tools: [] });
+        experimental_supported_tools: model.experimental_supported_tools, supports_search_tool: model.supports_search_tool }, { ...CODEX_MODEL_REVIEW, experimental_supported_tools: [] });
     }
+    assert.deepEqual([catalog.models[0]!.apply_patch_tool_type, catalog.models[0]!.shell_type], ['freeform', 'shell_command'], 'the shell and apply_patch stay the vendor\'s in the image\'s copy');
+    const without = catalogForAccount(catalog, ['gpt-6.1-sol'])!.models[0]!;
+    assert.deepEqual([without.apply_patch_tool_type, without.shell_type], [CODEX_NO_OWN_TOOLS.apply_patch_tool_type, CODEX_NO_OWN_TOOLS.shell_type], 'a run without its own tools has neither');
+    const own = catalogForAccount(catalog, ['gpt-6.1-sol'], true)!.models[0]!;
+    assert.deepEqual([own.apply_patch_tool_type, own.shell_type, own.tool_mode], ['freeform', 'shell_command', 'direct'], 'a run with them keeps the vendor\'s, and Flux\'s review');
     assert.equal(catalog.models[0]!.context_window, 272000, 'everything else stays the vendor\'s');
     assert.deepEqual(catalog.models[0]!.model_messages, { instructions_template: 'the vendor\'s' });
     for (const junk of [null, {}, { models: [] }, { models: [{}] }, { models: 'x' }]) assert.throws(() => fluxCodexCatalog(junk), /Not a Codex model catalog/);
