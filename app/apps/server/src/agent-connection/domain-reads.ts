@@ -11,6 +11,7 @@ import { taskDiscussionInTransaction } from '../work/task-discussions.js';
 import { withAgentConnection } from './context.js';
 import { AUTHORS, messagesForAgents, withAgentLabels } from './authors.js';
 import { toolError, toolResult } from './tool-results.js';
+import { taskDiscussionSizes } from './search-reads.js';
 
 const page = { limit: z.int().min(1).max(50).default(20), offset: z.int().min(0).max(10_000).default(0) };
 const projectPage = z.object({ projectId: z.uuid(), ...page });
@@ -92,9 +93,14 @@ export function registerAgentDomainReads(server: AgentToolRegistrar, db: Databas
   server.registerTool('flux_list_work', { title: 'List native project tasks',
     description: 'A page of the project board\'s tasks, with versions and links.',
     inputSchema: projectPage, annotations }, ({ projectId, ...query }, call) => result(call, projectId, ({ tx, principal }) => workUseCases(tx).listWork(principal, projectId, capped(call, query))));
-  server.registerTool('flux_get_work', { title: 'Read a native task', description: 'Read one task.',
-    inputSchema: object, annotations }, ({ projectId, id }, call) => result(call, projectId, async ({ tx, principal, requireObject }) => {
-    await requireObject(projectId, 'work', id); return workUseCases(tx).getWork(principal, id);
+  server.registerTool('flux_get_work', { title: 'Read a native task',
+    description: 'Read one task. With discussion.messages, flux_get_task_discussion reads what people said about it.',
+    inputSchema: object, annotations }, ({ projectId, id }, call) => result(call, projectId, async ({ tx, principal, requireObject, workspaceId }) => {
+    await requireObject(projectId, 'work', id);
+    const work = await workUseCases(tx).getWork(principal, id);
+    // The task's discussion, when it holds messages (#1410): its facts are often there and not in the task itself.
+    const messages = (await taskDiscussionSizes(tx, workspaceId, [id])).get(id);
+    return messages ? { ...work, discussion: { messages } } : work;
   }));
   server.registerTool('flux_list_decisions', { title: 'List project decisions', description: 'A page of decisions: proposed, accepted and superseded.',
     inputSchema: projectPage, annotations }, ({ projectId, ...query }, call) => result(call, projectId, ({ tx, principal }) => workUseCases(tx).listDecisions(principal, projectId, capped(call, query))));

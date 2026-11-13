@@ -33,6 +33,8 @@ export interface ResponsesRequest {
   maxTokens: number;
   tools?: Parameters<typeof responsesTools>[0];
   turns?: Parameters<typeof responsesInput>[1];
+  /** A run's last request (#1410): no tool may be called (`tool_choice: none`), and Flux's words follow the last outputs. */
+  answerNow?: string;
   webSearch?: boolean;
   signal: AbortSignal;
   /** The answer's words as they are written (#1248): the request is streamed, and its final response read as a whole one. */
@@ -48,10 +50,10 @@ export async function openAiResponse(fetch: GuardedFetch, request: ResponsesRequ
   const body: Record<string, unknown> = {
     model: request.model,
     instructions: request.system,
-    input: responsesInput(request.user, request.turns),
+    input: responsesInput(request.user, request.turns, request.answerNow),
     max_output_tokens: request.maxTokens,
     store: false,
-    ...(tools ? { tools: [...responsesTools(tools), ...(search ? [OPENAI_WEB_SEARCH_TOOL] : [])] } : {}),
+    ...(tools ? { tools: [...responsesTools(tools), ...(search ? [OPENAI_WEB_SEARCH_TOOL] : [])], ...(request.answerNow ? { tool_choice: 'none' } : {}) } : {}),
     // Every address a search returned, so a cited one is listed (C-30).
     ...(search ? { include: ['web_search_call.action.sources'] } : {}),
     ...(request.onText ? { stream: true } : {}),
@@ -149,7 +151,7 @@ export function openAiResponsesPersonalCompute({ enabled, resolveKey, policy = P
         const apiKey = await resolveKey(request.connection.keyRef);
         if (!apiKey) throw new PersonalKeyUnavailableError();
         return await openAiResponse(fetch, { baseUrl, apiKey, model: request.model, system: request.system, user: request.input,
-          maxTokens: request.maxTokens, tools: request.tools, turns: request.turns, webSearch: request.webSearch === true, signal, ...(onText ? { onText } : {}) });
+          maxTokens: request.maxTokens, tools: request.tools, turns: request.turns, ...(request.answerNow ? { answerNow: request.answerNow } : {}), webSearch: request.webSearch === true, signal, ...(onText ? { onText } : {}) });
       } catch (error) {
         if (error instanceof PersonalKeyUnavailableError) return { kind: 'failed', reason: 'provider_error', billed: 'none' };
         if (error instanceof SearchRefusedError) return { kind: 'failed', reason: 'provider_error', billed: 'none', searchRefused: true };

@@ -37,7 +37,8 @@ export function openAiCompatiblePersonalCompute({ enabled, resolveKey, policy = 
         const apiKey = await resolveKey(request.connection.keyRef);
         if (!apiKey || !baseUrl) throw new PersonalKeyUnavailableError();
         const result = await chatCompletion(fetch, { provider: request.connection.provider, baseUrl, apiKey, model: request.model,
-          system: request.system, user: request.input, maxTokens: request.maxTokens, tools: request.tools, turns: request.turns, signal });
+          system: request.system, user: request.input, maxTokens: request.maxTokens, tools: request.tools, turns: request.turns,
+          ...(request.answerNow ? { answerNow: request.answerNow } : {}), signal });
         return { kind: 'completed', text: result.text, stopReason: result.stopReason, usage: result.usage,
           ...(result.toolCalls ? { toolCalls: result.toolCalls, replay: result.replay } : {}) };
       } catch (error) {

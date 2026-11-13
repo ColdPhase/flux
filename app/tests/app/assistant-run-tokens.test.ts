@@ -39,8 +39,10 @@ const human = (someone: Person): Principal => ({ kind: 'human', id: someone.id }
  * runtime, grant, class or sources; compacted like the reads), measured 21,207 bytes for 34 tools (2026-10-17). #1290 replaces the one-space search by the two tools
  * that find and read around a message: 36 tools, 25,672 bytes (2026-11-12, CI run 43296958864; the bound was 24,000). #1292 adds the tool that
  * summarises a range: 37 tools, 26,525 bytes (2026-11-13, CI run 43376634883; the bound was 26,000 with 328 bytes left, and the tool's definition takes 853).
+ * #1410 lets `from` take a name, says that a task's discussion is read with its own tool and asks for each part's source before an answer:
+ * 26,913 characters, 26,918 UTF-8 bytes as measured since (2026-11-13, CI run 43417197252 and the #1426 review; the bound was 26,600).
  */
-const TOOL_DEFINITION_BYTES = 26_600;
+const TOOL_DEFINITION_BYTES = 27_000;
 const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
 const claims = (token: string) => JSON.parse(Buffer.from(token.split('.')[1]!, 'base64url').toString()) as Record<string, unknown>;
 const toolText = (message: Record<string, unknown> | null) => JSON.stringify(message);
@@ -406,14 +408,17 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
     const full = await ask();
     const fullOutcome = await processor.process(full.run.id);
     const fullTools = compute.dispatched[0]?.tools ?? [];
-    const fullBytes = JSON.stringify(fullTools).length;
+    const fullBytes = Buffer.byteLength(JSON.stringify(fullTools), 'utf8');
     t.diagnostic(`all switches on: ${fullOutcome} after ${compute.dispatched.length} requests; ${fullBytes} bytes of tool definitions, ${fullTools.length} tools`);
     assert.equal(fullTools.length, 21 + ASSISTANT_RUN_EFFECT_TOOLS.length, '21 read tools (flux_read_web, #918; flux_view_image, #1217; flux_search and flux_read_around, #1290; flux_summarize, #1292) and every change tool (A3)');
     assert.ok(fullBytes <= TOOL_DEFINITION_BYTES, `the run's tool definitions take ${fullBytes} bytes; keep them under ${TOOL_DEFINITION_BYTES} (they are input of every request)`);
     assert.ok(!JSON.stringify(fullTools).includes('"$schema"') && !JSON.stringify(fullTools).includes('"pattern"'), 'no draft URL or uuid regular expression on the wire');
     assert.ok(fullTools.every((tool) => tool.name !== 'flux_get_conversation' || JSON.stringify(tool.inputSchema).includes('"beforeSequence"')), 'the parameters themselves are kept');
     assert.equal(fullOutcome, 'input_too_large');
-    assert.ok(compute.dispatched.length > 100, 'over a hundred turns fit within the tool-run input bound with every tool on');
+    // The request that would leave less than a step's room below the bound is the run's last (#1410): it asks for the answer, and a
+    // provider that asks for a tool even then ends the run at the bound.
+    assert.ok(compute.dispatched.length > 80, 'over eighty turns fit within the tool-run input bound with every tool on, the room for an answer kept');
+    assert.ok(compute.dispatched.at(-1)!.answerNow && compute.dispatched.slice(0, -1).every((request) => !request.answerNow), 'only the last request asks for the answer');
     compute.dispatched = [];
     // Only read: a shorter list, and the bound on steps comes first. The brief of #1064 (who asks, where, when, how to answer) fills
     // about 2 KB more of every request, so in this loop of empty calls 200 steps no longer fit the 64,000-byte input bound (about 195
