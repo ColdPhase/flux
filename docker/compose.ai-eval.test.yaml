@@ -8,6 +8,8 @@
 #   with the instance key) with its Anthropic URL pointed at evalproxy (FLUX_TEST_ANTHROPIC_PROXY_URL, test only).
 # - FLUX_EVAL_VARIANT (empty: main as it is) reaches the API and the worker as FLUX_TEST_AI_VARIANT, so a change under evaluation (#1381's
 #   Wiki A/B, #1382's file contents) can switch its variant on in a test deployment and be compared with the baseline run by run.
+# - FLUX_EVAL_ENGINE=pi (#1441): scripts/check_ai_eval.sh adds compose.source.runtime.yaml and the runtime services; the worker's model
+#   gateway sends pi's Anthropic requests to the same proxy (its upstream is FLUX_TEST_ANTHROPIC_PROXY_URL too).
 # - The check's runner writes its evidence to FLUX_EVAL_EVIDENCE_DIR on the host and reaches the proxy for its ledger and the judge.
 services:
   evalproxy:
@@ -47,6 +49,7 @@ services:
       FLUX_EVAL_QUESTIONS: ${FLUX_EVAL_QUESTIONS:-}
       FLUX_EVAL_LABEL: ${FLUX_EVAL_LABEL:-}
       FLUX_EVAL_VARIANT: ${FLUX_EVAL_VARIANT:-}
+      FLUX_EVAL_ENGINE: ${FLUX_EVAL_ENGINE:-}
       FLUX_EVAL_SHA: ${FLUX_EVAL_SHA:-}
       FLUX_EVAL_PRODUCT_SHA: ${FLUX_EVAL_PRODUCT_SHA:-}
       FLUX_WEB_READS: ${FLUX_WEB_READS:-off}

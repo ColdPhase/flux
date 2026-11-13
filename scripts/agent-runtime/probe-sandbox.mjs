@@ -22,7 +22,10 @@ const mcp = http.createServer((request, response) => {
   request.on('data', (chunk) => { raw += chunk; });
   request.on('end', () => {
     const body = JSON.parse(raw || '{}');
-    const result = body.method === 'tools/list' ? { tools: [{ name: 'flux_list_contexts', inputSchema: { type: 'object' } }] }
+    // A notification (pi's `notifications/initialized`) has no answer.
+    if (body.id === undefined) { response.writeHead(202); response.end(); return; }
+    const result = body.method === 'initialize' ? { protocolVersion: body.params?.protocolVersion ?? '2025-06-18', capabilities: { tools: {} }, serverInfo: { name: 'flux', version: '1' } }
+      : body.method === 'tools/list' ? { tools: [{ name: 'flux_list_contexts', inputSchema: { type: 'object' } }] }
       : body.method === 'tools/call' ? { content: [{ type: 'text', text: 'one space: Reports' }] } : {};
     response.writeHead(200, { 'content-type': 'application/json' });
     response.end(JSON.stringify({ jsonrpc: '2.0', id: body.id, result }));
@@ -308,6 +311,64 @@ record('a login Codex wrote over its own is replaced by the one the run started 
   && (await readFile(`/data/${ada}/codex/auth.json`, 'utf8')) === loginBefore, JSON.stringify(swapped).slice(0, 200));
 record('its login stays', (await readFile(`/data/${ada}/codex/auth.json`, 'utf8').catch(() => '')).includes('codex-login-'));
 record('every scratch is gone', (await readdir('/scratch')).length === 0, (await readdir('/scratch')).join());
+
+// pi (#1441): an API-key run, with the REAL pinned pi in the outer domain, its own `read`, `bash`, `edit` and `write`, and a model stand-in on
+// loopback that plays the gateway (Chat Completions, as for an OpenAI-compatible key). The model asks for each probe in turn.
+const modelSteps = [];
+const modelResults = [];
+const model = http.createServer((request, response) => {
+  let raw = '';
+  request.on('data', (chunk) => { raw += chunk; });
+  request.on('end', () => {
+    const body = JSON.parse(raw || '{}');
+    const results = (body.messages ?? []).filter((message) => message.role === 'tool');
+    if (results.length) modelResults.push(String(results.at(-1).content ?? ''));
+    const step = modelSteps.shift() ?? { text: 'Done.' };
+    const chunk = (delta, finish) => `data: ${JSON.stringify({ id: 'x', object: 'chat.completion.chunk', created: 0, model: body.model, choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`;
+    response.writeHead(200, { 'content-type': 'text/event-stream' });
+    response.end([chunk({ role: 'assistant', content: '' }, null),
+      step.tool ? chunk({ tool_calls: [{ index: 0, id: `call_${modelResults.length}`, type: 'function', function: { name: step.tool, arguments: JSON.stringify(step.args) } }] }, null) : chunk({ content: step.text }, null),
+      chunk({}, step.tool ? 'tool_calls' : 'stop'), 'data: [DONE]\n\n'].join(''));
+  });
+});
+await new Promise((done) => model.listen(0, '127.0.0.1', done));
+const modelPort = model.address().port;
+config.pi = true;
+config.modelOrigin = `http://127.0.0.1:${modelPort}`;
+const piRun = randomUUID();
+const piToken = token();
+const piModelToken = `flux_mg_${randomBytes(32).toString('base64url')}`;
+const piProbes = [
+  ['pi\'s bash: the scratch, a clean environment', { tool: 'bash', args: { command: 'pwd; env | cut -d= -f1 | sort | tr "\\n" " "' } }],
+  ['pi\'s bash: the person\'s and another person\'s files', { tool: 'bash', args: { command: `cat /data/${ada}/claude/.credentials.json /data/${bo}/claude/.credentials.json; ls /data/${ada}/pi` } }],
+  ['pi\'s bash: pi\'s own environment', { tool: 'bash', args: { command: 'cat /proc/$PPID/environ | tr "\\0" "\\n" | grep -c FLUX_RUN_TOKEN' } }],
+  ['pi\'s bash: TCP to the model stand-in', { tool: 'bash', args: { command: `node -e 'require("net").connect(${modelPort}, "127.0.0.1").on("connect", () => console.log("CONNECTED")).on("error", (e) => console.log(e.code))'` } }],
+  ['pi\'s read: its own /proc environment', { tool: 'read', args: { path: '/proc/self/environ' } }],
+  ['pi\'s read: another person\'s login', { tool: 'read', args: { path: `/data/${bo}/claude/.credentials.json` } }],
+  ['pi\'s write: outside the scratch', { tool: 'write', args: { path: '/tmp/pi-left.txt', content: 'x' } }],
+  ['pi\'s write: a file in the scratch', { tool: 'write', args: { path: 'report.html', content: '<h1>Report</h1>' } }],
+  ['pi\'s write: the person\'s shared home, which Claude Code and Codex read', { tool: 'write', args: { path: `/data/${ada}/home/.claude.json`, content: '{}' } }],
+  ['the Flux tool', { tool: 'mcp__flux__flux_list_contexts', args: {} }],
+];
+modelSteps.push(...piProbes.map(([, step]) => step), { text: 'Done with pi.' });
+const piResult = await call({ kind: 'run', bindingId: ada, client: 'pi', runId: piRun, prompt: 'Probe.', runToken: piToken, tools: ['flux_list_contexts'], caps,
+  model: 'mock-model', provider: 'openai_compatible', modelToken: piModelToken });
+record('pi\'s run completes', piResult.ok && piResult.result.outcome === 'completed' && piResult.result.answer === 'Done with pi.', JSON.stringify(piResult).slice(0, 400));
+const piOut = (index) => modelResults[index] ?? '';
+record(piProbes[0][0], piOut(0).split('\n')[0] === `/scratch/${piRun}` && !/FLUX_RUN_TOKEN|PI_|FLUX_SANDBOX_DIR/.test(piOut(0)), piOut(0));
+record(`refused: ${piProbes[1][0]}`, !/login-/.test(piOut(1)) && (piOut(1).match(/Permission denied/g) ?? []).length === 3, piOut(1));
+record(`refused: ${piProbes[2][0]}`, /Permission denied/.test(piOut(2)) && /^0$/m.test(piOut(2)), piOut(2));
+// The tools run only where Landlock forbids TCP (ABI 4, #1437 review): always refused here.
+record(`refused: ${piProbes[3][0]}`, /EACCES|EAFNOSUPPORT/.test(piOut(3)) && !piOut(3).includes('CONNECTED'), piOut(3));
+record(`${piProbes[4][0]} holds neither token (the launcher sets them after the start)`, !piOut(4).includes(piToken) && !piOut(4).includes(piModelToken) && !/FLUX_RUN_TOKEN|FLUX_MODEL_GATEWAY_TOKEN/.test(piOut(4)), piOut(4).slice(0, 300));
+record(`refused: ${piProbes[5][0]}`, !/login-/.test(piOut(5)) && /EACCES|permission denied/i.test(piOut(5)), piOut(5));
+record(`refused: ${piProbes[6][0]}`, /EACCES|permission denied|read-only/i.test(piOut(6)) && !(await lstat('/tmp/pi-left.txt').catch(() => null)), piOut(6));
+record(piProbes[7][0], /Successfully wrote|wrote/i.test(piOut(7)), piOut(7));
+record(`refused: ${piProbes[8][0]}`, /EACCES|permission denied|read-only/i.test(piOut(8))
+  && (await readFile(`/data/${ada}/home/.claude.json`, 'utf8').catch(() => '')) !== '{}', piOut(8));
+record('pi reached Flux\'s tool', /one space: Reports/.test(piOut(9)), piOut(9));
+record('pi\'s scratch and its home are gone after the run', !(await readdir('/scratch')).includes(piRun) && !(await lstat(`/data/${ada}/pi`).catch(() => null)));
+model.close();
 
 server.close();
 mcp.close();

@@ -93,7 +93,10 @@ export function parseModelGatewayUrl(url: unknown): ModelGatewayRoute | null {
   const [, provider, path, query] = match;
   if (!isProvider(provider!) || path!.includes('//') || path!.includes('/.')) return null;
   const operation = FIXED[provider][path!];
-  if (operation) return query === undefined ? { provider, operation, path: path!, model: null, stream: null } : null;
+  // Anthropic's own client sends its beta API as `?beta=true` (pi's does, #1441): the same Messages API, sent on without the query; the
+  // `anthropic-beta` values that go with it are filtered as any request's.
+  const beta = provider === 'anthropic' && query === 'beta=true';
+  if (operation) return query === undefined || beta ? { provider, operation, path: path!, model: null, stream: null } : null;
   const native = provider === 'gemini' ? GEMINI_NATIVE.exec(path!) : null;
   if (!native) return null;
   const stream = native[2] === 'streamGenerateContent';

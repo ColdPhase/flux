@@ -82,11 +82,14 @@ export function createModelGateway({ uow, connections, limits, tokenLifetimeMs, 
     const left = (inFlight.get(slot) ?? 1) - 1;
     if (left <= 0) inFlight.delete(slot); else inFlight.set(slot, left);
   };
+  /** The run's engine, told at once when a request of the run is refused for its money or standing (`watch`). */
+  const watchers = new Map<string, (reason: 'budget' | 'ended') => void>();
   const stop = (runId: string, reason: 'budget' | 'ended') => {
     const account = accountOf(runId);
     if (account.stopped) return;
     account.stopped = reason;
     try { onStop?.(runId, reason); } catch { /* the run's own checks still stop it */ }
+    try { watchers.get(runId)?.(reason); } catch { /* the run's own checks still stop it */ }
   };
 
   const gateway = {
@@ -99,7 +102,8 @@ export function createModelGateway({ uow, connections, limits, tokenLifetimeMs, 
       const expiresAt = new Date(now() + tokenLifetimeMs);
       const armed = await uow.run(async (ports) => {
         const run = await ports.runs.findRun(runId, { lock: true });
-        if (!run || (run.status !== 'reading' && run.status !== 'dispatching') || run.stopRequestedAt || run.engine !== 'runtime' || !run.connectionId) return false;
+        // An API-key run, whichever engine label it carries: a key run in pi keeps `server` (its payer is the key, #1441 workstream 2).
+        if (!run || (run.status !== 'reading' && run.status !== 'dispatching') || run.stopRequestedAt || !run.connectionId) return false;
         return gatewayRows(ports).armGateway(run.id, sha256(token), expiresAt);
       });
       if (!armed) return null;
@@ -113,6 +117,15 @@ export function createModelGateway({ uow, connections, limits, tokenLifetimeMs, 
       const account = accountOf(runId);
       accounts.delete(runId);
       return { ...account };
+    },
+
+    /**
+     * The run's engine is told the moment a request is refused for the key's budget (402) or the run's standing (403), and stops the
+     * harness then, instead of waiting for it to give up (#1441 review). One listener per run; the returned function removes it.
+     */
+    watch(runId: string, listener: (reason: 'budget' | 'ended') => void): () => void {
+      watchers.set(runId, listener);
+      return () => { if (watchers.get(runId) === listener) watchers.delete(runId); };
     },
 
     /** What the run's requests came to so far. */
@@ -153,7 +166,7 @@ export function createModelGateway({ uow, connections, limits, tokenLifetimeMs, 
           if (!runId || runId !== claim.runId) return { ok: false as const, refusal: refusals.token };
           const run = await ports.runs.findRun(runId, { lock: true });
           const ended = { ok: false as const, refusal: refusals.ended, stop: { runId, reason: 'ended' as const } };
-          if (!run || run.status !== 'dispatching' || run.stopRequestedAt || run.engine !== 'runtime' || !run.connectionId) return ended;
+          if (!run || run.status !== 'dispatching' || run.stopRequestedAt || !run.connectionId) return ended;
           // The owner's lane, as a server run reserves on the key (#854): no other reservation of the owner's interleaves with this one.
           await ports.runs.lockLane(run.ownerUserId);
           if (!(await spaceSwitchAllows(ports, run, true))) return ended;

@@ -9,6 +9,7 @@ import { statusFacts } from './status.js';
 import { cliEnvironment, LOGOUT_TEMPLATES, STATUS_TEMPLATES } from './templates.js';
 import { reportedRuns, runCli, stopRun } from './run.js';
 import { readPlanModels } from './models.js';
+import { installedPi, PI_PATHS, runPi, type PiPaths } from './pi.js';
 import type { SandboxSetup } from './sandbox.js';
 
 // One handler per request of the closed set. A handler answers with zero or more `step` frames and
@@ -35,6 +36,14 @@ export interface SupervisorConfig {
   egressHost: string;
   /** The Flux MCP route as the CLI reaches it (default `http://<egress>:8080/mcp`, runtime-egress's forwarder); tests point it elsewhere. */
   mcpUrl?: string;
+  /** API-key agents run in pi here (#1441): `pi` in the operator's `FLUX_AGENT_RUNTIME`. */
+  pi?: boolean;
+  /** Where pi and its launcher are (default: the image's, `PI_PATHS`); tests point them at the workspace's copy. */
+  piPaths?: PiPaths;
+  /** Flux's model gateway as pi reaches it (default `MODEL_GATEWAY_ORIGIN`, runtime-egress:8081; `gatewayProvider`); tests point it at a fake. */
+  modelOrigin?: string;
+  /** TEST ONLY: what pi printed on stderr and its MCP log, for a test that failed to say why. Never set by the runtime (main.ts). */
+  piDiagnostics?: (what: { stderr: string; mcpLog: string; events: string[] }) => void;
   /** F-022 "Limits": the supervisor refuses a run while the binding directory exceeds this. */
   bindingLimitBytes: number;
   cliTimeoutMs: number;
@@ -159,6 +168,15 @@ export async function handle(config: SupervisorConfig, request: SupervisorReques
       // Only in the sign-in console, where the command runs in a PTY the owner's session is attached to.
       return { error: 'invalid_request' };
     case 'run': {
+      if (request.client === 'pi') {
+        // An API-key agent (#1441): pi, which needs no sign-in, in the person's own place.
+        if (!config.pi) return { error: 'client_off' };
+        const open = await openBinding(config.dataDir, request.bindingId, config.separate);
+        if (!open.ok) return { error: open.code };
+        if ((await bindingBytes(open.dir, config.bindingLimitBytes)).overLimit) return { error: 'binding_too_large' };
+        if (!(await installedPi(config.piPaths ?? PI_PATHS))) return { error: 'not_installed' };
+        return runPi(config, request, open.dir, open.person, send);
+      }
       if (!config.enabled.includes(request.client)) return { error: 'client_off' };
       const open = await openBinding(config.dataDir, request.bindingId, config.separate);
       if (!open.ok) return { error: open.code };

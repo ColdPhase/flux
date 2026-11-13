@@ -306,19 +306,30 @@ describe('tokens', () => {
 
   test('a run that was stopped or ended refuses its token and is told to stop; tokens are only for working runtime runs on a key', async () => {
     const run = await runOn('anthropic', 'claude-sonnet-5');
+    // The run's engine watches its run (#1441 review): told at once, and only once, so it stops pi there.
+    const told: string[] = [];
+    const unwatch = gateway.watch(run.id, (reason) => told.push(reason));
     await pool.query('UPDATE personal_runs SET stop_requested_at = now() WHERE id = $1', [run.id]);
     const answer = await call('/anthropic/v1/messages', run.token, body);
     assert.equal(answer.status, 403);
     assert.equal((JSON.parse(answer.text) as { error: { code: string } }).error.code, 'flux_run_ended');
     assert.ok(stops.some(([id, reason]) => id === run.id && reason === 'ended'));
+    assert.equal((await call('/anthropic/v1/messages', run.token, body)).status, 403);
+    assert.deepEqual(told, ['ended'], 'the engine is told once');
+    unwatch();
     const done = await runOn('anthropic', 'claude-sonnet-5');
     await pool.query("UPDATE personal_runs SET status = 'completed', completed_at = now() WHERE id = $1", [done.id]);
     assert.equal((await call('/anthropic/v1/messages', done.token, body)).status, 403);
     assert.equal(await gateway.issue(done.id), null, 'no token for a run that is not working');
-    const server = await runOn('anthropic', 'claude-sonnet-5');
-    await pool.query("UPDATE personal_runs SET engine = 'server', reserved_micros = 1 WHERE id = $1", [server.id]);
-    assert.equal(await gateway.issue(server.id), null, 'no token for a run of the worker\'s own engine');
-    assert.equal((await call('/anthropic/v1/messages', server.token, body)).status, 403);
+    // A key run in pi keeps the engine label `server` (its payer is the key, #1441 workstream 2): the key is what a token needs, so a run on a
+    // plan (no connection) gets none, and a run whose key is gone has its token refused.
+    const plan = await runOn('anthropic', 'claude-sonnet-5');
+    await pool.query("UPDATE personal_runs SET connection_id = NULL, reserved_micros = 1 WHERE id = $1", [plan.id]);
+    assert.equal(await gateway.issue(plan.id), null, 'no token for a run on a plan');
+    assert.equal((await call('/anthropic/v1/messages', plan.token, body)).status, 403);
+    const keyed = await runOn('anthropic', 'claude-sonnet-5');
+    await pool.query("UPDATE personal_runs SET engine = 'server' WHERE id = $1", [keyed.id]);
+    assert.ok(await gateway.issue(keyed.id), 'a key run in pi, labelled server, gets one');
   });
 
   test('a token reaches only its run\'s provider and model, without hosted tools', async () => {
@@ -357,6 +368,8 @@ describe('money and limits', () => {
     // Another runtime run on the same key, finished today, spent 100,000: it counts against the day (#854, #1441).
     await pool.query("UPDATE personal_runs SET status = 'completed', cost_state = 'observed', charged_micros = 100000, reserved_micros = 100000 WHERE id = $1", [first.id]);
     const second = await runOn('anthropic', 'claude-sonnet-5', { connectionId, dailyBudgetCents: budgetCents });
+    const told: string[] = [];
+    const unwatch = gateway.watch(second.id, (reason) => told.push(reason));
     const before = received.length;
     const refused = await call('/anthropic/v1/messages', second.token, body);
     assert.equal(refused.status, 402);
@@ -365,6 +378,8 @@ describe('money and limits', () => {
     assert.equal(received.length, before, 'nothing reached the provider');
     assert.equal(gateway.account(second.id).stopped, 'budget');
     assert.ok(stops.some(([id, reason]) => id === second.id && reason === 'budget'));
+    assert.deepEqual(told, ['budget'], 'the run\'s engine is told at once, so it stops pi');
+    unwatch();
     await gateway.close(second.id);
   });
 

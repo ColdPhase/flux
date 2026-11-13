@@ -30,16 +30,20 @@ and the normal built-in **Connect → authorize → Start/Resume** outcome. The 
 ## PC-1 — explicit two-era admission
 
 The same protected `<FLUX_PUBLIC_ORIGIN>/mcp` endpoint admits exactly legacy
-`2025-06-18` and modern `2026-07-28`. It uses the pinned SDK's stateless legacy
+`2025-06-18` and `2025-11-25`, and modern `2026-07-28`. **Amended 2026-11-13 (#1441):** `2025-11-25` is admitted
+because pi, the engine of every API-key agent in the runtime ([RT-1](ai-modes.md#rt-1--engines-on-the-server)), always
+offers it (pi 1.5.2's MCP client offers its latest revision and has no setting for another; observed: pi's
+`initialize` with `2025-11-25` was refused and the run had no Flux tool), and the pinned SDK serves it as a legacy
+revision. It is admitted exactly like `2025-06-18`: the answer names the revision offered, never another. It uses the pinned SDK's stateless legacy
 adapter with a fresh server/transport per authenticated POST, alongside the
 existing modern handler. Supported wire revision, tool contract, playbook
 revision and tested client/activation path are separate facts.
 
 | Request | Required admission and response |
 | --- | --- |
-| Legacy `initialize` | One valid JSON-RPC request offering exactly `2025-06-18`. Initial protocol header may be absent; when present it must agree with the offer. Return that exact revision and the actual server capabilities/instructions. Never substitute another revision. |
-| `initialize` offering `2026-07-28` | An initialize request chooses legacy handshake semantics; HTTP 400 / JSON-RPC `-32022`, `error.data = {"requested":"2026-07-28","supported":["2025-06-18"]}`. This is not modern discovery and never negotiates the modern revision through initialize. |
-| Later legacy request | Exactly the `2025-06-18` protocol header and a valid legacy request. No modern protocol-envelope claim. Apply the same current tool/resource/prompt authorization. A headerless request is refused; no remembered identity or negotiated version is taken from another request. |
+| Legacy `initialize` | One valid JSON-RPC request offering exactly `2025-06-18` or `2025-11-25`. Initial protocol header may be absent; when present it must agree with the offer. Return that exact revision and the actual server capabilities/instructions. Never substitute another revision. |
+| `initialize` offering `2026-07-28` | An initialize request chooses legacy handshake semantics; HTTP 400 / JSON-RPC `-32022`, `error.data = {"requested":"2026-07-28","supported":["2025-06-18","2025-11-25"]}`. This is not modern discovery and never negotiates the modern revision through initialize. |
+| Later legacy request | Exactly an admitted legacy protocol header (`2025-06-18` or `2025-11-25`) and a valid legacy request. No modern protocol-envelope claim. Apply the same current tool/resource/prompt authorization. A headerless request is refused; no remembered identity or negotiated version is taken from another request. |
 | Legacy `notifications/initialized` | The sole headerless post-initialize exception: a valid single notification, authenticated independently, with no modern claim. An absent or agreeing legacy header is allowed. Return HTTP 202 with an empty body (no JSON-RPC result or success ACK payload); it performs no domain action and grants no authority. |
 | Other legacy notifications | Require the explicit legacy header. No additional notification feature is declared supported by this amendment: refuse it visibly without a domain effect. Required client cancellation/progress behavior must be identified and demonstrated before the client is declared fully compatible; accepting a no-op is not evidence of that behavior. |
 | Modern request | Preserve the SDK's `2026-07-28` per-request envelope/client-capability checks and matching protocol/method/name headers, validation and body-size limits. There is no initialize handshake. Missing, malformed, conflicting or unknown modern claims stay on modern rejection and never enter legacy handling. |
@@ -59,7 +63,7 @@ Version refusals use these exact `error.data` objects (no additional revision in
 that supported list):
 
 - Legacy initialize/legacy-header refusal: HTTP 400 / `-32022`,
-  `{"requested":"<offered-or-conflicting-header-string>","supported":["2025-06-18"]}`.
+  `{"requested":"<offered-or-conflicting-header-string>","supported":["2025-06-18","2025-11-25"]}`.
   The valid initialize schema supplies the offered string; malformed schema uses
   its schema error instead. A missing later legacy header uses requested `unknown`.
 - Unsupported modern claim: HTTP 400 / `-32022`,

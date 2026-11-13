@@ -96,8 +96,12 @@ FLUX_AGENT_RUNTIME=claude_code
 FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS=2026-10-05   # the date you agreed with Anthropic
 ```
 
-Then `./flux up`. The values are `claude_code`, `codex`, or `claude_code,codex`. Codex needs no operator
-statement; Claude Code needs the Commercial Terms date.
+Then `./flux up`. The value is a comma-separated list of `claude_code`, `codex` and `pi`, each at most once. Codex needs no
+operator statement; Claude Code needs the Commercial Terms date. **`pi`** (#1441) runs every API-key agent (Anthropic, OpenAI,
+OpenRouter, Gemini, OpenAI-compatible and self-hosted keys) in pi in the runtime instead of the worker's own loop: with shell and
+files in a scratch of each run, like Claude Code and Codex. It needs no statement and no sign-in; `FLUX_AGENT_RUNTIME=pi` alone runs
+the runtime for API keys only. The key stays sealed in Flux: pi reaches the model through the model gateway (`runtime-egress:8081`) with
+a gateway token of its run, and the gateway meters every request against the key's daily budget.
 
 `./flux up` then also builds and starts the Compose profile `runtime`:
 
@@ -106,7 +110,7 @@ statement; Claude Code needs the Commercial Terms date.
 | `runtime-install` | One-shot. Installs the pinned Claude Code release into the `runtime-tools` volume (the runtime mounts it read-only), after checking Anthropic's GPG-signed release manifest against the key fingerprint Anthropic publishes and the binary's SHA-256 against that manifest. Flux never ships Claude Code in an image. It reaches only `downloads.claude.ai`, through `runtime-egress`. A verified install of the pinned version is kept on later starts. |
 | `runtime-1` | One runtime for everyone. A small supervisor (and, during a sign-in or a run, each person's CLI under their own user id), with its own volume and its own internal network. |
 | `runtime-manager` | Drives the supervisors for the API and worker. No database and no Docker access. |
-| `runtime-egress` | The runtime's only way out: HTTPS to the hosts the enabled CLIs document, and the Flux `/mcp` route. |
+| `runtime-egress` | The runtime's only way out: HTTPS to the hosts the enabled CLIs document, the Flux `/mcp` route and, for an API-key run (#1441), the model gateway on port 8081. |
 
 `./flux` generates the secrets it needs in `docker/.env` (`FLUX_RUNTIME_MANAGER_SECRET`, one
 `FLUX_RUNTIME_SECRET_1`) and never changes an existing value. The runtime receives only its own
@@ -243,7 +247,10 @@ Each run's tools have their own limits (#1437), checked by the supervisor every 
 | Wall clock | the run's hour (below) | the run ends, every process of the person goes and the scratch is deleted |
 | Out of memory | the run's processes are chosen before the supervisor | the kernel kills the largest of them |
 
-So one active agent is planned at 1 GiB: about 256 MiB for its CLI, 512 MiB for its tools and 256 MiB of scratch. **On a 2 vCPU /
+So one active agent is planned at 1 GiB: about 256 MiB for its CLI (pi included), 512 MiB for its tools and 256 MiB of scratch.
+An API-key agent in pi (#1441) counts as one of them like a plan's: it waits for room the same way, and pi itself is lighter than
+Claude Code (124 MiB at its largest and 0.45 s of CPU to answer with one Flux tool call against an instant mock model; harness
+research 2026-11-13). **On a 2 vCPU /
 4 GB server** the runtime gets about 2.5 GiB and one CPU (`FLUX_RUNTIME_CPUS`, all the server's CPUs but one): two agents at once,
 sharing that CPU, the tools of each below every CLI, while Flux itself keeps the other CPU. A run that converts or computes for
 minutes slows the other run, never Flux. The memory limit is still shared: a CLI far over its planned 256 MiB can get another
@@ -266,6 +273,7 @@ Measured 2026-11-05 in Docker with the runtime's own settings (2560 MiB, one CPU
 | The runtime image with the toolbox (#1437, `agent-runtime`, amd64; 2026-11-13) | 1,000 MB, against 438 MB without it (`main` at the same day): the toolbox adds about 560 MB, once per server |
 | pandoc with typst, a one-page HTML file to PDF, in a run's sandbox on one CPU | 124 MiB at its peak |
 | Python with pandas and matplotlib, one chart to PNG, in a run's sandbox on one CPU | 108 MiB at its peak, 0.9 s |
+| pi 1.5.2, one prompt with one MCP tool call against a mock model, 1 CPU, read-only root (harness research, 2026-11-13) | 124 MiB at its peak, 0.45 s of CPU |
 
 The toolbox rows come from `docker image inspect` and the `MEASURE toolbox` lines of `scripts/check_runtime_sandbox.sh` (a container with one CPU, as a 2 vCPU server gives the runtime); both fit well inside a run's 512 MiB for its tools. The first three rows come from `scripts/check_runtime_people.sh`, which uses fake CLIs and works on any Linux engine. The last two
 are the real binaries, so they show what a CLI costs before it does any work.
@@ -580,7 +588,9 @@ A GitHub Release carries the runtime as two more assets next to
 ## Versions
 
 Each Flux release pins the CLI versions its flag contract check passed: Claude Code 2.1.285 (in
-`app/apps/runtime/src/install/pins.ts`) and Codex rust-v0.160.1 (in `docker/Dockerfile`, by checksum).
+`app/apps/runtime/src/install/pins.ts`), Codex rust-v0.160.1 (in `docker/Dockerfile`, by checksum) and pi 1.5.2 (MIT, in
+`app/apps/runtime/pi/package-lock.json`, every package by its sha512 integrity, installed into the runtime image with `npm ci
+--ignore-scripts`; #1441).
 `./flux upgrade` reinstalls Claude Code at the new pin on its next start; nothing updates itself
 (`DISABLE_UPDATES=1`).
 

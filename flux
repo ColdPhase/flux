@@ -265,10 +265,14 @@ runtime_value() { env_value FLUX_AGENT_RUNTIME | tr -d ' '; }
 runtime_on() { [ -n "$(runtime_value)" ]; }
 check_runtime_switch() {
   value=$(runtime_value)
-  case "$value" in
-    ''|claude_code|codex|claude_code,codex|codex,claude_code) ;;
-    *) die "FLUX_AGENT_RUNTIME must be empty (off), claude_code, codex or claude_code,codex; it is '$value'." ;;
-  esac
+  # Any of claude_code, codex and pi (#1441: API-key agents in pi), comma-separated, each at most once.
+  seen=,
+  for part in $(printf '%s' "$value" | tr ',' ' '); do
+    case "$part" in claude_code|codex|pi) ;; *) seen=bad ;; esac
+    case "$seen" in *",$part,"*|bad) die "FLUX_AGENT_RUNTIME must be empty (off) or a comma-separated list of claude_code, codex and pi, each once; it is '$value'." ;; esac
+    seen="$seen$part,"
+  done
+  case "$value" in ,*|*,|*,,*) die "FLUX_AGENT_RUNTIME must be empty (off) or a comma-separated list of claude_code, codex and pi, each once; it is '$value'." ;; esac
   case ",$value," in
     *,claude_code,*)
       [ -n "$(env_value FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS)" ] || die "FLUX_AGENT_RUNTIME includes claude_code. Running Claude Code for others needs Anthropic's Commercial Terms: agree to them with Anthropic first, then set FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS=<YYYY-MM-DD> (the date you agreed) in ${ENV_FILE#"$FLUX_ROOT"/}. Flux records that statement; it does not verify it. See docs/operations/agent-runtime.md." ;;

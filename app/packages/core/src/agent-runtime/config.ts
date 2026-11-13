@@ -11,6 +11,11 @@ export interface AgentRuntimeConfig {
   /** FLUX_AGENT_RUNTIME_IDLE_DAYS: release a binding after this many days without a run; null is off. */
   idleDays: number | null;
   manager: { url: string; secret: string } | null;
+  /**
+   * `pi` in FLUX_AGENT_RUNTIME (#1441, RT-1): every API-key agent runs in pi in the runtime instead of the worker's own loop. The one switch
+   * between the two engines for keys; absent (false) in configs written before it.
+   */
+  keys?: boolean;
 }
 
 /** Both CLIs run in this version: Codex since its hosts and checks were recorded (F-022 T6, #281). */
@@ -19,27 +24,32 @@ export const RUNTIME_CLIENTS_SUPPORTED: Record<AgentRuntimeClient, boolean> = { 
 const SECRET = /^[A-Za-z0-9_-]{32,256}$/;
 const DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
 
-export function parseAgentRuntimeClients(value: string | undefined): AgentRuntimeClient[] {
+/** The plan CLIs of FLUX_AGENT_RUNTIME, and whether it lists `pi` (#1441). Any other value stops the service at start. */
+export function parseAgentRuntimeEngines(value: string | undefined): { clients: AgentRuntimeClient[]; keys: boolean } {
   const raw = (value ?? '').trim();
-  if (!raw) return [];
-  const clients: AgentRuntimeClient[] = [];
+  if (!raw) return { clients: [], keys: false };
+  const seen: string[] = [];
   for (const part of raw.split(',').map((item) => item.trim())) {
-    if (!(AGENT_RUNTIME_CLIENTS as readonly string[]).includes(part)) {
-      throw new Error(`FLUX_AGENT_RUNTIME must be empty, claude_code, codex or claude_code,codex (got ${JSON.stringify(part.slice(0, 40))})`);
+    if (!(AGENT_RUNTIME_CLIENTS as readonly string[]).includes(part) && part !== 'pi') {
+      throw new Error(`FLUX_AGENT_RUNTIME must be empty or a comma-separated list of claude_code, codex and pi (got ${JSON.stringify(part.slice(0, 40))})`);
     }
-    if (clients.includes(part as AgentRuntimeClient)) throw new Error(`FLUX_AGENT_RUNTIME names ${part} twice`);
-    clients.push(part as AgentRuntimeClient);
+    if (seen.includes(part)) throw new Error(`FLUX_AGENT_RUNTIME names ${part} twice`);
+    seen.push(part);
   }
-  return AGENT_RUNTIME_CLIENTS.filter((client) => clients.includes(client));
+  return { clients: AGENT_RUNTIME_CLIENTS.filter((client) => seen.includes(client)), keys: seen.includes('pi') };
+}
+
+export function parseAgentRuntimeClients(value: string | undefined): AgentRuntimeClient[] {
+  return parseAgentRuntimeEngines(value).clients;
 }
 
 export function loadAgentRuntimeConfig(env: NodeJS.ProcessEnv, today = new Date()): AgentRuntimeConfig {
-  const clients = parseAgentRuntimeClients(env.FLUX_AGENT_RUNTIME);
+  const { clients, keys } = parseAgentRuntimeEngines(env.FLUX_AGENT_RUNTIME);
   const idleRaw = (env.FLUX_AGENT_RUNTIME_IDLE_DAYS ?? '').trim();
   if (idleRaw && !/^[1-9][0-9]{0,2}$/.test(idleRaw)) throw new Error('FLUX_AGENT_RUNTIME_IDLE_DAYS must be empty (off) or a number of days from 1 to 365');
   const idleDays = idleRaw ? Number(idleRaw) : null;
   if (idleDays !== null && idleDays > 365) throw new Error('FLUX_AGENT_RUNTIME_IDLE_DAYS must be at most 365');
-  if (!clients.length) return { clients, commercialTermsAgreedOn: null, idleDays, manager: null };
+  if (!clients.length && !keys) return { clients, commercialTermsAgreedOn: null, idleDays, manager: null, keys: false };
   const secret = env.FLUX_RUNTIME_MANAGER_SECRET ?? '';
   if (!SECRET.test(secret)) throw new Error('FLUX_AGENT_RUNTIME is on, but FLUX_RUNTIME_MANAGER_SECRET is missing or shorter than 32 characters (./flux generates it in docker/.env)');
   let commercialTermsAgreedOn: string | null = null;
@@ -56,7 +66,7 @@ export function loadAgentRuntimeConfig(env: NodeJS.ProcessEnv, today = new Date(
   }
   const url = (env.FLUX_RUNTIME_MANAGER_URL ?? 'http://runtime-manager-control:7600').trim();
   if (!/^http:\/\/[a-z0-9.-]+:[0-9]{1,5}$/.test(url)) throw new Error('FLUX_RUNTIME_MANAGER_URL must be http://<host>:<port>');
-  return { clients, commercialTermsAgreedOn, idleDays, manager: { url, secret } };
+  return { clients, commercialTermsAgreedOn, idleDays, manager: { url, secret }, keys };
 }
 
 export function clientAvailability(config: AgentRuntimeConfig): Record<AgentRuntimeClient, AgentRuntimeClientAvailability> {
