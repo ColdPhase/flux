@@ -186,7 +186,8 @@ class AiConnectionSettings(unittest.TestCase):
         expect(page.get_by_role("heading", name="Use an API key")).to_have_count(0)
         expect(page.locator(".background-settings__connection")).to_have_count(2)
         work = page.locator(".background-settings__connection").filter(has=page.get_by_role("heading", name="Work Anthropic"))
-        expect(work).to_contain_text("Anthropic · claude-sonnet-5")
+        expect(work.locator("div").filter(has_text="Provider")).to_contain_text("Anthropic")
+        expect(work.locator("div").filter(has_text="Model")).to_contain_text("Sonnet 5")
         expect(work.get_by_test_id("key-usage")).to_have_text("$0.00 of $12.50 today")
         current = self.connection(page, name="Work Anthropic")
         self.assertEqual((current["price"]["source"], current["dailyBudgetCents"]), ("table", 1250))
@@ -199,9 +200,15 @@ class AiConnectionSettings(unittest.TestCase):
         budget = work.get_by_label("Daily budget (USD)", exact=True)
         expect(budget).to_have_value("12.50")
         budget.fill("0.05")
-        self.assertTrue(budget.evaluate("input => input.validity.rangeUnderflow"), "the field itself refuses a budget under $0.10")
+        # The app's own field (#1362), not the browser's number box: the refusal is said in words, in the page's own alert.
+        self.assertEqual(budget.evaluate("input => input.type"), "text")
+        self.assertNotEqual(budget.evaluate("input => getComputedStyle(input).borderTopLeftRadius"), "0px", "the field is the app's, with its radius (it was square)")
         work.get_by_role("button", name="Save budget").click()
+        expect(page.get_by_role("alert").filter(has_text="Enter a daily budget from $0.10")).to_be_visible()
         self.assertEqual(self.connection(page, name="Work Anthropic")["dailyBudgetCents"], 1250, "a refused budget changes nothing")
+        # The button sits on the field's centre line (it was 7.6 px off beside the native box).
+        field, button = budget.bounding_box(), work.get_by_role("button", name="Save budget").bounding_box()
+        self.assertAlmostEqual(field["y"] + field["height"] / 2, button["y"] + button["height"] / 2, delta=1.5)
         budget.fill("20")
         work.get_by_role("button", name="Save budget").click()
         expect(page.get_by_role("status").filter(has_text="Work Anthropic: daily budget $20.00.")).to_be_visible()
@@ -285,7 +292,7 @@ class AiConnectionSettings(unittest.TestCase):
         # #320: the quick start's loopback http:// address is the one to use; HTTPS is needed only
         # for a client on another computer, so the guide must not ask for it here.
         self.assertRegex(ORIGIN, r"^http://(127\.\d+\.\d+\.\d+|localhost)(:\d+)?$", "this suite runs on a loopback http origin")
-        expect(guide).to_contain_text("Add this Flux address to the client you already use.")
+        expect(guide).to_contain_text("Add Flux to the app you already use.")
         expect(guide).to_contain_text("This address works only on this computer.")
         expect(guide).not_to_contain_text("Use your self-hosted Flux HTTPS address")
         expect(guide).to_contain_text("only as far as its “What it may do” allows")

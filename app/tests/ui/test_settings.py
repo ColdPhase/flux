@@ -286,7 +286,7 @@ class SettingsJourney(unittest.TestCase):
 
     def phone_targets(self, page: Page) -> None:
         controls = page.locator("a.sset-row, button.sset-row, a.sset-me--link, .sset-assistant a, .sset-assistant button, button.sset-theme, button.sset-switch, "
-                                ".sset-row--stack button, .sset-choice input")
+                                ".sset-row--stack button, .sset-choice input, .cai__empty .ui-btn, .cai__head .ui-btn")
         scroller = page.locator(".sset__page .pane-scroll")
         previous_scroll = scroller.evaluate("el => el.scrollTop")
         self.assertGreater(controls.count(), 0, "native settings controls are rendered")

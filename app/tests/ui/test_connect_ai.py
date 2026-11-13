@@ -359,7 +359,8 @@ class ConnectAiJourney(unittest.TestCase):
             # "Connect another" offers only what is not connected yet: another API key.
             connect.get_by_role("button", name="Connect another").click()
             window = page.get_by_role("dialog", name="Connect your AI")
-            expect(window.locator("[data-choice]")).to_have_count(1)
+            # ... and the person's own Claude Code or Codex, which is no connection of Flux's (#1363).
+            expect(window.locator("[data-choice]")).to_have_count(2)
             expect(window.locator("[data-choice=api_key] input")).to_be_checked()
             window.get_by_role("button", name="Cancel").click()
             expect(window).to_have_count(0)
@@ -378,7 +379,7 @@ class ConnectAiJourney(unittest.TestCase):
             connect.get_by_role("button", name="Connect AI", exact=True).click()
             window = page.get_by_role("dialog", name="Connect your AI")
             expect(window.get_by_role("heading", name="Connect your AI")).to_be_visible()
-            expect(window.locator("[data-choice]")).to_have_count(3)
+            expect(window.locator("[data-choice]")).to_have_count(4)
             window.locator("[data-choice=claude_plan]").click()
             window.get_by_role("button", name="Continue").click()
             expect(window.get_by_role("heading", name="Couldn’t connect")).to_be_visible()

@@ -93,7 +93,7 @@ export function AgentConnectionPage() {
       “What it may do” allows. Deleting and other people’s things always wait for your OK.
     </Head>
     {error ? <div className="connection__alert" role="alert">{error}</div> : null}
-    {items.length ? <ul className="connection__list" aria-label="Connected apps">{items.map((connection) => <li className="connection__saved sset-card" key={connection.id}>
+    {items.length ? <ul className="connection__list" aria-label="Connected clients">{items.map((connection) => <li className="connection__saved sset-card" key={connection.id}>
       <div className="connection__row">
         <Kreska size={22} hue={agentHue(connection.agentId)} />
         <div className="connection__summary">
