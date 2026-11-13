@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
-import { AGENT_TOOLS, agentConnectionPath, personalRunTokenPath, type Conversation, type Project, type Workspace } from '@flux/contracts';
+import { AGENT_TOOLS, agentConnectionPath, assistantRunTools, personalRunTokenPath, type Conversation, type Project, type Workspace } from '@flux/contracts';
 import type { PersonalRunTokenIssuer, Principal } from '@flux/core';
 import { personalRunTokenRows } from '@flux/db';
 import { createMcpDispatch } from '../../apps/server/src/agent-connection/mcp-dispatch.js';
@@ -16,7 +16,7 @@ import { agentSettings } from './support/agent-settings.js';
 import { db, pool } from './support/db.js';
 import { apiUrl } from './support/http.js';
 import { inLegacyEra, mcp, toolValue } from './support/mcp.js';
-import { agentConnection, toolFailure } from './support/mcp-actions.js';
+import { agentConnection } from './support/mcp-actions.js';
 import { expectStatus, person, project as createProject, workspace as createWorkspace, type Person } from './support/people.js';
 import { FakeConnections, FakeQueue } from './support/personal-runs.js';
 
@@ -212,8 +212,11 @@ describe('two principals, two runs and a client on one set of definitions, inter
   }
 
   interface Run { runId: string; owner: Person; place: Project; token: string; tools: string[]; call(name: string, args?: Record<string, unknown>): ReturnType<typeof mcp>; list(): ReturnType<typeof mcp> }
-  /** A person's assistant, turned on with the given "What it may do", and one of its runs in flight with its token minted. */
-  async function assistant(label: string, mayDo: 'act' | 'read'): Promise<Run> {
+  /**
+   * A person's assistant, turned on with the given Ask me first, and one of its runs in flight with its token minted. `readOnly` narrows the run's
+   * stored tools to the reads, as for a run that only reads (an answer to another agent's question; #1419 has no Only read to make one).
+   */
+  async function assistant(label: string, mayDo: 'act' | 'ask', readOnly = false): Promise<Run> {
     const owner = await person(label);
     const ws = await createWorkspace(owner, `${label} company`);
     const place = await createProject(owner, ws.id, `${label} project`, 'workspace');
@@ -230,7 +233,9 @@ describe('two principals, two runs and a client on one set of definitions, inter
     assert.equal(await db.transaction((tx) => personalRunTokenRows(tx).arm(started.run.id, sha256(nonce))), true);
     const minted = await fetch(`${apiUrl}${personalRunTokenPath(started.run.id)}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ nonce }) });
     assert.equal(minted.status, 200);
-    const { token, tools } = await minted.json() as { token: string; tools: string[] };
+    const { token, tools: mintedTools } = await minted.json() as { token: string; tools: string[] };
+    const tools = readOnly ? assistantRunTools(true) : mintedTools;
+    if (readOnly) await pool.query('UPDATE personal_runs SET run_tools = $2 WHERE id = $1', [started.run.id, tools]);
     let id = 0;
     return { runId: started.run.id, owner, place, token, tools,
       call: (name, args = {}) => mcp(token, ++id, 'tools/call', { name, arguments: args }),
@@ -241,11 +246,11 @@ describe('two principals, two runs and a client on one set of definitions, inter
   before(async () => {
     ada = await client('tc-ada');
     jonas = await client('tc-jonas');
-    // Jonas's agent only reads; Ada's acts.
-    expectStatus(await jonas.owner.browser.request('PATCH', agentConnectionPath(jonas.connection.connectionId), { body: { mayDo: 'read' } }), 200);
+    // Jonas's agent asks first; Ada's acts.
+    expectStatus(await jonas.owner.browser.request('PATCH', agentConnectionPath(jonas.connection.connectionId), { body: { mayDo: 'ask' } }), 200);
     acting = await assistant('tc-run-one', 'act');
     secondActing = await assistant('tc-run-two', 'act');
-    reading = await assistant('tc-run-three', 'read');
+    reading = await assistant('tc-run-three', 'ask', true);
   });
 
   test('every client is listed the same tools, with the same descriptions and schemas, however often and in whatever company it asks', async () => {
@@ -277,12 +282,12 @@ describe('two principals, two runs and a client on one set of definitions, inter
     }
   });
 
-  test('"What it may do" and the capabilities are each principal\'s own: Ada\'s agent acts while Jonas\'s only reads, in the same breath', async () => {
+  test('Ask me first is each principal\'s own: Ada\'s agent acts while Jonas\'s waits for his OK, in the same breath', async () => {
     const made = (who: Client, index: number) => who.connection.tool('flux_create_task', { projectId: who.place.id, clientCommandId: randomUUID(), task: { title: `${stamp}-made-${index}` } });
     const [mineOk, theirsRefused, mineOk2, theirsRefused2] = await Promise.all([made(ada, 1), made(jonas, 1), made(ada, 2), made(jonas, 2)]);
     assert.ok(JSON.parse(text(mineOk)).workId && JSON.parse(text(mineOk2)).workId, 'Ada\'s agent made its tasks');
-    assert.equal(refusalCode(theirsRefused), 'AGENT_ONLY_READS');
-    assert.equal(refusalCode(theirsRefused2), 'AGENT_ONLY_READS');
+    assert.match(text(theirsRefused), /^Waiting for /);
+    assert.match(text(theirsRefused2), /^Waiting for /);
     // Only this run's own tasks: the titles carry this run's stamp, and the database may hold an earlier run of this file's (another era's).
     const made1 = (await pool.query(`SELECT project_id FROM project_work_items WHERE project_id = ANY($1) AND title LIKE $2 ORDER BY title, created_at`,
       [[ada.place.id, jonas.place.id], `${stamp}-made-%`])).rows as { project_id: string }[];
@@ -290,7 +295,7 @@ describe('two principals, two runs and a client on one set of definitions, inter
     const capabilities = async (who: Client) => toolValue((await who.connection.tool('flux_bootstrap', { projectId: who.place.id, clientSessionId: randomUUID() }))).capabilities as { name: string; available: boolean }[];
     const [adaCaps, jonasCaps] = await Promise.all([capabilities(ada), capabilities(jonas)]);
     assert.equal(adaCaps.find((item) => item.name === 'flux_create_task')!.available, true);
-    assert.equal(jonasCaps.find((item) => item.name === 'flux_create_task')!.available, false);
+    assert.equal(jonasCaps.find((item) => item.name === 'flux_create_task')!.available, true, 'Ask me first makes it wait; it is not hidden');
     assert.equal(jonasCaps.find((item) => item.name === 'flux_list_work')!.available, true);
     assert.deepEqual(adaCaps.map((item) => item.name), jonasCaps.map((item) => item.name), 'the same tools, listed alike');
   });
@@ -339,8 +344,8 @@ describe('two principals, two runs and a client on one set of definitions, inter
     assert.deepEqual(names(runPrompts.message, 'prompts'), [], 'a run is offered tools only');
     assert.deepEqual(names(clientResources.message, 'resources'), ['flux_cowork_playbook']);
     assert.deepEqual(names(runResources.message, 'resources'), []);
-    // And a client's failure is its own: Jonas's refused write did not turn into a refusal for anyone else.
-    assert.equal(toolFailure((await jonas.connection.tool('flux_create_task', { projectId: jonas.place.id, clientCommandId: randomUUID(), task: { title: 'tc-no' } }))).code, 'AGENT_ONLY_READS');
+    // And a client's wait is its own: Jonas's waiting write did not make anyone else wait.
+    assert.match(text(await jonas.connection.tool('flux_create_task', { projectId: jonas.place.id, clientCommandId: randomUUID(), task: { title: 'tc-no' } })), /^Waiting for /);
     assert.ok(JSON.parse(text(await ada.connection.tool('flux_create_task', { projectId: ada.place.id, clientCommandId: randomUUID(), task: { title: 'tc-yes' } }))).workId);
   });
 

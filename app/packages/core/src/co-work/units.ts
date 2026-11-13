@@ -35,7 +35,7 @@ export interface CoWorkUnitCreationFacts {
   task: { id: string; version: number; status: string; createdByKind?: 'human' | 'agent'; createdById?: string } | null;
   /** The parent unit when it is the creator's own unit in this project; null otherwise or for a root. */
   parent: CoWorkCreationUnit | null;
-  /** The assignee when it is a live connection of this workspace that takes work (not Only read) and whose owner can use this space: a non-guest member who sees it, with AI on there. */
+  /** The assignee when it is a live connection of this workspace that takes work and whose owner can use this space: a non-guest member who sees it, with AI on there. */
   assignee: { id: string; ownerUserId: string; agentId?: string; computeSource?: string } | null;
   /** The unit already holding this exact intent (task, run, unit key), if any. */
   existing: CoWorkCreationUnit | null;

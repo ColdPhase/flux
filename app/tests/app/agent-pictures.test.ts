@@ -200,7 +200,7 @@ describe('flux_attach_image: an agent attaches a public picture to its answer', 
     await scene.complete(run.runId);
   });
 
-  test('Ask me first: nothing is fetched until the owner\'s Approve, which downloads and attaches it; Only read is never offered the tool', async () => {
+  test('Ask me first: nothing is fetched until the owner\'s Approve, which downloads and attaches it', async () => {
     await scene.setMayDo('ask');
     const run = await scene.liveRun(undefined, 'show a garden bed');
     const said = await run.call('flux_attach_image', { url: at('/pic/raised-bed.png'), caption: 'A bed' });
@@ -214,10 +214,6 @@ describe('flux_attach_image: an agent attaches a public picture to its answer', 
     assert.equal((await pictureChanges(run.runId))[0]!.state, 'applied_after_wait');
     assert.deepEqual((await stagedFor(scene.owner.id)).map((file) => file.name), ['A bed.png']);
     assert.deepEqual((await hits('/')).map((hit) => hit.path), ['/pic/raised-bed.png']);
-    await scene.setMayDo('read');
-    const reading = await scene.liveRun(undefined, 'show a garden bed');
-    assert.ok(!reading.tools.includes('flux_attach_image'), 'Only read: no tool');
-    await scene.complete(reading.runId);
   });
 
   test('Ask me first: an address carrying private Flux text is refused at once and never waits (review of #1288, P1)', async () => {

@@ -23,8 +23,7 @@ import { toolError, toolResult } from './tool-results.js';
  * card, until their Show everyone posts it with the answer as an ordinary attachment.
  *
  * Attaching is a change of AG-3, made through the same change executor as every other: under "Do it and tell me" it is fetched and made at
- * once, with its line and Undo; under "Ask me first" it waits, and nothing is fetched until the owner's Approve re-executes this call; under
- * "Only read" it is refused. As on a page read, the address and each redirect hop may carry no private Flux text the run read (C-30), and
+ * once, with its line and Undo; under "Ask me first" it waits, and nothing is fetched until the owner's Approve re-executes this call. As on a page read, the address and each redirect hop may carry no private Flux text the run read (C-30), and
  * every address the server asked for is listed with the run's sources. Never in an encrypted space. A refusal comes back as plain words.
  */
 
@@ -76,7 +75,7 @@ async function attach(db: Database, input: { projectId: string; clientCommandId:
   if (claims.run && (input.projectId ?? null) !== claims.run.projectId) throw new DomainError(403, 'OUTSIDE_RUN_PLACE', 'An assistant run changes only the project it was asked in');
   // The agent's private chat (founder decision on #1217, 2026-11-12): no space, no change log; the picture is part of its answer to its owner.
   if (claims.run && claims.run.projectId === null) return attachInChat(db, current!, input, claims);
-  // What decides whether to fetch, read before anything is sent: the run, its space, and "What it may do". A run's own call checks its token
+  // What decides whether to fetch, read before anything is sent: the run, its space, and Ask me first. A run's own call checks its token
   // and place first; an owner's Approve is checked again by the change executor, and here only for what makes the fetch pointless.
   const facts = await db.transaction(async (tx) => {
     const r = schema.personalRuns;
@@ -105,7 +104,7 @@ async function attach(db: Database, input: { projectId: string; clientCommandId:
   // C-30 before anything is saved or sent, whatever the change will do: an address that carries private Flux text the run read is refused
   // in plain words, so no such address ever waits for an OK (the review of #1288, P1).
   if (claims.run) await checkedAddress(db, runId!, input.url);
-  // Fetched only when the change will be made now: under Ask me first or Only read nothing is sent to the site before the owner's OK.
+  // Fetched only when the change will be made now: under Ask me first nothing is sent to the site before the owner's OK.
   let staged: StagedFile | null = null;
   if (claims.approval || facts.mayDo === 'act') {
     if (facts.pictures >= FILE_LIMITS.messageFiles) refuse(`An answer carries at most ${FILE_LIMITS.messageFiles} pictures.`);
@@ -208,7 +207,7 @@ async function checkedAddress(db: Database, runId: string, url: string) {
 
 /**
  * A picture on the agent's answer in its private chat (founder decision on #1217, 2026-11-12; C-59). The chat changes nothing (C-38) and has no
- * change log: the picture is part of the agent's answer to its owner alone, made at once whatever "What it may do" says, as a page read is.
+ * change log: the picture is part of the agent's answer to its owner alone, made at once whatever Ask me first says, as a page read is.
  * It is downloaded and checked exactly as in a space, and kept as the run's own picture (`personal_run_pictures`), which only its owner can
  * open, with the run. At most 10 to an answer.
  */

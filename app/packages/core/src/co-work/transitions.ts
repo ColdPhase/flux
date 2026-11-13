@@ -34,7 +34,7 @@ export interface CoWorkTransitionUnit {
 export interface CoWorkUnitTransitionFacts {
   /** The unit with this ID in this project, whatever its assignment; null when there is none. */
   unit: CoWorkTransitionUnit | null;
-  /** Transfer only: the assignee when it is a live connection of this workspace that takes work (not Only read) and whose owner can use this space: a non-guest member who sees it, with AI on there. */
+  /** Transfer only: the assignee when it is a live connection of this workspace that takes work and whose owner can use this space: a non-guest member who sees it, with AI on there. */
   assignee: { id: string; ownerUserId: string } | null;
   /** Every unit of the unit's run, with its assignee's owner (null when that connection no longer exists). */
   runUnits: readonly { id: string; role: CoWorkRole; assignmentConnectionId: string; ownerUserId: string | null }[];

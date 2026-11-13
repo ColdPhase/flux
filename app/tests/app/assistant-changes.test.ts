@@ -197,7 +197,7 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     assert.equal((await pool.query(`SELECT status FROM personal_runs WHERE id = $1`, [started.run.id])).rows[0].status, 'completed', 'the source run is not revived');
   });
 
-  test('AST-5.4: Approve on a changed target applies nothing ("Changed since you asked"); lost write access, Only read or Skip refuse it', async () => {
+  test('AST-5.4: Approve on a changed target applies nothing ("Changed since you asked"); lost write access or Skip refuse it', async () => {
     const lens = await task(peer, 'Jonas checks the lens', shared.id);
     const clean = await task(peer, 'Jonas cleans the lens', shared.id);
     const order = await task(peer, 'Jonas orders a lens', shared.id);
@@ -222,17 +222,6 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     expectStatus(await owner.browser.request('POST', assistantChangeActionPath(lost!.id, 'apply'), { body: {} }), 409);
     assert.equal((await pool.query(`SELECT title FROM project_work_items WHERE id = $1`, [clean.id])).rows[0].title, 'Jonas cleans the lens');
     assert.deepEqual((await changesOf(rig.runId)).map((row) => row.state), ['refused', 'refused', 'skipped']);
-    // "What it may do" set to Only read since: an Approve is refused and closes it; nothing changes.
-    const theirsTask = await task(peer, 'Jonas aligns the rig');
-    const next = await liveRun();
-    await next.call('flux_update_task', { workId: theirsTask.id, expectedVersion: theirsTask.version, changes: { title: 'Align it today' } });
-    await complete(next.runId);
-    const [switched] = await changesOf(next.runId);
-    await setMayDo('read');
-    assert.equal((await owner.browser.request('POST', assistantChangeActionPath(switched!.id, 'apply'), { body: {} })).status, 403);
-    await setMayDo('act');
-    expectStatus(await owner.browser.request('POST', assistantChangeActionPath(switched!.id, 'apply'), { body: {} }), 409);
-    assert.equal((await pool.query(`SELECT title FROM project_work_items WHERE id = $1`, [theirsTask.id])).rows[0].title, 'Jonas aligns the rig');
   });
 
   test('AST-5.5: a waiting change is invisible to other members, and nobody else can approve or skip it', async () => {

@@ -55,7 +55,7 @@ test('an agent writes in the task\'s one discussion and reads it; people read th
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM project_task_discussions WHERE work_id = $1', [item.id])).rows[0].n, 1);
 });
 
-test('the tools reach only the owner\'s own spaces; Only read refuses the write and the read tool still answers', async () => {
+test('the tools reach only the owner\'s own spaces', async () => {
   const f = await actionScene(pool), item = await task(f);
   assert.deepEqual((await discussion(f, item.id)).messages, []);
   // Another person's space is not a destination and not readable: the client has its owner's rights and no more.
@@ -64,12 +64,8 @@ test('the tools reach only the owner\'s own spaces; Only read refuses the write 
   assert.equal(toolFailure(await discuss(f, String(other.id))).code, 'OBJECT_NOT_FOUND');
   assert.equal(toolFailure(await f.tool('flux_get_task_discussion', { taskId: other.id })).code, 'PROJECT_NOT_FOUND');
   assert.equal(toolFailure(await f.tool('flux_get_task_discussion', { taskId: randomUUID() })).code, 'PROJECT_NOT_FOUND');
-  // An agent set to Only read still lists the write tool, and a call to it is refused; the read tool answers.
-  expect(await f.owner.request('PATCH', `/api/v1/agent-connections/${f.connectionId}`, { body: { mayDo: 'read' } }), 200);
   const names = await f.toolNames();
   assert.ok(names.includes('flux_discuss_task') && names.includes('flux_get_task_discussion'));
-  await f.raw('flux_discuss_task', { projectId: f.projectId, taskId: item.id, body: 'x' });
-  assert.deepEqual((await discussion(f, item.id)).messages, []);
   assert.deepEqual((toolValue(await f.tool('flux_get_task_discussion', { taskId: item.id })) as unknown as TaskDiscussion).messages, []);
 });
 

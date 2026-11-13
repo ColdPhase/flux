@@ -8,7 +8,7 @@ export function modelLine(agent: Pick<MyAgent, 'model'>, choice: AssistantModelC
 }
 
 /** Its tag: "Do it and tell me", or "Ask me first" with that switch on (AG-3, #1419). */
-export const mayDoLabel = (agent: Pick<MyAgent, 'mayDo'>) => AGENT_MAY_DO_LABELS[agent.mayDo === 'act' ? 'act' : 'ask'];
+export const mayDoLabel = (agent: Pick<MyAgent, 'mayDo'>) => AGENT_MAY_DO_LABELS[agent.mayDo];
 
 /** The first line of the instructions, as the one line about what the agent is for in the list. */
 export const jobLine = (agent: Pick<MyAgent, 'instructions'>): string => agent.instructions.split('\n').map((line) => line.trim()).find(Boolean) ?? '';

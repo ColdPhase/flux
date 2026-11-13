@@ -21,7 +21,7 @@ let ada: Person; let jonas: Person; let stranger: Person; let outsider: Person;
 const base = (clientCommandId: string = randomUUID()) => ({ projectId: f.projectId, runtimeSessionId: f.runtimeSessionId, clientCommandId, peerRequestClass: 'execute', sources: [] });
 const request = (who: Person, kind: string, id: string) => who.browser.request('GET', `${projectAssistantChangesPath(f.projectId)}?kind=${kind}&id=${id}`);
 const linesOf = async (who: Person, kind: AssistantChangeScope, id: string) => (expectStatus(await request(who, kind, id), 200) as { items: AssistantChange[] }).items;
-const setMayDo = async (mayDo: 'read' | 'act' | 'ask') => expectStatus(await f.owner.request('PATCH', agentConnectionPath(f.connectionId), { body: { mayDo } }), 200);
+const setMayDo = async (mayDo: 'act' | 'ask') => expectStatus(await f.owner.request('PATCH', agentConnectionPath(f.connectionId), { body: { mayDo } }), 200);
 const undoGroup = (who: Person, runId: string) => who.browser.request('POST', assistantRunChangesActionPath(runId, 'undo'), { body: {} });
 const undoOne = (who: Person, id: string) => who.browser.request('POST', assistantChangeActionPath(id, 'undo'), { body: {} });
 const newTask = async (title: string) => expectStatus(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/work`, { body: { title } }), 201) as { id: string; number: number; version: number; status: string };
@@ -138,7 +138,7 @@ describe('A local client\'s task, page and map changes show their change line an
     assert.equal((await ada.browser.request('GET', `${projectAssistantChangesPath(randomUUID())}?kind=work&id=${target.id}`)).status, 404, 'another space is not this one');
   });
 
-  test('what waits is the owner\'s Inbox, never a page\'s line; Only read changes nothing; and a client\'s own words are not a change line', async () => {
+  test('what waits is the owner\'s Inbox, never a page\'s line; and a client\'s own words are not a change line', async () => {
     const target = await newTask('Needs my OK');
     await setMayDo('ask');
     try {

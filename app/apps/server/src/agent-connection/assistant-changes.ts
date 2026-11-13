@@ -18,7 +18,7 @@ import { createAgentConnectionStore } from './store.js';
 // here by an assistant run or by a local client's connection alike. The authority of a run is the run itself
 // (`owner_request`): it is live and the change is within its owner's current rights, which are exactly the agent's. The
 // authority of a local client is its verified bearer and its connection, with the same owner rights read at the moment of
-// the call. The agent's "What it may do" decides the rest: Only read changes nothing, Ask me first waits for everything, and
+// the call. The agent's Ask me first decides the rest: on, it waits for everything, and
 // deleting or other people's things always wait. Each call is recorded in the change log in the same transaction, as applied,
 // waiting or refused. A waiting change keeps its exact prepared tool call; only the owner's Approve in their own session
 // (`owner_approval`) re-executes exactly that call through this executor, with every check repeated and the target's version
@@ -421,7 +421,7 @@ interface Authority {
   runtime: AuthenticatedAgentRuntime; workspaceId: string; agentId: string;
   /** The assistant's run; null for a local client's change. */
   run: RunRow | null;
-  /** The agent's "What it may do", read with its connection row held. */
+  /** The agent's Ask me first, read with its connection row held. */
   mayDo: AgentMayDo;
   /** The owner can make this change now: the agent's rights are exactly the owner's (F-036 AG-3). */
   ownerCanWrite: boolean;
@@ -464,7 +464,7 @@ async function currentAuthority(tx: Transaction, claims: FluxMcpClaims, projectI
   }
   const now = new Date();
   if (client) {
-    // A local client: its connection row, held `FOR SHARE`, is the one place "What it may do" is read.
+    // A local client: its connection row, held `FOR SHARE`, is the one place Ask me first is read.
     if (client.ownerUserId !== claims.ownerUserId || client.revokedAt || client.agentId !== agentId || client.workspaceId !== workspaceId) throw invalidated('This client is no longer available');
     const runtime: AuthenticatedAgentRuntime = Object.freeze({ id: claims.connectionId, workspaceId, connectionId: claims.connectionId, ownerUserId: claims.ownerUserId,
       agentId, clientId: claims.clientId ?? 'flux-client', grantReferenceId: claims.grantReferenceId ?? `flux-client:${claims.connectionId}`, bindingGeneration: 0,
@@ -588,7 +588,6 @@ export function assistantChangeExecutor(db: Database, claims: FluxMcpClaims) {
         const target = described;
         const phrase = `${target.words.phrase} ${target.words.noun}`;
         if (!approval) {
-          // An agent whose "What it may do" is Only read changes nothing (F-036 AG-3).
           const told = runId ? await toldPerson(tx, operation, objectId, (payload ?? {}) as Record<string, unknown>, claims.ownerUserId) : null;
           const outcome = classifyAssistantChange({ mayDo: authority.mayDo,
             ownerCanWrite: authority.ownerCanWrite, removal: target.removal, mine: target.mine, forOther: target.forOther, tells: told !== null });
@@ -624,8 +623,6 @@ export function assistantChangeExecutor(db: Database, claims: FluxMcpClaims) {
             [principalKey({ kind: 'human', id: claims.ownerUserId })]);
             return { assistantText: `Waiting for ${ownerName}'s OK: ${phrase}${target.title ? ` ${target.title}` : ''}.` };
           }
-        } else if (authority.mayDo === 'read') {
-          throw invalidated('Its "What it may do" is Only read now. Ask again');
         }
         // The owner's Approve is a person's decision: a line it writes in a task's discussion is not refused by the five-in-a-row limit (C-51, #1094).
         if (approval) await taskDiscussionRows(tx as DbExecutor).markOwnerApproval();

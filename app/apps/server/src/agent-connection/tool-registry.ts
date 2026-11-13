@@ -1,6 +1,6 @@
 import type { CallToolResult, McpServer, StandardSchemaWithJSON, ToolAnnotations } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-import { ASSISTANT_RUN_EFFECT_TOOLS, ASSISTANT_UNIT_CREATE_VIEW, RUN_NEVER_POSTS, AGENT_PEER_REQUEST_CLASSES, AGENT_TOOLS, type AgentMayDo, type AgentOperation, type AgentPeerRequestClass, type AgentToolAccess, type AgentToolCapability } from '@flux/contracts';
+import { ASSISTANT_RUN_EFFECT_TOOLS, ASSISTANT_UNIT_CREATE_VIEW, RUN_NEVER_POSTS, AGENT_PEER_REQUEST_CLASSES, AGENT_TOOLS, type AgentOperation, type AgentPeerRequestClass, type AgentToolAccess, type AgentToolCapability } from '@flux/contracts';
 import type { Database } from '@flux/db';
 import type { FluxMcpClaims, VerifiedFluxMcpClaims } from './context.js';
 import type { McpManifest } from './mcp-dispatch.js';
@@ -104,7 +104,7 @@ interface ToolDefinition {
  * request does for its tools. Capability entries are written only when the corresponding real MCP tool is defined. A personal run's
  * result is bound after every tool (`boundRunResult`: F-022 "Caps"; #1065), and a run's change is checked before it runs
  * (`refusedPrivateAddress`, #1138). Every tool is listed to every client: what a call may do is decided when it is made, by the owner's
- * rights and the agent's "What it may do" (an agent set to Only read gets plain words for a change), never by a scope or a switch
+ * rights and the agent's Ask me first (a change waits for the owner's OK), never by a scope or a switch
  * chosen at sign-in (#859).
  */
 export function agentToolRegistry(manifest: McpManifest, db: Database, run: boolean) {
@@ -163,9 +163,9 @@ export function agentToolRegistry(manifest: McpManifest, db: Database, run: bool
         entries.set(name, { name, title: config.title, access, operation: effect?.operation ?? null, classes: effect?.classes ?? [] });
       } };
     },
-    /** What the client is told it can do now: a change tool is not available to an agent set to Only read. */
-    capabilities(mayDo: AgentMayDo): AgentToolCapability[] {
-      return [...entries.values()].map((item) => ({ ...item, classes: [...item.classes], available: item.access === 'read' || mayDo !== 'read' }));
+    /** What the client is told it can do now: every tool (Ask me first makes a change wait; it never hides it, #1419). */
+    capabilities(): AgentToolCapability[] {
+      return [...entries.values()].map((item) => ({ ...item, classes: [...item.classes], available: true }));
     },
     /**
      * Registers on one request's server, bound to that request's claims, the tools it may use: all of them, or for a personal run exactly

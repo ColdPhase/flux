@@ -34,14 +34,14 @@ async function setup(label: string) {
   return { owner, manager, ws, managed, blocked, agent, connections, runs };
 }
 
-test('the assistant\'s tools are the reads, and the changes unless it only reads; reserved co-work tools and the project policy are absent', () => {
-  const tools = assistantRunTools('act');
+test('the assistant\'s tools are the reads, and the changes unless the run only reads; reserved co-work tools and the project policy are absent', () => {
+  const tools = assistantRunTools(false);
   for (const name of ['flux_create_doc', 'flux_update_doc', 'flux_create_unit']) assert.ok(tools.includes(name), name);
   // No run posts in a conversation by itself (#1063): only its owner's Show everyone does.
   for (const name of ['flux_reply_in_conversation', 'flux_start_conversation']) assert.ok(!tools.includes(name), name);
   for (const name of ['flux_bootstrap', 'flux_claim_unit', 'flux_renew_unit', 'flux_release_unit', 'flux_complete_unit', 'flux_transfer_unit']) assert.ok(!tools.includes(name), name);
   assert.ok(!AGENT_TOOLS.some((entry) => entry.id === 'resource:flux_project_policy'), 'no project agent policy (F-036)');
-  assert.ok(!assistantRunTools('read').some((name) => ASSISTANT_RUN_EFFECT_TOOLS.includes(name as never)), 'Only read lists no change tool');
+  assert.ok(!assistantRunTools(true).some((name) => ASSISTANT_RUN_EFFECT_TOOLS.includes(name as never)), 'a run that only reads lists no change tool');
 });
 
 test('#522: private assistant discovery is owner-only; an MCP connection sharing its identity keeps the agent in project people', async () => {
@@ -83,7 +83,7 @@ test('enablement creates one identity and settings with "Do it and tell me"; it 
   assert.equal((await settings(f.owner, f.ws.id)).body.connectionId, saved.connectionId, 'choosing another model keeps the one rights connection');
 });
 
-test('only the owner reads the settings and sets "What it may do"; each choice is kept; nothing else can be saved', async () => {
+test('only the owner reads the settings and turns Ask me first on or off; each is kept; Only read and nothing else can be saved (#1419)', async () => {
   const f = await setup('settings'); const original = (await settings(f.owner, f.ws.id)).body;
   const other = await person('assistant-other'); const admin = await person('assistant-admin');
   await addMember(f.manager, f.ws.id, other, 'member'); await addMember(f.manager, f.ws.id, admin, 'admin');
@@ -91,14 +91,16 @@ test('only the owner reads the settings and sets "What it may do"; each choice i
   const mayDo = agentConnectionPath(original.connectionId);
   for (const intruder of [other, admin, f.manager]) {
     expectStatus(await intruder.browser.request('GET', endpoint), 404);
-    expectStatus(await intruder.browser.request('PATCH', mayDo, { body: { mayDo: 'read' } }), 404);
+    expectStatus(await intruder.browser.request('PATCH', mayDo, { body: { mayDo: 'ask' } }), 404);
   }
-  for (const choice of ['read', 'ask', 'act'] as const) {
+  for (const choice of ['ask', 'act'] as const) {
     const saved = expectStatus(await f.owner.browser.request('PATCH', mayDo, { body: { mayDo: choice } }), 200) as unknown as AgentConnection;
     assert.equal(saved.mayDo, choice);
     assert.equal((await settings(f.owner, f.ws.id)).body.mayDo, choice, 'the settings read back what was kept');
   }
   expectStatus(await f.owner.browser.request('PATCH', mayDo, { body: { mayDo: 'everything' } }), 400);
+  // "Only read" is gone (#1419): it is refused like any other word.
+  expectStatus(await f.owner.browser.request('PATCH', mayDo, { body: { mayDo: 'read' } }), 400);
   const identity = async () => (await pool.query('SELECT agent_id, compute_source, owner_user_id FROM agent_connections WHERE id = $1', [original.connectionId])).rows[0];
   const before = await identity();
   expectStatus(await f.owner.browser.request('PATCH', mayDo, { body: { mayDo: 'act', computeSource: 'user_operated_external_client', agentId: randomUUID(), ownerUserId: other.id } }), 200);
@@ -160,7 +162,7 @@ test('a failure after assistant identity creation rolls back enablement, its con
 });
 
 
-test('"Only read" set from another API process keeps reads, and a bearer credential cannot change "What it may do"', async () => {
+test('Ask me first set from another API process keeps reads, and a bearer credential cannot change it', async () => {
   const f = await setup('delivery'); const initial = (await settings(f.owner, f.ws.id)).body;
   const doc = expectStatus(await f.owner.browser.request('POST', `/api/v1/projects/${f.managed.id}/docs`,
     { body: { title: 'Assistant protected Wiki', body: 'ASSISTANT-WIKI-PRIVATE-68192' } }), 201) as { id: string };
@@ -185,10 +187,10 @@ test('"Only read" set from another API process keeps reads, and a bearer credent
   // The assistant's own connection is never a client's: a client that opens the authorization URL is not carried onto it.
   const attempted = await beginOauth(f.owner.browser, clientId, redirect);
   assert.ok(attempted.consent, 'the client is asked, not signed in to the assistant\'s connection');
-  // Only read set from the other API process: reads go on (F-036 AG-3: it reads and answers).
+  // Ask me first set from the other API process: reads go on (F-036 AG-3: only changes wait).
   const otherApi = new Browser(process.env.FLUX_API_URL_2 ?? 'http://api2:8080', publicOrigin);
   for (const [name, value] of f.owner.browser.cookies) otherApi.cookies.set(name, value);
-  expectStatus(await otherApi.request('PATCH', agentConnectionPath(initial.connectionId), { body: { mayDo: 'read' } }), 200);
+  expectStatus(await otherApi.request('PATCH', agentConnectionPath(initial.connectionId), { body: { mayDo: 'ask' } }), 200);
   assert.equal(toolValue((await mcp(token!, 803, 'tools/call', { name: 'flux_get_doc', arguments: { projectId: f.managed.id, id: doc.id } })).message).title, 'Assistant protected Wiki');
 });
 
