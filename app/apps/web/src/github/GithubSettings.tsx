@@ -69,7 +69,8 @@ function GithubProjectSettings({ shell }: { shell: ProjectShell }) {
           {shell.project.access === 'manager' && bindings.length ? <RuleDefault projectId={projectId} current={ruleDefault} onSaved={(value) => setSavedDefault({ value })} /> : null}
           {bindings.length ? <PullReferences projectId={projectId} bindings={bindings} canLink ruleDefault={ruleDefault} /> : null}
         </>}
-    <p className="github-settings__note">Linked PRs move a task only when someone who can edit it turns that on in the task’s Details, or links a required PR while this space’s default below is on. A merge never checks off written criteria. An agent that holds a task hears about its linked PRs at its next safe point.</p>
+    {/* Said only where there are pull requests to link (#1372): on a server without GitHub, or before a repository is connected, it explains nothing. */}
+    {capabilities?.status !== 'unavailable' && bindings.length ? <p className="github-settings__note">A linked pull request moves its task only when someone who can edit the task turns that on in its Details, or links a required pull request while this space’s default is on. A merge never ticks off what a task says must be done. An agent working on a task hears about its pull requests at its next safe point.</p> : null}
   </div></div>;
 }
 /** A manager's default (#74 G-1a): whoever links a required PR to a task without a rule turns its rule on. */
