@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { requireMcpAuth } from '@better-auth/mcp';
 import { enforce, evaluateProject, isUuid, requireSpaceAi, SpaceAiOffError } from '@flux/core';
-import { agentConnectionWorkspaceId, loadActor, accessReader, schema, type Database, type Transaction } from '@flux/db';
+import { agentConnectionWorkspaceId, loadActor, accessReader, schema, type Database, type QueryVectors, type Transaction } from '@flux/db';
 import { and, eq } from 'drizzle-orm';
 import type { FluxAuth } from '../identity/auth.js';
 import type { Confirmation } from '../identity/confirmation.js';
@@ -35,9 +35,9 @@ async function aiBlockedResponse(request: Request): Promise<Response> {
  */
 export function registerMcpRoute(app: FastifyInstance, db: Database, auth: FluxAuth, publicOrigin: string, testDeliveryGate = false,
   standing: { checker: Pick<IdpStanding, 'stands'>; label: string } | null = null, confirmation?: Confirmation, label = 'your identity provider',
-  github: GithubActionProvider | null = null, webReader: WebReader | null = null) {
+  github: GithubActionProvider | null = null, webReader: WebReader | null = null, vectors?: QueryVectors) {
   let mcpTools: Promise<FluxMcpTools> | undefined;
-  const tools = () => mcpTools ??= Promise.resolve().then(() => createFluxMcpTools(db, github, webReader));
+  const tools = () => mcpTools ??= Promise.resolve().then(() => createFluxMcpTools(db, github, webReader, vectors));
   const handleVerified = async (request: Request, token: Record<string, unknown>) => {
     const ownerUserId = token.flux_owner_user_id;
     const connectionId = token.flux_connection_id;

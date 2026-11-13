@@ -23,7 +23,7 @@ EXPECTED = {
     "sbom.spdx.json", "sbom-agent-runtime.spdx.json", "THIRD_PARTY_NOTICES.json",
     "THIRD_PARTY_NOTICES.agent-runtime.json", "LICENSE", "SHA256SUMS",
     "sbom-database.spdx.json", "THIRD_PARTY_NOTICES.database.json",
-    "compose.live.yaml", "compose.live.turn.yaml",
+    "compose.live.yaml", "compose.live.turn.yaml", "compose.embeddings.yaml",
 }
 
 
@@ -92,6 +92,13 @@ def verify(
     media = release.get("live_media_image", "")
     if not PINNED_IMAGE.fullmatch(media) or images(live) != [media] or images(turn):
         raise ValueError("compose.live.yaml must pin release.json's live_media_image, and compose.live.turn.yaml no image")
+    # The local embeddings overlay (F-042, #1294) runs one third-party embedding server, pinned by digest, and no Flux image.
+    embeddings = (directory / "compose.embeddings.yaml").read_text(encoding="utf-8")
+    if re.search(r"RELEASE_DIGEST|RUNTIME_DIGEST|DATABASE_DIGEST|^\s*build\s*:|:latest|docker\.sock|coldphase/flux", embeddings, re.MULTILINE):
+        raise ValueError("compose.embeddings.yaml holds a digest marker, a source build, a floating tag, a socket or a Flux image")
+    embedder = release.get("embeddings_image", "")
+    if not PINNED_IMAGE.fullmatch(embedder) or images(embeddings) != [embedder]:
+        raise ValueError("compose.embeddings.yaml must pin release.json's embeddings_image, and nothing else")
     if "docker.sock" in (directory / "runtime.sh").read_text(encoding="utf-8"):
         raise ValueError("runtime.sh must not use a container engine socket")
     if release["runtime_claude_code"].split(";")[0] != "not included":
@@ -102,7 +109,7 @@ def verify(
     notices = json.loads((directory / "THIRD_PARTY_NOTICES.agent-runtime.json").read_text(encoding="utf-8"))
     if not any(item["name"].lower() in ("codex", "codex-cli") for item in notices):
         raise ValueError("the agent-runtime notices must record the pinned Codex")
-    return {"app": app, "runtime": runtime, "database": database, "live_media": media, "platforms": ",".join(named)}
+    return {"app": app, "runtime": runtime, "database": database, "live_media": media, "embeddings": embedder, "platforms": ",".join(named)}
 
 
 def main() -> None:

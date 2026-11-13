@@ -40,6 +40,8 @@ const system = [
   'live_webhook_events', 'sealed_job_waits', 'workspace_keys', 'workspace_holders', 'workspace_dek_wraps', 'workspace_key_versions',
   'workspace_unlocks', 'workspace_removed_holders', 'workspace_removals', 'workspace_rotation_progress', 'workspace_wrap_grants', 'idempotency_account_operations',
   'event_data_tokens', 'event_data_keys', 'agent_task_events',
+  // F-042 (#1294): vectors of rows that may be embedded (never a sealed placeholder, never a space with AI off) and the queue of rows waiting for one.
+  'search_vectors', 'search_vector_queue', 'search_vector_state',
 ] as const;
 const refused = [
   'github_bindings', 'github_deliveries', 'github_processing', 'github_rule_defaults', 'github_task_links',

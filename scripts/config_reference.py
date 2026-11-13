@@ -45,6 +45,7 @@ COMPOSE = {
     "docker/compose.dev.yaml": "dev",
     "docker/compose.live.yaml": "live-media overlay",
     "docker/compose.live.turn.yaml": "TURN overlay",
+    "docker/compose.embeddings.yaml": "embeddings overlay",
 }
 OTHER_DEPLOY = ["docker/Dockerfile", "docker/runtime.sh", "docker/.env.example", "flux"]
 CODE_ROOTS = ["app/apps", "app/packages"]
@@ -92,6 +93,9 @@ GROUPS = [
      "agents that run on an API key, and agents that search and read the web. A Claude or ChatGPT plan needs the agent runtime below instead. "
      "Both Compose files pass the switches to `api` and `worker`; agents on API keys also need the "
      "key file `FLUX_BACKGROUND_KEY_HOST_FILE`, which the release `compose.yaml` does not mount (see below)."),
+    ("embeddings", "Local embeddings (optional)",
+     "Off by default (F-042). Search ranks by BM25 alone; with the overlay `compose.embeddings.yaml` it also ranks by meaning. "
+     "See [requirements](requirements.md#local-embeddings-optional) for the memory it needs."),
     ("runtime", "Agent runtime: the owner's own Claude Code or Codex",
      "Off by default. See the [agent runtime guide](agent-runtime.md); `./flux ai on` writes these for you."),
     ("encryption", "Encrypted spaces and the keyring",
@@ -281,6 +285,15 @@ VARIABLES: dict[str, Var] = {
         default="a quarter of the container memory, 64–512 MiB"),
     "FLUX_SEALED_SEARCH_IDLE_MS": Var("encryption", "integer, ms",
         "An index nobody searched for this long may be evicted for another space's.", override=True, services="api", default="`300000`"),
+    # --- embeddings
+    "FLUX_EMBEDDINGS": Var("embeddings", "`on` · `off`",
+        "`on` makes `./flux` layer `docker/compose.embeddings.yaml`: a text-embeddings-inference container running bge-m3 (about 3.2 GiB idle, 3.9 GiB peak; "
+        "a 2.3 GB model downloaded on its first start). The worker embeds every searchable row of a space whose AI is on, and search fuses the nearest vectors "
+        "with BM25. Encrypted spaces and spaces with AI off are never embedded; nothing is embedded through a person's own AI connection. `off` removes the "
+        "container's file from the stack, and the next worker start deletes every vector. A release install passes the overlay file with `-f` instead.", "off"),
+    "FLUX_EMBEDDINGS_MEMORY": Var("embeddings", "Compose memory size",
+        "Memory of the `embeddings` container, memory and swap alike. bge-m3 with 2,048 batch tokens idled at 3.15 GiB and peaked at 3.9 GiB (#1242); "
+        "a limit of 4 GiB killed it while it warmed up.", "6g"),
     # --- limits
     "FLUX_DB_MEMORY": Var("limits", "Compose memory size", "Memory of `db`, PostgreSQL (about 70 MiB idle; its page cache counts towards the limit and is given back under pressure).", "1g"),
     "FLUX_API_MEMORY": Var("limits", "Compose memory size", "Memory of `api` (measured peak 431 MB in the encryption checks). A quarter of it (64 to 512 MiB) bounds the search index of unlocked encrypted spaces.", "3g"),
@@ -322,6 +335,7 @@ INTERNAL: dict[str, str] = {
     "FLUX_KEYRING_URL": "How the API and worker reach the keyring; default `http://keyring:8090`.",
     "FLUX_KEYRING_PORT": "Port the keyring listens on inside its network; default `8090`.",
     "FLUX_API_INTERNAL_URL": "How the worker reaches the API inside Compose; default `http://api:8080`.",
+    "FLUX_EMBEDDINGS_URL": "Set by the embeddings overlay to `http://embeddings:8080` on `api` and `worker`; empty (every other stack) is off.",
     "FLUX_LIVEKIT_API_URL": "Set by the live-media overlay to `http://livekit:7880` on its internal network.",
     "FLUX_RUNTIME_MANAGER_URL": "How the API and worker reach the runtime manager; default `http://runtime-manager-control:7600`.",
     "FLUX_RUNTIME_MANAGER_LISTEN": "Listen address of the runtime manager.",

@@ -35,6 +35,24 @@ The optional [agent runtime](agent-runtime.md) adds a manager, an egress proxy a
 each agent while it runs; an idle person costs nothing. About 2 agents run at once on 4 GB. Optional [live media](../development/live-media.md) adds a
 LiveKit server whose CPU and bandwidth grow with each call.
 
+## Local embeddings (optional)
+
+Off by default. Search ranks by BM25 alone ([F-042](../product/decisions.md#f-042--agents-find-what-they-need-with-bm25-search-in-postgresql)),
+which needs nothing beyond the table above. An operator with a larger server can turn on a local embedding container
+(`docker/compose.embeddings.yaml`, `FLUX_EMBEDDINGS=on` for a source checkout): the worker then stores a vector for each searchable
+row, and search fuses the nearest vectors with BM25, which found more of the questions asked in plain words, across languages and by
+paraphrase (recall@10 0.75 against 0.60 on the bench of [#1242](../product/research/2026-11-ai-context-retrieval.md#with-a-large-embedding-model-bge-m3)).
+
+| | Needs | Notes |
+| --- | --- | --- |
+| **Memory** | **about 3 to 4 GiB**, on top of the base stack | text-embeddings-inference with bge-m3 (568 M parameters). Measured: 3.15 GiB idle and 3.9 GiB at its peak on 2 cores ([#1242](../product/research/2026-11-ai-context-retrieval.md#with-a-large-embedding-model-bge-m3)); 2.2 GiB idle and 2.8 GiB at its peak embedding 10,000 messages on a 24-thread host with the overlay's two tokenization workers. The Compose limit is 6 GiB (`FLUX_EMBEDDINGS_MEMORY`): 4 GiB killed it while it warmed up. With the base stack's 2.9 GB it wants a server of 8 GB or more. |
+| **CPU** | 2 cores | About 10 messages a second on 2 cores: 10,000 existing rows take about 17 minutes, then each new message is embedded within a second or so. A query costs about 80 ms more. |
+| **Disk** | 2.3 GB for the model, about 120 MiB of PostgreSQL per 10,000 rows | The model is downloaded on the first start into the `embeddings` volume. Vectors and their index grow with the rows; at 100,000 rows give `FLUX_DB_MEMORY` more room so the index stays in memory. |
+| **Network** | outbound HTTPS to `huggingface.co` on the first start | Nothing leaves the server afterwards: every text is embedded in the container. |
+
+Encrypted spaces and spaces with AI off are never embedded, and nothing is embedded through a person's own AI connection. Turning
+it off again deletes every vector.
+
 ## Software
 
 | | Version | Notes |
@@ -53,6 +71,7 @@ LiveKit server whose CPU and bandwidth grow with each call.
 | Outbound TCP 587 or 465 | Your mail server | When [email](configuration.md#email) is set |
 | Outbound HTTPS | Web Push services of browser vendors | When [push](mobile-and-push.md#3-allow-outbound-https-to-the-push-services) is on |
 | Outbound HTTPS | AI providers people connect, public web pages and search for agents (`FLUX_WEB_READS`, on by default), MCP client metadata documents, GitHub | When those features are used |
+| Outbound HTTPS | `huggingface.co` | Only the first start of the optional [local embeddings](#local-embeddings-optional) container (the model, 2.3 GB) |
 | Outbound HTTPS | Container registries, npm (source build) | Install and upgrade |
 
 The API listens only on the host's loopback address; nothing else is published. A domain name with

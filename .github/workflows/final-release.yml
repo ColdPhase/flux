@@ -71,6 +71,7 @@ jobs:
           test -f docker/.env.example
           test -f docker/compose.live.yaml
           test -f docker/compose.live.turn.yaml
+          test -f docker/compose.embeddings.yaml
           # ls-remote --exit-code reports 2 only for an absent ref; another failure is not "free".
           tag_status=0
           git ls-remote --exit-code --tags --refs origin "refs/tags/$RELEASE_VERSION" >/dev/null ||
@@ -423,6 +424,22 @@ jobs:
           python3 scripts/release/compare_runtime_overlay.py "$RUNNER_TEMP/source-config.json" "$RUNNER_TEMP/release-config.json"
       - name: Check the live-media overlays on the release compose.yaml
         run: bash scripts/release/check_live_overlay.sh release-assets
+      - name: Check the embeddings overlay on the release compose.yaml (#1294)
+        run: |
+          set -euo pipefail
+          POSTGRES_PASSWORD=x FLUX_PUBLIC_ORIGIN=https://flux.example.org FLUX_AUTH_SECRET=x FLUX_PROJECT=fluxembeddingscheck \
+            docker compose --project-directory release-assets --env-file /dev/null -f release-assets/compose.yaml -f release-assets/compose.embeddings.yaml \
+            config --format json > "$RUNNER_TEMP/embeddings.json"
+          python3 - "$RUNNER_TEMP/embeddings.json" release-assets/release.json <<'PY'
+          import json, sys
+          services = json.load(open(sys.argv[1]))["services"]
+          release = json.load(open(sys.argv[2]))
+          assert services["embeddings"]["image"] == release["embeddings_image"], "the embedding server is not release.json's image"
+          assert not services["embeddings"].get("ports"), "the embedding server publishes a port"
+          assert not any("build" in service for service in services.values()), "a service builds from source"
+          for name in ("api", "worker"):
+              assert services[name]["environment"]["FLUX_EMBEDDINGS_URL"] == "http://embeddings:8080", name
+          PY
       - name: Install the packaged agent runtime (switch-on, isolation, off, purge)
         run: bash scripts/release/smoke_runtime.sh release-assets "$RUNNER_TEMP/flux-runtime-smoke" "fluxruntime${{ github.run_id }}"
       # No asset name starts with a period (prepare_assets.py enforces it): upload-artifact skips
@@ -583,6 +600,7 @@ jobs:
           Install with the attached version-matched compose.yaml, env.example and INSTALL.md; check every file with SHA256SUMS first.
           The optional agent runtime is the attached compose.runtime.yaml with runtime.sh (off by default; Claude Code is not included in any image).
           Calls and screen sharing: the attached compose.live.yaml, which pins the LiveKit SFU by digest (compose.live.turn.yaml adds TURN/TLS to it); see INSTALL.md.
+          Search by meaning (optional, 8 GB servers): the attached compose.embeddings.yaml, which pins text-embeddings-inference by digest; see INSTALL.md.
           This draft requires independent packaged install, upgrade and restore review before the version tag and release are published.
           EOF
           release_flags=(--draft)

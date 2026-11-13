@@ -3,7 +3,7 @@ import { and, asc, eq, gte, isNull, lte } from 'drizzle-orm';
 import { AGENT_SEARCH_LIMITS } from '@flux/contracts';
 import { agentHit, agentSearchAudiences, agentSearchPlan, AGENT_SEARCH_KINDS, authorLabel, DomainError, NotFoundError,
   type AgentHit, type AgentSearchPlan, type SearchAudience } from '@flux/core';
-import { schema, searchRows, visibleFilter, type Database, type SearchRowRecord, type SQL, type Transaction } from '@flux/db';
+import { schema, searchRows, visibleFilter, type Database, type QueryVectors, type SearchRowRecord, type SQL, type Transaction } from '@flux/db';
 import { conversationStore } from '../conversation/store.js';
 import { policySearchAccess } from '../search/adapters.js';
 import { withAgentConnection, type FluxAgentReadContext, type FluxMcpClaims } from './context.js';
@@ -109,11 +109,12 @@ async function told(ctx: FluxAgentReadContext, rows: readonly SearchRowRecord[])
   return hits;
 }
 
-async function search(ctx: FluxAgentReadContext, claims: FluxMcpClaims, input: z.output<typeof searchInput>) {
+async function search(ctx: FluxAgentReadContext, claims: FluxMcpClaims, input: z.output<typeof searchInput>, vectors?: QueryVectors) {
   const where = await whereToSearch(ctx, claims, input.in);
   const plan = agentSearchPlan(input, { reader: ctx.connection.ownerUserId, place: where.place, conversationId: where.conversationId });
   // The statement reads one more than asked, to say there is more; the audiences are decided now, in this transaction, and the index applies them before it ranks.
-  const rows = await searchRows(ctx.tx).ranked(where.audiences, plan);
+  // With the optional embedding container on (F-042, #1294) the best rows by BM25 and the nearest vectors are fused in the same statement.
+  const rows = await searchRows(ctx.tx, vectors).ranked(where.audiences, plan);
   const page = rows.slice(0, plan.limit);
   const hits = await told(ctx, page);
   // Everything told is held to the access it was read under until its bytes are handed over (the delivery fence of the route).
@@ -166,12 +167,12 @@ async function readAround(ctx: FluxAgentReadContext, claims: FluxMcpClaims, inpu
     hasMoreBefore: from > 1, hasMoreAfter: to < (dm?.next ?? 1) - 1 };
 }
 
-export function registerAgentSearchReads(server: AgentToolRegistrar, db: Database) {
+export function registerAgentSearchReads(server: AgentToolRegistrar, db: Database, vectors?: QueryVectors) {
   const answer = async <T>({ claims }: ToolCall, read: (ctx: FluxAgentReadContext) => Promise<T>) => {
     try { return toolResult(await withAgentConnection(db, claims, 'read', null, read)); } catch (error) { return toolError(error); }
   };
   server.registerTool('flux_search', { title: 'Search everything you may read', description: SEARCH, inputSchema: searchInput, annotations },
-    (input, call) => answer(call, (ctx) => search(ctx, call.claims, input)));
+    (input, call) => answer(call, (ctx) => search(ctx, call.claims, input, vectors)));
   server.registerTool('flux_read_around', { title: 'Read the messages around a message', description: AROUND, inputSchema: aroundInput, annotations },
     (input, call) => answer(call, (ctx) => readAround(ctx, call.claims, input)));
 }

@@ -227,6 +227,35 @@ Direct messages were added this way (`dm_message`, audience `dm`), and docs (`do
   (`flux.places.recent.<userId>`), and every account's list is removed on sign-out. What is typed in
   Search is not remembered.
 
+## Vectors: optional hybrid ranking (F-042, #1294)
+
+Off unless the operator runs `docker/compose.embeddings.yaml` (text-embeddings-inference with bge-m3, pinned by digest) and the worker
+finds `FLUX_EMBEDDINGS_URL`. Then ranked search (`searchRows(db, vectors).ranked`) fuses two lists inside its one statement, by
+reciprocal rank (k = 60): the best 50 rows by BM25 and the best 50 by cosine distance of their vector to the vector of the
+query's words (the HNSW index looking at 1,000 candidates), each under the same audiences and filters. A row in both lists ranks
+higher; a page is a position in that fused list (at most 100 rows), and a vector that is missing, or a container that is down, leaves the BM25 list alone.
+
+- **Storage** (migration 0068): `search_vectors` (`document_id`, `vector(1024)`, an HNSW index) per `search_documents` row,
+  `search_vector_queue` and `search_vector_state`. The one state row is what switches embeddings on; without it the triggers return at
+  once, so an installation that never turns them on writes nothing here and sends no NOTIFY. The worker deletes the row, and empties
+  both tables, at the first start without `FLUX_EMBEDDINGS_URL`.
+- **Eligible rows** (`search_vector_eligible`): not sealed (an encrypted space's placeholder), not a person, some text, and, in a
+  space, AI on (AG-10). The same rule decides the backfill, the triggers and the worker's claim.
+- **A vector follows its row in the writer's transaction.** An edit of the title or body deletes the vector and queues the row; a
+  delete takes it with it (the foreign key); a row that becomes sealed loses it; turning a space's AI off deletes its vectors, turning it
+  on queues its rows. The worker stores a vector only for a row whose words still hash as they did when it was claimed, after taking
+  a share lock on the row and on its space's policy, so an edit or a switch that is committing is never overtaken.
+- **No polling.** The triggers NOTIFY `flux_search_vectors`; the worker wakes on it (and on a reconnection) and embeds the queue in
+  batches of 16 until it is empty. A timer exists only after a failure, doubling from 2 s to 60 s. An idle worker issues no statement
+  for it.
+- **The query's vector** is asked of the container with a 1.5 s deadline; after a failure searches rank by BM25 alone for 30 s without
+  waiting. A search never fails because embeddings are down.
+- **Wiring.** `searchRows(db, vectors)` takes the hook (`searchQueryVectors(config.embeddings)` in the server, undefined while off);
+  each caller of `ranked` passes the one instance the server created.
+- **Tests:** `app/tests/app/search-vectors.test.ts` (off writes nothing; the pipeline; access, deletion, encrypted and AI-off checks for
+  the vector path; fusion) against a fake embedding server, and `search-vectors-live.test.ts`, which runs only against the real
+  container (`FLUX_EMBEDDINGS_URL`, see its header) and measures recall@10 of BM25 and of the hybrid.
+
 ## Tests
 
 - `app/tests/app/search.test.ts` (in `./scripts/check_application.sh`) uses an owner, a contributor in

@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-import { agentProposalRepository, accessReader, type Database } from '@flux/db';
+import { agentProposalRepository, accessReader, type Database, type QueryVectors } from '@flux/db';
 import { agentProposalUseCases, coworkServerInstructions, enforce, evaluateProject, recordEvent } from '@flux/core';
 import { registerAgentPlaybook } from './playbook.js';
 import { agentToolRegistry, type AgentToolRegistry } from './tool-registry.js';
@@ -73,12 +73,12 @@ function registerAgentProposal(tools: AgentToolRegistry, db: Database) {
  * digest and the check that the registrations are exactly the tool list. A request then gets a new server (the SDK
  * binds one to its transport and to nothing else) and the tools it may use, bound to its verified claims: see `AgentToolRegistry.bind`.
  */
-function serverFactory(db: Database, github: GithubActionProvider | null, webReader: WebReader | null, run: boolean) {
+function serverFactory(db: Database, github: GithubActionProvider | null, webReader: WebReader | null, run: boolean, vectors?: QueryVectors) {
   const manifest = createMcpManifest();
   const tools = agentToolRegistry(manifest, db, run);
   const playbook = registerAgentPlaybook(tools, db);
   registerAgentDomainReads(tools.forAccess('read'), db);
-  registerAgentSearchReads(tools.forAccess('read'), db);
+  registerAgentSearchReads(tools.forAccess('read'), db, vectors);
   registerAgentSummaryReads(tools.forAccess('read'), db);
   registerAgentBootstrap(tools, db);
   registerAgentWorkActions(tools, db);
@@ -124,12 +124,12 @@ export interface FluxMcpTools {
  * (#160 AC-3); `webReader` reads web pages for flux_read_web (#918), or null when the install has none. Each kind of caller's
  * definitions are built when the first request of that kind arrives, and then serve every request.
  */
-export function createFluxMcpTools(db: Database, github: GithubActionProvider | null = null, webReader: WebReader | null = null): FluxMcpTools {
+export function createFluxMcpTools(db: Database, github: GithubActionProvider | null = null, webReader: WebReader | null = null, vectors?: QueryVectors): FluxMcpTools {
   let client: ReturnType<typeof serverFactory> | undefined;
   let run: ReturnType<typeof serverFactory> | undefined;
   return { server(claims) {
     // A fresh server is bound to one verified bearer; each tool rechecks inside its transaction.
-    if (claims.run) return (run ??= serverFactory(db, github, webReader, true))(claims);
-    return (client ??= serverFactory(db, github, webReader, false))(claims);
+    if (claims.run) return (run ??= serverFactory(db, github, webReader, true, vectors))(claims);
+    return (client ??= serverFactory(db, github, webReader, false, vectors))(claims);
   } };
 }

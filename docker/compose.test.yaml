@@ -141,6 +141,8 @@ services:
       # F-030 S2c (#752): the offline checker of encryption-rotation reads the stack's file objects; here they are the API's
       # own volume at /data/files (compose.encryption.test.yaml mounts it read-only at /data/stack-files instead).
       FLUX_TEST_STACK_FILES: /data/files
+      # Set only by a run that adds the real embedding container (FLUX_CHECK_EMBEDDINGS=on, scripts/check_application.sh; #1294).
+      FLUX_TEST_EMBEDDINGS_URL: ${FLUX_TEST_EMBEDDINGS_URL:-}
     # The test runner joins the keyring network only so its in-process APIs act as further replicas (never in production).
     networks: [default, keyring]
     volumes:

@@ -37,6 +37,8 @@ LIVE_ASSETS = {
     "compose.live.yaml": "live-media overlay (calls and screen sharing: the LiveKit SFU with ICE and TURN/UDP)",
     "compose.live.turn.yaml": "TURN/TLS overlay for restrictive networks (layer it after compose.live.yaml)",
 }
+# The optional local embedding container for search (F-042, #1294): one third-party image, pinned by digest, shipped as it is.
+EMBEDDINGS_ASSET = "compose.embeddings.yaml"
 
 
 def release_header(version: str, source_sha: str) -> str:
@@ -101,8 +103,21 @@ def live_header(name: str, version: str, source_sha: str) -> str:
     )
 
 
-def render_live_compose(name: str, template: str, *, version: str, source_sha: str) -> str:
-    """Ship a live-media overlay as it is, with a release header: digest-pinned third-party images only."""
+def embeddings_header(version: str, source_sha: str) -> str:
+    return (
+        f"# Flux {version} local embeddings overlay (search also ranks by meaning), built from source commit {source_sha}.\n"
+        "# Optional and OFF unless loaded: an installation that never loads this file runs no embedding container and\n"
+        "# stores no vector. Use it with the compose.yaml, env.example, INSTALL.md and SHA256SUMS of the SAME GitHub Release.\n"
+        "# The text-embeddings-inference image is pinned by digest; release.json records it (embeddings_image). It needs\n"
+        "# about 3.2 GiB of RAM idle and 3.9 GiB at its peak (INSTALL.md, \"Local embeddings\"). Pass it to every command:\n"
+        "#   docker compose --env-file .env -f compose.yaml -f compose.embeddings.yaml config --quiet\n"
+        "#   docker compose --env-file .env -f compose.yaml -f compose.embeddings.yaml up -d --wait\n"
+        "# Leave it out again to turn it off: the next worker start deletes every vector.\n"
+    )
+
+
+def third_party_overlay(name: str, template: str) -> str:
+    """The body of an optional overlay that runs only third-party images pinned by digest, after the repository's header."""
     if re.search(r"^\s*build\s*:", template, re.MULTILINE):
         raise ValueError(f"{name} must be pull-only")
     for forbidden in ("RELEASE_DIGEST", "RUNTIME_DIGEST", "DATABASE_DIGEST", IMAGE, "docker.sock"):
@@ -116,7 +131,20 @@ def render_live_compose(name: str, template: str, *, version: str, source_sha: s
     # The repository's leading comment block is replaced; the rest ships, so it must not point into a checkout.
     if re.search(r"^\s*-\s*['\"]?\.{1,2}/", body, re.MULTILINE) or re.search(r"\bdocker/|compose\.source", body):
         raise ValueError(f"{name} must not mount or name a source path")
-    return live_header(name, version, source_sha) + body
+    return body
+
+
+def render_live_compose(name: str, template: str, *, version: str, source_sha: str) -> str:
+    """Ship a live-media overlay as it is, with a release header: digest-pinned third-party images only."""
+    return live_header(name, version, source_sha) + third_party_overlay(name, template)
+
+
+def render_embeddings_compose(template: str, *, version: str, source_sha: str) -> str:
+    """Ship the embeddings overlay as it is, with a release header: exactly one third-party image, pinned by digest."""
+    body = third_party_overlay(EMBEDDINGS_ASSET, template)
+    if len(re.findall(r"^\s*image:", body, re.MULTILINE)) != 1:
+        raise ValueError(f"{EMBEDDINGS_ASSET} must pin exactly one embedding server image")
+    return embeddings_header(version, source_sha) + body
 
 
 def overlay_images(template: str) -> dict[str, str]:
@@ -198,7 +226,7 @@ def prepare(
     sbom: Path, destination: Path,
     runtime_digest: str, runtime_compose: Path, runtime_script: Path,
     runtime_sbom: Path, dockerfile: Path,
-    live_compose: Path, live_turn_compose: Path,
+    live_compose: Path, live_turn_compose: Path, embeddings_compose: Path,
     database_digest: str, database_sbom: Path, platforms: str = DEFAULT_PLATFORMS,
 ) -> None:
     if not VERSION.fullmatch(version):
@@ -257,6 +285,8 @@ def prepare(
     live_images = sorted(set(re.findall(r"^\s*image:\s*(\S+)\s*$", live_rendered["compose.live.yaml"], re.MULTILINE)))
     if len(live_images) != 1 or re.search(r"^\s*image:", live_rendered["compose.live.turn.yaml"], re.MULTILINE):
         raise ValueError("compose.live.yaml must pin exactly one media server image and compose.live.turn.yaml none")
+    embeddings_rendered = render_embeddings_compose(embeddings_compose.read_text(encoding="utf-8"), version=version, source_sha=source_sha)
+    embeddings_image = re.findall(r"^\s*image:\s*(\S+)\s*$", embeddings_rendered, re.MULTILINE)[0]
 
     def notices(spdx_file: Path, label: str) -> list[dict[str, str]]:
         spdx = json.loads(spdx_file.read_text(encoding="utf-8"))
@@ -294,6 +324,7 @@ def prepare(
     (destination / "compose.runtime.yaml").write_text(runtime_rendered, encoding="utf-8")
     for name, text in live_rendered.items():
         (destination / name).write_text(text, encoding="utf-8")
+    (destination / EMBEDDINGS_ASSET).write_text(embeddings_rendered, encoding="utf-8")
     for source, target in (
         (env, ENV_ASSET),
         (instructions, "INSTALL.md"),
@@ -323,6 +354,7 @@ def prepare(
         "runtime_codex": codex,
         "runtime_claude_code": "not included; runtime-install installs Anthropic's signed release when the operator enables it",
         "live_media_image": live_images[0],
+        "embeddings_image": embeddings_image,
         "database_image": f"{DATABASE_IMAGE}@{database_digest}",
         "database_platforms": platform_list,
     }
@@ -356,6 +388,7 @@ def main() -> None:
     parser.add_argument("--database-sbom", type=Path, required=True)
     parser.add_argument("--live-compose", type=Path, default=Path("docker/compose.live.yaml"))
     parser.add_argument("--live-turn-compose", type=Path, default=Path("docker/compose.live.turn.yaml"))
+    parser.add_argument("--embeddings-compose", type=Path, default=Path("docker/compose.embeddings.yaml"))
     parser.add_argument("--platforms", default=DEFAULT_PLATFORMS,
                         help="platforms the images were built for, comma-separated (default linux/amd64)")
     parser.add_argument("--destination", type=Path, required=True)
@@ -367,7 +400,7 @@ def main() -> None:
         destination=args.destination, runtime_digest=args.runtime_digest,
         runtime_compose=args.runtime_compose, runtime_script=args.runtime_script,
         runtime_sbom=args.runtime_sbom, dockerfile=args.dockerfile,
-        live_compose=args.live_compose, live_turn_compose=args.live_turn_compose,
+        live_compose=args.live_compose, live_turn_compose=args.live_turn_compose, embeddings_compose=args.embeddings_compose,
         database_digest=args.database_digest, database_sbom=args.database_sbom, platforms=args.platforms,
     )
 
