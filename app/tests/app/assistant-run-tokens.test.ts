@@ -40,7 +40,7 @@ const human = (someone: Person): Principal => ({ kind: 'human', id: someone.id }
  * that find and read around a message: 36 tools, 25,672 bytes (2026-11-12, CI run 43296958864; the bound was 24,000). #1292 adds the tool that
  * summarises a range: 37 tools, 26,525 bytes (2026-11-13, CI run 43376634883; the bound was 26,000 with 328 bytes left, and the tool's definition takes 853).
  * #1410 lets `from` take a name, says that a task's discussion is read with its own tool and asks for each part's source before an answer:
- * 26,913 bytes (2026-11-13, CI run 43417197252; the bound was 26,600).
+ * 26,913 characters, 26,918 UTF-8 bytes as measured since (2026-11-13, CI run 43417197252 and the #1426 review; the bound was 26,600).
  */
 const TOOL_DEFINITION_BYTES = 27_000;
 const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
