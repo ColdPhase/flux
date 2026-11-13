@@ -1328,7 +1328,8 @@ class LiveJourney(LiveBase):
         invite = phone.get_by_role("dialog", name="Invite someone", exact=True)
         expect(invite.locator(".lv-person--absent").first).to_be_visible()
         expect(invite).not_to_contain_text("Microphone")
-        # Half the screen, at its bottom: the call stays in view above the short list (#1424).
+        # Half the screen, at its bottom: the call stays in view above the short list (#1424). Measured once it has slid in.
+        phone.wait_for_function("() => { const r = document.querySelector('.lv-sheet--half').getBoundingClientRect(); return Math.abs(r.bottom - innerHeight) <= 1; }")
         sheet_box = invite.bounding_box()
         self.assertAlmostEqual(sheet_box["y"] + sheet_box["height"], PHONE["height"], delta=1)
         self.assertLess(sheet_box["height"], PHONE["height"] * 0.6, "a half-height sheet, not the whole screen")
