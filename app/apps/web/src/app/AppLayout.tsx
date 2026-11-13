@@ -728,8 +728,8 @@ function AppLayoutContent() {
     ...('noDetails' in place ? [] : [{ label: placeDetailsLabel, run: () => shell.openDetails('place') }]),
     // No sidebar row: the sidebar folds with its own control and `[`, and the rail and the navigation button open it (README §4, #1376).
   ];
-  // My tasks, My map, an agent's chat and Settings have no rows, and then no ⋯ is shown (#1424).
-  const hasMoreRows = moreItems.length > 0;
+  // The same conditions as the rows above: My tasks, My map, an agent's chat and Settings have none, and then no ⋯ is shown (#1424).
+  const hasMoreRows = offersBulkRead || !!project?.people || !!activeProject || !!placeMute || !('noDetails' in place);
 
   // The phone's header (F-026 §4 Phone): inside a space the title row is Back, the space's plain title (two lines at most) with who is here
   // beneath it, and More, with Join between them while a call is live (#1239); Search and Call are the first rows of More. The views are
