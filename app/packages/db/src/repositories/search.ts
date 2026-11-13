@@ -275,8 +275,11 @@ function lookedUpWords(plan: SearchPlanRows): { words: string[]; typed: string |
  * pg_search can tell which clause matched only through the score. Every clause is therefore a constant-score query (`pdb.const`), so a hit's
  * score is the sum of the constants of the clauses that matched and nothing else: no term frequency, no rarity of any word, no other
  * document. A constant is a power of two, one bit for each time a clause of a kind can match (a word in the title may match through the
- * Polish and through the English field: two clauses, two bits), above the few units the filters add (each filter is a constant-score clause
- * too, at most `filterUnits` altogether, so the constants are multiples of a power of two above them). The words are packed into as few scans
+ * Polish and through the English field: two clauses, two bits), above the one unit the audience filter adds (`FILTER_BASE`). The scan holds
+ * no other filter: pg_search scores a filter it is given on a single value (a kind, a place, an author, a conversation) by BM25, with that
+ * value's rarity over the whole index, which can exceed any fixed margin (a person who wrote few of an instance's documents) and would
+ * then flip the bits above it. The caller's filters and the work lifecycle are therefore applied to the scan's rows, after it, in `cand`
+ * (a set of audiences scores a constant 1, so the audience filter stays in the scan). The words are packed into as few scans
  * as the 24 bits of a score allow (one for a query of up to five words), and each hit's score is decoded into the words it holds and where:
  * for each word, whole in the title or whole in the body; and for the document, matched only as the word being typed (a prefix) or as a
  * title with a typo, which is not tied to one word.
@@ -287,12 +290,8 @@ interface RankedClause { query: (constant: SQL) => SQL; at: RankedField | null }
 interface RankedWord { w: number; title: RankedField; body: RankedField }
 interface RankedChunk { words: RankedWord[]; clauses: RankedClause[]; base: number; part: RankedField | null }
 
-/** The most the filters of a scan add to a hit's score, counted generously (a condition may be more than one clause); constants are multiples of the next power of two. */
-function filterUnits(plan: SearchPlanRows): number {
-  const conditions = 1 + (plan.kinds?.length ? 1 : 0) + (plan.place ? 2 : 0) + (plan.author ? 2 : 0) + (plan.authorId ? 1 : 0) + (plan.conversationId ? 2 : 0)
-    + (plan.since ? 1 : 0) + (plan.until ? 1 : 0);
-  return conditions * 2;
-}
+/** What the audience filter adds to a hit's score is exactly 1 (a set of terms scores a constant); the constants are multiples of this power of two above it. */
+const FILTER_BASE = 4;
 const bitsFor = (count: number) => Math.ceil(Math.log2(count + 1));
 /** A score is a 32-bit float: whole numbers are exact up to 2^24. One bit stays unused. */
 const SCORE_BITS = 23;
@@ -314,7 +313,7 @@ function partialClauses(plan: SearchPlanRows): RankedClause[] {
 
 function rankedChunks(plan: SearchPlanRows): RankedChunk[] {
   const { words } = lookedUpWords(plan);
-  const base = 2 ** bitsFor(filterUnits(plan));
+  const base = FILTER_BASE;
   const capacity = SCORE_BITS - Math.log2(base);
   const partial = partialClauses(plan);
   const chunks: RankedChunk[] = [{ words: [], clauses: [...partial], base, part: partial.length ? { shift: 0, bits: bitsFor(partial.length) } : null }];
@@ -338,19 +337,20 @@ function rankedScan(chunk: RankedChunk, plan: SearchPlanRows): SQL {
     const at = clause.at ?? chunk.part!;
     return clause.query(sql.raw(String(chunk.base * 2 ** at.shift)));
   });
-  const scope = sql.join([AUDIENCE_ANY, ...scopeConditions(plan)], sql` AND `);
   const numbered = plan.number === null ? sql`false` : sql`(sd.kind = 'work' AND split_part(sd.body, E'\n', 1) = ${`#${plan.number}`})`;
+  // Only the audiences filter the scan; the caller's filters read these columns after it, in `cand` (see the evidence above `RankedField`).
   return sql`SELECT sd.id, sd.kind, sd.object_id, sd.version, sd.at, length(sd.tsv) AS dl, ${numbered} AS numbered,
+        sd.audience_key, sd.project_id, sd.parent_id, sd.author_kind, sd.author_id,
         floor(pdb.score(sd.id) / ${sql.raw(String(chunk.base))})::bigint AS code
-      FROM search_documents sd WHERE NOT sd.sealed AND ${scope} AND ${WORK_LIFECYCLE} AND (${sql.join(clauses, sql` OR `)})`;
+      FROM search_documents sd WHERE NOT sd.sealed AND ${AUDIENCE_ANY} AND (${sql.join(clauses, sql` OR `)})`;
 }
 
 const num = (value: number) => sql.raw(String(value));
 
 /**
  * The ranked statement's CTEs: BM25 over the visible hits only, in SQL. `cand` holds the documents that match any word and may be shown (the
- * audiences and the work lifecycle are in every scan); a word's document frequency, the number of documents and their average length are
- * counted over `cand` and nothing else, so what the caller cannot read, in this space, in another or in another workspace, moves nothing. A
+ * audiences are in every scan; the caller's filters and the work lifecycle are applied to its rows); a word's document frequency, the number
+ * of documents and their average length are counted over `cand` and nothing else, so what the caller cannot read, in this space, in another or in another workspace, moves nothing. A
  * document's own part is its length, `length(tsv)`, stored with the row (the term frequency of a word is one: the index says only that it
  * matches). Each word the document holds adds `idf × weight`, the title's twice the body's, and the sum is scaled by
  * `(k1 + 1) / (1 + k1 × (1 − b + b × length / average))`; a word that every hit holds counts for little. A document that holds no whole word
@@ -360,11 +360,14 @@ function rankedStatement(plan: SearchPlanRows): SQL {
   const chunks = rankedChunks(plan);
   const scans = chunks.map((chunk, index) => sql`chunk${num(index)} AS MATERIALIZED (${rankedScan(chunk, plan)}),`);
   // A document found by several scans is one row, with the code of each; one scan (the usual case) needs no grouping.
+  // The caller's filters and the work lifecycle, on each scan's rows (a MATERIALIZED scan keeps them out of pg_search's query and score).
+  const keep = sql.join([WORK_LIFECYCLE, ...scopeConditions(plan)], sql` AND `);
   const cand = chunks.length === 1
-    ? sql`SELECT id, kind, object_id, version, at, dl, numbered, code AS c0 FROM chunk0`
+    ? sql`SELECT sd.id, sd.kind, sd.object_id, sd.version, sd.at, sd.dl, sd.numbered, sd.code AS c0 FROM chunk0 sd WHERE ${keep}`
     : sql`SELECT id, min(kind) AS kind, min(object_id) AS object_id, min(version) AS version, min(at) AS at, min(dl) AS dl, bool_or(numbered) AS numbered,
         ${sql.join(chunks.map((_, index) => sql`max(code) FILTER (WHERE k = ${num(index)}) AS c${num(index)}`), sql`, `)}
-      FROM (${sql.join(chunks.map((_, index) => sql`SELECT ${num(index)} AS k, * FROM chunk${num(index)}`), sql` UNION ALL `)}) u GROUP BY id`;
+      FROM (${sql.join(chunks.map((_, index) => sql`SELECT ${num(index)} AS k, sd.id, sd.kind, sd.object_id, sd.version, sd.at, sd.dl, sd.numbered, sd.code
+        FROM chunk${num(index)} sd WHERE ${keep}`), sql` UNION ALL `)}) u GROUP BY id`;
   const words = chunks.flatMap((chunk, index) => chunk.words.map((word) => ({ word, code: sql.raw(`coalesce(c.c${index}, 0)`) })));
   const field = (code: SQL, f: RankedField) => sql`((${code} >> ${num(f.shift)}) & ${num(2 ** f.bits - 1)})`;
   const present = ({ word, code }: (typeof words)[number]) => sql`((${code} >> ${num(word.title.shift)}) & ${num(15)}) > 0`;

@@ -21,13 +21,16 @@ The service (`createSearchUseCases`) picks by `usesSearchSyntax(text)`; the curs
   holds what the reader may not read: restricted spaces, other people's direct messages and every other workspace of the instance. A
   writer in one visible place could then move the order of a reader's own results by writing a word in the hidden ones (the review
   probe of #1326 swapped two visible messages with 40 hidden ones). So the statement (`rankedStatement` in
-  `packages/db/src/repositories/search.ts`) asks the index only which documents hold which word: one scan for each word and kind of
-  match, each returning ids, under the reader's audiences and filters. The order is then **BM25 computed in SQL over the visible
-  hits** (`cand`): a word's document frequency, the number of documents and their average length are counted over those hits and
+  `packages/db/src/repositories/search.ts`) asks the index only which documents hold which word: every clause scores a constant
+  (`pdb.const`, a power of two), so a hit's score is a code of which word it holds and where, and the words share as few scans as a
+  score's bits allow (one for up to four words). The scan is filtered by the reader's audiences only (a set of audiences scores a
+  constant); the reader's filters (type, place, author, conversation, time) and the task lifecycle are applied to its rows after it,
+  because pg_search scores a filter on one value by that value's rarity over the whole index (`search-hidden-ranking.test.ts` holds it
+  with 40,000 hidden rows). The order is then **BM25 computed in SQL over the visible hits** (`cand`): a word's document frequency, the number of documents and their average length are counted over those hits and
   nothing else; a document's own part is its length (`length(tsv)`, stored with the row) and where the word was found. The term
   frequency of a word is one (the index says it matches, not how often). Each word adds `idf × weight × (k1 + 1) / (1 + k1 × (1 − b + b × length / average))`
-  with k1 1.2 and b 0.75; the weight is 2 for a whole word in the title, 1 in the body, 0.6 for a prefix or a typo in the title and 0.3
-  for a prefix in the body. No statistic of the index, and no row the reader may not see, influences what they are shown or in which
+  with k1 1.2 and b 0.75; the weight is 2 for a whole word in the title and 1 in the body, and a hit found only as the word being typed
+  or with a typo in its title counts half the average rarity of the query's words. No statistic of the index, and no row the reader may not see, influences what they are shown or in which
   order; `search-hidden-ranking.test.ts` holds it for the people's search and for the statement an agent's `flux_search` runs, with
   writes in a restricted space, another workspace and other people's direct messages.
 - **The word being typed** is also looked up as a prefix: the index holds stems, so a scan adds `pdb.regex('<word>.*')` on the title and
@@ -35,8 +38,8 @@ The service (`createSearchUseCases`) picks by `usesSearchSyntax(text)`; the curs
 - **A title tolerates a typo:** each plain word of four letters or more (at most six) also matches the title with one edit
   (`pdb.fuzzy(1)`), as the trigram match did ("ensor", "omparison", "comparisn" find "Sensor comparison"). A task number
   names one task, so it gets no typo.
-- **At most twelve words are looked up** (the first twelve and the word being typed), each costing two scans (title and body) and
-  the typed or mistyped ones a third; a search of one to four words runs in a few milliseconds.
+- **At most twelve words are looked up** (the first twelve and the word being typed), each a title and a body clause in each language;
+  a search of up to four words is one scan and runs in a few milliseconds, a longer one a scan for each further five words.
 - **The score** in a position is `rank / (rank + 10)`, in (0, 1) and in the same order, so that the rows of an encrypted space,
   which the in-memory index ranks from 0 to 1.5, merge with them.
 - **Encrypted spaces** answer plain words the same way, without stems and accents (`plan.anyWord`, `sealed-search.ts`): their content is

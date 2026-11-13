@@ -6,7 +6,7 @@ import { accessPorts, searchRows, type SearchPlanRows } from '@flux/db';
 import { createAgent, type Principal } from '@flux/core';
 import { policySearchAccess } from '../../apps/server/src/search/adapters.js';
 import { inBatches } from './support/batches.js';
-import { db } from './support/db.js';
+import { db, pool } from './support/db.js';
 import { type ClientResponse } from './support/http.js';
 import { addMember, expectStatus, person, project as createProject, workspace, type Person } from './support/people.js';
 
@@ -75,6 +75,44 @@ describe('search: what the reader may not read does not move the order of what t
       assert.deepEqual(await orders(reader, q), before, 'the order of the reader\'s own results does not depend on what is hidden from them');
     });
   }
+
+  test('a filter (an author, a space, a conversation) lets no rarity of the index into the order', async () => {
+    // pg_search scores a filter on one value by BM25, with that value's rarity over the whole index: a person who wrote few of an
+    // instance's documents, a small space or a short conversation. The statement applies the caller's filters after its scan, so a
+    // filtered search ranks its hits exactly as the same search without the filter, however large the hidden rest of the index grows.
+    const [owner, reader] = await Promise.all(['Filter Owner', 'Filter Reader'].map(person));
+    const ws = await workspace(owner, 'Filter workspace');
+    await addMember(owner, ws.id, reader, 'member');
+    const open = await createProject(owner, ws.id, 'Filter open', 'workspace');
+    const known = word('kontrol');
+    const target = word('sekret');
+    const thread = await conversation(reader, open.id, 'Filter opener.');
+    await say(reader, thread.id, `Note ${known} here.`);
+    await say(reader, thread.id, `Note ${target} here.`);
+    const audiences = await policySearchAccess(db).audiences(human(reader));
+    const run = async (narrow: Partial<SearchPlanRows>) => (await searchRows(db).ranked(audiences, {
+      text: `${known} ${target}`, prefix: null, fuzzy: false, number: null, words: `${known} ${target}`, kinds: null, place: null, author: null, after: null,
+      limit: 20, reader: reader.id, ...narrow,
+    })).map((hit) => `${hit.position.score} ${hit.snippet?.map((part) => part.text).join('') ?? ''}`);
+    // Forty thousand rows nobody may read, by other authors, outside this space and conversation: each filtered value becomes rare.
+    const hiddenAudience = `project:${randomUUID()}`;
+    await pool.query(`INSERT INTO search_documents (doc_key, kind, workspace_id, audience_key, object_id, title, body, author_kind, author_id, at)
+      SELECT 'message:' || gen_random_uuid(), 'message', $1, $2, gen_random_uuid()::text, '', 'Hidden filler ' || g, 'human', 'hidden-' || (g % 997), now()
+      FROM generate_series(1, 40000) g`, [ws.id, hiddenAudience]);
+    try {
+      const plain = await run({});
+      assert.equal(plain.length, 2);
+      for (const narrow of [
+        { author: { kind: 'human' as const, id: reader.id } },
+        { authorId: reader.id },
+        { place: { type: 'project' as const, id: open.id } },
+        { conversationId: thread.id },
+        { kinds: ['message' as const] },
+      ]) assert.deepEqual(await run(narrow), plain, `the filter ${JSON.stringify(narrow)} ranks as the search without it`);
+    } finally {
+      await pool.query('DELETE FROM search_documents WHERE audience_key = $1', [hiddenAudience]);
+    }
+  });
 
   test('an agent of the owner is held to the same: its search ranks by what its owner may read', async () => {
     const [owner, stranger] = await Promise.all(['Agent Owner', 'Agent Stranger'].map(person));

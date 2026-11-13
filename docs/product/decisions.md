@@ -578,12 +578,13 @@ asked / bilingual; [research](research/2026-11-ai-context-retrieval.md#answer-ac
 - **No statistic of the whole index may influence what a caller sees** (founder decision, Hubert, 2026-11-13, on the review of #1326, which
   found that hidden writes swapped two visible results; it applied to an agent's `flux_search` already on `main`). pg_search's score counts
   how rare a word is over every row of the index, restricted spaces, other people's direct messages and other workspaces included, so it is
-  not used: pg_search only **matches** (one scan for each word and kind of match, returning ids, under the caller's audiences) and the
+  not used: pg_search only **matches** (constant-score clauses that say which word a hit holds and where, under the caller's audiences; the
+  caller's other filters apply after the scan, since pg_search scores a filter on one value by its rarity in the whole index) and the
   order is BM25 computed in SQL over the visible hits: a word's document frequency, the number of documents and their average length are
   counted among them and nothing else, a document's own length is `length(tsv)`, and the term frequency of a word is one. The same
   statement serves the people's search and the agents' `flux_search`; `search-hidden-ranking.test.ts` pins it with writes in a restricted
-  space, another workspace and other people's direct messages. The word weights are 2 (title), 1 (body), 0.6 (title prefix or typo) and 0.3
-  (body prefix); at most twelve words are looked up. The cost is a few more scans for each search and no index-wide statistic.
+  space, another workspace and other people's direct messages. A word weighs 2 in a title and 1 in a body; a hit found only as the word
+  being typed or with a typo counts half the query words' average rarity; at most twelve words are looked up. The cost is a few more scans for each search and no index-wide statistic.
 - **The exact index is not dropped:** BM25's `|||` has no every-word or exclusion semantics, so removing the `keys` index would first
   need those carried over; the drop is left until then (a follow-up inside F-042, not a decision to keep it).
 - **Encrypted spaces** also match any of the plain words (founder decision, Hubert, 2026-11-12, on #1326), ranked more simply and without
