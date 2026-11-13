@@ -150,9 +150,6 @@ export function agentToolRegistry(manifest: McpManifest, db: Database, run: bool
             // A picture's address is checked by its own tool, hop by hop, and refused in its own plain words (#1217).
             const refused = place && name !== 'flux_attach_image' ? await refusedPrivateAddress(db, place.id, redacted) : null;
             if (refused) return refused;
-            // A run on the owner's Claude Code or Codex never writes its CLI's own login into Flux (coordinator decision on #1437, RT-7).
-            const credential = place ? await refusedCredential(db, place.id, redacted) : null;
-            if (credential) return credential;
             return plainWords(await original({ ...redacted, assistantCall: { tool: name, args: redacted, ...(private_ ? { view: private_.view } : {}) } }, call) as ToolOutput);
           };
         }
@@ -160,7 +157,11 @@ export function agentToolRegistry(manifest: McpManifest, db: Database, run: bool
           config: { title: config.title, description: config.description, inputSchema: convertedOnce(config.inputSchema),
             ...(config.annotations ? { annotations: config.annotations } : {}) },
           invoke(input, claims) {
-            const output = claims.dispatch.run('tool', name, () => handler(input as Record<string, unknown>, { claims }));
+            // A run on the owner's Claude Code or Codex never sends its CLI's own login out through Flux (coordinator decision on #1437, RT-7):
+            // not as a change, and not in a read either (a web address `flux_read_web` would fetch, a search).
+            const output = claims.dispatch.run('tool', name, run
+              ? async () => (await refusedCredential(db, claims.run!.id, input as Record<string, unknown>)) ?? handler(input as Record<string, unknown>, { claims })
+              : () => handler(input as Record<string, unknown>, { claims }));
             return run ? Promise.resolve(output).then((result) => boundRunResult(db, claims.run!.id, result as { content?: unknown }, name)) : output;
           },
         });

@@ -162,8 +162,8 @@ shell and file tools, inside a sandbox that exists for one run; every engine can
 - **The CLI's own login never leaves through Flux** (coordinator decision on #1437). Codex applies an `apply_patch` itself, outside
   the shell sandbox, and its `exec_command` starts the shell the model names, so a steered Codex can reach its own home. So the
   supervisor reads the run's login file as the person when the run starts and keeps its values (every run of 20 or more token
-  characters, and each long piece of a dotted one) in memory while the run lasts; `flux_attach_file` and every Flux change tool
-  are refused when what they would send holds one (the server asks the run's supervisor through runtime-manager, and only "found"
+  characters, and each long piece of a dotted one) in memory while the run lasts; every Flux tool call of the run (`flux_attach_file`,
+  every change, and every read, such as an address `flux_read_web` would fetch) is refused when what it would send holds one (the server asks the run's supervisor through runtime-manager, and only "found"
   or "not found" comes back; a file is looked through as it is read). A change of files outside the scratch, or a command outside
   the sandbox shell, kills every process of the person at once, with no grace (RT-7 still holds: nothing of the login is persisted,
   logged or sent). What this cannot catch: a value the model rewrites (encoded, split) before sending it; accepted risk 10.
