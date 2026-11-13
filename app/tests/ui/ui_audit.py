@@ -1,0 +1,1524 @@
+"""The v0.2.1 UI and UX audit (#1215, #1245): every route × state × window × theme × engine of the running application.
+
+Not a test and not part of the default suite (the name does not match test_*.py): it captures, measures and writes a report,
+and exits 0 whatever it finds. Run it with `./scripts/ui_audit.sh <out>` (Docker only). That starts the app on its own Compose
+project, captures the first-run pages of the empty server, seeds the `./flux demo` data (scripts/flux-demo.mjs), then runs
+this file in the pinned Playwright container. It builds on the #763 visual consistency audit (`visual_consistency_audit.py`:
+its extra people and tasks, and its in-page measurement of every control) and on the documentation scene (`media_scene.py`:
+the company, Ada's Assistant, Planner and Reviewer, a guest, decisions, a post from a local client), and adds the states
+#1215 lists: long names, a locked encrypted space, a guest, read-only pages, invitations, schedules, not-available pages.
+
+Phases (FLUX_UIAUDIT_PHASES, comma-separated; default all, in this order):
+
+  firstrun  the empty server's sign-up and sign-in (run by ui_audit.sh before the demo seed);
+  seed      the data, once (seed.json; a later run reuses it);
+  capture   every screen at every window, light and dark, Chromium and WebKit: a screenshot, an ARIA snapshot beside it,
+            the #763 measurement (alignment, control heights, touch targets under 44 px, contrast against the composited
+            background, type tokens, radii, clipping, occlusion) plus sideways scroll, words ("project", "workspace",
+            "Direct messages"), and editable text under 16 px on touch (focus zoom);
+  states    loading (the screen's own reads held back) and error (the screen's own reads answered 503), then Try again
+            with the reads back: does the page say so, and does Try again recover;
+  a11y      focus order and visible focus (Tab walk), 200 % text (root font size), reduced motion (running animations and
+            transitions while `reduce`), transitions of properties other than transform and opacity;
+  keys      the documented shortcuts (Settings › Keyboard shortcuts) that change no data;
+  journeys  interactions in the running app with what they change checked after a reload (both engines, computer and phone);
+  mob       MOB-1…MOB-7 as far as emulation goes: the manifest and icons, the service worker, an offline navigation, offline
+            in-app reads and a message sent offline, standalone launch, a deep link through sign-in, rotation with a
+            draft, coming back after the connection dropped, the push offer (offer, blocked, Home Screen steps);
+  report    matrix.md (every cell), findings.md/json (deduplicated), summary.json, contact sheets.
+
+Environment: FLUX_UI_ORIGIN / FLUX_UI_UPSTREAM (ui-test service), FLUX_DEMO_OWNER_PASSWORD, FLUX_DEMO_PARTNER_PASSWORD,
+FLUX_FIXTURE_TOKEN, FLUX_AUDIT_OUT (default /screenshots), FLUX_UIAUDIT_BROWSERS (chromium,webkit), FLUX_UIAUDIT_THEMES
+(light,dark), FLUX_UIAUDIT_WINDOWS (names from WINDOWS; default all), FLUX_UIAUDIT_SCREENS (names; default all),
+FLUX_UIAUDIT_PARALLEL (capture processes side by side, default 4), FLUX_UIAUDIT_STATE_WINDOWS / FLUX_UIAUDIT_A11Y_WINDOWS
+(default 1440,390,820p). Emulated windows in headless engines, not devices: CSS pixels at device pixel ratio 1; touch
+windows have touch, a coarse pointer and the platform's user agent (Android in Chromium, iPhone/iPad in WebKit).
+"""
+from __future__ import annotations
+
+import html
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+import traceback
+import urllib.parse
+import uuid
+from dataclasses import dataclass, field
+from pathlib import Path
+
+from playwright.sync_api import Browser, BrowserContext, Page, sync_playwright
+
+import visual_consistency_audit as vca
+from test_app_shell import ORIGIN, UPSTREAM, start_forwarder
+
+OUT = Path(os.environ.get("FLUX_AUDIT_OUT") or os.environ.get("FLUX_UI_SCREENSHOTS") or "/screenshots")
+ALL_PHASES = ["firstrun", "seed", "capture", "states", "a11y", "keys", "journeys", "mob", "report"]
+PHASES = [p for p in (os.environ.get("FLUX_UIAUDIT_PHASES") or ",".join(p for p in ALL_PHASES if p != "firstrun")).split(",") if p]
+BROWSERS = [b for b in (os.environ.get("FLUX_UIAUDIT_BROWSERS") or "chromium,webkit").split(",") if b]
+THEMES = [t for t in (os.environ.get("FLUX_UIAUDIT_THEMES") or "light,dark").split(",") if t]
+ONLY = {s for s in (os.environ.get("FLUX_UIAUDIT_SCREENS") or "").split(",") if s}
+PARALLEL = int(os.environ.get("FLUX_UIAUDIT_PARALLEL") or "4")
+ANNOTATE = set((os.environ.get("FLUX_UIAUDIT_ANNOTATE") or "1440,390,820p,320").split(","))
+
+# Every window of #1215 and #1245. kind: computer (mouse), tablet or phone (touch, coarse pointer).
+WINDOWS = {
+    "1280": dict(width=1280, height=800, kind="computer"),
+    "1440": dict(width=1440, height=900, kind="computer"),
+    "1920": dict(width=1920, height=1080, kind="computer"),
+    "2560": dict(width=2560, height=1440, kind="computer"),
+    "3440": dict(width=3440, height=1440, kind="computer"),
+    "820p": dict(width=820, height=1180, kind="tablet"),     # iPad Air portrait
+    "1180l": dict(width=1180, height=820, kind="tablet"),    # iPad Air landscape
+    "1024s": dict(width=1024, height=768, kind="tablet"),    # tablet split view / small tablet landscape
+    "800t": dict(width=800, height=1280, kind="tablet"),     # Android tablet
+    "430": dict(width=430, height=932, kind="phone"),        # large iPhone
+    "412": dict(width=412, height=915, kind="phone"),        # Android
+    "390": dict(width=390, height=844, kind="phone"),        # standard iPhone
+    "375": dict(width=375, height=667, kind="phone"),        # small iPhone (SE)
+    "360": dict(width=360, height=800, kind="phone"),        # Android
+    "320": dict(width=320, height=640, kind="phone"),        # smallest phone
+    "844l": dict(width=844, height=390, kind="phone"),       # phone landscape
+}
+WINDOW_NAMES = [w for w in (os.environ.get("FLUX_UIAUDIT_WINDOWS") or ",".join(WINDOWS)).split(",") if w in WINDOWS]
+STATE_WINDOWS = [w for w in (os.environ.get("FLUX_UIAUDIT_STATE_WINDOWS") or "1440,390,820p").split(",") if w in WINDOWS]
+A11Y_WINDOWS = [w for w in (os.environ.get("FLUX_UIAUDIT_A11Y_WINDOWS") or "1440,390,820p").split(",") if w in WINDOWS]
+
+# The platform a touch window stands for in each engine (Playwright's device descriptors' user agents).
+UA_DEVICE = {("chromium", "phone"): "Pixel 7", ("chromium", "tablet"): "Galaxy Tab S4",
+             ("webkit", "phone"): "iPhone 15", ("webkit", "tablet"): "iPad Pro 11"}
+
+LONG_SPACE = "Community garden sensors and the long-range LoRa gateway for the far east beds behind the hawthorn hedge"
+LONG_TASK = ("Replace every corroded resistive probe in the north raised beds with the capacitive ones from the second order, "
+             "recalibrate them against the dry and wet readings and write the numbers into the Wiki page before Saturday")
+LONG_PAGE = "Sensor placement, wiring, calibration numbers and the volunteer watering rota for the 2027 growing season"
+LOCKED = "Grant applications (encrypted)"
+NEWCOMER_PASSWORD = vca.EXTRA_PASSWORD
+ZERO = "00000000-0000-4000-8000-000000000000"
+# Words the design does not use in the interface (#1215 "Words"); seeded content that uses them is skipped by SEEDED_WORDS.
+WORDS = [(r"\bprojects?\b", "says “project” (the design says “space”)"), (r"\bworkspaces?\b", "says “workspace”"),
+         (r"\bDirect messages\b", "says “Direct messages” (the computer says “Messages”)")]
+SEEDED_WORDS = ["garden project", "Welcome to the garden project"]
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Data
+# ---------------------------------------------------------------------------------------------------------------
+
+def call(context: BrowserContext, method: str, path: str, body: dict | None = None, ok=(200, 201), headers: dict | None = None) -> dict:
+    response = context.request.fetch(f"{ORIGIN}{path}", method=method, data=json.dumps(body) if body is not None else None,
+                                     headers={"origin": ORIGIN, "content-type": "application/json", "idempotency-key": str(uuid.uuid4()), **(headers or {})})
+    if response.status not in ok:
+        raise RuntimeError(f"{method} {path}: {response.status} {response.text()[:300]}")
+    text = response.text()
+    return json.loads(text) if text and text[:1] in "[{" else {}
+
+
+def soft(label: str, fn, default=None):
+    try:
+        return fn()
+    except Exception as error:  # a missing extra is recorded, never fatal
+        print(f"seed note: {label}: {str(error).splitlines()[0][:240]}", flush=True)
+        return default
+
+
+def seed(browser: Browser) -> dict:
+    import media_scene
+    from media_common import COMPANY
+    ada_password = vca.DEMO["ada"][2]
+    admin = vca.sign_in(browser, "ada@demo.flux.test", ada_password)
+    media = media_scene.build(browser, admin)
+    print(f"media scene: {json.dumps({k: v for k, v in media.items() if k != 'tasks'})}", flush=True)
+    # The #763 extras on top of the scene: Maja (member), Piotr (newcomer), tasks in every state, an empty space.
+    vca.WORKSPACE = COMPANY
+    vca.LIBRARY = "Tool library for the makerspace"
+    vca.EMPTY = "Seed swap shelf"
+    data = vca.seed(browser)
+    ids = data["ids"]
+    states = data["states"]
+    contexts = {key: browser.new_context(base_url=ORIGIN, storage_state=state, service_workers="block") for key, state in states.items()}
+    ada, jonas = contexts["ada"], contexts["jonas"]
+    contexts["tomasz"] = vca.sign_in(browser, "tomasz@demo.flux.test", media_scene.EXTRA_PASSWORD)
+    contexts["basia"] = vca.sign_in(browser, "basia@demo.flux.test", media_scene.EXTRA_PASSWORD)
+    me = {key: call(c, "GET", "/api/v1/me")["user"]["id"] for key, c in contexts.items()}
+    ws = ids["ws"]
+    ids["p"] = media["project"]
+    ids["sketch"] = media["sketch"]
+    ids["doc"] = media["doc"]
+    ids["decision"] = media["decision"]
+    ids["me_ada"] = me["ada"]
+    # Long names: a space, a task, a Wiki page and a message with a long unbroken address.
+    long_space = soft("long space", lambda: call(ada, "POST", f"/api/v1/workspaces/{ws}/projects", {"name": LONG_SPACE, "visibility": "workspace"})["id"], "")
+    if long_space:
+        ids["pl"] = long_space
+        soft("long task", lambda: call(ada, "POST", f"/api/v1/projects/{long_space}/work", {"title": LONG_TASK, "owner": {"kind": "human", "id": me["maja"]}}))
+        soft("long page", lambda: call(ada, "POST", f"/api/v1/projects/{long_space}/docs", {"title": LONG_PAGE, "body": "Short page."}))
+        soft("long message", lambda: call(ada, "POST", f"/api/v1/projects/{long_space}/conversations", {
+            "body": "The supplier's tracking page: https://public.test/tracking/2027/ORDER-CAPACITIVE-PROBES-6x-GATEWAY-LORA-868MHZ-ANTENNA-5DBI-SHIPPED-VIA-FERRY "
+                    + "— Maja Wiśniewska-Lindqvist will collect it on Thursday.", "clientMessageId": str(uuid.uuid4())}))
+    # A guest in a space (read-only places for a guest: company settings, AI not for guests).
+    soft("guest in space", lambda: call(ada, "POST", f"/api/v1/projects/{ids['p']}/grants", {"principal": {"kind": "human", "id": me["tomasz"]}, "role": "contributor"}))
+    # Agents: Assistant, Planner, Reviewer; a schedule on the Assistant; a message to it so its chat is not empty.
+    agents = {a["name"]: a["id"] for a in soft("my agents", lambda: call(ada, "GET", "/api/v1/my-agents")["items"], [])}
+    ids["assistant"] = agents.get("Assistant") or next(iter(agents.values()), "")
+    ids["planner"] = agents.get("Planner", "")
+    if ids["assistant"]:
+        soft("schedule", lambda: call(ada, "POST", f"/api/v1/my-agents/{ids['assistant']}/schedules", {
+            "title": "Monday plan", "text": "Say what the garden space has to do this week", "schedule": {"kind": "daily", "at": "08:00"}, "timeZone": "Europe/Warsaw"}))
+    # A DM thread (Ada and Jonas).
+    dm = ids.get("dm") or soft("dm", lambda: call(ada, "POST", f"/api/v1/workspaces/{ws}/dms", {"participantIds": [me["jonas"]]})["id"], "")
+    ids["dm"] = dm
+    if dm:
+        def dm_thread():
+            first = call(ada, "POST", f"/api/v1/dms/{dm}/messages", {"body": "Can you bring the radar board on Thursday?", "clientMessageId": str(uuid.uuid4())})["id"]
+            call(jonas, "POST", f"/api/v1/dms/{dm}/messages", {"body": "Yes, and the spare cable.", "clientMessageId": str(uuid.uuid4())})
+            call(jonas, "POST", f"/api/v1/dms/{dm}/threads/{first}/replies", {"body": "It needs the 5 V supply, I will pack that too.", "clientMessageId": str(uuid.uuid4())})
+            return first
+        ids["dmroot"] = soft("dm thread", dm_thread, "")
+    # A message by its id, a material, an invitation link.
+    ids["msg"] = soft("message id", lambda: call(ada, "GET", f"/api/v1/conversations/{media['conversation']}")["messages"][0]["id"], "")
+    ids["material"] = soft("material", lambda: call(ada, "POST", f"/api/v1/projects/{ids['p']}/materials", {
+        "title": "Probe datasheet notes", "body": "Dry 3.1 V, wet 1.4 V. Capacitive probes only.", "clientMutationId": str(uuid.uuid4())})["id"], "")
+    invite = soft("invite", lambda: call(ada, "POST", f"/api/v1/workspaces/{ws}/invites", {"role": "member"}), {}) or {}
+    ids["invite"] = invite.get("link", "").replace(ORIGIN, "") if invite else ""
+    # A locked encrypted space: Ada owns it, Jonas is a member; Ada locks it.
+    token = os.environ.get("FLUX_FIXTURE_TOKEN", "")
+
+    def locked_space():
+        made = call(ada, "POST", "/api/v1/encrypted-workspaces", {"name": LOCKED, "creationId": str(uuid.uuid4()), "password": "grant applications unlock 2027"},
+                    headers={"authorization": f"Bearer {token}"})
+        enc = made["workspace"]["id"]
+        call(ada, "POST", f"/api/v1/workspaces/{enc}/members", {"email": "jonas@demo.flux.test", "role": "member"})
+        project = call(ada, "POST", f"/api/v1/workspaces/{enc}/projects", {"name": "Spring grant", "visibility": "workspace"})["id"]
+        call(ada, "POST", f"/api/v1/projects/{project}/conversations", {"body": "The draft budget is in the Wiki.", "clientMessageId": str(uuid.uuid4())})
+        call(ada, "POST", f"/api/v1/workspaces/{enc}/lock")
+        return enc, project
+    ids["enc"], ids["encp"] = soft("locked space", locked_space, ("", ""))
+    queue = soft("inbox", lambda: call(ada, "GET", "/api/v1/needs-you").get("items", []), [])
+    if queue:
+        ids["inbox"] = urllib.parse.quote(queue[0].get("key", ""), safe="")
+    for key, c in contexts.items():
+        states[key] = c.storage_state()
+        c.close()
+    # A throwaway account for the journeys that change a person's own settings.
+    print(f"seeded ids: {json.dumps(ids)}", flush=True)
+    return {"ids": ids, "states": states, "me": me}
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Screens: the #763 list plus every route of router.tsx and every state of #1215.
+# ---------------------------------------------------------------------------------------------------------------
+
+@dataclass
+class Screen(vca.Screen):
+    init: str = ""   # a script run before the page's own (an isolated context): a remembered offer, a refused permission
+
+
+S = Screen
+EXTRA_SCREENS = [
+    # Sign-in pages and links that work without signing in.
+    S("reset-password-invalid", "/reset-password?token=not-a-real-token", who="anon"),
+    S("reset-password-expired", "/reset-password?error=INVALID_TOKEN", who="anon"),
+    S("claim", "/claim", who="anon"),
+    S("unsubscribe-invalid", "/unsubscribe?token=not-a-real-token", who="anon"),
+    S("join-valid", "{invite}", who="anon", needs=("invite",)),
+    S("join-valid-signed-in", "{invite}", who="piotr", needs=("invite",)),
+    S("deep-link-signed-out", "/projects/{p}/tasks", who="anon"),
+    S("offline-page", "/offline.html", who="anon"),
+    S("sign-out", "/sign-out"),
+    S("consent-without-request", "/consent"),
+    # Places and states.
+    S("inbox-item", "/inbox/{inbox}", needs=("inbox",)),
+    S("message-link", "/projects/{p}/messages/{msg}", needs=("msg",)),
+    S("wiki-version", "/projects/{p}/docs/{doc}/versions/1", needs=("doc",)),
+    S("live-gone", "/projects/{p}/live/" + ZERO),
+    S("material", "/materials/{material}", needs=("material",)),
+    S("material-gone", "/materials/" + ZERO),
+    S("space-gone", "/projects/" + ZERO),
+    S("dm-gone", "/dm/" + ZERO),
+    S("agent-gone", "/agents/" + ZERO),
+    S("dm-thread", "/dm/{dm}?thread={dmroot}", needs=("dm", "dmroot")),
+    S("agent-assistant", "/agents/{assistant}", needs=("assistant",)),
+    S("agent-planner", "/agents/{planner}", needs=("planner",)),
+    S("agent-schedules", "/agents/{assistant}", steps=[("click", "[data-schedules-header] button")], needs=("assistant",)),
+    S("settings-agent-page", "/settings/agents/{planner}", needs=("planner",)),
+    S("settings-notifications-verify", "/settings/notifications/verify?token=not-a-real-token"),
+    S("long-space", "/projects/{pl}", needs=("pl",)),
+    S("long-space-tasks", "/projects/{pl}/tasks?view=list", needs=("pl",)),
+    S("long-space-wiki", "/projects/{pl}/docs", needs=("pl",)),
+    # Access: read-only, guest, locked.
+    S("settings-company-member", "/settings/company", who="jonas"),
+    S("settings-company-guest", "/settings/company", who="tomasz"),
+    S("guest-home", "/", who="tomasz"),
+    S("guest-space", "/projects/{p}", who="tomasz"),
+    S("guest-tasks", "/projects/{p}/tasks", who="tomasz"),
+    S("guest-ai", "/settings/agents", who="tomasz"),
+    S("guest-connect", "/settings/agents/connect", who="tomasz"),
+    S("locked-owner", "/spaces/{enc}", needs=("enc",)),
+    S("locked-member", "/spaces/{enc}", who="jonas", needs=("enc",)),
+    S("locked-member-deep-link", "/projects/{encp}", who="jonas", needs=("encp",)),
+    S("member-home", "/", who="basia"),
+    # Overlays: menus, sheets, dialogs, notices.
+    S("message-actions", "/projects/{p}", steps=[("menu", ".project-convo__message >> nth=-2")]),
+    S("dm-message-actions", "/dm/{dm}", steps=[("menu", "[data-message-id] >> nth=-1")], needs=("dm",)),
+    S("new-space-encrypted", "/", steps=[("press", "c"), ("click", "button:has-text('New space')"), ("wait", "[role='dialog'] form"),
+                                        ("role", "switch", "Encrypted")], only="wide"),
+    S("new-space-encrypted-phone", "/projects", steps=[("click", "button:has-text('New space')"), ("wait", "[role='dialog'] form"),
+                                                      ("role", "switch", "Encrypted")], only="phone"),
+    S("notice", "/", steps=[("dm_from", "jonas", "Are you at the garden this afternoon? I have the ladder."), ("wait", "[role='status'] >> text=Jonas")], isolated=True),
+    S("push-offer", "/inbox", init="localStorage.setItem('flux:push-offer:{me_ada}', JSON.stringify({ready: true}))", isolated=True, needs=("me_ada",)),
+    S("push-blocked", "/inbox", init=("localStorage.setItem('flux:push-offer:{me_ada}', JSON.stringify({ready: true}));"
+                                      "Object.defineProperty(Notification, 'permission', {get: () => 'denied'})"), isolated=True, needs=("me_ada",)),
+    S("photo-sheet-phone", "/projects/{p}", steps=[("role", "button", "Add photos or files|Attach|Add a photo|Photos")], only="phone"),
+    S("task-state-menu", "/projects/{p}/tasks?view=board&open=work:{task}", steps=[("role", "button", "In progress|State|Status")], needs=("task",)),
+    S("select-open", "/settings/notifications", steps=[("click", ".ui-select button, button[aria-haspopup='listbox'] >> nth=0")]),
+    S("here-and-call-menu", "/projects/{p}", steps=[("click", "button[aria-label='More']"), ("wait", "[role='menu']"), ("role", "menuitem", "Here now|Call")]),
+]
+SCREENS = vca.SCREENS + EXTRA_SCREENS
+for s in SCREENS:
+    if not hasattr(s, "init"):
+        s.init = ""
+
+
+def screen_init(screen) -> str:
+    return getattr(screen, "init", "") or ""
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Browsers, contexts, steps
+# ---------------------------------------------------------------------------------------------------------------
+
+def context_options(pw, engine: str, win: str, theme: str, *, who: str, data: dict, reduced: str = "reduce", workers: str = "block") -> dict:
+    spec = WINDOWS[win]
+    touch = spec["kind"] != "computer"
+    options = dict(base_url=ORIGIN, viewport={"width": spec["width"], "height": spec["height"]}, device_scale_factor=1,
+                   color_scheme=theme, reduced_motion=reduced, locale="en-GB", timezone_id="Europe/Warsaw",
+                   has_touch=touch, service_workers=workers)
+    if touch:
+        options["is_mobile"] = True
+        options["user_agent"] = pw.devices[UA_DEVICE[(engine, spec["kind"])]]["user_agent"]
+    if who != "anon":
+        options["storage_state"] = data["states"][who]
+    return options
+
+
+def run_step(page: Page, step: tuple, touch: bool, data: dict, apis: dict) -> None:
+    kind = step[0]
+    if kind == "role":
+        target = page.get_by_role(step[1], name=re.compile(step[2])).first
+        target.wait_for(state="visible", timeout=6000)
+        target.tap(timeout=5000) if touch else target.click(timeout=5000)
+        page.wait_for_timeout(350)
+    elif kind == "menu":
+        from message_gestures import open_message_menu
+        open_message_menu(page.locator(step[1]).first if ">>" not in step[1] else page.locator(step[1]), phone=touch)
+        page.wait_for_timeout(350)
+    elif kind == "js":
+        page.evaluate(step[1])
+    elif kind == "dm_from":
+        who, text = step[1], step[2]
+        dm = data["ids"].get("dm")
+        call(apis[who], "POST", f"/api/v1/dms/{dm}/messages", {"body": text, "clientMessageId": str(uuid.uuid4())})
+        page.wait_for_timeout(1500)
+    else:
+        vca.run_step(page, step, touch)
+
+
+# Checks the #763 measurement does not make: sideways scroll, words, editable text under 16 px on touch.
+EXTRA_JS = r"""
+(cfg) => {
+  const out = [];
+  const se = document.scrollingElement || document.documentElement;
+  const over = se.scrollWidth - innerWidth;
+  if (over > 1) {
+    const wide = [...document.querySelectorAll('body *')].filter((e) => { const r = e.getBoundingClientRect(); return r.right > innerWidth + 1 && r.width > 0 && getComputedStyle(e).position !== 'fixed'; })
+      .slice(0, 3).map((e) => e.tagName.toLowerCase() + (e.className && typeof e.className === 'string' ? '.' + e.className.split(' ').slice(0, 2).join('.') : ''));
+    out.push({rule: 'hscroll', prio: 'P2', detail: `the page scrolls sideways by ${over}px (widest: ${wide.join(', ')})`});
+  }
+  // Words: visible interface text, aria-labels, placeholders and titles; message and page bodies are content.
+  const content = '.message-body, .msg-body, [data-message-body], .ProseMirror, .wiki-page__body, .doc-body, .cm-content, .thought, [contenteditable="true"]';
+  const words = cfg.words.map(([re, why]) => [new RegExp(re, 'i'), why]);
+  const seeded = cfg.seeded;
+  const seen = new Set();
+  const visible = (el) => { const r = el.getBoundingClientRect(); if (r.width < 1 || r.height < 1 || r.bottom < 0 || r.top > innerHeight) return false; const s = getComputedStyle(el); return s.visibility !== 'hidden' && s.display !== 'none'; };
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    const text = n.nodeValue.trim(); if (!text) continue;
+    const el = n.parentElement; if (!el || el.closest(content) || el.closest('script,style,noscript')) continue;
+    if (seeded.some((s) => text.includes(s))) continue;
+    for (const [re, why] of words) if (re.test(text) && visible(el)) { const key = why + text.slice(0, 80); if (!seen.has(key)) { seen.add(key); out.push({rule: 'words', prio: 'P3', detail: `${why}: “${text.slice(0, 90)}”`}); } }
+  }
+  for (const el of document.querySelectorAll('[aria-label], [placeholder], [title]')) {
+    for (const attr of ['aria-label', 'placeholder', 'title']) {
+      const text = el.getAttribute(attr); if (!text || el.closest(content)) continue;
+      if (seeded.some((s) => text.includes(s))) continue;
+      for (const [re, why] of words) if (re.test(text)) { const key = why + attr + text; if (!seen.has(key)) { seen.add(key); out.push({rule: 'words', prio: 'P3', detail: `${why} in ${attr}: “${text.slice(0, 90)}”`}); } }
+    }
+  }
+  // Editable text under 16 px on a coarse pointer makes iOS Safari zoom in on focus (MOB-2).
+  if (matchMedia('(pointer: coarse)').matches) {
+    for (const el of document.querySelectorAll('input:not([type=hidden]):not([type=checkbox]):not([type=radio]):not([type=range]), textarea, select, [contenteditable="true"]')) {
+      if (!visible(el)) continue;
+      const size = parseFloat(getComputedStyle(el).fontSize);
+      if (size < 15.99) out.push({rule: 'zoom', prio: 'P2', detail: `editable text at ${size}px on touch (iOS zooms in under 16px): ${el.getAttribute('aria-label') || el.getAttribute('placeholder') || el.tagName.toLowerCase()}`});
+    }
+  }
+  return {flags: out, scrollWidth: se.scrollWidth, title: document.title, h1: (document.querySelector('h1')?.innerText || '').slice(0, 80)};
+}
+"""
+
+
+def safe_name(text: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_.-]+", "-", text)[:80]
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Phase: firstrun (empty server)
+# ---------------------------------------------------------------------------------------------------------------
+
+def phase_firstrun(pw) -> None:
+    sink = (OUT / "results-firstrun.jsonl").open("w", encoding="utf-8")
+    for engine in BROWSERS:
+        browser = getattr(pw, engine).launch()
+        for theme in THEMES:
+            for win in WINDOW_NAMES:
+                context = browser.new_context(**context_options(pw, engine, win, theme, who="anon", data={}))
+                for name, path in (("first-run-sign-up", "/sign-up"), ("first-run-sign-in", "/sign-in"), ("first-run-root", "/")):
+                    page = context.new_page()
+                    rec = {"screen": name, "engine": engine, "theme": theme, "vp": win}
+                    try:
+                        page.goto(ORIGIN + path, wait_until="domcontentloaded", timeout=20000)
+                        vca.settle(page)
+                        rec.update(capture_page(page, engine, theme, win, name))
+                    except Exception as error:
+                        rec["failed"] = str(error).splitlines()[0][:300]
+                    sink.write(json.dumps(rec) + "\n")
+                    page.close()
+                context.close()
+        browser.close()
+    sink.close()
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Phase: capture
+# ---------------------------------------------------------------------------------------------------------------
+
+def capture_page(page: Page, engine: str, theme: str, win: str, name: str) -> dict:
+    """Measures and saves one state: screenshot, ARIA snapshot, #763 flags, extra flags."""
+    base = OUT / "shots" / f"{engine}-{theme}-{win}"
+    base.mkdir(parents=True, exist_ok=True)
+    rec: dict = {"shot": str((base / f"{name}.png").relative_to(OUT))}
+    found = page.evaluate(vca.MEASURE_JS, {})
+    extra = page.evaluate(EXTRA_JS, {"words": WORDS, "seeded": SEEDED_WORDS})
+    vca.shot(page, base / f"{name}.png")
+    try:
+        (base / f"{name}.aria.yml").write_text(page.locator("body").aria_snapshot(timeout=8000), encoding="utf-8")
+        rec["aria"] = str((base / f"{name}.aria.yml").relative_to(OUT))
+    except Exception as error:
+        rec["aria_error"] = str(error).splitlines()[0][:160]
+    start = page.evaluate(vca.OCCLUSION_JS, {"phase": "start"})
+    flags = found["flags"] + start["flags"] + extra["flags"]
+    if win in ANNOTATE:
+        boxes = [{**f["rect"], "prio": f["prio"], "tag": f"{f['rule']} {f['prio']}"} for f in flags if f.get("rect") and f["rule"] in "abcefhi"][:60]
+        if boxes:
+            page.evaluate(vca.ANNOTATE_JS, boxes)
+            vca.shot(page, base / f"{name}-annot.png")
+            page.evaluate("() => document.getElementById('vca-layer')?.remove()")
+            rec["annot"] = str((base / f"{name}-annot.png").relative_to(OUT))
+    end = page.evaluate(vca.OCCLUSION_JS, {"phase": "end"})
+    if end["flags"]:
+        page.evaluate(vca.ANNOTATE_JS, [{**f["rect"], "prio": f["prio"], "tag": "f under layer"} for f in end["flags"]][:40])
+        vca.shot(page, base / f"{name}-bottom.png")
+        rec["bottom"] = str((base / f"{name}-bottom.png").relative_to(OUT))
+        for f in end["flags"]:
+            f["shot"] = rec["bottom"]
+    flags += end["flags"]
+    rec.update({k: v for k, v in found.items() if k != "flags"})
+    rec["flags"] = flags
+    rec["h1"], rec["title"], rec["scrollWidth"] = extra["h1"], extra["title"], extra["scrollWidth"]
+    return rec
+
+
+def applies(screen, win: str) -> bool:
+    touch = WINDOWS[win]["kind"] != "computer"
+    return not (screen.only == "phone" and not touch or screen.only == "wide" and touch)
+
+
+def capture_combo(pw, engine: str, theme: str, data: dict) -> None:
+    browser = getattr(pw, engine).launch()
+    apis = {who: browser.new_context(base_url=ORIGIN, storage_state=state, service_workers="block") for who, state in data["states"].items()}
+    ids = {k: v for k, v in data["ids"].items()}
+    with (OUT / f"results-capture-{engine}-{theme}.jsonl").open("w", encoding="utf-8") as sink:
+        for win in WINDOW_NAMES:
+            touch = WINDOWS[win]["kind"] != "computer"
+            contexts: dict[str, BrowserContext] = {}
+
+            def context_for(who: str, init: str = "") -> BrowserContext:
+                if init or who not in contexts:
+                    context = browser.new_context(**context_options(pw, engine, win, theme, who=who, data=data))
+                    if init:
+                        context.add_init_script(init.format(**ids))
+                        return context
+                    contexts[who] = context
+                return contexts[who]
+
+            for screen in SCREENS:
+                if ONLY and screen.name not in ONLY:
+                    continue
+                rec = {"screen": screen.name, "engine": engine, "theme": theme, "vp": win}
+                if not applies(screen, win):
+                    rec["na"] = f"{screen.only} only"
+                    sink.write(json.dumps(rec) + "\n")
+                    continue
+                if any(not ids.get(n) for n in screen.needs):
+                    rec["skipped"] = "missing data: " + ",".join(n for n in screen.needs if not ids.get(n))
+                    sink.write(json.dumps(rec) + "\n")
+                    continue
+                if screen.isolated and screen.who in contexts:
+                    contexts.pop(screen.who).close()
+                own = context_for(screen.who, screen_init(screen))
+                page = own.new_page()
+                errors: list[str] = []
+                page.on("pageerror", lambda error: errors.append(str(error)[:200]))
+                started = time.time()
+                try:
+                    page.goto(ORIGIN + screen.path.format(**ids), wait_until="domcontentloaded", timeout=25000)
+                    vca.settle(page)
+                    for step in screen.steps:
+                        try:
+                            run_step(page, step, touch, data, apis)
+                        except Exception as error:
+                            rec["unreachable"] = f"{step}: {str(error).splitlines()[0][:160]}"
+                            break
+                    vca.settle(page)
+                    rec["url"] = page.url.replace(ORIGIN, "")
+                    rec.update(capture_page(page, engine, theme, win, screen.name))
+                    rec["errors"] = errors
+                except Exception as error:
+                    rec["failed"] = str(error).splitlines()[0][:300]
+                    try:
+                        vca.shot(page, OUT / "shots" / f"{engine}-{theme}-{win}" / f"{screen.name}.png")
+                    except Exception:
+                        pass
+                rec["seconds"] = round(time.time() - started, 1)
+                sink.write(json.dumps(rec) + "\n")
+                sink.flush()
+                page.close()
+                if screen_init(screen):
+                    own.close()
+                elif screen.isolated:
+                    contexts.pop(screen.who).close()
+                n2 = sum(1 for f in rec.get("flags", []) if f["prio"] == "P2")
+                print(f"{engine} {theme} {win} {screen.name}: {len(rec.get('flags', []))} flags ({n2} P2)"
+                      + (f" UNREACHABLE {rec['unreachable']}" if rec.get("unreachable") else "")
+                      + (f" FAILED {rec['failed']}" if rec.get("failed") else ""), flush=True)
+            for c in contexts.values():
+                c.close()
+    browser.close()
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Phase: states (loading, error and Try again)
+# ---------------------------------------------------------------------------------------------------------------
+
+API_GET = re.compile(r"/api/v1/[^?#]*")
+IDLIKE = re.compile(r"/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|/\d+(?=/|$)")
+STATE_SCREENS = ["home", "inbox", "inbox-item", "projects", "conversation", "thread", "tasks-board", "tasks-list", "task-panel", "map",
+                 "wiki-index", "wiki-page", "wiki-history", "my-map", "workspace-tasks", "dm-index", "dm", "dm-thread", "agent-assistant",
+                 "settings", "settings-account", "settings-company", "settings-notifications", "settings-agents", "settings-connect",
+                 "settings-ai-connections", "settings-agent-page", "project-people", "decision-panel", "material", "project-github"]
+ERROR_WORDS = re.compile(r"couldn.t|could not|can.t be|cannot be|not be loaded|went wrong|try again|retry|failed|offline|not available", re.I)
+
+
+def norm(url: str) -> str:
+    m = API_GET.search(url)
+    return IDLIKE.sub("/:id", m.group(0)) if m else ""
+
+
+def phase_states(pw, engine: str, data: dict) -> None:
+    browser = getattr(pw, engine).launch()
+    ids = data["ids"]
+    with (OUT / f"results-states-{engine}.jsonl").open("w", encoding="utf-8") as sink:
+        for theme in THEMES:
+            for win in STATE_WINDOWS:
+                touch = WINDOWS[win]["kind"] != "computer"
+                for screen in SCREENS:
+                    if screen.name not in STATE_SCREENS or (ONLY and screen.name not in ONLY) or not applies(screen, win):
+                        continue
+                    if any(not ids.get(n) for n in screen.needs):
+                        continue
+                    path = screen.path.format(**ids)
+                    context = browser.new_context(**context_options(pw, engine, win, theme, who=screen.who, data=data))
+                    page = context.new_page()
+                    # 1. Which reads are the screen's own (not the shell's): the shell's are those Home makes.
+                    shell: set[str] = set()
+                    own: set[str] = set()
+                    target = shell
+                    page.on("request", lambda r: (r.method == "GET" and "/api/v1/" in r.url and "/stream" not in r.url) and target.add(norm(r.url)))
+                    rec = {"screen": screen.name, "engine": engine, "theme": theme, "vp": win, "kind": "states"}
+                    base = OUT / "states" / f"{engine}-{theme}-{win}"
+                    base.mkdir(parents=True, exist_ok=True)
+                    try:
+                        page.goto(ORIGIN + "/", wait_until="domcontentloaded", timeout=25000)
+                        vca.settle(page)
+                        target = own
+                        page.goto(ORIGIN + path, wait_until="domcontentloaded", timeout=25000)
+                        vca.settle(page)
+                        reads = sorted(own - shell) or sorted(own)
+                        rec["reads"] = reads
+                        page.close()
+                        if not reads:
+                            rec["note"] = "no reads of its own"
+                        else:
+                            wanted = set(reads)
+                            # 2. Loading: the screen's reads wait 5 s; what is on screen after 0.9 s.
+                            page = context.new_page()
+                            page.route(re.compile(r".*/api/v1/.*"), lambda route: (time.sleep(0) or route.continue_()) if norm(route.request.url) not in wanted or route.request.method != "GET" else hold(route))
+                            page.goto(ORIGIN + path, wait_until="commit", timeout=25000)
+                            page.wait_for_timeout(900)
+                            vca.shot(page, base / f"{screen.name}--loading.png")
+                            rec["loading"] = page.evaluate("""() => ({busy: !!document.querySelector('[aria-busy="true"], .ui-spin, [class*="skeleton"], .route-progress.is-active, [role="progressbar"]'),
+                                text: (document.body.innerText || '').trim().slice(0, 160)})""")
+                            page.close()
+                            # 3. Error: the screen's reads answer 503; then Try again with them back.
+                            page = context.new_page()
+                            failing = {"on": True}
+                            page.route(re.compile(r".*/api/v1/.*"), lambda route: route.fulfill(status=503, json={"error": {"code": "UNAVAILABLE", "message": "Service unavailable"}})
+                                       if failing["on"] and route.request.method == "GET" and norm(route.request.url) in wanted else route.continue_())
+                            page.goto(ORIGIN + path, wait_until="domcontentloaded", timeout=25000)
+                            vca.settle(page)
+                            page.wait_for_timeout(1500)
+                            vca.shot(page, base / f"{screen.name}--error.png")
+                            text = page.evaluate("() => document.body.innerText")
+                            said = ERROR_WORDS.search(text or "")
+                            retry = page.get_by_role("button", name=re.compile(r"^(Try again|Retry|Reload)", re.I))
+                            rec["error"] = {"said": said.group(0) if said else None, "retry": retry.count()}
+                            failing["on"] = False
+                            if retry.count():
+                                (retry.first.tap() if touch else retry.first.click())
+                                vca.settle(page)
+                                page.wait_for_timeout(1200)
+                                vca.shot(page, base / f"{screen.name}--retried.png")
+                                after = page.evaluate("() => document.body.innerText") or ""
+                                rec["error"]["recovered"] = not page.get_by_role("button", name=re.compile(r"^(Try again|Retry)", re.I)).count()
+                                rec["error"]["after"] = after.strip()[:120]
+                            page.close()
+                    except Exception as error:
+                        rec["failed"] = str(error).splitlines()[0][:300]
+                    context.close()
+                    sink.write(json.dumps(rec) + "\n")
+                    sink.flush()
+                    print(f"states {engine} {theme} {win} {screen.name}: {json.dumps({k: rec.get(k) for k in ('error', 'failed', 'note')})[:300]}", flush=True)
+    browser.close()
+
+
+def hold(route) -> None:
+    """Holds a read back 5 s, then lets it through (the loading state)."""
+    import threading
+    threading.Timer(5.0, lambda: _continue(route)).start()
+
+
+def _continue(route) -> None:
+    try:
+        route.continue_()
+    except Exception:
+        pass
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Phase: a11y (focus order and visible focus, 200 % text, reduced motion, transitions)
+# ---------------------------------------------------------------------------------------------------------------
+
+FOCUS_JS = r"""
+() => {
+  const el = document.activeElement;
+  if (!el || el === document.body || el === document.documentElement) return {body: true};
+  const r = el.getBoundingClientRect();
+  const s = getComputedStyle(el);
+  const ring = (st) => (st.outlineStyle !== 'none' && parseFloat(st.outlineWidth) > 0) || (st.boxShadow && st.boxShadow !== 'none');
+  let shown = ring(s);
+  // A ring drawn by a wrapper (:focus-within) or a pseudo-element counts.
+  if (!shown) for (const pseudo of ['::before', '::after']) { const p = getComputedStyle(el, pseudo); if (p.content !== 'none' && ring(p)) shown = true; }
+  if (!shown) { let p = el.parentElement; for (let i = 0; p && i < 2; i++, p = p.parentElement) { if (p.matches(':focus-within') && ring(getComputedStyle(p))) { shown = true; break; } } }
+  const label = (el.getAttribute('aria-label') || el.innerText || el.value || el.placeholder || el.title || el.tagName).trim().replace(/\s+/g, ' ').slice(0, 50);
+  const inView = r.bottom > 0 && r.right > 0 && r.top < innerHeight && r.left < innerWidth;
+  return {label, tag: el.tagName.toLowerCase(), role: el.getAttribute('role'), x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height),
+          visible: shown, focusVisible: el.matches(':focus-visible'), inView, hidden: r.width < 1 || r.height < 1};
+}
+"""
+
+MOTION_JS = r"""
+() => {
+  const running = document.getAnimations().filter((a) => a.playState === 'running').map((a) => {
+    const t = a.effect && a.effect.getTiming ? a.effect.getTiming() : {}; const target = a.effect && a.effect.target;
+    return {name: a.animationName || a.transitionProperty || a.constructor.name, duration: t.duration, iterations: t.iterations,
+            target: target ? target.tagName.toLowerCase() + '.' + String(target.className || '').split(' ').slice(0, 2).join('.') : ''};
+  }).filter((a) => (typeof a.duration === 'number' ? a.duration : 0) > 20 || a.iterations === Infinity);
+  return running.slice(0, 10);
+}
+"""
+
+TRANSITIONS_JS = r"""
+() => {
+  const odd = new Map();
+  for (const el of document.querySelectorAll('body *')) {
+    const s = getComputedStyle(el);
+    if (s.transitionDuration && s.transitionDuration.split(',').some((d) => parseFloat(d) > 0)) {
+      const props = s.transitionProperty.split(',').map((p) => p.trim());
+      const bad = props.filter((p) => !['transform', 'opacity', 'none', 'translate', 'scale', 'rotate'].includes(p));
+      if (bad.length) { const key = el.tagName.toLowerCase() + '.' + String(el.className || '').split(' ').slice(0, 2).join('.') + ' [' + bad.join(',') + ']'; odd.set(key, (odd.get(key) || 0) + 1); }
+    }
+  }
+  return [...odd.entries()].slice(0, 25).map(([k, n]) => `${k} ×${n}`);
+}
+"""
+
+A11Y_SCREENS = None  # all screens without steps, plus the overlays
+
+
+def phase_a11y(pw, engine: str, data: dict) -> None:
+    browser = getattr(pw, engine).launch()
+    ids = data["ids"]
+    apis = {who: browser.new_context(base_url=ORIGIN, storage_state=state, service_workers="block") for who, state in data["states"].items()}
+    with (OUT / f"results-a11y-{engine}.jsonl").open("w", encoding="utf-8") as sink:
+        for theme in THEMES:
+            for win in A11Y_WINDOWS:
+                touch = WINDOWS[win]["kind"] != "computer"
+                for screen in SCREENS:
+                    if (ONLY and screen.name not in ONLY) or not applies(screen, win) or any(not ids.get(n) for n in screen.needs) or screen_init(screen):
+                        continue
+                    if screen.name in ("notice", "sign-out"):
+                        continue
+                    rec = {"screen": screen.name, "engine": engine, "theme": theme, "vp": win, "kind": "a11y"}
+                    base = OUT / "a11y" / f"{engine}-{theme}-{win}"
+                    base.mkdir(parents=True, exist_ok=True)
+                    context = browser.new_context(**context_options(pw, engine, win, theme, who=screen.who, data=data, reduced="reduce"))
+                    page = context.new_page()
+                    try:
+                        page.goto(ORIGIN + screen.path.format(**ids), wait_until="domcontentloaded", timeout=25000)
+                        vca.settle(page)
+                        for step in screen.steps:
+                            run_step(page, step, touch, data, apis)
+                        vca.settle(page)
+                        # Reduced motion: nothing keeps moving (spinners excepted are reported too, for a person to judge).
+                        rec["motion_reduce"] = page.evaluate(MOTION_JS)
+                        if theme == THEMES[0] and win == A11Y_WINDOWS[0]:
+                            rec["transitions"] = page.evaluate(TRANSITIONS_JS)
+                        # Focus: Tab through up to 30 stops (keyboard-only on a computer; on a tablet with a keyboard too).
+                        if not screen.steps or screen.name in ("create", "search", "new-project", "project-more", "message-actions"):
+                            stops = []
+                            for _ in range(30):
+                                page.keyboard.press("Tab")
+                                page.wait_for_timeout(60)
+                                stops.append(page.evaluate(FOCUS_JS))
+                            rec["focus"] = stops
+                            unseen = [s for s in stops if not s.get("body") and not s.get("visible") and not s.get("hidden")]
+                            rec["focus_unseen"] = sorted({s["label"] for s in unseen})[:12]
+                            rec["focus_offscreen"] = sorted({s["label"] for s in stops if not s.get("body") and not s.get("inView")})[:12]
+                            rec["focus_hidden"] = sorted({s["label"] for s in stops if s.get("hidden")})[:12]
+                            if unseen:
+                                # The first stop without a visible ring, on screen, for a person to judge.
+                                page.keyboard.press("Escape")
+                        # 200 % text: the root font size doubles (Android font scale / large text; the tokens are rem).
+                        if not screen.steps:
+                            page.evaluate("() => { document.documentElement.style.fontSize = '200%'; }")
+                            page.wait_for_timeout(400)
+                            big = page.evaluate(EXTRA_JS, {"words": [], "seeded": []})
+                            clipped = page.evaluate(vca.MEASURE_JS, {})
+                            rec["text200"] = {"hscroll": [f["detail"] for f in big["flags"] if f["rule"] == "hscroll"],
+                                              "clipped": [f["detail"] + " " + f.get("label", "") for f in clipped["flags"] if f["rule"] == "f"][:8]}
+                            vca.shot(page, base / f"{screen.name}--text200.png")
+                    except Exception as error:
+                        rec["failed"] = str(error).splitlines()[0][:300]
+                    context.close()
+                    sink.write(json.dumps(rec) + "\n")
+                    sink.flush()
+                    print(f"a11y {engine} {theme} {win} {screen.name}: unseen={rec.get('focus_unseen')} motion={len(rec.get('motion_reduce') or [])} "
+                          f"text200={rec.get('text200', {}).get('hscroll')} {rec.get('failed', '')}", flush=True)
+    browser.close()
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Phase: keys (shortcuts that change no data) and journeys (interactions, persisted after a reload)
+# ---------------------------------------------------------------------------------------------------------------
+
+class Check:
+    def __init__(self, sink, kind: str, engine: str, win: str, theme: str = "light"):
+        self.sink, self.kind, self.engine, self.win, self.theme = sink, kind, engine, win, theme
+
+    def run(self, name: str, page_factory, fn) -> None:
+        rec = {"kind": self.kind, "name": name, "engine": self.engine, "vp": self.win, "theme": self.theme}
+        page = None
+        started = time.time()
+        try:
+            page = page_factory()
+            detail = fn(page)
+            rec["result"] = "pass"
+            if detail:
+                rec["detail"] = detail
+        except AssertionError as error:
+            rec["result"] = "fail"
+            rec["detail"] = str(error)[:400]
+        except Exception as error:
+            rec["result"] = "unreachable"
+            rec["detail"] = (str(error).splitlines() or [""])[0][:300]
+        if page is not None:
+            try:
+                path = OUT / self.kind / f"{self.engine}-{self.win}" / f"{safe_name(name)}.png"
+                path.parent.mkdir(parents=True, exist_ok=True)
+                page.screenshot(path=str(path))
+                rec["shot"] = str(path.relative_to(OUT))
+            except Exception:
+                pass
+            try:
+                page.context.close()
+            except Exception:
+                pass
+        rec["seconds"] = round(time.time() - started, 1)
+        self.sink.write(json.dumps(rec) + "\n")
+        self.sink.flush()
+        print(f"{self.kind} {self.engine} {self.win} {name}: {rec['result']} {rec.get('detail', '')}"[:400], flush=True)
+
+
+def opener(pw, browser, engine, win, data, who="ada", path="/", workers="block", theme="light", init: str = ""):
+    def make():
+        context = browser.new_context(**context_options(pw, engine, win, theme, who=who, data=data, workers=workers))
+        if init:
+            context.add_init_script(init)
+        page = context.new_page()
+        if path is not None:
+            page.goto(ORIGIN + path.format(**data["ids"]), wait_until="domcontentloaded", timeout=25000)
+            vca.settle(page)
+        return page
+    return make
+
+
+def press_seq(page: Page, *keys: str) -> None:
+    for key in keys:
+        page.keyboard.press(key)
+        page.wait_for_timeout(120)
+
+
+def visible_dialog(page: Page) -> bool:
+    return page.locator("[role='dialog']:visible, [aria-modal='true']:visible").count() > 0
+
+
+def phase_keys(pw, engine: str, data: dict) -> None:
+    browser = getattr(pw, engine).launch()
+    with (OUT / f"results-keys-{engine}.jsonl").open("w", encoding="utf-8") as sink:
+        win = "1440"
+        check = Check(sink, "keys", engine, win)
+        open_at = lambda path="/": opener(pw, browser, engine, win, data, path=path)  # noqa: E731
+
+        def c_opens_create(page):
+            page.keyboard.press("c")
+            page.wait_for_timeout(500)
+            assert visible_dialog(page), "C opened no window"
+            text = page.locator("[role='dialog']").first.inner_text()
+            page.keyboard.press("Escape")
+            page.wait_for_timeout(400)
+            assert not visible_dialog(page), "Esc did not close the Create window"
+            return text[:80]
+        check.run("C opens Create, Esc closes it", open_at(), c_opens_create)
+
+        def search(mod):
+            def fn(page):
+                page.keyboard.press(f"{mod}+k")
+                page.wait_for_timeout(500)
+                assert page.locator("[role='dialog'] input").count(), f"{mod}+K opened no search"
+                page.keyboard.type("sensor", delay=40)
+                page.wait_for_timeout(1200)
+                n = page.locator("[role='option']").count()
+                assert n > 0, "no results for 'sensor'"
+                page.keyboard.press("ArrowDown")
+                page.keyboard.press("Enter")
+                page.wait_for_timeout(1200)
+                return f"{n} results; Enter went to {page.url.replace(ORIGIN, '')}"
+            return fn
+        check.run("Ctrl+K searches and Enter opens a result", open_at(), search("Control"))
+        check.run("Meta+K searches (⌘K)", open_at(), search("Meta"))
+
+        def g_i(page):
+            press_seq(page, "g", "i")
+            page.wait_for_timeout(800)
+            assert page.url.rstrip("/").endswith("/inbox"), f"G I went to {page.url}"
+        check.run("G I goes to Inbox", open_at(), g_i)
+
+        def j_k(page):
+            before = page.evaluate("() => document.activeElement && (document.activeElement.innerText || '').slice(0, 60)")
+            press_seq(page, "j")
+            one = page.evaluate("() => document.activeElement && (document.activeElement.innerText || '').slice(0, 60)")
+            press_seq(page, "j")
+            two = page.evaluate("() => document.activeElement && (document.activeElement.innerText || '').slice(0, 60)")
+            press_seq(page, "k")
+            back = page.evaluate("() => document.activeElement && (document.activeElement.innerText || '').slice(0, 60)")
+            sel = page.evaluate("() => [...document.querySelectorAll('[aria-selected=\"true\"], [aria-current=\"true\"], .is-selected')].map(e => (e.innerText||'').slice(0,40))")
+            assert one != two and back == one, f"J/K did not move: {before!r} → {one!r} → {two!r} → {back!r}; selected {sel}"
+            return f"{one!r} → {two!r} → {back!r}"
+        check.run("J/K move in the Inbox list", open_at("/inbox"), j_k)
+
+        def r_reply(page):
+            message = page.locator(".project-convo__message").nth(-2)
+            message.hover()
+            message.click(position={"x": 5, "y": 5})
+            page.keyboard.press("r")
+            page.wait_for_timeout(900)
+            assert "conversations/" in page.url or page.locator("[aria-label*='hread' i]").count(), f"R opened no thread ({page.url})"
+            return page.url.replace(ORIGIN, "")
+        check.run("R replies in thread to the selected message", open_at("/projects/{p}"), r_reply)
+
+        def t_task(page):
+            message = page.locator(".project-convo__message").nth(-2)
+            message.hover()
+            message.click(position={"x": 5, "y": 5})
+            page.keyboard.press("t")
+            page.wait_for_timeout(900)
+            assert visible_dialog(page), "T opened no window"
+            text = page.locator("[role='dialog']").first.inner_text()[:100]
+            page.keyboard.press("Escape")
+            return text
+        check.run("T makes a task from the selected message", open_at("/projects/{p}"), t_task)
+
+        def bracket(page):
+            width = page.evaluate("() => (document.querySelector('nav, aside') || document.body).getBoundingClientRect().width")
+            page.keyboard.press("[")
+            page.wait_for_timeout(700)
+            after = page.evaluate("() => (document.querySelector('nav, aside') || document.body).getBoundingClientRect().width")
+            page.keyboard.press("[")
+            page.wait_for_timeout(500)
+            assert after != width, f"[ did not change the sidebar ({width} → {after})"
+            return f"{width} → {after}"
+        check.run("[ collapses the sidebar and back", open_at(), bracket)
+
+        def esc_panel(page):
+            assert page.locator("[role='dialog'], aside[aria-label], .side-panel, [data-panel]").count(), "no panel open"
+            page.keyboard.press("Escape")
+            page.wait_for_timeout(700)
+            assert "open=" not in page.url, f"Esc left the panel open ({page.url})"
+        check.run("Esc closes the task panel", open_at("/projects/{p}/tasks?view=board&open=work:{task}"), esc_panel)
+
+        def shortcuts_page(page):
+            text = page.inner_text("main") if page.locator("main").count() else page.inner_text("body")
+            missing = [action for action in ("New (task by default)", "Search or run", "Go to Inbox", "Collapse the sidebar") if action not in text]
+            assert not missing, f"missing {missing}"
+        check.run("Settings › Keyboard shortcuts lists the keys", open_at("/settings/shortcuts"), shortcuts_page)
+    browser.close()
+
+
+def phase_journeys(pw, engine: str, data: dict) -> None:
+    browser = getattr(pw, engine).launch()
+    ids = data["ids"]
+    with (OUT / f"results-journeys-{engine}.jsonl").open("w", encoding="utf-8") as sink:
+        for win in ("1440", "390"):
+            touch = WINDOWS[win]["kind"] != "computer"
+            check = Check(sink, "journeys", engine, win)
+            open_at = lambda path="/", who="ada": opener(pw, browser, engine, win, data, who=who, path=path)  # noqa: E731
+            tag = f"{engine}-{win}-{uuid.uuid4().hex[:4]}"
+            press = (lambda loc: loc.tap()) if touch else (lambda loc: loc.click())
+
+            def composer(page):
+                box = page.locator("textarea:visible, [contenteditable='true']:visible").last
+                box.wait_for(state="visible", timeout=8000)
+                return box
+
+            def send_in_space(page):
+                text = f"Audit message {tag}: the seals arrived."
+                box = composer(page)
+                press(box)
+                page.keyboard.type(text, delay=5)
+                page.keyboard.press("Enter")
+                page.get_by_text(text).first.wait_for(timeout=8000)
+                page.reload()
+                vca.settle(page)
+                n = page.get_by_text(text).count()
+                assert n == 1, f"after a reload the message shows {n} times"
+            check.run("send a message in a space, reload", open_at("/projects/{pe}"), send_in_space)
+
+            def send_dm(page):
+                text = f"Audit DM {tag}: ladder is in the shed."
+                box = composer(page)
+                press(box)
+                page.keyboard.type(text, delay=5)
+                page.keyboard.press("Enter")
+                page.get_by_text(text).first.wait_for(timeout=8000)
+                page.reload()
+                vca.settle(page)
+                assert page.get_by_text(text).count() == 1, "the DM is not there exactly once after a reload"
+            check.run("send a direct message, reload", open_at("/dm/{dm}"), send_dm)
+
+            def thread_reply(page):
+                text = f"Audit reply {tag}: same on bed 4."
+                box = composer(page)
+                press(box)
+                page.keyboard.type(text, delay=5)
+                page.keyboard.press("Enter")
+                page.get_by_text(text).first.wait_for(timeout=8000)
+                page.reload()
+                vca.settle(page)
+                assert page.get_by_text(text).count() >= 1, "the reply is gone after a reload"
+            check.run("reply in a thread, reload", open_at("/projects/{p}/conversations/{conv}"), thread_reply)
+
+            def create_task(page):
+                title = f"Audit task {tag} check the gate latch"
+                if touch:
+                    page.locator(".phone-fab").first.tap()
+                else:
+                    page.keyboard.press("c")
+                page.locator("[role='dialog']").first.wait_for(timeout=6000)
+                field = page.locator("[role='dialog'] textarea:visible, [role='dialog'] input[type='text']:visible, [role='dialog'] [contenteditable='true']:visible").first
+                field.click()
+                page.keyboard.type(title, delay=5)
+                page.keyboard.press("Enter" if not touch else "Enter")
+                page.wait_for_timeout(1500)
+                if visible_dialog(page):
+                    button = page.locator("[role='dialog']").get_by_role("button", name=re.compile(r"^(Create|Add|Create task|Save)", re.I)).first
+                    if button.count():
+                        press(button)
+                        page.wait_for_timeout(1500)
+                page.goto(ORIGIN + "/tasks")
+                vca.settle(page)
+                if not page.get_by_text(title).count():
+                    page.goto(ORIGIN + f"/projects/{ids['pe']}/tasks?view=list")
+                    vca.settle(page)
+                assert page.get_by_text(title).count() >= 1, "the new task is not listed after a reload"
+                return page.url.replace(ORIGIN, "")
+            check.run("create a task from Create, find it after a reload", open_at("/projects/{pe}"), create_task)
+
+            def task_state(page):
+                if touch:
+                    raise RuntimeError("the 1–5 keys are computer only")
+                panel_title = page.locator("[role='dialog'], aside").first
+                panel_title.wait_for(timeout=6000)
+                page.locator("body").click(position={"x": 2, "y": 300})
+                page.goto(ORIGIN + f"/projects/{ids['p2']}/tasks?view=list")
+                vca.settle(page)
+                row = page.get_by_text("Label every drawer in the tool wall").first
+                press(row)
+                page.wait_for_timeout(900)
+                page.keyboard.press("2")
+                page.wait_for_timeout(1200)
+                state = call(api_for(browser, data, "ada"), "GET", f"/api/v1/projects/{ids['p2']}/work?limit=100")
+                status = next((t.get("status") for t in vca.items(state) if t["title"] == "Label every drawer in the tool wall"), None)
+                page.reload()
+                vca.settle(page)
+                assert status not in (None, "open"), f"key 2 left the task {status}"
+                return f"status {status} after key 2, kept after reload"
+            check.run("1–5 set a task's state, reload", open_at("/projects/{p2}/tasks?view=board&open=work:{task}"), task_state)
+
+            def inbox_done_undo(page):
+                rows = page.locator("[role='listitem'], [role='option'], .inbox-row, li").filter(has=page.locator("button, a"))
+                first = page.locator("main").inner_text()[:200]
+                if touch:
+                    raise RuntimeError("E/Z keys are computer only")
+                page.keyboard.press("j")
+                page.keyboard.press("e")
+                page.wait_for_timeout(900)
+                toast = page.get_by_role("button", name=re.compile("^Undo", re.I))
+                saw_toast = toast.count() > 0
+                page.keyboard.press("z")
+                page.wait_for_timeout(1200)
+                page.reload()
+                vca.settle(page)
+                again = page.locator("main").inner_text()[:200]
+                assert again == first, f"Done + Undo did not bring the item back after a reload: {first[:80]!r} vs {again[:80]!r}"
+                return f"undo toast shown: {saw_toast}; rows {rows.count()}"
+            check.run("Inbox E (Done) then Z (Undo), reload", open_at("/inbox"), inbox_done_undo)
+
+            def theme_choice(page):
+                dark = page.get_by_role("radio", name=re.compile("^Dark")).first
+                if not dark.count():
+                    dark = page.get_by_role("button", name=re.compile("^Dark")).first
+                press(dark)
+                page.wait_for_timeout(600)
+                page.reload()
+                vca.settle(page)
+                theme = page.evaluate("() => document.documentElement.dataset.theme || getComputedStyle(document.body).backgroundColor")
+                system = page.get_by_role("radio", name=re.compile("^(System|Automatic|Match)")).first
+                if system.count():
+                    press(system)
+                    page.wait_for_timeout(400)
+                assert theme in ("dark",) or theme.startswith("rgb(1") or theme.startswith("rgb(2") is False, f"theme after reload: {theme}"
+                return f"after reload: {theme}"
+            check.run("Settings › Appearance › Dark, reload", open_at("/settings/appearance", who="piotr"), theme_choice)
+
+            def wiki_edit(page):
+                text = f"Audit line {tag}."
+                editor = page.locator(".ProseMirror, [contenteditable='true']").first
+                editor.wait_for(timeout=8000)
+                press(editor)
+                page.keyboard.press("Control+End")
+                page.keyboard.press("Enter")
+                page.keyboard.type(text, delay=5)
+                page.wait_for_timeout(2500)
+                done = page.get_by_role("button", name=re.compile(r"^(Done|Save)$")).first
+                if done.count():
+                    press(done)
+                    page.wait_for_timeout(1500)
+                page.reload()
+                vca.settle(page)
+                assert page.get_by_text(text).count() >= 1, "the Wiki line is gone after a reload"
+            check.run("edit a Wiki page, reload", open_at("/projects/{pl}/docs"), wiki_edit)
+
+            def agent_message(page):
+                text = f"Audit question {tag}: what is left this week?"
+                box = composer(page)
+                press(box)
+                page.keyboard.type(text, delay=5)
+                page.keyboard.press("Enter")
+                page.get_by_text(text).first.wait_for(timeout=8000)
+                page.wait_for_timeout(3000)
+                page.reload()
+                vca.settle(page)
+                assert page.get_by_text(text).count() == 1, "the message to the Assistant is not there exactly once after a reload"
+            check.run("ask the Assistant, reload", open_at("/agents/{assistant}"), agent_message)
+
+            def sidebar_kept(page):
+                if touch:
+                    raise RuntimeError("the sidebar is computer only")
+                page.keyboard.press("[")
+                page.wait_for_timeout(600)
+                collapsed = page.evaluate("() => (document.querySelector('nav, aside') || document.body).getBoundingClientRect().width")
+                page.reload()
+                vca.settle(page)
+                after = page.evaluate("() => (document.querySelector('nav, aside') || document.body).getBoundingClientRect().width")
+                page.keyboard.press("[")
+                assert abs(after - collapsed) < 2, f"collapsed sidebar {collapsed}px came back at {after}px after a reload"
+            check.run("[ collapses the sidebar, kept after a reload", open_at("/", who="piotr"), sidebar_kept)
+
+            def map_thought(page):
+                text = f"Audit thought {tag}"
+                canvas = page.locator("[data-sketch-canvas], .sketch, .map-canvas, main").first
+                box = canvas.bounding_box()
+                page.mouse.dblclick(box["x"] + box["width"] * 0.7, box["y"] + box["height"] * 0.7) if not touch else page.touchscreen.tap(box["x"] + box["width"] * 0.7, box["y"] + box["height"] * 0.7)
+                page.wait_for_timeout(600)
+                page.keyboard.type(text, delay=5)
+                page.keyboard.press("Enter")
+                page.wait_for_timeout(1500)
+                page.reload()
+                vca.settle(page)
+                assert page.get_by_text(text).count() >= 1, "the new thought is gone after a reload"
+            check.run("add a thought on My map, reload", open_at("/map"), map_thought)
+    browser.close()
+
+
+_apis: dict = {}
+
+
+def api_for(browser, data, who):
+    if who not in _apis:
+        _apis[who] = browser.new_context(base_url=ORIGIN, storage_state=data["states"][who], service_workers="block")
+    return _apis[who]
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Phase: mob (MOB-1 … MOB-7 in emulation)
+# ---------------------------------------------------------------------------------------------------------------
+
+STANDALONE = r"""
+Object.defineProperty(navigator, 'standalone', {get: () => true});
+const realMatch = window.matchMedia.bind(window);
+window.matchMedia = (q) => /display-mode:\s*standalone/.test(q) ? Object.assign(realMatch('(min-width: 0px)'), {media: q, matches: true}) : realMatch(q);
+"""
+
+
+def phase_mob(pw, engine: str, data: dict) -> None:
+    browser = getattr(pw, engine).launch()
+    ids = data["ids"]
+    with (OUT / f"results-mob-{engine}.jsonl").open("w", encoding="utf-8") as sink:
+        for win in ("390", "820p"):
+            touch = True
+            check = Check(sink, "mob", engine, win)
+            open_at = lambda path="/", who="ada", workers="allow", init="": opener(pw, browser, engine, win, data, who=who, path=path, workers=workers, init=init)  # noqa: E731
+            tag = f"{engine}-{win}-{uuid.uuid4().hex[:4]}"
+
+            def manifest(page):
+                href = page.evaluate("() => document.querySelector('link[rel=manifest]')?.href")
+                assert href, "no manifest link"
+                body = page.request.get(href).json()
+                problems = []
+                for key in ("name", "short_name", "start_url", "display", "icons", "id", "scope", "theme_color", "background_color"):
+                    if not body.get(key):
+                        problems.append(f"no {key}")
+                if body.get("display") not in ("standalone", "fullscreen", "minimal-ui"):
+                    problems.append(f"display {body.get('display')}")
+                sizes = {s for icon in body.get("icons", []) for s in icon.get("sizes", "").split()}
+                for need in ("192x192", "512x512"):
+                    if need not in sizes:
+                        problems.append(f"no {need} icon")
+                if not any("maskable" in icon.get("purpose", "") for icon in body.get("icons", [])):
+                    problems.append("no maskable icon")
+                for icon in body.get("icons", []):
+                    status = page.request.get(urllib.parse.urljoin(href, icon["src"])).status
+                    if status != 200:
+                        problems.append(f"icon {icon['src']} {status}")
+                apple = page.evaluate("() => [...document.querySelectorAll('link[rel=apple-touch-icon]')].map(l => l.href)")
+                if not apple:
+                    problems.append("no apple-touch-icon")
+                meta = page.evaluate("() => ({capable: document.querySelector('meta[name=apple-mobile-web-app-capable], meta[name=mobile-web-app-capable]')?.content, viewport: document.querySelector('meta[name=viewport]')?.content})")
+                assert not problems, "; ".join(problems)
+                return f"{body.get('name')} / {body.get('short_name')}, display {body.get('display')}, icons {sorted(sizes)}, apple {len(apple)}, meta {meta}"
+            check.run("MOB-1 manifest, icons, Apple meta", open_at("/sign-in", who="anon"), manifest)
+
+            def worker(page):
+                ok = page.evaluate("() => navigator.serviceWorker ? navigator.serviceWorker.ready.then(r => !!r.active) : false")
+                assert ok, "no active service worker"
+                return page.evaluate("() => navigator.serviceWorker.controller ? 'controls the page' : 'active, not yet controlling'")
+            check.run("MOB-1 service worker registers", open_at(), worker)
+
+            def offline_navigation(page):
+                page.evaluate("() => navigator.serviceWorker.ready")
+                page.reload()
+                vca.settle(page)
+                page.evaluate("() => navigator.serviceWorker.ready")
+                page.context.set_offline(True)
+                try:
+                    page.goto(ORIGIN + f"/projects/{ids['p']}/tasks", wait_until="domcontentloaded", timeout=15000)
+                except Exception as error:
+                    page.context.set_offline(False)
+                    raise RuntimeError(f"the engine did not hand the offline navigation to the service worker: {str(error).splitlines()[0][:160]}")
+                page.wait_for_timeout(1200)
+                text = page.inner_text("body")
+                page.context.set_offline(False)
+                assert re.search(r"offline|no connection|not connected|internet", text, re.I), f"offline navigation showed: {text[:160]!r}"
+                return text.strip()[:120]
+            check.run("MOB-5 offline navigation shows the offline page", open_at(), offline_navigation)
+
+            def offline_inapp(page):
+                page.context.set_offline(True)
+                link = page.get_by_role("link", name=re.compile("^Inbox")).first
+                link.tap() if link.count() else page.goto(ORIGIN + "/inbox")
+                page.wait_for_timeout(2500)
+                text = page.inner_text("body")
+                said = ERROR_WORDS.search(text)
+                retry = page.get_by_role("button", name=re.compile(r"^(Try again|Retry)", re.I))
+                path = OUT / "mob" / f"{engine}-{win}" / "offline-inapp-offline.png"
+                path.parent.mkdir(parents=True, exist_ok=True)
+                page.screenshot(path=str(path))
+                page.context.set_offline(False)
+                if retry.count():
+                    retry.first.tap()
+                    page.wait_for_timeout(1500)
+                assert said or retry.count(), "nothing said the page could not be loaded while offline"
+                return f"said {said.group(0) if said else None!r}, retry buttons {retry.count()}"
+            check.run("MOB-5 in-app read offline says so, Retry recovers", open_at("/projects/{p}"), offline_inapp)
+
+            def offline_send(page):
+                text = f"Offline audit {tag}: sent from the field."
+                box = page.locator("textarea:visible, [contenteditable='true']:visible").last
+                box.wait_for(timeout=8000)
+                box.tap()
+                page.context.set_offline(True)
+                page.keyboard.type(text, delay=5)
+                page.keyboard.press("Enter")
+                page.wait_for_timeout(2500)
+                pending = page.locator("body").inner_text()
+                path = OUT / "mob" / f"{engine}-{win}" / "offline-send-pending.png"
+                path.parent.mkdir(parents=True, exist_ok=True)
+                page.screenshot(path=str(path))
+                page.context.set_offline(False)
+                page.evaluate("() => window.dispatchEvent(new Event('online'))")
+                page.wait_for_timeout(6000)
+                page.reload()
+                vca.settle(page)
+                n = page.get_by_text(text).count()
+                assert n == 1, f"after reconnecting and a reload the message shows {n} times"
+                return "pending line: " + ("yes" if re.search(r"not sent|waiting|sending|retry|offline", pending, re.I) else "no")
+            check.run("MOB-5 a message sent offline goes out once", open_at("/projects/{pe}"), offline_send)
+
+            def standalone(page):
+                page.wait_for_timeout(500)
+                text = page.inner_text("body")
+                assert "Sign in" not in text[:200], "the standalone launch asked to sign in"
+                flags = page.evaluate("() => ({standalone: navigator.standalone, media: matchMedia('(display-mode: standalone)').matches})")
+                page.goto(ORIGIN + "/settings/appearance")
+                vca.settle(page)
+                install = page.get_by_text(re.compile("Install Flux|Add to Home Screen")).count()
+                assert install == 0, "an installed app still offers to install"
+                return f"{flags}, url {page.url.replace(ORIGIN, '')}"
+            check.run("MOB-1 standalone launch keeps the session, no install row", open_at("/", init=STANDALONE), standalone)
+
+            def deep_link(page):
+                target = f"/projects/{ids['p']}/tasks"
+                page.goto(ORIGIN + target)
+                vca.settle(page)
+                assert "sign-in" in page.url, f"signed out, the link opened {page.url}"
+                page.get_by_label(re.compile("^Email", re.I)).first.fill("ada@demo.flux.test")
+                page.get_by_label(re.compile("^Password", re.I)).first.fill(vca.DEMO["ada"][2])
+                page.get_by_role("button", name=re.compile("^(Sign in|Continue)$")).first.tap()
+                page.wait_for_url(re.compile(r".*/projects/.*/tasks.*"), timeout=15000)
+                return page.url.replace(ORIGIN, "")
+            check.run("MOB-1 deep link through sign-in opens the right place", open_at(None, who="anon"), deep_link)
+
+            def rotate(page):
+                text = f"Draft across rotation {tag}"
+                box = page.locator("textarea:visible, [contenteditable='true']:visible").last
+                box.wait_for(timeout=8000)
+                box.tap()
+                page.keyboard.type(text, delay=5)
+                size = page.viewport_size
+                # The on-screen keyboard: the window loses about 45 % of its height while the field has focus.
+                page.set_viewport_size({"width": size["width"], "height": int(size["height"] * 0.55)})
+                page.wait_for_timeout(500)
+                send = page.get_by_role("button", name=re.compile("^Send")).first
+                send_ok = send.count() and send.is_visible() and (send.bounding_box() or {}).get("y", 9999) + 10 < int(size["height"] * 0.55)
+                page.set_viewport_size({"width": size["height"], "height": size["width"]})
+                page.wait_for_timeout(600)
+                page.set_viewport_size(size)
+                page.wait_for_timeout(600)
+                kept = page.locator("textarea:visible, [contenteditable='true']:visible").last
+                value = kept.input_value() if kept.evaluate("e => 'value' in e") else kept.inner_text()
+                assert text in value, f"the draft was lost: {value[:80]!r}"
+                assert send_ok, "Send was not visible above the simulated on-screen keyboard"
+            check.run("MOB-2 draft and Send survive the keyboard and rotation", open_at("/projects/{pe}"), rotate)
+
+            def reconnect(page):
+                texts = [f"While away {tag} #{i}" for i in (1, 2)]
+                page.context.set_offline(True)
+                page.evaluate("() => { Object.defineProperty(document, 'visibilityState', {configurable: true, get: () => 'hidden'}); document.dispatchEvent(new Event('visibilitychange')); }")
+                for text in texts:
+                    call(api_for(browser, data, "jonas"), "POST", f"/api/v1/dms/{ids['dm']}/messages", {"body": text, "clientMessageId": str(uuid.uuid4())})
+                page.wait_for_timeout(8000)
+                page.context.set_offline(False)
+                page.evaluate("() => { Object.defineProperty(document, 'visibilityState', {configurable: true, get: () => 'visible'}); document.dispatchEvent(new Event('visibilitychange')); window.dispatchEvent(new Event('online')); window.dispatchEvent(new Event('focus')); }")
+                deadline = time.time() + 20
+                while time.time() < deadline and not all(page.get_by_text(t).count() for t in texts):
+                    page.wait_for_timeout(500)
+                counts = [page.get_by_text(t).count() for t in texts]
+                assert counts == [1, 1], f"after coming back the messages show {counts} times (no reload)"
+                return "both messages once, without a reload"
+            check.run("MOB-5 back after the connection dropped: caught up, no duplicates", open_at("/dm/{dm}"), reconnect)
+
+            offer = f"localStorage.setItem('flux:push-offer:{ids.get('me_ada', '')}', JSON.stringify({{ready: true}}))"
+
+            def push_offer(page):
+                text = page.inner_text("body")
+                found = re.search(r"Turn on|notifications|Add to Home Screen", text)
+                assert found, "no push offer"
+                card = page.locator("[data-push-offer], [aria-label*='otification' i]").first
+                return f"offer says {found.group(0)!r}; card {card.count()}"
+            check.run("MOB-4 push offer appears (server can push)", open_at("/inbox", init=offer), push_offer)
+
+            def push_blocked(page):
+                text = page.inner_text("body")
+                assert re.search(r"blocked|Block|turn them back on|allow", text, re.I), "no way back after a denial"
+                return "says how to allow again"
+            check.run("MOB-4 after a denial the way back is shown", open_at("/inbox", init=offer + ";Object.defineProperty(Notification, 'permission', {get: () => 'denied'})"), push_blocked)
+
+            def settings_notifications(page):
+                text = page.inner_text("main") if page.locator("main").count() else page.inner_text("body")
+                return text.strip().replace("\n", " · ")[:200]
+            check.run("MOB-4 Settings › Notifications on this device", open_at("/settings/notifications"), settings_notifications)
+    browser.close()
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Report
+# ---------------------------------------------------------------------------------------------------------------
+
+def load(pattern: str) -> list:
+    out = []
+    for path in sorted(OUT.glob(pattern)):
+        for line in path.read_text(encoding="utf-8").splitlines():
+            try:
+                out.append(json.loads(line))
+            except ValueError:
+                pass
+    return out
+
+
+def report(pw) -> None:
+    capture = load("results-capture-*.jsonl") + load("results-firstrun.jsonl")
+    states = load("results-states-*.jsonl")
+    a11y = load("results-a11y-*.jsonl")
+    checks = load("results-keys-*.jsonl") + load("results-journeys-*.jsonl") + load("results-mob-*.jsonl")
+    sha = os.environ.get("FLUX_UIAUDIT_SHA", "")
+    # Matrix: one row per screen, one column per window; a cell is "engines×themes passed / flagged / not reached".
+    screens = list(dict.fromkeys(r["screen"] for r in capture))
+    wins = [w for w in WINDOWS if any(r["vp"] == w for r in capture)]
+    cells: dict = {}
+    for r in capture:
+        cells.setdefault((r["screen"], r["vp"]), []).append(r)
+
+    def cell(rs: list) -> str:
+        if not rs:
+            return "·"
+        if all(r.get("na") for r in rs):
+            return "N/A"
+        if any(r.get("failed") for r in rs):
+            return "FAIL"
+        if all(r.get("skipped") for r in rs):
+            return "no data"
+        n2 = sum(1 for r in rs for f in r.get("flags", []) if f["prio"] == "P2")
+        un = sum(1 for r in rs if r.get("unreachable"))
+        done = sum(1 for r in rs if r.get("shot") and not r.get("na"))
+        mark = f"{done}" + (f" ⚠{n2}" if n2 else "") + (f" ✗{un}" if un else "")
+        return mark
+    lines = [f"# UI audit matrix ({sha})", "", "Cell: captures done (engines × themes), ⚠ P2 flags, ✗ state not reached; N/A: the screen does not exist at that window.", "",
+             "| Screen | " + " | ".join(wins) + " |", "| --- | " + " | ".join("---" for _ in wins) + " |"]
+    for s in screens:
+        lines.append(f"| {s} | " + " | ".join(cell(cells.get((s, w), [])) for w in wins) + " |")
+    (OUT / "matrix.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    # Findings, deduplicated across windows, themes and engines.
+    groups: dict = {}
+    for r in capture:
+        for f in r.get("flags", []):
+            key = (f["rule"], r["screen"], f.get("sig", ""), vca.normalise(f["detail"]))
+            g = groups.setdefault(key, {"rule": f["rule"], "prio": f["prio"], "screen": r["screen"], "sig": f.get("sig", ""), "label": f.get("label", ""),
+                                        "detail": f["detail"], "where": [], "shot": f.get("shot") or r.get("annot") or r.get("shot")})
+            if f["prio"] == "P2" and g["prio"] != "P2":
+                g.update(prio="P2", detail=f["detail"], shot=f.get("shot") or r.get("annot") or r.get("shot"))
+            g["where"].append(f"{r['engine']}/{r['theme']}/{r['vp']}")
+    findings = sorted(groups.values(), key=lambda g: (g["prio"], g["rule"], g["screen"], g["sig"]))
+    (OUT / "findings.json").write_text(json.dumps(findings, indent=1, ensure_ascii=False), encoding="utf-8")
+    out = [f"# UI audit findings ({sha})", ""]
+    visits = [r for r in capture if r.get("shot")]
+    out.append(f"{len(visits)} captures of {len(screens)} screens; {len(findings)} distinct measured findings "
+               f"({sum(1 for f in findings if f['prio'] == 'P2')} P2, {sum(1 for f in findings if f['prio'] == 'P3')} P3).")
+    out += ["", "## Not captured or state not reached", ""]
+    for r in capture:
+        if r.get("failed") or r.get("unreachable") or r.get("skipped"):
+            out.append(f"- {r['screen']} {r['engine']}/{r['theme']}/{r['vp']}: {r.get('failed') or r.get('unreachable') or r.get('skipped')}")
+    errors = {}
+    for r in capture:
+        for e in r.get("errors") or []:
+            errors.setdefault(e[:140], []).append(f"{r['screen']} {r['engine']}/{r['vp']}")
+    if errors:
+        out += ["", "## Uncaught page errors", ""] + [f"- `{e}` — {len(w)}×: {', '.join(w[:5])}" for e, w in errors.items()]
+    out += ["", "## Loading and error states", ""]
+    for r in states:
+        e = r.get("error") or {}
+        verdict = ("FAIL " + r["failed"]) if r.get("failed") else r.get("note") or (
+            f"loading busy={r.get('loading', {}).get('busy')}; error said={e.get('said')!r} retry={e.get('retry')} recovered={e.get('recovered')}")
+        out.append(f"- {r['screen']} {r['engine']}/{r['theme']}/{r['vp']}: {verdict}")
+    out += ["", "## Focus, 200 % text, reduced motion", ""]
+    for r in a11y:
+        bits = []
+        if r.get("focus_unseen"):
+            bits.append(f"no visible focus on {r['focus_unseen']}")
+        if r.get("focus_offscreen"):
+            bits.append(f"focus off screen on {r['focus_offscreen']}")
+        if r.get("motion_reduce"):
+            bits.append(f"moving while reduced: {[m['name'] + ' ' + m['target'] for m in r['motion_reduce']][:4]}")
+        if (r.get("text200") or {}).get("hscroll"):
+            bits.append(f"200 % text scrolls sideways: {r['text200']['hscroll']}")
+        if (r.get("text200") or {}).get("clipped"):
+            bits.append(f"200 % text clipped: {r['text200']['clipped'][:3]}")
+        if r.get("transitions"):
+            bits.append(f"transitions of layout/colour properties: {r['transitions'][:6]}")
+        if r.get("failed"):
+            bits.append("FAILED " + r["failed"])
+        if bits:
+            out.append(f"- {r['screen']} {r['engine']}/{r['theme']}/{r['vp']}: " + "; ".join(bits))
+    out += ["", "## Shortcuts, journeys and MOB checks", "", "| Check | Engine | Window | Result | Detail |", "| --- | --- | --- | --- | --- |"]
+    for r in checks:
+        out.append(f"| {r['kind']}: {r['name']} | {r['engine']} | {r['vp']} | {r['result']} | {str(r.get('detail', '')).replace('|', '/')[:200]} |")
+    out += ["", "## Measured findings", ""]
+    for f in findings:
+        where = sorted(set(f["where"]))
+        out.append(f"- **{f['prio']} ({f['rule']})** {f['screen']} — {f['detail']} — `{f['sig']}`" + (f" \"{f['label']}\"" if f["label"] else "")
+                   + f" — {len(where)}×: {', '.join(where[:6])}{' …' if len(where) > 6 else ''} — {f['shot']}")
+    (OUT / "findings.md").write_text("\n".join(out) + "\n", encoding="utf-8")
+    summary = {"sha": sha, "captures": len(visits), "screens": len(screens), "windows": wins, "findings": len(findings),
+               "p2": sum(1 for f in findings if f["prio"] == "P2"), "checks": {k: sum(1 for r in checks if r["result"] == k) for k in ("pass", "fail", "unreachable")},
+               "states": len(states), "a11y": len(a11y)}
+    (OUT / "summary.json").write_text(json.dumps(summary, indent=1), encoding="utf-8")
+    # Contact sheets: every screen of one engine/theme/window on one page.
+    sheets = OUT / "sheets"
+    sheets.mkdir(exist_ok=True)
+    browser = pw.chromium.launch()
+    page = browser.new_page(viewport={"width": 1800, "height": 1000})
+    for engine, theme, vp in sorted({(r["engine"], r["theme"], r["vp"]) for r in visits}):
+        recs = [r for r in visits if (r["engine"], r["theme"], r["vp"]) == (engine, theme, vp)]
+        width = WINDOWS[vp]["width"]
+        cols = 8 if width <= 430 else 4 if width <= 1280 else 3 if width <= 1920 else 2
+        tile = int(1760 / cols) - 12
+        figures = "".join(f'<figure><img src="file://{OUT / r["shot"]}" style="width:{tile}px"><figcaption>{html.escape(r["screen"])}</figcaption></figure>' for r in recs)
+        doc = (f"<html><body style='margin:12px;background:#888;font:12px monospace'><h3>{engine} {theme} {vp}</h3>"
+               f"<div style='display:grid;grid-template-columns:repeat({cols},{tile}px);gap:12px'>{figures}</div>"
+               "<style>figure{margin:0}figcaption{background:#fff;padding:2px 4px}img{display:block;border:1px solid #333}</style></body></html>")
+        sheet = sheets / f"{engine}-{theme}-{vp}.html"
+        sheet.write_text(doc, encoding="utf-8")
+        try:
+            page.goto(f"file://{sheet}")
+            page.wait_for_timeout(400)
+            page.screenshot(path=str(sheets / f"{engine}-{theme}-{vp}.jpg"), full_page=True, type="jpeg", quality=70)
+        except Exception as error:
+            print(f"sheet {sheet.name}: {error}", flush=True)
+    browser.close()
+    print(f"report: {json.dumps(summary)}", flush=True)
+
+
+# ---------------------------------------------------------------------------------------------------------------
+
+def child(args: list[str]) -> subprocess.Popen:
+    env = dict(os.environ)
+    return subprocess.Popen([sys.executable, __file__, *args], env=env)
+
+
+def main() -> int:
+    if UPSTREAM:
+        start_forwarder(ORIGIN, UPSTREAM)
+    OUT.mkdir(parents=True, exist_ok=True)
+    if len(sys.argv) > 1:  # a child process: one phase for one engine (and theme)
+        phase, engine, *rest = sys.argv[1:]
+        data = json.loads((OUT / "seed.json").read_text(encoding="utf-8"))
+        with sync_playwright() as pw:
+            try:
+                if phase == "capture":
+                    capture_combo(pw, engine, rest[0], data)
+                elif phase == "states":
+                    phase_states(pw, engine, data)
+                elif phase == "a11y":
+                    phase_a11y(pw, engine, data)
+                elif phase == "keys":
+                    phase_keys(pw, engine, data)
+                elif phase == "journeys":
+                    phase_journeys(pw, engine, data)
+                elif phase == "mob":
+                    phase_mob(pw, engine, data)
+            except Exception:
+                traceback.print_exc()
+                return 1
+        return 0
+    with sync_playwright() as pw:
+        if "firstrun" in PHASES:
+            phase_firstrun(pw)
+        data_file = OUT / "seed.json"
+        if "seed" in PHASES and not data_file.exists():
+            browser = pw.chromium.launch()
+            data = seed(browser)
+            browser.close()
+            data_file.write_text(json.dumps(data), encoding="utf-8")
+    if not (OUT / "seed.json").exists():
+        return 0 if PHASES == ["firstrun"] else 1
+
+    def run_parallel(jobs: list[list[str]]) -> None:
+        running: list[subprocess.Popen] = []
+        for job in jobs:
+            while len([p for p in running if p.poll() is None]) >= PARALLEL:
+                time.sleep(2)
+            running.append(child(job))
+        for p in running:
+            p.wait()
+
+    if "capture" in PHASES:
+        run_parallel([["capture", e, t] for e in BROWSERS for t in THEMES])
+    read_only = [ph for ph in ("states", "a11y", "keys") if ph in PHASES]
+    if read_only:
+        run_parallel([[ph, e] for ph in read_only for e in BROWSERS])
+    # The journeys and MOB checks change data: one engine after the other, after everything that only reads.
+    for ph in ("journeys", "mob"):
+        if ph in PHASES:
+            for e in BROWSERS:
+                child([ph, e]).wait()
+    if "report" in PHASES:
+        with sync_playwright() as pw:
+            report(pw)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

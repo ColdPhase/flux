@@ -32,6 +32,8 @@ coverage/
 
 # Visual consistency audit output written by scripts/visual_audit.sh (#763).
 /visual-audit/
+# The v0.2.1 UI audit output written by scripts/ui_audit.sh (#1215).
+/ui-audit/
 
 # ZAP reports written by scripts/check_dast.sh (#838).
 /dast-reports/
