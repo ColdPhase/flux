@@ -618,50 +618,71 @@ class ReturnToOrigin(unittest.TestCase):
     # ---- a direct message's feed and its thread keep the reader's place ----
 
     def test_19_a_direct_message_comes_back_to_the_message_that_was_in_view(self):
+        """The New divider (S23, #1246) is a row of the feed that comes and goes with what is read; wherever it stands when the reader comes back, the message
+        that was in view returns to where it was (nothing moves under the reader, #1271)."""
+        cases = ("never read", "read to its end", "first new above the place")
         for engine in self.browsers:
-            with self.subTest(engine=engine):
-                dm = self.make_dm(f"roots{engine}", 60)
-                page = self.page(engine)
-                page.goto(f"/dm/{dm['id']}")
-                feed, target = ".dm__feed", f"#message-{dm['roots'][7]}"
-                expect(page.locator(feed)).to_be_visible()
-                page.wait_for_timeout(1500)
-                # The person has read this conversation to its end before, so nothing in it is new and it opens at its end (S23, #1246); a
-                # conversation never read would open at its first message under the New divider, which moves with what is read.
-                expect(page.locator(feed)).to_be_visible()
-                box = page.locator(feed).bounding_box()
-                page.mouse.move(box["x"] + box["width"] / 2, box["y"] + min(box["height"] / 2, 300))
-                page.mouse.wheel(0, 100000)
-                page.wait_for_function("(feed) => { const el = document.querySelector(feed); return el.scrollHeight - el.clientHeight - el.scrollTop < 2; }", arg=feed)
-                page.wait_for_timeout(1500)
-                page.reload()
-                expect(page.locator(feed)).to_be_visible()
-                page.wait_for_timeout(1500)
-                # Message 8 is older than the newest 50: the reader reads back to it, and puts it 48 px below the top.
-                page.get_by_role("button", name="Show earlier messages").click()
-                expect(page.locator(target)).to_have_count(1)
-                self.read_at(page, feed, target, 48)
-                page.locator("#dm-composer").fill("Draft: ask Jonas about the shade")
-                before = self.offset(page, feed, target)
-                self.assertGreater(page.evaluate(AWAY, feed), 1000, "the reader is far from the end")
-                # Something arrives while the person is away.
-                api(self.contexts[dm["partner"]], "POST", f"/api/v1/dms/{dm['id']}/messages", {"body": f"While you were away ({engine}).", "clientMessageId": str(uuid.uuid4())}, 201)
-                self.jump_to_search(page)
-                self.origin_back(page, "Messages").click()
-                expect(page).to_have_url(f"{ORIGIN}/dm/{dm['id']}")
-                expect(page.locator(target)).to_have_count(1)
-                page.wait_for_timeout(1500)
-                expect(page.locator("#dm-composer")).to_have_value("Draft: ask Jonas about the shade")
-                self.assert_same(before, self.offset(page, feed, target), "the message stays where it was, with the newer ones below", tolerance=2)
-                self.assertGreater(page.evaluate(AWAY, feed), 1000, "no jump to the bottom")
-                # The browser's Back finds the same place.
-                page.go_forward()
-                expect(page).to_have_url(re.compile(r"/conversations/"))
-                page.go_back()
-                expect(page).to_have_url(f"{ORIGIN}/dm/{dm['id']}")
-                expect(page.locator(target)).to_have_count(1)
-                page.wait_for_timeout(1500)
-                self.assert_same(before, self.offset(page, feed, target), "and by the browser's Back", tolerance=2)
+            for case in cases:
+                with self.subTest(engine=engine, case=case):
+                    dm = self.make_dm(f"roots{case.split()[0]}{case.split()[1]}{engine}", 60)
+                    page = self.page(engine)
+                    page.goto(f"/dm/{dm['id']}")
+                    feed, target = ".dm__feed", f"#message-{dm['roots'][7]}"
+                    expect(page.locator(feed)).to_be_visible()
+                    page.wait_for_timeout(1500)
+                    if case == "never read":
+                        # Everything in it is new: it opens on its first message under the divider, whole (60 messages are loaded at once), and what the
+                        # reader reads is read, so the divider is somewhere else when they come back.
+                        expect(page.locator(f"{feed} [data-unread-start]")).to_have_count(1)
+                    else:
+                        # The person has read this conversation to its end before, so nothing in it is new and it opens at its end (S23, #1246).
+                        box = page.locator(feed).bounding_box()
+                        page.mouse.move(box["x"] + box["width"] / 2, box["y"] + min(box["height"] / 2, 300))
+                        page.mouse.wheel(0, 100000)
+                        page.wait_for_function("(feed) => { const el = document.querySelector(feed); return el.scrollHeight - el.clientHeight - el.scrollTop < 2; }", arg=feed)
+                        page.wait_for_timeout(1500)
+                        page.reload()
+                        expect(page.locator(feed)).to_be_visible()
+                        page.wait_for_timeout(1500)
+                        expect(page.locator(f"{feed} [data-unread-start]")).to_have_count(0)
+                        # Message 8 is older than the newest 50: the reader reads back to it.
+                        page.get_by_role("button", name="Show earlier messages").click()
+                    # The reader puts message 8 48 px below the top.
+                    expect(page.locator(target)).to_have_count(1)
+                    self.read_at(page, feed, target, 48)
+                    page.locator("#dm-composer").fill("Draft: ask Jonas about the shade")
+                    before = self.offset(page, feed, target)
+                    self.assertGreater(page.evaluate(AWAY, feed), 1000, "the reader is far from the end")
+                    if case == "first new above the place":
+                        # The returning read says the first message new to the person is an older one than the place they read (their viewing was not kept):
+                        # a New divider is drawn above the place, which stays where it was.
+                        older = dm["roots"][3]
+                        def first_new_is_older(route):
+                            response = route.fetch()
+                            route.fulfill(response=response, json={**response.json(), "unreadFrom": older})
+                        page.route(re.compile(rf"/api/v1/dms/{dm['id']}(\?.*)?$"), lambda route: first_new_is_older(route) if route.request.method == "GET" else route.fallback())
+                    # Something arrives while the person is away.
+                    api(self.contexts[dm["partner"]], "POST", f"/api/v1/dms/{dm['id']}/messages", {"body": f"While you were away ({engine}).", "clientMessageId": str(uuid.uuid4())}, 201)
+                    self.jump_to_search(page)
+                    self.origin_back(page, "Messages").click()
+                    expect(page).to_have_url(f"{ORIGIN}/dm/{dm['id']}")
+                    expect(page.locator(target)).to_have_count(1)
+                    page.wait_for_timeout(1500)
+                    if case == "first new above the place":
+                        divider = page.locator(f"{feed} [data-unread-start]")
+                        expect(divider).to_have_count(1)
+                        self.assertLess(divider.evaluate("(el) => el.getBoundingClientRect().bottom"), page.locator(target).evaluate("(el) => el.getBoundingClientRect().top"), "the New divider is above the place")
+                    expect(page.locator("#dm-composer")).to_have_value("Draft: ask Jonas about the shade")
+                    self.assert_same(before, self.offset(page, feed, target), "the message stays where it was, with the newer ones below", tolerance=2)
+                    self.assertGreater(page.evaluate(AWAY, feed), 1000, "no jump to the bottom")
+                    # The browser's Back finds the same place.
+                    page.go_forward()
+                    expect(page).to_have_url(re.compile(r"/conversations/"))
+                    page.go_back()
+                    expect(page).to_have_url(f"{ORIGIN}/dm/{dm['id']}")
+                    expect(page.locator(target)).to_have_count(1)
+                    page.wait_for_timeout(1500)
+                    self.assert_same(before, self.offset(page, feed, target), "and by the browser's Back", tolerance=2)
 
     def test_20_a_direct_message_thread_comes_back_to_the_reply_that_was_in_view(self):
         for engine in self.browsers:

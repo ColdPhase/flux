@@ -347,10 +347,23 @@ class InstantSendJourney(unittest.TestCase):
             else:
                 route.continue_()
         page.route("**/api/v1/projects/*/conversations", lose)
-        # Flux's light reachability check (and any reload of the page's data) gets no answer either.
+        # The first send was stored, so its event reaches the page and the page reads the space and the conversation again. While Flux is
+        # meant to be down those reads get no answer either (they are held until the test says it is back); otherwise the committed copy
+        # replaces the waiting message within a tenth of a second, or an answer to a read lets the outbox send again, before Retry is pressed.
+        held_reads: list[Route] = []
+        def flux_does_not_answer_reads(route: Route) -> None:
+            if route.request.method != "GET":
+                route.fallback()
+            elif down["flux"]:
+                held_reads.append(route)
+            else:
+                route.continue_()
+        page.route("**/api/v1/**", flux_does_not_answer_reads)
+        # Flux's light reachability check gets no answer either (registered after the reads, so it takes `/me` from them).
         page.route("**/api/v1/me", lambda route: route.abort("failed") if down["flux"] else route.continue_())
         self.unroute_later(page)
-        body = "Lost answer: the root waits and is sent again once."
+        # A body of its own, so that the count of stored roots below is this run's, however many times the test is run on one server.
+        body = f"Lost answer: the root waits and is sent again once ({uuid.uuid4().hex[:8]})."
         page.get_by_label("Write a message", exact=True).fill(body)
         page.get_by_role("button", name="Send message").tap()
         bubble = self.pending(stream, body)
@@ -384,6 +397,9 @@ class InstantSendJourney(unittest.TestCase):
         down["flux"] = False
         bubble.get_by_role("button", name="Retry").tap()
         expect(stream.locator(".project-convo__message:not(.is-pending)").filter(has_text=body)).to_have_count(1)
+        # Now the held reads are answered: they find the one stored message, not a second.
+        for route in held_reads:
+            route.continue_()
         expect(page.get_by_text("Flux isn’t responding", exact=False)).to_have_count(0)
         self.assertEqual([command["clientMessageId"] for command in sent], [lost[0]] * 3, "the same command each time")
         self.assertEqual(sum(root["message"]["body"] == body for root in self.roots(page)), 1, "exactly one stored root")

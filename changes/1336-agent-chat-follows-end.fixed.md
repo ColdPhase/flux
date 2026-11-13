@@ -1,0 +1,1 @@
+- In an agent's chat, End and the "↓ N new" line keep the chat on its end while the agent works and writes its answer, in every browser: a line that is replaced made the chat shorter for a moment, WebKit moved the position up with it and the chat then stopped following ([#1336](https://github.com/ColdPhase/flux/issues/1336)).
