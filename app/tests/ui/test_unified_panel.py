@@ -208,7 +208,7 @@ class UnifiedPanel(unittest.TestCase):
                 card = panel.get_by_role("region", name="Blocker")
                 expect(card).to_contain_text("Waiting for Jonas Berg")
                 expect(card).to_contain_text("Waiting for the probe dimensions")
-                expect(card.get_by_label("What is it waiting for?")).to_have_count(0)  # the field shows only while editing
+                expect(card.get_by_role("combobox", name="Waiting for", exact=True)).to_have_count(0)  # the field shows only while editing
                 actions = panel.get_by_role("group", name="Task actions")
                 for name in ("Link thought",):
                     box = actions.get_by_role("button", name=name).bounding_box()
@@ -284,11 +284,11 @@ class UnifiedPanel(unittest.TestCase):
         panel = self.open_task(page, task)
         card = panel.get_by_role("region", name="Blocker")
         card.get_by_role("button", name="Edit").click()
-        field = card.get_by_label("What is it waiting for?")
+        field = card.get_by_role("combobox", name="Waiting for", exact=True)
         expect(field).to_have_value("Waiting for the printer")
         field.fill("Waiting for the label printer to arrive")
         card.get_by_role("button", name="Save").click()
-        expect(card.get_by_label("What is it waiting for?")).to_have_count(0)
+        expect(card.get_by_role("combobox", name="Waiting for", exact=True)).to_have_count(0)
         expect(card).to_contain_text("Waiting for the label printer to arrive")
         self.assertEqual(self.stored(task)["blocker"], "Waiting for the label printer to arrive")
         card.get_by_role("button", name="Resolve").click()
@@ -307,7 +307,7 @@ class UnifiedPanel(unittest.TestCase):
         page.get_by_role("menu", name="Status").get_by_role("menuitemradio", name="Blocked").click()
         card = panel.get_by_role("region", name="Blocker")
         card.get_by_role("button", name="Edit", exact=True).click()
-        card.get_by_label("What is it waiting for?").fill("Waiting for the replacement hinge")
+        card.get_by_role("combobox", name="Waiting for", exact=True).fill("Waiting for the replacement hinge")
         card.get_by_role("button", name="Save").click()
         activity = panel.get_by_role("list", name="Task activity")
         reason = activity.locator("li[data-message-id]")

@@ -62,7 +62,7 @@ class NativeDetailsJourney(unittest.TestCase):
 
     def blocker(self,panel):
         """The blocker's field shows only while it is edited: open it from the card."""
-        field=panel.get_by_label("What is it waiting for?",exact=True)
+        field=panel.get_by_role("combobox",name="Waiting for",exact=True)
         if field.count()==0:panel.get_by_role("region",name="Blocker").get_by_role("button",name="Edit",exact=True).click()
         return field
     def owner_menu(self,page,panel):
