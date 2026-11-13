@@ -7,7 +7,7 @@ import { costMicros, type PersonalComputeRequest } from '@flux/core';
 import { BRIEF } from './support/brief.js';
 import { anthropicPersonalCompute, parsePrivateTargets } from '../../packages/agent-runtime/src/index.js';
 import { personalRunServerComposition } from '../../apps/server/src/personal-runs/composition.js';
-import { personalRunWorkerComposition } from '../../apps/worker/src/personal-runs/composition.js';
+import { anthropicProxyOf, personalRunWorkerComposition } from '../../apps/worker/src/personal-runs/composition.js';
 import { createDatabase } from '@flux/db';
 
 // The Anthropic adapter behind `PersonalCompute` (#68, O-008 §3–§4), against a LOCAL MOCK HTTP
@@ -213,6 +213,14 @@ describe('personal-run composition: production is off until the operator switche
       assert.throws(() => personalRunWorkerComposition(env, db));
     }
     assert.throws(() => personalRunWorkerComposition({ ...on, FLUX_TEST_ANTHROPIC_URL: 'https://api.anthropic.com' }, db));
+  });
+
+  test('the evaluation\'s recording proxy (#1295) is test only and a plain origin; production without it is unchanged', () => {
+    assert.equal(anthropicProxyOf({}), null);
+    assert.equal(anthropicProxyOf({ FLUX_TEST_ANTHROPIC_PROXY_URL: 'http://evalproxy:8099', FLUX_TEST_FAILURE_INJECTION: 'true' }), 'http://evalproxy:8099');
+    assert.throws(() => anthropicProxyOf({ FLUX_TEST_ANTHROPIC_PROXY_URL: 'http://evalproxy:8099' }), /test only/);
+    assert.throws(() => anthropicProxyOf({ FLUX_TEST_ANTHROPIC_PROXY_URL: 'https://evil.example/x', FLUX_TEST_FAILURE_INJECTION: 'true' }), /http origin/);
+    assert.throws(() => personalRunWorkerComposition({ FLUX_PERSONAL_RUNS: 'on', FLUX_TEST_ANTHROPIC_PROXY_URL: 'http://evalproxy:8099' }, db), /test only/);
   });
 });
 
