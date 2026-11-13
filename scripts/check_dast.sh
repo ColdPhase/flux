@@ -22,10 +22,11 @@
 # FLUX_DAST_SKIP_BASELINE=1 skips the baseline scan, FLUX_DAST_SKIP_API=1 the API scans (a quick check of the pages' headers).
 # FLUX_DAST_ONLY, a regular expression, limits the API scans to the paths it matches (one change's routes, e.g. '/photo|/pictures/').
 # The v0.2.1 routes are in the listing like every other: file previews (with a real file and the frame headers they need, C-60),
-# profile photo and space icon uploads (raw bytes, F-039/F-040), receipt readers, search, model lists and calls. The API offers its call
+# profile photo and space icon uploads (raw bytes, F-039/F-040), receipt readers, search, model lists, calls, and videos (C-61: a sent
+# video's playback route and a stored file read by byte range, the poster of a staged video, the file limits). The API offers its call
 # routes only with a LiveKit server, so this stack runs one (docker/compose.live.yaml, a throwaway key; FLUX_DAST_LIVEKIT_TCP_PORT,
 # FLUX_DAST_LIVEKIT_UDP_PORT and FLUX_DAST_LIVEKIT_TURN_PORT pick its media ports). One change's routes, for example:
-# FLUX_DAST_ONLY='/preview|/photo|/icon|/pictures/|/receipts|/search|model-list|/ai-model-lists|/calls|/live-sessions'.
+# FLUX_DAST_ONLY='/preview|/photo|/icon|/pictures/|/receipts|/search|model-list|/ai-model-lists|/calls|/live-sessions|/files|/personal-assistant/model'.
 set -eu
 
 cd "$(dirname "$0")/.."
