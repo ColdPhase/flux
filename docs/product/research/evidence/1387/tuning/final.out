@@ -1,0 +1,9 @@
+#1326 intent, constants fixed (tf 1, b 0.75) question {"bm25": {"tune": 0.633, "held": 0.567, "all": 0.6}, "hybrid": {"tune": 0.7, "held": 0.667, "all": 0.683}}
+#1326 intent, constants fixed (tf 1, b 0.75) keywords {"bm25": {"tune": 0.567, "held": 0.533, "all": 0.55}, "hybrid": {"tune": 0.633, "held": 0.6, "all": 0.617}}
+#1326 intent, constants fixed (tf 1, b 0.75) bilingual {"bm25": {"tune": 0.733, "held": 0.733, "all": 0.733}, "hybrid": {"tune": 0.733, "held": 0.8, "all": 0.767}}
+#1387 chosen question {"bm25": {"tune": 0.633, "held": 0.6, "all": 0.617}, "hybrid": {"tune": 0.7, "held": 0.7, "all": 0.7}}
+#1387 chosen keywords {"bm25": {"tune": 0.6, "held": 0.533, "all": 0.567}, "hybrid": {"tune": 0.633, "held": 0.6, "all": 0.617}}
+#1387 chosen bilingual {"bm25": {"tune": 0.8, "held": 0.767, "all": 0.783}, "hybrid": {"tune": 0.767, "held": 0.8, "all": 0.783}}
+#1387 stems for words of 6+ letters (not chosen) question {"bm25": {"tune": 0.633, "held": 0.6, "all": 0.617}, "hybrid": {"tune": 0.7, "held": 0.733, "all": 0.717}}
+#1387 stems for words of 6+ letters (not chosen) keywords {"bm25": {"tune": 0.6, "held": 0.533, "all": 0.567}, "hybrid": {"tune": 0.667, "held": 0.6, "all": 0.633}}
+#1387 stems for words of 6+ letters (not chosen) bilingual {"bm25": {"tune": 0.8, "held": 0.767, "all": 0.783}, "hybrid": {"tune": 0.8, "held": 0.8, "all": 0.8}}

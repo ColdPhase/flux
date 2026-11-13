@@ -319,14 +319,29 @@ class MessageWorkJourney(unittest.TestCase):
         page.evaluate("window.__feedRemovalObserver.disconnect()")
         page.unroute_all(behavior="ignoreErrors")
 
+    STABLE="()=>new Promise(resolve=>{let last=-1,stable=0;const check=()=>{const p=document.querySelector('.thread__feed');stable=p.scrollTop===last?stable+1:0;last=p.scrollTop;if(stable>8)resolve(true);else requestAnimationFrame(check);};requestAnimationFrame(check);})"
+
+    def read_to(self, page, message, gap=60):
+        """The reader's own first scroll, then the feed is put so that `message` stands `gap` px below its bottom edge (the batch of the reader's screen ends just
+        above it, with room for the layout that settles after it: chips and lines arrive). The wheel comes first because WebKit keeps the message a link opened at the top of its feed until the person's first scroll of their own,
+        and puts it back at the next layout (a hover, a resize), whatever a script scrolled to meanwhile."""
+        page.locator(".thread__feed").hover()
+        page.mouse.wheel(0,1)
+        page.wait_for_function(self.STABLE)
+        page.mouse.move(0,0)
+        page.locator(f"#thread [data-message-id='{message}']").evaluate("(row,gap)=>{const p=row.closest('.thread__feed');p.scrollTop+=row.getBoundingClientRect().top-p.getBoundingClientRect().bottom-gap;}",gap)
+        page.wait_for_function(self.STABLE)
+
     def test_08_one_pagedown_gesture_keeps_scrolling_across_a_held_batch(self):
         page=self.page();reads=[]
         page.on("request",lambda request:reads.append(parse_qs(urlsplit(request.url).query)["messageIds"][0]) if self.thread_read(request.url) else None)
-        page.goto(f"/projects/{self.project}/conversations/{self.long_conversation}#message-{self.long_messages[1]}")
+        # The batch of the message the link opened, as in settled_selector_anchor: the thread first reads its newest replies (with the root, whose
+        # chip is shown at once) and only then pages back to the message, so the first ready read is not yet the batch the reader stays in.
+        with page.expect_request(lambda request: self.thread_read(request.url) and self.long_messages[1] in parse_qs(urlsplit(request.url).query)["messageIds"][0].split(',') and len(parse_qs(urlsplit(request.url).query)["messageIds"][0].split(','))==100):
+            page.goto(f"/projects/{self.project}/conversations/{self.long_conversation}#message-{self.long_messages[1]}")
         expect(page.locator("#thread").get_by_role("button",name=re.compile(r"^Task #\d+: " + re.escape("Revisit the first measurement") + "$"))).to_be_visible();self.ready(page)
         original=reads[-1];pane=page.locator(".thread__feed")
-        page.locator(f"#thread [data-message-id='{self.long_messages[100]}']").evaluate("row=>{const p=row.closest('.thread__feed');p.scrollTop+=row.getBoundingClientRect().top-p.getBoundingClientRect().bottom-20;}")
-        page.wait_for_function("()=>new Promise(resolve=>{let last=-1,stable=0;const check=()=>{const p=document.querySelector('.thread__feed');stable=p.scrollTop===last?stable+1:0;last=p.scrollTop;if(stable>8)resolve(true);else requestAnimationFrame(check);};requestAnimationFrame(check);})")
+        self.read_to(page,self.long_messages[100])
         self.ready(page);self.assertEqual(reads[-1],original)
         held=[];holding=[True]
         def hold(route):
@@ -338,7 +353,10 @@ class MessageWorkJourney(unittest.TestCase):
             else:route.continue_()
         page.route("**/work-associations?**",hold)
         page.locator(f"#thread [data-message-id='{self.long_messages[98]}']").evaluate("el=>el.focus({preventScroll:true})")
-        page.keyboard.press("PageDown")
+        # One gesture: the key held, which repeats while it is down. A single press can be over before the batch is asked for on a slow machine.
+        for _ in range(3):
+            page.keyboard.down("PageDown");page.wait_for_timeout(80)
+        page.keyboard.up("PageDown")
         page.wait_for_function("window.__gestureBatchHeld===true")
         expect(page.locator(".thread__pane")).to_have_attribute("data-associations-phase","loading")
         page.wait_for_function("()=>new Promise(resolve=>{let last=-1,stable=0;const check=()=>{const p=document.querySelector('.thread__feed');stable=p.scrollTop===last?stable+1:0;last=p.scrollTop;if(stable>8)resolve(true);else requestAnimationFrame(check);};requestAnimationFrame(check);})")
@@ -376,8 +394,7 @@ class MessageWorkJourney(unittest.TestCase):
             page.goto(f"/projects/{self.project}/conversations/{self.long_conversation}#message-{self.long_messages[1]}")
         expect(page.locator("#thread").get_by_role("button",name=re.compile(r"^Task #\d+: " + re.escape("Revisit the first measurement") + "$"))).to_be_visible();self.ready(page)
         original=reads[-1];pane=page.locator(".thread__feed")
-        page.locator(f"#thread [data-message-id='{self.long_messages[100]}']").evaluate("row=>{const p=row.closest('.thread__feed');p.scrollTop+=row.getBoundingClientRect().top-p.getBoundingClientRect().bottom-20;}")
-        page.wait_for_function("()=>new Promise(resolve=>{let last=-1,stable=0;const check=()=>{const p=document.querySelector('.thread__feed');stable=p.scrollTop===last?stable+1:0;last=p.scrollTop;if(stable>8)resolve(true);else requestAnimationFrame(check);};requestAnimationFrame(check);})")
+        self.read_to(page,self.long_messages[100])
         self.scroll_until_settled(page,1);self.ready(page);self.assertEqual(reads[-1],original)
         if non_scrolling_input:
             pane.evaluate("el=>{window.__nonScrollingInput={top:el.scrollTop,scrolls:0,ends:0,focus:0,pointer:0};for(const [type,key] of [['scroll','scrolls'],['scrollend','ends'],['focusin','focus'],['pointermove','pointer']])el.addEventListener(type,()=>window.__nonScrollingInput[key]++);}")

@@ -1,10 +1,12 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from 'react';
-import { FILE_LIMITS, MESSAGE_REFERENCE_LIMIT, type Conversation, type ConversationMessage, type MessageReferenceKind, type SendMessageCommand, type StagedFile } from '@flux/contracts';
+import { FILE_LIMITS, MESSAGE_REFERENCE_LIMIT, isVideoName, type Conversation, type ConversationMessage, type MessageReferenceKind, type SendMessageCommand, type StagedFile } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
 import { reply, startConversation } from '../conversations/api';
 import { announceAnswered } from '../notifications/api';
 import { sendDmMessage, sendDmReply } from '../api/direct-messages';
 import { contributeToTask, stageFile } from './api';
+import { fileLimits, loadFileLimits, uploadPoster } from '../api/files';
+import { drawPoster } from './videoPoster';
 import { assumeReachable, connectionState, onConnectionChange, reportReachable, reportUnreachable } from './connection';
 import { forgetReloadRetention, setReloadRetention } from '../app/reload-retention';
 import { forgetPlaces } from '../place/memory';
@@ -238,6 +240,10 @@ function notSentReason(cause: unknown) {
   if (lasting(cause)) return 'Flux could not accept it. Remove it to edit it.';
   return '';
 }
+/** The most a file of this name may be: a video has its own cap (C-61). In an encrypted space the server holds it to 5 MiB and says so. */
+const sizeLimit = (name: string) => isVideoName(name) ? fileLimits().videoBytes : FILE_LIMITS.fileBytes;
+const megabytes = (bytes: number) => `${Math.round(bytes / (1024 * 1024))} MiB`;
+const tooBig = (name: string) => isVideoName(name) ? `A video can be at most ${megabytes(fileLimits().videoBytes)}.` : 'A file can be at most 5 MiB.';
 function uploadError(cause: unknown) {
   if (cause instanceof NetworkError) return 'Flux is unreachable. Retry the upload.';
   if (cause instanceof ApiError && [401, 403, 404].includes(cause.status)) return 'Upload unavailable with your current access. Your draft is kept.';
@@ -395,6 +401,8 @@ async function upload(key: string, projectId: string, uploadId: string, file: Fi
     if (wake && snapshots.get(key)!.pending.some((item) => item.files.some((other) => other.uploadId === uploadId))) kick(key);
   };
   changeFile((item) => ({ ...item, state: 'uploading', error: undefined, offline: undefined, progress: 0 }));
+  // A video's poster is drawn while it uploads (C-61), so it is ready when the upload is.
+  if (isVideoName(file.name)) void drawPoster(file);
   let lastShown = 0;
   try {
     const staged = await stageFile(projectId, uploadId, file, (fraction) => {
@@ -405,6 +413,11 @@ async function upload(key: string, projectId: string, uploadId: string, file: Fi
       changeFile((item) => item.state === 'uploading' ? { ...item, progress: percent } : item, { wake: false });
     });
     reportReachable();
+    // A video's poster (C-61) goes up while the person is still on this screen; a message waits for it only this briefly, and goes without one if it fails.
+    if (staged.video) {
+      const picture = await drawPoster(file);
+      if (picture) await uploadPoster(projectId, staged.id, picture).catch(() => undefined);
+    }
     changeFile((item) => ({ ...item, state: 'ready', staged, error: undefined, progress: undefined }));
   } catch (cause) {
     if (cause instanceof NetworkError) reportUnreachable();
@@ -432,13 +445,22 @@ export function useComposerDraft(accountId: string, projectId: string, context: 
     if (current.draft.files.length + files.length > FILE_LIMITS.messageFiles) {
       put(key, { ...current, error: 'Attach at most 10 files. Your existing draft and files are kept.' }); return;
     }
-    if (current.draft.files.reduce((total, item) => total + item.size, 0) + files.reduce((total, file) => total + file.size, 0) > FILE_LIMITS.messageBytes) {
+    void loadFileLimits();
+    // A video has its own cap (C-61): the 20 MiB of one message are the other files', and its videos together stay within one video cap.
+    const sizes = (list: readonly { name: string; size: number }[]) => ({ videos: list.filter((item) => isVideoName(item.name)).reduce((total, item) => total + item.size, 0),
+      others: list.filter((item) => !isVideoName(item.name)).reduce((total, item) => total + item.size, 0) });
+    // A file over its own limit is refused on its own below, with its own words, and does not count here.
+    const held = sizes(current.draft.files); const adding = sizes(files.filter((file) => file.size <= sizeLimit(file.name)));
+    if (held.others + adding.others > FILE_LIMITS.messageBytes) {
       put(key, { ...current, error: 'Files in one message can total at most 20 MiB. Your existing draft and files are kept.' }); return;
+    }
+    if (held.videos + adding.videos > fileLimits().videoBytes) {
+      put(key, { ...current, error: `Videos in one message can total at most ${megabytes(fileLimits().videoBytes)}. Your existing draft and files are kept.` }); return;
     }
     const bytes = selected.get(key) ?? new Map(); selected.set(key, bytes);
     const additions = files.map((file): DraftFile => {
       const uploadId = crypto.randomUUID(); bytes.set(uploadId, file);
-      const error = file.size === 0 ? 'Empty files cannot be attached.' : file.size > FILE_LIMITS.fileBytes ? 'A file can be at most 5 MiB.'
+      const error = file.size === 0 ? 'Empty files cannot be attached.' : file.size > sizeLimit(file.name) ? tooBig(file.name)
         : file.name.length > FILE_LIMITS.nameChars || [...file.name].some((character) => character.codePointAt(0)! < 32 || character.codePointAt(0) === 127 || character === '/' || character === '\\')
           || ['.', '..'].includes(file.name) ? 'Choose a file with a shorter name without path characters.' : undefined;
       return { uploadId, name: file.name, size: file.size, state: error ? 'failed' : 'uploading', ...(error ? { error } : {}) };
@@ -461,7 +483,7 @@ export function useComposerDraft(accountId: string, projectId: string, context: 
     if (file.name !== item.name || file.size !== item.size) {
       const current = snapshots.get(key)!; put(key, { ...current, error: 'Select the same file name and size to recover this upload. Remove it to choose another file.' }); return false;
     }
-    if (file.size === 0 || file.size > FILE_LIMITS.fileBytes) return false;
+    if (file.size === 0 || file.size > sizeLimit(file.name)) return false;
     const bytes = selected.get(key) ?? new Map(); bytes.set(uploadId, file); selected.set(key, bytes);
     void upload(key, projectId, uploadId, file, generation); return true;
   }

@@ -637,7 +637,8 @@ class AppShellJourney(unittest.TestCase):
                 self.assertGreaterEqual(len(geometry["rowHeights"]), 3, f"Settings, Space details and the sidebar are shown: {geometry}")
                 self.assertEqual(len(geometry["hintedHeights"]), 1, f"Mute space is the one row with a hint line: {geometry}")
                 if device == "tablet":
-                    self.assertTrue(all(height >= 44 for height in geometry["rowHeights"] + geometry["hintedHeights"]), geometry)
+                    # 44 px rows measure 43.99998… while the menu is still settling (WebKit): a rounding tolerance, not a smaller target.
+                    self.assertTrue(all(height >= 43.95 for height in geometry["rowHeights"] + geometry["hintedHeights"]), geometry)
                 if device == "desktop":
                     self.assertTrue(all(abs(height - 32) <= 1 for height in geometry["rowHeights"]), f"desktop rows are 32px: {geometry}")
                     self.assertTrue(all(height > 32 for height in geometry["hintedHeights"]), f"the hint line makes its row taller: {geometry}")

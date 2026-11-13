@@ -26,9 +26,11 @@ export function stageFile(projectId: string, uploadId: string, file: File, onPro
     xhr.onerror = () => reject(new NetworkError());
     xhr.ontimeout = () => reject(new NetworkError());
     xhr.onload = () => {
-      let data: StagedFile & { code?: string; message?: string };
-      try { data = JSON.parse(xhr.responseText) as StagedFile & { code?: string; message?: string }; } catch { reject(new ApiError(xhr.status, null, xhr.statusText)); return; }
-      if (xhr.status < 200 || xhr.status >= 300) { reject(new ApiError(xhr.status, data.code ?? null, data.message ?? xhr.statusText, data)); return; }
+      type Answer = StagedFile & { code?: string; message?: string; error?: string };
+      let data: Answer;
+      try { data = JSON.parse(xhr.responseText) as Answer; } catch { reject(new ApiError(xhr.status, null, xhr.statusText)); return; }
+      // The server says why in `error` ("A video is at most 200 MiB"), which is what the person should read.
+      if (xhr.status < 200 || xhr.status >= 300) { reject(new ApiError(xhr.status, data.code ?? null, data.message ?? data.error ?? xhr.statusText, data)); return; }
       resolve(data);
     };
     xhr.send(file);

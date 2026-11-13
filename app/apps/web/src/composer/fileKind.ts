@@ -47,11 +47,12 @@ export const fileSize = (size: number) => size < 1024 ? `${size} B` : size < 102
  * CSV/TSV are drawn as text. Nothing is ever drawn as
  * HTML on Flux's page.
  */
-export type PreviewFormat = 'html' | 'pdf' | 'text' | 'markdown' | 'json' | 'csv' | 'tsv';
+export type PreviewFormat = 'html' | 'pdf' | 'text' | 'markdown' | 'json' | 'csv' | 'tsv' | 'video';
 const SOURCE = ['txt', 'log', 'py', 'ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs', 'go', 'rs', 'rb', 'java', 'kt', 'swift', 'c', 'h', 'cpp', 'hpp', 'cs', 'php',
   'sh', 'bash', 'zsh', 'sql', 'yaml', 'yml', 'toml', 'ini', 'cfg', 'conf', 'env', 'css', 'scss', 'xml', 'ino', 'lua', 'r', 'pl', 'diff', 'patch', 'svg'];
 const PREVIEW: Record<string, PreviewFormat> = { html: 'html', htm: 'html', pdf: 'pdf', md: 'markdown', markdown: 'markdown', json: 'json', csv: 'csv', tsv: 'tsv',
   ...Object.fromEntries(SOURCE.map((extension) => [extension, 'text' as const])) };
+/** By name. A video is never one by its name: the server says it is (`MessageFile.video`, C-61), after reading its bytes. */
 export const previewFormat = (name: string): PreviewFormat | null => PREVIEW[extensionOf(name)] ?? null;
 
 /** Named like a photo (a hint only; the bytes decide). */

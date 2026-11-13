@@ -126,8 +126,11 @@ export function taskDiscussionRows(db: DbExecutor) {
           .returning({ id: schema.projectFiles.id });
         if (updated.length !== 1) throw new Error('Locked attachment publication invariant failed');
       }
+      // C-61: a video's poster goes to the message with it, and the message answers with it.
+      const posters = await fileRows(db).publishPosters((input.files ?? []).filter((file) => file.video).map((file) => file.id), row!.id, row!.createdAt);
+      const files = input.files?.map((file) => posters.has(file.id) ? { ...file, poster: posters.get(file.id)! } : file);
       if (workId) await db.update(schema.projectWorkItems).set({ firstPersistedUseAt: sql`COALESCE(${schema.projectWorkItems.firstPersistedUseAt}, clock_timestamp())` }).where(eq(schema.projectWorkItems.id, workId));
-      return message(row!, input.files);
+      return message(row!, files);
     },
     /**
      * A generic reply to a task's bound conversation joins the task order: it discovers the binding without

@@ -23,14 +23,19 @@ The service (`createSearchUseCases`) picks by `usesSearchSyntax(text)`; the curs
   probe of #1326 swapped two visible messages with 40 hidden ones). So the statement (`rankedStatement` in
   `packages/db/src/repositories/search.ts`) asks the index only which documents hold which word: every clause scores a constant
   (`pdb.const`, a power of two), so a hit's score is a code of which word it holds and where, and the words share as few scans as a
-  score's bits allow (one for up to four words). The scan is filtered by the reader's audiences only (a set of audiences scores a
+  score's bits allow (one for up to five words). pg_search keeps a constant only up to 2048 and a score is a 32-bit float, so the
+  constants are 2^-12 to 2^10 and the audience filter's exact 1 is taken out (`score × 4096 − 4096`, 23 bits; #1387: before it, every
+  word after a scan's third was read as its third). The scan is filtered by the reader's audiences only (a set of audiences scores a
   constant); the reader's filters (type, place, author, conversation, time) and the task lifecycle are applied to its rows after it,
   because pg_search scores a filter on one value by that value's rarity over the whole index (`search-hidden-ranking.test.ts` holds it
-  with 24,000 hidden rows). The order is then **BM25 computed in SQL over the visible hits** (`cand`): a word's document frequency, the number of documents and their average length are counted over those hits and
-  nothing else; a document's own part is its length (`length(tsv)`, stored with the row) and where the word was found. The term
-  frequency of a word is one (the index says it matches, not how often). Each word adds `idf × weight × (k1 + 1) / (1 + k1 × (1 − b + b × length / average))`
-  with k1 1.2 and b 0.75; the weight is 2 for a whole word in the title and 1 in the body, and a hit found only as the word being typed
-  or with a typo in its title counts half the average rarity of the query's words. No statistic of the index, and no row the reader may not see, influences what they are shown or in which
+  with 24,000 hidden rows). The order is then **BM25 computed in SQL over the visible hits** (`cand`): a word's document frequency, the
+  number of documents and their average length are counted over those hits and nothing else; a document's own part comes from its own
+  tsvector (`tsv`, stored with the row): its length (`length(tsv)`) and how often each query word the index found in it occurs in the
+  title (weight A) and in the body, as typed or folded (`ts_rank_cd` of a one-word query without normalisation is that count; at least
+  once where the index found the word, which also counts another form of it). With `tf = 2 × title + body` (BM25F), each word adds
+  `idf × tf × (k1 + 1) / (tf + k1 × (1 − b + b × length / average))` with k1 1.2 and b 0.1 (#1387, chosen on half of the research
+  bench's questions, F-042); a hit found only as the word being typed or with a typo in its title counts half the average rarity of the
+  query's words, once. No statistic of the index, and no row the reader may not see, influences what they are shown or in which
   order; `search-hidden-ranking.test.ts` holds it for the people's search and for the statement an agent's `flux_search` runs, with
   writes in a restricted space, another workspace and other people's direct messages.
 - **The word being typed** is also looked up as a prefix: the index holds stems, so a scan adds `pdb.regex('<word>.*')` on the title and
@@ -39,7 +44,8 @@ The service (`createSearchUseCases`) picks by `usesSearchSyntax(text)`; the curs
   (`pdb.fuzzy(1)`), as the trigram match did ("ensor", "omparison", "comparisn" find "Sensor comparison"). A task number
   names one task, so it gets no typo.
 - **At most twelve words are looked up** (the first twelve and the word being typed), each a title and a body clause in each language;
-  a search of up to four words is one scan and runs in a few milliseconds, a longer one a scan for each further five words.
+  a search of up to five words is one scan and runs in a few milliseconds, a longer one a scan for each further five words. More
+  words, or the longest words first, found nothing more on the research bench (#1387).
 - **The score** in a position is `rank / (rank + 10)`, in (0, 1) and in the same order, so that the rows of an encrypted space,
   which the in-memory index ranks from 0 to 1.5, merge with them.
 - **Encrypted spaces** answer plain words the same way, without stems and accents (`plan.anyWord`, `sealed-search.ts`): their content is

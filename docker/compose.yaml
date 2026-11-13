@@ -90,6 +90,8 @@ services:
       FLUX_LIVE_EDITING: ${FLUX_LIVE_EDITING:-on}
       # Link cards (#469): off unless `on`; see docker/.env.example.
       FLUX_LINK_PREVIEWS: ${FLUX_LINK_PREVIEWS:-off}
+      # The most MiB one video may be (C-61, #1352); other files stay at 5 MiB. See docker/.env.example.
+      FLUX_VIDEO_MAX_MIB: ${FLUX_VIDEO_MAX_MIB:-200}
       # Agents reading and searching the web (#918, #954, C-29): on unless `off`.
       FLUX_WEB_READS: ${FLUX_WEB_READS:-on}
       # Owner AI connections (F-020): agents on a person's own API key are off unless `on`; they also need the

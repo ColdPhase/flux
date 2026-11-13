@@ -1,4 +1,4 @@
-import type { FileDetail, MessageFile } from '@flux/contracts';
+import type { FileDetail, MessageFile, VideoContainer } from '@flux/contracts';
 import type { ActorRef, WorkAccess } from '../work/ports.js';
 
 /** One stored file row (#154). Bytes are in the FileStorage under `id`. */
@@ -26,6 +26,10 @@ export interface StoredFileRow {
   pageCount?: number | null;
   rowCount?: number | null;
   durationMs?: number | null;
+  /** C-61: the container a video's bytes were recognised as (set when the reservation is made as a video, confirmed when it is ready); null for any other file. */
+  videoContainer?: VideoContainer | null;
+  /** C-61: the staged video this file is the poster of; such a file is no attachment of its own and follows its video to the message. */
+  posterOf?: string | null;
 }
 
 /** Rows only; the use cases decide. Every method runs in the caller's transaction. */
@@ -34,10 +38,16 @@ export interface FileRepository {
   lockUploader(projectId: string, uploader: ActorRef): Promise<void>;
   activeReplay(fileId: string, now: Date): Promise<boolean>;
   findUpload(projectId: string, uploader: ActorRef, uploadId: string): Promise<StoredFileRow | null>;
-  /** Unexpired reservations plus unexpired ready unpublished files of this uploader in this project, in bytes. */
+  /** Unexpired reservations plus unexpired ready unpublished files of this uploader in this project, in bytes; the videos of C-61 are counted apart. */
   stagedBytes(projectId: string, uploader: ActorRef, now: Date): Promise<number>;
+  /** The same for this uploader's videos only. */
+  stagedVideoBytes(projectId: string, uploader: ActorRef, now: Date): Promise<number>;
   reserve(input: { id: string; workspaceId: string; projectId: string; uploader: ActorRef; uploadId: string; name: string;
-    reservedBytes: number; expiresAt: Date; replayOf?: string }): Promise<StoredFileRow>;
+    reservedBytes: number; expiresAt: Date; replayOf?: string; videoContainer?: VideoContainer; posterOf?: string }): Promise<StoredFileRow>;
+  /** Whether this workspace is encrypted (F-030): its files are sealed and never played (C-61). */
+  encrypted(workspaceId: string): Promise<boolean>;
+  /** The posters (C-61) of this staged video, any state. */
+  postersOf(videoId: string): Promise<StoredFileRow[]>;
   findFile(id: string): Promise<StoredFileRow | null>;
   /** Marks a still-receiving reservation ready; false when it is gone or no longer receiving. */
   /**
@@ -88,9 +98,14 @@ export interface FileStorage {
      * the bytes as they arrive (size and SHA-256 stay those of the plaintext), so plaintext never reaches the scratch.
      */
     objectId?: string): Promise<ReceivedFile>;
-  /** The object's bytes, or null when it is missing. */
+  /** The object's bytes, or null when it is missing. At most the ordinary file limit; a video is streamed (`stream`). */
   read(objectId: string): Promise<Uint8Array | null>;
-  /** Whether immutable bytes exist with exactly this size and, when supplied, SHA-256. */
+  /**
+   * C-61: bytes `start` to `end` (inclusive) of a plain object whose size is exactly `size`, as a stream that holds one chunk at a
+   * time; null when it is missing, has another size, or is sealed (a sealed object is opened whole by `read`).
+   */
+  stream(objectId: string, range: { size: number; start: number; end: number }): Promise<AsyncIterable<Uint8Array> | null>;
+  /** Whether immutable bytes exist with exactly this size and, when supplied, SHA-256 (a plain object is hashed as a stream, never held whole). */
   has(objectId: string, size: number, sha256?: string): Promise<boolean>;
   /** Removes the object durably; a missing object is not an error. */
   remove(objectId: string): Promise<void>;

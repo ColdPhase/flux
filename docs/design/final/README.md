@@ -518,7 +518,7 @@ The IDs come from the first Prostota canvas; rules that no longer apply are left
 | S20 | **A new space is one window:** name, people, AI (on) and Encrypted (off). No template and no goal. |
 | S21 | Every space shows Conversation, Tasks, Map and Wiki from the start. |
 | S22 | Notifications are one level (Only what needs me, Everything, Nothing), Email me too to one or more confirmed addresses, this device, and Quiet hours as one row. |
-| S23 | **Open where you left off** (founder pick by Hubert, 2026-11-10, [#1246](https://github.com/ColdPhase/flux/issues/1246)). One behaviour in every conversation: a space's, a direct message, a thread, a task's discussion and an agent's chat. It opens on its first new message, with a quiet **New** divider above it (one rule with the word, like a day line, in the same place in each), or at its end when nothing is new. The first new message starts its own group, as after a day line: its author is named again, whoever wrote the message above the divider. While you read above the end, what arrives is counted in one line over the foot of the conversation, **↓ 3 new** (a soft pill, the `--own` fill with the pop shadow and the down arrow, 32 px with a mouse and 44 px on touch): a click or tap goes to the end, so does **End** (outside a text field), and the line goes when you reach the end; used from the keyboard it leaves focus on the newest message. Nothing moves under you: a message that arrives while you read above stays below. There is no setting and no screen. What is new is what you had not seen: in a space, what changed since you left it (S7's return point); in a direct message, a thread and a task's discussion, the messages by others after the last one you viewed (the same viewing as "Seen by"); in an agent's chat, what the agent said after you last had the chat open. Everything in a conversation you have never opened is new (founder decision, 2026-11-12, [#1246](https://github.com/ColdPhase/flux/issues/1246)): a direct message, a thread, a task's discussion or an agent's chat opens at its **first** message with the divider above it, from the very top (who is in the conversation, a thread's root shown whole), and **↓ N new** leads to the end. A long one is read back a page or two at most (200 messages beyond the newest 50); past that the divider stands above the oldest message read, with Show earlier above it. A space has no such first message to open on: one you have never visited has no return point and opens at its end. |
+| S23 | **Open where you left off** (founder pick by Hubert, 2026-11-10, [#1246](https://github.com/ColdPhase/flux/issues/1246)). One behaviour in every conversation: a space's, a direct message, a thread, a task's discussion and an agent's chat. It opens on its first new message, with a quiet **New** divider above it (one rule with the word, like a day line, in the same place in each), or at its end when nothing is new. The first new message starts its own group, as after a day line: its author is named again, whoever wrote the message above the divider. While you read above the end, what arrives is counted in one line over the foot of the conversation, **↓ 3 new** (a soft pill, the `--own` fill with the pop shadow and the down arrow, 32 px with a mouse and 44 px on touch): a click or tap goes to the end, so does **End** (outside a text field), and the line goes when you reach the end; used from the keyboard it leaves focus on the newest message. Nothing moves under you: a message that arrives while you read above stays below. There is no setting and no screen. What is new is what you had not seen: in a space, what changed since you left it (S7's return point); in a direct message, a thread and a task's discussion, the messages by others after the last one you viewed (the same viewing as "Seen by"); in an agent's chat, what the agent said after you last had the chat open. Everything in a conversation you have never opened is new (founder decision, 2026-11-12, [#1246](https://github.com/ColdPhase/flux/issues/1246)): a direct message, a thread, a task's discussion or an agent's chat opens at its **first** message with the divider above it, from the very top (who is in the conversation, a thread's root shown whole), and **↓ N new** leads to the end. A long one is read back a page or two at most (200 messages beyond the newest 50); past that the divider stands above the oldest message read, with Show earlier above it. A space has no such first message to open on: one you have never visited has no return point and opens at its end. Coming back to a place you left (Back, the way back) is coming back to a screen you have seen: a New divider that would stand inside that screen is not drawn, because it would push down what you were reading ([#1335](https://github.com/ColdPhase/flux/issues/1335)); above the screen or below it, it stays. |
 | P1 | **Home** has two parts: Waiting for you (the top three, with Open Inbox) and Continue where you left off. Every row is clickable and ends in an arrow. |
 | P3 | Kreska is the agent icon everywhere (section 3). |
 | P4 | **A decision is one card on both devices:** who proposed it, the decision, its reason, then Accept / Not now / Discuss and who can accept it. Plain sentences appear only when they apply: "This replaces the decision **Wi-Fi in every bed** (12 Oct)." and "Shown on the Wiki page **Sensor network**." Accepting only marks the replaced decision "replaced"; Flux never moves or parks tasks. |
@@ -714,6 +714,33 @@ These functional rules from UI116-4 remain required:
     `=`, `+`, `-` or `@` shown as written text; the line under the sheet says how many rows. A table
     wider than 200 columns shows the first 200 and says "Showing the first 200 of N columns. Download to see
     them all."
+- **A video** (founder decision 2026-11-13, [#1352](https://github.com/ColdPhase/flux/issues/1352),
+  [C-61](../../product/decisions.md)). MP4, WebM and MOV that the browser plays natively play inside
+  Flux; the drawing adds no new surface, only the row's picture and the viewer's stage.
+  - **The row** is the file row, unchanged in size (56 px, radius `--r`, `--sub`): in place of the
+    page icon a 72 × 40 poster (the first frame the sender's browser drew), radius `--r-sm`, cropped
+    to fill, with the play glyph (the voice note's icon) centred on it over the same dark scrim as a
+    photo grid's "+N", no other colour. The
+    name, "Video · 0:42 · 14.2 MiB" (the playing time only when the file says it) and the download
+    button follow as in any file row. Pressing the poster or the name opens the viewer; the download
+    button downloads. A video without a poster (the sender's browser could not draw one, or an
+    encrypted space) keeps the page icon with its video pictogram and the same row. The phone draws
+    the same row; under 480 px the poster is 56 × 32 so that the name and "Video · 0:42 · 14.2 MiB"
+    keep their room.
+  - **The viewer** is the file preview's frame (always dark, Close at the top left, the name with
+    "Video · size" in the middle, Download in the bottom bar, Esc closes and focus returns to the
+    row). The stage holds the player, `object-fit: contain` on black, up to the stage's size, with
+    the browser's own controls (`controls`, `playsinline`) and the poster shown until Play. It
+    starts at once and seeks without loading the file: the bytes come in ranges. On the phone the
+    stage is the whole screen between the bars, and the browser's controls and full-screen button do
+    the rest. Closing stops the video and its download.
+  - **A video this browser cannot play** (its codec is not one the browser has) shows on the stage
+    "This browser can't play this video." with Download as the one button, as a PDF does. A person
+    who lost access sees "You no longer have access to this file." and nothing else.
+  - **In the composer** a video is a thumbnail like a photo's (its poster once drawn, else the page
+    icon), with its name, "Video · size · Uploading 42%" and ×; Retry upload as for any file. Over the
+    limit it says "A video can be at most 200 MiB." (the operator's number); in an encrypted space a
+    video is an ordinary file ("A file can be at most 5 MiB.") and downloads.
 
 | | |
 | --- | --- |

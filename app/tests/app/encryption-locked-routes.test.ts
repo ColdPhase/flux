@@ -40,6 +40,7 @@ const NOT_OFFERED: Readonly<Record<string, string>> = {
   '403 SPACE_AI_OFF': 'AI is always off in an encrypted workspace (F-030)',
   '409 WORKSPACE_ENCRYPTED_AI_OFF': 'AI is always off in an encrypted workspace: no agent can be made, and the operator is not asked to turn AI on (F-030)',
   '503 GITHUB_UNAVAILABLE': 'GitHub is refused for an encrypted workspace, and not configured on the test server',
+  '403 PREVIEW_FRAME_ONLY': 'a preview answers only a frame of a Flux page (C-60), which this walk is not; inside one, the file is read under the space\'s lock like any other (423)',
 };
 const codeOf = (text: string) => { try { return (JSON.parse(text) as { code?: string }).code ?? ''; } catch { return ''; } };
 

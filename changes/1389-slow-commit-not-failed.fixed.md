@@ -1,0 +1,1 @@
+- A message, conversation or other change whose save takes more than 2 s on a slow database is no longer answered as failed (500) after it was stored: Flux waits for the database to finish saving it ([#1389](https://github.com/ColdPhase/flux/pull/1389)).

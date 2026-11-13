@@ -1,0 +1,1 @@
+- Coming back to a direct message where you left it no longer shows a New divider inside the screen you return to, which pushed down what you were reading by its height when your viewing of that screen had not been kept (you had left a moment after it settled); above the screen or below it the divider stays ([#1335](https://github.com/ColdPhase/flux/issues/1335)).

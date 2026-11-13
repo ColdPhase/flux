@@ -125,6 +125,27 @@ describe('BM25 search: any word, Polish and English stems, accents folded, only 
     assert.deepEqual(await found(human(olek), 'pluwiometr'), [], 'a deleted row is not found');
   });
 
+  test('every word of a long query counts where it is found, and a word that occurs more often in a message ranks it higher (#1387)', async () => {
+    // pg_search keeps a constant score only up to 2048: before #1387 each word after the third was read as the third, so a message that held
+    // only a rare later word ranked with the rarity of the third.
+    const space = await createProject(ari, ws.id, `Long query ${randomUUID().slice(0, 8)}`, 'workspace');
+    const thread = await conversation(ari, space.id, 'Long query opener.');
+    const tag = () => `w${randomUUID().replaceAll('-', '').replace(/\d/g, '').slice(0, 10)}`;
+    const words = Array.from({ length: 12 }, tag);
+    for (let i = 0; i < 6; i += 1) await say(ari, thread.id, `Common ${words[2]} note ${i}.`);
+    for (let i = 0; i < 2; i += 1) await say(ari, thread.id, `First ${words[0]} note ${i}.`);
+    await say(ari, thread.id, `Only ${words[4]} here.`);
+    const hits = await found(human(ari), words.join(' '));
+    assert.equal(hits[0], `Only ${words[4]} here.`, 'the rarest word, the fifth of twelve, ranks its message first');
+    assert.equal(hits.length, 9);
+    // The same words and the same length (three distinct words), one of them three times: it occurs more often, so it ranks higher, also
+    // above the newer message (equal ranks go newest first).
+    const often = tag();
+    await say(ari, thread.id, `${often} ${often} ${often} alpha beta`);
+    await say(ari, thread.id, `${often} alpha beta`);
+    assert.deepEqual(await found(human(ari), often), [`${often} ${often} ${often} alpha beta`, `${often} alpha beta`]);
+  });
+
   test('a sealed row (an encrypted space) cannot carry words, and the index and the statement leave sealed rows out', async () => {
     const key = `project:${lamp.id}`;
     // Encrypted spaces keep only empty placeholders in search_documents: a sealed row with words is refused outright.

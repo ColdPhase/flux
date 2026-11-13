@@ -1,5 +1,6 @@
 import { loadAgentRuntimeConfig, loadEmbeddingsConfig, loadPushServerConfig, type AgentRuntimeConfig, type EmbeddingsConfig, type PushServerConfig } from '@flux/core';
 import { loadBackgroundMasterKey } from '@flux/db';
+import { loadFilesConfig, type FilesConfig } from './files/config.js';
 import { loadIdentityConfig, type IdentityConfig } from './identity/index.js';
 import { loadLinkPreviewsConfig, type LinkPreviewsConfig } from './link-previews/config.js';
 import { loadWebReadsConfig, type WebReadsConfig } from './web-reads/config.js';
@@ -27,6 +28,8 @@ export interface ServerConfig {
   push: PushServerConfig;
   fixture: FixtureConfig;
   filesDir: string;
+  /** `FLUX_VIDEO_MAX_MIB` (C-61, #1352): the cap for one video of a plain space. */
+  files: FilesConfig;
   /** Stream ping, session revalidation and polling interval. */
   heartbeatMs: number;
   port: number;
@@ -62,6 +65,7 @@ export function loadServerConfig(env: NodeJS.ProcessEnv = process.env, backgroun
     push: loadPushServerConfig(env),
     fixture: { token: env.FLUX_FIXTURE_TOKEN || null, failureInjection: env.FLUX_TEST_FAILURE_INJECTION === 'true', cspEval: env.FLUX_TEST_CSP_EVAL !== 'false' },
     filesDir: env.FLUX_FILES_DIR ?? '/data/files',
+    files: loadFilesConfig(env),
     heartbeatMs,
     port: Number(env.PORT ?? 8080),
     backgroundMasterKey: backgroundKeyPath === undefined ? loadBackgroundMasterKey() : loadBackgroundMasterKey(backgroundKeyPath),

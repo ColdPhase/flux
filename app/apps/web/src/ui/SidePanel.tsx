@@ -134,7 +134,17 @@ function DockedPanel({ open, onClose, title, closeLabel, back, chip, context, id
       returnRef.current = null;
       // The work area takes the space back at once while the panel fades out over it; focus has already returned.
       panel?.classList.add('is-leaving');
-      if (panel?.contains(document.activeElement) && target?.isConnected) target.focus({ preventScroll: true });
+      // What had focus inside the panel went with it, and so did a focus the page lost on the way (WebKit drops it to the page while the
+      // panel's content is still being read in): both are handed back, as useFocusBack does. A control the person moved to keeps it.
+      const handBack = () => {
+        const active = document.activeElement;
+        const lost = !active || active === document.body || !active.isConnected;
+        if ((panel?.contains(active) || lost) && target?.isConnected) target.focus({ preventScroll: true });
+      };
+      handBack();
+      // WebKit can take focus off the control again as the panel is made inert, a moment after it was given: if the page has no focus once
+      // that frame is in, it is handed back once more. A person who has moved on to a control of their own has focus on it, so it stays.
+      requestAnimationFrame(handBack);
       void settle(panel, { opacity: 0, transform: `translateX(${shift})` }, duration('--dur-out'), '--ease-in', { from: { opacity: 1, transform: 'none' }, fill: 'forwards' })
         .then(() => { if (!openRef.current) unmount(); });
     };

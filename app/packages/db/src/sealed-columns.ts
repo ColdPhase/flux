@@ -168,7 +168,7 @@ export const VISIBLE_COLUMNS: Readonly<Record<string, Readonly<Record<string, st
   sketch_thoughts: { shape: 'an enum', created_by_user_id: 'a user id', edited_by: 'principal ids', source_author_id: 'a user id',
     source_author_name: 'a person\'s name (account data)' },
   sketch_links: { created_by_user_id: 'a user id' },
-  project_files: { uploader_id: 'a user id', state: 'an enum' },
+  project_files: { uploader_id: 'a user id', state: 'an enum', video_container: 'an enum (mp4, webm or mov): recorded only for a plain space, like the numbers read from the bytes' },
   doc_live_presence: { actor_id: 'a principal id', session_id: 'a session id', cursor: 'Yjs relative positions in a 5–30 s lease, no text' },
   doc_live_replicas: { owner_kind: 'an enum', actor_id: 'a principal id' },
   doc_live_updates: { actor_id: 'a principal id' },

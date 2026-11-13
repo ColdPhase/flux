@@ -78,7 +78,7 @@ export function projectExportRows(db: DbExecutor) {
     async files(projectId: string) {
       const read = await db.select({ file: schema.projectFiles, conversationId: msg.conversationId }).from(schema.projectFiles)
         .innerJoin(msg, eq(msg.id, schema.projectFiles.messageId))
-        .where(and(eq(schema.projectFiles.projectId, projectId), sql`${schema.projectFiles.messageId} IS NOT NULL`))
+        .where(and(eq(schema.projectFiles.projectId, projectId), sql`${schema.projectFiles.messageId} IS NOT NULL`, sql`${schema.projectFiles.posterOf} IS NULL`))
         .orderBy(asc(schema.projectFiles.id));
       const opened = await openRows(db, 'project_files', read.map((row) => row.file));
       const rows = read.map((row, index) => ({ ...row, file: opened[index]! }));

@@ -260,8 +260,11 @@ class PersonalAssistantJourney(unittest.TestCase):
         expect(page.get_by_role("checkbox")).to_have_count(0)
         row.get_by_role("link").click()
         expect(page.get_by_role("heading", level=2, name="Assistant")).to_be_visible()
-        model = page.get_by_role("group", name=re.compile("^Model")).get_by_role("radio", checked=True)
+        # The model is the one control of its group: a dropdown for an API key (#1282), showing the model the assistant has (not "Choose a model").
+        model = page.get_by_role("group", name=re.compile("^Model")).get_by_role("combobox")
         expect(model).to_have_count(1)
+        expect(model).to_contain_text("Sonnet 5")
+        expect(model).not_to_contain_text("Choose a model")
         shot(page, "assistant-1440-settings-ready")
         status = self.status(page)
         self.assertEqual((status["state"], status["enablement"]["engine"], status["enablement"]["model"]), ("ready", "server", "claude-sonnet-5"))

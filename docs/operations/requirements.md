@@ -11,7 +11,7 @@ runs in containers, so the host needs only Docker and a few standard tools.
 | **CPU architecture** | `x86_64` (`amd64`) | Release images are published for `linux/amd64` only; `linux/arm64` is planned for v0.3 ([#833](https://github.com/ColdPhase/flux/issues/833)). Source builds were measured on Linux `x86_64` and macOS `arm64` ([time to first run](../development/time-to-first-run.md)). |
 | **CPU** | 2 cores | An idle instance uses well under one core. Building from source is the heaviest step. |
 | **Memory** | 4 GB | The default container limits of the base stack add up to 2.9 GB, PostgreSQL included (see below). |
-| **Disk** | 10 GB free, SSD | About 0.25 GB for the Flux image, 0.5 GB for PostgreSQL, the build cache when you build from source, then your data and backups. |
+| **Disk** | 10 GB free, SSD | About 0.25 GB for the Flux image, 0.5 GB for PostgreSQL, the build cache when you build from source, then your data and backups. **Videos** (MP4, WebM and MOV that play inside Flux, [#1352](https://github.com/ColdPhase/flux/issues/1352)) are stored as they were sent, never converted, and a video may be as large as [`FLUX_VIDEO_MAX_MIB`](configuration.md#flux_video_max_mib) (200 MiB by default; every other file stays at 5 MiB). A team that shares screen recordings should plan the `files` volume in tens of gigabytes, not megabytes, and size `FLUX_VIDEO_MAX_MIB` to the disk it has; a deleted message or space frees its videos. A video is read from disk in ranges as people watch it, so memory does not grow with its size. |
 | **Swap** | off, or encrypted | Only matters for [encrypted spaces](encrypted-spaces.md#swap-and-memory). |
 
 Memory in more detail. Compose limits each service, and memory and swap to the same value
