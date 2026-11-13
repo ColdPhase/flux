@@ -144,7 +144,7 @@ describe('the limits and the sandbox are kept', () => {
   test('a child that cannot confine itself exits before it reads a byte', async () => {
     const probe = createFileTextSandbox({ entry: join(here, 'support', 'file-text-probe.mjs'), addon: join(here, 'support', 'file-text-probe.mjs') });
     const result = await probe.extract(Buffer.from('words'), 'text');
-    assert.equal(reason(result), 'crashed', 'a file that is not the addon cannot confine: the probe exits 70 and nothing is read');
+    assert.equal(reason(result), 'unconfined', 'a file that is not the addon cannot confine: the probe exits 70 and nothing is read');
   });
 
   test('what a hostile parser would try: no network of any kind, no file, no write, no child, no memory beyond the limit, nothing in its environment', async () => {
@@ -160,14 +160,30 @@ describe('the limits and the sandbox are kept', () => {
     assert.equal(found.env, 0, 'an empty environment: no secret reaches it');
   });
 
-  test('the kernel layer alone (without the permission flags): sockets, exec and io_uring are refused', () => {
+  test('the kernel layer alone (without the permission flags): sockets, exec, writes and the worker\'s /proc are refused', () => {
     const addon = createFileTextSandbox().unavailable === null ? join(here, '..', '..', 'apps', 'worker', 'native', 'sandbox.node') : '';
     assert.ok(existsSync(addon), addon);
-    const code = `const s = require(${JSON.stringify(addon)}); s.confine(256*1024*1024, 30); const out = {};
-      try { require('child_process').execSync('id'); out.exec = 'ran'; } catch (e) { out.exec = e.code; }
+    // A file the child may not touch, made before it confines itself: as if Node's permission model had been bypassed.
+    const code = `const s = require(${JSON.stringify(addon)}); const fs = require('fs'); const victim = require('os').tmpdir() + '/flux-file-text-victim-' + process.pid;
+      fs.writeFileSync(victim, 'kept'); const out = {};
+      const t = (name, run) => { try { run(); out[name] = 'done'; } catch (e) { out[name] = e.code; } };
+      // Before it confines itself: the worker (this test, as the parent) is not dumpable, so its environment is not the child's to read.
+      t('environ', () => fs.readFileSync('/proc/' + process.ppid + '/environ'));
+      const landlock = s.confine(256*1024*1024, 30, [victim]);
+      t('passwd', () => fs.readFileSync('/etc/passwd'));
+      if (!(landlock > 0)) out.passwd = 'EACCES';
+      t('exec', () => require('child_process').execSync('id'));
+      t('create', () => fs.writeFileSync(victim + '.new', 'x'));
+      t('overwrite', () => fs.writeFileSync(victim, 'x'));
+      t('unlink', () => fs.unlinkSync(victim));
+      t('rename', () => fs.renameSync(victim, victim + '.moved'));
+      t('chmod', () => fs.chmodSync(victim, 0));
+      out.kept = fs.readFileSync(victim, 'utf8');
       const net = require('net'); const c = net.connect(80, '1.1.1.1'); c.on('error', (e) => { out.tcp = e.code; console.log(JSON.stringify(out)); });
       c.on('connect', () => { out.tcp = 'connected'; console.log(JSON.stringify(out)); process.exit(); });`;
     const ran = spawnSync(process.execPath, ['-e', code], { encoding: 'utf8', env: {}, timeout: 15_000 });
-    assert.deepEqual(JSON.parse(ran.stdout.trim()), { exec: 'EPERM', tcp: 'EACCES' });
+    // Where the kernel has Landlock (the hosts of these tests do), a file outside what the child was given cannot be read either.
+    assert.deepEqual(JSON.parse(ran.stdout.trim()), { environ: 'EACCES', passwd: 'EACCES', exec: 'EPERM', create: 'EACCES', overwrite: 'EACCES', unlink: 'EPERM',
+      rename: 'EPERM', chmod: 'EPERM', kept: 'kept', tcp: 'EACCES' }, ran.stderr);
   });
 });

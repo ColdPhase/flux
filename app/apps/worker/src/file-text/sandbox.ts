@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { setPriority } from 'node:os';
 import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
@@ -10,10 +11,12 @@ import { FILE_TEXT_LIMITS, type FileTextFormat, type TextSegment } from '@flux/c
  * no file but its own code and PDF.js (and no write, no child process, no worker, no inspector), it gets an empty environment, and the first thing it
  * does, before it reads a byte of the file, is load `sandbox.node` (apps/worker/native/sandbox.c), which takes away the network, `execve` and
  * `io_uring` for good and bounds its memory, CPU time, file size and open files in the kernel. The file goes in on stdin and the text comes out on
- * stdout. This process also kills it at the time limit, at the resident-memory limit and at the output limit. Where `sandbox.node` is not there
- * nothing is read at all: the sandbox is never optional.
+ * stdout. This process also kills it at the time limit, at the resident-memory limit and at the output limit, and runs it at a lower priority, so that
+ * reading files (the backfill after an upgrade above all) yields the CPU to the API. Where `sandbox.node` is not there nothing is read at all: the
+ * sandbox is never optional. The real sandbox (no `addon` given) also makes this process not dumpable (`shield()`), so that a child of the same user
+ * cannot read this process's environment, memory or descriptors through /proc even if it escaped its own limits.
  */
-export type ExtractFailure = 'not-text' | 'empty' | 'encrypted' | 'unreadable' | 'too-large' | 'timeout' | 'memory' | 'output' | 'crashed';
+export type ExtractFailure = 'not-text' | 'empty' | 'encrypted' | 'unreadable' | 'too-large' | 'timeout' | 'memory' | 'output' | 'crashed' | 'unconfined';
 export type ExtractResult = { ok: true; segments: TextSegment[]; pages: number | null } | { ok: false; reason: ExtractFailure; detail?: string };
 
 export interface FileTextSandbox {
@@ -35,6 +38,10 @@ export interface SandboxOptions {
 const here = dirname(fileURLToPath(import.meta.url));
 /** The worker package: `dist/file-text` (built) or `src/file-text` (from source) is two directories below it. */
 const workerRoot = join(here, '..', '..');
+/** The exit code of a child that could not confine itself (child.ts): it read nothing. */
+const UNCONFINED = 70;
+/** The child's niceness: below the API and the rest of the worker. */
+const NICENESS = 10;
 
 function findEntry(): string | null {
   for (const candidate of [join(here, 'child.js'), join(workerRoot, 'dist', 'file-text', 'child.js')]) if (existsSync(candidate)) return candidate;
@@ -57,21 +64,23 @@ export function createFileTextSandbox(options: SandboxOptions = {}): FileTextSan
   const unavailable = process.platform !== 'linux' ? 'the file-text sandbox needs Linux'
     : !entry ? 'the file-text child process is not built (apps/worker/dist/file-text/child.js)'
       : !existsSync(addon) ? `the kernel sandbox is not built (${addon}); it is compiled into the image from apps/worker/native/sandbox.c`
-        : !pdfjs ? 'pdfjs-dist is not installed' : null;
+        : !pdfjs ? 'pdfjs-dist is not installed' : shieldWorker(options.addon === undefined ? addon : null);
+  // The code it may read is its own directory and the one package; Node also reads the package.json that says how its files load.
+  // (the package is read both by its real path and by the link the module resolution walks through: pnpm links it from the worker's node_modules).
+  const reads = unavailable ? [] : [dirname(entry!), pdfjs!, join(workerRoot, 'node_modules', 'pdfjs-dist'), addon, join(workerRoot, 'package.json')];
+  // `reads` binds the child in the kernel too, where it has Landlock (sandbox.c).
   const limits = JSON.stringify({ pages: FILE_TEXT_LIMITS.pages, chars: FILE_TEXT_LIMITS.chars, fileBytes: FILE_TEXT_LIMITS.fileBytes, zipEntries: FILE_TEXT_LIMITS.zipEntries,
-    zipDirectoryBytes: FILE_TEXT_LIMITS.zipDirectoryBytes, xmlBytes: FILE_TEXT_LIMITS.xmlBytes, extraBytes: FILE_TEXT_LIMITS.extraBytes, cpuSeconds: FILE_TEXT_LIMITS.cpuSeconds, pdfjs });
+    zipDirectoryBytes: FILE_TEXT_LIMITS.zipDirectoryBytes, xmlBytes: FILE_TEXT_LIMITS.xmlBytes, extraBytes: FILE_TEXT_LIMITS.extraBytes, cpuSeconds: FILE_TEXT_LIMITS.cpuSeconds, pdfjs, reads });
 
   return {
     unavailable,
     extract(bytes, format) {
       if (unavailable) return Promise.reject(new Error(unavailable));
-      // The code it may read is its own directory and the one package; Node also reads the package.json that says how its files load.
-      // (the package is read both by its real path and by the link the module resolution walks through: pnpm links it from the worker's node_modules).
-      const reads = [dirname(entry!), pdfjs!, join(workerRoot, 'node_modules', 'pdfjs-dist'), addon, join(workerRoot, 'package.json')];
       const args = ['--permission', ...reads.map((path) => `--allow-fs-read=${path}`), '--allow-addons', `--max-old-space-size=${FILE_TEXT_LIMITS.heapMb}`,
         '--disallow-code-generation-from-strings', '--disable-sigusr1', entry!, format, addon, limits];
       return new Promise<ExtractResult>((resolve) => {
         const child = spawn(node, args, { stdio: ['pipe', 'pipe', 'pipe'], env: {}, cwd: '/', windowsHide: true });
+        if (child.pid) try { setPriority(child.pid, NICENESS); } catch { /* the default priority */ }
         const out: Buffer[] = [];
         let size = 0;
         let diagnostics = '';
@@ -87,6 +96,7 @@ export function createFileTextSandbox(options: SandboxOptions = {}): FileTextSan
         child.on('error', (error) => done({ ok: false, reason: 'crashed', detail: error.message }));
         child.on('close', (code, signal) => {
           if (verdict) return done({ ok: false, reason: verdict });
+          if (code === UNCONFINED) return done({ ok: false, reason: 'unconfined', detail: diagnostics.trim().slice(0, 300) });
           if (code !== 0) return done({ ok: false, reason: 'crashed', detail: `${signal ?? `exit ${code}`}: ${diagnostics.trim().slice(0, 300)}` });
           try {
             const answer = JSON.parse(Buffer.concat(out).toString('utf8')) as { ok: boolean; reason?: ExtractFailure; segments?: TextSegment[]; pages?: number };
@@ -98,4 +108,13 @@ export function createFileTextSandbox(options: SandboxOptions = {}): FileTextSan
       });
     },
   };
+}
+
+/** Makes this process not dumpable with the real addon (the tests' stand-ins are never loaded here); why it could not, or null. */
+function shieldWorker(addon: string | null): string | null {
+  if (addon === null) return null;
+  try {
+    (createRequire(import.meta.url)(addon) as { shield(): boolean }).shield();
+    return null;
+  } catch (error) { return `the kernel sandbox could not be loaded (${(error as Error).message})`; }
 }

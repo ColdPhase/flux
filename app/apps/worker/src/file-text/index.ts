@@ -38,6 +38,8 @@ export async function startFileText(options: FileTextOptions) {
   let running = false;
   let again = false;
   let stopped = false;
+  /** Set when the sandbox turns out not to work on this host: the queue is left as it is, for the next start. */
+  let off = false;
   let retry: ReturnType<typeof setTimeout> | undefined;
 
   const readOne = async (job: NonNullable<Awaited<ReturnType<typeof rows.claim>>>) => {
@@ -46,6 +48,12 @@ export async function startFileText(options: FileTextOptions) {
     const bytes = format ? await read(job.fileId) : null;
     if (format && (!bytes || bytes.length !== job.size)) throw new Error('The stored file is missing or is not the size it was stored with');
     const result = format && bytes ? await sandbox.extract(bytes, format) : null;
+    if (result && !result.ok && result.reason === 'unconfined') {
+      // The child could not confine itself (the kernel refused the filter): nothing is read here any more, and the job stays for a worker that can.
+      off = true;
+      log('Files are not searched: no file is read without its sandbox', { reason: result.detail ?? 'the child could not confine itself' });
+      throw new Error('The file-text sandbox could not confine its child');
+    }
     if (result && !result.ok && result.reason === 'crashed') log('A file could not be read', { file: job.fileId, reason: result.reason, detail: result.detail });
     const split = result?.ok ? splitIntoParts(result.segments, { partChars: FILE_TEXT_LIMITS.partChars, maxChars: FILE_TEXT_LIMITS.chars }) : null;
     // A file that cannot be read (or one that is not text by its name) is finished without text: its name row stays.
@@ -55,7 +63,7 @@ export async function startFileText(options: FileTextOptions) {
   };
 
   const tick = async () => {
-    if (stopped) return;
+    if (stopped || off) return;
     if (running) { again = true; return; }
     running = true;
     try {
@@ -64,16 +72,16 @@ export async function startFileText(options: FileTextOptions) {
         const gaveUp = await rows.giveUp(FILE_TEXT_LIMITS.leaseMs, FILE_TEXT_LIMITS.attempts);
         if (gaveUp.length) log('Files were given up after repeated failures', { files: gaveUp });
         for (;;) {
-          if (stopped) break;
+          if (stopped || off) break;
           const job = await rows.claim(FILE_TEXT_LIMITS.leaseMs, FILE_TEXT_LIMITS.attempts);
           if (!job) break;
           try { await readOne(job); }
-          catch (error) { log('A file could not be read; its job is tried again later', { file: job.fileId, attempt: job.attempts, error: (error as Error).message }); }
+          catch (error) { if (off) break; log('A file could not be read; its job is tried again later', { file: job.fileId, attempt: job.attempts, error: (error as Error).message }); }
           if (pause) await sleep(pause);
         }
-      } while (again && !stopped);
+      } while (again && !stopped && !off);
       // A job that failed waits for its lease: look again when it is over.
-      const wait = stopped ? null : await rows.nextRetryIn(FILE_TEXT_LIMITS.leaseMs, FILE_TEXT_LIMITS.attempts);
+      const wait = stopped || off ? null : await rows.nextRetryIn(FILE_TEXT_LIMITS.leaseMs, FILE_TEXT_LIMITS.attempts);
       if (wait !== null) { clearTimeout(retry); retry = setTimeout(() => void tick(), wait + 1000).unref(); }
     } catch (error) {
       log('The file reader could not reach the database; trying again later', { error: (error as Error).message });

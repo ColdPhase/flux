@@ -12,7 +12,7 @@ import { extractText, type Extracted } from './text.js';
  *
  * argv: format (`pdf`, `docx` or `text`), the path of sandbox.node, and a JSON object of limits.
  */
-interface Limits { pages: number; chars: number; fileBytes: number; zipEntries: number; zipDirectoryBytes: number; xmlBytes: number; extraBytes: number; cpuSeconds: number; pdfjs: string }
+interface Limits { pages: number; chars: number; fileBytes: number; zipEntries: number; zipDirectoryBytes: number; xmlBytes: number; extraBytes: number; cpuSeconds: number; pdfjs: string; reads: string[] }
 
 // Whatever a library prints must not reach the answer.
 console.log = console.warn = console.info = console.debug = (...args: unknown[]) => console.error(...args);
@@ -50,8 +50,9 @@ function answer(result: Extracted): never {
 }
 
 try {
-  const confine = (createRequire(import.meta.url)(addon!) as { confine(extraBytes: number, cpuSeconds: number): boolean }).confine;
-  if (!confine(limits.extraBytes, limits.cpuSeconds)) throw new Error('not confined');
+  // It answers the Landlock ABI that binds its reads (0 where the kernel has none: the filter and the permission model still hold); anything else is a failure.
+  const confine = (createRequire(import.meta.url)(addon!) as { confine(extraBytes: number, cpuSeconds: number, reads: string[]): number }).confine;
+  if (typeof confine(limits.extraBytes, limits.cpuSeconds, limits.reads ?? []) !== 'number') throw new Error('not confined');
 } catch (error) {
   console.error(`sandbox: ${(error as Error).message}`);
   process.exit(70);
