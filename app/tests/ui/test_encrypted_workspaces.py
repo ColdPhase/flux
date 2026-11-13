@@ -246,7 +246,11 @@ class Base(unittest.TestCase):
         expect(card).to_be_visible()
         box, frame = self.on_page(card), self.on_page(pane)
         self.assertAlmostEqual(box["x"] + box["width"] / 2, frame["x"] + frame["width"] / 2, delta=2, msg=f"the card is centred across its pane: {box} in {frame}")
-        self.assertAlmostEqual(box["y"] + box["height"] / 2, frame["y"] + frame["height"] / 2, delta=frame["height"] * 0.15, msg=f"and sits mid-height in it: {box} in {frame}")
+        if phone:
+            # The phone's pane grows when the tab bar steps aside for typing, so a card with a field keeps its top instead of following the middle (#1360).
+            self.assertLess(box["y"], frame["y"] + frame["height"] * 0.35, f"the card starts in the upper part of its pane: {box} in {frame}")
+        else:
+            self.assertAlmostEqual(box["y"] + box["height"] / 2, frame["y"] + frame["height"] / 2, delta=frame["height"] * 0.15, msg=f"and sits mid-height in it: {box} in {frame}")
         self.assertEqual(card.evaluate("el => getComputedStyle(el).textAlign"), "center")
 
     @staticmethod
@@ -359,9 +363,6 @@ class EncryptedWorkspaces(Base):
                 expect(field).to_have_attribute("type", "password")
                 expect(field).to_be_focused()
                 at = (self.on_page(field), self.on_page(button))
-                probe = """() => { const q = (s) => document.querySelector(s); const r = (el) => el ? [Math.round(el.getBoundingClientRect().top * 10) / 10, Math.round(el.getBoundingClientRect().height * 10) / 10] : null;
-                  return {card: r(q('.locked__card')), text: r(q('.locked__text')), title: r(q('.locked__title')), form: r(q('.locked__form')), status: r(q('.locked__status')), pane: q('#content .pane-scroll') ? q('#content .pane-scroll').scrollTop : null, inner: r(q('.pane-in.locked'))}; }"""
-                print("DEBUG12 start", phone, page.evaluate(probe))
                 shot(page, f"locked-owner-{'phone' if phone else 'computer'}")
                 self.assert_locked_shape(page, phone)
                 # The field and Unlock share one row, and the recovery link sits under them, centred in the card.
@@ -376,12 +377,10 @@ class EncryptedWorkspaces(Base):
                     for edge, value in old.items():
                         self.assertAlmostEqual(value, new[edge], delta=0.6, msg="the field and the button stay where they were")
                 # The recovery code swaps the field in place.
-                print("DEBUG12 before swap", phone, page.evaluate(probe))
                 page.get_by_role("button", name="Use the recovery code").click()
                 code_field = page.get_by_role("textbox", name="Recovery code")
                 expect(code_field).to_be_visible()
                 expect(code_field).to_be_focused()
-                print("DEBUG12 after swap", phone, page.evaluate(probe))
                 for old, new in zip(at, (self.on_page(code_field), self.on_page(button))):
                     for edge, value in old.items():
                         self.assertAlmostEqual(value, new[edge], delta=0.6, msg="swapping the field moves nothing")

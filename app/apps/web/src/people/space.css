@@ -129,3 +129,5 @@
 .spset__keys:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }
 .spset__keys .sset-row { display: flex; align-items: center; gap: 12px; }
 .spset__keys .sset-row__b { flex: 1; min-width: 0; }
+/* On touch the window's footer buttons are 44 px high at every width, a tablet's included (#1361). */
+@media (pointer: coarse) { .newspace__foot .ui-btn { min-height: 44px; } }
