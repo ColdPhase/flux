@@ -57,9 +57,9 @@ type Mode = TaskMode;
  * primary action, "+ Task", at the right end of the row. The search filters the board's loaded cards; the List is read in bounded pages from
  * the server, so its search is dimmed rather than removed, which keeps every other control where it is.
  */
-function Toolbar({ mode, onMode, query, onQuery, mine, onMine, onNew }: {
+function Toolbar({ mode, onMode, query, onQuery, mine, onMine, onNew, phone }: {
   mode: Mode; onMode: (mode: Mode) => void; query: string; onQuery: (query: string) => void;
-  mine: boolean; onMine: (mine: boolean) => void; onNew: () => void;
+  mine: boolean; onMine: (mine: boolean) => void; onNew: () => void; phone: boolean;
 }) {
   const searchId = useId();
   const radios = useRef<HTMLDivElement>(null);
@@ -263,7 +263,7 @@ export function ProjectTasks() {
   useRowMotion(scroller, '.ws-task[data-work-id]', (el) => el.dataset.workId, [mode, status ?? 'all', mine, cursor ?? '', phone, read.phase === 'ready' || read.phase === 'refreshing' ? 'ready' : 'loading'].join('|'));
   return (
     <div className="tb-root">
-      <Toolbar mode={mode} onMode={chooseMode} query={boardSearch} onQuery={setBoardSearch} mine={mine} onMine={(next) => setView({ mine: next })} onNew={startNew} />
+      <Toolbar mode={mode} onMode={chooseMode} query={boardSearch} onQuery={setBoardSearch} mine={mine} onMine={(next) => setView({ mine: next })} onNew={startNew} phone={phone} />
       <div className="pane-scroll" ref={scroller} data-own-place="">
       {!listing ? (
         <div className="tb" data-work-observed-at={data?.summary.observedAt}>
