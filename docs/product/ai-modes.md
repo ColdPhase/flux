@@ -164,7 +164,9 @@ the token as its API key; it adds the provider's usual paths:
 - **Refusals** are JSON errors that a harness does not retry (`x-should-retry: false`), shaped like both vendors' errors:
   `{"type":"error","error":{"type":"<code>","code":"<code>","message":"…"}}` — 401 `flux_token_invalid`, 402
   `flux_budget_exhausted` (the key's day cannot hold the request), 403 `flux_run_ended` (stopped, ended, AI turned off, the connection
-  gone), 400 `flux_request_refused`, 404 `flux_not_found`, 413 `flux_request_too_large`, 429 `flux_run_busy`. After a 402 or 403 the
+  gone), 400 `flux_request_refused`, 404 `flux_not_found`, 413 `flux_request_too_large`, 429 `flux_run_busy` (the run's four places are taken;
+  when the worker's shared bound on request bodies in memory is full instead, the same code comes with `x-should-retry: true` and
+  `retry-after: 2`, and the harness sends it again). After a 402 or 403 the
   harness gets no further answer and stops; Flux ends the run calmly, as on a server run ("budget" for the day's money).
 - **Metering** ([CA-3](model-providers.md#ca-3--the-providers-limits-not-fluxs)). Before a request is sent, the most it can cost
   (its body's bytes as input tokens plus 1,024, at the cache-write rate where the provider has one, and its output bound, at the run
@@ -176,7 +178,8 @@ the token as its API key; it adds the provider's usual paths:
   complete error answer of the provider (an HTTP error status) is charged nothing.
 - **Limits** (technical safety bounds, like #843's): 16 MiB a request, 32 MiB an answer, 10 minutes a request and, for a streamed
   answer, 2 minutes without a byte from the provider, 4 requests at once for one run (the place is taken before the body is read, so an
-  unknown token or a busy run costs the worker no body), and the egress's per-source connection caps.
+  unknown token or a busy run costs the worker no body), 48 MiB of request bodies in the worker's memory at once for every run
+  together (the worker has 512 MiB for all its jobs), and the egress's per-source connection caps.
 
 ## RT-5 — Tools: only Flux tools, the CLI's own web search and reading the web
 

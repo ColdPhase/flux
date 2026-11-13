@@ -375,6 +375,21 @@ describe('money and limits', () => {
     await gateway.close(run.id);
   });
 
+  test('the bodies of all requests in flight share one bound in the worker\'s memory: past it, send again shortly', async () => {
+    const run = await runOn('anthropic', 'claude-sonnet-5');
+    const small = createModelGatewayServer({ gateway, policy: parsePrivateTargets('127.0.0.1'), limits: { ...LIMITS, bodiesInFlightBytes: 1024 },
+      resolveKey: async () => KEY, upstreams: { anthropic: `${mockUrl}/anthropic` } });
+    const port = await listen(small);
+    try {
+      const answer = await fetch(`http://127.0.0.1:${port}/anthropic/v1/messages`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': run.token },
+        body: JSON.stringify({ ...body, messages: [{ role: 'user', content: 'x'.repeat(4096) }] }) });
+      assert.equal(answer.status, 429);
+      assert.deepEqual([answer.headers.get('x-should-retry'), answer.headers.get('retry-after')], ['true', '2']);
+      assert.equal((await row(run.id)).reserved_micros, 0, 'nothing held');
+    } finally { small.close(); }
+    await gateway.close(run.id);
+  });
+
   test('a request larger than the bound is refused', async () => {
     const run = await runOn('anthropic', 'claude-sonnet-5');
     const answer = await call('/anthropic/v1/messages', run.token, { ...body, messages: [{ role: 'user', content: 'x'.repeat(70 * 1024) }] });

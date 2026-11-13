@@ -58,6 +58,8 @@ export const MODEL_GATEWAY_LIMITS = {
   inputAllowanceTokens: 1_024,
   pictureTokens: 5_000,
   errorBodyBytes: 64 * 1024,
+  /** Request bodies of every run held in the worker's memory at once (#1441 review: the worker has 512 MiB for all its jobs). */
+  bodiesInFlightBytes: 48 * 1024 * 1024,
 } as const;
 
 export interface ModelGatewayRoute {
