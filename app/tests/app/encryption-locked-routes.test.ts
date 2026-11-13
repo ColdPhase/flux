@@ -42,6 +42,13 @@ const NOT_OFFERED: Readonly<Record<string, string>> = {
   '503 GITHUB_UNAVAILABLE': 'GitHub is refused for an encrypted workspace, and not configured on the test server',
   '403 PREVIEW_FRAME_ONLY': 'a preview answers only a frame of a Flux page (C-60), which this walk is not; inside one, the file is read under the space\'s lock like any other (423)',
 };
+/**
+ * A route that refuses a request by where it came from before it reads anything: the walk sends it as the page of Flux that frames it
+ * (C-60, #1252: the preview answers 403 PREVIEW_FRAME_ONLY to anything else), so it reaches the lock check like every other route.
+ * What a request that is not a frame gets is its own test below.
+ */
+const FRAME = { 'sec-fetch-dest': 'iframe', 'sec-fetch-site': 'same-origin', 'sec-fetch-mode': 'navigate' };
+const FRAMED_ROUTES: Readonly<Record<string, Record<string, string>>> = { 'GET /api/v1/files/:fileId/preview': FRAME };
 const codeOf = (text: string) => { try { return (JSON.parse(text) as { code?: string }).code ?? ''; } catch { return ''; } };
 
 let ada: Person; let ben: Person;
@@ -146,6 +153,23 @@ describe('F-030 AC-6: every route, called with a locked workspace\'s objects (S2
     // content-free for an encrypted workspace); live media (/media/*) is not configured on the test server.
   });
 
+  test('the preview of a file of a locked workspace: as a frame the lock answers 423; any other request is refused by its headers alone, as for a file that does not exist', async () => {
+    const framed = await ada.browser.request('GET', `/api/v1/files/${objects.fileId}/preview`, { headers: FRAME });
+    assert.equal(framed.status, 423, framed.text);
+    assert.equal(codeOf(framed.text ?? ''), 'WORKSPACE_LOCKED');
+    assert.doesNotMatch(framed.text ?? '', new RegExp(canary));
+    // The frame-only refusal reads nothing: the same answer for A's file, a file that is nowhere and a person who is not signed in,
+    // so it tells nothing about a locked workspace (the check of the lock still comes before any file is read).
+    const asked = async (path: string, signedIn: boolean) => {
+      const response = await fetch(new URL(path, ada.browser.base), { headers: signedIn ? { cookie: ada.browser.cookieHeader() } : {} });
+      return [response.status, await response.text()];
+    };
+    const expected = [403, JSON.stringify({ error: 'A preview opens only inside Flux', code: 'PREVIEW_FRAME_ONLY' })];
+    assert.deepEqual(await asked(`/api/v1/files/${objects.fileId}/preview`, true), expected, 'A\'s file, signed in');
+    assert.deepEqual(await asked(`/api/v1/files/${randomUUID()}/preview`, true), expected, 'no such file, signed in');
+    assert.deepEqual(await asked(`/api/v1/files/${objects.fileId}/preview`, false), expected, 'A\'s file, not signed in');
+  });
+
   test('answers 423 or is a listed metadata route or a cross-workspace read; never 500, a canary or an envelope', async () => {
     const listing = await fetch(new URL('/api/v1/test/routes', ada.browser.base), { headers: { authorization: `Bearer ${process.env.FLUX_FIXTURE_TOKEN}` } });
     assert.equal(listing.status, 200);
@@ -169,7 +193,7 @@ describe('F-030 AC-6: every route, called with a locked workspace\'s objects (S2
       for (const [name, value] of Object.entries(query ?? {})) if (value !== null && typeof value !== 'object') path += `${path.includes('?') ? '&' : '?'}${name}=${encodeURIComponent(String(value))}`;
       // Ada created everything; the Inbox and Needs you rows are Ben's.
       const who = /^\/api\/v1\/(inbox|needs-you|search|return)/.test(route.url) ? ben : ada;
-      const response = await who.browser.request(route.method, path, { ...(body === undefined ? {} : { body }), headers: { ...key(), 'if-match': '"1"' } });
+      const response = await who.browser.request(route.method, path, { ...(body === undefined ? {} : { body }), headers: { ...key(), 'if-match': '"1"', ...FRAMED_ROUTES[routeKey] } });
       walked.push(routeKey);
       if (response.status === 423) locked += 1;
       const text = response.text ?? '';
