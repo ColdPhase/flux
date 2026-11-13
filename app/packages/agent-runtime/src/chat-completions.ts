@@ -48,6 +48,8 @@ export interface ChatRequest {
   /** The Flux tools of a run with a tool loop (F-027 AST-8), and the earlier turns with their results. Resent on every request. */
   tools?: readonly PersonalTool[];
   turns?: readonly PersonalTurn[];
+  /** A run's last request (#1410): no tool may be called (`tool_choice: none`), and Flux's words follow the last results. */
+  answerNow?: string;
   signal: AbortSignal;
 }
 
@@ -76,8 +78,8 @@ const tokens = (value: unknown) => (typeof value === 'number' && Number.isSafeIn
 export async function chatCompletion(fetch: GuardedFetch, request: ChatRequest): Promise<ChatResult> {
   const body: Record<string, unknown> = {
     model: request.model,
-    messages: chatMessages(request.system, request.user, request.turns),
-    ...(request.tools?.length ? { tools: chatTools(request.tools) } : {}),
+    messages: chatMessages(request.system, request.user, request.turns, request.answerNow),
+    ...(request.tools?.length ? { tools: chatTools(request.tools), ...(request.answerNow ? { tool_choice: 'none' } : {}) } : {}),
     [MAX_TOKENS_FIELD[request.provider as Exclude<AiProviderKind, 'anthropic'>] ?? 'max_tokens']: request.maxTokens,
   };
   if (request.schema) body.response_format = { type: 'json_schema', json_schema: { name: request.schema.name, strict: true, schema: request.schema.schema } };

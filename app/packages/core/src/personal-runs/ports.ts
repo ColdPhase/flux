@@ -499,13 +499,30 @@ export interface PersonalComputeRequest {
    * to a provider that has one (`AI_PROVIDERS[kind].searchesWeb`); as many searches as the question needs (#1113). Absent: no search.
    */
   webSearch?: true;
+  /**
+   * Ask the provider to cache the stable prefix (the tool definitions and the brief) and the conversation as it grows (#1410), where
+   * Flux asks for caching (`PROMPT_CACHE_RATES`). The tool loop sets it only while the request's largest cost with every input token
+   * written to the cache still fits what is left of the run's reservation.
+   */
+  cache?: true;
+  /**
+   * The last request of a tool run (#1410): no tool may be called, and these words of Flux follow the last results, asking the model
+   * to answer with what it found and to say what it could not read.
+   */
+  answerNow?: string;
 }
+
+/**
+ * `cache`: the input tokens the provider wrote to its cache and read from it (#1410), within `inputTokens`, which is the whole
+ * prompt, and the rates of its input price they are charged at (`PROMPT_CACHE_RATES`).
+ */
+export interface PersonalComputeCache { readTokens: number; writeTokens: number; readRate: number; writeRate: number }
 
 /**
  * `reportedCostMicros`: the provider's own cost of the response, when it reports one (PROV-3 source 1). `webSearches`: how many
  * searches of the provider's built-in web search the response made (#954), each charged `WEB_SEARCH_MICROS`.
  */
-export interface PersonalComputeUsage { inputTokens: number; outputTokens: number; reportedCostMicros?: number | null; webSearches?: number }
+export interface PersonalComputeUsage { inputTokens: number; outputTokens: number; reportedCostMicros?: number | null; webSearches?: number; cache?: PersonalComputeCache }
 
 /**
  * What a response of the provider's built-in web search brought (#954, C-30), read from the provider's structured answer and never

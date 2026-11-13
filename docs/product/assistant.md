@@ -473,6 +473,16 @@ database backstop) is the starting point at space level for #855 and #874; see i
 - **Failures in plain words**: "Claude limit reached, resumes at 14:00", "Sign in to Claude
   again", "Claude refused this request", "Stopped". Nothing falls back to another connection or
   payer, and human work continues.
+- **A run on an API key answers at its bounds** (#1410). A tool result adds at most 16 KiB to the next request (a longer one
+  is cut and says how much is left and how to read on). When the next request would leave less than 8,000 tokens below the
+  64,000-token input bound, or the step cap allows no further step, it is the run's last: no tool can be called, and Flux asks
+  the model to answer from what it found and to say what it could not read; if even that would not fit, the longest results
+  are shortened until it does. Only a request that cannot fit at all ends the run "too large", as before.
+- **Prompt caching** (#1410). On Anthropic a run's requests mark the tool definitions, the brief and the growing conversation
+  for the provider's five-minute cache, so each step reads what the step before sent; the charge counts a cache write at 1.25×
+  and a read at 0.1× of the input price (never less than Anthropic bills). A request asks for caching only while its cost
+  with every input token written to the cache still fits what is left of the run's reservation, so the daily budget holds.
+  OpenAI and Gemini cache repeated prefixes by themselves; Flux charges their input at the full price.
 
 ## AG-12 — Finding older messages (F-042)
 
@@ -482,11 +492,20 @@ searching ([F-042](decisions.md#f-042--agents-find-what-they-need-with-bm25-sear
 - **`flux_search`** searches the spaces the agent may read now (its owner's rights, spaces with AI on), with any of the
   words, ranked by BM25 inside Flux's database, with Polish and English stemming and accents folded. It covers space
   messages, the Wiki (pages and materials), tasks, decisions and maps, and DM messages only within a run in that DM. It takes
-  `in` (a space, a conversation, a task's discussion), `from` (an author's id), `after` / `before` (a date or a time), `kind`
+  `in` (a space, a conversation, a task's discussion), `from` (an author's id, or a person's or an agent's name, #1410),
+  `after` / `before` (a date or a time), `kind`
   and `limit` (ten unless asked, at most 25). Each hit names its place, its author as people see them ([C-56](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override), #1160), its time, a link
   and a snippet with the matched words in bold; a message hit also gives its conversation and its place in it. Its description
   tells the agent to search before it says it does not know, in each language the people write in, and to try other words when
   little comes back; a search that finds nothing says so in words that say what to try.
+  - **`from` by name** (#1410): a name is matched, accents and case aside and in another case ending ("Maurycego"), among those the
+    caller may see named where it searches: in a DM its people; elsewhere a person who can read one of the search's spaces now and an
+    agent whose owner can (the rule by which reads name them, #1160), so a name never finds someone the caller could not see named.
+    Nobody, or several, is an error the model can act on: several are listed with their ids. An id works as before.
+  - **Two sources** (#1410): a task hit, and `flux_get_work`, say how many messages the task's discussion holds and that
+    `flux_get_task_discussion` reads them; the search's description asks the agent to check, before it answers, whether the
+    question has more than one part and each part its source. Nothing of this is in the brief (founder direction on #1381:
+    tools first).
 - **`flux_read_around`** returns the message and up to 25 before and after it (five by default) in its conversation or direct
   message, oldest first, with the same author labels and the same access check as a search: one answer for a message that
   is not there, one that is deleted and one the caller may not read.

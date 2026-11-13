@@ -17,7 +17,8 @@ import { assistantScene, human, type AssistantScene, type Message } from './supp
 // chat and a client every space their owner reaches. Encrypted spaces are other workspaces: never found. No model is called.
 
 type Hit = { kind: string; id: string; link: string; place: { type: string; id: string; name: string } | null; conversationId?: string; sequence?: number;
-  version?: number; number?: number; status?: string; title?: string; snippet?: string; author?: { kind: string; id: string; name: string }; at: string };
+  version?: number; number?: number; status?: string; title?: string; snippet?: string; author?: { kind: string; id: string; name: string }; at: string;
+  discussion?: { messages: number } };
 type Found = { results: Hit[]; more?: boolean; note?: string };
 type Around = { aroundMessageId: string; projectId?: string; dmId?: string; conversationId?: string; hasMoreBefore: boolean; hasMoreAfter: boolean;
   messages: { id: string; sequence: number; body: string; author: { kind: string; id: string; name: string } }[] };
@@ -161,6 +162,47 @@ describe('flux_search and flux_read_around: the owner\'s rights at the moment of
     const privateMap = expectStatus(await scene.owner.browser.request('POST', `/api/v1/workspaces/${scene.ws.id}/sketches`, { body: { title: 'My notes', scope: 'private' } }), 201) as { id: string };
     expectStatus(await scene.owner.browser.request('POST', `/api/v1/sketches/${privateMap.id}/thoughts`, { body: { text: 'Czujnik: a private thought', x: 0, y: 0 } }), 201);
     assert.ok(!JSON.stringify(await search(client.token, { q: 'czujnik prywatna private thought' })).includes('private thought'));
+  });
+
+  test('from takes a person\'s or an agent\'s name among those the caller may see named there, and an id as before (#1410)', async () => {
+    const q = 'czujnik sensor kalibracja anemometer bearings';
+    const ids = async (token: string, from: string) => (await search(token, { q, from })).results.map((item) => item.id);
+    for (const name of ['Jonas', 'jonas berg', 'Jonasa', 'Jonas Berg']) assert.deepEqual(await ids(client.token, name), [plMessage], name);
+    const wera = await search(client.token, { q, from: 'Wera' });
+    assert.ok(wera.results.some((item) => item.id === enMessage) && wera.results.every((item) => item.author?.id === scene.viewer.id), 'another person');
+    assert.deepEqual(await ids(client.token, scene.peer.id), [plMessage], 'an id works as before');
+    assert.equal(failure((await call(client.token, 'flux_search', { q, from: 'Zbigniew' })).message), 'AUTHOR_NOT_FOUND');
+    // Two agents of one name: the tool lists both with whose they are and their ids; the name as people see it picks one.
+    const adaAsystent = (expectStatus(await scene.owner.browser.request('POST', `/api/v1/workspaces/${scene.ws.id}/agents`, { body: { name: 'Asystent', owner: 'self' } }), 201) as { id: string }).id;
+    const ambiguous = toolFailure((await call(client.token, 'flux_search', { q, from: 'Asystent' })).message);
+    assert.equal(ambiguous.code, 'AUTHOR_AMBIGUOUS');
+    assert.ok(ambiguous.error.includes(jonasAgent) && ambiguous.error.includes(adaAsystent) && ambiguous.error.includes('Jonas Berg\'s agent'), ambiguous.error);
+    assert.deepEqual(await ids(client.token, 'Asystent (Jonas\'s agent)'), [agentMessage], 'an agent as reads name it');
+    // Someone outside the run's space is not named there, though the owner's client, which reaches the open space, may name her.
+    const outsider = await person('search-zofia');
+    await addMember(scene.lead, scene.ws.id, outsider, 'member');
+    await rename(outsider, 'Zofia Obca');
+    const said = await post(outsider, openThread.id, 'Czujnik sensor na dachu C.');
+    assert.deepEqual(await ids(client.token, 'Zofia'), [said.id]);
+    const run = await scene.liveRun(lampThread);
+    assert.equal(failure((await call(run.token, 'flux_search', { q, from: 'Zofia' })).message), 'AUTHOR_NOT_FOUND', 'a run in the lamp space cannot name her');
+    assert.deepEqual(await ids(run.token, 'Jonas'), [plMessage]);
+    await scene.complete(run.runId);
+  });
+
+  test('a task hit and the task read say that its discussion holds messages and how to read them (#1410)', async () => {
+    const tasks = await search(client.token, { q: 'anemometer calibrate', kind: 'task' });
+    assert.deepEqual(tasks.results.map((item) => [item.id, item.discussion]), [[taskId, { messages: 1 }]]);
+    const quiet = await scene.task(scene.owner, 'Calibrate the barometer', lamp.id);
+    const both = await search(client.token, { q: 'calibrate', kind: 'task' });
+    assert.equal(both.results.find((item) => item.id === quiet.id)?.discussion, undefined, 'a task nobody discussed says nothing');
+    const work = toolValue((await call(client.token, 'flux_get_work', { projectId: lamp.id, id: taskId })).message) as { id: string; discussion?: { messages: number } };
+    assert.deepEqual(work.discussion, { messages: 1 });
+    const listed = (await mcp(client.token, nextCall++, 'tools/list', {})).message?.result as { tools: { name: string; description: string }[] };
+    const described = (name: string) => listed.tools.find((tool) => tool.name === name)!.description;
+    assert.match(described('flux_search'), /discussion\.messages has a discussion: flux_get_task_discussion reads it/);
+    assert.match(described('flux_search'), /each part of the question has its source/);
+    assert.match(described('flux_get_work'), /flux_get_task_discussion/);
   });
 
   test('a message read around: its neighbours oldest first, the same author labels, and where more can be read', async () => {

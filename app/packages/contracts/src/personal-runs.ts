@@ -174,6 +174,17 @@ export const PERSONAL_RUN_LIMITS = {
   /** The safety bound on requests ("steps") of one run with a tool loop, the same as on a plan. */
   maxTurns: RUNTIME_RUN_LIMITS.maxTurns,
   prompt: 4_000,
+  /**
+   * What one tool result may add to the next request (#1410): a longer one is cut there, and says how much was left out and how to
+   * read on. A search page is about 6,500 bytes and a run's text page 12 KiB, so an ordinary read is never cut.
+   */
+  toolResultBytes: 16 * 1024,
+  /**
+   * The room a further step needs (#1410): when the next request, with every result so far, leaves less than this below the input
+   * bound, it is the run's last: no tool may be called, and Flux asks the model to answer with what it found and to say what it
+   * could not read, instead of ending the run without an answer when the step after would not fit.
+   */
+  answerRoomTokens: 8_000,
 } as const;
 
 /**

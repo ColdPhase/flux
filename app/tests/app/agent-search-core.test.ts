@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { agentHit, agentSearchPlan, agentSearchTime, agentSearchWords, markedText, type SearchRow } from '@flux/core';
+import { agentHit, agentSearchPlan, agentSearchTime, agentSearchWords, authorsNamed, isAuthorName, markedText, type AuthorCandidate, type SearchRow } from '@flux/core';
 
 // What an agent's search means and how a hit is told (F-042, AG-12, #1290), with no database: the words, the dates, the plan and the compact hit.
 
