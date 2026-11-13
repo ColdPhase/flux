@@ -336,12 +336,12 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   // A personal run's MCP token (F-027 A2): signed here, the authorization server, for the worker only.
   registerPersonalRunTokenRoute(app, db, identity.auth, identityConfig.publicOrigin);
   await app.register(returnRoutes, { db, sessions: identity });
-  await app.register(needsYouRoutes, { db, sessions: identity });
+  await app.register(needsYouRoutes, { db, sessions: identity, github: githubReadProvider });
   await app.register(sidebarRoutes, { db, sessions: identity });
   await app.register(docRoutes, { db, sessions: identity });
   await app.register(notificationRoutes, { db, sessions: identity, smtp: identityConfig.smtp, publicOrigin: identityConfig.publicOrigin });
   // Personal assistant runs (#68): the server queues; the worker dispatches.
-  await app.register(aiRoutes(assistantRoutes), { db, sessions: identity, boss });
+  await app.register(aiRoutes(assistantRoutes), { db, sessions: identity, boss, github: githubReadProvider });
   await app.register(aiRoutes(personalRunRoutes), { db, sessions: identity, boss, connections: personalRuns.connections, providerEnabled: personalRuns.providerEnabled,
     runtime: personalRuntimeAvailability(config.agentRuntime, db), storage: fileStorage });
   // People's agents take tasks (#856): the setting, the state line and the drain of what the work and the worker wrote.

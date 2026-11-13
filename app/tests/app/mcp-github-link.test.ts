@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import { randomInt, randomUUID } from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
-import type { Agent, GithubPullFacts, GithubTaskLink, WorkItem } from '@flux/contracts';
+import { assistantChangeActionPath, type Agent, type GithubPullFacts, type GithubTaskLink, type WorkItem } from '@flux/contracts';
 import { NotFoundError, parseGithubPullUrl, type GithubProvider, type Principal } from '@flux/core';
 import { buildApp } from '../../apps/server/src/app.js';
 import { loadServerConfig } from '../../apps/server/src/config.js';
 import { createGithubUseCases } from '../../apps/server/src/github/adapters.js';
 import { db, pool } from './support/db.js';
+import { Browser } from './support/http.js';
 import { agentConnection, toolFailure } from './support/mcp-actions.js';
 import { mcp, toolValue } from './support/mcp.js';
 import { expectStatus, grant, person, project, removeFromSpace, workspace, addMember, type Person } from './support/people.js';
@@ -228,5 +229,26 @@ describe('flux_link_pull_request (#160 AC-3)', () => {
     assert.ok((await s.mine.connected.toolNames()).includes('flux_link_pull_request'));
     const listed = (s.mine.connected.bootstrap.capabilities as { name: string; operation: string | null; classes: string[] }[]).find((row) => row.name === 'flux_link_pull_request');
     assert.deepEqual([listed?.operation, listed?.classes], ['work.update', ['execute', 'plan']]);
+  });
+
+  test('#1419: under Ask me first the link waits for the owner\'s OK, and the owner\'s Approve links it once', async () => {
+    const s = await scene();
+    const item = await s.task('Link after the OK', s.mine.agent);
+    expectStatus(await s.hubert.browser.request('PATCH', `/api/v1/agent-connections/${s.mine.connected.connectionId}`, { body: { mayDo: 'ask' } }), 200);
+    const commandId = randomUUID();
+    assert.match(JSON.stringify((await s.link(s.mine, item.id, url(REPO, 61), { clientCommandId: commandId }))?.result), /Waiting for .+'s OK/);
+    assert.equal(await s.linkRows(item.id), 0, 'nothing is linked yet');
+    const [row] = (await pool.query(`SELECT id, operation, object_title FROM assistant_changes WHERE connection_id = $1 AND state = 'waiting'`,
+      [s.mine.connected.connectionId])).rows as { id: string; operation: string; object_title: string }[];
+    assert.equal(row!.operation, 'work.update');
+    assert.match(row!.object_title, new RegExp(`Link after the OK · pull request ${url(REPO, 61).replaceAll('.', '\\.')}$`));
+    // The owner approves at the API that has the GitHub App (the stack's own has none), in their own signed-in session.
+    const there = new Browser(base);
+    for (const [name, value] of s.hubert.browser.cookies) there.cookies.set(name, value);
+    expectStatus(await there.request('POST', assistantChangeActionPath(row!.id, 'apply'), { body: {} }), 200);
+    assert.equal(await s.linkRows(item.id), 1);
+    assert.equal(((await pool.query(`SELECT state FROM assistant_changes WHERE id = $1`, [row!.id])).rows[0] as { state: string }).state, 'applied_after_wait');
+    assert.equal(toolValue(await s.link(s.mine, item.id, url(REPO, 61), { clientCommandId: commandId })).replayed, true, 'the client\'s retry finds it made');
+    assert.equal(await s.linkRows(item.id), 1);
   });
 });

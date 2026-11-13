@@ -65,8 +65,10 @@ complicated or different").
   change waits; the client does not retry it. What it made carries one change line with Undo on the task, page or map it changed (above),
   and an Undo takes back that change and never the client's earlier work
   ([coordinator default C-18](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)).
-  Taking a task, claiming or releasing it, asking a question, writing in the task's discussion and linking a pull request are
-  its own work on a task it holds, not changes to anyone's things, so they do not wait.
+  Taking a task, claiming, releasing, finishing or declining a unit, asking a question, writing in the task's discussion, linking a
+  pull request and making a proposal are its own work on a task: they are made at once with Ask me first off, and with it on each
+  waits for the person's OK like any change, because other people see them or they change shared Flux state (AG-3, #1419). A question
+  to the person alone never waits (asking them is how the client gets its OK), nor does renewing a claim the person let it make.
   Taking back its own unused task (`flux_undo_task_creation`) is a deletion, so it waits like any deletion (AG-3). Giving a unit to
   another person's client (a new child unit or a transfer) is another person's thing: it waits like a task
   for someone else. Approve repeats the call as the client's own, which works while the claim and session it was made under are live

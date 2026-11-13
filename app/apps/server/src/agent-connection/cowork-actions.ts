@@ -10,6 +10,7 @@ import { coWorkUnitTransitionInTransaction } from '../co-work/transitions.js';
 import { coWorkUnitCreateInTransaction, coWorkUnitOutcome } from '../co-work/units.js';
 import { actionAnnotations as annotations, actionId as id, actionVersion as version, nativeActionExecutor, type ActionInput } from './action-execution.js';
 import type { FluxMcpClaims } from './context.js';
+import { asksFirst } from './ask-first.js';
 import type { AgentToolRegistry } from './tool-registry.js';
 import { toolError, toolResult } from './tool-results.js';
 import { agentSourceCheckpointSchema } from './bootstrap.js';
@@ -49,6 +50,14 @@ async function forAnotherPerson(db: Database, claims: FluxMcpClaims, connectionI
   const connection = await assistantChangeRows(db as DbExecutor).connection(connectionId);
   return !!connection && connection.ownerUserId !== claims.ownerUserId;
 }
+
+/**
+ * With Ask me first on, a client's co-work step waits for its owner's OK like any change (#1419): taking a task (a root unit), claiming,
+ * pausing, finishing, declining or handing over a unit change shared Flux state that others see. It then goes through the change executor,
+ * which keeps the exact call and the client's sign-in; the owner's Approve repeats it as that client, while its runtime session and claim
+ * are live (C-18). Renewing a claim the owner let it make does not wait.
+ */
+const viaOwner = async (db: Database, claims: FluxMcpClaims) => !!claims.approval || await asksFirst(db as DbExecutor, claims);
 
 /**
  * Co-work tools (#153) over the existing internal compositions, one transaction per call. Each composition runs #152's
@@ -95,8 +104,9 @@ export function registerAgentCoworkActions(tools: AgentToolRegistry, db: Databas
     const create = async (tx: Transaction) => coWorkUnitCreateInTransaction(tx, claims, command(input, 'cowork.unit.create', taskId,
       { unitKey, expectedTaskVersion, assignmentConnectionId, parent }), COWORK_UNIT_POLICY);
     // A child unit given to another person's client is another person's thing: it waits for the owner's OK like a task for someone
-    // else (C-18, #859), and Approve repeats this call as the client's own, while its runtime session and parent claim stay live.
-    if (parent !== null && (claims.approval || await forAnotherPerson(db, claims, assignmentConnectionId)))
+    // else (C-18, #859), and Approve repeats this call as the client's own, while its runtime session and parent claim stay live. With
+    // Ask me first on, taking a task or giving a unit to one's own client waits too (#1419).
+    if (await viaOwner(db, claims) || parent !== null && await forAnotherPerson(db, claims, assignmentConnectionId))
       return execute(claims)({ ...input, sources: [] } as unknown as ActionInput, 'cowork.unit.create', taskId,
         { unitKey, expectedTaskVersion, assignmentConnectionId, parent, peerRequestClass: input.peerRequestClass },
         async ({ transaction, runtime }) => coWorkUnitOutcome(await create(transaction), { workspaceId: runtime.workspaceId, projectId: input.projectId }));
@@ -112,11 +122,13 @@ export function registerAgentCoworkActions(tools: AgentToolRegistry, db: Databas
       + '(TASK_PREREQUISITES_UNMET). The result has the generation and lease ID that later unit tools need, and the '
       + 'unit\'s last checkpoint (summary, next action, blocker and the source versions it covered), if any.',
     inputSchema: z.strictObject({ ...execution, unitId: unitFence.unitId, expectedVersion: unitFence.expectedVersion }), annotations,
-  }, ({ unitId, expectedVersion, ...input }, { claims }) => run(() => db.transaction(async (tx) => {
-    const outcome = await coWorkClaimInTransaction(tx, claims, command(input, 'cowork.claim', unitId, { expectedVersion }), COWORK_CLAIM_POLICY);
-    return { ...outcome, checkpoint: await coWorkClaimCheckpoint(tx, { projectId: input.projectId, unitId: outcome.unitId },
-      outcome.checkpointId) };
-  })));
+  }, ({ unitId, expectedVersion, ...input }, { claims }) => run(async () => {
+    const claim = async (tx: Transaction) => {
+      const outcome = await coWorkClaimInTransaction(tx, claims, command(input, 'cowork.claim', unitId, { expectedVersion }), COWORK_CLAIM_POLICY);
+      return { ...outcome, checkpoint: await coWorkClaimCheckpoint(tx, { projectId: input.projectId, unitId: outcome.unitId }, outcome.checkpointId) };
+    };
+    return await viaOwner(db, claims) ? waited(claims, input, 'cowork.claim', unitId, { expectedVersion }, claim) : db.transaction(claim);
+  }));
 
   register('cowork.renew').registerTool('flux_renew_unit', {
     title: 'Renew your live claim on a co-work unit',
@@ -142,9 +154,11 @@ export function registerAgentCoworkActions(tools: AgentToolRegistry, db: Databas
           .describe('Source checkpoints actually covered and missing context. Client-reported coverage, never authority.') }),
       sources: z.array(z.strictObject({ materialId: id, version })).max(50).default([])
         .describe('The exact current material revisions this checkpoint relies on.') }), annotations,
-  }, ({ unitId, expectedVersion, generation, leaseId, checkpoint, sources, ...input }, { claims }) => run(() => db.transaction((tx) =>
-    coWorkClaimInTransaction(tx, claims, command(input, 'cowork.release', unitId, { expectedVersion, generation, leaseId, checkpoint }, sources),
-      COWORK_CLAIM_POLICY))));
+  }, ({ unitId, expectedVersion, generation, leaseId, checkpoint, sources, ...input }, { claims }) => run(async () => {
+    const payload = { expectedVersion, generation, leaseId, checkpoint };
+    const release = (tx: Transaction) => coWorkClaimInTransaction(tx, claims, command(input, 'cowork.release', unitId, payload, sources), COWORK_CLAIM_POLICY);
+    return await viaOwner(db, claims) ? waited(claims, { ...input, sources }, 'cowork.release', unitId, payload, release) : db.transaction(release);
+  }));
 
   register('cowork.unit.complete').registerTool('flux_complete_unit', {
     title: 'Complete your co-work unit with its outcome',
@@ -154,9 +168,11 @@ export function registerAgentCoworkActions(tools: AgentToolRegistry, db: Databas
       + 'Needs the runtime from flux_bootstrap. '
       + 'unit\'s role.',
     inputSchema: z.strictObject({ ...execution, ...unitFence, outcome: outcomeRef }), annotations,
-  }, ({ unitId, expectedVersion, generation, leaseId, outcome, ...input }, { claims }) => run(() => db.transaction(async (tx) =>
-    coWorkUnitTransitionInTransaction(tx, claims, command(input, 'cowork.unit.complete', unitId,
-      { expectedVersion, generation, leaseId, outcome })))));
+  }, ({ unitId, expectedVersion, generation, leaseId, outcome, ...input }, { claims }) => run(async () => {
+    const payload = { expectedVersion, generation, leaseId, outcome };
+    const complete = (tx: Transaction) => coWorkUnitTransitionInTransaction(tx, claims, command(input, 'cowork.unit.complete', unitId, payload));
+    return await viaOwner(db, claims) ? waited(claims, input, 'cowork.unit.complete', unitId, payload, complete) : db.transaction(complete);
+  }));
 
   register('cowork.unit.transfer').registerTool('flux_transfer_unit', {
     title: 'Hand your co-work unit to another connection',
@@ -170,7 +186,7 @@ export function registerAgentCoworkActions(tools: AgentToolRegistry, db: Databas
     const payload = { expectedVersion, generation, leaseId, assignmentConnectionId };
     const transfer = async (tx: Transaction) => coWorkUnitTransitionInTransaction(tx, claims, command(input, 'cowork.unit.transfer', unitId, payload));
     // Handing the unit to another person's client is giving it another person's work: it waits for the owner's OK (C-18, #859).
-    if (claims.approval || await forAnotherPerson(db, claims, assignmentConnectionId))
+    if (await viaOwner(db, claims) || await forAnotherPerson(db, claims, assignmentConnectionId))
       return execute(claims)({ ...input, sources: [] } as unknown as ActionInput, 'cowork.unit.transfer', unitId, payload,
         async ({ transaction }) => ({ value: { ...await transfer(transaction) } as unknown as { [key: string]: AgentJsonValue }, postconditions: [] }));
     return db.transaction(transfer);
@@ -184,6 +200,15 @@ export function registerAgentCoworkActions(tools: AgentToolRegistry, db: Databas
       + '(COWORK_DECLINE_REFUSED). Authorship of anything '
       + 'already completed never changes. Needs the runtime from flux_bootstrap.',
     inputSchema: z.strictObject({ ...execution, unitId: unitFence.unitId, expectedVersion: unitFence.expectedVersion }), annotations,
-  }, ({ unitId, expectedVersion, ...input }, { claims }) => run(() => db.transaction(async (tx) =>
-    coWorkUnitTransitionInTransaction(tx, claims, command(input, 'cowork.unit.decline', unitId, { expectedVersion })))));
+  }, ({ unitId, expectedVersion, ...input }, { claims }) => run(async () => {
+    const decline = (tx: Transaction) => coWorkUnitTransitionInTransaction(tx, claims, command(input, 'cowork.unit.decline', unitId, { expectedVersion }));
+    return await viaOwner(db, claims) ? waited(claims, input, 'cowork.unit.decline', unitId, { expectedVersion }, decline) : db.transaction(decline);
+  }));
+
+  /** A co-work step through the change executor: it waits under Ask me first, and its owner's Approve makes it in the same way (#1419). */
+  function waited(claims: FluxMcpClaims, input: Record<string, unknown>, operation: AgentOperation, unitId: string, payload: Record<string, unknown>,
+    step: (tx: Transaction) => Promise<unknown>) {
+    return execute(claims)({ sources: [], ...input } as unknown as ActionInput, operation, unitId, payload as unknown as AgentJsonValue,
+      async ({ transaction }) => ({ value: { ...await step(transaction) as object } as unknown as { [key: string]: AgentJsonValue }, postconditions: [] }));
+  }
 }

@@ -130,11 +130,21 @@ Hubert, 2026-11-13, [#1419](https://github.com/ColdPhase/flux/issues/1419) item 
 | Off (default) | Makes new things and changes yours at once, then reports them with Undo. |
 | On | Every change waits for the owner's OK. |
 
+**What "a change" is under Ask me first** (founder rule, Hubert, 2026-11-13: "Ask me first covers changes in Flux, not commands in the
+agent's own sandbox"; applied by the coordinator on [#1419](https://github.com/ColdPhase/flux/issues/1419)): everything an agent does
+in Flux that other people can see or that changes shared Flux state, on every engine (server, CLI runtime and a local client over
+MCP). That includes a local client's own work on a task: a line in a task's discussion, a pull-request link, a proposal, and taking a
+task, claiming, pausing (releasing), finishing, declining or handing over a co-work unit. Two things do not wait: **a question to
+the owner alone** (asking the owner is how the agent gets its OK; a question to anyone else waits), and **renewing a claim** the owner
+let it make. What an agent runs in its own sandbox or on its owner's computer (commands, files, builds) is not a Flux change and is
+not governed by this switch.
+
 The switch replaced the three-way "What it may do" (Only read / Do it and tell me / Ask me first).
 "Only read" added little: deleting and other people's things always wait, and an agent that should
 only read can be told so in its instructions. **Mapping of stored values:** "Do it and tell me" is the
 switch off and "Ask me first" is the switch on; an agent or local app that was set to "Only read" is
-on (Ask me first), so nothing it does applies without the owner's OK. The stored value keeps the
+on (Ask me first), so nothing it does in Flux that others see applies without the owner's OK; it may still ask
+its owner a question. The stored value keeps the
 names `act` (off) and `ask` (on).
 
 **Always waits, whatever the choice:**

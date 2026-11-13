@@ -297,6 +297,12 @@ async function describe(tx: Transaction, operation: string, objectId: string | n
       return { ...base, title: work ? `#${work.number} ${work.title}`.slice(0, 200) : '', removal: true, mine: true,
         beforeVersion: typeof payload.expectedVersion === 'number' ? payload.expectedVersion : work?.version ?? null };
     }
+    case 'cowork.claim': case 'cowork.release': case 'cowork.unit.complete': case 'cowork.unit.decline': {
+      // A client's own step on a unit it was given (#1419): its own work, so it waits only under Ask me first. Named by the unit's task,
+      // when that task is in this space (the owner who decides reads it).
+      const task = objectId ? await rows.unitTask(objectId) : null;
+      return { ...base, objectId, title: task && task.projectId === projectId ? `#${task.number} ${task.title}`.slice(0, 200) : '' };
+    }
     case 'cowork.unit.transfer': {
       const to = typeof payload.assignmentConnectionId === 'string' ? await rows.connection(payload.assignmentConnectionId, projectId) : null;
       if (!client || !to || to.computeSource === 'owner_assistant' || to.revokedAt || !to.usable) throw new DomainError(404, 'COWORK_ASSIGNEE_UNAVAILABLE', 'That agent is not available');
@@ -499,7 +505,8 @@ export async function recordDiscussionLine(tx: Transaction, claims: FluxMcpClaim
   const rows = assistantChangeRows(tx as DbExecutor);
   const fingerprint = assistantCallFingerprint(call);
   const stored = await rows.byConnectionCommand(claims.connectionId, input.clientCommandId);
-  if (stored) {
+  const approved = stored && claims.approval?.changeId === stored.id && stored.state === 'waiting' ? stored : null;
+  if (stored && !approved) {
     if (stored.fingerprint !== fingerprint) throw new DomainError(409, 'IDEMPOTENCY_CONFLICT', 'This command ID belongs to another change');
     return;
   }
@@ -507,9 +514,15 @@ export async function recordDiscussionLine(tx: Transaction, claims: FluxMcpClaim
   const title = redactCall(typeof call.args.body === 'string' ? call.args.body : '').slice(0, 80);
   const removals = assistantRemovalRows(tx as DbExecutor);
   const undo = await removals.messageIsUndoable(messageId, runtime.agentId) && await removals.messageIsInTaskThread(messageId) ? removal(title, { thread: true }) : null;
-  const receipt = { value: produced.value, postconditions: produced.postconditions, ...(undo ? { undo } : {}), authority: 'owner_request', runId: null,
+  const receipt = { value: produced.value, postconditions: produced.postconditions, ...(undo ? { undo } : {}), authority: approved ? 'owner_approval' : 'owner_request', runId: null,
     engine: 'client', payer: 'Your own client', ownerUserId: claims.ownerUserId, agentId: runtime.agentId, assistantConnectionId: claims.connectionId,
-    preparedBy: runtime.agentId } as unknown as Record<string, unknown>;
+    preparedBy: runtime.agentId, ...(approved ? { approvedBy: claims.approval!.decidedBy } : {}) } as unknown as Record<string, unknown>;
+  // A line that waited under Ask me first (#1419): its owner's Approve made it, and its row carries the owner's delete like any line.
+  if (approved) {
+    await rows.update(approved.id, { state: 'applied_after_wait', waitReason: null, authority: 'owner_approval', decidedBy: claims.approval!.decidedBy,
+      decidedAt: new Date(), conversationId, objectId: messageId, receipt });
+    return;
+  }
   await rows.insert({ id: randomUUID(), workspaceId: runtime.workspaceId, projectId: input.projectId, connectionId: claims.connectionId, conversationId,
     ownerUserId: claims.ownerUserId, agentId: runtime.agentId, clientCommandId: input.clientCommandId, fingerprint, tool: call.tool, operation: 'conversation.reply',
     objectType: 'message', objectId: messageId, objectTitle: title, state: 'applied', authority: 'owner_request', preparedCommand: callSummary(call),

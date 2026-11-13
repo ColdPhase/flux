@@ -9,6 +9,7 @@ import { commandRunner, requires, useDomainErrors } from '../http/commands.js';
 import { conversationStore } from '../conversation/store.js';
 import { transactionEventSession } from '../work/transaction-events.js';
 import { actionAnnotations as annotations, actionId as id, coordinationExecutor, coordinationInput } from './action-execution.js';
+import { sentArgs } from './ask-first.js';
 import type { AgentToolRegistry, ToolCall } from './tool-registry.js';
 import { toolError, toolResult } from './tool-results.js';
 
@@ -71,10 +72,14 @@ const execution = coordinationInput();
 
 /**
  * `flux_ask_question` (#347 S14): a question with two to four ready answers, posted as the agent's message in a project
- * conversation. It is the agent's own question, not a change to a person's things, so it does not wait. Only the asked person's answer ends it.
+ * conversation. Only the asked person's answer ends it. A question to its owner never waits: asking the owner is how an agent gets its
+ * OK. A question to anyone else is posted where others read it and notifies that person, so with Ask me first on it waits for the
+ * owner's OK first (#1419).
  */
 export function registerAgentQuestionActions(tools: AgentToolRegistry, db: Database) {
-  const execute = ({ claims }: ToolCall) => coordinationExecutor(db, claims);
+  const execute = ({ claims }: ToolCall, args: Record<string, unknown>, question: string, askUserId: string | undefined) =>
+    coordinationExecutor(db, claims, undefined, askUserId && askUserId !== claims.ownerUserId
+      ? { tool: 'flux_ask_question', args, operation: 'conversation.reply', objectType: 'message', objectId: null, title: question.slice(0, 80) } : undefined);
   const run = (handler: () => Promise<unknown>) => handler().then(toolResult, toolError);
   tools.forAccess('write', { operation: 'conversation.reply', classes: AGENT_OPERATION_CLASSES['conversation.reply'] }).registerTool('flux_ask_question', {
     title: 'Ask a person a question with ready answers',
@@ -89,7 +94,8 @@ export function registerAgentQuestionActions(tools: AgentToolRegistry, db: Datab
       options: z.array(z.string().min(1).max(AGENT_QUESTION_LIMITS.option)).min(AGENT_QUESTION_LIMITS.options.min).max(AGENT_QUESTION_LIMITS.options.max)
         .describe('Two to four short, different ready answers.'),
       askUserId: z.string().min(1).max(200).optional().describe('The person to ask; by default the owner of this connection. They must read the project.') }), annotations,
-  }, ({ conversationId, question, options, askUserId, ...input }, call) => run(() => execute(call)(input, 'conversation.reply', conversationId,
+  }, (sent, call) => { const args = sentArgs(sent); const { conversationId, question, options, askUserId, ...input } = args;
+    return run(() => execute(call, args, question, askUserId)(input, 'conversation.reply', conversationId,
     { question, options, ...(askUserId ? { askUserId } : {}) } as unknown as AgentJsonValue, async ({ transaction, events, conversations, agent, runtime }) => {
       const ports = questionPorts(transaction,
         async (principal: Principal, target, message) => { const sent = await conversations.sendMessage(principal, target, message); return { id: sent.id }; },
@@ -98,7 +104,7 @@ export function registerAgentQuestionActions(tools: AgentToolRegistry, db: Datab
         askUserId: askUserId ?? runtime.ownerUserId, clientMessageId: derivedMessageId(runtime.connectionId, input.clientCommandId) });
       return { value: { questionId: asked.id, conversationId: asked.conversationId, messageId: asked.messageId, taskId: asked.taskId },
         postconditions: [{ kind: 'message', id: asked.messageId }] };
-    })));
+    })); });
 }
 
 const derivedMessageId = (connectionId: string, commandId: string) =>

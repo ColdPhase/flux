@@ -6,8 +6,10 @@ import type { SessionResolver } from '../identity/index.js';
 import { useDomainErrors } from '../http/commands.js';
 import { needsYouUseCases } from './adapters.js';
 import { assistantChangeUseCases } from '../assistant/changes.js';
+import type { Provider as GithubProvider } from '../github/adapters.js';
 
-interface Options { db: Database; sessions: SessionResolver }
+/** `github`: the read-only App provider, for an approved pull-request link of a local client (#1419). */
+interface Options { db: Database; sessions: SessionResolver; github?: GithubProvider | null }
 
 // One flat shape: core checks which fields an action needs (Ajv's removeAdditional would mutate `oneOf` branches).
 const command = { type: 'object', required: ['action'], additionalProperties: false, properties: {
@@ -20,10 +22,10 @@ const command = { type: 'object', required: ['action'], additionalProperties: fa
  * now is not listed and answers like one that never existed. Resolving is idempotent by nature (the
  * same choice stores the same state), so no Idempotency-Key is needed.
  */
-export async function needsYouRoutes(app: FastifyInstance, { db, sessions }: Options) {
+export async function needsYouRoutes(app: FastifyInstance, { db, sessions, github = null }: Options) {
   useDomainErrors(app);
   // The owner's undecided waiting assistant changes join the queue as questions (F-027 AST-5.6).
-  const assistant = assistantChangeUseCases(db);
+  const assistant = assistantChangeUseCases(db, undefined, github);
   // F-029: the assistant's waiting changes of a workspace whose AI is off are left out (and so cannot be resolved).
   const use = needsYouUseCases(db, { waiting: async (userId) => {
     const visible = [];

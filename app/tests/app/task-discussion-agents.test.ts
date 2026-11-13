@@ -179,9 +179,11 @@ test('C-51, #1094: at five agent lines a change that waited for the owner\'s OK 
   assert.equal(lines[5]!.body, 'Approved reply');
   assert.ok(lines[6]!.body.includes('Approved blocker'));
   assert.equal((await pool.query(`SELECT count(*)::int AS n FROM assistant_changes WHERE connection_id = $1 AND state = 'applied_after_wait'`, [f.connectionId])).rows[0].n, 2, 'each Approve was made, none refused');
+  // Under Ask me first a line in the discussion waits too (#1419), like the reply.
+  assert.ok(waits(await discuss(f, item.id, 'Waits as well')), 'the discussion line waits');
   // The Approve was the owner's decision, not a person's message: the agent still has no turn of its own until a person writes.
-  assert.equal(toolFailure(await discuss(f, item.id, 'Step 6')).code, 'AGENT_TURN_LIMIT');
   expect(await f.owner.request('PATCH', agentConnectionPath(f.connectionId), { body: { mayDo: 'act' } }), 200);
+  assert.equal(toolFailure(await discuss(f, item.id, 'Step 6')).code, 'AGENT_TURN_LIMIT');
   assert.equal(toolFailure(await by.reply('Straight after')).code, 'AGENT_TURN_LIMIT', 'the same line made at once is still refused');
   await personWrites(f, item.id);
   toolValue(await by.reply('After the person'));
