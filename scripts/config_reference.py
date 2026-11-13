@@ -387,6 +387,7 @@ INTERNAL: dict[str, str] = {
     "FLUX_TEST_CSP_EVAL": "Test deployments only: `false` makes the enforced Content-Security-Policy the one that ships (no `eval`, which Playwright's `waitForFunction` needs).",
     "FLUX_TEST_PERSONAL_RUNS": "Test deployments only.",
     "FLUX_TEST_ANTHROPIC_URL": "Test deployments only.",
+    "FLUX_TEST_ANTHROPIC_PROXY_URL": "Test deployments only, with `FLUX_TEST_FAILURE_INJECTION`: the worker sends real API-key runs through the answer-accuracy evaluation's recording proxy (#1295, `scripts/check_ai_eval.sh`).",
     "FLUX_TEST_LINK_PREVIEW_HOSTS": "Test deployments only; refused without `FLUX_TEST_FAILURE_INJECTION`.",
     "FLUX_TEST_PROVIDER_LISTS": "Test deployments only; refused without `FLUX_TEST_FAILURE_INJECTION`.",
     "FLUX_TEST_ROTATION_HOLD_AFTER_PAGES": "Test deployments only.",

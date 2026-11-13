@@ -1,0 +1,54 @@
+# TEST ONLY (scripts/check_ai_eval.sh, #1295): the answer-accuracy evaluation on a REAL Anthropic key. Layered over compose.source.yaml and
+# compose.test.yaml with the `test` profile. Never deploy it.
+#
+# What differs from the test stack, and nothing else:
+# - evalproxy (app/tests/app/support/eval-proxy.ts) passes the worker's Anthropic requests on to the real API unchanged, records each
+#   request and its usage under the evidence directory, and refuses further requests once the run's money cap is reached.
+# - The worker runs the PRODUCTION personal-runs composition (FLUX_PERSONAL_RUNS=on, the owner's key saved through Connect AI and sealed
+#   with the instance key) with its Anthropic URL pointed at evalproxy (FLUX_TEST_ANTHROPIC_PROXY_URL, test only).
+# - FLUX_EVAL_VARIANT (empty: main as it is) reaches the API and the worker as FLUX_TEST_AI_VARIANT, so a change under evaluation (#1381's
+#   Wiki A/B, #1382's file contents) can switch its variant on in a test deployment and be compared with the baseline run by run.
+# - The check's runner writes its evidence to FLUX_EVAL_EVIDENCE_DIR on the host and reaches the proxy for its ledger and the judge.
+services:
+  evalproxy:
+    profiles: ["test"]
+    image: flux-test-tools:${FLUX_IMAGE_TAG:-${COMPOSE_PROJECT_NAME:-local}}
+    command: ["node_modules/.bin/tsx", "tests/app/support/eval-proxy.ts"]
+    environment:
+      FLUX_EVAL_CAP_USD: ${FLUX_EVAL_CAP_USD:?Set by scripts/check_ai_eval.sh}
+      FLUX_EVAL_LOG_DIR: /evidence/proxy
+    volumes:
+      - ${FLUX_EVAL_EVIDENCE_DIR:?Set by scripts/check_ai_eval.sh}:/evidence:z
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8099/__health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+  api:
+    environment:
+      FLUX_TEST_AI_VARIANT: ${FLUX_EVAL_VARIANT:-}
+  worker:
+    environment:
+      FLUX_TEST_AI_VARIANT: ${FLUX_EVAL_VARIANT:-}
+      FLUX_TEST_ANTHROPIC_PROXY_URL: http://evalproxy:8099
+      FLUX_AI_PRIVATE_TARGETS: evalproxy
+    # Not the push mock of compose.test.yaml (no notification is checked here): the migrations and the proxy.
+    depends_on: !override
+      migrate:
+        condition: service_completed_successfully
+      evalproxy:
+        condition: service_healthy
+  test:
+    environment:
+      FLUX_EVAL_EVIDENCE: /evidence
+      FLUX_EVAL_PROXY_URL: http://evalproxy:8099
+      FLUX_EVAL_MODEL: ${FLUX_EVAL_MODEL:-claude-haiku-5-5}
+      FLUX_EVAL_JUDGE_MODEL: ${FLUX_EVAL_JUDGE_MODEL:-claude-haiku-5-5}
+      FLUX_EVAL_QUESTIONS: ${FLUX_EVAL_QUESTIONS:-}
+      FLUX_EVAL_LABEL: ${FLUX_EVAL_LABEL:-}
+      FLUX_EVAL_VARIANT: ${FLUX_EVAL_VARIANT:-}
+      FLUX_EVAL_SHA: ${FLUX_EVAL_SHA:-}
+      FLUX_EVAL_PRODUCT_SHA: ${FLUX_EVAL_PRODUCT_SHA:-}
+      FLUX_WEB_READS: ${FLUX_WEB_READS:-off}
+    volumes:
+      - ${FLUX_EVAL_EVIDENCE_DIR:?Set by scripts/check_ai_eval.sh}:/evidence:z

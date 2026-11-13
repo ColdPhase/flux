@@ -55,6 +55,7 @@ the wiring between services or enables test-only code.
 | `FLUX_RUNTIME_SLOT_1` | Set by Compose on the runtime manager from `FLUX_RUNTIME_SECRET_1`. |
 | `FLUX_RUNTIME_SLOT_SECRET` | Set by Compose on the runtime from `FLUX_RUNTIME_SECRET_1`. |
 | `FLUX_RUN_TOKEN` | Per-run bearer the runtime gives the CLI it starts. |
+| `FLUX_TEST_ANTHROPIC_PROXY_URL` | Test deployments only, with `FLUX_TEST_FAILURE_INJECTION`: the worker sends real API-key runs through the answer-accuracy evaluation's recording proxy (#1295, `scripts/check_ai_eval.sh`). |
 | `FLUX_TEST_ANTHROPIC_URL` | Test deployments only. |
 | `FLUX_TEST_CSP_EVAL` | Test deployments only: `false` makes the enforced Content-Security-Policy the one that ships (no `eval`, which Playwright's `waitForFunction` needs). |
 | `FLUX_TEST_FAILURE_INJECTION` | Test deployments only, together with `FLUX_FIXTURE_TOKEN`. Never in production. |

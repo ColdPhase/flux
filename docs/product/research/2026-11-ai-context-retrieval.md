@@ -607,6 +607,12 @@ By category (window40 → window20 + bilingual search): exact 0 → 1.0, Polish 
 
 ## Evaluation still to run
 
+**Run since (2026-11-13, #1295):** the answer-accuracy evaluation through Flux's real API-key engine, end to end (the brief, `flux_search`,
+`flux_read_around`, `flux_summarize`, `flux_get_doc` and the tool loop), on this bench's messages plus Wiki pages, tasks, decisions, maps,
+files and relative-date questions: one command (`scripts/check_ai_real_model.sh --eval`), baseline at main `64e4ff4ce` on Claude Haiku 5.5
+0.78 / 0.73 in two runs. Method, results and what the misses are: [evidence/1295](evidence/1295/README.md). The rest of this section
+describes the bench's own static scenario.
+
 #1242's acceptance asks for answer accuracy on strata and an API engine. Neither was run before the decision (the API engine was,
 afterwards: the section above):
 
