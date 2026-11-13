@@ -129,7 +129,8 @@ export function nextRequestFits(account: RunAccount, price: AiRate, reservedMicr
   cacheWriteRate = 1): boolean {
   // A request that asks for caching (#1410) may write every input token to the cache at its write rate: it fits only with that.
   const input = Math.ceil(personalRunMaxInputTokens(true, webSearch) * Math.max(1, cacheWriteRate));
-  return account.micros + maxRequestMicros(price, input, PERSONAL_RUN_LIMITS.maxOutputTokens) <= reservedMicros;
+  // Priced at the tier of the prompt's own length (#1465), as the run's reservation is: cache writes weigh the tokens, not the prompt.
+  return account.micros + maxRequestMicros(price, input, PERSONAL_RUN_LIMITS.maxOutputTokens, 0, personalRunMaxInputTokens(true, webSearch)) <= reservedMicros;
 }
 
 /** Why a run stopped at one of its own limits ("Limit reached"): the turn cap, the money reservation, one request's input bound or the clock. */

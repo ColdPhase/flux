@@ -45,5 +45,6 @@ export async function registerPriceList(boss: PgBoss, db: Database, env: NodeJS.
   });
   await boss.schedule(AI_PRICE_LIST_JOB, '17 4 * * *');
   const current = await store.read('litellm');
-  if (!current || Date.now() - current.storedAt.getTime() > STALE_MS) await boss.send(AI_PRICE_LIST_JOB, {}, { singletonKey: 'start' });
+  // By the day it was fetched, not stored: a release's shipped list is stored on the first start but may be days old.
+  if (!current || Date.now() - Date.parse(`${current.fetchedOn}T00:00:00Z`) > STALE_MS) await boss.send(AI_PRICE_LIST_JOB, {}, { singletonKey: 'start' });
 }
