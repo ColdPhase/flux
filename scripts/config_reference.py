@@ -360,6 +360,7 @@ INTERNAL: dict[str, str] = {
     "FLUX_RUNTIME_SLOT_1": "Set by Compose on the runtime manager from `FLUX_RUNTIME_SECRET_1`.",
     "FLUX_RUNTIME_INSTALL_SOURCE": "Test image only: install fake CLIs instead of the real ones.",
     "FLUX_RUN_TOKEN": "Per-run bearer the runtime gives the CLI it starts.",
+    "FLUX_SANDBOX_DIR": "The run's scratch the runtime gives the CLI it starts, for its sandbox shell (#1437); never an operator setting.",
     "FLUX_IMAGE_TAG": "Set by `./flux` to the Compose project, so each checkout builds its own image tag.",
     "FLUX_GIT_COMMIT": "Set by `./flux` from `git`; recorded as an image label and in backup manifests.",
     "FLUX_ROOT": "The launcher's own directory.",

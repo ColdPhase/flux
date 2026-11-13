@@ -143,6 +143,10 @@ shell and file tools, inside a sandbox that exists for one run; every engine can
   an abstract socket outside the sandbox. The CLI itself runs under an outer domain: it writes only its own home and the run's
   scratch and reads only those, the system and the run's settings, never the other CLI's home. Claude Code's own file tools
   are confined to its working directory by `--restricted` as well.
+- **A fixed toolbox, nothing installed** (founder decision 2026-11-13, #1437). Agents never install tools from the internet (no
+  PyPI, npm or apk through the egress; the sandbox has no network). The runtime image ships a pinned toolbox for every harness:
+  Python 3 with pandas, openpyxl, python-docx and matplotlib, Node, pandoc with typst for PDF (no browser), jq, ripgrep and libvips's
+  `vips` for pictures. Operators who need more build their own image on top of Flux's (operator guide, "The toolbox").
 - **Limits per run** (docs/operations/agent-runtime.md "What each agent needs"): the tools' memory (every process of the
   run but the CLI itself) 512 MiB and the scratch 256 MiB, at most 256 processes and threads of the person, 10 minutes of CPU
   for one tool process, a lower priority (`nice` 10) than any CLI, and the run's processes go first when memory runs out. The

@@ -716,7 +716,7 @@ Password `./flux demo` gives the second demo account.
 
 ## Set by Flux, not by you
 
-The services also read 62 names that Compose, the launcher or the code sets: wiring
+The services also read 63 names that Compose, the launcher or the code sets: wiring
 between services and test switches. Do not set them. They are listed for developers in
 [internal configuration names](../development/configuration-internal.md).
 
