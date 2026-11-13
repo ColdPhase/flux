@@ -114,7 +114,7 @@ class KreskaJourney(unittest.TestCase):
         expect(person_card.locator(".tb-av")).to_have_text("AL")
         expect(person_card.locator(".kreska")).to_have_count(0)
         # Outside the Agents section an agent is monochrome: no colour class.
-        self.assertEqual(owner.locator(":scope > .kreska").get_attribute("class").strip(), "kreska")
+        self.assertEqual(owner.locator(".agent-id > .kreska").get_attribute("class").strip(), "kreska")
         shot(page, "339-tasks-agent-owner")
 
     def test_03_integrated_task_owner_is_static_under_reduced_motion(self) -> None:
