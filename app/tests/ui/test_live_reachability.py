@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import re
 import unittest
+from collections.abc import Callable
 
 from playwright.sync_api import Page, expect, sync_playwright
 
@@ -141,9 +142,12 @@ class ReachabilityRows(LiveBase):
         self.addCleanup(self.leave_quietly, host)
         return host
 
-    def guest_join(self, engine: str, *, phone: bool = False, device: str | None = None) -> Page:
+    def guest_join(self, engine: str, *, phone: bool = False, device: str | None = None, before: Callable[[Page], None] | None = None) -> Page:
+        """`before` runs on the new page before it opens anything: a request held from the start of the visit."""
         self.use(engine)
         page = self.page("kai", phone=phone, device=device)
+        if before:
+            before(page)
         self.open_conversation(page, self.conversation_url())
         page.locator("header.top, header.phead").get_by_role("button", name="Join").click()
         expect(self.bar(page).get_by_role("status").first).to_contain_text("Live")
@@ -156,6 +160,9 @@ class ReachabilityRows(LiveBase):
             if bar.count():
                 bar.get_by_role("button", name="Leave", exact=True).click(timeout=5000)
                 expect(bar).to_have_count(0, timeout=10000)
+                # The strip is gone at once; "You left" comes when the media connection and the session have really been left. Closing the
+                # page before that drops the connection instead, and the next test's room still holds this one's screen for some seconds.
+                expect(page.get_by_text(re.compile("^You left"))).to_be_visible(timeout=10000)
         except Exception:  # cleanup only; the failure that matters is already recorded by the test
             pass
 
@@ -387,9 +394,10 @@ class ReachabilityRows(LiveBase):
         # A navigation waiting for its code shows "Opening ..." over the work, not above the strip: the header,
         # the strip and the work keep their places (Spokoj: a control never changes place).
         self.start_host()
-        guest = self.guest_join("chromium", phone=True)
         held: list = []
-        guest.route(re.compile(r"/assets/ProjectTasks-[^/]+\.js(?:\?.*)?$"), lambda route: held.append(route))
+        # A space's other views are fetched by the first press (joining is one) or when the browser is idle (#1178): the code of Tasks is
+        # held from the start of the visit, or it would already be here and the move to Tasks would have nothing to wait for.
+        guest = self.guest_join("chromium", phone=True, before=lambda page: page.route(re.compile(r"/assets/ProjectTasks-[^/]+\.js(?:\?.*)?$"), lambda route: held.append(route)))
         self.addCleanup(lambda: [route.abort("aborted") for route in held])
         expect(guest.locator(".route-progress")).to_have_count(0)
         boxes = """() => Object.fromEntries(['header', '.lv-bar', '.app__body'].map((s) => { const b = document.querySelector(s).getBoundingClientRect(); return [s, [b.x, b.y, b.width, b.height].map(Math.round)]; }))"""

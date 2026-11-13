@@ -124,7 +124,7 @@ test('actual production pending diagnostic read cannot resurrect removed or disc
       remoteParticipants: peers, disconnect: async () => { pubs.clear(); peers.clear(); } },
     snapshot: { people: [] }, connection: 'connected', trackDiagnostics: history,
     generation: { mic: 0, camera: 0, screen: 0 }, stopPending: () => {},
-    release: async () => {}, emit: () => {} });
+    audio: { detachMic: () => {} }, emit: () => {} });
     const pending = media.diagnostics(() => 'Peer');
     if (disconnect) await media.disconnect();
     else { pubs.clear(); history.forget('screen'); }
