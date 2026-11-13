@@ -163,10 +163,9 @@ class WindowOverEmptyPages(unittest.TestCase):
                 self.open_page(page, behind)
                 for kind in ("Task", "Thought", "Decision", "Page", "Space"):
                     page.get_by_role("button", name="Create", exact=True).tap()
-                    sheet = page.get_by_role("dialog", name="Create")
-                    expect(sheet).to_be_visible()
-                    self.whole(page, sheet, f"the Create sheet over the empty {behind}")
-                    sheet.get_by_role("button", name=kind, exact=True).tap()
+                    # The "+" opens Create on Task (#1438 point 8); the other four are its tabs.
+                    expect(page.get_by_role("dialog", name="New task")).to_be_visible()
+                    page.get_by_role("dialog", name="New task").get_by_role("tablist", name="Create").get_by_role("tab", name=kind, exact=True).tap()
                     window = page.get_by_role("dialog", name=f"New {kind.lower()}")
                     self.whole(page, window, f"Create ({kind}) over the empty {behind}")
                     picker = window.get_by_role("combobox", name="Space")

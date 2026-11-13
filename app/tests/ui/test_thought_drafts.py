@@ -193,10 +193,11 @@ class ThoughtDraftJourney(unittest.TestCase):
         return page.evaluate(STORED_DRAFT_TEXTS)
 
     def leave_by_sketches_link_and_reopen(self, page):
-        """Follow the header's Sketches link, then open the same map again without reloading the page."""
-        page.locator(".sk-back").click()
-        expect(page).to_have_url(re.compile(rf"/projects/{self.project}/map$"))
-        page.locator(f'.sk-index a[href="/projects/{self.project}/map/{self.sketch}"]').click()
+        """Leave the map for the Tasks tab, then open the same map again through the Map tab (#1438 point 7: it opens the map) without reloading the page."""
+        views = page.get_by_role("navigation", name="Space views")
+        views.get_by_role("tab", name=re.compile("^Tasks")).click()
+        expect(page).to_have_url(re.compile(rf"/projects/{self.project}/tasks"))
+        views.get_by_role("tab", name=re.compile("^Map")).click()
         expect(page).to_have_url(re.compile(rf"/projects/{self.project}/map/{self.sketch}$"))
         expect(page.get_by_role("group", name=re.compile("^Map: ")).or_(page.locator(".sk-outline-list"))).to_be_visible()
 
@@ -522,10 +523,8 @@ class ThoughtDraftJourney(unittest.TestCase):
         # Each test makes its own "Quiet gesture lamp", so this one is chosen by its address.
         page.get_by_role("navigation", name="Spaces").locator(f'a[href="/projects/{self.project}"]').click()
         page.get_by_role("navigation", name="Space views").get_by_role("tab", name=re.compile("^Map")).click()
-        # The Map tab returns to its last place (#189): the sketch itself, or the list it is in.
-        page.wait_for_url(re.compile(rf"/projects/{self.project}/map(/{self.sketch})?$"))
-        if not page.url.endswith(f"/map/{self.sketch}"):
-            page.locator(f'.sk-index a[href="/projects/{self.project}/map/{self.sketch}"]').click()
+        # The Map tab opens the map (#189, #1438 point 7).
+        page.wait_for_url(re.compile(rf"/projects/{self.project}/map/{self.sketch}$"))
         expect(page.get_by_role("group", name=re.compile("^Map: ")).or_(page.locator(".sk-outline-list"))).to_be_visible()
         self.assertTrue(page.evaluate("window.sameVisit === true"), "no reload: only sign-out can have cleared the in-memory copy")
         expect(page.get_by_role("form", name="New thought draft")).to_have_count(0)
@@ -635,11 +634,9 @@ class ThoughtDraftJourney(unittest.TestCase):
         view_tab(page, name, tap=touch)
 
     def back_to_map(self, page, *, touch=False):
-        """The Map tab returns to its last place (#189): this sketch, or the project's list of maps."""
+        """The Map tab opens the map (#189, #1438 point 7): this sketch."""
         self.tab(page, "Map", touch=touch)
-        page.wait_for_url(re.compile(rf"/projects/{self.project}/map(/{self.sketch})?$"))
-        if not page.url.endswith(f"/map/{self.sketch}"):
-            page.locator(f'.sk-index a[href="/projects/{self.project}/map/{self.sketch}"]').click()
+        page.wait_for_url(re.compile(rf"/projects/{self.project}/map/{self.sketch}$"))
         expect(page.get_by_role("group", name=re.compile("^Map: ")).or_(page.locator(".sk-outline-list"))).to_be_visible()
 
     def round_trip_through_every_view(self, page, *, touch=False):

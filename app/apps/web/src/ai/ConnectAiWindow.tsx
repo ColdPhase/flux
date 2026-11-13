@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
-import { AGENT_RUNTIME_ERRORS, type AgentRuntimeClient, type AgentRuntimeSignInMethod, type AgentRuntimeStatus } from '@flux/contracts';
+import { AGENT_RUNTIME_ERRORS, type AgentRuntimeClient, type AgentRuntimeSignInMethod, type AgentRuntimeStatus, type BackgroundComputeConnection } from '@flux/contracts';
 import { consoleTicket } from '../agent-runtime/api';
 import { SIGN_IN_PROBLEM, signInFailure } from '../agent-runtime/copy';
 import type { ConsoleOutcome } from '../agent-runtime/SignInConsole';
@@ -43,12 +43,14 @@ type Step =
  * The window itself. `runtime`: null while it could not be read (`runtimeFailed`), so a plan is not called unavailable by
  * mistake. `have`: what the person has connected; a plan is one connection, a key can be added again.
  */
-export function ConnectAiWindow({ runtime, runtimeFailed, apiKeys, have, onClose, onConnected, onLocalClient }: {
+export function ConnectAiWindow({ runtime, runtimeFailed, apiKeys, have, onClose, onConnected, onLocalClient, startAt }: {
   runtime: AgentRuntimeStatus | null; runtimeFailed: boolean; apiKeys: boolean; have: ReadonlySet<AiConnectionKind>;
-  onClose: () => void; onConnected: () => void; onLocalClient: () => void;
+  onClose: () => void; onConnected: (added?: BackgroundComputeConnection) => void; onLocalClient: () => void;
+  /** `key` opens the window on its API key step (Your API keys' "Add a key", #1438 point 9); Cancel there closes the window. */
+  startAt?: 'key';
 }) {
   const phone = useMediaQuery(MEDIA.phone);
-  const [step, setStep] = useState<Step>({ kind: 'choose' });
+  const [step, setStep] = useState<Step>(startAt === 'key' ? { kind: 'key' } : { kind: 'choose' });
   // A sign-in that is running ends only through its own Cancel: closing the window would leave the runtime to recover.
   const close = () => { if (step.kind !== 'sign_in') onClose(); };
   // A step replaces the one before it, and the control that held focus goes with it: focus falls to <body>, where Escape reaches nothing
@@ -143,7 +145,7 @@ export function ConnectAiWindow({ runtime, runtimeFailed, apiKeys, have, onClose
       {step.kind === 'key' ? <>
         <h2 className="cai-window__title">Use an API key</h2>
         <div className="background-settings cai-window__key">
-          <AddKeyForm onCancel={() => setStep({ kind: 'choose' })} onAdded={onConnected} />
+          <AddKeyForm onCancel={() => { if (startAt === 'key') onClose(); else setStep({ kind: 'choose' }); }} onAdded={(added) => onConnected(added)} />
         </div>
       </> : null}
     </div>

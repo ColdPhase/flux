@@ -1,8 +1,6 @@
-import { useId, useLayoutEffect, useRef } from 'react';
+import { useLayoutEffect, useRef } from 'react';
 import { Link } from 'react-router';
-import { Avatar, BottomNav, FluxLogo, Icon, IconButton, Overlay, publishTopEdge, type BottomNavItem, type IconName } from '../ui';
-import { useShellActions } from './shellContext';
-import { useShellData, type ProjectSummary } from './data';
+import { Avatar, BottomNav, FluxLogo, Icon, IconButton, publishTopEdge, type BottomNavItem } from '../ui';
 
 /**
  * The phone's chrome (F-026 §4 Phone, S2): one floating tab capsule Home · Projects · Inbox with a
@@ -40,7 +38,7 @@ export function phoneOffersCreate(pathname: string): boolean {
 }
 
 /**
- * The floating capsule (places and round Search) and the "+" above it. Inside a project's views and a direct
+ * The floating capsule (places and round Search) and the "+" above it, which opens the Create window straight on Task (#1438 point 8). Inside a project's views and a direct
  * message's sketches (Spokój rule 7) the capsule steps aside: Search is in the header, and only the "+" floats.
  */
 export function PhoneDock({ places, onSearch, onCreate, create, capsule = true }: { places: BottomNavItem[]; onSearch: () => void; onCreate: () => void; create: boolean; capsule?: boolean }) {
@@ -80,47 +78,4 @@ export function PhoneAvatar({ id, name }: { id: string; name: string }) {
 
 export function PhoneHomeLead() {
   return <span className="phead__logo"><FluxLogo size={28} /></span>;
-}
-
-interface Row { id: string; label: string; icon: IconName; run: (() => void) | null; hint?: string }
-
-/**
- * "+" Create (F-026 S2, S3, #867, #1013): the same five types as the computer's New (C), as five rows: Task, Thought, Decision, Page and
- * Space. A row opens the one Create window on that type, in the space you are in or your first one (the window has the space picker; a
- * thought needs none, and a space is made in the company, so a guest does not start spaces). Writing a message and attaching a file or
- * link happen in the composer.
- */
-export function PhoneCreate({ open, onClose, projects, projectId }: {
-  open: boolean; onClose: () => void; projects: ProjectSummary[]; projectId: string | undefined;
-}) {
-  const titleId = useId();
-  const { workspace } = useShellData();
-  const { openCreate } = useShellActions();
-  const chosen = projects.find((project) => project.id === projectId) ?? projects[0];
-  const create = (request: Parameters<typeof openCreate>[0]) => () => { onClose(); requestAnimationFrame(() => openCreate(request)); };
-  const rows: Row[] = [
-    { id: 'task', label: 'Task', icon: 'tasks', run: chosen ? create({ kind: 'task', projectId: chosen.id }) : null, hint: 'needs a space' },
-    { id: 'thought', label: 'Thought', icon: 'chat', run: create({ kind: 'thought' }) },
-    { id: 'decision', label: 'Decision', icon: 'flag', run: chosen ? create({ kind: 'decision', projectId: chosen.id }) : null, hint: 'needs a space' },
-    { id: 'page', label: 'Page', icon: 'doc', run: chosen ? create({ kind: 'page', projectId: chosen.id }) : null, hint: 'needs a space' },
-    { id: 'space', label: 'Space', icon: 'grid', run: workspace?.role === 'guest' ? null : create({ kind: 'space' }), hint: 'not for guests' },
-  ];
-  return (
-    <Overlay open={open} onClose={onClose} placement="bottom" labelledBy={titleId} className="ui-list-sheet phone-create">
-      <div className="ui-grabber" aria-hidden="true"><span /></div>
-      <h2 id={titleId} className="ui-list-sheet__title">Create</h2>
-      <ul className="ui-list-sheet__rows phone-create__rows">
-        {rows.map((row) => (
-          <li key={row.id}>
-            <button type="button" className="ui-list-sheet__row" aria-disabled={row.run ? undefined : true} onClick={() => { row.run?.(); }}>
-              <span className="ui-list-sheet__tile" aria-hidden="true"><Icon name={row.icon} size={20} /></span>
-              <span>{row.label}</span>
-              {!row.run && row.hint ? <small className="ui-list-sheet__note">{row.hint}</small> : null}
-            </button>
-          </li>
-        ))}
-      </ul>
-      <p className="ui-list-sheet__foot">The same five on the computer (C).</p>
-    </Overlay>
-  );
 }

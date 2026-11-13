@@ -35,6 +35,7 @@ import './project-header.css';
 import { WorkReadProvider, useProjectWorkSummary } from '../work/WorkReadContext';
 import { OverviewContext } from '../project/OverviewContext';
 import { remember, remembered } from './remembered';
+import { rememberSpace } from './lastSpace';
 import { ProjectAgentStop } from './WorkingAgent';
 import { HeaderFaces, MoreMenu, type MoreItem } from './HeaderParts';
 import { beginNotificationSession, retireNotificationSession } from '../notifications/session';
@@ -42,7 +43,7 @@ import { retireLeftCopies } from '../docs/drafts';
 import { AgentChatDotsProvider } from '../my-agents/AgentChatDots';
 import { PlaceMutesProvider, notificationsChanged, useMuteRow } from '../notifications/mutes';
 import { PhotosContext } from '../people/photos';
-import { PhoneAvatar, PhoneBack, PhoneCreate, PhoneDock, PhoneHomeLead, phoneHidesDock, phoneOffersCreate, phonePlaces } from './PhoneChrome';
+import { PhoneAvatar, PhoneBack, PhoneDock, PhoneHomeLead, phoneHidesDock, phoneOffersCreate, phonePlaces } from './PhoneChrome';
 
 const lastConversationPath = (userId: string, projectId: string) => remembered('conversation', userId, projectId) ?? `/projects/${projectId}`;
 /** The Tasks view last chosen in this project (#136), e.g. `?status=blocked&show=mine`. */
@@ -176,8 +177,7 @@ function AppLayoutContent() {
   const [detailsAccount, setDetailsAccount] = useState(me.user.id);
   if (detailsAccount !== me.user.id) { setDetailsAccount(me.user.id); setDetailsView('place'); setDetailsOpen(false); }
   const [jumpOpen, setJumpOpen] = useState(false);
-  // The phone's "+" sheet (#341) and the one Create window (#345) are separate: the sheet's Task opens the window.
-  const [createOpen, setCreateOpen] = useState(false);
+  // The one Create window (#345): the computer's New and the phone's "+" open it, on Task (#1438 point 8).
   const [create, setCreate] = useState<CreateRequest | null>(null);
   // After a task is created, `C` and New open on the space it went to until the person goes to another place (#1235): adding several is one key each.
   const keptSpace = useRef<{ projectId: string; path: string } | null>(null);
@@ -369,10 +369,8 @@ function AppLayoutContent() {
     /** The open object's name for "‹ back" from the next one ("Task #2"). */
     labelPanel(label: string | null) { panelLabel.current = label; },
     showPanel, hidePanel, reopenPanel, closePanel: () => closeRef.current(), guardPanel(guard: (() => boolean) | null) { panelGuard.current = guard; }, panelSlot, panelKey: detailsOpen && isOwned(detailsView) ? owned?.key ?? null : null,
-    /** On the phone a request that does not yet say what to create opens the "+" sheet first (#341). */
     openCreate(request: CreateRequest = {}) {
       setNavOpen(false); setJumpOpen(false);
-      if (phone && !request.kind) { setCreateOpen(true); return; }
       const kept = keptSpace.current;
       setCreate(!request.kind && kept && kept.path === pathNow.current ? { ...request, projectId: kept.projectId } : request);
     },
@@ -706,6 +704,9 @@ function AppLayoutContent() {
     const opened = placeOfPath(location.pathname);
     if (!opened || !openable) return;
     rememberPlace(me.user.id, opened.key.endsWith(':docs') && docTitle && /\/docs\/[^/]+$/.test(opened.path) ? { ...opened, title: docTitle } : opened);
+    // The space last worked in is where Create goes when it opens outside any space (#1438 point 6).
+    const spaceId = /^project:([^:]+):/.exec(opened.key)?.[1];
+    if (spaceId) rememberSpace(me.user.id, spaceId);
   }, [location.pathname, openable, me.user.id, docTitle]);
   const rowViews = phone ? null
     : activeProject && projectViews ? { items: projectViews, label: 'Space views', inactive: false }
@@ -916,13 +917,12 @@ function AppLayoutContent() {
         </div>
         {/* A locked space's place keeps the tab bar on the phone (LK-2), and offers no "+" there. */}
         {phone && !detailsOpen && (lockedHere || !phoneHidesDock(location.pathname) || phoneOffersCreate(location.pathname)) ? (
-          <PhoneDock places={places} onSearch={shell.openSearch} onCreate={() => setCreateOpen(true)} create={!lockedHere && phoneOffersCreate(location.pathname)} capsule={lockedHere || !phoneHidesDock(location.pathname)} />
+          <PhoneDock places={places} onSearch={shell.openSearch} onCreate={() => shell.openCreate()} create={!lockedHere && phoneOffersCreate(location.pathname)} capsule={lockedHere || !phoneHidesDock(location.pathname)} />
         ) : null}
       </div>
 
-      {phone ? <PhoneCreate open={createOpen} onClose={() => setCreateOpen(false)} projects={projects} projectId={projectId} /> : null}
       {/* + Create is the one action of every view: its window opens on the click, so its code stays in the first screen (#1178). */}
-      <CreateHost request={create} onClose={() => setCreate(null)} onTask={(projectId) => { keptSpace.current = { projectId, path: pathNow.current }; }} />
+      <CreateHost request={create} onClose={() => setCreate(null)} onTask={(projectId) => { keptSpace.current = { projectId, path: pathNow.current }; rememberSpace(me.user.id, projectId); }} />
       {/* Someone wrote, mentioned, assigned or called while you are elsewhere: one card, apart from the Undo toasts (#1243). */}
       <Notices identity={me.user.id} meName={me.user.name} placeName={(id) => projects.find((project) => project.id === id)?.name ?? null} />
       <DeferredJumpTo open={jumpOpen} onClose={() => setJumpOpen(false)} userId={me.user.id} />

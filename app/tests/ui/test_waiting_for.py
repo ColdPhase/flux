@@ -68,16 +68,18 @@ class WaitingFor(unittest.TestCase):
                 card = panel.get_by_role("region", name="Blocker")
                 expect(card).not_to_contain_text("Waiting for Kai")
                 card.get_by_role("button", name="Edit").click()
-                picker = card.get_by_role("button", name="Waiting for", exact=True)
-                expect(picker).to_contain_text("No one in particular")
+                # One field (#1438 point 12): the reason as words, or a person from the list under it.
+                field = card.get_by_role("combobox", name="Waiting for")
+                expect(field).to_have_value("Waiting for the price list")
+                expect(card.get_by_role("button", name=re.compile("^Stop waiting for "))).to_have_count(0)
                 with page.expect_response(lambda r: r.request.method == "PATCH" and r.url.endswith(f"/api/v1/work/{task['id']}")) as saved:
-                    picker.click()
-                    page.get_by_role("menuitemradio", name="Kai Nowak").click()
+                    field.focus()
+                    card.get_by_role("option", name="Kai Nowak").click()
                 self.assertEqual(saved.value.status, 200)
                 stored = api(self.ada_ctx, "GET", f"/api/v1/work/{task['id']}")
                 self.assertEqual(stored["waitingFor"]["id"], self.kai)
                 self.assertEqual(stored["blocker"], "Waiting for the price list")
-                expect(picker).to_contain_text("Kai Nowak")
+                expect(card.get_by_role("button", name="Stop waiting for Kai Nowak")).to_be_visible()
                 card.get_by_role("button", name="Cancel").click()
                 expect(card).to_contain_text("Waiting for Kai Nowak")
                 shot(page, f"waiting-for-details-{'phone' if phone else 'computer'}")
@@ -90,7 +92,7 @@ class WaitingFor(unittest.TestCase):
                 back = api(self.ada_ctx, "GET", f"/api/v1/work/{task['id']}")
                 self.assertEqual((back["status"], back["blocker"], back["waitingFor"]["id"]), ("blocked", "Waiting for the price list", self.kai))
 
-    def test_02_the_create_window_offers_waiting_for_only_while_blocked(self):
+    def test_02_the_create_window_offers_one_waiting_for_field_only_while_blocked(self):
         for phone in (False, True):
             with self.subTest(phone=phone):
                 page = self.page("ada", phone); page.goto(f"/projects/{self.project}/tasks")
@@ -98,12 +100,16 @@ class WaitingFor(unittest.TestCase):
                 open_from_tasks(page).fill(title)
                 expect(dialog(page).get_by_role("combobox", name="Waiting for")).to_have_count(0)
                 choose(dialog(page).get_by_role("combobox", name="Status"), "blocked")
-                dialog(page).get_by_label("What is it waiting for?").fill("Venue confirmation")
-                choose(dialog(page).get_by_role("combobox", name="Waiting for"), label="Kai Nowak")
+                # One field: a person picked from the list under it, then the reason typed beside it; both are kept.
+                field = dialog(page).get_by_role("combobox", name="Waiting for")
+                field.focus()
+                dialog(page).get_by_role("listbox", name="Waiting for").get_by_role("option", name="Kai Nowak").click()
+                expect(dialog(page).get_by_role("button", name="Stop waiting for Kai Nowak")).to_be_visible()
+                field.fill("Venue confirmation")
                 shot(page, f"waiting-for-create-{'phone' if phone else 'computer'}")
                 submit_button(page).click(); expect(dialog(page)).to_have_count(0)
                 stored = next(item for item in api(self.ada_ctx, "GET", self.root + "/work?limit=100")["items"] if item["title"] == title)
-                self.assertEqual((stored["status"], stored["waitingFor"]["id"]), ("blocked", self.kai))
+                self.assertEqual((stored["status"], stored["waitingFor"]["id"], stored["blocker"]), ("blocked", self.kai, "Venue confirmation"))
 
     def test_03_the_person_waited_on_has_an_inbox_item_with_open_task(self):
         for phone in (False, True):
@@ -222,17 +228,20 @@ class WaitingFor(unittest.TestCase):
                 page = self.page("ada", phone); panel = self.panel(page, task)
                 card = panel.get_by_role("region", name="Blocker")
                 card.get_by_role("button", name="Edit").click()
-                picker = card.get_by_role("button", name="Waiting for", exact=True)
+                field = card.get_by_role("combobox", name="Waiting for")
                 with page.expect_response(lambda r: r.request.method == "PATCH" and r.url.endswith(f"/api/v1/work/{task['id']}")) as saved:
-                    picker.click()
-                    page.get_by_role("menuitemradio", name=f"Use LoRa for the far beds {tag}").click()
+                    field.focus()
+                    card.get_by_role("option", name=f"Use LoRa for the far beds {tag}").click()
                 self.assertEqual(saved.value.status, 200)
                 stored = api(self.ada_ctx, "GET", f"/api/v1/work/{task['id']}")
                 self.assertEqual((stored["waitingOn"]["kind"], stored["waitingOn"]["id"], stored["waitingFor"]), ("decision", decision["id"], None))
-                expect(picker).to_contain_text(f"the decision Use LoRa for the far beds {tag}")
+                expect(card.get_by_role("button", name=re.compile(r"^Stop waiting for .*Use LoRa for the far beds"))).to_be_visible()
+                # Another thing: take the first off (it saves), then pick the other, found by typing part of its name.
+                with page.expect_response(lambda r: r.request.method == "PATCH" and r.url.endswith(f"/api/v1/work/{task['id']}")):
+                    card.get_by_role("button", name=re.compile(r"^Stop waiting for ")).click()
+                field.fill(f"gateway {tag}")
                 with page.expect_response(lambda r: r.request.method == "PATCH" and r.url.endswith(f"/api/v1/work/{task['id']}")) as again:
-                    picker.click()
-                    page.get_by_role("menuitemradio", name=re.compile(rf"#{other['number']} Order the gateway {tag}")).click()
+                    card.get_by_role("option", name=re.compile(rf"#{other['number']} Order the gateway {tag}")).click()
                 self.assertEqual(again.value.status, 200)
                 stored = api(self.ada_ctx, "GET", f"/api/v1/work/{task['id']}")
                 self.assertEqual((stored["waitingOn"]["kind"], stored["waitingOn"]["id"], stored["waitingOn"]["number"]), ("task", other["id"], other["number"]))

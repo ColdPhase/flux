@@ -240,7 +240,7 @@ class AppSelect(unittest.TestCase):
         page.keyboard.press("Escape")
         place.focus()
         page.keyboard.press("c")
-        expect(page.get_by_role("dialog", name="Create")).to_have_count(0)
+        expect(page.get_by_role("dialog", name="New task")).to_have_count(0)
         page.keyboard.press("Escape")
 
     def test_06_tab_chooses_what_the_arrows_are_on_and_moves_on(self) -> None:
@@ -486,19 +486,14 @@ class AppSelect(unittest.TestCase):
         expect(place).to_be_focused()
 
     def test_13_a_select_inside_the_phone_create_window_opens_its_own_sheet(self) -> None:
-        """The phone's + sheet is five list rows with no Space picker (#1013, F-026 phone-actions-create); the space is chosen in the
-        Create window a row opens, which is itself a bottom sheet on a phone. A select inside that sheet opens its own sheet over it."""
+        """The phone's + opens the Create window on Task (#1438 point 8), which is itself a bottom sheet on a phone. A select inside that sheet
+        opens its own sheet over it."""
         page = self.page(phone=True)
         page.goto("/")
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
         page.get_by_role("button", name=re.compile(r"^(Create|New)")).first.tap()
-        sheet = page.get_by_role("dialog", name="Create")
-        expect(sheet).to_be_visible()
-        expect(sheet.get_by_role("combobox")).to_have_count(0)
-        sheet.get_by_role("button", name="Task", exact=True).tap()
         create = page.get_by_role("dialog", name="New task")
         expect(create).to_be_visible()
-        expect(sheet).to_have_count(0)
         project = create.get_by_role("combobox", name="Space")
         project.tap()
         chooser = page.get_by_role("dialog", name="Space")

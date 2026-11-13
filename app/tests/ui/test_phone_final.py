@@ -203,24 +203,23 @@ class PhoneFinal(unittest.TestCase):
                 expect(page.get_by_role("button", name=re.compile("^New task in"))).to_have_count(0)
                 expect(page.locator(".tb-add:visible")).to_have_count(0)
                 plus.click()
-                sheet = page.get_by_role("dialog", name="Create")
+                # The "+" opens the one Create window on Task at once, in this project (#1438 point 8); there is no list of types first.
+                sheet = page.get_by_role("dialog", name="New task")
                 expect(sheet).to_be_visible()
-                names = [text.strip().split("\n")[0] for text in sheet.get_by_role("button").all_inner_texts() if text.strip()]
-                self.assertEqual(names[:5], ["Task", "Thought", "Decision", "Page", "Space"])
+                names = [text.strip() for text in sheet.get_by_role("tablist", name="Create").get_by_role("tab").all_inner_texts()]
+                self.assertEqual(names, ["Task", "Thought", "Decision", "Page", "Space"])
                 for name in ("Task", "Thought", "Decision", "Page", "Space"):
-                    self.assertGreaterEqual(min(self.box(sheet.get_by_role("button", name=re.compile(f"^{name}")))["height"], 44), 44)
+                    self.assertGreaterEqual(min(self.box(sheet.get_by_role("tab", name=name, exact=True))["height"], 44), 44)
                 self.assert_no_sideways_scroll(page, size["width"])
                 shot(page, f"341-create-{size['width']}-{'dark' if dark else 'light'}")
-                sheet.get_by_role("button", name=re.compile("^Task")).click()
                 expect(page).to_have_url(re.compile(r"/tasks"))
-                # The Task tile opens the one Create window in this project; the sheet itself is gone.
-                expect(page.get_by_role("dialog", name="New task").get_by_label("Title", exact=True)).to_be_visible()
+                expect(sheet.get_by_label("Title", exact=True)).to_be_visible()
 
     def test_04_create_thought_uses_the_window_that_makes_it(self):
         page = self.page(SIZES[0])
         page.goto("/inbox")
         page.get_by_role("button", name="Create", exact=True).click()
-        page.get_by_role("dialog", name="Create").get_by_role("button", name=re.compile("^Thought")).click()
+        page.get_by_role("dialog", name="New task").get_by_role("tab", name="Thought", exact=True).click()
         # The same Create window as the computer's, on its Thought tab; the thought goes on My map (#866).
         thought = page.get_by_role("dialog", name="New thought")
         expect(thought.get_by_role("textbox", name="Thought", exact=True)).to_be_visible()
@@ -231,9 +230,7 @@ class PhoneFinal(unittest.TestCase):
         # Decision: the same Create window as the computer's, on its Decision tab, in the space chosen in the window (#1013: the sheet has no picker).
         page.goto("/inbox")
         page.get_by_role("button", name="Create", exact=True).click()
-        sheet = page.get_by_role("dialog", name="Create")
-        expect(sheet.get_by_role("combobox")).to_have_count(0)
-        sheet.get_by_role("button", name=re.compile("^Decision")).click()
+        page.get_by_role("dialog", name="New task").get_by_role("tab", name="Decision", exact=True).click()
         window = page.get_by_role("dialog", name="New decision")
         choose(window.get_by_role("combobox", name="Space"), self.project["id"])
         title = f"Probes stay on the north beds {uuid.uuid4().hex[:6]}"
@@ -250,8 +247,7 @@ class PhoneFinal(unittest.TestCase):
         # Page: a Wiki page in the chosen space; it opens ready to write.
         page.goto("/projects")
         page.get_by_role("button", name="Create", exact=True).click()
-        sheet = page.get_by_role("dialog", name="Create")
-        sheet.get_by_role("button", name=re.compile("^Page")).click()
+        page.get_by_role("dialog", name="New task").get_by_role("tab", name="Page", exact=True).click()
         window = page.get_by_role("dialog", name="New page")
         choose(window.get_by_role("combobox", name="Space"), self.project["id"])
         name = f"Bed map {uuid.uuid4().hex[:6]}"
@@ -474,12 +470,11 @@ class PhoneFinal(unittest.TestCase):
                 self.assert_no_sideways_scroll(page, size["width"])
 
     def test_11_create_sheet_selection_and_text_persist_and_create_only_in_selected_project(self):
-        # The "+" sheet has one way to create: its Task row opens the one Create window (#345), whose Space picker chooses the project (#1013).
+        # The "+" opens the one Create window (#345) on Task, whose Space picker chooses the project (#1013, #1438 point 8).
         page = self.page(SIZES[0])
         page.goto("/projects")
         title = f"Print bed labels {uuid.uuid4().hex[:8]}"
         page.get_by_role("button", name="Create", exact=True).click()
-        page.get_by_role("dialog", name="Create").get_by_role("button", name="Task", exact=True).click()
         choose(page.get_by_role("dialog", name="New task").get_by_role("combobox", name="Space"), self.second_project["id"])
         field = page.get_by_role("dialog", name="New task").get_by_label("Title", exact=True)
         expect(field).to_be_visible()
@@ -488,7 +483,6 @@ class PhoneFinal(unittest.TestCase):
         # An unfinished task stays private to this account and project across reload (the window's kept draft).
         page.reload()
         page.get_by_role("button", name="Create", exact=True).click()
-        page.get_by_role("dialog", name="Create").get_by_role("button", name="Task", exact=True).click()
         project_picker = page.get_by_role("dialog", name="New task").get_by_role("combobox", name="Space")
         choose(project_picker, self.second_project["id"])
         field = page.get_by_role("dialog", name="New task").get_by_label("Title", exact=True)

@@ -22,6 +22,7 @@ import { useOutline } from './useOutline';
 import { useThoughtDraft, type DraftLine, type ThoughtDraft } from './createdDraft';
 import { useMoveToSpaceMap } from './MoveToSpaceMap';
 import { DockRow } from './DockRow';
+import { MapSwitcher } from './MapSwitcher';
 import { DraftCapture, draftReady } from './DraftCapture';
 import { clipboardFile, IMAGE_CAPTION, IMAGE_THOUGHT_SIZE, imageRefusal, linkOf, pastedImageName, pastedText } from './paste';
 import { useThoughtTasks } from './ThoughtTasks';
@@ -735,14 +736,16 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
         <div className="sk-head">
           <p className="sk-lead">
             {/* My map is one map, not an item of a list (#866): the header names it, there is nothing to go back to, and it keeps its name. */}
-            {mine ? null : <><Link to={back} className="sk-back">Maps</Link><span aria-hidden="true" className="sk-sep">·</span></>}
+            {/* A space's map header is the Wiki's (#1438 point 7): the title is the switcher between the space's maps, and Rename is a row of its menu. */}
             {mine ? null : renaming && canWrite ? (
               <TitleEditor sketch={sketch} onDone={(title) => {
                 setRenaming(false);
                 if (title && title !== sketch.title) { doc.perform([{ kind: 'rename', title }], 'renamed the map'); say(`Renamed to ${quote(title)}`, true); }
               }} />
+            ) : sketch.projectId ? (
+              <MapSwitcher sketch={{ id: sketch.id, title: sketch.title, workspaceId: sketch.workspaceId, projectId: sketch.projectId }} canWrite={canWrite} onRename={() => setRenaming(true)} />
             ) : (
-              <button type="button" className="sk-title" disabled={!canWrite} aria-label={canWrite ? `Rename map ${sketch.title}` : undefined} onClick={() => setRenaming(true)}>{sketch.title}</button>
+              <span className="sk-title">{sketch.title}</span>
             )}
             {/* Said only when it differs from the default: a map made in a space is read by the space; a private one is "Only you" (#871). */}
             {sketch.scope === 'project' ? null : <span className="sk-aud" title="Who can see this map"><Icon name="lock" size={12} />{audience(sketch, me.user.id, projectName)}</span>}

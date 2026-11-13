@@ -13,6 +13,7 @@ import {
 import { ApiError, NetworkError, forgetKeptReads } from '../api/client';
 import { signOutDevice } from '../pwa';
 import { forgetRecentPlaces } from '../search/recent';
+import { forgetLastSpace } from '../app/lastSpace';
 import { resetStream } from '../api/stream';
 import { forgetThoughtDrafts } from '../sketch/createdDraft';
 import { forgetComposerDrafts } from '../composer/draft';
@@ -277,6 +278,7 @@ export async function signOutAction(): Promise<FormResult | Response> {
   resetStream();
   // Recent places are per account and never outlive the session in this browser (#114).
   forgetRecentPlaces();
+  forgetLastSpace();
   forgetThoughtDrafts();
   forgetComposerDrafts();
   forgetBrowserDrafts();

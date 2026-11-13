@@ -185,16 +185,16 @@ class NewProject(unittest.TestCase):
             expect(views.get_by_role("tab", name=re.compile(f"^{name}"))).to_be_visible()
         shot(page, "874-phone-views-390")
 
-    def test_05b_the_phones_create_sheet_offers_space_and_opens_the_new_space_window(self) -> None:
-        """S3: "+" opens Create everywhere with Space among its tiles. The phone's Create window has no New space button, so the
-        tile is the way to it from here (the Spaces list is the other)."""
+    def test_05b_the_phones_create_window_offers_space_and_opens_the_new_space_window(self) -> None:
+        """S3: "+" opens the Create window everywhere, on Task, with Space among its tabs (#1438 point 8). The phone's Create window has no New space
+        button, so the Space tab is the way to it from here (the Spaces list is the other)."""
         self.ensure_account()
         page = self.page("light", PHONE)
         page.goto("/")
         page.get_by_role("button", name="Create", exact=True).tap()
-        sheet = page.get_by_role("dialog", name="Create")
+        sheet = page.get_by_role("dialog", name="New task")
         expect(sheet).to_be_visible()
-        tile = sheet.get_by_role("button", name="Space", exact=True)
+        tile = sheet.get_by_role("tablist", name="Create").get_by_role("tab", name="Space", exact=True)
         expect(tile).to_be_visible()
         self.assertGreaterEqual(tile.bounding_box()["height"], 44)
         tile.tap()
@@ -204,7 +204,7 @@ class NewProject(unittest.TestCase):
         expect(window.get_by_role("button", name="Cancel")).to_be_visible()
         # The phone's plus reaches the same window, Encrypted included (#848 AC-2).
         expect(window.get_by_role("switch", name=re.compile("^Encrypted"))).to_have_attribute("aria-checked", "false")
-        expect(sheet).to_have_count(0)
+        expect(sheet).to_have_count(0)  # the New space window takes the Create window's place
         window.get_by_label("Space name").fill("Made from the plus")
         window.get_by_role("button", name="Create space").tap()
         expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}$"))

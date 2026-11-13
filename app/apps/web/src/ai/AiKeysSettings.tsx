@@ -7,11 +7,12 @@ import { refreshAssistantModel } from '../assistant/model';
 import { SettingsBack } from '../app/SettingsBack';
 import { Button, Input } from '../ui';
 import { listBackgroundConnections, revokeBackgroundConnection, updateBackgroundConnection } from './api';
-import { AddKeyForm, BUDGET_PROBLEM, budgetCents, keyFailure, money, type AddKeyFormHandle } from './AddKeyForm';
+import { BUDGET_PROBLEM, budgetCents, keyFailure, money } from './AddKeyForm';
+import { ConnectAiWindow } from './ConnectAiWindow';
 import { priceSourceText, priceText } from './ConnectionFields';
 import './background.css';
 
-/** Settings → AI → Your API keys: the owner's own keys, each with its one daily budget, and the form to add one. */
+/** Settings → AI → Your API keys: the owner's own keys, each with its one daily budget. A key is added in the Connect AI window, the one way (#1438 point 9). */
 export async function aiConnectionsLoader({ request }: LoaderFunctionArgs) {
   return { connections: await listBackgroundConnections(request.signal) };
 }
@@ -25,16 +26,14 @@ export function AiConnectionsSettings() {
 }
 
 function AiConnectionsPage({ initial }: { initial: { connections: BackgroundComputeConnection[] } }) {
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
   const revalidator = useRevalidator();
   const [connections, setConnections] = useState(initial.connections);
-  // Connect AI's "API key" choice opens the form at once (#854).
-  const [editing, setEditing] = useState(params.get('new') === '1');
+  // The Connect AI window on its API key step: from "Add a key", or from a link that asks for a key (`?new=1`, #854, #1438 point 9).
+  const [adding, setAdding] = useState(params.get('new') === '1');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [saved, setSaved] = useState('');
-  const formRef = useRef<AddKeyFormHandle>(null);
-  const connectSectionRef = useRef<HTMLElement>(null);
   const statusRef = useRef<HTMLParagraphElement>(null);
   const errorRef = useRef<HTMLParagraphElement>(null);
   const addRef = useRef<HTMLButtonElement>(null);
@@ -48,11 +47,6 @@ function AiConnectionsPage({ initial }: { initial: { connections: BackgroundComp
     focusAfterRender.current = null;
     node.focus();
   });
-  useLayoutEffect(() => {
-    if (!editing) return;
-    formRef.current?.focusFirst();
-    connectSectionRef.current?.scrollIntoView({ block: 'start' });
-  }, [editing]);
   // "Change" on a key in Connect AI leads here with the key named: its row comes into view.
   const shown = params.get('key');
   useLayoutEffect(() => {
@@ -62,8 +56,9 @@ function AiConnectionsPage({ initial }: { initial: { connections: BackgroundComp
     setSaved(message);
     focusAfterRender.current = 'status';
   };
-  function cancelAdding() {
-    formRef.current?.reset(); setEditing(false);
+  function closeWindow() {
+    setAdding(false);
+    if (params.has('new')) setParams((current) => { const next = new URLSearchParams(current); next.delete('new'); return next; }, { replace: true });
     focusAfterRender.current = 'add';
   }
 
@@ -101,11 +96,12 @@ function AiConnectionsPage({ initial }: { initial: { connections: BackgroundComp
       <p>Your own keys from AI providers. Each has one daily budget, the only limit on what runs on it. Only you can see or change them.</p>
     </header>
     <p ref={statusRef} className="background-settings__saved" tabIndex={-1} role="status">{saved}</p>
-    {connections.length ? <section className="background-settings__section" aria-labelledby="background-current">
+    <section className="background-settings__section" aria-labelledby="background-current">
       <div className="background-settings__section-head">
         <h3 id="background-current">Keys</h3>
-        {!editing ? <Button ref={addRef} icon="plus" disabled={busy} onClick={() => { setEditing(true); setError(''); setSaved(''); }}>Add a key</Button> : null}
+        <Button ref={addRef} icon="plus" disabled={busy} onClick={() => { setAdding(true); setError(''); setSaved(''); }}>Add a key</Button>
       </div>
+      {connections.length ? null : <p className="background-settings__help">No API key yet. A key from Anthropic, OpenAI or another provider lets your agents answer on its own daily budget.</p>}
       {error ? <p ref={errorRef} className="background-settings__error" role="alert" tabIndex={-1}>{error}</p> : null}
       <ul className="background-settings__connections">
         {connections.map((item) => <li key={item.id} id={`connection-${item.id}`} className="background-settings__connection" aria-labelledby={`connection-${item.id}-name`}>
@@ -135,21 +131,14 @@ function AiConnectionsPage({ initial }: { initial: { connections: BackgroundComp
           <p className="background-settings__help">Removing deletes this key from Flux. Revoke it at {item.provider === 'openai_compatible' ? 'your endpoint' : AI_PROVIDERS[item.provider].label} too if it should stop working outside Flux.</p>
         </li>)}
       </ul>
-    </section> : null}
-
-    {!connections.length || editing ? <section ref={connectSectionRef} className="background-settings__section" aria-labelledby="background-connect">
-      <div className="background-settings__section-head">
-        <h3 id="background-connect">Use an API key</h3>
-        {/* Backing out is possible from the top of a long form, on a phone too. */}
-        {connections.length ? <Button variant="quiet" onClick={cancelAdding}>Cancel adding</Button> : null}
-      </div>
-      <AddKeyForm ref={formRef} {...(connections.length ? { onCancel: cancelAdding } : {})} onAdded={(added) => {
-        void listBackgroundConnections().catch(() => [added, ...connections]).then(setConnections);
+    </section>
+    {adding ? <ConnectAiWindow startAt="key" runtime={null} runtimeFailed={false} apiKeys have={new Set()} onClose={closeWindow} onLocalClient={closeWindow}
+      onConnected={(added) => {
+        void listBackgroundConnections().catch(() => (added ? [added, ...connections] : connections)).then(setConnections);
         // The first key gives a person their Assistant on the server: the shell's agents and the models are read again, so Back to AI is not stale (#959).
         void revalidator.revalidate(); void refreshAssistantModel();
-        setEditing(false);
-        announce(`Key saved with a daily budget of ${money(added.dailyBudgetCents)}.`);
-      }} />
-    </section> : null}
+        closeWindow();
+        announce(added ? `Key saved with a daily budget of ${money(added.dailyBudgetCents)}.` : 'Key saved.');
+      }} /> : null}
   </div></div>;
 }

@@ -109,12 +109,18 @@ class AiConnectionSettings(unittest.TestCase):
     def test_02_every_provider_is_offered_the_same_way_and_none_is_preselected(self) -> None:
         page = self.page()
         page.goto("/settings/ai-connections")
-        expect(page.get_by_role("heading", name="Use an API key")).to_be_visible()
+        # #1438 point 9: the page has no form of its own; a key is added in the Connect AI window, on its API key step.
+        expect(page.get_by_role("heading", name="Use an API key")).to_have_count(0)
+        expect(page.get_by_label("Provider", exact=True)).to_have_count(0)
+        expect(page.get_by_text("No API key yet.")).to_be_visible()
+        page.get_by_role("button", name="Add a key").click()
+        window = page.get_by_role("dialog", name="Connect your AI")
+        expect(window.get_by_role("heading", name="Use an API key")).to_be_visible()
         provider = page.get_by_label("Provider", exact=True)
         expect_value(provider, "")
         options = [text.strip() for text in labels(provider)]
         self.assertEqual(options, ["Choose a provider", *PROVIDERS])
-        body = page.locator(".background-settings").inner_text()
+        body = window.inner_text()
         for vendor in ("Claude Platform", "claude-sonnet-5", "pays Anthropic", "sk-ant-"):
             self.assertNotIn(vendor, body, "no vendor is named before the owner chooses one (PROV-2)")
         expect(page.get_by_label("Endpoint base URL")).to_have_count(0)
@@ -128,6 +134,7 @@ class AiConnectionSettings(unittest.TestCase):
     def test_03_an_openai_compatible_endpoint_lists_its_models_through_the_server_and_takes_an_owner_price(self) -> None:
         page = self.page()
         page.goto("/settings/ai-connections")
+        page.get_by_role("button", name="Add a key").click()
         choose(page.get_by_label("Provider", exact=True), label="OpenAI-compatible endpoint")
         expect(page.locator("#background-key-help")).to_contain_text("If it needs none, enter any placeholder")
         page.get_by_label("Endpoint base URL").fill(ENDPOINT)
@@ -375,7 +382,7 @@ class AiConnectionSettings(unittest.TestCase):
         self.assertNotIn("enables nothing", page.locator(".background-settings").inner_text())
         expect(page.get_by_role("link", name="Back to AI")).to_have_attribute("href", "/settings/agents")
         shot(page, "ai-connections-1440-page")
-        # ?new=1 opens the form at once.
+        # ?new=1 opens the Connect AI window on its API key step at once (#1438 point 9).
         page.goto("/settings/ai-connections?new=1")
         expect(page.get_by_role("heading", name="Use an API key")).to_be_visible()
 

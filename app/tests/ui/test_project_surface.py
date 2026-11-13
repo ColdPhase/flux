@@ -291,13 +291,14 @@ class ProjectSurfaceJourney(unittest.TestCase):
         expect(page.get_by_role("region", name=re.compile("^Doing"))).to_contain_text("Test the camera in low light")
         expect(tabs.get_by_role("tab", name=re.compile("^Tasks"))).to_have_attribute("aria-current", "page")
         shot(page, "project-tasks-desktop-1440")
-        # The project's only sketch opens directly (#189); its Sketches link shows the list.
+        # The Map tab opens the map (#189, #1438 point 7); the title is the switcher between the space's maps, as the Wiki's is.
         tabs.get_by_role("tab", name=re.compile("^Map")).click()
         expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}/map/{self.ids['sketch']}$"))
         expect(tabs.get_by_role("tab", name=re.compile("^Map"))).to_have_attribute("aria-current", "page")
-        page.get_by_role("link", name="Maps", exact=True).click()
-        expect(page).to_have_url(re.compile(r"/map$"))
-        expect(page.get_by_role("list", name="Maps in Gesture lamp").get_by_role("link", name=re.compile("Sensing options"))).to_be_visible()
+        expect(page.get_by_role("link", name="Maps", exact=True)).to_have_count(0)
+        page.get_by_role("button", name=re.compile("Sensing options")).click()
+        expect(page.get_by_role("dialog", name="Maps in this space").get_by_role("list", name="Maps").get_by_role("link", name=re.compile("Sensing options"))).to_be_visible()
+        page.keyboard.press("Escape")
         tabs.get_by_role("tab", name=re.compile("^Wiki")).click()
         expect(page).to_have_url(re.compile(rf"/docs/{self.ids['doc']}$"))
         # The Wiki is the page alone (F-026 Wiki): its title is the page switcher, not a link in a pages column (#869, #946).
@@ -473,19 +474,28 @@ class ProjectSurfaceJourney(unittest.TestCase):
     def test_06_map_tab_creates_a_project_sketch(self) -> None:
         page = self.page("nia")
         page.goto(f"/projects/{self.ids['project']}/map")
-        expect(page.get_by_role("list", name="Maps in Gesture lamp")).to_be_visible()
+        # The Map tab opens the space's newest map at once; "New map" is a row of the title's switcher (#1438 point 7).
+        expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}/map/{self.ids['sketch']}$"))
         shot(page, "project-map-desktop-1440")
-        page.get_by_role("button", name="New map").click()
-        expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}/map/[0-9a-f-]+$"))
+        page.get_by_role("button", name=re.compile("Sensing options")).click()
+        page.get_by_role("dialog", name="Maps in this space").get_by_role("button", name="New map").click()
+        expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}/map/(?!{self.ids['sketch']})[0-9a-f-]+$"))
         sketch_id = page.url.rsplit("/", 1)[-1]
         stored = self.api(page, "GET", f"/api/v1/sketches/{sketch_id}", status=200)
         self.assertEqual((stored["scope"], stored["projectId"]), ("project", self.ids["project"]))
         # A map made in a space is read by the space, the default, so the map says nothing about its audience (#871).
         expect(page.locator(".sk-aud")).to_have_count(0)
         expect(page.get_by_text("Everyone in Gesture lamp")).to_have_count(0)
-        page.get_by_role("link", name="Maps", exact=True).click()
-        expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}/map$"))
-        expect(page.get_by_role("list", name="Maps in Gesture lamp").get_by_role("link")).to_have_count(1)  # the new sketch is empty, so it is not listed (#508 AC-3)
+        page.get_by_role("button", name=re.compile("Untitled")).click()
+        # The switcher lists the open map (it is new and empty, which the space's list leaves out, #508 AC-3) and the space's other map.
+        expect(page.get_by_role("dialog", name="Maps in this space").get_by_role("list", name="Maps").get_by_role("link")).to_have_count(2)
+        # Rename is a row of the same menu (the title itself opens the switcher).
+        page.get_by_role("dialog", name="Maps in this space").get_by_role("button", name="Rename map").click()
+        rename = page.get_by_role("textbox", name="Map name")
+        expect(rename).to_be_focused()
+        rename.fill("Probe layout")
+        rename.press("Enter")
+        expect(page.get_by_role("button", name=re.compile("^Probe layout"))).to_be_visible()
         # Everyone in the project sees it; nobody else does.
         listed = self.api(self.page("jonas"), "GET", f"/api/v1/workspaces/{self.ids['workspace']}/sketches?projectId={self.ids['project']}&limit=50", status=200)
         self.assertIn(sketch_id, [item["id"] for item in listed["items"]])
@@ -518,11 +528,17 @@ class ProjectSurfaceJourney(unittest.TestCase):
         shot(page, "project-details-phone-390")
         sheet.get_by_role("button", name=PLACE_CLOSE).tap()
         view_tab(page, "Map", tap=True)
-        # A project whose only listed sketch has content opens it directly (empty sketches are not listed, #508); the index is /map.
+        # The Map tab opens a map, never a list of maps (#1438 point 7); a map's title is the switcher, with 44 px rows on a phone.
         expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}/map/[0-9a-f-]+$"))
         page.goto(f"/projects/{self.ids['project']}/map")
-        expect(page.get_by_role("list", name="Maps in Gesture lamp")).to_be_visible()
+        expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}/map/[0-9a-f-]+$"))
+        page.locator(".sk-switch .wiki-switch").tap()
+        switcher = page.get_by_role("dialog", name="Maps in this space")
+        expect(switcher).to_be_visible()
+        self.assertGreaterEqual(switcher.locator(".wiki-menu__row").first.bounding_box()["height"], 44)
+        self.assertLessEqual(switcher.bounding_box()["x"] + switcher.bounding_box()["width"], PHONE["width"])
         shot(page, "project-map-phone-390")
+        page.keyboard.press("Escape")
 
         # A title too long for the phone wraps to two lines and then ends in an ellipsis (#1239); the people stay in the line under it, and Details lists them.
         page.goto(f"/projects/{self.ids['long_project']}")
@@ -621,7 +637,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         page.goto(f"/projects/{self.ids['project']}/map/{other['id']}")
         expect(page).to_have_url(f"{ORIGIN}/projects/{self.ids['bike']}/map/{other['id']}")
         expect(page.locator("header.top h1")).to_have_text("Bike light")
-        expect(page.get_by_role("button", name="Rename map Bike light beam angles")).to_be_visible()
+        expect(page.get_by_role("button", name=re.compile("^Bike light beam angles"))).to_be_visible()  # the title is the switcher; Rename is a row of its menu
         page.goto(f"/projects/{self.ids['project']}/map/{private['id']}")
         expect(page).to_have_url(f"{ORIGIN}/map/{private['id']}")
         expect(page.get_by_role("heading", level=1, name="My map", exact=True)).to_be_visible()  # a private map is My map (#866)

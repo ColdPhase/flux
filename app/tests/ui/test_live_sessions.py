@@ -594,10 +594,11 @@ class LiveJourney(LiveBase):
         bar.get_by_role("button", name="Leave", exact=True).click()
         expect(bar).to_have_count(0)
 
-    def test_00d_a_call_is_noticed_in_the_inbox_and_sidebar_and_invitations_reach_people(self) -> None:
-        """#1223 points 2 to 6 (F-041): Lee starts a call; Ada's open tab on Home shows the space's call glyph and her Inbox the call with
-        Join, within 2 s; Join joins it. Lee alone reads "Nobody joined · Invite someone"; Invite… invites Jonas and Kai. The call leaves
-        the Inbox when it is over. (The invitation's chime is #1243's "Sound when someone calls me".)"""
+    def test_00d_a_call_is_noticed_in_the_space_and_waits_nowhere_and_invitations_reach_people(self) -> None:
+        """#1223 points 2 to 6 (F-041), #1438 point 11: Lee starts a call; Ada's open tab on Home shows the space's call glyph, within 2 s, and
+        her Inbox and Home hold nothing for it: she joins from the space's header. Lee alone reads "Nobody joined · Invite someone"; Invite…
+        invites Jonas and Kai, and an invitation is the one thing that waits in an Inbox, with Join. (The invitation's chime is #1243's
+        "Sound when someone calls me".)"""
         self.seed()
         ada = self.page("ada")
         project = self.api(ada, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects", {"name": "Repair cafe", "visibility": "restricted"}, status=201)
@@ -622,7 +623,7 @@ class LiveJourney(LiveBase):
         })();""" % json.dumps(PUSH_KEY))
         jonas.goto("/")
         # Kai takes everything that happens (the level "Everything" pushes an open call too), with Flux open on Home: the corner notice card (#1268)
-        # and the tab's "(N)" (#1283) tell him of the call; the call has no sound of its own (the chime is the invitation's).
+        # tells him of the call, which waits nowhere (#1438 point 11); the call has no sound of its own (the chime is the invitation's).
         kai = self.page("kai")
         self.api(kai, "PATCH", "/api/v1/notification-preferences", {"level": "everything"}, status=200)
         self.addCleanup(lambda: self.api(kai, "PATCH", "/api/v1/notification-preferences", {"level": "needsYou"}))
@@ -641,32 +642,26 @@ class LiveJourney(LiveBase):
         expect(notice).to_contain_text("Lee Park started a call in Repair cafe", timeout=5000)
         expect(notice.get_by_role("button", name="Join")).to_be_visible()
         expect(notice.get_by_role("button", name="Open")).to_have_count(0)
-        expect(kai).to_have_title(re.compile(r"^\(1\) "), timeout=5000)
+        # A call of a space waits nowhere (#1438 point 11): the tab's "(N)" does not count it either.
+        expect(kai).not_to_have_title(re.compile(r"^\(\d+\) "))
         shot(kai, "live-desktop-1440-call-notice-card")
         started = time.monotonic()
         expect(space).to_have_accessible_name(re.compile("call on"), timeout=2500)
         expect(space.locator("svg.side__live[data-call-mark]")).to_be_visible()
         self.assertLess(time.monotonic() - started, 3, "the space's call glyph shows within about 2 s")
         shot(ada, "live-desktop-1440-sidebar-call-on")
-        # The Inbox: the call with Join (the notice is written by the worker, a moment after the start).
-        # A call is a Call, never a Question (#1368): Home names it so too, in its one row.
+        # Neither Home nor the Inbox holds the call (the notice would be written by the worker a moment after the start).
         ada.goto("/")
-        row = ada.get_by_role("list", name="Top of your Inbox").locator(".home__row", has_text="Lee Park started a call in Repair cafe")
-        expect(row.locator(".home__row-k")).to_have_text("Call")
-        expect(row).not_to_contain_text("Question")
-        ada.goto("/inbox")
-        card = ada.locator(".nyc", has_text="Lee Park started a call in Repair cafe")
-        expect(card).to_be_visible()
-        expect(card).to_contain_text("Call")
-        expect(card).not_to_contain_text("Question")
-        shot(ada, "live-desktop-1440-inbox-call")
-        open_item(card).get_by_role("button", name="Join").first.click()
-        expect(self.bar(ada).locator(".lv-where")).to_have_text("Call in Repair cafe")
-        # Joined, it asks nothing more of her: it leaves the Inbox and Home while the call goes on (#1368).
-        expect(card).to_have_count(0)
-        ada.get_by_role("navigation", name="Places").get_by_role("link", name="Home").click()
         expect(ada.locator(".home__hello")).to_be_visible()
+        ada.wait_for_timeout(1500)
         expect(ada.locator(".home__row", has_text="started a call in Repair cafe")).to_have_count(0)
+        ada.goto("/inbox")
+        expect(ada.get_by_role("heading", level=1, name="Inbox")).to_be_visible()
+        expect(ada.locator(".nyc", has_text="started a call in Repair cafe")).to_have_count(0)
+        # She is where the call is read: the space's header carries Join.
+        ada.goto(f"/projects/{pid}")
+        ada.locator("header.top").get_by_role("button", name="Join", exact=True).click()
+        expect(self.bar(ada).locator(".lv-where")).to_have_text("Call in Repair cafe")
         expect(bar.get_by_role("status").filter(has_text="Nobody joined")).to_have_count(0)
 
         # Invite… from the strip opens the panel at the people who can join.
@@ -698,13 +693,11 @@ class LiveJourney(LiveBase):
         for leaver in (ada, nia):
             self.bar(leaver).get_by_role("button", name="Leave", exact=True).click()
             expect(self.bar(leaver)).to_have_count(0)
-        # Over: the space loses its dot and the Inbox its call.
+        # Over: the space loses its dot, and no call is left in anybody's Inbox.
         ada.goto("/")
         expect(ada.locator("aside").get_by_role("link", name=re.compile("^Repair cafe")).locator("svg.side__live[data-call-mark]")).to_have_count(0, timeout=40000)
         ada.goto("/inbox")
         expect(ada.locator(".nyc", has_text="started a call in Repair cafe")).to_have_count(0)
-        # The tab stops counting the call once nobody is in it (its card stays until the call ends, as #1268 draws it).
-        expect(kai).not_to_have_title(re.compile(r"^\(\d+\) "), timeout=30000)
 
     def test_00f_a_call_is_one_line_in_the_conversation(self) -> None:
         """#1223 point 6 (F-041): a call started in the conversation shows one line on another member's open tab within 2 s, with Join;
