@@ -198,8 +198,8 @@ const STEP_ROWS: Record<FirstStep, (read: FirstStepsRead) => StepRow> = {
 };
 
 /**
- * First steps (founder decisions, Hubert, 2026-11-13, #1438; docs/design/final/README.md "Home"): one card for every new person but a guest,
- * at most three rows by role, each gone once done, and one quiet Hide for good. A member's third row turns notifications on for this device
+ * First steps (founder decisions, Hubert, 2026-11-13, #1438; docs/design/final/README.md "Home"): one card for every new person but a guest
+ * (the server decides who is new and still has a step left), at most three rows by role, each gone once done, and one quiet Hide for good. A member's third row turns notifications on for this device
  * where push is available and it is not on yet: the one-time offer then waits (`onPushRow`).
  */
 function FirstStepsCard({ phone, onPushRow }: { phone: boolean; onPushRow: (shown: boolean) => void }) {
@@ -211,7 +211,8 @@ function FirstStepsCard({ phone, onPushRow }: { phone: boolean; onPushRow: (show
     const controller = new AbortController();
     getFirstSteps(controller.signal).then(async (next) => {
       setRead(next);
-      if (!next.offerPush) return;
+      // Notifications on this device are never a card of their own: only beside a step that is left (the server says so in `offerPush`).
+      if (!next.offerPush || !next.steps.length) return;
       const push = await getPushState().catch(() => null);
       if (!controller.signal.aborted && push?.state === 'prompt') setPushKey(push.publicKey);
     }, () => undefined);

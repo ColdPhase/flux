@@ -4,7 +4,7 @@ import type { DbExecutor } from './push.js';
 
 /**
  * What Home's first-steps card reads (#1438) for `packages/core/src/first-steps`. Every read is one person's own facts (their company,
- * role, connections, messages and photo) or whether their company has anyone else or any invite; it makes no access decision.
+ * role and since when, connections, messages and photo) or whether their company has anyone else or any invite; it makes no access decision.
  */
 export function firstStepRows(db: DbExecutor) {
   const exists = async (query: Promise<unknown[]>) => (await query).length > 0;
@@ -12,14 +12,14 @@ export function firstStepRows(db: DbExecutor) {
     async company(userId: string) {
       const w = schema.workspaces, m = schema.workspaceMembers, u = schema.authUsers, p = schema.projects;
       // The company; a test deployment's people are in isolated workspaces instead, and the shell takes the oldest plain one, as here.
-      const [row] = await db.select({ id: w.id, name: w.name, role: m.role, hiddenAt: u.firstStepsHiddenAt }).from(m)
+      const [row] = await db.select({ id: w.id, name: w.name, role: m.role, joinedAt: m.createdAt, hiddenAt: u.firstStepsHiddenAt }).from(m)
         .innerJoin(w, eq(w.id, m.workspaceId)).innerJoin(u, eq(u.id, m.userId))
         .where(and(eq(m.userId, userId), eq(w.encrypted, false), isNull(w.companyWorkspaceId)))
         .orderBy(desc(w.company), asc(w.createdAt), asc(w.id)).limit(1);
       if (!row) return null;
       const [everyone] = await db.select({ id: p.id }).from(p).where(and(eq(p.workspaceId, row.id), eq(p.visibility, 'workspace')))
         .orderBy(asc(p.createdAt), asc(p.id)).limit(1);
-      return { id: row.id, name: row.name, role: row.role, everyoneSpaceId: everyone?.id ?? null, hidden: row.hiddenAt !== null };
+      return { id: row.id, name: row.name, role: row.role, joinedAt: row.joinedAt, everyoneSpaceId: everyone?.id ?? null, hidden: row.hiddenAt !== null };
     },
     async invitedAnyone(companyId: string) {
       const m = schema.workspaceMembers, i = schema.workspaceInvites;

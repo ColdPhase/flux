@@ -821,13 +821,19 @@ Community garden sensors, Rain barrel monitor and Tool library.
   person but a guest gets one card on Home, above Waiting for you, titled "First steps", with at most three rows and one quiet
   **Hide** (a `link` button at the card's head) that hides it for good on every device. It replaces the old empty-Home line for a
   new member: one concept, not two. Each row is a Home row (face, title, one quiet line, the arrow) and leaves when what it asks
-  is done; when none is left the card is gone. The rows follow the person's company role:
+  is done; when none is left the card is gone. **Only a new person has it:** someone who joined the company in the last 30 days and
+  has a step left, until they hide it or finish it. The first time no step is left (or on Hide) it is done for that person, saved
+  on the server, so it never returns, on another device or when a step becomes undone later (a removed photo). Someone who joined
+  longer ago never sees it, and notifications alone never make it: the notifications row only sits beside a step that is left, and
+  notifications stay offered where they are today (Settings › Notifications, and the one-time offer after a first
+  mention or question). The rows follow the person's company role:
   - **An owner or admin:** **Name your company** (the company still has the name setup gave it; opens Settings › Company with the
     name's editor open), **Invite people** (nobody else is in the company and no invite link was ever made; opens Settings › Company
     with the invite form open) and **Connect AI** (the person has no AI connection yet; opens Settings › AI's Connect AI).
   - **A member:** **Write your first message** (the person has written none; opens Everyone with the composer ready), **Add your
-    photo** (no profile photo; opens Settings › Account) and **Get notifications on this phone** (only where push is available and
-    this device is not subscribed; the same flow as the one-time offer, which then does not show separately).
+    photo** (no profile photo; opens Settings › Account) and **Get notifications on this phone** (only beside one of those two rows,
+    where push is available and this device is not subscribed; the same flow as the one-time offer, which then does not show
+    separately).
   - **A guest:** no card.
 
 ### Inbox

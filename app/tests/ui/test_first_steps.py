@@ -3,7 +3,9 @@
 Runs with the other tests/ui modules through scripts/check_ui.sh against the running Compose application. FLUX_UI_BROWSER selects
 chromium (default) or webkit. Fia owns a fresh company still called "Company": her card has Name your company, Invite people and
 Connect AI, each leading to its place and leaving once done. Gus is a member: Write your first message opens the space everyone reads
-with the composer ready, Add your photo opens Account. Hide hides the card for good. A guest gets no card. Desktop 1440 and phone 390;
+with the composer ready, Add your photo opens Account. Hide hides the card for good. A guest gets no card. Ida is a member who writes her
+first message and adds a photo: she has no card on any device, and it does not return when her photo goes. Only a new person has a card; the
+member who joined long ago is the API test's (tests/app/first-steps.test.ts). Desktop 1440 and phone 390;
 screenshots (first-steps-*-<browser>.png) go to FLUX_UI_SCREENSHOTS when set.
 """
 
@@ -17,6 +19,7 @@ import uuid
 from playwright.sync_api import Browser, Page, expect, sync_playwright
 
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, start_forwarder
+from test_profile_photo import PHOTO
 from test_settings import UI_BROWSER, shot
 
 PASSWORD = "first steps for every new person"
@@ -25,6 +28,7 @@ PEOPLE = {
     "fia": ("Fia Holm", f"fia.steps+{STAMP}@example.test"),
     "gus": ("Gus Lind", f"gus.steps+{STAMP}@example.test"),
     "hal": ("Hal Berg", f"hal.steps+{STAMP}@example.test"),
+    "ida": ("Ida Ahl", f"ida.steps+{STAMP}@example.test"),
 }
 
 
@@ -60,12 +64,12 @@ class FirstStepsJourney(unittest.TestCase):
         context.close()
 
     def add_people(self) -> None:
-        """Gus (member) and Hal (guest) join after Fia's first steps: someone else in the company ends her Invite people step."""
+        """Gus and Ida (members) and Hal (guest) join after Fia's first steps: someone else in the company ends her Invite people step."""
         if self.ids.get("added"):
             return
         context = self.browser.new_context(base_url=ORIGIN, service_workers="block", storage_state=self.states["fia"])
         self.addCleanup(context.close)
-        for key, role in (("gus", "member"), ("hal", "guest")):
+        for key, role in (("gus", "member"), ("hal", "guest"), ("ida", "member")):
             added = context.request.post(f"/api/v1/workspaces/{self.ids['company']}/members", data={"email": PEOPLE[key][1], "role": role}, headers={"origin": ORIGIN})
             self.assertEqual(added.status, 201, added.text())
         self.ids["added"] = "1"
@@ -177,6 +181,33 @@ class FirstStepsJourney(unittest.TestCase):
         guest.goto("/")
         expect(guest.get_by_role("heading", level=2, name=re.compile("^Good"))).to_be_visible()
         expect(self.card(guest)).to_have_count(0)
+
+    def test_04_a_member_who_finished_has_no_card_on_any_device_and_it_never_returns(self) -> None:
+        self.add_people()
+        self.assertTrue(self.ids["everyone"], "the company has its Everyone space")
+        ida = self.browser.new_context(base_url=ORIGIN, service_workers="block", storage_state=self.states["ida"])
+        self.addCleanup(ida.close)
+        written = ida.request.post(f"/api/v1/projects/{self.ids['everyone']}/conversations", data={"body": "Hello, I am Ida.", "clientMessageId": str(uuid.uuid4())}, headers={"origin": ORIGIN})
+        self.assertEqual(written.status, 201, written.text())
+        photo = ida.request.put("/api/v1/me/photo", data=PHOTO, headers={"origin": ORIGIN, "content-type": "image/png"})
+        self.assertEqual(photo.status, 200, photo.text())
+
+        def home(*, phone: bool) -> None:
+            page = self.page("ida", phone=phone)
+            with page.expect_response(lambda response: response.url.endswith("/api/v1/me/first-steps") and response.request.method == "GET") as read:
+                page.goto("/")
+            answer = read.value.json()
+            self.assertEqual((answer["steps"], answer["offerPush"]), ([], False), "no step left, and notifications alone are not offered")
+            expect(page.get_by_role("heading", level=2, name=re.compile("^Good"))).to_be_visible()
+            expect(self.card(page)).to_have_count(0)
+
+        # Nothing is left: no card, and no row for notifications alone, on a computer and on a new phone.
+        home(phone=False)
+        home(phone=True)
+        # A step undone later does not bring it back, on a device that never saw it.
+        removed = ida.request.delete("/api/v1/me/photo", headers={"origin": ORIGIN})
+        self.assertEqual(removed.status, 204, removed.text())
+        home(phone=True)
 
 
 if __name__ == "__main__":

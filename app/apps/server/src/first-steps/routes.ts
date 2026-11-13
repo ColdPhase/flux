@@ -8,8 +8,9 @@ import { commandRunner, useDomainErrors } from '../http/commands.js';
 interface Options { db: Database; sessions: SessionResolver }
 
 /**
- * Home's first-steps card (founder decisions 2026-11-13, #1438): `GET /api/v1/me/first-steps` answers the signed-in person's steps left,
- * and `POST …/hide` hides the card for good. Only a person has one; an agent's token gets no steps and hides nothing.
+ * Home's first-steps card (founder decisions 2026-11-13, #1438): `GET /api/v1/me/first-steps` answers a new person's steps left (and marks
+ * the card done the first time none is left), and `POST …/hide` hides the card for good. Only a person has one; an agent's token gets no
+ * steps and hides nothing.
  */
 export async function firstStepRoutes(app: FastifyInstance, { db, sessions }: Options) {
   useDomainErrors(app);

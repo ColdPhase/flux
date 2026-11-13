@@ -61,7 +61,7 @@ export const authUsers = pgTable('auth_users', {
   lastActiveAt: timestamp('last_active_at', { withTimezone: true }),
   /** "Show when I was last active" (Settings › Account): on by default; off, nothing writes `lastActiveAt` and the one held was erased. */
   showLastActive: boolean('show_last_active').notNull().default(true),
-  /** Home's first-steps card hidden by the person (migration 0078, #1438): null while it shows; set once, on every device. */
+  /** Home's first-steps card done for the person (migration 0078, #1438): null while it may show; set once, on every device, when they hide it or no step is left. */
   firstStepsHiddenAt: timestamp('first_steps_hidden_at', { withTimezone: true }),
   image: text('image'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
