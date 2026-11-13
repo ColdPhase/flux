@@ -117,8 +117,12 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
     }
     let people = false;
     if (event.kind === 'finished' && event.runId) {
-      // A run that asked a question, or answers one, starts the other agent's run: the owners of both are locked now, in order.
       const run = await personalRunRows(tx).findRun(event.runId);
+      // The run's report goes to its agent's private chat, whose row points at the agent's setup: its owner is locked first, as the worker
+      // locks the owner before that setup and before it records an event, or the two wait for each other (seen as a deadlock in
+      // agent-task-concurrency.test.ts, #1441 review).
+      if (run) owners.add(run.ownerUserId);
+      // A run that asked a question, or answers one, starts the other agent's run: the owners of both are locked now, in order.
       if (run && (run.kind === 'task_answer' || run.answerBody?.includes('<ask>'))) {
         people = true;
         owners.add(run.ownerUserId);
