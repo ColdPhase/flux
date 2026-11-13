@@ -21,6 +21,7 @@ import { registerAgentPictureViews } from './picture-views.js';
 import type { WebReader } from '../web-reads/reader.js';
 import type { Provider as GithubActionProvider } from '../github/adapters.js';
 import { withAgentConnection, type VerifiedFluxMcpClaims } from './context.js';
+import { askMeFirst, isWaiting, sentArgs } from './ask-first.js';
 import { toolError, toolResult } from './tool-results.js';
 import { eventPorts } from '../events.js';
 import { createMcpManifest } from './mcp-dispatch.js';
@@ -34,8 +35,11 @@ export const RUN_SERVER_INSTRUCTIONS = 'These are the Flux tools of one agent ru
   + 'Some changes wait for your owner instead of applying; the result then says so in plain words. Do not retry them. '
   + 'No tool posts a message in a conversation: Flux puts your answer where it belongs.';
 
-/** The only tool of this file: a human-reviewable suggestion from a project material (it is not one of the groups above). */
-function registerAgentProposal(tools: AgentToolRegistry, db: Database) {
+/**
+ * The only tool of this file: a human-reviewable suggestion from a project material (it is not one of the groups above). The people of
+ * the space see it, so with Ask me first on it waits for the owner's OK (#1419); the owner's Approve repeats it here.
+ */
+export function registerAgentProposal(tools: AgentToolRegistry, db: Database) {
   tools.forAccess('write').registerTool('flux_create_proposal', {
     title: 'Propose a sourced project action',
     description: 'Submit a human-reviewable suggestion based on the current version of a project material.',
@@ -45,9 +49,14 @@ function registerAgentProposal(tools: AgentToolRegistry, db: Database) {
       suggestedAction: z.string().min(1).max(10_000),
     }),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
-  }, async ({ projectId, materialId, version, clientCommandId, fact, interpretation, suggestedAction }, { claims }) => {
+  }, async (sent, { claims }) => {
+    const args = sentArgs(sent);
+    const { projectId, materialId, version, clientCommandId, fact, interpretation, suggestedAction } = args;
     try {
       const proposal = await withAgentConnection(db, claims, 'write', projectId, async ({ tx, connection }) => {
+        const step = await askMeFirst(tx, claims, { tool: 'flux_create_proposal', args, projectId, clientCommandId, operation: 'proposal.create',
+          objectType: 'message', objectId: null, title: suggestedAction.slice(0, 80) });
+        if (isWaiting(step)) return step;
         const proposals = agentProposalUseCases(agentProposalRepository(tx, {
           async authorizeWrite(principal, id, transaction) {
             const checked = enforce(await evaluateProject(principal, 'project.write', id, accessReader(transaction), { lock: true }), 'project');
@@ -60,8 +69,12 @@ function registerAgentProposal(tools: AgentToolRegistry, db: Database) {
             await recordEvent(eventPorts(transaction), principal, workspaceId, 'project.proposal_created.v1', id, {});
           },
         }));
-        return proposals.create(connection, { projectId, source: { materialId, version }, clientCommandId, fact, interpretation, suggestedAction });
+        const made = await proposals.create(connection, { projectId, source: { materialId, version }, clientCommandId, fact, interpretation, suggestedAction });
+        await step.done({ value: made });
+        return made;
       });
+      // Waiting for the owner's OK (Ask me first): plain words, as every waiting change answers.
+      if (isWaiting(proposal)) return { content: [{ type: 'text' as const, text: proposal.assistantText }] };
       return toolResult(proposal);
     } catch (error) { return toolError(error); }
   });

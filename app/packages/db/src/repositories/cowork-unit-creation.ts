@@ -45,7 +45,7 @@ export function coworkUnitCreationRows(tx: DbExecutor) {
      */
     async lock(scope: CoWorkUnitCreationScope, prepareTasks: (units: readonly CoWorkTaskLockInput[]) => Promise<readonly string[]>) {
       const [assignee] = await tx.select({ id: connections.id, ownerUserId: connections.ownerUserId, revokedAt: connections.revokedAt,
-        mayDo: connections.mayDo, agentId: connections.agentId, computeSource: connections.computeSource }).from(connections)
+        agentId: connections.agentId, computeSource: connections.computeSource }).from(connections)
         .where(and(eq(connections.workspaceId, scope.workspaceId), eq(connections.id, scope.assigneeConnectionId))).for('share');
       const slotted = [...new Set([scope.creatorConnectionId, ...(assignee ? [assignee.id] : [])])].sort();
       await tx.execute(sql`INSERT INTO cowork_connection_slots(connection_id, workspace_id)
@@ -93,7 +93,7 @@ export function coworkUnitCreationRows(tx: DbExecutor) {
         task: task ?? null,
         parent: lockedParent ? unit(lockedParent) : null,
         // The assignee must be able to use the space: its owner a non-guest member who sees it, AI on there (review of #943).
-        assignee: assignee && !assignee.revokedAt && assignee.mayDo !== 'read' && await connectionReaches(tx, assignee.id, scope.projectId)
+        assignee: assignee && !assignee.revokedAt && await connectionReaches(tx, assignee.id, scope.projectId)
           ? { id: assignee.id, ownerUserId: assignee.ownerUserId, agentId: assignee.agentId, computeSource: assignee.computeSource } : null,
         existing: existing ? unit(existing) : null,
         runUnits, openTaskUnits, taskUnits, now: time!.now, taskFence,

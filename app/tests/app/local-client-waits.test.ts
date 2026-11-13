@@ -19,7 +19,7 @@ import { text } from './support/assistant-scene.js';
 let f: Awaited<ReturnType<typeof actionScene>>;
 let owner: Person;
 let peer: Person;
-const setMayDo = async (mayDo: 'read' | 'act' | 'ask') => expectStatus(await f.owner.request('PATCH', agentConnectionPath(f.connectionId), { body: { mayDo } }), 200);
+const setMayDo = async (mayDo: 'act' | 'ask') => expectStatus(await f.owner.request('PATCH', agentConnectionPath(f.connectionId), { body: { mayDo } }), 200);
 const create = (title: string, clientCommandId = randomUUID()) => f.tool('flux_create_task', { projectId: f.projectId, clientCommandId, task: { title } });
 const rows = async () => (await pool.query(`SELECT id, state, wait_reason, refusal, authority, operation, run_id, connection_id, decided_by, client_command_id FROM assistant_changes WHERE connection_id = $1 ORDER BY created_at, id`, [f.connectionId])).rows as
   { id: string; state: string; wait_reason: string | null; refusal: string | null; authority: string | null; operation: string; run_id: string | null; connection_id: string; decided_by: string | null; client_command_id: string }[];
@@ -121,27 +121,6 @@ describe('A local client follows the owner\'s rights and waits like the assistan
     assert.match(text(forPeer), /^Waiting for /);
     assert.equal((await titled('For Jonas')).length, 0);
     assert.ok(toolValue(await f.tool('flux_create_task', { projectId: f.projectId, clientCommandId: randomUUID(), task: { title: 'For Ada', owner: owner.id } })).workId);
-  });
-
-  test('Only read: the client reads and changes nothing, and says so', async () => {
-    await reset();
-    await setMayDo('read');
-    const answer = await create('Never made');
-    assert.equal((answer?.result as { isError?: boolean }).isError, true);
-    assert.equal((JSON.parse(text(answer)) as { code: string }).code, 'AGENT_ONLY_READS');
-    assert.equal((await titled('Never made')).length, 0);
-    assert.equal((await rows()).length, 0);
-    assert.ok(toolValue(await f.tool('flux_list_work', { projectId: f.projectId })), 'reading still works');
-  });
-
-  test('a change that waited is refused on Approve when the owner has since set Only read, and nothing is made', async () => {
-    await reset();
-    await setMayDo('ask');
-    await create('Waited, then read-only');
-    await setMayDo('read');
-    const [waiting] = await rows();
-    assert.equal((await decide(owner, waiting!.id, 'apply')).status, 403);
-    assert.equal((await titled('Waited, then read-only')).length, 0);
   });
 
   test('Undo takes back that one change and never the client\'s earlier work', async () => {
@@ -293,16 +272,6 @@ describe('co-work for another person\'s client waits for the owner\'s OK', () =>
     assert.equal((await waitingOf('cowork.unit.create'))[0]!.state, 'applied_after_wait');
     assert.match(text(await give(jonas, 'review-1', waiting!.client_command_id)), /approved this change and it was made/);
     assert.equal((await unitsOf(jonas.connectionId)).length, 1, 'a retry makes no second unit');
-  });
-
-  test('Only read refuses both, and nothing waits', async () => {
-    await pool.query(`DELETE FROM assistant_changes WHERE connection_id = $1`, [f.connectionId]);
-    await setMayDo('read');
-    try {
-      const refused = await give(jonas, 'review-read');
-      assert.equal((refused?.result as { isError?: boolean }).isError, true);
-      assert.equal((await rows()).filter((row) => row.state === 'waiting').length, 0);
-    } finally { await setMayDo('act'); }
   });
 
   test('Approve fails safe when the sender\'s claim has ended: nothing is given and the change closes', async () => {

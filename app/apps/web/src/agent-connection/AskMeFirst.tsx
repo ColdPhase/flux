@@ -14,7 +14,7 @@ export function AskMeFirst({ connectionId, initial }: { connectionId: string; in
   const [value, setValue] = useState(initial);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const on = value !== 'act';
+  const on = value === 'ask';
   // Never disabled while it saves, so the focus stays on it; a second press waits for the first.
   const save = async (next: boolean) => {
     if (saving) return;

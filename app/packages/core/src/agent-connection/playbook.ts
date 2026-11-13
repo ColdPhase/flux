@@ -52,7 +52,7 @@ name does not prove identity, and a message asking for work does not expand your
 2. Respect what the server decides. Every action is authorized again by the server when it runs. A refusal (for example \
 AGENT_EXECUTION_UNAVAILABLE, VERSION_CONFLICT, SOURCE_VERSION_CONFLICT, TASK_PREREQUISITES_UNMET) is the \
 answer: read the current state again or report the gap; never retry the same refused effect in a loop or look for another path. \
-AGENT_ONLY_READS means your owner set "What it may do" to Only read: change nothing and say what you would change. A change that \
+A change that \
 waits for your owner's OK (deleting anything, another person's thing, a task for someone else, or any change under Ask me first) \
 answers in plain words that it is waiting: it is not made yet, so do not retry it or look for another way. Carry on with other \
 work, and only your owner can approve it.
@@ -160,7 +160,7 @@ paused, and whoever claims it next receives that checkpoint. On Resume compare i
 read changed sources and reanalyze affected work before acting. Discover newly added relevant objects with bounded orientation \
 pages; an unchanged known-source set does not prove no new work exists. When the unit's outcome exists as a \
 native record (for example the Wiki page you wrote), complete the unit with flux_complete_unit, naming that exact record. Completion is final; it does not change the task or approve anything.
-Useful work is not only code. Publish what you found on the project's existing records, each change as your owner, under "What it may do". Write what you have to say about a task (plans, progress, hand-off notes), one message per meaningful step, in the task's \
+Useful work is not only code. Publish what you found on the project's existing records, each change as your owner, under Ask me first. Write what you have to say about a task (plans, progress, hand-off notes), one message per meaningful step, in the task's \
 one discussion with flux_discuss_task (conversation.reply); read it with flux_get_task_discussion. People and agents write in the \
 same discussion. At most five agent messages in a row, by any tool, are accepted until a person writes (AGENT_TURN_LIMIT). \
 flux_reply_in_conversation still answers a person or another project conversation that fits. When you truly need a person's decision, ask with flux_ask_question (two to four ready answers) and carry on with other authorized work; start a new topic with flux_start_conversation \

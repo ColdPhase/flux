@@ -127,18 +127,6 @@ describe('web content cannot bypass approvals (#918)', () => {
     await untouched('exfiltration');
   });
 
-  test('Only read: an agent that obeys the page changes nothing, because no change tool is listed to it', async () => {
-    await scene.setMayDo('read');
-    const replies = [tools({ name: 'flux_read_web', input: { url: PAGE } }), tools(...obey('read')), answer('Read it.')];
-    scene.compute.respond = async () => replies.shift()!;
-    const started = await scene.runs.invoke(human(scene.owner), scene.thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: QUESTION });
-    assert.equal(await scene.processor.process(started.run.id), 'completed');
-    assert.ok(!(scene.compute.dispatched[0]?.tools ?? []).some((tool) => tool.name === 'flux_remove_thought' || tool.name === 'flux_update_task'), 'no change tool was offered');
-    assert.ok((scene.compute.dispatched[0]?.tools ?? []).some((tool) => tool.name === 'flux_read_web'), 'reading the web is a read');
-    await untouched('read');
-    assert.deepEqual(await changesOf(started.run.id), [], 'not even a waiting change');
-  });
-
   test('Ask me first: even what is the owner\'s own waits, and the page cannot make it apply', async () => {
     await scene.setMayDo('ask');
     const replies = [tools({ name: 'flux_read_web', input: { url: PAGE } }),

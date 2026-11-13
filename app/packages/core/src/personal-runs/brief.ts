@@ -325,7 +325,7 @@ function toolRules(input: Placed): string[] {
   const thought = input.engine === 'runtime' && input.thought ? ` The selected map thought is thought ${input.thought.thoughtId} on map ${input.thought.sketchId}.` : '';
   const change = input.kind === 'task_answer' ? 'You only read: no tool changes anything.'
     : changes ? `${input.kind === 'task' ? 'Make the changes the task needs, and no others.' : `Make a change only when the request asks for it.`} Some changes wait for ${owner}'s OK; the tool then says so: do not try again.`
-      : `You can only read here: ${owner} set what you may do to Only read. If you are asked for a change, say so instead.`;
+      : 'You can only read here. If you are asked for a change, say so instead.';
   return ['Flux tools', `${reach}${thought} ${change} ${REFUSED}`, ...find, ...(changes && input.kind !== 'task_answer' ? [NO_POSTING_LINE] : []), ...web,
     ...(tools.includes('flux_attach_image') ? [PICTURE_LINE] : []), ...searchLine];
 }

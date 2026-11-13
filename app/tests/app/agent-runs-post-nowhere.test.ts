@@ -157,7 +157,7 @@ describe('an agent\'s run posts in no conversation by itself (#1063)', () => {
       const brief = engine === 'runtime' ? runtimeBrief({ ...base, engine, kind }) : buildBrief({ ...base, kind }).system;
       assert.ok(brief.includes(NO_POSTING_LINE), `${engine} ${kind}`);
       assert.ok(!brief.includes('maps and conversations'), `${engine} ${kind}: a run is not told it works in conversations`);
-      assert.ok(!buildBrief({ ...base, engine, kind, tools: ['flux_get_work'] }).system.includes(NO_POSTING_LINE), `${engine} ${kind}: Only read changes nothing`);
+      assert.ok(!buildBrief({ ...base, engine, kind, tools: ['flux_get_work'] }).system.includes(NO_POSTING_LINE), `${engine} ${kind}: a run that only reads is told nothing about posting`);
     }
     assert.ok(runtimeBrief({ ...base, engine: 'runtime', kind: 'task' }).includes('its tasks, Wiki pages and maps, and read its conversations'));
     // A schedule's run is in its agent's private chat (#858): it reads and changes nothing, and its reply is a message of that chat, which Flux posts there.
@@ -173,6 +173,6 @@ describe('an agent\'s run posts in no conversation by itself (#1063)', () => {
     const writes = new Set(AGENT_TOOLS.filter((entry) => entry.kind === 'tool' && (entry.operation === 'conversation.create' || entry.operation === 'conversation.reply'))
       .map((entry) => entry.name));
     assert.ok(['flux_start_conversation', 'flux_reply_in_conversation', 'flux_discuss_task', 'flux_ask_question'].every((name) => writes.has(name)), [...writes].join(', '));
-    for (const mayDo of ['act', 'ask', 'read'] as const) for (const name of assistantRunTools(mayDo)) assert.ok(!writes.has(name), `${mayDo}: ${name} writes in a conversation`);
+    for (const readOnly of [false, true]) for (const name of assistantRunTools(readOnly)) assert.ok(!writes.has(name), `${readOnly ? 'reads only' : 'changes'}: ${name} writes in a conversation`);
   });
 });

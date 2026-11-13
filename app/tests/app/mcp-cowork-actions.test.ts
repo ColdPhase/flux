@@ -77,17 +77,12 @@ test('the co-work tools are registered as changes, listed with their operation a
   assert.equal(COWORK_PLAYBOOK.version, '1.17.0');
   assert.ok(!(codex.bootstrap.gaps as string[]).includes('coordination_unavailable'), 'unit creation, claims and completion exist');
 
-  // An agent set to Only read is told its change tools are not available now, and a call to one is refused before any effect.
-  const reader = await f.connect(f.hubert, 'Hubert reader');
-  expectStatus(await f.hubert.browser.request('PATCH', `/api/v1/agent-connections/${reader.connectionId}`, { body: { mayDo: 'read' } }), 200);
-  const told = toolValue(await reader.tool('flux_bootstrap', { projectId: f.p.id, clientSessionId: randomUUID() })) as { capabilities: { name: string; available: boolean }[] };
+  // An agent with Ask me first on (#1419) is told its change tools are available: a change waits for its owner's OK, it is never hidden.
+  const asker = await f.connect(f.hubert, 'Hubert asks first');
+  expectStatus(await f.hubert.browser.request('PATCH', `/api/v1/agent-connections/${asker.connectionId}`, { body: { mayDo: 'ask' } }), 200);
+  const told = toolValue(await asker.tool('flux_bootstrap', { projectId: f.p.id, clientSessionId: randomUUID() })) as { capabilities: { name: string; available: boolean }[] };
   const changing = told.capabilities.filter((item) => COWORK_TOOLS.some((tool) => tool.name === item.name && tool.operation !== null));
-  assert.ok(changing.length > 0 && changing.every((item) => !item.available), 'every co-work change tool is unavailable to an agent that only reads');
-  const a = await f.task('Native outcome A');
-  const refused = toolFailure(await reader.tool('flux_create_unit', { ...reader.base('execute'), taskId: a.id, unitKey: 'take',
-    expectedTaskVersion: a.version, assignmentConnectionId: reader.connectionId, parent: null }));
-  assert.equal(refused.code, 'AGENT_ONLY_READS');
-  assert.deepEqual(await f.units(), []);
+  assert.ok(changing.length > 0 && changing.every((item) => item.available), 'every co-work change tool is available under Ask me first');
 });
 
 test('flux_create_unit takes a task atomically: a retry replays, a re-issued intent returns the unit, a second connection is refused', async () => {

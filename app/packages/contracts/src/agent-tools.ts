@@ -2,8 +2,8 @@ import type { AgentOperation } from './agent-execution.js';
 
 /**
  * Every Flux tool, resource and prompt of the MCP server, with whether it reads or changes (#859). There are no scopes, switches
- * or project lists: what a client may do is its owner's rights at the moment of the call and the agent's "What it may do", and
- * `write` is what Only read refuses. This list pins the manifest to the actual registrations.
+ * or project lists: what a client may do is its owner's rights at the moment of the call, and a `write` waits for the owner's OK
+ * under Ask me first. This list pins the manifest to the actual registrations.
  */
 export type AgentToolAccess = 'read' | 'write';
 export interface AgentToolEntry {

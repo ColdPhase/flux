@@ -91,7 +91,7 @@ export function registerMcpRoute(app: FastifyInstance, db: Database, auth: FluxA
         }
         if (runClaims) {
           // A personal run's token (F-027 A2): its run is in flight under this token's id, and the route lists the run's tools. An owner
-          // who sets Only read mid-run gets the plain words at the run's next change (the executor refuses it), not an unknown tool.
+          // who turns Ask me first on mid-run has the run's next change wait for their OK (the executor decides at each call).
           const live = await requireLiveRun(tx, { ownerUserId, connectionId, run: runClaims }, { newCall: true, lock: true });
           run = { ...runClaims, tools: [...live.runTools] };
         }

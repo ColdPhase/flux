@@ -122,7 +122,7 @@ export async function createConnection(pool: Pool, owner: Browser, options: { ag
     FROM agent_connections WHERE id = $1`, [id])).rows as Record<string, unknown>[];
   return { id: String(row!.id), workspaceId: String(row!.workspace_id), ownerUserId: String(row!.owner_user_id), agentId: String(row!.agent_id),
     name: String(row!.name), clientDesignation: row!.client_designation as ExternalClientDesignation, computeSource: row!.compute_source as 'user_operated_external_client',
-    mayDo: row!.may_do as 'read' | 'act' | 'ask', revokedAt: null as string | null, createdAt: (row!.created_at as Date).toISOString(), clientId };
+    mayDo: row!.may_do as 'act' | 'ask', revokedAt: null as string | null, createdAt: (row!.created_at as Date).toISOString(), clientId };
 }
 
 /**

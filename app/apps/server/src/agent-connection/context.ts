@@ -33,7 +33,7 @@ export type VerifiedFluxMcpClaims = FluxMcpClaims & { dispatch: McpDispatch };
 export interface FluxAgentReadContext {
   tx: Transaction;
   connection: AgentConnectionContext;
-  /** "What it may do", read with the connection row held. */
+  /** Ask me first, read with the connection row held. */
   mayDo: AgentMayDo;
   workspaceId: string;
   principal: { kind: 'agent'; id: string };
@@ -57,7 +57,7 @@ export function withAgentConnection<T>(db: Database, claims: FluxMcpClaims, acce
 
 /**
  * The same authorization boundary composed into #152/#153's caller-owned transaction. A client acts with its owner's rights at
- * this moment and does what its "What it may do" says: there is no scope, project list or capability switch to consult (#859).
+ * this moment and does what its Ask me first says: there is no scope, project list or capability switch to consult (#859).
  */
 export async function agentConnectionInTransaction(tx: Transaction, claims: FluxMcpClaims, access: AgentToolAccess,
   projectId: string | null): Promise<FluxAgentReadContext> {
@@ -73,9 +73,6 @@ export async function agentConnectionInTransaction(tx: Transaction, claims: Flux
     const actor = await accessReader(tx).loadActor({ kind: 'agent', id: row.agentId }, row.workspaceId, { lock: true });
     if (!actor.active || actor.agent?.ownerUserId !== row.ownerUserId)
       throw new DomainError(403, 'AGENT_OWNER_UNAVAILABLE', 'This client is unavailable: its owner is no longer a member of the company');
-    // "What it may do" (F-036 AG-3): an agent set to Only read reads and answers, and changes nothing anywhere.
-    if (access === 'write' && row.mayDo === 'read')
-      throw new DomainError(403, 'AGENT_ONLY_READS', 'This agent only reads: its owner set "What it may do" to Only read');
     const connection: AgentConnectionContext = { connectionId: row.id, ownerUserId: row.ownerUserId, agentId: row.agentId, computeSource: row.computeSource };
     const reachable = async () => (await reachableProjectIds(tx, row.id)).filter((id) => (!claims.run || runReaches(claims.run, id)) && (!claims.boundProjectId || id === claims.boundProjectId));
     const requireProject = async (id: string, action: 'project.read' | 'project.write' = 'project.read') => {

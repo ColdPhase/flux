@@ -65,13 +65,6 @@ describe('hand-offs from the owner\'s assistant to the owner\'s own agents (F-02
     assert.ok(ordinary.inputSchema.required?.includes('runtimeSessionId') && !ordinary.inputSchema.required.includes('grantId'));
     assert.ok(!ordinary.description.includes('authority is this run'));
     await scene.complete(live.runId);
-    // "What it may do" is Only read: no hand-off tool, and a forced call changes nothing (F-036 AG-3).
-    await scene.setMayDo('read');
-    const read = await scene.liveRun();
-    assert.ok(!read.tools.includes('flux_create_unit'));
-    const forced = await handoff(read, { id: randomUUID(), version: 1 }, 'x');
-    assert.ok(forced.status >= 400 || (forced.message?.result as { isError?: boolean } | undefined)?.isError, 'refused');
-    await scene.complete(read.runId);
   });
 
   test('AST-5.2/AST-6.2: the assistant opens a pending unit for the owner\'s own agent with no claim, the recipient needs its own grant to start, and the receipt keeps who did what', async () => {
@@ -221,7 +214,7 @@ describe('hand-offs from the owner\'s assistant to the owner\'s own agents (F-02
     assert.equal((await units(task.id))[0]!.state, 'stopped');
   });
 
-  test('AST-5.4: a saved hand-off does not survive a revoked recipient, an unknown stored view, an altered payload or a switch turned off', async () => {
+  test('AST-5.4: a saved hand-off does not survive a revoked recipient, an unknown stored view or an altered payload', async () => {
     await scene.setMayDo('ask');
     const live = await scene.liveRun();
     const prepare = async (title: string, key: string, to: Recipient) => {
@@ -232,29 +225,20 @@ describe('hand-offs from the owner\'s assistant to the owner\'s own agents (F-02
     const revoked = await recipient(scene.owner, 'Codex three');
     const unknown = await recipient(scene.owner, 'Codex five');
     const altered = await recipient(scene.owner, 'Codex six');
-    const off = await recipient(scene.owner, 'Codex seven');
     const cases = {
       revoked: await prepare('Revoked recipient', 'a', revoked),
-      unknown: await prepare('Unknown view', 'c', unknown), altered: await prepare('Altered payload', 'd', altered), off: await prepare('Switch off', 'e', off),
+      unknown: await prepare('Unknown view', 'c', unknown), altered: await prepare('Altered payload', 'd', altered),
     };
     await scene.complete(live.runId);
     expectStatus(await scene.owner.browser.request('DELETE', `/api/v1/agent-connections/${revoked.connectionId}`), 204);
     await pool.query(`UPDATE assistant_changes SET prepared_command = jsonb_set(prepared_command, '{view}', '"assistant-unit-create/v2"') WHERE id = $1`, [cases.unknown.row.id]);
     await pool.query(`UPDATE assistant_changes SET prepared_command = jsonb_set(prepared_command, '{args,unitKey}', '"other-key"') WHERE id = $1`, [cases.altered.row.id]);
     for (const [name, { row, task }] of Object.entries(cases)) {
-      if (name === 'off') continue;
       const response = await scene.owner.browser.request('POST', assistantChangeActionPath(row.id, 'apply'), { body: { expectedVersion: row.version } });
       assert.ok(response.status >= 400 && response.status < 500, `${name}: refused (${response.status})`);
       assert.equal((await units(task.id)).length, 0, `${name}: no unit`);
       assert.equal((await pool.query(`SELECT state FROM assistant_changes WHERE id = $1`, [row.id])).rows[0].state, 'refused', name);
     }
-    // "What it may do" turned to Only read refuses the Approve and closes what was waiting; turning it back cannot revive it.
-    await scene.setMayDo('read');
-    assert.equal((await scene.owner.browser.request('POST', assistantChangeActionPath(cases.off.row.id, 'apply'), { body: {} })).status, 403);
-    assert.equal((await pool.query(`SELECT state FROM assistant_changes WHERE id = $1`, [cases.off.row.id])).rows[0].state, 'refused');
-    await scene.setMayDo('act');
-    expectStatus(await scene.owner.browser.request('POST', assistantChangeActionPath(cases.off.row.id, 'apply'), { body: {} }), 409);
-    assert.equal((await units(cases.off.task.id)).length, 0);
   });
 
   test('AST-6.2: Undo cancels an untouched hand-off and the intent cannot be recreated; after the recipient started it changes nothing and says so truthfully', async () => {
