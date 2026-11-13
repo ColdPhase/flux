@@ -315,6 +315,14 @@ export interface PersonalRunRepository {
   assistantConnectionLive?(ownerUserId: string, agentId: string): Promise<boolean>;
   /** The "What it may do" of this agent of the owner (F-036 AG-3: each agent has its own); null when it is gone. */
   assistantMayDo?(ownerUserId: string, agentId: string): Promise<AgentMayDo | null>;
+  /**
+   * The model gateway's token of a run (#1441): only its SHA-256 and expiry are stored. `gatewayRunId` names the run whose
+   * unexpired token has this hash; `armGateway` stores a run's (replacing an earlier one); `closeGateway` ends it. Older isolated fake
+   * repositories may omit them.
+   */
+  gatewayRunId?(tokenHash: string): Promise<string | null>;
+  armGateway?(runId: string, tokenHash: string, expiresAt: Date): Promise<boolean>;
+  closeGateway?(runId: string): Promise<void>;
 }
 
 /** Adapter over the core access policy. It never reveals objects the principal cannot see. */

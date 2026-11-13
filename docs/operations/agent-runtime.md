@@ -381,6 +381,26 @@ chat) then runs their own Claude Code (or Codex) under their own user id, with t
 The worker reaches the API at `FLUX_API_INTERNAL_URL` (default `http://api:8080`) for the token and, for
 API-key runs, for `/mcp`.
 
+### The model gateway (#1441)
+
+A run on an API key that works in the runtime never holds the key. It gets a gateway token, and its harness sends the provider's
+model requests to `http://runtime-egress:8081/<provider>/…`; the egress passes them on to the worker on the internal
+`runtime-api` network (the worker listens there only, as `worker-gateway:8095`), and the worker, which alone opens keys, sends them
+to the provider and charges the owner's daily budget from the usage each answer reports. The interface, the refusals and the
+metering are in [RT-4](../product/ai-modes.md#the-model-gateway-1441).
+
+| Bound | Value | Where |
+| --- | --- | --- |
+| Request body | 16 MiB | `MODEL_GATEWAY_LIMITS.requestBytes` |
+| Answer | 32 MiB | `MODEL_GATEWAY_LIMITS.responseBytes` |
+| One request | 10 minutes, and 2 minutes without a byte from the provider | `MODEL_GATEWAY_LIMITS.requestMs`, `idleMs` |
+| Output of one request | 32,000 tokens | `MODEL_GATEWAY_LIMITS.maxOutputTokens` |
+| Requests at once for one run | 4 | `MODEL_GATEWAY_LIMITS.concurrentPerRun` |
+
+The worker's log has one line per request: the run, the provider, the path, the status and the charge; never a token, a key or a
+body. `FLUX_MODEL_GATEWAY_LISTEN` (the worker's listening name, default `worker-gateway`) and `FLUX_RUNTIME_EGRESS_GATEWAY` (where
+the egress finds it, default `worker-gateway:8095`) are set by the Compose files; with the runtime off the worker does not listen.
+
 ## Known limits (accepted)
 
 None of them is hidden by the checks.

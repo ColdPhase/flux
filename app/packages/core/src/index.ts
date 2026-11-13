@@ -85,6 +85,7 @@ export * from './ai/connections.js';
 export * from './search/index.js';
 export * from './file-text/index.js';
 export * from './personal-runs/index.js';
+export * from './model-gateway/index.js';
 export * from './agent-tasks/index.js';
 export * from './task-discussions/ports.js';
 export * from './task-discussions/service.js';

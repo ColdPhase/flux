@@ -1768,8 +1768,12 @@ export const personalRuns = pgTable('personal_runs', {
   /** 0022 (#842): the answer is its owner's alone; Show everyone posted it, Dismiss put it away. */
   shownAt: timestamp('shown_at', { withTimezone: true }),
   dismissedAt: timestamp('dismissed_at', { withTimezone: true }),
+  /** 0075 (#1441): the model gateway's token of a run on an API key in the runtime: its SHA-256 and expiry only, cleared when it closes. */
+  gatewayTokenHash: text('gateway_token_hash'),
+  gatewayTokenExpiresAt: timestamp('gateway_token_expires_at', { withTimezone: true }),
 }, (table) => [
   unique().on(table.ownerUserId, table.clientRunId),
+  uniqueIndex('personal_runs_gateway_token_idx').on(table.gatewayTokenHash).where(sql`${table.gatewayTokenHash} IS NOT NULL`),
   unique().on(table.workspaceId, table.projectId, table.id),
   foreignKey({ columns: [table.workspaceId, table.projectId, table.conversationId], foreignColumns: [projectConversations.workspaceId, projectConversations.projectId, projectConversations.id] }).onDelete('cascade'),
   foreignKey({ columns: [table.workspaceId, table.agentId], foreignColumns: [agents.workspaceId, agents.id] }).onDelete('cascade'),
