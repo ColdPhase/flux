@@ -652,7 +652,8 @@ export interface PersonalRuntimeTarget { slot: string; bindingId: string; client
  * Code started its `n`th web search, and what its result entries held.
  */
 export type PersonalRuntimeEvent =
-  | { kind: 'init'; tools: string[]; mcpServers: { name: string; status: string }[] }
+  /** `own`: the slot says the run has the CLI's own shell and file tools in Flux's per-run sandbox (#1437, RT-5). */
+  | { kind: 'init'; tools: string[]; mcpServers: { name: string; status: string }[]; own?: true }
   | { kind: 'tool'; name: string }
   | { kind: 'search'; n: number; query: string }
   | { kind: 'found'; n: number; results: string[]; queries?: string[] }

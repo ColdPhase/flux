@@ -88,6 +88,19 @@ const probes = [
   ['listening on a port', 'node -e \'require("net").createServer().listen(8099, "127.0.0.1").on("listening", () => { console.log("LISTENING"); process.exit(0); }).on("error", (e) => console.log(e.code))\''],
   ['an HTML page, a CSV and a PDF made in the scratch', 'printf "<h1>Report</h1><p>Lamp sensor</p>" > report.html && printf "a,b\\n1,2\\n" > table.csv'
     + ' && printf "%%PDF-1.4\\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj 2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj 3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 200]>>endobj\\ntrailer<</Root 1 0 R>>\\n%%%%EOF\\n" > report.pdf && ls report.html table.csv report.pdf && head -c 8 report.pdf'],
+  ['the toolbox (#1437): HTML and Markdown to PDF with pandoc and typst, a spreadsheet, a Word document and a chart with Python, jq, ripgrep and vips',
+    'printf "# Lamp sensor\\n\\nFails below **5 lux**.\\n" > notes.md'
+    + ' && pandoc report.html -o from-html.pdf --pdf-engine=typst && pandoc notes.md -o from-md.pdf --pdf-engine=typst'
+    + ' && python3 -c "import pandas as pd, docx, matplotlib; matplotlib.use(\'Agg\'); import matplotlib.pyplot as plt;'
+    + ' df = pd.read_csv(\'table.csv\'); df.to_excel(\'table.xlsx\', index=False); d = docx.Document(); d.add_paragraph(\'Lamp\'); d.save(\'notes.docx\');'
+    + ' plt.plot([1, 2, 3]); plt.savefig(\'chart.png\')"'
+    + ' && echo \'{"a": 1}\' | jq -c . && rg -c Lamp notes.md && vips copy chart.png chart.webp'
+    + ' && for f in from-html.pdf from-md.pdf; do head -c 5 $f; echo; done && ls table.xlsx notes.docx chart.png chart.webp'],
+  ['what the toolbox costs: the peak memory of pandoc with typst and of Python with pandas and matplotlib, in KiB',
+    'python3 -c "import resource, subprocess, time; t = time.time(); subprocess.run([\'pandoc\', \'report.html\', \'-o\', \'m.pdf\', \'--pdf-engine=typst\'], check=True);'
+    + ' print(\'pandoc+typst\', resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss, round(time.time() - t, 2))";'
+    + ' python3 -c "import resource, time; t = time.time(); import pandas, matplotlib; matplotlib.use(\'Agg\'); import matplotlib.pyplot as plt; plt.plot([1]); plt.savefig(\'m.png\');'
+    + ' print(\'python+pandas+matplotlib\', resource.getrusage(resource.RUSAGE_SELF).ru_maxrss, round(time.time() - t, 2))"'],
   ['a file larger than the scratch', 'head -c 300000000 /dev/zero > big; ls -l big | awk "{print \\$5}"; rm -f big'],
   ['a fork bomb', 'for i in $(seq 1 400); do sleep 20 & done; echo "all started"'],
   ['the shell still works after the fork bomb', 'echo alive'],
@@ -113,11 +126,16 @@ record(`refused: ${probes[8][0]}`, /link: Permission denied/.test(out(8)) && /ha
 record(`${tcpRule ? 'refused' : 'NOT refused (kernel before Landlock ABI 4)'}: ${probes[9][0]}`, tcpRule ? (out(9).match(/EACCES/g) ?? []).length === 2 && !out(9).includes('CONNECTED') : true, shown(9));
 record(`${tcpRule ? 'refused' : 'not refused before ABI 4'}: ${probes[10][0]}`, tcpRule ? /EACCES/.test(out(10)) && !/LISTENING/.test(out(10)) : true, shown(10));
 record(probes[11][0], outs[11]?.exit === 0 && out(11).includes('%PDF-1.4'), shown(11));
-record(`limited: ${probes[12][0]}`, /File too large|File size limit exceeded/i.test(out(12)) && !/^300000000$/m.test(out(12)), shown(12));
-record(`limited and killed: ${probes[13][0]}`, !out(13).includes('all started') && (outs[13]?.exit === 137 || /Resource temporarily unavailable/i.test(out(13))), shown(13));
-record(probes[14][0], out(14).trim() === 'alive', shown(14));
-record(`killed: ${probes[15][0]}`, outs[15]?.exit === 137 || /exit 137|Killed/.test(out(15)), shown(15));
+const tool = probes.findIndex(([name]) => name.startsWith('the toolbox'));
+record(probes[tool][0], outs[tool]?.exit === 0 && (out(tool).match(/%PDF-/g) ?? []).length === 2 && /notes\.docx/.test(out(tool)) && /chart\.webp/.test(out(tool)) && /\{"a":1\}/.test(out(tool)), shown(tool));
+const cost = tool + 1;
+record(probes[cost][0], outs[cost]?.exit === 0 && /pandoc\+typst \d+/.test(out(cost)), shown(cost));
+for (const line of out(cost).trim().split('\n')) console.log(`MEASURE toolbox ${line} (KiB peak, seconds; one CPU)`);
+record(`limited: ${probes[14][0]}`, /File too large|File size limit exceeded/i.test(out(14)) && !/^300000000$/m.test(out(14)), shown(14));
+record(`limited and killed: ${probes[15][0]}`, !out(15).includes('all started') && (outs[15]?.exit === 137 || /Resource temporarily unavailable/i.test(out(15))), shown(15));
 record(probes[16][0], out(16).trim() === 'alive', shown(16));
+record(`killed: ${probes[17][0]}`, outs[17]?.exit === 137 || /exit 137|Killed/.test(out(17)), shown(17));
+record(probes[18][0], out(18).trim() === 'alive', shown(18));
 record('the answer still came through the Flux tool after all that', adaResult.ok && /one space: Reports/.test(adaResult.result.answer ?? ''), adaResult.result?.answer);
 record('Ada\'s scratch is gone after her run', !(await readdir('/scratch')).includes(adaRun));
 record('nothing of hers is left in /tmp', !(await readdir('/tmp')).some((name) => name.startsWith('ada')));
