@@ -1,7 +1,7 @@
 """The v0.2.1 UI and UX audit (#1215, #1245): every route × state × window × theme × engine of the running application.
 
 Not a test and not part of the default suite (the name does not match test_*.py): it captures, measures and writes a report,
-and exits 0 whatever it finds. Run it with `./scripts/ui_audit.sh <out>` (Docker only). That starts the app on its own Compose
+and exits 0 whatever it finds (2 when a phase process crashed: the report then says INCOMPLETE). Run it with `./scripts/ui_audit.sh <out>` (Docker only). That starts the app on its own Compose
 project, captures the first-run pages of the empty server, seeds the `./flux demo` data (scripts/flux-demo.mjs), then runs
 this file in the pinned Playwright container. It builds on the #763 visual consistency audit (`visual_consistency_audit.py`:
 its extra people and tasks, and its in-page measurement of every control) and on the documentation scene (`media_scene.py`:
@@ -670,9 +670,12 @@ def phase_states(pw, engine: str, data: dict) -> None:
                             rec["error"] = {"said": said.group(0) if said else None, "retry": retry.count()}
                             failing["on"] = False
                             if retry.count():
-                                (retry.first.tap() if touch else retry.first.click())
-                                vca.settle(page)
-                                page.wait_for_timeout(1200)
+                                for _ in range(4):  # a screen with several failed reads (Settings › AI) has a Try again for each
+                                    (retry.first.tap() if touch else retry.first.click())
+                                    vca.settle(page)
+                                    page.wait_for_timeout(1200)
+                                    if not retry.count():
+                                        break
                                 vca.shot(page, base / f"{screen.name}--retried.png")
                                 after = page.evaluate("() => document.body.innerText") or ""
                                 rec["error"]["recovered"] = not page.get_by_role("button", name=re.compile(r"^(Try again|Retry)", re.I)).count()
@@ -1133,7 +1136,7 @@ def phase_journeys(pw, engine: str, data: dict) -> None:
                 if system.count():
                     press(system)
                     page.wait_for_timeout(400)
-                assert theme in ("dark",) or theme.startswith("rgb(1") or theme.startswith("rgb(2") is False, f"theme after reload: {theme}"
+                assert theme == "dark", f"the theme after a reload is {theme!r}, not the Dark that was chosen"
                 return f"after reload: {theme}"
             check.run("Settings › Appearance › Dark, reload", open_at("/settings/appearance", who="piotr"), theme_choice)
 
@@ -1457,6 +1460,11 @@ def report(pw) -> None:
     a11y = load("results-a11y-*.jsonl")
     checks = load("results-keys-*.jsonl") + load("results-journeys-*.jsonl") + load("results-mob-*.jsonl")
     sha = os.environ.get("FLUX_UIAUDIT_SHA", "")
+    died: dict[str, bool] = {}  # a part run again by a later (tagged) pass counts by its newest run
+    for path in sorted(OUT.glob("crashed*.json"), key=lambda p: p.stat().st_mtime):
+        record = json.loads(path.read_text(encoding="utf-8") or "{}")
+        died.update({job: job in record.get("crashed", []) for job in record.get("ran", [])})
+    crashed = [job for job, bad in died.items() if bad]
     # Matrix: one row per screen, one column per window; a cell is "engines×themes passed / flagged / not reached".
     screens = list(dict.fromkeys(r["screen"] for r in capture))
     wins = [w for w in WINDOWS if any(r["vp"] == w for r in capture)]
@@ -1500,6 +1508,9 @@ def report(pw) -> None:
     visits = [r for r in capture if r.get("shot")]
     out.append(f"{len(visits)} captures of {len(screens)} screens; {len(findings)} distinct measured findings "
                f"({sum(1 for f in findings if f['prio'] == 'P2')} P2, {sum(1 for f in findings if f['prio'] == 'P3')} P3).")
+    if crashed:
+        out += ["", "## INCOMPLETE: phase processes that crashed", "", "Their results stop where they crashed (the traceback is in the run's log); re-run those parts with FLUX_UIAUDIT_TAG.", ""]
+        out += [f"- `{job}`" for job in crashed]
     out += ["", "## Not captured or state not reached", ""]
     for r in capture:
         if r.get("failed") or r.get("unreachable") or r.get("skipped"):
@@ -1546,7 +1557,7 @@ def report(pw) -> None:
     (OUT / "findings.md").write_text("\n".join(out) + "\n", encoding="utf-8")
     summary = {"sha": sha, "captures": len(visits), "screens": len(screens), "windows": wins, "findings": len(findings),
                "p2": sum(1 for f in findings if f["prio"] == "P2"), "checks": {k: sum(1 for r in checks if r["result"] == k) for k in ("pass", "fail", "unreachable")},
-               "states": len(states), "a11y": len(a11y)}
+               "states": len(states), "a11y": len(a11y), "crashed": crashed}
     (OUT / "summary.json").write_text(json.dumps(summary, indent=1), encoding="utf-8")
     # Contact sheets: every screen of one engine/theme/window on one page.
     sheets = OUT / "sheets"
@@ -1618,14 +1629,19 @@ def main() -> int:
     if not (OUT / "seed.json").exists():
         return 0 if PHASES == ["firstrun"] else 1
 
+    ran: list[str] = []  # every phase process started, and the ones that died (their traceback is in the log: that part's results are incomplete)
+    crashed: list[str] = []
+
     def run_parallel(jobs: list[list[str]]) -> None:
-        running: list[subprocess.Popen] = []
+        running: list[tuple[list[str], subprocess.Popen]] = []
         for job in jobs:
-            while len([p for p in running if p.poll() is None]) >= PARALLEL:
+            while len([p for _, p in running if p.poll() is None]) >= PARALLEL:
                 time.sleep(2)
-            running.append(child(job))
-        for p in running:
-            p.wait()
+            running.append((job, child(job)))
+            ran.append(" ".join(job))
+        for job, p in running:
+            if p.wait():
+                crashed.append(" ".join(job))
 
     if "capture" in PHASES:
         chunks = max(1, min(CHUNKS, len(WINDOW_NAMES)))
@@ -1637,11 +1653,17 @@ def main() -> int:
     for ph in ("journeys", "mob"):
         if ph in PHASES:
             for e in BROWSERS:
-                child([ph, e]).wait()
+                ran.append(f"{ph} {e}")
+                if child([ph, e]).wait():
+                    crashed.append(f"{ph} {e}")
+    if ran:  # a report-only pass keeps the record of the pass that measured
+        (OUT / f"crashed{TAG}.json").write_text(json.dumps({"ran": ran, "crashed": crashed}), encoding="utf-8")
     if "report" in PHASES:
         with sync_playwright() as pw:
             report(pw)
-    return 0
+    if crashed:
+        print(f"INCOMPLETE: {len(crashed)} phase process(es) crashed ({'; '.join(crashed)}); see their tracebacks above", flush=True)
+    return 2 if crashed else 0
 
 
 if __name__ == "__main__":

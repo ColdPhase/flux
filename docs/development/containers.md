@@ -464,6 +464,20 @@ content, uneven gaps, mixed icons and low contrast. It writes `findings.md`, ann
 (default `visual-audit/`, ignored by git) and never fails on findings. `FLUX_AUDIT_SCREENS`, `FLUX_AUDIT_VIEWPORTS`,
 `FLUX_AUDIT_THEMES` and `FLUX_AUDIT_BROWSERS` narrow a run; see `app/tests/ui/visual_consistency_audit.py`.
 
+`./scripts/ui_audit.sh [output-dir]` is the v0.2.1 UI and phone/tablet audit (#1215, #1245), also outside both suites and
+Docker only. It builds on the same measurement and the documentation scene, then captures about 110 screens and states
+(every route of `router.tsx`, overlays, guest, read-only, locked and not-available pages) at 16 windows from 320 to 3440 px,
+light and dark, in Chromium and WebKit, plus loading/error/Try again, focus, 200 % text, reduced motion, the documented
+shortcuts, journeys checked after a reload and the MOB checks emulation can make. It writes `matrix.md`, `findings.md`,
+`summary.json`, screenshots with ARIA snapshots and contact sheets (about 1 GB for the full matrix, which took 82 minutes at
+12 parallel processes on a busy 24-thread host; default `ui-audit/<commit>/`, ignored by git; keep it off `/tmp`, which is
+RAM) and never fails on findings (exit 2 only when a phase process crashed). It starts its own Compose project on the first
+free pair of loopback ports from 18761 (`FLUX_UIAUDIT_PORT` pins one) and removes its containers, volumes and images at the
+end. `FLUX_UIAUDIT_PHASES`, `_BROWSERS`, `_THEMES`, `_WINDOWS` and
+`_SCREENS` narrow a run, `FLUX_UIAUDIT_KEEP=1` with `FLUX_UIAUDIT_REUSE=<project>` re-runs phases on a kept stack, and
+`FLUX_UIAUDIT_TAG` writes a partial re-run beside the first; see `app/tests/ui/ui_audit.py`. The call screens need the live
+stack: `scripts/ci_test.sh <ref> live chromium ui_audit_call`.
+
 UI modules that stub responses with `page.route` or `context.route` create every browser context
 with `service_workers="block"`. A controlling service worker can send requests that those routes do
 not see (#297 measured it in `test_agents_view` test_04d), so a stub would answer some runs and not

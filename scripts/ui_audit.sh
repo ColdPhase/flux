@@ -2,14 +2,15 @@
 # The v0.2.1 UI and UX audit (#1215, #1245), in Docker only: every route of app/apps/web/src/router.tsx in every state of #1215,
 # at 16 windows (computer 1280–3440, tablets 820/1180/1024/800, phones 320–430 and landscape), light and dark, Chromium and
 # WebKit, plus loading/error/Try again, focus and 200 % text, reduced motion, shortcuts, journeys checked after a reload, and the
-# MOB-1…7 checks emulation can make. One command; it measures and reports, findings never fail it:
+# MOB-1…7 checks emulation can make. One command; it measures and reports, findings never fail it (a crashed phase does: exit 2,
+# and the report says INCOMPLETE):
 #
 #   ./scripts/ui_audit.sh [out-dir]          (default: ui-audit/<commit> in this checkout, ignored by git)
 #
-# Starts the app on its own Compose project and loopback port (FLUX_UIAUDIT_PORT, default 18761, and the next port for Mailpit),
-# with throwaway VAPID keys so the server can push (the push offer), captures the empty server's first-run pages, seeds the
-# `./flux demo` data (scripts/flux-demo.mjs), then runs app/tests/ui/ui_audit.py in the pinned Playwright container. The audit
-# file is mounted from this checkout, so an edited harness reruns without an image build. Output: matrix.md, findings.md,
+# Starts the app on its own Compose project and loopback ports (FLUX_UIAUDIT_PORT and the next one for Mailpit; unset, the first free
+# pair from 18761, so a second audit or a test suite on the same host does not collide), with throwaway VAPID keys so the server can
+# push (the push offer), captures the empty server's first-run pages, seeds the `./flux demo` data (scripts/flux-demo.mjs), then runs
+# app/tests/ui/ui_audit.py in the pinned Playwright container. The audit file is mounted from this checkout, so an edited harness reruns without an image build. Output: matrix.md, findings.md,
 # findings.json, summary.json, shots/<engine>-<theme>-<window>/<screen>.png with <screen>.aria.yml beside it, states/, a11y/,
 # keys/, journeys/, mob/ and contact sheets in sheets/. Narrow a run with FLUX_UIAUDIT_PHASES, _BROWSERS, _THEMES, _WINDOWS,
 # _SCREENS (comma-separated; see the docstring of ui_audit.py). FLUX_UIAUDIT_KEEP=1 leaves the stack up afterwards and prints
@@ -23,10 +24,21 @@ sha=${FLUX_UIAUDIT_SHA:-$(git rev-parse --short=12 HEAD)}
 out="${1:-ui-audit/$sha}"
 case "$out" in /*) ;; *) out="$PWD/$out" ;; esac
 mkdir -p "$out"
-export FLUX_PORT="${FLUX_UIAUDIT_PORT:-18761}"
-export FLUX_MAILPIT_PORT="${FLUX_UIAUDIT_MAILPIT_PORT:-$((FLUX_PORT + 1))}"
-export FLUX_PUBLIC_ORIGIN="http://127.0.0.1:${FLUX_PORT}"
 export FLUX_UI_SCREENSHOT_DIR="$out"
+port_busy() { command -v ss >/dev/null 2>&1 && ss -ltnH "sport = :$1" 2>/dev/null | grep -q .; }
+# The app's and Mailpit's loopback ports: the ones asked for, or the first free pair from 18761 (kept in the state file for a reuse).
+pick_ports() {
+  audit_port="${FLUX_UIAUDIT_PORT:-}"
+  if [ -z "$audit_port" ]; then
+    audit_port=18761
+    while { port_busy "$audit_port" || port_busy "$((audit_port + 1))"; } && [ "$audit_port" -lt 18999 ]; do audit_port=$((audit_port + 2)); done
+  fi
+  audit_mailpit_port="${FLUX_UIAUDIT_MAILPIT_PORT:-$((audit_port + 1))}"
+  for busy in "$audit_port" "$audit_mailpit_port"; do
+    if port_busy "$busy"; then echo "Port $busy is in use; set FLUX_UIAUDIT_PORT (and FLUX_UIAUDIT_MAILPIT_PORT) to free ones." >&2; exit 2; fi
+  done
+  export FLUX_PORT="$audit_port" FLUX_MAILPIT_PORT="$audit_mailpit_port" FLUX_PUBLIC_ORIGIN="http://127.0.0.1:${audit_port}"
+}
 . scripts/test_images.sh
 # FLUX_UIAUDIT_IMAGES=<tag> runs on images already built for this commit (tagged :<tag>) instead of building them; they are kept.
 if [ -n "${FLUX_UIAUDIT_IMAGES:-}" ]; then export FLUX_IMAGE_TAG="$FLUX_UIAUDIT_IMAGES" FLUX_KEEP_TEST_IMAGES=1; fi
@@ -36,8 +48,11 @@ if [ -n "$reuse" ] && [ -f "$state" ]; then
   # shellcheck disable=SC1090
   . "$state"
   project="$reuse"
+  audit_port="${audit_port:-${FLUX_UIAUDIT_PORT:-18761}}"
+  audit_mailpit_port="${audit_mailpit_port:-$((audit_port + 1))}"
 else
   project="flux-uiaudit-$(date +%s)-$$"
+  pick_ports
   POSTGRES_PASSWORD="flux-uiaudit-$$-$(date +%s)"
   FLUX_FIXTURE_TOKEN="fixture-uiaudit-$$-$(date +%s)"
   FLUX_AUTH_SECRET="auth-uiaudit-$$-$(date +%s)-$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
@@ -51,6 +66,7 @@ else
   chmod 0444 "$background_secret_dir/background_key"
   FLUX_VAPID_PUBLIC_KEY='' FLUX_VAPID_PRIVATE_KEY='' FLUX_VAPID_SUBJECT=''
 fi
+export FLUX_PORT="$audit_port" FLUX_MAILPIT_PORT="$audit_mailpit_port" FLUX_PUBLIC_ORIGIN="http://127.0.0.1:${audit_port}"
 export POSTGRES_USER=flux POSTGRES_DB=flux POSTGRES_PASSWORD FLUX_FIXTURE_TOKEN FLUX_AUTH_SECRET FLUX_KEYRING_TOKEN FLUX_KEY_PIN_SECRET
 export FLUX_SMTP_URL="smtp://mailpit:1025" FLUX_MAIL_FROM="Flux <flux@example.test>"
 # The audit signs people in many times from one address; rate limiting is covered by the API suite.
@@ -70,6 +86,7 @@ mount="-v $PWD/app/tests/ui:/work/tests/ui:ro,z"
 
 # The Playwright container writes as root: hand the output back to the person who ran the audit.
 own_output() {
+  docker image inspect "flux-ui-tests:${FLUX_IMAGE_TAG:-$project}" >/dev/null 2>&1 || return 0  # nothing was built (a failed build): nothing was written, and `run` must not build it now
   $compose run --rm --no-deps -T -v "$out:/out:z" --entrypoint chown ui-test -R "$(id -u):$(id -g)" /out >/dev/null 2>&1 || true
 }
 
@@ -96,6 +113,8 @@ if [ -z "$reuse" ]; then
   else
     $compose build migrate ui-test
   fi
+  # The build above takes minutes: look again, right before the app binds its port, so two audits started together do not take the same pair.
+  pick_ports
   $compose up -d db migrate
   $compose --profile setup run --rm files-init
   # Throwaway VAPID keys (the pinned command `./flux up` uses), so the server can push and the push offer can show.
@@ -116,6 +135,8 @@ FLUX_VAPID_PRIVATE_KEY='$FLUX_VAPID_PRIVATE_KEY'
 FLUX_VAPID_SUBJECT='$FLUX_VAPID_SUBJECT'
 owner_password='$owner_password'
 partner_password='$partner_password'
+audit_port='$audit_port'
+audit_mailpit_port='$audit_mailpit_port'
 EOF
   chmod 0600 "$state"
   echo "First run: the empty server's sign-up and sign-in..."
@@ -128,7 +149,9 @@ EOF
 else
   export FLUX_VAPID_PUBLIC_KEY FLUX_VAPID_PRIVATE_KEY FLUX_VAPID_SUBJECT
 fi
+status=0
 # shellcheck disable=SC2086
 $compose run --rm $mount $audit_env -e FLUX_UIAUDIT_PHASES="${FLUX_UIAUDIT_PHASES:-seed,capture,states,a11y,keys,journeys,mob,report}" \
-  ui-test python3 tests/ui/ui_audit.py
-echo "UI audit of $sha: $out/matrix.md, $out/findings.md (screenshots in $out/shots, contact sheets in $out/sheets)"
+  ui-test python3 tests/ui/ui_audit.py || status=$?
+echo "UI audit of $sha (exit $status): $out/matrix.md, $out/findings.md (screenshots in $out/shots, contact sheets in $out/sheets)"
+exit $status
