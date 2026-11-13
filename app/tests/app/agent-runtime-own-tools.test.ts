@@ -67,13 +67,15 @@ for (const client of ['claude_code', 'codex'] as RuntimeClient[]) {
       bindingId = randomUUID();
       await pool.query(`INSERT INTO agent_runtime_slots(slot, state) VALUES ($1, 'ready') ON CONFLICT (slot) DO UPDATE SET state = 'ready'`, [slot.config.slot]);
       await pool.query(`INSERT INTO agent_runtime_bindings(id, owner_user_id, slot, state) VALUES ($1, $2, $3, 'active')`, [bindingId, owner.id, slot.config.slot]);
-      await pool.query(`INSERT INTO agent_runtime_connections(id, owner_user_id, binding_id, client, state, sign_in_method, auth_method, signed_in_at)
-        VALUES ($1, $2, $3, $4, 'signed_in', $5, $6, now())`, [randomUUID(), owner.id, bindingId, client, claude ? 'claude_account' : 'device_code', claude ? 'claude.ai' : 'chatgpt']);
+      await pool.query(`INSERT INTO agent_runtime_connections(id, owner_user_id, binding_id, client, state, sign_in_method, auth_method, account_label, signed_in_at)
+        VALUES ($1, $2, $3, $4, 'signed_in', $5, $6, $7, now())`, [randomUUID(), owner.id, bindingId, client, claude ? 'claude_account' : 'device_code', claude ? 'claude.ai' : 'chatgpt',
+        claude ? 'o***@example.org' : null]);
       await seedPlanModels(pool, bindingId, client);
       assert.ok((await callSupervisor({ host: '127.0.0.1', port: portOf(slot.url), secret: slot.config.secret }, { kind: 'bind', bindingId })).ok);
       runs = personalRunUseCases(db, { queue: queue.factory, connections: noPersonalConnections, providerEnabled: false, runtime: personalRuntimeAvailability(config, db) });
       processor = createPersonalRunProcessor({ uow: personalRunWorkerUnitOfWork(db), connections: noPersonalConnections, compute,
         runtime: managerPersonalRuntime(config, db), tokens: runTokenIssuer(db, apiUrl), stopPollMs: 50, runtimeCaps: { idleSeconds: 5, wallClockSeconds: 20, maxTurns: 10 } });
+      assert.equal((await runs.status(human(owner))).setup.runtime.state, 'signed_in');
       await runs.enable(human(owner), { agentId, connection: claude ? 'claude_plan' : 'chatgpt_plan', model: claude ? 'sonnet' : 'gpt-6.1-sol' });
     });
     after(async () => {
@@ -95,7 +97,8 @@ for (const client of ['claude_code', 'codex'] as RuntimeClient[]) {
         { name: 'flux_list_contexts' },
       ], answer: 'Done: {{results}}' });
       const started = await ask();
-      assert.equal(await processor.process(started.run.id), 'completed');
+      const outcome = await processor.process(started.run.id);
+      assert.equal(outcome, 'completed', JSON.stringify({ row: await pool.query('SELECT status, end_reason, stopped_at_stage FROM personal_runs WHERE id = $1', [started.run.id]).then((r) => r.rows[0]).catch(() => null), calls: await calls() }).slice(0, 3000));
       const stored = await row(started.run.id);
       assert.deepEqual([stored.status, stored.end_reason], ['completed', null], 'its own tools do not stop the run');
       const recorded = await calls();
