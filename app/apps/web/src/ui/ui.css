@@ -378,18 +378,59 @@ input::placeholder, textarea::placeholder { color: var(--t3); opacity: 1; }
 .kreska--teal { color: var(--agent-teal); } .kreska--indigo { color: var(--agent-indigo); } .kreska--plum { color: var(--agent-plum); }
 .kreska--rose { color: var(--agent-rose); } .kreska--ink { color: var(--inv); }
 .kreska[class*="kreska--"] .kreska__frame { fill: currentColor; fill-opacity: .12; }
-/* Motion only where it says something true: the brow waves while thinking, dots flow while loading,
-   the eyes blink slowly while working. Reduced motion, the system's or the person's own, shows the static frame (see the end of this file). */
+/* Kreska moves only where it says something true (F-026 §3, #1342). A one-shot plays once when the face appears or its expression
+   changes (Kreska.tsx keys the drawing by it) and ends on the static frame; only the ongoing states loop, and a loop pauses off screen
+   (useLoopPause). Every motion but the three small loops needs data-moves: a face without a state, or of 20px or less, stays still.
+   Nothing moves under reduced motion, the system's or the person's own, or with Kreska's small moments off (Settings → Appearance).
+   Only transform and opacity, on the motion tokens. Transforms are on the 24 grid, written translate → rotate → scale, and
+   tests/app/kreska-marks.test.ts reads these rules to keep every part off the frame through the whole motion. */
 @media (prefers-reduced-motion: no-preference) {
-  :root:not([data-motion="reduce"]) .kreska[data-expression="thinking"] .kreska__brow { animation: kreska-wave var(--dur-loop) var(--ease-out) infinite; transform-origin: 9px 7px; }
-  :root:not([data-motion="reduce"]) .kreska[data-expression="loading"] .kreska__dots circle { animation: kreska-dot calc(var(--dur-loop) * .75) var(--ease-loop) infinite; }
-  :root:not([data-motion="reduce"]) .kreska[data-expression="loading"] .kreska__dots circle:nth-child(2) { animation-delay: calc(var(--dur-loop) / 8); }
-  :root:not([data-motion="reduce"]) .kreska[data-expression="loading"] .kreska__dots circle:nth-child(3) { animation-delay: calc(var(--dur-loop) / 4); }
-  :root:not([data-motion="reduce"]) .kreska[data-expression="working"] .kreska__eyes { animation: kreska-blink calc(var(--dur-loop) * 2.5) var(--ease-loop) infinite; transform-origin: 12px 12.7px; }
+  /* The loops of the ongoing states. Thinking, Loading and Working move at every size. */
+  :root:not([data-motion="reduce"]):not([data-kreska="off"]) .kreska[data-expression="thinking"] .kreska__brow { animation: kreska-wave var(--dur-loop) var(--ease-out) infinite; transform-origin: 9px 7px; }
+  :root:not([data-motion="reduce"]):not([data-kreska="off"]) .kreska[data-expression="loading"] .kreska__dots circle { animation: kreska-dot calc(var(--dur-loop) * .75) var(--ease-loop) infinite; }
+  :root:not([data-motion="reduce"]):not([data-kreska="off"]) .kreska[data-expression="loading"] .kreska__dots circle:nth-child(2) { animation-delay: calc(var(--dur-loop) / 8); }
+  :root:not([data-motion="reduce"]):not([data-kreska="off"]) .kreska[data-expression="loading"] .kreska__dots circle:nth-child(3) { animation-delay: calc(var(--dur-loop) / 4); }
+  :root:not([data-motion="reduce"]):not([data-kreska="off"]) .kreska[data-expression="working"] .kreska__eyes { animation: kreska-blink calc(var(--dur-loop) * 2.5) var(--ease-loop) infinite; transform-origin: 12px 12.7px; }
+  :root:not([data-motion="reduce"]):not([data-kreska="off"]) .kreska[data-moves][data-expression="idle"] .kreska__eyes { animation: kreska-blink-rare calc(var(--dur-loop) * 5) var(--ease-loop) infinite; transform-origin: 12px 12.5px; }
+  :root:not([data-motion="reduce"]):not([data-kreska="off"]) .kreska[data-moves][data-expression="asleep"] .kreska__extra { animation: kreska-drift calc(var(--dur-loop) * 2) var(--ease-loop) infinite; transform-origin: 21.3px 2.7px; }
+  :root:not([data-motion="reduce"]):not([data-kreska="off"]) .kreska[data-moves][data-expression="asleep"] .kreska__face { animation: kreska-breathe calc(var(--dur-loop) * 2.5) var(--ease-loop) infinite; }
+  /* The one-shots. */
+  :root:not([data-motion="reduce"]):not([data-kreska="off"]) .kreska[data-moves][data-expression="writing"] .kreska__extra { animation: kreska-pen calc(var(--dur-highlight) * 2) var(--ease-loop); }
+  :root:not([data-motion="reduce"]):not([data-kreska="off"]) .kreska[data-moves][data-expression="reading"] .kreska__eyes { animation: kreska-scan calc(var(--dur-highlight) * 2) var(--ease-loop); }
+  :root:not([data-motion="reduce"]):not([data-kreska="off"]) .kreska[data-moves][data-expression="waiting"] .kreska__eyes { animation: kreska-look-down var(--dur-highlight) var(--ease-out); }
+  :root:not([data-motion="reduce"]):not([data-kreska="off"]) .kreska[data-moves][data-expression="asking"] .kreska__brow { animation: kreska-lift var(--dur-highlight) var(--ease-out); transform-origin: 7.2px 7.2px; }
+  :root:not([data-motion="reduce"]):not([data-kreska="off"]) .kreska[data-moves][data-expression="looking"] .kreska__eyes { animation: kreska-glance var(--dur-highlight) var(--ease-out); }
+  :root:not([data-motion="reduce"]):not([data-kreska="off"]) .kreska[data-moves][data-expression="looking"] .kreska__brow { animation: kreska-glance-brow var(--dur-highlight) var(--ease-out); }
+  :root:not([data-motion="reduce"]):not([data-kreska="off"]) .kreska[data-moves][data-expression="surprised"] .kreska__eyes circle { animation: kreska-pop var(--dur-highlight) var(--ease-out); transform-box: fill-box; transform-origin: center; }
+  :root:not([data-motion="reduce"]):not([data-kreska="off"]) .kreska[data-moves][data-expression="surprised"] .kreska__brow { animation: kreska-jump var(--dur-highlight) var(--ease-out); }
+  :root:not([data-motion="reduce"]):not([data-kreska="off"]) .kreska[data-moves][data-expression="done"] .kreska__eyes { animation: kreska-settle var(--dur-highlight) var(--ease-out); transform-origin: 12px 13.3px; }
+  :root:not([data-motion="reduce"]):not([data-kreska="off"]) .kreska[data-moves][data-expression="celebrate"] .kreska__eyes { animation: kreska-settle var(--dur-highlight) var(--ease-out); transform-origin: 12px 13.3px; }
+  :root:not([data-motion="reduce"]):not([data-kreska="off"]) .kreska[data-moves][data-expression="celebrate"] .kreska__extra { animation: kreska-sparkle var(--dur-highlight) var(--ease-out); transform-origin: 22.1px 1.9px; }
+  :root:not([data-motion="reduce"]):not([data-kreska="off"]) .kreska[data-moves][data-expression="wink"] .kreska__open { animation: kreska-wink-open calc(var(--dur-highlight) * 2) var(--ease-out); transform-origin: 14.7px 12.5px; }
+  :root:not([data-motion="reduce"]):not([data-kreska="off"]) .kreska[data-moves][data-expression="wink"] .kreska__shut { animation: kreska-wink-shut calc(var(--dur-highlight) * 2) var(--ease-out); }
+  :root:not([data-motion="reduce"]):not([data-kreska="off"]) .kreska[data-moves][data-expression="hello"] .kreska__extra { animation: kreska-hello calc(var(--dur-highlight) * 2) var(--ease-out); transform-origin: 24px 0px; }
+  :root:not([data-motion="reduce"]):not([data-kreska="off"]) .kreska[data-moves][data-expression="worried"] .kreska__brow { animation: kreska-drop var(--dur-highlight) var(--ease-out); transform-origin: 9px 7.8px; }
 }
-@keyframes kreska-wave { 0%, 100% { transform: none; } 50% { transform: translateY(-.8px) rotate(-4deg); } }
+@keyframes kreska-wave { 0%, 100% { transform: none; } 50% { transform: translate(0px, -.8px) rotate(-4deg); } }
 @keyframes kreska-dot { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
-@keyframes kreska-blink { 0%, 92%, 100% { transform: none; } 96% { transform: scaleY(.15); } }
+@keyframes kreska-blink { 0%, 92%, 100% { transform: none; } 96% { transform: scale(1, .15); } }
+@keyframes kreska-blink-rare { 0%, 96%, 100% { transform: none; } 98% { transform: scale(1, .15); } }
+@keyframes kreska-drift { 0% { opacity: 0; transform: scale(.6); } 30%, 70% { opacity: 1; transform: none; } 100% { opacity: 0; transform: translate(0px, -.3px); } }
+@keyframes kreska-breathe { 0%, 100% { transform: none; } 50% { transform: translate(0px, .3px); } }
+@keyframes kreska-pen { 0%, 100% { transform: none; } 20%, 60% { transform: translate(-.6px, 0px); } 40%, 80% { transform: translate(-.3px, -.3px); } }
+@keyframes kreska-scan { 0% { transform: translate(-.7px, 0px); } 70% { transform: translate(.5px, 0px); } 100% { transform: none; } }
+@keyframes kreska-look-down { 0% { transform: translate(.5px, -1px); } 100% { transform: none; } }
+@keyframes kreska-lift { 0% { transform: translate(0px, .9px) rotate(10deg); } 100% { transform: none; } }
+@keyframes kreska-glance { 0% { transform: translate(1.4px, 0px); } 100% { transform: none; } }
+@keyframes kreska-glance-brow { 0% { transform: translate(.7px, 0px); } 100% { transform: none; } }
+@keyframes kreska-pop { 0% { transform: scale(.4); } 60% { transform: scale(1.12); } 100% { transform: none; } }
+@keyframes kreska-jump { 0% { transform: translate(0px, .8px); } 60% { transform: translate(0px, -.3px); } 100% { transform: none; } }
+@keyframes kreska-settle { 0% { opacity: .5; transform: scale(1, .3); } 100% { opacity: 1; transform: none; } }
+@keyframes kreska-sparkle { 0% { opacity: 0; transform: rotate(-90deg) scale(.3); } 100% { opacity: 1; transform: none; } }
+@keyframes kreska-wink-open { 0%, 35% { opacity: 1; transform: none; } 55%, 100% { opacity: 0; transform: scale(1, .15); } }
+@keyframes kreska-wink-shut { 0%, 35% { opacity: 0; } 55%, 100% { opacity: 1; } }
+@keyframes kreska-hello { 0% { opacity: 0; transform: scale(.6); } 25%, 75%, 100% { opacity: 1; transform: none; } 50% { transform: scale(.8); } }
+@keyframes kreska-drop { 0% { transform: translate(0px, -.6px) rotate(-14deg); } 100% { transform: none; } }
 
 .flux-logo { display: block; flex: none; }
 .flux-logo__tile { fill: var(--inv); }

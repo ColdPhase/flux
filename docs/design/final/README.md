@@ -302,26 +302,42 @@ Kreska is a monoline face in a squircle: one raised brow, two eyes and no mouth.
 The v0.2 screens draw agents as a simplified filled tile with two eyes; build the icon from this
 section.
 
-**Expressions (they replace status dots).** Each has a static frame; animate only when reduced
-motion is off.
+**Expressions (they replace status dots).** Each has a static frame and its own short motion that says
+what it means (founder decision 2026-11-13, [#1342](https://github.com/ColdPhase/flux/issues/1342)). Calm first: a
+small moment, never noise.
+- A one-shot motion plays once when the face appears or its expression changes, and ends on the static frame.
+- Only the ongoing states loop: Thinking, Loading, Working, Asleep and Idle. A loop pauses off screen, in a hidden tab
+  and under a modal.
+- Only `transform` and `opacity` move, with durations and easings from the motion tokens
+  ([Motion in Flux](../motion.md)): a one-shot takes `--dur-highlight` (600 ms) or twice it, a loop a multiple of
+  `--dur-loop`.
+- Nothing moves under reduced motion (the system's or Settings → Appearance) or with Kreska's small moments off
+  (Settings → Appearance); every face is then its static frame.
+- A face that shows no state (an agent's icon beside its name, with no expression given) stays still, and so does a
+  face of 20 px or less, apart from the three loops that already moved there (Thinking, Loading, Working).
+- A mark keeps its 0.5 px gap from the frame through the whole motion, the writing pen inside the frame as well as
+  the marks outside it (`app/tests/app/kreska-marks.test.ts`).
 
-| Expression | When |
-| --- | --- |
-| Idle | The agent is present and doing nothing |
-| Working | It is working on a task |
-| Thinking | It is composing a reply; the brow waves |
-| Writing | It is editing the Wiki or a task |
-| Reading | It is reading files or a thread |
-| Waiting for you | Something waits for your OK; the eyes look at the composer |
-| Asking | It needs clarification |
-| Looking | No results; it looks aside |
-| Loading | Dots flow through the eyes |
-| Surprised | A new mention, or a pull to refresh |
-| Done | A task is done, or the Inbox is empty |
-| Wink | A task was closed (in the toast) |
-| Hello | The first start, or a new space |
-| Asleep | Offline, paused, or idle for days |
-| Worried | Something failed, gently |
+| Expression | When | Motion |
+| --- | --- | --- |
+| Idle | The agent is present and doing nothing | A rare blink, every 8 s (loop) |
+| Working | It is working on a task | A slow blink, every 4 s (loop) |
+| Thinking | It is composing a reply; the brow waves | The brow waves (loop, 1.6 s) |
+| Writing | It is editing the Wiki or a task | The pen makes a few short strokes, once (1.2 s) |
+| Reading | It is reading files or a thread | The eyes scan a line from left to right, once (1.2 s) |
+| Waiting for you | Something waits for your OK; the eyes look at the composer | The eyes move down toward the composer, once (600 ms) |
+| Asking | It needs clarification | The brow lifts, once (600 ms) |
+| Looking | No results; it looks aside | The eyes and the brow glance aside and stay there, once (600 ms) |
+| Loading | Dots flow through the eyes | The dots flow through the eyes (loop, 1.2 s) |
+| Surprised | A new mention, or a pull to refresh | The eyes pop open and the brow jumps, once (600 ms) |
+| Done | A task is done, or the Inbox is empty | The eyes settle into the smile, once (600 ms) |
+| Wink | A task was closed (in the toast) | One eye closes, once (1.2 s) |
+| Hello | The first start, or a new space | The wave mark waves out of the corner twice, once (1.2 s) |
+| Asleep | Offline, paused, or idle for days | The z drifts up and fades (loop, 3.2 s); the face breathes slowly (loop, 4 s) |
+| Worried | Something failed, gently | The brow drops, once (600 ms) |
+
+Celebrate stays drawn (the sparkle, with the smiling eyes) for a moment that may use it; its motion is the
+sparkle turning in once while the eyes settle into the smile (600 ms).
 
 **Small moments.** These are the only places the mascot appears, and Settings → Appearance can
 turn them off:

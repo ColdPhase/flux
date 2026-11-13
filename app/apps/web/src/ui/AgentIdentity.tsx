@@ -7,9 +7,10 @@ export function AgentTag() {
 
 /**
  * An agent as the final design names it: (Kreska,) its name, the "Agent" tag and "for <owner>". `icon`
- * is false where Kreska already stands in the avatar column; `hue` only inside the Agents section.
+ * is false where Kreska already stands in the avatar column; `hue` only inside the Agents section. `expression` only where the
+ * icon shows a real state: without one the icon stays still (#1342).
  */
-export function AgentIdentity({ name, owner, icon = 20, expression = 'idle', hue, className }: {
+export function AgentIdentity({ name, owner, icon = 20, expression, hue, className }: {
   name: string; owner?: string | null; icon?: number | false; expression?: KreskaExpression; hue?: AgentHue; className?: string;
 }) {
   return (
