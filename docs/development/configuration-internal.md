@@ -57,7 +57,9 @@ the wiring between services or enables test-only code.
 | `FLUX_RUNTIME_SLOT` | Set by Compose on the runtime to its own name. |
 | `FLUX_RUNTIME_SLOT_1` | Set by Compose on the runtime manager from `FLUX_RUNTIME_SECRET_1`. |
 | `FLUX_RUNTIME_SLOT_SECRET` | Set by Compose on the runtime from `FLUX_RUNTIME_SECRET_1`. |
+| `FLUX_RUNTIME_TEST_EXEC` | Test image only: what the check images' CLI wrappers must also execute inside the CLI's sandbox domain (#1437). |
 | `FLUX_RUN_TOKEN` | Per-run bearer the runtime gives the CLI it starts. |
+| `FLUX_SANDBOX_BROKER` | The socket of the run's broker the runtime gives the CLI it starts, for its sandbox shell (#1437); never an operator setting. |
 | `FLUX_SANDBOX_DIR` | The run's scratch the runtime gives the CLI it starts, for its sandbox shell (#1437); never an operator setting. |
 | `FLUX_TEST_ANTHROPIC_PROXY_URL` | Test deployments only, with `FLUX_TEST_FAILURE_INJECTION`: the worker sends real API-key runs through the answer-accuracy evaluation's recording proxy (#1295, `scripts/check_ai_eval.sh`). |
 | `FLUX_TEST_ANTHROPIC_URL` | Test deployments only. |

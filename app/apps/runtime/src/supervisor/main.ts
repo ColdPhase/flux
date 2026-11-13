@@ -87,7 +87,9 @@ async function start() {
     egressHost: 'runtime-egress',
     bindingLimitBytes: 256 * 1024 * 1024,
     cliTimeoutMs: 30_000,
-    sandbox: sandbox.setup,
+    // TEST ONLY (#1437): the check images run the real CLIs through wrapper scripts, whose programs the CLI's domain must also execute.
+    sandbox: sandbox.setup && env.FLUX_RUNTIME_TEST_EXEC
+      ? { ...sandbox.setup, testExec: env.FLUX_RUNTIME_TEST_EXEC.split(':').filter((path) => path.startsWith('/')) } : sandbox.setup,
   };
 
   const { server } = createSupervisorServer(config);

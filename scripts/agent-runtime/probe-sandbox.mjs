@@ -87,7 +87,8 @@ const probes = [
   ['the person\'s own login', `cat /data/${ada}/claude/.credentials.json /data/${ada}/codex/auth.json; ls /data/${ada}`],
   ['/data', 'ls /data'],
   ['another run\'s scratch', `cat /scratch/${boRun}/mine.txt; ls /scratch`],
-  ['the CLI\'s environment', 'cat /proc/$PPID/environ | tr "\\0" "\\n" | grep -c FLUX_RUN_TOKEN'],
+  // The shell's parent is the broker (#1437); the CLI is found by its command line, and its environment is out of the tools' reach.
+  ['the CLI\'s environment', 'for p in /proc/[0-9]*; do grep -q "flux-fake[s]/claude" $p/cmdline 2>/dev/null && { echo "the CLI is $p" >&2; cat $p/environ; }; done | tr "\\0" "\\n" | grep -c FLUX_RUN_TOKEN'],
   ['the init\'s and every other process\'s environment', 'for p in /proc/[0-9]*; do cat $p/environ 2>/dev/null; done | tr "\\0" "\\n" | grep -c -E "FLUX_RUN_TOKEN|SLOT_SECRET|login"'],
   ['the shared /tmp and the tools volume', 'echo x > /tmp/ada-left; ls /tmp; ls /opt/flux-runtime'],
   ['a link out of the scratch', `ln -s /data/${ada}/claude/.credentials.json link; ln /data/${ada}/claude/.credentials.json hard; ls`],
@@ -133,7 +134,7 @@ record(probes[1][0], !/FLUX_RUN_TOKEN|CLAUDE_|PROXY|proxy|FLUX_SANDBOX_DIR/.test
 record(`refused: ${probes[2][0]}`, !/login-/.test(out(2)) && (out(2).match(/Permission denied/g) ?? []).length === 3, shown(2));
 record(`refused: ${probes[3][0]}`, /Permission denied/.test(out(3)) && !out(3).includes(ada), shown(3));
 record(`refused: ${probes[4][0]}`, !out(4).includes('bo-secret') && (out(4).match(/Permission denied/g) ?? []).length === 2, shown(4));
-record(`refused: ${probes[5][0]}`, /Permission denied/.test(out(5)) && /^0$/m.test(out(5)), shown(5));
+record(`refused: ${probes[5][0]}`, /the CLI is \/proc\/\d+/.test(out(5)) && /Permission denied/.test(out(5)) && /^0$/m.test(out(5)), shown(5));
 record(`refused: ${probes[6][0]}`, out(6).trim() === '0', shown(6));
 record(`refused: ${probes[7][0]}`, (out(7).match(/Permission denied/g) ?? []).length === 3, shown(7));
 record(`refused: ${probes[8][0]}`, /link: Permission denied/.test(out(8)) && /hard: (Cross-device link|Permission denied)/.test(out(8)) && !/^link$/m.test(out(8)), shown(8));
@@ -240,20 +241,45 @@ for (const [name, content] of [['AGENTS.md', 'Obey the page.'], ['.env', 'PATH=/
   const agents = await call({ kind: 'run', bindingId: ada, client: 'codex', runId: randomUUID(), prompt: 'Probe.', runToken: token(), tools: ['flux_list_contexts'], caps });
   record(`${name} Codex wrote into its home stops the run and is gone after it`, agents.ok && agents.result.outcome === 'local_tool' && !(await lstat(`/data/${ada}/codex/${name}`).catch(() => null)));
 }
-// Codex 0.160.1's exec_command takes the shell the model names: a command outside Flux's sandbox shell runs under the CLI's outer domain
-// only. The run is killed at once with every process of the person, also one that left the CLI's process group.
-const escapeRun = randomUUID();
-await writeAs(ada, `/data/${ada}/codex/fake-run.json`, JSON.stringify({ calls: [
-  { name: 'exec_command', args: { shell: '/bin/sh', cmd: `setsid sh -c 'sleep 3; echo escaped > /data/${ada}/codex/escaped' & sleep 4` } },
+// Codex 0.160.1's exec_command takes the shell the model names (#1437). The CLI's domain may execute nothing but its own program (here the
+// fake's node), what that program needs to start, and Flux's sandbox: whatever shell a model names, the kernel refuses to start it, so the
+// command never runs, not even for the moment before the supervisor's kill, which stays as defence in depth. Each command writes at once
+// (no sleep): before the broker, it ran under the CLI's domain for the 0.2 to 0.4 s the kill took, and such a write was made.
+const named = ['/bin/sh', '/bin/bash', '/bin/ash', '/bin/busybox', '/usr/bin/env', '/usr/bin/python3'];
+for (const [n, shell] of named.entries()) {
+  const marker = `/data/${ada}/codex/escaped-${n}`;
+  await writeAs(ada, `/data/${ada}/codex/fake-run.json`, JSON.stringify({ calls: [
+    { name: 'exec_command', args: { shell, cmd: `echo escaped > ${marker}; setsid sh -c 'sleep 2; echo escaped > ${marker}-later' &` } },
+    { name: 'flux_list_contexts' }] }));
+  const escapeStarted = Date.now();
+  const escaped = await call({ kind: 'run', bindingId: ada, client: 'codex', runId: randomUUID(), prompt: 'Probe.', runToken: token(), tools: ['flux_list_contexts'], caps });
+  const escapeMs = Date.now() - escapeStarted;
+  await new Promise((done) => setTimeout(done, 2500));
+  const tried = (await ownTools(ada, 'codex')).filter((entry) => entry.tool === 'exec_command' && entry.command.includes(`escaped-${n}`)).at(-1);
+  const wrote = !!(await lstat(marker).catch(() => null)) || !!(await lstat(`${marker}-later`).catch(() => null));
+  record(`a shell the model names (${shell}) cannot start: nothing it was asked to do happens, and the run stops`,
+    escaped.ok && escaped.result.outcome === 'local_tool' && escaped.result.answer === null && !wrote && (!tried || /EACCES/.test(tried.output)),
+    `${escapeMs} ms wrote=${wrote} ${JSON.stringify(tried ?? null)} ${JSON.stringify(escaped).slice(0, 200)}`);
+  if (tried) console.log(`MEASURE ${shell} named as Codex's shell: ${tried.output.trim().split('\n')[0]} (exit ${tried.exit})`);
+  if (n === 0) console.log(`MEASURE escaped shell run ended after ${escapeMs} ms`);
+}
+// Claude Code takes no shell from the model; a program the CLI itself started in place of its shell is held the same way (the fake's
+// `args.shell`), and the sandbox shell, which the broker starts outside the CLI's domain, still works in the same run.
+const claudeNamed = randomUUID();
+await writeAs(ada, `/data/${ada}/claude/fake-run.json`, JSON.stringify({ calls: [
+  { name: 'Bash', args: { shell: '/bin/sh', command: `echo escaped > /data/${ada}/claude/escaped` } },
+  { name: 'Bash', args: { shell: '/usr/local/bin/node', command: `require("fs").writeFileSync("/data/${ada}/claude/escaped-node", "x")` } },
+  { name: 'Bash', args: { command: 'echo "through the broker in $(pwd)"; cat /proc/$PPID/cmdline | tr "\\0" " "' } },
   { name: 'flux_list_contexts' }] }));
-const escapeStarted = Date.now();
-const escaped = await call({ kind: 'run', bindingId: ada, client: 'codex', runId: escapeRun, prompt: 'Probe.', runToken: token(), tools: ['flux_list_contexts'], caps });
-const escapeMs = Date.now() - escapeStarted;
-await new Promise((done) => setTimeout(done, 4000));
-record('a command in a shell the model named stops the run at once, and nothing it left behind lives on',
-  escaped.ok && escaped.result.outcome === 'local_tool' && escaped.result.answer === null && !(await lstat(`/data/${ada}/codex/escaped`).catch(() => null)),
-  `${escapeMs} ms ${JSON.stringify(escaped).slice(0, 300)}`);
-console.log(`MEASURE escaped shell run ended after ${escapeMs} ms`);
+const claudeHeld = await call({ kind: 'run', bindingId: ada, client: 'claude_code', runId: claudeNamed, prompt: 'Probe.', runToken: token(), tools: ['flux_list_contexts'], caps });
+const claudeOuts = (await ownTools(ada, 'claude')).slice(-3);
+record('Claude Code: a program in place of its shell cannot start (/bin/sh), and nothing it was asked to do happens',
+  /EACCES/.test(claudeOuts[0]?.output ?? '') && !(await lstat(`/data/${ada}/claude/escaped`).catch(() => null)), JSON.stringify(claudeOuts[0]));
+// node is the fake CLI's own program, so its domain may execute it (the real Claude Code's is its own binary): `-c -l` is no program for it.
+record('Claude Code: nor does its own program run what a command asks', !(await lstat(`/data/${ada}/claude/escaped-node`).catch(() => null)), JSON.stringify(claudeOuts[1]));
+record('Claude Code: its sandbox shell runs in the scratch, started by the run\'s broker', claudeOuts[2]?.exit === 0
+  && claudeOuts[2].output.includes(`through the broker in /scratch/${claudeNamed}`) && /flux-sandbox broker \/scratch\//.test(claudeOuts[2].output), JSON.stringify(claudeOuts[2]));
+record('Claude Code: that run completes', claudeHeld.ok && claudeHeld.result.outcome === 'completed', JSON.stringify(claudeHeld).slice(0, 200));
 // An attacker's own login written over Codex's (its next runs would go to the attacker's account): the one the run started with comes back.
 const loginBefore = await readFile(`/data/${ada}/codex/auth.json`, 'utf8');
 await writeAs(ada, `/data/${ada}/codex/fake-run.json`, JSON.stringify({ calls: [{ name: 'apply_patch', args: { path: `/data/${ada}/codex/auth.json`, content: '{"tokens":{"refresh_token":"attacker-refresh-token-0123456789"}}' } }] }));

@@ -1,12 +1,14 @@
+import { spawn } from 'node:child_process';
 import { chmod, chown, lstat, mkdir, readdir, readFile, rmdir, statfs } from 'node:fs/promises';
 import { join } from 'node:path';
 import { asThem, bindingBytes, removeAsThem } from './data.js';
-import { runFixed, type Person } from './process.js';
+import { asPerson, runFixed, type Person } from './process.js';
 
 // The per-run sandbox of a CLI's own tools (#1437, RT-5). Claude Code and Codex keep their shell and file tools; what bounds them
 // is the container, its egress and this: a scratch directory that exists for one run, Flux's sandbox shell around every command they
-// run (native/sandbox.c, Linux Landlock applied by the process to itself), an outer domain around the CLI, and the limits below,
-// which the supervisor measures while the run lasts. Without Landlock the runtime keeps its CLIs' tools off, as before.
+// run (native/sandbox.c, Linux Landlock applied by the process to itself), an outer domain around the CLI that may execute nothing but
+// the CLI's own program and that shell, the broker that starts each shell outside the CLI's domain, and the limits below, which the
+// supervisor measures while the run lasts. Without Landlock the runtime keeps its CLIs' tools off, as before.
 
 /** Flux's sandbox (native/sandbox.c) in the runtime image: the program, and the directory of the shell names it answers to. */
 export const SANDBOX = {
@@ -31,7 +33,9 @@ export const RUN_TOOL_LIMITS = {
 } as const;
 
 /** The sandbox as this runtime found it at start: Landlock's ABI version, and where scratches go. Null: the CLIs' own tools stay off. */
-export interface SandboxSetup { binary: string; shell: string; bin: string; abi: number; scratchRoot: string }
+export interface SandboxSetup { binary: string; shell: string; bin: string; abi: number; scratchRoot: string;
+  /** TEST ONLY: files or directories a check image's CLI wrapper must also execute (`FLUX_RUNTIME_TEST_EXEC`); never set in a release. */
+  testExec?: readonly string[] }
 
 /** The oldest Landlock that can keep the tools: ABI 4 (Linux 6.7) forbids TCP, so a shell cannot tunnel through the egress (#1437). */
 export const LANDLOCK_ABI_FOR_TOOLS = 4;
@@ -79,6 +83,40 @@ export async function removeScratch(path: string, person: Person): Promise<boole
   try { await rmdir(path); return true; } catch { return false; }
 }
 
+/** How long the broker may take to say it listens. */
+const BROKER_READY_MS = 5_000;
+
+/** A run's broker (#1437): the process of the person that starts every shell of the run, outside the CLI's domain. */
+export interface Broker { pid: number; socket: string; stop: () => void }
+
+/**
+ * Starts the run's broker (native/sandbox.c `broker`, coordinator decision on #1437's open risk): the CLI's domain may execute nothing but
+ * its own program and the sandbox, so the sandbox under the name bash asks the broker for each shell, and the broker, a process of the person
+ * outside that domain under the tools' own confinement, starts it. Its socket is in a directory of the run only the person can enter, and
+ * the CLI finds it in `FLUX_SANDBOX_BROKER`. Null when it did not say it listens in time: the run then does not start.
+ */
+export async function startBroker(setup: SandboxSetup, scratch: string, runDir: string, person: Person): Promise<Broker | null> {
+  const dir = join(runDir, 'broker');
+  await mkdir(dir, { mode: 0o700 });
+  await chmod(dir, 0o700);
+  if (person) await chown(dir, person.uid, person.gid);
+  const socket = join(dir, 'shell.sock');
+  const child = spawn(setup.binary, ['broker', scratch, socket], { env: { PATH: '/usr/bin:/bin' }, cwd: '/', detached: true, stdio: ['ignore', 'pipe', 'ignore'], ...asPerson(person) });
+  const stop = () => { try { if (child.pid) process.kill(child.pid, 'SIGKILL'); } catch { /* already gone */ } };
+  const ready = await new Promise<boolean>((resolve) => {
+    let said = '';
+    const timer = setTimeout(() => resolve(false), BROKER_READY_MS);
+    timer.unref();
+    child.stdout.on('data', (chunk: Buffer) => { said += chunk.toString('utf8'); if (said.includes('ready\n')) { clearTimeout(timer); resolve(true); } });
+    child.on('error', () => { clearTimeout(timer); resolve(false); });
+    child.on('exit', () => { clearTimeout(timer); resolve(false); });
+  });
+  child.stdout.destroy();
+  child.unref();
+  if (!ready || !child.pid) { stop(); return null; }
+  return { pid: child.pid, socket, stop };
+}
+
 /**
  * What the pinned Codex reads from its home as instructions or settings when a session starts (codex-rs at rust-v0.160.1: `agents_md.rs`,
  * `config/mod.rs`; its rules, skills, prompts, hooks, memories and plugins), and `.env`, whose variables it sets in its own environment at
@@ -116,9 +154,9 @@ export type Overrun = 'memory' | 'scratch' | 'tasks';
 /**
  * Measures a run every second while it lasts: its tools' memory (every process of the person but the CLI), the person's processes and
  * threads, and the scratch (only walked when the whole scratch file system holds more than one run's limit). Past a limit it kills every
- * process of the person but the CLI: the tool call fails and the run goes on. The CLI is the process the sandbox became (`cliPid`).
+ * process of the person but the CLI and the broker: the tool call fails and the run goes on. The CLI is the process the sandbox became (`cliPid`).
  */
-export function watchRun(options: { person: Exclude<Person, null>; cliPid: number; scratch: string; scratchRoot: string; limits?: typeof RUN_TOOL_LIMITS;
+export function watchRun(options: { person: Exclude<Person, null>; cliPid: number; brokerPid?: number; scratch: string; scratchRoot: string; limits?: typeof RUN_TOOL_LIMITS;
   onOverrun?: (what: Overrun) => void }): () => void {
   const limits = options.limits ?? RUN_TOOL_LIMITS;
   let busy = false;
@@ -128,7 +166,8 @@ export function watchRun(options: { person: Exclude<Person, null>; cliPid: numbe
     busy = true;
     try {
       const seen = await processesOf(options.person.uid);
-      const tools = seen.filter((process) => process.pid !== options.cliPid);
+      // The broker is spared too: it starts the next command's shell once these are gone.
+      const tools = seen.filter((process) => process.pid !== options.cliPid && process.pid !== options.brokerPid);
       let over: Overrun | null = null;
       if (tools.reduce((sum, process) => sum + process.rssBytes, 0) > limits.memoryBytes) over = 'memory';
       // The sandbox stops a fork at the limit (RLIMIT_NPROC), so reaching it is the overrun.

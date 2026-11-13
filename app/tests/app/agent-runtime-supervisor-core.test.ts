@@ -574,9 +574,11 @@ describe('a run\'s error results (F-022 T5; the wording is first verified agains
     assert.ok(codex.includes('features.shell_tool=true') && codex.includes('features.apps=false') && codex.includes('features.unified_exec=false'));
     const without = RUN_TEMPLATES.codex(input);
     assert.ok(without.includes('features.shell_tool=false') && without.includes('read-only'), 'without the sandbox, as before');
-    assert.deepEqual(sandboxEnvironment('claude_code', '/scratch/r', { shell: '/s/bin/bash', bin: '/s/bin' }), { FLUX_SANDBOX_DIR: '/scratch/r', TMPDIR: '/scratch/r', CLAUDE_CODE_SHELL: '/s/bin/bash' });
-    const codexEnv = sandboxEnvironment('codex', '/scratch/r', { shell: '/s/bin/bash', bin: '/s/bin' });
+    assert.deepEqual(sandboxEnvironment('claude_code', '/scratch/r', { shell: '/s/bin/bash', bin: '/s/bin' }, '/tmp/run-r/broker/shell.sock'),
+      { FLUX_SANDBOX_DIR: '/scratch/r', TMPDIR: '/scratch/r', FLUX_SANDBOX_BROKER: '/tmp/run-r/broker/shell.sock', CLAUDE_CODE_SHELL: '/s/bin/bash' });
+    const codexEnv = sandboxEnvironment('codex', '/scratch/r', { shell: '/s/bin/bash', bin: '/s/bin' }, '/tmp/run-r/broker/shell.sock');
     assert.ok(codexEnv.PATH!.startsWith('/s/bin:') && codexEnv.TMPDIR === '/scratch/r' && codexEnv.FLUX_SANDBOX_DIR === '/scratch/r', 'Codex finds the sandbox shell first as bash');
+    assert.equal(codexEnv.FLUX_SANDBOX_BROKER, '/tmp/run-r/broker/shell.sock', 'the sandbox shell finds the run\'s broker (#1437)');
   });
 
   test('#1437 review: the values of a CLI login are found in a text and in a stream cut anywhere; a long text is asked about in overlapping pieces', () => {

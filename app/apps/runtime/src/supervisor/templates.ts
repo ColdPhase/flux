@@ -291,8 +291,9 @@ export const TEMPLATE_FLAGS: { client: RuntimeClient; help: readonly string[]; f
  * sandbox shell as the CLI's shell: Claude Code's `CLAUDE_CODE_SHELL`, the first `bash` on Codex's `PATH` (codex-rs `shell_detect.rs`: a user
  * id without a passwd entry gets the first `bash` on `PATH`).
  */
-export function sandboxEnvironment(client: RuntimeClient, scratch: string, sandbox: { shell: string; bin: string }): Record<string, string> {
-  const base = { FLUX_SANDBOX_DIR: scratch, TMPDIR: scratch };
+export function sandboxEnvironment(client: RuntimeClient, scratch: string, sandbox: { shell: string; bin: string }, brokerSocket: string): Record<string, string> {
+  // The broker's socket (#1437): the sandbox under the name bash hands each command to it, since the CLI's domain may start no shell itself.
+  const base = { FLUX_SANDBOX_DIR: scratch, TMPDIR: scratch, FLUX_SANDBOX_BROKER: brokerSocket };
   return client === 'claude_code'
     ? { ...base, CLAUDE_CODE_SHELL: sandbox.shell }
     : { ...base, PATH: `${sandbox.bin}:/opt/flux-runtime/codex/bin:/usr/local/bin:/usr/bin:/bin` };
