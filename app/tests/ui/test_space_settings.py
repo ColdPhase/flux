@@ -225,11 +225,14 @@ class SpaceSettings(unittest.TestCase):
         card = page.get_by_role("list", name="People in Kiln firmware")
         expect(card.get_by_role("listitem")).to_have_count(2)
         expect(card.get_by_role("listitem").filter(has_text="Ada Kowalska")).to_contain_text("Admin")
-        # One button opens the company's list; no second step, and no invite link inside it (that stays in Settings › Company).
+        # One button opens the company's list; no second step. Ada owns the company, so it also has "Someone new?" (#1438): an email and
+        # Invite, which make the company's link for that address and this space; no link is there before Invite.
         page.get_by_role("button", name="Add people", exact=True).click()
         add = page.get_by_role("group", name="Add people")
         expect(add.get_by_role("button", name="Add people")).to_have_count(0)
-        expect(add).not_to_contain_text("Invite")
+        expect(add.get_by_label("Someone new?")).to_be_visible()
+        expect(add.get_by_role("button", name="Invite", exact=True)).to_be_visible()
+        expect(add.get_by_role("group", name="New invite link")).to_have_count(0)
         add.get_by_role("checkbox", name=re.compile("Lee Moreno")).check()
         add.get_by_role("button", name="Add 1 person").click()
         expect(page.locator(".spset__status")).to_have_text("Lee is now in Kiln firmware.")

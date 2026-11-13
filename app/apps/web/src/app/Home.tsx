@@ -235,7 +235,7 @@ function FirstStepsCard({ phone, onPushRow }: { phone: boolean; onPushRow: (show
     <section className="home__steps" aria-labelledby="home-steps" data-first-steps="">
       <div className="home__sech">
         <h3 id="home-steps">First steps</h3>
-        <Button variant="link" size="sm" className="home__all" onClick={hide}>Hide</Button>
+        <Button variant="link" size="sm" onClick={hide}>Hide</Button>
       </div>
       <ul className="home__rows" aria-label="First steps">
         {shown.map((row) => row.key === 'push' ? (
