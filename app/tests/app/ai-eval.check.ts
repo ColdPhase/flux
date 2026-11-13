@@ -315,7 +315,8 @@ function selected(seed: Seed): Question[] {
 
 const RUBRIC = `You grade an AI agent's answer to a question a person asked about their company's workspace (Polish and English). You get the question, a
 reference answer written by the person who planted the facts, and the agent's answer. Grade only whether the answer gives the reference's facts; ignore
-style, length, language and links.
+style, length, language and links. Only what the question asks for is required: anything the reference puts in parentheses is context the answer may
+leave out (but must not contradict).
 
 Verdicts:
 - "correct": the answer states the reference's key facts (numbers, names, dates, the thing asked) and contradicts none of them. Extra true detail is fine.
@@ -413,15 +414,15 @@ async function report(seed: Seed) {
   await writeFile(`${evidence}/results.json`, JSON.stringify(results, null, 1));
   const lines = [`# Answer accuracy (#1295): ${MODEL}${meta.label ? `, ${meta.label}` : ''}`, '',
     `Flux ${meta.productSha ?? '?'} (main; harness ${meta.sha ?? '?'}) · ${meta.date.slice(0, 10)} · ${all.length} questions · judge ${JUDGE_MODEL} · web search ${meta.webSearch} · spend $${meta.spend.agentUsd} agent + $${meta.spend.judgeUsd} judge`, '',
-    '| Category | n | Accuracy | Correct / partial / wrong / don\'t know | Keys | Gold source read | Answer in tool results | Cited (named) gold | Date filter | In tok/q | Out tok/q | $/q | p50 / p95 s |',
-    '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |'];
-  const line = (name: string, s: ReturnType<typeof summarize>) => lines.push(`| ${name} | ${s.questions} | ${s.accuracy} | ${s.correct} / ${s.partial} / ${s.wrong} / ${s.dontKnow} | ${s.keysMatched ?? '-'} | `
+    '| Category | n | Accuracy | Correct / partial / wrong / don\'t know | Runs without an answer | Keys | Gold source read | Answer in tool results | Cited (named) gold | Date filter | In tok/q | Out tok/q | $/q | p50 / p95 s |',
+    '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |'];
+  const line = (name: string, s: ReturnType<typeof summarize>) => lines.push(`| ${name} | ${s.questions} | ${s.accuracy} | ${s.correct} / ${s.partial} / ${s.wrong} / ${s.dontKnow} | ${s.failedRuns} | ${s.keysMatched ?? '-'} | `
     + `${s.retrievedGold ?? '-'} | ${s.answerInResults ?? '-'} | ${s.citedGold ?? '-'} (${s.citedOrNamedGold ?? '-'}) | ${s.usedDateFilter ?? '-'} | ${s.inputTokensPerQuestion} | ${s.outputTokensPerQuestion} | ${s.costUsdPerQuestion} | ${s.secondsP50} / ${s.secondsP95} |`);
   for (const [name, s] of Object.entries(byCategory)) line(name, s as ReturnType<typeof summarize>);
   line('**all**', results.overall);
   lines.push('', '| Question | Category | Verdict | Keys | Tools | Answer (start) |', '| --- | --- | --- | --- | --- | --- |');
   for (const row of rows as (Row & { answer: string })[]) {
-    lines.push(`| ${row.id} | ${row.category} | ${row.judge?.verdict ?? '-'} | ${row.keysMatched ?? '-'} | ${row.calls.map((call) => call.name.replace('flux_', '')).join(' ') || '-'} | `
+    lines.push(`| ${row.id} | ${row.category} | ${row.judge?.verdict ?? '-'}${row.status === 'completed' ? '' : ` (${row.status})`} | ${row.keysMatched ?? '-'} | ${row.calls.map((call) => call.name.replace('flux_', '')).join(' ') || '-'} | `
       + `${row.answer.replace(/\s+/g, ' ').replace(/\|/g, '/').slice(0, 110)} |`);
   }
   await writeFile(`${evidence}/results.md`, `${lines.join('\n')}\n`);
