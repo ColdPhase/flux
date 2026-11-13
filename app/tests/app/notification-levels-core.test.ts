@@ -22,7 +22,7 @@ describe('notification levels', () => {
     const channels = channelsOf(fresh());
     for (const reason of NOTIFICATION_REASONS) {
       const needsYou = (NEEDS_YOU_REASONS as readonly string[]).includes(reason);
-      assert.equal(channels[reason].inApp, true, `${reason} reaches the inbox`);
+      assert.equal(channels[reason].inApp, reason !== 'call', `${reason} reaches the inbox, a call started in a space excepted (#1438 point 11)`);
       assert.equal(channels[reason].push, needsYou, `${reason} push`);
       assert.equal(channels[reason].email, needsYou && reason !== 'invitation', `${reason} email follows push, a live call invitation excepted`);
     }
@@ -36,7 +36,7 @@ describe('notification levels', () => {
 
     const nothing = applyPreferenceChange(everything, { level: 'nothing' });
     const off = channelsOf(nothing);
-    assert.ok(NOTIFICATION_REASONS.every((reason) => off[reason].inApp && !off[reason].push && !off[reason].email), 'Nothing keeps the inbox only');
+    assert.ok(NOTIFICATION_REASONS.every((reason) => off[reason].inApp === (reason !== 'call') && !off[reason].push && !off[reason].email), 'Nothing keeps the inbox only');
 
     const back = applyPreferenceChange(nothing, { level: 'needsYou' });
     assert.deepEqual(back, fresh(), 'Only what needs me after Nothing is the default again');

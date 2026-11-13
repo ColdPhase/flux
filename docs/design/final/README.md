@@ -437,8 +437,10 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
 - **Home** adds rows under the waiting items, because the phone has no sidebar: "My tasks (N)"
   and, next to it, "My map" (Hubert, 2026-11-03). The tab bar stays at three tabs. Your face at the
   top of Home opens Settings.
-- **One "+".** A floating soft-fill button above the tab bar opens Create: Task, Thought, Decision,
-  Page, Space. These are the same five types as on the computer. There is one "+" for each thing (founder
+- **One "+".** A floating soft-fill button above the tab bar opens the Create window, **straight on Task**
+  (founder direction, Hubert, 2026-11-13, [#1438](https://github.com/ColdPhase/flux/issues/1438) point 8). There is no list of types first: Task,
+  Thought, Decision, Page and Space are the window's own tabs, the same five as on the computer, so a task is two taps (the "+", then
+  the title) and the other four are one tap more. There is one "+" for each thing (founder
   decision, Hubert, 2026-11-13, #1419): the Spaces tab has no "+ New space" button (the "+" › Space is the one way in), and the
   Messages list has no floating "+" (it cannot make a message), only its own **+ New message**, which starts a message.
 - **Inside a space.** Founder direction, Hubert, 2026-11-12 (#1239); the approved mock-up is the
@@ -691,6 +693,16 @@ These functional rules from UI116-4 remain required:
   label underneath: PDF (inverted band), CSV, XLSX, DOCX, MD, code, ZIP, audio, video, image,
   other. The row shows the icon, the name, "type · detail · size" and a download button. A voice
   note shows a waveform and a play button.
+- **Files in direct messages** (founder direction, Hubert, 2026-11-13, [#1438](https://github.com/ColdPhase/flux/issues/1438) point 10, C-64). The paperclip
+  of a direct message and of its thread is the one of a space: the same tray under the field with the draft's files, thumbnails, progress and Remove,
+  the same photo grid, file rows with Preview and Download, the dark photo viewer and the video player, drag and paste. A message may be files alone
+  (no empty bubble of words above them); the conversation's list says "Sent a file" under its name when that was the last message. The paperclip is
+  greyed, "(not available here)", only while the draft is a question to the agent (`/ai …`), whose private answer is not a message of the conversation.
+  Only the conversation's people reach a file, on every request.
+- **Files in an agent's chat** (the same founder direction, C-64 point 4). The composer of the private chat with one of your agents has the same
+  paperclip, tray, drop and paste: photos, videos and files go with your message to the agent, or alone. Your message shows them as any message does
+  (the photo grid above the words, file rows with Preview and Download, the dark viewer and the player); nobody else sees them. The agent looks at a
+  photo and reads a file's text when you ask about it; it says so in its answer like anything else it read.
 - **References** to Flux objects are cards with the object icon, the kind, the title and the
   state: task, Wiki page, decision, thought, message. In text they are inline chips aligned to
   the text baseline: `@person`, `#4`, a Wiki page.
@@ -986,6 +998,8 @@ built. The contract is in [mobile and PWA](../../product/mobile-pwa.md#while-flu
 
 - The header follows section 4: name, Conversation · Tasks · Map · Wiki in fixed slots, faces,
   Call and ⋯.
+- The right-hand drawing's list of types under the phone's "+" is replaced: the "+" opens the Create
+  window on Task (#1438 point 8, [Phone](#phone)); the message actions beside it are as drawn.
 - The reading column is at most 760 px. A task event is one line: "Ada created #1 Calibrate the
   soil moisture probes · 8:05".
 - The message toolbar sits at the bubble's top corner, as
@@ -1247,9 +1261,12 @@ Live strip, someone shares a screen
   the `call` icon at 12 px in the muted text colour after the name (a shape, not a second dot, so it never reads as unread), before
   the muted mark and the unread mark; on the 64 px rail it sits at the tile's corner. Screen readers hear "call on" in the row's name.
   It does not breathe; the header's Join keeps its live dot.
-- **The call notice** is an Inbox item, kind word "Call": "Nia started a call in Gesture lamp", "Call in Gesture lamp" (or
-  "At “Order sensors”"), with **Join** (primary) and Open; a compact row keeps Join. An invitation to a call is the same
-  item ("Nia invited you to a call"). Either leaves the Inbox when the call is over. The corner notice card is #1243's.
+- **A call started in a space waits nowhere** (founder decision, Hubert, 2026-11-13, [#1438](https://github.com/ColdPhase/flux/issues/1438) point 11,
+  which replaces F-041's Inbox item for it). It has no Inbox item and nothing on Home: it is read where the people already are,
+  in the header's Join, the call glyph on the space's row and the conversation line. **Only a personal invitation waits**, as
+  one Inbox item, kind word "Call", "Nia invited you to a call", "Call in Gesture lamp" (or "At “Order sensors”"), with **Join**
+  (primary) and Open; a compact row keeps Join; it leaves the Inbox when the call is over. The corner notice card is #1243's, and
+  push at "Everything" still follows the level for a call started in a space.
 - **The chime** is one short soft tone (no loop), played only for a direct invitation, on an open tab, by #1243's notice.
   It follows Settings › Notifications › **Sound when someone calls me** (on by default; #1243 draws the two switches).
 - **A shared screen.** The sharer's face in the strip carries the `screen` icon as a badge, where the muted-microphone
@@ -1266,8 +1283,10 @@ Live strip, someone shares a screen
 ### Create
 
 The phone's "+" and the computer's New (`C`) open Create with the same five types: Task, Thought,
-Decision, Page (a Wiki page) and Space. "Message" is not a type, because a message is written in
-the composer. The right-hand phone above shows the sheet.
+Decision, Page (a Wiki page) and Space, as tabs of one window that opens on Task. "Message" is not a
+type, because a message is written in the composer. The phone's "+" opens that window as its bottom
+sheet at once: it has no list of the types before the tabs (founder direction, Hubert, 2026-11-13,
+[#1438](https://github.com/ColdPhase/flux/issues/1438) point 8).
 
 - **Create task closes the window, and the toast offers the next one** (founder decision, Hubert,
   2026-11-12, #1235). The footer has the hint line and the one primary button, "Create task", and
@@ -1282,6 +1301,17 @@ the composer. The right-hand phone above shows the sheet.
   are more than one page of them. The footer says "Goes to the Inbox of those who can accept it" and the one primary is **Propose
   decision**; then the toast "Decision proposed · Undo". There is no second form in the side panel: the words "A person with write
   access accepts it" are gone. The composer keeps what was typed until the decision is proposed, as `/task` does.
+- **The space is the one you are in, else the one you used last** (#1438 point 6). Opened inside a space (any of its views), the
+  window names that space. Opened from Home, the Inbox, the Spaces list or My tasks, it names the space you last worked in
+  (the last space you opened or made a task in, kept on this device for your account), not Everyone; only a person who has not
+  opened any space yet starts on the first one in their list. The space picker in the window's first row changes it, as before.
+- **Blocked is one field** (#1438 point 12). Choosing the status Blocked adds one field under the properties, **Waiting for**, where
+  a task used to ask twice (a person chip, then "What is it waiting for?"). Type the reason ("The permit") or pick someone from the
+  list that opens under the field (the people of the space; in the task panel also the decisions still to make and the other tasks,
+  one thing). A person picked fills the field as a face and name with a remove; typing keeps the field a line of words. One
+  of the two makes a blocked task: Create stays disabled until the field says a person or a reason. The field is the app's own
+  input with a listbox under it (the composer's `@` list is its model: arrows, Enter, Escape, 44 px rows on touch), no
+  native picker. The task panel's Edit on a blocked task opens the same one field.
 - **Batch entry is one step, and the space is kept.** **Add another** in the toast, or `C` pressed
   next, opens the window again on Task with the same space chosen, an empty title and the default
   status and owner. `C` keeps the space the last task was created in until the person goes to another
@@ -1318,10 +1348,14 @@ the composer. The right-hand phone above shows the sheet.
   task", above the composer, and its Send is "Send to task" whether or not anyone has written yet (#1364). At Done, an optional "What came of it"
   row: one line, edited where it is read ("Add a line"), with a "Dropped, not finished" check; a
   dropped task reads "Done · dropped" in its panel, in the List and on its Board card, and the line is
-  also written once in the task's discussion. A blocked task's "Waiting for" menu offers people, the
-  decisions still to make and the other tasks of the space (one thing); the person waited for has a
+  also written once in the task's discussion. A blocked task has one field, "Waiting for" (#1438 point 12): its Edit opens a
+  single field where you type the reason or pick the people, the decisions still to make and the other tasks of the space (one
+  thing) from its list; the person waited for has a
   Done button in the Inbox and in the panel, and the stream says "#4 can continue: the decision was
   accepted" when it resumes.
+- **The link buttons stay** (founder decision, Hubert, 2026-11-13, [#1438](https://github.com/ColdPhase/flux/issues/1438) point 13): the panel's
+  **Link thought** and Create's **+ Link a message or thought** are the only way to make those links from a task, so they are not
+  removed or merged into another control, and no other place offers them.
 
 ### Wiki
 
@@ -1403,6 +1437,13 @@ the composer. The right-hand phone above shows the sheet.
   - **Copy link** copies `/map/:id#thought-:id`. It opens My map with the thought selected, and only its owner can
     open it. On the phone both are in the Thought actions sheet.
 - A space's Map uses the same canvas and tools; its thoughts can link tasks (section 5).
+- **The Map tab opens the map** (founder decision, Hubert, 2026-11-13, [#1438](https://github.com/ColdPhase/flux/issues/1438) point 7): the space's most
+  recently changed map, or the one last open there in this tab; there is no "Maps" list to pass on every visit. A space's map
+  header is the Wiki's: **the title is the switcher**, "Launch plan ▾" opens the space's maps (newest change first, the open one
+  ticked) with "Find a map", then "+ New map" and, for someone who can change the map, "Rename map" (the title itself opens
+  the switcher, so rename is a row of its menu, as the Wiki's is in its ⋯). It sits in the same place with 1 map or 50, on the
+  computer and on the phone, where the menu is as wide as the pane, with 44 px rows. A space with no map shows the one
+  empty state, "Map ideas for <space>", with its New map button. My map is one map: its header names it and has no switcher.
 - A space's map has the same **Copy link** for one selected thought, `/projects/:p/map/:id#thought-:id`, and no Cite: Copy link
   is the one way to point at a thought from a message (Hubert, 2026-11-13, [#1376](https://github.com/ColdPhase/flux/issues/1376)).
   A thought's address pasted into a message (a space's conversation, a thread, a task's discussion or a direct message) reads as a
@@ -1557,6 +1598,11 @@ standard switch row in Settings › Notifications, and the rest of the page stay
   choice that is only late (the sign-in place is still starting, or Flux could not check just now) keeps its row with that one line, since
   it will work. **New agent** appears once an AI is connected: an agent without a connection can do nothing, and Assistant comes with the
   first connection.
+- **There is one way to add an AI key: the Connect AI window** (founder decision, Hubert, 2026-11-13, [#1438](https://github.com/ColdPhase/flux/issues/1438) point 9).
+  Settings › AI › Your API keys lists the keys with their budget and Remove and has no form of its own: its **Add a key**
+  (and "Use an API key" in a failed sign-in, and the ask bar's "Add a key") opens the Connect AI window on its API key step,
+  and a page with no key says "No API key yet" with the same button. Every key is added in that one window, on the computer and
+  on the phone.
 - **Connect AI** is one window in steps: choose a Claude plan, a ChatGPT plan or an API key; sign
   in on claude.ai and paste the code, or enter the device code for ChatGPT; "Couldn't connect"
   with Use an API key and Try again; an API key with its one daily budget. The API key offers

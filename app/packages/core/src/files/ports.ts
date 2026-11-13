@@ -1,11 +1,17 @@
 import type { FileDetail, MessageFile, VideoContainer } from '@flux/contracts';
+import type { Principal } from '../principal.js';
 import type { ActorRef, WorkAccess } from '../work/ports.js';
 
 /** One stored file row (#154). Bytes are in the FileStorage under `id`. */
 export interface StoredFileRow {
   id: string;
   workspaceId: string;
-  projectId: string;
+  /** The space the file belongs to; null for a direct message's file (#1438 point 10), which names `dmId` instead: exactly one is set. */
+  projectId: string | null;
+  dmId: string | null;
+  /** The agent whose private chat the file belongs to (#1438, C-64), and the owner's request (a run) it was sent with; null elsewhere. */
+  agentId?: string | null;
+  runId?: string | null;
   uploader: ActorRef;
   uploadId: string;
   name: string;
@@ -18,6 +24,8 @@ export interface StoredFileRow {
   /** Null once published. */
   expiresAt: Date | null;
   messageId: string | null;
+  /** The message of a direct message a file is attached to (#1438 point 10); `messageId` names a space's. */
+  dmMessageId?: string | null;
   position: number | null;
   /** #252: the map thought this file is the image of. A file is published to a message or a thought, never both. */
   thoughtId: string | null;
@@ -36,15 +44,18 @@ export interface StoredFileRow {
 
 /** Rows only; the use cases decide. Every method runs in the caller's transaction. */
 export interface FileRepository {
-  /** Serializes one uploader's admission, finalization and cleanup in one project (quota and upload id). */
-  lockUploader(projectId: string, uploader: ActorRef): Promise<void>;
+  /**
+   * Serializes one uploader's admission, finalization and cleanup in one place (quota and upload id). `placeId` is a space's id or a direct
+   * message's (#1438 point 10); they are UUIDs of different tables, so one id names exactly one.
+   */
+  lockUploader(placeId: string, uploader: ActorRef): Promise<void>;
   activeReplay(fileId: string, now: Date): Promise<boolean>;
-  findUpload(projectId: string, uploader: ActorRef, uploadId: string): Promise<StoredFileRow | null>;
-  /** Unexpired reservations plus unexpired ready unpublished files of this uploader in this project, in bytes; the videos of C-61 are counted apart. */
-  stagedBytes(projectId: string, uploader: ActorRef, now: Date): Promise<number>;
+  findUpload(placeId: string, uploader: ActorRef, uploadId: string): Promise<StoredFileRow | null>;
+  /** Unexpired reservations plus unexpired ready unpublished files of this uploader in this place, in bytes; the videos of C-61 are counted apart. */
+  stagedBytes(placeId: string, uploader: ActorRef, now: Date): Promise<number>;
   /** The same for this uploader's videos only. */
-  stagedVideoBytes(projectId: string, uploader: ActorRef, now: Date): Promise<number>;
-  reserve(input: { id: string; workspaceId: string; projectId: string; uploader: ActorRef; uploadId: string; name: string;
+  stagedVideoBytes(placeId: string, uploader: ActorRef, now: Date): Promise<number>;
+  reserve(input: { id: string; workspaceId: string; projectId?: string; dmId?: string; agentId?: string; uploader: ActorRef; uploadId: string; name: string;
     reservedBytes: number; expiresAt: Date; replayOf?: string; videoContainer?: VideoContainer; posterOf?: string }): Promise<StoredFileRow>;
   /** Whether this workspace is encrypted (F-030): its files are sealed and never played (C-61). */
   encrypted(workspaceId: string): Promise<boolean>;
@@ -129,7 +140,19 @@ export interface RunPictureRepository {
 }
 
 export interface FilePorts {
-  access: Pick<WorkAccess, 'requireProject'>;
+  access: Pick<WorkAccess, 'requireProject'> & {
+    /**
+     * #1438 point 10: throws NotFoundError unless the principal is a current participant of this direct message who may `read` or `write` it;
+     * `lock` (inside a change) holds the conversation and the person's place in it until the unit of work ends. Absent where no direct
+     * message's file is served.
+     */
+    requireDm?(principal: Principal, action: 'dm.read' | 'dm.write', dmId: string, options?: { lock?: boolean }): Promise<{ workspaceId: string }>;
+    /**
+     * #1438 point 10 (C-64): throws NotFoundError unless the principal is the person whose own agent this is, a member of its company now (a
+     * guest has no AI); its chat is theirs alone. Absent where no chat's file is served.
+     */
+    requireChat?(principal: Principal, agentId: string, options?: { lock?: boolean }): Promise<{ workspaceId: string }>;
+  };
   files: FileRepository;
   /** Absent where no chat picture is served. */
   runPictures?: RunPictureRepository;

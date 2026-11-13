@@ -4,7 +4,7 @@ import { ApiError, NetworkError } from '../api/client';
 import { reply, startConversation } from '../conversations/api';
 import { announceAnswered } from '../notifications/api';
 import { sendDmMessage, sendDmReply } from '../api/direct-messages';
-import { contributeToTask, stageFile } from './api';
+import { contributeToTask, stageFile, type FilePlace } from './api';
 import { fileLimits, fileLimitsKnown, loadFileLimits, uploadPoster } from '../api/files';
 import { drawPoster } from './videoPoster';
 import { assumeReachable, connectionState, onConnectionChange, reportReachable, reportUnreachable } from './connection';
@@ -150,8 +150,18 @@ function alive(key: string, generation: number) {
   return !externallyRetired && generation === sessionGeneration && snapshots.has(key);
 }
 
-const validFile = (file: DraftFile, projectId: string) => uuid(file.uploadId) && typeof file.name === 'string' && typeof file.size === 'number'
-  && ['uploading', 'failed', 'ready'].includes(file.state) && (file.state !== 'ready' || (!!file.staged && uuid(file.staged.id) && file.staged.projectId === projectId));
+/**
+ * The place a draft's files go to: the space (its id), or (#1438 point 10) the direct message a `dm:<dmId>[/<rootId>]` context names, or the
+ * private chat with an agent a `chat:<agentId>` context names (C-64).
+ */
+const filePlace = (projectId: string, context: string): FilePlace => context.startsWith('dm:') ? { dmId: context.slice('dm:'.length).split('/')[0]! }
+  : context.startsWith('chat:') ? { agentId: context.slice('chat:'.length) } : projectId;
+const stagedHere = (staged: StagedFile, projectId: string, context: string) => {
+  const place = filePlace(projectId, context);
+  return typeof place === 'string' ? staged.projectId === place : 'dmId' in place ? staged.dmId === place.dmId : staged.agentId === place.agentId;
+};
+const validFile = (file: DraftFile, projectId: string, context: string) => uuid(file.uploadId) && typeof file.name === 'string' && typeof file.size === 'number'
+  && ['uploading', 'failed', 'ready'].includes(file.state) && (file.state !== 'ready' || (!!file.staged && uuid(file.staged.id) && stagedHere(file.staged, projectId, context)));
 // A reload interrupts an upload: its bytes are gone, so the person selects the same file again.
 const interrupted = (files: DraftFile[]) => files.map((file): DraftFile => file.state === 'uploading'
   ? { ...file, state: 'failed', offline: undefined, error: 'Upload was interrupted. Select the same file to retry.' } : file);
@@ -167,12 +177,12 @@ function load(key: string, accountId: string, projectId: string, context: string
     if (stored) {
       const value = JSON.parse(stored) as ComposerDraft & { pending?: PendingSend[] };
       if (value.version === 1 && typeof value.body === 'string' && value.body.length <= 100000 && uuid(value.commandId)
-        && Array.isArray(value.files) && value.files.length <= FILE_LIMITS.messageFiles && value.files.every((file) => validFile(file, projectId))) {
+        && Array.isArray(value.files) && value.files.length <= FILE_LIMITS.messageFiles && value.files.every((file) => validFile(file, projectId, context))) {
         const { pending: queued, version, body, commandId, unconfirmed } = value;
         draft = { version, body, commandId, unconfirmed: unconfirmed === true, files: interrupted(value.files) };
         if (Array.isArray(queued)) {
           pending = queued.filter((item) => uuid(item.id) && typeof item.body === 'string' && item.body.length <= 100000 && Array.isArray(item.files)
-            && item.files.length <= FILE_LIMITS.messageFiles && item.files.every((file) => validFile(file, projectId))
+            && item.files.length <= FILE_LIMITS.messageFiles && item.files.every((file) => validFile(file, projectId, context))
             && ['uploading', 'sending', 'waiting', 'failed'].includes(item.state) && typeof item.at === 'string')
             // An outcome a reload interrupted is unknown: it is sent again, with the same id, when it can be.
             .map((item) => ({ ...item, files: interrupted(item.files), state: item.state === 'failed' ? 'failed' : 'waiting' }));
@@ -255,7 +265,8 @@ async function deliver(projectId: string, context: string, command: SendMessageC
   if (context.startsWith('dm:')) {
     // `dm:<dmId>` posts to the conversation, `dm:<dmId>/<rootId>` is a private reply in that message's thread (#536).
     const [dmId, rootId] = context.slice('dm:'.length).split('/');
-    const body = { body: command.body, clientMessageId: command.clientMessageId, ...(command.references ? { references: command.references } : {}) };
+    const body = { body: command.body, clientMessageId: command.clientMessageId, ...(command.attachmentIds?.length ? { attachmentIds: command.attachmentIds } : {}),
+      ...(command.references ? { references: command.references } : {}) };
     // A reply in a direct message answers what its author was asked or mentioned there, as in a space thread (#1249).
     const { answered, ...message } = rootId ? await sendDmReply(dmId!, rootId, body) : await sendDmMessage(dmId!, body);
     return { id: command.clientMessageId, message: message as ConversationMessage, ...(answered?.length ? { answered } : {}) };
@@ -369,6 +380,7 @@ onConnectionChange(() => { for (const key of snapshots.keys()) kick(key); });
 
 /** Stages one file, wherever it is now: still in the draft, or in a message sent before it finished. */
 async function upload(key: string, projectId: string, uploadId: string, file: File, generation: number) {
+  const place = filePlace(projectId, places.get(key)?.context ?? '');
   const holds = () => {
     const current = snapshots.get(key)!;
     return current.draft.files.some((item) => item.uploadId === uploadId) || current.pending.some((item) => item.files.some((other) => other.uploadId === uploadId));
@@ -389,7 +401,7 @@ async function upload(key: string, projectId: string, uploadId: string, file: Fi
   if (isVideoName(file.name)) void drawPoster(file);
   let lastShown = 0;
   try {
-    const staged = await stageFile(projectId, uploadId, file, (fraction) => {
+    const staged = await stageFile(place, uploadId, file, (fraction) => {
       const percent = Math.min(100, Math.floor(fraction * 100));
       // One write per whole percent, rising only: a progress event is far more frequent than the screen needs.
       if (percent <= lastShown) return;
@@ -400,7 +412,7 @@ async function upload(key: string, projectId: string, uploadId: string, file: Fi
     // A video's poster (C-61) goes up while the person is still on this screen; a message waits for it only this briefly, and goes without one if it fails.
     if (staged.video) {
       const picture = await drawPoster(file);
-      if (picture) await uploadPoster(projectId, staged.id, picture).catch(() => undefined);
+      if (picture) await uploadPoster(place, staged.id, picture).catch(() => undefined);
     }
     changeFile((item) => ({ ...item, state: 'ready', staged, error: undefined, progress: undefined }));
   } catch (cause) {

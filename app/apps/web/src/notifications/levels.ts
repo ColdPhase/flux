@@ -14,7 +14,7 @@ export const REASON_WORDS: Record<NotificationReason, string> = {
 const ORDER: readonly NotificationReason[] = ['question', 'mention', 'dm', 'assigned', 'review', 'invitation', 'approval', 'reply', 'call'];
 const needsYou = new Set<NotificationReason>(NEEDS_YOU_REASONS);
 
-/** What interrupts the person by push and email at each level. The Inbox keeps every reason at each. */
+/** What interrupts the person by push and email at each level. The Inbox keeps every reason at each, but a call started in a space, which waits nowhere (#1438 point 11). */
 export const LEVEL_REASONS: Record<NotificationLevel, readonly NotificationReason[]> = {
   needsYou: ORDER.filter((reason) => needsYou.has(reason)),
   everything: ORDER,

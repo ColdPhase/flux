@@ -245,7 +245,6 @@ class ButtonSystem(unittest.TestCase):
             expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
             if phone:
                 page.get_by_role("button", name="Create", exact=True).tap()
-                page.get_by_role("dialog", name="Create").get_by_role("button", name="Task", exact=True).tap()
             else:
                 open_create(page)
             expect(page.get_by_role("dialog", name="New task")).to_be_visible()

@@ -86,7 +86,7 @@ export const WAITING_CHANGE_EVENT = 'project.change_waiting.v1';
 /** Where an agent waiting for your OK leads: its one Inbox item, open (`assistant:<run or client>`). */
 export const waitingChangeUrl = (group: string) => `/inbox?item=assistant:${group}`;
 
-/** A call of a space started (F-041): its space's people are told, each in their Inbox and by push at "Everything". */
+/** A call of a space started (F-041): its space's people are told by push at "Everything", never in the Inbox or on Home (#1438 point 11). */
 export const LIVE_STARTED_EVENT = 'project.live_started.v1';
 /** Where a call's notice leads: the call, which opens at its place (`LiveOpen`). */
 export const liveCallUrl = (projectId: string, sessionId: string) => `/projects/${projectId}/live/${sessionId}`;
@@ -173,7 +173,7 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
         const reason: NotificationReason = addressed ? (isQuestion(message.body) ? 'question' : 'mention') : 'dm';
         const title = reason === 'question' ? `${marked} asked you${place}` : reason === 'mention' ? `${marked} mentioned you${place}`
           : message.kind === 'pair' ? `${marked} sent you a message` : `${marked}${place}`;
-        return { userId, reason, source: { type: 'dm' as const, id: message.dmId }, title, body: excerpt(message.body),
+        return { userId, reason, source: { type: 'dm' as const, id: message.dmId }, title, body: message.body.trim() ? excerpt(message.body) : 'Sent a file',
           url: `/dm/${message.dmId}#message-${message.id}`, who: author, where: message.kind === 'pair' ? '' : message.title ? quote(message.title) : 'a group',
           ...(message.via ? { aiOrigin: true } : {}) };
       });
@@ -268,8 +268,8 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
       }];
     }
     case LIVE_STARTED_EVENT: {
-      // A call started in one of your spaces (F-041 point 3): everyone the event reached but its starter, while the call is still on. The
-      // Inbox always has it; push follows the level ("Everything"), and it is never emailed (`channelsOf`).
+      // A call started in one of your spaces (F-041 point 3): everyone the event reached but its starter, while the call is still on. It is
+      // not in the Inbox (`channelsOf`, #1438 point 11); push follows the level ("Everything"), and it is never emailed.
       const sessionId = id(event.data.sessionId);
       const session = sessionId ? await facts.liveSession(sessionId) : null;
       if (!session || session.projectId !== event.objectId) return [];

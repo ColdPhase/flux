@@ -54,7 +54,7 @@ export const DEFAULT_PREFERENCES: StoredPreferences = {
 };
 
 const NEEDS_YOU = new Set<NotificationReason>(NEEDS_YOU_REASONS);
-/** A live call invitation and a call started in your space are inbox and push only, never email: the call may be over before a mail is read (docs/development/live-sessions.md, F-041). */
+/** A live call invitation and a call started in your space are never emailed: the call may be over before a mail is read (docs/development/live-sessions.md, F-041). */
 const NEVER_EMAILED = new Set<NotificationReason>(['invitation', 'call']);
 
 /**
@@ -66,7 +66,8 @@ export function channelsOf(stored: Pick<StoredPreferences, 'level' | 'emailMe'>)
   const result = {} as Record<NotificationReason, ChannelChoice>;
   for (const reason of NOTIFICATION_REASONS) {
     const interrupts = stored.level === 'everything' || (stored.level === 'needsYou' && NEEDS_YOU.has(reason));
-    result[reason] = { inApp: true, push: interrupts, email: interrupts && stored.emailMe && !NEVER_EMAILED.has(reason) };
+    // A call started in a space waits nowhere (#1438 point 11): it is read in the space, and only push at "Everything" tells the person.
+    result[reason] = { inApp: reason !== 'call', push: interrupts, email: interrupts && stored.emailMe && !NEVER_EMAILED.has(reason) };
   }
   return result;
 }

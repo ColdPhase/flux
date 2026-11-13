@@ -5,6 +5,7 @@ import {
   WORK_LIMITS,
   type AgentColour,
   type DmMessage,
+  type MessageFile,
   type SentDmMessage,
   type DmTaskCopyCommand,
   type DmTaskCopyPreview,
@@ -117,6 +118,7 @@ function toSummary(record: DmRecord, self: string): DmSummary {
 
 function toMessage(record: DmMessageRecord): DmMessage {
   return { id: record.id, conversationId: record.dmId, authorId: record.authorId, body: record.body, source: null, sequence: record.sequence, createdAt: record.createdAt.toISOString(),
+    ...(record.files?.length ? { files: record.files } : {}),
     threadRootId: record.threadRootId, replyCount: record.replyCount, ...(record.via ? { via: record.via, ...(record.viaColour ? { viaColour: record.viaColour } : {}) } : {}), ...(record.kind === 'ai_used' ? { notice: 'ai_used' as const } : {}),
     ...(record.editedAt && !record.removedAt ? { editedAt: record.editedAt.toISOString() } : {}), ...(record.removedAt ? { removedAt: record.removedAt.toISOString() } : {}) };
 }
@@ -205,9 +207,9 @@ export function createDmUseCases(uow: DmUnitOfWork) {
     const authorId = person(principal);
     if (command && typeof command === 'object' && 'source' in command && (command as { source?: unknown }).source !== undefined)
       throw new RuleViolationError('Direct messages cannot cite space material yet', 'DM_SOURCE_UNSUPPORTED');
-    if (command && typeof command === 'object' && (command as { attachmentIds?: unknown }).attachmentIds !== undefined)
-      throw new RuleViolationError('Direct messages cannot carry files yet', 'DM_ATTACHMENTS_UNSUPPORTED');
     const input = normalizeMessage(command);
+    // The bytes of each file up to 5 MiB are checked first, holding no connection while read (#1411).
+    if (input.attachmentIds.length) await uow.verifyFiles?.(authorId, input.attachmentIds);
     // A reply's retry identity includes its root, so the same client id cannot be reused for another thread.
     const fingerprint = rootId ? createHash('sha256').update(`${rootId}:${input.fingerprint}`).digest('hex') : input.fingerprint;
     return uow.run(async (ports) => {
@@ -230,10 +232,18 @@ export function createDmUseCases(uow: DmUnitOfWork) {
       // A 1:1 whose other person left has no audience besides the sender: refuse, do not store.
       await requireCounterpart(ports, dm, authorId);
       await ports.references.assertReadable(principal, dm.workspaceId, input.references);
-      const message = await ports.dms.appendMessage({
+      // The files of this conversation, sent by this person, as a space's are (#1438 point 10); an entry point with no files refuses them.
+      let locked: MessageFile[] = [];
+      if (input.attachmentIds.length) {
+        if (!ports.files) throw new RuleViolationError('Files cannot be sent from here', 'DM_ATTACHMENTS_UNSUPPORTED');
+        locked = await ports.files.lock(dm.id, authorId, input.attachmentIds);
+      }
+      const stored = await ports.dms.appendMessage({
         id: randomUUID(), workspaceId: dm.workspaceId, dmId: dm.id, authorId,
         clientMessageId: input.clientMessageId, requestFingerprint: fingerprint, body: input.body, threadRootId: rootId, via, viaColour: via ? viaColour : null,
+        ...(locked.length ? { attachmentCount: locked.length } : {}),
       });
+      const message = locked.length ? { ...stored, files: await ports.files!.publish(dm.id, stored.id, locked, stored.createdAt) } : stored;
       await ports.references.save(message.id, dm.workspaceId, input.references);
       // The message id (an identifier, never content) lets notifications (#116) name the message.
       await ports.events.record(principal, dm.workspaceId, 'dm.message_sent.v1', dm.id, { messageId: message.id, ...(rootId ? { rootId } : {}) });
@@ -304,9 +314,10 @@ export function createDmUseCases(uow: DmUnitOfWork) {
      */
     async editMessage(principal: Principal, dmId: string, messageId: string, command: EditMessageCommand): Promise<DmMessage> {
       const { body } = normalizeMessageEdit(command);
-      if (!body) throw new InvalidInputError('Message must be 1–100000 characters');
       return changeOwn(principal, dmId, messageId, async (ports, dm, message) => {
         if (message.removedAt) throw new ConflictError('This message was deleted, so it cannot be edited', 'MESSAGE_REMOVED');
+        // A message with files may have no words (#1438 point 10); any other needs some.
+        if (!body && !message.attachmentCount) throw new InvalidInputError('Message must be 1–100000 characters');
         if (message.body === body) return null;
         await ports.dms.editMessage({ id: message.id, workspaceId: dm.workspaceId, authorId: message.authorId }, body);
         return 'edited';

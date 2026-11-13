@@ -1,3 +1,2 @@
 /* View styles are loaded with ProjectViews; the header and Details own their CSS. */
 /* ---------- Map and Docs tabs ---------- */
-.pv-note { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); max-width: 560px; font-size: var(--fs-sm); line-height: 1.55; color: var(--t3); }

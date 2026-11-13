@@ -330,10 +330,18 @@ const steps: Record<string, (...args: string[]) => Promise<void>> = {
       + 'node -e \'require("net").connect(3128, "runtime-egress").on("connect", () => console.log("TCP-OPEN")).on("error", (e) => console.log("TCP", e.code))\'; sleep 1';
     // The PDF pandoc and typst made in the scratch, attached by its path (#1437): the server reads it from the run's supervisor.
     const attach: CliStep = { tool: 'flux_attach_file', args: { projectId, clientCommandId: randomUUID(), path: 'page.pdf' } };
+    // Every own tool the run keeps, under the CLI's domain that may execute only its own program and Flux's sandbox (#1437): Claude Code's Grep and
+    // Glob search the scratch with the ripgrep the CLI brings, Edit and Read work on what Write made; Codex is asked for one command in a terminal (tty).
     const steps: CliStep[] = client === 'claude'
       ? [{ own: { name: 'Bash', input: { command: probe, description: 'probe' } } }, { own: { name: 'Read', input: { file_path: '/etc/hostname' } } },
-        { own: { name: 'Write', input: { file_path: 'notes.md', content: '# notes' } } }, attach, { text: 'Done.' }]
-      : [{ own: { name: 'exec_command', input: { cmd: probe } } }, attach, { text: 'Done.' }];
+        { own: { name: 'Write', input: { file_path: 'notes.md', content: '# notes\n' } } },
+        { own: { name: 'Edit', input: { file_path: 'notes.md', old_string: '# notes\n', new_string: '# notes\nLamp sensor fails below 5 lux.\n' } } },
+        { own: { name: 'Read', input: { file_path: 'notes.md' } } },
+        { own: { name: 'Grep', input: { pattern: 'fails below', path: '.', output_mode: 'content' } } },
+        { own: { name: 'Glob', input: { pattern: '**/*.md' } } },
+        attach, { text: 'Done.' }]
+      : [{ own: { name: 'exec_command', input: { cmd: probe } } },
+        { own: { name: 'exec_command', input: { cmd: 'tty; echo "TTY-RAN $(pwd)"', tty: true } } }, attach, { text: 'Done.' }];
     await script(client, steps);
     const from = await lastEntry();
     const run = await askAi(someone, conversationId!, 'Make a page of the notes');
@@ -344,9 +352,21 @@ const steps: Record<string, (...args: string[]) => Promise<void>> = {
     assert.ok(/\/scratch\/[0-9a-f-]{36}/.test(shell) && shell.includes('page.html'), `it worked in the run's scratch: ${shell.slice(0, 600)}`);
     assert.ok(!/"login"|sk-ant-mock|access_token|refresh_token/.test(shell), `no login reached the shell: ${shell.slice(0, 600)}`);
     assert.ok(/Permission denied/.test(shell) && !shell.includes('TCP-OPEN'), `the sandbox refused: ${shell.slice(0, 900)}`);
+    const refused = /EACCES|Permission denied|spawn|ENOENT/;
+    let more: Record<string, string>;
     if (client === 'claude') {
       assert.ok(/outside .*--restricted/.test(results[1]!), `Read outside the scratch is refused: ${results[1]}`);
       assert.ok(/created/i.test(results[2]!), `Write in the scratch works: ${results[2]}`);
+      assert.ok(/updated/i.test(results[3]!) && !refused.test(results[3]!), `Edit in the scratch works: ${results[3]}`);
+      assert.ok(results[4]!.includes('Lamp sensor fails below 5 lux.'), `Read in the scratch reads the edit: ${results[4]}`);
+      assert.ok(results[5]!.includes('fails below') && !refused.test(results[5]!), `Grep finds it with the CLI's own ripgrep: ${results[5]}`);
+      assert.ok(results[6]!.includes('notes.md') && !refused.test(results[6]!), `Glob finds the file: ${results[6]}`);
+      more = { GREP: results[5]!.replace(/\s+/g, ' ').slice(0, 160), GLOB: results[6]!.replace(/\s+/g, ' ').slice(0, 160) };
+    } else {
+      // A command in a terminal of its own (exec_command's `tty`): Flux's run turns `features.unified_exec_tty` off (CODEX_FEATURE_REVIEW), so the
+      // pinned Codex refuses it before anything starts, and the run goes on. (Were it on, the sandbox would hand the terminal to the broker as its streams.)
+      assert.ok(/TTY execution is disabled/.test(results[1]!) && !results[1]!.includes('TTY-RAN'), `the tty command is refused by Codex's own config: ${results[1]}`);
+      more = { TTY: results[1]!.replace(/\s+/g, ' ').slice(0, 200) };
     }
     assert.ok(/attached to your answer/.test(results.at(-1)!), `the PDF was attached: ${results.at(-1)}`);
     const files = await pool.query<{ id: string; name: string; size: number }>(`SELECT f.id, f.name, f.size FROM assistant_changes c JOIN project_files f ON f.id = c.object_id
@@ -354,7 +374,7 @@ const steps: Record<string, (...args: string[]) => Promise<void>> = {
     assert.equal(files.rows.length, 1, 'one file on the answer');
     const pdf = Buffer.from(await (await fetch(new URL(`/api/v1/files/${files.rows[0]!.id}`, apiUrl), { headers: { cookie: someone.browser.cookieHeader() } })).arrayBuffer());
     assert.equal(pdf.subarray(0, 5).toString('latin1'), '%PDF-', 'the asker downloads the PDF the run made');
-    print({ OWN_TOOLS: 'ok', ATTACHED: `${files.rows[0]!.name} ${files.rows[0]!.size}`, SHELL: shell.replace(/\s+/g, ' ').slice(0, 400) });
+    print({ OWN_TOOLS: 'ok', ATTACHED: `${files.rows[0]!.name} ${files.rows[0]!.size}`, SHELL: shell.replace(/\s+/g, ' ').slice(0, 400), ...more });
   },
   async 'claude-search'() {
     const ada = await owner('ada');

@@ -1,4 +1,4 @@
-import { projectFilesPath, taskDiscussionPath, type SentConversationMessage, type StagedFile, type TaskContributionCommand, type TaskDiscussion } from '@flux/contracts';
+import { agentChatFilesPath, dmFilesPath, projectFilesPath, taskDiscussionPath, type SentConversationMessage, type StagedFile, type TaskContributionCommand, type TaskDiscussion } from '@flux/contracts';
 import { ApiError, NetworkError, request } from '../api/client';
 
 /** Every view sends the same task command through this operation, including conversation replies. */
@@ -16,10 +16,14 @@ export const contributeToTask = (workId: string, command: TaskContributionComman
  * Raw authenticated bytes; upload UUID is retained after a lost response. It goes by XMLHttpRequest, the
  * only browser API that reports how many bytes of the upload have gone out (`onProgress`, 0 to 1, #348).
  */
-export function stageFile(projectId: string, uploadId: string, file: File, onProgress?: (fraction: number) => void): Promise<StagedFile> {
+/** The place a file is staged in: a space (its id), a direct message (#1438 point 10), or the private chat with one of your agents (C-64). */
+export type FilePlace = string | { dmId: string } | { agentId: string };
+const filesPath = (place: FilePlace) => typeof place === 'string' ? projectFilesPath(place) : 'dmId' in place ? dmFilesPath(place.dmId) : agentChatFilesPath(place.agentId);
+
+export function stageFile(place: FilePlace, uploadId: string, file: File, onProgress?: (fraction: number) => void): Promise<StagedFile> {
   return new Promise<StagedFile>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open('POST', `${projectFilesPath(projectId)}?${new URLSearchParams({ uploadId, name: file.name })}`);
+    xhr.open('POST', `${filesPath(place)}?${new URLSearchParams({ uploadId, name: file.name })}`);
     xhr.setRequestHeader('accept', 'application/json');
     xhr.setRequestHeader('content-type', 'application/octet-stream');
     if (onProgress) xhr.upload.onprogress = (event) => { if (event.lengthComputable && event.total > 0) onProgress(event.loaded / event.total); };

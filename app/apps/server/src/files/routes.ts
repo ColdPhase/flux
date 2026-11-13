@@ -18,36 +18,41 @@ export async function fileRoutes(app: FastifyInstance, { db, sessions, storage, 
     await sessions.requirePrincipal(request);
     return files.limits();
   });
-  app.post<{ Params: { projectId: string }; Querystring: { uploadId: string; name: string }; Body: Readable | undefined }>(
-    '/api/v1/projects/:projectId/files', { bodyLimit: largest,
-      schema: { querystring: { type: 'object', required: ['uploadId', 'name'], additionalProperties: false,
-        properties: { uploadId: { type: 'string' }, name: { type: 'string' } } } },
-      onRequest: async (request) => {
-        if (!/^application\/octet-stream(?:\s*;|$)/i.test(request.headers['content-type'] ?? ''))
-          throw new InvalidInputError('Upload raw application/octet-stream bytes', 'INVALID_FILE_CONTENT_TYPE');
-        const size = Number(request.headers['content-length']);
-        if (size > largest) {
-          // Over anything a video may be: said in the words of what the name says it is (the use case says the rest).
-          const name = (request.query as { name?: unknown }).name;
-          throw new PayloadTooLargeError(typeof name === 'string' && isVideoName(name) ? `A video is at most ${Math.round(videoBytes / (1024 * 1024) * 10) / 10} MiB` : 'A file is at most 5 MiB', 'FILE_TOO_LARGE');
-        }
-      },
-      onSend: async (request, reply, payload) => {
-        if (!request.raw.complete) reply.header('connection', 'close');
-        return payload;
-      },
-      onResponse: async (request) => {
-        // A timeout or admission refusal must also release a stalled raw-body iterator/socket.
-        // Finish the error response first, then terminate any incomplete request transport.
-        if (!request.raw.complete) request.raw.destroy();
-      } }, async (request, reply) => {
-      const principal = (await sessions.requirePrincipal(request)).principal;
-      const size = request.headers['content-length'];
-      // Without Content-Length or Transfer-Encoding Fastify parses no body: that is an empty file.
-      const staged = await files.stage(principal, request.params.projectId, request.query, request.body ?? Readable.from([]),
-        size === undefined ? undefined : Number(size));
-      return reply.code(201).send(staged);
-    });
+  // A space's files and a direct message's (#1438 point 10) are staged the same way: the same limits, checks, pictures and videos, and the same
+  // rule that a staged file is its sender's alone. Only the right to write in the place differs, and it is checked in the use case.
+  // Each route keeps its own parameter name (`projectId`, `dmId`), which the route walks of the tests read as the object it names.
+  for (const [prefix, place, param] of [['projects', 'project', 'projectId'], ['dms', 'dm', 'dmId'], ['my-agents', 'chat', 'agentId']] as const) {
+    app.post<{ Params: Record<string, string>; Querystring: { uploadId: string; name: string }; Body: Readable | undefined }>(
+      `/api/v1/${prefix}/:${param}/files`, { bodyLimit: largest,
+        schema: { querystring: { type: 'object', required: ['uploadId', 'name'], additionalProperties: false,
+          properties: { uploadId: { type: 'string' }, name: { type: 'string' } } } },
+        onRequest: async (request) => {
+          if (!/^application\/octet-stream(?:\s*;|$)/i.test(request.headers['content-type'] ?? ''))
+            throw new InvalidInputError('Upload raw application/octet-stream bytes', 'INVALID_FILE_CONTENT_TYPE');
+          const size = Number(request.headers['content-length']);
+          if (size > largest) {
+            // Over anything a video may be: said in the words of what the name says it is (the use case says the rest).
+            const name = (request.query as { name?: unknown }).name;
+            throw new PayloadTooLargeError(typeof name === 'string' && isVideoName(name) ? `A video is at most ${Math.round(videoBytes / (1024 * 1024) * 10) / 10} MiB` : 'A file is at most 5 MiB', 'FILE_TOO_LARGE');
+          }
+        },
+        onSend: async (request, reply, payload) => {
+          if (!request.raw.complete) reply.header('connection', 'close');
+          return payload;
+        },
+        onResponse: async (request) => {
+          // A timeout or admission refusal must also release a stalled raw-body iterator/socket.
+          // Finish the error response first, then terminate any incomplete request transport.
+          if (!request.raw.complete) request.raw.destroy();
+        } }, async (request, reply) => {
+        const principal = (await sessions.requirePrincipal(request)).principal;
+        const size = request.headers['content-length'];
+        // Without Content-Length or Transfer-Encoding Fastify parses no body: that is an empty file.
+        const staged = await files.stage(principal, request.params[param]!, request.query, request.body ?? Readable.from([]),
+          size === undefined ? undefined : Number(size), place);
+        return reply.code(201).send(staged);
+      });
+  }
   // Every stored file is an attachment, whole or by byte range (C-61: a resumed download), read from disk as a stream. Access is checked
   // on every request.
   // HEAD is its own route, not Fastify's automatic one, which would answer a Content-Length of 0.
@@ -62,21 +67,23 @@ export async function fileRoutes(app: FastifyInstance, { db, sessions, storage, 
     return sendStored(reply, file, VIDEO_MEDIA_TYPES[file.video!]);
   } });
   // The picture the sender's browser drew from a staged video (C-61): raw bytes, decoded and re-encoded by the server.
-  app.post<{ Params: { projectId: string; fileId: string }; Body: Readable | undefined }>('/api/v1/projects/:projectId/files/:fileId/poster', {
-    bodyLimit: FILE_LIMITS.posterBytes,
-    onRequest: async (request) => {
-      if (!/^application\/octet-stream(?:\s*;|$)/i.test(request.headers['content-type'] ?? ''))
-        throw new InvalidInputError('Upload raw application/octet-stream bytes', 'INVALID_FILE_CONTENT_TYPE');
-      if (Number(request.headers['content-length']) > FILE_LIMITS.posterBytes) throw new PayloadTooLargeError('A poster is at most 512 KiB', 'POSTER_TOO_LARGE');
-    },
-    onSend: async (request, reply, payload) => { if (!request.raw.complete) reply.header('connection', 'close'); return payload; },
-    onResponse: async (request) => { if (!request.raw.complete) request.raw.destroy(); },
-  }, async (request, reply): Promise<StagedFile> => {
-    const principal = (await sessions.requirePrincipal(request)).principal;
-    const size = request.headers['content-length'];
-    const staged = await files.stagePoster(principal, request.params.projectId, request.params.fileId, request.body ?? Readable.from([]), size === undefined ? undefined : Number(size));
-    return reply.code(201).send(staged);
-  });
+  for (const [prefix, place, param] of [['projects', 'project', 'projectId'], ['dms', 'dm', 'dmId'], ['my-agents', 'chat', 'agentId']] as const) {
+    app.post<{ Params: Record<string, string>; Body: Readable | undefined }>(`/api/v1/${prefix}/:${param}/files/:fileId/poster`, {
+      bodyLimit: FILE_LIMITS.posterBytes,
+      onRequest: async (request) => {
+        if (!/^application\/octet-stream(?:\s*;|$)/i.test(request.headers['content-type'] ?? ''))
+          throw new InvalidInputError('Upload raw application/octet-stream bytes', 'INVALID_FILE_CONTENT_TYPE');
+        if (Number(request.headers['content-length']) > FILE_LIMITS.posterBytes) throw new PayloadTooLargeError('A poster is at most 512 KiB', 'POSTER_TOO_LARGE');
+      },
+      onSend: async (request, reply, payload) => { if (!request.raw.complete) reply.header('connection', 'close'); return payload; },
+      onResponse: async (request) => { if (!request.raw.complete) request.raw.destroy(); },
+    }, async (request, reply): Promise<StagedFile> => {
+      const principal = (await sessions.requirePrincipal(request)).principal;
+      const size = request.headers['content-length'];
+      const staged = await files.stagePoster(principal, request.params[param]!, request.params.fileId!, request.body ?? Readable.from([]), size === undefined ? undefined : Number(size), place);
+      return reply.code(201).send(staged);
+    });
+  }
   // A preview of someone else's HTML page (C-60, #1252): only inside a frame of a Flux page, sandboxed to an opaque origin by its own
   // policy, with nothing fetched. The frame's `sandbox` attribute repeats it; access is the download's. A PDF is not framed: Flux draws
   // it itself from the download's bytes in a viewer frame (`http/pdf-viewer.ts`, #1350), because a browser's own PDF viewer follows a

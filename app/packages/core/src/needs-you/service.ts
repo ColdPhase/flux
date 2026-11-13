@@ -177,41 +177,34 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
       if (noteId) questionNotes.set(item, noteId);
       items.push(item);
     }
-    // A call's notice and an invitation to a call ask something only while someone is in the call (F-041).
+    // An invitation to a call asks something only while someone is in the call (F-041). A call started in a space is no item here (#1438 point 11).
     const callOf = (url: string | null) => { const match = CALL_URL.exec(url ?? ''); return match ? { projectId: match[1]!.toLowerCase(), sessionId: match[2]!.toLowerCase() } : null; };
-    const callNotes = inbox.items.filter((note) => (note.reason === 'call' || note.reason === 'invitation') && !note.readAt);
+    const callNotes = inbox.items.filter((note) => note.reason === 'invitation' && !note.readAt);
     const callIds = [...new Set(callNotes.flatMap((note) => { const call = callOf(note.url); return call ? [call.sessionId] : []; }))];
     const running = callIds.length && ports.runningCalls ? await ports.runningCalls(callIds) : new Set<string>();
-    // Invited to a call that also told you it started: one item, the invitation.
-    const invitedTo = new Set(callNotes.flatMap((note) => { const call = note.reason === 'invitation' ? callOf(note.url) : null; return call ? [call.sessionId] : []; }));
-    // The tab's "(N)" counts what asks something now: a call's notice or invitation not once the call is over, and one call once (F-041).
-    const askingNow = (note: (typeof callNotes)[number]) => {
-      const call = callOf(note.url);
-      if (note.reason === 'call') return !!call && running.has(call.sessionId) && !invitedTo.has(call.sessionId);
-      return !(call && ports.runningCalls) || running.has(call.sessionId);
-    };
+    // The tab's "(N)" counts what asks something now: an invitation not once the call is over (F-041).
+    const askingNow = (note: (typeof callNotes)[number]) => { const call = callOf(note.url); return !(call && ports.runningCalls) || running.has(call.sessionId); };
     const notifying = inbox.items.filter((note) => !note.readAt && note.reason && note.reason in channels && channels[note.reason].push
-      && (note.reason !== 'call' && note.reason !== 'invitation' || askingNow(note))).length;
+      && (note.reason !== 'invitation' || askingNow(note))).length;
     // The space of a notification made in a space, read together (#1424): the Inbox says "Kind · who · space" for every row.
     const noteProjects = [...new Set(inbox.items.filter((note) => note.source.type === 'project' && !note.readAt).map((note) => note.source.id))].filter((id) => !projectNames.has(id));
     if (noteProjects.length) for (const [id, name] of await ports.access.projectNames(noteProjects)) projectNames.set(id, name);
     for (const note of inbox.items) {
-      if ((note.reason !== 'mention' && note.reason !== 'question' && note.reason !== 'invitation' && note.reason !== 'call') || note.readAt || note.createdAt.getTime() < since) continue;
-      const call = note.reason === 'call' || note.reason === 'invitation' ? callOf(note.url) : null;
-      if (note.reason === 'call' && (!call || !running.has(call.sessionId) || invitedTo.has(call.sessionId))) continue;
+      if ((note.reason !== 'mention' && note.reason !== 'question' && note.reason !== 'invitation') || note.readAt || note.createdAt.getTime() < since) continue;
+      const call = note.reason === 'invitation' ? callOf(note.url) : null;
       if (note.reason === 'invitation' && call && ports.runningCalls && !running.has(call.sessionId)) continue;
       // The question card above stands for it while open; once answered, nothing is left to do.
       if (note.reason === 'question' && questionOf(note.url)) continue;
       // Someone asking you something, or to join them, is a question; a mention is a mention.
       const kind: NeedsYouKind = note.reason === 'mention' ? 'mention' : 'question';
-      // Who and where, as for every other kind. What a mention or a question says is then its title and a call's place is its words, since "Maja asked
+      // Who and where, as for every other kind. What a mention or a question says is then its title (a call of a space is no item, #1438 point 11), since "Maja asked
       // you in Community garden sensors" would say the line above again; a notification of an encrypted space has no words, so it keeps its sentence.
       const from = note.from?.id ? { kind: note.from.kind, id: note.from.id, name: note.from.name } : null;
       const project = note.source.type === 'project' ? { id: note.source.id, name: projectNames.get(note.source.id) ?? 'Space' } : null;
       // A message between two people has a sender and no space: its sentence ends with the phrase, where a group's names the group.
       const pair = note.source.type === 'dm' && / (asked|mentioned) you$/.test(note.title);
       const words = from && (project || pair) ? excerpt(note.body) : '';
-      const plain = words && (note.reason === 'mention' || note.reason === 'question' || note.reason === 'call');
+      const plain = words && (note.reason === 'mention' || note.reason === 'question');
       items.push({
         key: `note:${note.id}`, kind, title: plain ? words : note.title, detail: plain ? '' : excerpt(note.body), project, from,
         at: iso(note.createdAt), url: note.url ?? `/inbox/${note.id}`, decision: null, blocked: null, reason: note.reason, snoozeTask: null,

@@ -5,7 +5,7 @@ export { postToAgentChat, unreadAgentChats } from './agent-chat.js';
 export { reportTaskRun } from './task-report.js';
 export { recoverLostRuntimeRuns, recoverPersonalRuns } from './recovery.js';
 export { connectionCallsTools, costMicros, parseOutput, runChargeMicros, runReservationMicros, budgetedReservationMicros } from './validation.js';
-export { briefPrivateText, buildBrief, NO_PICTURES_LINE, NO_POSTING_LINE, VIEW_PICTURE_LINE, NO_WEB_SEARCH_LINE, OPEN_ANY_ADDRESS_LINE, PAGE_NOTE_LINE, RUNTIME_WEB_SEARCH_LINE, runtimeBrief, WEB_SEARCH_LINE, type BriefEngine, type BriefInput, type BriefPlace, type CallEvent, type SourceItem, type SuppliedSource, type TaskFacts } from './brief.js';
+export { briefPrivateText, buildBrief, CHAT_FILES_LINE, NO_PICTURES_LINE, NO_POSTING_LINE, VIEW_PICTURE_LINE, NO_WEB_SEARCH_LINE, OPEN_ANY_ADDRESS_LINE, PAGE_NOTE_LINE, RUNTIME_WEB_SEARCH_LINE, runtimeBrief, WEB_SEARCH_LINE, type BriefEngine, type BriefInput, type BriefPlace, type CallEvent, type SourceItem, type SuppliedSource, type TaskFacts } from './brief.js';
 export { readBriefFacts, type BriefFacts } from './brief-facts.js';
 export { CITE_LINE } from './brief.js';
 export { CITES_MAX, fluxMarks, resolveCites, resultCites, sourcesShown, type CitedObject, type CiteKind, type CiteRequest, type FluxMark } from './cites.js';

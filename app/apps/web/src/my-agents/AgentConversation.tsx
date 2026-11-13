@@ -11,7 +11,9 @@ import { shownWords, stepWords, useForgetLiveRun, useLiveRun, useReducedMotion }
 import { MessageText } from '../app/MessageText';
 import { undoRunChanges } from '../assistant/api';
 import { askError, askState, canRetry, endedText, isWorking, workingText } from '../assistant/format';
-import { MessageBubble, MessageFiles } from '../composer/Attachments';
+import { MessageBubble, MessageContent, MessageFiles } from '../composer/Attachments';
+import { ComposerFiles, useFileDrop } from '../composer/Files';
+import { useComposerDraft } from '../composer/draft';
 import { ComposerBox } from '../composer/ComposerBox';
 import { ConnectionLine } from '../composer/Outbox';
 import { Button, Icon, Kreska, MEDIA, sendsOnEnter, useArrivals, useMediaQuery } from '../ui';
@@ -67,7 +69,10 @@ function Turn({ run, agent, chat, schedules, first, newDay }: { run: AssistantRu
     <>
       <li className="dm-msg is-mine agc__turn" data-run-id={run.id} data-chat-me="">
         {newDay ? <MessageDay as="p" label={day(run.createdAt)} /> : null}
-        <div className="dm-msg__row"><div className="dm-msg__main is-mine"><MessageBubble><div className="dm-msg__body">{run.prompt}</div></MessageBubble></div></div>
+        {/* The files its owner sent with it (#1438 point 10, C-64), as a message's: photos above, file rows in the bubble; no empty words above them. */}
+        <div className="dm-msg__row"><div className="dm-msg__main is-mine">{run.files?.length
+          ? <MessageContent files={run.files} body={run.prompt ? <div className="dm-msg__body">{run.prompt}</div> : null} context={{ author: 'You', at: run.createdAt, caption: run.prompt }} />
+          : <MessageBubble><div className="dm-msg__body">{run.prompt}</div></MessageBubble>}</div></div>
       </li>
       <li className="dm-msg agc__turn" data-run-id={run.id} data-chat-agent="" aria-live="polite">
         <div className="dm-msg__row">
@@ -192,7 +197,11 @@ function AgentChatPane({ agent }: { agent: MyAgent }) {
   const { me } = useShellData();
   const chat = useAgentChat(agent.id, me.user.id);
   const schedules = useAgentSchedules(agent.id, chat.version, chat.refresh);
-  const [draft, setDraft] = useState('');
+  // The draft is the composer's own (#1438 point 10, C-64): words and files staged in this chat, kept on this device like a space's draft.
+  const composer = useComposerDraft(me.user.id, agent.id, `chat:${agent.id}`);
+  const draft = composer.draft.body;
+  const setDraft = composer.setBody;
+  const files = composer.draft.files;
   const [error, setError] = useState('');
   const [sending, setSending] = useState(false);
   const feed = useRef<HTMLDivElement | null>(null);
@@ -281,19 +290,25 @@ function AgentChatPane({ agent }: { agent: MyAgent }) {
 
   async function send() {
     const prompt = draft.trim();
-    if (!prompt || sending) return;
+    if ((!prompt && !files.length) || sending) return;
     if (state.kind !== 'ready') { setError(state.note); return; }
+    // The words and the files go together once every file is staged; the draft stays until the run is confirmed.
+    const command = composer.begin();
+    if (!command) return;
     setSending(true); setError('');
     // What the person sends is theirs to see at once, wherever they were reading.
     forced.current = true;
-    try { await chat.send(prompt); setDraft(''); }
-    catch (cause) { setError(askError(cause)); }
+    try { await chat.send(prompt, command.attachmentIds ?? [], command.clientMessageId); composer.finish(command.clientMessageId); }
+    catch (cause) { composer.finish(command.clientMessageId, cause); setError(askError(cause)); }
     finally { setSending(false); requestAnimationFrame(() => field.current?.focus({ preventScroll: true })); }
   }
+  // Files dropped anywhere on the chat join its draft, as in a space (#348, C-64).
+  const drop = useFileDrop(composer, !sending);
+  const ready = (!!draft.trim() || files.length > 0) && files.every((file) => file.state === 'ready');
   const onKey = (event: KeyboardEvent<HTMLTextAreaElement>) => { if (sendsOnEnter(event, touch)) { event.preventDefault(); void send(); } };
 
   return (
-    <div className="dm agc-pane" data-agent-conversation={agent.id}>
+    <div className={`dm agc-pane${drop.dropping ? ' is-dropping' : ''}`} data-agent-conversation={agent.id} {...drop.handlers}>
       {/* The schedules line stays above the history, so it is in view whatever the chat holds (the drawing has it in the header). The header names the agent
           once, with its Settings in ⋯, on the computer as on the phone (#1356, #1419). */}
       <div className="agc__top">
@@ -327,9 +342,10 @@ function AgentChatPane({ agent }: { agent: MyAgent }) {
       <div className="composer dm__composer">
         <div className="composer__in">
           <ConnectionLine />
+          <ComposerFiles state={composer} attach="none" disabled={sending} />
           <ComposerBox id="agent-composer" label={`Message ${agent.name}`} fieldRef={field} value={draft} placeholder={[`Message ${agent.name}`, 'Message']}
-            onChange={(value) => { setDraft(value); setError(''); }} onKeyDown={onKey} disabled={sending} boxDisabled={sending}
-            sendLabel={`Send to ${agent.name}`} sendDisabled={!draft.trim() || sending} onSend={() => void send()} />
+            onChange={(value) => { setDraft(value); setError(''); }} onKeyDown={onKey} disabled={sending} boxDisabled={sending} attach={composer} attachDisabled={sending}
+            sendLabel={`Send to ${agent.name}`} sendDisabled={!ready || sending} onSend={() => void send()} />
           {state.kind === 'blocked' && chat.status ? <p className="composer__audience" role="status"><Icon name="alert" size={13} /><span>{state.note}</span></p> : null}
           {error ? <p className="dm__error" role="alert"><Icon name="alert" size={13} />{error}</p> : null}
         </div>

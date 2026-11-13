@@ -294,7 +294,7 @@ class PhoneShellJourney(unittest.TestCase):
         self.views(page).get_by_role("tab", name="Map").click()
         expect(page).to_have_url(re.compile("/map$"))
         page.get_by_role("button", name="Create", exact=True).click()
-        expect(page.get_by_role("dialog", name="Create")).to_be_visible()
+        expect(page.get_by_role("dialog", name="New task")).to_be_visible()  # the "+" opens Create on Task (#1438 point 8)
         self.assertEqual(page.evaluate("document.getAnimations().filter((a) => a.playState === 'running').length"), 0)
 
     # ------------------------------------------------------------------ PF-5

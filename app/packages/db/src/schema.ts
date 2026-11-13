@@ -776,7 +776,14 @@ export const fileGarbage = pgTable('file_garbage', {
 export const projectFiles = pgTable('project_files', {
   id: uuid('id').primaryKey(),
   workspaceId: uuid('workspace_id').notNull(),
-  projectId: uuid('project_id').notNull(),
+  /** Null for a direct message's file (migration 0076, #1438): exactly one of `projectId` and `dmId` is set. */
+  projectId: uuid('project_id'),
+  /** The conversation a direct message's file belongs to, and the message of it once sent; null for a space's. */
+  dmId: uuid('dm_id'),
+  dmMessageId: uuid('dm_message_id'),
+  /** The agent whose private chat a chat's file belongs to (migration 0079, #1438), and the owner's request (a run) it was sent with; null elsewhere. */
+  agentId: uuid('agent_id'),
+  runId: uuid('run_id').references((): AnyPgColumn => personalRuns.id, { onDelete: 'cascade' }),
   uploaderId: text('uploader_id').references(() => authUsers.id),
   uploaderAgentId: uuid('uploader_agent_id'),
   uploadId: uuid('upload_id').notNull(),
@@ -813,6 +820,12 @@ export const projectFiles = pgTable('project_files', {
   index('project_files_expiry_idx').on(table.expiresAt).where(sql`${table.publishedAt} IS NULL`),
   index('project_files_poster_idx').on(table.posterOf).where(sql`${table.posterOf} IS NOT NULL`),
   foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.dmId], foreignColumns: [dms.workspaceId, dms.id] }).onDelete('cascade'),
+  uniqueIndex('project_files_dm_upload_idx').on(table.dmId, table.uploaderId, table.uploadId).where(sql`${table.dmId} IS NOT NULL AND ${table.uploaderId} IS NOT NULL`),
+  uniqueIndex('project_files_dm_message_position_idx').on(table.dmMessageId, table.position).where(sql`${table.dmMessageId} IS NOT NULL`),
+  foreignKey({ columns: [table.workspaceId, table.agentId], foreignColumns: [agents.workspaceId, agents.id] }).onDelete('cascade'),
+  uniqueIndex('project_files_chat_upload_idx').on(table.agentId, table.uploaderId, table.uploadId).where(sql`${table.agentId} IS NOT NULL AND ${table.uploaderId} IS NOT NULL`),
+  uniqueIndex('project_files_run_position_idx').on(table.runId, table.position).where(sql`${table.runId} IS NOT NULL`),
   foreignKey({ columns: [table.workspaceId, table.uploaderAgentId], foreignColumns: [agents.workspaceId, agents.id] }),
   check('project_file_exact_uploader', sql`num_nonnulls(${table.uploaderId}, ${table.uploaderAgentId}) = 1`),
 ]);
@@ -1510,6 +1523,8 @@ export const dmMessages = pgTable('dm_messages', {
   viaColour: text('via_colour').$type<import('@flux/contracts').AgentColour>(),
   /** 0022 (#842): `ai_used` is the line "Ada used AI here (Claude)": its body names the company that receives the conversation. */
   kind: text('kind', { enum: ['text', 'ai_used'] }).notNull().default('text'),
+  /** 0076 (#1438): how many files the message carries; a message with files may have no words. */
+  attachmentCount: smallint('attachment_count').notNull().default(0),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   unique().on(table.dmId, table.sequence),
@@ -1721,6 +1736,8 @@ export const personalRuns = pgTable('personal_runs', {
   /** 0008 (#856): who pressed Stop, so the owner is told. */
   stopRequestedBy: text('stop_requested_by').references(() => authUsers.id, { onDelete: 'set null' }),
   prompt: text('prompt').notNull(),
+  /** 0079 (#1438): how many files the owner sent with a request in its agent's chat; such a request may have no words. */
+  attachmentCount: smallint('attachment_count').notNull().default(0),
   targetSketchId: uuid('target_sketch_id'),
   targetThoughtId: uuid('target_thought_id'),
   continuesRunId: uuid('continues_run_id').references((): AnyPgColumn => personalRuns.id, { onDelete: 'set null' }),
@@ -1812,6 +1829,16 @@ export const personalRunPictures = pgTable('personal_run_pictures', {
   position: smallint('position').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [unique('personal_run_pictures_position').on(table.runId, table.position)]);
+
+/** 0079 (#1438, C-64): the text of a file sent in an agent's chat, read by the file-text worker for that chat's runs only; never a search row. */
+export const agentChatFileText = pgTable('agent_chat_file_text', {
+  fileId: uuid('file_id').notNull().references(() => projectFiles.id, { onDelete: 'cascade' }),
+  part: integer('part').notNull(),
+  workspaceId: uuid('workspace_id').notNull(),
+  agentId: uuid('agent_id').notNull(),
+  page: integer('page'),
+  body: text('body').notNull(),
+}, (table) => [primaryKey({ columns: [table.fileId, table.part] })]);
 
 /** 0022 (#842): until when the owner has read one agent's chat. */
 export const agentChatReads = pgTable('agent_chat_reads', {

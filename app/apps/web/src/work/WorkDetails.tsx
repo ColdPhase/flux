@@ -4,7 +4,7 @@ import { useRevalidator } from 'react-router';
 import { waitingPhrase, type ObjectLink, type Project, type ProjectPerson, type WorkspaceMember, type WorkStatus, type WorkDetailObject, type WorkDetailProjection } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { useStreamEvents } from '../api/stream';
-import { AgentIdentity, Avatar, Button, Icon, Input, Kreska, Morph, PanelGlyph, StatusGlyph, useToast } from '../ui';
+import { AgentIdentity, Avatar, Button, Icon, Kreska, Morph, PanelGlyph, StatusGlyph, useToast } from '../ui';
 import { getProject, listWorkspaceMembers } from '../project/api';
 import { useShellData } from '../app/data';
 import { DetailsSkeleton } from '../app/SurfaceSkeletons';
@@ -28,6 +28,7 @@ import { WorkPagination } from './WorkPagination';
 import { ActivityTimeline, TaskComposer, useTaskActivity } from './TaskActivity';
 import { LinkThoughtButton, LinkedThoughts, useThoughtLinks } from './TaskThoughtLinks';
 import { PropertyMenu } from './PropertyMenu';
+import { WaitingField } from './WaitingField';
 import { useComposerDraft } from '../composer/draft';
 import { RefLink } from '../place/origin';
 import { ReadyToClose, TaskPullRequests } from '../github/TaskPullRequests';
@@ -464,14 +465,10 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
             </div>
             {writable && editingBlocker ? (
               <form className="wd-blocker-form" onSubmit={(event) => { event.preventDefault(); void saveField('blocker', blocker.trim() || null); }}>
-                <Input label="What is it waiting for?" value={blocker} autoFocus onChange={(event) => { fieldEdits.current.blocker++; blockerBase.current ??= item.version; setBlocker(event.target.value); }} maxLength={2000} />
+                {/* One field (#1438 point 12): the reason as words, or a person, a decision or a task picked from its list. */}
+                <WaitingField choices={waitingOptions.filter((option) => option.value !== '')} choice={waitingValue} choiceLabel={waitingName} text={blocker} pickDisabled={busy} autoFocus maxLength={2000}
+                  onChoice={chooseWait} onText={(value) => { fieldEdits.current.blocker++; blockerBase.current ??= item.version; setBlocker(value); }} />
                 {commands.state.blocker !== undefined && item.blocker !== blocker ? <p className="wd-muted">Now: {item.blocker || 'No blocker written.'}</p> : null}
-                <div className="wd-waiting">
-                  <span id="wd-waiting-label">Waiting for</span>
-                  <PropertyMenu label="Waiting for" value={waitingValue} options={waitingOptions} disabled={busy} onChoose={chooseWait}>
-                    <span>{waitingName}</span>
-                  </PropertyMenu>
-                </div>
                 <div className="wd-blocker__form-acts">
                   <Button variant="secondary" size="sm" onClick={() => { blockerBase.current = null; setBlocker(undefined); setEditingBlocker(false); }}>Cancel</Button>
                   <Button type="submit" variant="secondary" size="sm" busy={busy} disabled={blocker.trim() === (item.blocker ?? '')}>Save</Button>

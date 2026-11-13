@@ -38,7 +38,12 @@ function uploaderOf(principal: Principal): ActorRef {
 }
 const same = (a: ActorRef, b: ActorRef) => a.kind === b.kind && a.id === b.id;
 /** Published to a message or (#252) to a map thought; unpublished files are their uploader's private staging. */
-export const isPublished = (row: Pick<StoredFileRow, 'messageId' | 'thoughtId'>) => row.messageId !== null || row.thoughtId !== null;
+export const isPublished = (row: Pick<StoredFileRow, 'messageId' | 'thoughtId'> & { dmMessageId?: string | null; runId?: string | null }) =>
+  row.messageId !== null || row.dmMessageId != null || row.runId != null || row.thoughtId !== null;
+/** The id of the place a file belongs to: its space's, its direct message's or its agent chat's (#1438 point 10, C-64). */
+export const fileScopeOf = (row: Pick<StoredFileRow, 'projectId' | 'dmId' | 'agentId'>) => (row.projectId ?? row.dmId ?? row.agentId)!;
+/** Where a file is staged: a space, a direct message, or the private chat with one of the person's agents (#1438 point 10, C-64). */
+export type Place = 'project' | 'dm' | 'chat';
 const unavailable = () => new NotFoundError('File', 'FILE_UNAVAILABLE');
 const attachmentUnavailable = () => new NotFoundError('Attachment', 'ATTACHMENT_UNAVAILABLE');
 
@@ -109,7 +114,7 @@ async function canonicalUpload(bytes: AsyncIterable<Uint8Array>, canonicalizer: 
 function staged(row: StoredFileRow): StagedFile {
   if (row.state !== 'ready' || row.size === null || row.sha256 === null || row.readyAt === null || row.expiresAt === null)
     throw new Error('A staged file must be ready and unpublished');
-  return { id: row.id, projectId: row.projectId, uploadId: row.uploadId, name: row.name, size: row.size, sha256: row.sha256,
+  return { id: row.id, ...(row.projectId !== null ? { projectId: row.projectId } : row.dmId !== null ? { dmId: row.dmId } : { agentId: row.agentId! }), uploadId: row.uploadId, name: row.name, size: row.size, sha256: row.sha256,
     readyAt: row.readyAt.toISOString(), expiresAt: row.expiresAt.toISOString(), ...storedDetail(row) };
 }
 
@@ -214,9 +219,9 @@ export async function lockAttachments(files: FileRepository, storage: Pick<FileS
     const row = rows.get(fileId);
     // Another person's file, another project's, a reservation or a guessed id are all the same unknown file.
     // A video's poster (C-61) is no attachment of its own: it goes to the message with its video.
-    if (!row || row.projectId !== projectId || !same(row.uploader, author) || row.state !== 'ready' || row.size === null || row.posterOf)
+    if (!row || fileScopeOf(row) !== projectId || !same(row.uploader, author) || row.state !== 'ready' || row.size === null || row.posterOf)
       throw attachmentUnavailable();
-    if (isPublished(row)) throw new ConflictError(row.messageId !== null ? 'A file is already attached to another message'
+    if (isPublished(row)) throw new ConflictError(row.messageId !== null || row.dmMessageId != null || row.runId != null ? 'A file is already attached to another message'
       : 'A file is already the image of a map thought', 'ATTACHMENT_ALREADY_PUBLISHED');
     if (!row.expiresAt || row.expiresAt <= now || !row.sha256 || !await storage.present(row.id, row.size, row.keyVersion != null)) throw attachmentUnavailable();
     // A video (C-61) has its own cap and staging allowance, which already keep a message's videos within one cap.
@@ -328,6 +333,16 @@ export async function receiveRunOwnFile(storage: FileStorage, options: Pick<File
 export function createFileUseCases(unit: FileUnitOfWork, storage: FileStorage, clock: () => Date = () => new Date(), options: FileUseCaseOptions = {}) {
   const videoCap = options.videoBytes ?? FILE_LIMITS.videoBytes;
   const pictures = options.pictures;
+  /** The right to put a file in this place now: to write in the space, or in the direct message the person takes part in (#1438 point 10). */
+  const writeTo = async (ports: FilePorts, principal: Principal, place: Place, placeId: string, lock = false): Promise<{ workspaceId: string }> => {
+    if (place === 'project') return ports.access.requireProject(principal, 'write', placeId, ...(lock ? [{ lock: true as const }] : []));
+    if (place === 'chat') {
+      if (!ports.access.requireChat) throw new NotFoundError('Agent', 'AGENT_NOT_FOUND');
+      return ports.access.requireChat(principal, placeId, ...(lock ? [{ lock: true as const }] : []));
+    }
+    if (!ports.access.requireDm) throw new NotFoundError('Conversation', 'DM_NOT_FOUND');
+    return ports.access.requireDm(principal, 'dm.write', placeId, ...(lock ? [{ lock: true as const }] : []));
+  };
   /** The person's videos arriving now (C-61), by uploader. */
   const arriving = new Map<string, number>();
   /** Best effort: frees a reservation whose bytes never became ready. */
@@ -340,7 +355,7 @@ export function createFileUseCases(unit: FileUnitOfWork, storage: FileStorage, c
   /** The caller's own ready, unsent video that a poster may be given (C-61), locked; anything else is the same unknown file. */
   async function posterTarget(ports: FilePorts, projectId: string, uploader: ActorRef, videoId: string): Promise<StoredFileRow> {
     const [video] = await ports.files.lockFiles([videoId]);
-    if (!video || video.projectId !== projectId || !same(video.uploader, uploader) || video.state !== 'ready' || !video.videoContainer
+    if (!video || fileScopeOf(video) !== projectId || !same(video.uploader, uploader) || video.state !== 'ready' || !video.videoContainer
       || isPublished(video) || !video.expiresAt || video.expiresAt <= clock()) throw attachmentUnavailable();
     return video;
   }
@@ -356,8 +371,17 @@ export function createFileUseCases(unit: FileUnitOfWork, storage: FileStorage, c
         return { id: picture.id, name: picture.name, size: picture.size, sha256: picture.sha256, video: null as VideoContainer | null };
       }
       if (file.state !== 'ready' || file.size === null) throw unavailable();
-      try { await ports.access.requireProject(principal, 'read', file.projectId); }
-      catch (error) { if (error instanceof NotFoundError || error instanceof ForbiddenError) throw unavailable(); throw error; }
+      try {
+        // A direct message's file is for its current people only (#1438 point 10); a space's for whoever may read the space.
+        if (file.dmId !== null) {
+          if (!ports.access.requireDm) throw unavailable();
+          await ports.access.requireDm(principal, 'dm.read', file.dmId);
+        } else if (file.agentId) {
+          // A file of an agent's chat is its owner's alone, while the agent is theirs and they are in its company (C-64).
+          if (!ports.access.requireChat) throw unavailable();
+          await ports.access.requireChat(principal, file.agentId);
+        } else await ports.access.requireProject(principal, 'read', file.projectId!);
+      } catch (error) { if (error instanceof NotFoundError || error instanceof ForbiddenError) throw unavailable(); throw error; }
       if (!isPublished(file)) {
         const mine = principal.kind === 'human' && file.uploader.kind === 'human' && file.uploader.id === principal.id;
         if (!mine || !file.expiresAt || file.expiresAt <= clock()) throw unavailable();
@@ -373,8 +397,10 @@ export function createFileUseCases(unit: FileUnitOfWork, storage: FileStorage, c
    * operator's cap, with longer to arrive. A poster is a small file that belongs to one of the caller's staged videos.
    */
   async function stageBytes(principal: Principal, projectIdInput: string, query: { uploadId?: unknown; name?: unknown },
-    bytes: AsyncIterable<Uint8Array>, declaredLength?: number, poster?: { videoId: string }): Promise<StagedFile> {
-    const projectId = id(projectIdInput, 'projectId').toLowerCase();
+    bytes: AsyncIterable<Uint8Array>, declaredLength?: number, poster?: { videoId: string }, place: Place = 'project'): Promise<StagedFile> {
+    // `projectId` is the id of the place the file goes to: a space's, or a direct message's (#1438 point 10).
+    const projectId = id(projectIdInput, place === 'dm' ? 'dmId' : place === 'chat' ? 'agentId' : 'projectId').toLowerCase();
+    const where = place === 'dm' ? { dmId: projectId } : place === 'chat' ? { agentId: projectId } : { projectId };
     const uploadId = id(query.uploadId, 'uploadId').toLowerCase();
     const name = displayName(query.name);
     const uploader = uploaderOf(principal);
@@ -384,14 +410,14 @@ export function createFileUseCases(unit: FileUnitOfWork, storage: FileStorage, c
     if (declaredLength === 0) throw new InvalidInputError('A file needs at least one byte', 'EMPTY_FILE');
 
     const admitted = await unit.run(async (ports) => {
-      const project = await ports.access.requireProject(principal, 'write', projectId, { lock: true });
+      const project = await writeTo(ports, principal, place, projectId, true);
       await ports.files.lockUploader(projectId, uploader);
       const now = clock();
       const existing = await ports.files.findUpload(projectId, uploader, uploadId);
       if (existing?.state === 'ready' && (isPublished(existing) || (existing.expiresAt && existing.expiresAt > now))) {
         if (await ports.files.activeReplay(existing.id, now))
           throw new ConflictError('This upload is being verified', 'UPLOAD_IN_PROGRESS');
-        const verification = await ports.files.reserve({ id: randomUUID(), workspaceId: project.workspaceId, projectId, uploader,
+        const verification = await ports.files.reserve({ id: randomUUID(), workspaceId: project.workspaceId, ...where, uploader,
           uploadId: randomUUID(), name, reservedBytes: 0, replayOf: existing.id,
           expiresAt: new Date(now.getTime() + FILE_LIMITS.reservationMinutes * MINUTE) });
         return { replay: existing, verification, video: existing.videoContainer ?? null, reserveBytes: 0 };
@@ -413,9 +439,9 @@ export function createFileUseCases(unit: FileUnitOfWork, storage: FileStorage, c
       const reserveBytes = video ? Math.max(1, Math.min(declaredLength ?? limit, limit)) : limit;
       const quota = video ? await ports.files.stagedVideoBytes(projectId, uploader, now) + reserveBytes > videoCap
         : await ports.files.stagedBytes(projectId, uploader, now) + reserveBytes > FILE_LIMITS.stagedBytes;
-      if (quota) throw new ConflictError('Too many files are waiting to be sent in this space. Send or remove some first.', 'UPLOAD_QUOTA_EXCEEDED');
+      if (quota) throw new ConflictError(`Too many files are waiting to be sent in this ${place === 'project' ? 'space' : place === 'dm' ? 'conversation' : 'chat'}. Send or remove some first.`, 'UPLOAD_QUOTA_EXCEEDED');
       const arrival = (video ? FILE_LIMITS.videoReceiveSeconds * 1000 : 0) + FILE_LIMITS.reservationMinutes * MINUTE;
-      const reserved = await ports.files.reserve({ id: randomUUID(), workspaceId: project.workspaceId, projectId, uploader, uploadId,
+      const reserved = await ports.files.reserve({ id: randomUUID(), workspaceId: project.workspaceId, ...where, uploader, uploadId,
         name, reservedBytes: reserveBytes, expiresAt: new Date(now.getTime() + arrival), ...(video ? { videoContainer: video } : {}),
         ...(poster ? { posterOf: poster.videoId } : {}) });
       return { reserved, video, reserveBytes };
@@ -450,7 +476,7 @@ export function createFileUseCases(unit: FileUnitOfWork, storage: FileStorage, c
         await received.discard();
         const original = admitted.replay;
         return await unit.run(async (ports) => {
-          await ports.access.requireProject(principal, 'write', projectId, { lock: true });
+          await writeTo(ports, principal, place, projectId, true);
           await ports.files.lockUploader(projectId, uploader);
           const current = await ports.files.findUpload(projectId, uploader, uploadId);
           if (!current || current.id !== original.id || current.state !== 'ready'
@@ -469,7 +495,7 @@ export function createFileUseCases(unit: FileUnitOfWork, storage: FileStorage, c
     plaintext.length = 0; head.chunks.length = 0;
     try {
       return await unit.run(async (ports) => {
-        await ports.access.requireProject(principal, 'write', projectId, { lock: true });
+        await writeTo(ports, principal, place, projectId, true);
         await ports.files.lockUploader(projectId, uploader);
         const live = await ports.files.findFile(reservation.id);
         if (!live || live.state !== 'receiving' || !live.expiresAt || live.expiresAt <= clock())
@@ -506,14 +532,14 @@ export function createFileUseCases(unit: FileUnitOfWork, storage: FileStorage, c
      * would let one person hold any number of slow uploads open: at most {@link VIDEO_ARRIVALS} of a person's videos arrive at once
      * (C-61), in this API process. The page sends one file at a time.
      */
-    async stage(principal: Principal, projectId: string, query: { uploadId?: unknown; name?: unknown }, bytes: AsyncIterable<Uint8Array>, declaredLength?: number) {
-      if (typeof query.name !== 'string' || !videoNameContainer(query.name)) return stageBytes(principal, projectId, query, bytes, declaredLength);
+    async stage(principal: Principal, projectId: string, query: { uploadId?: unknown; name?: unknown }, bytes: AsyncIterable<Uint8Array>, declaredLength?: number, place: Place = 'project') {
+      if (typeof query.name !== 'string' || !videoNameContainer(query.name)) return stageBytes(principal, projectId, query, bytes, declaredLength, undefined, place);
       const uploader = uploaderOf(principal);
       const key = `${uploader.kind}:${uploader.id}`;
       const count = arriving.get(key) ?? 0;
       if (count >= VIDEO_ARRIVALS) throw new RateLimitedError(30, `${VIDEO_ARRIVALS} of your videos are already arriving. Wait for one to finish.`, 'UPLOADS_BUSY');
       arriving.set(key, count + 1);
-      try { return await stageBytes(principal, projectId, query, bytes, declaredLength); }
+      try { return await stageBytes(principal, projectId, query, bytes, declaredLength, undefined, place); }
       finally { const left = (arriving.get(key) ?? 1) - 1; if (left > 0) arriving.set(key, left); else arriving.delete(key); }
     },
 
@@ -524,15 +550,15 @@ export function createFileUseCases(unit: FileUnitOfWork, storage: FileStorage, c
      * Gives the caller's staged video its poster (C-61): the picture the browser drew is decoded and re-encoded as a small WebP (never
      * kept as sent), and stored as a file of the same space that follows the video to its message. A second poster replaces the first.
      */
-    async stagePoster(principal: Principal, projectIdInput: string, videoIdInput: string, bytes: AsyncIterable<Uint8Array>, declaredLength?: number): Promise<StagedFile> {
-      const projectId = id(projectIdInput, 'projectId').toLowerCase();
+    async stagePoster(principal: Principal, projectIdInput: string, videoIdInput: string, bytes: AsyncIterable<Uint8Array>, declaredLength?: number, place: Place = 'project'): Promise<StagedFile> {
+      const projectId = id(projectIdInput, place === 'dm' ? 'dmId' : place === 'chat' ? 'agentId' : 'projectId').toLowerCase();
       const videoId = id(videoIdInput, 'fileId').toLowerCase();
       const uploader = uploaderOf(principal);
       if (!options.poster) throw new NotFoundError('Poster', 'POSTER_UNAVAILABLE');
       if (declaredLength !== undefined && declaredLength > FILE_LIMITS.posterBytes) throw new PayloadTooLargeError('A poster is at most 512 KiB', 'POSTER_TOO_LARGE');
       // The right to write here and to this video are checked before a picture is decoded: decoding is the work to keep from strangers.
       await unit.run(async (ports) => {
-        await ports.access.requireProject(principal, 'write', projectId);
+        await writeTo(ports, principal, place, projectId);
         await posterTarget(ports, projectId, uploader, videoId);
       });
       let raw: Buffer;
@@ -544,7 +570,7 @@ export function createFileUseCases(unit: FileUnitOfWork, storage: FileStorage, c
       }
       if (!raw.length) throw new InvalidInputError('A poster needs at least one byte', 'EMPTY_FILE');
       const picture = await options.poster(raw);
-      return stageBytes(principal, projectId, { uploadId: randomUUID(), name: 'poster.webp' }, Readable.from([Buffer.from(picture)]), picture.byteLength, { videoId });
+      return stageBytes(principal, projectId, { uploadId: randomUUID(), name: 'poster.webp' }, Readable.from([Buffer.from(picture)]), picture.byteLength, { videoId }, place);
     },
 
     /**
@@ -598,9 +624,9 @@ export function createFileUseCases(unit: FileUnitOfWork, storage: FileStorage, c
       const removed = await unit.run(async (ports) => {
         const now = clock();
         const candidates = await ports.files.expired(now, limit);
-        const uploaders = [...new Map(candidates.map((row) => [`${row.projectId}:${row.uploader.kind}:${row.uploader.id}`, row])).entries()]
+        const uploaders = [...new Map(candidates.map((row) => [`${fileScopeOf(row)}:${row.uploader.kind}:${row.uploader.id}`, row])).entries()]
           .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([, row]) => row);
-        for (const row of uploaders) await ports.files.lockUploader(row.projectId, row.uploader);
+        for (const row of uploaders) await ports.files.lockUploader(fileScopeOf(row), row.uploader);
         const gone: StoredFileRow[] = [];
         for (const row of await ports.files.lockFiles(candidates.map((candidate) => candidate.id))) {
           if (isPublished(row) || !row.expiresAt || row.expiresAt > now) continue;
