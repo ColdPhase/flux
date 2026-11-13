@@ -233,6 +233,25 @@ def seed(browser: Browser) -> dict:
 # Screens: the #763 list plus every route of router.tsx and every state of #1215.
 # ---------------------------------------------------------------------------------------------------------------
 
+def push_stub(answer: str) -> str:
+    """The browser's permission and PushManager, stubbed as push-offer.e2e.ts does (headless Chromium reports "denied" even after a
+    grant, and its push service is outside this network). The page, the API and the worker are real. Nothing where the engine has no
+    PushManager (Playwright's WebKit): the iPhone/iPad lane then shows what Safari without a Home Screen app shows."""
+    return """(() => {
+  if (typeof PushManager === 'undefined' || typeof Notification === 'undefined') return;
+  let saved = null;
+  const endpoint = 'https://push.example.test/audit/' + Math.random().toString(36).slice(2);
+  const keys = {p256dh: 'BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA_0QTpQtUbVlUls0VJXg7A8u-Ts1XbjhazAkj7I99e8QcYP7DkM', auth: 'tBHItJI5svbpez7KI4CCXg'};
+  const proto = PushManager.prototype;
+  proto.subscribe = async function (options) { saved = {endpoint, expirationTime: null, options, toJSON: () => ({endpoint, expirationTime: null, keys}), unsubscribe: async () => { saved = null; return true; }}; return saved; };
+  proto.getSubscription = async function () { return saved; };
+  let permission = localStorage.getItem('flux-audit-permission') || 'default';
+  proto.permissionState = async function () { return permission === 'granted' ? 'granted' : permission === 'denied' ? 'denied' : 'prompt'; };
+  Object.defineProperty(Notification, 'permission', {configurable: true, get: () => permission});
+  Notification.requestPermission = async () => { permission = '%s'; try { localStorage.setItem('flux-audit-permission', permission); } catch (e) {} return permission; };
+})();""" % answer
+
+
 @dataclass
 class Screen(vca.Screen):
     init: str = ""   # a script run before the page's own (an isolated context): a remembered offer, a refused permission
@@ -290,9 +309,9 @@ EXTRA_SCREENS = [
     S("new-space-encrypted-phone", "/", steps=[("click", ".phone-fab"), ("click", "[role='dialog'] :text-is('Space')"), ("wait", "[role='dialog'] input"),
                                               ("role", "switch", "Encrypted")], only="phone"),
     S("notice", "/", steps=[("dm_from", "jonas", "Are you at the garden this afternoon? I have the ladder."), ("wait", "[role='status'] >> text=Jonas")], isolated=True),
-    S("push-offer", "/", steps=[("js", "() => { window.scrollTo(0, 1e6); document.querySelectorAll('.pane-scroll, main, [data-scroll]').forEach((e) => e.scrollTo(0, 1e6)); }")], init="localStorage.setItem('flux:push-offer:{me_ada}', JSON.stringify({ready: true}))", isolated=True, needs=("me_ada",)),
-    S("push-blocked", "/", steps=[("js", "() => { window.scrollTo(0, 1e6); document.querySelectorAll('.pane-scroll, main, [data-scroll]').forEach((e) => e.scrollTo(0, 1e6)); }")], init=("localStorage.setItem('flux:push-offer:{me_ada}', JSON.stringify({ready: true}));"
-                                      "Object.defineProperty(Notification, 'permission', {get: () => 'denied'})"), isolated=True, needs=("me_ada",)),
+    S("push-offer", "/", steps=[("js", "() => { window.scrollTo(0, 1e6); document.querySelectorAll('.pane-scroll, main, [data-scroll]').forEach((e) => e.scrollTo(0, 1e6)); }")], init="localStorage.setItem('flux:push-offer:{me_ada}', JSON.stringify({ready: true}));" + push_stub("denied"), isolated=True, needs=("me_ada",)),
+    S("push-blocked", "/", steps=[("click", "section.push-offer button:has-text('Turn on')"), ("wait", "section.push-offer h3:has-text('blocked')"), ("js", "() => { window.scrollTo(0, 1e6); document.querySelectorAll('.pane-scroll, main, [data-scroll]').forEach((e) => e.scrollTo(0, 1e6)); }")],
+      init="localStorage.setItem('flux:push-offer:{me_ada}', JSON.stringify({ready: true}));" + push_stub("denied"), isolated=True, needs=("me_ada",)),
     S("photo-sheet-phone", "/projects/{p}", steps=[("role", "button", "Add photos or files|Attach|Add a photo|Photos")], only="phone"),
     S("task-state-menu", "/projects/{p}/tasks?view=board&open=work:{task}", steps=[("role", "button", "In progress|State|Status")], needs=("task",)),
     S("select-open", "/settings/agents", steps=[("click", "button[role='combobox']")]),
@@ -597,7 +616,8 @@ def phase_states(pw, engine: str, data: dict) -> None:
                     path = screen.path.format(**ids)
                     context = browser.new_context(**context_options(pw, engine, win, theme, who=screen.who, data=data))
                     page = context.new_page()
-                    # 1. Which reads are the screen's own (not the shell's): the shell's are those Home makes.
+                    # 1. Which reads are the screen's own (not the shell's): the shell's are those of a page with no data of its own
+                    # (Settings › Keyboard shortcuts); a signed-out page has no shell.
                     shell: set[str] = set()
                     own: set[str] = set()
                     target = shell
@@ -606,7 +626,7 @@ def phase_states(pw, engine: str, data: dict) -> None:
                     base = OUT / "states" / f"{engine}-{theme}-{win}"
                     base.mkdir(parents=True, exist_ok=True)
                     try:
-                        page.goto(ORIGIN + "/", wait_until="domcontentloaded", timeout=25000)
+                        page.goto(ORIGIN + ("/settings/shortcuts" if screen.who != "anon" else "/sign-in"), wait_until="domcontentloaded", timeout=25000)
                         vca.settle(page)
                         target = own
                         page.goto(ORIGIN + path, wait_until="domcontentloaded", timeout=25000)
@@ -901,16 +921,17 @@ def phase_keys(pw, engine: str, data: dict) -> None:
         check.run("G I goes to Inbox", open_at(), g_i)
 
         def j_k(page):
-            before = page.evaluate("() => document.activeElement && (document.activeElement.innerText || '').slice(0, 60)")
+            # The selected item is the open (expanded) card; J and K move it.
+            snap = "() => [...document.querySelectorAll('main [aria-expanded=\"true\"], main [aria-selected=\"true\"], main [aria-current=\"true\"], main .is-open, main .is-selected')].map(e => (e.innerText || '').slice(0, 50)).join(' | ') || (document.querySelector('main')?.innerText || '').slice(0, 400)"
+            before = page.evaluate(snap)
             press_seq(page, "j")
-            one = page.evaluate("() => document.activeElement && (document.activeElement.innerText || '').slice(0, 60)")
+            one = page.evaluate(snap)
             press_seq(page, "j")
-            two = page.evaluate("() => document.activeElement && (document.activeElement.innerText || '').slice(0, 60)")
+            two = page.evaluate(snap)
             press_seq(page, "k")
-            back = page.evaluate("() => document.activeElement && (document.activeElement.innerText || '').slice(0, 60)")
-            sel = page.evaluate("() => [...document.querySelectorAll('[aria-selected=\"true\"], [aria-current=\"true\"], .is-selected')].map(e => (e.innerText||'').slice(0,40))")
-            assert one != two and back == one, f"J/K did not move: {before!r} → {one!r} → {two!r} → {back!r}; selected {sel}"
-            return f"{one!r} → {two!r} → {back!r}"
+            back = page.evaluate(snap)
+            assert one != two and back == one, f"J/K did not move the selection: {before[:60]!r} → {one[:60]!r} → {two[:60]!r} → {back[:60]!r}"
+            return "J, J, K moved the open item down, down, up"
         check.run("J/K move in the Inbox list", open_at("/inbox"), j_k)
 
         def r_reply(page):
@@ -972,6 +993,12 @@ def phase_journeys(pw, engine: str, data: dict) -> None:
             tag = f"{engine}-{win}-{uuid.uuid4().hex[:4]}"
             press = (lambda loc: loc.tap()) if touch else (lambda loc: loc.click())
 
+            def send(page):
+                if touch:
+                    press(page.get_by_role("button", name=re.compile(r"^Send")).last)
+                else:
+                    page.keyboard.press("Enter")
+
             def composer(page):
                 box = page.locator("textarea:visible, [contenteditable='true']:visible").last
                 box.wait_for(state="visible", timeout=8000)
@@ -982,7 +1009,7 @@ def phase_journeys(pw, engine: str, data: dict) -> None:
                 box = composer(page)
                 press(box)
                 page.keyboard.type(text, delay=5)
-                page.keyboard.press("Enter")
+                send(page)
                 page.get_by_text(text).first.wait_for(timeout=8000)
                 page.reload()
                 vca.settle(page)
@@ -995,7 +1022,7 @@ def phase_journeys(pw, engine: str, data: dict) -> None:
                 box = composer(page)
                 press(box)
                 page.keyboard.type(text, delay=5)
-                page.keyboard.press("Enter")
+                send(page)
                 page.get_by_text(text).first.wait_for(timeout=8000)
                 page.reload()
                 vca.settle(page)
@@ -1007,7 +1034,7 @@ def phase_journeys(pw, engine: str, data: dict) -> None:
                 box = composer(page)
                 press(box)
                 page.keyboard.type(text, delay=5)
-                page.keyboard.press("Enter")
+                send(page)
                 page.get_by_text(text).first.wait_for(timeout=8000)
                 page.reload()
                 vca.settle(page)
@@ -1021,24 +1048,23 @@ def phase_journeys(pw, engine: str, data: dict) -> None:
                 else:
                     page.keyboard.press("c")
                 page.locator("[role='dialog']").first.wait_for(timeout=6000)
-                field = page.locator("[role='dialog'] textarea:visible, [role='dialog'] input[type='text']:visible, [role='dialog'] [contenteditable='true']:visible").first
-                field.click()
+                field = page.locator("[role='dialog']").get_by_placeholder(re.compile("What needs doing")).first
+                press(field)
                 page.keyboard.type(title, delay=5)
-                page.keyboard.press("Enter" if not touch else "Enter")
+                press(page.locator("[role='dialog']").get_by_role("button", name=re.compile(r"^Create task")).first)
                 page.wait_for_timeout(1500)
-                if visible_dialog(page):
-                    button = page.locator("[role='dialog']").get_by_role("button", name=re.compile(r"^(Create|Add|Create task|Save)", re.I)).first
-                    if button.count():
-                        press(button)
-                        page.wait_for_timeout(1500)
-                page.goto(ORIGIN + "/tasks")
+                toast = page.get_by_text(re.compile(r"Task #\d+ created")).count()
+                api = api_for(browser, data, "ada")
+                where = ""
+                for project in vca.items(call(api, "GET", f"/api/v1/workspaces/{ids['ws']}/projects")):
+                    if any(t["title"] == title for t in vca.items(call(api, "GET", f"/api/v1/projects/{project['id']}/work?limit=200"))):
+                        where = project["id"]
+                assert where, "the task was not saved"
+                page.goto(ORIGIN + f"/projects/{where}/tasks?view=list")
                 vca.settle(page)
-                if not page.get_by_text(title).count():
-                    page.goto(ORIGIN + f"/projects/{ids['pe']}/tasks?view=list")
-                    vca.settle(page)
                 assert page.get_by_text(title).count() >= 1, "the new task is not listed after a reload"
-                return page.url.replace(ORIGIN, "")
-            check.run("create a task from Create, find it after a reload", open_at("/projects/{pe}"), create_task)
+                return f"toast “Task #N created”: {bool(toast)}; listed at {page.url.replace(ORIGIN, '')}"
+            check.run("create a task from Create, find it after a reload", open_at("/" if touch else "/projects/{pe}"), create_task)
 
             def task_state(page):
                 if touch:
@@ -1120,7 +1146,7 @@ def phase_journeys(pw, engine: str, data: dict) -> None:
                 box = composer(page)
                 press(box)
                 page.keyboard.type(text, delay=5)
-                page.keyboard.press("Enter")
+                send(page)
                 page.get_by_text(text).first.wait_for(timeout=8000)
                 page.wait_for_timeout(3000)
                 page.reload()
@@ -1143,12 +1169,11 @@ def phase_journeys(pw, engine: str, data: dict) -> None:
 
             def map_thought(page):
                 text = f"Audit thought {tag}"
-                canvas = page.locator("[data-sketch-canvas], .sketch, .map-canvas, main").first
-                box = canvas.bounding_box()
-                page.mouse.dblclick(box["x"] + box["width"] * 0.7, box["y"] + box["height"] * 0.7) if not touch else page.touchscreen.tap(box["x"] + box["width"] * 0.7, box["y"] + box["height"] * 0.7)
-                page.wait_for_timeout(600)
-                page.keyboard.type(text, delay=5)
-                page.keyboard.press("Enter")
+                press(page.get_by_role("toolbar", name="Map tools").get_by_role("button", name="Thought", exact=True))
+                field = page.get_by_role("form", name="New thought draft").get_by_label("Thought text")
+                field.wait_for(timeout=6000)
+                field.type(text, delay=5)
+                field.press("Enter")
                 page.wait_for_timeout(1500)
                 page.reload()
                 vca.settle(page)
@@ -1173,7 +1198,9 @@ def api_for(browser, data, who):
 STANDALONE = r"""
 Object.defineProperty(navigator, 'standalone', {get: () => true});
 const realMatch = window.matchMedia.bind(window);
-window.matchMedia = (q) => /display-mode:\s*standalone/.test(q) ? Object.assign(realMatch('(min-width: 0px)'), {media: q, matches: true}) : realMatch(q);
+window.matchMedia = (q) => /display-mode:\s*standalone/.test(q)
+  ? {matches: true, media: q, onchange: null, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, dispatchEvent() { return false; }}
+  : realMatch(q);
 """
 
 
@@ -1265,7 +1292,7 @@ def phase_mob(pw, engine: str, data: dict) -> None:
                 box.tap()
                 page.context.set_offline(True)
                 page.keyboard.type(text, delay=5)
-                page.keyboard.press("Enter")
+                page.get_by_role("button", name=re.compile(r"^Send")).last.tap()
                 page.wait_for_timeout(2500)
                 pending = page.locator("body").inner_text()
                 path = OUT / "mob" / f"{engine}-{win}" / "offline-send-pending.png"
@@ -1344,21 +1371,38 @@ def phase_mob(pw, engine: str, data: dict) -> None:
                 return "both messages once, without a reload"
             check.run("MOB-5 back after the connection dropped: caught up, no duplicates", open_at("/dm/{dm}"), reconnect)
 
-            offer = f"localStorage.setItem('flux:push-offer:{ids.get('me_ada', '')}', JSON.stringify({{ready: true}}))"
+            offer = f"localStorage.setItem('flux:push-offer:{ids.get('me_ada', '')}', JSON.stringify({{ready: true}}));"
 
-            def push_offer(page):
-                text = page.inner_text("body")
-                found = re.search(r"Turn on|notifications|Add to Home Screen", text)
-                assert found, "no push offer"
-                card = page.locator("[data-push-offer], [aria-label*='otification' i]").first
-                return f"offer says {found.group(0)!r}; card {card.count()}"
-            check.run("MOB-4 push offer appears (server can push)", open_at("/", init=offer), push_offer)
-
-            def push_blocked(page):
-                text = page.inner_text("body")
-                assert re.search(r"blocked|Block|turn them back on|allow", text, re.I), "no way back after a denial"
-                return "says how to allow again"
-            check.run("MOB-4 after a denial the way back is shown", open_at("/", init=offer + ";Object.defineProperty(Notification, 'permission', {get: () => 'denied'})"), push_blocked)
+            def push_answer(expected: str):
+                def fn(page):
+                    card = page.locator("section.push-offer")
+                    card.wait_for(timeout=8000)
+                    title = card.locator("h3").inner_text()
+                    turn_on = card.get_by_role("button", name="Turn on")
+                    if not turn_on.count():
+                        assert expected == "home-screen", f"the offer has no Turn on: {title!r}"
+                        return f"{title!r} (the Home Screen steps: Safari without an installed app)"
+                    turn_on.tap()
+                    page.wait_for_timeout(2500)
+                    after = page.inner_text("body")
+                    if expected == "granted":
+                        assert "Notifications are on for this device" in after, f"no confirmation after a grant: {after[:160]!r}"
+                        assert not page.locator("section.push-offer").count(), "the card stayed after a grant"
+                        page.goto(ORIGIN + "/settings/notifications")
+                        vca.settle(page)
+                        return f"{title!r} → Turn on → granted → toast; Settings › Notifications: " + page.inner_text("main")[:160].replace("\n", " · ")
+                    blocked = page.locator("section.push-offer h3").inner_text() if page.locator("section.push-offer").count() else ""
+                    assert "blocked" in blocked, f"after a denial the card says {blocked!r}"
+                    page.goto(ORIGIN + "/settings/notifications")
+                    vca.settle(page)
+                    settings = page.inner_text("main")
+                    assert re.search(r"blocked|Allow|allow", settings), "Settings › Notifications does not say how to allow again"
+                    return f"{title!r} → Turn on → denied → {blocked!r}; Settings says how to allow"
+                return fn
+            want = "home-screen" if engine == "webkit" else "granted"
+            check.run("MOB-4 push offer → Turn on → allowed (stubbed permission)", open_at("/", init=offer + push_stub("granted")), push_answer(want))
+            want = "home-screen" if engine == "webkit" else "denied"
+            check.run("MOB-4 push offer → Turn on → blocked, and the way back", open_at("/", init=offer + push_stub("denied")), push_answer(want))
 
             def settings_notifications(page):
                 text = page.inner_text("main") if page.locator("main").count() else page.inner_text("body")

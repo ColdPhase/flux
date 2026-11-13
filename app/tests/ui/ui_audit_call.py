@@ -71,7 +71,12 @@ class CallScreens(LiveBase):
             theme = "dark" if dark else "light"
             nia = self.page("nia", dark=dark)
             self.open_conversation(nia)
-            self.call(nia)
+            rejoin = nia.locator("header.top, header.phead").get_by_role("button", name="Join")
+            if rejoin.count() and rejoin.first.is_visible():  # the first pass's call may still be live: Nia joins it again
+                rejoin.first.click()
+                expect(self.bar(nia)).to_be_visible(timeout=20000)
+            else:
+                self.call(nia)
             for win in WINDOWS:
                 touch = win in ("390", "320", "820p")
                 jonas = self.window("jonas", win, dark)
