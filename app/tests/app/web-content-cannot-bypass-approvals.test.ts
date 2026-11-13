@@ -11,7 +11,7 @@ import { assistantScene, changesOf, human, type AssistantScene } from './support
 
 // F-036 AG-8 and #918, with the case the review of #921 added: web content, and another person's task title that becomes a run's request,
 // are untrusted input that can try to instruct an agent. The defence is not the model's obedience but the rules: only the owner instructs,
-// deleting and other people's things always wait, the owner's "What it may do" holds, nothing can approve a waiting item but the owner in
+// deleting and other people's things always wait, the owner's Ask me first holds, nothing can approve a waiting item but the owner in
 // their own session, and the one way out, a web read, is checked (#1065, founder direction 2026-11-09, C-30): any address opens but one that
 // carries private Flux text the run read, and every address the server sent a request to is listed in the answer. Here the "model" OBEYS every
 // instruction it reads, through the real worker loop and the real /mcp route, and each time the rules hold. Needs the API of the check

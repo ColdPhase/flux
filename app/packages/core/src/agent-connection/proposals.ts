@@ -8,7 +8,7 @@ import type { Principal } from '../types.js';
 
 /**
  * The verified sign-in of a client: who it acts for and as. It carries no scope and no project list; where it may act is the
- * owner's rights at the moment of each call, and what it may change is the agent's "What it may do" (F-036 AG-3, #859).
+ * owner's rights at the moment of each call, and what it may change is the agent's Ask me first (F-036 AG-3, #859).
  */
 export interface AgentConnectionContext {
   connectionId: string;

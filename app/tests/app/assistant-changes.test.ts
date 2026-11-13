@@ -27,7 +27,7 @@ import { FakeCompute, FakeConnections, FakeQueue } from './support/personal-runs
 import { ensureSpaceAiAllowed, setSpaceAi } from './support/space-ai.js';
 import { waitFor } from './support/wait.js';
 
-// F-027 A3 (#403), F-036 AG-3 (#855): the change log, run authority and "What it may do". An assistant run's change tool goes
+// F-027 A3 (#403), F-036 AG-3 (#855): the change log, run authority and Ask me first. An assistant run's change tool goes
 // through the real `/mcp` route with the run's own token (the `runtime` engine's path) and, for "Ask me first", through the
 // worker's tool loop with a FAKE provider (the `server` engine's path). Every call is classified as applied, waiting or refused
 // and recorded in `assistant_changes` in the same transaction. Waiting changes are approved by the owner only, with every check
@@ -58,7 +58,7 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
   let jonasWs: Workspace; let shared: Project; let sharedThread: Conversation;
 
   const settings = (workspaceId = ws.id) => agentSettings(owner, workspaceId);
-  /** "What it may do" (F-036 AG-3), set on the assistant's connection by its owner. */
+  /** Ask me first (F-036 AG-3), set on the assistant's connection by its owner. */
   async function setMayDo(mayDo: AgentMayDo, workspaceId = ws.id) {
     expectStatus(await owner.browser.request('PATCH', agentConnectionPath((await settings(workspaceId)).connectionId), { body: { mayDo } }), 200);
   }

@@ -36,7 +36,7 @@ v0.1 was never independently reviewed. Since then:
 - **Encrypted spaces** (F-030 moved per space, #976, C-24 to C-27). Each one is a hidden internal
   workspace whose keys only its own admins and a recovery code hold.
 - **Agents with their owner's rights** (F-036, #855, #921, #922). There are no agent grants any more: an
-  agent has exactly its owner's current rights and one "What it may do" row. Deletions and other people's
+  agent has exactly its owner's current rights and one Ask me first switch. Deletions and other people's
   things wait for the owner, and only the owner approves, in their own browser session.
 - **Local MCP clients with one-click sign-in** (#928, #943, C-19 to C-23). OAuth 2.1 with PKCE, Client
   ID Metadata Documents, a single `offline_access` scope, and an agent of the person's own made on
@@ -111,7 +111,7 @@ v0.1 was never independently reviewed. Since then:
 | Credentials | `auth_accounts` (scrypt hashes), `auth_sessions`, OAuth tokens, `.env` secrets (`FLUX_AUTH_SECRET`, `FLUX_KEY_PIN_SECRET`, DB password, VAPID key) | Account takeover; signing invites, cursors and JWTs |
 | AI credentials | API keys sealed under the background key; Claude and Codex plan credentials on the runtime volume; a key in the API's memory only while it is being added and its models listed (#1218) | Spending a person's plan or money; impersonating them at the vendor |
 | Readers' browsers | Every member's tab and phone that draws a message, a picture or a shown answer | A stored message or picture that runs script, misleads about who wrote it, or crashes the tab on every visit |
-| Agent identities and their "What it may do" | `agents`, `agent_connections` | An agent acts with its owner's rights |
+| Agent identities and their Ask me first | `agents`, `agent_connections` | An agent acts with its owner's rights |
 | Company membership and roles | `workspace_members`, project grants | Who can see and manage what |
 | Profile photos and space icons | Files volume (three WebP renditions each), `person_photos`, `space_icons` | A person's face and a space's sign, shown to everyone who can see them; the upload is decoded on the API, so a decoder fault is server-side |
 | Availability | 2 vCPU / 4 GB target | Agents, live editing and Argon2id derivations compete for the same resources |
@@ -126,7 +126,7 @@ v0.1 was never independently reviewed. Since then:
 | **Guest** | Only the spaces they are added to; no AI (F-037) | Reach company-wide lists, connect AI or a client anyway (#959, #978) |
 | **Space admin** | Their space's people, settings and AI switch; keys of an encrypted space | Reach another space; keep keys after removal |
 | **Company admin / owner** | Every plain space, people, Restore; can delete an encrypted space | Read an encrypted space they are not in (C-4, C-24); act through agents beyond their own spaces (C-15) |
-| **Agent** (server run) | Exactly its owner's current rights, limited by "What it may do" | Follow injected instructions, approve its own waiting items, exfiltrate what its owner can read |
+| **Agent** (server run) | Exactly its owner's current rights, with its changes waiting for the owner under Ask me first | Follow injected instructions, approve its own waiting items, exfiltrate what its owner can read |
 | **Local client** | The same as an agent, over MCP, from the person's computer | Keep access after the person's rights end, act after Disconnect, reach the runtime or other people's work |
 | **Another person's CLI in the runtime** | Its own user id and directory | Read another person's plan credentials or files, reach their loopback ports, exhaust shared memory and `/tmp` |
 | **Content author** (any person, a web page, a GitHub issue, a document) | Writes text that an agent later reads | Indirect prompt injection |
@@ -225,7 +225,7 @@ is what remains, and an issue number marks a finding of this audit.
 
 | Threat | Control on `main` | Residual |
 | --- | --- | --- |
-| Indirect prompt injection makes an agent change things | Only the owner prompts (C-13: questions from other agents never change anything); "What it may do"; deletions and other people's things wait; Undo on each agent message; agents never write to GitHub or the web | Under "Do it and tell me" (the default), an injected instruction can still create, edit and move the owner's own things, and post messages where the owner can |
+| Indirect prompt injection makes an agent change things | Only the owner prompts (C-13: questions from other agents never change anything); Ask me first; deletions and other people's things wait; Undo on each agent message; agents never write to GitHub or the web | Under "Do it and tell me" (the default), an injected instruction can still create, edit and move the owner's own things, and post messages where the owner can |
 | An agent leaks private text into a shared place | `/ai` in a conversation reads only what that conversation's audience can see (C-12); a task's agents use only what all of the task's people can see (C-10); memory and instructions are never quoted in shared answers (C-8) | A run in the owner's **private** agent conversation can read everything the owner can and is not stopped from posting into a shared conversation. The guarantee is about reads in shared places, not writes from a private run. Not probed: it needs a model run. Worth a design note in `assistant.md` |
 | Exfiltration through tools that reach outside | Server agents only read the web; the egress allow-list for CLIs; every address the server asks is listed; an address carrying verbatim private Flux text the run read is refused (C-30), and a redirect hop that adds any beyond the link a person wrote that the read began with; a run's change that writes such an address into Flux is refused (#1138), and a run's answer keeps none (`[address left out]`, #1143); the kept text exists only while the run is in flight (#1136) | What the agent rewrote can leave in an address (accepted by the founder); Codex's `web.run` `open` sends an address the model chose to OpenAI unchecked (read from its cached index, by OpenAI's description); CLIs through allowed vendor hosts (above) |
 | An agent approves its own work | No approve tool; owner session only | None found |

@@ -11,7 +11,7 @@ import { assistantScene, changesOf, human, result, text, type AssistantScene } f
 
 // #1063, F-036 AG-3 ("Never possible: posting in a conversation with other people … only the owner's Show everyone does that"), AG-8
 // ("write only in task discussions and the private conversation") and C-39 (nobody else learns that a run exists). An agent's run posts
-// in no conversation by itself, whatever its "What it may do": its answer goes where Flux puts it, the asker's private card (which only
+// in no conversation by itself, whatever its Ask me first: its answer goes where Flux puts it, the asker's private card (which only
 // their Show everyone posts), the task's discussion for a run on a task, or the agent's private chat. So no run is offered a tool that
 // posts, and the change path refuses a run's post even if one reached it. Here the "model" OBEYS a message in the conversation that tells
 // it to post, through the real worker loop and the real /mcp route, and nothing is posted. A local client keeps its own tools (LC-2).

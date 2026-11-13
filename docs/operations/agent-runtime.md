@@ -328,7 +328,7 @@ chat) then runs their own Claude Code (or Codex) under their own user id, with t
   the Flux server's `Authorization` header. The CLI reaches Flux only through `runtime-egress`'s `/mcp`
   forwarder.
 - **What it can do.** The agent has exactly its owner's rights ([agents](../product/assistant.md)). The route lists exactly the run's
-  tools: every read tool and, unless the agent's **What it may do** is *Only read*, its change tools (deleting and other people's
+  tools: every read tool and its change tools (with **Ask me first** on every change waits; deleting and other people's
   things wait for the owner's OK, and only the owner can approve). It refuses every other tool, reads only what the run's place
   allows (a conversation's audience, a task's people; the owner's whole view only in the agent's private chat), works only in spaces
   where AI is on, refuses the token once the run ends, the owner stops it, revokes the connection, loses access or AI is turned off

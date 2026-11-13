@@ -303,7 +303,7 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
         await reportTaskRun(personalRunPorts(tx, queue), run, 'blocked');
         return;
       }
-      // With "Do it and tell me" it marks the task Done; with "Ask me first" or "Only read" it hands it back to check (C-1), which
+      // With Ask me first off it marks the task Done; with it on it hands it back to check, which
       // reaches its owner's Inbox as one item for the run (AG-7).
       // The agent's chat hears what became of the task, once the run's outcome is known (#919): Done, or back with the owner to check.
       if (mayDo === 'act') {

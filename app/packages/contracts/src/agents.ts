@@ -3,7 +3,7 @@ import type { AssistantModelPick } from './assistant-model.js';
 
 // A person's agents (F-036 AG-1, #857): everything is an agent. Each has a name, saved instructions in plain text, its own
 // model from any of the person's Connect AI connections, a memory of only what its owner told it to remember, its own calm
-// Kreska colour and one "What it may do" row. The first is Assistant and answers `/ai`. Agents belong to a person for the whole
+// Kreska colour and one Ask me first switch. The first is Assistant and answers `/ai`. Agents belong to a person for the whole
 // Flux; only their owner sees or changes them. Another person meets an agent only through a task (as "Planner · Ada's agent").
 
 /** The agent colours (final design §2): the muted palette of equal lightness, and ink for a first agent. Kreska's lines take it. */
@@ -35,7 +35,7 @@ export interface MyAgent {
   colour: AgentColour;
   /** The model it runs on and the connection of Connect AI that model belongs to ("Opus · Claude plan"). */
   model: AssistantModelPick;
-  /** Its "What it may do" row (AG-3): the agent's own rights connection holds it (`PATCH /api/v1/agent-connections/:id`). */
+  /** Its Ask me first switch (AG-3): the agent's own rights connection holds it (`PATCH /api/v1/agent-connections/:id`). */
   mayDo: AgentMayDo;
   connectionId: string;
   /** The person's first agent answers `/ai` (AG-4). */

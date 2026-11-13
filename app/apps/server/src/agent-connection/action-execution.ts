@@ -61,7 +61,7 @@ export const materialSources = (input: ActionInput): { sources?: ObjectRef[] } =
 
 /**
  * The effect path of a change to a person's things, for the assistant's runs and for a local client alike (F-036 AG-3, mcp-cowork
- * LC-2): the owner's rights now, "What it may do", and the change log in the same transaction. It applies the change, makes it wait
+ * LC-2): the owner's rights now, Ask me first, and the change log in the same transaction. It applies the change, makes it wait
  * for the owner's OK (deleting, other people's things, a task for someone else, everything under Ask me first), or refuses it. The
  * result of a waiting change is plain words, which the tool wrapper hands back as text.
  */
