@@ -77,3 +77,5 @@
 .background-settings__usage { margin: 2px 0 8px; font-size: var(--fs-sm); color: var(--t2); }
 .background-settings__budget { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 12px; margin-top: 8px; }
 .background-settings__budget .ui-field { flex: 0 1 200px; min-width: 0; margin: 0; }
+/* The button is as tall as the field beside it, so its word sits on the field's centre line (#1362). */
+.background-settings__budget > .ui-btn { min-height: var(--ctl-lg); }

@@ -1324,7 +1324,8 @@ the composer. The right-hand phone above shows the sheet.
   - OpenRouter and an OpenAI-compatible endpoint keep "Show available models" and the field.
 - **The Model of an agent with an API key** lists the key's models under its connection, in the
   same family order, in the app's `Select` (a plan keeps its few models as segments), each with its
-  price line. An unpriced one says "Price unknown, enter it";
+  price line worded as in Connect AI, "Opus 5.5 · $4 / $20", and one line under the control that
+  says the unit once: "Prices are US dollars per 1M tokens, input / output." (#1362). An unpriced one says "Price unknown, enter it";
   choosing it opens the two price fields and Save price under the control, and the model is
   chosen when the price is saved. A list that couldn't be read adds one line under the group,
   "Couldn't read Anthropic's model list · Try again", and the saved model stays. A model the

@@ -29,6 +29,12 @@ const dollars = (value: string) => {
   return value.trim() && Number.isFinite(number) && number >= 0 && number <= 1000 ? Math.round(number * 1_000_000) : null;
 };
 
+/** "Input $2, output $10 per 1M tokens" as the Connect AI window words a model's price, "$2 / $10" (F-026 §7: "Claude Opus 5.5 · $4 / $20"). */
+const shortPrice = (note: string) => {
+  const found = /^Input (\$[\d.,]+), output (\$[\d.,]+) per 1M tokens$/.exec(note);
+  return found ? `${found[1]} / ${found[2]}` : note;
+};
+
 /**
  * An API key's models on an agent (CA-2, #1218): one dropdown by family, newest first, each with its price, "Price unknown, enter
  * it" (choosing it asks for the price first, then chooses it) or "no longer offered" (not choosable). A list that couldn't be
@@ -82,13 +88,14 @@ function KeyModels({ group, chosen, agentName, onChoose, onError }: {
           <OptionGroup key={family.family} label={family.family}>
             {family.models.map((option) => (
               <Option key={option.id} value={option.id} disabled={option.retired}>
-                {option.name} · {option.retired ? `no longer offered by ${company}` : option.note}
+                {option.name} · {option.retired ? `no longer offered by ${company}` : shortPrice(option.note)}
               </Option>
             ))}
           </OptionGroup>
         ))}
       </Select>
       {current?.retired ? <p className="agp__hint" role="note">{current.name} is {`no longer offered by ${company}`}. {agentName} is paused until you choose another model.</p> : null}
+      {group.options.some((option) => option.priced !== false && !option.retired) ? <p className="agp__hint">Prices are US dollars per 1M tokens, input / output.</p> : null}
       {pricing && priceFor ? (
         <form className="agp__price" onSubmit={(event) => void savePrice(event)} aria-label={`Price of ${priceFor.name}`}>
           <p className="agp__hint">Flux doesn’t know this model’s price yet. Enter it to use it with a daily budget.</p>

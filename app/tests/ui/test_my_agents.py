@@ -137,6 +137,11 @@ class MyAgentsJourney(unittest.TestCase):
         group = page.get_by_role("group", name=re.compile("^Model"))
         # A plan's few models are segments; a key's models are the app's dropdown (#1218).
         self.assertGreaterEqual(group.get_by_role("radio").count() + group.get_by_role("combobox").count(), 1)
+        # A key's models read as the Connect AI window words them, "Sonnet 5 · $2 / $10", with the unit said once (#1362), not "Input $2, output $10 per 1M tokens".
+        if group.get_by_role("combobox").count():
+            expect(group.get_by_role("combobox")).to_contain_text(re.compile(r"· \$[\d.]+ / \$[\d.]+"))
+            expect(group).not_to_contain_text("Input $")
+            expect(group).to_contain_text("Prices are US dollars per 1M tokens, input / output.")
         page.get_by_role("radio", name="Ask me first").click()
         expect(page.get_by_role("radio", name="Ask me first")).to_be_checked()
         stored = self.api(page, "GET", f"/api/v1/my-agents/{self.ids['planner']}")
