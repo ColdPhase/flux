@@ -25,6 +25,7 @@
       "description": "A control that opens a menu, a panel or a picker and shows its current value, like a field. Dropdowns of plain values use Select.",
       "classes": [
         "wiki-switch",
+        "seen",
         "top__audience",
         "top__faces",
         "me__btn",
@@ -42,6 +43,7 @@
       "description": "A whole row, card or tile that opens something. The row is the target, so it carries no button of its own.",
       "classes": [
         "sset-row",
+        "file-row__open",
         "sset-card",
         "spset__keys",
         "ov-row",
