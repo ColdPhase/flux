@@ -19,7 +19,7 @@ export type SearchExecutor = Pick<NodePgDatabase<typeof schema>, 'select' | 'exe
  */
 
 /** `search_documents.kind` (the contracts' `SearchKind`; this package does not depend on contracts). */
-export type SearchKindRow = 'project' | 'message' | 'dm_message' | 'material' | 'doc' | 'work' | 'decision' | 'sketch' | 'thought' | 'person';
+export type SearchKindRow = 'project' | 'message' | 'dm_message' | 'material' | 'doc' | 'file' | 'work' | 'decision' | 'sketch' | 'thought' | 'person';
 type SearchKind = SearchKindRow;
 /** Highlighted text: plain and matched parts. */
 export type SearchTextRow = { text: string; match: boolean }[];
@@ -98,6 +98,9 @@ export interface SearchRowRecord {
   status: string | null;
   /** A message's place in its conversation (or direct message), for reading around it (#1290). */
   sequence?: number | null;
+  /** A file's part of the text (C-63): the PDF page where the part begins, and the message the file was sent with. */
+  page?: number | null;
+  messageId?: string | null;
   title: SearchText;
   snippet: SearchText | null;
   hasBody: boolean;
@@ -232,8 +235,8 @@ function scopeConditions(plan: SearchPlanRows): SQL[] {
   if (place?.type === 'private') conditions.push(sql`(sd.kind IN ('sketch', 'thought') AND sd.project_id IS NULL)`);
   if (plan.author) conditions.push(sql`sd.author_kind = ${plan.author.kind} AND sd.author_id = ${plan.author.id}`);
   if (plan.authorId) conditions.push(sql`sd.author_id = ${plan.authorId}`);
-  // A conversation's messages carry it as their parent (a task's discussion is one).
-  if (plan.conversationId) conditions.push(sql`(sd.kind = 'message' AND sd.parent_id = ${plan.conversationId})`);
+  // A conversation's messages carry it as their parent (a task's discussion is one), and so do the files sent with them.
+  if (plan.conversationId) conditions.push(sql`(sd.kind IN ('message', 'file') AND sd.parent_id = ${plan.conversationId})`);
   if (plan.since) conditions.push(sql`sd.at >= ${plan.since.toISOString()}::timestamptz`);
   if (plan.until) conditions.push(sql`sd.at < ${plan.until.toISOString()}::timestamptz`);
   return conditions;
@@ -416,10 +419,16 @@ function rankedStatement(plan: SearchPlanRows, vector: string | null = null): SQ
       SELECT h.id, h.kind, h.object_id, h.version, h.at, h.numbered, length(h.tsv)::float8 AS dl, ${sql.join(own, sql`, `)}
       FROM (${hits}) h CROSS JOIN q),
     stats AS (SELECT count(*)::float8 AS n, greatest(avg(c.dl)::float8, 1) AS avgdl, ${sql.join(counts, sql`, `)} FROM cand c),
-    ranked AS (
+    scored AS (
       SELECT c.id, c.kind, c.object_id, c.version, c.at, c.numbered,
         CASE WHEN ${any} THEN ${whole} ELSE ${partial} END AS rank
       FROM cand c CROSS JOIN stats st),
+    -- A file is several rows, one for each part of its text (C-63): it counts once, by its best part, before the hybrid's lists take their first 50.
+    ranked AS (
+      SELECT s.id, s.kind, s.object_id, s.version, s.at, s.numbered, s.rank FROM scored s WHERE s.kind <> 'file'
+      UNION ALL
+      (SELECT DISTINCT ON (f.object_id) f.id, f.kind, f.object_id, f.version, f.at, f.numbered, f.rank FROM scored f WHERE f.kind = 'file'
+        ORDER BY f.object_id, f.rank DESC, f.version, f.id)),
     ${matched}`;
 }
 
@@ -427,7 +436,7 @@ function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows, ra
   const latest = ranking === 'latest';
   const bm25 = ranking === 'bm25' || latest;
   const q = bm25 ? anyWord(plan) : tsquery(plan);
-  const columns = (alias: string) => sql.raw(['id', 'kind', 'workspace_id', 'object_id', 'parent_id', 'project_id', 'version', 'status', 'title', 'body', 'author_kind', 'author_id', 'at']
+  const columns = (alias: string) => sql.raw(['id', 'kind', 'workspace_id', 'object_id', 'parent_id', 'project_id', 'version', 'page', 'status', 'title', 'body', 'author_kind', 'author_id', 'at']
     .map((column) => `${alias}.${column}`).join(', '));
   // The BM25 statement needs only the audiences; the index keys of today's index are not looked up.
   const audience = bm25 ? sql`aud AS MATERIALIZED (SELECT ${visibleKeys(audiences)} AS keys)` : audienceCte(audiences, plan);
@@ -443,7 +452,7 @@ function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows, ra
     matched AS (
       SELECT ${columns('sd')},
         round((ts_rank(sd.tsv, ${q}) + 0.5 * word_similarity(${plan.text}, sd.title))::numeric, 6)${exactNumber(plan)} AS score,
-        row_number() OVER (PARTITION BY sd.kind, sd.object_id ORDER BY sd.version DESC NULLS LAST) AS newest
+        row_number() OVER (PARTITION BY sd.kind, sd.object_id ORDER BY CASE WHEN sd.kind = 'file' THEN ts_rank(sd.tsv, ${q}) END DESC NULLS LAST, sd.version DESC NULLS LAST) AS newest
       FROM search_documents sd WHERE ${hitConditions(plan)}
     ),`;
   const after = plan.after
@@ -467,7 +476,7 @@ function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows, ra
     -- One result per object: of several matching versions of a material, the newest.
     hits AS (SELECT * FROM matched WHERE newest = 1)
     SELECT h.id::text AS id, h.score::text AS score, h.at::text AS at_key, h.at, h.kind, h.workspace_id, w.name AS workspace_name,
-      h.object_id, h.parent_id, h.project_id, p.name AS project_name, h.version, pm.current_version, h.status, sk.title AS sketch_title, wi.number AS work_number,
+      h.object_id, h.parent_id, h.project_id, p.name AS project_name, h.version, h.page, pf.message_id AS file_message_id, pm.current_version, h.status, sk.title AS sketch_title, wi.number AS work_number,
       h.author_kind, h.author_id, ${cleanName(sql`coalesce(au.name, ag.name)`)} AS author_name, coalesce(pmv.via, dmv.via) AS via, coalesce(pmv.sequence, dmv.sequence) AS sequence,
       length(h.body) > 0 AS has_body,
       ts_headline('simple', ${clean(sql`h.title`)}, ${q}, ${TITLE_OPTIONS}) AS title_headline,
@@ -486,6 +495,7 @@ function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows, ra
     LEFT JOIN project_messages pmv ON pmv.id = (CASE WHEN h.kind = 'message' THEN h.object_id::uuid END)
     LEFT JOIN dm_messages dmv ON dmv.id = (CASE WHEN h.kind = 'dm_message' THEN h.object_id::uuid END)
     LEFT JOIN project_materials pm ON pm.id = (CASE WHEN h.kind IN ('material', 'doc') THEN h.object_id::uuid END)
+    LEFT JOIN project_files pf ON pf.id = (CASE WHEN h.kind = 'file' THEN h.object_id::uuid END)
     LEFT JOIN sketches sk ON h.kind = 'thought' AND sk.id = h.parent_id
     LEFT JOIN project_work_items wi ON ${workJoin}
     LEFT JOIN dms d ON d.id = (CASE WHEN h.kind = 'dm_message' THEN h.parent_id END)
@@ -495,7 +505,7 @@ function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows, ra
 interface PageRow {
   id: string; score: string; at_key: string; at: Date | string; kind: SearchKind; workspace_id: string; workspace_name: string | null;
   object_id: string; parent_id: string | null; project_id: string | null; project_name: string | null; version: number | null;
-  current_version: number | null; status: string | null; sequence: number | null; sketch_title: string | null; author_name: string | null; has_body: boolean;
+  current_version: number | null; status: string | null; sequence: number | null; page: number | null; file_message_id: string | null; sketch_title: string | null; author_name: string | null; has_body: boolean;
   author_kind: 'human' | 'agent' | null; author_id: string | null; via: string | null;
   title_headline: string | null; body_headline: string | null; dm_name: string | null; work_number: number | null;
 }
@@ -517,6 +527,8 @@ function toRecord(row: PageRow): SearchRowRecord {
     currentVersion: row.current_version,
     status: row.status,
     sequence: row.sequence,
+    page: row.page,
+    messageId: row.file_message_id,
     title: highlightParts(row.title_headline ?? ''),
     snippet: row.body_headline ? highlightParts(row.body_headline) : null,
     hasBody: row.has_body,

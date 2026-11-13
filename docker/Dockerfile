@@ -30,6 +30,9 @@ FROM toolchain AS build
 RUN pnpm fetch
 COPY . .
 RUN pnpm install --offline --frozen-lockfile
+# The kernel half of the sandbox that reads the text of files for search (C-63, #1382): the worker's child process loads it first. This stage has the
+# compiler; the application image copies the addon, and a worker without it reads no file.
+RUN cc -std=gnu11 -Wall -Wextra -Werror -fPIC -shared -I/usr/local/include/node apps/worker/native/sandbox.c -o apps/worker/native/sandbox.node
 RUN pnpm build && pnpm typecheck && pnpm lint
 
 FROM build AS test
@@ -66,6 +69,11 @@ RUN set -eu; cd node_modules; \
   rm -rf .pnpm/drizzle-kit@* .pnpm/esbuild@* .pnpm/@esbuild+* .pnpm/@esbuild-kit+* .pnpm/esbuild-register@* .pnpm/react-dom@* .pnpm/react@* .pnpm/@types+*; \
   find /app/node_modules /app/apps/*/node_modules /app/packages/*/node_modules -type f \( -name '*.map' -o -name '*.d.ts' -o -name '*.d.mts' -o -name '*.d.cts' \
     -o \( -iname '*.md' ! -iname '*LICEN[CS]E*' ! -iname 'NOTICE*' \) \) -delete
+# The worker reads PDFs with the legacy build of pdfjs-dist alone (C-63): not its browser viewer, its generic build, its minified copies or its types.
+RUN set -eu; cd /app/node_modules; for d in .pnpm/pdfjs-dist@*/node_modules/pdfjs-dist; do \
+    rm -rf "$d/web" "$d/build" "$d/types" "$d/image_decoders" "$d/legacy/web"; \
+    find "$d/legacy/build" -type f \( -name '*.min.mjs' -o -name 'pdf.sandbox*' -o -name 'pdf.renderer*' \) -delete; done; \
+  cd /app/apps/worker && node --input-type=module -e "await import('pdfjs-dist/legacy/build/pdf.mjs'); await import('pdfjs-dist/legacy/build/pdf.worker.mjs')"
 
 # Browser checks only (issue #41): the built workspace on the official Playwright image,
 # whose bundled Chromium matches the pinned playwright 1.65.0 package. Never deployed.
@@ -212,6 +220,7 @@ COPY --from=build /app/apps/keyring/package.json ./apps/keyring/package.json
 COPY --from=build /app/apps/keyring/dist ./apps/keyring/dist
 COPY --from=build /app/apps/server/dist ./apps/server/dist
 COPY --from=build /app/apps/worker/dist ./apps/worker/dist
+COPY --from=build /app/apps/worker/native/sandbox.node ./apps/worker/native/sandbox.node
 COPY --from=build /app/apps/web/dist ./apps/web/dist
 COPY --from=build /app/packages/contracts/dist ./packages/contracts/dist
 COPY --from=build /app/packages/core/dist ./packages/core/dist

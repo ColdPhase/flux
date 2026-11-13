@@ -5,6 +5,7 @@ import { plainSnippet } from './plain';
 import { useRouteLoaderData } from 'react-router';
 import { SpaceFace } from '../ui/SpaceFace';
 import { PersonPhoto } from '../ui/Avatar';
+import { FileIcon } from '../composer/Attachments';
 import type { ShellData } from '../app/data';
 
 // One search result as Search.dc.html draws it (#870): a 28 px tile for what it is, the matching text with the matched
@@ -14,7 +15,7 @@ const GROUPS: { label: string; kinds: SearchKind[] }[] = [
   { label: 'Tasks', kinds: ['work', 'decision'] },
   { label: 'Messages', kinds: ['message', 'dm_message'] },
   { label: 'Wiki', kinds: ['doc'] },
-  { label: 'Files', kinds: ['material'] },
+  { label: 'Files', kinds: ['file', 'material'] },
   { label: 'Thoughts', kinds: ['thought', 'sketch'] },
   { label: 'Spaces', kinds: ['project'] },
   { label: 'People', kinds: ['person'] },
@@ -28,7 +29,7 @@ export function groupResults(items: SearchResult[]): { label: string; items: Sea
   });
 }
 
-const ICONS: Record<Exclude<SearchKind, 'project' | 'message' | 'dm_message'>, IconName> = {
+const ICONS: Record<Exclude<SearchKind, 'project' | 'message' | 'dm_message' | 'file'>, IconName> = {
   work: 'tasks', material: 'link', doc: 'doc', decision: 'rule', sketch: 'map', thought: 'map', person: 'people',
 };
 
@@ -71,6 +72,8 @@ function Tile({ result }: { result: SearchResult }) {
   if (result.kind === 'person') {
     return <span className="sr__ic sr__ic--person" aria-hidden="true">{initials(plainTitle(result))}<PersonPhoto id={result.target.type === 'person' ? result.target.userId : null} px={28} /></span>;
   }
+  // A file found by what it says (C-63): its own page icon, as the message shows it, over the tile.
+  if (result.kind === 'file') return <span className="sr__ic sr__ic--file" aria-hidden="true"><FileIcon name={plainTitle(result)} size={20} /></span>;
   if (result.kind === 'message' || result.kind === 'dm_message') {
     const letters = initials(result.author);
     return <span className="sr__ic sr__ic--person" aria-hidden="true">{letters || <Icon name="chat" size={14} />}</span>;
@@ -101,6 +104,12 @@ function meta(result: SearchResult): ReactNode[] {
     case 'doc': {
       const snippet = plainSnippet(result.snippet);
       return snippet ? [<span key="snip">“<Highlighted parts={snippet} />”</span>] : [where];
+    }
+    case 'file': {
+      // What the file says where it matched (and the page, for a PDF); a file found by its name says where it lives.
+      const snippet = plainSnippet(result.snippet);
+      const page = result.target.type === 'file' ? result.target.page : undefined;
+      return snippet ? [page ? `Page ${page}` : null, <span key="snip">“<Highlighted parts={snippet} />”</span>] : [author, where, <time key="at" dateTime={result.at}>{when(result.at)}</time>];
     }
     case 'thought': case 'sketch': return place.type === 'private' ? ['My map', 'only you'] : [result.label, where];
     case 'project': return [];

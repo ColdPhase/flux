@@ -1250,6 +1250,17 @@ the composer. The right-hand phone above shows the sheet.
   Each row is 48 px: a tile, the matching text and one line of where it lives. The first result is
   selected, and `↵` opens it. A list that is too long is narrowed by typing more words; there is
   no second page.
+- **A file found by what it says** ([C-63](../../product/decisions.md), #1382) is a row of the Files
+  group, drawn like a Wiki row with the file's own icon: the page icon with its folded corner and
+  its mono label (the one the message shows, 20 px) in the tile, the file's name as the title with
+  its matched words marked, and one line under it with what the file says where it matched, in
+  quotes with the match marked, led by "Page 3" for a PDF. A file found only by its name says
+  where it lives, who sent it and when, as a message row does. `↵` opens the file's message in its
+  conversation with the file's preview open (the photo viewer's frame, F-026 §6), at the page that
+  matched for a PDF; closing it leaves the message in place and takes the preview out of the
+  address. The text of a PDF, a Word document, Markdown, plain text and CSV/TSV is found; images,
+  audio, video and anything in an encrypted space are not. A file counts once however many of its
+  parts match.
 - The hint is one plain sentence: "Finds spaces, people, messages, tasks, Wiki pages, files and
   thoughts you can see." A list of more than 20 ends with one quiet line, "Showing 20 · type more words
   to narrow". There are no filter chips and no Create group.

@@ -494,11 +494,13 @@ searching ([F-042](decisions.md#f-042--agents-find-what-they-need-with-bm25-sear
 
 - **`flux_search`** searches the spaces the agent may read now (its owner's rights, spaces with AI on), with any of the
   words, ranked by BM25 inside Flux's database, with Polish and English stemming and accents folded. It covers space
-  messages, the Wiki (pages and materials), tasks, decisions and maps, and DM messages only within a run in that DM. It takes
+  messages, the Wiki (pages and materials), tasks, decisions and maps, the text inside the files people sent (PDF, Word, Markdown, text, CSV;
+  [C-63](decisions.md), #1382), and DM messages only within a run in that DM. It takes
   `in` (a space, a conversation, a task's discussion), `from` (an author's id, or a person's or an agent's name, #1410),
   `after` / `before` (a date or a time), `kind`
   and `limit` (ten unless asked, at most 25). Each hit names its place, its author as people see them ([C-56](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override), #1160), its time, a link
-  and a snippet with the matched words in bold; a message hit also gives its conversation and its place in it. Its description
+  and a snippet with the matched words in bold; a message hit also gives its conversation and its place in it, and a file hit (`kind` `file`)
+  its name, the page where the match is (a PDF's) and its message. Its description
   tells the agent to search before it says it does not know, in each language the people write in, and to try other words when
   little comes back; a search that finds nothing says so in words that say what to try.
   - **`from` by name** (#1410): a name is matched, accents and case aside and in another case ending ("Maurycego"), among those the
@@ -515,6 +517,10 @@ searching ([F-042](decisions.md#f-042--agents-find-what-they-need-with-bm25-sear
 - **`flux_read_around`** returns the message and up to 25 before and after it (five by default) in its conversation or direct
   message, oldest first, with the same author labels and the same access check as a search: one answer for a message that
   is not there, one that is deleted and one the caller may not read.
+- **`flux_read_file`** (#1382) returns the text of a file that a search found, in pages from `offset` (12,000 characters in a run, 20,000
+  for a client; `nextOffset` continues; a note says when the text has not been read yet or the file has none, as a scan). The text is
+  what the worker read in its sandbox (C-63), so a long file's first 200,000 characters. One answer for a file that is not there, one in
+  an encrypted space and one the caller may not read, under the same reach and the same AI switch as a search.
 - **Where a search reaches** is the run's own place, as before ([C-12, C-37](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override); founder decision, 2026-11-12, #1324): a run in a space or a thread or a task's discussion searches that space,
   because its answer may be shown to everyone who reads it; a run in a DM searches that DM and nothing else, while its owner is
   one of its people; a private chat and the owner's own Claude Code or Codex search every space their owner reaches. The

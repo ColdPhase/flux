@@ -143,6 +143,41 @@ describe('search: what the reader may not read does not move the order of what t
     }
   });
 
+  test('file text (C-63): hidden files, in a restricted space or another company, move no visible order, and a file counts once by its best part', async () => {
+    const [owner, reader, stranger] = await Promise.all(['File Rank Owner', 'File Rank Reader', 'File Rank Stranger'].map(person));
+    const ws = await workspace(owner, 'File rank workspace');
+    await addMember(owner, ws.id, reader, 'member');
+    const open = await createProject(owner, ws.id, 'File rank open', 'workspace');
+    const hidden = await createProject(owner, ws.id, 'File rank hidden', 'restricted');
+    const known = word('kontrol');
+    const target = word('sekret');
+    const thread = await conversation(reader, open.id, 'File opener.');
+    await say(reader, thread.id, `Note ${known} here.`);
+    // A visible file of three parts: the two words are in different parts, and a third part holds neither.
+    const fileId = randomUUID();
+    const part = (workspaceId: string, projectId: string, object: string, number: number, body: string) => pool.query(
+      `INSERT INTO search_documents (doc_key, kind, workspace_id, audience_key, project_id, object_id, parent_id, version, title, body, author_kind, author_id, at)
+       VALUES ($1, 'file', $2, $3, $4, $5, $6, $7, 'report.txt', $8, 'human', $9, now())`,
+      [`file:${object}:${number}`, workspaceId, `project:${projectId}`, projectId, object, thread.id, number, body, reader.id]);
+    await part(ws.id, open.id, fileId, 1, `First part says ${known}.`);
+    await part(ws.id, open.id, fileId, 2, `Second part says ${target} and ${target}.`);
+    await part(ws.id, open.id, fileId, 3, 'A part with nothing of the two.');
+    const q = `${known} ${target}`;
+    const before = await orders(reader, q);
+    assert.equal(before.statement.length, 2, 'the message and one result for the file, not one for each of its parts');
+    assert.equal(before.people.length, 2);
+    // Hidden: files of a restricted space and of another company, whole files of parts, holding the words.
+    const other = await workspace(stranger, 'File rank other company');
+    const secret = await createProject(stranger, other.id, 'File rank secret', 'workspace');
+    await inBatches(40, async (index) => {
+      const object = randomUUID();
+      await part(ws.id, hidden.id, object, 1, `Hidden ${target} ${target} number ${index}.`);
+      await part(ws.id, hidden.id, object, 2, `Hidden ${known} number ${index}.`);
+      await part(other.id, secret.id, randomUUID(), 1, `Other ${target} number ${index}.`);
+    });
+    assert.deepEqual(await orders(reader, q), before, 'the order of the reader\'s own results does not depend on hidden files');
+  });
+
   test('an agent of the owner is held to the same: its search ranks by what its owner may read', async () => {
     const [owner, stranger] = await Promise.all(['Agent Owner', 'Agent Stranger'].map(person));
     const ws = await workspace(owner, 'Agent rank workspace');

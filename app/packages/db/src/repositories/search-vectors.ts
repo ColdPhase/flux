@@ -49,22 +49,30 @@ export function hybridMatched(parts: { vector: string; visible: SQL; number: num
         SELECT r.id, r.numbered, r.rank, r.at FROM ranked r ORDER BY r.numbered DESC, r.rank DESC, r.at DESC, r.id DESC LIMIT ${depth}) l
     ),
     distances AS MATERIALIZED (
-      SELECT d.id, d.distance FROM (
-        SELECT sd.id, (SELECT v.embedding <=> ${parts.vector}::halfvec FROM search_vectors v WHERE v.document_id = sd.id) AS distance
+      SELECT d.id, d.distance, d.is_file, d.object_id FROM (
+        SELECT sd.id, (SELECT v.embedding <=> ${parts.vector}::halfvec FROM search_vectors v WHERE v.document_id = sd.id) AS distance,
+          sd.kind = 'file' AS is_file, sd.object_id
         FROM search_documents sd WHERE ${parts.visible} AND sd.id @@@ pdb.all()) d
       WHERE d.distance IS NOT NULL
     ),
+    -- A file is several rows, one for each part of its text (C-63): its nearest part stands for it, so one long file cannot fill the list.
     nearest AS MATERIALIZED (
       SELECT n.id, row_number() OVER (ORDER BY n.distance, n.id) AS rk FROM (
-        SELECT d.id, d.distance FROM distances d ORDER BY d.distance, d.id LIMIT ${depth}) n
+        SELECT u.id, u.distance FROM (
+          SELECT d.id, d.distance FROM distances d WHERE NOT d.is_file
+          UNION ALL
+          (SELECT DISTINCT ON (f.object_id) f.id, f.distance FROM distances f WHERE f.is_file ORDER BY f.object_id, f.distance, f.id)) u
+        ORDER BY u.distance, u.id LIMIT ${depth}) n
     ),
     fused AS (
       SELECT u.id, sum(1.0 / (${k} + u.rk)) AS fused FROM (SELECT id, rk FROM lexical UNION ALL SELECT id, rk FROM nearest) u GROUP BY u.id
     ),
     matched AS (
+      -- A file's lists may name two of its parts (the best by words, the nearest by meaning): it scores both and is shown at the better one.
       SELECT sd.id, sd.kind, sd.object_id, sd.version, sd.at,
-        round((f.fused * ${scale})::numeric, 6) + CASE WHEN ${numbered} THEN 10 ELSE 0 END AS score,
-        row_number() OVER (PARTITION BY sd.kind, sd.object_id ORDER BY sd.version DESC NULLS LAST) AS newest
+        round(((CASE WHEN sd.kind = 'file' THEN sum(f.fused) OVER (PARTITION BY sd.object_id) ELSE f.fused END) * ${scale})::numeric, 6)
+          + CASE WHEN ${numbered} THEN 10 ELSE 0 END AS score,
+        row_number() OVER (PARTITION BY sd.kind, sd.object_id ORDER BY CASE WHEN sd.kind = 'file' THEN f.fused END DESC NULLS LAST, sd.version DESC NULLS LAST) AS newest
       FROM fused f JOIN search_documents sd ON sd.id = f.id
     ),`;
 }

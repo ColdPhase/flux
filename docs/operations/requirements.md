@@ -20,7 +20,7 @@ Memory in more detail. Compose limits each service, and memory and swap to the s
 | Service | Limit | Observed |
 | --- | --- | --- |
 | `api` | 1.5 GB | 274 MiB idle; peak 431 MB in the encryption checks |
-| `worker` | 512 MB | 84 MiB idle; peak 111 MB |
+| `worker` | 512 MB | 84 MiB idle; peak 111 MB; while it reads a file for search ([C-63](../product/decisions.md)) a child process of at most 320 MiB runs beside it, for at most 20 seconds, one file at a time |
 | `keyring` | 128 MB | 18 MiB idle; peak 42 MB |
 | `db` | 768 MB | 69 MiB idle |
 
