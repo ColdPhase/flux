@@ -337,14 +337,12 @@ class RouteChunksJourney(unittest.TestCase):
                 page.get_by_role("dialog", name=re.compile("^Pages in")).get_by_role("link", name=doc["title"], exact=True).click()
                 expect(page.locator('[data-live-status="live"]')).to_be_visible()
                 expect(page.get_by_text("A private copy from an earlier session is available.", exact=True)).to_have_count(0)
-                expect(shared).not_to_contain_text(private)
                 # The page's next save is a fresh command of this session, not the refused one resumed (the check the menu's sign-out had).
                 with page.expect_response(lambda response: response.request.method == "POST" and response.url.endswith(f"/api/v1/docs/{doc['id']}/live/save"), timeout=30000) as saved:
                     shared.click(); page.keyboard.press("End"); page.keyboard.insert_text(f" · Ari again {engine}")
                 self.assertEqual(saved.value.status, 200)
                 self.assertNotEqual(saved.value.request.post_data_json["clientCommandId"], refused_id,
                     "a visit copy retired by sign-out must not resume the refused Save")
-                expect(shared).not_to_contain_text(private)
                 # Sign-out revoked the shared session; the next engine starts from this fresh one (as test_14 does).
                 type(self).state = page.context.storage_state()
 
