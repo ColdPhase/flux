@@ -109,7 +109,8 @@ class NewProject(unittest.TestCase):
             page.goto("/projects")
             expect(page.get_by_role("button", name="New space")).to_have_count(0)
             page.get_by_role("button", name="Create", exact=True).tap()
-            page.get_by_role("dialog", name="Create").get_by_role("button", name="Space", exact=True).tap()
+            # The "+" opens the Create window on Task; its Space tab is the way to a new space (#1438 point 8).
+            page.get_by_role("dialog", name="New task").get_by_role("tablist", name="Create").get_by_role("tab", name="Space", exact=True).tap()
         else:
             page.goto("/")
             expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
