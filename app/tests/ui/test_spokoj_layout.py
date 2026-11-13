@@ -49,12 +49,12 @@ class SpokojLayout(unittest.TestCase):
         cls.browser = getattr(cls.pw, UI_BROWSER).launch()
         expect.set_options(timeout=8000)
         cls.kai_email = f"kai-spokoj-{uuid.uuid4()}@example.test"
-        kai = cls.browser.new_context(base_url=ORIGIN)
+        kai = cls.browser.new_context(base_url=ORIGIN, service_workers="block")
         response = kai.request.post("/api/auth/sign-up/email", data={"email": cls.kai_email, "password": PASSWORD, "name": "Kai Spokoj"}, headers={"origin": ORIGIN})
         assert response.status == 200, response.text()
         cls.kai_id = kai.request.get("/api/v1/me").json()["user"]["id"]
         kai.close()
-        context = cls.browser.new_context(base_url=ORIGIN)
+        context = cls.browser.new_context(base_url=ORIGIN, service_workers="block")
         page = context.new_page()
         page.goto("/sign-up")
         page.get_by_label("Name").fill("Ada Spokoj")

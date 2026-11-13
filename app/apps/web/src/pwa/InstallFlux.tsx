@@ -9,7 +9,11 @@ import { installState, onInstallState, type InstallOutcome, type InstallState } 
  * card, so an offer that arrives late never moves another row. Once an offer has been shown the row stays for this
  * visit and says what happened in its status line, which exists (empty) before it is filled so the result is announced.
  */
-export function InstallFlux({ title, phone }: { title: string; phone: boolean }) {
+export function InstallFlux({ title, phone, stepsSaidAbove = false }: {
+  title: string; phone: boolean;
+  /** The Home Screen steps are already said where the person is (notifications' "On this device"), so this row does not say them again (#1424). */
+  stepsSaidAbove?: boolean;
+}) {
   const [view, setView] = useState<InstallState>(() => installState());
   const [asking, setAsking] = useState(false);
   const [outcome, setOutcome] = useState<InstallOutcome | null>(null);
@@ -21,6 +25,7 @@ export function InstallFlux({ title, phone }: { title: string; phone: boolean })
   }), []);
 
   const installed = view.state === 'just-installed';
+  if (view.state === 'apple-steps' && stepsSaidAbove) return null;
   if (view.state === 'apple-steps' || view.state === 'menu-steps') {
     const steps = view.state === 'apple-steps'
       ? 'Tap Share, then Add to Home Screen, and open Flux from there. Notifications on iPhone and iPad work only from that Home Screen app.'

@@ -107,6 +107,8 @@ export interface SearchRowRecord {
   authorName: string | null;
   /** The client or assistant a message was posted through, for the author's line ("Ada · via Claude Code"). */
   via?: string | null;
+  /** `via` names an agent whose answer its person showed everyone ("Ada's Assistant"), not a local client (#1424). */
+  viaAgent?: boolean;
   author: { kind: 'human' | 'agent'; id: string } | null;
   at: Date;
 }
@@ -477,7 +479,7 @@ function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows, ra
     hits AS (SELECT * FROM matched WHERE newest = 1)
     SELECT h.id::text AS id, h.score::text AS score, h.at::text AS at_key, h.at, h.kind, h.workspace_id, w.name AS workspace_name,
       h.object_id, h.parent_id, h.project_id, p.name AS project_name, h.version, h.page, pf.message_id AS file_message_id, pm.current_version, h.status, sk.title AS sketch_title, wi.number AS work_number,
-      h.author_kind, h.author_id, ${cleanName(sql`coalesce(au.name, ag.name)`)} AS author_name, coalesce(pmv.via, dmv.via) AS via, coalesce(pmv.sequence, dmv.sequence) AS sequence,
+      h.author_kind, h.author_id, ${cleanName(sql`coalesce(au.name, ag.name)`)} AS author_name, coalesce(pmv.via, dmv.via) AS via, coalesce(pmv.via_colour, dmv.via_colour) IS NOT NULL AS via_agent, coalesce(pmv.sequence, dmv.sequence) AS sequence,
       length(h.body) > 0 AS has_body,
       ts_headline('simple', ${clean(sql`h.title`)}, ${q}, ${TITLE_OPTIONS}) AS title_headline,
       CASE WHEN length(h.body) = 0 THEN NULL
@@ -506,7 +508,7 @@ interface PageRow {
   id: string; score: string; at_key: string; at: Date | string; kind: SearchKind; workspace_id: string; workspace_name: string | null;
   object_id: string; parent_id: string | null; project_id: string | null; project_name: string | null; version: number | null;
   current_version: number | null; status: string | null; sequence: number | null; page: number | null; file_message_id: string | null; sketch_title: string | null; author_name: string | null; has_body: boolean;
-  author_kind: 'human' | 'agent' | null; author_id: string | null; via: string | null;
+  author_kind: 'human' | 'agent' | null; author_id: string | null; via: string | null; via_agent: boolean | null;
   title_headline: string | null; body_headline: string | null; dm_name: string | null; work_number: number | null;
 }
 
@@ -534,6 +536,7 @@ function toRecord(row: PageRow): SearchRowRecord {
     hasBody: row.has_body,
     authorName: row.author_name,
     via: row.via,
+    viaAgent: !!row.via && !!row.via_agent,
     author: row.author_kind && row.author_id ? { kind: row.author_kind, id: row.author_id } : null,
     at: row.at instanceof Date ? row.at : new Date(row.at),
   };

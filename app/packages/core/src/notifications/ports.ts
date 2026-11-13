@@ -34,6 +34,8 @@ export interface ProjectMessageFacts {
   authorName: string | null;
   /** The name of the local client or assistant that posted for its author (LC-2, AG-4 Show everyone): the author stays the person, and the notice says so. */
   via?: string | null;
+  /** `via` names an agent whose answer the author showed everyone (the message has its colour), not a local client (#1424). */
+  viaAgent?: boolean;
   body: string;
   sequence: number;
   /** People who wrote in the conversation before this message. */
@@ -62,6 +64,8 @@ export interface DmMessageFacts {
   authorId: string;
   /** The assistant whose answer the author posted with Show everyone (#842). */
   via?: string | null;
+  /** `via` names an agent (the message has its colour), as `ProjectMessageFacts.viaAgent` (#1424). */
+  viaAgent?: boolean;
   body: string;
   participantIds: string[];
 }

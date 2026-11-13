@@ -360,6 +360,18 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
     await pool.query('DELETE FROM notifications WHERE id = $1', [accepted.rows[0].id]);
   });
 
+  test('an invitation to a call in A says "a call" too ("Ada invited you to a call in Garden club"), and the old words are refused (#1424, migration 0080)', async () => {
+    const url = `/projects/${ids.A.project}/live/${randomUUID()}?invitation=${randomUUID()}`;
+    const insert = (title: string) => pool.query(`INSERT INTO notifications (id, user_id, workspace_id, source_type, source_id, reason, title, body, url, ai_origin)
+      VALUES (gen_random_uuid(), $1, $2, 'project', $3, 'invitation', $4, '', $5, false) RETURNING id`, [ben.id, A, ids.A.project, title, url]);
+    assert.equal(sealedNotificationTitle('invitation', 'Ada', 'Garden club'), 'Ada invited you to a call in Garden club');
+    const accepted = await insert(sealedNotificationTitle('invitation', 'Ada', 'Garden club'));
+    assert.equal(accepted.rows.length, 1, 'the content-free invitation is stored');
+    await assert.rejects(insert('Ada invited you to work together in Garden club'), { hint: 'NOTIFICATION_CONTENT_REFUSED' }, 'one name for a call');
+    await assert.rejects(insert('Ada invited you to a call in a secret project'), { hint: 'NOTIFICATION_CONTENT_REFUSED' }, 'another place');
+    await pool.query('DELETE FROM notifications WHERE id = $1', [accepted.rows[0].id]);
+  });
+
   test('mid-upload, the scratch file of A holds ciphertext only (B plaintext); an aborted upload leaves nothing in tmp (#707 review)', async () => {
     const tmp = '/data/files/attachments/tmp';
     const scratch = async () => { try { return await readdir(tmp); } catch { return []; } };

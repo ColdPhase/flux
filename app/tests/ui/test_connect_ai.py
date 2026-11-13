@@ -393,6 +393,11 @@ class ConnectAiJourney(unittest.TestCase):
             expect(window.get_by_role("heading", name="Use an API key")).to_be_visible()
             expect(window.get_by_label("Daily budget (USD)", exact=True)).to_have_value("5.00")
             expect(page).to_have_url(re.compile(r"/settings/agents$"))
+            # #1424: the window's buttons keep their side from step to step: the secondary one, then the one primary, on the right.
+            cancel, primary, frame = (window.get_by_role("button", name="Cancel").bounding_box(), window.get_by_role("button", name="Connect", exact=True).bounding_box(),
+                                      window.bounding_box())
+            self.assertLess(cancel["x"], primary["x"], "Cancel is left of Connect, as it is left of Continue")
+            self.assertGreater(primary["x"] + primary["width"] / 2, frame["x"] + frame["width"] / 2, "the primary sits on the right, as Continue and Try again do")
             self.no_horizontal_scroll(page)
             window.get_by_role("button", name="Cancel").click()
             expect(window.locator("[data-choice=api_key]")).to_be_visible()

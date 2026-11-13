@@ -1249,7 +1249,7 @@ carry content.
 | `dm` | "Ada sent you a message in Garden club" |
 | `assigned` | "Ada assigned you a task in Garden club" |
 | `review` | "Ada asked for your review in Garden club" |
-| `invitation` | "Ada invited you to work together in Garden club" |
+| `invitation` | "Ada invited you to a call in Garden club" |
 | `security` | "Ben now has an unlock password for Garden club" |
 | `security` | "Garden club's encryption keys were changed outside Flux. It stays locked." |
 

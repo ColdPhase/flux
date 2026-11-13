@@ -31,7 +31,7 @@ const MESSAGES: SuppliedSource[] = [
   message('S1', { body: 'The camera fails below 5 lux.', authorName: OWNER, createdAt: new Date('2026-11-06T08:14:00Z') }),
   // An agent is named with whose it is (#1160), as `namedAuthors` names it for the run.
   message('S2', { body: 'Logged 4.8 lux at 06:10 on the north barrel.', authorName: 'Fieldbot (Jonas\'s agent)', author: { kind: 'agent', id: 'a-1', ownerUserId: 'u-jonas' }, contribution: { kind: 'came_of_it' }, createdAt: new Date('2026-11-06T08:20:00Z') }),
-  message('S3', { body: 'Then the ToF sensor is next. Notes: https://example.com/tof?a=1&b=2', authorName: 'Jonas Berg', via: 'Assistant', edited: true,
+  message('S3', { body: 'Then the ToF sensor is next. Notes: https://example.com/tof?a=1&b=2', authorName: 'Jonas Berg', via: 'Assistant', viaColour: 'teal', edited: true,
     files: [{ id: 'f-1', name: 'north.csv', size: 2048 } as MessageFile], createdAt: new Date('2026-11-07T15:02:00Z') }),
   message('S4', { body: INJECTION, authorName: 'Kai Weber', createdAt: new Date('2026-11-07T15:30:00Z') }),
 ];
@@ -142,7 +142,7 @@ describe('the brief of every run (#1064)', () => {
     assert.ok(request.includes('<message ref="S1" from="Ada Nowak" by="person" at="2026-11-06 09:14">The camera fails below 5 lux.</message>'));
     assert.ok(request.includes('<message ref="S2" from="Fieldbot (Jonas\'s agent)" by="agent" at="2026-11-06 09:20" kind="came_of_it">'));
     // #1160: an answer Jonas posted with Show everyone is his, with the agent it came from, in the words the Flux tools use too.
-    assert.ok(request.includes('from="Jonas Berg · via Assistant" by="person" at="2026-11-07 16:02" edited="yes">'));
+    assert.ok(request.includes('from="Jonas\'s Assistant" by="person" at="2026-11-07 16:02" edited="yes">'));
     assert.ok(request.includes('<attachment name="north.csv" bytes="2048"/>'));
     assert.ok(request.endsWith('<request from="Ada Nowak" at="2026-11-08 10:01">Co ustaliliśmy w sprawie kamery?</request>'));
     assert.ok(request.indexOf('<conversation>') < request.indexOf('<request'), 'the long content first, the request last');
@@ -232,7 +232,7 @@ describe('the brief of every run (#1064)', () => {
       assert.match(system, /So, of Flux, use only /);
       assert.ok(system.includes('Ada Nowak may post your answer as their own message, so write it as they could send it: no "You asked…" and no lead-in such as "Here is a reply:". When asked to draft, post or send a message, give only the text to send: Ada Nowak posts it with Show everyone.'));
       assert.ok(system.includes('A message you draft for someone else is in the language Ada Nowak asks for, else in the language that person writes in.'));
-      assert.ok(system.includes('"Person · via Name" for an answer of that person\'s agent that they chose to post: their message, not their own words and not yours.'));
+      assert.ok(system.includes('"Person\'s Name" (for example "Ada\'s Assistant") for an answer of that person\'s agent that they chose to post: their message, not their own words and not yours, and "Person · via Name" for what a person\'s local client posted for them.'));
     }
     assert.match(buildBrief(chat).system, /<chat> holds your earlier exchanges with Ada Nowak, as context for this message\./);
     // #1160: the owner's CLI reads a space with the tools, which name each message's author the same way; every run that can meet its own

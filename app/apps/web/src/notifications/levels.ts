@@ -7,7 +7,7 @@ import { NEEDS_YOU_REASONS, type NotificationLevel, type NotificationReason } fr
  */
 export const REASON_WORDS: Record<NotificationReason, string> = {
   question: 'questions', mention: 'mentions', dm: 'messages to you', assigned: 'tasks that need you',
-  review: 'decisions about your work', invitation: 'invitations to work together', approval: 'agents waiting for you',
+  review: 'decisions about your work', invitation: 'invitations to a call', approval: 'agents waiting for you',
   reply: 'every reply in conversations you are part of', call: 'calls started in your spaces',
 };
 /** The order a line names them in. */
@@ -33,3 +33,14 @@ export const LEVELS: readonly { id: NotificationLevel; label: string; detail: st
   { id: 'everything', label: 'Everything', detail: `Also ${list(LEVEL_REASONS.everything.filter((reason) => !needsYou.has(reason)))}` },
   { id: 'nothing', label: 'Nothing', detail: 'No push or email. Everything still waits in the Inbox' },
 ];
+
+const clock = (value: string) => value.replace(/^0(\d)/, '$1');
+
+/**
+ * The line under Notifications in Settings' list on the phone: what the person hears about and, only while quiet hours are on, when it is
+ * quiet. A line that names quiet hours while they are off would say something that is not so (#1424).
+ */
+export function notificationSummary(prefs: { level: NotificationLevel; quietHours: { enabled: boolean; start: string; end: string } }): string {
+  const level = LEVELS.find((option) => option.id === prefs.level)?.label ?? '';
+  return prefs.quietHours.enabled ? `${level} · quiet ${clock(prefs.quietHours.start)}–${clock(prefs.quietHours.end)}` : level;
+}

@@ -15,7 +15,7 @@ export function routeLabel(pathname: string): string {
   if (/\/tasks(\/|$)/.test(pathname)) return 'tasks';
   if (/\/agents(\/|$)/.test(pathname)) return 'agents';
   if (/\/github(\/|$)/.test(pathname)) return 'GitHub settings';
-  if (/\/live(\/|$)/.test(pathname)) return 'the live session';
+  if (/\/live(\/|$)/.test(pathname)) return 'the call';
   if (pathname.startsWith('/inbox')) return 'the inbox';
   if (pathname.startsWith('/dm')) return 'messages';
   if (pathname.startsWith('/projects/')) return 'the conversation';

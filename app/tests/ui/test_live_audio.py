@@ -386,8 +386,8 @@ class LiveAudio(LiveBase):
         jonas.keyboard.press("Escape")
 
         # The same two controls are in ⋯, so a device without the strip's faces reaches them.
-        jbar.get_by_role("button", name="Session details and more").click()
-        panel = jonas.get_by_role("dialog", name="Live session")
+        jbar.get_by_role("button", name="Call details and more").click()
+        panel = jonas.get_by_role("dialog", name="Call details", exact=True)
         row = panel.locator(".lv-person", has_text="Nia Okafor")
         row.get_by_role("button", name="Sound from Nia Okafor").click()
         inline = row.locator(".lv-person__sound")
@@ -447,8 +447,8 @@ class LiveAudio(LiveBase):
         ada.locator("header.top, header.phead").get_by_role("button", name="Join").click()
         expect(self.bar(ada)).to_be_visible()
         expect(self.bar(ada).get_by_role("button", name="Audio settings")).to_have_count(0)
-        self.bar(ada).get_by_role("button", name="Session details and more").click()
-        ada.get_by_role("dialog", name="Live session").get_by_role("button", name="Audio settings").click()
+        self.bar(ada).get_by_role("button", name="Call details and more").click()
+        ada.get_by_role("dialog", name="Call details", exact=True).get_by_role("button", name="Audio settings").click()
         android = ada.get_by_role("dialog", name="Audio settings")
         expect(android).to_be_visible()
         expect(android.get_by_role("combobox", name="Speakers or headphones")).to_be_visible()
@@ -477,8 +477,8 @@ class LiveAudio(LiveBase):
         self.bar(nia).get_by_role("button", name=re.compile("^Microphone off")).click()
         expect(hears(jonas, "nia")).to_have_count(1)
 
-        bar.get_by_role("button", name="Session details and more").click()
-        sheet = jonas.get_by_role("dialog", name="Live session")
+        bar.get_by_role("button", name="Call details and more").click()
+        sheet = jonas.get_by_role("dialog", name="Call details", exact=True)
         row = sheet.locator(".lv-person", has_text="Nia Okafor")
         row.get_by_role("button", name="Sound from Nia Okafor").click()
         inline = row.locator(".lv-person__sound")

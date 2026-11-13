@@ -63,7 +63,7 @@ function sourceOf(item: Pick<WorkItem, 'id' | 'planIntent'>, links: ObjectLink[]
 }
 
 const FROM: Record<NonNullable<Source>, string> = {
-  message: 'made it from a message', thought: 'made it from a thought on the map', plan: 'made it from a plan revision', material: 'made it from a source', doc: 'made it from a Wiki page',
+  message: 'created it from a message', thought: 'created it from a thought on the map', plan: 'created it from a plan revision', material: 'created it from a source', doc: 'created it from a Wiki page',
 };
 
 /** The text after the actor's name; the actor and the time are shown beside it. */

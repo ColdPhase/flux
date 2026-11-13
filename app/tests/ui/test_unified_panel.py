@@ -265,7 +265,7 @@ class UnifiedPanel(unittest.TestCase):
         self.assertIn("Ada marked it done", lines[0])
         self.assertIn("set it due", lines[1])
         self.assertIn("reassigned it to Jonas Berg", lines[2])
-        self.assertIn("Ada made it from a message", lines[3])
+        self.assertIn("Ada created it from a message", lines[3])
         for line in activity.locator("time").all():
             expect(line).to_have_attribute("datetime", re.compile(r"^\d{4}-\d\d-\d\dT"))
         stored = api(self.ada_ctx, "GET", f"/api/v1/work/{task['id']}/activity")

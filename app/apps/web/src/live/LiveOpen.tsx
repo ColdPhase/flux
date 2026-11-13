@@ -31,6 +31,6 @@ export function LiveOpen() {
     return () => controller.abort();
   }, [projectId, sessionId, invitationId, navigate]);
 
-  if (!failed) return <div className="sk-page--center"><Spinner label="Opening the session" /></div>;
+  if (!failed) return <div className="sk-page--center"><Spinner label="Opening the call" /></div>;
   return <NotAvailable title="This call is no longer open" back={{ to: `/projects/${projectId}`, label: 'Back to the space' }} />;
 }

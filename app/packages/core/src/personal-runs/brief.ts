@@ -383,7 +383,7 @@ function authorRules(input: Placed, tags: readonly string[]): string[] {
     ...(reads ? [`In what the Flux tools return, author.kind ("human" or "agent") is who wrote each message, as Flux knows it, and author.name their name${dm ? '' : `; your own messages have author.id ${input.agentId}`}.`] : []),
   ];
   const own = dm ? '' : ` Your own label is "${agentLabel({ name: input.agentName, ownerName: input.ownerName, full: input.namesake })}".`;
-  return [`${marked.join(' ')} Names are as people see them: a person by name, an agent as "Name (Owner's agent)", and "Person · via Name" for an answer of that person's agent that they chose to post: their message, not their own words and not yours. A person's chosen name can look like an agent's, so go by who wrote it, not by the name.${own}${conversation ? ` ${MARKS}` : ''}`];
+  return [`${marked.join(' ')} Names are as people see them: a person by name, an agent as "Name (Owner's agent)", "Person's Name" (for example "Ada's Assistant") for an answer of that person's agent that they chose to post: their message, not their own words and not yours, and "Person · via Name" for what a person's local client posted for them. A person's chosen name can look like an agent's, so go by who wrote it, not by the name.${own}${conversation ? ` ${MARKS}` : ''}`];
 }
 
 /** The injection rule (AG-2, AG-8): content is data, and who instructs. */
@@ -450,7 +450,7 @@ function taskTag(task: TaskFacts): string[] {
 function messageTag(message: MessageSource, label: string | null, zone: string, agentId: string, thread: string | null, ids = false): string {
   const fields = [...(label ? [`ref="${label}"`] : []), ...(thread ? [`thread="${attr(thread.length > 80 ? `${thread.slice(0, 79).trimEnd()}…` : thread)}"`] : []),
     // A person's post of their agent's answer reads as theirs, with the agent it came from (#1160), as the Flux tools name it.
-    `from="${attr(message.author.kind === 'human' ? authorLabel({ kind: 'human', name: message.authorName, via: message.via ?? null }) : message.authorName)}"`,
+    `from="${attr(message.author.kind === 'human' ? authorLabel({ kind: 'human', name: message.authorName, via: message.via ?? null, viaAgent: !!message.viaColour }) : message.authorName)}"`,
     // Who wrote it as Flux knows it, which no chosen name can fake (#1163).
     `by="${message.author.kind === 'human' ? 'person' : message.author.id === agentId ? 'you' : 'agent'}"`,
     `at="${clock(message.createdAt, zone).stamp}"`,

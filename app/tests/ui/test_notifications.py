@@ -253,7 +253,7 @@ class NotificationJourney(unittest.TestCase):
         self.assertEqual([re.sub(r"\s+", " ", text).strip() for text in levels.locator(".sset-row__t").all_inner_texts()], ["Only what needs me", "Everything", "Nothing"])
         # #1173: each line names what reaches Ada at that level (pinned against the reasons in notification-level-words.test.ts).
         self.assertEqual([re.sub(r"\s+", " ", text).strip() for text in levels.locator(".sset-row__s").all_inner_texts()], [
-            "Questions, mentions, messages to you, tasks that need you, decisions about your work, invitations to work together and agents waiting for you",
+            "Questions, mentions, messages to you, tasks that need you, decisions about your work, invitations to a call and agents waiting for you",
             "Also every reply in conversations you are part of and calls started in your spaces", "No push or email. Everything still waits in the Inbox"])
         expect(levels.get_by_role("radio", name="Only what needs me")).to_be_checked()
         start = self.api(page, "GET", "/api/v1/notification-preferences")
@@ -413,7 +413,19 @@ class NotificationJourney(unittest.TestCase):
         capsule = page.get_by_role("navigation", name="Main places").get_by_role("link", name=re.compile("^Inbox"))
         expect(capsule).to_have_attribute("aria-current", "page")
         assert_touch_target(self, page, capsule)
+        # #1424: Settings' row says what the person hears about as it is now, and names quiet hours only while they are on.
+        kept = self.api(page, "GET", "/api/v1/notification-preferences")
+        self.api(page, "PATCH", "/api/v1/notification-preferences", {"level": "needsYou", "quietHours": {"enabled": False}})
         page.get_by_role("link", name="Settings and account").tap()
+        row = page.get_by_role("link", name=re.compile("^Notifications"))
+        expect(row).to_contain_text("Only what needs me")
+        expect(row).not_to_contain_text("quiet")
+        expect(row).not_to_contain_text("Needs you and quiet hours")
+        self.api(page, "PATCH", "/api/v1/notification-preferences", {"quietHours": {"enabled": True, "start": "22:00", "end": "07:00"}})
+        page.reload()
+        expect(page.get_by_role("link", name=re.compile("^Notifications"))).to_contain_text("Only what needs me · quiet 22:00–7:00")
+        self.api(page, "PATCH", "/api/v1/notification-preferences", {"level": kept["level"], "quietHours": kept["quietHours"]})
+        page.reload()
         page.get_by_role("link", name=re.compile("^Notifications")).tap()
         expect(page.get_by_role("heading", level=2, name="Notifications")).to_be_visible()
         self.assertLessEqual(page.evaluate("document.scrollingElement.scrollWidth"), PHONE["width"], "settings fit the phone")

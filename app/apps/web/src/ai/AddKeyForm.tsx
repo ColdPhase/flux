@@ -1,5 +1,5 @@
 import { forwardRef, useImperativeHandle, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
-import { AI_PROVIDERS, API_KEY_DAILY_BUDGET_CENTS, isAiProviderKind, type AiProviderKind, type BackgroundComputeConnection,
+import { AI_PROVIDERS, API_KEY_DAILY_BUDGET_CENTS, isAiProviderKind, tablePrice, type AiProviderKind, type BackgroundComputeConnection,
   type ConnectBackgroundComputeCommand } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { Button, Input } from '../ui';
@@ -20,6 +20,7 @@ export function budgetCents(value: FormDataEntryValue | null): number | null {
 }
 const MODEL_PROBLEM = (provider: AiProviderKind) => (AI_PROVIDERS[provider].keylessModelList
   ? 'Name the model this key uses.' : 'Choose a model first. Flux lists the models of your key once you have entered it and left the field.');
+const PRICE_PROBLEM = 'Enter this model’s price to use it with a daily budget: from your provider’s pricing, or 0 for a self-hosted server you pay for otherwise.';
 const browserZone = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch { return 'UTC'; } };
 /** USD per 1M tokens typed by the owner, in micro-dollars; null when left empty. */
 function ownerPrice(value: FormDataEntryValue | null): number | null {
@@ -75,7 +76,7 @@ export const AddKeyForm = forwardRef<AddKeyFormHandle, {
     const input = ownerPrice(data.get('inputPrice'));
     const output = ownerPrice(data.get('outputPrice'));
     if (Number.isNaN(input) || Number.isNaN(output) || (input === null) !== (output === null)) {
-      setError('Enter both prices as numbers of US dollars per 1M tokens, or leave both empty.'); return;
+      setError('Enter both prices as numbers of US dollars per 1M tokens.'); return;
     }
     const budget = budgetCents(data.get('dailyBudget'));
     if (budget === null) { setError(BUDGET_PROBLEM); return; }
@@ -83,6 +84,9 @@ export const AddKeyForm = forwardRef<AddKeyFormHandle, {
     const model = String(data.get('model') ?? '').trim();
     // Never saved on a model nobody chose: Enter in the key field, or Connect while the models are still being read, stops here.
     if (!model) { setError(MODEL_PROBLEM(chosen)); return; }
+    // Never saved on a model that can't be used: the daily budget prices every request, so a model Flux's table doesn't know needs the
+    // owner's price here, in the same step (PROV-3, #1424); 0 is a price (a server you pay for otherwise).
+    if (!tablePrice(chosen, model) && input === null) { setError(PRICE_PROBLEM); focusError.current = true; return; }
     const command: ConnectBackgroundComputeCommand = {
       ...(name ? { name } : {}),
       provider: chosen, model,
@@ -113,9 +117,10 @@ export const AddKeyForm = forwardRef<AddKeyFormHandle, {
           aria-describedby="background-budget-help" />
         <p id="background-budget-help" className="background-settings__help">Your agents pause for the day when it’s used. It’s the only limit.</p>
         <label>Name<input name="connectionName" autoComplete="off" maxLength={80} placeholder="For example: Work OpenRouter" /></label>
-        <div className="background-settings__actions">
-          <Button type="submit" variant="primary" busy={busy} disabled={keyRefused}>Connect</Button>
+        {/* Cancel, then the one primary, on the right: the choose step's Cancel and Continue keep their side here (#1424). */}
+        <div className="background-settings__actions background-settings__actions--end">
           {onCancel ? <Button onClick={onCancel}>Cancel</Button> : null}
+          <Button type="submit" variant="primary" busy={busy} disabled={keyRefused}>Connect</Button>
         </div>
       </fieldset>
     </form>

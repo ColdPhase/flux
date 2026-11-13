@@ -16,12 +16,14 @@ class WikiLiveMenu(LiveBase):
         url = f"/projects/{self.ids['project']}/docs/{self.ids['doc']}"
         before = self.api(reader, "GET", f"/api/v1/docs/{self.ids['doc']}", status=200)
         reader.goto(url)
-        reader.locator("header.phead").get_by_role("button", name="Call", exact=True).click()
+        # On a phone Call is the first row of the space's More (#1239), not a button of the header.
+        reader.locator("header.phead").get_by_role("button", name="More", exact=True).click()
+        reader.get_by_role("menu", name="More").get_by_role("menuitem", name=re.compile("^Call")).click()
         bar = self.bar(reader)
         expect(bar.get_by_role("status").first).to_contain_text("Live")
         expect(bar.get_by_role("button", name=re.compile("^Microphone off"))).to_have_attribute("aria-pressed", "false")
-        bar.get_by_role("button", name="Session details and more", exact=True).click()
-        details = reader.get_by_role("dialog", name="Live session", exact=True)
+        bar.get_by_role("button", name="Call details and more", exact=True).click()
+        details = reader.get_by_role("dialog", name="Call details", exact=True)
         expect(details.get_by_role("button", name=re.compile("^Camera off"))).to_have_attribute("aria-pressed", "false")
         reader.keyboard.press("Escape")
         self.assertEqual(reader.evaluate("window.__live.gum + window.__live.gdm"), 0)

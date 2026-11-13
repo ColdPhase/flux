@@ -85,7 +85,7 @@ complicated or different").
   named: a person it mentions is told "Ada · via Claude Code mentioned you in …" (the Inbox item, the push and the notice are marked as
   AI-origin, so they are hidden while AI is off in the space), a search result and the "While you were away" summary (its item and
   its next step, "Answer Ada's question, posted via Claude Code") name it the same way, and the project export keeps it as the
-  message's `via`. An answer posted with Show everyone keeps its agent's name in `via` and its colour in `viaColour`, and reads "Ada · via Assistant" wherever only text fits (the same line the client's post has); in a direct message and its thread it
+  message's `via`. An answer posted with Show everyone keeps its agent's name in `via` and its colour in `viaColour`, and reads "Ada's Assistant" wherever only text fits, the name it has on the message (founder decision 2026-11-13, #1424); in a direct message and its thread it
   starts its own author run after the person's own message, and the direct messages list names it before the words ("via Assistant: …")
   (#1091, review of #1105). It has no change line and no Undo of its own, since the person's own Delete takes it back (the change is
   still in the log). In a task's discussion the client stays an agent: its line there is its agent's own, counted by the

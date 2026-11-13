@@ -455,8 +455,8 @@ A task has one discussion (#868), where people and agents talk about it:
   pages back. Reading creates nothing.
 - It and `flux_get_conversation` give each message (and the discussion's `root`) one `author: {kind: 'human' | 'agent', id, name}` in
   place of `authorId`, the agent author and `via` (#1160, `authors.ts`). `name` is how people see the author: a person's name, an
-  agent with whose it is ("Asystent (Ada's agent)", `agentLabel`), and a person's post of their agent's answer as theirs, "Ada Nowak ·
-  via Asystent". Only a person who can read the space now is named (`spaceReadersNamed`), and an agent's owner by the same rule
+  agent with whose it is ("Asystent (Ada's agent)", `agentLabel`), and a person's post of their agent's answer as theirs, by the one name
+  it has on the message, "Ada's Asystent" (#1424; a local client's post stays "Ada Nowak · via Claude Code"). Only a person who can read the space now is named (`spaceReadersNamed`), and an agent's owner by the same rule
   (`projectAuthorOwners`): anyone else is "Former member", "Asystent (a former member's agent)". When someone else who can read the
   space shares an owner's first name, the label has the owner's full name, "Asystent (Ada Nowak's agent)" (#1163). Every agent named by
   any read of a space (a task's owner or creator, a decision's author, a conversation's starter) gets the same label (`withAgentLabels`).

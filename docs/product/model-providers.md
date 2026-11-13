@@ -50,7 +50,9 @@ A person connects AI once, in Settings › AI. Their connections power all of th
   - **The Model control** is a dropdown of the chat models the key can use, grouped by family
     (Opus, Sonnet, Haiku, Fable…) with the newest family and model first, each with its price or
     "price unknown, enter it". The provider's own display name is shown where it gives one. Nothing
-    is preselected. "Other model id…" opens a field for an id the list doesn't have.
+    is preselected, except when the list holds exactly one model: there is nothing to pick between,
+    so that model is already chosen (journey review, #1424). "Other model id…" opens a field for an id
+    the list doesn't have.
   - **A key is saved only on a model its owner chose.** Flux has no default model for a key: Enter
     in the key field reads the models like leaving it, Connect before a model is chosen says so, and
     the server refuses a command without a model (422 `AI_MODEL_REQUIRED`) before it sends the key
@@ -68,7 +70,10 @@ A person connects AI once, in Settings › AI. Their connections power all of th
     is answered 429 `MODEL_LIST_BUSY` with `Retry-After` (#1347), and the Connect AI form asks again after
     2 s, up to 5 times, still saying "Reading the models…" (a key typed again while the last one is read).
 - **Price (PROV-3).** The daily budget prices every request before it is sent, so a model needs a
-  price. A listed model with a row in Flux's dated table uses it. A listed model without one stays
+  price. Flux never saves a key on a model without one, which could not be used: Connect asks for
+  the price in the same step ("Enter this model's price to use it with a daily budget…", above the
+  form), and the server refuses such a key from any client (422 `AI_PRICE_REQUIRED`, the same words),
+  so no key that "can't be used" can exist (journey review, #1424; 0 is a price). A listed model with a row in Flux's dated table uses it. A listed model without one stays
   selectable once the owner enters its price for that key (zero for a self-hosted endpoint): "Flux
   doesn't know this model's price yet. Enter it to use it with a daily budget." A price a provider
   lists (OpenRouter) is only offered as the starting value. The table follows the providers'

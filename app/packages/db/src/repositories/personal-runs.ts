@@ -343,7 +343,7 @@ export function personalRunRows(db: DbExecutor) {
     async messages(conversationId: string, limit: number) {
       const m = schema.projectMessages;
       const rows = await db.select({ id: m.id, sequence: m.sequence, body: m.body, contributionKind: m.contributionKind,
-        createdAt: m.createdAt, editedAt: m.editedAt, via: m.via,
+        createdAt: m.createdAt, editedAt: m.editedAt, via: m.via, viaColour: m.viaColour,
         authorId: m.authorId, authorAgentId: m.authorAgentId, humanName: schema.authUsers.name, agentName: schema.agents.name, agentOwner: schema.agents.ownerUserId })
         .from(m).leftJoin(schema.authUsers, eq(schema.authUsers.id, m.authorId))
         .leftJoin(schema.agents, and(eq(schema.agents.workspaceId, m.workspaceId), eq(schema.agents.id, m.authorAgentId)))
@@ -379,7 +379,7 @@ export function personalRunRows(db: DbExecutor) {
     async spaceMessages(projectId: string, limit: number) {
       const m = schema.projectMessages;
       const rows = await db.select({ id: m.id, sequence: m.sequence, body: m.body, contributionKind: m.contributionKind,
-        createdAt: m.createdAt, editedAt: m.editedAt, via: m.via, conversationId: m.conversationId,
+        createdAt: m.createdAt, editedAt: m.editedAt, via: m.via, viaColour: m.viaColour, conversationId: m.conversationId,
         authorId: m.authorId, authorAgentId: m.authorAgentId, humanName: schema.authUsers.name, agentName: schema.agents.name, agentOwner: schema.agents.ownerUserId })
         .from(m).innerJoin(schema.projectConversations, eq(schema.projectConversations.id, m.conversationId))
         .leftJoin(schema.authUsers, eq(schema.authUsers.id, m.authorId))
@@ -405,7 +405,7 @@ export function personalRunRows(db: DbExecutor) {
      */
     async dmMessages(dmId: string, limit: number, threadRootId: string | null = null) {
       const m = schema.dmMessages;
-      const rows = await db.select({ id: m.id, sequence: m.sequence, body: m.body, createdAt: m.createdAt, editedAt: m.editedAt, via: m.via, authorId: m.authorId, authorName: schema.authUsers.name })
+      const rows = await db.select({ id: m.id, sequence: m.sequence, body: m.body, createdAt: m.createdAt, editedAt: m.editedAt, via: m.via, viaColour: m.viaColour, authorId: m.authorId, authorName: schema.authUsers.name })
         .from(m).innerJoin(schema.authUsers, eq(schema.authUsers.id, m.authorId))
         .where(and(eq(m.dmId, dmId), eq(m.kind, 'text'), isNull(m.removedAt), threadRootId === null ? undefined : or(eq(m.id, threadRootId), eq(m.threadRootId, threadRootId))))
         .orderBy(desc(m.sequence)).limit(limit);

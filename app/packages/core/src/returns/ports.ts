@@ -65,6 +65,8 @@ export interface ReturnMessage {
   id: string; projectId: string; conversationId: string; author: ActorRef; body: string; sequence: number; createdAt: Date;
   /** The client or assistant that posted for its author ("Ada · via Claude Code"): the summary names it, as the message does. */
   via?: string | null;
+  /** `via` names an agent whose answer its author showed everyone, not a local client: the summary says "Ada's Assistant" (#1424). */
+  viaAgent?: boolean;
 }
 export interface ReturnConversation { id: string; projectId: string; createdBy: ActorRef; opening: string }
 export interface ReturnMaterial { id: string; projectId: string; title: string; version: number }

@@ -48,7 +48,7 @@ export function labelFor(pathname: string): string {
   if (/^\/projects\/[^/]+\/docs(\/|$)/.test(pathname) || /^\/docs(\/|$)/.test(pathname) || /^\/materials\//.test(pathname)) return 'Wiki';
   if (/^\/projects\/[^/]+\/agents(\/|$)/.test(pathname)) return 'Agents';
   if (/^\/projects\/[^/]+\/github(\/|$)/.test(pathname)) return 'GitHub settings';
-  if (/^\/projects\/[^/]+\/live\//.test(pathname)) return 'Live session';
+  if (/^\/projects\/[^/]+\/live\//.test(pathname)) return 'Call';
   if (pathname === '/projects') return 'Spaces';
   if (/^\/projects\/[^/]+\/?$/.test(pathname)) return 'Conversation';
   if (pathname.startsWith('/inbox')) return 'Inbox';
