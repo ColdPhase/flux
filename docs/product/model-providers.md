@@ -74,6 +74,11 @@ A person connects AI once, in Settings › AI. Their connections power all of th
   lists (OpenRouter) is only offered as the starting value. The table follows the providers'
   pricing pages, dated, with the primary source; a promotional price that ends on a known date is
   left out, and a model priced by prompt length uses the tier Flux's largest request can reach.
+  Prompt caching (#1410): an Anthropic run's request asks the provider to cache its prefix only while
+  its largest cost with every input token written to the cache (1.25×) still fits what is left of the
+  run's reservation; a cache write is charged at 1.25× and a read at 0.1× of the input price
+  (`PROMPT_CACHE_RATES`, dated), which is never below what Anthropic bills. Cached input on other
+  providers is charged at the full price.
 - **A model the provider retires** (in an earlier list of the key, missing from a later one) shows
   as "no longer offered by Anthropic", wherever its agents show it. The agents on it pause until
   their owner picks another model (like C-3); Flux never switches the model by itself.
