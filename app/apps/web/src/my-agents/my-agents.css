@@ -11,8 +11,8 @@
 .agl__error { flex-basis: 100%; margin: 0; }
 .agl__row { align-items: center; gap: 12px; }
 .agl__face { width: 36px; }
-.agl__name { gap: 8px; }
-.agl__tag { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: var(--r-pill); background: var(--el); border: 1px solid var(--line); font-size: var(--fs-xs); font-weight: 400; color: var(--t2); }
+.agl__name { flex-wrap: wrap; gap: 0 8px; overflow-wrap: break-word; }
+.agl__tag { white-space: nowrap; display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: var(--r-pill); background: var(--el); border: 1px solid var(--line); font-size: var(--fs-xs); font-weight: 400; color: var(--t2); }
 .agl__job { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .agl__may { flex: none; display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: var(--r-pill); background: var(--sub); font-size: var(--fs-xs); color: var(--t2); white-space: nowrap; }
 .agl__model { flex: none; display: flex; flex-direction: column; align-items: flex-end; min-width: 84px; font-size: var(--fs-xs); line-height: 1.35; color: var(--t3); }

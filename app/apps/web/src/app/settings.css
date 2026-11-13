@@ -245,4 +245,7 @@
 .tt__seg .tt__give.ui-select { min-height: 0; height: var(--seg-h, 30px); padding: 0 12px; border: 0; border-radius: var(--r-pill); background: transparent; box-shadow: none; color: var(--t2); font-size: var(--fs-sm); font-weight: 500; }
 .tt__seg .tt__give.ui-select.is-on { background: var(--seg-on); color: var(--t1); box-shadow: var(--sh-raise), inset 0 0 0 1px var(--line2); }
 .tt__seg .tt__give.ui-select:hover { color: var(--t1); }
-@media (max-width: 640px) { .tt .sset-row { flex-wrap: wrap; } .tt__seg { margin-left: 0; } }
+.tt .sset-row { flex-wrap: wrap; row-gap: 10px; }
+.tt .sset-row__b { flex: 1 1 14rem; }
+.tt__seg { margin-left: auto; }
+@media (max-width: 640px) { .tt__seg { margin-left: 0; } }
