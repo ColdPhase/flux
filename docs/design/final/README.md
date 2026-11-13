@@ -1277,11 +1277,14 @@ the composer. The right-hand phone above shows the sheet.
   - **Copy link** copies `/map/:id#thought-:id`. It opens My map with the thought selected, and only its owner can
     open it. On the phone both are in the Thought actions sheet.
 - A space's Map uses the same canvas and tools; its thoughts can link tasks (section 5).
-- **Two recorded departures from the drawn tools** ([#1376](https://github.com/ColdPhase/flux/issues/1376)). **Select several** is on the toolbar of a
+- A space's map has the same **Copy link** for one selected thought, `/projects/:p/map/:id#thought-:id`, and no Cite: Copy link
+  is the one way to point at a thought from a message (Hubert, 2026-11-13, [#1376](https://github.com/ColdPhase/flux/issues/1376)).
+  A thought's address pasted into a message (a space's conversation, a thread, a task's discussion or a direct message) reads as a
+  chip on the text's baseline, the map glyph and the thought's first line, like `#4` and `[[Page]]`; it opens the map with the
+  thought selected. A reader who may not read that map sees "Thought not available" and nothing of it. It gets no link card.
+- **One recorded departure from the drawn tools** ([#1376](https://github.com/ColdPhase/flux/issues/1376)). **Select several** is on the toolbar of a
   touch screen only (a tablet), a toggle that makes each tap add to the selection, because touch has no Shift-click; a computer selects several with
-  Shift-click, and the phone selects one thought at a time (S15). **Cite** is on a space's map only (My map has no conversation):
-  the one way to quote a selected thought in the space's conversation ([#469](https://github.com/ColdPhase/flux/issues/469)); it is enabled with exactly one
-  thought selected. Section 8 removes Cite from messages and the composer, not from the map; whether the map keeps it is an open question on #1376.
+  Shift-click, and the phone selects one thought at a time (S15).
 - On the phone, My map is a row on Home, next to "My tasks (N)", and not a tab. The phone map
   follows S15: view and add a thought.
 
@@ -1728,7 +1731,8 @@ The renders are the approved mockups as drawn; where a later decision differs, f
     people;
   - MCP scopes, capability switches and standing grants.
 - **Messages and creating:**
-  - Cite, Record a result, Details and Hand off on messages;
+  - Cite, Record a result, Details and Hand off on messages, and Cite on a space's map with its held citation in the
+    composer (Copy link replaces it; Hubert, 2026-11-13, [#1376](https://github.com/ColdPhase/flux/issues/1376));
   - the separate "Ask an agent" and "Cite" buttons in the composer (S5), and "+" for attaching;
   - the column "+", the ⌘K Create group, and the Map toolbar's Create task and Note.
 - **Tasks:** Not pursued, the Result object, Results and Activity sections, and "Came from". Also

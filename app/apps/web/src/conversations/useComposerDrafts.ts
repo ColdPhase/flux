@@ -1,7 +1,6 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
-import { useComposerDraft, useComposerScope, type DraftCite } from '../composer/draft';
-import { takeHeldCite } from '../app/citeBus';
+import { useComposerDraft, useComposerScope } from '../composer/draft';
 import type { PaneCore } from './paneCore';
 
 /**
@@ -38,21 +37,6 @@ export function useComposerDrafts({ me, project, conversation, composerId, writa
     field.style.height = 'auto';
     field.style.height = `${field.scrollHeight}px`;
   }, [draft, composerId]);
-  // A map thought cited on the map joins this pane's composer as a tile (#469).
-  const citeRef = useRef((citation: DraftCite) => { void citation; });
-  useEffect(() => { citeRef.current = (citation: DraftCite) => {
-    if (!writable) return;
-    const field = document.getElementById(composerId);
-    publicComposer.addCite(citation);
-    setAsking(false);
-    requestAnimationFrame(() => { if (field instanceof HTMLTextAreaElement) field.focus(); });
-  }; });
-  // A thought cited on the map waits for this project's own composer to open.
-  useEffect(() => {
-    if (conversation || !writable) return;
-    const held = takeHeldCite(project.id);
-    if (held) citeRef.current(held);
-  }, [conversation, writable, project.id]);
   return {
     asking, setAsking, publicComposer, helperComposer, composer, draft,
     captureScope: useComposerScope(publicComposer.key), captureHelperScope: useComposerScope(helperComposer.key),

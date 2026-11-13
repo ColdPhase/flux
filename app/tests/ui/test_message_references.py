@@ -3,8 +3,9 @@
 Runs with the other tests/ui journeys through scripts/check_ui.sh; FLUX_UI_BROWSER selects chromium (default) or webkit.
 A message cites a map thought (a message is no longer citable, #867). Its card carries the object's glyph, its kind, its title and one
 line of context, and opens the target; on a touch screen it is at least 44 px tall, and in dark mode its words stay readable. A target the
-reader may not open is an "unavailable" card that carries nothing of it. Cite on the map puts the citation in the composer as a tile that
-can be taken out; the sent message carries the card. A file row names the pages, rows or playing time the server read from its bytes.
+reader may not open is an "unavailable" card that carries nothing of it. A space's map has no Cite (#1376): its Copy link pasted into a
+conversation, a thread or a task's discussion reads as the thought's chip for whoever may read that map, and opens the map with the thought
+selected; anyone else sees "Thought not available". A file row names the pages, rows or playing time the server read from its bytes.
 """
 
 from __future__ import annotations
@@ -209,24 +210,57 @@ class MessageReferences(unittest.TestCase):
                     channels = [int(v) for v in re.findall(r"\d+", background)[:3]]
                     self.assertLess(sum(channels) / 3, 90, f"dark theme page background {background}")
 
-    def test_e_cite_the_selected_thought_from_the_map(self) -> None:
-        page = self.page("ada", path=f"/map/{self.ids['sketch']}")
+    def test_e_copy_link_on_a_space_map_reads_as_the_thoughts_chip_where_it_is_pasted(self) -> None:
+        page = self.page("ada", path=f"/projects/{self.ids['project']}/map/{self.ids['sketch']}")
+        page.evaluate("() => { window.__copied = []; navigator.clipboard.writeText = (text) => { window.__copied.push(text); return Promise.resolve(); }; }")
         tools = page.get_by_role("toolbar", name="Map tools")
-        cite = tools.get_by_role("button", name="Cite the selected thought in the conversation")
-        expect(cite).to_have_attribute("aria-disabled", "true")
+        expect(tools).to_be_visible()
+        expect(page.get_by_role("button", name=re.compile("^Cite"))).to_have_count(0)
         page.locator(f".sk-node[data-id='{self.ids['thought']}']").click()
-        expect(cite).to_have_attribute("aria-disabled", "false")
-        cite.click()
-        expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}$"))
-        tile = page.locator(".composer-cite")
-        expect(tile.locator("small")).to_have_text("Map thought · Enclosure ideas")
-        expect(tile.locator("strong")).to_have_text(THOUGHT)
-        page.locator("#project-composer").fill("Looking at this idea on the map")
-        with page.expect_request(lambda request: request.method == "POST" and request.url.endswith(f"/projects/{self.ids['project']}/conversations")) as sent:
-            page.locator("#project-composer").press("Enter")
-        self.assertEqual(sent.value.post_data_json["references"], [{"kind": "thought", "id": self.ids["thought"]}])
-        card = page.locator(".project-convo__message", has_text="Looking at this idea on the map").locator(".ref-card[data-ref='thought']")
-        expect(card.locator("strong")).to_have_text(THOUGHT)
+        page.get_by_role("button", name="Copy link", exact=True).click()
+        link = f"{ORIGIN}/projects/{self.ids['project']}/map/{self.ids['sketch']}#thought-{self.ids['thought']}"
+        page.wait_for_function("() => window.__copied.length === 1")
+        self.assertEqual(page.evaluate("window.__copied[0]"), link)
+        board_link = f"{ORIGIN}/projects/{self.ids['board']}/map/{self.ids['board_sketch']}#thought-{self.ids['note']}"
+        # Pasted into a space's conversation, a thread's reply and a task's discussion.
+        context = self.browser.new_context(base_url=ORIGIN, storage_state=self.states["ada"])
+        self.addCleanup(context.close)
+        def post(path: str, body: dict) -> dict:
+            response = context.request.post(path, data=body, headers={"origin": ORIGIN, "idempotency-key": str(uuid.uuid4())})
+            assert response.status in (200, 201), f"{path}: {response.status} {response.text()}"
+            return response.json()
+        body = f"See {link} and {board_link}"
+        root = post(f"/api/v1/projects/{self.ids['project']}/conversations", {"body": body, "clientMessageId": str(uuid.uuid4())})
+        reply = post(f"/api/v1/conversations/{root['id']}/messages", {"body": f"Also {link}", "clientMessageId": str(uuid.uuid4())})
+        task = post(f"/api/v1/projects/{self.ids['project']}/work", {"title": "Mount the panel"})
+        post(f"/api/v1/work/{task['id']}/discussion", {"body": f"Here: {link}", "clientMessageId": str(uuid.uuid4())})
+        places = {
+            "conversation": (f"/projects/{self.ids['project']}", f"#message-{root['messages'][0]['id']}"),
+            "thread": (f"/projects/{self.ids['project']}/conversations/{root['id']}", f"[data-message-id='{reply['id']}'], #message-{reply['id']}"),
+            "task": (f"/projects/{self.ids['project']}/tasks?open=work:{task['id']}", "[aria-label='Task activity']"),
+        }
+        for who in ("ada", "kai"):
+            for place, (path, scope) in places.items():
+                with self.subTest(who=who, place=place):
+                    page = self.page(who, path=path)
+                    chip = page.locator(scope).locator(f"a.ref-chip--thought[href$='#thought-{self.ids['thought']}']").first
+                    expect(chip).to_be_visible()
+                    expect(chip).to_have_attribute("data-ref-state", "available")
+                    expect(chip).to_contain_text(THOUGHT)
+                    expect(page.locator(scope).locator(".msg-link")).to_have_count(0)
+                    expect(page.locator(scope).locator(".link-preview")).to_have_count(0)
+                    if place == "conversation":
+                        board = page.locator(scope).locator(".ref-chip--thought").nth(1)
+                        if who == "ada":
+                            expect(board).to_contain_text(BOARD_NOTE)
+                        else:
+                            expect(board).to_have_attribute("data-ref-state", "unavailable")
+                            expect(board).to_have_text("Thought not available")
+                            self.assertNotIn(BOARD_NOTE, page.content())
+                    if who == "ada" and place == "task":
+                        chip.click()
+                        expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}/map/{self.ids['sketch']}#thought-{self.ids['thought']}$"))
+                        expect(page.locator(f".sk-node[data-id='{self.ids['thought']}']")).to_have_attribute("aria-pressed", "true")
 
     def test_f_a_file_row_names_its_pages_rows_or_playing_time(self) -> None:
         for phone in (False, True):
