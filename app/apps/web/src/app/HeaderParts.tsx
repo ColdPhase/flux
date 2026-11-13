@@ -46,7 +46,7 @@ export type MoreItem = { label: string; run: () => void; keys?: string; checked?
 /** The menu's rows that are shown: rows a wide header keeps in its own row are in the menu but hidden, and the keys skip them. */
 const shownRows = (menu: HTMLElement | null) => [...(menu?.querySelectorAll<HTMLElement>('[role^="menuitem"]') ?? [])].filter((el) => el.getClientRects().length > 0);
 
-/** More (⋯): the place's quieter actions, each with its key shown (F-026 §4, S18). `cue` is a small mark on the button (a call is live). */
+/** More (⋯): the place's quieter actions, each with its key shown (F-026 §4, S18). `cue` is a small mark on the button (a call is live). No items, no ⋯. */
 export function MoreMenu({ items, label = 'More', icon = 'more', className, size, cue }: { items: MoreItem[]; label?: string; icon?: 'more' | 'plus'; className?: string; size?: number; cue?: (id: string, buttonId: string) => ReactNode }) {
   const [open, setOpen] = useState(false);
   const button = useRef<HTMLButtonElement>(null);
@@ -73,6 +73,9 @@ export function MoreMenu({ items, label = 'More', icon = 'more', className, size
     else if (event.key === 'ArrowUp') { event.preventDefault(); shown[(at - 1 + shown.length) % shown.length]?.focus(); }
     else if (event.key === 'Tab') setOpen(false);
   };
+  // A place with nothing for ⋯ (Home, My map, My tasks) has no ⋯: an empty menu would open on nothing and keep the focus on its button (#1376
+  // took the sidebar row, the one row these places had).
+  if (!items.length) return null;
   return (
     <span className="top__more">
       {/* A mark on the button (a call is live) adds its words to the button's name: "More, a call is live in this space". */}
