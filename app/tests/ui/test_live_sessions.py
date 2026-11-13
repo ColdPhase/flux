@@ -786,6 +786,52 @@ class LiveJourney(LiveBase):
             self.bar(leaver).get_by_role("button", name="Leave", exact=True).click()
             expect(self.bar(leaver)).to_have_count(0)
 
+    def test_00h_a_screen_stopped_right_after_its_mode_changed_leaves_nothing_behind_when_the_camera_follows(self) -> None:
+        """#1339: Stop sharing pressed while the screen is being sent again in the other mode, and the camera turned on at once, are three
+        steps with the media server. The others' strip and stage drop the screen within moments, stay without it, and offer the camera."""
+        self.seed()
+        ada = self.page("ada")
+        project = self.api(ada, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects", {"name": "Repair bench", "visibility": "restricted"}, status=201)
+        pid = project["id"]
+        for key in ("nia", "jonas"):
+            self.api(ada, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": PEOPLE[key]["id"]}, "role": "contributor"}, status=201)
+        nia = self.page("nia")
+        nia.goto(f"/projects/{pid}")
+        self.call(nia)
+        jonas = self.page("jonas")
+        jonas.goto(f"/projects/{pid}")
+        jonas.locator("header.top").get_by_role("button", name="Join", exact=True).click()
+        expect(self.bar(jonas).locator(".lv-face")).to_have_count(2)
+        self.bar(nia).get_by_role("button", name=re.compile("^Microphone off")).click()
+        expect(self.bar(nia).get_by_role("button", name=re.compile("^Microphone on"))).to_be_visible()
+        sharing = self.bar(jonas).get_by_role("status").filter(has_text="sharing a screen")
+        cameras = self.bar(jonas).get_by_role("button", name="Cameras")
+        modes = self.bar(nia).get_by_role("radiogroup", name="How your screen is sent")
+        # Stops at different moments of the switch back: while the capture is constrained, unpublished, published again, and after.
+        for delay in (0, 40, 80, 120, 0, 80):
+            self.bar(nia).get_by_role("button", name="Share a window, tab or screen").click()
+            expect(sharing).to_be_visible(timeout=10000)
+            modes.get_by_role("radio", name="Smooth motion").click()
+            expect(modes.get_by_role("radio", name="Smooth motion")).to_have_attribute("aria-checked", "true")
+            nia.wait_for_timeout(600)  # the switch to Smooth motion is over; the next one is what the stop meets
+            modes.get_by_role("radio", name="Smooth motion").press("ArrowLeft")
+            expect(modes.get_by_role("radio", name="Sharp text")).to_have_attribute("aria-checked", "true")
+            nia.wait_for_timeout(delay)
+            self.bar(nia).get_by_role("button", name="Stop sharing your screen").click()
+            self.bar(nia).get_by_role("button", name=re.compile("^Camera off")).click()
+            expect(self.bar(nia).get_by_role("button", name=re.compile("^Camera on"))).to_be_visible()
+            expect(sharing).to_have_count(0, timeout=5000)
+            expect(cameras).to_be_visible(timeout=5000)
+            # A screen sent again for a moment may show again before it goes: what is left once things have settled is what counts.
+            jonas.wait_for_timeout(1500)
+            expect(sharing).to_have_count(0)
+            expect(cameras).to_be_visible()
+            self.bar(nia).get_by_role("button", name=re.compile("^Camera on")).click()
+            expect(cameras).to_have_count(0, timeout=5000)
+        for leaver in (jonas, nia):
+            self.bar(leaver).get_by_role("button", name="Leave", exact=True).click()
+            expect(self.bar(leaver)).to_have_count(0)
+
     def test_01_two_people_blocker_join_show_screen_result_leave(self) -> None:
         self.seed()
         nia = self.page("nia")
@@ -947,7 +993,11 @@ class LiveJourney(LiveBase):
         # A larger camera (#63): on the camera stage a tile is its own toggle; the camera then fills the stage.
         self.bar(nia).get_by_role("button", name=re.compile("^Camera off")).click()
         expect(self.bar(nia).get_by_role("button", name=re.compile("^Camera on"))).to_be_visible()
-        # Nia's screen leaves Jonas's strip first; the same place then offers the cameras once her camera track reaches him
+        # Nia's screen leaves Jonas's strip within moments of her stopping it, though she went on to the camera at once (#1339: the strip
+        # kept a screen nobody sent when the stop overlapped the screen's last switch of mode and the camera's publication).
+        expect(self.bar(jonas).get_by_role("status").filter(has_text="sharing a screen")).to_have_count(0, timeout=5000)
+        expect(self.bar(jonas).get_by_role("button", name=re.compile("Nia.s screen"))).to_have_count(0)
+        # The same place then offers the cameras once her camera track reaches him
         # through the SFU, which takes as long as the other media waits here under load (#249 acceptance run).
         expect(self.bar(jonas).get_by_role("button", name="Cameras")).to_be_visible(timeout=20000)
         self.bar(jonas).get_by_role("button", name="Cameras").click()

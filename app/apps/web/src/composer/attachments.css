@@ -115,6 +115,10 @@ span.photo-grid__open { cursor: default; }
 .file-viewer__sheet { display: flex; flex-direction: column; width: min(100% - 32px, 1200px); height: 100%; overflow: hidden; border-radius: var(--r); background: var(--el); color: var(--t1); }
 .file-viewer__frame { flex: 1; width: 100%; min-height: 0; border: 0; color-scheme: light; background: Canvas; }
 .file-viewer__state { display: flex; align-items: center; gap: 10px; margin: auto; padding: 24px; color: var(--t2); font-size: var(--fs-base); text-align: center; overflow-wrap: anywhere; }
+.file-viewer__sheet--pdf { position: relative; }
+/* A PDF's frame is transparent, so the sheet shows between the pages; the opening spinner covers it until the first page is drawn. */
+.file-viewer__frame--pdf { background: transparent; }
+.file-viewer__cover { position: absolute; inset: 0; z-index: 1; margin: 0; justify-content: center; background: var(--el); }
 /* The quiet line under the sheet: centred under the title, its link buttons as tall as the text (the whole line is the target). */
 .file-viewer .photo-viewer__caption { text-align: center; }
 /* One column no wider than the screen: a wide table scrolls inside its sheet and never widens the viewer. */

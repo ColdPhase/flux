@@ -1,0 +1,1 @@
+- Opening someone's HTML file in the preview no longer lets it make Safari connect to a host it names: the iframe, frame, object, embed and portal elements and every `srcdoc` of the page are sent inert, so a preconnect hint hidden in a nested document never reaches the browser (#1349).
