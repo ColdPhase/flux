@@ -160,12 +160,12 @@ class AgentPictures(unittest.TestCase):
         expect(viewer.locator("img")).to_be_visible()
         expect(viewer).to_contain_text("Raised garden bed.png")
         viewer.get_by_role("button", name="Close photo").click()
-        # Show everyone: Jo's own message, via the agent, with the photo for everyone in the space.
+        # Show everyone: Jo's own message, shown as "Jo's Assistant" (#1232), with the photo for everyone in the space.
         card.get_by_role("button", name="Show everyone").click()
         expect(card).to_have_count(0)
         posted = kai.locator(".project-convo__message").filter(has_text="larch boards")
         expect(posted).to_be_visible(timeout=15000)
-        expect(posted).to_contain_text("via Assistant")
+        expect(posted).to_contain_text("Jo's Assistant")
         self.loaded(posted.locator(".photo-grid img"))
         kai.reload()
         posted = kai.locator(".project-convo__message").filter(has_text="larch boards")
