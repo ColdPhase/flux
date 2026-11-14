@@ -130,6 +130,8 @@ export interface HeldPrice {
 
 /** Whether a price fell to 0, or to a tenth or less of what Flux knows; a known 0 cannot fall. */
 const fallsTooFar = (known: number, offered: number) => known > 0 && offered * 10 <= known;
+/** OpenRouter's own naming of a model it bills nothing for. */
+const openRouterFree = (provider: AiProviderKind, model: string) => provider === 'openrouter' && model.endsWith(':free');
 const own = <T>(rows: Readonly<Record<string, T>> | undefined, id: string): T | undefined =>
   rows && Object.prototype.hasOwnProperty.call(rows, id) ? rows[id] : undefined;
 
@@ -139,7 +141,9 @@ const own = <T>(rows: Readonly<Record<string, T>> | undefined, id: string): T | 
  * - a model Flux knows (in the list it has stored, else the shipped one) keeps its known price when the refreshed input or output
  *   price is 0 or a tenth or less of the known one; increases and smaller decreases apply;
  * - a model Flux does not know is never given a price of 0 (input or output): it is left out and its owner is asked, so a free
- *   model is free only when a stored or shipped list already had it at 0 (Gemini's free models).
+ *   model is free only when a stored or shipped list already had it at 0 (Gemini's free models);
+ * - except an OpenRouter id ending in `:free`: OpenRouter bills that key and names the model free, so its own price is taken as
+ *   listed, 0 included, on the first read too (coordinator decision, #1499).
  * `held` names each of them, for the log. The candidate is not changed.
  */
 export function guardPriceList(candidate: AiPriceList, stored: AiPriceList | null | undefined, shipped: AiPriceList | null | undefined): { list: AiPriceList; held: HeldPrice[] } {
@@ -149,7 +153,8 @@ export function guardPriceList(candidate: AiPriceList, stored: AiPriceList | nul
     const kept: [string, AiRate][] = [];
     for (const [model, offered] of Object.entries(rows)) {
       const known = own(stored?.prices[provider], model) ?? own(shipped?.prices[provider], model);
-      if (!known) {
+      if (openRouterFree(provider, model)) kept.push([model, offered]);
+      else if (!known) {
         if (offered.inputMicrosPerMTok === 0 || offered.outputMicrosPerMTok === 0) held.push({ provider, model, kept: null, offered });
         else kept.push([model, offered]);
       } else if (fallsTooFar(known.inputMicrosPerMTok, offered.inputMicrosPerMTok) || fallsTooFar(known.outputMicrosPerMTok, offered.outputMicrosPerMTok)) {
