@@ -111,6 +111,21 @@ class UpStatusTest(unittest.TestCase):
         self.assertNotIn("/setup#", done.stdout)
         self.assertIn("Sign in there. People join from the invite links you make in Settings › Company; ./flux reset-link <email> makes a password reset link.", done.stdout)
 
+    def test_the_demo_prints_no_setup_link_while_it_seeds(self) -> None:
+        """B-10: `./flux demo` on a fresh checkout starts Flux first and then seeds the company, so the setup link and the offer of the demo are left out."""
+        (self.checkout / "scripts").mkdir()
+        (self.checkout / "scripts/flux-demo.mjs").write_text("// the seed script is run inside the stub container\n")
+        env = {k: v for k, v in os.environ.items() if not k.startswith("FLUX_")}
+        env.update(PATH=f"{self.bin_dir}:{os.environ['PATH']}", FLUX_TEST_LOG=str(self.log), FLUX_TEST_INFO=INFO_OK, FLUX_WAIT_TIMEOUT="5", FLUX_TEST_COMPANIES="0",
+                   XDG_STATE_HOME=str(self.base / "state"))   # the AI key file a fresh install makes stays in the temporary folder
+        done = subprocess.run([str(self.checkout / "flux"), "demo"], cwd=self.base, env=env, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=60)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertIn("Flux demo is ready:", done.stdout)
+        self.assertIn("\nStatus\n", done.stdout)
+        self.assertNotIn("/setup#", done.stdout)
+        self.assertNotIn("Set up Flux", done.stdout)
+        self.assertNotIn("Or run ./flux demo", done.stdout)
+
     def test_calls_and_https_read_their_switches(self) -> None:
         """#1472 with #1477: the Calls line reads FLUX_CALLS, and the Address line says who serves HTTPS."""
         done = self.run_flux("up", ["FLUX_PUBLIC_ORIGIN=https://203.0.113.20", "FLUX_CALLS=on", "FLUX_AGENT_RUNTIME="])

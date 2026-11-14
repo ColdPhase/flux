@@ -244,11 +244,11 @@ class VideoPlayback(unittest.TestCase):
         draft = page.get_by_role("list", name="Files in your draft")
         expect(draft.get_by_role("listitem")).to_have_count(2)
         too_long = draft.get_by_role("listitem").filter(has_text="Too long.mp4")
-        expect(too_long.get_by_role("alert")).to_have_text("A video can be at most 12 MiB.")
+        expect(too_long.get_by_role("alert")).to_have_text("A video can be at most 12 MB.")
         long = draft.get_by_role("listitem").filter(has_text="Long walk.webm")
         expect(long).to_contain_text("Ready, private")
         expect(long).to_contain_text("Video · ")
-        expect(page.get_by_text("videos 12 MiB", exact=False)).to_be_visible()
+        expect(page.get_by_text("videos 12 MB", exact=False)).to_be_visible()
         too_long.get_by_role("button", name="Remove Too long.mp4").click()
         if self.plays["webm"] and UI_BROWSER == "chromium":
             expect(long.locator("img[src^='blob:']")).to_be_visible(timeout=20000)

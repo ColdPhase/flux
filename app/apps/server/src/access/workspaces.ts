@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { ME_PROBE_HEADER, WORKSPACES_PATH, type AddMemberCommand, type ChangeRoleCommand, type CreateWorkspaceCommand, type RenameWorkspaceCommand } from '@flux/contracts';
+import { ME_PROBE_HEADER, ME_REMOVED_FROM_PATH, WORKSPACES_PATH, type AddMemberCommand, type ChangeRoleCommand, type CreateWorkspaceCommand, type RenameWorkspaceCommand, type RemovedFrom } from '@flux/contracts';
 import { addMember, assertAuthorized, changeRole, createWorkspace, getWorkspace, listMembers, listRemovedPeople, listWorkspaces, removeMember, renameWorkspace, restoreMember } from '@flux/core';
 import { accessPorts, accessReader, personTimeZones } from '@flux/db';
 import { bodyId, requires } from '../http/commands.js';
@@ -24,6 +24,8 @@ export function workspaceRoutes(app: FastifyInstance, { db, principal, command, 
       throw error;
     }
   });
+  // A person who is no longer in the company is told so by name; anyone else gets `null`. No membership is needed to ask about oneself.
+  app.get(ME_REMOVED_FROM_PATH, async (request): Promise<RemovedFrom> => ({ company: await accessPorts.workspaces(db).removedFromCompany((await principal(request)).id) }));
   if (options.testDeployment) {
     app.post<{ Body: CreateWorkspaceCommand }>(WORKSPACES_PATH, {
       schema: { body: { type: 'object', required: ['name'], additionalProperties: false, properties: { name: nameSchema } } },

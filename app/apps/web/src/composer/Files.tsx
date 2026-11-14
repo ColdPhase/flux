@@ -85,8 +85,8 @@ export function ComposerFiles({ state, disabled = false, attach = 'row' }: { sta
   </div>;
 }
 
-const mebibytes = (bytes: number) => Math.round(bytes / (1024 * 1024));
-const limitsLine = (limits: FileLimits) => `Private until sent · ${mebibytes(limits.fileBytes)} MiB each, videos ${mebibytes(limits.videoBytes)} MiB · ${limits.messageFiles} files / ${mebibytes(limits.messageBytes)} MiB per message`;
+const megabytes = (bytes: number) => Math.round(bytes / (1024 * 1024));
+const limitsLine = (limits: FileLimits) => `Private until sent · ${megabytes(limits.fileBytes)} MB each, videos ${megabytes(limits.videoBytes)} MB · ${limits.messageFiles} files / ${megabytes(limits.messageBytes)} MB per message`;
 
 /** How close to a limit the draft is when its numbers are worth saying: two files short of the count, or four fifths of the bytes (#1424). */
 const NEAR_BYTES = 0.8;

@@ -220,7 +220,7 @@ class UnifiedPanel(unittest.TestCase):
                 expect(panel.locator("select, .ui-select")).to_have_count(0)
                 self.assertEqual(page.evaluate("[...document.querySelectorAll('#details select, #details .ui-select')].length"), 0)
                 # Activity above the composer, which sits at the bottom of the panel with its audience line.
-                composer = panel.get_by_placeholder(f"Write about #{task['number']} · @ · /")
+                composer = panel.get_by_placeholder("Write about this task…")
                 expect(composer).to_be_visible()
                 bounds, composer_box, activity = panel.bounding_box(), composer.bounding_box(), panel.get_by_role("region", name="Discussion").bounding_box()
                 self.assertGreater(composer_box["y"], activity["y"], "the composer is below the discussion")
@@ -328,7 +328,7 @@ class UnifiedPanel(unittest.TestCase):
         task = self.new_task("Choose the mast height")
         page = self.page()
         panel = self.open_task(page, task)
-        composer = panel.get_by_placeholder(f"Write about #{task['number']} · @ · /")
+        composer = panel.get_by_placeholder("Write about this task…")
         composer.fill("Did the supplier send the sizes?")
         panel.get_by_role("button", name=re.compile("^Send to task$")).click()
         item = panel.get_by_role("list", name="Task activity").locator("li[data-message-id]")

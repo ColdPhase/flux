@@ -320,8 +320,8 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
 }
 
 /** The one composer, at the bottom of the panel: it writes to the task's discussion, which shows in the timeline above. */
-export function TaskComposer({ state, composer, item, meId, writable, readOnly, id }: {
-  state: TaskActivityState; composer: TaskComposerDraft; item: Pick<WorkItem, 'id' | 'number'>; meId: string; writable: boolean; readOnly: boolean; id: string;
+export function TaskComposer({ state, composer, meId, writable, readOnly, id }: {
+  state: TaskActivityState; composer: TaskComposerDraft; meId: string; writable: boolean; readOnly: boolean; id: string;
 }) {
   const touch = useMediaQuery(MEDIA.touch);
   const captureScope = useComposerScope(composer.key);
@@ -380,7 +380,7 @@ export function TaskComposer({ state, composer, item, meId, writable, readOnly, 
       <ConnectionLine />
       <ComposerFiles state={composer} attach="none" />
       <ComposerBox id={id} label="Write to this task" value={composer.draft.body} maxLength={20000}
-        placeholder={[`Write about #${item.number} · @ · /`, `Write about #${item.number}`, 'Write']} onChange={(value, position) => { menu.change(position); setAskFailure(''); composer.setBody(value); typing.input(Boolean(value.trim()) && !/^\/ai(\s|$)/.test(value)); }} onSelect={menu.setCaret} onBlur={typing.stop} onKeyDown={onKeyDown}
+        placeholder={['Write about this task…', 'Write']} onChange={(value, position) => { menu.change(position); setAskFailure(''); composer.setBody(value); typing.input(Boolean(value.trim()) && !/^\/ai(\s|$)/.test(value)); }} onSelect={menu.setCaret} onBlur={typing.stop} onKeyDown={onKeyDown}
         fieldProps={{ 'aria-controls': menu.open ? `${id}-menu` : undefined, 'aria-activedescendant': menu.open ? `${id}-menu-${menu.options[menu.active]!.id}` : undefined }}
         attach={composer} sendLabel="Send to task" sendDisabled={!composer.canSend || !discussion} onSend={() => void send()}
         menu={<ComposerMenu open={menu.open} id={`${id}-menu`} options={menu.options} active={menu.active} trigger="/" onPick={menu.pick} onHover={menu.setIndex} />} />

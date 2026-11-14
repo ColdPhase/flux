@@ -65,6 +65,8 @@ export function MessageText({ body, linked = true, people = null, cite }: { body
         parts.push(source === null ? match[0] : <Fragment key={`${keyPrefix}${key++}`}>{source}</Fragment>);
       }
       last = match.index! + match[0].length;
+      // The composer adds a space after a picked mention and a person types one more out of habit: a mention is followed by one space, never a wide gap.
+      if (groups.known || groups.mention) while (text[last] === ' ' && text[last + 1] === ' ') last += 1;
     }
     if (last < text.length) parts.push(text.slice(last));
     return parts;

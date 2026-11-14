@@ -166,11 +166,11 @@ test('a video may be larger than a file, up to the operator\'s cap, and no more'
   // Over the cap is refused from the declared length, before a byte is read, and says so in the video's words.
   const over = await declared(f.sender, f.place.id, 'huge.mp4', most + 1);
   assert.deepEqual([over.status, over.body.code], [413, 'FILE_TOO_LARGE']);
-  assert.match(over.body.error, /A video is at most 12 MiB/);
+  assert.match(over.body.error, /A video is at most 12 MB/);
   // The same size for another file keeps the 5 MiB.
   const file = await declared(f.sender, f.place.id, 'huge.bin', most);
   assert.deepEqual([file.status, file.body.code], [413, 'FILE_TOO_LARGE']);
-  assert.match(file.body.error, /A file is at most 5 MiB/);
+  assert.match(file.body.error, /A file is at most 5 MB/);
   // A video that streams past the cap with no declared length is stopped by the count, and leaves nothing.
   const streaming = await scene();
   const endless = await chunked(streaming.sender, streaming.place.id, 'endless.mp4', most + 1);
@@ -424,7 +424,7 @@ test('in an encrypted space a video is an ordinary sealed file: 5 MiB, no poster
   // The ordinary limit holds, in the ordinary words.
   const large = await upload(ada, place.id, longClip(FILE_LIMITS.fileBytes), 'large.mp4');
   assert.deepEqual([large.status, large.body.code], [413, 'FILE_TOO_LARGE']);
-  assert.match(large.body.error!, /A file is at most 5 MiB/);
+  assert.match(large.body.error!, /A file is at most 5 MB/);
   // Its bytes are not recognised as a video, so a mislabelled one is just a file.
   assert.equal((await upload(ada, place.id, Buffer.from('not a movie'), 'plain.mp4')).status, 201);
 });

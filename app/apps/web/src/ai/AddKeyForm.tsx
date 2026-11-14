@@ -1,4 +1,4 @@
-import { forwardRef, useImperativeHandle, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
+import { forwardRef, useCallback, useImperativeHandle, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
 import { AI_PROVIDERS, API_KEY_DAILY_BUDGET_CENTS, isAiProviderKind, type AiProviderKind, type BackgroundComputeConnection,
   type ConnectBackgroundComputeCommand } from '@flux/contracts';
 import { ApiError } from '../api/client';
@@ -57,6 +57,8 @@ export const AddKeyForm = forwardRef<AddKeyFormHandle, {
   const [error, setError] = useState('');
   // No provider chosen yet, or the key in the field refused (#1218, #1424): Connect waits until there is something to connect.
   const [blocked, setBlocked] = useState(true);
+  // A line said about a model (Connect while the list was still being read) goes when the key is refused: no model field is on screen then.
+  const onBlocked = useCallback((next: boolean) => { setBlocked(next); if (next) setError(''); }, []);
   // The daily budget and the name are behind More (#1424). Both stay in the form, so a closed More still sends the budget's default;
   // it opens by itself when the problem is in it.
   const [more, setMore] = useState(false);
@@ -126,7 +128,7 @@ export const AddKeyForm = forwardRef<AddKeyFormHandle, {
     {error ? <p id="background-connect-error" ref={errorRef} className="background-settings__error" role="alert" tabIndex={-1}>{error}</p> : null}
     <form ref={formRef} onSubmit={(event) => void connect(event)}>
       <fieldset disabled={busy} className="background-settings__fields">
-        <ConnectionFields disabled={busy} onBlocked={setBlocked} keyHelpId="background-key-help" />
+        <ConnectionFields disabled={busy} onBlocked={onBlocked} keyHelpId="background-key-help" />
         <div className="background-settings__more-row">
           <Button variant="quiet" size="sm" icon={more ? 'chevron-down' : 'chevron-right'} aria-label="More settings" aria-expanded={more} aria-controls="background-more"
             onClick={() => setMore(!more)}>More</Button>

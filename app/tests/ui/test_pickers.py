@@ -512,7 +512,7 @@ class DateAndTimePickers(unittest.TestCase):
         page = self.page()
         panel = self.open_task(page, task)
         dialog = page.get_by_role("dialog", name="Due date")
-        composer = panel.get_by_placeholder(f"Write about #{task['number']} · @ · /")
+        composer = panel.get_by_placeholder("Write about this task…")
         # The composer: pressed with the calendar open, then typed into.
         panel.get_by_role("button", name="Due, add a date").click()
         expect(dialog).to_be_visible()

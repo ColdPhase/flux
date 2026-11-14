@@ -532,6 +532,12 @@ class OneConversationJourney(unittest.TestCase):
         owner.goto(f"/projects/{project['id']}")
         stream = self.stream(owner)
         expect(stream.get_by_role("heading", name="Where do we start?")).to_be_visible()
+        # A-8: the mascot, the heading and the paragraph share one centre line, as drawn (the mascot and heading sat left of the paragraph).
+        centre = lambda locator: (lambda box: box["x"] + box["width"] / 2)(locator.bounding_box())  # noqa: E731
+        empty = stream.locator(".ui-empty--mascot")
+        expect(empty).to_be_visible()
+        for part in (".ui-empty__mascot", ".ui-empty__title", ".ui-empty__body"):
+            self.assertAlmostEqual(centre(empty.locator(part)), centre(empty), delta=2, msg=f"{part} is centred")
         expect(stream).not_to_contain_text("Everyone in Workspace conversation sees it.")  # the default audience is not said (#871)
         expect(stream).not_to_contain_text("the only one in this space")
         self.assertEqual(self.api(owner, "GET", path, status=200)["roots"], [])
@@ -590,6 +596,21 @@ class OneConversationJourney(unittest.TestCase):
         self.assertEqual(len(roots), 1)
         self.assertEqual(roots[0]["message"]["body"], body)
         self.api(member, "GET", path, status=404)
+
+    def test_05f_a_mention_is_followed_by_one_space_however_many_were_typed(self) -> None:
+        """B-9: the composer adds a space after a picked mention and people type one more; the message shows one gap, not a wide one."""
+        owner = self.page("ada")
+        workspace = self.api(owner, "POST", "/api/v1/workspaces", {"name": "Mention gaps"}, status=201)
+        project = self.api(owner, "POST", f"/api/v1/workspaces/{workspace['id']}/projects", {"name": "Mention conversation", "visibility": "workspace"}, status=201)
+        sent = self.api(owner, "POST", f"/api/v1/projects/{project['id']}/conversations",
+                        {"body": "Hi @Jonas  welcome! Can you  bring @Lee   a coffee?", "clientMessageId": str(uuid.uuid4())}, status=201)
+        owner.goto(f"/projects/{project['id']}")
+        body = owner.locator(f"#message-{sent['messages'][0]['id']} .message-body")
+        expect(body).to_be_visible()
+        text = body.evaluate("element => element.textContent")
+        self.assertEqual(text, "Hi @Jonas welcome! Can you  bring @Lee a coffee?", "one space after a mention; two typed elsewhere stay as typed")
+        self.assertEqual(self.api(owner, "GET", f"/api/v1/projects/{project['id']}/conversation-roots", status=200)["roots"][0]["message"]["body"],
+                         "Hi @Jonas  welcome! Can you  bring @Lee   a coffee?", "the stored words are as typed")
 
     # ---------------------------------------------------------------- phone and tablet
 

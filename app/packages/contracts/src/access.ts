@@ -13,6 +13,11 @@ export const AGENTS_PATH = '/api/v1/agents';
 export const workspacePath = (workspaceId: string) => `${WORKSPACES_PATH}/${workspaceId}`;
 export const workspaceMembersPath = (workspaceId: string) => `${workspacePath(workspaceId)}/members`;
 export const workspaceMemberPath = (workspaceId: string, userId: string) => `${workspaceMembersPath(workspaceId)}/${userId}`;
+/** The company this person is no longer in (they left it or were removed and have not joined again), so the app can say so: `{ company: null }` for anyone else. */
+export const ME_REMOVED_FROM_PATH = '/api/v1/me/removed-from';
+export interface RemovedFrom {
+  company: string | null;
+}
 export const workspaceRemovedPeoplePath = (workspaceId: string) => `${workspacePath(workspaceId)}/removed-people`;
 export const workspaceRestorePath = (workspaceId: string, userId: string) => `${workspaceRemovedPeoplePath(workspaceId)}/${userId}/restore`;
 export const workspaceProjectsPath = (workspaceId: string) => `${workspacePath(workspaceId)}/projects`;
@@ -312,6 +317,11 @@ export interface ResetLink {
   /** `<origin>/reset-password#<token>`. */
   link: string;
   expiresAt: string;
+}
+/** The reset page names the account its link is for: `POST` the token, the answer is that account's address (404 for a link that is used, stopped or expired). */
+export const RESET_LINK_ACCOUNT_PATH = '/api/v1/identity/reset-link/account';
+export interface ResetLinkAccount {
+  email: string;
 }
 
 export const INVITE_CREATED_EVENT = 'workspace.invite_created.v1';

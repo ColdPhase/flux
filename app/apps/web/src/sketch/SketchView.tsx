@@ -339,8 +339,8 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
   };
 
   /**
-   * Where a thought from a message lands (CW-12): in free space inside the part of the map in view, clear of the
-   * breadcrumb and the dock, measured from the drawn thoughts. With nothing drawn yet, or on the phone's columns, the
+   * Where a thought from a message, or a new one with no parent, lands (CW-12): in free space inside the part of the map in view, clear of the
+   * breadcrumb, the dock, the minimap and the zoom, measured from the drawn thoughts. With nothing drawn yet, or on the phone's columns, the
    * first free place, and the map shows it.
    */
   const arrivalSpot = () => {
@@ -358,6 +358,11 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
       const topLeft = plane(view.left + 24, view.top + 72), bottomRight = plane(view.right - 24, view.bottom - 96);
       const bounds: Rect = { x: topLeft.x, y: topLeft.y, w: bottomRight.x - topLeft.x, h: bottomRight.y - topLeft.y };
       const rects = drawn.map(({ t: thought, box: drawnBox }) => ({ x: thought.x, y: thought.y, w: thought.width, h: Math.max(rectOf(thought, heights).h, drawnBox.height / zoom) }));
+      // What floats over the canvas (the minimap and the zoom) is as much in the way as a thought: nothing lands under it.
+      for (const floating of rootRef.current?.querySelectorAll<HTMLElement>('.sk-minimap, .sk-zoom') ?? []) {
+        const over = floating.getBoundingClientRect(), at = plane(over.left, over.top);
+        rects.push({ x: at.x, y: at.y, w: over.width / zoom, h: over.height / zoom });
+      }
       const spot = freeSpotNear(rects, plane(view.left + view.width / 2, view.top + view.height / 2), size, bounds)
         ?? freeSpotNear(rects, plane(view.left + view.width / 2, view.top + view.height / 2), size);
       if (spot) return spot;
@@ -394,7 +399,8 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
     if (blocked(replace)) return;
     // S15 applies to every entry point, including + on a focused thought and clipboard drafts.
     if (phone) parentId = null;
-    const [spot] = at ? [at] : spots(parentId, 1, { w: DEFAULT_THOUGHT_SIZE.width, h: DEFAULT_THOUGHT_SIZE.height });
+    // A thought with no parent lands in free space the person can see, as one from a message does; beside its parent otherwise.
+    const [spot] = at ? [at] : parentId === null ? [arrivalSpot()] : spots(parentId, 1, { w: DEFAULT_THOUGHT_SIZE.width, h: DEFAULT_THOUGHT_SIZE.height });
     capture.set({ id: doc.newId(), linkId: doc.newId(), key: doc.newId(), text, x: spot!.x, y: spot!.y, parentId, tracked: true });
     setConnectFrom(null);
     setEditing(null);

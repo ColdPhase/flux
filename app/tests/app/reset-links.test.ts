@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import Fastify from 'fastify';
-import { personResetLinkPath, type ResetLink } from '@flux/contracts';
+import { personResetLinkPath, RESET_LINK_ACCOUNT_PATH, type ResetLink } from '@flux/contracts';
 import { makeResetLink, registerResetLinkRoutes, resetIdentifier } from '../../apps/server/src/identity/reset-links.js';
 import type { SessionResolver } from '../../apps/server/src/identity/session.js';
 import type { SecurityLogger } from '../../apps/server/src/security-log.js';
@@ -93,6 +93,26 @@ describe('a reset link made next to a person (#1471)', () => {
     assert.deepEqual([sso.status, code(sso)], [409, 'NO_PASSWORD'], 'an account without a password has nothing to reset');
     assert.equal((await new Browser().request('POST', personResetLinkPath(member.id))).status, 401, 'signed out');
     assert.equal((await rows(otherAdmin.id)).length, 1, 'a refusal records nothing');
+  });
+});
+
+describe('the reset page names the account its link is for', () => {
+  const whose = (token: string) => new Browser().request('POST', RESET_LINK_ACCOUNT_PATH, { body: { token } });
+
+  test('the holder of a link that works is told the address, and nobody else is told anything', async () => {
+    const admin = await inCompany('Whose Admin', 'admin');
+    const member = await inCompany('Whose Member', 'member');
+    const token = tokenOf((expectStatus(await make(admin, member.id), 201) as ResetLink).link);
+    const told = expectStatus(await whose(token), 200) as { email: string };
+    assert.equal(told.email, member.email);
+    assert.equal((await whose(token)).headers.get('cache-control'), 'no-store');
+    assert.equal((await whose('not-a-link-that-was-ever-made')).status, 404, 'an unknown token');
+    assert.equal((await whose('short')).status, 400, 'a token of no length');
+    expectStatus(await reset(token, 'the account named before it was used'), 200);
+    assert.equal((await whose(token)).status, 404, 'a used link names nothing');
+    const expired = tokenOf((expectStatus(await make(admin, member.id), 201) as ResetLink).link);
+    await pool.query("UPDATE auth_verifications SET expires_at = now() - interval '1 minute' WHERE identifier = $1", [resetIdentifier(expired)]);
+    assert.equal((await whose(expired)).status, 404, 'an expired link names nothing');
   });
 });
 

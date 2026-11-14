@@ -10,6 +10,9 @@ export const PAD = 24;
 /** Empty plane beyond the thoughts on every side, so the map has no edge (#509). */
 export const PLANE_MARGIN = 1200;
 
+/** Room kept under a placed thought for the line a task adds to its card ("#5 To do"), so a thought placed below it is not overlapped later. */
+export const TASK_LINE_ROOM = 36;
+
 interface Anchor { x: number; y: number; horizontal: boolean; sign: number }
 
 /** Side anchors when two boxes sit side by side; top/bottom only when they overlap horizontally. */
@@ -43,7 +46,7 @@ export function rectOf(thought: Thought, heights: Map<string, number>): Rect {
 
 /** A free spot for a new thought: beside `from` when given, else the first free place at the top left. */
 export function freeSpot(rects: Rect[], from: Rect | null, size: { w: number; h: number }, columnsOnly = false): { x: number; y: number } {
-  const hits = (x: number, y: number) => rects.some((r) => x < r.x + r.w + 16 && x + size.w + 16 > r.x && y < r.y + r.h + 16 && y + size.h + 16 > r.y);
+  const hits = (x: number, y: number) => rects.some((r) => x < r.x + r.w + 16 && x + size.w + 16 > r.x && y < r.y + r.h + 16 + TASK_LINE_ROOM && y + size.h + 16 > r.y);
   if (!from) {
     for (let y = PAD; y < PAD + 4000; y += 40) for (let x = PAD; x < PAD + (columnsOnly ? 1 : 1200); x += 40) if (!hits(x, y)) return { x, y };
     return { x: PAD, y: PAD };
@@ -106,7 +109,7 @@ export function project(thoughts: Thought[], heights: Map<string, number>, canva
  * around the centre; null when nothing within reach is free.
  */
 export function freeSpotNear(rects: Rect[], center: { x: number; y: number }, size: { w: number; h: number }, bounds?: Rect): { x: number; y: number } | null {
-  const hits = (x: number, y: number) => rects.some((r) => x < r.x + r.w + 24 && x + size.w + 24 > r.x && y < r.y + r.h + 24 && y + size.h + 24 > r.y);
+  const hits = (x: number, y: number) => rects.some((r) => x < r.x + r.w + 24 && x + size.w + 24 > r.x && y < r.y + r.h + 24 + TASK_LINE_ROOM && y + size.h + 24 > r.y);
   const inside = (x: number, y: number) => !bounds || (x >= bounds.x && y >= bounds.y && x + size.w <= bounds.x + bounds.w && y + size.h <= bounds.y + bounds.h);
   const x0 = Math.round(center.x - size.w / 2), y0 = Math.round(center.y - size.h / 2);
   for (let ring = 0; ring <= 30; ring++) {

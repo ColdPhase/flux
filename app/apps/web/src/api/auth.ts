@@ -1,7 +1,7 @@
 import {
   AUTH_CHANGE_EMAIL_PATH, AUTH_CHANGE_PASSWORD_PATH, AUTH_UPDATE_USER_PATH, REVOKE_OTHER_SESSIONS_PATH, SESSIONS_PATH, type SessionSummary,
   AUTH_REQUEST_PASSWORD_RESET_PATH, AUTH_RESET_PASSWORD_PATH, AUTH_SIGN_IN_EMAIL_PATH, AUTH_SIGN_IN_SOCIAL_PATH, AUTH_SIGN_UP_EMAIL_PATH,
-  IDENTITY_CLAIM_PATH, IDENTITY_LINK_PATH, identityLinkPath, IDENTITY_CAPABILITIES_PATH, ME_LAST_ACTIVE_PATH, ME_PATH, ME_PROBE_HEADER, type IdentityCapabilities, type MeResponse,
+  IDENTITY_CLAIM_PATH, IDENTITY_LINK_PATH, RESET_LINK_ACCOUNT_PATH, identityLinkPath, IDENTITY_CAPABILITIES_PATH, ME_LAST_ACTIVE_PATH, ME_PATH, ME_PROBE_HEADER, type IdentityCapabilities, type MeResponse,
   type SetLastActive,
 } from '@flux/contracts';
 import { ApiError, request } from './client';
@@ -26,6 +26,16 @@ export function signUp(input: { name: string; email: string; password: string; s
 export async function getPendingClaim(signal?: AbortSignal) {
   try {
     return await request<{ email: string; expiresAt: string }>(IDENTITY_CLAIM_PATH, { signal });
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return null;
+    throw error;
+  }
+}
+
+/** The address a reset link is for, so its page can say whose password it changes; null when the link no longer works. */
+export async function getResetLinkAccount(token: string, signal?: AbortSignal) {
+  try {
+    return (await request<{ email: string }>(RESET_LINK_ACCOUNT_PATH, { method: 'POST', body: { token }, signal })).email;
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) return null;
     throw error;

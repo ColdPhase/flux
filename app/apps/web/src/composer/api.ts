@@ -33,7 +33,7 @@ export function stageFile(place: FilePlace, uploadId: string, file: File, onProg
       type Answer = StagedFile & { code?: string; message?: string; error?: string };
       let data: Answer;
       try { data = JSON.parse(xhr.responseText) as Answer; } catch { reject(new ApiError(xhr.status, null, xhr.statusText)); return; }
-      // The server says why in `error` ("A video is at most 200 MiB"), which is what the person should read.
+      // The server says why in `error` ("A video is at most 200 MB"), which is what the person should read.
       if (xhr.status < 200 || xhr.status >= 300) { reject(new ApiError(xhr.status, data.code ?? null, data.message ?? data.error ?? xhr.statusText, data)); return; }
       resolve(data);
     };

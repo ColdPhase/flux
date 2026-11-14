@@ -80,7 +80,7 @@ async function digestOnly(bytes: AsyncIterable<Uint8Array>, limits: { maxBytes: 
 function pictureRefused(reason: Extract<CleanPicture, { ok: false }>['reason']): Error {
   if (reason === 'too_many_pixels') return new PayloadTooLargeError('A picture is at most 8,000 pixels on a side and 40 megapixels', 'PICTURE_TOO_MANY_PIXELS');
   // The upload itself was within 5 MiB (that is refused before this); the picture written again is not.
-  if (reason === 'too_large') return new PayloadTooLargeError('A file is at most 5 MiB, and this picture is larger once it is cleaned. Save it smaller and send it again', 'FILE_TOO_LARGE');
+  if (reason === 'too_large') return new PayloadTooLargeError('A file is at most 5 MB, and this picture is larger once it is cleaned. Save it smaller and send it again', 'FILE_TOO_LARGE');
   return new InvalidInputError('This picture cannot be read: it is damaged, or its parts do not agree on one image', 'UNREADABLE_PICTURE');
 }
 
@@ -193,8 +193,8 @@ async function collect(bytes: AsyncIterable<Uint8Array>, max: number): Promise<B
 /** How many of one person's videos may be arriving at once (C-61): each holds a connection for up to 20 minutes. */
 const VIDEO_ARRIVALS = 3;
 
-const mib = (bytes: number) => `${Math.round(bytes / (1024 * 1024) * 10) / 10} MiB`;
-const tooLarge = (limit: number, video: boolean) => new PayloadTooLargeError(video ? `A video is at most ${mib(limit)}` : 'A file is at most 5 MiB', 'FILE_TOO_LARGE');
+const mib = (bytes: number) => `${Math.round(bytes / (1024 * 1024) * 10) / 10} MB`;
+const tooLarge = (limit: number, video: boolean) => new PayloadTooLargeError(video ? `A video is at most ${mib(limit)}` : 'A file is at most 5 MB', 'FILE_TOO_LARGE');
 
 /**
  * Locks the files a new message will carry, in ascending id order, and checks that each is the author's own,
@@ -228,7 +228,7 @@ export async function lockAttachments(files: FileRepository, storage: Pick<FileS
     if (!row.videoContainer) total += row.size;
     ordered.push(row);
   }
-  if (total > FILE_LIMITS.messageBytes) throw new InvalidInputError('The files of one message are at most 20 MiB together, not counting videos', 'ATTACHMENTS_TOO_LARGE');
+  if (total > FILE_LIMITS.messageBytes) throw new InvalidInputError('The files of one message are at most 20 MB together, not counting videos', 'ATTACHMENTS_TOO_LARGE');
   return ordered;
 }
 

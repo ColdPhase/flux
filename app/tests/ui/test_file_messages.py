@@ -355,7 +355,7 @@ class FilesReferencesPhotos(unittest.TestCase):
         # A PDF and a CSV preview from their name (C-60, #1252); the round button beside them downloads.
         pdf = rows.locator(".file-row").filter(has_text="probe-v2-drawing.pdf")
         expect(pdf.get_by_role("link", name="Download probe-v2-drawing.pdf")).to_have_attribute("download", "probe-v2-drawing.pdf")
-        expect(pdf.get_by_role("button", name="Preview probe-v2-drawing.pdf")).to_contain_text("PDF · 302.8 KiB")
+        expect(pdf.get_by_role("button", name="Preview probe-v2-drawing.pdf")).to_contain_text("PDF · 302.8 KB")
         expect(pdf.locator("svg.file-icon[data-kind=pdf] .file-icon__band")).to_have_count(1)
         expect(pdf.locator(".file-icon__label")).to_have_text("PDF")
         csv = rows.locator(".file-row").filter(has_text="lora-range-far-beds.csv")
@@ -972,7 +972,7 @@ class FilesReferencesPhotos(unittest.TestCase):
         expect(page.get_by_role("dialog")).to_be_visible()
 
     def test_the_limits_are_said_only_when_a_file_is_refused_or_the_draft_is_near_one(self) -> None:
-        """#1424: "Private until sent · 5 MiB each, videos 200 MiB · 10 files / 20 MiB per message" stayed under the composer the whole time
+        """#1424: "Private until sent · 5 MB each, videos 200 MB · 10 files / 20 MB per message" stayed under the composer the whole time
         files were attached. It shows when a file is refused or the draft is within two files or a fifth of the message's bytes of a limit."""
         page = self.page()
         text = {"name": "notes.txt", "mimeType": "text/plain", "buffer": b"lux,gestures\n"}
@@ -989,14 +989,14 @@ class FilesReferencesPhotos(unittest.TestCase):
         # Near the count (8 of 10): the limits are said once, in full.
         choose([{**text, "name": f"more-{index}.txt"} for index in range(5)])
         expect(draft.get_by_role("listitem")).to_have_count(8)
-        expect(limits).to_have_text(re.compile(r"^Private until sent · 5 MiB each, videos \d+ MiB · 10 files / 20 MiB per message$"))
+        expect(limits).to_have_text(re.compile(r"^Private until sent · 5 MB each, videos \d+ MB · 10 files / 20 MB per message$"))
         draft.get_by_role("button", name="Remove more-0.txt").click()
         draft.get_by_role("button", name="Remove more-1.txt").click()
         expect(draft.get_by_role("listitem")).to_have_count(6)
         expect(limits).to_have_count(0)
         # A refused file says why on its row and brings the limits with it.
         choose([{"name": "too-big.bin", "mimeType": "application/octet-stream", "buffer": b"\x00" * (5 * 1024 * 1024 + 1)}])
-        expect(draft.get_by_role("listitem").filter(has_text="too-big.bin").get_by_role("alert")).to_have_text("A file can be at most 5 MiB.")
+        expect(draft.get_by_role("listitem").filter(has_text="too-big.bin").get_by_role("alert")).to_have_text("A file can be at most 5 MB.")
         expect(limits).to_have_count(1)
         draft.get_by_role("button", name="Remove too-big.bin").click()
         expect(limits).to_have_count(0)

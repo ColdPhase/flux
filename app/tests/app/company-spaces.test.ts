@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
-import { ENCRYPTED_WORKSPACES_PATH, IDENTITY_CAPABILITIES_PATH, type IdentityCapabilities, type Project, type RemovedPerson, type Workspace } from '@flux/contracts';
+import { ENCRYPTED_WORKSPACES_PATH, IDENTITY_CAPABILITIES_PATH, ME_REMOVED_FROM_PATH, type IdentityCapabilities, type Project, type RemovedFrom, type RemovedPerson, type Workspace } from '@flux/contracts';
 import { buildNotificationEmail, COMPANY_NAME, EVERYONE_SPACE_NAME, getProject, joinCompany, listProjects, type Principal } from '@flux/core';
 import { accessPorts } from '@flux/db';
 import Fastify from 'fastify';
@@ -230,7 +230,11 @@ describe('in the company', () => {
     const leaver = await person('Company Leaver');
     await join(leaver, 'member');
     expectStatus(await setGrant(admin, space.id, leaver, 'contributor'), 201);
+    const removedFrom = async (who: Person) => (expectStatus(await who.browser.request('GET', ME_REMOVED_FROM_PATH), 200) as RemovedFrom).company;
+    assert.equal(await removedFrom(leaver), null, 'in the company: nothing to say');
     expectStatus(await admin.browser.request('DELETE', `/api/v1/workspaces/${companyId}/members/${leaver.id}`), 204);
+    assert.equal(await removedFrom(leaver), (await company())[0]!.name, 'removed: told which company they are no longer in');
+    assert.equal(await removedFrom(member), null, 'someone still in it is told nothing');
 
     const listed = expectStatus(await admin.browser.request('GET', `/api/v1/workspaces/${companyId}/removed-people`), 200) as RemovedPerson[];
     assert.deepEqual(listed.filter((entry) => entry.userId === leaver.id).map((entry) => entry.email), [leaver.email]);
@@ -241,6 +245,7 @@ describe('in the company', () => {
     expectStatus(await member.browser.request('POST', `/api/v1/workspaces/${companyId}/removed-people/${leaver.id}/restore`), 403, 'only an admin restores');
     expectStatus(await admin.browser.request('POST', `/api/v1/workspaces/${companyId}/removed-people/${leaver.id}/restore`), 201);
     assert.equal(await roleIn(companyId, leaver.id), 'member');
+    assert.equal(await removedFrom(leaver), null, 'restored: nothing to say again');
     expectStatus(await leaver.browser.request('GET', `/api/v1/projects/${everyoneId}`), 200, 'in Everyone again');
     expectStatus(await leaver.browser.request('GET', `/api/v1/projects/${space.id}`), 404, 'other spaces come back by hand');
     const after = expectStatus(await admin.browser.request('GET', `/api/v1/workspaces/${companyId}/removed-people`), 200) as RemovedPerson[];

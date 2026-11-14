@@ -302,6 +302,19 @@ class MuteAndFollowJourney(unittest.TestCase):
         expect(page.get_by_role("button", name="Following", exact=True)).to_be_visible()
         self.settled(lambda: self.following(page, self.kai_thread), True, "the choice is stored")
 
+    def test_05b_replying_in_a_thread_that_says_follow_says_following_at_once(self) -> None:
+        """C-10: writing in a thread follows it; the head said Follow until a reload."""
+        page = self.page()
+        self.clean_after(page)
+        page.goto(f"/projects/{self.project_id}/conversations/{self.kai_thread}")
+        expect(page.get_by_role("button", name="Follow", exact=True)).to_be_visible()
+        field = page.locator("#thread-composer")
+        field.fill("Thanks Kai, the probes look right to me")
+        field.press("Enter")
+        expect(page.get_by_role("button", name="Following", exact=True)).to_be_visible()
+        expect(page.get_by_role("button", name="Follow", exact=True)).to_have_count(0)
+        self.assertTrue(self.following(page, self.kai_thread), "writing in it follows it")
+
     def test_06_a_follow_made_in_one_tab_shows_in_the_other_without_a_reload(self) -> None:
         context = self.context("ada")
         first, second = context.new_page(), context.new_page()

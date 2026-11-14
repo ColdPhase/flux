@@ -39,8 +39,8 @@ const waitReasons = (changes: readonly { line: string | null }[]) =>
   [...new Set(changes.map((change) => change.line).filter((line): line is string => !!line))].join(' ') || 'Deleting and other people\'s things always wait for your OK.';
 
 /** Not now (S11): one button, no menu. It puts the item off until tomorrow morning and offers Undo. */
-export function NotNowButton({ onClick, variant = 'secondary', className }: { onClick: () => void; variant?: 'secondary' | 'quiet'; className?: string }) {
-  return <Button variant={variant} className={className} aria-keyshortcuts="S" onClick={onClick}>Not now</Button>;
+export function NotNowButton({ onClick, variant = 'secondary', className, keyHint = false }: { onClick: () => void; variant?: 'secondary' | 'quiet'; className?: string; keyHint?: boolean }) {
+  return <Button variant={variant} className={className} aria-keyshortcuts="S" onClick={onClick}>Not now{keyHint ? <kbd aria-hidden="true">S</kbd> : null}</Button>;
 }
 
 export function Face({ item }: { item: NeedsYouItem }) {
@@ -144,7 +144,7 @@ export function NeedsYouCard({ item, selected = false, compact = false, list = f
       {decision ? (
         <>
           <Button variant="primary" className="nyc__accept" aria-keyshortcuts="A" onClick={() => handlers.accept(item)}>Accept<kbd aria-hidden="true">A</kbd></Button>
-          <NotNowButton onClick={notNow} />
+          <NotNowButton onClick={notNow} keyHint />
           <Button variant="quiet" onClick={() => handlers.discuss(item)}>Discuss</Button>
         </>
       ) : item.kind === 'blocked' ? (
@@ -172,7 +172,7 @@ export function NeedsYouCard({ item, selected = false, compact = false, list = f
       ) : (
         <Button variant="secondary" onClick={() => handlers.open(item)}>{item.reason === 'invitation' ? 'Open' : 'Reply'}</Button>
       )}
-      {!decision && !item.proposal && !touch ? <span className="nyc__quiet"><NotNowButton variant="quiet" onClick={notNow} /><Button variant="quiet" aria-keyshortcuts="E" onClick={() => handlers.done(item)}>Done</Button></span> : null}
+      {!decision && !item.proposal && !touch ? <span className="nyc__quiet"><NotNowButton variant="quiet" onClick={notNow} keyHint /><Button variant="quiet" aria-keyshortcuts="E" onClick={() => handlers.done(item)}>Done<kbd aria-hidden="true">E</kbd></Button></span> : null}
     </div>
   );
 

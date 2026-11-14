@@ -6,6 +6,8 @@ import { useShellData } from '../app/data';
 import { Button, PanelActions, useToast } from '../ui';
 import { getFollow, setFollow } from './api';
 
+const PROJECT_MESSAGE_SENT_EVENT = 'project.message_sent.v1';
+
 /**
  * Follow and Following in a thread's header (#1249): whether this thread's replies notify the person. They follow it without choosing
  * when they started it, wrote in it or were mentioned in it; Following stops its replies, and Follow brings them back. It reads and
@@ -25,9 +27,12 @@ export function ThreadFollow({ conversationId, projectId }: { conversationId: st
     }, () => undefined);
   }, [conversationId]);
   useEffect(read, [read]);
-  useStreamEvents(identity, (event) => { if (event.kind === PROJECT_NOTIFICATIONS_CHANGED_EVENT && event.objectId === projectId) read(); }, read);
-
   const known = state?.id === conversationId ? state.following : null;
+  useStreamEvents(identity, (event) => {
+    if (event.kind === PROJECT_NOTIFICATIONS_CHANGED_EVENT && event.objectId === projectId) read();
+    // Writing in a thread follows it, with no event of its own: while the head says Follow, a message of the space is the moment to ask again.
+    else if (event.kind === PROJECT_MESSAGE_SENT_EVENT && event.objectId === projectId && known === false) read();
+  }, read);
   if (known === null) return null;
   const choose = async () => {
     const mine = ++version.current;

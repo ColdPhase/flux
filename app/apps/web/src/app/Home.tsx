@@ -323,7 +323,7 @@ function FirstStepsCard({ phone, workspaceId, onPushRow }: { phone: boolean; wor
 /** Home (F-026 §7, P1, #865): the date and a greeting, what waits for you (the top of the Inbox), and where to continue. */
 export function Home() {
   const moments = useSmallMoments();
-  const { me, workspace, workspaces, projects, lockedWorkspaces } = useShellData();
+  const { me, workspace, removedFrom, workspaces, projects, lockedWorkspaces } = useShellData();
   const { openCreate } = useShellActions();
   const phone = useMediaQuery(MEDIA.navDrawer);
   const queue = useNeedsYou(me.user.id);
@@ -359,9 +359,15 @@ export function Home() {
             {joinedSpace.role === 'guest' ? null : <Button variant="secondary" size="lg" onClick={() => openCreate({ kind: 'space' })}>Start a space</Button>}
           </> : <>
           {/* F-037: an account nobody has invited yet joins through a link from the company's admin. */}
-          <h3 id="home-first">You’re not in a company here yet</h3>
-          <p>Flux is where a company’s people and agents talk, turn what is said into tasks and decisions, and keep what they learn.</p>
-          <p className="home__first-note">Got an invite link? Open it to join your company.</p>
+          {removedFrom ? <>
+            {/* A person who was in the company and is not any more (they left or were removed) is told so, and how to come back. */}
+            <h3 id="home-first">You’re no longer in {removedFrom}</h3>
+            <p>Ask an owner or admin of the company for an invite link to come back.</p>
+          </> : <>
+            <h3 id="home-first">You’re not in a company here yet</h3>
+            <p>Flux is where a company’s people and agents talk, turn what is said into tasks and decisions, and keep what they learn.</p>
+            <p className="home__first-note">Got an invite link? Open it to join your company.</p>
+          </>}
           </>}
         </section>
       ) : (

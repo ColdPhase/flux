@@ -413,6 +413,9 @@ a Better Auth `reset-password:` verification value, stored as its SHA-256 only, 
   `201 { link, expiresAt }` once; the link is never listed or shown again. 10 a minute per person and API process.
 - `./flux reset-link <email>` runs the same in the API container for any password account (`via: command`).
 - `POST /api/auth/request-password-reset` with email set up mails a link (`via: email`).
+- `POST /api/v1/identity/reset-link/account` with `{ token }` (no session): the reset page says whose password it is about,
+  "Reset the password for ada@…". It answers `200 { email }` to the holder of a link that still works and `404` for one that is
+  used, stopped, expired or unknown; 30 a minute per address and API process, `cache-control: no-store`.
 
 Making a link stops the account's earlier links. Using one stops every other link of the account and ends every session of the
 person (`revokeSessionsOnPasswordReset`, and their local clients, C-42). A password change in Settings › Account stops no link

@@ -1,5 +1,5 @@
 import { redirect, useRouteLoaderData, type LoaderFunctionArgs } from 'react-router';
-import { ME_PROBE_HEADER, SPACE_ORDER_PATH, WORKSPACES_PATH, orderSpaces, plainMessageText, type SpaceOrder, type MyAgent, type ProjectAccess, type ProjectVisibility, type SpaceAiState, type SpaceIcon, type WorkspaceRole } from '@flux/contracts';
+import { ME_PROBE_HEADER, ME_REMOVED_FROM_PATH, SPACE_ORDER_PATH, WORKSPACES_PATH, orderSpaces, plainMessageText, type RemovedFrom, type SpaceOrder, type MyAgent, type ProjectAccess, type ProjectVisibility, type SpaceAiState, type SpaceIcon, type WorkspaceRole } from '@flux/contracts';
 import { request as apiRead } from '../api/client';
 import { getMe, type MeResponse } from '../api/auth';
 import { pacedShellRead } from './shellPace';
@@ -54,6 +54,8 @@ export interface ShellData {
   me: MeResponse;
   /** The company (F-037), or null for an account nobody has invited yet. */
   workspace: WorkspaceSummary | null;
+  /** The name of the company a person without one is no longer in (they left it or were removed), or null: someone nobody has invited yet. */
+  removedFrom: string | null;
   /** The workspaces whose content can be read now: plain ones and encrypted ones that are unlocked. */
   workspaces: WorkspaceSummary[];
   /** Encrypted workspaces that wait to be unlocked (F-030, #655): drawn as one row each, never asked for content. */
@@ -129,6 +131,9 @@ async function readShell({ request }: LoaderFunctionArgs): Promise<ShellData> {
     apiRead<SpaceOrder>(SPACE_ORDER_PATH, { signal: request.signal }).then((kept) => kept.order, (): string[] => []),
   ]);
   const projects = orderSpaces(reachableSpaces.filter((project) => project.member !== false), spaceOrder, everyoneIn(workspaces));
+  const workspace = workspaces.find((space) => space.company) ?? workspaces.find((space) => !space.spaceOf && !space.encryption) ?? workspaces[0] ?? null;
+  // Someone with no company is told whether they were in one (a removed person is not "not invited yet"); the read is theirs alone and never stops the shell.
+  const removedFrom = workspace ? null : await apiRead<RemovedFrom>(ME_REMOVED_FROM_PATH, { signal: request.signal }).then((answer) => answer.company, () => null);
   const directMessages = dms.map((dm) => ({
     id: dm.id, workspaceId: dm.workspaceId, kind: dm.kind, title: dmTitle(dm, me.user.id),
     people: othersIn(dm, me.user.id).map((person) => person.name), peopleIds: othersIn(dm, me.user.id).map((person) => person.id), participantIds: dm.audience.participantIds,
@@ -136,7 +141,7 @@ async function readShell({ request }: LoaderFunctionArgs): Promise<ShellData> {
       // A message of files alone has no words (#1438 point 10): the row says so.
       : dm.lastMessageAt && dm.lastMessageBody === '' ? 'Sent a file' : dm.lastMessageBody, lastAt: dm.lastMessageAt,
   }));
-  return { me, workspace: workspaces.find((space) => space.company) ?? workspaces.find((space) => !space.spaceOf && !space.encryption) ?? workspaces[0] ?? null, workspaces, lockedWorkspaces, projects, spaceOrder, reachableSpaces, directMessages, agents, photos };
+  return { me, workspace, removedFrom, workspaces, lockedWorkspaces, projects, spaceOrder, reachableSpaces, directMessages, agents, photos };
 }
 
 export function useShellData(): ShellData {

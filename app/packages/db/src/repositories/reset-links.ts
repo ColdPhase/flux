@@ -60,6 +60,13 @@ export function passwordResetLinks(db: DbExecutor) {
         VALUES (${randomUUID()}, ${identifier}, ${userId}, ${expiresAt.toISOString()}::timestamptz, now(), now())`);
     },
 
+    /** The address of the account a link still open is for (`identifier` is its stored, hashed identifier); null once it is used, stopped or expired. */
+    async accountOf(identifier: string, now = new Date()): Promise<string | null> {
+      const { rows } = await db.execute<{ email: string }>(sql`SELECT u.email FROM auth_verifications v JOIN auth_users u ON u.id = v.value
+        WHERE v.identifier = ${identifier} AND v.expires_at > ${now.toISOString()}::timestamptz`);
+      return rows[0]?.email ?? null;
+    },
+
     /** The link with this identifier was used (Better Auth already deleted its verification row). */
     async markUsed(identifier: string, at = new Date()): Promise<void> {
       await db.execute(sql`UPDATE password_reset_links SET used_at = ${at.toISOString()}::timestamptz WHERE verification_identifier = ${identifier} AND used_at IS NULL`);

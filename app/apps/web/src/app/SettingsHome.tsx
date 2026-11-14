@@ -356,7 +356,7 @@ function SingleSignOnLink() {
 }
 
 
-const dateFormat = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+const dateFormat = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
 /** Settings → Account: who is signed in, their name, address and password, where they are signed in, and Sign out (#763 SG-1). */
 export function SettingsAccount() {
@@ -411,7 +411,7 @@ export function KeyboardShortcuts() {
   return (
     <div className="pane-scroll">
       <div className="pane-in sset-in">
-        <PageHead title="Shortcuts" lead="On a computer, or a tablet with a keyboard. The keys also show next to their actions in menus." />
+        <PageHead title="Shortcuts" lead="On a computer, or a tablet with a keyboard. The keys also show next to their actions in menus. J, K, E, S and A work in the Inbox." />
         <table className="sset-card sset-keys">
           <caption className="ui-vh">Shortcuts</caption>
           <thead className="ui-vh"><tr><th scope="col">Keys</th><th scope="col">Action</th></tr></thead>
