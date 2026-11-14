@@ -249,7 +249,8 @@ class TasksReviewJourney(unittest.TestCase):
                 }"""), f'{label}: {title} exposes the state, tag and owner without clipping')
         expect(self.row(page, "Alex the person's job").locator(".agent-tag")).to_have_count(0)
         expect(self.row(page, "Alex the person's job").locator(".ws-item__s")).to_contain_text("Alex")
-        expect(self.row(page, "Agent stuck job").locator(".ui-pill--inv")).to_have_text("Blocked")
+        expect(self.row(page, "Agent stuck job").locator(".ui-pill--inv")).to_have_count(0)
+        expect(self.row(page, "Agent stuck job").locator(".ws-item__s")).to_contain_text("Blocked")
 
     def test_06_agent_rows_keep_the_agent_tag_the_name_and_the_owner(self) -> None:
         desktop = self.page("ada")
