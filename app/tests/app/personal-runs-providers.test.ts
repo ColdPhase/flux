@@ -324,6 +324,7 @@ describe('no payer switching; the API key\'s one daily budget pauses a request u
 
   test('at the key\'s budget a request waits for the next day, with one line and no switch; the assistant reads "capped"', async () => {
     const tiny = randomUUID();
+    const sentBefore = pi.gateway.requests.length;
     // A model whose one request is above the key's whole budget would wait for a day that never comes: it is refused.
     connections.connect(owner.id, tiny, { provider: 'anthropic', model: 'claude-sonnet-5', dailyBudgetCents: 10 });
     await assert.rejects(runs.enable(human(owner), { agentId, connection: tiny, model: 'claude-sonnet-5' }), /can cost more than this key's daily budget/);
@@ -344,7 +345,7 @@ describe('no payer switching; the API key\'s one daily budget pauses a request u
     assert.equal(queue.runIds.includes(asked.run.id), false, 'a paused request is not dispatched now');
     assert.equal(await processor.process(asked.run.id), 'skipped', 'the worker does not start it before its resume time');
     assert.equal((await row(asked.run.id)).status, 'queued');
-    assert.equal(pi.gateway.requests.length, 0, 'and nothing is sent to anyone');
+    assert.equal(pi.gateway.requests.length, sentBefore, 'and nothing is sent to anyone');
     await runs.stop(human(owner), asked.run.id);
     await runs.remove(human(owner));
     agentId = (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'My assistant', owner: 'self' } }), 201) as { id: string }).id;
