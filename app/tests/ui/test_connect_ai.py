@@ -244,6 +244,32 @@ class ConnectAiJourney(unittest.TestCase):
         expect(app).to_have_count(0)
         expect(page.get_by_text("Your connected apps couldn’t be loaded")).to_have_count(0)
 
+    def test_05a_a_full_load_lays_out_the_empty_cards_as_drawn(self) -> None:
+        """Review of v0.2.1 (P2-2): a full load of Settings › AI (a typed address, a reload) loads the stylesheets in another order than
+        in-app navigation. The cards' own layout must not depend on it: "Nothing is connected yet" is a flex row with Connect AI on its
+        right, inside the card, and "Your agents" is a padded card, after the first load and after a reload alike."""
+        page = self.page("tom")
+        page.goto("/settings/agents")
+        for load in ("first load", "reload"):
+            if load == "reload":
+                page.reload()
+            connect, assistant, _ = self.sections(page)
+            empty = connect.locator(".cai__empty")
+            expect(empty).to_contain_text("Nothing is connected yet.")
+            button = empty.get_by_role("button", name="Connect AI", exact=True)
+            expect(button).to_be_visible()
+            agents = assistant.locator(".agl__empty")
+            expect(agents).to_contain_text("You have no agents.")
+            css = lambda node: node.evaluate("e => { const s = getComputedStyle(e); return [s.display, s.paddingTop, s.paddingLeft]; }")
+            self.assertEqual(css(empty), ["flex", "12px", "14px"], f"{load}: the Connect AI card is a padded row")
+            self.assertEqual(css(agents), ["flex", "12px", "14px"], f"{load}: the Your agents card is padded")
+            card, inside = empty.bounding_box(), button.bounding_box()
+            self.assertGreaterEqual(inside["y"], card["y"] + 4, f"{load}: Connect AI is inside its card: {card} {inside}")
+            self.assertLessEqual(inside["y"] + inside["height"], card["y"] + card["height"] - 4, f"{load}: Connect AI is inside its card: {card} {inside}")
+            self.assertLessEqual(inside["x"] + inside["width"], card["x"] + card["width"] - 8, f"{load}: Connect AI is at the card's right: {card} {inside}")
+            self.assertGreater(inside["x"], card["x"] + card["width"] / 2, f"{load}: Connect AI is on the right of the line: {card} {inside}")
+            self.assertGreaterEqual(agents.bounding_box()["height"], 40, f"{load}: Your agents is a card, not a strip")
+
     def test_05b_the_lines_say_what_the_connections_give(self) -> None:
         """#1173: with nothing connected Connect AI says its rule once. A connection listed above that cannot run an agent (a plan to
         sign in to again, a key whose model has no known price) is not answered with "Connect AI first" below it."""

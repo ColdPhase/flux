@@ -13,8 +13,9 @@ import { listAiModels } from './api';
 // chosen until the owner picks.
 // - Anthropic, OpenAI and Gemini: when the key field is left, the server lists the models that key can use, and that one call is
 //   also the key's test. The Model is then a dropdown by family, newest first, each with its price or "price unknown, enter it",
-//   and "Other model id…" for an id the list lacks. A refused key says so and Connect waits for another; a list that can't be
-//   read leaves the plain field with a note.
+//   and "Other model id…" for an id the list lacks. A refused key says so and Connect waits for another; so does a key the server
+//   turns away before asking the provider (400 AI_KEY_FORMAT: the key of another provider), in the server's own words. Only a list
+//   that can't be read (a timeout, a 5xx) leaves the plain field with a note (model-providers.md, #1424).
 // - OpenRouter and an OpenAI-compatible endpoint list without a key ("Show available models"), with the plain field as fallback.
 //   OpenRouter's list is read as soon as it is chosen: its prices are what an OpenRouter key pays (#1465).
 // No model list is written into Flux: the models are only ever the provider's own (founder direction, Hubert, 2026-11-12), and
@@ -75,7 +76,11 @@ function optionText(prices: AiProviderPriceList | null, model: AiListedModel) {
 /** The model chosen when a list is read (#1424, CA-2): the only one, else the middle family of Anthropic, OpenAI and Gemini (`defaultListedModel`). */
 const defaultModel = (provider: AiProviderKind, models: readonly AiListedModel[]) => defaultListedModel(provider, models)?.id ?? '';
 
-type Listing = { state: 'idle' } | { state: 'reading' } | { state: 'done'; list: AiModelList } | { state: 'failed' };
+/**
+ * `rejected`: the server refused the request itself with a 4xx (a key in another provider's format, an endpoint address it doesn't
+ * accept, a guest), so its plain message is shown and nothing was read; `failed`: the list couldn't be read (a 5xx, no answer).
+ */
+type Listing = { state: 'idle' } | { state: 'reading' } | { state: 'done'; list: AiModelList } | { state: 'rejected'; message: string; key: boolean } | { state: 'failed' };
 
 /** A listing refused as busy is asked again after this wait, this many times: more than a listing's 8 s in all. */
 const LIST_BUSY_WAIT_MS = 2_000;
@@ -105,7 +110,10 @@ export function ConnectionFields({ disabled, onKeyRefused, keyHelpId }: {
   const list = listing.state === 'done' && listing.list.provider === provider ? listing.list : null;
   const listed = list?.status === 'listed' ? list.models : null;
   const refused = list?.status === 'key_refused';
-  useEffect(() => { onKeyRefused(refused); }, [refused, onKeyRefused]);
+  const rejected = listing.state === 'rejected' ? listing : null;
+  // What is wrong with the key now in the field, said under it: refused by the provider, or turned away by the server (#1424).
+  const keyProblem = refused ? listFailure(provider as AiProviderKind, 'key_refused') : keyed && rejected ? rejected.message : '';
+  useEffect(() => { onKeyRefused(!!keyProblem); }, [keyProblem, onKeyRefused]);
   // Flux's prices of the provider come with its model list, read or not (#1465).
   const prices = list?.priceList ?? null;
   const known = provider && model ? listPrice(prices, model) : null;
@@ -113,7 +121,7 @@ export function ConnectionFields({ disabled, onKeyRefused, keyHelpId }: {
   // couldn't be read, and for "Other model id…".
   const dropdown = !!listed && listed.length > 0;
   const field = !dropdown || other;
-  const waitingForKey = keyed && (listing.state === 'idle' || listing.state === 'reading' || refused);
+  const waitingForKey = keyed && (listing.state === 'idle' || listing.state === 'reading' || !!keyProblem);
 
   function choose(next: AiProviderKind | '') {
     setProvider(next); setListing({ state: 'idle' }); setOther(false); listedKey.current = ''; setModel('');
@@ -152,8 +160,14 @@ export function ConnectionFields({ disabled, onKeyRefused, keyHelpId }: {
         if (!kept) setModel(result.models.some((entry) => entry.id === current) ? current : defaultModel(kind, result.models));
         setOther(kept);
       }
-    } catch {
-      if (ask === asked.current) setListing({ state: 'failed' });
+    } catch (error) {
+      if (ask !== asked.current) return;
+      // A 4xx is the server's answer to what was sent, not a list that couldn't be read: say it, and open no free field for it. Leaving
+      // the key field again asks again (a busy server that stayed busy may answer the next time).
+      if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
+        listedKey.current = '';
+        setListing({ state: 'rejected', message: error.message, key: error.code === 'AI_KEY_FORMAT' });
+      } else setListing({ state: 'failed' });
     }
   }
 
@@ -166,6 +180,7 @@ export function ConnectionFields({ disabled, onKeyRefused, keyHelpId }: {
 
   const status = listing.state === 'reading' ? (keyed ? `Reading ${info!.label}’s models…` : 'Reading the models…')
     : listing.state === 'failed' ? (provider ? listFailure(provider, 'unavailable') : '')
+      : rejected ? (keyed ? '' : rejected.message)
       : list && list.status !== 'listed' ? (refused ? '' : listFailure(provider as AiProviderKind, list.status))
         : list && dropdown ? `${list.models.length} ${list.models.length === 1 ? 'model' : 'models'} from ${info!.label}.`
           : list ? listFailure(provider as AiProviderKind, 'unavailable') : '';
@@ -184,12 +199,12 @@ export function ConnectionFields({ disabled, onKeyRefused, keyHelpId }: {
       <p id={`${id}-endpoint`} className="background-settings__help">A server that works like OpenAI’s, such as Ollama, LM Studio or vLLM. Use an https address.</p>
     </> : null}
     <label>API key<input name="apiKey" type="password" autoComplete="off" spellCheck={false} required minLength={8} maxLength={512}
-      aria-invalid={refused || undefined} aria-describedby={`${keyHelpId}${refused ? ` ${id}-refused` : ''}`}
+      aria-invalid={refused || rejected?.key || undefined} aria-describedby={`${keyHelpId}${keyProblem ? ` ${id}-refused` : ''}`}
       onBlur={(event) => keyLeft(event.currentTarget.value)}
       // Enter before the models are read reads them (the key's test) instead of saving: the form never goes on without a chosen model.
       onKeyDown={(event) => { if (event.key === 'Enter' && waitingForKey) { event.preventDefault(); keyLeft(event.currentTarget.value); } }}
-      onChange={() => { if (refused) { setListing({ state: 'idle' }); listedKey.current = ''; } }} /></label>
-    {refused ? <p id={`${id}-refused`} className="background-settings__error" role="alert">{listFailure(provider as AiProviderKind, 'key_refused')}</p> : null}
+      onChange={() => { if (keyProblem) { setListing({ state: 'idle' }); listedKey.current = ''; } }} /></label>
+    {keyProblem ? <p id={`${id}-refused`} className="background-settings__error" role="alert">{keyProblem}</p> : null}
     <p id={keyHelpId} className="background-settings__help">{info ? info.keyHint : 'Choose a provider first.'}{provider === 'anthropic' ? ' If the key belongs to your Claude Max, Ultra or Team plan, the plan’s monthly API credits pay for it.' : ''}{keyed ? ' Flux checks it when you leave the field.' : ''}</p>
     {dropdown ? (
       <label>Model

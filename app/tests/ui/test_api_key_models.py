@@ -242,6 +242,38 @@ class ApiKeyModels(unittest.TestCase):
         expect(page.get_by_role("button", name="Connect", exact=True)).to_be_enabled()
         expect(page.get_by_role("combobox", name="Model")).to_be_enabled()
 
+    def test_03a_a_key_of_another_provider_says_so_in_the_servers_words_and_opens_no_free_field(self) -> None:
+        """Review of v0.2.1 (P2-3), model-providers.md (#1424): the server turns away an OpenAI key under Anthropic (400 AI_KEY_FORMAT)
+        before asking Anthropic. That is said under the key, Connect waits for another, and the free Model field stays closed: it is
+        only for a list that can't be read (a timeout, a 5xx), as a stubbed 503 still shows."""
+        page = self.page()
+        self.form(page)
+        before = self.connected(page)
+        self.type_key(page, f"sk-proj-{MARK * 3}KM07")
+        alert = page.get_by_role("alert").filter(has_text="The key does not look like a key of this provider.")
+        expect(alert).to_be_visible()
+        expect(page.get_by_label("API key", exact=True)).to_have_attribute("aria-invalid", "true")
+        expect(page.get_by_text("couldn’t be read")).to_have_count(0)
+        expect(page.get_by_role("combobox", name="Model")).to_have_count(0)
+        expect(page.get_by_role("textbox", name="Model")).to_have_count(0)
+        expect(page.get_by_role("button", name="Connect", exact=True)).to_be_disabled()
+        shot(page, named("api-key-models-wrong-format"))
+        self.assertEqual(self.connected(page), before, "nothing is saved")
+        # An Anthropic key clears it and is read.
+        self.type_key(page, f"sk-ant-api03-{MARK * 3}KM08")
+        expect(alert).to_have_count(0)
+        expect(page.get_by_role("combobox", name="Model")).to_be_enabled()
+        expect(page.get_by_role("button", name="Connect", exact=True)).to_be_enabled()
+        # A list the server can't read (a 5xx) is the one case for the free field.
+        failing = self.page()
+        failing.route(re.compile(r".*/api/v1/ai-model-lists$"), lambda route: route.fulfill(
+            status=503, content_type="application/json", body=json.dumps({"error": "Service unavailable", "code": "UNAVAILABLE"})))
+        self.form(failing)
+        self.type_key(failing, f"sk-ant-api03-{MARK * 3}KM09")
+        expect(failing.get_by_role("status").filter(has_text="Anthropic’s model list couldn’t be read.")).to_be_visible()
+        expect(failing.get_by_label("Model", exact=True)).to_be_editable()
+        expect(failing.get_by_role("alert")).to_have_count(0)
+
     def connected(self, page: Page) -> list[str]:
         return [item["name"] for item in json.loads(page.request.get(f"{ORIGIN}/api/v1/background-compute-connections").text())]
 

@@ -104,8 +104,8 @@ Documentation: <https://coldphase.github.io/flux/>. Flux is open source under th
   offered says so and pauses until you choose another.
 - **Agents use your AI.** With one AI connection, agents simply use it, and replacing the key breaks nothing. A choice of connection per
   agent appears only when you have several. An agent with no usable connection says "Needs a connection".
-- **Connect AI is short.** Provider and Key come first and the model is preselected; Budget and Name are under More. It shows a price
-  only when none is known, in plain words, and needs no scrolling at 1440 × 900.
+- **Connect AI is short.** Provider and Key come first and the model is preselected; Budget and Name are under More. It shows the
+  model's known price in one plain line, asks for a price only when none is known, and needs no scrolling at 1440 × 900.
 - **Pictures.** An agent can look at a picture someone posted when its model sees pictures, and can attach a picture from the web to
   its `/ai` answer, with Undo.
 - **Cleaner answers.** A web answer lists its sources once, without invented citation marks. An answer shown to everyone reads as the
