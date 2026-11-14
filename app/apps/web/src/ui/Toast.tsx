@@ -78,7 +78,8 @@ export function useClearOfToast(ref: RefObject<HTMLElement | null>, attached: HT
   const stack = useContext(ToastStackContext);
   useLayoutEffect(() => {
     if (!attached) return undefined;
-    const update = () => {
+    // `grow` is false for the reader's own scrolling: that only gives room back, it never takes more.
+    const update = (grow: boolean) => {
       const feed = ref.current;
       if (!feed || (top === null && !feed.style.getPropertyValue('--toast-clear'))) return;
       const box = feed.getBoundingClientRect();
@@ -86,18 +87,20 @@ export function useClearOfToast(ref: RefObject<HTMLElement | null>, attached: HT
       const over = !!toasts && toasts.height > 0 && toasts.left < box.right && toasts.right > box.left && toasts.top < box.bottom;
       const clear = over ? Math.max(0, Math.ceil(box.bottom - toasts.top + 8)) : 0;
       const was = parseFloat(feed.style.getPropertyValue('--toast-clear')) || 0;
-      if (clear === was) return;
+      if (clear === was || (!grow && clear > was)) return;
       const left = feed.scrollHeight - feed.scrollTop - feed.clientHeight;
       // Less room: only while the part given back is out of view, so nothing on screen moves.
       if (clear < was && left < was - clear - 1) return;
       if (clear) feed.style.setProperty('--toast-clear', `${clear}px`); else feed.style.removeProperty('--toast-clear');
       if (clear > was && left <= 2) feed.scrollTop = feed.scrollHeight;
     };
-    update();
+    const measure = () => update(true);
+    const scrolled = () => update(false);
+    measure();
     const feed = ref.current;
-    window.addEventListener('resize', update);
-    feed?.addEventListener('scroll', update, { passive: true });
-    return () => { window.removeEventListener('resize', update); feed?.removeEventListener('scroll', update); };
+    window.addEventListener('resize', measure);
+    feed?.addEventListener('scroll', scrolled, { passive: true });
+    return () => { window.removeEventListener('resize', measure); feed?.removeEventListener('scroll', scrolled); };
   }, [ref, attached, top, stack]);
 }
 
