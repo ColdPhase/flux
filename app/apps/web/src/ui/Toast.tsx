@@ -69,7 +69,9 @@ const ToastStackContext = createContext<RefObject<HTMLDivElement | null> | null>
 /**
  * A conversation keeps its end clear of the toast while one shows (#1424, B-8): the end of its list moves up by the part of the
  * toast over the feed (`--toast-clear`, a transparent bottom border of the feed's column, see ui.css), so the newest card or an
- * inline Delete / Keep row is never under it. A reader at the end stays at the end; one reading higher up is not moved.
+ * inline Delete / Keep row is never under it. A reader at the end stays at the end; one reading higher up is not moved. When the
+ * toast goes, nothing moves either: the room is given back only once the reader's view ends above it (they scrolled up, or were
+ * never at the end), so the message under the pointer stays under it.
  */
 export function useClearOfToast(ref: RefObject<HTMLElement | null>, attached: HTMLElement | null) {
   const top = useToastTop();
@@ -78,20 +80,24 @@ export function useClearOfToast(ref: RefObject<HTMLElement | null>, attached: HT
     if (!attached) return undefined;
     const update = () => {
       const feed = ref.current;
-      if (!feed) return;
+      if (!feed || (top === null && !feed.style.getPropertyValue('--toast-clear'))) return;
       const box = feed.getBoundingClientRect();
       const toasts = top === null ? null : stack?.current?.getBoundingClientRect() ?? null;
       const over = !!toasts && toasts.height > 0 && toasts.left < box.right && toasts.right > box.left && toasts.top < box.bottom;
       const clear = over ? Math.max(0, Math.ceil(box.bottom - toasts.top + 8)) : 0;
       const was = parseFloat(feed.style.getPropertyValue('--toast-clear')) || 0;
       if (clear === was) return;
-      const atEnd = feed.scrollHeight - feed.scrollTop - feed.clientHeight <= 2;
+      const left = feed.scrollHeight - feed.scrollTop - feed.clientHeight;
+      // Less room: only while the part given back is out of view, so nothing on screen moves.
+      if (clear < was && left < was - clear - 1) return;
       if (clear) feed.style.setProperty('--toast-clear', `${clear}px`); else feed.style.removeProperty('--toast-clear');
-      if (atEnd && clear > was) feed.scrollTop = feed.scrollHeight;
+      if (clear > was && left <= 2) feed.scrollTop = feed.scrollHeight;
     };
     update();
+    const feed = ref.current;
     window.addEventListener('resize', update);
-    return () => window.removeEventListener('resize', update);
+    feed?.addEventListener('scroll', update, { passive: true });
+    return () => { window.removeEventListener('resize', update); feed?.removeEventListener('scroll', update); };
   }, [ref, attached, top, stack]);
 }
 

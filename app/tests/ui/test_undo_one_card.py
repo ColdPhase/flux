@@ -343,6 +343,15 @@ class UndoAndOneCard(unittest.TestCase):
                 below, above = box(page, card), box(page, toast)
                 self.assertLessEqual(below["bottom"], above["top"] + 0.5, f"the new task's card is above the toast: {below} {above}")
                 shot(page, f"toast-clear-card-{'phone' if phone else 'desktop'}-{UI_BROWSER}")
+                # When the toast goes, nothing moves under the reader: the card stays where it was.
+                toast.locator(".ui-toast__close").evaluate("el => el.click()")
+                expect(page.locator(".ui-toast")).to_have_count(0)
+                page.wait_for_timeout(300)
+                self.assertAlmostEqual(box(page, card)["top"], below["top"], delta=1, msg="the card stays put when the toast leaves")
+                # Reading up gives the room back without a jump; the end is the conversation's own again.
+                page.evaluate("() => { const el = document.querySelector('.project-convo__feed'); el.scrollTop = 0; }")
+                page.wait_for_timeout(300)
+                self.assertEqual(page.evaluate("() => getComputedStyle(document.querySelector('.project-convo__in')).borderBottomWidth"), "0px")
         # A direct message: a toast from elsewhere in the app (Mark all as read) and an inline Delete / Keep row on the last message.
         page = self.page()
         page.goto(f"/dm/{self.ids['dm']}")

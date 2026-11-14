@@ -958,7 +958,7 @@ Drawn by the agents before it was built; the rules of what triggers a notice are
 - **It never covers the newest thing.** While a toast shows, a conversation (a space's, a thread's, a direct message's) keeps its
   end clear of it: the end of the list moves up by the part of the toast over it, so the new task's card, the last message and an
   inline Delete / Keep row stay readable and reachable above the toast. A reader at the end stays at the end; one reading higher up
-  is not moved.
+  is not moved. When the toast goes, nothing moves: the room is given back once the reader scrolls up from the end.
 - **Where.** At the bottom right on the computer and the tablet, 20 px from the edges, 360 px wide;
   it stands 8 px above a composer, a toast or the map's toolbar that reaches its corner, so it never
   covers the composer or Send. On the phone it is at the top, 8 px under the safe area, 16 px from
