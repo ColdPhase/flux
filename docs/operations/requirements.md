@@ -40,7 +40,7 @@ LiveKit server whose CPU and bandwidth grow with each call.
 
 Off by default. Search ranks by BM25 alone ([F-042](../product/decisions.md#f-042--agents-find-what-they-need-with-bm25-search-in-postgresql)),
 which needs nothing beyond the table above. An operator with a larger server can turn on a local embedding container
-(`docker/compose.embeddings.yaml`, `FLUX_EMBEDDINGS=on` for a source checkout): the worker then stores a vector for each searchable
+(`docker/compose.embeddings.yaml`, `FLUX_EMBEDDINGS=on`): the worker then stores a vector for each searchable
 row, and search fuses the nearest vectors with BM25, which found more of the questions asked in plain words, across languages and by
 paraphrase (recall@10 0.683 against BM25's 0.467, measured through Flux's own search on the bench of [#1242](../product/research/2026-11-ai-context-retrieval.md#measured-in-flux-itself-1294-2026-11-13);
 the research's own run gave 0.75 against 0.60).
@@ -60,8 +60,9 @@ it off again deletes every vector.
 | | Version | Notes |
 | --- | --- | --- |
 | **Docker Engine** | **25 or newer**, with the Compose v2 plugin (`docker compose`, 2.20.2 or newer) | Observed working: Engine 28.0.4 with Compose 2.38.2 (GitHub-hosted runner, 2026-10-10), Engine 29.1.2 with Compose 2.40.3 (Docker Desktop, macOS), Engine 29.4.2 with Compose 5.1.2 (Fedora 42). The health checks use `start_interval`, which Engine 25 introduced. **Engine 24 and older refuse to start Flux**: `docker compose up` stops with `can't set healthcheck.start_interval as feature require Docker Engine v25 or later` before it creates anything (observed on Engine 24.0.9 with Compose 2.29.1, 2026-11-05), and `./flux` refuses with one line before that. Update Docker Engine ([install](https://docs.docker.com/engine/install/)); Docker Desktop ships a current engine. |
-| **Git** | any | Source checkout only. |
-| **POSIX `sh`, `tar`, `sha256sum` or `shasum`** | | Used by the `./flux` launcher for backups and restores. |
+| **`curl` or `wget`, `tar`, `sha256sum` or `shasum`** | | To download and check a release ([installation](install.md)); `./flux upgrade` uses them too. |
+| **POSIX `sh`** | | Runs the `./flux` launcher. |
+| **Git** | any | Only for Flux developers' source checkout. |
 | **PostgreSQL, Node.js** | not on the host | They run inside the containers. Do not install them for Flux. |
 
 ## Network

@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
-# Exercise the agent runtime of a downloaded, digest-pinned release (#358 AC-3) in one isolated project, with the
-# REAL runtime image and no vendor account: off by default; claude_code refused without the Commercial Terms
-# date; switch-on with Codex; the runtime's `docker inspect` limits and no engine socket; no Claude Code in the
-# image and the pinned Codex in it; the runtime cannot reach the database or the API; off keeps its volume;
-# purge (the off -> purge path) removes every runtime container and volume. A person's sign-out and reuse
-# need a vendor login, so they are NOT covered here (scripts/check_agent_runtime.sh covers them with fake
-# CLIs against the source stack). The host needs Linux Yama ptrace_scope >= 1 (docs/operations/agent-runtime.md).
+# Exercise the agent runtime of a release (#358 AC-3; #1471 decision 5) in one isolated project, through the owner's launcher in the
+# unpacked flux.tar.gz, with the REAL runtime image and no vendor account: off by default; claude_code refused without the Commercial
+# Terms date; switch-on with Codex; the runtime's `docker inspect` limits and no engine socket; no Claude Code in the image and the
+# pinned Codex in it; the runtime cannot reach the database or the API; off keeps its volume; purge removes every runtime container and
+# volume. A person's sign-out and reuse need a vendor login, so they are NOT covered here (scripts/check_agent_runtime.sh covers them
+# with fake CLIs against the source stack). The host needs Linux Yama ptrace_scope >= 1 (docs/operations/agent-runtime.md).
 # Port defaults to 18083; set FLUX_SMOKE_RUNTIME_PORT when it is taken.
 set -euo pipefail
 
@@ -17,10 +16,21 @@ mkdir -p "$state_dir"
 assets=$(realpath "$assets")
 state_dir=$(realpath "$state_dir")
 root=$(cd "$(dirname "$0")/../.." && pwd)
-env_file="$state_dir/runtime.env"
-
-compose() { docker compose --env-file "$env_file" -f "$assets/compose.yaml" -f "$assets/compose.runtime.yaml" --profile runtime "$@"; }
-runtime_sh() { FLUX_ENV_FILE="$env_file" sh "$assets/runtime.sh" "$@"; }
+folder=$(sh "$root/scripts/release/unpack_release.sh" "$assets" "$state_dir/owner")
+env_file="$folder/docker/.env"
+# The launcher's own Compose files, with the release's images exported as ./flux exports them.
+compose() {
+  (set -a; . "$folder/docker/release.env"; set +a
+   docker compose --project-directory "$folder/docker" --env-file "$env_file" -p "$project" -f "$folder/docker/compose.yaml" \
+     -f "$folder/docker/compose.runtime.yaml" --profile runtime "$@")
+}
+flux() { (cd "$folder" && ./flux "$@" </dev/null); }
+# Sets FLUX_AGENT_RUNTIME (and optionally the Commercial Terms date) in docker/.env, as ./flux ai on does, then applies it with ./flux up.
+switch() { # value [terms date]
+  sed -e "s/^FLUX_AGENT_RUNTIME=.*/FLUX_AGENT_RUNTIME=$1/" -e "s/^FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS=.*/FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS=${2:-}/" \
+    "$env_file" > "$env_file.new" && cat "$env_file.new" > "$env_file" && rm -f "$env_file.new"
+  flux up
+}
 fail() { echo "smoke_runtime: $*" >&2; exit 1; }
 step() { printf '\n== %s\n' "$*"; }
 runtime_containers() {
@@ -31,14 +41,11 @@ runtime_volumes() { docker volume ls -q --filter "label=com.docker.compose.proje
 cleanup() {
   status=$?
   if [ "$status" -ne 0 ]; then compose logs --no-color --tail 40 api worker runtime-install runtime-manager runtime-egress runtime-1 2>/dev/null || true; fi
-  compose down -v --remove-orphans >/dev/null 2>&1 || true
+  flux clean -y >/dev/null 2>&1 || true
   exit "$status"
 }
 trap cleanup EXIT
 
-python3 "$root/scripts/release/write_test_env.py" --source "$assets/env.example" --destination "$env_file" --port "$port"
-sed -e "s/^FLUX_PROJECT=.*/FLUX_PROJECT=$project/" "$env_file" > "$env_file.new" && mv "$env_file.new" "$env_file" && chmod 600 "$env_file" # GNU and BSD sed
-grep -q "^FLUX_PROJECT=$project\$" "$env_file" || fail "the environment template has no FLUX_PROJECT line"
 app_image=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["image"])' "$assets/release.json")
 runtime_image=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["runtime_image"])' "$assets/release.json")
 codex_tag=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["runtime_codex"])' "$assets/release.json")
@@ -52,40 +59,37 @@ case "$scope" in
   *) echo "smoke_runtime: this engine's kernel has no Yama ptrace_scope of 1 or higher (got '${scope:-none}'); the runtime would refuse to start. Use a Linux host with kernel.yama.ptrace_scope=1." >&2; exit 3 ;;
 esac
 
-step "1. Both Compose files are valid together; the runtime is off by default"
+step "1. ./flux up: the runtime is off by default; both Compose files are valid together"
+(cd "$folder" && FLUX_PORT=$port FLUX_PROJECT=$project FLUX_AGENT_RUNTIME='' ./flux up </dev/null)
 compose config --quiet
 # The image release.json names (ghcr.io in a release; the dry run's local registry rewrites both alike).
 [ "$(compose config --images | grep -cxF "$runtime_image")" -ge 1 ] || fail "no runtime image $runtime_image in the merged configuration"
 # Outputs are captured before grep -q: under pipefail an early grep exit makes the writer's SIGPIPE fail the pipeline.
 images=$(compose config --images)
 ! printf '%s\n' "$images" | grep -Eq 'RELEASE_DIGEST|RUNTIME_DIGEST|DATABASE_DIGEST|:latest' || fail "marker or floating tag in the merged configuration"
-runtime_sh up
 [ -z "$(runtime_containers)" ] || fail "runtime containers exist while FLUX_AGENT_RUNTIME is empty: $(runtime_containers)"
-status_out=$(runtime_sh status)
-printf '%s\n' "$status_out" | grep -q "(off)" || fail "status does not say the runtime is off"
 curl --fail --show-error --silent "http://127.0.0.1:$port/api/v1/health" >/dev/null
 
 step "2. claude_code is refused without the Commercial Terms date and changes nothing"
-if runtime_sh on claude_code 2>"$state_dir/refusal.err"; then fail "claude_code started without the Commercial Terms statement"; fi
+if switch claude_code 2>"$state_dir/refusal.err"; then fail "claude_code started without the Commercial Terms statement"; fi
 grep -q 'Commercial Terms' "$state_dir/refusal.err" || fail "the refusal does not name the Commercial Terms"
-grep -q '^FLUX_AGENT_RUNTIME=$' "$env_file" || fail "the refused switch changed FLUX_AGENT_RUNTIME"
 [ -z "$(runtime_containers)" ] || fail "runtime containers exist after the refused switch"
 
 step "3. Switch on with Codex: services run, runtime-install is a no-op, the runtime is empty and says how many agents fit"
-runtime_sh on codex
+switch codex
 for service in runtime-manager runtime-egress runtime-1; do
   [ -n "$(compose ps -q --status running "$service")" ] || fail "$service is not running"
 done
 [ "$(docker inspect -f '{{.State.ExitCode}}' "$(compose ps -aq runtime-install)")" = 0 ] || fail "runtime-install did not exit 0"
-report=$(runtime_sh status)
+report=$(flux runtime status)
 printf '%s\n' "$report"
 [ "$(printf '%s\n' "$report" | grep -c $'^runtime-1\tboot .*\t0 people, 0 other\t[1-9][0-9]* at once')" = 1 ] || fail "the runtime is not reported empty with a number of agents"
-grep -q '^FLUX_RUNTIME_SECRET_1=[0-9a-f]\{64\}$' "$env_file" || fail "runtime.sh did not generate the runtime's secret"
+grep -q '^FLUX_RUNTIME_SECRET_1=[0-9a-f]\{64\}$' "$env_file" || fail "./flux did not generate the runtime's secret"
 
 step "4. docker inspect: limits and security options on every runtime service; no engine socket, no host path"
 # shellcheck disable=SC2046
 docker inspect $(docker ps -q --filter "label=com.docker.compose.project=$project") > "$state_dir/inspect.json"
-python3 "$root/scripts/agent-runtime/inspect.py" "$project" "$assets" < "$state_dir/inspect.json"
+python3 "$root/scripts/agent-runtime/inspect.py" "$project" "$folder" < "$state_dir/inspect.json"
 
 step "5. The images: pinned Codex in, Claude Code out"
 # `config --images` lists one line per service: each repository must name exactly the release.json digest.
@@ -114,13 +118,13 @@ compose exec -T runtime-1 node -e '
 echo "runtime-1 reaches none of db, api, worker or the internet"
 
 step "7. Switch off keeps the runtime's volume; off -> purge removes every runtime container and volume"
-runtime_sh off
+switch ''
 [ -z "$(runtime_containers)" ] || fail "runtime containers remain after off: $(runtime_containers)"
 [ "$(runtime_volumes | grep -c -- '-data$')" = 1 ] || fail "off must keep the runtime's volume"
 curl --fail --show-error --silent "http://127.0.0.1:$port/api/v1/health" >/dev/null
-runtime_sh purge -y
+flux runtime purge -y
 [ -z "$(runtime_containers)" ] || fail "runtime containers remain after purge"
 [ -z "$(runtime_volumes)" ] || fail "runtime volumes remain after purge: $(runtime_volumes)"
-runtime_sh up
+flux up
 curl --fail --show-error --silent "http://127.0.0.1:$port/api/v1/health" >/dev/null
 echo 'Packaged agent runtime: off by default, switch-on, isolation, off and purge passed.'

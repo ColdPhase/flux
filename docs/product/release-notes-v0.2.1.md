@@ -2,19 +2,23 @@
 
 Flux v0.2.1 is faster on a small server and fixes and finishes what people met in v0.2. Calls tell the space and are easier to
 join, agents answer as they write and can search everything their owner may read, files and videos open inside Flux, and
-search ranks by BM25 in Flux's own database image. An instance installed from v0.2.0 upgrades to it with its data, by
-`./flux upgrade` or by the release's upgrade steps.
+search ranks by BM25 in Flux's own database image. It is the first release that installs one way: its `flux` launcher pulls the
+release's images, and `./flux upgrade` moves to the next release.
 
 Documentation: <https://coldphase.github.io/flux/>. Flux is open source under the AGPL-3.0.
 
 ## Read this first: the upgrade
 
-- **From v0.2.0: upgrade in place.** Take a backup first, as always. `./flux upgrade` (a source checkout) or the upgrade steps of
-  `INSTALL.md` (a release installation) move the instance, with its people, spaces, encrypted spaces, files, agents and sessions.
-  This release was tested to upgrade from: **v0.2.0** (the "Upgrades from" line of the release page names what was tested).
+- **One install path** ([#1471](https://github.com/ColdPhase/flux/issues/1471), founder decision 5). Download `flux.tar.gz` and
+  `SHA256SUMS`, check, unpack, `./flux up` ([installation](https://coldphase.github.io/flux/operate/install/)). The launcher comes with
+  the release and pulls its images by digest; nothing is built. Later releases install with `./flux upgrade`, which checks the
+  download against `SHA256SUMS` and its signature first, always.
+- **From v0.2.0.** No v0.2.0 installation exists to carry over, so v0.2.1 brings no way to move one into the release folder: install
+  it fresh. Its data would upgrade: this release was tested to upgrade the data of **v0.2.0** (the "Upgrades from" line of the release
+  page names what was tested).
 - **The database image changes.** From v0.2.1 the database runs Flux's own image, `ghcr.io/coldphase/flux-database`: the official
   PostgreSQL 18 on Debian with the `pg_search` extension (BM25 search) and `pgvector`. The same PostgreSQL major reads your data
-  directory as it is; the release's `compose.yaml` names the new image and `./flux upgrade` builds it. The image is about 500 MB larger.
+  directory as it is; the release names the new image. The image is about 500 MB larger.
   Migration `0065` builds the search index and recomputes what the old image (musl) computed differently for rare characters; on
   302,000 messages it took 28 s (the whole `./flux upgrade`, with its images already built, 77 s), while Flux was stopped. A
   database that is not Flux's image (your own PostgreSQL) stops the upgrade before anything changes, with `FLUX_DATABASE_IMAGE …`
@@ -141,17 +145,22 @@ covers it. It is not a human audit.
 
 ## Install
 
-As for v0.2.0: download every file of this release into an empty folder, check them with `sha256sum -c SHA256SUMS`, then follow
-`INSTALL.md` ([Install from a release](https://coldphase.github.io/flux/operate/install-release/)). To look around first, clone the
-repository and run `./flux up`, then `./flux demo`. Optional files: `compose.runtime.yaml` with `runtime.sh` (Claude and ChatGPT plans),
-`compose.live.yaml` and `compose.live.turn.yaml` (calls and screen sharing) and, new, `compose.embeddings.yaml` (local embeddings).
-Once embeddings are on, pass `-f compose.embeddings.yaml` to every `docker compose` command of `INSTALL.md`.
+```sh
+curl -fLO https://github.com/ColdPhase/flux/releases/download/v0.2.1/flux.tar.gz
+curl -fLO https://github.com/ColdPhase/flux/releases/download/v0.2.1/SHA256SUMS
+sha256sum --ignore-missing -c SHA256SUMS
+tar -xzf flux.tar.gz && cd flux && ./flux up
+```
+
+The [installation guide](https://coldphase.github.io/flux/operate/install/) takes a server to its domain. Built-in HTTPS, calls
+(`FLUX_CALLS=on`), local embeddings (`FLUX_EMBEDDINGS=on`) and the agent runtime are switches in `docker/.env`; `./flux up` applies
+them. `./flux demo` adds sample data on your own computer.
 
 ## Platforms
 
 - **Published images: `linux/amd64` (x86_64) only**: `ghcr.io/coldphase/flux`, `ghcr.io/coldphase/flux-agent-runtime` and, new,
-  `ghcr.io/coldphase/flux-database`. `linux/arm64` is planned for v0.3 ([#833](https://github.com/ColdPhase/flux/issues/833)). A source
-  checkout (`./flux up`) builds on arm64.
+  `ghcr.io/coldphase/flux-database`. `linux/arm64` is planned for v0.3 ([#833](https://github.com/ColdPhase/flux/issues/833)). A Flux
+  developer's source checkout builds on arm64.
 - **Browsers.** Phones and tablets are tested in Chromium and WebKit emulation in Docker, not on physical devices. Web Push on iPhone and
   iPad works only from the Home Screen app, on iOS or iPadOS 16.4 or later.
 - Docker Engine 25 or newer with the Compose plugin; Docker Compose is the only supported install.
@@ -180,7 +189,8 @@ Once embeddings are on, pass `-f compose.embeddings.yaml` to every `docker compo
 
 `SHA256SUMS` lists every other file of the release. `release.json` names the source commit and the exact images
 (`ghcr.io/coldphase/flux@sha256:…`, `ghcr.io/coldphase/flux-agent-runtime@sha256:…` and `ghcr.io/coldphase/flux-database@sha256:…`).
-Check the signatures with `cosign verify` and the build provenance with `gh attestation verify`, as `INSTALL.md` shows.
+`SHA256SUMS.sigstore.json` is the release workflow's keyless signature of `SHA256SUMS`; check it, the images' signatures (`cosign verify`)
+and the build provenance (`gh attestation verify`) as [signatures](https://coldphase.github.io/flux/operate/upgrade/#signatures) shows.
 
 ## Full list of changes
 

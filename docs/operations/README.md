@@ -1,15 +1,14 @@
 # Self-hosting Flux
 
 Flux runs on your own server as one Docker Compose project: PostgreSQL, the API, a worker and a
-small keyring, behind HTTPS (built in for a source checkout, or your own reverse proxy). These pages are for the person who runs it, and describe Flux v0.2:
+small keyring, behind HTTPS (built in, or your own reverse proxy). You install a release and run it with its `./flux` launcher. These pages are for the person who runs it, and describe Flux v0.2:
 one Flux is one company, with spaces, and AI is simple (everything is an agent, and people connect AI once).
 **v0.2 is installed fresh: it does not upgrade a v0.1 installation** ([why](upgrade.md#from-v01-install-v02-fresh)).
 
 | Start here | |
 | --- | --- |
 | [Requirements](requirements.md) | Host, Docker, memory, disk and network |
-| [Install from a release](install-release.md) | A production server on your domain from the published image of the latest release, without the source |
-| [Installation](install.md) | A production server on your domain, from a source checkout |
+| [Installation](install.md) | Download a release, check it, `./flux up`: on your computer or a server on your domain |
 | [HTTPS and reverse proxies](reverse-proxy.md) | Built-in HTTPS (an `https` origin and DNS), or your own Caddy, nginx or Traefik |
 | [Configuration reference](configuration.md) | Every setting, generated from the code |
 | [Administration in the app](administration.md) | The company and its spaces, people and roles, invite links, AI in a space, agents and connections, encrypted spaces |
@@ -33,30 +32,29 @@ one Flux is one company, with spaces, and AI is simple (everything is an agent, 
 
 ## Commands
 
-A source checkout is operated with the root [`./flux`](../../flux) launcher. Everything runs in Docker: the
-launcher needs only POSIX `sh`, Docker with Compose, `tar`, and `sha256sum` or `shasum`. It never
+Flux is operated with the [`./flux`](../../flux) launcher in the release folder. Everything runs in Docker: the
+launcher needs only POSIX `sh`, Docker with Compose, `tar`, `curl` or `wget`, and `sha256sum` or `shasum`. It never
 installs PostgreSQL or Node.js on the host and never touches another Compose project or a volume
-that is not this checkout's.
+that is not this folder's.
 
 | Task | Command | Guide |
 | --- | --- | --- |
 | Back up database, files and settings | `./flux backup [--output DIR] [--keep N]` | [Backup and restore](backup-restore.md) |
 | Restore a backup, here or on a new machine | `./flux restore <archive> [--migrate] [--revoke-agent-connections] [-y]` | [Backup and restore](backup-restore.md#restore) |
 | Export one space as open JSON plus files | `./flux export <space id or exact name> [--as EMAIL]`, `GET /api/v1/projects/:id/export` | [Project export](export.md) |
-| Move to a newer version (v0.2 to later; v0.1 is refused) | `./flux upgrade [--pull] [-y]` | [Upgrade](upgrade.md) |
+| Move to a newer release (v0.2 to later; v0.1 is refused) | `./flux upgrade [VERSION \| --file flux.tar.gz] [-y]` | [Upgrade](upgrade.md) |
 | Run encrypted spaces: restarts, backups, upgrades, swap and hibernation | Nothing to switch on; owners and admins unlock after a restart | [Encrypted spaces](encrypted-spaces.md) |
 | Let people sign in with your identity provider (OpenID Connect) | `FLUX_OIDC_*` in `docker/.env` | [Single sign-on](single-sign-on.md) |
 | Serve Flux through HTTPS, including MCP and WebSocket upgrades | An `https` `FLUX_PUBLIC_ORIGIN` and its DNS (built-in Caddy); or your own proxy's address in `FLUX_TRUSTED_PROXIES` | [HTTPS and reverse proxies](reverse-proxy.md) |
 | Turn on calls and screen sharing | `FLUX_CALLS=on` in `docker/.env`, then `./flux up`; open the ports it prints | [Calls and screen sharing](calls.md) |
 | Install Flux on phones and tablets and send push notifications | HTTPS at the origin root, `FLUX_VAPID_*`, outbound HTTPS to the push services | [Phones, tablets and push](mobile-and-push.md) |
 | Let people connect their own ChatGPT and Claude subscriptions (off by default) | The first interactive `./flux up` asks once; later `./flux ai on` (or `FLUX_AGENT_RUNTIME` in `docker/.env`, then `./flux up`); `./flux runtime status \| release runtime-<n> \| purge` | [Agent runtime](agent-runtime.md) |
-| Run a published release without the source (operators) | `docker compose --env-file .env -f compose.yaml up -d --wait` | [Install from a release](install-release.md), [the release's `INSTALL.md`](release-guide.md) |
 
 `./flux help` prints every command; the [configuration reference](configuration.md#launcher-commands)
 carries the same list.
 
-Every command acts on this checkout's Compose project (`FLUX_PROJECT` in `docker/.env`) and uses the
-ownership check of `./flux up`: it refuses a project that another checkout created, or one
+Every command acts on this folder's Compose project (`FLUX_PROJECT` in `docker/.env`) and uses the
+ownership check of `./flux up`: it refuses a project that another folder created, or one
 with data but no owner record, unless `--force-project` is given. Commands that replace data
 (`restore`, `upgrade`, like `reset` and `clean`) ask for confirmation; `-y` answers yes for
 scripts.

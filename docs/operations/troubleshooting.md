@@ -4,12 +4,13 @@ Start with the services' state and their last log lines; most problems name them
 
 ```sh
 cd /srv/flux
-dc() { docker compose --env-file docker/.env -p "$(sed -n 's/^FLUX_PROJECT=//p' docker/.env)" -f docker/compose.source.yaml "$@"; }
+dc() { docker compose --env-file docker/release.env --env-file docker/.env -p "$(sed -n 's/^FLUX_PROJECT=//p' docker/.env)" -f docker/compose.yaml "$@"; }
 dc ps -a
 dc logs --tail 50 migrate api worker keyring
 ```
 
-For a release installation use `docker compose --env-file .env -f compose.yaml` in place of `dc`.
+`docker/release.env` gives Compose the release's image names, as `./flux` does. A developer's source checkout uses
+`--env-file docker/.env -f docker/compose.source.yaml` instead.
 
 ## Flux does not start
 
@@ -51,7 +52,7 @@ For a release installation use `docker compose --env-file .env -f compose.yaml` 
 | --- | --- |
 | Push notifications | An https `FLUX_PUBLIC_ORIGIN`, both `FLUX_VAPID_PUBLIC_KEY` and `FLUX_VAPID_PRIVATE_KEY` set (the contact `FLUX_VAPID_SUBJECT` is optional), outbound HTTPS to the push services ([push](mobile-and-push.md)). |
 | Installing on a phone | HTTPS at the root of its own origin; iPhone and iPad install from Safari's Share menu. |
-| Agents answering in Flux (API keys) | `FLUX_PERSONAL_RUNS=on` and a readable `FLUX_BACKGROUND_KEY_HOST_FILE` (a release install mounts it from a Compose file of its own, see [the guide](release-guide.md#agents-on-your-own-ai-key-optional)). Also the agent runtime with `pi` in `FLUX_AGENT_RUNTIME` (every agent runs in the runtime, #1441). The space's AI must be on, and the person must not be a guest. Settings › AI says "Off on this Flux server" while neither this nor the runtime below is on. |
+| Agents answering in Flux (API keys) | `FLUX_PERSONAL_RUNS=on` and a readable `FLUX_BACKGROUND_KEY_HOST_FILE`. Also the agent runtime with `pi` in `FLUX_AGENT_RUNTIME` (every agent runs in the runtime, #1441). The space's AI must be on, and the person must not be a guest. Settings › AI says "Off on this Flux server" while neither this nor the runtime below is on. |
 | Sign-in with Claude or ChatGPT subscriptions | `FLUX_AGENT_RUNTIME` set and applied with `./flux up`; `./flux runtime status` ([agent runtime](agent-runtime.md)). A host with Yama `ptrace_scope` 0 stops the runtime with one message and the fix. Agents beyond what the server's memory allows wait with "Waiting for room on the server" (`FLUX_RUNTIME_MAX_RUNS`). |
 | Agents do not search or read the web | `FLUX_WEB_READS=off` turns both off. On, the server needs outbound HTTPS; an agent reads only an address it was given and never one that carries private Flux text. |
 | An MCP client on another computer | It needs an `https` origin; `http://127.0.0.1` works only on the server itself. The server also needs outbound HTTPS to fetch the client's metadata. |

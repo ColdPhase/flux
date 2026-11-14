@@ -7,9 +7,13 @@ set -eu
 # --- Layout. Every repository path the launcher uses is defined here, relative to this
 # file, so it works from any directory. The #76 move to app/ + docker/ changes only these.
 FLUX_ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd -P)
+# Where the images come from (#1471, founder decision 5; F-043): see "Images" below. A release folder (flux.tar.gz of a GitHub
+# Release) runs docker/compose.yaml with the release's published images; a source checkout, the developer's path, builds
+# docker/compose.source.yaml. select_image_source sets these two before any command runs.
+RELEASE_FILE="$FLUX_ROOT/docker/release.env"
 COMPOSE_MAIN="$FLUX_ROOT/docker/compose.source.yaml"
 COMPOSE_DEV="$FLUX_ROOT/docker/compose.dev.yaml"
-# The API and worker's agent-runtime networks (#744); added only while FLUX_AGENT_RUNTIME is set.
+# The API and worker's agent-runtime networks (#744) and, in a release, the runtime's services; added only while FLUX_AGENT_RUNTIME is set.
 COMPOSE_RUNTIME="$FLUX_ROOT/docker/compose.source.runtime.yaml"
 # The optional local embedding container (F-042, #1294); added only while FLUX_EMBEDDINGS=on.
 COMPOSE_EMBEDDINGS="$FLUX_ROOT/docker/compose.embeddings.yaml"
@@ -68,15 +72,22 @@ need_docker() {
 # (docs/development/containers.md). Compose's errors still print.
 compose_main() {
   if [ -f "$COMPOSE_OVERRIDE" ]; then set -- -f "$COMPOSE_OVERRIDE" "$@"; fi
-  if runtime_on; then set -- -f "$COMPOSE_RUNTIME" "$@"; fi
+  # A release defines the runtime's services in its own file (the source Compose file holds them with the `runtime` profile): a
+  # command that names that profile (stop, purge, down, clean, reset) needs the file even while the runtime is off.
+  if runtime_on || { from_release && runtime_profile_named "$@"; }; then set -- -f "$COMPOSE_RUNTIME" "$@"; fi
   if embeddings_on; then set -- -f "$COMPOSE_EMBEDDINGS" "$@"; fi
   if https_on; then
     FLUX_HTTPS_HOST=$(origin_host) FLUX_HTTPS_PORT=$(origin_port); export FLUX_HTTPS_HOST FLUX_HTTPS_PORT
     set -- -f "$COMPOSE_HTTPS" "$@"
   fi
   if calls_on; then calls_env; set -- -f "$COMPOSE_LIVE" "$@"; fi
+  release_images_env
   FLUX_IMAGE_TAG="$PROJECT" docker --log-level error compose --project-directory "$FLUX_ROOT/docker" \
     --env-file "$ENV_FILE" -p "$PROJECT" -f "$COMPOSE_MAIN" "$@"
+}
+runtime_profile_named() {
+  while [ $# -gt 1 ]; do [ "$1 $2" != "--profile runtime" ] || return 0; shift; done
+  return 1
 }
 # `clean` and `reset`: with every optional overlay too, so that their containers, networks and volumes (the embedding model, the
 # proxy's certificates) go even after their switch went back to off (Compose removes only what the files it is given define). The
@@ -90,7 +101,9 @@ compose_main_all() (
   fi
   compose_main "$@"
 )
+# A release has no development stack (its files are not shipped): down, reset and clean have nothing to do for it there.
 compose_dev() {
+  if from_release; then return 0; fi
   FLUX_IMAGE_TAG="$DEV_PROJECT" FLUX_PUBLIC_ORIGIN="$(dev_origin)" \
     FLUX_SMTP_URL="${FLUX_SMTP_URL:-smtp://mailpit:1025}" FLUX_MAIL_FROM="${FLUX_MAIL_FROM:-Flux dev <flux-dev@localhost>}" \
     docker --log-level error compose --project-directory "$FLUX_ROOT/docker" --env-file "$ENV_FILE" -p "$DEV_PROJECT" \
@@ -172,16 +185,24 @@ calls_settings() {
   esac
   [ "$(env_value FLUX_LIVEKIT_PUBLIC_IP)" = "$CALLS_IP" ] || set_env_line "$ENV_FILE" FLUX_LIVEKIT_PUBLIC_IP "$CALLS_IP"
 }
-# Every Compose command with calls on: the media name follows the origin, and the settings exist (the first command makes them).
+# Every Compose command with calls on: the media name follows the origin, and the settings exist. Only the commands that start Flux (`up`,
+# `demo`, `restore`, `upgrade`) make missing ones, with the DNS check; `down`, `logs`, `clean` and the others never stop at that check
+# while no DNS record exists yet: they render the media server with placeholders for what is missing, and start nothing with them.
 calls_env() {
   FLUX_LIVEKIT_DOMAIN=$(origin_host); export FLUX_LIVEKIT_DOMAIN
   if [ -z "$(env_value FLUX_LIVEKIT_PUBLIC_IP)" ] || [ -z "$(env_value FLUX_LIVEKIT_API_KEY)" ] || [ -z "$(env_value FLUX_LIVEKIT_API_SECRET)" ]; then
-    calls_settings
+    case "${COMMAND:-}" in
+      up|demo|restore|upgrade|_upgrade-apply) calls_settings ;;
+      *) [ -n "$(env_value FLUX_LIVEKIT_PUBLIC_IP)" ] || { FLUX_LIVEKIT_PUBLIC_IP=127.0.0.1; export FLUX_LIVEKIT_PUBLIC_IP; }
+         [ -n "$(env_value FLUX_LIVEKIT_API_KEY)" ] || { FLUX_LIVEKIT_API_KEY=unused; export FLUX_LIVEKIT_API_KEY; }
+         [ -n "$(env_value FLUX_LIVEKIT_API_SECRET)" ] || { FLUX_LIVEKIT_API_SECRET=unused; export FLUX_LIVEKIT_API_SECRET; } ;;
+    esac
   fi
 }
+# The media ports to open; an unset one is its default (`sed 's/^$/…/'` would print nothing for an empty value, which has no line).
 calls_ports() {
-  printf '%s/tcp, %s/udp and %s/udp' "$(env_value FLUX_LIVEKIT_ICE_TCP_PORT | sed 's/^$/7881/')" \
-    "$(env_value FLUX_LIVEKIT_ICE_UDP_PORT | sed 's/^$/7882/')" "$(env_value FLUX_LIVEKIT_TURN_UDP_PORT | sed 's/^$/3478/')"
+  tcp=$(env_value FLUX_LIVEKIT_ICE_TCP_PORT) udp=$(env_value FLUX_LIVEKIT_ICE_UDP_PORT) turn=$(env_value FLUX_LIVEKIT_TURN_UDP_PORT)
+  printf '%s/tcp, %s/udp and %s/udp' "${tcp:-7881}" "${udp:-7882}" "${turn:-3478}"
 }
 
 # --- Compose project names. Each checkout gets its own stable default, derived from its
@@ -353,7 +374,8 @@ ensure_env() {
   set_env_line "$draft" FLUX_PORT "$p"
   set_env_line "$draft" FLUX_PUBLIC_ORIGIN "http://127.0.0.1:$p"
   set_env_line "$draft" POSTGRES_PASSWORD "$(random_hex 32)"
-  set_env_line "$draft" FLUX_FIXTURE_TOKEN "$(random_hex 32)"
+  # The integration-fixture endpoints are for the checks of a source checkout; a release leaves them off.
+  from_release || set_env_line "$draft" FLUX_FIXTURE_TOKEN "$(random_hex 32)"
   set_env_line "$draft" FLUX_AUTH_SECRET "$(random_hex 32)"
   set_env_line "$draft" FLUX_KEYRING_TOKEN "$(random_b64url)"
   set_env_line "$draft" FLUX_KEY_PIN_SECRET "$(random_b64url)"
@@ -368,12 +390,11 @@ ensure_env() {
   # F-027 AST-1: only `./flux up` asks, only while it creates the file, and before the build.
   if [ "${ASK_RUNTIME:-0}" = 1 ]; then first_run_runtime_question "$draft"; fi
 
-  # VAPID keys come from the pinned web-push package inside the image just built, the same
-  # command operators use (docs/development/containers.md).
-  # Build and generate against the draft; the real env file appears only when complete.
+  # VAPID keys come from the pinned web-push package inside the application image (pulled or built).
+  # Get the images and generate against the draft; the real env file appears only when complete.
   final_env=$ENV_FILE
   ENV_FILE=$draft
-  build_main
+  get_images || { ENV_FILE=$final_env; die "Flux could not get its images; ${final_env#"$FLUX_ROOT"/} was not written."; }
   keys=$(compose_main run --rm --no-deps -T migrate \
     apps/worker/node_modules/.bin/web-push generate-vapid-keys --json 2>/dev/null) || keys=''
   ENV_FILE=$final_env
@@ -397,8 +418,66 @@ ensure_env() {
   say "Wrote ${ENV_FILE#"$FLUX_ROOT"/}. Keep it private; it holds the database password and signing secret."
 }
 
+# --- Images (#1471, founder decision 5; F-043; docs/operations/install.md). One owner path: the folder unpacked from a release's
+# flux.tar.gz holds docker/release.env (written by the release workflow: the version, its source commit, its schema and the three images
+# pinned by digest), and every command runs docker/compose.yaml with exactly those images. `up` pulls only the ones this Docker does not
+# have yet, so a host whose images were loaded beforehand (docker load) needs no registry. A source checkout has no docker/release.env:
+# that is the developer's path (docs/development/containers.md), and the launcher builds the images from the checkout.
+from_release() { [ -f "$RELEASE_FILE" ]; }
+release_value() { sed -n "s/^$1=//p" "${2:-$RELEASE_FILE}" | tail -n 1; }
+RELEASE_IMAGE_KEYS='FLUX_RELEASE_IMAGE FLUX_RELEASE_DATABASE_IMAGE FLUX_RELEASE_RUNTIME_IMAGE'
+# Prints what is wrong with the release file $1, or nothing: a version, a schema, and each image named by a sha256 digest.
+release_file_problem() {
+  case "$(release_value FLUX_RELEASE_VERSION "$1")" in v[0-9]*.[0-9]*.[0-9]*) ;; *) say "it names no version"; return 0 ;; esac
+  case "$(release_value FLUX_RELEASE_SCHEMA "$1")" in ''|*[!0-9]*) say "it names no schema"; return 0 ;; esac
+  for key in $RELEASE_IMAGE_KEYS; do
+    digest=$(release_value "$key" "$1"); digest=${digest#*@sha256:}
+    case "$(release_value "$key" "$1")" in *@sha256:*) ;; *) say "$key is not an image pinned by digest"; return 0 ;; esac
+    case "$digest" in *[!0-9a-f]*) say "$key is not an image pinned by digest"; return 0 ;; esac
+    [ "${#digest}" = 64 ] || { say "$key is not an image pinned by digest"; return 0; }
+  done
+}
+select_image_source() {
+  from_release || return 0
+  problem=$(release_file_problem "$RELEASE_FILE")
+  [ -z "$problem" ] || die "docker/release.env is damaged: $problem. Unpack this release's flux.tar.gz again (docs/operations/install.md)."
+  COMPOSE_MAIN="$FLUX_ROOT/docker/compose.yaml"
+  COMPOSE_RUNTIME="$FLUX_ROOT/docker/compose.runtime.yaml"
+}
+# The release's images, for docker/compose.yaml and compose.runtime.yaml. Exported, so they win over anything in docker/.env.
+release_images_env() {
+  from_release || return 0
+  for key in $RELEASE_IMAGE_KEYS; do
+    eval "$key=\$(release_value $key)"
+    export "${key?}"
+  done
+}
+# The application and database images: pulled for a release, built in a source checkout.
+get_images() {
+  if from_release; then pull_images; else build_main; fi
+}
+get_runtime_images() {
+  if from_release; then pull_images --profile runtime; return; fi
+  say "Building the agent runtime ($(runtime_value))..."
+  compose_main --profile runtime build runtime-install runtime-1
+}
+# Every image the services would run (the optional overlays' too) that this Docker does not have. Each is pinned by digest, so one that
+# is present is the same image: nothing is downloaded twice, and an offline host needs nothing but loaded images.
+pull_images() {
+  images=$(compose_main "$@" config --images) || die "Docker Compose could not read this release's files (see above)."
+  missing=''
+  for image in $(printf '%s\n' "$images" | sort -u); do
+    docker image inspect "$image" >/dev/null 2>&1 || missing="$missing $image"
+  done
+  [ -n "$missing" ] || return 0
+  say "Downloading Flux $(release_value FLUX_RELEASE_VERSION) (images pinned by digest; the first time takes a few minutes)..."
+  for image in $missing; do
+    docker pull --quiet "$image" >/dev/null || { warn "Could not download $image. Check this server's network and that it reaches the registry, then run the command again."; return 1; }
+  done
+}
+
 build_main() {
-  say "Building Flux from this checkout (the first build takes a few minutes)..."
+  say "Building Flux from this checkout (the developer's path; the first build takes a few minutes)..."
   # The application image and Flux's database image (F-042, docker/database).
   if [ "${FLUX_NO_CACHE:-}" = 1 ]; then compose_main build --no-cache migrate db; else compose_main build migrate db; fi
 }
@@ -431,9 +510,12 @@ check_runtime_switch() {
 # host is checked first: the questions are not shown on a host whose engine cannot run the runtime.
 interactive() { [ -t 0 ] && [ -t 1 ]; }
 
-# The first Dockerfile base image (pinned by digest), used for the one throwaway check container. The
-# build pulls the same image, so the check costs nothing extra.
-runtime_probe_image() { sed -n 's/^FROM \(node@sha256:[0-9a-f]\{64\}\) AS .*/\1/p' "$FLUX_ROOT/docker/Dockerfile" 2>/dev/null | head -n 1; }
+# The image of the one throwaway check container: a release's application image, which `up` pulls anyway; in a source checkout the
+# first Dockerfile base image (pinned by digest), which the build pulls. Either way the check costs nothing extra.
+runtime_probe_image() {
+  if from_release; then release_value FLUX_RELEASE_IMAGE; return; fi
+  sed -n 's/^FROM \(node@sha256:[0-9a-f]\{64\}\) AS .*/\1/p' "$FLUX_ROOT/docker/Dockerfile" 2>/dev/null | head -n 1
+}
 
 # Prints one line saying why the Docker engine cannot run the agent runtime, or nothing when it can
 # (AIM-3: Linux 6.7 or later for Landlock ABI 4, Yama ptrace_scope of 1 or higher, `internal` networks, memory, CPU and process limits). It asks
@@ -652,8 +734,8 @@ runtime_sign_out() {
   runtime_not_installed=
   [ -n "$(runtime_volumes | grep -- '-data$' || true)" ] || return 0
   say "Signing out the agent runtime logins first (best effort)..."
-  if ! docker image inspect "flux-agent-runtime:$PROJECT" >/dev/null 2>&1 || ! docker image inspect "flux-foundation:$PROJECT" >/dev/null 2>&1; then
-    warn "The runtime images are not built, so the logins cannot be signed out; they are deleted with the volumes. Owners should end those sessions in their Claude or ChatGPT account settings."
+  if ! docker image inspect "$(runtime_image_ref)" >/dev/null 2>&1 || ! docker image inspect "$(image_ref)" >/dev/null 2>&1; then
+    warn "The runtime images are not on this Docker, so the logins cannot be signed out; they are deleted with the volumes. Owners should end those sessions in their Claude or ChatGPT account settings."
     return 0
   fi
   ensure_runtime_secrets
@@ -694,11 +776,8 @@ start_main() {
   check_runtime_switch
   if calls_on; then calls_settings; fi
   if runtime_on; then ensure_runtime_secrets; runtime_limits; fi
-  [ "${BUILT:-0}" = 1 ] || build_main
-  if runtime_on; then
-    say "Building the agent runtime ($(runtime_value))..."
-    compose_main --profile runtime build runtime-install runtime-1
-  fi
+  [ "${BUILT:-0}" = 1 ] || get_images || die "Flux could not get its images."
+  if runtime_on; then get_runtime_images || die "Flux could not get the agent runtime's images."; fi
   # Compose leaves a running container alone: a runtime that refused starts again, so it looks at the host again (#860).
   if runtime_on && [ -n "$(runtime_refusal)" ]; then compose_main --profile runtime rm -fs runtime-1 >/dev/null 2>&1 || true; fi
   say "Migrating and starting..."
@@ -827,12 +906,15 @@ up_status() {
       *) st_push="on for this computer; iPhone and iPad need an https address (FLUX_PUBLIC_ORIGIN)" ;;
     esac
   fi
-  # Calls need LiveKit, which ./flux does not start yet: the one switch that does (#1471, decision 4) makes this line read it.
-  st_calls="off"
+  # Built-in HTTPS and calls (#1471, decisions 3 and 4): the switches themselves; the lines above say what is left to do.
+  if https_on; then st_address="$(public_origin) (HTTPS by the bundled Caddy)"
+  else case "$(public_origin)" in https://*) st_address="$(public_origin) (HTTPS by your own proxy)" ;; *) st_address=$(public_origin) ;; esac; fi
+  if calls_on; then st_calls="on (open $(calls_ports) to this server)"
+  else st_calls="off (FLUX_CALLS=on in ${ENV_FILE#"$FLUX_ROOT"/} turns them on)"; fi
   st_last=$(last_backup_date)
   if [ -n "$st_last" ]; then st_backups="last one $st_last, in ${BACKUP_DIR#"$FLUX_ROOT"/}"
   else st_backups="none yet (run ./flux backup, and add it to cron: docs/operations/backup-restore.md)"; fi
-  say "  Address   $(public_origin)"
+  say "  Address   $st_address"
   say "  Email     $st_email"
   say "  Push      $st_push"
   say "  AI        $(ai_status)"
@@ -928,6 +1010,7 @@ cmd_demo() {
 }
 
 cmd_dev() {
+  from_release && die "./flux dev runs Flux from its source code, for Flux developers: it needs a source checkout (git clone https://github.com/ColdPhase/flux.git; docs/development/containers.md). This folder is a release: ./flux up runs it."
   build=0 follow=0
   for arg in "$@"; do
     case "$arg" in
@@ -1018,8 +1101,13 @@ cmd_reset() {
   say "Removed the containers and volumes of $PROJECT and $DEV_PROJECT. ${ENV_FILE#"$FLUX_ROOT"/} is kept; ./flux up starts empty."
 }
 
-# Images this checkout built: flux-* repositories tagged with one of its project names.
+# Images this checkout built: flux-* repositories tagged with one of its project names. A release built none: its images, pinned by
+# digest, may serve another installation on this Docker, so they stay.
 remove_own_images() {
+  if from_release; then
+    say "The release's images stay (another installation may use them). To remove them: docker image rm $(release_value FLUX_RELEASE_IMAGE) $(release_value FLUX_RELEASE_DATABASE_IMAGE) $(release_value FLUX_RELEASE_RUNTIME_IMAGE)"
+    return 0
+  fi
   removed=0
   for image in $( { compose_main --profile test --profile ui --profile runtime config --images; compose_dev config --images; } 2>/dev/null | sort -u); do
     case "$image" in
@@ -1050,6 +1138,7 @@ cmd_clean() {
   remove_own_images
   release_project "$PROJECT"
   release_project "$DEV_PROJECT"
+  from_release && return 0
   # The BuildKit cache is shared by every checkout and project on this Docker host and cannot
   # be attributed to one project, so clean never prunes it; it only prints how.
   say "Base images, other projects and the shared build cache were not touched."
@@ -1087,18 +1176,26 @@ file_bytes() { wc -c < "$1" | tr -d ' '; }
 FIRST_V02_SCHEMA=3
 # Highest numbered migration of this checkout: the schema its code expects.
 code_schema() {
+  if from_release; then release_value FLUX_RELEASE_SCHEMA; return; fi
   ls "$MIGRATIONS_DIR" | sed -n 's/^\([0-9][0-9][0-9][0-9]\)_[a-z0-9_]*\.sql$/\1/p' | sort | tail -n 1 | sed 's/^0*//'
 }
-app_version() { sed -n 's/^.*"version" *: *"\([^"]*\)".*$/\1/p' "$APP_PACKAGE" | head -n 1; }
-# The commit of this checkout, or "unknown" outside a git work tree of its own (e.g. a copy).
+app_version() {
+  if from_release; then release_value FLUX_RELEASE_VERSION | sed 's/^v//'; return; fi
+  sed -n 's/^.*"version" *: *"\([^"]*\)".*$/\1/p' "$APP_PACKAGE" | head -n 1
+}
+# The commit of this checkout (a release: the commit it was built from), or "unknown" outside a git work tree of its own (e.g. a copy).
 git_commit() {
+  if from_release; then release_value FLUX_RELEASE_COMMIT | sed 's/^$/unknown/'; return 0; fi
   top=$(git -C "$FLUX_ROOT" rev-parse --show-toplevel 2>/dev/null) || { printf unknown; return 0; }
   [ "$(CDPATH='' cd -- "$top" && pwd -P)" = "$FLUX_ROOT" ] || { printf unknown; return 0; }
   git -C "$FLUX_ROOT" rev-parse HEAD 2>/dev/null || printf unknown
 }
-image_ref() { printf 'flux-foundation:%s' "$PROJECT"; }
-# The commit label of the built image (what is running), else this checkout's commit.
+# The application image and the agent runtime's: the release's, by digest, or the ones this checkout built.
+image_ref() { if from_release; then release_value FLUX_RELEASE_IMAGE; else printf 'flux-foundation:%s' "$PROJECT"; fi; }
+runtime_image_ref() { if from_release; then release_value FLUX_RELEASE_RUNTIME_IMAGE; else printf 'flux-agent-runtime:%s' "$PROJECT"; fi; }
+# The commit label of the built image (what is running), else this checkout's commit; a release's images are its commit.
 image_commit() {
+  if from_release; then git_commit; return 0; fi
   label=$(docker image inspect -f '{{ index .Config.Labels "com.flux.commit" }}' "$(image_ref)" 2>/dev/null || true)
   case "$label" in ''|'<no value>'|unknown) git_commit ;; *) printf '%s' "$label" ;; esac
 }
@@ -1228,7 +1325,7 @@ write_manifest() {
   dir=$1
   image_id=$(docker image inspect -f '{{.Id}}' "$(image_ref)" 2>/dev/null || printf unknown)
   dirty=false
-  if [ "$(git_commit)" != unknown ] && ! git -C "$FLUX_ROOT" diff --quiet HEAD 2>/dev/null; then dirty=true; fi
+  if ! from_release && [ "$(git_commit)" != unknown ] && ! git -C "$FLUX_ROOT" diff --quiet HEAD 2>/dev/null; then dirty=true; fi
   pg_image=$(compose_main config --images 2>/dev/null | grep -E '^(postgres@|flux-database:|.*/flux-database@)' | head -n 1)
   # A checkout builds Flux's database image (F-042) under a local tag: record the image it is, by its id.
   case "$pg_image" in
@@ -1387,7 +1484,7 @@ cmd_restore() {
   fi
   # The AI key file is not in the archive (O-007): the settings name the original machine's file (#1438).
   check_background_key_file
-  build_main
+  get_images || die "Flux could not get its images; nothing was restored."
   # The exact migration ledger (#118) of the dump, checked against the manifest and this image
   # before anything is replaced.
   from_ledger=$(dump_ledger "$RESTORE_DIR/database.dump") || die "restore: could not read the migration ledger from the dump. Nothing was restored."
@@ -1525,7 +1622,9 @@ upgrade_failed() {
   fi
   warn "To go back:"
   warn "  cd '$FLUX_ROOT'"
-  if [ "$UPGRADE_FROM_COMMIT" != unknown ]; then
+  if [ -n "${FLUX_UPGRADE_PREVIOUS_FILES:-}" ]; then
+    warn "  tar -xzf '$FLUX_UPGRADE_PREVIOUS_FILES' -C '$FLUX_ROOT'    # the release files you ran before"
+  elif [ "$UPGRADE_FROM_COMMIT" != unknown ]; then
     warn "  git -C '$FLUX_ROOT' checkout $UPGRADE_FROM_COMMIT"
   else
     warn "  check out the Flux version you ran before (its commit was not recorded)"
@@ -1581,9 +1680,10 @@ upgrade_apply() {
   # After the backup, so a file of changes that this launcher cannot read fails like any other step: the writers are stopped, the backup is named.
   apply_env_changes || upgrade_failed "docker/env-changes.txt could not be applied (see above)"
   to_schema=$(code_schema)
-  say "Building the new version (schema $to_schema, commit $(git_commit))..."
-  build_main || upgrade_failed "the build failed"
-  # The database restarts on the image just built when it changed (v0.2.1 moves it to Flux's own image, docs/operations/upgrade.md).
+  if from_release; then say "Starting Flux $(release_value FLUX_RELEASE_VERSION) (schema $to_schema, commit $(git_commit))..."
+  else say "Building the new version (schema $to_schema, commit $(git_commit))..."; fi
+  get_images || upgrade_failed "the new version's images could not be pulled or built"
+  # The database restarts on the new image when it changed (v0.2.1 moves it to Flux's own image, docs/operations/upgrade.md).
   compose_main up -d --wait --wait-timeout "$WAIT_TIMEOUT" db >/dev/null || upgrade_failed "the database did not start on the new image"
   compose_main --profile setup run --rm files-init >/dev/null || upgrade_failed "preparing the files volume failed"
   say "Migrating from schema $UPGRADE_FROM_SCHEMA to $to_schema..."
@@ -1593,35 +1693,65 @@ upgrade_apply() {
   compose_main up -d --wait --wait-timeout "$WAIT_TIMEOUT" api worker \
     || { compose_main logs --no-color --tail 60 api worker >&2 || true; upgrade_failed "Flux did not become healthy"; }
   verify_running || upgrade_failed "the health or schema check failed"
+  # The agent runtime moves with the API: its services run the new version's images too.
+  if runtime_on; then
+    ensure_runtime_secrets; runtime_limits
+    { get_runtime_images && compose_main --profile runtime up -d --wait --wait-timeout "$WAIT_TIMEOUT" runtime-manager runtime-egress runtime-1; } ||
+      warn "Flux is upgraded, but the agent runtime did not start on the new version; run ./flux up to see why."
+  fi
   say ""
   say "Upgraded $PROJECT from schema $UPGRADE_FROM_SCHEMA to $to_schema: $(public_origin)"
   say "The backup from before the upgrade stays in $UPGRADE_ARCHIVE."
 }
 
 cmd_upgrade() {
-  pull=0 ASSUME_YES=0 out_dir=$BACKUP_DIR
+  pull=0 ASSUME_YES=0 out_dir=$BACKUP_DIR target='' bundle=''
   while [ $# -gt 0 ]; do
     case "$1" in
       --pull) pull=1; shift ;;
+      --file) [ $# -ge 2 ] || die "upgrade: --file needs the flux.tar.gz you downloaded"; bundle=$2; shift 2 ;;
       -y|--yes) ASSUME_YES=1; shift ;;
       -o|--output) [ $# -ge 2 ] || die "upgrade: $1 needs a directory"; out_dir=$2; shift 2 ;;
-      *) die "upgrade: unknown option $1 (use --pull, --output DIR, -y)" ;;
+      v[0-9]*) [ -z "$target" ] || die "upgrade: name one version"; target=$1; shift ;;
+      *) die "upgrade: unknown option $1 (use [VERSION], --file FILE, --output DIR, -y)" ;;
     esac
   done
+  if from_release; then
+    [ "$pull" = 0 ] || die "upgrade: --pull is for a source checkout. A release upgrades with ./flux upgrade [VERSION]."
+    [ -z "$target" ] || [ -z "$bundle" ] || die "upgrade: give a VERSION or --file, not both"
+  else
+    [ -z "$target$bundle" ] || die "upgrade: a source checkout upgrades to its own code (git pull, then ./flux upgrade, or ./flux upgrade --pull); a VERSION or --file is for a release folder."
+  fi
   need_docker
   [ -f "$ENV_FILE" ] || die "No ${ENV_FILE#"$FLUX_ROOT"/}; for a first installation use ./flux up."
   check_owner "$PROJECT"
   docker volume inspect "${PROJECT}_pgdata" >/dev/null 2>&1 || die "Compose project $PROJECT has no data yet; use ./flux up."
   if [ "$pull" = 1 ] && [ "$(git_commit)" = unknown ]; then die "upgrade --pull needs a git checkout; update the files yourself and run ./flux upgrade."; fi
+  # A release first gets the new release and checks it, while Flux keeps running: nothing is stopped for a download that fails.
+  if from_release; then release_fetch "$target" "$bundle"; fi
   compose_main up -d --wait --wait-timeout "$WAIT_TIMEOUT" db >/dev/null || die "The database of $PROJECT did not start."
   from_schema=$(db_query 'SELECT max(version) FROM flux_schema_version') || die "Could not read the schema version of $PROJECT."
   # Before the confirmation, the backup and the stop of API and worker: v0.2 does not upgrade a v0.1 database (#1176).
-  if v01_database; then v01_explain; warn "Your data is as it was: no backup was taken and API and worker were not stopped."; exit 1; fi
+  if v01_database; then rm -rf "$UPGRADE_STAGE"; v01_explain; warn "Your data is as it was: no backup was taken and API and worker were not stopped."; exit 1; fi
   from_commit=$(image_commit)
-  if [ "$pull" = 1 ]; then plan="pull the new version with git"; else plan="build this checkout (schema $(code_schema))"; fi
+  if from_release; then
+    [ "$NEW_SCHEMA" -ge "$from_schema" ] ||
+      refuse "Flux $NEW_VERSION has schema $NEW_SCHEMA, older than this instance's data (schema $from_schema). A downgrade is not supported (docs/operations/upgrade.md); nothing was changed."
+    release_pull_new || refuse "Flux $NEW_VERSION's images could not be downloaded; nothing was changed and Flux keeps running."
+    plan="move to Flux $NEW_VERSION (schema $NEW_SCHEMA)"
+  elif [ "$pull" = 1 ]; then plan="pull the new version with git"; else plan="build this checkout (schema $(code_schema))"; fi
   confirm "Upgrade $PROJECT (schema $from_schema): back up, $plan, migrate and restart? API and worker stay stopped from the backup until the new version runs." \
-    || { say "Cancelled; nothing was changed."; return 1; }
+    || { from_release && rm -rf "$UPGRADE_STAGE"; say "Cancelled; nothing was changed."; return 1; }
   backup_to "$out_dir" keep-stopped
+  if from_release; then
+    UPGRADE_ARCHIVE=$BACKUP_ARCHIVE UPGRADE_FROM_SCHEMA=$from_schema UPGRADE_FROM_COMMIT=$from_commit
+    release_replace_files "$(dirname -- "$BACKUP_ARCHIVE")"
+    say "Flux $NEW_VERSION's files are in place; the previous ones are in $FLUX_UPGRADE_PREVIOUS_FILES."
+    export FLUX_UPGRADE_PREVIOUS_FILES
+    # The new launcher continues: it knows the new release's services.
+    if [ "$FORCE_PROJECT" = 1 ]; then exec "$FLUX_ROOT/flux" --force-project _upgrade-apply "$BACKUP_ARCHIVE" "$from_schema" "$from_commit"; fi
+    exec "$FLUX_ROOT/flux" _upgrade-apply "$BACKUP_ARCHIVE" "$from_schema" "$from_commit"
+  fi
   if [ "$pull" = 1 ]; then
     UPGRADE_ARCHIVE=$BACKUP_ARCHIVE UPGRADE_FROM_SCHEMA=$from_schema UPGRADE_FROM_COMMIT=$from_commit
     say "Pulling the new version..."
@@ -1631,6 +1761,131 @@ cmd_upgrade() {
     exec "$FLUX_ROOT/flux" _upgrade-apply "$BACKUP_ARCHIVE" "$from_schema" "$from_commit"
   fi
   upgrade_apply "$BACKUP_ARCHIVE" "$from_schema" "$from_commit"
+}
+
+# --- Upgrading a release (#1471 decision 5; docs/operations/upgrade.md). The new release's flux.tar.gz and SHA256SUMS come from GitHub
+# (FLUX_RELEASE_URL names another place that has the same layout, such as a mirror), or from files the owner downloaded (--file). The
+# archive must match its line in SHA256SUMS, and SHA256SUMS must carry the release workflow's keyless signature (SHA256SUMS.sigstore.json),
+# always (founder decision, 2026-11-13). The images are pinned by digest in the checked archive's docker/release.env, so what runs is
+# what was signed.
+RELEASE_URL=${FLUX_RELEASE_URL:-https://github.com/ColdPhase/flux/releases}
+# Who signs a release: Flux's release workflow on main, through GitHub's OIDC issuer. Pinned; nothing configures another.
+RELEASE_IDENTITY=https://github.com/ColdPhase/flux/.github/workflows/final-release.yml@refs/heads/main
+RELEASE_ISSUER=https://token.actions.githubusercontent.com
+# The official cosign v3.0.6 image, by the digest of its index (checked 2026-11-13; scripts/release/check_signing.sh uses the same). Used
+# when this machine has no cosign of its own.
+COSIGN_IMAGE=ghcr.io/sigstore/cosign/cosign:v3.0.6@sha256:de9c65609e6bde17e6b48de485ee788407c9502fa08b8f4459f595b21f56cd00
+UPGRADE_STAGE="$FLUX_ROOT/.flux-upgrade"
+# Stops the upgrade before anything outside the staging folder changed, and removes that folder.
+refuse() { rm -rf "$UPGRADE_STAGE"; die "$@"; }
+download() { # url file
+  if command -v curl >/dev/null 2>&1; then curl -fsSL --retry 3 -o "$2" "$1"
+  elif command -v wget >/dev/null 2>&1; then wget -q -O "$2" "$1"
+  else die "upgrade needs curl or wget to download the release; or download flux.tar.gz and SHA256SUMS yourself and run ./flux upgrade --file flux.tar.gz"
+  fi
+}
+# Gets the release ($1 a version or empty for the latest; $2 a downloaded flux.tar.gz) into $UPGRADE_STAGE, checks it and unpacks it.
+# Sets NEW_VERSION, NEW_SCHEMA and NEW_ROOT (the unpacked folder). Nothing outside $UPGRADE_STAGE changes.
+release_fetch() {
+  rm -rf "$UPGRADE_STAGE"
+  (umask 077; mkdir -p "$UPGRADE_STAGE/new")
+  if [ -n "$2" ]; then
+    [ -f "$2" ] || refuse "upgrade: $2 does not exist."
+    sums="$(dirname -- "$2")/SHA256SUMS"
+    [ -f "$sums" ] || refuse "upgrade: SHA256SUMS is not next to $2. Download it from the same release; Flux checks the archive against it."
+    cp "$2" "$UPGRADE_STAGE/flux.tar.gz"; cp "$sums" "$UPGRADE_STAGE/SHA256SUMS"
+    [ ! -f "$sums.sigstore.json" ] || cp "$sums.sigstore.json" "$UPGRADE_STAGE/SHA256SUMS.sigstore.json"
+  else
+    if [ -n "$1" ]; then base="$RELEASE_URL/download/$1"; else base="$RELEASE_URL/latest/download"; fi
+    say "Downloading ${1:-the latest release} from $base..."
+    download "$base/flux.tar.gz" "$UPGRADE_STAGE/flux.tar.gz" || refuse "upgrade: could not download $base/flux.tar.gz; nothing was changed."
+    download "$base/SHA256SUMS" "$UPGRADE_STAGE/SHA256SUMS" || refuse "upgrade: could not download $base/SHA256SUMS; nothing was changed."
+    download "$base/SHA256SUMS.sigstore.json" "$UPGRADE_STAGE/SHA256SUMS.sigstore.json" 2>/dev/null || rm -f "$UPGRADE_STAGE/SHA256SUMS.sigstore.json"
+  fi
+  release_verify "$UPGRADE_STAGE"
+  tar -xzf "$UPGRADE_STAGE/flux.tar.gz" -C "$UPGRADE_STAGE/new" || refuse "upgrade: flux.tar.gz could not be unpacked; nothing was changed."
+  NEW_ROOT="$UPGRADE_STAGE/new/flux"
+  [ -f "$NEW_ROOT/flux" ] && [ -f "$NEW_ROOT/docker/release.env" ] || refuse "upgrade: flux.tar.gz is not a Flux release (no flux/flux and flux/docker/release.env); nothing was changed."
+  problem=$(release_file_problem "$NEW_ROOT/docker/release.env")
+  [ -z "$problem" ] || refuse "upgrade: the new release's docker/release.env is damaged: $problem. Nothing was changed."
+  NEW_VERSION=$(release_value FLUX_RELEASE_VERSION "$NEW_ROOT/docker/release.env")
+  NEW_SCHEMA=$(release_value FLUX_RELEASE_SCHEMA "$NEW_ROOT/docker/release.env")
+  current=$(release_value FLUX_RELEASE_VERSION)
+  if [ "$NEW_VERSION" = "$current" ] && [ "$(release_value FLUX_RELEASE_COMMIT "$NEW_ROOT/docker/release.env")" = "$(release_value FLUX_RELEASE_COMMIT)" ]; then
+    rm -rf "$UPGRADE_STAGE"
+    say "This folder already runs Flux $current; nothing to upgrade."
+    exit 0
+  fi
+  # An older release is a downgrade even when its schema is the same: it may lack fixes the running one has (a stale mirror, or an old
+  # release served as the latest). The schema check in cmd_upgrade refuses the rest.
+  ! release_older "$NEW_VERSION" "$current" ||
+    refuse "upgrade: Flux $NEW_VERSION is older than this folder's Flux $current. A downgrade is not supported (docs/operations/upgrade.md); nothing was changed."
+  say "Checked Flux $NEW_VERSION (schema $NEW_SCHEMA) against SHA256SUMS."
+}
+# True when version $1 is lower than $2 by major.minor.patch (a pre-release suffix is not compared: v1.0.0-rc.1 to v1.0.0 is not lower).
+release_older() {
+  a=${1#v}; a=${a%%-*}; b=${2#v}; b=${b%%-*}
+  [ "$a" != "$b" ] && [ "$(printf '%s\n%s\n' "$a" "$b" | sort -t. -k1,1n -k2,2n -k3,3n | head -n 1)" = "$a" ]
+}
+# The archive must be named in SHA256SUMS with its exact hash, and SHA256SUMS must verify as signed by the release workflow.
+release_verify() {
+  expected=$(awk '$2 == "flux.tar.gz" || $2 == "*flux.tar.gz" { print $1 }' "$1/SHA256SUMS" | head -n 1)
+  [ -n "$expected" ] || refuse "upgrade: SHA256SUMS names no flux.tar.gz; refusing the download. Nothing was changed."
+  actual=$(sha256_of "$1/flux.tar.gz")
+  [ "$actual" = "$expected" ] || refuse "upgrade: flux.tar.gz does not match SHA256SUMS (sha256 $actual, expected $expected); refusing it. Download it again; nothing was changed."
+  [ -f "$1/SHA256SUMS.sigstore.json" ] || refuse "upgrade: the release has no signature (SHA256SUMS.sigstore.json); download it with the release (next to SHA256SUMS for --file) and retry. Nothing was changed."
+  if command -v cosign >/dev/null 2>&1; then
+    signature_ok "$1" cosign; how="cosign"
+  elif docker image inspect "$COSIGN_IMAGE" >/dev/null 2>&1 || docker pull --quiet "$COSIGN_IMAGE" >/dev/null 2>&1; then
+    signature_ok "$1" docker; how="the cosign image"
+  else
+    refuse "upgrade: the signature cannot be checked, because this machine has neither cosign nor the cosign image; without internet access, run docker pull $COSIGN_IMAGE on a connected machine, carry it over with docker save and docker load, and retry. Nothing was changed."
+  fi
+  say "Verified the release's signature ($how): SHA256SUMS was signed by Flux's release workflow."
+}
+# Runs `cosign verify-blob` on $1/SHA256SUMS with its bundle: with the host's cosign ($2 = cosign), or with the official image ($2 = docker),
+# which sees only the files it checks, read-only, and nothing else of this machine; it reaches the network for Sigstore's trust root.
+# FLUX_TEST_COSIGN_KEY (a public key file) is for scripts/release/smoke_launcher.sh only: it swaps the release identity for a test key.
+signature_ok() {
+  dir=$1 runner=$2
+  if [ "$runner" = cosign ]; then bundle=$dir/SHA256SUMS.sigstore.json sums=$dir/SHA256SUMS key=${FLUX_TEST_COSIGN_KEY:-}
+  else bundle=/verify/SHA256SUMS.sigstore.json sums=/verify/SHA256SUMS key=/verify/key.pub; fi
+  if [ -n "${FLUX_TEST_COSIGN_KEY:-}" ]; then set -- verify-blob --bundle "$bundle" --key "$key" --insecure-ignore-tlog=true "$sums"
+  else set -- verify-blob --bundle "$bundle" --certificate-identity "$RELEASE_IDENTITY" --certificate-oidc-issuer "$RELEASE_ISSUER" "$sums"; fi
+  if [ "$runner" = cosign ]; then
+    cosign "$@" >/dev/null 2>&1 && return 0
+  else
+    set -- "$COSIGN_IMAGE" "$@"
+    if [ -n "${FLUX_TEST_COSIGN_KEY:-}" ]; then set -- -v "$FLUX_TEST_COSIGN_KEY:/verify/key.pub:ro,z" "$@"; fi
+    docker run --rm --read-only --cap-drop ALL --security-opt no-new-privileges --user "$(id -u):$(id -g)" -e HOME=/tmp --tmpfs /tmp \
+      -v "$dir/SHA256SUMS:/verify/SHA256SUMS:ro,z" -v "$dir/SHA256SUMS.sigstore.json:/verify/SHA256SUMS.sigstore.json:ro,z" \
+      "$@" >/dev/null 2>&1 && return 0
+  fi
+  refuse "upgrade: SHA256SUMS does not verify as signed by Flux's release workflow (or Sigstore's trust root could not be reached); refusing it. Nothing was changed."
+}
+# Pulls the images of the new release that this Docker does not have, while the old version keeps running: the runtime's only when it is on.
+release_pull_new() {
+  keys='FLUX_RELEASE_IMAGE FLUX_RELEASE_DATABASE_IMAGE'
+  if runtime_on; then keys="$keys FLUX_RELEASE_RUNTIME_IMAGE"; fi
+  say "Downloading Flux $NEW_VERSION's images (Flux keeps running)..."
+  for key in $keys; do
+    image=$(release_value "$key" "$NEW_ROOT/docker/release.env")
+    docker image inspect "$image" >/dev/null 2>&1 || docker pull --quiet "$image" >/dev/null || return 1
+  done
+}
+# Keeps the current release's copies of the files the new one replaces (FLUX_UPGRADE_PREVIOUS_FILES, next to the backup), then puts the
+# new release's files in place. docker/.env, docker/compose.override.yaml and backups are not release files and stay as they are.
+release_replace_files() {
+  FLUX_UPGRADE_PREVIOUS_FILES="$1/flux-files-$(release_value FLUX_RELEASE_VERSION)-$(date -u +%Y%m%dT%H%M%SZ).tar.gz"
+  list="$UPGRADE_STAGE/files"
+  (cd "$NEW_ROOT" && find . \( -type f -o -type l \) -print) | sed 's#^\./##' | while IFS= read -r file; do
+    if [ -e "$FLUX_ROOT/$file" ]; then printf '%s\n' "$file"; fi
+  done > "$list"
+  (cd "$FLUX_ROOT" && tar -czf "$FLUX_UPGRADE_PREVIOUS_FILES" -T "$list") ||
+    upgrade_failed "the current release's files could not be saved; nothing was replaced"
+  (cd "$NEW_ROOT" && tar -cf - .) | (cd "$FLUX_ROOT" && tar -xf -) ||
+    upgrade_failed "the new release's files could not be put in place (the previous ones are in $FLUX_UPGRADE_PREVIOUS_FILES)"
+  rm -rf "$UPGRADE_STAGE"
 }
 
 # ./flux runtime status | release <email> | purge [-y]  (F-022 T3; docs/operations/agent-runtime.md)
@@ -1809,7 +2064,8 @@ cmd_help() {
 Flux launcher. Flux runs in Docker; the external cowork action also needs the native Codex CLI.
 
   ./flux up              Create docker/.env with new secrets if it is missing (never overwrites it),
-                         build, migrate, start and print the URL.
+                         get the images (a release pulls its own, pinned by digest; a source
+                         checkout builds them), migrate, start and print the URL.
   ./flux demo [--dev]    Seed demo data through the public API and print two logins.
                          Refuses non-loopback (production-looking) origins unless --force.
   ./flux dev [--build]   Hot-reload development in Docker: Vite for the web app, tsx watch
@@ -1833,9 +2089,11 @@ Flux launcher. Flux runs in Docker; the external cowork action also needs the na
                          Audited operator recovery by Flux account id; requires the running API.
   ./flux identity unlink <userId> --reason "<why>"
                          Audited operator removal of the provider sign-in; refused as the last way in.
-  ./flux upgrade [--pull] [-y]
-                         Back up, (git pull,) build this checkout, migrate and check health; on
-                         failure print the restore instructions.
+  ./flux upgrade [VERSION | --file flux.tar.gz] [--output DIR] [-y]
+                         A release: download the latest release (or VERSION), check it against
+                         SHA256SUMS and its signature (cosign, or its image), pull its images, back up,
+                         put its files in place, migrate and check health; on failure print the
+                         way back. A source checkout: ./flux upgrade [--pull] builds its own code.
   ./flux runtime status | release <email> | purge [-y]
                          Agent runtime (FLUX_AGENT_RUNTIME): show who is in it, release one person's
                          place (they are signed out and told), or sign out and delete every login.
@@ -1856,7 +2114,8 @@ checkout; --force-project overrides that check.
 Environment: FLUX_PROJECT (Compose project; default flux-<dir>-<hash of this checkout's path>,
 stored in docker/.env on first use; dev uses <project>-dev),
 FLUX_PORT (8081, used when creating .env), FLUX_DEV_PORT (5173), FLUX_MAILPIT_PORT (8025),
-FLUX_NO_CACHE=1 (build without the Docker cache), FLUX_BACKUP_DIR (default backups/).
+FLUX_NO_CACHE=1 (a source checkout: build without the Docker cache), FLUX_BACKUP_DIR (default backups/),
+FLUX_RELEASE_URL (where ./flux upgrade downloads releases; default the GitHub Releases of Flux).
 Operations guide: docs/operations/README.md.
 EOF
 }
@@ -1868,10 +2127,12 @@ for arg in "$@"; do
 done
 command=${1:-help}
 [ $# -gt 0 ] && shift
+COMMAND=$command
 case "$command" in
   _is-loopback-origin) is_loopback_origin "${1:-}"; exit ;;  # used by scripts/check_flux_cli.sh
   help|-h|--help) ;;
   *) check_env_file
+     select_image_source
      resolve_project
      # Recorded as an image label and in backup manifests (issue #123).
      FLUX_GIT_COMMIT=${FLUX_GIT_COMMIT:-$(git_commit)}; export FLUX_GIT_COMMIT ;;

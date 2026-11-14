@@ -20,8 +20,8 @@ iPhone and iPad and receiving notifications (MOB-6 in
 
 ## 2. Turn on Web Push
 
-Set both `FLUX_VAPID_PUBLIC_KEY` and `FLUX_VAPID_PRIVATE_KEY` ([install step 3](install-release.md),
-[variables](configuration.md#web-push)); a source checkout's `./flux up` makes them.
+Set both `FLUX_VAPID_PUBLIC_KEY` and `FLUX_VAPID_PRIVATE_KEY`; `./flux up` makes them
+([variables](configuration.md#web-push)).
 `FLUX_VAPID_SUBJECT`, the contact the push services get, is optional: empty, it is your public
 `https://` origin (`FLUX_PUBLIC_ORIGIN`), which Apple's push service accepts, so there is nothing
 to set. Set it only to give a `mailto:` address at a real domain you own. With a `localhost`,

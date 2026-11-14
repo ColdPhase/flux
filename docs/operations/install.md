@@ -1,43 +1,54 @@
 # Installation
 
-There are three ways to run Flux. All of them are Docker Compose on one host.
+Flux installs one way, on your computer or on a server ([#1471](https://github.com/ColdPhase/flux/issues/1471), founder
+decision 5): download a release, check it, unpack it and run `./flux up`. The release is a folder with the `flux` launcher and
+the Compose files it runs; `./flux up` pulls that release's images, pinned by digest, and sets everything up: the secrets, the
+push keys, HTTPS for an `https` address, calls when you switch them on, and the agent runtime. It keeps its settings in
+`docker/.env` and gives you [backups](backup-restore.md), restores and [upgrades](upgrade.md) as single commands. Nothing is
+built on your machine. (Building Flux from its source is the Flux developers' path: [development](../development/containers.md).)
 
-| Path | For | Guide |
-| --- | --- | --- |
-| **Try it on your computer** | Seeing Flux with sample data, at `http://127.0.0.1:8081` | [Quick start](../../README.md#quick-start) |
-| **Your own server, from a source checkout** | A team instance that builds on the server, for example on `arm64` | This page |
-| **Your own server, from a published release** | A team instance without the source or a build | [Install from a release](install-release.md) |
+This page is a fresh installation. **v0.2 does not upgrade a v0.1 installation** (v0.1 had no users): if this host already
+runs v0.1, [read why and what to do](upgrade.md#from-v01-install-v02-fresh) first.
 
-Flux v0.2 can run from the digest-pinned image of the [latest release](https://github.com/ColdPhase/flux/releases/latest). That image is
-`linux/amd64` only; `linux/arm64` is planned for v0.3. A source checkout uses the `./flux` launcher,
-which builds the image on the server, keeps its settings in `docker/.env`, and gives you
-[backups](backup-restore.md), restores and [upgrades](upgrade.md) as single commands. The release
-path runs the same services without the source or a build.
+Check the [requirements](requirements.md) first: a Linux host with Docker Engine 25 or newer and the Compose plugin,
+`curl` (or `wget`) and `tar`, 4 GB of memory, and a DNS name pointing at the host. The images are built for `linux/amd64`;
+`linux/arm64` is planned ([#833](https://github.com/ColdPhase/flux/issues/833)).
 
-This page is a fresh installation. **v0.2 does not upgrade a v0.1 installation** (v0.1 had no users): if this host or checkout
-already runs v0.1, [read why and what to do](upgrade.md#from-v01-install-v02-fresh) first.
-
-Check the [requirements](requirements.md) first: a Linux host with Docker Engine 25 or newer and the Compose
-plugin, 4 GB of memory, and a DNS name pointing at the host.
-
-## Production installation from a source checkout
+## Production installation
 
 The example uses `/srv/flux` and `https://flux.example.org`; replace both.
 
-### 1. Get the code and start once on loopback
+### 1. Download the release and start once on loopback
 
 ```sh
-sudo mkdir -p /srv/flux && sudo chown "$USER" /srv/flux
-git clone --depth 1 https://github.com/ColdPhase/flux.git /srv/flux
-cd /srv/flux
+cd /srv                       # the release unpacks into /srv/flux
+for f in flux.tar.gz SHA256SUMS SHA256SUMS.sigstore.json; do
+  curl -fLO "https://github.com/ColdPhase/flux/releases/latest/download/$f"
+done
+# SHA256SUMS must be signed by Flux's release workflow (the official cosign image, pinned by digest; prints: Verified OK)
+docker run --rm --read-only --cap-drop ALL --security-opt no-new-privileges --user "$(id -u):$(id -g)" -e HOME=/tmp --tmpfs /tmp \
+  -v "$PWD/SHA256SUMS:/verify/SHA256SUMS:ro,z" -v "$PWD/SHA256SUMS.sigstore.json:/verify/SHA256SUMS.sigstore.json:ro,z" \
+  ghcr.io/sigstore/cosign/cosign:v3.0.6@sha256:de9c65609e6bde17e6b48de485ee788407c9502fa08b8f4459f595b21f56cd00 \
+  verify-blob --bundle /verify/SHA256SUMS.sigstore.json \
+  --certificate-identity https://github.com/ColdPhase/flux/.github/workflows/final-release.yml@refs/heads/main \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com /verify/SHA256SUMS
+sha256sum --ignore-missing -c SHA256SUMS      # must print: flux.tar.gz: OK
+tar -xzf flux.tar.gz
+cd flux
 ./flux up
 ```
 
-The first `./flux up` creates `docker/.env` with new random secrets, builds the image (a few
-minutes), runs the migrations, starts the services and prints `http://127.0.0.1:8081`. In a terminal
-it also asks once whether people may sign in with their own ChatGPT and Claude subscriptions; the
-[agent runtime guide](agent-runtime.md) explains the choice, and Enter or `n` can be changed later
-with `./flux ai on`. Start with another port if 8081 is taken: `FLUX_PORT=8090 ./flux up`.
+The `docker run` line is the check `./flux upgrade` makes on every later release ([signatures](upgrade.md#signatures)): it gives
+the cosign container only the two files, read-only. Do not go on if it does not print `Verified OK`. On macOS, check the
+checksum with `shasum -a 256 --ignore-missing -c SHA256SUMS`. A different version is under `releases/download/<version>/`
+instead of `releases/latest/download/`.
+
+The first `./flux up` creates `docker/.env` with new random secrets and push keys, downloads the images of this release (a
+few minutes the first time; `docker/release.env` names them), runs the migrations, starts the services and prints
+`http://127.0.0.1:8081`. In a terminal it also asks once whether people may sign in with their own ChatGPT and Claude
+subscriptions; the [agent runtime guide](agent-runtime.md) explains the choice, and Enter or `n` can be changed later with
+`./flux ai on`. Start with another port if 8081 is taken: `FLUX_PORT=8090 ./flux up`. To look around on your own
+computer, `./flux demo` adds a sample company and prints two logins (it refuses a public address).
 
 Check that it answers:
 
@@ -191,11 +202,13 @@ Set `FLUX_CALLS=on` in `docker/.env` and run `./flux up`: it starts the media se
 secret, takes the media address from the origin's DNS name and prints the ports to open
 (7881/tcp, 7882/udp, 3478/udp). See [calls](calls.md).
 
-## What the source path leaves on
+## Without internet access
 
-`./flux up` writes a random `FLUX_FIXTURE_TOKEN`, which the source Compose file requires. It enables
-the integration-fixture endpoints used by the checks, only for a caller that holds that token. Keep
-`docker/.env` private; a release installation leaves the token empty.
+`./flux up` downloads only the images this Docker does not have yet, and each is pinned by digest. On a server without access
+to `ghcr.io`, copy them there once: on a machine with access, `docker pull` each image that `docker/release.env` names (the
+agent runtime's only if you switch it on) and `docker save` them into one file; on the server, `docker load` that file, then run
+`./flux up`. The same works for the pinned images of the optional overlays (`docker/compose.https.yaml`, `compose.live.yaml`,
+`compose.embeddings.yaml`).
 
 ## Kubernetes
 

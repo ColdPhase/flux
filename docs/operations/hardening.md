@@ -56,11 +56,11 @@ described in the [security policy](../SECURITY.md).
 
 ## Checklist for the operator
 
-1. **Serve HTTPS only**, with `FLUX_PUBLIC_ORIGIN=https://…`: built in for a source checkout, or through one
+1. **Serve HTTPS only**, with `FLUX_PUBLIC_ORIGIN=https://…`: built in, or through one
    [reverse proxy](reverse-proxy.md) of your own. Redirect port 80 to 443 (the built-in proxy does). Flux sends `Strict-Transport-Security` itself for an `https` origin;
    do not add `includeSubDomains` or `preload` at the proxy unless every subdomain of the name serves https too.
    **Create your own account before the address is public:** the first account to sign up becomes the company's owner
-   ([install step 1](install.md#1-get-the-code-and-start-once-on-loopback)). `./flux up` and the API log warn while nobody has.
+   ([install step 1](install.md#1-download-the-release-and-start-once-on-loopback)). `./flux up` and the API log warn while nobody has.
 2. **Firewall** everything except 80 and 443 (and the media ports if you run
    [calls](calls.md)). Docker publishes ports past some host firewalls; Flux
    publishes only on loopback, so keep any port you add in an override on `127.0.0.1` too.
@@ -97,9 +97,10 @@ described in the [security policy](../SECURITY.md).
     links. A new database password needs the same change inside PostgreSQL first. **Never** change
     `FLUX_KEY_PIN_SECRET`: encrypted spaces would refuse to unlock.
 
-## In a source checkout
+## Test switches
 
-`./flux up` generates `FLUX_FIXTURE_TOKEN`, which the source Compose file requires: it enables the
-integration-fixture endpoints used by the checks, for a caller holding that token only. Test-only
-switches such as `FLUX_TEST_FAILURE_INJECTION` stay off unless set; never set them on a server. The
+A release leaves `FLUX_FIXTURE_TOKEN` empty and its Compose file passes no test switch. Only a Flux developer's source checkout
+generates the token (its Compose file requires it for the integration-fixture endpoints of the checks, for a caller holding that
+token only) and passes switches such as `FLUX_TEST_FAILURE_INJECTION`, which stay off unless set; never run a source checkout
+as a server. The
 [configuration reference](configuration.md#set-by-flux-not-by-you) lists every such name.

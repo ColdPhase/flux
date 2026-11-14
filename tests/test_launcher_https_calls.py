@@ -70,6 +70,11 @@ class LauncherHttpsCallsTest(unittest.TestCase):
             self.log.unlink()
         return subprocess.run([str(self.checkout / "flux"), "logs"], cwd=self.base, env=self.env, capture_output=True, text=True, timeout=20)
 
+    def up(self) -> subprocess.CompletedProcess[str]:
+        """`./flux up` against the stand-in docker: the first command that makes the call settings (with the DNS check)."""
+        return subprocess.run([str(self.checkout / "flux"), "up"], cwd=self.base, env=self.env, capture_output=True, text=True, timeout=60,
+                              stdin=subprocess.DEVNULL)
+
     def compose_call(self) -> tuple[list[str], str]:
         lines = self.log.read_text(encoding="utf-8").splitlines()
         index = next(i for i, line in enumerate(lines) if line.startswith("--log-level error compose "))
@@ -149,6 +154,7 @@ class LauncherHttpsCallsTest(unittest.TestCase):
 
     def test_calls_on_layers_the_media_server_and_writes_its_settings_once(self) -> None:
         self.write_env("FLUX_PUBLIC_ORIGIN=https://203.0.113.20\nFLUX_CALLS=on\n")
+        self.up()
         result = self.logs()
         self.assertEqual(result.returncode, 0, result.stderr)
         args, exported = self.compose_call()
@@ -165,6 +171,7 @@ class LauncherHttpsCallsTest(unittest.TestCase):
     def test_the_media_address_is_what_the_origins_name_resolves_to(self) -> None:
         self.stub("getent", '[ "$1 $2" = "ahostsv4 flux.example.org" ] && printf "198.51.100.7    STREAM flux.example.org\\n"\n')
         self.write_env("FLUX_PUBLIC_ORIGIN=https://flux.example.org\nFLUX_CALLS=on\n")
+        self.up()
         result = self.logs()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.env_values()["FLUX_LIVEKIT_PUBLIC_IP"], "198.51.100.7")
@@ -175,14 +182,20 @@ class LauncherHttpsCallsTest(unittest.TestCase):
             with self.subTest(answer=answer):
                 self.stub("getent", f'printf "%s" "{answer}"\n')
                 self.write_env("FLUX_PUBLIC_ORIGIN=https://flux.example.org\nFLUX_CALLS=on\n")
-                result = self.logs()
+                result = self.up()
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn(message, result.stderr)
                 self.assertNotIn("FLUX_LIVEKIT_PUBLIC_IP", self.env_file.read_text(encoding="utf-8"))
+                # Only the commands that start Flux stop at the DNS check: logs, down and clean go on without a record (#1471 review).
+                for command in ("logs", "down"):
+                    other = subprocess.run([str(self.checkout / "flux"), command], cwd=self.base, env=self.env, capture_output=True,
+                                           text=True, timeout=20)
+                    self.assertEqual(other.returncode, 0, f"{command}: {other.stderr}")
+                    self.assertNotIn("FLUX_LIVEKIT_PUBLIC_IP", self.env_file.read_text(encoding="utf-8"))
 
     def test_a_loopback_origin_uses_the_loopback_address(self) -> None:
         self.write_env("FLUX_PUBLIC_ORIGIN=http://localhost:8081\nFLUX_CALLS=on\n")
-        self.assertEqual(self.logs().returncode, 0)
+        self.up()
         self.assertEqual(self.env_values()["FLUX_LIVEKIT_PUBLIC_IP"], "127.0.0.1")
 
     def test_calls_off_layers_no_media_server_and_clean_still_knows_every_overlay(self) -> None:

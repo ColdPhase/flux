@@ -63,13 +63,6 @@ export default defineConfig({
                 { label: 'Agent runtime', link: '/operate/agent-runtime/' },
               ],
             },
-            {
-              label: 'Releases',
-              items: [
-                { label: 'Install from a release', link: '/operate/install-release/' },
-                { label: 'Release install guide', link: '/operate/release-guide/' },
-              ],
-            },
           ],
         },
         { label: 'Integrate', items: [{ label: 'Integrating with Flux', link: '/integrate/' }] },

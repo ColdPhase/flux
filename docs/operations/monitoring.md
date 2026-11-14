@@ -33,13 +33,13 @@ minute, three failures in a row make a container `unhealthy`.
 
 ```sh
 cd /srv/flux
-dc() { docker compose --env-file docker/.env -p "$(sed -n 's/^FLUX_PROJECT=//p' docker/.env)" -f docker/compose.source.yaml "$@"; }
+dc() { docker compose --env-file docker/release.env --env-file docker/.env -p "$(sed -n 's/^FLUX_PROJECT=//p' docker/.env)" -f docker/compose.yaml "$@"; }
 dc ps            # STATUS shows (healthy), (unhealthy) or Restarting
 docker stats     # memory against each container's limit
 ```
 
-For a release installation use `docker compose --env-file .env -f compose.yaml ps` in its
-directory.
+`docker/release.env` gives Compose the release's image names, as `./flux` does. A developer's source checkout uses
+`--env-file docker/.env -f docker/compose.source.yaml` instead.
 
 ## What is configured
 

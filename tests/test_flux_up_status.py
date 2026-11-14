@@ -75,7 +75,7 @@ class UpStatusTest(unittest.TestCase):
             "  Email     off (set FLUX_SMTP_URL and FLUX_MAIL_FROM in docker/.env to send email)",
             "  Push      on for this computer; iPhone and iPad need an https address (FLUX_PUBLIC_ORIGIN)",
             "  AI        plans off (./flux ai on lets people sign in with their ChatGPT or Claude plan)",
-            "  Calls     off",
+            "  Calls     off (FLUX_CALLS=on in docker/.env turns them on)",
             "  Backups   none yet (run ./flux backup, and add it to cron: docs/operations/backup-restore.md)",
         ])
         self.assertIn("Create an account there, or run ./flux demo for sample data and two logins.", done.stdout)
@@ -89,15 +89,24 @@ class UpStatusTest(unittest.TestCase):
             "FLUX_AGENT_RUNTIME=claude_code,codex", "FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS=2026-11-01",
             "FLUX_RUNTIME_MANAGER_SECRET=" + "a" * 64, "FLUX_RUNTIME_SECRET_1=" + "b" * 64])
         self.assertEqual(self.status(done), [
-            "  Address   https://flux.example.org",
+            "  Address   https://flux.example.org (HTTPS by the bundled Caddy)",
             "  Email     on",
             "  Push      on",
             "  AI        ChatGPT and Claude plans on",
-            "  Calls     off",
+            "  Calls     off (FLUX_CALLS=on in docker/.env turns them on)",
             "  Backups   last one 2026-11-13, in backups",
         ])
         self.assertNotIn("./flux demo", done.stdout + done.stderr)
         self.assertIn("Create an account there.", done.stdout)
+
+    def test_calls_and_https_read_their_switches(self) -> None:
+        """#1472 with #1477: the Calls line reads FLUX_CALLS, and the Address line says who serves HTTPS."""
+        done = self.run_flux("up", ["FLUX_PUBLIC_ORIGIN=https://203.0.113.20", "FLUX_CALLS=on", "FLUX_AGENT_RUNTIME="])
+        status = self.status(done)
+        self.assertEqual(status[0], "  Address   https://203.0.113.20 (HTTPS by the bundled Caddy)")
+        self.assertEqual(status[4], "  Calls     on (open 7881/tcp, 7882/udp and 3478/udp to this server)")
+        done = self.run_flux("up", ["FLUX_PUBLIC_ORIGIN=https://flux.example.org", "FLUX_TRUSTED_PROXIES=172.27.0.1/32", "FLUX_AGENT_RUNTIME="])
+        self.assertEqual(self.status(done)[0], "  Address   https://flux.example.org (HTTPS by your own proxy)")
 
     def test_each_plan_alone_is_named(self) -> None:
         for runtime, line in (("codex", "ChatGPT plans on, Claude plans off (./flux ai on turns them on)"),

@@ -9,10 +9,8 @@ that CLI (Claude Code or Codex) for their agents, isolated from everyone else, o
 [#1438](https://github.com/ColdPhase/flux/issues/1438) and [#1441](https://github.com/ColdPhase/flux/issues/1441): AI works
 right after install). With `FLUX_AGENT_RUNTIME` empty, no runtime service runs, the API reports the
 feature as not enabled, and nothing below applies; on a host that cannot run it, that is how it stays, and the company's owners
-and admins read why in one line in Settings › AI. The published release `compose.yaml` does not
-contain it and never asks; the runtime is available from a source checkout with `./flux`
-([Switch it on](#switch-it-on)), or from a release install with the release's optional
-`compose.runtime.yaml` and `runtime.sh` ([Installing from a release](#installing-from-a-release)).
+and admins read why in one line in Settings › AI. `./flux ai on` asks again ([Switch it on](#switch-it-on)); its images come
+with the release ([The runtime's images](#the-runtimes-images)).
 
 ## Before you switch it on
 
@@ -151,8 +149,8 @@ time can change them:
   Docker or Podman socket.
 - The Node supervisor sets Linux `PR_SET_DUMPABLE=0` before reading its secret. The runtime requires Linux Yama
   `kernel.yama.ptrace_scope` of 1 or higher. **A host that does not meet it stops the runtime with one clear message and the
-  fix:** the container stays up without listening, with no restart loop, its health check stays red, and `./flux up` (and
-  `sh runtime.sh up`) ends with that message instead of reporting a healthy Flux. The worker cannot admit a runtime that refused.
+  fix:** the container stays up without listening, with no restart loop, its health check stays red, and `./flux up`
+  ends with that message instead of reporting a healthy Flux. The worker cannot admit a runtime that refused.
   The next `./flux up` starts it again, so it looks at the host again.
   Fix it with `sudo sysctl -w kernel.yama.ptrace_scope=1`, add `kernel.yama.ptrace_scope = 1` to `/etc/sysctl.d/90-flux.conf` so it
   survives a reboot, and run `./flux up` again. Fedora's default is 0. Flux does not change host kernel settings. **Docker
@@ -161,7 +159,7 @@ time can change them:
   inspector. Additional or negated flags refuse the same way. The pinned Node 24.21 supports this flag.
 - Limits for all the agents together: `FLUX_RUNTIME_MEMORY` (no swap) and `FLUX_RUNTIME_CPUS`, 2048 processes, a 256 MiB tmpfs
   `/tmp` and a 1 GiB tmpfs `/scratch` for the runs' scratches (memory, counted in `FLUX_RUNTIME_MEMORY`; only what runs write
-  there uses any). `./flux` and `runtime.sh` set the two from the server: its memory less 1.25 GiB, and all its CPUs but one.
+  there uses any). `./flux` sets the two from the server: its memory less 1.25 GiB, and all its CPUs but one.
 - Container logs are rotated at 3 × 10 MB.
 - Only its own volume at `/data` and the read-only tools volume.
 - Only its own `internal` network, shared with `runtime-manager` and `runtime-egress` and nothing else, so it cannot reach the
@@ -213,7 +211,7 @@ What it costs is measured by `scripts/check_runtime_sandbox.sh` (its `MEASURE` l
 *Resources measured* below. A pin Alpine drops makes the image build fail: move the pins together.
 
 **More tools.** Build your own image on top of Flux's runtime image and point the runtime services at it, for example in
-`docker/compose.override.yaml` (source checkout) or beside `compose.runtime.yaml` (release):
+`docker/compose.override.yaml`:
 
     # Dockerfile.runtime
     FROM ghcr.io/coldphase/flux-agent-runtime@sha256:<the digest of your release>
@@ -538,33 +536,29 @@ None of them is hidden by the checks.
   backend uses Microsoft's WSL kernel, whose `config-wsl` at `linux-msft-wsl-6.18.58.1` has both Landlock and Yama (WSL 2.7.5 or later;
   Yama's default of 1 there is inferred from the kernel source, not observed): not tested with Flux.
 
-## Installing from a release
+## The runtime's images
 
-A GitHub Release carries the runtime as two more assets next to
-`compose.yaml`: `compose.runtime.yaml` and `runtime.sh` (sources: `docker/compose.runtime.yaml`,
-`docker/runtime.sh`). Its release installation guide (`INSTALL.md`, source
-[`release-guide.md`](release-guide.md)) has the commands. What differs from the source checkout:
+A release names the runtime's image in `docker/release.env` (`FLUX_RELEASE_RUNTIME_IMAGE`, pinned by digest), and its
+`docker/compose.runtime.yaml` runs it; `./flux up` pulls it only once the runtime is on, and `./flux upgrade` moves it with the
+release ([#1471](https://github.com/ColdPhase/flux/issues/1471), founder decision 5). A developer's source checkout builds the
+same services from `docker/Dockerfile` instead.
 
 - **Two images, both pinned by digest, no build.** `runtime-manager` and `runtime-egress` run the
   application image of the release; `runtime-install` and `runtime-1` run
   `ghcr.io/coldphase/flux-agent-runtime`, built for the release's platforms (`linux/amd64` for v0.2) from the accepted
   candidate by `final-release.yml` (target `agent-runtime-release` of `docker/Dockerfile`). It holds the
-  supervisor with its process hardening, node-pty and the pinned official Codex (checked by SHA-256)
-  on the application image's Node (without npm, corepack or yarn, #1179),
+  supervisor with its process hardening, node-pty, the pinned official Codex (checked by SHA-256) and the
+  [toolbox](#the-toolbox) on the application image's Node (without npm, corepack or yarn, #1179),
   and gpg so that the same digest also runs `runtime-install`. **The one difference from the source
   runtime image** is that gpg: the source Compose keeps building the separate `agent-runtime` image
   without it. Claude Code is never in an image; the workflow fails when `claude` or anything in
   `/opt/flux-tools` is found in it.
-- **Same settings.** The overlay is the source Compose's runtime block with only the images changed;
+- **Same settings.** The release's runtime file is the source Compose's runtime block with only the images changed;
   `scripts/release/compare_runtime_overlay.py` compares every runtime service, network and volume of
-  the two (`docker compose config`) and fails on a difference. The runtime stays off
-  (`FLUX_AGENT_RUNTIME` empty) and no service mounts a Docker socket or builds from source.
-- **`runtime.sh` replaces the launcher** for the operator steps: `on`, `off`, `up`, `status`,
-  `release <email>` and `purge [-y]` run the same operations as `./flux ai on`, `./flux runtime ...`
-  and the purge fence, through `docker compose`.
+  the two (`docker compose config`) and fails on a difference. No service mounts a Docker socket or builds from source.
 - **Linux Yama ptrace_scope of 1 or higher** is required on the host kernel, as everywhere
   ([What the runtime gets](#what-the-runtime-gets)). The release check
-  (`scripts/release/smoke_runtime.sh`) uses the real image and no vendor account, so it covers
+  (`scripts/release/smoke_runtime.sh`) runs the release's `./flux` with the real image and no vendor account, so it covers
   switch-on, isolation, off and purge; a person's sign-out and reuse need a vendor login and are
   checked with fake CLIs against the source stack (`scripts/check_agent_runtime.sh`).
 
@@ -613,7 +607,7 @@ Each Flux release pins the CLI versions its flag contract check passed: Claude C
 (`DISABLE_UPDATES=1`).
 
 The separate published runtime image and release-matched operator assets are built by the final release
-workflow ([Installing from a release](#installing-from-a-release)) and published with each release; a source-built
+workflow ([The runtime's images](#the-runtimes-images)) and published with each release; a source-built
 runtime is not a published runtime release.
 
 `./scripts/check_runtime_cli_contract.sh` is the opt-in flag contract check against these real CLIs

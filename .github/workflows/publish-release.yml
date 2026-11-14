@@ -91,7 +91,8 @@ jobs:
           jq -e --arg v "$RELEASE_VERSION" --arg s "$SOURCE_SHA" \
             --arg i "ghcr.io/coldphase/flux@$IMAGE_DIGEST" \
             '.version == $v and .source_sha == $s and .image == $i' release.json
-          test "$(grep -Fc "image: ghcr.io/coldphase/flux@$IMAGE_DIGEST" compose.yaml)" = 4
+          # flux.tar.gz's docker/release.env must name the same image (verify_assets.py below reads it from the archive).
+          tar -xzOf flux.tar.gz flux/docker/release.env | grep -qx "FLUX_RELEASE_IMAGE=ghcr.io/coldphase/flux@$IMAGE_DIGEST"
           # The agent-runtime digest is not a dispatch input: release.json is covered by the SHA256SUMS
           # that the independent reviewer's ACCEPTED RELEASE ARTIFACT line binds. verify_assets.py checks
           # both images' digests in every file, the platforms and that Claude Code is not included.
@@ -116,6 +117,11 @@ jobs:
           bash "$GITHUB_WORKSPACE/scripts/release/verify_signatures.sh" \
             "ghcr.io/coldphase/flux@$IMAGE_DIGEST" "ghcr.io/coldphase/flux-agent-runtime@$runtime_digest" \
             "ghcr.io/coldphase/flux-database@$database_digest"
+          # SHA256SUMS carries the same workflow's keyless signature, the one ./flux upgrade checks (#1471): no release without it.
+          test -f SHA256SUMS.sigstore.json
+          cosign verify-blob --bundle SHA256SUMS.sigstore.json \
+            --certificate-identity https://github.com/ColdPhase/flux/.github/workflows/final-release.yml@refs/heads/main \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com SHA256SUMS
           checksums_sha=$(sha256sum SHA256SUMS | cut -d ' ' -f1)
           gh api --paginate --slurp \
             "repos/$GITHUB_REPOSITORY/issues/$REVIEW_ISSUE/comments?per_page=100" \

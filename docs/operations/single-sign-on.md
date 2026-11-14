@@ -52,11 +52,9 @@ is set by `FLUX_SSO_MODE`:
    value when the API starts with single sign-on on (`Single sign-on is on`, field `redirectUri`):
 
    ```sh
-   docker compose --env-file docker/.env -p "$(sed -n 's/^FLUX_PROJECT=//p' docker/.env)" \
-     -f docker/compose.source.yaml logs --no-log-prefix api | grep 'Single sign-on is on'
+   docker compose --env-file docker/release.env --env-file docker/.env -p "$(sed -n 's/^FLUX_PROJECT=//p' docker/.env)" \
+     -f docker/compose.yaml logs --no-log-prefix api | grep 'Single sign-on is on'
    ```
-
-   (Release: `docker compose --env-file .env -f compose.yaml logs --no-log-prefix api | grep …`.)
 
    The provider id is derived from the issuer URL, so changing the issuer creates a new identity
    namespace. Keep the issuer stable during normal operation; if it must change, use the explicit
@@ -79,26 +77,7 @@ is set by `FLUX_SSO_MODE`:
    neither, single sign-on stays off. `FLUX_OIDC_LABEL` names the button ("Sign in with Acme
    login"); it defaults to "single sign-on".
 
-   With the release Compose file, also mount the secret into the API container. `docker compose -f
-   compose.yaml` never reads a `compose.override.yaml` on its own, so put the mount in a file of your own
-   next to `compose.yaml`, here `compose.sso.yaml` (any name; it can be the same file as the [assistant
-   key mount](release-guide.md#agents-on-your-own-ai-key-optional)):
-
-   ```yaml
-   services:
-     api:
-       volumes:
-         - ${FLUX_OIDC_CLIENT_SECRET_HOST_FILE:?Set FLUX_OIDC_CLIENT_SECRET_HOST_FILE in .env}:/run/secrets/flux_oidc_client_secret:ro,z
-   ```
-
-   `z` lets the container read the file on an SELinux host (Fedora, RHEL); elsewhere it has no effect.
-   Name the file after `compose.yaml` in **every** command from now on, including upgrade and backup:
-
-   ```sh
-   docker compose --env-file .env -f compose.yaml -f compose.sso.yaml up -d --wait
-   ```
-
-   A plain `-f compose.yaml up` recreates `api` without the secret, and single sign-on stops working.
+   `./flux` mounts the file into the API container; apply the settings with `./flux up`.
 
 4. **Optional: confirmation age.** `FLUX_OIDC_CONFIRMATION_MAX_AGE` (default `7d`; whole hours or
    days from `1h` to `30d`, such as `12h`) is how long the provider's last confirmation of a person
@@ -109,8 +88,7 @@ is set by `FLUX_SSO_MODE`:
    [standing check](#standing-check), this age is the offboarding bound: a person disabled at the provider keeps access at most
    this long. People with only a Flux password cannot sign in while the provider is set (see above).
 
-5. **Restart:** `./flux up` in a source checkout, or the `docker compose … -f compose.yaml -f compose.sso.yaml up -d --wait`
-   command above for a release. The sign-in page shows
+5. **Restart:** `./flux up`. The sign-in page shows
    "Sign in with Acme login" once the API reads the provider's discovery document.
 
 The API reads discovery when it starts. If the provider is unreachable then, single sign-on fails

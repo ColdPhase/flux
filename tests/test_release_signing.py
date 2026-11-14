@@ -2,7 +2,7 @@
 
 The keyless signature itself can only be made by the real workflow; scripts/release/check_signing.sh signs with a throwaway key in
 Docker. This file checks what can be checked without a release: the keyless command line, the identity pattern, the digest-only rule,
-the order and permissions of the jobs, the SHA pins, and that INSTALL.md shows the same command the script runs."""
+the order and permissions of the jobs, the SHA pins, and that the upgrade guide and ./flux upgrade check SHA256SUMS with the same identity."""
 
 import os
 import re
@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = ROOT / "scripts/release/verify_signatures.sh"
 FINAL = (ROOT / ".github/workflows/final-release.yml").read_text(encoding="utf-8")
 PUBLISH = (ROOT / ".github/workflows/publish-release.yml").read_text(encoding="utf-8")
-GUIDE = (ROOT / "docs/operations/release-guide.md").read_text(encoding="utf-8")
+GUIDE = (ROOT / "docs/operations/upgrade.md").read_text(encoding="utf-8")
 DIGEST = "sha256:" + "a" * 64
 ISSUER = "https://token.actions.githubusercontent.com"
 
@@ -134,14 +134,26 @@ class Workflows(unittest.TestCase):
 
 
 class Guide(unittest.TestCase):
-    def test_install_md_shows_the_command_the_script_runs(self):
-        identity = re.search(r"--certificate-identity-regexp (\S+) ", run_script(f"x@{DIGEST}")[1][0]).group(1)
-        # Shell-quoted in the guide, with the same pattern and issuer.
-        self.assertIn(f"--certificate-identity-regexp '{identity}'", GUIDE.replace("\\\n    ", ""))
-        self.assertIn(f"--certificate-oidc-issuer {ISSUER}", GUIDE)
-        self.assertIn('gh attestation verify "oci://$image" --repo ColdPhase/flux', GUIDE)
-        self.assertIn("cosign verify", GUIDE)
-        self.assertIn("release.json", GUIDE)
+    def test_the_guide_the_launcher_and_the_workflows_check_sha256sums_with_one_pinned_identity(self):
+        """Founder decision (2026-11-13, #1471): ./flux upgrade always verifies SHA256SUMS, with the exact identity the release signs with."""
+        identity = "https://github.com/ColdPhase/flux/.github/workflows/final-release.yml@refs/heads/main"
+        image = "ghcr.io/sigstore/cosign/cosign:v3.0.6@sha256:de9c65609e6bde17e6b48de485ee788407c9502fa08b8f4459f595b21f56cd00"
+        install = (ROOT / "docs/operations/install.md").read_text(encoding="utf-8").replace("\\\n  ", "")
+        self.assertIn(f"{image} verify-blob --bundle /verify/SHA256SUMS.sigstore.json --certificate-identity {identity} "
+                      f"--certificate-oidc-issuer {ISSUER} /verify/SHA256SUMS", install)
+        self.assertIn('-v "$PWD/SHA256SUMS:/verify/SHA256SUMS:ro,z"', install)
+        self.assertIn(identity, GUIDE)
+        self.assertIn(image, GUIDE)
+        launcher = (ROOT / "flux").read_text(encoding="utf-8")
+        self.assertIn(f"RELEASE_IDENTITY={identity}\n", launcher)
+        self.assertIn(f"RELEASE_ISSUER={ISSUER}\n", launcher)
+        self.assertIn(f"COSIGN_IMAGE={image}\n", launcher)
+        self.assertNotIn("FLUX_RELEASE_REPOSITORY", launcher, "nothing configures another signer")
+        self.assertIn(image.split(":v3.0.6")[0] + "@" + image.split("@")[1], (ROOT / "scripts/release/check_signing.sh").read_text())
+        sign = job(FINAL, "sign")
+        self.assertIn("cosign sign-blob --yes --bundle SHA256SUMS.sigstore.json release-assets/SHA256SUMS", sign)
+        self.assertIn(f"--certificate-identity {identity} ", sign)
+        self.assertIn(f"--certificate-identity {identity} ", PUBLISH)
 
 
 if __name__ == "__main__":

@@ -21,7 +21,7 @@ list of versions that upgrade to which, is [Upgrade](../operations/upgrade.md); 
    only the application creates, an extension the image may stop shipping), because the release that runs it may be several releases
    after the code it was written beside. Whatever a backfill needs, it computes in SQL from the rows.
 4. **Do not rename or remove a setting silently.** Add a line to `docker/env-changes.txt` in the release that does it
-   (`rename OLD NEW` or `remove NAME reason`), and name it in the release notes and in the release guide's step. A new setting has a
+   (`rename OLD NEW` or `remove NAME reason`), and name it in the release notes. A new setting has a
    default that keeps the old behaviour, and a new variable of `compose.yaml` is written `${NAME:-default}` unless it is required
    on purpose.
 5. **Skipping and downgrading.** Migrations are applied in numeric order, each in its own transaction, from whatever the instance's
@@ -37,7 +37,7 @@ list of versions that upgrade to which, is [Upgrade](../operations/upgrade.md); 
 | `scripts/release/check_released_migrations.py` and `tests/test_released_migrations.py` | Repository checks (every pull request; the checkout fetches the release tags) and the first step of the matrix | Every migration file of every release from v0.2.0 on is byte-identical to the file of its tag; a new migration is numbered after the last released one. A clone without the tags fails in Actions rather than passing unchecked. |
 | `app/tests/app/released-databases.test.ts` | `./scripts/check_application.sh` | The real migrator (`node tooling/dist/migrate.js`, as the `migrate` service runs it) runs on a database dumped from each release (`app/tests/app/fixtures/released-databases/<tag>.sql.gz`), applies every later migration, ends on the exact ledger of the files, loses no row of a content table and is a no-op the second time. |
 | `./scripts/check_upgrade_matrix.sh` | Release acceptance ([evaluation](../agents/evaluation.md#at-release-acceptance)) and the `upgrade` job of `final-release.yml` | Every published release from v0.2.0 on upgrades to the candidate, by release installation and by source checkout, with the data below read back and new work accepted. |
-| `scripts/release/smoke_artifacts.sh` | The `package` job of `final-release.yml` | Leg 1: a clean install exactly as INSTALL.md says, with its default settings and no overlay, with a backup and restore. Leg 2: the upgrade from the **previous** release to the candidate's own assets and image digest, followed literally from the release guide, with a backup and restore of both sides. Only leg 2 (and 3) sets the agents' switches and adds the provider mock. |
+| `scripts/release/smoke_artifacts.sh` | The `package` job of `final-release.yml` | Leg 1: a clean install of the packaged Compose files (`flux.tar.gz`'s `docker/compose.yaml` with the images of its `docker/release.env`), with its default settings and no overlay (the owner's `./flux` path is `scripts/release/smoke_launcher.sh`), with a backup and restore. Leg 2: the upgrade from the **previous** release to the candidate's own assets and image digest, with a backup and restore of both sides. Only leg 2 (and 3) sets the agents' switches and adds the provider mock. |
 | `./scripts/check_backup.sh` | Backup and restore acceptance | `./flux upgrade` from the previous source version, the failing migration's restore instructions, and the v0.1 refusal. |
 
 ## The upgrade matrix

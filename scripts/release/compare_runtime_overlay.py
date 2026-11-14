@@ -59,7 +59,10 @@ def compare(source: dict, release: dict) -> list[str]:
         if "build" in service:
             problems.append(f"{name}: release builds from source")
         for volume in service.get("volumes", []):
-            if volume.get("type") == "bind":
+            # The one kind of host file the release mounts: a read-only secret file (the AI key file, the single sign-on secret), as
+            # the source stack does (#1471 decision 5).
+            secret = str(volume.get("target", "")).startswith("/run/secrets/") and volume.get("read_only")
+            if volume.get("type") == "bind" and not secret:
                 problems.append(f"{name}: bind mount {volume.get('source')}")
     return problems
 

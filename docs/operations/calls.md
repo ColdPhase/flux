@@ -1,8 +1,7 @@
 # Calls and screen sharing
 
-Calls, cameras and screen sharing need a media server next to Flux. In a source checkout one switch
-turns it on (founder decision 4 of [#1471](https://github.com/ColdPhase/flux/issues/1471), 2026-11-13).
-A release install layers the media file by hand: see [the release's `INSTALL.md`](release-guide.md#calls-and-screen-sharing-optional).
+Calls, cameras and screen sharing need a media server next to Flux. One switch turns it on (founder decision 4 of
+[#1471](https://github.com/ColdPhase/flux/issues/1471), 2026-11-13).
 
 ## Turn calls on
 
@@ -70,9 +69,9 @@ With one public address, port 443 belongs to the HTTPS proxy, so the media serve
 TURN over TLS on 443. Most networks reach a call over UDP/7882, TCP/7881 or TURN over UDP/3478; a
 network that lets **only HTTPS on 443** out (some corporate, hotel and school networks) cannot join a
 call. Serving those people takes a second public IP address for TURN/TLS, with its own name and
-certificate: the optional `compose.live.turn.yaml` that [the release guide](release-guide.md#calls-and-screen-sharing-optional)
-describes (step 4). The launcher does not set that up; layer it through `docker/compose.override.yaml`
-only if you have that second address.
+certificate: the TURN/TLS overlay `compose.live.turn.yaml` of a source checkout
+([live media](../development/live-media.md)). The launcher does not set that up, and a release does not ship it; layer it through
+`docker/compose.override.yaml` only if you have that second address.
 
 ## Turn calls off
 

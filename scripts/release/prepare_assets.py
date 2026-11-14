@@ -1,157 +1,78 @@
 #!/usr/bin/env python3
-"""Bind the operator templates and evidence to one immutable OCI manifest."""
+"""Package one Flux release: the owner's flux.tar.gz, bound to one set of image digests, with its evidence.
+
+One install path (#1471, founder decision 5; F-043): every owner installs the `flux` launcher of a release and runs `./flux up`, which
+pulls that release's images instead of building them. The release's assets are:
+
+  flux.tar.gz        the install folder `flux/`: the launcher, docker/compose.yaml with its overlays (agent runtime, built-in HTTPS,
+                     calls, local embeddings), the Caddyfile, docker/.env.example, docker/env-changes.txt, the demo seed, LICENSE and
+                     docker/release.env, the one file that names the version, its source commit, its schema and the three images
+                     pinned by digest
+  release.json       the same identity, machine-readable, plus the third-party images the overlays pin
+  sbom*.spdx.json, THIRD_PARTY_NOTICES*.json, LICENSE
+  SHA256SUMS         the checksum of every asset above; the release workflow signs it (SHA256SUMS.sigstore.json, not listed in it)
+
+The archive is reproducible: sorted members, owner root, mode 0755 or 0644, and the time of the source commit (--mtime).
+"""
 
 from __future__ import annotations
 
 import argparse
+import gzip
 import hashlib
+import io
 import json
 import re
-import shutil
+import tarfile
 from pathlib import Path
 
-IMAGE = "ghcr.io/coldphase/flux"
-MARKER = f"{IMAGE}@sha256:RELEASE_DIGEST"
-# The separate agent-runtime image (#358): the slot supervisor with the pinned official Codex.
-RUNTIME_IMAGE = "ghcr.io/coldphase/flux-agent-runtime"
-RUNTIME_MARKER = f"{RUNTIME_IMAGE}@sha256:RUNTIME_DIGEST"
-# Flux's database image (F-042): PostgreSQL 18 with pg_search, built from docker/database/Dockerfile.
-DATABASE_IMAGE = "ghcr.io/coldphase/flux-database"
-DATABASE_MARKER = f"{DATABASE_IMAGE}@sha256:DATABASE_DIGEST"
+REGISTRY = "ghcr.io/coldphase"
 VERSION = re.compile(r"v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-rc\.[1-9][0-9]*)?\Z")
 SHA = re.compile(r"[0-9a-f]{40}\Z")
 DIGEST = re.compile(r"sha256:[0-9a-f]{64}\Z")
-# GitHub stores a release asset whose name begins with a period under another name (".env.example"
-# becomes "default.env.example"), and upload-artifact skips hidden files. The repository's
-# docker/.env.example is therefore published as env.example, and every asset name must survive.
-ENV_ASSET = "env.example"
 ASSET_NAME = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?\Z")
-# The platforms both images are built for. v0.1 ships linux/amd64 only; linux/arm64 returns in v0.1.1 by passing
-# --platforms linux/amd64,linux/arm64 (final-release.yml's `platforms` input), with no other change here.
 SUPPORTED_PLATFORMS = ("linux/amd64", "linux/arm64")
 DEFAULT_PLATFORMS = "linux/amd64"
-# Third-party images (the live-media SFU) are pinned by digest in the repository file and shipped as they are.
+# Third-party images (Caddy, the LiveKit SFU, the embedding server) are pinned by digest in the repository files and ship as they are.
 PINNED_IMAGE = re.compile(r"[a-z0-9][a-z0-9._/-]*(?::[A-Za-z0-9._-]+)?@sha256:[0-9a-f]{64}\Z")
-# The optional live-media overlays (calls and screen sharing, #63): asset name and what it is.
-LIVE_ASSETS = {
-    "compose.live.yaml": "live-media overlay (calls and screen sharing: the LiveKit SFU with ICE and TURN/UDP)",
-    "compose.live.turn.yaml": "TURN/TLS overlay for restrictive networks (layer it after compose.live.yaml)",
+BUNDLE = "flux.tar.gz"
+TOP = "flux"
+RELEASE_ENV = "docker/release.env"
+# The image variables of the release Compose files, exported by the launcher from docker/release.env.
+APP_VARIABLE = "FLUX_RELEASE_IMAGE"
+DATABASE_VARIABLE = "FLUX_RELEASE_DATABASE_IMAGE"
+RUNTIME_VARIABLE = "FLUX_RELEASE_RUNTIME_IMAGE"
+# Repository file -> path in the install folder. Executable files keep 0755.
+BUNDLE_FILES = {
+    "flux": "flux",
+    "LICENSE": "LICENSE",
+    "docker/compose.yaml": "docker/compose.yaml",
+    "docker/compose.runtime.yaml": "docker/compose.runtime.yaml",
+    "docker/compose.https.yaml": "docker/compose.https.yaml",
+    "docker/compose.live.yaml": "docker/compose.live.yaml",
+    "docker/compose.embeddings.yaml": "docker/compose.embeddings.yaml",
+    "docker/caddy/Caddyfile": "docker/caddy/Caddyfile",
+    "docker/.env.example": "docker/.env.example",
+    "docker/env-changes.txt": "docker/env-changes.txt",
+    "docker/background-key-unavailable": "docker/background-key-unavailable",
+    "docker/oidc-client-secret-unavailable": "docker/oidc-client-secret-unavailable",
+    "scripts/flux-demo.mjs": "scripts/flux-demo.mjs",
 }
-# The optional local embedding container for search (F-042, #1294): one third-party image, pinned by digest, shipped as it is.
-EMBEDDINGS_ASSET = "compose.embeddings.yaml"
+EXECUTABLE = {"flux"}
+# The overlays that run third-party images only, and how many each pins.
+THIRD_PARTY = {"docker/compose.https.yaml": 1, "docker/compose.live.yaml": 1, "docker/compose.embeddings.yaml": 1}
+MIGRATION = re.compile(r"([0-9]{4})_[a-z0-9_]*\.sql\Z")
 
 
-def release_header(version: str, source_sha: str) -> str:
-    """The repository copy's header explains the marker; the release copy says what it is."""
-    return (
-        f"# Flux {version} operator Compose, built from source commit {source_sha}.\n"
-        "# Runs the published release: no source checkout, no build.\n"
-        "#\n"
-        "# api, worker and migrate run one image at one revision, pinned by the digest that\n"
-        "# release.json records. Use this file with the env.example, INSTALL.md and SHA256SUMS of the\n"
-        "# SAME GitHub Release: their image digest, migrations and variables match.\n"
-        "#\n"
-        "#   cp env.example .env && chmod 600 .env   # then fill in the REQUIRED values, see env.example\n"
-        "#   docker compose --env-file .env -f compose.yaml config --quiet\n"
-        "#   docker compose --env-file .env -f compose.yaml up -d --wait\n"
-        "# Install, upgrade, backup and restore: INSTALL.md. The optional agent runtime is the separate\n"
-        "# compose.runtime.yaml of the same release and is off unless you opt in there.\n"
-        "#\n"
-        "# The database runs Flux's database image of the same release, also pinned by the digest that\n"
-        "# release.json records. Only the API is published, on loopback: put a TLS reverse\n"
-        "# proxy in front of it.\n"
-    )
+def images(text: str) -> list[str]:
+    return re.findall(r"^\s*image:\s*(\S.*?)\s*$", text, re.MULTILINE)
 
 
-def runtime_header(version: str, source_sha: str) -> str:
-    return (
-        f"# Flux {version} agent runtime Compose overlay, built from source commit {source_sha}.\n"
-        "# Optional and OFF by default: with FLUX_AGENT_RUNTIME empty no service below starts, and an\n"
-        "# installation that never loads this file never pulls the runtime image. Use it with the\n"
-        "# compose.yaml, runtime.sh, env.example, INSTALL.md and SHA256SUMS of the SAME GitHub Release:\n"
-        "# their image digests, migrations and variables match.\n"
-        "#\n"
-        "#   sh runtime.sh on codex      # or claude_code, or claude_code,codex; see INSTALL.md\n"
-        "#   sh runtime.sh status | off | release runtime-<n> | purge\n"
-        "# Once it is on, pass BOTH files to every docker compose command (or use sh runtime.sh up):\n"
-        "#   docker compose --env-file .env -f compose.yaml -f compose.runtime.yaml --profile runtime ...\n"
-        "#\n"
-        "# Claude Code is never in an image: runtime-install installs the pinned, signature-checked official\n"
-        "# release into the tools volume when the operator enables it. No service mounts a Docker socket.\n"
-    )
-
-
-def parse_platforms(value: str) -> list[str]:
-    """A comma-separated subset of SUPPORTED_PLATFORMS (a local dry run on arm64 names only linux/arm64),
-    returned in canonical order. final-release.yml itself requires linux/amd64."""
-    found = [item.strip() for item in value.split(",")]
-    if any(item not in SUPPORTED_PLATFORMS for item in found) or len(set(found)) != len(found):
-        raise ValueError(f"platforms must be a comma-separated subset of {', '.join(SUPPORTED_PLATFORMS)}")
-    return [item for item in SUPPORTED_PLATFORMS if item in found]
-
-
-def live_header(name: str, version: str, source_sha: str) -> str:
-    return (
-        f"# Flux {version} {LIVE_ASSETS[name]}, built from source commit {source_sha}.\n"
-        "# Optional: an installation that never loads this file runs no media server. Use it with the\n"
-        "# compose.yaml, env.example, INSTALL.md and SHA256SUMS of the SAME GitHub Release. The SFU image is\n"
-        "# pinned by digest; release.json records it. Set the FLUX_LIVEKIT_* values (INSTALL.md, \"Calls and\n"
-        "# screen sharing\"), open the media ports in the firewall, then pass every overlay to every command:\n"
-        "#   docker compose --env-file .env -f compose.yaml -f compose.live.yaml config --quiet\n"
-        "#   docker compose --env-file .env -f compose.yaml -f compose.live.yaml up -d --wait\n"
-        "# Restrictive networks add -f compose.live.turn.yaml after compose.live.yaml (TURN/TLS on TCP/443).\n"
-    )
-
-
-def embeddings_header(version: str, source_sha: str) -> str:
-    return (
-        f"# Flux {version} local embeddings overlay (search also ranks by meaning), built from source commit {source_sha}.\n"
-        "# Optional and OFF unless loaded: an installation that never loads this file runs no embedding container and\n"
-        "# stores no vector. Use it with the compose.yaml, env.example, INSTALL.md and SHA256SUMS of the SAME GitHub Release.\n"
-        "# The text-embeddings-inference image is pinned by digest; release.json records it (embeddings_image). It needs\n"
-        "# about 3.2 GiB of RAM idle and 3.9 GiB at its peak (INSTALL.md, \"Local embeddings\"). Pass it to every command:\n"
-        "#   docker compose --env-file .env -f compose.yaml -f compose.embeddings.yaml config --quiet\n"
-        "#   docker compose --env-file .env -f compose.yaml -f compose.embeddings.yaml up -d --wait\n"
-        "# Leave it out again to turn it off: the next worker start deletes every vector.\n"
-    )
-
-
-def third_party_overlay(name: str, template: str) -> str:
-    """The body of an optional overlay that runs only third-party images pinned by digest, after the repository's header."""
-    if re.search(r"^\s*build\s*:", template, re.MULTILINE):
-        raise ValueError(f"{name} must be pull-only")
-    for forbidden in ("RELEASE_DIGEST", "RUNTIME_DIGEST", "DATABASE_DIGEST", IMAGE, "docker.sock"):
-        if forbidden in template:
-            raise ValueError(f"{name} must not name {forbidden}")
-    for image in re.findall(r"^\s*image:\s*(\S+)\s*$", template, re.MULTILINE):
-        if not PINNED_IMAGE.fullmatch(image) or "latest" in image.lower():
-            raise ValueError(f"{name} image {image} is not pinned by digest")
-    lines = template.splitlines(keepends=True)
-    body = "".join(lines[next((i for i, line in enumerate(lines) if not line.startswith("#")), len(lines)):])
-    # The repository's leading comment block is replaced; the rest ships, so it must not point into a checkout.
-    if re.search(r"^\s*-\s*['\"]?\.{1,2}/", body, re.MULTILINE) or re.search(r"\bdocker/|compose\.source", body):
-        raise ValueError(f"{name} must not mount or name a source path")
-    return body
-
-
-def render_live_compose(name: str, template: str, *, version: str, source_sha: str) -> str:
-    """Ship a live-media overlay as it is, with a release header: digest-pinned third-party images only."""
-    return live_header(name, version, source_sha) + third_party_overlay(name, template)
-
-
-def render_embeddings_compose(template: str, *, version: str, source_sha: str) -> str:
-    """Ship the embeddings overlay as it is, with a release header: exactly one third-party image, pinned by digest."""
-    body = third_party_overlay(EMBEDDINGS_ASSET, template)
-    if len(re.findall(r"^\s*image:", body, re.MULTILINE)) != 1:
-        raise ValueError(f"{EMBEDDINGS_ASSET} must pin exactly one embedding server image")
-    return embeddings_header(version, source_sha) + body
-
-
-def overlay_images(template: str) -> dict[str, str]:
-    """Image per service (or per x-* anchor) of the runtime overlay."""
+def service_images(text: str) -> dict[str, str]:
+    """Image per service (or per top-level x-* anchor) of a Compose file."""
     found: dict[str, str] = {}
     section = context = ""
-    for line in template.splitlines():
+    for line in text.splitlines():
         top = re.match(r"([A-Za-z0-9_.-]+):", line)
         if top:
             section = context = top.group(1)
@@ -160,39 +81,51 @@ def overlay_images(template: str) -> dict[str, str]:
             header = re.fullmatch(r"  ([a-z][a-z0-9-]*):\s*", line)
             if header:
                 context = header.group(1)
-        image = re.fullmatch(r"\s+image:\s*(\S+)\s*", line)
+        image = re.fullmatch(r"\s+image:\s*(\S.*?)\s*", line)
         if image:
             if context in found:
-                raise ValueError(f"runtime overlay names two images for {context}")
+                raise ValueError(f"{context} names two images")
             found[context] = image.group(1)
     return found
 
 
-def render_runtime_compose(template: str, *, version: str, source_sha: str, digest: str, runtime_digest: str) -> str:
-    images = overlay_images(template)
-    expected = {
-        "x-runtime-slot": RUNTIME_MARKER,
-        "runtime-install": RUNTIME_MARKER,
-        "runtime-manager": MARKER,
-        "runtime-egress": MARKER,
-    }
-    if images != expected:
-        raise ValueError(
-            "runtime overlay must pin the runtime image on its slot anchor and runtime-install "
-            "and the application image on runtime-manager and runtime-egress, and nothing else"
-        )
-    if re.search(r"^\s*build\s*:", template, re.MULTILINE):
-        raise ValueError("runtime overlay must be pull-only")
-    lines = template.splitlines(keepends=True)
-    body = next((i for i, line in enumerate(lines) if not line.startswith("#")), len(lines))
-    rendered = (
-        (runtime_header(version, source_sha) + "".join(lines[body:]))
-        .replace(MARKER, f"{IMAGE}@{digest}")
-        .replace(RUNTIME_MARKER, f"{RUNTIME_IMAGE}@{runtime_digest}")
-    )
-    if "RELEASE_DIGEST" in rendered or "RUNTIME_DIGEST" in rendered:
-        raise ValueError("a digest marker is left in the rendered runtime overlay")
-    return rendered
+def variable(name: str) -> str:
+    return "${" + name + ":?run Flux with ./flux, which names the images}"
+
+
+def check_release_compose(compose: str, runtime: str) -> None:
+    """The owner's Compose files take every Flux image from the launcher's variables, build nothing and mount no engine socket."""
+    for name, text in (("compose.yaml", compose), ("compose.runtime.yaml", runtime)):
+        if re.search(r"^\s*build\s*:", text, re.MULTILINE):
+            raise ValueError(f"{name} must be pull-only")
+        if "docker.sock" in text:
+            raise ValueError(f"{name} must not mount a container engine socket")
+    app, database, runtime_image = variable(APP_VARIABLE), variable(DATABASE_VARIABLE), variable(RUNTIME_VARIABLE)
+    expected = {"db": database, "migrate": app, "files-init": app, "files-archive": database, "api": app, "worker": app, "keyring": app}
+    if service_images(compose) != expected:
+        raise ValueError(f"compose.yaml must run {APP_VARIABLE} on migrate, files-init, api, worker and keyring and {DATABASE_VARIABLE} "
+                         "on db and files-archive, and nothing else")
+    expected = {"x-runtime-slot": runtime_image, "runtime-install": runtime_image, "runtime-manager": app, "runtime-egress": app}
+    if service_images(runtime) != expected:
+        raise ValueError(f"compose.runtime.yaml must run {RUNTIME_VARIABLE} on its slot anchor and runtime-install and {APP_VARIABLE} on "
+                         "runtime-manager and runtime-egress, and nothing else")
+
+
+def third_party_images(name: str, text: str, count: int) -> list[str]:
+    if re.search(r"^\s*build\s*:", text, re.MULTILINE) or "docker.sock" in text or "coldphase/flux" in text:
+        raise ValueError(f"{name} must run third-party images only, with no build and no socket")
+    found = images(text)
+    if len(found) != count or any(not PINNED_IMAGE.fullmatch(image) or ":latest@" in image for image in found):
+        raise ValueError(f"{name} must pin {count} image(s) by digest; it has {found}")
+    return found
+
+
+def parse_platforms(value: str) -> list[str]:
+    """A comma-separated subset of SUPPORTED_PLATFORMS, returned in canonical order. final-release.yml requires linux/amd64."""
+    found = [item.strip() for item in value.split(",")]
+    if any(item not in SUPPORTED_PLATFORMS for item in found) or len(set(found)) != len(found):
+        raise ValueError(f"platforms must be a comma-separated subset of {', '.join(SUPPORTED_PLATFORMS)}")
+    return [item for item in SUPPORTED_PLATFORMS if item in found]
 
 
 def codex_pin(dockerfile: str) -> str:
@@ -204,111 +137,98 @@ def codex_pin(dockerfile: str) -> str:
     return tags[0]
 
 
-def render_compose(template: str, *, version: str, source_sha: str, digest: str, database_digest: str) -> str:
-    lines = template.splitlines(keepends=True)
-    body = next((i for i, line in enumerate(lines) if not line.startswith("#")), len(lines))
-    pinned = f"{IMAGE}@{digest}"
-    database = f"{DATABASE_IMAGE}@{database_digest}"
-    rendered = (release_header(version, source_sha) + "".join(lines[body:])).replace(MARKER, pinned).replace(DATABASE_MARKER, database)
-    if "RELEASE_DIGEST" in rendered or "DATABASE_DIGEST" in rendered:
-        raise ValueError("a digest marker is left in the rendered Compose file")
-    found = re.findall(r"^\s*image:\s*(\S+)\s*$", rendered, re.MULTILINE)
-    if found.count(pinned) != 4:
-        raise ValueError("rendered Compose must pin the release digest on exactly four services")
-    if found.count(database) != 1:
-        raise ValueError("rendered Compose must pin the database image on the db service")
-    return rendered
+def schema_of(migrations: Path) -> int:
+    numbers = [int(match.group(1)) for path in migrations.iterdir() if (match := MIGRATION.fullmatch(path.name))]
+    if not numbers:
+        raise ValueError(f"{migrations} holds no migration")
+    return max(numbers)
+
+
+def release_env(*, version: str, source_sha: str, schema: int, app: str, database: str, runtime: str) -> str:
+    return (
+        f"# Flux {version}, built from {source_sha} by the release workflow (.github/workflows/final-release.yml).\n"
+        "# ./flux reads this file: the images below, pinned by digest, are the only ones it runs. Do not edit it; ./flux upgrade replaces it.\n"
+        f"FLUX_RELEASE_VERSION={version}\n"
+        f"FLUX_RELEASE_COMMIT={source_sha}\n"
+        f"FLUX_RELEASE_SCHEMA={schema}\n"
+        f"{APP_VARIABLE}={app}\n"
+        f"{DATABASE_VARIABLE}={database}\n"
+        f"{RUNTIME_VARIABLE}={runtime}\n"
+    )
+
+
+def write_bundle(path: Path, members: dict[str, bytes], mtime: int) -> None:
+    """A reproducible gzip-compressed tar of `flux/<member>`: sorted, owned by root, fixed modes and times."""
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w", format=tarfile.PAX_FORMAT) as archive:
+        directories = sorted({str(parent) for name in members for parent in Path(TOP, name).parents if str(parent) != "."})
+        for directory in directories:
+            info = tarfile.TarInfo(directory)
+            info.type, info.mode, info.mtime, info.uid, info.gid, info.uname, info.gname = tarfile.DIRTYPE, 0o755, mtime, 0, 0, "root", "root"
+            archive.addfile(info)
+        for name in sorted(members):
+            data = members[name]
+            info = tarfile.TarInfo(f"{TOP}/{name}")
+            info.size, info.mtime, info.uid, info.gid, info.uname, info.gname = len(data), mtime, 0, 0, "root", "root"
+            info.mode = 0o755 if name in EXECUTABLE else 0o644
+            archive.addfile(info, io.BytesIO(data))
+    with open(path, "wb") as raw, gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=mtime, compresslevel=9) as compressed:
+        compressed.write(buffer.getvalue())
+
+
+def notices(spdx_file: Path, label: str) -> list[dict[str, str]]:
+    spdx = json.loads(spdx_file.read_text(encoding="utf-8"))
+    packages = spdx.get("packages")
+    if not isinstance(packages, list) or not packages:
+        raise ValueError(f"{label} SPDX SBOM must contain image packages")
+    found = [
+        {
+            "name": package["name"],
+            "version": package.get("versionInfo", ""),
+            "license_declared": package.get("licenseDeclared", "NOASSERTION"),
+            "license_concluded": package.get("licenseConcluded", "NOASSERTION"),
+            "copyright": package.get("copyrightText", "NOASSERTION"),
+        }
+        for package in packages
+    ]
+    found.sort(key=lambda item: (item["name"], item["version"]))
+    return found
 
 
 def prepare(
-    *, version: str, source_sha: str, digest: str, compose: Path,
-    env: Path, instructions: Path, license_file: Path,
-    sbom: Path, destination: Path,
-    runtime_digest: str, runtime_compose: Path, runtime_script: Path,
-    runtime_sbom: Path, dockerfile: Path,
-    live_compose: Path, live_turn_compose: Path, embeddings_compose: Path,
-    database_digest: str, database_sbom: Path, platforms: str = DEFAULT_PLATFORMS,
+    *, version: str, source_sha: str, digest: str, runtime_digest: str, database_digest: str, source: Path, destination: Path,
+    sbom: Path, runtime_sbom: Path, database_sbom: Path, platforms: str = DEFAULT_PLATFORMS, registry: str = REGISTRY, mtime: int = 0,
 ) -> None:
     if not VERSION.fullmatch(version):
         raise ValueError("version must be vX.Y.Z or vX.Y.Z-rc.N")
     if not SHA.fullmatch(source_sha):
         raise ValueError("source SHA must be 40 lowercase hex characters")
-    if not DIGEST.fullmatch(digest):
-        raise ValueError("image digest must be a sha256 manifest digest")
-    if not DIGEST.fullmatch(runtime_digest):
-        raise ValueError("runtime image digest must be a sha256 manifest digest")
-    if runtime_digest == digest:
-        raise ValueError("the application and runtime images must have different digests")
-    if not DIGEST.fullmatch(database_digest):
-        raise ValueError("database image digest must be a sha256 manifest digest")
-    if database_digest in (digest, runtime_digest):
-        raise ValueError("the database image must have its own digest")
+    for label, value in (("image", digest), ("runtime image", runtime_digest), ("database image", database_digest)):
+        if not DIGEST.fullmatch(value):
+            raise ValueError(f"{label} digest must be a sha256 manifest digest")
+    if len({digest, runtime_digest, database_digest}) != 3:
+        raise ValueError("the application, runtime and database images must have different digests")
+    if not re.fullmatch(r"[a-z0-9][a-z0-9.:/-]*[a-z0-9]", registry):
+        raise ValueError("registry must be a registry host and path, such as ghcr.io/coldphase")
     platform_list = parse_platforms(platforms)
     if destination.exists() and any(destination.iterdir()):
         raise ValueError("destination must be empty to prevent stale assets")
 
-    template = compose.read_text(encoding="utf-8")
-    images = re.findall(r"^\s*image:\s*(\S+)\s*$", template, re.MULTILINE)
-    service_images: dict[str, str] = {}
-    service = ""
-    for line in template.splitlines():
-        header = re.fullmatch(r"  ([a-z][a-z0-9-]*):\s*", line)
-        if header:
-            service = header.group(1)
-        image = re.fullmatch(r"    image:\s*(\S+)\s*", line)
-        if image:
-            service_images[service] = image.group(1)
-    if images.count(MARKER) != 4 or any(
-        service_images.get(name) != MARKER for name in ("api", "worker", "keyring", "migrate")
-    ):
-        raise ValueError("operator Compose must use the image marker for api, worker, keyring and migrate")
-    if images.count(DATABASE_MARKER) != 1 or service_images.get("db") != DATABASE_MARKER:
-        raise ValueError("operator Compose must use the database image marker for db, and only there")
-    if re.search(r"^\s*build\s*:", template, re.MULTILINE):
-        raise ValueError("operator Compose must be pull-only")
-    if any("latest" in image.lower() for image in images):
-        raise ValueError("operator Compose cannot use a floating latest image")
-    if MARKER in env.read_text(encoding="utf-8"):
-        raise ValueError("environment template must not override the image identity")
-    rendered = render_compose(template, version=version, source_sha=source_sha, digest=digest, database_digest=database_digest)
-    runtime_rendered = render_runtime_compose(
-        runtime_compose.read_text(encoding="utf-8"), version=version, source_sha=source_sha,
-        digest=digest, runtime_digest=runtime_digest,
-    )
-    if "docker.sock" in runtime_script.read_text(encoding="utf-8"):
-        raise ValueError("runtime.sh must not use a container engine socket")
-    codex = codex_pin(dockerfile.read_text(encoding="utf-8"))
-    live_rendered = {
-        name: render_live_compose(name, path.read_text(encoding="utf-8"), version=version, source_sha=source_sha)
-        for name, path in (("compose.live.yaml", live_compose), ("compose.live.turn.yaml", live_turn_compose))
-    }
-    live_images = sorted(set(re.findall(r"^\s*image:\s*(\S+)\s*$", live_rendered["compose.live.yaml"], re.MULTILINE)))
-    if len(live_images) != 1 or re.search(r"^\s*image:", live_rendered["compose.live.turn.yaml"], re.MULTILINE):
-        raise ValueError("compose.live.yaml must pin exactly one media server image and compose.live.turn.yaml none")
-    embeddings_rendered = render_embeddings_compose(embeddings_compose.read_text(encoding="utf-8"), version=version, source_sha=source_sha)
-    embeddings_image = re.findall(r"^\s*image:\s*(\S+)\s*$", embeddings_rendered, re.MULTILINE)[0]
+    files = {target: (source / name).read_bytes() for name, target in BUNDLE_FILES.items()}
+    check_release_compose(files["docker/compose.yaml"].decode(), files["docker/compose.runtime.yaml"].decode())
+    pinned = {name: third_party_images(name, files[name].decode(), count) for name, count in THIRD_PARTY.items()}
+    env_example = files["docker/.env.example"].decode()
+    if re.search(r"^(FLUX_RELEASE_[A-Z_]*)=", env_example, re.MULTILINE):
+        raise ValueError("docker/.env.example must not name an image: docker/release.env does")
+    app = f"{registry}/flux@{digest}"
+    database = f"{registry}/flux-database@{database_digest}"
+    runtime = f"{registry}/flux-agent-runtime@{runtime_digest}"
+    schema = schema_of(source / "app" / "packages" / "db" / "migrations")
+    files[RELEASE_ENV] = release_env(version=version, source_sha=source_sha, schema=schema, app=app, database=database,
+                                     runtime=runtime).encode()
+    codex = codex_pin((source / "docker" / "Dockerfile").read_text(encoding="utf-8"))
 
-    def notices(spdx_file: Path, label: str) -> list[dict[str, str]]:
-        spdx = json.loads(spdx_file.read_text(encoding="utf-8"))
-        packages = spdx.get("packages")
-        if not isinstance(packages, list) or not packages:
-            raise ValueError(f"{label} SPDX SBOM must contain image packages")
-        found = [
-            {
-                "name": package["name"],
-                "version": package.get("versionInfo", ""),
-                "license_declared": package.get("licenseDeclared", "NOASSERTION"),
-                "license_concluded": package.get("licenseConcluded", "NOASSERTION"),
-                "copyright": package.get("copyrightText", "NOASSERTION"),
-            }
-            for package in packages
-        ]
-        found.sort(key=lambda item: (item["name"], item["version"]))
-        return found
-
-    dependency_notices = notices(sbom, "application")
     runtime_notices = notices(runtime_sbom, "agent-runtime")
-    database_notices = notices(database_sbom, "database")
     # The official Codex binary is a vendor download, which a package scanner may not list: record it.
     if not any(item["name"].lower() in ("codex", "codex-cli") for item in runtime_notices):
         runtime_notices.append({
@@ -320,47 +240,33 @@ def prepare(
         })
 
     destination.mkdir(parents=True, exist_ok=True)
-    (destination / "compose.yaml").write_text(rendered, encoding="utf-8")
-    (destination / "compose.runtime.yaml").write_text(runtime_rendered, encoding="utf-8")
-    for name, text in live_rendered.items():
-        (destination / name).write_text(text, encoding="utf-8")
-    (destination / EMBEDDINGS_ASSET).write_text(embeddings_rendered, encoding="utf-8")
-    for source, target in (
-        (env, ENV_ASSET),
-        (instructions, "INSTALL.md"),
-        (license_file, "LICENSE"),
-        (sbom, "sbom.spdx.json"),
-        (runtime_sbom, "sbom-agent-runtime.spdx.json"),
-        (database_sbom, "sbom-database.spdx.json"),
-        (runtime_script, "runtime.sh"),
-    ):
-        shutil.copyfile(source, destination / target)
-    (destination / "THIRD_PARTY_NOTICES.json").write_text(
-        json.dumps(dependency_notices, indent=2) + "\n", encoding="utf-8"
-    )
-    (destination / "THIRD_PARTY_NOTICES.agent-runtime.json").write_text(
-        json.dumps(runtime_notices, indent=2) + "\n", encoding="utf-8"
-    )
-    (destination / "THIRD_PARTY_NOTICES.database.json").write_text(
-        json.dumps(database_notices, indent=2) + "\n", encoding="utf-8"
-    )
+    write_bundle(destination / BUNDLE, files, mtime)
+    (destination / "LICENSE").write_bytes(files["LICENSE"])
+    for spdx, target in ((sbom, "sbom.spdx.json"), (runtime_sbom, "sbom-agent-runtime.spdx.json"), (database_sbom, "sbom-database.spdx.json")):
+        (destination / target).write_bytes(spdx.read_bytes())
+    for items, target in ((notices(sbom, "application"), "THIRD_PARTY_NOTICES.json"),
+                          (runtime_notices, "THIRD_PARTY_NOTICES.agent-runtime.json"),
+                          (notices(database_sbom, "database"), "THIRD_PARTY_NOTICES.database.json")):
+        (destination / target).write_text(json.dumps(items, indent=2) + "\n", encoding="utf-8")
     manifest = {
         "version": version,
         "source_sha": source_sha,
-        "image": f"{IMAGE}@{digest}",
+        "schema": schema,
+        "bundle": BUNDLE,
+        "bundle_sha256": hashlib.sha256((destination / BUNDLE).read_bytes()).hexdigest(),
+        "image": app,
         "platforms": platform_list,
-        "runtime_image": f"{RUNTIME_IMAGE}@{runtime_digest}",
+        "runtime_image": runtime,
         "runtime_platforms": platform_list,
         "runtime_codex": codex,
-        "runtime_claude_code": "not included; runtime-install installs Anthropic's signed release when the operator enables it",
-        "live_media_image": live_images[0],
-        "embeddings_image": embeddings_image,
-        "database_image": f"{DATABASE_IMAGE}@{database_digest}",
+        "runtime_claude_code": "not included; runtime-install installs Anthropic's signed release when the owner enables it",
+        "database_image": database,
         "database_platforms": platform_list,
+        "https_image": pinned["docker/compose.https.yaml"][0],
+        "live_media_image": pinned["docker/compose.live.yaml"][0],
+        "embeddings_image": pinned["docker/compose.embeddings.yaml"][0],
     }
-    (destination / "release.json").write_text(
-        json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
-    )
+    (destination / "release.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     lines = []
     for asset in sorted(destination.iterdir()):
         if not ASSET_NAME.fullmatch(asset.name):
@@ -370,38 +276,27 @@ def prepare(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--version", required=True)
     parser.add_argument("--source-sha", required=True)
     parser.add_argument("--digest", required=True)
-    parser.add_argument("--compose", type=Path, default=Path("docker/compose.yaml"))
-    parser.add_argument("--env", type=Path, default=Path("docker/.env.example"))
-    parser.add_argument("--instructions", type=Path, default=Path("docs/operations/release-guide.md"))
-    parser.add_argument("--license", type=Path, default=Path("LICENSE"))
-    parser.add_argument("--sbom", type=Path, required=True)
     parser.add_argument("--runtime-digest", required=True)
-    parser.add_argument("--runtime-compose", type=Path, default=Path("docker/compose.runtime.yaml"))
-    parser.add_argument("--runtime-script", type=Path, default=Path("docker/runtime.sh"))
-    parser.add_argument("--runtime-sbom", type=Path, required=True)
-    parser.add_argument("--dockerfile", type=Path, default=Path("docker/Dockerfile"))
     parser.add_argument("--database-digest", required=True)
+    parser.add_argument("--sbom", type=Path, required=True)
+    parser.add_argument("--runtime-sbom", type=Path, required=True)
     parser.add_argument("--database-sbom", type=Path, required=True)
-    parser.add_argument("--live-compose", type=Path, default=Path("docker/compose.live.yaml"))
-    parser.add_argument("--live-turn-compose", type=Path, default=Path("docker/compose.live.turn.yaml"))
-    parser.add_argument("--embeddings-compose", type=Path, default=Path("docker/compose.embeddings.yaml"))
+    parser.add_argument("--source", type=Path, default=Path("."), help="the source tree of the candidate (default: here)")
+    parser.add_argument("--registry", default=REGISTRY, help=f"where the images are (default {REGISTRY}; a local registry for tests)")
+    parser.add_argument("--mtime", type=int, default=0, help="the archive's file times, seconds since 1970 (the source commit's time)")
     parser.add_argument("--platforms", default=DEFAULT_PLATFORMS,
                         help="platforms the images were built for, comma-separated (default linux/amd64)")
     parser.add_argument("--destination", type=Path, required=True)
     args = parser.parse_args()
     prepare(
-        version=args.version, source_sha=args.source_sha, digest=args.digest,
-        compose=args.compose, env=args.env, instructions=args.instructions,
-        license_file=args.license, sbom=args.sbom,
-        destination=args.destination, runtime_digest=args.runtime_digest,
-        runtime_compose=args.runtime_compose, runtime_script=args.runtime_script,
-        runtime_sbom=args.runtime_sbom, dockerfile=args.dockerfile,
-        live_compose=args.live_compose, live_turn_compose=args.live_turn_compose, embeddings_compose=args.embeddings_compose,
-        database_digest=args.database_digest, database_sbom=args.database_sbom, platforms=args.platforms,
+        version=args.version, source_sha=args.source_sha, digest=args.digest, runtime_digest=args.runtime_digest,
+        database_digest=args.database_digest, source=args.source, destination=args.destination, sbom=args.sbom,
+        runtime_sbom=args.runtime_sbom, database_sbom=args.database_sbom, platforms=args.platforms, registry=args.registry,
+        mtime=args.mtime,
     )
 
 

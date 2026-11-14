@@ -96,9 +96,9 @@ stated as the template requires.
 > at small software teams that already use coding agents.
 >
 > **How it runs.** One Docker Compose stack: the API, a separate worker, PostgreSQL and a small keyring
-> service. `./flux up` builds and starts it; `./flux demo` seeds a sample workspace. A published release
-> has a pull-only `compose.yaml`, checksums and an install guide
-> ([install from a release](https://github.com/ColdPhase/flux/blob/main/docs/operations/install-release.md)).
+> service. A release is a folder with the `flux` launcher: `./flux up` pulls the release's images and starts it;
+> `./flux demo` seeds a sample workspace. Checksums are signed
+> ([installation](https://github.com/ColdPhase/flux/blob/main/docs/operations/install.md)).
 > The compose file sets memory limits (`FLUX_DB_MEMORY` 768m, `FLUX_API_MEMORY` 1536m, `FLUX_WORKER_MEMORY` 512m,
 > `FLUX_KEYRING_MEMORY` 128m); I have not measured a minimum machine, so do not read those as sizing advice.
 >
