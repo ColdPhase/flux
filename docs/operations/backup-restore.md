@@ -213,6 +213,15 @@ gone shows the owner *Sign in again*, and a directory that has no binding in the
 signed out (best effort) and deleted.
 A disk-level or host snapshot is different: it does capture that volume and its logins.
 
+### HTTPS certificates and calls
+
+With the [built-in HTTPS](reverse-proxy.md#built-in-https), the `proxy-data` volume holds Caddy's
+certificates, its ACME account key and its own CA. **`./flux backup` does not include it**: a restore on
+the same server keeps the volume, and on a new server Caddy gets new certificates by itself once the
+DNS name points there (a home-lab name gets a new internal CA, whose root the devices then trust again).
+[Calls](calls.md) keep no data; the archive's `flux.env` holds their key and secret, and the next
+`./flux up` looks up the media address of the new server.
+
 ### Encrypted spaces that say their keys were changed
 
 An encrypted space refuses to unlock with "…'s encryption keys were changed outside Flux. It stays locked." when

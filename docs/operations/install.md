@@ -83,23 +83,20 @@ Apply the change:
 
 `./flux up` never overwrites `docker/.env`; it recreates the containers whose settings changed.
 
-### 3. Put HTTPS in front
+### 3. HTTPS: point the DNS name at the server
 
-Flux's API stays on `127.0.0.1:8081`. A reverse proxy on the same host terminates TLS on port 443
-and forwards everything to it, WebSocket upgrades included. With [Caddy](reverse-proxy.md) the whole
-configuration is:
+HTTPS is built in ([#1471](https://github.com/ColdPhase/flux/issues/1471)). Because the origin in step 2 is
+`https`, `./flux up` also starts a bundled, pinned Caddy on ports 80 and 443 that gets and renews the
+certificate for `flux.example.org` itself and passes everything to the API, which stays on
+`127.0.0.1:8081`. The API trusts exactly Caddy's address, so sign-in limits and session lists see real
+client addresses; `./flux up` prints that address.
 
-```caddyfile
-flux.example.org {
-	reverse_proxy 127.0.0.1:8081
-}
-```
-
-Caddy obtains and renews the certificate itself. [nginx](reverse-proxy.md#nginx) and
-[Traefik](reverse-proxy.md#traefik) work the same way; on a network without public DNS see
-[private network or home lab](#private-network-or-home-lab). Then
-[trust only the proxy's address](reverse-proxy.md#trust-only-the-measured-proxy-peer) with
-`FLUX_TRUSTED_PROXIES`, so sign-in limits and session lists see real client addresses.
+Your part is DNS: an A record for `flux.example.org` pointing at the server, and inbound 80/tcp and
+443/tcp open to it. Add no AAAA record unless Docker on the server has IPv6 networking enabled (see the
+[guide](reverse-proxy.md#built-in-https)). Caddy retries until the name resolves, so the order
+does not matter. The details, and how to keep [a proxy of your own](reverse-proxy.md#your-own-proxy-instead)
+instead (the same file, with its address in `FLUX_TRUSTED_PROXIES`), are in the
+[reverse proxy guide](reverse-proxy.md#built-in-https).
 
 ### 4. Create your account and check mail
 
@@ -178,22 +175,20 @@ rest of the team, open **Settings › Company** and use **Invite with a link**
 
 ## Private network or home lab
 
-Without public DNS, Caddy cannot get a public certificate. Use an internal name (for example
-`flux.home.arpa` in your router's DNS) and Caddy's own certificate authority:
+Without public DNS there is no public certificate. Use an internal name (for example `flux.home.arpa`
+in your router's DNS; `*.internal`, `*.local` and an IP address work the same way) and set
+`FLUX_PUBLIC_ORIGIN=https://flux.home.arpa`: the bundled Caddy then issues the certificate from its own
+certificate authority, with nothing else to set. Every device that opens Flux must trust that
+authority's root certificate once: copy it out with
+`docker cp <FLUX_PROJECT>-proxy-1:/data/caddy/pki/authorities/local/root.crt flux-root.crt` and install
+it as a trusted root on each computer, phone and tablet. Phones need it trusted for the installed app
+and push. A certificate from your own CA works through [your own proxy](reverse-proxy.md#your-own-proxy-instead).
 
-```caddyfile
-flux.home.arpa {
-	tls internal
-	reverse_proxy 127.0.0.1:8081
-}
-```
+## Calls and screen sharing
 
-Set `FLUX_PUBLIC_ORIGIN=https://flux.home.arpa`. Every device that opens Flux must trust Caddy's
-root certificate: copy it out with
-`docker cp <caddy container>:/data/caddy/pki/authorities/local/root.crt flux-root.crt` (the
-[Caddy example](reverse-proxy.md#local-https-example) shows the full commands) and install it as a
-trusted root on each computer, phone and tablet. Phones need it trusted for the installed app and
-push. A certificate from your own CA works the same way.
+Set `FLUX_CALLS=on` in `docker/.env` and run `./flux up`: it starts the media server, writes its key and
+secret, takes the media address from the origin's DNS name and prints the ports to open
+(7881/tcp, 7882/udp, 3478/udp). See [calls](calls.md).
 
 ## What the source path leaves on
 

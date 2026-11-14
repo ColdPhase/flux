@@ -47,6 +47,7 @@ the variable.
 | [`FLUX_AUTH_SECRET`](#flux_auth_secret) | Accounts, sign-up and sessions | **required** |
 | [`FLUX_BACKGROUND_KEY_HOST_FILE`](#flux_background_key_host_file) | AI providers | empty; made by `./flux up` |
 | [`FLUX_BACKUP_DIR`](#flux_backup_dir) | Source checkout, launcher and checks | `backups/` in the checkout |
+| [`FLUX_CALLS`](#flux_calls) | Live media: LiveKit and TURN | `off` |
 | [`FLUX_COWORK_WATCHDOG_SECONDS`](#flux_cowork_watchdog_seconds) | Source checkout, launcher and checks | `300` |
 | [`FLUX_DB_CONNECT_TIMEOUT_MS`](#flux_db_connect_timeout_ms) | Database | `1500` |
 | [`FLUX_DB_MEMORY`](#flux_db_memory) | Memory limits | `768m` |
@@ -144,7 +145,7 @@ Port of the API on the host's loopback address (`127.0.0.1`). Point the TLS reve
 
 ### `FLUX_PUBLIC_ORIGIN`
 
-**Type** origin URL · **Default** **required** · **Used by** api, worker (release, source)
+**Type** origin URL · **Default** **required** · **Used by** api, proxy, worker (release, source, HTTPS overlay)
 
 The exact origin people open, without a path. It is the only origin accepted for state-changing browser requests, the base of mailed links, OAuth and MCP addresses. `https` makes cookies `Secure`; plain `http` is accepted only for loopback (`localhost`, `127.0.0.0/8`, `[::1]`), any other `http` origin stops the API. Example: `https://flux.example.org`.
 
@@ -152,7 +153,7 @@ The exact origin people open, without a path. It is the only origin accepted for
 
 **Type** list of IPs or CIDRs · **Default** empty · **Used by** api (release, source)
 
-Comma-separated reverse-proxy addresses whose `X-Forwarded-For` is believed. Empty trusts none, and the socket peer is the client address. Measure the proxy's address as in the [reverse proxy guide](reverse-proxy.md#trust-only-the-measured-proxy-peer); never `0.0.0.0/0`. Example: `172.27.0.1/32`.
+Comma-separated reverse-proxy addresses whose `X-Forwarded-For` is believed. Empty trusts none, and the socket peer is the client address. In a source checkout it also chooses the HTTPS front: with an `https` origin and this empty, `./flux up` runs the bundled Caddy (automatic certificates, ports 80 and 443) and the API trusts exactly Caddy's address; set it only for a proxy of your own, which then owns 80 and 443 ([reverse proxy guide](reverse-proxy.md#your-own-proxy-instead)). Never `0.0.0.0/0`. Example: `172.27.0.1/32`.
 
 ## Database
 
@@ -342,31 +343,37 @@ The largest video one person can send (#1352, C-61). MP4, WebM and MOV files tha
 
 ## Live media: LiveKit and TURN
 
-Only with the optional overlays `compose.live.yaml` and `compose.live.turn.yaml`, layered on the release `compose.yaml` (both ship with every release; the repository copies are in `docker/`) or on the source Compose file. Set them in `.env`; [INSTALL.md](release-guide.md#calls-and-screen-sharing-optional) has the ports and firewall.
+Calls and screen sharing. In a source checkout `FLUX_CALLS=on` is all: `./flux` layers `compose.live.yaml` and writes the key, the secret and the public address itself ([calls](calls.md)). A release install layers the overlays `compose.live.yaml` and `compose.live.turn.yaml` on its `compose.yaml` (both ship with every release) and sets them in `.env`; [INSTALL.md](release-guide.md#calls-and-screen-sharing-optional) has the ports and firewall.
+
+### `FLUX_CALLS`
+
+**Type** `on`, `off` · **Default** `off` · **Used by** `./flux`
+
+`on` makes `./flux` layer `docker/compose.live.yaml` (the LiveKit media server) on every command, write `FLUX_LIVEKIT_API_KEY` and `FLUX_LIVEKIT_API_SECRET` once, use the origin's host as `FLUX_LIVEKIT_DOMAIN` and keep `FLUX_LIVEKIT_PUBLIC_IP` at the IPv4 address that host resolves to. `./flux up` prints the address and the ports to open. `off` removes the media server at the next `./flux up`, and the app offers no calls. A release install passes the overlay file with `-f` instead. Example: `on`.
 
 ### `FLUX_LIVEKIT_API_KEY`
 
 **Type** string · **Default** **required** · **Used by** api, livekit (live-media overlay, TURN overlay)
 
-LiveKit API key, shared by the API and the SFU. Rotate with the secret. Example: `livekit-key-1`.
+LiveKit API key, shared by the API and the SFU. Rotate with the secret. `./flux` writes it when `FLUX_CALLS=on`. Example: `livekit-key-1`.
 
 ### `FLUX_LIVEKIT_API_SECRET`
 
 **Type** secret · **Default** **required** · **Used by** api, livekit (live-media overlay, TURN overlay)
 
-LiveKit API secret.
+LiveKit API secret. `./flux` writes it when `FLUX_CALLS=on`.
 
 ### `FLUX_LIVEKIT_PUBLIC_IP`
 
 **Type** IP address · **Default** **required** · **Used by** livekit (live-media overlay, TURN overlay)
 
-Public media address advertised to browsers in ICE candidates. Example: `203.0.113.20`.
+Public media address advertised to browsers in ICE candidates. With `FLUX_CALLS=on`, `./flux up` sets it to the address the origin's host resolves to. Example: `203.0.113.20`.
 
 ### `FLUX_LIVEKIT_DOMAIN`
 
 **Type** DNS name · **Default** **required** · **Used by** livekit (live-media overlay)
 
-Operator-owned media name used for STUN and TURN/UDP. Example: `media.example.org`.
+Operator-owned media name used for STUN and TURN/UDP. With `FLUX_CALLS=on`, `./flux` uses the origin's host and ignores this line. Example: `media.example.org`.
 
 ### `FLUX_LIVEKIT_MEDIA_CIDR`
 
@@ -716,7 +723,7 @@ Password `./flux demo` gives the second demo account.
 
 ## Set by Flux, not by you
 
-The services also read 69 names that Compose, the launcher or the code sets: wiring
+The services also read 71 names that Compose, the launcher or the code sets: wiring
 between services and test switches. Do not set them. They are listed for developers in
 [internal configuration names](../development/configuration-internal.md).
 

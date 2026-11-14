@@ -56,17 +56,17 @@ described in the [security policy](../SECURITY.md).
 
 ## Checklist for the operator
 
-1. **Serve HTTPS only**, through one [reverse proxy](reverse-proxy.md), with
-   `FLUX_PUBLIC_ORIGIN=https://…`. Redirect port 80 to 443. Flux sends `Strict-Transport-Security` itself for an `https` origin;
+1. **Serve HTTPS only**, with `FLUX_PUBLIC_ORIGIN=https://…`: built in for a source checkout, or through one
+   [reverse proxy](reverse-proxy.md) of your own. Redirect port 80 to 443 (the built-in proxy does). Flux sends `Strict-Transport-Security` itself for an `https` origin;
    do not add `includeSubDomains` or `preload` at the proxy unless every subdomain of the name serves https too.
    **Create your own account before the address is public:** the first account to sign up becomes the company's owner
    ([install step 1](install.md#1-get-the-code-and-start-once-on-loopback)). `./flux up` and the API log warn while nobody has.
 2. **Firewall** everything except 80 and 443 (and the media ports if you run
-   [live media](../development/live-media.md)). Docker publishes ports past some host firewalls; Flux
+   [calls](calls.md)). Docker publishes ports past some host firewalls; Flux
    publishes only on loopback, so keep any port you add in an override on `127.0.0.1` too.
-3. **Trust only your proxy.** Set `FLUX_TRUSTED_PROXIES` to the measured address of the proxy hop
-   ([how](reverse-proxy.md#trust-only-the-measured-proxy-peer)); never a whole private range or
-   `0.0.0.0/0`.
+3. **Trust only your proxy.** The built-in proxy is trusted by its exact address automatically. A proxy of your own:
+   set `FLUX_TRUSTED_PROXIES` to the measured address of the proxy hop
+   ([how](reverse-proxy.md#trust-only-the-measured-proxy-peer)); never a whole private range or `0.0.0.0/0`.
 4. **Decide who may sign up** ([the options](install.md#5-decide-who-can-sign-up)). `open` lets anyone
    who reaches the server create an account. `verified` only proves that the person can read a
    mailbox, not that they belong to your team. For a private team on the internet, use

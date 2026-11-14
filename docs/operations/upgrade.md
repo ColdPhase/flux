@@ -115,6 +115,15 @@ database on it before migrating.
   do by hand. The sandbox needs the image's `sandbox.node`: a worker started from a source tree without it reads no file and says so
   once in its log.
 
+## v0.2.1: HTTPS and calls come from the launcher
+
+From v0.2.1 ([#1471](https://github.com/ColdPhase/flux/issues/1471)) an `https` `FLUX_PUBLIC_ORIGIN` with an empty
+`FLUX_TRUSTED_PROXIES` starts the [built-in HTTPS](reverse-proxy.md#built-in-https) proxy on ports 80 and 443. This is the one
+exception to rule 6: an instance behind a proxy of its own whose `FLUX_TRUSTED_PROXIES` is still empty would see the new proxy
+fail on the ports its own proxy holds. Set `FLUX_TRUSTED_PROXIES` to that proxy's address
+([how](reverse-proxy.md#your-own-proxy-instead)), as the installation guide already asked, before you upgrade; or stop your own
+proxy and let Flux's take over. The new `FLUX_CALLS` is `off` unless you set it ([calls](calls.md)).
+
 ## From v0.1: install v0.2 fresh
 
 v0.1 had no users, so v0.2 converts no data and keeps no compatibility with it (founder direction, 2026-11-09, #1176). A

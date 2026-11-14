@@ -1,0 +1,15 @@
+# The bundled HTTPS proxy (#1471; docker/compose.https.yaml). `./flux` passes FLUX_PUBLIC_ORIGIN and the origin's host.
+{
+	# No admin endpoint: the configuration changes only with this file and a restart.
+	admin off
+	# The container cannot install its own CA into a trust store; the owner trusts it on each device instead.
+	skip_install_trust
+	# A client that sends no server name (an origin that is an IP address) gets the origin's certificate.
+	default_sni {$FLUX_HTTPS_HOST}
+}
+
+# The whole origin to the API: WebSocket upgrades, streaming answers and bodies of any size pass, Host is kept, and
+# X-Forwarded-For/-Proto are set from the connection (a client's own are discarded). Plain http on port 80 redirects to https.
+{$FLUX_PUBLIC_ORIGIN} {
+	reverse_proxy api:8080
+}

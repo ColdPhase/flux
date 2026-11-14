@@ -69,8 +69,8 @@ class EmbeddingsOverlay(unittest.TestCase):
         # Without the overlay Compose no longer knows the service, so `up` alone would leave it running as an orphan.
         launcher = (ROOT / "flux").read_text(encoding="utf-8")
         start = launcher[launcher.index("start_main() {"):]
-        self.assertIn("  remove_embeddings_when_off\n}", start[:start.index("\n}\n") + 3])
-        self.assertIn('--filter "label=com.docker.compose.service=embeddings"', launcher)
+        self.assertIn("  embeddings_on || remove_when_off embeddings ", start[:start.index("\n}\n") + 3])
+        self.assertIn('--filter "label=com.docker.compose.service=$1"', launcher)
         # clean and reset know the overlay whatever the switch says, so the model volume goes with the rest.
         self.assertEqual(launcher.count("compose_main_all --profile dev --profile test --profile ui --profile runtime down -v --remove-orphans"), 2)
         self.assertIn('embeddings_on || set -- -f "$COMPOSE_EMBEDDINGS" "$@"', launcher)

@@ -46,6 +46,7 @@ COMPOSE = {
     "docker/compose.live.yaml": "live-media overlay",
     "docker/compose.live.turn.yaml": "TURN overlay",
     "docker/compose.embeddings.yaml": "embeddings overlay",
+    "docker/compose.https.yaml": "HTTPS overlay",
 }
 OTHER_DEPLOY = ["docker/Dockerfile", "docker/runtime.sh", "docker/.env.example", "flux"]
 CODE_ROOTS = ["app/apps", "app/packages"]
@@ -87,9 +88,10 @@ GROUPS = [
     ("files", "Files and video",
      "Every file is at most 5 MiB, except a video, which has its own limit. See [requirements](requirements.md) for the disk."),
     ("media", "Live media: LiveKit and TURN",
-     "Only with the optional overlays `compose.live.yaml` and `compose.live.turn.yaml`, layered on the release "
-     "`compose.yaml` (both ship with every release; the repository copies are in `docker/`) or on the source Compose "
-     "file. Set them in `.env`; [INSTALL.md](release-guide.md#calls-and-screen-sharing-optional) has the ports and firewall."),
+     "Calls and screen sharing. In a source checkout `FLUX_CALLS=on` is all: `./flux` layers `compose.live.yaml` and writes the "
+     "key, the secret and the public address itself ([calls](calls.md)). A release install layers the overlays `compose.live.yaml` and "
+     "`compose.live.turn.yaml` on its `compose.yaml` (both ship with every release) and sets them in `.env`; "
+     "[INSTALL.md](release-guide.md#calls-and-screen-sharing-optional) has the ports and firewall."),
     ("ai", "AI providers",
      "People connect their own AI in **Settings → AI** (Connect AI). These switches decide what the instance allows: "
      "agents that run on an API key, and agents that search and read the web. A Claude or ChatGPT plan needs the agent runtime below instead. "
@@ -130,8 +132,10 @@ VARIABLES: dict[str, Var] = {
         "https://flux.example.org"),
     "FLUX_TRUSTED_PROXIES": Var("instance", "list of IPs or CIDRs",
         "Comma-separated reverse-proxy addresses whose `X-Forwarded-For` is believed. Empty trusts none, and the socket "
-        "peer is the client address. Measure the proxy's address as in the [reverse proxy guide](reverse-proxy.md#trust-only-the-measured-proxy-peer); "
-        "never `0.0.0.0/0`.", "172.27.0.1/32"),
+        "peer is the client address. In a source checkout it also chooses the HTTPS front: with an `https` origin and this empty, `./flux up` "
+        "runs the bundled Caddy (automatic certificates, ports 80 and 443) and the API trusts exactly Caddy's address; set it only for a "
+        "proxy of your own, which then owns 80 and 443 ([reverse proxy guide](reverse-proxy.md#your-own-proxy-instead)). Never `0.0.0.0/0`.",
+        "172.27.0.1/32"),
     # --- database
     "POSTGRES_USER": Var("database", "name", "PostgreSQL user, also part of the database URL of every Flux service.", "flux"),
     "POSTGRES_PASSWORD": Var("database", "secret",
@@ -227,10 +231,15 @@ VARIABLES: dict[str, Var] = {
     "FLUX_STREAM_HEARTBEAT_MS": Var("collaboration", "integer, ≥ 100 ms",
         "Ping, session recheck and polling interval of the live WebSocket stream. Keep it below your proxy's idle timeout.", "25000"),
     # --- media
-    "FLUX_LIVEKIT_API_KEY": Var("media", "string", "LiveKit API key, shared by the API and the SFU. Rotate with the secret.", "livekit-key-1"),
-    "FLUX_LIVEKIT_API_SECRET": Var("media", "secret", "LiveKit API secret.", secret=True),
-    "FLUX_LIVEKIT_PUBLIC_IP": Var("media", "IP address", "Public media address advertised to browsers in ICE candidates.", "203.0.113.20"),
-    "FLUX_LIVEKIT_DOMAIN": Var("media", "DNS name", "Operator-owned media name used for STUN and TURN/UDP.", "media.example.org"),
+    "FLUX_CALLS": Var("media", "`on` · `off`",
+        "`on` makes `./flux` layer `docker/compose.live.yaml` (the LiveKit media server) on every command, write `FLUX_LIVEKIT_API_KEY` and "
+        "`FLUX_LIVEKIT_API_SECRET` once, use the origin's host as `FLUX_LIVEKIT_DOMAIN` and keep `FLUX_LIVEKIT_PUBLIC_IP` at the IPv4 address "
+        "that host resolves to. `./flux up` prints the address and the ports to open. `off` removes the media server at the next `./flux up`, "
+        "and the app offers no calls. A release install passes the overlay file with `-f` instead.", "on"),
+    "FLUX_LIVEKIT_API_KEY": Var("media", "string", "LiveKit API key, shared by the API and the SFU. Rotate with the secret. `./flux` writes it when `FLUX_CALLS=on`.", "livekit-key-1"),
+    "FLUX_LIVEKIT_API_SECRET": Var("media", "secret", "LiveKit API secret. `./flux` writes it when `FLUX_CALLS=on`.", secret=True),
+    "FLUX_LIVEKIT_PUBLIC_IP": Var("media", "IP address", "Public media address advertised to browsers in ICE candidates. With `FLUX_CALLS=on`, `./flux up` sets it to the address the origin's host resolves to.", "203.0.113.20"),
+    "FLUX_LIVEKIT_DOMAIN": Var("media", "DNS name", "Operator-owned media name used for STUN and TURN/UDP. With `FLUX_CALLS=on`, `./flux` uses the origin's host and ignores this line.", "media.example.org"),
     "FLUX_LIVEKIT_MEDIA_CIDR": Var("media", "CIDR",
         "The SFU's media interface when the host has several; the default keeps every IPv4 interface.", "203.0.113.20/32"),
     "FLUX_LIVEKIT_ICE_TCP_PORT": Var("media", "port", "Host port of ICE over TCP."),
@@ -364,6 +373,8 @@ INTERNAL: dict[str, str] = {
     "FLUX_API_INTERNAL_URL": "How the worker reaches the API inside Compose; default `http://api:8080`.",
     "FLUX_EMBEDDINGS_URL": "Set by the embeddings overlay to `http://embeddings:8080` on `api` and `worker`; empty (every other stack) is off.",
     "FLUX_LIVEKIT_API_URL": "Set by the live-media overlay to `http://livekit:7880` on its internal network.",
+    "FLUX_HTTPS_PORT": "Set by `./flux` from `FLUX_PUBLIC_ORIGIN` (its port, 443 by default) for the bundled Caddy of the HTTPS overlay.",
+    "FLUX_HTTPS_HOST": "Set by `./flux` from `FLUX_PUBLIC_ORIGIN` (its host) for the bundled Caddy's `default_sni`.",
     "FLUX_RUNTIME_MANAGER_URL": "How the API and worker reach the runtime manager; default `http://runtime-manager-control:7600`.",
     "FLUX_RUNTIME_MANAGER_LISTEN": "Listen address of the runtime manager.",
     "FLUX_RUNTIME_EGRESS_API": "Set by Compose: where the runtime egress proxy forwards `/mcp`.",

@@ -27,6 +27,8 @@ the wiring between services or enables test-only code.
 | `FLUX_EXPORT_FILE` | Passed by `./flux export` to the export command inside the image. |
 | `FLUX_FILES_DIR` | Set by Compose to `/data/files`, the `files` volume. |
 | `FLUX_GIT_COMMIT` | Set by `./flux` from `git`; recorded as an image label and in backup manifests. |
+| `FLUX_HTTPS_HOST` | Set by `./flux` from `FLUX_PUBLIC_ORIGIN` (its host) for the bundled Caddy's `default_sni`. |
+| `FLUX_HTTPS_PORT` | Set by `./flux` from `FLUX_PUBLIC_ORIGIN` (its port, 443 by default) for the bundled Caddy of the HTTPS overlay. |
 | `FLUX_IMAGE_TAG` | Set by `./flux` to the Compose project, so each checkout builds its own image tag. |
 | `FLUX_KEYRING_PORT` | Port the keyring listens on inside its network; default `8090`. |
 | `FLUX_KEYRING_REVEAL_BOOT_KEY` | Test deployments only; ignored without the test switches. |
