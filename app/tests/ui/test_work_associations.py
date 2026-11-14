@@ -115,7 +115,11 @@ class MessageWorkJourney(unittest.TestCase):
                 expect(page.locator(f"#thread [data-message-id='{self.m0}'] .ws-attach__more")).to_contain_text("64 tasks · 3 decisions")
                 expect(page.get_by_role("button", name=re.compile(r"^Task #\d+: " + re.escape("Related only; not made from either message") + "$"))).to_have_count(0)
                 field = page.get_by_label("Reply", exact=True); field.fill("Keep this reply while checking the older measurement links")
-                first = self.chips(page); self.assertEqual(len(first), 50)
+                # A decision made from a thread message is its card among the replies (#1424), so its chip is not drawn: a page of 50 links
+                # shows its tasks' chips, and the thread shows the three decisions once each, as cards.
+                first = self.chips(page); self.assertLessEqual(len(first), 50); self.assertGreaterEqual(len(first), 47)
+                self.assertEqual([chip for chip in first if chip["kind"] == "decision"], [])
+                expect(page.locator('#thread .convo-object[data-object-kind="decision.proposed"] .convo-notice__card')).to_have_count(3)
                 # Nothing in the thread is new, so it opens at its end (S23, #1246), after the 50 chips' own lines. The reader whose place is kept
                 # here is one who read back to the top: that is the place the next page of links must not move.
                 # By the wheel, as a reader does: only the reader's own input leaves the end of a feed that follows its end (#1424).
@@ -129,7 +133,7 @@ class MessageWorkJourney(unittest.TestCase):
                 edges.get_by_role("button", name="Next", exact=True).click(); self.ready(page)
                 expect(edges).to_contain_text("51–100 of 100 links")
                 self.assert_anchor(page, anchor)
-                second_edges = self.chips(page); self.assertEqual(len(second_edges), 50)
+                second_edges = self.chips(page); self.assertLessEqual(len(second_edges), 50); self.assertGreaterEqual(len(second_edges), 47)
                 edges.get_by_role("button", name="Previous", exact=True).click(); self.ready(page)
                 self.assertEqual(self.chips(page), first)
                 objects.get_by_role("button", name="Next", exact=True).click(); self.ready(page)
@@ -137,11 +141,11 @@ class MessageWorkJourney(unittest.TestCase):
                 # A whole list says how many it holds, not where it is (#1372): the 31 links of this objects page are all of them.
                 expect(edges).to_contain_text("31 links")
                 expect(edges).not_to_contain_text("of 31 links")
-                last = self.chips(page); self.assertEqual(len(last), 31)
-                self.assertEqual({(chip["kind"], chip["id"]) for chip in first + second_edges + last}, self.expected)
+                last = self.chips(page); self.assertLessEqual(len(last), 31); self.assertGreaterEqual(len(last), 28)
+                self.assertEqual({(chip["kind"], chip["id"]) for chip in first + second_edges + last}, {item for item in self.expected if item[0] == "work"})
                 self.assertLessEqual(len(self.chips(page)), 50)
                 expect(field).to_have_value("Keep this reply while checking the older measurement links")
-                page.locator(".thread__feed").get_by_role("button",name="Decision: Keep the manual off switch",exact=True).scroll_into_view_if_needed()
+                page.locator(".thread__feed").get_by_role("button",name="Open decision Keep the manual off switch, proposed",exact=True).scroll_into_view_if_needed()
                 shot(page, f"bounded-message-objects-mixed-{'phone' if phone else 'desktop'}")
                 if phone:
                     # #501 AC-2 supersedes full visual wrapping: retain the exact native

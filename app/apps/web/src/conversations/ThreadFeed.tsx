@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import type { ConversationMessage, ProjectPerson } from '@flux/contracts';
 import type { ComposerState, outboxView } from '../composer/draft';
 import type { SourceLookups } from '../assistant/ConversationParts';
@@ -76,7 +76,7 @@ export function ThreadFeed(props: Props) {
   const list = rows.flatMap((row, index) => !row.items.length ? [] : day(row.at) !== (index ? day(rows[index - 1]!.at) : '') && !(index === 0 && firstDay)
     ? [<MessageDay key={row.key} label={day(row.at)} />, ...row.items] : row.items);
   // A decision made in this thread is its card among the replies (#1424): the message it came from carries no chip of it.
-  const shown = shownObjects(entries.flatMap((entry) => entry.type === 'object' && entry.notice.kind === 'decision.proposed' ? [{ kind: 'decision' as const, id: entry.notice.decisionId, sources: entry.notice.sources }] : []));
+  const shown = useMemo(() => shownObjects(entries.flatMap((entry) => entry.type === 'object' && entry.notice.kind === 'decision.proposed' ? [{ kind: 'decision' as const, id: entry.notice.decisionId, sources: entry.notice.sources }] : [])), [entries]);
   return <ShownObjects value={shown}><div className="convo-stream">
   {/* The replies are laid out but hidden until their first reads settle (#155); quiet rows stand in their place from the first frame (#863 rule 6), so the panel never opens empty. */}
   {revealed ? null : <div className="thread__opening"><OpeningRows rows={Math.min(4, Math.max(2, thread.messages.length))} /></div>}
