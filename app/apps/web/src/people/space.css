@@ -63,7 +63,7 @@
    keep their own padding. */
 @media (min-width: 1001px) { .pane-in.sset-in.spset { margin-inline: auto; } }
 .spset .sset-head h2 { margin: 0; }
-.spset__name { display: flex; align-items: center; gap: 12px; }
+.sset-row.spset__name { display: flex; align-items: center; gap: 12px; }
 .spset__name b { flex: 1; min-width: 0; font-size: var(--fs-base); font-weight: 600; overflow-wrap: break-word; }
 .spset__name form { display: flex; flex: 1; align-items: center; gap: 8px; min-width: 0; }
 .spset__name .ui-field { flex: 1; min-width: 0; margin: 0; }

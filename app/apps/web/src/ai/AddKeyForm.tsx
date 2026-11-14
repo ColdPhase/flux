@@ -84,7 +84,7 @@ export const AddKeyForm = forwardRef<AddKeyFormHandle, {
     const input = ownerPrice(data.get('inputPrice'));
     const output = ownerPrice(data.get('outputPrice'));
     if (Number.isNaN(input) || Number.isNaN(output) || (input === null) !== (output === null)) {
-      setError('Enter both prices as numbers of US dollars per 1M tokens.'); return;
+      setError('Enter both prices as numbers of US dollars for a million tokens.'); return;
     }
     const budget = budgetCents(data.get('dailyBudget'));
     if (budget === null) { setMore(true); setError(BUDGET_PROBLEM); return; }
@@ -132,11 +132,14 @@ export const AddKeyForm = forwardRef<AddKeyFormHandle, {
             onClick={() => setMore(!more)}>More</Button>
           {more ? null : <span className="background-settings__help" data-testid="budget-line">Daily budget ${budgetText.trim() || '?'}</span>}
         </div>
-        <div id="background-more" className="background-settings__fields" hidden={!more}>
-          <Input label="Daily budget (USD)" name="dailyBudget" inputMode="decimal" autoComplete="off" defaultValue={DEFAULT_BUDGET}
-            onChange={(event) => setBudgetText(event.target.value)} aria-describedby="background-budget-help" />
-          <p id="background-budget-help" className="background-settings__help">Your agents stop for the day when this is used up.</p>
-          <label>Name (optional)<input name="connectionName" autoComplete="off" maxLength={80} placeholder="For example: Work OpenRouter" /></label>
+        {/* The budget and the name side by side on the computer, so the window keeps Connect in view with More open (#1424). */}
+        <div id="background-more" className="background-settings__more" hidden={!more}>
+          <div className="background-settings__budget-field">
+            <Input label="Daily budget (USD)" name="dailyBudget" inputMode="decimal" autoComplete="off" defaultValue={DEFAULT_BUDGET}
+              onChange={(event) => setBudgetText(event.target.value)} aria-describedby="background-budget-help" />
+            <p id="background-budget-help" className="background-settings__help">Your agents stop for the day when this is used up.</p>
+          </div>
+          <Input label="Name (optional)" name="connectionName" autoComplete="off" maxLength={80} placeholder="For example: Work OpenRouter" />
         </div>
         {/* Cancel, then the one primary, on the right: the choose step's Cancel and Continue keep their side here (#1424). */}
         <div className="background-settings__actions background-settings__actions--end">

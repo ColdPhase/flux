@@ -101,7 +101,8 @@ function AiConnectionsPage({ initial }: { initial: { connections: BackgroundComp
     <SettingsBack />
     <header className="background-settings__head">
       <h2>Your API keys</h2>
-      <p>Your own keys from AI providers. Each has one daily budget, the only limit on what runs on it. Only you can see or change them.</p>
+      {/* One short line (v0.2.1 UI audit): each key says its own budget below. */}
+      <p>Only you can see or change your keys.</p>
     </header>
     <p ref={statusRef} className="background-settings__saved" tabIndex={-1} role="status">{saved}</p>
     <section className="background-settings__section" aria-labelledby="background-current">
@@ -143,7 +144,7 @@ function AiConnectionsPage({ initial }: { initial: { connections: BackgroundComp
                   <Button variant="secondary" size="sm" autoFocus disabled={busy} onClick={() => keepKey(item.id)}>Keep it</Button>
                 </div>
               </div>
-            ) : <Button id={`remove-${item.id}`} variant="quiet" size="sm" disabled={busy} onClick={() => setRemoving(item.id)}
+            ) : <Button id={`remove-${item.id}`} variant="quiet" size="sm" className="background-settings__remove" disabled={busy} onClick={() => setRemoving(item.id)}
               aria-label={`Remove ${item.name}, key ending ${item.keyLastFour}`}>Remove</Button>}
           </div>
           <p className="background-settings__help">Removing deletes this key from Flux. Revoke it at {item.provider === 'openai_compatible' ? 'your endpoint' : AI_PROVIDERS[item.provider].label} too if it should stop working outside Flux.</p>
