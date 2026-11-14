@@ -20,7 +20,7 @@ import unittest
 from playwright.sync_api import Browser, Page, expect, sync_playwright
 
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
-from touch_targets import has_minimum_hit_area, hit_area
+from touch_targets import hit_rect
 
 
 UI_BROWSER = os.environ.get("FLUX_UI_BROWSER", "chromium")
@@ -98,13 +98,36 @@ class SignIn(_Browser):
                 submit = page.get_by_role("button", name="Sign in", exact=True)
                 if viewport == PHONE:
                     self.assertGreaterEqual(submit.bounding_box()["height"], 44)
-                    # "Forgot password?" is a 17 px line beside the label: on a phone its hit area is 44 px tall, and its text does not move.
-                    self.assertTrue(page.evaluate("matchMedia('(pointer: coarse)').matches"), "the phone's pointer is coarse")
-                    forgot = page.get_by_role("link", name="Forgot password?")
-                    area = hit_area(forgot)
-                    self.assertTrue(has_minimum_hit_area(area), f"Forgot password? offers a 44 px target on a phone: {area}")
-                    self.assertLess(area["box"][1], 24, f"the link keeps its own small line, only its hit area is larger: {area}")
                 shot(page, f"351-signin-{name}-{scheme}")
+                if viewport == PHONE:  # last: its final tap opens the reset page
+                    self.forgot_password_hit_area_fills_the_gap_between_the_fields(page)
+
+    def forgot_password_hit_area_fills_the_gap_between_the_fields(self, page: Page) -> None:
+        """"Forgot password?" is a 17 px line between the Email and Password fields. On a phone its hit area fills the gap between the two
+        inputs, wider than the text, and covers neither: a tap on the Password's top edge (or the Email's bottom edge) is that input's."""
+        self.assertTrue(page.evaluate("matchMedia('(pointer: coarse)').matches"), "the phone's pointer is coarse")
+        page.evaluate("document.fonts.ready.then(() => true)")
+        email, password = page.get_by_label("Email"), page.get_by_label("Password", exact=True)
+        forgot = page.get_by_role("link", name="Forgot password?")
+        area = hit_rect(forgot)  # first: it scrolls the link into view, and the boxes are read after it
+        email_box, password_box, text = email.bounding_box(), password.bounding_box(), forgot.bounding_box()
+        email_bottom, password_top = email_box["y"] + email_box["height"], password_box["y"]
+        self.assertLess(text["height"], 24, f"the link keeps its own small line, only its hit area is larger: {text}")
+        self.assertGreaterEqual(area["top"], email_bottom, f"the hit area does not reach into the Email input: {area}, input bottom {email_bottom}")
+        self.assertLessEqual(area["bottom"], password_top, f"the hit area does not reach into the Password input: {area}, input top {password_top}")
+        self.assertGreaterEqual(area["height"], password_top - email_bottom - 3, f"the hit area fills the gap between the two inputs: {area}, gap {password_top - email_bottom}")
+        self.assertGreaterEqual(area["width"], 44, f"and is at least 44 px wide: {area}")
+        self.assertLessEqual(area["left"], text["x"] - 16, f"and wider than the text on its left: {area}, text {text}")
+        # A tap on the Password's top edge, and on the Email's bottom edge, under the middle of the link, is that input's (focus moves to it, nothing opens).
+        x = text["x"] + text["width"] / 2
+        page.touchscreen.tap(x, password_box["y"] + 2)
+        expect(password).to_be_focused()
+        page.touchscreen.tap(x, email_bottom - 2)
+        expect(email).to_be_focused()
+        expect(page).to_have_url(f"{ORIGIN}/sign-in")
+        # A tap in the gap, left of the text where only the widened area reaches, opens the reset page.
+        page.touchscreen.tap(text["x"] - 12, (email_bottom + password_top) / 2)
+        expect(page).to_have_url(re.compile(r"/forgot-password$"))
 
     def test_02_keyboard_order_and_errors(self) -> None:
         page = self.page("light", DESKTOP)
@@ -120,6 +143,16 @@ class SignIn(_Browser):
         page.get_by_role("button", name="Sign in", exact=True).click()
         expect(page.get_by_role("alert").first.or_(page.locator(".ui-field__error").first)).to_be_visible()
         shot(page, "351-signin-error-1440")
+
+    def test_02b_forgot_password_hit_area_on_a_touch_tablet(self) -> None:
+        """The form's gap is 14 px above 640 px wide and 16 px below it; the hit area follows it, so a tablet's is the gap between the inputs too."""
+        context = self.browser.new_context(base_url=ORIGIN, color_scheme="light", viewport={"width": 768, "height": 1024}, service_workers="block",
+                                           has_touch=True, is_mobile=True, device_scale_factor=1)
+        self.addCleanup(context.close)
+        page = context.new_page()
+        page.goto("/sign-in")
+        expect(page.get_by_label("Password", exact=True)).to_be_visible()
+        self.forgot_password_hit_area_fills_the_gap_between_the_fields(page)
 
     def test_03_account_pages_share_the_frame(self) -> None:
         for path, title in (("/sign-up", "Create your Flux account"), ("/forgot-password", "Reset your password")):
