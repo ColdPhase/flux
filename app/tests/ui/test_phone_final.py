@@ -403,7 +403,7 @@ class PhoneFinal(unittest.TestCase):
         header.get_by_role("button", name="More").click()
         menu = page.get_by_role("menu", name="More")
         labels = [text.strip().split("\n")[0] for text in menu.get_by_role("menuitem").all_inner_texts()]
-        self.assertEqual(labels, ["Search", "Mute conversation", "Message info"], "no Call row: a direct message has no calls")
+        self.assertEqual(labels, ["Search", "Mute conversation", "People and privacy"], "no Call row: a direct message has no calls")
         self.assertNotIn("Call", labels, "no media server on this test server: no Call row (#1424)")
         # A direct message has the one view, Messages; its sketches are gone (#866).
         self.assertNotIn("Sketches", labels)

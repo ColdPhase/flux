@@ -30,18 +30,14 @@ export function Details({ view, dm = null, onBack }: {
       <div className="details">
         <p className="details__eyebrow">Direct message</p>
         <h3 className="details__title">{dm.title}</h3>
-        <p className="details__lead"><b>{dm.audience}</b></p>
-        <p className="details__lead">A private conversation outside any space. The company’s owners and admins can’t read it unless they are in it.</p>
+        {/* Two short sentences say who reads it (#1424); what leaving does is said by Leave itself, when it is pressed. */}
+        <p className="details__lead"><b>{dm.audience}</b> can read this conversation. Company owners and admins can’t, unless they are in it.</p>
         <section className="details__sec" aria-labelledby="details-dm-people">
           <h4 id="details-dm-people">People in this conversation</h4>
           <ul className="details__rows">
             <li className="details__person"><Avatar name={dm.me} id={dm.meId} size="md" tone="me" /><b>{dm.me} (you)</b></li>
             {dm.people.map((name, index) => <li key={`${name}-${index}`} className="details__person"><Avatar name={name} id={dm.peopleIds[index]} size="md" /><b>{name}</b></li>)}
           </ul>
-        </section>
-        <section className="details__sec" aria-labelledby="details-dm-rules">
-          <h4 id="details-dm-rules">What stays private</h4>
-          <p>Replies go to exactly these people. Someone who leaves, or leaves the company, stops seeing the conversation at once, including earlier messages.</p>
         </section>
         <LeaveDm id={dm.id} kind={dm.kind} />
       </div>

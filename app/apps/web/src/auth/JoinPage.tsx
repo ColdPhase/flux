@@ -171,6 +171,24 @@ export function JoinPage() {
   );
   const expires = <p className="auth__alt">Expires on {new Date(preview.expiresAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}.</p>;
   if (me) {
+    // A link for one address cannot be used by another account (#1424): no Join that could only be refused. Signing out lands on this page again,
+    // signed out, where the address is filled in and locked, for the person who has an account and the one who does not.
+    if (preview.email !== null && me.user.email.trim().toLowerCase() !== preview.email) {
+      return (
+        <>
+          {head}
+          {notes}
+          <div className="auth__card">
+            <p className="auth__lead">Signed in as <strong>{me.user.email}</strong>.</p>
+            <Form method="post" action="/sign-out" aria-label="Sign out to use this link">
+              <input type="hidden" name="next" value="/join" />
+              <Button type="submit" variant="primary" size="lg" block>Sign out to use this link</Button>
+            </Form>
+          </div>
+          {expires}
+        </>
+      );
+    }
     return (
       <>
         {head}

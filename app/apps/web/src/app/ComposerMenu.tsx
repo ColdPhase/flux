@@ -137,7 +137,6 @@ function ComposerMenuList({ id, options, active, onPick, onHover, trigger, popPr
           {index === active ? <kbd className="cmenu__kbd" aria-hidden="true">↵</kbd> : null}
         </div>
       ))}
-      {trigger === '/' ? <div className="cmenu__f" aria-hidden="true">Type @ to mention people</div> : null}
     </div>
   );
 }

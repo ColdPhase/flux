@@ -19,7 +19,7 @@ PASSWORD = "one composer everywhere"
 STAMP = int(time.time() * 1000)
 PEOPLE = {"ada": ("Ada Kowalska", f"ada.oc+{STAMP}@example.test"), "jonas": ("Jonas Berg", f"jonas.oc+{STAMP}@example.test")}
 PLACEHOLDERS = {
-    "conversation": "Message · @ mention · / actions", "thread": "Reply in thread…", "dm": "Message Jonas…",
+    "conversation": "Message · @ mention · / actions", "thread": "Reply in thread…", "dm": "Message Jonas · / actions",
     "task": "Write about #1 · @ · /", "dm-thread": "Reply in thread…", "notes": "Write a note…",
 }
 # Attaching is a paperclip, because "+" means Create (final design S5): the `clip` path of ui/Icon.tsx.

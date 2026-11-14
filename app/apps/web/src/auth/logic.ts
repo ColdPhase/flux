@@ -333,7 +333,7 @@ export async function signOutLoader({ request }: LoaderFunctionArgs) {
 }
 
 /** Signs this device out; its push subscription is removed first (#41). */
-export async function signOutAction(): Promise<FormResult | Response> {
+export async function signOutAction({ request }: ActionFunctionArgs): Promise<FormResult | Response> {
   signingOutHere = true;
   try {
     await signOutDevice();
@@ -355,5 +355,7 @@ export async function signOutAction(): Promise<FormResult | Response> {
   forgetKeptPages();
   forgetThoughtImages();
   forgetPlaces();
+  // The invite page signs a wrong account out and opens itself again, signed out, with the link this tab still holds (#1424).
+  if ((await request.formData().catch(() => null))?.get('next') === '/join') return redirect('/join');
   return redirect('/sign-in?notice=signed-out');
 }

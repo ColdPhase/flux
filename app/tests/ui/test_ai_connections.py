@@ -439,6 +439,42 @@ class AiConnectionSettings(unittest.TestCase):
         key = next(item for item in json.loads(page.request.get(f"{ORIGIN}/api/v1/background-compute-connections").text()) if item["name"] == "From the window")
         self.assertEqual(page.request.delete(f"{ORIGIN}/api/v1/background-compute-connections/{key['id']}", headers={"origin": ORIGIN}).status, 204)
 
+    def test_11_removing_a_key_asks_once_in_place_and_keeps_it_on_keep(self) -> None:
+        """#1424: Remove is a deletion, so it waits for an OK in the row (as Revoke link does): Keep it changes nothing, Remove key removes it."""
+        page = self.page()
+        page.goto("/settings/ai-connections")
+        page.get_by_role("button", name="Add a key").click()
+        window = page.get_by_role("dialog", name="Connect your AI")
+        choose(window.get_by_label("Provider", exact=True), label="Anthropic")
+        window.get_by_label("API key", exact=True).fill(KEYS["anthropic"])
+        window.get_by_label("API key", exact=True).blur()
+        choose(window.get_by_label("Model", exact=True), value="claude-sonnet-5")
+        window.get_by_label("Name", exact=True).fill("Key to remove")
+        window.get_by_label("Daily budget (USD)", exact=True).fill("5")
+        window.get_by_role("button", name="Connect", exact=True).click()
+        expect(window).to_have_count(0)
+        row = page.locator(".background-settings__connection").filter(has=page.get_by_role("heading", name="Key to remove"))
+        expect(row).to_be_visible()
+        row.get_by_role("button", name=re.compile("^Remove Key to remove")).click()
+        ask = row.get_by_role("group", name=re.compile("^Remove Key to remove"))
+        expect(ask).to_contain_text("Remove this key? It stops what uses it at once and can’t be restored.")
+        # Nothing has happened yet; the safe answer has the focus.
+        self.assertEqual(self.connection(page, name="Key to remove")["name"], "Key to remove")
+        expect(ask.get_by_role("button", name="Keep it")).to_be_focused()
+        ask.get_by_role("button", name="Keep it").click()
+        expect(ask).to_have_count(0)
+        expect(row.get_by_role("button", name=re.compile("^Remove Key to remove"))).to_be_focused()
+        self.assertEqual(self.connection(page, name="Key to remove")["name"], "Key to remove", "Keep it removes nothing")
+        row.get_by_role("button", name=re.compile("^Remove Key to remove")).click()
+        page.keyboard.press("Escape")
+        expect(row.get_by_role("group")).to_have_count(0)
+        row.get_by_role("button", name=re.compile("^Remove Key to remove")).click()
+        row.get_by_role("group", name=re.compile("^Remove Key to remove")).get_by_role("button", name="Remove key").click()
+        expect(page.get_by_role("status").filter(has_text="Removed from Flux.")).to_be_visible()
+        expect(row).to_have_count(0)
+        self.assertEqual([item for item in self.connections(page) if item["name"] == "Key to remove"], [])
+        self.no_key_anywhere(page)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -205,7 +205,7 @@ class ConnectAiJourney(unittest.TestCase):
         expect(assistant).to_contain_text("You have no agents. Make one with New agent.")
         expect(assistant.get_by_role("list", name="Your agents")).to_have_count(0)
         self.assertTrue(self.above(connect, assistant), "Connect AI comes first")
-        # The person's own Claude Code or Codex is one row of Connect AI's card, as drawn (#1363): its name, what it is for, its tag ("Do it and tell me" or "Ask me first")
+        # The person's own Claude Code or Codex is one row of Connect AI's card, as drawn (#1363): its name, what it is for, its tag ("Ask me first on" or "Ask me first off")
         # (a link to where it is changed) and Disconnect. No client guide with command-line words on this page.
         self.assertTrue(self.above(app.first, assistant), "the client's row is in Connect AI's card, above the agents")
         expect(app).to_have_count(1)

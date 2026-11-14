@@ -365,7 +365,7 @@ class MuteAndFollowJourney(unittest.TestCase):
         menu.get_by_role("menuitem", name=re.compile(r"^Unmute space")).click()
         self.settled(lambda: self.muted(page), [], "the unmute is stored")
 
-        # A conversation: its ⋯ holds the row, after Search and Call and above "Message info" (#1374).
+        # A conversation: its ⋯ holds the row, after Search and Call and above "People and privacy" (#1374).
         page.goto(f"/dm/{self.dm_id}")
         page.locator("header.phead").get_by_role("button", name="More").click()
         dialog = page.get_by_role("menu", name="More")

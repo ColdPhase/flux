@@ -462,7 +462,7 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
     first word of the tabs, as the page's own padding.
   - There are no chip rows.
   - **There is no tab bar in a conversation;** the composer sits at the bottom.
-  - **A direct message's title row is a space's** (founder decision on [#1374](https://github.com/ColdPhase/flux/issues/1374), 2026-11-13): Back, the name with the line "Messages" (a group names its people) under it, and ⋯, with **Search** as its first row, then Mute conversation and "Message info". A direct message has no calls (a call belongs to a space's conversation, a task, a map or a page), so it has no Join and no Call row, never a greyed one. Back and ⋯ are the same plain 44 px icons; there are no Call and Search icons in the row and the name is not a menu (a direct message has one view). A long name wraps to two lines as a space's does. The tablet and the computer keep their own header.
+  - **A direct message's title row is a space's** (founder decision on [#1374](https://github.com/ColdPhase/flux/issues/1374), 2026-11-13): Back, the name with the line "Messages" (a group names its people) under it, and ⋯, with **Search** as its first row, then Mute conversation and **People and privacy** (it opens who is in the conversation, two short lines on who reads it, and Leave conversation; it was "Message info", a name that said nothing of what is in it, #1424). A direct message has no calls (a call belongs to a space's conversation, a task, a map or a page), so it has no Join and no Call row, never a greyed one. Back and ⋯ are the same plain 44 px icons; there are no Call and Search icons in the row and the name is not a menu (a direct message has one view). A long name wraps to two lines as a space's does. The tablet and the computer keep their own header.
 - **Sheets.** They have a grabber and two heights: half (the conversation stays visible) and full
   (dragged up). **A choice on the phone opens as a bottom sheet** with the field's name as its title: the Select, and a
   task's Status and Owner (#1359), whose pop-over ran out of a 320 px window. The rows are 48 px.
@@ -543,7 +543,7 @@ The IDs come from the first Prostota canvas; rules that no longer apply are left
 | S2 | The phone tab bar is Home · Spaces · Inbox plus Search. There is none in a conversation. My map is a row on Home, not a tab. |
 | S3 | **One Create.** New, `C` and "+" open the same window or sheet everywhere, with Task, Thought, Decision, Page and Space. In context there are only "+ Task" in Tasks, `/task` in the composer and Create task on a message. |
 | S4 | One detail panel on the computer and one sheet on the phone, for tasks, decisions and threads. At most two content columns. |
-| S5 | The composer has `@` to mention and `/` for actions (`/task`, `/decide`, `/ai`, `/file`: these four, no more), with no separate buttons. Attaching is a paperclip, because "+" means Create. The hint reads "Message · @ mention · / actions". **`@` mentions people only** (founder decision, Hubert, 2026-11-13, [#1419](https://github.com/ColdPhase/flux/issues/1419)): the assistant is not in it (asking it is `/ai`) and agents are not members of a space, so they are not listed (giving work to an agent is the task's Owner, S12). The assistant's suggestions are in the `/` menu, under `/ai`, and nowhere else (see [Agents and AI](#agents-and-ai)). |
+| S5 | The composer has `@` to mention and `/` for actions (`/task`, `/decide`, `/ai`, `/file`: these four, no more), with no separate buttons. Attaching is a paperclip, because "+" means Create. The hint reads "Message · @ mention · / actions", and the `/` menu is its list of commands with nothing under it (no "Type @ to mention people" line: the hint says it; #1424). **`@` mentions people only** (founder decision, Hubert, 2026-11-13, [#1419](https://github.com/ColdPhase/flux/issues/1419)): the assistant is not in it (asking it is `/ai`) and agents are not members of a space, so they are not listed (giving work to an agent is the task's Owner, S12). The assistant's suggestions are in the `/` menu, under `/ai`, and nowhere else (see [Agents and AI](#agents-and-ai)). |
 | S6 | **Message actions.** On the computer, hovering a message shows Reply in thread, Create task and ⋯. The ⋯ menu has one level, in the same order everywhere: Add to map, Copy link, Copy text, then Edit and Delete on your own messages. **Copy text** (founder direction by Hubert, 2026-11-08) is on every message a person can read, not only their own: it copies the message's plain words, with no markup (a mention as `@name`, a Wiki page as its title, a quote without its `>` marks). A deleted message has none. On the phone, long press opens the same list and swipe right replies in thread (#343). |
 | S8 | Several task updates in a row fold into one expandable line. |
 | S9 | One tap on the state glyph (or `1`–`4`) changes the state. Swipe left, then Done, then a toast with **Undo**. |
@@ -932,7 +932,8 @@ Drawn by the agents before it was built; the rules of what triggers a notice are
 | ![Notices on the computer, light and dark: one notice, a grouped notice, a call](screens/desktop-notices.webp) | ![Notices on the phone, light and dark](screens/phone-notices.webp) |
 
 - **A notice is its own card**, not a toast. Undo toasts stay at the bottom centre, one at a time
-  (#1206); a notice never replaces a toast and a toast never replaces a notice.
+  (#1206); a notice never replaces a toast and a toast never replaces a notice. An Undo toast stands 8 px above the highest composer drawn, so it
+  never covers its hint or Send (#1424).
 - **Where.** At the bottom right on the computer and the tablet, 20 px from the edges, 360 px wide;
   it stands 8 px above a composer, a toast or the map's toolbar that reaches its corner, so it never
   covers the composer or Send. On the phone it is at the top, 8 px under the safe area, 16 px from
@@ -1015,7 +1016,7 @@ screen, setting or mode, and Settings › Notifications stays the overview. Ever
 menu's rows, the sidebar's end slot, the panel head's quiet actions and the existing icons and tokens.
 
 - **Mute and Unmute** are one row of ⋯ in a space's header (the computer's and the phone's) and in a direct message's header menu (the
-  computer's ⋯; on the phone the direct message's ⋯, after Search and one row above "Message info"). A space reads **Mute space** /
+  computer's ⋯; on the phone the direct message's ⋯, after Search and one row above "People and privacy"). A space reads **Mute space** /
   **Unmute space**, a direct message **Mute conversation** / **Unmute conversation**. The row has no key, no switch and no
   confirmation: it acts and the menu closes. Under the label, one line of the menu's small muted text says what it does, so the
   person need not guess: "Quiet for ordinary messages. What needs you still arrives." while it is on, and "Muted. What needs you still
@@ -1499,7 +1500,10 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
     link** (`primary`). **More** (a quiet disclosure under the field) holds **Joins as** (Member by default; Guest; Admin for an
     owner) and **Works for** (7 days by default; 1 day, 30 days). An address that already has a Flux account is added at once
     ("Maja joined as member"); any other address, or none, makes the link, copied at once, with its card and Copy link as before.
-    "Only for", "Add someone" and the second role picker go. Links waiting to be used stay listed under the form.
+    "Only for", "Add someone" and the second role picker go. Links waiting to be used stay listed under the form, each with Copy and
+    Revoke. **A new link is shown once** (#1424): in its own row of that list, with the link in a read-only field to read or select and
+    the hint "It works once…", not in a card of its own above a row that says the same; the row's Copy is the only Copy, and where the
+    browser refuses to copy, the link is shown in the row it belongs to.
   - **A reset link next to a person** (founder decision, Hubert, 2026-11-13, [#1471](https://github.com/ColdPhase/flux/issues/1471)).
     Without SSO, the person's editor (the role button "Member ▾" opens it under their row) ends with one more group, after Remove:
     "Password" in the group's label style, the line "Make a one-time link that lets {first name} choose a new password." and a
@@ -1564,7 +1568,7 @@ standard switch row in Settings › Notifications, and the rest of the page stay
     the right, centred, and never overlaps the text.
   - The local client as one row, in the same card as the connections (#1363): the terminal mark in
     the same icon tile as the connections (as drawn), "Claude Code on Ada's laptop", "For code on your computer. Same rules as your agents.", its
-    tag, "Do it and tell me" or, with the switch on, "Ask me first" (a link to the page where it is changed), and Disconnect, which asks in the
+    tag, "Ask me first on" or "Ask me first off" (the name of the switch, a link to the page where it is changed), and Disconnect, which asks in the
     row. A person may connect several, each with its own row. There is no section of its own for it and
     no word "agent app" or "co-work".
   - **Connecting one** is the fourth choice of the Connect AI window, "Claude Code or Codex on your
@@ -1587,8 +1591,8 @@ standard switch row in Settings › Notifications, and the rest of the page stay
     face, no new element, no link, no button). Everyone else, and a server whose AI is off altogether, is shown no plan the server does
     not offer, as the next point says.
   - **Your agents**, with New agent. Each row has the agent's Kreska in its own colour (chosen when
-    the agent is created, or assigned automatically), its name, one line about its job, its tag ("Do it
-    and tell me", or "Ask me first" with the switch on) and its model with the connection ("Opus · Claude plan").
+    the agent is created, or assigned automatically), its name, one line about its job, its tag ("Ask me first on" or "Ask me first off", the
+    switch's own name, never another word for the same thing, #1424) and its model with the connection ("Opus · Claude plan").
     Assistant carries an "Answers /ai" tag. Under the list: "Agents never have more rights than
     you. Deleting and other people's things always wait for your OK."
   - There is no rule that gives the tasks people assign to you to an agent (founder decision, Hubert,
@@ -1622,7 +1626,9 @@ standard switch row in Settings › Notifications, and the rest of the page stay
   it will work. **New agent** appears once an AI is connected: an agent without a connection can do nothing, and Assistant comes with the
   first connection.
 - **There is one way to add an AI key: the Connect AI window** (founder decision, Hubert, 2026-11-13, [#1438](https://github.com/ColdPhase/flux/issues/1438) point 9).
-  Settings › AI › Your API keys lists the keys with their budget and Remove and has no form of its own: its **Add a key**
+  Settings › AI › Your API keys lists the keys with their budget and Remove (a deletion, so it asks once in place: "Remove this key? It stops
+  what uses it at once and can't be restored." with **Remove key** and **Keep it**, as Revoke link does; there is nothing to undo, because the key is
+  gone from Flux, #1424) and has no form of its own: its **Add a key**
   (and "Use an API key" in a failed sign-in, and the ask bar's "Add a key") opens the Connect AI window on its API key step,
   and a page with no key says "No API key yet" with the same button. Every key is added in that one window, on the computer and
   on the phone.
@@ -1750,8 +1756,10 @@ standard switch row in Settings › Notifications, and the rest of the page stay
   - the task's composer had no `/` menu: typing `/` there now opens the same menu with `/ai` and its
     two suggestions only (the task has no other slash commands), once the task has its first message;
     choosing a row keeps the words written around the `/`, as in the conversation's composer.
-  - a direct message's composer opens the same menu on `/` with `/ai` alone (a direct message has no
-    suggestions and no other slash command), so the composer behaves the same in every place ([#1419](https://github.com/ColdPhase/flux/issues/1419) item 11).
+  - a direct message's composer opens the same menu on `/` with the two commands that apply there, `/file` ("Attach a file or link") and
+    `/ai` ("Ask your assistant"), in a space's words and order (a direct message has no tasks or decisions to make from a draft, no
+    suggestions and no `@`; a guest, who has no AI, sees `/file` alone), and its hint says it, "Message Jonas · / actions", so the composer behaves
+    the same in every place ([#1419](https://github.com/ColdPhase/flux/issues/1419) item 11, [#1424](https://github.com/ColdPhase/flux/issues/1424)).
 - **An answer appears as it is written** ([#1248](https://github.com/ColdPhase/flux/issues/1248), founder pick
   2026-11-10). Not drawn as a screen; it is the `/ai` card and the agent's chat bubble above, in three moments, with no
   new screen, setting or button style:
@@ -1960,6 +1968,14 @@ Founder decision, Hubert, 2026-11-13 ([#1438](https://github.com/ColdPhase/flux/
   encrypted space who has no unlock password yet: one page says so, with Open <space>, as before.
 - **No jargon:** no role explanation (a member is the ordinary case; only Guest and Admin get one plain line), no "work and
   handoffs", no "invite link has nothing more to do". A link already used by this account opens Flux.
+- **A link for one address** ([#1424](https://github.com/ColdPhase/flux/issues/1424)) says "This link works only for ben@…" and fills the
+  Email field in with that address, read-only (a fixed field in the surface's quieter fill, not one that looks editable and ignores typing),
+  with the hint "This invite is for this address.": a different address cannot be sent. Signed in as another account, the page does not
+  offer Join, which could only be refused: it says who the person is signed in as and gives one **Sign out to use this link**
+  (`primary`), which signs out and opens this page again, signed out, with the form and the address in place (for someone who has an
+  account, "Already have an account? Sign in to join" is under it). The Join button of the right account always joins.
+- **The person who made the link is told** when it is used, in their Inbox ("Basia Wrona joined Riverside Makers", naming the space when
+  the link was made from a space's Add people), on every route to joining: the form on this page, Join, and single sign-on.
 
 ### A place that could not be loaded, and a place that is not available
 

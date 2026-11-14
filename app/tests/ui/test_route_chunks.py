@@ -71,7 +71,7 @@ class RouteChunksJourney(unittest.TestCase):
             cls.project_id = project["id"]
             conversation = create(f"/api/v1/projects/{project['id']}/conversations", {"body": "An eager conversation stays available before secondary routes", "clientMessageId": str(uuid.uuid4())})
             cls.conversation_id = conversation["id"]
-            # A direct message is the place with a panel of its own, "Message info" (a space has none, #1419).
+            # A direct message is the place with a panel of its own, "People and privacy" (a space has none, #1419).
             peer_context = cls.browsers["chromium"].new_context(base_url=ORIGIN, service_workers="block")
             try:
                 peer = peer_context.new_page()
@@ -152,12 +152,12 @@ class RouteChunksJourney(unittest.TestCase):
             page.get_by_role("link", name=re.compile(rf"{self.name}, Settings$")).click()
 
     def direct_message(self, page: Page):
-        """A place whose header has a panel of its own in its More menu: a direct message, as Message info (#871: Home and My map have none, and a space has none, #1419)."""
+        """A place whose header has a panel of its own in its More menu: a direct message, as People and privacy (#871: Home and My map have none, and a space has none, #1419)."""
         page.goto(f"/dm/{self.dm_id}")
         expect(page.get_by_role("heading", level=1, name="Jonas Route", exact=True)).to_be_visible()
 
     def open_details_by_keyboard(self, page: Page):
-        """Tab to the header's More, open its menu and choose Message info with the keyboard; More is the opener focus comes back to."""
+        """Tab to the header's More, open its menu and choose People and privacy with the keyboard; More is the opener focus comes back to."""
         opener = page.get_by_role("button", name="More", exact=True)
         for _ in range(50):
             if opener.evaluate("element => element === document.activeElement"):
@@ -165,7 +165,7 @@ class RouteChunksJourney(unittest.TestCase):
             page.keyboard.press("Tab")
         expect(opener).to_be_focused()
         page.keyboard.press("Enter")
-        item = page.get_by_role("menu", name="More").get_by_role("menuitem", name="Message info", exact=True)
+        item = page.get_by_role("menu", name="More").get_by_role("menuitem", name="People and privacy", exact=True)
         expect(item).to_be_visible()
         item.focus()
         page.keyboard.press("Enter")
@@ -637,8 +637,8 @@ class RouteChunksJourney(unittest.TestCase):
                 page.goto(f"/dm/{self.dm_id}")
                 expect(page.get_by_role("heading", level=1, name="Jonas Route", exact=True)).to_be_visible()
                 page.get_by_role("button", name="More", exact=True).click()
-                page.get_by_role("menu", name="More").get_by_role("menuitem", name="Message info", exact=True).click()
-                # The first Message info lists its people (a space has no panel of its own, #1419): a face and a name in separate columns inside the
+                page.get_by_role("menu", name="More").get_by_role("menuitem", name="People and privacy", exact=True).click()
+                # The first People and privacy lists its people (a space has no panel of its own, #1419): a face and a name in separate columns inside the
                 # phone panel. Missing lazy surface CSS must not collapse them.
                 row = page.locator("#details .details__person", has_text="Jonas Route")
                 expect(row).to_be_visible()

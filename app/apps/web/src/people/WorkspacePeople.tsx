@@ -581,7 +581,7 @@ async function copyText(text: string): Promise<boolean> {
  * One invite form (F-035, #763 PE-2; founder decision 2026-11-13, #1438): an optional email and "Create invite link"; the role and how long
  * the link works are under More (Member and 7 days by default). An address with a Flux account outside the company is added at once; any other
  * address, or none, makes a one-time link, copied at once, that the owner or admin sends themselves (Flux sends no email). The new link shows
- * once, ready to copy; every pending link stays listed with Copy and Revoke.
+ * once, in its own row of the list of links waiting to be used, which keeps Copy and Revoke for every link (#1424).
  */
 function InviteForm({ workspace, members, myRole, seen, onJoined, onAdded }: { workspace: Workspace; members: WorkspaceMember[]; myRole: WorkspaceRole;
   seen: number; onJoined: () => void; onAdded: (member: WorkspaceMember) => void }) {
@@ -653,8 +653,10 @@ function InviteForm({ workspace, members, myRole, seen, onJoined, onAdded }: { w
   }
 
   async function copy(invite: WorkspaceInvite) {
-    setStatus(await copyText(invite.link) ? 'Link copied.' : 'Copying isn’t allowed here. Select the link and copy it.');
-    if (fresh?.id !== invite.id) setFresh(invite);
+    const copied = await copyText(invite.link);
+    setStatus(copied ? 'Link copied.' : 'Copying isn’t allowed here. Select the link and copy it.');
+    // Where the browser refuses, the link is shown in its row to be selected by hand.
+    if (!copied) setFresh(invite);
   }
 
   async function revoke(invite: WorkspaceInvite) {
@@ -671,6 +673,13 @@ function InviteForm({ workspace, members, myRole, seen, onJoined, onAdded }: { w
 
   const who = (invite: WorkspaceInvite) => invite.email ?? 'Anyone with the link';
   const where = (invite: WorkspaceInvite) => (invite.space ? ` · ${invite.space.name}` : '');
+  /** The link just made, to read and select: shown once, in its own row of the list below, whose Copy is the only one (#1424). */
+  const newLink = (invite: WorkspaceInvite) => (
+    <div className="people__link" role="group" aria-label="New invite link">
+      <Input ref={linkRef} id="people-invite-link" label={`Link for ${invite.email ?? 'anyone'} · ${ROLE_LABEL[invite.role].toLowerCase()}`} readOnly value={invite.link}
+        onFocus={(event) => event.currentTarget.select()} hint="It works once. Flux doesn’t send it: paste it into your message to them." />
+    </div>
+  );
   return (
     <section className="details__sec" aria-labelledby="people-invite">
       <h4 id="people-invite">Invite people</h4>
@@ -701,13 +710,7 @@ function InviteForm({ workspace, members, myRole, seen, onJoined, onAdded }: { w
         {problem ? <p className="people__notice" role="alert"><Icon name="alert" size={13} />{problem}</p> : null}
         <div className="details__actions"><Button type="submit" variant="primary" busy={busy}><Icon name="link" size={14} />Create invite link</Button></div>
       </form>
-      {fresh ? (
-        <div className="people__link" role="group" aria-label="New invite link">
-          <Input ref={linkRef} id="people-invite-link" label={`Link for ${fresh.email ?? 'anyone'} · ${ROLE_LABEL[fresh.role].toLowerCase()}`} readOnly value={fresh.link}
-            onFocus={(event) => event.currentTarget.select()} hint="It works once. Flux doesn’t send it: paste it into your message to them." />
-          <div className="details__actions"><Button variant="secondary" onClick={() => void copy(fresh)}><Icon name="copy" size={14} />Copy link</Button></div>
-        </div>
-      ) : null}
+      {fresh && !invites?.some((invite) => invite.id === fresh.id) ? newLink(fresh) : null}
       <p className="people__invite-status" role="status">{status ? <><Icon name="check" size={13} />{status}</> : null}</p>
       {invites && invites.length ? (
         <>
@@ -721,6 +724,7 @@ function InviteForm({ workspace, members, myRole, seen, onJoined, onAdded }: { w
                   {invite.role !== 'admin' || myRole === 'owner'
                     ? <Button variant="quiet" size="sm" className="people__change" aria-expanded={revoking === invite.id} onClick={() => setRevoking(revoking === invite.id ? null : invite.id)}>Revoke<span className="ui-vh"> link for {who(invite)}</span></Button> : null}
                 </div>
+                {fresh?.id === invite.id ? newLink(invite) : null}
                 {/* #763 FT-13: a revoked link can't come back, so Revoke asks once, in place. */}
                 {revoking === invite.id ? (
                   <div className="people__edit" role="group" aria-label={`Revoke link for ${who(invite)}`} onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); setRevoking(null); } }}>

@@ -39,3 +39,59 @@ export function publishTopEdge(node: HTMLElement, property: string, also: readon
     root.style.removeProperty(property);
   };
 }
+
+const shared = new Map<string, { nodes: Set<Element>; observer: ResizeObserver; update: () => void; stop: () => void }>();
+
+/**
+ * Like `publishTopEdge` for a control there can be several of at once (the composers of a conversation and its thread): the property is the
+ * highest top edge of those drawn inside the visible viewport, and is absent while none is. A toast lifts above it (#1424), so it never
+ * stands on a composer's hint. Returns the cleanup for this node; the last one out stops measuring.
+ */
+export function publishHighestTopEdge(node: Element, property: string): () => void {
+  let group = shared.get(property);
+  if (!group) {
+    const root = document.documentElement;
+    const viewport = window.visualViewport;
+    const nodes = new Set<Element>();
+    const update = () => {
+      const bottom = Math.min(window.innerHeight, (viewport?.offsetTop ?? 0) + (viewport?.height ?? window.innerHeight));
+      let edge = Infinity;
+      for (const item of nodes) {
+        const rect = item.getBoundingClientRect();
+        if (rect.width && rect.height && rect.top < bottom && rect.bottom > 0) edge = Math.min(edge, rect.top);
+      }
+      if (Number.isFinite(edge)) root.style.setProperty(property, `${Math.max(0, window.innerHeight - edge)}px`); else root.style.removeProperty(property);
+    };
+    const observer = new ResizeObserver(update);
+    // A view that slides or fades in settles after it is measured: measure again when any motion ends, once per frame.
+    let frame = 0;
+    const settled = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(update); };
+    window.addEventListener('resize', update);
+    window.addEventListener('animationend', settled, true);
+    window.addEventListener('transitionend', settled, true);
+    viewport?.addEventListener('resize', update);
+    viewport?.addEventListener('scroll', update);
+    const stop = () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+      window.removeEventListener('resize', update);
+      window.removeEventListener('animationend', settled, true);
+      window.removeEventListener('transitionend', settled, true);
+      viewport?.removeEventListener('resize', update);
+      viewport?.removeEventListener('scroll', update);
+      root.style.removeProperty(property);
+      shared.delete(property);
+    };
+    group = { nodes, observer, update, stop };
+    shared.set(property, group);
+  }
+  group.nodes.add(node);
+  group.observer.observe(node, { box: 'border-box' });
+  group.update();
+  const mine = group;
+  return () => {
+    mine.nodes.delete(node);
+    mine.observer.unobserve(node);
+    if (mine.nodes.size) mine.update(); else mine.stop();
+  };
+}

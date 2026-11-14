@@ -118,6 +118,8 @@ svg { flex: none; }
   box-shadow: var(--sh-field); transition: var(--tr);
 }
 .ui-input::placeholder { color: var(--t3); }
+/* A field that cannot be changed (an invite for one address, a link to copy) reads as fixed, not as one that ignores typing (#1424). */
+.ui-input[readonly] { background: var(--sub); box-shadow: none; cursor: default; }
 /* Every field's placeholder, also those without .ui-input (the new-conversation search, Propose a decision, the AI connection
    name): WebKit's own default is #a9a9a9, 2.4:1 on white (#763 sweep). */
 input::placeholder, textarea::placeholder { color: var(--t3); opacity: 1; }
@@ -328,8 +330,8 @@ input::placeholder, textarea::placeholder { color: var(--t3); opacity: 1; }
 .ui-toasts {
   /* Above the bottom safe area, the capsule of places and the phone's Create control, each as measured: PhoneDock and
      BottomNav and the map's toolbar (sketch/DockRow.tsx) publish their top edges (edgeInset.ts), absent where the control is not drawn. Feedback keeps 8 px
-     clear of the Create control (#639) so a persistent Undo toast cannot cover it. */
-  --toast-bottom: max(20px, calc(env(safe-area-inset-bottom) + 12px), calc(var(--ui-bottomnav-inset, 0px) + 12px), calc(var(--ui-fab-inset, 0px) + 8px), calc(var(--ui-map-dock-inset, 0px) + 8px), var(--toast-modal-inset, 0px));
+     clear of the Create control (#639) so a persistent Undo toast cannot cover it, and of the highest composer drawn (#1424) so it never stands on its hint. */
+  --toast-bottom: max(20px, calc(env(safe-area-inset-bottom) + 12px), calc(var(--ui-bottomnav-inset, 0px) + 12px), calc(var(--ui-fab-inset, 0px) + 8px), calc(var(--ui-map-dock-inset, 0px) + 8px), calc(var(--ui-composer-inset, 0px) + 8px), var(--toast-modal-inset, 0px));
   position: fixed; left: 50%; bottom: var(--toast-bottom); transform: translateX(-50%); z-index: var(--z-toast);
   display: flex; flex-direction: column; align-items: center; gap: 8px; width: max-content; max-width: calc(100vw - 32px); pointer-events: none;
 }

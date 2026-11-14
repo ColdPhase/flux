@@ -30,6 +30,8 @@
 .background-settings__check input { flex: none; width: 18px; height: 18px; margin: 1px 0 0; accent-color: var(--t1); }
 .background-settings__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .background-settings__actions--end { justify-content: flex-end; }
+.background-settings__confirm { display: grid; gap: 8px; font-size: var(--fs-sm); line-height: 1.5; color: var(--t2); }
+.background-settings__confirm .background-settings__actions { margin-top: 0; }
 .background-settings__select { display: grid; gap: 4px; margin: 10px 0; font-size: var(--fs-sm); font-weight: 500; color: var(--t2); }
 .background-settings__select input, .background-settings__select .ui-select, .background-settings__fields .ui-select { min-width: 0; width: 100%; min-height: 36px; padding: 6px 10px; border: 1px solid var(--line2); border-radius: var(--r); color: var(--t1); background: var(--el); font-size: var(--fs-md); font-weight: 400; }
 .background-settings__agent-create { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 8px; margin: 8px 0; }

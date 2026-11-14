@@ -32,6 +32,8 @@ function AiConnectionsPage({ initial }: { initial: { connections: BackgroundComp
   // The Connect AI window on its API key step: from "Add a key", or from a link that asks for a key (`?new=1`, #854, #1438 point 9).
   const [adding, setAdding] = useState(params.get('new') === '1');
   const [busy, setBusy] = useState(false);
+  /** The key whose Remove asks first: a deletion waits for an OK, and nothing brings a removed key back (#1424). */
+  const [removing, setRemoving] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [saved, setSaved] = useState('');
   const statusRef = useRef<HTMLParagraphElement>(null);
@@ -76,6 +78,12 @@ function AiConnectionsPage({ initial }: { initial: { connections: BackgroundComp
       focusAfterRender.current = 'error';
     }
     finally { setBusy(false); }
+  }
+
+  /** Keeps the key and puts the focus back on the Remove that asked. */
+  function keepKey(id: string) {
+    setRemoving(null);
+    requestAnimationFrame(() => document.getElementById(`remove-${id}`)?.focus());
   }
 
   async function disconnect(target: BackgroundComputeConnection) {
@@ -126,7 +134,17 @@ function AiConnectionsPage({ initial }: { initial: { connections: BackgroundComp
           </form>
           <p id={`connection-${item.id}-budget`} className="background-settings__help">Everything on this key counts against it: your agents. At the budget they pause until the next day, from midnight in {item.timeZone}. Flux prices each request before sending it; the provider’s invoice may still differ slightly.</p>
           <div className="background-settings__actions">
-            <Button variant="quiet" size="sm" disabled={busy} onClick={() => void disconnect(item)} aria-label={`Remove ${item.name}, key ending ${item.keyLastFour}`}>Remove</Button>
+            {removing === item.id ? (
+              <div className="background-settings__confirm" role="group" aria-label={`Remove ${item.name}, key ending ${item.keyLastFour}`}
+                onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); keepKey(item.id); } }}>
+                <p>Remove this key? It stops what uses it at once and can’t be restored.</p>
+                <div className="background-settings__actions">
+                  <Button variant="danger" size="sm" busy={busy} onClick={() => { setRemoving(null); void disconnect(item); }}>Remove key</Button>
+                  <Button variant="secondary" size="sm" autoFocus disabled={busy} onClick={() => keepKey(item.id)}>Keep it</Button>
+                </div>
+              </div>
+            ) : <Button id={`remove-${item.id}`} variant="quiet" size="sm" disabled={busy} onClick={() => setRemoving(item.id)}
+              aria-label={`Remove ${item.name}, key ending ${item.keyLastFour}`}>Remove</Button>}
           </div>
           <p className="background-settings__help">Removing deletes this key from Flux. Revoke it at {item.provider === 'openai_compatible' ? 'your endpoint' : AI_PROVIDERS[item.provider].label} too if it should stop working outside Flux.</p>
         </li>)}
