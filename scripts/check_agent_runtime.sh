@@ -106,7 +106,8 @@ compose --profile runtime logs --no-color runtime-install | grep -q 'TEST ONLY: 
 step "3. docker inspect: limits and security options of the runtime; no engine socket anywhere"
 # shellcheck disable=SC2046
 docker inspect $(docker ps -q --filter "label=com.docker.compose.project=$project") > "$work/inspect.json"
-python3 "$here/scripts/agent-runtime/inspect.py" "$project" "$copy" < "$work/inspect.json"
+# ./flux up keeps the key that seals people's API keys in the state directory (#1451), outside the checkout: inspect.py allows that one file, read-only, in the api and the worker.
+python3 "$here/scripts/agent-runtime/inspect.py" "$project" "$copy" "$XDG_STATE_HOME/flux/$project/background.key" < "$work/inspect.json"
 # Negative controls: the same check fails on a writable root, an added capability or a socket mount.
 for mutation in 'c["HostConfig"]["ReadonlyRootfs"] = False' 'c["HostConfig"]["CapAdd"] = ["NET_ADMIN"]' \
   'c["Mounts"].append({"Type": "bind", "Source": "/var/run/docker.sock", "Destination": "/var/run/docker.sock", "RW": True})' \

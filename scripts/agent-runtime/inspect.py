@@ -1,6 +1,6 @@
 """Checks `docker inspect` of a running agent runtime (F-022 T3 #278) against the decided limits.
 
-Usage: docker inspect <every container of the project> | python3 inspect.py <compose project> [<checkout directory>]
+Usage: docker inspect <every container of the project> | python3 inspect.py <compose project> [<checkout directory> [<background key file>]]
 The runtime (runtime-<n>): root inside the container with exactly the six capabilities that give each person their own
 user id (#860), read-only root, cap_drop ALL, no-new-privileges, not privileged, an init, a memory limit without
 swap, a CPU limit, 2048 pids, a 256 MiB tmpfs /tmp, a 1 GiB tmpfs /scratch (#1437), rotated json-file logs (3 x 10 MB), restart
@@ -8,7 +8,9 @@ unless-stopped, a health check, only its own data volume and the read-only tools
 network. runtime-manager and runtime-egress: user 1000:1000, read-only, cap_drop ALL, no capabilities,
 no-new-privileges, no mounts. No container of the project mounts a container engine socket, directly
 or through a directory that holds one (/var/run, /run): a bind mount must come from inside the
-checkout directory given as the optional second argument, anything else is refused.
+checkout directory given as the optional second argument, anything else is refused. The one exception is the third argument (#1451,
+`./flux up` keeps the key that seals people's API keys outside the checkout, in the user's state directory): that exact file, mounted read-only
+as /run/secrets/flux_background_key into the api or the worker and nowhere else.
 """
 
 from __future__ import annotations
@@ -20,6 +22,8 @@ import sys
 
 project = sys.argv[1]
 checkout = os.path.realpath(sys.argv[2]) if len(sys.argv) > 2 else None
+background_key = os.path.realpath(sys.argv[3]) if len(sys.argv) > 3 else None
+BACKGROUND_KEY_MOUNT = "/run/secrets/flux_background_key"
 containers = json.load(sys.stdin)
 PERSON_CAPABILITIES = ["CHOWN", "DAC_OVERRIDE", "FOWNER", "KILL", "SETGID", "SETUID"]
 failures: list[str] = []
@@ -43,6 +47,9 @@ for container in containers:
         if mount.get("Type") != "bind":
             continue
         source = os.path.realpath(mount.get("Source", ""))
+        if background_key is not None and source == background_key and mount.get("Destination") == BACKGROUND_KEY_MOUNT \
+                and not mount.get("RW") and service in ("api", "worker"):
+            continue
         if checkout is None or not (source == checkout or source.startswith(checkout + os.sep)):
             failures.append(f"{service}: bind mount from {mount.get('Source', '')!r} is outside the checkout (allowlist)")
     if service.startswith("runtime-"):
