@@ -44,6 +44,7 @@ class InviteLinksJourney(unittest.TestCase):
     states: dict[str, dict] = {}
     ids: dict[str, str] = {}
     riverside = ""
+    everyone = ""
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -63,6 +64,10 @@ class InviteLinksJourney(unittest.TestCase):
         created = context.request.post("/api/v1/workspaces", data={"name": "Riverside Makers"}, headers={"origin": ORIGIN})
         assert created.status == 201, created.text()
         cls.riverside = created.json()["id"]
+        # Every company has Everyone (F-037), where a member's join lands with the composer ready (#1438).
+        everyone = context.request.post(f"/api/v1/workspaces/{cls.riverside}/projects", data={"name": "Everyone", "visibility": "workspace"}, headers={"origin": ORIGIN})
+        assert everyone.status == 201, everyone.text()
+        cls.everyone = everyone.json()["id"]
         context.close()
 
     @classmethod
@@ -169,10 +174,17 @@ class InviteLinksJourney(unittest.TestCase):
         form.get_by_label("Name").fill(NIA[0])
         form.get_by_label("Email").fill(NIA[1])
         form.get_by_label("Password").fill(PASSWORD)
-        form.get_by_role("button", name="Create account and join").click()
-        # #763 FT-3, #1438: an account made from the link joins as it is made, and there is no "You joined" step.
-        expect(page).not_to_have_url(re.compile(r"/join"))
+        accepts: list[int] = []
+        page.on("response", lambda response: accepts.append(response.status) if response.url.endswith("/api/v1/invites/accept") else None)
+        with page.expect_response(lambda response: response.url.endswith("/api/v1/invites/accept")):
+            form.get_by_role("button", name="Create account and join").click()
+        # #763 FT-3, #1438: an account made from the link joins as it is made, and lands in Everyone with the composer ready: no "You joined"
+        # step, no detour through Home.
+        expect(page).to_have_url(f"{ORIGIN}/projects/{self.everyone}")
+        expect(page.locator("#project-composer")).to_be_focused()
         expect(page.get_by_role("heading", level=1, name="You joined Riverside Makers")).to_have_count(0)
+        # The page joins once, with the link's token: one accept, and it succeeds (it answered 404 when the token was already forgotten).
+        self.assertEqual(accepts, [200])
         self.assertEqual(self.roles(self.riverside).get(NIA[1]), "member")
         # The one who made the link is told when the person joins, also when the account was made on this page (#1438 point 3, checked again for #1424).
         context = self.browser.new_context(base_url=ORIGIN, service_workers="block", storage_state=self.states["ada"])
