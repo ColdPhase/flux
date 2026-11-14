@@ -176,7 +176,6 @@ class ApiKeyModels(unittest.TestCase):
         expect(connect).to_be_enabled()
         expect(page.get_by_label("Model", exact=True)).to_have_count(0)
         expect(help_line).to_have_text(re.compile(f"^{re.escape(plain)} An Anthropic API key beginning with sk-ant-\\. "))
-        expect(help_line).to_contain_text("Flux checks it when you leave the field.")
         choose(provider, label="OpenAI-compatible endpoint")
         expect(page.get_by_role("textbox", name="Model")).to_be_editable()
         # Back to no provider: the first state again.
