@@ -62,6 +62,9 @@ body:has(.app) { background: var(--side); }
 }
 .app__pane { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; outline: none; }
 #root:not([inert], [data-modal]) .app__pane { interactivity: auto; }
+/* A phone's sheet (a task, a decision) lies over the place beneath it. That place's own "couldn't be loaded" is not drawn under the scrim, so the
+   one error and the one Try again are the sheet's; the place says it again when the sheet closes (#1424). */
+.app__pane[data-sheet] .ui-error { visibility: hidden; }
 /* The conversation and the one docked panel share a row beneath the header (Spokój layout per screen). */
 .app__body { position: relative; flex: 1; min-width: 0; min-height: 0; display: flex; }
 
@@ -98,7 +101,7 @@ body:has(.app) { background: var(--side); }
 .side__h { font-size: var(--fs-sm); font-weight: 500; color: var(--t2); }
 .side__h-link { color: inherit; text-decoration: none; border-radius: 4px; }
 .side__h-link:hover, .side__h-link[aria-current="page"] { color: var(--t1); }
-.side__add { display: grid; place-items: center; width: 24px; height: 24px; border-radius: var(--r-pill); color: var(--t2); transition: var(--tr); }
+.side__add { display: grid; place-items: center; width: var(--ctl); height: var(--ctl); margin: -4px -4px -4px 0; border-radius: var(--r-pill); color: var(--t2); transition: var(--tr); }
 .side__add:hover { background: var(--hov); color: var(--t1); }
 .side__list { position: relative; list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
 .side__glide { position: absolute; top: 0; left: 0; right: 0; height: 34px; border-radius: 8px; background: var(--el); box-shadow: var(--sh-raise);
@@ -262,7 +265,7 @@ body:has(.app) { background: var(--side); }
 
 .me { position: relative; margin: 0 -4px; padding: 4px 0 0; padding-bottom: max(0px, env(safe-area-inset-bottom)); }
 .me__btn {
-  display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 4px 8px; border-radius: var(--r);
+  display: flex; align-items: center; gap: 10px; width: 100%; min-height: var(--ctl); padding: 4px 8px; border-radius: var(--r);
   text-align: left; transition: var(--tr);
 }
 .me__btn:hover { background: var(--hov); }

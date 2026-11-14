@@ -155,6 +155,28 @@ class NotAvailable(unittest.TestCase):
         # A minute, not seconds: "Saved 13 Nov 2026, 09:00".
         expect(article.locator(".material-view__meta").last).to_contain_text(re.compile(r"Saved .*\d{1,2}:\d{2}$"))
 
+    def test_03b_the_way_back_from_a_wiki_page_is_a_target_32_px_with_a_mouse_and_44_with_a_finger(self) -> None:
+        """#1424: "Back to the conversation" was a 151 x 18.6 px line of text at every touch window; it is a real target now (--ctl), and the
+        page's own rhythm stays: the article does not grow by the target's extra height."""
+        self.world()
+        for phone, minimum in ((False, 32), (True, 44)):
+            with self.subTest(phone=phone):
+                page = self.page(phone=phone)
+                page.goto(f"/materials/{self.state['material']}")
+                back = page.get_by_role("link", name="Back to the conversation")
+                expect(back).to_be_visible()
+                box = back.bounding_box()
+                self.assertIsNotNone(box)
+                self.assertGreaterEqual(box["height"], minimum - 0.1, box)
+                self.assertGreaterEqual(box["width"], minimum - 0.1, box)
+                # The target never covers the line under it: the page's own 10 px gap lies between them.
+                meta = page.locator(".material-view__meta").first.bounding_box()
+                self.assertIsNotNone(meta)
+                self.assertAlmostEqual(meta["y"] - (box["y"] + box["height"]), 10, delta=1, msg="the page's 10 px gap, no overlap")
+                self.assertGreaterEqual(box["y"], 0, "the target is not cut at the top of the page")
+                back.click() if not phone else back.tap()
+                expect(page).to_have_url(re.compile(rf"/projects/{self.state['space']}$"))
+
     def test_04_an_inbox_item_whose_read_fails_for_now_is_not_called_gone(self) -> None:
         """A 503 on an Inbox item's read says "This couldn't be loaded" with Try again, never the not-available page (#1369, #1371)."""
         self.world()

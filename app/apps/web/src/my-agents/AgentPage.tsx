@@ -181,7 +181,8 @@ export function AgentPage() {
 }
 
 function AgentSettings({ agent }: { agent: MyAgent }) {
-  const { choice } = useAssistantModel();
+  const { choice, failed: modelFailed } = useAssistantModel();
+  const [retryingModels, setRetryingModels] = useState(false);
   const revalidator = useRevalidator();
   const navigate = useNavigate();
   const [name, setName] = useState(agent.name);
@@ -195,7 +196,8 @@ function AgentSettings({ agent }: { agent: MyAgent }) {
   const [more, setMore] = useState(false);
 
   const group = choice?.groups.find((item) => item.connection === agent.model.connection);
-  const uses = group ? `uses your ${group.label}` : 'has no connection now';
+  // Said only of a connection that was read: while the read is pending or has failed, the line says nothing about it (#1424).
+  const uses = group ? `uses your ${group.label}` : choice ? 'has no connection now' : null;
   const picked = group?.options.find((option) => option.id === agent.model.model);
   // Opus and the Claude limit are named only to someone whose Claude plan offers Opus (#1173); an API key spends its own budget.
   const opus = !!choice?.groups.some((item) => item.account === 'claude_plan' && item.options.some((option) => option.id === 'opus'));
@@ -224,6 +226,16 @@ function AgentSettings({ agent }: { agent: MyAgent }) {
   const saveName = () => { const next = name.trim(); if (!next) { setName(agent.name); return; } if (next !== agent.name) void save({ name: next }, 'Saved'); else setName(next); };
   const saveInstructions = () => { if (instructions !== agent.instructions) void save({ instructions }, 'Saved'); };
 
+  async function readModelsAgain() {
+    setRetryingModels(true);
+    try { await refreshAssistantModel(); } finally { setRetryingModels(false); }
+  }
+  // A part of the page that could not be loaded says so in its own place, with Try again (F-026 "A place that could not be loaded").
+  const modelsFailed = modelFailed ? (
+    <p className="nset__error" role="alert"><Icon name="alert" size={14} />Its connection and models couldn’t be loaded.
+      <Button variant="link" size="sm" busy={retryingModels} onClick={() => void readModelsAgain()}>Try again</Button></p>
+  ) : null;
+
   async function remove() {
     setDeleting(true); setError('');
     try {
@@ -240,7 +252,7 @@ function AgentSettings({ agent }: { agent: MyAgent }) {
         <Kreska size={40} hue={agent.colour} />
         <div className="agp__who">
           <h2 className="agp__name">{agent.name}</h2>
-          <p className="agp__sub">Your agent · {uses} · can do only what you can</p>
+          <p className="agp__sub">{['Your agent', uses, 'can do only what you can'].filter(Boolean).join(' · ')}</p>
         </div>
         <Link className="ui-btn ui-btn--primary agp__message" to={`/agents/${agent.id}`}>Message {agent.name}</Link>
       </header>
@@ -264,6 +276,7 @@ function AgentSettings({ agent }: { agent: MyAgent }) {
         <Button variant="quiet" size="sm" icon={showModel ? 'chevron-down' : 'chevron-right'} aria-label="More settings" aria-expanded={showModel} aria-controls="agent-more" onClick={() => setMore(!showModel)}>More</Button>
         {showModel ? null : <span className="agp__hint" data-agent-model="">Model: {model.name}{model.connection ? ` · ${model.connection}` : ''}</span>}
       </div>
+      {showModel ? null : modelsFailed}
       {showModel ? (
       <section className="sset-card agp__card" id="agent-more" aria-label="More">
         <p className="agp__label" id="agent-model">Model{opus ? <span className="agp__hint"> · Opus thinks longest and uses your Claude limit fastest.</span> : null}</p>
@@ -283,7 +296,7 @@ function AgentSettings({ agent }: { agent: MyAgent }) {
             ))}
             {picked && picked.seesPictures === false ? <p className="agp__hint" role="note">{picked.name}: can’t see pictures, so it sees attached files only by name.</p> : null}
           </div>
-        ) : <p className="nset__note">Connect AI to choose a model. <Link className="ui-link" to="/settings/agents">Back to AI</Link></p>}
+        ) : modelsFailed ?? <p className="nset__note">Connect AI to choose a model. <Link className="ui-link" to="/settings/agents">Back to AI</Link></p>}
       </section>
       ) : null}
 
@@ -318,11 +331,13 @@ function Remembers({ agent }: { agent: MyAgent }) {
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [attempt, setAttempt] = useState(0);
+  // A read that failed leaves the list unread (never an empty one: "Nothing yet." would be false) and says so, with Try again (#1424).
   useEffect(() => {
     const controller = new AbortController();
-    getAgentMemory(agent.id, controller.signal).then(setItems, () => { if (!controller.signal.aborted) { setItems([]); setFailed(true); } });
+    getAgentMemory(agent.id, controller.signal).then((list) => { setItems(list); setFailed(false); }, () => { if (!controller.signal.aborted) setFailed(true); });
     return () => controller.abort();
-  }, [agent.id]);
+  }, [agent.id, attempt]);
 
   const stop = () => { setEditing(null); setAdding(false); setText(''); setError(''); };
   async function submit(event: FormEvent) {
@@ -370,8 +385,9 @@ function Remembers({ agent }: { agent: MyAgent }) {
         <span className="agp__hint">Tell {agent.name} “remember that…” and it shows up here.</span>
         {items && !adding && !editing ? <Button variant="quiet" size="sm" onClick={() => { setAdding(true); setText(''); }}>Add</Button> : null}
       </div>
-      {items === null ? <p className="sset-note"><Spinner label="Loading what it remembers" /></p> : null}
-      {failed ? <p className="nset__error" role="alert"><Icon name="alert" size={14} />What it remembers couldn’t load.</p> : null}
+      {items === null && !failed ? <p className="sset-note"><Spinner label="Loading what it remembers" /></p> : null}
+      {failed ? <p className="nset__error" role="alert"><Icon name="alert" size={14} />What it remembers couldn’t be loaded.
+        <Button variant="link" size="sm" onClick={() => { setFailed(false); setAttempt((value) => value + 1); }}>Try again</Button></p> : null}
       {adding ? <div className="sset-card agp__memory-edit">{form}</div> : null}
       {items?.length ? (
         <ul className="sset-card agp__memory" aria-label={`What ${agent.name} remembers`}>

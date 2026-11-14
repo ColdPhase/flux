@@ -899,7 +899,7 @@ function AppLayoutContent() {
           {threadOpening ? null : <RouteProgress />}
           <BusyNotice />
           {/* The one main landmark, the skip link's target (#763 AX-1): a view's own header is then not a second banner. */}
-          <main className={`app__pane${switching ? ' is-switching' : ''}`} id="content" ref={paneRef} tabIndex={-1}>
+          <main className={`app__pane${switching ? ' is-switching' : ''}`} id="content" ref={paneRef} tabIndex={-1} data-sheet={panelMode === 'sheet' && detailsOpen ? '' : undefined}>
             <ViewFade id={switching ?? routeView(location.pathname)} host={paneRef} skip=".deferred-surface--stage, .lv-stage">
               <Outlet />
               {switching ? <PendingView view={switching} name={switchingName} userId={me.user.id} /> : null}

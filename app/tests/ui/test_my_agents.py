@@ -258,6 +258,40 @@ class MyAgentsJourney(unittest.TestCase):
                 expect(sighted.get_by_role("combobox", name="Ada's Anthropic key")).to_contain_text("Test model")
                 expect(sighted.get_by_role("note").filter(has_text="see pictures")).to_have_count(0)
 
+    def test_03c_reads_that_fail_say_so_with_try_again_and_never_claim_no_connection_or_an_empty_memory(self) -> None:
+        """#1424: with the model and memory reads failing the page does not say "has no connection now" or "Nothing yet."; each part says it
+        could not be loaded, with Try again, and Try again brings it back."""
+        agent = self.api(self.page(), "GET", f"/api/v1/my-agents/{self.ids['planner']}")
+        for phone in (False, True):
+            with self.subTest(phone=phone):
+                page = self.page(phone=phone)
+                failing = {"on": True}
+                unavailable = lambda route: route.fulfill(status=503, content_type="application/json", body=json.dumps({"code": "UNAVAILABLE", "message": "Service unavailable"})) \
+                    if failing["on"] and route.request.method == "GET" else route.continue_()
+                page.route("**/api/v1/personal-assistant/model", unavailable)
+                page.route(f"**/api/v1/my-agents/{agent['id']}/memory", unavailable)
+                page.goto(f"/settings/agents/{agent['id']}")
+                expect(page.get_by_role("heading", name=agent["name"])).to_be_visible()
+                memory = page.get_by_role("alert").filter(has_text="What it remembers couldn’t be loaded.")
+                models = page.get_by_role("alert").filter(has_text="Its connection and models couldn’t be loaded.")
+                expect(memory).to_be_visible()
+                expect(models).to_be_visible()
+                expect(page.get_by_text("has no connection now")).to_have_count(0)
+                expect(page.get_by_text("Nothing yet.")).to_have_count(0)
+                expect(page.get_by_role("button", name="Add", exact=True)).to_have_count(0)
+                self.assertEqual(page.get_by_role("button", name="Try again").count(), 2)
+                # Under More the models' own place says it too, not "Connect AI to choose a model".
+                page.get_by_role("button", name="More settings").click()
+                expect(page.get_by_text("Connect AI to choose a model.")).to_have_count(0)
+                expect(models).to_have_count(1)
+                failing["on"] = False
+                models.get_by_role("button", name="Try again").click()
+                expect(page.get_by_text("Its connection and models couldn’t be loaded.")).to_have_count(0)
+                expect(page.locator(".agp__sub")).to_contain_text("uses your")
+                memory.get_by_role("button", name="Try again").click()
+                expect(page.get_by_text("What it remembers couldn’t be loaded.")).to_have_count(0)
+                expect(page.get_by_role("button", name="Add", exact=True)).to_be_visible()
+
     def test_04_each_agent_is_a_private_conversation_in_messages(self) -> None:
         page = self.page()
         page.goto("/")

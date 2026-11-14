@@ -69,7 +69,7 @@
   --mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --fs-glyph: .6875rem; /* 11: key caps, counts in tight badges, tool labels */
   --fs-face: 11px;      /* initials in a face of 16-26 px: px on purpose, so the letters stay inside their circle at any text size (#1370) */
-  --fs-face-lg: 12px;   /* initials in the 32 px face */
+  --fs-face-lg: 12px;   /* initials in the 32 px face (12.5 on the phone, like Meta, below) */
   --fs-face-xl: 16px;   /* initials in the 48 px face of Settings › Account */
   --fs-xs: .75rem;      /* 12: meta, times, counts */
   --fs-sm: .75rem;      /* 12 (same size as --fs-xs on purpose; separate names keep meta and labels tunable apart): labels, chips, small buttons */
@@ -182,6 +182,7 @@
     --sheet-inset: 0px;
     --fs-xs: .78125rem; --fs-sm: .78125rem; --fs-md: .875rem; --fs-base: .9375rem; --fs-read: 1rem; --fs-title: 1.0625rem;
     --fs-page: 1.75rem; --fs-doc-title: 1.75rem;
+    --fs-face-lg: 12.5px;
   }
 }
 @media (min-width: 1600px) { :root { --space-page: 44px; } }
