@@ -187,7 +187,8 @@ class KreskaJourney(unittest.TestCase):
         row.get_by_role("button", name=re.compile("Check the planner's colour")).click()
         panel = page.get_by_role("complementary", name="Details")
         owner = panel.get_by_role("button", name="Owner")
-        expect(owner.locator(".kreska")).to_have_class(coloured)
+        # The agent's own icon, not the small Kreska of the "Agent" tag that stands in until the owner's name is read.
+        expect(owner.locator(".agent-id > .kreska")).to_have_class(coloured)
         # "In this task": Ada's two agents, Assistant in ink and Planner in teal.
         people = panel.locator("[data-task-people]")
         expect(people.locator(".kreska--teal")).to_have_count(1)
