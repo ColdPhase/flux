@@ -1675,7 +1675,8 @@ standard switch row in Settings › Notifications, and the rest of the page stay
     with one plain line under the key ("Paste the key from your provider's website. Flux uses it only for your agents.") and
     the key shape of the provider only after a provider is chosen. Leaving the key field reads the key's models: the
     line says "Reading Anthropic's models…", then the **Model** `Select` appears already chosen (the only model of a list of
-    one; for Anthropic, OpenAI and Gemini the first of the list, the newest model of the newest family; OpenRouter's and an
+    one; for Anthropic, OpenAI and Gemini the provider's middle, balanced model: the newest Claude Sonnet, the newest Sol, the newest
+    Gemini Flash, chosen by family name from the list and the first of the list only when it has no such family; OpenRouter's and an
     endpoint's long lists have none chosen until the person picks), grouped by family with the newest first ("Sonnet", "Fable",
     "Opus", "Haiku"), each option "Claude Opus 5.5 · $4 / $20" or "Claude Sonnet 5.7 · price
     unknown, enter it". Its last option, "Other model id…", shows the plain field under it. A model
@@ -1690,7 +1691,8 @@ standard switch row in Settings › Notifications, and the rest of the page stay
     the right, in one row: Cancel and Continue, Use an API key and Try again, Cancel and Connect. Connect does not swap sides with
     Cancel on the key step.
   - A list of exactly one model has that model chosen already (nothing to pick between); for Anthropic, OpenAI and Gemini a
-    list of several has its first model chosen (the one at the top); OpenRouter's and an endpoint's have none chosen.
+    list of several has the provider's middle, balanced model chosen (the newest Sonnet, Sol or Flash; Opus, Fable and the cheaper
+    models stay in the list); OpenRouter's and an endpoint's have none chosen.
   - Nothing is saved without a model. Enter in the key field reads the models, as leaving the
     field does, instead of saving. Connect before a model is known (the list is still being read)
     puts "Choose a model first. Flux lists the models of your key once you have entered it and left

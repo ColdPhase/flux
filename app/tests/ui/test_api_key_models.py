@@ -116,8 +116,7 @@ class ApiKeyModels(unittest.TestCase):
         expect(box.get_by_role("option", name="Other model id…", exact=True)).to_be_visible()
         shot(page, named("api-key-models-1440-open"))
         page.keyboard.press("Escape")
-        # #1424: the first of the list, the newest model of the newest family, is already chosen (here a model Flux has no price for, so its
-        # price is asked). The models are the provider's own (founder direction, 2026-11-12). Opus shows its list price.
+        # #1424: Anthropic's newest Sonnet, the balanced model, is already chosen (here a model Flux has no price for, so its price is asked). The models are the provider's own (founder direction, 2026-11-12). Opus shows its list price.
         expect(model).to_contain_text("Claude Sonnet 5.7")
         expect(page.get_by_role("group", name="Price per 1M tokens (USD)")).to_be_visible()
         expect(page.get_by_test_id("connection-price")).to_have_count(0)
@@ -164,7 +163,7 @@ class ApiKeyModels(unittest.TestCase):
         fits()
         self.type_key(page, GOOD)
         model = page.get_by_role("combobox", name="Model")
-        expect(model).to_contain_text("Claude Sonnet 5.7")  # the first of the list, the newest model of the newest family
+        expect(model).to_contain_text("Claude Sonnet 5.7")  # Anthropic's newest Sonnet, the balanced model
         choose(model, value="claude-opus-5-5")
         expect(page.get_by_role("group", name="Price per 1M tokens (USD)")).to_have_count(0)
         fits()
@@ -185,6 +184,47 @@ class ApiKeyModels(unittest.TestCase):
         added = [item for item in json.loads(page.request.get(f"{ORIGIN}/api/v1/background-compute-connections").text()) if item["name"] not in before]
         self.assertEqual([(item["name"], item["model"], item["dailyBudgetCents"]) for item in added], [("Anthropic key", "claude-opus-5-5", 500)])
         self.no_key_in_page(page)
+
+    def test_02c_the_model_chosen_is_the_providers_balanced_one_found_by_family_name(self) -> None:
+        """#1424 (founder decision, 2026-11-14): Anthropic's newest Sonnet, OpenAI's newest Sol, Gemini's newest Flash, whatever their place in the
+        list; Opus, Fable, Astra, Carbon and the cheaper models stay in it; with no such family the first of the list."""
+        def model(model_id: str, name: str, family: str, created: str) -> dict:
+            return {"id": model_id, "name": name, "family": family, "createdAt": created}
+
+        lists = {
+            "anthropic": [model("claude-fable-5-3", "Claude Fable 5.3", "Fable", "2026-11-12T00:00:00Z"), model("claude-opus-5-6", "Claude Opus 5.6", "Opus", "2026-11-11T00:00:00Z"),
+                          model("claude-sonnet-5-7", "Claude Sonnet 5.7", "Sonnet", "2026-11-10T00:00:00Z"), model("claude-sonnet-5-5", "Claude Sonnet 5.5", "Sonnet", "2026-09-28T00:00:00Z"),
+                          model("claude-haiku-5", "Claude Haiku 5", "Haiku", "2026-06-01T00:00:00Z")],
+            "openai": [model("gpt-6.2-astra", "GPT-6.2 Astra", "Astra", "2026-11-12T00:00:00Z"), model("gpt-6-luna", "GPT-6 Luna", "Luna", "2026-11-11T00:00:00Z"),
+                       model("gpt-6.1-sol", "GPT-6.1 Sol", "Sol", "2026-10-01T00:00:00Z"), model("gpt-6.2-sol", "GPT-6.2 Sol", "Sol", "2026-11-10T00:00:00Z")],
+            "gemini": [model("gemini-4-carbon", "Gemini 4 Carbon", "Carbon", "2026-11-12T00:00:00Z"), model("gemini-3.5-flash-lite", "Gemini 3.5 Flash-Lite", "Flash-Lite", "2026-11-11T00:00:00Z"),
+                       model("gemini-3.5-flash", "Gemini 3.5 Flash", "Flash", "2026-11-01T00:00:00Z"), model("gemini-3.1-pro-preview", "Gemini 3.1 Pro Preview", "Pro", "2026-09-01T00:00:00Z")],
+        }
+        # Lists with no Sonnet, no Sol and no Flash: the first of the list.
+        without = {"anthropic": lists["anthropic"][:2], "openai": lists["openai"][:2], "gemini": [lists["gemini"][0], lists["gemini"][3]]}
+        served = {"lists": lists}
+
+        def answer(route: Route) -> None:
+            provider = route.request.post_data_json["provider"]
+            route.fulfill(json={"provider": provider, "status": "listed", "checkedOn": "2026-11-14", "models": served["lists"][provider], "priceList": None})
+
+        page = self.page()
+        page.route(re.compile(r".*/api/v1/ai-model-lists$"), answer)
+        self.form(page)
+        keys = {"anthropic": "sk-ant-api03-balanced-model-key-01", "openai": "sk-proj-balanced-model-key-01", "gemini": "AIzabalanced-model-key-0001"}
+        labels = {"anthropic": "Anthropic", "openai": "OpenAI", "gemini": "Google Gemini"}
+        for round_, (shown, expected) in enumerate(((lists, {"anthropic": "Claude Sonnet 5.7", "openai": "GPT-6.2 Sol", "gemini": "Gemini 3.5 Flash"}),
+                                                    (without, {"anthropic": "Claude Fable 5.3", "openai": "GPT-6.2 Astra", "gemini": "Gemini 4 Carbon"}))):
+            served["lists"] = shown
+            for provider in ("anthropic", "openai", "gemini"):
+                choose(page.get_by_label("Provider", exact=True), label=labels[provider])
+                key = page.get_by_label("API key", exact=True)
+                key.fill(f"{keys[provider]}{round_}")
+                key.blur()
+                model = page.get_by_role("combobox", name="Model")
+                expect(model).to_contain_text(expected[provider])
+                # Every model of the provider's list stays to be chosen, the top tiers and the cheaper ones too (and "Other model id…").
+                self.assertEqual(len(values(model)), len(shown[provider]) + 1, f"{provider}: the whole list is there")
 
     def test_03_a_refused_key_says_so_and_connect_waits_for_another(self) -> None:
         page = self.page()
