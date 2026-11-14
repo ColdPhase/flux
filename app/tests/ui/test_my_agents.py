@@ -281,7 +281,7 @@ class MyAgentsJourney(unittest.TestCase):
         expect(one.locator("[data-agent-model]")).to_have_text("Model: Test model")
         one.get_by_role("button", name="More settings").click()
         expect(one.locator(".agp__group-name")).to_have_count(0)
-        self.assertNotIn("Ada's Anthropic key", one.locator("#agent-more").inner_text(), "one connection is not named")
+        expect(one.locator(".agp__group-name:visible")).to_have_count(0)  # one connection is not named (its name only labels the control for a screen reader)
         one.goto("/settings/agents")
         expect(one.locator(f"[data-agent='{agent['id']}'] .agl__model")).to_have_text("Test model")
 

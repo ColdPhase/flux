@@ -98,7 +98,7 @@ class ApiKeyModels(unittest.TestCase):
         page = self.page()
         self.form(page)
         # The order is Provider, API key, then the Model once the key's models are read (#1424); the Model is not there before.
-        order = page.evaluate("""() => [...document.querySelectorAll('.background-settings__fields > label')].map((label) => label.childNodes[0].textContent.trim())""")
+        order = page.evaluate("""() => [...document.querySelectorAll('fieldset.background-settings__fields > label')].map((label) => label.childNodes[0].textContent.trim())""")
         self.assertEqual(order, ["Provider", "API key"])
         model = page.get_by_role("combobox", name="Model")
         expect(model).to_have_count(0)
