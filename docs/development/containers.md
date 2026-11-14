@@ -529,7 +529,7 @@ AI wire formats (`app/tests/app/support/provider-mock.ts`) that the adapter cont
 
 The `runtime` Compose profile ([operator guide](../operations/agent-runtime.md)) is off unless
 `FLUX_AGENT_RUNTIME` is set; `./flux up` then starts `runtime-install`, `runtime-manager`,
-`runtime-egress` and `runtime-1`, and adds `docker/compose.source.runtime.yaml`, which attaches the API and worker to `runtime-control` (and the API to `runtime-api`); a script that starts the runtime by hand layers that file too. The first interactive `./flux up` and `./flux ai on` ask whether to set it (`codex` on Enter, `codex,claude_code` with a typed `y`; [operator guide](../operations/agent-runtime.md#switch-it-on)); scripts that run `./flux up` on a fresh copy redirect stdin from `/dev/null` so they never wait for the question. No service mounts a Docker or Podman socket
+`runtime-egress` and `runtime-1`, and adds `docker/compose.source.runtime.yaml`, which attaches the API and worker to `runtime-control` (and the API to `runtime-api`); a script that starts the runtime by hand layers that file too. The first interactive `./flux up` and `./flux ai on` ask whether to set it (`codex,pi` on Enter, `codex,claude_code,pi` with a typed `y`; [operator guide](../operations/agent-runtime.md#switch-it-on)); scripts that run `./flux up` on a fresh copy redirect stdin from `/dev/null` so they never wait for the question. No service mounts a Docker or Podman socket
 (`tests/test_container_isolation.py`). The runtime image is the Dockerfile's `agent-runtime` target (the
 supervisor and the pinned Codex); `agent-runtime-test` replaces both CLIs with the TEST ONLY fakes from
 `app/apps/runtime/src/fakes`, and `docker/compose.runtime.test.yaml` selects it.

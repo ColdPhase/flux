@@ -253,6 +253,89 @@ describe('a refreshed list cannot lower a known price without bound (#1270)', ()
     assert.deepEqual(guardPriceList(list({ anthropic: { constructor: price(0, 0) } }), known, null).held.map((row) => row.kept), [null], 'only the list\'s own models are known');
   });
 
+  /** A rate with its base and every long-prompt price multiplied by `percent` / 100, as a list that lowers a price by that much would offer. */
+  const scaled = (rate: AiRate, percent: number): AiRate => {
+    const by = (micros: number) => Math.round((micros * percent) / 100);
+    return { inputMicrosPerMTok: by(rate.inputMicrosPerMTok), outputMicrosPerMTok: by(rate.outputMicrosPerMTok),
+      ...(rate.tiers ? { tiers: rate.tiers.map((tier) => ({ ...tier, inputMicrosPerMTok: by(tier.inputMicrosPerMTok), outputMicrosPerMTok: by(tier.outputMicrosPerMTok) })) } : {}) };
+  };
+
+  test('a price that falls just under 10x a day does not walk down: each refresh is compared with the shipped list too', () => {
+    const shipped = list({ anthropic: { 'claude-sonnet-5': price(3_000_000, 15_000_000) }, openai: { 'gpt-6.1-sol': price(2_000_000, 10_000_000) } }, '2026-11-01');
+    let stored = shipped;
+    const days: [boolean, number][] = [];
+    for (const day of ['02', '03', '04', '05']) {
+      // Every day the file offers 11% of the price Flux stored the day before: never a tenth or less of it.
+      const offered = list({ anthropic: { 'claude-sonnet-5': scaled(stored.prices.anthropic!['claude-sonnet-5']!, 11) }, openai: { 'gpt-6.1-sol': scaled(stored.prices.openai!['gpt-6.1-sol']!, 11) } }, `2026-11-${day}`);
+      assert.deepEqual(guardPriceList(offered, stored, null).held, [], 'compared with the stored list alone, the day\'s price is accepted');
+      const { list: guarded, held } = guardPriceList(offered, stored, shipped);
+      days.push([held.length > 0, guarded.prices.anthropic!['claude-sonnet-5']!.inputMicrosPerMTok]);
+      stored = guarded;
+    }
+    assert.deepEqual(days, [[false, 330_000], [true, 330_000], [true, 330_000], [true, 330_000]], 'the first day\'s fall of 89% applies, the walk stops there');
+    assert.deepEqual(stored.prices.anthropic?.['claude-sonnet-5'], price(330_000, 1_650_000), 'the price never falls below a tenth of the shipped one');
+    assert.deepEqual(stored.prices.openai?.['gpt-6.1-sol'], price(220_000, 1_100_000));
+    // A held price is named, with the price Flux keeps (the stored one, not the shipped one).
+    const second = guardPriceList(list({ anthropic: { 'claude-sonnet-5': price(36_300, 181_500) } }, '2026-11-03'), list({ anthropic: { 'claude-sonnet-5': price(330_000, 1_650_000) } }, '2026-11-02'), shipped);
+    assert.deepEqual(second.held, [{ provider: 'anthropic', model: 'claude-sonnet-5', kept: price(330_000, 1_650_000), offered: price(36_300, 181_500) }]);
+    assert.deepEqual(heldPriceLog('litellm', second.held).map((line) => line.event), ['price_list_held']);
+  });
+
+  test('the same walk through the stored row and the release\'s own shipped list: held and logged from the second day', async () => {
+    const shipped = shippedPriceList();
+    const [id, rate] = Object.entries(shipped.prices.anthropic ?? {}).find(([, row]) => row.inputMicrosPerMTok >= 1_000_000 && row.outputMicrosPerMTok >= 1_000_000)!;
+    const offer = (from: AiRate, fetchedOn: string): AiPriceList => ({ ...shipped, fetchedOn, source: 'test', prices: { ...shipped.prices, anthropic: { ...shipped.prices.anthropic, [id]: scaled(from, 11) } } });
+    await rolledBack(async (tx) => {
+      const store = aiPriceListRepository(tx);
+      assert.equal(await store.store('litellm', { ...shipped, fetchedOn: '2099-01-01', source: 'test' }), true);
+      let today: AiPriceList = (await store.read('litellm'))!;
+      const held: number[] = [];
+      for (const day of ['02', '03', '04']) {
+        const result = await storeGuardedPriceList(store, 'litellm', offer(today.prices.anthropic![id]!, `2099-01-${day}`));
+        assert.equal(result.stored, true);
+        held.push(result.held.length);
+        today = (await store.read('litellm'))!;
+        if (result.held.length) assert.deepEqual(heldPriceLog('litellm', result.held)[0]!.event, 'price_list_held');
+      }
+      assert.deepEqual(held, [0, 1, 1]);
+      assert.deepEqual(today.prices.anthropic![id], scaled(rate, 11), 'a tenth of the shipped price is the floor, whatever the file offers after');
+    });
+  });
+
+  test('a long-prompt price that is dropped, lowered to a tenth or moved past the known length is held; a smaller fall and a price under the base apply', () => {
+    const tiered = (tiers?: AiRate['tiers'], base = price(1_000_000, 5_000_000)): AiPriceList => list({ anthropic: { 'claude-haiku-5-5': { ...base, ...(tiers ? { tiers } : {}) } } });
+    const stored = tiered([{ fromTokens: 100_001, ...price(10_000_000, 50_000_000) }]);
+    const held = (offered: AiPriceList, baseline: AiPriceList | null = stored, shipped: AiPriceList | null = null) => guardPriceList(offered, baseline, shipped).held.length;
+    assert.equal(held(tiered()), 1, 'the long-prompt price is dropped: a long request would be charged a tenth');
+    assert.equal(held(tiered([{ fromTokens: 100_001, ...price(1_000_000, 5_000_000) }])), 1, 'lowered to the base price: a tenth');
+    assert.equal(held(tiered([{ fromTokens: 100_001, ...price(0, 0) }])), 1, 'lowered to 0, which the base then stands in for');
+    assert.equal(held(tiered([{ fromTokens: 100_001, ...price(10_000_000, 5_000_000) }])), 1, 'only the output side of the long price: a tenth');
+    assert.equal(held(tiered([{ fromTokens: 200_001, ...price(10_000_000, 50_000_000) }])), 1, 'the same price from a longer prompt: 100,001 tokens are charged at the base');
+    const guarded = guardPriceList(tiered(), stored, null).list.prices.anthropic!['claude-haiku-5-5']!;
+    assert.deepEqual(guarded, stored.prices.anthropic!['claude-haiku-5-5'], 'the known price stays, with its long-prompt price');
+    assert.equal(rateAt(guarded, 150_000).inputMicrosPerMTok, 10_000_000, 'so a long request is held and charged as before');
+    assert.equal(held(tiered([{ fromTokens: 100_001, ...price(1_100_000, 5_500_000) }])), 0, 'the long price at 11% of the known one applies');
+    assert.equal(held(tiered([{ fromTokens: 50_001, ...price(10_000_000, 50_000_000) }])), 0, 'a longer-prompt price that starts earlier, and a raised one, apply');
+    assert.equal(held(tiered([{ fromTokens: 100_001, ...price(10_000_000, 50_000_000) }], price(500_000, 2_500_000))), 0, 'a lower base with the same long price: short requests fall by half, long ones not at all');
+    // A long-prompt price below its own base never lowers a charge, so it is no fall.
+    const underBase = tiered([{ fromTokens: 100_001, ...price(500_000, 2_000_000) }]);
+    assert.equal(held(tiered([{ fromTokens: 100_001, ...price(0, 0) }]), underBase), 0);
+    assert.equal(held(tiered(), underBase), 0);
+    // A model that has none and gets one is not a fall.
+    assert.equal(held(tiered([{ fromTokens: 100_001, ...price(10_000_000, 50_000_000) }]), tiered()), 0);
+  });
+
+  test('a long-prompt price walks down no further than a tenth of the shipped one either', () => {
+    const shipped = list({ anthropic: { 'claude-haiku-5-5': { ...price(1_000_000, 5_000_000), tiers: [{ fromTokens: 100_001, ...price(10_000_000, 50_000_000) }] } } }, '2026-11-01');
+    // Yesterday's file lowered the long price to 20%, which a day's refresh accepts; today's drops it to the base price: half of the stored long price, a tenth of the shipped one.
+    const stored = list({ anthropic: { 'claude-haiku-5-5': { ...price(1_000_000, 5_000_000), tiers: [{ fromTokens: 100_001, ...price(2_000_000, 10_000_000) }] } } }, '2026-11-02');
+    const today = list({ anthropic: { 'claude-haiku-5-5': price(1_000_000, 5_000_000) } }, '2026-11-03');
+    assert.deepEqual(guardPriceList(today, stored, null).held, [], 'against the stored list alone it falls to half');
+    const { list: guarded, held } = guardPriceList(today, stored, shipped);
+    assert.equal(held.length, 1, 'against the shipped one it falls to a tenth');
+    assert.deepEqual(guarded.prices.anthropic!['claude-haiku-5-5'], stored.prices.anthropic!['claude-haiku-5-5'], 'the stored price, with its long-prompt price, stays');
+  });
+
   test('the log names each held model and both prices, and never more than 50 lines and a count', () => {
     const { held } = guardPriceList(list({ anthropic: { 'claude-sonnet-5': price(0, 0) } }), known, null);
     assert.deepEqual(heldPriceLog('litellm', held), [{ event: 'price_list_held', list: 'litellm', provider: 'anthropic', model: 'claude-sonnet-5', action: 'kept_known_price',

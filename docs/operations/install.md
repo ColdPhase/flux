@@ -46,8 +46,9 @@ instead of `releases/latest/download/`.
 The first `./flux up` creates `docker/.env` with new random secrets and push keys, downloads the images of this release (a
 few minutes the first time; `docker/release.env` names them), runs the migrations, starts the services and prints
 `http://127.0.0.1:8081`. In a terminal it also asks once whether people may sign in with their own ChatGPT and Claude
-subscriptions; the [agent runtime guide](agent-runtime.md) explains the choice, and Enter or `n` can be changed later with
-`./flux ai on`. Start with another port if 8081 is taken: `FLUX_PORT=8090 ./flux up`. To look around on your own
+subscriptions; the [agent runtime guide](agent-runtime.md) explains the choice. `./flux ai on` asks again after `n`, or to add
+Claude Code, but it never takes Codex away: to undo an Enter, set `FLUX_AGENT_RUNTIME=pi` in `docker/.env` (API-key agents only)
+and run `./flux up`. Start with another port if 8081 is taken: `FLUX_PORT=8090 ./flux up`. To look around on your own
 computer, `./flux demo` adds a sample company and prints two logins (it refuses a public address).
 
 Check that it answers:
@@ -168,7 +169,10 @@ rest of the team, open **Settings › Company** and use **Invite with a link**
 ### 6. Finish the server
 
 - **Backups.** Add the daily `./flux backup --keep 14` cron entry from
-  [backup and restore](backup-restore.md#backup-schedule) and copy archives off the machine.
+  [backup and restore](backup-restore.md#backup-schedule) and copy archives off the machine. Also copy the AI key file, which is
+  not in the archive: `./flux up` printed its path (`~/.local/state/flux/<project>/background.key`, named by
+  `FLUX_BACKGROUND_KEY_HOST_FILE` in `docker/.env`). Without it, a restore on another machine stops until you copy the file there
+  or start a new key, and then people connect their API keys again ([the AI key file](backup-restore.md#the-ai-key-file)).
 - **Push notifications.** `./flux up` generated the VAPID keys. The contact the push services get
   is your public `https://` address, so iPhone and iPad work once `FLUX_PUBLIC_ORIGIN` is that
   address and you have run `./flux up` again; there is nothing else to set
