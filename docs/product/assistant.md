@@ -74,7 +74,9 @@ own.
   - a **name**;
   - **saved instructions**, in plain text;
   - its **own model**, chosen from any of the person's connections; Connect AI sets the default
-    ([models](model-providers.md#ca-2--models));
+    ([models](model-providers.md#ca-2--models)). With exactly one connection the agents simply use it and nothing about a
+    connection is asked or shown per agent; replacing the key breaks nothing (founder decision, Hubert, 2026-11-14,
+    [#1424](https://github.com/ColdPhase/flux/issues/1424), [C-3](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override));
   - a **memory** of only what its owner told it to remember: an item is added only by the
     owner's own message ("remember that …", typed by the owner to that agent) or by the owner
     editing the list on the agent's page, where the owner also edits or deletes each item. An
