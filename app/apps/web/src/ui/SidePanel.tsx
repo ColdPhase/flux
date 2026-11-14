@@ -168,7 +168,9 @@ function DockedPanel({ open, onClose, title, closeLabel, back, chip, context, id
  * A panel leaves as it was (#901, motion rule 3). While it is closing the app has already moved on: a thread's panel has lost its kind
  * ("Thread" is no chip any more, the head would read "Details") and, on a phone, the sheet for a task, a decision or a thread would change
  * into the plain full sheet, which unmounts the one that is leaving, so it vanished with no fade. What the head says and which kind of
- * sheet it is therefore come from the last time the panel was open, for the length of its exit.
+ * sheet it is therefore come from the last time the panel was open, for the length of its exit. So does the body: a thread closed with the browser's
+ * Back arrives at the entry before it, whose panel was shut, and the shell then puts that entry's own view in the panel (the slot the thread's copy
+ * stands in is replaced), which emptied the panel, or filled it with something else, in the middle of its fade (`test_light_motion` `test_10k`).
  */
 type Head = Pick<SidePanelProps, 'title' | 'closeLabel' | 'chip' | 'contentKey' | 'back' | 'context'>;
 function useLeavingHead(props: SidePanelProps): SidePanelProps {
@@ -176,7 +178,10 @@ function useLeavingHead(props: SidePanelProps): SidePanelProps {
   const [last, setLast] = useState<Head>(head);
   // Remembered while open, only when what the head says changes (a state that follows what it is rendered from).
   if (props.open && (last.title !== head.title || last.closeLabel !== head.closeLabel || last.chip !== head.chip || last.contentKey !== head.contentKey || last.back?.label !== head.back?.label)) setLast(head);
-  return props.open ? props : { ...props, ...last };
+  // The body is the content the panel was given while it was open, whatever the shell has put there since.
+  const [body, setBody] = useState(props.children);
+  if (props.open && body !== props.children) setBody(props.children);
+  return props.open ? props : { ...props, ...last, children: body };
 }
 
 export function SidePanel(live: SidePanelProps) {
