@@ -89,7 +89,9 @@ grep -q '^FLUX_RUNTIME_SECRET_1=[0-9a-f]\{64\}$' "$env_file" || fail "./flux did
 step "4. docker inspect: limits and security options on every runtime service; no engine socket, no host path"
 # shellcheck disable=SC2046
 docker inspect $(docker ps -q --filter "label=com.docker.compose.project=$project") > "$state_dir/inspect.json"
-python3 "$root/scripts/agent-runtime/inspect.py" "$project" "$folder" < "$state_dir/inspect.json"
+# ./flux up keeps the key that seals people's API keys in the state directory, outside the folder (#1451): inspect.py allows that one file,
+# read-only, in the api and the worker, and nothing else outside the folder (train 19: the release's own ./flux now makes it, #1471 decision 5).
+python3 "$root/scripts/agent-runtime/inspect.py" "$project" "$folder" "${XDG_STATE_HOME:-$HOME/.local/state}/flux/$project/background.key" < "$state_dir/inspect.json"
 
 step "5. The images: pinned Codex in, Claude Code out"
 # `config --images` lists one line per service: each repository must name exactly the release.json digest.
