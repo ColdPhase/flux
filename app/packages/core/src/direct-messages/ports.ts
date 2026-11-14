@@ -145,6 +145,11 @@ export interface DmRepository {
    * that is the first message of the level. Null when nothing is unread.
    */
   unreadFrom(dmId: string, viewerId: string, rootId: string | null): Promise<string | null>;
+  /**
+   * How many root messages of each DM the viewer has not read (#1424 decision 10): by someone else, after the newest of what they observed,
+   * their own newest root and their "Mark all as read" mark; at most 99. A DM with nothing unread is absent.
+   */
+  unread(dmIds: string[], viewerId: string): Promise<Map<string, number>>;
   /** Display names of these people. */
   names(userIds: string[]): Promise<DmPerson[]>;
 }

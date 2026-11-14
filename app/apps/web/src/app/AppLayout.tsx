@@ -39,6 +39,7 @@ import { HeaderFaces, MoreMenu, type MoreItem } from './HeaderParts';
 import { beginNotificationSession, retireNotificationSession } from '../notifications/session';
 import { retireLeftCopies } from '../docs/drafts';
 import { AgentChatDotsProvider } from '../my-agents/AgentChatDots';
+import { DmUnreadProvider } from '../dm/dmUnread';
 import { PlaceMutesProvider, notificationsChanged, useMuteRow } from '../notifications/mutes';
 import { PhotosContext } from '../people/photos';
 import { PhoneAvatar, PhoneBack, PhoneDock, PhoneHomeLead, phoneHidesDock, phoneOffersCreate, phonePlaces } from './PhoneChrome';
@@ -131,7 +132,7 @@ export function AppLayout() {
   const { projectId } = useParams();
   return (
     <PhotosContext.Provider value={photos}>
-      <WorkReadProvider accountId={me.user.id} projectId={projectId ?? null}><AgentChatDotsProvider identity={me.user.id}><PlaceMutesProvider identity={me.user.id}><AppLayoutContent /></PlaceMutesProvider></AgentChatDotsProvider></WorkReadProvider>
+      <WorkReadProvider accountId={me.user.id} projectId={projectId ?? null}><AgentChatDotsProvider identity={me.user.id}><DmUnreadProvider identity={me.user.id}><PlaceMutesProvider identity={me.user.id}><AppLayoutContent /></PlaceMutesProvider></DmUnreadProvider></AgentChatDotsProvider></WorkReadProvider>
     </PhotosContext.Provider>
   );
 }

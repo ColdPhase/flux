@@ -17,6 +17,7 @@ export interface SidebarAccess {
 }
 
 export interface UnreadChat { agentId: string; before: string | null; now: string }
+export interface UnreadDm { dmId: string; before: number | null; now: number }
 
 export interface SidebarRepository {
   order(userId: string): Promise<string[]>;
@@ -37,6 +38,10 @@ export interface SidebarRepository {
   readChats(ownerUserId: string): Promise<UnreadChat[]>;
   /** Puts a chat's read time back, only while it is still the one `readChats` set. */
   restoreChat(ownerUserId: string, chat: UnreadChat): Promise<boolean>;
+  /** Reads every direct message of the person in these workspaces that has something unread through its newest message (#1424 decision 10). */
+  readDms(userId: string, workspaceIds: string[]): Promise<UnreadDm[]>;
+  /** Puts a DM's read mark back, only while it is still the one `readDms` set. */
+  restoreDm(userId: string, dm: UnreadDm): Promise<boolean>;
 }
 
 export interface SidebarPorts {

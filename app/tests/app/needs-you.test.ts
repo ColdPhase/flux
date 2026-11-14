@@ -281,4 +281,50 @@ describe('the Inbox needs-you queue', () => {
     assert.ok(find(await queue(owner), note.key), 'Undo brings it back');
     json(await resolve(owner, note.key, { action: 'done' }), 200);
   });
+
+  test('an answer to your question reaches you: the reply lands in the asker\'s Inbox as a Reply, once (#1424 decision 1)', async () => {
+    const inbox = async (someone: Person) => json<InboxResponse>(await someone.browser.request('GET', '/api/v1/inbox'), 200).items;
+    const asked = json<Conversation>(await post(partner, `/api/v1/projects/${lamp.id}/conversations`,
+      { body: '@Needs Owner can you send a photo of the new shelf?', clientMessageId: randomUUID() }), 201);
+    await waitFor(async () => (await queue(owner)).items.find((item) => item.url.includes(asked.id)), 'the question reaches the person asked');
+    // The answer, from the Inbox's Reply, is a reply in the question's thread.
+    const answer = json<SentConversationMessage>(await post(owner, `/api/v1/conversations/${asked.id}/messages`,
+      { body: 'Here it is, the left side is done.', clientMessageId: randomUUID() }), 201);
+    const item = await waitFor(async () => (await queue(partner)).items.find((entry) => entry.url.endsWith(`#message-${answer.id}`)), 'the answer reaches the asker\'s Inbox');
+    assert.deepEqual([item.kind, item.answer, item.title, item.detail, item.from?.id, item.project], ['mention', true, 'Here it is, the left side is done.', '', owner.id, { id: lamp.id, name: 'Garden sensors' }],
+      'a mention named a Reply, titled by what was answered, who and where');
+    assert.ok(item.key.startsWith('note:'));
+    const note = (await inbox(partner)).find((entry) => entry.id === item.key.slice(5));
+    assert.deepEqual([note?.reason, note?.title], ['mention', 'Needs Owner answered you in Garden sensors'], 'the notice says it is an answer, at the asker\'s level as a mention');
+
+    // Only the first message after the question answers it; a second line, and someone else's reply, are ordinary replies.
+    const more = json<SentConversationMessage>(await post(owner, `/api/v1/conversations/${asked.id}/messages`, { body: 'The right side tomorrow.', clientMessageId: randomUUID() }), 201);
+    const other = json<SentConversationMessage>(await post(second, `/api/v1/conversations/${asked.id}/messages`, { body: 'Looks good to me.', clientMessageId: randomUUID() }), 201);
+    const replies = await waitFor(async () => {
+      const notes = (await inbox(partner)).filter((entry) => entry.url?.endsWith(`#message-${more.id}`) || entry.url?.endsWith(`#message-${other.id}`));
+      return notes.length === 2 ? notes : undefined;
+    }, 'both later lines reach the asker as replies');
+    assert.deepEqual(replies.map((entry) => entry.reason), ['reply', 'reply']);
+    assert.equal((await queue(partner)).items.filter((entry) => entry.url.includes(asked.id)).length, 1, 'one Reply waits, not three');
+
+    // A mention that asks nothing is not a question, so a reply to it tells nobody more than a reply does.
+    const told = json<Conversation>(await post(partner, `/api/v1/projects/${lamp.id}/conversations`, { body: '@Needs Owner the hose is fixed.', clientMessageId: randomUUID() }), 201);
+    const thanks = json<SentConversationMessage>(await post(owner, `/api/v1/conversations/${told.id}/messages`, { body: 'Great, thank you.', clientMessageId: randomUUID() }), 201);
+    const plain = await waitFor(async () => (await inbox(partner)).find((entry) => entry.url?.endsWith(`#message-${thanks.id}`)), 'the reply reaches its starter');
+    assert.equal(plain.reason, 'reply');
+    assert.equal((await queue(partner)).items.some((entry) => entry.url.includes(told.id)), false, 'no Inbox item for a reply to a mention');
+
+    // The asker's own reply in the thread answers the Reply: it leaves their Inbox, as any reply takes what waits there.
+    const back = json<SentConversationMessage>(await post(partner, `/api/v1/conversations/${asked.id}/messages`, { body: 'Thanks, perfect.', clientMessageId: randomUUID() }), 201);
+    assert.ok(back.answered?.includes(item.key), 'the asker\'s reply takes the Reply out');
+
+    // The same in a direct message: the answer names nobody, and it reaches the asker's Inbox with no space.
+    const created = await post(partner, `/api/v1/workspaces/${ws.id}/dms`, { participantIds: [owner.id] });
+    const dm = (created.json as { id: string }).id;
+    json(await post(partner, `/api/v1/dms/${dm}/messages`, { body: 'Needs Owner, did you keep the receipt for the probes?', clientMessageId: randomUUID() }), 201);
+    const said = json<SentDmMessage>(await post(owner, `/api/v1/dms/${dm}/messages`, { body: 'Yes, it is in the blue folder.', clientMessageId: randomUUID() }), 201);
+    const inDm = await waitFor(async () => (await queue(partner)).items.find((entry) => entry.url === `/dm/${dm}#message-${said.id}`), 'the answer in the DM reaches the asker\'s Inbox');
+    assert.deepEqual([inDm.kind, inDm.answer, inDm.title, inDm.project, inDm.from?.id], ['mention', true, 'Yes, it is in the blue folder.', null, owner.id]);
+    for (const key of [inDm.key]) json(await resolve(partner, key, { action: 'done' }), 200);
+  });
 });

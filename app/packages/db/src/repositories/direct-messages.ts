@@ -16,6 +16,33 @@ const d = schema.dms;
 const p = schema.dmParticipants;
 const m = schema.dmMessages;
 const obs = schema.dmMessageObservations;
+const reads = schema.dmReads;
+
+/** The most an unread count says: a list row needs "some", and a muted one a small number. */
+export const DM_UNREAD_MOST = 99;
+
+/**
+ * How many root messages of each of these DMs `viewerId` has not read (#1424 decision 10): by someone else, text, not deleted, after
+ * where they left off, which is the greatest of the newest root they observed, their own newest root and their read mark (`dm_reads`,
+ * "Mark all as read"). At most `DM_UNREAD_MOST`; a DM with nothing unread is absent.
+ */
+export async function unreadIn(db: DbExecutor, dmIds: string[], viewerId: string): Promise<Map<string, number>> {
+  const counts = new Map<string, number>();
+  if (!dmIds.length) return counts;
+  const ids = sql.join([...new Set(dmIds)].map((id) => sql`(${id}::uuid)`), sql`, `);
+  const rows = await db.execute(sql`WITH point AS (
+      SELECT d.id AS dm_id, GREATEST(
+        COALESCE((SELECT max(s.sequence) FROM dm_message_observations o JOIN dm_messages s ON s.id = o.message_id
+          WHERE o.dm_id = d.id AND o.viewer_id = ${viewerId} AND s.thread_root_id IS NULL), 0),
+        COALESCE((SELECT max(own.sequence) FROM dm_messages own WHERE own.dm_id = d.id AND own.author_id = ${viewerId} AND own.thread_root_id IS NULL), 0),
+        COALESCE((SELECT r.read_through FROM dm_reads r WHERE r.dm_id = d.id AND r.user_id = ${viewerId}), 0)) AS seq
+      FROM (VALUES ${ids}) AS d(id))
+    SELECT p.dm_id::text AS dm_id, (SELECT count(*) FROM (SELECT 1 FROM dm_messages m WHERE m.dm_id = p.dm_id AND m.sequence > p.seq
+      AND m.thread_root_id IS NULL AND m.kind = 'text' AND m.removed_at IS NULL AND m.author_id <> ${viewerId} LIMIT ${DM_UNREAD_MOST}) x)::int AS unread
+    FROM point p`);
+  for (const row of rows.rows as { dm_id: string; unread: number }[]) if (Number(row.unread) > 0) counts.set(row.dm_id, Number(row.unread));
+  return counts;
+}
 const users = schema.authUsers;
 
 type DmRow = typeof d.$inferSelect;
@@ -196,12 +223,15 @@ export function dmRows(db: DbExecutor) {
       const level = rootId ? eq(m.threadRootId, rootId) : isNull(m.threadRootId);
       const [seen] = await db.select({ top: sql<number | null>`max(${m.sequence})` }).from(obs).innerJoin(m, eq(m.id, obs.messageId))
         .where(and(eq(obs.dmId, dmId), eq(obs.viewerId, viewerId), level));
+      // "Mark all as read" read the DM through its mark (#1424 decision 10).
+      const [mark] = await db.select({ through: reads.readThrough }).from(reads).where(and(eq(reads.dmId, dmId), eq(reads.userId, viewerId)));
       // Nothing observed at this level: none of it was read, so it all is new.
       const [next] = await db.select({ id: m.id }).from(m)
-        .where(and(eq(m.dmId, dmId), level, gt(m.sequence, seen?.top ?? 0), sql`${m.authorId} <> ${viewerId}`, eq(m.kind, 'text'), isNull(m.removedAt)))
+        .where(and(eq(m.dmId, dmId), level, gt(m.sequence, Math.max(seen?.top ?? 0, mark?.through ?? 0)), sql`${m.authorId} <> ${viewerId}`, eq(m.kind, 'text'), isNull(m.removedAt)))
         .orderBy(asc(m.sequence)).limit(1);
       return next?.id ?? null;
     },
+    unread: (dmIds: string[], viewerId: string) => unreadIn(db, dmIds, viewerId),
     async names(userIds: string[]) {
       if (!userIds.length) return [];
       return db.select({ id: users.id, name: users.name }).from(users).where(inArray(users.id, userIds)).orderBy(asc(users.id));

@@ -629,7 +629,10 @@ export const notifications = pgTable('notifications', {
   inInbox: boolean('in_inbox').notNull().default(true),
   // Migration 0117 (F-029): came from AI work, set by whoever writes the row (no default: a writer that forgets it fails). While the workspace's AI is off it is hidden and never sent.
   aiOrigin: boolean('ai_origin').notNull(),
+  // Migration 0084 (#1424 decision 1): the asker's notice of an answer to their question, set by the generator from the answer it found.
+  answer: boolean('answer').notNull().default(false),
 }, (table) => [
+  check('notifications_answer_reason', sql`NOT ${table.answer} OR ${table.reason} IN ('mention', 'question')`),
   index('notifications_user_created_idx').on(table.userId, table.createdAt.desc()),
   index('notifications_source_idx').on(table.sourceType, table.sourceId),
 ]);
@@ -1604,6 +1607,23 @@ export const dmMessageObservations = pgTable('dm_message_observations', {
 }, (table) => [
   primaryKey({ columns: [table.messageId, table.viewerId] }),
   index('dm_message_observations_viewer_idx').on(table.dmId, table.viewerId),
+]);
+
+/**
+ * A person's read mark in a direct message (migration 0084, #1424 decision 10): the DM is read through `read_through` (a sequence). Only
+ * "Mark all as read" (#1250) writes it; what the person observed, and their own messages, read the DM too.
+ */
+export const dmReads = pgTable('dm_reads', {
+  workspaceId: uuid('workspace_id').notNull(),
+  dmId: uuid('dm_id').notNull(),
+  userId: text('user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  readThrough: integer('read_through').notNull(),
+  readAt: timestamp('read_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  primaryKey({ columns: [table.dmId, table.userId] }),
+  foreignKey({ name: 'dm_reads_dm_fkey', columns: [table.workspaceId, table.dmId], foreignColumns: [dms.workspaceId, dms.id] }).onDelete('cascade'),
+  index('dm_reads_user_idx').on(table.userId),
+  check('dm_reads_read_through_check', sql`${table.readThrough} >= 0`),
 ]);
 
 /** Who observed which project message, roots and thread replies alike (migration 0103, #534). */

@@ -3,11 +3,13 @@ import { useLocation } from 'react-router';
 import { READ_ALL_PATH, READ_ALL_UNDO_PATH, type ReadAllResult, type ReadAllUndo } from '@flux/contracts';
 import { ApiError, request } from '../api/client';
 import { AGENT_CHATS_CHANGED } from '../my-agents/AgentChatDots';
+import { DM_UNREAD_CHANGED } from '../dm/dmUnread';
 import { useToast } from '../ui';
 import { forgetProjectNews } from './projectNews';
 
 /**
- * "Mark all as read" (#1250): one action, in the Spaces heading's ⋯ and in the Inbox's, for every space and every chat with an agent.
+ * "Mark all as read" (#1250): one action, in the Spaces heading's ⋯ and in the Inbox's, for every space, every direct message (#1424) and every
+ * chat with an agent.
  * It never clears the Inbox: what needs an action stays. The toast has Undo, which waits for the save and puts back what it read,
  * except a space the person opened since (the server leaves a space that something moved since). The sidebar and the lists read the
  * news again at once.
@@ -17,6 +19,7 @@ const apiMessage = (error: unknown, fallback: string) => (error instanceof ApiEr
 function reread() {
   forgetProjectNews();
   window.dispatchEvent(new Event(AGENT_CHATS_CHANGED));
+  window.dispatchEvent(new Event(DM_UNREAD_CHANGED));
 }
 
 /** The spaces opened since the latest Mark all as read: opening one reads it, and Undo must not make it unread again. */

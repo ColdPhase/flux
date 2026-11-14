@@ -30,6 +30,8 @@ export interface ReadAllUndo {
   spaces: string[];
   /** The chats of the person's agents that were unread, with when each had been read before (null: never). */
   chats: { agentId: string; before: string | null; now: string }[];
+  /** The direct messages that were unread, with the read mark each had before (null: none) and the one set (#1424 decision 10). Absent: none. */
+  dms?: { dmId: string; before: number | null; now: number }[];
 }
 
 export interface ReadAllResult { undo: ReadAllUndo }

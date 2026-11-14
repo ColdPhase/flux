@@ -58,6 +58,12 @@ export interface DmSummary {
   lastMessageBody: string | null;
   /** Present only when the last message was an answer posted with Show everyone (#842): the list names it ("via Assistant: …"). */
   lastMessageVia?: string;
+  /**
+   * In the list: how many messages by others (the roots) the caller has not read, at most 99; 0 when read (#1424 decision 10). Read is
+   * up to the newest of what they viewed ("Seen by"), their own last message and "Mark all as read". Kept on the server, so every device
+   * agrees. Absent on a single DM's answer.
+   */
+  unread?: number;
 }
 
 /**

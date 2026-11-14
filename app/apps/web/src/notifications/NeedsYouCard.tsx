@@ -32,7 +32,8 @@ function JoinCall({ call, variant }: { call: { projectId: string; sessionId: str
 
 export const KIND_WORD = { decision: 'Decision', question: 'Question', blocked: 'Blocked', mention: 'Mention' } as const;
 /** The word that names an item wherever it is listed: a call's notice or an invitation to a call is a Call (F-041), never a Question (#1368). */
-export const kindWord = (item: NeedsYouItem) => (item.call ? 'Call' : KIND_WORD[item.kind]);
+/** A call is "Call" and an answer to your question is "Reply" (#1424 decision 1): each is its kind otherwise (a question, a mention). */
+export const kindWord = (item: NeedsYouItem) => (item.call ? 'Call' : item.answer ? 'Reply' : KIND_WORD[item.kind]);
 const NOTE_ICON: Record<'question' | 'mention', IconName> = { question: 'chat', mention: 'people' };
 /** Why a run's changes wait, once each, in their own words (#1089); the general sentence only if none has words. */
 const waitReasons = (changes: readonly { line: string | null }[]) =>

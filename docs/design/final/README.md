@@ -387,7 +387,9 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
     you muted has a small muted mark there too ([Muting and following](#muting-a-place-and-following-a-thread)).
     You see only the spaces you were added to;
   - **Messages**: your agents and people. Assistant is pinned first, then your other agents, then
-    people. A dot marks an unread report or message. With no agent and no message yet, the heading has the phone's "+" (**New message**),
+    people. A conversation with something unread for you (a person's message, your agent's answer or report) has its name in `--t1`
+    and semibold, as an unread space ([Ordering spaces](#ordering-spaces-unread-and-mark-all-as-read), #1424 decision 10); a muted one shows
+    the quiet count instead. With no agent and no message yet, the heading has the phone's "+" (**New message**),
     so it is never a heading over nothing (#1424);
   - your name at the bottom, with your face. It opens Settings, the one way in, as your face does on the phone
     (founder decision, Hubert, 2026-11-13, [#1419](https://github.com/ColdPhase/flux/issues/1419)). There is no gear beside it and no
@@ -434,7 +436,8 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
 ### Phone
 
 - **Tab bar.** Home · Spaces (the four-square grid, the same glyph as Create's Space) · Inbox, in a floating capsule, with a separate round **Search**
-  button. Spaces lists your spaces and then Messages, with Assistant pinned first.
+  button. Spaces lists your spaces and then Messages, with Assistant pinned first; an unread space or conversation has its name
+  in bold, the same in both parts ([Ordering spaces](#ordering-spaces-unread-and-mark-all-as-read)).
 - **Home** adds rows under the waiting items, because the phone has no sidebar: "My tasks (N)"
   and, next to it, "My map" (Hubert, 2026-11-03). The tab bar stays at three tabs. Your face at the
   top of Home opens Settings.
@@ -923,6 +926,14 @@ Community garden sensors, Rain barrel monitor and Tool library.
   Back tomorrow morning"); the item returns then. There is no "Ask me again" menu, no "Next week", no "When #N is done" and no
   "Decline for good" on a decision: a decision waits until someone accepts it. A line under the list says how many are put off
   ("2 for later"). The one dark primary of the open item is its first action (Accept, Approve all, Join).
+- **An answer to your question reaches you** (founder decision, Hubert, 2026-11-14, [#1424](https://github.com/ColdPhase/flux/issues/1424)
+  decision 1). When you ask someone something (a message that names them and asks, which reached their Inbox as a Question) and they
+  answer in that thread (Inbox › Reply, or in the thread itself) or, in a direct message, in that conversation, the answer is an item of
+  your Inbox: **"Reply · Marta · Product"**, titled by what she wrote ("Sent a file" for a photo alone), with Reply and Done as a mention
+  has, and it reaches you by notice, push and email as a mention does at your level. It is the mention rule and not a new kind: an answer
+  addresses the person who asked, as a name does. It is a Reply in an encrypted space too, where the notice says only who and where. Only the
+  person's first message after the question answers it, and your own reply in the
+  thread takes the item out as any reply does (#1170). An agent's question card is answered with its buttons and tells nobody.
 - **A call is a Call, never a Question** (F-041, #1368). An invitation to a call or a call started in your space is one item,
   "Call · Nia · Gesture lamp", with **Join** as its primary and Open as its second action; it is on Home and in the Inbox only while
   someone is in the call and you are not. It leaves when you join (from here, from the notice, from the space's Join or from the
@@ -1746,8 +1757,8 @@ standard switch row in Settings › Notifications, and the rest of the page stay
 - **Messages:** each agent is a private conversation ("Only you talk to Planner. Others reach it
   by giving you a task.").
   - "Remembered · See what Planner remembers" confirms a memory.
-  - Reports arrive here: "Done: #4 Calibrate soil sensors · 3 changes · Undo", with a dot in the
-    sidebar until read.
+  - Reports arrive here: "Done: #4 Calibrate soil sensors · 3 changes · Undo", and the agent's name is
+    bold in Messages until read, as every unread conversation (#1424 decision 10).
   - Schedules are listed in the conversation's header and confirmed in the agent's reply, with
     Turned on and Change. This is the only place they are listed and changed (founder decision,
     Hubert, 2026-11-13, [#1419](https://github.com/ColdPhase/flux/issues/1419) item 9).
@@ -2005,9 +2016,17 @@ the toast with Undo, the tokens and the existing icons. No new setting, mode or 
   assistive technology ends ", new activity", as before, and a space that holds an Inbox item ends ", needs you" (the dot has the
   same words for assistive technology). Opening a space reads it, as today. The Spaces tab on the phone draws
   the same: bold when unread, `--t2` when read, the dot for what needs you.
+- **Direct messages have the same unread state** (founder decision, Hubert, 2026-11-14, [#1424](https://github.com/ColdPhase/flux/issues/1424)
+  decision 10). A direct message with a message from someone else that you have not read has its name in `--t1` and semibold in the sidebar's
+  Messages, on the Messages page and in the phone's Spaces tab, and its name for assistive technology ends ", new messages"; read, it keeps
+  `--t2` and 500. What you have read is what you saw: the messages up to the newest one you viewed (the same viewing as "Seen by" and the New
+  divider, S23), or up to your own last message there. It is kept on the server, so a direct message read on the phone is read on the computer
+  too, and the open one is read while it is open. A muted one is never bold and shows the quiet count, as a muted space. A conversation with
+  your agent follows the same rule (bold until you read its answer or report); only the 64 px rail, which has no names, marks an unread
+  conversation with the dot on its face.
 - **Mark all as read** is one row, in the Spaces heading's ⋯ on the computer and the tablet's drawer, in the Inbox's ⋯ (More) on
-  the computer and in the phone's More on the Inbox and on the Spaces tab. It clears the unread of every space and of the
-  conversations with your agents (people's direct messages carry no unread state yet; they are cleared here when they do). It does
+  the computer and in the phone's More on the Inbox and on the Spaces tab. It clears the unread of every space, of every direct
+  message and of the conversations with your agents. It does
   not clear the Inbox's items that need an action: a question, a decision, a blocked task and a mention still wait. The toast says
   "Marked all as read" with **Undo**, which brings back what was unread, except for what you opened since. Another open tab reads a
   space's news again when its open space changes and keeps what it read for 60 seconds: not live, and no timer.

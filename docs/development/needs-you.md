@@ -17,7 +17,7 @@ an item. Access is checked at the moment of reading: an object the person cannot
 | `decision` | A proposed decision the person can accept now | `project_decisions.status = 'proposed'` in projects they can read, kept only when they hold write access (O-009 DA-2) |
 | `question` | A person asked them something (`@name … ?`), or invited them to a call (#62) | their unread `question` and `invitation` notifications, newer than 14 days |
 | `blocked` | A task they own that is blocked | `project_work_items` they own with status `blocked` |
-| `mention` | Someone mentioned them | their unread `mention` notifications, newer than 14 days |
+| `mention` | Someone mentioned them, or answered a question they asked (#1424 decision 1: `answer: true`, the kind word "Reply") | their unread `mention` notifications, newer than 14 days |
 
 Replies, direct messages, assigned work and decisions to review stay notifications: they reach people where they
 happen (a conversation, the Messages list, Tasks) and by push and email, and still open from their
@@ -77,6 +77,18 @@ person's own choice (204; idempotent).
   send answer nothing. An agent's question card (S14) is answered with its own answers and stays. The same holds in a direct message
   (#1249): a message there that names the person is a `mention` or a `question` (source `dm`, URL `/dm/:id#message-…`), and their own
   message in that DM (`POST /api/v1/dms/:id/messages`, or a thread reply) answers the unread ones the same way and names them in `answered`.
+- **An answer to your question reaches you** (founder decision 2026-11-14, #1424 decision 1). The rule that makes a message a
+  `question` for the person it names also makes the answer a need for the one who asked: a person's message in a conversation of a
+  space (a thread, a task's discussion), or in a direct message at the same level (its roots, or one thread), notifies the author of a
+  message there that asked them (it names them and asks, `isQuestion`) and that came after their own last message there. The asker
+  gets a `mention` (a `question` when the answer asks something back), titled "Marta answered you in Product" ("Marta answered you" between
+  two people), which the queue lists with `answer: true` and the answer's words as its title. The generator records the fact on the
+  notification itself (`notifications.answer`, migration 0084, set from the answer it found and never read from the words), so the item is a
+  Reply in every space. It follows the asker's level, mute and
+  quiet hours as any mention. Only the first message after the question answers it (the questions considered are the 20 newest messages
+  of others since the author last wrote there); an agent's question card has no person to tell. The asker's own reply there takes it
+  out as above (#1170). In an encrypted space the notice's title keeps its fixed words ("Marta mentioned you in Garden club", no body), and
+  the item is a Reply all the same.
 - A choice about a decision or a task that is no longer a need is forgotten, so the same task blocked again
   later asks again.
 - `needs_you_states` rows cascade with the account.

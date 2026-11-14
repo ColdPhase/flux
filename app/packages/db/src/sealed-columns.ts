@@ -58,7 +58,7 @@ const refused = [
 ] as const;
 const content = [
   'workspaces', 'workspace_members', 'project_ai_policies', 'projects', 'project_grants', 'project_conversations',
-  'project_messages', 'message_references', 'project_message_observations', 'dm_message_observations', 'return_points', 'space_order', 'dms', 'dm_participants', 'dm_messages',
+  'project_messages', 'message_references', 'project_message_observations', 'dm_message_observations', 'dm_reads', 'return_points', 'space_order', 'dms', 'dm_participants', 'dm_messages',
   'project_materials', 'project_material_versions', 'project_work_items', 'project_task_activity', 'project_task_updates', 'project_task_notices',
   'project_task_plan_intents', 'project_task_dependencies', 'project_task_discussions', 'task_creation_undo_receipts', 'native_command_receipts',
   'project_decisions', 'project_object_links', 'sketches', 'sketch_thoughts',
@@ -154,6 +154,7 @@ export const VISIBLE_COLUMNS: Readonly<Record<string, Readonly<Record<string, st
   message_references: { kind: 'an enum (thought or message)' },
   project_message_observations: { viewer_id: 'a user id' },
   dm_message_observations: { viewer_id: 'a user id' },
+  dm_reads: { user_id: 'a user id' },
   return_points: { user_id: 'a user id', place_key: 'object ids and positions', place_type: 'an enum' },
   space_order: { user_id: 'a user id' },
   dms: { kind: 'an enum', pair_key: 'user ids', created_by: 'a user id' },

@@ -341,7 +341,9 @@ export function createDmUseCases(uow: DmUnitOfWork) {
       return uow.run(async (ports) => {
         await ports.access.requireWorkspace(principal, workspaceId);
         const { items, total } = await ports.dms.listVisible(principal, workspaceId, bounds);
-        return { items: items.map((item) => toSummary(item, principal.id)), total, ...bounds };
+        // What the person has not read in each (#1424 decision 10): the list marks it, on every device alike.
+        const unread = await ports.dms.unread(items.map((item) => item.id), principal.id);
+        return { items: items.map((item) => ({ ...toSummary(item, principal.id), unread: unread.get(item.id) ?? 0 })), total, ...bounds };
       });
     },
 

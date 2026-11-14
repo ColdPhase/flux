@@ -48,6 +48,12 @@ export interface ProjectMessageFacts {
   /** Set when the message carries an agent's question card (#347 S14): the one person asked and the question text. */
   asked?: { userId: string; question: string } | null;
   /**
+   * What other people wrote at this message's level after its author last wrote there (a space's conversation; a direct message's roots
+   * or one of its threads), newest first and at most 20: a question among them that named and asked the author is answered by this
+   * message, so its asker is told (#1424 decision 1). Absent when the store does not read it.
+   */
+  since?: { authorId: string; body: string }[];
+  /**
    * For a line a server agent wrote (an assistant run's blocker or result, a task's report): its owner, the only person it may notify
    * (#1089, F-036 AG-4: an agent sends no message to another person by itself). The line still shows in the discussion. Absent for a
    * person's line and for a local client's, which writes as its person (LC-2).
@@ -68,6 +74,12 @@ export interface DmMessageFacts {
   viaAgent?: boolean;
   body: string;
   participantIds: string[];
+  /**
+   * What other people wrote at this message's level after its author last wrote there (a space's conversation; a direct message's roots
+   * or one of its threads), newest first and at most 20: a question among them that named and asked the author is answered by this
+   * message, so its asker is told (#1424 decision 1). Absent when the store does not read it.
+   */
+  since?: { authorId: string; body: string }[];
 }
 
 export interface WorkFacts { id: string; projectId: string; projectName: string; title: string; number: number; ownerUserId: string | null; waitingForUserId: string | null; status: string; blocker: string | null; dropped: boolean }
@@ -185,6 +197,8 @@ export interface GeneratedNotification {
   inInbox: boolean;
   /** F-029: from AI work, by the event's actor or the source's author. */
   aiOrigin: boolean;
+  /** The notice tells the asker that their question was answered (#1424 decision 1): the Inbox names it a Reply. */
+  answer?: boolean;
 }
 
 export interface EmailJob { emailId: string }

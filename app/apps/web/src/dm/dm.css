@@ -42,9 +42,11 @@
 .dm-index__item { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 8px 10px; margin: 0 -10px; border-radius: var(--r); color: var(--t1); text-decoration: none; transition: var(--tr); }
 .dm-index__item:hover { background: var(--hov); }
 .dm-index__text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.dm-index__text b { font-size: var(--fs-md); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dm-index__text b { font-size: var(--fs-md); font-weight: 500; color: var(--t2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* A conversation reads as a space does (#1424 decision 10): `--t2` when read, bold in the primary colour while something is unread. */
+.dm-index__item.is-unread .dm-index__text b { font-weight: 600; color: var(--t1); }
+.dm-index__quiet { flex: none; font-size: var(--fs-xs); color: var(--t3); font-variant-numeric: tabular-nums; }
 .dm-index__text span { font-size: var(--fs-sm); color: var(--t3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.dm-index__dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--inv); }
 .dm-index__item time { flex: none; font-size: var(--fs-xs); color: var(--t3); }
 
 /* New message */
