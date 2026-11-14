@@ -268,7 +268,7 @@ class ReturnViewJourney(unittest.TestCase):
 
     def test_09_same_tab_account_switch_never_shows_the_previous_persons_items(self) -> None:
         """AC-5 in the client: nothing from one account's return view survives into the next, even before the API answers."""
-        secret = f"Restricted launch note {STAMP}: Nia, can you keep the 14 Nov date quiet?"
+        secret = f"Restricted launch note {STAMP}: Nia, can you keep the harvest date quiet?"
         olek = {"name": "Olek Wiatr", "email": f"olek.wiatr+{STAMP}@example.test"}
         signup = self.page(None)
         signup.goto("/sign-up")
@@ -286,7 +286,7 @@ class ReturnViewJourney(unittest.TestCase):
         # One tab: Nia signs in fresh and sees the restricted item on Home.
         page = self.page(None)
         self.sign_in(page, NIA)
-        expect(page.get_by_role("region", name="Continue where you left off").get_by_role("link")).to_contain_text("keep the 14 Nov date quiet")
+        expect(page.get_by_role("region", name="Continue where you left off").get_by_role("link")).to_contain_text("keep the harvest date quiet")
         # Sign out in the same tab and sign in as Olek, with the return API held back.
         sign_out(page)
         expect(page).to_have_url(re.compile("/sign-in"))
@@ -301,14 +301,14 @@ class ReturnViewJourney(unittest.TestCase):
             page.wait_for_timeout(50)
         self.assertTrue(held, "the Home summary request was made")
         # Before the answer: nothing of Nia's return view is on the page.
-        self.assertNotIn("14 Nov", page.content())
+        self.assertNotIn("harvest date", page.content())
         expect(page.get_by_role("region", name="Continue where you left off").get_by_role("link")).to_have_count(0)
         for route in held:
             route.continue_()
         page.unroute(summary_url)
         page.wait_for_timeout(600)
         # After Olek's authorized answer: still nothing of it, and no hint of the restricted project.
-        self.assertNotIn("14 Nov", page.content())
+        self.assertNotIn("harvest date", page.content())
         self.assertNotIn("Gesture lamp", page.locator("#content").inner_text())
 
     def test_10_revoked_items_disappear_even_when_the_fresh_answer_is_empty(self) -> None:
