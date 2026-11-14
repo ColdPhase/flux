@@ -600,6 +600,12 @@ class TasksFinalJourney(unittest.TestCase):
                     page.set_viewport_size({'width': width, 'height': 844 if width == 390 else 568})
                     page.add_style_tag(content=f'html {{ font-size: {16 * factor}px !important; }}')
                     row = self.row(page, LABELS)
+                    if width == 320 and factor == 1:
+                        # The search keeps its whole placeholder on a 320 px phone: "Search", not "Searc" (release audit P3 20).
+                        room = page.get_by_label('Search tasks').evaluate("""el => { const ctx = document.createElement('canvas').getContext('2d'), s = getComputedStyle(el);
+                            ctx.font = `${s.fontWeight} ${s.fontSize} ${s.fontFamily}`;
+                            return { room: el.clientWidth - parseFloat(s.paddingLeft) - parseFloat(s.paddingRight), word: ctx.measureText(el.placeholder).width }; }""")
+                        self.assertGreaterEqual(room['room'] + 0.5, room['word'], f'the placeholder fits its field: {room}')
                     before = self.task(page, 'labels')
                     row.get_by_role('button', name='To do. Set to Doing').tap()
                     toast = page.locator('.ui-toast')

@@ -368,6 +368,11 @@ class CreateWindow(unittest.TestCase):
         self.assertFalse(tablist.evaluate("el => el.scrollWidth > el.clientWidth + 1"), "the tab bar has nothing to scroll to")
         self.assertLessEqual(page.evaluate("() => document.documentElement.scrollWidth"), 320, "no horizontal scroll")
         self.assertLessEqual(window.bounding_box()["y"] + window.bounding_box()["height"], 568.5)
+        # The Task tab: its title field has room around its words (the placeholder is not on the field's edge), and "+ Link a message or thought" stays in its card.
+        self.assertGreaterEqual(window.locator(".create__title:visible").evaluate("el => parseFloat(getComputedStyle(el).paddingLeft)"), 6, "room on the left of the words")
+        card = window.locator(".create__props:visible").bounding_box()
+        link = window.get_by_role("button", name="+ Link a message or thought").bounding_box()
+        self.assertLessEqual(link["x"] + link["width"], card["x"] + card["width"] + 0.5, f"the link chip stays inside its card: {link} in {card}")
         shot(page, "1013-create-sheet-320")
 
     # ---------------------------------------------------------------- the phone's Search (S-P-Search, S-P-NoResults)

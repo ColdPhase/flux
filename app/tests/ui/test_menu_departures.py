@@ -2,7 +2,8 @@
 
 - ⌘K with an empty field lists the places last opened ("My tasks", not "Home · Tasks") and Go to Inbox; no assistant row, no sidebar toggle;
 - a space's ⋯ has no row for the sidebar (and no key hint);
-- My map says "Only you", visibly (beside its title once the map has one);
+- My map says "Only you", visibly (beside its title once the map has one; on the phone, under the title in the header), and an empty one offers
+  Thought alone, as a space's empty map does (release audit P3 10);
 - the Inbox's ⋯ is there on every Inbox address, an open item or a missing one included.
 """
 
@@ -15,7 +16,7 @@ import uuid
 
 from playwright.sync_api import Browser, Page, expect, sync_playwright
 
-from test_app_shell import ORIGIN, UI_BROWSER, UPSTREAM, start_forwarder
+from test_app_shell import ORIGIN, PHONE, UI_BROWSER, UPSTREAM, start_forwarder
 
 PASSWORD = "a long passphrase for the menu checks"
 EMAIL = f"ada.m+{int(time.time() * 1000)}@example.test"
@@ -87,6 +88,34 @@ class MenuDepartures(unittest.TestCase):
         box = said.bounding_box()
         self.assertGreater(box["width"], 40, "the words are drawn, not hidden (they were a 1 px visually-hidden span)")
         self.assertGreater(box["height"], 10)
+
+    def test_03b_an_empty_my_map_offers_thought_alone_until_there_is_a_thought(self) -> None:
+        page = self.page()
+        page.goto("/map")
+        tools = page.get_by_role("toolbar", name="Map tools")
+        expect(tools.get_by_role("button", name="Thought", exact=True)).to_be_visible()
+        expect(tools.get_by_role("button")).to_have_count(1)
+        expect(page.get_by_role("group", name="Zoom")).to_have_count(0)
+        expect(page.get_by_role("radiogroup", name="Show as")).to_have_count(0)
+        expect(page.locator(".sk-aud")).to_have_text(re.compile("Only you"))
+        tools.get_by_role("button", name="Thought", exact=True).click()
+        page.get_by_role("textbox", name="Thought text").fill("A first private thought")
+        page.get_by_role("button", name="Save thought").click()
+        expect(page.locator(".sk-node")).to_have_count(1)
+        # With a thought there is something to select, move, zoom, undo and list.
+        for name in ("Select", "Move around", "Undo"):
+            expect(tools.get_by_role("button", name=name, exact=True)).to_be_visible()
+        expect(page.get_by_role("group", name="Zoom")).to_be_visible()
+        expect(page.get_by_role("radiogroup", name="Show as")).to_be_visible()
+
+    def test_03c_on_a_phone_my_map_says_only_you_under_its_title(self) -> None:
+        context = self.browser.new_context(service_workers="block", base_url=ORIGIN, storage_state=self.state, viewport=PHONE, is_mobile=True, has_touch=True)
+        self.addCleanup(context.close)
+        page = context.new_page()
+        page.goto("/map")
+        header = page.locator("header.phead")
+        expect(header.get_by_role("heading", level=1, name="My map", exact=True)).to_be_visible()
+        expect(header.get_by_text("Only you", exact=True)).to_be_visible()
 
     def test_04_the_inbox_more_is_on_every_inbox_address(self) -> None:
         page = self.page()
