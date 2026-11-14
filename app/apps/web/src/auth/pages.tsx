@@ -305,7 +305,7 @@ export function ClaimPage() {
   if (claim === null) {
     return (
       <ErrorState level={1} title="There is nothing to claim here"
-        actions={<Link className="ui-btn ui-btn--primary ui-btn--lg" to={back}>Back to sign in</Link>}>
+        actions={<Link className="ui-btn ui-btn--secondary ui-btn--lg" to={back}>Back to sign in</Link>}>
         <p>This page works only right after single sign-on finds your address on an unverified account, and only for 15 minutes.</p>
       </ErrorState>
     );

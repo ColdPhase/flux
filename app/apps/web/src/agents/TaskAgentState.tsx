@@ -6,6 +6,7 @@ import { AgentIdentity, Button, Kreska, type KreskaExpression } from '../ui';
 import { useShellData } from '../app/data';
 import { getWork, updateWork } from '../work/api';
 import { useAssistantChanges, WaitingChanges } from '../assistant/WaitingChanges';
+import { useAgentHue } from './hues';
 import { getTaskAgentState, retryTaskAgent, stopTaskAgent } from './taskAgents';
 import './task-agent.css';
 
@@ -25,6 +26,7 @@ export function TaskAgentState({ item, projectId, conversationId, revision, onCh
   elsewhere?: (change: AssistantChange) => boolean;
 }) {
   const { me } = useShellData();
+  const hue = useAgentHue();
   const [state, setState] = useState<State | null>(null);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
@@ -57,7 +59,7 @@ export function TaskAgentState({ item, projectId, conversationId, revision, onCh
   return (
     <div className="wd-agent" data-agent-line={state.line}>
       <div className="wd-agent__line" role="status" aria-live="polite">
-        <Kreska size={20} expression={FACE[state.line]} />
+        <Kreska size={20} expression={FACE[state.line]} hue={hue(state.agent.id)} />
         <AgentIdentity name={state.agent.name} owner={state.agent.owner.name} icon={false} />
         <span className="wd-agent__text">{state.text}{state.resumesAt ? `, resumes at ${clock(state.resumesAt)}` : ''}</span>
         <span className="wd-agent__actions">

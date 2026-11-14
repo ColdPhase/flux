@@ -58,7 +58,7 @@
   background: var(--inv); color: var(--oninv);
 }
 .ws-task__done:focus-visible { outline-color: var(--oninv); outline-offset: -3px; }
-.ws-task__glyph { display: grid; place-items: center; flex: none; width: 30px; height: 30px; margin: 0 2px 0 -7px; border-radius: 50%; transition: background-color var(--dur-1) var(--ease-out); }
+.ws-task__glyph { display: grid; place-items: center; flex: none; width: 32px; height: 32px; margin: 0 2px 0 -8px; border-radius: 50%; transition: background-color var(--dur-1) var(--ease-out); }
 button.ws-task__glyph:hover, button.ws-task__glyph:focus-visible { background: var(--sub); }
 button.ws-task__glyph:active { background: var(--hov); }
 .ws-task .ws-item { flex: 1; min-width: 0; width: auto; margin: 0; }
@@ -120,7 +120,7 @@ button.ws-task__glyph:active { background: var(--hov); }
 .wd-row .wd-from .wd-link span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wd-value { display: inline-flex; align-items: center; gap: 8px; }
 .wd-menu { position: relative; }
-.wd-state { display: inline-flex; align-items: center; gap: 8px; min-height: 34px; margin-left: -8px; padding: 0 8px; border-radius: var(--r-sm); font: inherit; color: var(--t1); }
+.wd-state { display: inline-flex; align-items: center; gap: 8px; min-height: 32px; margin-left: -8px; padding: 0 8px; border-radius: var(--r-sm); font: inherit; color: var(--t1); }
 .wd-state:hover, .wd-state[aria-expanded="true"] { background: var(--hov); }
 .wd-state__go { color: var(--t3); }
 .wd-menu__list {

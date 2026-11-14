@@ -653,7 +653,8 @@ function AppLayoutContent() {
     ? { crumb: null, title: activeProject.name, noDetails: true }
     // My map (#866) is named in the header at its own address too; its privacy line is the first thing in the map's head.
     : /^\/map(\/|$)/.test(location.pathname)
-    ? { crumb: null, title: 'My map', noDetails: true }
+    // On the phone the map's own head is not drawn, so "Only you" (README §7 My map) stands under the title; the computer's head says it.
+    ? { crumb: null, title: 'My map', ...(phone ? { topic: 'Only you' } : {}), noDetails: true }
     : where === 'inbox'
       ? location.pathname.startsWith('/settings/')
         ? { crumb: null, title: 'Notification settings', noDetails: true }
@@ -831,7 +832,7 @@ function AppLayoutContent() {
         {activeDm ? <MoreMenu items={phoneDmItems} className="phead__round" size={24} /> : null}
         {bulkRead.length && !activeProject && !activeDm ? <MoreMenu items={bulkRead} className="phead__round" size={24} /> : null}
         {activeAgent ? <MoreMenu items={[{ label: 'Settings', run: () => void navigate(`/settings/agents/${activeAgent.id}`) }]} className="phead__round" size={24} /> : null}
-        {!backOnly && !activeProject && !activeDm && !activeAgent && location.pathname !== '/settings' ? <PhoneAvatar id={me.user.id} name={me.user.name} /> : null}
+        {!backOnly && !activeProject && !activeDm && !activeAgent && !lockedHere && location.pathname !== '/settings' ? <PhoneAvatar id={me.user.id} name={me.user.name} /> : null}
       </div>
       {spaceHeader && projectViews ? <Tabs className="phead__views" label="Space views" items={projectViews} /> : null}
       {lockedHere ? <Tabs className="phead__views" label="Space views" items={LOCKED_VIEWS} inactive /> : null}

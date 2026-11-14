@@ -300,7 +300,7 @@ function FirstStepsCard({ phone, workspaceId, onPushRow }: { phone: boolean; wor
     <section className="home__steps" aria-labelledby="home-steps" data-first-steps="">
       <div className="home__sech">
         <h3 id="home-steps">First steps</h3>
-        <Button variant="link" size="sm" onClick={hide}>Hide</Button>
+        <Button variant="quiet" size="sm" onClick={hide}>Hide</Button>
       </div>
       <ul className="home__rows" aria-label="First steps">
         {shown.map((row) => row.key === 'push' ? (
@@ -368,7 +368,8 @@ export function Home() {
         <section className="home__need" aria-labelledby="home-need">
           <div className="home__sech">
             <h3 id="home-need">Waiting for you{queue.count ? <span className="home__n">{queue.count}</span> : null}</h3>
-            <Link className="home__all" to="/inbox" aria-keyshortcuts="G I">Open Inbox</Link>
+            {/* The same small text button as Hide in the same slot of First steps. */}
+            <Link className="ui-btn ui-btn--quiet ui-btn--sm" to="/inbox" aria-keyshortcuts="G I">Open Inbox</Link>
           </div>
           {queue.items === null ? <div className="home__card home__quiet" aria-busy="true">Looking at what waits for you…</div>
             : rows.length ? (

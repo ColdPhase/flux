@@ -12,6 +12,7 @@ import { useProjectShell } from '../project/data';
 import { getTaskDiscussion } from '../composer/api';
 import { agentDisplayName, FORMER_MEMBER } from '../docs/format';
 import { agentAuthorOwner, useAgentOwners } from '../agents/owners';
+import { useAgentHue } from '../agents/hues';
 import { TaskAgentState } from '../agents/TaskAgentState';
 import { ClientChanges } from '../assistant/ClientChanges';
 import { failure, useAssistantChanges } from '../assistant/WaitingChanges';
@@ -220,6 +221,7 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
   state: TaskActivityState; composer: TaskComposerDraft; item: Pick<WorkItem, 'id' | 'version' | 'number' | 'title'>; project: Project; me: { id: string; name: string }; writable: boolean; composerId: string;
 }) {
   const owners = useAgentOwners(project);
+  const hueOf = useAgentHue();
   // A local client's change is said once, by its change line with Undo above; the timeline does not name the same change again, as "Claude
   // Code [Agent] for Ada" under another name (#1116). The two are made in one request, so they are told apart by their time.
   const [clientChanges, setClientChanges] = useState<AssistantChange[]>([]);
@@ -274,9 +276,11 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
             // An agent's answer its asker posted reads as that agent's message, for the asker too (#1232).
             const shown = shownAnswer(message);
             const mine = message.authorId === me.id && !shown;
+            // A shown answer carries its agent's colour; the agent's own line has it when the agent is one of the reader's (the shell knows those).
+            const faceHue = shown?.colour ?? (message.author?.kind === 'agent' ? hueOf(message.author.id) : undefined);
             return (
               <li key={line.key} className="wd-act__item wd-act__item--message" data-message-id={message.id} {...(shown ? { 'data-shown-answer': '', 'aria-label': shownLabel(shown, name).spoken } : {})}>
-                <Face actor={{ kind: agent || shown ? 'agent' : 'human', id: message.authorId, name }} mine={mine} {...(shown ? { hue: shown.colour } : {})} />
+                <Face actor={{ kind: agent || shown ? 'agent' : 'human', id: message.authorId, name }} mine={mine} {...(faceHue ? { hue: faceHue } : {})} />
                 <div className="wd-act__body">
                   <p className="wd-act__who">
                     {shown ? <><AgentIdentity name={shownLabel(shown, name).label} icon={false} /><span className="ui-vh">, shown by {firstName(name)}</span></>

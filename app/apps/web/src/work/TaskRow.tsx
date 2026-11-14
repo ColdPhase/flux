@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type 
 import type { WorkRowProjection, WorkStatus } from '@flux/contracts';
 import { AgentIdentity, Icon, Kreska, Morph, StatusGlyph, initials } from '../ui';
 import type { AgentOwners } from '../agents/owners';
+import { useAgentHue } from '../agents/hues';
 import { STATUS_LABEL, blockedParts, isFinished, statusPhrase, taskNumber } from './format';
 import { STATE_KEYS, nextStatus, type StateTarget } from './taskState';
 
@@ -48,6 +49,7 @@ export interface TaskRowProps {
 }
 
 export function TaskRow({ item, meId, owners, writable, muted, onOpen, onChange }: TaskRowProps) {
+  const hue = useAgentHue();
   const [dx, setDx] = useState(0);
   const [dragging, setDragging] = useState(false);
   const gesture = useRef<{ id: number; x: number; y: number; base: number; locked: boolean; wasOpen: boolean } | null>(null);
@@ -130,9 +132,8 @@ export function TaskRow({ item, meId, owners, writable, muted, onOpen, onChange 
         <button type="button" className={`ws-item${muted ? ' ws-item--muted' : ''}`} onClick={click}>
           <span className="ws-item__b"><span className="ws-item__t">{item.title}</span><span className="ws-item__s">{meta(item, meId, owners)}</span></span>
           <span className="ws-item__r">
-            {item.status === 'blocked' ? <span className="ui-pill ui-pill--inv">Blocked</span>
-              : item.owner?.kind === 'agent' ? <Kreska size={20} />
-                : item.owner ? <span className="ws-av" aria-hidden="true">{initials(item.owner.name)}</span> : null}
+            {item.owner?.kind === 'agent' ? <Kreska size={20} hue={hue(item.owner.id)} />
+              : item.owner ? <span className="ws-av" aria-hidden="true">{initials(item.owner.name)}</span> : null}
           </span>
         </button>
       </div>

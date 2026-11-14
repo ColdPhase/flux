@@ -139,6 +139,8 @@ class TypeTokens(unittest.TestCase):
         field = page.get_by_role("combobox", name="Search")
         expect(field).to_be_visible()
         close = page.locator(".jump__close")
+        # Its visible label is the keycap "Esc", and the accessible name holds it (WCAG 2.5.3, release audit P3 12).
+        expect(page.get_by_role("button", name="Close, Esc", exact=True)).to_have_count(1)
         heights = [round(field.bounding_box()["height"]), round(close.bounding_box()["height"])]
         self.assertEqual(heights[0], heights[1], f"the field and Close share one height: {heights}")
         box = close.bounding_box()

@@ -11,6 +11,7 @@ import { getProjectWorkView, workViewReadUrl } from './read-api';
 import type { ReadState } from './read-state';
 import { useWorkRead } from './useWorkRead';
 import { useAgentOwners } from '../agents/owners';
+import { useAgentHue } from '../agents/hues';
 import './board.css';
 
 // The Tasks board (#136, UI116-4, #868): four columns, the four states, and no
@@ -98,6 +99,7 @@ interface CardProps {
  * mouse or pen drags it, and the keyboard moves it (Space, arrows, Space) or sets its state (1–4).
  */
 function Card({ item, agentOwner, meId, writable, hintId, saving, dragged, lifted, onPointerDown, onClickCapture, onKeyDown, onKeyUp, onBlur, onOpen }: CardProps) {
+  const hue = useAgentHue();
   const blocked = item.status === 'blocked';
   const owner = item.owner;
   const dropped = item.status === 'done' && item.dropped;
@@ -119,7 +121,7 @@ function Card({ item, agentOwner, meId, writable, hintId, saving, dragged, lifte
         {owner ? (
           // A person is a face and a name; an agent is Kreska and its one label, "Planner · Ada's agent", on one line (#1364).
           owner.kind === 'agent'
-            ? <span className="tb-card__owner tb-card__owner--agent"><AgentIdentity name={owner.name} owner={agentOwner} icon={20} /></span>
+            ? <span className="tb-card__owner tb-card__owner--agent"><AgentIdentity name={owner.name} owner={agentOwner} icon={20} hue={hue(owner.id)} /></span>
             : <span className="tb-card__owner">
               <span className="tb-av" aria-hidden="true">{initials(owner.name)}</span>
               <span className="tb-card__name">{owner.id === meId ? 'You' : owner.name}</span>

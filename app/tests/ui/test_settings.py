@@ -311,7 +311,8 @@ class SettingsJourney(unittest.TestCase):
             rows = [text.split("\n")[0] for text in page.locator("ul.sset-card a.sset-row").all_inner_texts()]
             self.assertEqual(rows, ["Appearance", "Notifications", "AI", "Company"])
             expect(page.get_by_role("link", name=re.compile("^Shortcuts"))).to_have_count(0)
-            expect(page.get_by_role("button", name=re.compile("^Sign out"))).to_be_visible()
+            # Sign out is in Account alone (README §4, §7), not twice.
+            expect(page.get_by_role("button", name=re.compile("^Sign out"))).to_have_count(0)
             self.phone_targets(page)
             shot(page, f"settings-phone-390-settings-{'dark' if dark else 'light'}")
             # Appearance opens as its own page with the theme choices, This phone and Kreska.
@@ -505,8 +506,8 @@ class SettingsJourney(unittest.TestCase):
                 expect(back).to_have_count(1)
                 self.assertLess(back.bounding_box()["y"], page.get_by_role("heading", level=2, name="Your API keys").bounding_box()["y"])
 
-    def test_10_a_touch_only_tablet_lists_no_keyboard_shortcuts(self) -> None:
-        """AC-1: Shortcuts appear only with a keyboard; a touch-only tablet's section list leaves them out."""
+    def test_10_a_touch_tablet_lists_the_same_sections_shortcuts_included(self) -> None:
+        """README §7 Settings: the sections are the same on every device that has a list; a keyboard can be attached to a tablet, so Shortcuts stay."""
         context = self.browser.new_context(base_url=ORIGIN, storage_state=self.state, viewport={"width": 1024, "height": 768},
                                            device_scale_factor=1, has_touch=True, locale="en-GB")
         self.addCleanup(context.close)
@@ -517,8 +518,8 @@ class SettingsJourney(unittest.TestCase):
         touch_only = page.evaluate("matchMedia('(hover: none)').matches")
         if UI_BROWSER == "chromium":
             self.assertTrue(touch_only, "Chromium emulates a touch-only tablet here")
-        self.assertEqual(nav.get_by_role("link").all_inner_texts(), SECTIONS[:-1] if touch_only else SECTIONS)
-        # Control: the same width with a mouse keeps the section (test_01 checks it at 1440 too).
+        self.assertEqual(nav.get_by_role("link").all_inner_texts(), SECTIONS)
+        # Control: the same width with a mouse lists the same (test_01 checks it at 1440 too).
         mouse = self.browser.new_context(base_url=ORIGIN, storage_state=self.state, viewport={"width": 1024, "height": 768}, device_scale_factor=1, locale="en-GB")
         self.addCleanup(mouse.close)
         other = mouse.new_page()

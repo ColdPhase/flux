@@ -53,7 +53,7 @@ function GithubProjectSettings({ shell }: { shell: ProjectShell }) {
     <p className="github-settings__note">Private repository details are shown only when your own GitHub account and Flux access both permit them.</p>
     {error ? <p role="alert" className="github-settings__error">{error}</p> : null}
     {!capabilities ? error ? <Button variant="secondary" onClick={() => void refresh()}>Check access again</Button> : <Spinner label="Loading GitHub settings" /> : capabilities.status === 'unavailable'
-      ? <section><h3>GitHub isn’t set up on this server</h3><p>Ask whoever runs Flux to set it up. Your tasks and conversations work as usual.</p><Button variant="secondary" onClick={() => void refresh()}>Check again</Button></section>
+      ? <section><h3>GitHub isn’t set up on this server</h3><p>Your tasks and conversations work as usual.</p><Button variant="secondary" onClick={() => void refresh()}>Check again</Button></section>
       : capabilities.authorization !== 'connected'
         ? <section><h3>{capabilities.authorization === 'uncertain' ? 'Reconnect your GitHub account' : 'Authorize your GitHub account'}</h3><p>Choose your own account on GitHub. Signing in to Flux and authorizing GitHub are separate steps.</p><Button busy={busy} onClick={() => void connect('authorize')}>Continue to GitHub</Button></section>
         : <>

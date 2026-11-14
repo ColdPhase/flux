@@ -2,12 +2,14 @@ import { useEffect, useState } from 'react';
 import type { TaskPeople as People } from '@flux/contracts';
 import { Avatar, Kreska } from '../ui';
 import { getTaskPeople } from './taskAgents';
+import { useAgentHue } from './hues';
 import './task-agent.css';
 
 // Who is in a task: its people and their agents (#841, F-036 TA-1; mockup AiTask "In this task"). Shown when any of its people has an
 // agent; a task of people with none has nothing more to say here. It is read again whenever the panel is and whenever the thread under
 // it changes, so someone who writes in the thread appears in it.
 export function TaskPeople({ workId, revision }: { workId: string; revision: unknown }) {
+  const hue = useAgentHue();
   const [people, setPeople] = useState<People['people'] | null>(null);
   useEffect(() => {
     const controller = new AbortController();
@@ -23,7 +25,7 @@ export function TaskPeople({ workId, revision }: { workId: string; revision: unk
       <dd>
         <span className="wd-people" role="img" aria-label={`${people.map((person) => person.name).join(', ')} and ${agents === 1 ? 'their agent' : 'their agents'}`}>
           {people.map((person) => <Avatar key={person.id} name={person.name} id={person.id} size="sm" />)}
-          {people.flatMap((person) => person.agents.map((agent) => <Kreska key={agent.id} size={16} />))}
+          {people.flatMap((person) => person.agents.map((agent) => <Kreska key={agent.id} size={16} hue={hue(agent.id)} />))}
         </span>
         <span className="wd-muted"> {names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : names[0]} and {agents === 1 ? 'their agent' : 'their agents'}</span>
       </dd>

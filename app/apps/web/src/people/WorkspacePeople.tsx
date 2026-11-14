@@ -9,6 +9,7 @@ import { whenPageLive } from '../api/pageLeaving';
 import { useStreamEvents } from '../api/stream';
 import { useShellData } from '../app/data';
 import { Avatar, Button, Icon, Input, Spinner, useFocusBack, useRowMotion, useToast, Select, Option } from '../ui';
+import { SpaceFace } from '../ui/SpaceFace';
 import { isEncryptionEvent, type EncryptedWorkspace } from '../encryption/api';
 import { EncryptionSection } from '../encryption/EncryptionSection';
 import { listCompanyEncryptedSpaces } from '../encryption/api';
@@ -192,7 +193,8 @@ export function WorkspacePeople({ workspaceId, onBack, page = false }: { workspa
         )}
         </div>
         <p className="people__done" role="status">{done ? <><Icon name="check" size={13} />{done}</> : null}</p>
-        {!manager ? (
+        {/* The company's page already says "Only admins can change this page" at its top: a member is told once. */}
+        {!manager && !(page && members) ? (
           <p className="ov-note">{members
             ? `Only owners and admins add people or change roles in ${workspace.name}.`
             : `Guests see only the spaces they’re added to, not everyone in ${workspace.name}.`}</p>
@@ -287,6 +289,8 @@ function CompanySpaces({ workspaceId }: { workspaceId: string }) {
       <ul className="people__list sset-card" aria-label="Every space in the company">
         {spaces.map((space) => (
           <li className="people__item" key={space.id}><div className="people__row">
+            {/* A space is its tile wherever it is named (F-040): the letter, emoji or picture of the sidebar's row. */}
+            <span className="side__pj" style={{ width: 20, height: 20 }} aria-hidden="true"><SpaceFace name={space.name} icon={space.icon} size={20} /></span>
             <span className="people__who"><b>{space.member === false ? space.name : <Link to={`/projects/${space.id}`}>{space.name}</Link>}</b></span>
             {space.member === false ? <Button variant="quiet" size="sm" className="access__invite" busy={busy === space.id} aria-label={`Add me to ${space.name}`} onClick={() => void join(space.id, space.name)}>Add me</Button> : null}
             {/* A space is deleted in its own settings, the one way (Space settings › Delete space…, #1424); this list opens it and adds you to it. */}
@@ -294,7 +298,8 @@ function CompanySpaces({ workspaceId }: { workspaceId: string }) {
         ))}
         {sealed.map((entry) => (
           <li className="people__item" key={entry.id} data-encrypted-space={entry.id}><div className="people__row">
-            <span className="people__who"><b><Icon name="lock" size={13} /> {entry.name}</b><span>Encrypted · made {madeOn.format(new Date(entry.createdAt))} · you can delete it, not open it</span></span>
+            <span className="side__pj side__pj--lock" style={{ width: 20, height: 20 }} aria-hidden="true"><Icon name="lock" size={12} /></span>
+            <span className="people__who"><b>{entry.name}</b><span>Encrypted · made {madeOn.format(new Date(entry.createdAt))} · you can delete it, not open it</span></span>
             <Button variant="quiet" size="sm" className="access__invite" aria-label={`Delete ${entry.name}`} onClick={() => setDeleting({ id: entry.id, name: entry.name, encrypted: true })}>Delete…</Button>
           </div></li>
         ))}
