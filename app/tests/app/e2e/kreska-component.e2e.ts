@@ -61,13 +61,16 @@ test('all sixteen production Kreska expressions at five sizes retain static fram
         }
         await page.evaluate(() => { const plain = document.querySelector('[data-face="idle"] [data-size="48"] .kreska')!; plain.removeAttribute('data-moves'); });
         assert.deepEqual(await page.locator('[data-face="idle"] [data-size="48"] .kreska').evaluate(motion), [], 'a face without a state stays still');
-        // Reduced motion in Settings → Appearance, and Kreska's small moments off, each leave every face its static frame.
-        for (const [attribute, value] of [['motion', 'reduce'], ['kreska', 'off']] as const) {
-          await page.evaluate(([name, setting]) => { document.documentElement.dataset[name] = setting; }, [attribute, value]);
-          const still = await page.locator('.kreska').evaluateAll((faces) => faces.flatMap((face) => [...face.querySelectorAll('*')]).filter((part) => getComputedStyle(part).animationName !== 'none').length);
-          assert.equal(still, 0, `${engine.name()} ${scheme}: data-${attribute}="${value}" stops every Kreska motion`);
-          await page.evaluate((name) => { delete document.documentElement.dataset[name]; }, attribute);
-        }
+        // The system's reduced-motion setting (the only one: Settings has no Reduce motion switch, #1419 item 17) and Kreska's small
+        // moments off (Settings → Appearance) each leave every face its static frame.
+        const stillMoving = () => page.locator('.kreska').evaluateAll((faces) => faces.flatMap((face) => [...face.querySelectorAll('*')]).filter((part) => getComputedStyle(part).animationName !== 'none').length);
+        await page.emulateMedia({ reducedMotion: 'reduce' });
+        assert.equal(await stillMoving(), 0, `${engine.name()} ${scheme}: prefers-reduced-motion stops every Kreska motion`);
+        await page.emulateMedia({ reducedMotion: 'no-preference' });
+        assert.ok(await stillMoving() > 0, `${engine.name()} ${scheme}: the motion returns with no preference`);
+        await page.evaluate(() => { document.documentElement.dataset.kreska = 'off'; });
+        assert.equal(await stillMoving(), 0, `${engine.name()} ${scheme}: data-kreska="off" stops every Kreska motion`);
+        await page.evaluate(() => { delete document.documentElement.dataset.kreska; });
         await page.close();
       }
     } finally { await browser.close(); }

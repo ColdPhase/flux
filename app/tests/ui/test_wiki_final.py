@@ -168,7 +168,7 @@ class WikiFinal(unittest.TestCase):
         expect(menu).to_contain_text("No headings yet")
         expect(menu.get_by_role("menuitem")).to_have_count(0)
 
-    def test_contents_respects_the_persons_reduce_motion_choice_and_system(self) -> None:
+    def test_contents_follows_the_systems_reduced_motion_setting(self) -> None:
         page = self.open(DESKTOP, "light")
         body = "## Start\n\n" + ("A season of field measurements needs careful notes.\n\n" * 70) + "## Last readings\n\nKeep the last reading reachable.\n"
         api = api_of(page)
