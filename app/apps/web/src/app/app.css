@@ -746,11 +746,12 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 @media (pointer: coarse) {
   .auth__alt .ui-link, .auth__error .ui-link { position: relative; }
   .auth__alt .ui-link::after, .auth__error .ui-link::after { content: ""; position: absolute; left: -4px; right: -4px; top: calc(50% - 22px); height: 44px; }
-  /* "Forgot password?" sits between the Email and the Password fields, so its hit area fills the gap between those two inputs and
-     stops at each: from the Email's bottom edge (the form's gap above the line, and the line's own 2 px lead) to just above the
-     Password's top edge, and wider than the text to the left. It never covers either input (a tap on the Password's top edge focuses it). */
+  /* "Forgot password?" sits between the Email and the Password fields, with 5 px under it and the form's gap above it, so a 44 px area
+     cannot fit without covering an input. Its hit area stays in that gap, 7 px short of the Email's bottom edge and ending with the
+     line: a touch browser takes a tap within a few px of a link for the link, so a tap on either input's edge must stay at least
+     that far from it. It is wider than the text to the left, and covers neither input. */
   .auth__form .ui-field__aside .ui-link { position: relative; }
-  .auth__form .ui-field__aside .ui-link::after { content: ""; position: absolute; left: -24px; right: -8px; top: calc(-1 * var(--auth-gap) - 1px); bottom: -3px; }
+  .auth__form .ui-field__aside .ui-link::after { content: ""; position: absolute; left: -24px; right: -8px; top: calc(5px - var(--auth-gap)); bottom: 0; }
 }
 
 /* F-029 (#614): "Not in <workspace>: AI is off there." is its own line under its card, not the caption of the next heading. */

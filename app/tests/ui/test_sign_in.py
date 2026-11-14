@@ -103,8 +103,8 @@ class SignIn(_Browser):
                     self.forgot_password_hit_area_fills_the_gap_between_the_fields(page)
 
     def forgot_password_hit_area_fills_the_gap_between_the_fields(self, page: Page) -> None:
-        """"Forgot password?" is a 17 px line between the Email and Password fields. On a phone its hit area fills the gap between the two
-        inputs, wider than the text, and covers neither: a tap on the Password's top edge (or the Email's bottom edge) is that input's."""
+        """"Forgot password?" is a 17 px line between the Email and Password fields. On touch its hit area is taller and wider than the text,
+        inside the gap between the two inputs, and covers neither: a tap on the Password's top edge (or the Email's bottom edge) is that input's."""
         self.assertTrue(page.evaluate("matchMedia('(pointer: coarse)').matches"), "the phone's pointer is coarse")
         page.evaluate("document.fonts.ready.then(() => true)")
         email, password = page.get_by_label("Email"), page.get_by_label("Password", exact=True)
@@ -115,7 +115,8 @@ class SignIn(_Browser):
         self.assertLess(text["height"], 24, f"the link keeps its own small line, only its hit area is larger: {text}")
         self.assertGreaterEqual(area["top"], email_bottom, f"the hit area does not reach into the Email input: {area}, input bottom {email_bottom}")
         self.assertLessEqual(area["bottom"], password_top, f"the hit area does not reach into the Password input: {area}, input top {password_top}")
-        self.assertGreaterEqual(area["height"], password_top - email_bottom - 3, f"the hit area fills the gap between the two inputs: {area}, gap {password_top - email_bottom}")
+        self.assertGreaterEqual(area["height"], 24, f"the hit area is at least 24 px tall, WCAG 2.5.8's minimum (it cannot be 44 between two inputs 40 px apart): {area}")
+        self.assertGreater(area["height"], text["height"] + 6, f"and taller than the line: {area}, text {text}")
         self.assertGreaterEqual(area["width"], 44, f"and is at least 44 px wide: {area}")
         self.assertLessEqual(area["left"], text["x"] - 16, f"and wider than the text on its left: {area}, text {text}")
         # A tap on the Password's top edge, and on the Email's bottom edge, under the middle of the link, is that input's (focus moves to it, nothing opens).
@@ -125,8 +126,8 @@ class SignIn(_Browser):
         page.touchscreen.tap(x, email_bottom - 2)
         expect(email).to_be_focused()
         expect(page).to_have_url(f"{ORIGIN}/sign-in")
-        # A tap in the gap, left of the text where only the widened area reaches, opens the reset page.
-        page.touchscreen.tap(text["x"] - 12, (email_bottom + password_top) / 2)
+        # A tap left of the text, where only the widened area reaches, opens the reset page.
+        page.touchscreen.tap(text["x"] - 12, text["y"] + text["height"] / 2)
         expect(page).to_have_url(re.compile(r"/forgot-password$"))
 
     def test_02_keyboard_order_and_errors(self) -> None:
