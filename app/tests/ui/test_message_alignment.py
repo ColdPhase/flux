@@ -376,7 +376,8 @@ class MessageAlignment(unittest.TestCase):
                     page.set_viewport_size({"width": width, "height": 844})
                     page.goto(f"/projects/{self.project}")
                     root = page.locator(f"#message-{self.short['messages'][0]['id']}")
-                    self.assert_reference_width(page, root)
+                    # In the stream the task is its card, not a chip in the message (#1424); the thread shows the chips.
+                    expect(root.locator(".ws-chip")).to_have_count(0)
                     root.get_by_role("button", name=re.compile(r"^1 reply")).click()
                     thread = page.get_by_role("complementary", name="Replies").or_(page.get_by_role("dialog", name="Replies"))
                     self.assert_reference_width(page, thread.locator(".thread__root"))
@@ -401,13 +402,40 @@ class MessageAlignment(unittest.TestCase):
     }"""
     STATE_WORD = {"work": "Doing", "decision": "accepted"}
 
-    def assert_cards(self, page, scope, titles, narrow, where, name):
-        """Two cards (a task, a decision) in `scope`: the title keeps its start, the state is whole and at the right
+    def assert_event_cards(self, page, titles, where, name):
+        """In the space's stream a task and a decision made from a message show once (#1424): each is its one card, never also a chip
+        in the message. The card keeps the whole title on a wide column (or its start, cut with an ellipsis), and its state is whole
+        and inside the card."""
+        expect(page.locator(".project-convo__feed .message-bubble .ws-chip")).to_have_count(0)
+        for kind, selector, state in (("work", ".convo-notice", "Doing"), ("decision", '.convo-object[data-object-kind="decision.proposed"]', "Accepted")):
+            event = page.locator(f".project-convo__feed {selector}").filter(has_text=titles[kind])
+            expect(event).to_have_count(1)
+            card = event.locator(".convo-notice__card")
+            expect(card).to_have_count(1)
+            card.scroll_into_view_if_needed()
+            measured = card.evaluate("""card => {
+              const box = (el) => { const r = el.getBoundingClientRect(); return {left: r.left, right: r.right}; };
+              const title = card.querySelector('.convo-notice__title'), state = card.querySelector('.convo-object__state'), meta = card.querySelector('.convo-notice__meta');
+              return {title: title.textContent, state: state.innerText, stateFits: state.scrollWidth <= state.clientWidth + 1, titleShown: title.clientWidth,
+                card: box(card), titleBox: box(title), stateBox: box(state), metaBox: box(meta)};
+            }""")
+            shot(page, f"event-card-{name}-{kind}-{UI_BROWSER}")
+            label = f"{where} {kind}: {measured}"
+            self.assertEqual(measured["title"], titles[kind], label)
+            self.assertGreater(measured["titleShown"], 100, f"{label}: the title has room")
+            self.assertTrue(measured["stateFits"], f"{label}: the state is cut")
+            self.assertIn(state, measured["state"], label)
+            for part in ("titleBox", "stateBox", "metaBox"):
+                self.assertGreaterEqual(measured[part]["left"], measured["card"]["left"] - 0.5, f"{label}: {part} inside the card")
+                self.assertLessEqual(measured[part]["right"], measured["card"]["right"] + 0.5, f"{label}: {part} inside the card")
+
+    def assert_cards(self, page, scope, titles, narrow, where, name, kinds=("work", "decision")):
+        """The chips (a task, a decision) in `scope`: the title keeps its start, the state is whole and at the right
         edge, and the form is the one-row card of the narrow places (A08, A09) or the drawn card of the wide column."""
         cards = page.locator(f"{scope} .message-bubble .ws-chip")
-        expect(cards).to_have_count(2)
+        expect(cards).to_have_count(len(kinds))
         seen = set()
-        for index in range(2):
+        for index in range(len(kinds)):
             card = cards.nth(index)
             card.scroll_into_view_if_needed()
             measured = card.evaluate(self.CARD_PROBE)
@@ -433,21 +461,29 @@ class MessageAlignment(unittest.TestCase):
                 self.assertNotEqual(measured["label"], "none", f"{label}: the wide column keeps the kind over the title")
                 above, below = measured["stateBox"]["top"] - measured["cardBox"]["top"], measured["cardBox"]["bottom"] - measured["stateBox"]["bottom"]
                 self.assertAlmostEqual(above, below, delta=3, msg=f"{label}: the state is centred across the two lines")
-        self.assertEqual(seen, {"work", "decision"})
+        self.assertEqual(seen, set(kinds))
 
     def test_03b_task_and_decision_cards_keep_their_title_and_their_whole_state(self):
         # #665: a card's title shows more than its first characters and its state stays whole (#501), in the thread panel
         # (1440 px) and sheet (390 px) as in the conversation column.
         for width, height, phone in ((1440, 900, False), (390, 844, True)):
-            for surface, path, scope, titles, narrow in (
-                ("thread", f"/projects/{self.cards_project}/conversations/{self.cards['id']}", "#thread", self.card_titles, True),
-                ("stream", f"/projects/{self.cards_project}", ".project-convo__feed", self.stream_titles, width == 390),
+            for surface, path in (
+                ("thread", f"/projects/{self.cards_project}/conversations/{self.cards['id']}"),
+                ("stream", f"/projects/{self.cards_project}"),
             ):
                 with self.subTest(width=width, surface=surface):
                     page = self.page(phone=phone)
                     page.set_viewport_size({"width": width, "height": height})
                     page.goto(path)
-                    self.assert_cards(page, scope, titles, narrow, f"{width}px {surface}", f"{surface}-{width}")
+                    if surface == "thread":
+                        # The thread has no task cards, so the task is the chip in its root; the decision made from a reply is its card
+                        # among the replies, and that reply carries no chip of it (#1424).
+                        self.assert_cards(page, "#thread", self.card_titles, True, f"{width}px {surface}", f"{surface}-{width}", kinds=("work",))
+                        decision = page.locator('#thread .convo-object[data-object-kind="decision.proposed"]').filter(has_text=self.card_titles["decision"])
+                        expect(decision.locator(".convo-notice__card")).to_have_count(1)
+                        expect(decision.locator(".convo-object__state")).to_have_text("Accepted")
+                    else:
+                        self.assert_event_cards(page, self.stream_titles, f"{width}px {surface}", f"{surface}-{width}")
                     assert_no_sideways_scroll(self, page, ".thread__feed" if surface == "thread" else ".project-convo__feed", f"{width}px {surface}")
                     page.context.close()
 
@@ -456,6 +492,8 @@ class MessageAlignment(unittest.TestCase):
         # the two-row card for the conversation at its full width. Measured feed widths (the container the card asks): 1440 closed
         # 1184, 1440 with the panel 754, 1920 with the panel 1174 (the column is the 760 px cap in both), tablet 820 748, 1024 768.
         # The panel decides the first three, so no width can; the width is the rest, with the threshold at 760, the column's cap.
+        # Since #1424 the stream draws a task and a decision made from a message as their one card, never a chip in the message, so these
+        # widths now check that card; the chip's forms are checked where chips still show (the thread, test_03b).
         stream = f"/projects/{self.cards_project}"
         beside = f"/projects/{self.cards_project}/conversations/{self.cards['id']}"
         for name, width, height, path, narrow in (
@@ -470,7 +508,7 @@ class MessageAlignment(unittest.TestCase):
                 page = self.page()
                 page.set_viewport_size({"width": width, "height": height})
                 page.goto(path)
-                self.assert_cards(page, ".project-convo__feed", self.stream_titles, narrow, name, name)
+                self.assert_event_cards(page, self.stream_titles, name, name)
                 page.context.close()
         # The threshold itself, on the one container: 759 px is below it, 760 is not.
         for feed_width, narrow in ((759, True), (760, False)):
@@ -482,7 +520,7 @@ class MessageAlignment(unittest.TestCase):
                 bar = page.locator(".project-convo__feed").evaluate("el => el.offsetWidth - el.clientWidth")
                 page.add_style_tag(content=f".project-convo__feed {{ max-width: {feed_width + bar}px; }}")
                 self.assertEqual(page.locator(".project-convo__feed").evaluate("el => el.clientWidth"), feed_width)
-                self.assert_cards(page, ".project-convo__feed", self.stream_titles, narrow, f"feed {feed_width}px", f"feed-{feed_width}")
+                self.assert_event_cards(page, self.stream_titles, f"feed {feed_width}px", f"feed-{feed_width}")
                 page.context.close()
 
     def test_04_shared_bubble_and_grouping_matrix(self):

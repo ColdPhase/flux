@@ -264,23 +264,23 @@ class ReturnToOrigin(unittest.TestCase):
         before = self.offset(page, feed, target)
         self.assertGreater(page.evaluate("(feed) => document.querySelector(feed).scrollTop", feed), 0)
         self.assertEqual(self.origin_back(page).count(), 0, "a conversation opened by its address has no way back")
-        # Something arrives while the person is reading: what is on screen does not move for it, not even for a moment. The task chip above the card
-        # went away while the chips were read again for the wider batch and came back, so the card moved up by the chip's height under a tap that came
-        # at that moment (a tap meant for the card landed on the message). The chip is watched at every change of the page, not at every frame.
+        # Something arrives while the person is reading: what is on screen does not move for it, not even for a moment. A task chip above the card
+        # once went away and came back while the chips were read again, so the card moved under a tap. The task made from this message is its card in
+        # the stream (#1424), so the message never shows a chip of it, not even for a moment while the chips are read again: watched at every change.
         page.evaluate("""([target]) => {
-          window.__chipGone = false;
+          window.__chipShown = false;
           const message = document.querySelector(target);
-          new MutationObserver(() => { if (!message.querySelector('.ws-chip')) window.__chipGone = true; }).observe(message, { childList: true, subtree: true });
+          new MutationObserver(() => { if (message.querySelector('.ws-chip')) window.__chipShown = true; }).observe(message, { childList: true, subtree: true });
         }""", [target])
-        expect(page.locator(f"{target} .ws-chip")).to_have_count(1)
+        expect(page.locator(f"{target} .ws-chip")).to_have_count(0)
         arrived = f"While you were reading the shortlist ({engine}, {size}): the ToF board arrived."
         already = page.get_by_text(arrived).count()
         self.start("jonas", arrived)
         # The arrival is on the page and the chips have been read again: the place was kept all that time, and the tap is on what the person saw.
         expect(page.get_by_text(arrived)).to_have_count(already + 1)
         page.wait_for_timeout(900)
-        self.assertFalse(page.evaluate("window.__chipGone"), "the task chip stayed under the message while the arrival's chips were read")
-        expect(page.locator(f"{target} .ws-chip")).to_have_count(1)
+        self.assertFalse(page.evaluate("window.__chipShown"), "no chip of the task appeared under the message while the arrival's chips were read")
+        expect(page.locator(f"{target} .ws-chip")).to_have_count(0)
         self.assert_same(before, self.offset(page, feed, target), "the message stays where it was when something arrives below")
         history = page.evaluate("history.length")
         self.press_in_place(page, page.locator(f"{target} .wiki-card"), tap)

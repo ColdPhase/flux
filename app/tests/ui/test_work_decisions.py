@@ -102,7 +102,7 @@ class WorkDecisionsJourney(unittest.TestCase):
         return page.locator("#details")
 
     def wait_decision(self, page: Page, title: str) -> dict:
-        """A proposal is held for Undo (6 s) and sent when that window ends: its record, once it exists."""
+        """A proposal is held for Undo (10 s, #1424) and sent when its toast leaves: its record, once it exists."""
         for _ in range(80):
             found = next((item for item in self.work(page)["decisions"] if item["title"] == title), None)
             if found:
@@ -156,9 +156,15 @@ class WorkDecisionsJourney(unittest.TestCase):
         expect(panel).not_to_contain_text("Everyone in")
         expect(panel).not_to_contain_text("Who can see this")
         expect(panel.get_by_role("link", name=re.compile("^Message: Test the camera"))).to_be_visible()
-        # The source stays in place, and the work shows up under it.
+        # The source stays in place. The task shows once in the stream (#1424): its card, never also a chip under the message; the open
+        # thread, which has no task cards, shows it under its root.
         expect(message.locator(":scope > .message-bubble > .message-body").first).to_have_text(IDEA)
-        expect(message.get_by_role("button", name=re.compile(r"^Task #\d+: " + re.escape(IDEA) + "$"))).to_be_visible()
+        expect(message.locator(".ws-chip")).to_have_count(0)
+        card = page.locator(".project-convo__in .convo-notice").filter(has_text=IDEA)
+        expect(card.locator(".convo-notice__card")).to_have_count(1)
+        expect(card.locator(".convo-notice__what")).to_have_text("created a task from your message")
+        root = page.locator(".thread__root")
+        expect(root.get_by_role("button", name=re.compile(r"^Task #\d+: " + re.escape(IDEA) + "$"))).to_be_visible()
         # The panel's controls change the stored work (If-Match under the hood).
         panel.get_by_role("button", name="Status", exact=True).click()
         page.get_by_role("menuitemradio", name="Doing").click()
@@ -167,11 +173,12 @@ class WorkDecisionsJourney(unittest.TestCase):
         expect(page.locator(".ui-toast").filter(has_text=re.compile(r"moved to Doing")).get_by_role("button", name="Undo")).to_be_visible()
         # Details names the task by its number in the project (#276), and the space it is in, above the title (#1364).
         expect(page.locator("#details .wd__ref .ui-task-number")).to_have_text("#1")
-        expect(message.locator(".ws-chip .ui-task-number")).to_have_text("#1")
-        self.assertTrue(message.locator(".ws-chip").evaluate("node => node.querySelector('.ui-task-number').compareDocumentPosition(node.querySelector('.ws-chip__t')) & Node.DOCUMENT_POSITION_FOLLOWING"), "the number leads the title in a task reference")
+        expect(root.locator(".ws-chip .ui-task-number")).to_have_text("#1")
+        self.assertTrue(root.locator(".ws-chip").evaluate("node => node.querySelector('.ui-task-number').compareDocumentPosition(node.querySelector('.ws-chip__t')) & Node.DOCUMENT_POSITION_FOLLOWING"), "the number leads the title in a task reference")
         panel.get_by_role("button", name="Owner", exact=True).click()
         page.get_by_role("menuitemradio", name=re.compile(PARTNER["name"])).click()
-        expect(message.get_by_role("button", name=re.compile(r"^Task #\d+: " + re.escape(IDEA) + "$"))).to_contain_text("Kai Berg")
+        expect(root.get_by_role("button", name=re.compile(r"^Task #\d+: " + re.escape(IDEA) + "$"))).to_contain_text("Kai Berg")
+        expect(card.locator(".convo-notice__owner")).to_contain_text("Kai Berg")
         stored = self.work(page)["work"]
         self.assertEqual(len(stored), 1, "one action creates exactly one work item")
         item = stored[0]
@@ -203,11 +210,12 @@ class WorkDecisionsJourney(unittest.TestCase):
         self.assertEqual(proposed["status"], "proposed")
         page.goto(f"/projects/{self.project_id}?open=decision:{proposed['id']}")
         panel = self.details(page)
-        expect(panel.locator(".wd-eyebrow")).to_contain_text("Proposed decision")
+        # One state, one word (#1424).
+        expect(panel.locator(".wd-eyebrow")).to_contain_text("Proposed")
         shot(page, "decision-desktop-1440-proposed")
         panel.get_by_role("button", name="Accept", exact=True).focus()
         page.keyboard.press("Enter")
-        expect(panel.locator(".wd-eyebrow")).to_contain_text("Decision · accepted")
+        expect(panel.locator(".wd-eyebrow")).to_contain_text("Accepted")
         expect(panel).to_contain_text("Ada Lind")
         decision = self.work(page)["decisions"][0]
         self.assertEqual((decision["status"], decision["decidedBy"]["id"]), ("accepted", OWNER["id"]))
@@ -263,7 +271,7 @@ class WorkDecisionsJourney(unittest.TestCase):
         expect(panel.get_by_role("button", name="Accept and pivot")).to_have_count(0)
         shot(page, "decision-desktop-1440-replaces")
         panel.get_by_role("button", name="Accept", exact=True).click()
-        expect(panel.locator(".wd-eyebrow")).to_contain_text("Decision · accepted")
+        expect(panel.locator(".wd-eyebrow")).to_contain_text("Accepted")
         expect(panel.get_by_role("region", name="At this pivot")).to_have_count(0)
 
         stored = self.work(page)
@@ -279,7 +287,7 @@ class WorkDecisionsJourney(unittest.TestCase):
         expect(page.get_by_text("parked by a pivot")).to_have_count(0)
         # The earlier decision and its reason stay in the decision's own details (S1: no archive).
         page.goto(f"/projects/{self.project_id}/tasks?open=decision:{rules['Use a camera for gesture control']['id']}")
-        expect(self.details(page)).to_contain_text("Decision · replaced")
+        expect(self.details(page)).to_contain_text("Replaced")
         expect(self.details(page).get_by_text("This was replaced by the decision Switch to a ToF distance sensor")).to_be_visible()
         page.keyboard.press("Escape")
         shot(page, "tasks-desktop-1440")
@@ -460,7 +468,8 @@ class WorkDecisionsJourney(unittest.TestCase):
         self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.viewport_size["width"], f"{label}: no sideways scroll")
         # Linked work and decisions stay inside their column and the viewport on both sides.
         for column, pane in ((".project-convo__in", stream), (".thread__in", feed)):
-            chips = page.locator(f"{column} .project-convo__message .ws-chip")
+            # A task made from a message is its card in the stream and a chip in the thread (#1424).
+            chips = page.locator(f"{column} :is(.project-convo__message .ws-chip, .convo-notice__card)")
             self.assertGreater(chips.count(), 0, f"{label}: {column} has linked objects")
             for index in range(chips.count()):
                 box = chips.nth(index).bounding_box()

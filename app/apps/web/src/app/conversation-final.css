@@ -27,11 +27,29 @@ button.convo-notice__src:focus-visible { outline: 2px solid var(--t1); outline-o
 .convo-notice__task:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }
 .convo-notice__task > svg { flex: none; color: var(--t2); }
 .convo-notice__num { flex: none; color: var(--t3); }
-.convo-notice__title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.convo-notice__title { flex: 1 1 0; min-width: min(7em, 40%); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .convo-notice--undone .convo-notice__title { display: block; overflow: visible; text-overflow: clip; white-space: normal; }
-.convo-notice__owner { flex: none; display: inline-flex; align-items: center; gap: 6px; color: var(--t3); font-size: var(--fs-xs); }
+/* The title keeps its room (#1424, audit P2-4: beside a docked panel at 1024 px the whole owner name squeezed it to nothing): the
+   owner's name gives way first, with an ellipsis, and a narrow card shows the owner's face alone. */
+.convo-notice__owner { flex: 0 1 auto; min-width: 0; max-width: 40%; display: inline-flex; align-items: center; gap: 6px; color: var(--t3); font-size: var(--fs-xs); }
+.convo-notice__owner > :not(.convo-notice__owner-name) { flex: none; }
+.convo-notice__owner-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@container task-notice (max-width: 30em) { .convo-notice__owner-name { display: none; } }
 @media (pointer: coarse) { .convo-notice__task { min-height: 44px; } }
 .convo-notice + .convo-notice { margin-top: 14px; }
+
+/* A task or a decision shows once, as one card (#1424): the object's row, then inside the same card one quiet line of who made it,
+   from what and when. The row's button reaches over the whole card (its ::after), and the line's source link stands above it. */
+.convo-notice__card { position: relative; gap: 0; padding-bottom: 8px; border-radius: 14px; background: var(--el); box-shadow: var(--sh-card); transition: var(--tr); }
+.convo-notice__card:has(> .convo-notice__task:hover) { background: var(--sub); }
+.convo-notice__card:has(> .convo-notice__task:focus-visible) { outline: 2px solid var(--t1); outline-offset: 2px; }
+.convo-notice__card > .convo-notice__task { position: static; background: none; box-shadow: none; }
+.convo-notice__card > .convo-notice__task:hover { background: none; }
+.convo-notice__card > .convo-notice__task:focus-visible { outline: none; }
+.convo-notice__card > .convo-notice__task::after { content: ''; position: absolute; inset: 0; border-radius: 14px; }
+.convo-notice__card > .convo-notice__meta { padding: 0 12px 0 38px; gap: 0 6px; font-size: var(--fs-sm); line-height: 1.4; color: var(--t3); }
+.convo-notice__card > .convo-notice__meta strong { font-size: var(--fs-sm); font-weight: 500; color: var(--t2); }
+.convo-notice__card > .convo-notice__meta .convo-notice__src { position: relative; z-index: 1; color: var(--t2); }
 
 /* Several in a row: one line with who and what, opening to the notices themselves (S8). */
 .convo-fold { max-width: min(600px, 100%); margin: 24px 0; padding-left: 44px; list-style: none; }
@@ -72,5 +90,6 @@ button.convo-notice__src:focus-visible { outline: 2px solid var(--t1); outline-o
   .convo-fold__list { margin-left: -42px; }
   .convo-notice__owner-name { display: none; }
   .convo-notice__meta, .convo-notice__task, .convo-fold__b { font-size: var(--fs-base); }
+  .convo-notice__card > .convo-notice__meta, .convo-notice__card > .convo-notice__meta strong { font-size: var(--fs-sm); }
 }
 @media (max-width: 680px) and (hover: none) { .project-convo__message { width: 100%; } }

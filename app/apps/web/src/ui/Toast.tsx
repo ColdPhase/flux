@@ -1,5 +1,6 @@
 import { createContext, type CSSProperties, type RefObject, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { useLocation } from 'react-router';
 import { Icon } from './Icon';
 import { Kreska, type KreskaExpression } from './Kreska';
 import { duration, settle } from './motion';
@@ -12,24 +13,33 @@ export interface ToastAction {
   label: string;
   onClick: () => void;
   key?: 'Z';
+  /** A step back that is not called Undo (Hand back): an Undo toast all the same, with its 10 s and its place (#1424). */
+  undoes?: true;
 }
 
 export interface ToastOptions {
   message: string;
   tone?: ToastTone;
-  /** Milliseconds before it leaves on its own; errors stay until dismissed. `null` keeps an undo-like action (Hand back)
-   *  until it is used or dismissed, as Undo stays (#347 N1). */
-  timeout?: number | null;
+  /** Milliseconds before a toast without Undo leaves on its own; errors stay until dismissed. An Undo toast always has
+   *  {@link UNDO_MS} (#1424), so it takes no timeout. */
+  timeout?: number;
   /** One quiet action beside the message, e.g. Undo or Hand back. Taking it closes the toast. */
   action?: ToastAction;
   /** A second quiet action after the first, e.g. "Add another" after Undo (#1235). Taking it closes the toast too. */
   also?: ToastAction;
   /** A small moment: the wink after a task is closed. Shown only while Small moments is on; the message says it all. */
   mascot?: KreskaExpression;
+  /** Called once when the toast leaves without its action being taken: its time, ×, a newer toast, another place, the session
+   *  ending, or a toast that could not be shown. A change held for Undo is sent then (#1424). */
+  onLeave?: () => void;
 }
 
-interface ToastEntry extends Required<Omit<ToastOptions, 'timeout' | 'action' | 'also' | 'mascot'>> {
+interface ToastEntry extends Required<Omit<ToastOptions, 'timeout' | 'action' | 'also' | 'mascot' | 'onLeave'>> {
   mascot: KreskaExpression | null;
+  /** An Undo toast (#1424): 10 s, and it leaves when the person goes to another place. */
+  undo: boolean;
+  /** Mutable: set when its action ran, or when it left; `onLeave` runs at most once and never after the action. */
+  done: { acted: boolean; ended: boolean; onLeave: (() => void) | null };
   id: number;
   action: ToastOptions['action'] | null;
   also: ToastOptions['also'] | null;
@@ -40,6 +50,8 @@ interface ToastEntry extends Required<Omit<ToastOptions, 'timeout' | 'action' | 
 
 /** How long a toast with an Open-style action stays (CW-5). */
 const ACTION_TIMEOUT_MS = 8000;
+/** How long every Undo toast stays (founder decision, 2026-11-14, #1424), paused while hovered or focused. */
+export const UNDO_MS = 10_000;
 /** A toast's action ignores a tap this soon after the toasts moved: the tap was meant for what was there. */
 const ACTION_ARMED_MS = 600;
 /** How far the toasts must move for the tap guard: about half a toast, so a tap aimed elsewhere could land on one. */
@@ -52,6 +64,37 @@ const ToastTopContext = createContext<number | null>(null);
 /** Actual top of the rendered feedback stack, or null while no feedback is shown. */
 export function useToastTop() { return useContext(ToastTopContext); }
 
+const ToastStackContext = createContext<RefObject<HTMLDivElement | null> | null>(null);
+
+/**
+ * A conversation keeps its end clear of the toast while one shows (#1424, B-8): the end of its list moves up by the part of the
+ * toast over the feed (`--toast-clear`, a transparent bottom border of the feed's column, see ui.css), so the newest card or an
+ * inline Delete / Keep row is never under it. A reader at the end stays at the end; one reading higher up is not moved.
+ */
+export function useClearOfToast(ref: RefObject<HTMLElement | null>, attached: HTMLElement | null) {
+  const top = useToastTop();
+  const stack = useContext(ToastStackContext);
+  useLayoutEffect(() => {
+    if (!attached) return undefined;
+    const update = () => {
+      const feed = ref.current;
+      if (!feed) return;
+      const box = feed.getBoundingClientRect();
+      const toasts = top === null ? null : stack?.current?.getBoundingClientRect() ?? null;
+      const over = !!toasts && toasts.height > 0 && toasts.left < box.right && toasts.right > box.left && toasts.top < box.bottom;
+      const clear = over ? Math.max(0, Math.ceil(box.bottom - toasts.top + 8)) : 0;
+      const was = parseFloat(feed.style.getPropertyValue('--toast-clear')) || 0;
+      if (clear === was) return;
+      const atEnd = feed.scrollHeight - feed.scrollTop - feed.clientHeight <= 2;
+      if (clear) feed.style.setProperty('--toast-clear', `${clear}px`); else feed.style.removeProperty('--toast-clear');
+      if (atEnd && clear > was) feed.scrollTop = feed.scrollHeight;
+    };
+    update();
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, [ref, attached, top, stack]);
+}
+
 export function useToast() {
   return useContext(ToastContext);
 }
@@ -61,7 +104,7 @@ export function useToastScope() {
   return useContext(ToastScopeContext);
 }
 
-function ToastItem({ toast, onDone, registerAction, movedAt }: { toast: ToastEntry; onDone: (id: number) => void; registerAction: (id: number, run: (() => void) | null) => void; movedAt: number }) {
+function ToastItem({ toast, onDone, onLeaving, registerAction, movedAt }: { toast: ToastEntry; onDone: (id: number) => void; onLeaving: (toast: ToastEntry) => void; registerAction: (id: number, run: (() => void) | null) => void; movedAt: number }) {
   const ref = useRef<HTMLDivElement>(null);
   const message = useRef<HTMLSpanElement>(null);
   const [scrollable, setScrollable] = useState(false);
@@ -84,10 +127,21 @@ function ToastItem({ toast, onDone, registerAction, movedAt }: { toast: ToastEnt
     registerAction(toast.id, () => act());
     return () => registerAction(toast.id, null);
   }, [toast.action, toast.id, leaving, toast.leaving, act, registerAction]);
+  // The time left: hovering or focusing the toast pauses it, and leaving it runs on from there (#1424, as a notice's do).
+  const left = useRef(toast.timeout);
+  const armedAt = useRef(0);
+  const held = useRef({ pointer: false, focus: false });
   const arm = useCallback(() => {
-    if (toast.timeout !== null) timer.current = window.setTimeout(dismiss, toast.timeout);
-  }, [dismiss, toast.timeout]);
-  const disarm = () => { if (timer.current !== null) window.clearTimeout(timer.current); timer.current = null; };
+    if (left.current === null || timer.current !== null) return;
+    armedAt.current = performance.now();
+    timer.current = window.setTimeout(dismiss, Math.max(0, left.current));
+  }, [dismiss]);
+  const disarm = useCallback(() => {
+    if (timer.current === null) return;
+    window.clearTimeout(timer.current);
+    timer.current = null;
+    if (left.current !== null) left.current -= performance.now() - armedAt.current;
+  }, []);
 
   useLayoutEffect(() => {
     const node = message.current;
@@ -103,17 +157,19 @@ function ToastItem({ toast, onDone, registerAction, movedAt }: { toast: ToastEnt
     void settle(ref.current, { opacity: 1, transform: 'none' }, duration('--dur-in'), '--ease-out', { from: { opacity: 0, transform: 'translateY(8px)' } });
     arm();
     return disarm;
-  }, [arm]);
+  }, [arm, disarm]);
 
   useEffect(() => {
     if (!leaving && !toast.leaving) return;
+    onLeaving(toast);
     // A toast dismissed while it arrives leaves from where it is; it is gone in --dur-out and never held.
     void settle(ref.current, { opacity: 0, transform: 'translateY(8px)' }, duration('--dur-out'), '--ease-in', { from: { opacity: 1, transform: 'none' }, fill: 'forwards' })
       .then(() => onDone(toast.id));
-  }, [leaving, toast.leaving, toast.id, onDone]);
+  }, [leaving, toast, onDone, onLeaving]);
 
   return (
-    <div ref={ref} className={`ui-toast ui-toast--${toast.tone}${toast.also ? ' ui-toast--also' : ''}${scrollable ? ' ui-toast--scrollable' : ''}`} onMouseEnter={disarm} onMouseLeave={arm} onFocus={disarm} onBlur={arm}>
+    <div ref={ref} className={`ui-toast ui-toast--${toast.tone}${toast.also ? ' ui-toast--also' : ''}${scrollable ? ' ui-toast--scrollable' : ''}`} onMouseEnter={() => { held.current.pointer = true; disarm(); }} onMouseLeave={() => { held.current.pointer = false; if (!held.current.focus) arm(); }}
+      onFocus={() => { held.current.focus = true; disarm(); }} onBlur={(event) => { if (event.currentTarget.contains(event.relatedTarget as Node | null)) return; held.current.focus = false; if (!held.current.pointer) arm(); }}>
       {toast.mascot && moments ? <Kreska expression={toast.mascot} size={24} /> : toast.tone === 'success' ? <Icon name="check" /> : toast.tone === 'danger' ? <Icon name="alert" /> : null}
       <span ref={message} className="ui-toast__msg" tabIndex={scrollable ? 0 : undefined}
         role={scrollable ? 'region' : undefined} aria-label={scrollable ? 'Notification message' : undefined}>{toast.message}</span>
@@ -225,36 +281,60 @@ export function ToastProvider({ children, scopeKey }: { children: ReactNode; sco
   const sessionEpoch = scope.epoch;
   const committedSession = useRef({ key: scopeKey, epoch: sessionEpoch });
   const actions = useRef(new Map<number, () => void>());
+  /** Every toast shown and not yet ended, so each one's `onLeave` runs once, whatever takes it away (#1424). */
+  const live = useRef(new Map<number, ToastEntry>());
+  const end = useCallback((entry: ToastEntry) => {
+    live.current.delete(entry.id);
+    if (entry.done.ended) return;
+    entry.done.ended = true;
+    if (!entry.done.acted) entry.done.onLeave?.();
+  }, []);
   useLayoutEffect(() => {
     committedSession.current = { key: scopeKey, epoch: sessionEpoch };
     actions.current.clear();
-  }, [scopeKey, sessionEpoch]);
+    // Another session's toasts are gone with it: what they held is sent now.
+    for (const entry of [...live.current.values()]) if (entry.sessionEpoch !== sessionEpoch) end(entry);
+  }, [scopeKey, sessionEpoch, end]);
+  useEffect(() => () => { for (const entry of [...live.current.values()]) end(entry); }, [end]);
+  // Another place (founder decision, 2026-11-14, #1424): an Undo toast leaves the moment the address changes, so `Z` never
+  // undoes there what was done here. Toasts without Undo keep their own short time.
+  const { pathname } = useLocation();
+  const shownAt = useRef(pathname);
+  useLayoutEffect(() => {
+    if (shownAt.current === pathname) return;
+    shownAt.current = pathname;
+    setToasts((current) => current.some((toast) => toast.undo && !toast.leaving)
+      ? current.map((toast) => (toast.undo && !toast.leaving ? { ...toast, leaving: true } : toast)) : current);
+  }, [pathname]);
   const isCurrent = useCallback(() => committedSession.current.epoch === sessionEpoch && committedSession.current.key === scopeKey, [scopeKey, sessionEpoch]);
   const show = useCallback((options: ToastOptions) => {
-    if (!isCurrent()) return () => {};
+    if (!isCurrent()) { options.onLeave?.(); return () => {}; }
     const tone = options.tone ?? 'neutral';
     const actionEpoch = sessionEpoch;
+    const done: ToastEntry['done'] = { acted: false, ended: false, onLeave: options.onLeave ?? null };
     const action = options.action ? {
       ...options.action,
-      onClick: () => { if (isCurrent() && committedSession.current.epoch === actionEpoch) options.action!.onClick(); },
+      onClick: () => { done.acted = true; if (isCurrent() && committedSession.current.epoch === actionEpoch) options.action!.onClick(); },
     } : null;
     const also = options.also ? {
       ...options.also,
       onClick: () => { if (isCurrent() && committedSession.current.epoch === actionEpoch) options.also!.onClick(); },
     } : null;
+    const undo = options.action?.key === 'Z' || options.action?.undoes === true;
     const entry: ToastEntry = {
-      id: nextId.current++, message: options.message, tone, action, also, mascot: options.mascot ?? null,
-      // An action that is not Undo (Open, Open task…) leaves on its own too (CW-5); Undo keeps its own window, errors stay.
-      timeout: options.timeout !== undefined ? options.timeout : (tone === 'danger' || options.action?.key === 'Z' ? null : action ? ACTION_TIMEOUT_MS : 5000),
-      leaving: false, sessionEpoch: actionEpoch,
+      id: nextId.current++, message: options.message, tone, action, also, mascot: options.mascot ?? null, undo,
+      // One rule for Undo (#1424): 10 s, paused while hovered or focused. An Open-style action leaves on its own too (CW-5); errors stay.
+      timeout: undo ? UNDO_MS : tone === 'danger' ? null : options.timeout ?? (action ? ACTION_TIMEOUT_MS : 5000),
+      leaving: false, sessionEpoch: actionEpoch, done,
     };
+    live.current.set(entry.id, entry);
     // One toast at a time (v0.2 visual review): a newer toast takes the place of the one shown, which leaves at once with its
     // action. Its change stays made: every change is applied when its toast shows, and a delayed one (Accept, Answer) is sent
-    // when its own window ends, as after a dismissal. Stacked toasts covered a phone's work (a column's head) after a few quick changes.
+    // when its toast leaves (#1424). Stacked toasts covered a phone's work (a column's head) after a few quick changes.
     setToasts((current) => [...current.filter((toast) => toast.sessionEpoch === actionEpoch)
       .map((toast) => (toast.leaving ? toast : { ...toast, leaving: true })), entry]);
-    return () => setToasts((current) => current.filter((toast) => toast.id !== entry.id));
-  }, [isCurrent, sessionEpoch]);
+    return () => { end(entry); setToasts((current) => current.filter((toast) => toast.id !== entry.id)); };
+  }, [isCurrent, sessionEpoch, end]);
   const remove = useCallback((id: number) => setToasts((current) => current.filter((toast) => toast.id !== id)), []);
   const registerAction = useCallback((id: number, run: (() => void) | null) => {
     if (run) actions.current.set(id, run); else actions.current.delete(id);
@@ -289,14 +369,14 @@ export function ToastProvider({ children, scopeKey }: { children: ReactNode; sco
     return () => { observer.disconnect(); window.removeEventListener('resize', measure); };
   }, [sessionEpoch, visible.length]);
   return (
-    <ToastTopContext.Provider value={toastTop}><ToastScopeContext.Provider value={isCurrent}><ToastContext.Provider value={value}>
+    <ToastStackContext.Provider value={stack}><ToastTopContext.Provider value={toastTop}><ToastScopeContext.Provider value={isCurrent}><ToastContext.Provider value={value}>
       {children}
       {createPortal(
         <div ref={stack} className="ui-toasts" style={lift.inset ? { '--toast-modal-inset': `${lift.inset}px` } as CSSProperties : undefined} role="status" aria-live="polite" aria-relevant="additions text">
-          {visible.map((toast) => <ToastItem key={toast.id} toast={toast} onDone={remove} registerAction={registerAction} movedAt={lift.movedAt} />)}
+          {visible.map((toast) => <ToastItem key={toast.id} toast={toast} onDone={remove} onLeaving={end} registerAction={registerAction} movedAt={lift.movedAt} />)}
         </div>,
         document.body,
       )}
-    </ToastContext.Provider></ToastScopeContext.Provider></ToastTopContext.Provider>
+    </ToastContext.Provider></ToastScopeContext.Provider></ToastTopContext.Provider></ToastStackContext.Provider>
   );
 }

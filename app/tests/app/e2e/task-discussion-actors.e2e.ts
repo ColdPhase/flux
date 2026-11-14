@@ -112,9 +112,11 @@ async function assertAuthorColumn(row: Locator, width: number) {
   const geometry = await row.evaluate((el) => {
     const face = el.querySelector<HTMLElement>(':scope > :is(.ui-avatar, .author-face), :scope > .thread__root-meta > :is(.ui-avatar, .author-face)')!;
     const meta = el.querySelector<HTMLElement>('.project-convo__message-meta, .thread__root-meta, .convo-notice__meta')!;
+    // A task's one card (#1424) starts the content column; its name line is inside it.
+    const card = el.querySelector<HTMLElement>(':scope > .convo-notice__card');
     const r = el.getBoundingClientRect();
     const f = face.getBoundingClientRect();
-    const m = meta.getBoundingClientRect();
+    const m = (card ?? meta).getBoundingClientRect();
     return { display: getComputedStyle(face).display,
       rowX: r.x, rowRight: r.right, faceX: f.x, faceRight: f.right, faceWidth: f.width, faceHeight: f.height,
       own: el.matches('.project-convo__message.is-mine, .thread__root.is-mine'),

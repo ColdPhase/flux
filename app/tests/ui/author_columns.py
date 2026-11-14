@@ -14,8 +14,10 @@ def assert_author_column(case: unittest.TestCase, row: Locator, width: int, labe
         return
     observed = row.evaluate("""el => {
       const face = el.querySelector(':scope > :is(.ui-avatar, .author-face), :scope > .thread__root-meta > :is(.ui-avatar, .author-face)');
+      // A task's or a decision's one card (#1424) starts the content column; its name line is inside it.
+      const card = el.querySelector(':scope > .convo-notice__card');
       const meta = el.querySelector('.project-convo__message-meta, .thread__root-meta, .convo-notice__meta, .agents-msg__meta');
-      const r = el.getBoundingClientRect(), f = face.getBoundingClientRect(), m = meta.getBoundingClientRect();
+      const r = el.getBoundingClientRect(), f = face.getBoundingClientRect(), m = (card ?? meta).getBoundingClientRect();
       return {rowX:r.x, rowRight:r.right, faceX:f.x, faceRight:f.right, width:f.width, height:f.height,
         own:el.matches('.project-convo__message.is-mine, .thread__root.is-mine'),
         display:getComputedStyle(face).display, metaX:m.x, metaRight:m.right, direction:getComputedStyle(meta).flexDirection};

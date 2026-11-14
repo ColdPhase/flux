@@ -23,7 +23,7 @@ import { useAskMenu } from '../assistant/useAskMenu';
 import { ComposerMenu } from '../app/ComposerMenu';
 import { useStreamEvents } from '../api/stream';
 import { useShellData } from '../app/data';
-import { Avatar, Button, Icon, MEDIA, sendsOnEnter, useArrivals, useMediaQuery, useToast } from '../ui';
+import { Avatar, Button, Icon, MEDIA, sendsOnEnter, useArrivals, useClearOfToast, useMediaQuery, useToast } from '../ui';
 import { audienceLine, dmTitle, othersIn } from './names';
 import { pageBackTo } from '../app/seekMessage';
 import { taskHref } from '../sketch/ThoughtTasks';
@@ -103,6 +103,8 @@ function DmContent({ initial }: { initial: Dm }) {
   // The feed element as state too, so the reading-position owner starts once it is on screen.
   const [feedNode, setFeedNode] = useState<HTMLDivElement | null>(null);
   const attachFeed = useCallback((element: HTMLDivElement | null) => { feedRef.current = element; setFeedNode(element); }, []);
+  // An Undo toast never covers the last message or its Delete / Keep row (#1424).
+  useClearOfToast(feedRef, feedNode);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesRef = useRef(messages);
   // The author edited or deleted a root here (#1006): it is replaced at once; a reply is the thread panel's.

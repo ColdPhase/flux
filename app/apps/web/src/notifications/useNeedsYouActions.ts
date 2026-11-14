@@ -10,7 +10,7 @@ import { applyRunChanges } from '../assistant/api';
 import { announceAcceptedInboxItem, announceInboxChange } from './api';
 import type { CardHandlers, SnoozeChoice } from './NeedsYouCard';
 import { tomorrowMorning } from './format';
-import { ACCEPT_UNDO_MS, flushAccepts, startAccept, startAnswer } from './pendingAccept';
+import { flushAccepts, startAccept, startAnswer } from './pendingAccept';
 import { answerAgentQuestion } from '../agents/api';
 import { rememberQuestion } from '../agents/questions';
 import { restoreNeedsYou, resolveNeedsYou, type Queue } from './needsYou';
@@ -99,8 +99,8 @@ export function useNeedsYouActions(queue: Queue): CardHandlers {
           : { message: 'Could not accept. Nothing changed. Try again.', tone: 'danger' });
       });
       current.hide(item.key);
-      // Undo is offered for ACCEPT_UNDO_MS only: the toast closes with the window, so it never outlives it.
-      toast({ message: 'Accepted', tone: 'success', timeout: ACCEPT_UNDO_MS, action: { label: 'Undo', key: 'Z', onClick: () => {
+      // The toast is the window (#1424): the accept is sent when it leaves, so Undo never outlives it.
+      toast({ message: 'Accepted', tone: 'success', onLeave: handle.send, action: { label: 'Undo', key: 'Z', onClick: () => {
         if (handle.undo()) { current.show(item); return; }
         // It was already sent (the place was left, or the window ended): a decision is never un-accepted.
         toast({ message: 'It is already accepted. To change direction, propose a new decision.' });
@@ -123,7 +123,7 @@ export function useNeedsYouActions(queue: Queue): CardHandlers {
           : { message: 'Your answer didn’t send. Nothing changed. Try again.', tone: 'danger' });
       });
       current.hide(item.key);
-      toast({ message: `Answered: ${option}`, tone: 'success', timeout: ACCEPT_UNDO_MS, action: { label: 'Undo', key: 'Z', onClick: () => {
+      toast({ message: `Answered: ${option}`, tone: 'success', onLeave: handle.send, action: { label: 'Undo', key: 'Z', onClick: () => {
         if (handle.undo()) { current.show(item); return; }
         toast({ message: 'Your answer was already sent. Reply in the thread to change it.' });
       } } });

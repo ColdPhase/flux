@@ -7,10 +7,11 @@ import { objectPhrase, objectState, objectTarget } from './objectNotices';
 import './object-notices.css';
 
 /**
- * One line that a decision was proposed or accepted (#694, F-026 P5): who did it and where it
- * came from, then the object as a card with its state now. It is information, not a message: no replies or actions
- * of its own, and the card opens the object in Details (one panel on the computer, one sheet on the phone). The same
- * line sits in the project's stream and, when it came from a thread, in that thread.
+ * A decision proposed or accepted (#694, F-026 P5). A proposal is the decision's one card (#1424): the decision with its state now,
+ * and inside the card one quiet line of who proposed it, from what and when. An acceptance is one line, never a second card: "accepted
+ * it" right under its card, else "accepted the decision <title>", the title opening it. It is information, not a message: no replies or
+ * actions of its own, and the card opens the object in Details (one panel on the computer, one sheet on the phone). The same card
+ * sits in the project's stream and, when it came from a thread, in that thread.
  */
 export function ObjectNoticeItem({ notice, meId, owners, authorOf, inThread = false, hasMessage, onOpen, onOpenThread, follows = false }: {
   notice: ObjectNotice; meId: string; owners: AgentOwners; authorOf: (messageId: string) => string | null; inThread?: boolean;
@@ -32,27 +33,33 @@ export function ObjectNoticeItem({ notice, meId, owners, authorOf, inThread = fa
     element.scrollIntoView({ block: 'center' });
     element.focus({ preventScroll: true });
   };
-  const link = phrase.link ? phrase.linkTo === 'message' && message && hasMessage(message.id)
+  const link = phrase.link ? phrase.linkTo === 'object'
+    ? <button type="button" className="convo-notice__src" onClick={() => onOpen(target)} aria-label={`Open decision ${notice.title}, ${state.word.toLowerCase()}`}>{phrase.link}</button>
+    : phrase.linkTo === 'message' && message && hasMessage(message.id)
     ? <button type="button" className="convo-notice__src" onClick={toMessage}>{phrase.link}</button>
     : phrase.linkTo === 'thread' && notice.conversationId && onOpenThread
       ? <button type="button" className="convo-notice__src" onClick={() => onOpenThread(notice.conversationId!)}>{phrase.link}</button>
       : <span className="convo-notice__src">{phrase.link}</span> : null;
+  const card = notice.kind === 'decision.proposed';
+  const meta = (
+    <p className="convo-notice__meta">
+      {by.kind === 'agent' ? <strong><AgentIdentity name={name} owner={agentAuthorOwner(by, owners)} icon={false} /></strong> : <strong>{name}{mine ? ' · you' : ''}</strong>}
+      <span className="convo-notice__what">{phrase.lead}{link ? <> {link}</> : null}</span>
+      <time dateTime={notice.createdAt} title={when(notice.createdAt)}>{clock(notice.createdAt)}</time>
+    </p>
+  );
   return (
-    <li className={`convo-object${follows ? ' is-follow' : ''}`} id={`object-${notice.id}`} data-object-kind={notice.kind} data-object-id={target.id} data-object-state={state.state}>
+    <li className={`convo-object${follows ? ' is-follow' : ''}${card ? '' : ' is-line'}`} id={`object-${notice.id}`} data-object-kind={notice.kind} data-object-id={target.id} data-object-state={state.state}>
       <AuthorFace kind={by.kind} id={by.id} name={name} mine={mine} />
-      <div className="convo-notice__body">
-        <p className="convo-notice__meta">
-          {by.kind === 'agent' ? <strong><AgentIdentity name={name} owner={agentAuthorOwner(by, owners)} icon={false} /></strong> : <strong>{name}{mine ? ' · you' : ''}</strong>}
-          <span className="convo-notice__what">{phrase.lead}{link ? <> {link}</> : null}</span>
-          <time dateTime={notice.createdAt} title={when(notice.createdAt)}>{clock(notice.createdAt)}</time>
-        </p>
-        {follows ? null : <button type="button" className="convo-notice__task convo-object__card" onClick={() => onOpen(target)} aria-label={`Open decision ${notice.title}, ${state.word.toLowerCase()}`}>
+      {card ? <div className="convo-notice__body convo-notice__card">
+        <button type="button" className="convo-notice__task convo-object__card" onClick={() => onOpen(target)} aria-label={`Open decision ${notice.title}, ${state.word.toLowerCase()}`}>
           <Icon name="flag" size={16} />
           <span className="convo-notice__title">{notice.title}</span>
           <span className="convo-object__state" data-state={state.state}>{state.word}</span>
           <Icon name="chevron-right" size={14} />
-        </button>}
-      </div>
+        </button>
+        {meta}
+      </div> : <div className="convo-notice__body">{meta}</div>}
     </li>
   );
 }

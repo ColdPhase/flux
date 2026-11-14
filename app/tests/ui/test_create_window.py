@@ -848,7 +848,9 @@ class CreateWindow(unittest.TestCase):
         create_other(page, "Decision")
         page.evaluate(twice)
         expect(window(page)).to_have_count(0)
-        page.wait_for_timeout(7000)  # #763 WF-3: the proposal is sent when its Undo window ends
+        # #763 WF-3, #1424: the proposal is sent when its Undo toast leaves; closing it ends that window at once.
+        page.locator(".ui-toast").filter(has_text="Decision proposed").get_by_role("button", name="Dismiss notification").click()
+        page.wait_for_timeout(1500)
         self.assertEqual(posts, [f"projects/{self.ids['project']}/decisions"])
         # A message's link belongs to its project: another project starts without it, so the task is made there.
         made = self.thread(page, "Sources stay home: label the bed rows")

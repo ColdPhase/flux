@@ -5,12 +5,13 @@ import { messageOf, noticeSource } from './conversationEvents';
 // open thread render the same lines, and the thread picks out the ones that came from it.
 
 /** The words of one line after the name: "proposed a decision from", with the part that links, "Jonas’s message". */
-export function objectPhrase(notice: ObjectNotice, authorOf: (messageId: string) => string | null, inThread: boolean, actor?: { name: string; mine: boolean }, follows = false): { lead: string; link?: string; linkTo?: 'message' | 'thread' } {
+export function objectPhrase(notice: ObjectNotice, authorOf: (messageId: string) => string | null, inThread: boolean, actor?: { name: string; mine: boolean }, follows = false): { lead: string; link?: string; linkTo?: 'message' | 'thread' | 'object' } {
   // Right under its proposal's card (`followsProposal`): the card names the decision.
   if (follows && notice.kind === 'decision.accepted') return { lead: 'accepted it' };
-  const what = notice.kind === 'decision.accepted' ? 'accepted a decision' : 'proposed a decision';
-  // Accepting is a person's step on the proposal, not a new origin: it names no source.
-  if (notice.kind === 'decision.accepted') return { lead: what };
+  // Accepting is a person's step on the proposal, not a new origin: it names no source. It is one line, never a second card of the
+  // decision (#1424): the line names it, and the name opens it.
+  if (notice.kind === 'decision.accepted') return { lead: 'accepted the decision', link: notice.title, linkTo: 'object' };
+  const what = 'proposed a decision';
   const source = noticeSource(notice, authorOf);
   if (source.kind === 'message') {
     // In its own thread the line does not say where: it is already there.

@@ -742,7 +742,7 @@ class TasksFinalJourney(unittest.TestCase):
                 middle.focus()
                 page.wait_for_timeout(100)
                 before = pane.evaluate('el => el.scrollTop')
-                # An Undo toast stays until it is taken or closed (#347 Toast contract). It is dismissed without moving focus
+                # An Undo toast lasts 10 s (#1424), longer than this check waits. It is dismissed without moving focus
                 # (a DOM click, as a timeout would), so the focus check below still proves the toast leaving keeps the reader's row.
                 page.locator('.ui-toast__close').last.evaluate('el => el.click()')
                 expect(page.locator('.ui-toast')).to_have_count(0)

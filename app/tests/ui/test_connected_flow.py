@@ -204,7 +204,7 @@ class ConnectedFlow(unittest.TestCase):
         page = self.page()
         page.goto(f"/projects/{self.ids['project']}/tasks?open=decision:{self.ids['d_sms']}")
         panel = page.locator("#details")
-        expect(panel.locator(".wd-eyebrow")).to_contain_text("Decision · accepted")
+        expect(panel.locator(".wd-eyebrow")).to_contain_text("Accepted")
         expect(panel).not_to_contain_text("Current rule")
         # A space has no details panel, so no "Now": what is current lives in the Tasks and the Inbox (#865, #1419).
         page.goto(f"/projects/{self.ids['project']}")

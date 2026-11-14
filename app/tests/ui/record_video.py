@@ -252,7 +252,7 @@ def journey(take: Take) -> None:
     expect(accept).to_be_visible()
     take.settle(1.0)
     take.click(accept)
-    expect(panel.locator(".wd-eyebrow")).to_contain_text("Decision · accepted")
+    expect(panel.locator(".wd-eyebrow")).to_contain_text("Accepted")
     take.settle(1.6)
     take.click(panel.get_by_role("button", name="Thread"))
     take.move_to(moisture.get_by_role("button", name=re.compile("^Decision: Measure soil moisture first")).first)
