@@ -291,8 +291,9 @@ class PhoneShellJourney(unittest.TestCase):
         page = self.page(reduced=True)
         page.goto(f"/projects/{self.project['id']}")
         self.assertIn(page.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--dur-in').trim()"), ("0ms", "0s"))
-        self.views(page).get_by_role("tab", name="Map").click()
-        expect(page).to_have_url(re.compile("/map$"))
+        # The Map tab is the map itself and has no second "+" (#1493); the Tasks tab keeps it.
+        self.views(page).get_by_role("tab", name="Tasks").click()
+        expect(page).to_have_url(re.compile("/tasks"))
         page.get_by_role("button", name="Create", exact=True).click()
         expect(page.get_by_role("dialog", name="New task")).to_be_visible()  # the "+" opens Create on Task (#1438 point 8)
         self.assertEqual(page.evaluate("document.getAnimations().filter((a) => a.playState === 'running').length"), 0)
