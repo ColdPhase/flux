@@ -1,0 +1,1 @@
+- The first screen downloads 239 KB of code and styles instead of 272 KB, back under its 250 KB budget: the Create window, the date and time fields, the notice card and the composer's sign-out wiring load with the code that needs them, and a test fails the build when the first screen goes over again ([#1428](https://github.com/ColdPhase/flux/issues/1428)).

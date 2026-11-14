@@ -577,8 +577,8 @@ with the Create window deferred too. The entry chunk is 112 KB.
 
 ### Back under 250 KB ([#1428](https://github.com/ColdPhase/flux/issues/1428), 2026-11-13)
 
-**Observed.** On `main` at `c24afddc3` the first screen was 39 files and **268.2 KB** brotli (v0.2.0: 242 KB, 35 files), counted with
-`scripts/perf-bundle.mjs`. Nine days of features each went into the entry chunk (see the per-commit table in the issue). The Create
+**Observed.** On `main` at `c24afddc3` the first screen was 39 files and **268.2 KB** brotli (v0.2.0: 242 KB, 35 files), and at `585be00c5`
+(the head this was finished on) 38 files and **271.8 KB** (240.3 KB of JS and 31.5 KB of CSS), counted with `scripts/perf-bundle.mjs`. Nine days of features each went into the entry chunk (see the per-commit table in the issue). The Create
 window (36 KB of code before minifying, and its three stylesheets), the date and time fields, the notice card and the sign-out wiring of the
 composer were all in it, although none of them is needed to show Home.
 
@@ -598,9 +598,10 @@ composer were all in it, although none of them is needed to show Home.
   loaded from the first screen on, so every tab still hears a sign-out; the composer registers what it keeps in memory (`onRetire`) and comes only
   with a conversation.
 
-**Observed after** (`scripts/perf-bundle.mjs`, the same count, built from the branch): 41 files and **238.1 KB** brotli, by step 268.2 KB
+**Observed after** (`scripts/perf-bundle.mjs`, the same count, built from the branch): on `c24afddc3` 41 files and **238.1 KB** brotli, by step 268.2 KB
 before, about 251 KB with the Create window deferred, 245.6 KB with the pickers out of the barrel, 243.4 KB with the notice card deferred and 238.1 KB
-with the sign-out wiring apart from the composer. The entry chunk is 106.5 KB (was 118.7) and the stylesheet 20.8 KB (was 26.1).
+with the sign-out wiring apart from the composer. The entry chunk is 106.5 KB (was 118.7) and the stylesheet 20.8 KB (was 26.1). Rebased on `585be00c5`:
+40 files and **239.1 KB** (213.5 KB of JS and 25.6 KB of CSS; 945 KB raw before, 816 KB after), the entry chunk 106.6 KB (was 121.0) and the stylesheet 20.8 KB (was 26.0).
 
 **Guard.** `tests/app/first-screen-budget.test.ts` runs against the finished build with the API tests (`./scripts/check_application.sh`,
 or `ci_test.sh api tests/app/first-screen-budget.test.ts`): it counts the files of `index.html` as `perf-bundle.mjs` does and fails above 250 KB,
