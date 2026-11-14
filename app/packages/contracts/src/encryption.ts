@@ -204,6 +204,7 @@ export const LOCKED_ALLOWED_ROUTES: Readonly<Record<string, string>> = {
   'POST /api/v1/needs-you/:key': 'Snoozing an item: its key is ids only',
   'DELETE /api/v1/needs-you/:key': 'Dismissing an item: its key is ids only',
   'GET /api/v1/workspaces/:workspaceId/agents': 'Always empty: an encrypted workspace has no agents (F-029)',
+  'POST /api/v1/people/:userId/reset-link': 'A company-level account route (#1471): an owner or admin of the company makes a password reset link for a person, from the company\'s roles and the person\'s account; `:userId` is a person, not an object of any workspace, so it reads and writes nothing of an encrypted workspace (the link is recorded in `password_reset_links`, class account)',
 };
 
 const AI_ONLY = 'AI work: F-029 forces it off in an encrypted workspace before any write, so no stored response can concern one';

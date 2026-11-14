@@ -453,7 +453,7 @@ describe('F-030 AI forced off', () => {
     const withPath = tables.filter((t) => t.ws || t.project || t.agent || (t.connection && !t.runtime && t.name.startsWith('agent')));
     // Pinned like the other registries: a table added or dropped changes this list on purpose, after checking it is guarded (a count floor went red whenever a table was dropped, #1017).
     assert.deepEqual(withPath.map((t) => t.name).sort(), [
-      'agent_chat_messages', 'agent_chat_reads', 'agent_command_receipts', 'agent_connections', 'agent_memory_items', 'agent_oauth_bindings',
+      'agent_chat_file_text', 'agent_chat_messages', 'agent_chat_reads', 'agent_command_receipts', 'agent_connections', 'agent_memory_items', 'agent_oauth_bindings',
       'agent_proposals', 'agent_questions', 'agent_runtime_sessions', 'agent_stops', 'agent_task_taking',
       'agents', 'assistant_changes', 'assistant_jobs',
       'assistant_settings', 'cowork_checkpoints', 'cowork_connection_slots', 'cowork_units', 'personal_runs',
