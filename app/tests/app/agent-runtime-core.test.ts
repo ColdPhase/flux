@@ -28,7 +28,7 @@ describe('operator configuration', () => {
       assert.throws(() => loadAgentRuntimeConfig({ FLUX_AGENT_RUNTIME: 'claude_code', FLUX_RUNTIME_MANAGER_SECRET: secret, FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS: bad }, new Date('2026-10-06')), /COMMERCIAL_TERMS/, bad);
     }
     const config = loadAgentRuntimeConfig({ FLUX_AGENT_RUNTIME: 'claude_code', FLUX_RUNTIME_MANAGER_SECRET: secret, FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS: '2026-10-01', FLUX_AGENT_RUNTIME_IDLE_DAYS: '30' }, new Date('2026-10-06'));
-    assert.deepEqual(config, { ...on, idleDays: 30 });
+    assert.deepEqual(config, { ...on, idleDays: 30, keys: false });
     assert.equal(loadAgentRuntimeConfig({ FLUX_AGENT_RUNTIME: 'codex', FLUX_RUNTIME_MANAGER_SECRET: secret }).commercialTermsAgreedOn, null);
     for (const bad of ['0', '366', '-1', 'x', '1.5']) assert.throws(() => loadAgentRuntimeConfig({ FLUX_AGENT_RUNTIME_IDLE_DAYS: bad }), /IDLE_DAYS/, bad);
   });
