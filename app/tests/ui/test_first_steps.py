@@ -126,7 +126,7 @@ class FirstStepsJourney(unittest.TestCase):
         invite = page.get_by_role("region", name="Invite people")
         expect(invite).to_be_visible()
         invite.get_by_role("button", name="Create invite link").click()
-        expect(invite.get_by_role("group", name="New invite link")).to_be_visible()
+        expect(page.get_by_role("group", name="New invite link")).to_be_visible()
         page.goto("/")
         expect(card.locator(".home__row-t")).to_have_count(1)
 

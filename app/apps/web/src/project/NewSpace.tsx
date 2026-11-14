@@ -1,6 +1,9 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import type { Project } from '@flux/contracts';
 import { PeoplePicker } from '../people/PeoplePicker';
+import { SomeoneNew } from '../people/SomeoneNew';
+import { isManagerRole } from '../people/api';
+import { useShellData } from '../app/data';
 import { getEncryptionAvailability } from '../encryption/api';
 import { PasswordLength, passwordRefusal } from '../encryption/PasswordLength';
 import { checkPassword, downloadRecoveryCode, generatePassphrase, generateRecoveryCode, loadWords } from '../encryption/passphrase';
@@ -22,7 +25,11 @@ import { useCompanyCandidates, useNewProject } from './newProject';
  */
 export function NewSpaceForm({ initialName = '', onCancel, onCreated }: { initialName?: string; onCancel: () => void; onCreated: (project: Project) => void }) {
   const { space, allowed, busy, error, create, createEncrypted } = useNewProject();
-  const { candidates, loading, companyName } = useCompanyCandidates();
+  const { candidates, members, loading, companyName } = useCompanyCandidates();
+  const { me } = useShellData();
+  // #1424: a company owner or admin also invites someone new here, as in Space settings; the links made wait for Create space.
+  const inviter = !!space && isManagerRole(space.role ?? 'guest');
+  const [invites, setInvites] = useState<string[]>([]);
   const [name, setName] = useState(initialName);
   // The form says what is missing in its own words, like sign-in and sign-up, not with the browser's bubble (#763 FR-9).
   const [missing, setMissing] = useState(false);
@@ -78,7 +85,7 @@ export function NewSpaceForm({ initialName = '', onCancel, onCreated }: { initia
     if (!name.trim()) { setMissing(true); return; }
     const chosen = people.filter((id) => candidates.some((member) => member.userId === id));
     if (!encrypted) {
-      const project = await create(name, { ai, people: chosen });
+      const project = await create(name, { ai, people: chosen, invites });
       if (project) onCreated(project);
       return;
     }
@@ -105,7 +112,12 @@ export function NewSpaceForm({ initialName = '', onCancel, onCreated }: { initia
       <div className="newspace__field">
         <div className="newspace__label">People<span>You’re the admin of this space</span></div>
         {loading ? <p className="pick__none" role="status">Loading people…</p>
-          : <PeoplePicker candidates={candidates} value={people} onChange={setPeople} disabled={busy} companyName={companyName} />}
+          : <PeoplePicker candidates={candidates} value={people} onChange={setPeople} disabled={busy} companyName={companyName}>
+            {/* An encrypted space takes only people of the company (C-24): no link joins it. */}
+            {inviter && space && !encrypted ? <SomeoneNew workspaceId={space.id} spaceId={null} spaceName={name.trim() || 'this space'} companyName={companyName} members={members}
+              inSpace={(id) => people.includes(id)} meId={me.user.id} onTick={(id) => setPeople((list) => (list.includes(id) ? list : [...list, id]))}
+              onMade={(invite) => setInvites((list) => [...list, invite.id])} /> : null}
+          </PeoplePicker>}
       </div>
       <div className="newspace__switches">
         {/* An encrypted space has no AI: the row stays, dimmed and off, and says so (F-026 §7 Spaces). */}

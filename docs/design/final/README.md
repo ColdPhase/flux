@@ -1534,12 +1534,15 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
     link** (`primary`). **More** (a quiet disclosure under the field) holds **Joins as** (Member by default; Guest; Admin for an
     owner) and **Works for** (7 days by default; 1 day, 30 days). An address that already has a Flux account is added at once
     ("Maja joined as member"); any other address, or none, makes the link, copied at once, with its card and Copy link as before.
-    "Only for", "Add someone" and the second role picker go. Links waiting to be used stay listed under the form, each with Copy and
-    Revoke. **A new link is shown once** (#1424): in its own row of that list, with the link in a read-only field to read or select and
+    "Only for", "Add someone" and the second role picker go. **Links waiting to be used are always listed** (#1424, persona B-5), under
+    the people as "Waiting to be used · N", each with Copy and Revoke, whether or not Invite is open. **A new link is shown once** (#1424): in its own row of that list, with the link in a read-only field to read or select and
     the hint "It works once…", not in a card of its own above a row that says the same; the row's Copy is the only Copy, and where the
     browser refuses to copy, the link is shown in the row it belongs to.
+  - **Reset link and Remove are on the person's row** (founder decision, Hubert, 2026-11-14, [#1424](https://github.com/ColdPhase/flux/issues/1424)):
+    after the role button, as quiet buttons, the same way Space settings shows Remove. Remove asks in place, **Remove** (danger) and
+    **Keep**, with the line of what it ends under the row; the role button "Member ▾" opens only the role.
   - **A reset link next to a person** (founder decision, Hubert, 2026-11-13, [#1471](https://github.com/ColdPhase/flux/issues/1471)).
-    Without SSO, the person's editor (the role button "Member ▾" opens it under their row) ends with one more group, after Remove:
+    Without SSO, the row's quiet **Reset link** opens one group under the row:
     "Password" in the group's label style, the line "Make a one-time link that lets {first name} choose a new password." and a
     `secondary` **Make reset link** (icon link). The link then shows exactly as a new invite link does, a read-only
     field "Reset link for {name}" with the hint "It works once. Flux doesn't send it: paste it into your message to them." and
@@ -1887,7 +1890,11 @@ On the phone the Assistant conversation is a normal conversation. Its header lis
 ![Locked space, space admin](screens/desktop-space-locked-admin.webp)
 
 - **New space** (New › Space) is one window. It has a Name, and People as one-line chips with Add
-  people (chosen from the company); "You're the admin of this space". AI is a switch, on by
+  people (chosen from the company); "You're the admin of this space". **Someone new? is there too** (founder decision, Hubert,
+  2026-11-14, [#1424](https://github.com/ColdPhase/flux/issues/1424)): for a company owner or admin the open Add people ends with the
+  same Someone new? row as Space settings, the same component and flow (the link is made, copied and shown in place), and Create space
+  ties each link made in the window to the new space. A window closed without Create leaves them as company links, listed in
+  Settings › Company. AI is a switch, on by
   default, and Encrypted a switch, off by default ("Can't be turned off later"). Cancel and
   Create space have the same height.
 - **With Encrypted on,** the AI row is dimmed ("No AI in encrypted spaces"). The window adds the
@@ -1908,7 +1915,9 @@ On the phone the Assistant conversation is a normal conversation. Its header lis
   - **Add people also takes a new person's email** (founder decision, 2026-11-13, #1438). Under the company's people, the open
     Add people has one more row for a company owner or admin: **Someone new?** an Email field and **Invite** (`secondary`). It
     makes the company's invite link (Member, 7 days, locked to that address) that also adds the person to this space when they
-    join; the link is copied at once and shown in place with Copy link. An address that already has an account in the company is
+    join; the link is copied at once and shown in place with Copy link, under one sentence, "Invite link created and copied. It works
+    once, for 7 days: paste it into your message to them." (#1424, persona B-4). The panel shows no dead control: **Add n people**
+    and Cancel while someone is ticked, otherwise one **Close**. An address that already has an account in the company is
     simply ticked in the list instead. The inviter gets "<name> joined <company>" naming the space when they join. A space admin
     who is not a company admin has no such row. About 6 clicks instead of 13.
   - The AI switch.
@@ -2016,8 +2025,11 @@ Founder decision, Hubert, 2026-11-13 ([#1438](https://github.com/ColdPhase/flux/
 - An invite link opens **the create-account form first**: "Join Riverside Makers", one line "Ada Kowalska invited you.", then
   Name, Email and Password and **Create account and join** (`primary`, large). Under the card, "Already have an account? **Sign in
   to join**". With sign-up closed or single sign-on only, the page says how to get in instead, as before.
-- **No "You joined" step.** Creating the account (or Join, when signed in already) lands in **Everyone with the composer ready**; a
-  guest, who is not in Everyone, lands in the space the link was made from, or on Home. The one exception is an admin joining an
+- **No "You joined" step.** Creating the account (or Join, when signed in already) lands **in the space the link was made from, with
+  the composer ready** (founder decision, Hubert, 2026-11-14, [#1424](https://github.com/ColdPhase/flux/issues/1424)): a link from a
+  space's Add people or from New space opens that space; only a link made for the company (Settings › Company › Invite) opens
+  Everyone; a guest whose link names no space opens Home. The landing replaces `/join` in the tab's history, so a reload, a restored
+  tab or Back opens Flux, never the invite page again (#1424, persona A-2). The one exception is an admin joining an
   encrypted space who has no unlock password yet: one page says so, with Open <space>, as before.
 - **No jargon:** no role explanation (a member is the ordinary case; only Guest and Admin get one plain line), no "work and
   handoffs", no "invite link has nothing more to do". A link already used by this account opens Flux.

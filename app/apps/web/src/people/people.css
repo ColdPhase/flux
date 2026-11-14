@@ -125,3 +125,19 @@
 @container sset (max-width: 19rem) {
   .people--page .people__row { gap: 8px; padding-inline: 12px; }
 }
+
+/* Reset link and Remove on a person's row of the company's page (founder decision 2026-11-14, #1424): quiet buttons after the role, the same
+   look as Space settings' Remove; Remove asks in place (Remove / Keep) with what it ends under the row. On a phone the row stacks as there. */
+.people__acts { display: inline-flex; flex: none; align-items: center; gap: 2px; }
+.people__act.ui-btn { flex: none; color: var(--t2); }
+.people__act[aria-expanded="true"] { background: var(--sub); color: var(--t1); }
+.people__confirmrow { display: inline-flex; gap: 6px; }
+.people__removing, .people__rownote { margin: 0 0 12px; font-size: var(--fs-sm); line-height: 1.45; color: var(--t2); }
+.people--page .people__removing, .people--page .people__rownote { margin-inline: 18px; }
+@media (pointer: coarse) { .people__act.ui-btn, .people__confirmrow .ui-btn { min-height: 44px; } }
+@media (max-width: 640px) {
+  .people--page .people__item[data-person] > .people__row { flex-wrap: wrap; row-gap: 4px; }
+  .people--page .people__item[data-person] .people__who { flex: 1 1 calc(100% - 52px); }
+  .people--page .people__item[data-person] .people__rolebtn, .people--page .people__item[data-person] > .people__row > .people__role { margin-left: 42px; }
+  .people--page .people__acts { margin-left: auto; }
+}

@@ -297,8 +297,8 @@ export interface AcceptInviteResult {
   /** An admin of an encrypted workspace without an unlock password: a current holder grants one (F-030). */
   needsUnlockPassword: boolean;
   /**
-   * The space the join page opens with its composer ready (#1438): Everyone for a member or admin, the link's space for a guest added to
-   * it, an encrypted workspace's own space; null when there is none (a guest without a space opens Home).
+   * The space the join page opens with its composer ready (#1438; founder decision 2026-11-14, #1424): the link's space when the person is
+   * in it, else Everyone for a member or admin; null when there is none (a guest without a space opens Home).
    */
   landingSpaceId: string | null;
 }
@@ -332,6 +332,11 @@ export interface CreateProjectCommand {
   ai?: boolean;
   /** People of the company added as members; the creator is always the first admin and is not listed. */
   people?: string[];
+  /**
+   * Invite links made in the New space window (#1424): pending links of this workspace that the caller made and that name no space yet.
+   * They are tied to the new space, so whoever joins with one is also added to it.
+   */
+  invites?: string[];
 }
 
 /** `PATCH`: a space admin, or a company owner or admin, renames the space. */

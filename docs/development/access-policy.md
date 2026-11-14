@@ -354,7 +354,9 @@ is a space of the same workspace other than Everyone (`400` otherwise); encrypte
 then grants the person `contributor` there, recorded as `project.grant_set.v1` by the link's maker, who is still a company owner or admin
 (the checks above) and so may change that space's people. A space deleted since adds nothing (`space_id` is set null). The list shows the
 space's name (`space`), and the answer of joining names the space the join page opens with its composer ready (`landingSpaceId`):
-Everyone, or for a guest the link's space, or none. In the same transaction the creator gets an Inbox notice
+the link's space when the person is in it, else Everyone for a member or admin, else none (founder decision 2026-11-14, #1424). New
+space ties links made in its window to the space it creates: `POST .../projects` takes `invites` (ids of pending links of this
+workspace that the caller made and that name no space yet; `400` for any other id), and sets their `space_id` in the same transaction. In the same transaction the creator gets an Inbox notice
 "<name> joined <company>" linking Settings › Company, or the space's settings when the link named one. Settings › Company shows invite links only
 without single sign-on: with it, the provider decides who joins.
 

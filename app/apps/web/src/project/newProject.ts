@@ -25,15 +25,17 @@ export function useNewProject() {
   // Guests only join the spaces they are added to.
   const allowed = !!workspace && workspace.role !== 'guest';
   const ready = (name: string) => !!name.trim() && allowed;
-  async function create(name: string, options: { ai: boolean; people: string[] }): Promise<Project | null> {
+  async function create(name: string, options: { ai: boolean; people: string[]; invites?: string[] }): Promise<Project | null> {
     if (!name.trim() || busy || inFlight.current) return null;
     if (!workspace) { setError('You’re not in a company on this Flux yet. Ask an admin for an invite link.'); return null; }
     inFlight.current = true;
     setBusy(true); setError('');
     try {
       await assertSignedInAs(me.user.id);
-      const intent = `space:${workspace.id}:${name.trim()}:${options.ai ? 'ai' : 'no-ai'}:${[...options.people].sort().join(',')}`;
-      const project = await createProject(workspace.id, name.trim(), intents.keyFor(intent), { ai: options.ai, people: options.people });
+      const invites = options.invites ?? [];
+      const intent = `space:${workspace.id}:${name.trim()}:${options.ai ? 'ai' : 'no-ai'}:${[...options.people].sort().join(',')}:${[...invites].sort().join(',')}`;
+      // #1424: links made in the window (Someone new?) are tied to the new space as it is made.
+      const project = await createProject(workspace.id, name.trim(), intents.keyFor(intent), { ai: options.ai, people: options.people, ...(invites.length ? { invites } : {}) });
       intents.settle(intent);
       revalidator.revalidate();
       return project;
@@ -91,5 +93,5 @@ export function useCompanyCandidates() {
     return () => controller.abort();
   }, [workspace, allowed]);
   const candidates = (members ?? []).filter((member) => member.userId !== me.user.id);
-  return { candidates, loading: members === null && allowed, companyName: workspace?.name ?? 'the company' };
+  return { candidates, members: members ?? [], loading: members === null && allowed, companyName: workspace?.name ?? 'the company' };
 }

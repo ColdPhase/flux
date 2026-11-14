@@ -88,8 +88,9 @@ export async function acceptInvite(principal: Principal, token: unknown, db: Dat
     const found = await find(signer, token, ports.invites(tx), true);
     const { invite } = found;
     const invites = ports.invites(tx);
-    // #1438: the join page opens a space with its composer ready: Everyone, unless the person is a guest, who opens the link's space.
-    const landing = async (role: WorkspaceRole, space: string | null) => (role === 'guest' ? space : await invites.everyoneSpace(invite.workspaceId));
+    // #1438, founder decision 2026-11-14 (#1424): the join page opens a space with its composer ready: the link's space when the person is in
+    // it, else Everyone (a guest, who is not in Everyone, opens Home).
+    const landing = async (role: WorkspaceRole, space: string | null) => space ?? (role === 'guest' ? null : await invites.everyoneSpace(invite.workspaceId));
     const result = async (status: AcceptInviteResult['status'], role: WorkspaceRole, space: string | null, needsUnlockPassword = false): Promise<AcceptInviteResult> => ({
       status, workspaceId: invite.workspaceId, workspaceName: found.workspaceName, role, encrypted: found.encrypted, needsUnlockPassword,
       landingSpaceId: await landing(role, space),

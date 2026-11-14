@@ -24,11 +24,20 @@ const ROLE_SENTENCE: Record<InviteRole, string | null> = {
 function readToken(): string {
   const fromHash = window.location.hash.replace(/^#/, '').trim();
   try {
-    if (fromHash) sessionStorage.setItem(STORE, fromHash);
+    if (fromHash) { sessionStorage.setItem(STORE, fromHash); forgetJoined(); }
     return fromHash || sessionStorage.getItem(STORE) || '';
   } catch { return fromHash; }
 }
 function forgetToken() { try { sessionStorage.removeItem(STORE); } catch { /* nothing kept */ } }
+
+/**
+ * This tab joined with its link (#1424, persona A-2): the landing replaced `/join` in the history, and a reload, a restored tab or Back that
+ * still reaches `/join` opens Flux, never "Open the invite link again" to someone who is already in. A new link opened here clears it.
+ */
+const JOINED = 'flux.invite-joined';
+function markJoined() { try { sessionStorage.setItem(JOINED, '1'); } catch { /* nothing kept */ } }
+function joinedHere() { try { return sessionStorage.getItem(JOINED) === '1'; } catch { return false; } }
+function forgetJoined() { try { sessionStorage.removeItem(JOINED); } catch { /* nothing kept */ } }
 
 type State =
   | { kind: 'loading' }
@@ -58,13 +67,15 @@ function landingOf(result: AcceptInviteResult) {
 }
 
 export function JoinPage() {
-  const [state, setState] = useState<State>(() => (readToken() ? { kind: 'loading' } : { kind: 'problem', ...NO_TOKEN }));
+  const [state, setState] = useState<State>(() => (readToken() || joinedHere() ? { kind: 'loading' } : { kind: 'problem', ...NO_TOKEN }));
   const [busy, setBusy] = useState(false);
   const [refusal, setRefusal] = useState('');
   const navigate = useNavigate();
   const location = useLocation();
   const revalidator = useRevalidator();
   const created = useActionData() as FormResult | undefined;
+  // Back on `/join` after this tab joined, with no new link: Flux opens in its place.
+  useEffect(() => { if (!readToken() && joinedHere()) navigate('/', { replace: true }); }, [location.key, navigate]);
 
   /** What the page shows for the link and this tab's session; `madeHere`: the account was just made on this page, so it joins at once. */
   function show([me, preview, capabilities]: [MeResponse | null, InvitePreview, IdentityCapabilities | null], madeHere: boolean) {
@@ -119,6 +130,7 @@ export function JoinPage() {
     try {
       const result = await acceptInvite(token);
       forgetToken();
+      markJoined();
       // F-030: an admin of an encrypted space without an unlock password is told so before it opens; a toast would not outlive the change of pages.
       if (result.needsUnlockPassword) { setState({ kind: 'joined', result }); return; }
       revalidator.revalidate();

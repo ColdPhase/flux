@@ -1,4 +1,4 @@
-import { useId, useMemo, useState } from 'react';
+import { useId, useMemo, useState, type ReactNode } from 'react';
 import type { WorkspaceMember } from '@flux/contracts';
 import { Avatar, Button, Icon } from '../ui';
 import './space.css';
@@ -6,10 +6,11 @@ import './space.css';
 /**
  * People chosen from the company (F-037, #874): the chosen ones are one-line chips in a field, and "Add people" opens the company's
  * list under it to tick more. Used by New space and by Space settings, so a person is picked the same way in both. In the settings
- * page one "Add people" button already opened it, so `listOnly` shows the list itself, with its search, and nothing else.
+ * page one "Add people" button already opened it, so `listOnly` shows the list itself, with its search, and nothing else. `children` follow the
+ * open list: "Someone new?" for a company owner or admin, the same in both places (#1424).
  */
-export function PeoplePicker({ candidates, value, onChange, disabled = false, companyName, listOnly = false }: {
-  candidates: WorkspaceMember[]; value: string[]; onChange: (ids: string[]) => void; disabled?: boolean; companyName: string; listOnly?: boolean;
+export function PeoplePicker({ candidates, value, onChange, disabled = false, companyName, listOnly = false, children }: {
+  candidates: WorkspaceMember[]; value: string[]; onChange: (ids: string[]) => void; disabled?: boolean; companyName: string; listOnly?: boolean; children?: ReactNode;
 }) {
   const [expanded, setOpen] = useState(false);
   const open = listOnly || expanded;
@@ -56,6 +57,7 @@ export function PeoplePicker({ candidates, value, onChange, disabled = false, co
           {candidates.length && !shown.length ? <p className="pick__none">Nobody matches.</p> : null}
         </div>
       ) : null}
+      {open ? children : null}
     </div>
   );
 }

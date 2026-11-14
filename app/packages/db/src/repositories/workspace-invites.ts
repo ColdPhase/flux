@@ -55,6 +55,10 @@ export function workspaceInviteRepository(db: DbExecutor) {
       await db.update(i).set({ acceptedAt: at, acceptedBy }).where(eq(i.id, inviteId));
     },
 
+    async setSpace(inviteId: string, spaceId: string) {
+      await db.update(i).set({ spaceId }).where(eq(i.id, inviteId));
+    },
+
     /** The workspace's oldest space everyone in it reads (the company's Everyone), or null (#1438). */
     async everyoneSpace(workspaceId: string): Promise<string | null> {
       const p = schema.projects;
