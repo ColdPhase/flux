@@ -82,7 +82,9 @@ export function createSignUpLinks({ db, setupToken, invites, open }: SignUpLinkO
         try { await invites.accept(userId, invite); } catch (error) { await undo(userId); throw refusal(error); }
         return;
       }
-      // A test deployment's sign-up without a link: the first one sets the company up, as before (F-037).
+      // `check` already refused a sign-up without a link on an install; an account that gets here anyway (a path that skipped `check`) is
+      // undone rather than trusted. A test deployment's sign-up without a link: the first one sets the company up, as before (F-037).
+      if (!open) { await undo(userId); throw new APIError('FORBIDDEN', { message: 'Accounts on this Flux are made from an invite link. Ask an owner or admin of your company for one', code: 'SIGNUP_NEEDS_LINK' }); }
       await joinCompany(userId, { sso: false }, db, accessPorts);
     },
   };

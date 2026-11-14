@@ -7,6 +7,7 @@ import { createInvite, inviteToken, revokeInvite, type Principal } from '@flux/c
 import { accessPorts } from '@flux/db';
 import { loadIdentityConfig, registerIdentity } from '../../apps/server/src/identity/index.js';
 import { inviteSignUp } from '../../apps/server/src/access/invites.js';
+import { createSignUpLinks } from '../../apps/server/src/identity/sign-up-links.js';
 import { database, pool } from './support/db.js';
 
 // Accounts only from a link (#1471, docs/development/access-policy.md#accounts-only-from-a-link-1471), in-process with an install's
@@ -129,6 +130,19 @@ describe('an account comes only from a link (#1471)', () => {
       assert.equal((await open.capabilities()).signup, 'open');
       const wrong = await open.signUp({ email: email('test-deployment-wrong'), inviteToken: 'not-a-token' });
       assert.equal(wrong.status, 404, 'a link it is given is still checked');
+    } finally { await open.instance.close(); }
+  });
+
+  test('an account that reaches the join step without a link on an install is undone, not trusted', async () => {
+    const open = await server({ open: true });
+    try {
+      const address = email('skipped-check');
+      assert.equal((await open.signUp({ email: address })).status, 200);
+      const id = await accountOf(address);
+      assert.ok(id);
+      const install = createSignUpLinks({ db: database.db, setupToken: SETUP, invites: null, open: false });
+      await assert.rejects(install.made(id, {}), (error: { body?: { code?: string } }) => error.body?.code === 'SIGNUP_NEEDS_LINK');
+      assert.equal(await accountOf(address), null, 'the account is removed');
     } finally { await open.instance.close(); }
   });
 });

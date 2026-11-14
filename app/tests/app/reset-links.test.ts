@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
+import Fastify from 'fastify';
 import { personResetLinkPath, type ResetLink } from '@flux/contracts';
-import { makeResetLink, resetIdentifier } from '../../apps/server/src/identity/reset-links.js';
+import { makeResetLink, registerResetLinkRoutes, resetIdentifier } from '../../apps/server/src/identity/reset-links.js';
+import type { SessionResolver } from '../../apps/server/src/identity/session.js';
+import type { SecurityLogger } from '../../apps/server/src/security-log.js';
 import { db, insertedHuman, pool } from './support/db.js';
 import { Browser, publicOrigin, signIn, waitForMail } from './support/http.js';
 import { expectStatus, password, person, type Person } from './support/people.js';
@@ -90,6 +93,38 @@ describe('a reset link made next to a person (#1471)', () => {
     assert.deepEqual([sso.status, code(sso)], [409, 'NO_PASSWORD'], 'an account without a password has nothing to reset');
     assert.equal((await new Browser().request('POST', personResetLinkPath(member.id))).status, 401, 'signed out');
     assert.equal((await rows(otherAdmin.id)).length, 1, 'a refusal records nothing');
+  });
+});
+
+describe('a link made in Settings is told and limited (#1471)', () => {
+  test('it writes a reset_link_created event with who made it for whom, and never the link', async () => {
+    const owner = await inCompany('Audit Owner', 'owner');
+    const member = await inCompany('Audit Member', 'member');
+    const lines: Record<string, unknown>[] = [];
+    const log: SecurityLogger = { info: (object, message) => { lines.push({ ...object, msg: message }); }, warn: (object, message) => { lines.push({ ...object, msg: message }); } };
+    const app = Fastify();
+    const sessions = { requirePrincipal: async () => ({ principal: { kind: 'human', id: owner.id } }) } as unknown as SessionResolver;
+    registerResetLinkRoutes(app, { db, sessions, publicOrigin: 'https://flux.example.org', ttlSeconds: 600, ssoOnly: false, log });
+    try {
+      const answer = await app.inject({ method: 'POST', url: personResetLinkPath(member.id) });
+      assert.equal(answer.statusCode, 201, answer.body);
+      assert.equal(answer.headers['cache-control'], 'no-store');
+      const token = (answer.json() as ResetLink).link.split('#')[1]!;
+      const events = lines.filter((line) => line.event === 'reset_link_created');
+      assert.equal(events.length, 1);
+      assert.deepEqual([events[0]?.channel, events[0]?.outcome, events[0]?.reason, events[0]?.userId, events[0]?.byUserId], ['security', 'success', 'settings', member.id, owner.id]);
+      assert.ok(!JSON.stringify(lines).includes(token), 'the link is in no log line');
+    } finally { await app.close(); }
+  });
+
+  test('making links is limited per person', async () => {
+    const owner = await inCompany('Limited Owner', 'owner');
+    const member = await inCompany('Limited Member', 'member');
+    const statuses: number[] = [];
+    for (let attempt = 0; attempt < 11; attempt += 1) statuses.push((await make(owner, member.id)).status);
+    assert.deepEqual(statuses.slice(0, 10), Array(10).fill(201));
+    assert.equal(statuses[10], 429, 'the eleventh in a minute is refused');
+    assert.equal((await rows(member.id)).length, 10, 'and makes no link');
   });
 });
 
