@@ -1186,8 +1186,8 @@ def phase_journeys(pw, engine: str, data: dict) -> None:
 
             def map_thought(page):
                 text = f"Audit thought {tag}"
-                if touch:  # the phone's map is for viewing and adding a thought (S15): one "Add a thought" button
-                    press(page.get_by_role("button", name="Add a thought"))
+                if touch:  # the phone's map is for viewing and adding a thought (S15): one "Thought" button
+                    press(page.get_by_role("button", name="Thought", exact=True))
                 else:
                     press(page.get_by_role("toolbar", name="Map tools").get_by_role("button", name="Thought", exact=True))
                 field = page.get_by_role("form", name="New thought draft").get_by_label("Thought text")

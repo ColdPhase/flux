@@ -542,9 +542,9 @@ class AdaptiveMatrix(AdaptiveBase):
         if options is not None:
             options.get_by_role('button', name='Close map options', exact=True).click()
             expect(options).to_have_count(0)
-        add = page.get_by_role("button", name="Add a thought", exact=True)
+        add = page.get_by_role("button", name="Thought", exact=True)
         if add.count():
-            self.primary(page, add, "the phone's Add a thought")
+            self.primary(page, add, "the phone's Thought button")
         self.measure(page, ".sk-hint, .sk-phone__note", "The map hint")
         self.no_sideways_scroll(page, "Map")
         self.shot(page, f"adapt-{size}{tag}-map")
@@ -650,7 +650,7 @@ class AdaptiveMatrix(AdaptiveBase):
     def test_02b_a_narrow_map_beside_docked_details_takes_the_columns_but_keeps_the_computer_controls(self) -> None:
         """ADAPT-1 (#151): the thoughts' layout follows the map's own width, the controls follow the device. At 1100×800 with
         Details docked the map is under 640 px wide and shows the two columns; it keeps the computer's toolbar, zoom and Fit,
-        and gets none of the phone's Map options sheet or Add a thought button. At 1440×900 the same map stays the plane."""
+        and gets none of the phone's Map options sheet or Thought button. At 1440×900 the same map stays the plane."""
         pid = self.ids["project"]
         for (width, height), layout in (((1100, 800), "columns"), ((1440, 900), "plane")):
             with self.subTest(width=width, height=height):

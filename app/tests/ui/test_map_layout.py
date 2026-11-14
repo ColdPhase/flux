@@ -175,7 +175,7 @@ class MapLayoutJourney(unittest.TestCase):
     def test_04_very_short_phone_keeps_full_hint_and_draft_reachable_by_scrolling(self):
         page = self.page(320, 430, has_touch=True, is_mobile=True, reduced_motion='reduce')
         self.scene(page)
-        page.get_by_role('button', name='Add a thought', exact=True).click()
+        page.get_by_role('button', name='Thought', exact=True).click()
         draft = page.get_by_role('form', name='New thought draft').get_by_label('Thought text')
         draft.fill('Keep measurements while the keyboard takes space')
         self.assertLessEqual(page.locator('body').evaluate('el => el.scrollWidth'), 320)
