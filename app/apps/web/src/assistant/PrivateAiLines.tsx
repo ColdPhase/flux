@@ -65,7 +65,7 @@ export function PrivateAnswer({ run, assistant, meId, meName, others, composerId
         <strong>{name}</strong>
         <span className="assistant-private__lock"><Icon name="lock" size={13} />Only you can see this</span>
       </div>
-      <p className="assistant-private__asked">You asked: <code>/ai</code> {run.prompt}</p>
+      <p className="assistant-private__asked">You asked: {run.prompt}</p>
       <AnswerBody answer={answer} lookups={lookups} />
       {pictures.length ? <MessageFiles files={pictures} context={{ author: name }} /> : null}
       {answer.truncated ? <p className="assistant-answer__truncated"><Icon name="alert" size={13} />Stopped at the length limit, so this answer is incomplete.</p> : null}

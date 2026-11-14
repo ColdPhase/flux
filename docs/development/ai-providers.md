@@ -120,6 +120,7 @@ How the lists move:
 | --- | --- |
 | Reading LiteLLM's file into Flux's prices (provider and mode filter, ids, bounds, `_above_<N>k_tokens` tiers from N×1000+1 tokens, whole-file refusal) | `parsePriceList`, `isPriceList` in `app/packages/core/src/ai/price-list.ts` |
 | OpenRouter's prices: its keyless model list with `overrides` (`min_prompt_tokens`) as tiers; a variable or malformed price is none | `openRouterRate` in `app/packages/agent-runtime/src/model-list.ts`, `openRouterPriceList` in core |
+| A refreshed list cannot lower a known price to 0 or a tenth or less, and never first prices a model at 0 (#1270; except OpenRouter's own `:free` ids): the stored price stays and a warning names the model and both prices; used by the worker's job and by the API's OpenRouter read | `guardPriceList`, `storeGuardedPriceList`, `heldPriceLog` in `app/packages/core/src/ai/price-list.ts` |
 | The anonymous daily GET of LiteLLM's file through the egress guard (16 MB, 30 s); test stacks ask `<FLUX_TEST_PROVIDER_LISTS>/price-list` and `/lists/openrouter/v1/models` | `fetchPriceList`, `priceListFetchOptions`, `keyListingOptions` in `app/packages/agent-runtime/src/` |
 | The job: daily at 04:17 UTC and at start when the stored LiteLLM list is a day old; OpenRouter's list too while anyone has an OpenRouter key; retried 3 times 15 minutes apart; a failure keeps the last good list | `app/apps/worker/src/ai-keys/price-list.ts` (`ai-price-list.refresh.v1`) |
 | OpenRouter's list read by the API: when the form lists OpenRouter's models, and at connect when the stored one is a day old | `priceList` in `app/apps/server/src/ai-keys/routes.ts` |
@@ -214,7 +215,10 @@ open for every named provider.
   - Several connections per owner, each named. Adding one never replaces another.
   - The assistant uses the one its consent names, chosen when enabling. (Background comparisons
     used the one the owner marked, `usedForBackground`; they went in #858.)
-  - Removing a connection stops its use, with no fallback.
+  - Removing a connection stops its use, with no fallback between several. With exactly one connection left, the agents that
+    were on the removed key go on it (founder decision, 2026-11-14, #1424): `settleAgents` runs after a key is added, signed in or
+    removed, and every run, status and agent read resolves the same rule (`currentEnablement`), so an agent never answers "your AI
+    account changed" with one connection to use.
   - The production personal-run lookup, key resolver and the `FLUX_PERSONAL_RUNS` operator switch
     are in place (see personal-runs.md).
 - Real-key smoke tests per named provider (PROV-6). The provider terms, the base URLs (Gemini and

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useSyncExternalStore } from 'react';
 import type { StreamRunText } from '@flux/contracts';
 import { onRunText } from '../api/stream';
-import { prefersReducedMotion, useReduceMotion } from '../ui/motion-preference';
+import { useMediaQuery } from '../ui/motion';
 
 // The asker's live view of their own run (#1248): the words the agent writes, as the live stream brings them, and the Flux tool it uses
 // now. Kept per run for this tab only, never stored; the run's answer replaces them when it is done. A piece that comes after a missed one
@@ -79,10 +79,9 @@ export function shownWords(text: string, reduced: boolean): string {
   return end < 0 ? '' : words.slice(0, end).trim();
 }
 
-/** Whether the person asked for less motion: the system setting or Settings › Appearance. */
+/** Whether the system asks for less motion (it follows the setting while the page is open). */
 export function useReducedMotion(): boolean {
-  useReduceMotion();
-  return prefersReducedMotion();
+  return useMediaQuery('(prefers-reduced-motion: reduce)');
 }
 
 /** The working line's words for the Flux tool the agent uses now (#1248). */

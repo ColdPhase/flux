@@ -1,0 +1,15 @@
+# Answer accuracy (#1295): claude-haiku-5-5, variant main, pi-1441-2
+
+Flux 925b5f69e (main; harness a9035549a) · 2026-11-13 · 62 questions · judge claude-haiku-5-5 · web search off · spend $0.1795 agent + $0.0085 judge
+
+| Category | n | Accuracy | Correct / partial / wrong / don't know | Runs without an answer | Keys | Gold source read | Answer in tool results | Cited (named) gold | Date filter | In tok/q | Out tok/q | $/q | p50 / p95 s |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| old_messages | 15 | 0.933 | 14 / 0 / 1 / 0 | 0 | 1 | 1 | 1 | 0.933 (0.933) | - | 9 | 931 | 0.00319 | 8.1 / 10.1 |
+| recent | 2 | 1 | 2 / 0 / 0 / 0 | 0 | 1 | 1 | 1 | 1 (1) | - | 8 | 978 | 0.00518 | 8.1 / 8.1 |
+| wiki | 8 | 1 | 8 / 0 / 0 / 0 | 0 | 1 | 1 | 1 | 1 (1) | - | 8 | 675 | 0.00235 | 6.2 / 8.2 |
+| file | 6 | 1 | 6 / 0 / 0 / 0 | 0 | 0.833 | 1 | 1 | 0 (0.833) | - | 8 | 560 | 0.0019 | 6.1 / 6.2 |
+| task_decision_map | 7 | 1 | 7 / 0 / 0 / 0 | 0 | 1 | 1 | 1 | 0.714 (1) | - | 8 | 679 | 0.00206 | 6.1 / 10.1 |
+| two_source | 7 | 1 | 7 / 0 / 0 / 0 | 0 | 1 | 1 | 0.857 | 1 (1) | - | 9 | 1305 | 0.00359 | 10.1 / 13.1 |
+| relative_date | 10 | 1 | 10 / 0 / 0 / 0 | 0 | 1 | 1 | 1 | 0.8 (0.8) | 0.6 | 8 | 965 | 0.00272 | 7.1 / 11.1 |
+| no_answer | 7 | 1 | 7 / 0 / 0 / 0 | 0 | - | - | - | - (-) | - | 10 | 1035 | 0.00349 | 8.1 / 10.1 |
+RESULT accuracy=0.984 questions=62 agentUsd=0.1795 judgeUsd=0.0085

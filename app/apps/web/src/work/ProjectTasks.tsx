@@ -15,7 +15,7 @@ import { useProjectWorkPage } from './WorkReadContext';
 import { WorkPagination } from './WorkPagination';
 import { useWorkReadingPosition } from './useWorkReadingPosition';
 import { useTaskFeedback } from './useTaskFeedback';
-import { TaskBoard } from './TaskBoard';
+import { TaskBoard, matchesTask } from './TaskBoard';
 import { useAgentOwners } from '../agents/owners';
 import './work.css';
 import { preferredMode, rememberMode, type TaskMode } from './taskMode';
@@ -54,8 +54,8 @@ type Mode = TaskMode;
 
 /**
  * The Tasks toolbar (S6, T2): Board | List, Mine and the search in the same places in both views, then the one
- * primary action, "+ Task", at the right end of the row. The search filters the board's loaded cards; the List is read in bounded pages from
- * the server, so its search is dimmed rather than removed, which keeps every other control where it is.
+ * primary action, "+ Task", at the right end of the row. The search filters what the view has loaded: the board's cards, or the List's current
+ * page of rows (#1424); no control is greyed in either view.
  */
 function Toolbar({ mode, onMode, query, onQuery, mine, onMine, onNew, phone }: {
   mode: Mode; onMode: (mode: Mode) => void; query: string; onQuery: (query: string) => void;
@@ -83,15 +83,13 @@ function Toolbar({ mode, onMode, query, onQuery, mine, onMine, onNew, phone }: {
         ))}
       </div>
       <Button variant="outline" size="sm" icon="person" className="tb-mine" aria-pressed={mine} onClick={() => onMine(!mine)}>Mine</Button>
-      <div className={`tb-search${query ? ' has-query' : ''}${mode === 'list' ? ' is-dimmed' : ''}`}>
+      <div className={`tb-search${query ? ' has-query' : ''}`}>
         <Icon name="search" size={14} />
         <span className="tb-search__l" aria-hidden="true">Search</span>
         <label className="ui-vh" htmlFor={searchId}>Search tasks</label>
         <input id={searchId} type="search" value={query} placeholder={phone ? 'Search' : 'Search tasks'} autoComplete="off" maxLength={200}
-          disabled={mode === 'list'} aria-describedby={mode === 'list' ? `${searchId}-note` : undefined}
           onChange={(event) => onQuery(event.target.value)}
           onKeyDown={(event) => { if (event.key === 'Escape' && query) { event.preventDefault(); event.stopPropagation(); onQuery(''); } }} />
-        {mode === 'list' ? <span className="ui-vh" id={`${searchId}-note`}>Search works on the board</span> : null}
       </div>
       {/* "+ Task" is the right end of this row on every computer and tablet, in both views and every orientation (§7 Tasks, rule 7, #1366);
           the space's header holds only its own slots. The phone's floating "+" is its one Create, so the row hides it there. */}
@@ -248,11 +246,15 @@ export function ProjectTasks() {
   }, () => revalidator.revalidate());
 
   // A stored state change shows at once; the List's own read catches up with that version.
-  const work = (data?.items.filter((item): item is WorkRowProjection => item.kind === 'work') ?? [])
+  const loaded = (data?.items.filter((item): item is WorkRowProjection => item.kind === 'work') ?? [])
     .map((item) => { const stored = saved[item.id]; return stored && stored.version > item.version ? { ...item, status: stored.status, blocker: stored.blocker, version: stored.version } : item; });
+  // The search filters the List's current page as it filters the board's cards (#1424); the groups then count what is shown.
+  const needle = boardSearch.trim().toLowerCase();
+  const work = needle ? loaded.filter((item) => matchesTask(item, needle)) : loaded;
+  const searchedPage = !!needle && !!data && (!!data.previousCursor || !!data.nextCursor);
   const by = (state: WorkRowProjection['status']) => work.filter((item) => item.status === state);
   const finished = work.filter(isFinished);
-  const groupCount = (id: GroupId, visible: number) => visible ? counts?.[id] ?? 0 : 0;
+  const groupCount = (id: GroupId, visible: number) => needle ? visible : visible ? counts?.[id] ?? 0 : 0;
   // A task opened from its row brings its title: the panel's loading state shows it in its own place (#863 rule 6).
   const openObject = (kind: WorkObjectType, id: string, title?: string) => () => { saveReading(); openDetails({ kind, id, ...(title ? { title } : {}) }); };
   const workRow = (item: WorkRowProjection, muted = false) => <TaskRow key={item.id} item={item} meId={me.user.id} owners={owners} writable muted={muted} onOpen={openObject('work', item.id, item.title)} onChange={changeState} />;
@@ -260,7 +262,7 @@ export function ProjectTasks() {
   const emptyContinuation = data !== null && cursor !== null && !data.items.length;
 
   // A task that changes state moves to another group, a new one grows in, a finished list collapses its rows (#593 AC-4).
-  useRowMotion(scroller, '.ws-task[data-work-id]', (el) => el.dataset.workId, [mode, status ?? 'all', mine, cursor ?? '', phone, read.phase === 'ready' || read.phase === 'refreshing' ? 'ready' : 'loading'].join('|'));
+  useRowMotion(scroller, '.ws-task[data-work-id]', (el) => el.dataset.workId, [mode, status ?? 'all', mine, cursor ?? '', needle, phone, read.phase === 'ready' || read.phase === 'refreshing' ? 'ready' : 'loading'].join('|'));
   return (
     <div className="tb-root">
       <Toolbar mode={mode} onMode={chooseMode} query={boardSearch} onQuery={setBoardSearch} mine={mine} onMine={(next) => setView({ mine: next })} onNew={startNew} phone={phone} />
@@ -280,11 +282,14 @@ export function ProjectTasks() {
         <div className="ws-task-controls">
           {status ? <p className="ws-only">Only {GROUP_LABEL[status]} · <Button variant="link" size="sm" onClick={() => setView({ status: null })}>Show all tasks</Button></p> : null}
           {/* No Refresh: the List updates live, and on focus (#1419). */}
-          <WorkPagination noun="tasks" page={data} busy={read.phase !== 'ready' && read.phase !== 'unavailable'} onCursor={movePage} stepsWhenPaged />
+          <WorkPagination noun="tasks" page={data} caption={needle && data ? `${work.length} ${work.length === 1 ? 'match' : 'matches'}` : undefined} busy={read.phase !== 'ready' && read.phase !== 'unavailable'} onCursor={movePage} stepsWhenPaged />
         </div>
         {read.phase === 'unavailable' ? <ErrorState title="Tasks couldn’t be loaded" actions={<Button variant="secondary" onClick={refresh}>Try again</Button>}><p>Your private draft is kept.</p></ErrorState> : null}
         {nothing ? <div className="view-empty"><EmptyState icon="tasks" title="No tasks yet"><p>A task starts when one of you makes it from a message, or adds it here. Not every idea has to become a task.</p></EmptyState></div> : null}
         {emptyContinuation ? <p className="ws-none" role="status">This page changed and has no rows. Use Previous or Next if available, or <Button variant="link" size="sm" onClick={refresh}>refresh from the start</Button>.</p> : null}
+        {searchedPage ? <p className="tb-note" role="note"><Icon name="search" size={14} /><span>The search looks through the tasks on this page. Use Previous and Next to look through the others.</span></p> : null}
+        {needle && loaded.length && !work.length ? <p className="ws-none" role="status">No task{mine ? ' of yours' : ''} matches “{boardSearch.trim()}”.{' '}
+          <Button variant="link" size="sm" onClick={() => setBoardSearch('')}>Clear the search</Button></p> : null}
         {data && !nothing && !emptyContinuation && !data.total ? <p className="ws-none" role="status">
           {mine ? `Nothing of yours${status ? ` in ${GROUP_LABEL[status]}` : ''} right now.` : `Nothing in ${status ? GROUP_LABEL[status] : 'this view'} right now.`}{' '}
           <Button variant="link" size="sm" onClick={() => setView(mine ? { mine: false } : { status: null })}>{mine ? 'Show everyone’s' : 'Show all'}</Button>

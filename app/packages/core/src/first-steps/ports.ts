@@ -14,6 +14,11 @@ export interface FirstStepRows {
   /** The person wrote a message in a space of the company. */
   wroteMessage(userId: string, companyId: string): Promise<boolean>;
   hasPhoto(userId: string): Promise<boolean>;
+  /**
+   * The people of the company who joined with an invite link this person made and have no direct message with them yet, newest first, at most
+   * `limit` (#1438, #1424).
+   */
+  joinedPeople(userId: string, companyId: string, limit: number): Promise<{ userId: string; name: string }[]>;
   /** Marks the card done for good, on every device (the person hid it, or no step is left); a second call keeps the first time. */
   hide(userId: string, at: Date): Promise<void>;
 }

@@ -1,5 +1,5 @@
 import { getCapabilities, getLinkState, startLink, startSso } from '../api/auth';
-import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { Form, Link, Outlet, useLocation, useNavigation, useSearchParams } from 'react-router';
 import { type AgentConnection, type BackgroundComputeConnection, type PersonalAssistantStatus, type IdentityCapabilities } from '@flux/contracts';
 import { listAgentConnections } from '../agent-connection/api';
@@ -9,7 +9,7 @@ import { getPreferences } from '../notifications/api';
 import { notificationSummary } from '../notifications/levels';
 import { SERVER_AI_OFF_LINE } from '../assistant/format';
 import { AgentsList } from '../my-agents/AgentsList';
-import { Avatar, Button, Icon, Kreska, MEDIA, Spinner, setReduceMotion, useMediaQuery, useReduceMotion } from '../ui';
+import { Avatar, Button, Icon, Kreska, MEDIA, Spinner, useMediaQuery } from '../ui';
 import { ConnectAi } from '../ai/ConnectAi';
 import { ClientRows } from '../agent-connection/ClientRows';
 import { WorkspacePeople } from '../people/WorkspacePeople';
@@ -17,9 +17,7 @@ import { AccountEditing, LastActiveSwitch } from './AccountEditing';
 import '../agent-connection/connection.css';
 import { useShellData } from './data';
 import { setSmallMoments, useSmallMoments } from './smallMoments';
-import { setTextSize, useTextSize, type TextSize } from './textSize';
 import { setTheme, useTheme, type ThemeChoice } from './theme';
-import './reading.css';
 import './settings.css';
 import { SwitchRow } from '../ui/SwitchRow';
 
@@ -131,46 +129,6 @@ function KreskaSwitch() {
   );
 }
 
-const TEXT_SIZES: { id: TextSize; label: string }[] = [
-  { id: 'small', label: 'Small' },
-  { id: 'default', label: 'Default' },
-  { id: 'large', label: 'Large' },
-];
-
-/** Text size on the computer: Small, Default or Large as one segmented choice, with arrow keys. */
-function TextSizeChoice() {
-  const size = useTextSize();
-  const labelId = useId();
-  const ref = useRef<HTMLDivElement>(null);
-  const move = (event: KeyboardEvent<HTMLDivElement>) => {
-    const delta = event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 1 : event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 0;
-    if (!delta) return;
-    event.preventDefault();
-    const index = TEXT_SIZES.findIndex((item) => item.id === size);
-    const next = TEXT_SIZES[(index + delta + TEXT_SIZES.length) % TEXT_SIZES.length]!;
-    setTextSize(next.id);
-    requestAnimationFrame(() => ref.current?.querySelector<HTMLElement>(`[data-text-size-option="${next.id}"]`)?.focus());
-  };
-  return (
-    <div className="sset-row sset-row--size">
-      <span className="sset-row__t" id={labelId}>Text size</span>
-      <div ref={ref} className="seg sset-size" role="radiogroup" aria-labelledby={labelId} onKeyDown={move}>
-        {TEXT_SIZES.map((item) => (
-          <button key={item.id} type="button" role="radio" className="seg__b" data-text-size-option={item.id}
-            aria-checked={size === item.id} tabIndex={size === item.id ? 0 : -1} onClick={() => setTextSize(item.id)}>
-            {item.label}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function ReduceMotionSwitch() {
-  const reduce = useReduceMotion();
-  return <SwitchRow label="Reduce motion" checked={reduce} onChange={setReduceMotion} />;
-}
-
 const THEME_LABEL: Record<ThemeChoice, string> = { light: 'Light', dark: 'Dark', system: 'Match system' };
 
 /**
@@ -232,21 +190,17 @@ function AgentsAndAi() {
   );
 }
 
-/** Settings → Appearance: one neutral palette, text size, motion and Kreska; on the phone also This phone. */
+/** Settings → Appearance: the theme and the face switch (text size and reduced motion follow the system, #1419 item 17); on the phone also This phone. */
 export function SettingsAppearance() {
   const phone = useMediaQuery(MEDIA.phone);
   return (
     <div className="pane-scroll">
       <div className="pane-in sset-in">
-        {phone ? <h2 className="sset-sec">Appearance</h2> : (
-          <PageHead title="Appearance" lead="Flux uses one neutral palette. Status is shown by shape and words, so it reads the same in both themes." />
-        )}
+        {phone ? <h2 className="sset-sec">Appearance</h2> : <PageHead title="Appearance" />}
         <ThemeChoices />
         {phone ? <h2 className="sset-sec">This phone</h2> : null}
         {/* Notifications and installing Flux on this device live under Notifications → This device (#763 SG-8). */}
         <div className="sset-card">
-          {/* On the phone the text size follows the phone's own setting, so there is nothing here to choose or to read. */}
-          {phone ? null : <><TextSizeChoice /><ReduceMotionSwitch /></>}
           <KreskaSwitch />
         </div>
       </div>
@@ -317,7 +271,7 @@ export function SettingsAgents() {
   return (
     <div className="pane-scroll">
       <div className="pane-in sset-in">
-        <PageHead title="AI" lead="Your AI works as agents. Each one has a name, instructions, a model and what it remembers, and can do only what you can." />
+        <PageHead title="AI" />
         <AgentsAndAi />
       </div>
     </div>

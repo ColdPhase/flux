@@ -285,7 +285,7 @@ class PhoneConversations(unittest.TestCase):
                 labels = [text.strip().split("\n")[0] for text in page.get_by_role("menu", name="More").get_by_role("menuitem").all_inner_texts()]
                 self.assertEqual(labels[0], "Search")
                 self.assertNotIn("Call", labels, "no media server on this test server: no Call row (#1424)")
-                self.assertEqual(labels[-1], "Message info")
+                self.assertEqual(labels[-1], "People and privacy")
                 self.assertIn("Mute conversation", labels)
 
     # ------------------------------------------------------------------------------------------------------------------

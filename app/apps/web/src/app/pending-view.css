@@ -36,7 +36,7 @@
   .pending-view__list, .pending-view__cards { padding: 16px; }
 }
 @media (prefers-reduced-motion: no-preference) {
-  :root:not([data-motion="reduce"]) .pending-view__list, :root:not([data-motion="reduce"]) .pending-view__cards, :root:not([data-motion="reduce"]) .pending-view__wiki, :root:not([data-motion="reduce"]) .pending-view__tasks { animation: opening-pulse var(--dur-loop) var(--ease-loop) infinite; }
+  :root .pending-view__list, :root .pending-view__cards, :root .pending-view__wiki, :root .pending-view__tasks { animation: opening-pulse var(--dur-loop) var(--ease-loop) infinite; }
 }
 /* The thread's panel while the thread's reads are out: the panel's earlier content stays mounted (it names itself for "‹ back") but is not shown.
    Two classes, so it outranks a content's own `display` (a task's `.wd--task` is a flex column that loads later and would otherwise stay on screen). */

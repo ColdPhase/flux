@@ -109,9 +109,12 @@ class CreateWindow(unittest.TestCase):
             window = dialog(page)
             expect(window).to_be_visible()
             expect(title_field(page)).to_be_focused()
-            for control in (window.get_by_label("Details"), window.get_by_role("combobox", name="Status"), window.get_by_role("combobox", name="Owner"),
+            for control in (window.get_by_label("Details"), window.get_by_role("combobox", name="Owner"),
                             window.get_by_role("button", name="+ Link a message or thought"), submit_button(page)):
                 expect(control).to_be_visible()
+            # A new task is always To do, so there is no Status to choose (#1424), and so no Waiting for either.
+            expect(window.get_by_role("combobox", name="Status")).to_have_count(0)
+            expect(window.get_by_role("combobox", name="Waiting for")).to_have_count(0)
             self.assertEqual(window.evaluate("el => el.offsetWidth"), 640)
             # The place picker is a 10px frame around a 6px tile, not a pill (concentric corners).
             frame = window.locator(".create__place")
@@ -201,45 +204,21 @@ class CreateWindow(unittest.TestCase):
                 self.assertEqual(stored[f"First of two {tag}"]["outcome"], "Done when both are listed")
                 self.assertIn(f"Second of two {tag}", stored)
 
-    def test_04_a_blocked_task_has_one_field_a_person_or_the_reason(self) -> None:
-        """#1438 point 12: Blocked adds one field, "Waiting for": type the reason, or pick a person from the list under it. One of the two is needed."""
+    def test_04_a_new_task_is_always_to_do_so_the_window_has_no_status_and_no_waiting_for(self) -> None:
+        """#1424: Create has no Status (a new task is To do); Blocked and its one "Waiting for" field are in the task panel (#1438 point 12)."""
         self.ensure_account()
         page = self.page()
         page.goto(f"/projects/{self.ids['project']}/tasks")
         field = open_from_tasks(page)
         field.fill("Waiting on the supplier")
+        expect(dialog(page).get_by_role("combobox", name="Status")).to_have_count(0)
         expect(dialog(page).get_by_role("combobox", name="Waiting for")).to_have_count(0)
-        choose(dialog(page).get_by_role("combobox", name="Status"), "blocked")
-        # One field, not two: no second "What is it waiting for?" box and no person chip beside the status.
-        waiting = dialog(page).get_by_role("combobox", name="Waiting for")
-        expect(waiting).to_have_count(1)
         expect(dialog(page).get_by_label("What is it waiting for?")).to_have_count(0)
-        expect(submit_button(page)).to_be_disabled()
-        waiting.fill("Probe drawing v2")
-        expect(dialog(page).get_by_role("listbox")).to_have_count(0)  # words that match no one are a reason
         expect(submit_button(page)).to_be_enabled()
         submit_button(page).click()
         expect(dialog(page)).to_have_count(0)
         stored = {item["title"]: item for item in self.work(page)}
-        self.assertEqual((stored["Waiting on the supplier"]["status"], stored["Waiting on the supplier"]["blocker"]), ("blocked", "Probe drawing v2"))
-        # A person picked from the list is enough: the task waits for them, with no reason typed.
-        page.goto(f"/projects/{self.ids['project']}/tasks")
-        field = open_from_tasks(page)
-        field.fill("Waiting on a person")
-        choose(dialog(page).get_by_role("combobox", name="Status"), "blocked")
-        waiting = dialog(page).get_by_role("combobox", name="Waiting for")
-        waiting.focus()
-        options = dialog(page).get_by_role("listbox", name="Waiting for").get_by_role("option")
-        expect(options.first).to_be_visible()
-        options.first.click()
-        expect(dialog(page).get_by_role("button", name=re.compile("^Stop waiting for "))).to_be_visible()
-        expect(submit_button(page)).to_be_enabled()
-        submit_button(page).click()
-        expect(dialog(page)).to_have_count(0)
-        person = {item["title"]: item for item in self.work(page)}["Waiting on a person"]
-        self.assertEqual(person["status"], "blocked")
-        self.assertIsNotNone(person["waitingFor"])
-        self.assertFalse(person.get("blocker"))
+        self.assertEqual((stored["Waiting on the supplier"]["status"], stored["Waiting on the supplier"].get("blocker")), ("open", None))
 
     # ---------------------------------------------------------------- AC-4: a message is the task's source
 
@@ -343,9 +322,10 @@ class CreateWindow(unittest.TestCase):
             title_field(page).fill("Print labels for the beds")
             choose(window.get_by_role("combobox", name="Space"), self.ids["other"])
             expect(title_field(page)).to_have_value("Print labels for the beds")
-            for control in (window.get_by_label("Details"), window.get_by_role("combobox", name="Status"), window.get_by_role("combobox", name="Owner"),
+            for control in (window.get_by_label("Details"), window.get_by_role("combobox", name="Owner"),
                             window.get_by_role("button", name="+ Link a message or thought"), submit_button(page)):
                 expect(control).to_be_visible()
+            expect(window.get_by_role("combobox", name="Status")).to_have_count(0)
             box = submit_button(page).bounding_box()
             self.assertGreaterEqual(box["height"], 44)
             self.assertLessEqual(box["x"] + box["width"], PHONE["width"])
@@ -364,11 +344,25 @@ class CreateWindow(unittest.TestCase):
         window = dialog(page)
         expect(window).to_be_visible()
         self.at_rest(page)
-        tabs = window.get_by_role("tablist", name="Create").get_by_role("tab")
+        tablist = window.get_by_role("tablist", name="Create")
+        tabs = tablist.get_by_role("tab")
         self.assertEqual(tabs.count(), 5)
-        for box in [tab.bounding_box() for tab in tabs.all()]:
-            self.assertGreaterEqual(box["x"], 0)
-            self.assertLessEqual(box["x"] + box["width"], 320)
+        # #1424: all five kinds are inside the tab bar (none cut at its edge, none scrolled away) and end before Close, which is whole.
+        bar = tablist.bounding_box()
+        close = window.get_by_role("button", name="Close", exact=True).bounding_box()
+        self.assertIsNotNone(bar)
+        self.assertIsNotNone(close)
+        for tab in tabs.all():
+            box = tab.bounding_box()
+            self.assertGreaterEqual(box["x"], bar["x"] - 0.5, tab.inner_text())
+            self.assertLessEqual(box["x"] + box["width"], bar["x"] + bar["width"] + 0.5, f"{tab.inner_text()} runs past the tab bar")
+            self.assertGreaterEqual(box["width"], 43.9, f"{tab.inner_text()} is a 44 px wide target")
+            self.assertGreaterEqual(box["height"], 43.9)
+        self.assertLessEqual(bar["x"] + bar["width"], close["x"] + 0.5, "the tabs end where Close begins")
+        self.assertGreaterEqual(close["x"], 0)
+        self.assertLessEqual(close["x"] + close["width"], 320.5, "Close is whole")
+        self.assertGreaterEqual(min(close["width"], close["height"]), 43.9, "Close is a 44 px target")
+        self.assertFalse(tablist.evaluate("el => el.scrollWidth > el.clientWidth + 1"), "the tab bar has nothing to scroll to")
         self.assertLessEqual(page.evaluate("() => document.documentElement.scrollWidth"), 320, "no horizontal scroll")
         self.assertLessEqual(window.bounding_box()["y"] + window.bounding_box()["height"], 568.5)
         shot(page, "1013-create-sheet-320")
@@ -444,7 +438,7 @@ class CreateWindow(unittest.TestCase):
     def test_10_a_lost_response_is_retried_with_the_same_identity_from_every_entry_point(self) -> None:
         self.ensure_account()
         notices = lambda page: self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/task-notices?limit=100", status=200)["total"]  # noqa: E731
-        # From a message: source, details and status all come back after closing and reopening.
+        # From a message: source and details come back after closing and reopening.
         page = self.page()
         made = self.thread(page, "Lost response from a message: check the ESP32 kits")
         page.goto(f"/projects/{self.ids['project']}/conversations/{made['conversation']}")
@@ -456,7 +450,6 @@ class CreateWindow(unittest.TestCase):
         message.get_by_role("button", name="Create task", exact=True).click()
         window = dialog(page)
         window.get_by_label("Details").fill("Done when both kits are counted")
-        choose(window.get_by_role("combobox", name="Status"), "in_progress")
         submit_button(page).click()
         expect(window.get_by_role("alert")).to_have_text("The response was lost")
         page.keyboard.press("Escape")
@@ -465,7 +458,6 @@ class CreateWindow(unittest.TestCase):
         message.get_by_role("button", name="Create task", exact=True).click()
         expect(title_field(page)).to_have_value("Lost response from a message")  # its first clause (#763 B5)
         expect(window.get_by_label("Details")).to_have_value("Done when both kits are counted")
-        expect_value(window.get_by_role("combobox", name="Status"), "in_progress")
         expect(window.get_by_role("button", name=re.compile("^Remove link to"))).to_have_count(1)
         submit_button(page).click()
         expect(window).to_have_count(0)
@@ -473,9 +465,9 @@ class CreateWindow(unittest.TestCase):
         self.assertEqual(keys[0], keys[1], "the retry carries the first attempt's identity")
         stored = [item for item in self.work(page) if item["title"].startswith("Lost response from a message")]
         self.assertEqual(len(stored), 1, "one persisted task")
-        self.assertEqual((stored[0]["outcome"], stored[0]["status"]), ("Done when both kits are counted", "in_progress"))
+        self.assertEqual((stored[0]["outcome"], stored[0]["status"]), ("Done when both kits are counted", "open"))
         self.assertEqual(notices(page), before + 1, "one notice")
-        # From a blank form: details, status and owner survive too (the title-only control).
+        # From a blank form: details survive too (the title-only control).
         page = self.page()
         page.goto(f"/projects/{self.ids['project']}/tasks")
         keys = []
@@ -483,20 +475,18 @@ class CreateWindow(unittest.TestCase):
         field = open_from_tasks(page)
         field.fill("Lost response from a blank form")
         dialog(page).get_by_label("Details").fill("Blank form details")
-        choose(dialog(page).get_by_role("combobox", name="Status"), "in_progress")
         submit_button(page).click()
         expect(dialog(page).get_by_role("alert")).to_have_text("The response was lost")
         page.keyboard.press("Escape")
         field = open_from_tasks(page)
         expect(field).to_have_value("Lost response from a blank form")
         expect(dialog(page).get_by_label("Details")).to_have_value("Blank form details")
-        expect_value(dialog(page).get_by_role("combobox", name="Status"), "in_progress")
         submit_button(page).click()
         expect(dialog(page)).to_have_count(0)
         self.assertEqual(keys[0], keys[1])
         stored = [item for item in self.work(page) if item["title"] == "Lost response from a blank form"]
         self.assertEqual(len(stored), 1)
-        self.assertEqual((stored[0]["outcome"], stored[0]["status"]), ("Blank form details", "in_progress"))
+        self.assertEqual((stored[0]["outcome"], stored[0]["status"]), ("Blank form details", "open"))
 
     def test_12_the_phone_window_proposes_a_decision_in_the_space_it_shows(self) -> None:
         self.ensure_account()
@@ -899,8 +889,9 @@ class CreateWindow(unittest.TestCase):
         expect(palette.get_by_role("option")).to_have_text([re.compile("^Go to Inbox")])
         page.keyboard.press("Escape")
         expect(palette).to_have_count(0)
-        # Places by identity, most recent first: a second visit moves a place up once, a doc's version is its doc (named by
-        # its own title), and the place in view and pages that are not places (not found) are left out.
+        # Places by identity, most recent first: a space is one row whichever of its views were open (#1424: the Conversation, Tasks and
+        # Wiki of one space are not three rows), a doc's version is its doc (named by its own title), and the place in view and pages
+        # that are not places (not found) are left out.
         self.visit(page, f"/projects/{project}", "Community garden sensors")
         self.visit(page, f"/projects/{project}/tasks", "Community garden sensors")
         self.visit(page, f"/projects/{other}", "Cargo bike co-op")
@@ -909,16 +900,15 @@ class CreateWindow(unittest.TestCase):
         expect(page.get_by_role("heading", name="How the garden sensors work").first).to_be_visible()
         page.goto(f"/projects/{project}/nowhere")
         expect(page.get_by_role("heading", name="This page doesn’t exist")).to_be_visible()
-        self.visit(page, f"/projects/{project}", "Community garden sensors")
+        self.visit(page, "/", "Home")
         palette, field = self.jump(page, "")
         listbox = palette.get_by_role("listbox", name="Recent places and actions")
-        self.assertEqual(self.option_names(listbox), ["How the garden sensors work · Wiki", "Community garden sensors · Tasks", "Cargo bike co-op · Conversation", "Home",
-                                                      "Go to Inbox"])
+        self.assertEqual(self.option_names(listbox), ["How the garden sensors work · Wiki", "Cargo bike co-op · Conversation", "Go to Inbox"],
+                         "the garden space once (its newest view), the other space once, and not Home, which is in view")
         options = listbox.get_by_role("option")
         expect(options.first.locator(".jump__side")).to_have_text("Wiki")
-        expect(options.nth(3).locator(".jump__side")).to_have_count(0)
         expect(listbox.locator(".jump__sh")).to_have_text(["Recent", "Actions"])
-        expect(options.nth(4).locator(".jump__key")).to_have_text(["G", "I"])
+        expect(options.nth(2).locator(".jump__key")).to_have_text(["G", "I"])
         expect(palette.locator(".jump__foot")).to_contain_text("Finds spaces, people, messages, tasks, Wiki pages, files and thoughts you can see.")
         shot(page, "521-empty-palette-1440-light")
         # ↑↓ move (and wrap), Enter opens, Esc closes.
@@ -926,7 +916,7 @@ class CreateWindow(unittest.TestCase):
         expect(selected).to_have_attribute("aria-label", "How the garden sensors work · Wiki")
         field.press("ArrowUp")
         expect(selected).to_have_text(re.compile("^Go to Inbox"))
-        for _ in range(3):
+        for _ in range(2):
             field.press("ArrowDown")
         expect(selected).to_have_attribute("aria-label", "Cargo bike co-op · Conversation")
         self.assertEqual(field.get_attribute("aria-activedescendant"), selected.get_attribute("id"))
@@ -935,7 +925,7 @@ class CreateWindow(unittest.TestCase):
         expect(page).to_have_url(re.compile(rf"/projects/{other}$"))
         palette, field = self.jump(page, "")
         names = self.option_names(palette.get_by_role("listbox", name="Recent places and actions"))
-        self.assertEqual(names[:2], ["Community garden sensors · Conversation", "How the garden sensors work · Wiki"])
+        self.assertEqual(names[:2], ["Home", "How the garden sensors work · Wiki"], "the space in view is left out, the garden space is still one row")
         # The Wiki page opens at the doc itself, not the version that was open.
         palette.get_by_role("option", name="How the garden sensors work · Wiki", exact=True).click()
         expect(page).to_have_url(re.compile(rf"/projects/{project}/docs/{doc['id']}$"))

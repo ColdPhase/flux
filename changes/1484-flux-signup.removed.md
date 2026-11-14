@@ -1,0 +1,1 @@
+- `FLUX_SIGNUP` is gone, because nobody signs up alone any more; `./flux upgrade` names the old line in `docker/.env`, which you can delete. `FLUX_SETUP_TOKEN` is new: the setup link's token, written by `./flux up` ([#1471](https://github.com/ColdPhase/flux/issues/1471), [#1484](https://github.com/ColdPhase/flux/issues/1484)).

@@ -1,13 +1,16 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import { AI_PROVIDER_KINDS, AI_PROVIDERS, assistantModelName, groupModelsByFamily, listPrice,
+import { AI_PROVIDER_KINDS, AI_PROVIDERS, assistantModelName, defaultListedModel, groupModelsByFamily, listPrice,
   type AiListedModel, type AiModelList, type AiPrice, type AiProviderKind, type AiProviderPriceList } from '@flux/contracts';
 import { Button, Select, Option, OptionGroup } from '../ui';
 import { ApiError } from '../api/client';
 import { listAiModels } from './api';
 
 // Provider, API key, model, endpoint and price of an owner's AI connection (F-020, #179; CA-2, #1218), in that order: the key
-// comes before the model because the model list is the key's own. Every provider is offered the same way; none is preselected, and a
-// model is chosen for the owner only when the provider lists exactly one.
+// comes before the model because the model list is the key's own. Every provider is offered the same way and none is preselected. The form
+// shows first only Provider and key; once the key's models are read the Model appears already chosen (#1424, founder decision 2026-11-14):
+// the only model of a list of one, and for Anthropic, OpenAI and Gemini the newest model of the provider's middle, balanced family
+// (Sonnet, Sol, Flash), the first of the list only when the list has no such family. OpenRouter's and an endpoint's long lists have none
+// chosen until the owner picks.
 // - Anthropic, OpenAI and Gemini: when the key field is left, the server lists the models that key can use, and that one call is
 //   also the key's test. The Model is then a dropdown by family, newest first, each with its price or "price unknown, enter it",
 //   and "Other model id…" for an id the list lacks. A refused key says so and Connect waits for another; a list that can't be
@@ -42,6 +45,9 @@ export function priceSourceText(price: AiPrice, provider?: AiProviderKind) {
 
 export const priceText = (price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'>) =>
   `${perMillion(price.inputMicrosPerMTok)} input · ${perMillion(price.outputMicrosPerMTok)} output per 1M tokens`;
+/** The form's price in plain words (#1424): "$4.00 for what you send and $20.00 for what it writes, per million tokens". */
+export const plainPrice = (price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'>) =>
+  `${perMillion(price.inputMicrosPerMTok)} for what you send and ${perMillion(price.outputMicrosPerMTok)} for what it writes, per million tokens`;
 
 /** Providers whose models the server lists with the key being added (#1218). */
 const KEY_LISTED: ReadonlySet<AiProviderKind> = new Set(['anthropic', 'openai', 'gemini']);
@@ -65,6 +71,9 @@ function optionText(prices: AiProviderPriceList | null, model: AiListedModel) {
   const row = listPrice(prices, model.id);
   return row ? `${name} · ${short(row.inputMicrosPerMTok)} / ${short(row.outputMicrosPerMTok)}` : `${name} · price unknown, enter it`;
 }
+
+/** The model chosen when a list is read (#1424, CA-2): the only one, else the middle family of Anthropic, OpenAI and Gemini (`defaultListedModel`). */
+const defaultModel = (provider: AiProviderKind, models: readonly AiListedModel[]) => defaultListedModel(provider, models)?.id ?? '';
 
 type Listing = { state: 'idle' } | { state: 'reading' } | { state: 'done'; list: AiModelList } | { state: 'failed' };
 
@@ -135,12 +144,12 @@ export function ConnectionFields({ disabled, onKeyRefused, keyHelpId }: {
       if (!result || ask !== asked.current) return;
       setListing({ state: 'done', list: result });
       if (result.status === 'listed' && result.models.length) {
-        // Nothing is preselected among several: the models are the provider's own, and the owner picks one (#1218). A list of one has
-        // nothing to pick between (the journey review, #1424), so that model is already chosen. An id typed into the plain field
-        // while a keyless list was read, and not in it, stays as "Other model id…" instead of being wiped (#1465).
+        // The models are the provider's own (#1218). A list of one has nothing to pick between, so that model is chosen; Anthropic, OpenAI
+        // and Gemini have their middle family's newest chosen (#1424), and a long keyless list (OpenRouter's, an endpoint's) is left for the owner. An id typed into the plain field while a keyless list was read, and not in it, stays as "Other model id…"
+        // instead of being wiped (#1465).
         const current = typed.current;
         const kept = !query.apiKey && current.trim() !== '' && !result.models.some((entry) => entry.id === current);
-        if (!kept) setModel(result.models.some((entry) => entry.id === current) ? current : result.models.length === 1 ? result.models[0]!.id : '');
+        if (!kept) setModel(result.models.some((entry) => entry.id === current) ? current : defaultModel(kind, result.models));
         setOther(kept);
       }
     } catch {
@@ -172,7 +181,7 @@ export function ConnectionFields({ disabled, onKeyRefused, keyHelpId }: {
     {provider === 'openai_compatible' ? <>
       <label>Endpoint base URL<input name="baseUrl" type="url" required maxLength={2048} autoComplete="off" spellCheck={false}
         placeholder="https://llm.example.org/v1" value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} aria-describedby={`${id}-endpoint`} /></label>
-      <p id={`${id}-endpoint`} className="background-settings__help">The server that speaks the OpenAI Chat Completions format, such as Ollama, vLLM, LM Studio or a gateway. Public HTTPS only, unless this server’s operator allows a private address. Flux checks it when you save and before every request, and never follows a redirect.</p>
+      <p id={`${id}-endpoint`} className="background-settings__help">A server that works like OpenAI’s, such as Ollama, LM Studio or vLLM. Use an https address.</p>
     </> : null}
     <label>API key<input name="apiKey" type="password" autoComplete="off" spellCheck={false} required minLength={8} maxLength={512}
       aria-invalid={refused || undefined} aria-describedby={`${keyHelpId}${refused ? ` ${id}-refused` : ''}`}
@@ -181,7 +190,7 @@ export function ConnectionFields({ disabled, onKeyRefused, keyHelpId }: {
       onKeyDown={(event) => { if (event.key === 'Enter' && waitingForKey) { event.preventDefault(); keyLeft(event.currentTarget.value); } }}
       onChange={() => { if (refused) { setListing({ state: 'idle' }); listedKey.current = ''; } }} /></label>
     {refused ? <p id={`${id}-refused`} className="background-settings__error" role="alert">{listFailure(provider as AiProviderKind, 'key_refused')}</p> : null}
-    <p id={keyHelpId} className="background-settings__help">{info ? info.keyHint : 'Choose a provider first to see what its keys look like.'} {keyed ? 'Flux reads the models this key can use when you leave the field.' : ''} This field is cleared after every save attempt; enter it again to try again.</p>
+    <p id={keyHelpId} className="background-settings__help">{info ? info.keyHint : 'Choose a provider first.'}{provider === 'anthropic' ? ' If the key belongs to your Claude Max, Ultra or Team plan, the plan’s monthly API credits pay for it.' : ''}{keyed ? ' Flux checks it when you leave the field.' : ''}</p>
     {dropdown ? (
       <label>Model
         <Select name={other ? undefined : 'model'} required={!other} aria-label="Model" value={other ? OTHER : model} placeholder="Choose a model" disabled={disabled} aria-describedby={`${id}-model`}
@@ -199,9 +208,6 @@ export function ConnectionFields({ disabled, onKeyRefused, keyHelpId }: {
       <label>{dropdown ? 'Model id' : 'Model'}<input name="model" required maxLength={200} autoComplete="off" spellCheck={false}
         value={model} onChange={(event) => setModel(event.target.value)} aria-describedby={`${id}-model`} /></label>
     ) : null}
-    {keyed && waitingForKey && !dropdown ? (
-      <label>Model<Select aria-label="Model" value="" placeholder={refused ? 'Enter a key its provider accepts' : 'Enter the API key first'} disabled onChange={() => undefined} aria-describedby={`${id}-model`} /></label>
-    ) : null}
     <div id={`${id}-model`} className="background-settings__model-help">
       {info?.keylessModelList
         ? <Button disabled={disabled || listing.state === 'reading' || (provider === 'openai_compatible' && !baseUrl.trim())} busy={listing.state === 'reading'} onClick={() => void read({})}>Show available models</Button>
@@ -209,11 +215,11 @@ export function ConnectionFields({ disabled, onKeyRefused, keyHelpId }: {
       <p className="background-settings__help" role="status">{status || (provider && !keyed && !dropdown ? 'Type the model id exactly as the provider names it.' : '')}</p>
     </div>
     {provider && model && !waitingForKey ? known
-      ? <p className="background-settings__help" data-testid="connection-price">Price: {priceText(known)} · {priceSourceText(known, provider as AiProviderKind)}.</p>
+      ? <p className="background-settings__help" data-testid="connection-price">Price: {plainPrice(known)} · {priceSourceText(known, provider as AiProviderKind)}.</p>
       // Remounted per model, so a price typed for one model is not kept for another.
       : <fieldset key={`${provider}:${model}`} className="background-settings__price" disabled={disabled}>
         <legend>Price per 1M tokens (USD)</legend>
-        <p className="background-settings__help">Flux doesn’t know this model’s price yet. Enter it to use it with a daily budget: from your provider’s pricing, or 0 for a self-hosted server you pay for otherwise. Flux prices each request at it before sending, so your daily budget holds.</p>
+        <p className="background-settings__help">Flux doesn’t know this model’s price yet. Enter it to use it with a daily budget. Take it from your provider’s pricing page, or 0 if you run the model yourself.</p>
         <div className="background-settings__limits">
           <label>Input price<input name="inputPrice" type="number" min="0" max="1000" step="any" inputMode="decimal" aria-required="true" /></label>
           <label>Output price<input name="outputPrice" type="number" min="0" max="1000" step="any" inputMode="decimal" aria-required="true" /></label>

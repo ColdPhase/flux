@@ -1,6 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import type { WorkStatus } from '@flux/contracts';
-import { DateField, Morph, StatusGlyph } from '../ui';
+import { Morph, StatusGlyph } from '../ui';
+import { DateField } from '../ui/DateField';
 import { STATUS_LABEL, TASK_STATES, dueLabel, statusPhrase } from './format';
 import { PropertyMenu } from './PropertyMenu';
 import { inComposer } from '../ui/keys';

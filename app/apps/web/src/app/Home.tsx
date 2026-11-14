@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useState, type MouseEvent, type ReactNode } from 'react';
-import { Link } from 'react-router';
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react';
+import { Link, useNavigate } from 'react-router';
 import type { NeedsYouItem, ReturnNextStep, WorkItem } from '@flux/contracts';
-import { Button, Icon, Kreska, MEDIA, StatusGlyph, useMediaQuery } from '../ui';
+import { Button, Icon, Kreska, MEDIA, StatusGlyph, useMediaQuery, useToast } from '../ui';
 import { Face, kindWord } from '../notifications/NeedsYouCard';
 import { useNeedsYou } from '../notifications/needsYou';
 import { getReturnSummary, saveReturnPoint } from '../returns/api';
@@ -18,7 +18,9 @@ import './home.css';
 import { RefLink } from '../place/origin';
 import { PushOffer } from '../notifications/PushOffer';
 import { enablePushNotifications, getPushState } from '../pwa/push';
-import type { FirstStep, FirstSteps as FirstStepsRead } from '@flux/contracts';
+import type { FirstStep, FirstStepJoined, FirstSteps as FirstStepsRead } from '@flux/contracts';
+import { openDm } from '../api/direct-messages';
+import { attemptKeys, firstName } from '../people/api';
 import { getFirstSteps, hideFirstSteps } from './firstSteps';
 
 const dateFormat = new Intl.DateTimeFormat(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
@@ -32,8 +34,8 @@ type Continue =
   | { kind: 'step'; step: ReturnNextStep; mark: string | null };
 
 interface HomeReads {
-  /** What to continue from; null when there is nothing. */
-  value: Continue | null;
+  /** What to continue from, best first: the task in progress, then the return summary's next step. Empty when there is nothing. */
+  choices: Continue[];
   /** How many tasks are yours, your agents' included: "My tasks (N)" on the phone. Null until read. */
   tasks: number | null;
   /** Nothing to continue from could be read: said under its heading, with Try again, never left out as if there were nothing (#1369). */
@@ -42,19 +44,20 @@ interface HomeReads {
 }
 
 /**
- * What Home reads about the person's own work, once: the task you were last on (in progress, newest change), else the next
+ * What Home reads about the person's own work, once: the task you were last on (in progress, newest change), then the next
  * step the return summary suggests (a task that became yours while you were away comes before a decision waiting for you, with
- * its due day, #763 H11-5), else nothing; and how many tasks are yours, for "My tasks (N)".
+ * its due day, #763 H11-5), best first, and how many tasks are yours, for "My tasks (N)". Home shows the first one that
+ * "Waiting for you" does not already show (#1424).
  */
 function useContinue(userId: string, workspaceIds: string[]): HomeReads {
-  const [state, setState] = useState<{ userId: string; value: Continue | null; tasks: number | null; failed: boolean } | null>(null);
+  const [state, setState] = useState<{ userId: string; choices: Continue[]; tasks: number | null; failed: boolean } | null>(null);
   const [attempt, setAttempt] = useState(0);
   const reload = useCallback(() => setAttempt((n) => n + 1), []);
   const spaces = workspaceIds.join(',');
   useEffect(() => {
     const controller = new AbortController();
     void (async () => {
-      let value: Continue | null = null;
+      const choices: Continue[] = [];
       let tasks: number | null = null;
       let failed = false;
       const read = await getReturnSummary({ type: 'home' }, controller.signal).catch(() => { failed = true; return null; });
@@ -66,23 +69,58 @@ function useContinue(userId: string, workspaceIds: string[]): HomeReads {
         const assigned = await listAssignedWork(spaces ? spaces.split(',') : [], 50, controller.signal);
         tasks = assigned.total;
         const active = assigned.items.filter((item) => item.status === 'in_progress').sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
-        if (active) value = { kind: 'task', item: active };
+        if (active) choices.push({ kind: 'task', item: active });
       } catch { failed = true; }
-      if (!value && summary?.nextStep) value = { kind: 'step', step: summary.nextStep, mark: summary.mark };
-      if (!controller.signal.aborted) setState({ userId, value, tasks, failed: failed && !value });
+      if (summary?.nextStep) choices.push({ kind: 'step', step: summary.nextStep, mark: summary.mark });
+      if (!controller.signal.aborted) setState({ userId, choices, tasks, failed: failed && !choices.length });
     })();
     return () => controller.abort();
   }, [userId, spaces, attempt]);
   const mine = state?.userId === userId ? state : null;
-  return { value: mine?.value ?? null, tasks: mine?.tasks ?? null, failed: mine?.failed ?? false, reload };
+  return { choices: mine?.choices ?? [], tasks: mine?.tasks ?? null, failed: mine?.failed ?? false, reload };
 }
 
-/** "Continue where you left off" (F-026 P1): where the person last worked, as one row under its own heading. */
-function ContinueSection({ reads }: { reads: HomeReads }) {
+const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+
+/** The ids of the things a Home choice points at: the task, or what its next step's source names. */
+function continueIds(choice: Continue): string[] {
+  if (choice.kind === 'task') return [choice.item.id];
+  const { source } = choice.step;
+  switch (source.type) {
+    case 'message': return [source.messageId];
+    case 'material': return [source.materialId];
+    case 'sketch': return [source.sketchId];
+    case 'doc': return [source.docId];
+    default: return [source.id];
+  }
+}
+
+/**
+ * The ids of everything the rows of "Waiting for you" stand for: a decision, the task a blocked item is about, an agent's
+ * question and its message, and any id in the address a row opens (a mention's message). Continue never shows one of them again (#1424).
+ */
+export function waitingIds(rows: WaitingRow[]): Set<string> {
+  const ids = new Set<string>();
+  const add = (id: string | null | undefined) => { if (id) ids.add(id.toLowerCase()); };
+  for (const row of rows) {
+    for (const item of 'decisions' in row ? row.decisions : [row.item]) {
+      add(item.decision?.id); add(item.blocked?.workId); add(item.agentQuestion?.messageId); add(item.agentQuestion?.task?.id);
+      for (const id of `${item.key} ${item.url}`.match(UUID) ?? []) add(id);
+    }
+  }
+  return ids;
+}
+
+/**
+ * "Continue where you left off" (F-026 P1): where the person last worked, as one row under its own heading. Something that
+ * "Waiting for you" shows already is not shown again; `covered` is null while that list is still loading, so the row
+ * does not appear and then leave.
+ */
+function ContinueSection({ reads, covered }: { reads: HomeReads; covered: Set<string> | null }) {
   const { projects } = useShellData();
   // It is the last thing on Home, so when it arrives nothing above it moves and no space is kept for it (#863 rule 6).
-  const { value } = reads;
-  if (!value && reads.failed) {
+  const value = covered ? reads.choices.find((choice) => !continueIds(choice).some((id) => covered.has(id.toLowerCase()))) ?? null : null;
+  if (!value && reads.failed && covered) {
     return (
       <section className="home__continue" aria-labelledby="home-continue">
         <div className="home__sech"><h3 id="home-continue">Continue where you left off</h3></div>
@@ -187,7 +225,7 @@ function WaitingItem({ row }: { row: WaitingRow }) {
   return <HomeRow to="/inbox" state={{ select: item.key }} face={<Face item={item} />} title={item.title} meta={meta} metaFirst />;
 }
 
-type StepRow = { key: FirstStep | 'push'; icon: 'edit' | 'people' | 'spark' | 'chat' | 'person' | 'bell'; title: string; meta: string; to?: string; state?: unknown };
+type StepRow = { key: FirstStep | 'push' | `joined:${string}`; icon: 'edit' | 'people' | 'spark' | 'chat' | 'person' | 'bell'; title: string; meta: string; to?: string; state?: unknown };
 
 const STEP_ROWS: Record<FirstStep, (read: FirstStepsRead) => StepRow> = {
   name_company: () => ({ key: 'name_company', icon: 'edit', title: 'Name your company', meta: 'Shown on the sign-in page and in emails', to: '/settings/company?name=1' }),
@@ -198,11 +236,28 @@ const STEP_ROWS: Record<FirstStep, (read: FirstStepsRead) => StepRow> = {
 };
 
 /**
+ * The card's rows, at most three: the steps left, with the people who joined with the person's links ("Nia joined · Say hello", #1424) in the place of
+ * "Invite people", which is done once a link was made. The steps come first, so a person who joined never pushes one out.
+ */
+function firstStepRows(read: FirstStepsRead): StepRow[] {
+  const steps = read.steps.map((step) => STEP_ROWS[step](read));
+  const room = Math.max(0, 3 - steps.length);
+  const names = (person: FirstStepJoined) => read.joined.filter((other) => firstName(other.name) === firstName(person.name)).length > 1 ? person.name : firstName(person.name);
+  const joined = read.joined.slice(0, room).map((person): StepRow => ({ key: `joined:${person.userId}`, icon: 'chat', title: `${names(person)} joined`, meta: 'Say hello' }));
+  const lead = steps.findIndex((row) => row.key !== 'name_company');
+  return [...steps.slice(0, lead < 0 ? steps.length : lead), ...joined, ...(lead < 0 ? [] : steps.slice(lead))];
+}
+
+/**
  * First steps (founder decisions, Hubert, 2026-11-13, #1438; docs/design/final/README.md "Home"): one card for every new person but a guest
  * (the server decides who is new and still has a step left), at most three rows by role, each gone once done, and one quiet Hide for good. A member's third row turns notifications on for this device
  * where push is available and it is not on yet: the one-time offer then waits (`onPushRow`).
  */
-function FirstStepsCard({ phone, onPushRow }: { phone: boolean; onPushRow: (shown: boolean) => void }) {
+function FirstStepsCard({ phone, workspaceId, onPushRow }: { phone: boolean; workspaceId: string; onPushRow: (shown: boolean) => void }) {
+  const navigate = useNavigate();
+  const toast = useToast();
+  const keys = useRef(attemptKeys());
+  const [greeting, setGreeting] = useState<string | null>(null);
   const [read, setRead] = useState<FirstStepsRead | null>(null);
   const [pushKey, setPushKey] = useState<string | null>(null);
   const [hidden, setHidden] = useState(false);
@@ -218,13 +273,23 @@ function FirstStepsCard({ phone, onPushRow }: { phone: boolean; onPushRow: (show
     }, () => undefined);
     return () => controller.abort();
   }, []);
-  const rows: StepRow[] = read && !hidden ? read.steps.map((step) => STEP_ROWS[step](read)) : [];
+  const rows: StepRow[] = read && !hidden ? firstStepRows(read) : [];
   if (read && !hidden && pushKey) rows.push({ key: 'push', icon: 'bell', title: `Get notifications on this ${phone ? 'phone' : 'computer'}`, meta: 'When someone writes to you or calls' });
   const shown = rows.slice(0, 3);
   const pushShown = shown.some((row) => row.key === 'push');
   useEffect(() => { onPushRow(pushShown); }, [onPushRow, pushShown]);
   if (!shown.length) return null;
   const hide = () => { setHidden(true); void hideFirstSteps().catch(() => undefined); };
+  /** "Say hello" opens the direct message with the person who joined (made now if there is none); that is what takes the row away. */
+  const sayHello = (userId: string) => {
+    if (greeting) return;
+    setGreeting(userId);
+    openDm(workspaceId, [userId], keys.current.for(userId)).then((dm) => {
+      keys.current.done();
+      setRead((current) => current && { ...current, joined: current.joined.filter((person) => person.userId !== userId) });
+      navigate(`/dm/${dm.id}`);
+    }, () => { setGreeting(null); toast({ message: 'Couldn’t open the conversation. Try again.' }); });
+  };
   const turnOn = (publicKey: string) => {
     // Called in the tap itself: the browser asks only after a gesture.
     const pending = enablePushNotifications(publicKey);
@@ -243,6 +308,9 @@ function FirstStepsCard({ phone, onPushRow }: { phone: boolean; onPushRow: (show
           // ask with, it opens Settings › Notifications, where the same switch is.
           <HomeRow key={row.key} to="/settings/notifications" face={<span className="nyc__face nyc__face--icon"><Icon name={row.icon} size={16} /></span>}
             title={row.title} meta={row.meta} onClick={(event) => { if (!pushKey) return; event.preventDefault(); if (!asking) turnOn(pushKey); }} />
+        ) : row.key.startsWith('joined:') ? (
+          <HomeRow key={row.key} to="/dm" face={<span className="nyc__face nyc__face--icon"><Icon name={row.icon} size={16} /></span>} title={row.title} meta={row.meta}
+            onClick={(event) => { event.preventDefault(); sayHello(row.key.slice('joined:'.length)); }} />
         ) : (
           <HomeRow key={row.key} to={row.to!} state={row.state} face={<span className="nyc__face nyc__face--icon"><Icon name={row.icon} size={16} /></span>}
             title={row.title} meta={row.meta} />
@@ -279,7 +347,7 @@ export function Home() {
       {phone ? <><WorkingAssistant /><HomeWorkingAgents /></> : null}
 
       {/* #1438: first steps for every new person but a guest, above what waits (it replaces the new member's empty Home line). */}
-      {firstRun ? null : <FirstStepsCard phone={phone} onPushRow={setPushRow} />}
+      {firstRun || !workspace ? null : <FirstStepsCard phone={phone} workspaceId={workspace.id} onPushRow={setPushRow} />}
 
       {firstRun ? (
         <section className="home__card home__first" aria-labelledby="home-first">
@@ -325,7 +393,7 @@ export function Home() {
         </ul>
       ) : null}
 
-      <ContinueSection reads={reads} />
+      <ContinueSection reads={reads} covered={queue.items === null && !queue.failed ? null : waitingIds(rows)} />
       {/* The one-time offer to turn notifications on (#1243): last on the page, since it may not come (motion rule 6). */}
       <PushOffer userId={me.user.id} hidden={pushRow} ready={(queue.items ?? []).some((item) => item.kind === 'mention' || item.reason === 'question')} />
     </div></div>

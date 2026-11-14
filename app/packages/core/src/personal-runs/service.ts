@@ -92,8 +92,8 @@ export type BackgroundStart =
 
 /** The same reasons a run on a task cannot start, said by the agent (AG-5: "I can't start …"). */
 const TASK_PROBLEM_LINE: Record<PersonalAssistantUnavailableReason, string> = {
-  provider_off: 'I can\'t start: AI is switched off on this Flux.', no_connection: 'I can\'t start: no AI account is connected.',
-  connection_changed: 'I can\'t start: your AI account changed.', price_unknown: 'I can\'t start: your AI account has no known price.',
+  provider_off: 'I can\'t start: AI is switched off on this Flux.', no_connection: 'I can\'t start: I need a connection. Connect AI in Settings › AI.',
+  connection_changed: 'I can\'t start: I need a connection. Choose one on my page in Settings › AI.', price_unknown: 'I can\'t start: your AI account has no known price.',
   model_retired: 'I can\'t start: my model is no longer offered by its provider.',
   runtime_off: 'I can\'t start: subscription sign-in is off on this Flux.', runtime_sign_in: 'I can\'t start: sign in again.',
 };
@@ -120,7 +120,7 @@ export interface TaskRunSpec {
 export type TaskStart = { started: true; run: RunRecord; created: boolean } | { started: false; line: string };
 
 const SERVER_PROBLEM_LINE: Record<PersonalAssistantUnavailableReason, string> = {
-  provider_off: 'Skipped: AI is switched off on this Flux', no_connection: 'Skipped: no AI account is connected', connection_changed: 'Skipped: your AI account changed',
+  provider_off: 'Skipped: AI is switched off on this Flux', no_connection: 'Skipped: it needs a connection', connection_changed: 'Skipped: it needs a connection',
   price_unknown: 'Skipped: your AI account has no known price', model_retired: 'Skipped: the model is no longer offered by its provider',
   runtime_off: 'Skipped: subscription sign-in is off on this Flux', runtime_sign_in: 'Skipped: sign in again',
 };
@@ -417,6 +417,45 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
     return { engine: 'runtime', apiKeyId: null, provider: runtimeVendor(clientOfPlan(item.ref)).provider, model };
   }
 
+  /**
+   * Agents use "your AI" (founder decision, Hubert, 2026-11-14, #1424; C-3 amended): the owner's only connection, or null when they have none
+   * or several (several are chosen per agent, and nothing switches between them by itself).
+   */
+  async function onlyConnection(owner: string): Promise<ConnectionModels | null> {
+    const own = await ownConnections(owner);
+    return own.length === 1 ? own[0]! : null;
+  }
+  /** Where an agent goes on the only connection: that connection at its own model (a key's own model; a plan's default, none until its list is read). */
+  const onOnly = (item: ConnectionModels) => ({ ...placement(item, item.account.default), model: item.account.default || null });
+  /** The owner's agents whose API key is gone (removed): a plan is never gone here, its sign-in has its own state (runtime_sign_in). */
+  async function agentsWithoutKey(owner: string, agents: readonly MyAgent[]): Promise<MyAgent[]> {
+    const onKeys = agents.filter((agent) => clientOfPlan(agent.model.connection) === null);
+    if (!onKeys.length) return [];
+    const live = new Set((await connections.list(owner)).map((key) => key.id));
+    return onKeys.filter((agent) => !live.has(agent.model.connection));
+  }
+  /**
+   * The agent as it runs now: one whose key is gone and that has exactly one connection to use runs on it (#1424). A reader shows that;
+   * a writer holding the agent's lock (`persist`) also keeps it, so adding a second connection later moves nothing.
+   */
+  async function currentEnablement(ports: PersonalRunPorts, owner: string, enablement: EnablementRecord, persist: boolean): Promise<EnablementRecord> {
+    if (enablement.engine !== 'server' || (enablement.connectionId && await connections.resolve(owner, enablement.connectionId))) return enablement;
+    const only = await onlyConnection(owner);
+    if (!only) return enablement;
+    const placed = onOnly(only);
+    if (persist) await ports.runs.rebind(enablement.agentId, placed);
+    return { ...enablement, engine: placed.engine, connectionId: placed.apiKeyId, provider: placed.provider, assistantModel: placed.model };
+  }
+  /** The agents as their owner reads them: one whose key is gone shows where it runs now (#1424). */
+  async function shown(owner: string, agents: MyAgent[]): Promise<MyAgent[]> {
+    const gone = new Set((await agentsWithoutKey(owner, agents)).map((agent) => agent.id));
+    if (!gone.size) return agents;
+    const only = await onlyConnection(owner);
+    if (!only) return agents;
+    const placed = onOnly(only);
+    return agents.map((agent) => (gone.has(agent.id) ? { ...agent, model: { connection: only.ref, model: placed.model ?? '' } } : agent));
+  }
+
   /** The model of a new agent: the one named, else Connect AI's default (the connection made first, at its default model). */
   async function modelFor(owner: string, connectionWanted: unknown, modelWanted: unknown, still: string) {
     if (connectionWanted === undefined && modelWanted === undefined) {
@@ -441,7 +480,8 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
 
   /** Without `agentId`: the first agent's (Assistant's, which answers `/ai`); with it, that agent's own, on its own connection (C-3). */
   async function status(ports: PersonalRunPorts, owner: string, agentId?: string): Promise<PersonalAssistantStatus> {
-    const enablement = await ports.runs.enablement(owner, agentId ? { agentId } : {});
+    const found = await ports.runs.enablement(owner, agentId ? { agentId } : {});
+    const enablement = found ? await currentEnablement(ports, owner, found, false) : null;
     // A guest of the company has no enablement, and their keys and plan sign-in are kept but not shown until they are a member again (C-50, #1059).
     const guest = !enablement && await ports.runs.ownerIsGuest(owner);
     const keys = providerEnabled && !guest ? await connections.list(owner) : [];
@@ -568,7 +608,9 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
     const owner = ownerOf(principal);
     const place = await locate(ports, principal, wanted);
     // The owner's row lock serializes this owner's invocations: same-key retries and the budget reservation cannot race.
-    const enablement = await ports.runs.enablement(owner, { lock: true, ...(place.agentId ? { agentId: place.agentId } : { workspaceId: place.workspaceId }) });
+    const held = await ports.runs.enablement(owner, { lock: true, ...(place.agentId ? { agentId: place.agentId } : { workspaceId: place.workspaceId }) });
+    // An agent whose key was removed runs on the only connection there is (#1424): its own setup says so from this request on.
+    const enablement = held ? await currentEnablement(ports, owner, held, true) : null;
     // A guest of the company finds none of their runs (C-50, #1059), so an old request replays none either: they are refused before the replay
     // lookup, with the answer a new request meets, in a space, a direct message and a chat alike.
     if (!enablement && await ports.runs.ownerIsGuest(owner)) throw new ConflictError('You have no agent to answer yet. Make one in Settings › AI', 'PERSONAL_RUN_NOT_ENABLED');
@@ -656,8 +698,9 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
     const principal: Principal = { kind: 'human', id: owner };
     const existing = await ports.runs.runByClientId(owner, spec.clientRunId);
     if (existing) return { started: true, run: existing, created: false };
-    const enablement = await ports.runs.enablement(owner, { lock: true, agentId: spec.agentId });
-    if (!enablement) return skipped('Skipped: this agent is gone');
+    const held = await ports.runs.enablement(owner, { lock: true, agentId: spec.agentId });
+    if (!held) return skipped('Skipped: this agent is gone');
+    const enablement = await currentEnablement(ports, owner, held, true);
     const agentId = enablement.agentId;
     if (!(await ports.access.canInvoke(principal, agentId, { lock: true }))) return skipped('Skipped: your assistant is not available');
     const admitted = await admit(ports, owner, enablement);
@@ -705,7 +748,8 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
     if (kind === 'task_answer') for (const person of spec.audience ?? [])
       if (!(await ports.access.canUseProject({ kind: 'human', id: person }, 'read', spec.projectId, { lock: true }))) return refused('I can\'t answer: not everyone in this task can read this space.');
     // The agent's own setup (F-036 AG-1) is locked first, the task graph after it (`prepareTaskUse`), as everywhere else.
-    const enablement = await ports.runs.enablement(owner, { lock: true, agentId: spec.agentId });
+    const held = await ports.runs.enablement(owner, { lock: true, agentId: spec.agentId });
+    const enablement = held ? await currentEnablement(ports, owner, held, true) : null;
     if (!enablement || enablement.workspaceId !== place.workspaceId || !(await ports.access.canInvoke(principal, spec.agentId, { lock: true })))
       return refused('I can\'t start: I\'m not one of your agents here.');
     if (!(await ports.access.canUseProject({ kind: 'agent', id: spec.agentId }, 'read', spec.projectId, { lock: true }))) return refused('I can\'t start: I\'m not in this space.');
@@ -750,7 +794,8 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
     model: (principal: Principal): Promise<AssistantModelChoice> => {
       const owner = ownerOf(principal);
       return uow.run(async (ports) => {
-        const enablement = await ports.runs.enablement(owner);
+        const found = await ports.runs.enablement(owner);
+        const enablement = found ? await currentEnablement(ports, owner, found, false) : null;
         // A guest of the company has no connection to choose from: their keys and plan sign-in are kept, hidden and refused (C-50, #1059).
         if (!enablement && await ports.runs.ownerIsGuest(owner)) return modelChoice([], null, false);
         const current: ModelPick | null = enablement ? { connection: enablementConnection(enablement), model: modelOf(enablement) } : null;
@@ -787,13 +832,35 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
     /** The caller's own agents, the first being Assistant. */
     async listAgents(principal: Principal): Promise<MyAgent[]> {
       const owner = ownerOf(principal);
-      return uow.run((ports) => agentsOf(ports).list(owner));
+      return uow.run(async (ports) => shown(owner, await agentsOf(ports).list(owner)));
+    },
+
+    /**
+     * Agents use "your AI" (#1424, founder decision 2026-11-14): called when the person's connections change (a key added or removed, a plan
+     * signed in). With exactly one connection to use, an agent whose key is gone goes on it, at its own model; with several or none nothing
+     * moves (C-3). Returns how many agents moved. No data is converted: an agent that is already on a live connection is never touched.
+     */
+    async settleAgents(principal: Principal): Promise<number> {
+      const owner = ownerOf(principal);
+      return uow.run(async (ports) => {
+        const agents = agentsOf(ports);
+        await agents.lockOwner(owner);
+        const gone = await agentsWithoutKey(owner, await agents.list(owner));
+        const only = gone.length ? await onlyConnection(owner) : null;
+        if (!only) return 0;
+        for (const agent of gone) await agents.change(agent.id, onOnly(only));
+        return gone.length;
+      });
     },
 
     async getAgent(principal: Principal, agentId: unknown): Promise<MyAgent> {
       const owner = ownerOf(principal);
       if (!isId(agentId)) throw agentNotFound();
-      return uow.run(async (ports) => (await agentsOf(ports).get(owner, agentId.toLowerCase())) ?? Promise.reject(agentNotFound()));
+      return uow.run(async (ports) => {
+        const agent = await agentsOf(ports).get(owner, agentId.toLowerCase());
+        if (!agent) throw agentNotFound();
+        return (await shown(owner, [agent]))[0]!;
+      });
     },
 
     /** Changes the fields given: name, instructions, or model with its connection. Only the owner, only their own. */
@@ -820,7 +887,7 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
           if (current.model.connection !== chosen.item.ref || current.model.model !== chosen.model) await agents.change(current.id, placement(chosen.item, chosen.model));
         }
         if (change.instructions !== undefined) await agents.change(current.id, { instructions: change.instructions });
-        return (await agents.get(owner, current.id))!;
+        return (await shown(owner, [(await agents.get(owner, current.id))!]))[0]!;
       });
     },
 

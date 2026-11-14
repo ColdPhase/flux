@@ -1,5 +1,5 @@
 """Blocked tasks wait for one thing (#550, #868): a person, a decision or another task. The Details picker, the Create
-window, the Inbox item of the person waited on (with its Done), the one short line in the project conversation and the
+window (which has none: a new task is To do, #1424), the Inbox item of the person waited on (with its Done), the one short line in the project conversation and the
 tasks going back to Doing by themselves when what they waited for is resolved. Computer and phone. Ada owns the task
 and Kai is the person she waits for. Screenshots (waiting-for-*.png) go to FLUX_UI_SCREENSHOTS."""
 from __future__ import annotations
@@ -9,8 +9,6 @@ import unittest
 import uuid
 
 from playwright.sync_api import expect, sync_playwright
-
-from app_select import choose
 
 from create_window import dialog, open_from_tasks, submit_button
 from test_app_shell import ORIGIN, UPSTREAM, shot, start_forwarder
@@ -92,24 +90,19 @@ class WaitingFor(unittest.TestCase):
                 back = api(self.ada_ctx, "GET", f"/api/v1/work/{task['id']}")
                 self.assertEqual((back["status"], back["blocker"], back["waitingFor"]["id"]), ("blocked", "Waiting for the price list", self.kai))
 
-    def test_02_the_create_window_offers_one_waiting_for_field_only_while_blocked(self):
+    def test_02_the_create_window_has_no_status_and_no_waiting_for_a_new_task_is_to_do(self):
+        """#1424: a new task is always To do, so Create offers neither Status nor Waiting for; it is blocked in the panel that opens on it."""
         for phone in (False, True):
             with self.subTest(phone=phone):
                 page = self.page("ada", phone); page.goto(f"/projects/{self.project}/tasks")
                 title = f"Book the lift {'phone' if phone else 'computer'}"
                 open_from_tasks(page).fill(title)
+                expect(dialog(page).get_by_role("combobox", name="Status")).to_have_count(0)
                 expect(dialog(page).get_by_role("combobox", name="Waiting for")).to_have_count(0)
-                choose(dialog(page).get_by_role("combobox", name="Status"), "blocked")
-                # One field: a person picked from the list under it, then the reason typed beside it; both are kept.
-                field = dialog(page).get_by_role("combobox", name="Waiting for")
-                field.focus()
-                dialog(page).get_by_role("listbox", name="Waiting for").get_by_role("option", name="Kai Nowak").click()
-                expect(dialog(page).get_by_role("button", name="Stop waiting for Kai Nowak")).to_be_visible()
-                field.fill("Venue confirmation")
                 shot(page, f"waiting-for-create-{'phone' if phone else 'computer'}")
                 submit_button(page).click(); expect(dialog(page)).to_have_count(0)
                 stored = next(item for item in api(self.ada_ctx, "GET", self.root + "/work?limit=100")["items"] if item["title"] == title)
-                self.assertEqual((stored["status"], stored["waitingFor"]["id"], stored["blocker"]), ("blocked", self.kai, "Venue confirmation"))
+                self.assertEqual((stored["status"], stored["waitingFor"]), ("open", None))
 
     def test_03_the_person_waited_on_has_an_inbox_item_with_open_task(self):
         for phone in (False, True):

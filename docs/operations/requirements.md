@@ -77,6 +77,9 @@ it off again deletes every vector.
 | Outbound HTTPS | AI providers people connect, public web pages and search for agents (`FLUX_WEB_READS`, on by default), MCP client metadata documents, GitHub | When those features are used |
 | Outbound HTTPS | `huggingface.co` | Only the first start of the optional [local embeddings](#local-embeddings-optional) container (the model, 2.3 GB) |
 | Outbound HTTPS | Container registries, npm (source build) | Install and upgrade |
+| Outbound HTTPS | `raw.githubusercontent.com` (LiteLLM's model price file) | Once a day (04:17 UTC) and when the worker starts with a list over a day old: the [model price list](../product/model-providers.md). Nothing but the request is sent; a failure keeps the last list, and no setting turns the fetch off |
+| Outbound HTTP and HTTPS | Certificate authorities (Let's Encrypt, ZeroSSL) | With the [built-in HTTPS](reverse-proxy.md#built-in-https) and a public name: getting and renewing the certificate (ACME needs port 80 and 443 to reach the server) |
+| Outbound HTTPS | `github.com` and its release-download hosts, Sigstore's trust root (cosign's default `tuf-repo-cdn.sigstore.dev`) | Only `./flux upgrade`: the release and the check of its signature ([upgrade](upgrade.md)) |
 
 The API listens only on the host's loopback address; nothing else is published. A domain name with
 a DNS record pointing at the host is needed for HTTPS, installed phone apps and agents on other

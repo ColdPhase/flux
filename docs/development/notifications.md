@@ -98,8 +98,10 @@ The settings page sends its saves one after another, numbered, and shows only th
   body, no link, nothing taken from the notification's own text. A job without a title (a notification made without a reason, or queued
   before this change) sends the fixed text "New activity in Flux". The Inbox row, the notice and the sound are unchanged, and email is
   always content-free.
-- **Sound** (#1243, migration `0064_notification_sounds.sql`): `sound: { messages, calls }`, stored as `sound_messages`
-  (default false) and `sound_calls` (default true). The server only stores them; an open tab plays them with a notice.
+- **Sound** (#1243, migration `0064_notification_sounds.sql`; one switch since #1419 item 18): `sound: { messages, calls }`, stored as
+  `sound_messages` (default false) and `sound_calls` (default true). The server only stores them; the one **Sounds** switch writes both
+  together and the page reads `calls` (on by default) for the chime and the message tone alike, which an open tab plays with a notice.
+  The two columns collapse into one with the next schema change; no migration came with the switch.
 - **Level** (#350, F-026 S22; #872): `needsYou` (default, "Only what needs me"), `everything` or `nothing`.
   The inbox always fills, for every reason (the Inbox "always shows everything that waits for you"). Push goes
   to the needs-you reasons (`mention`, `question`, `dm`, `assigned`, `review`, `invitation`, `approval`) at `needsYou`, to every

@@ -18,7 +18,7 @@ import urllib.request
 
 from playwright.sync_api import Browser, Page, expect, sync_playwright
 
-from app_select import choose, expect_value, labels, values
+from app_select import choose, expect_value, labels, open_more, values
 
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
 
@@ -86,7 +86,8 @@ class AiConnectionSettings(unittest.TestCase):
 
     def fill_key(self, page: Page, key: str, budget: str = "5.00") -> None:
         page.get_by_label("API key", exact=True).fill(key)
-        # The form for a new key comes after the budget of each key already there.
+        # The daily budget is behind More (#1424); the form for a new key comes after the budget of each key already there.
+        open_more(page)
         page.get_by_label("Daily budget (USD)", exact=True).last.fill(budget)
 
     def no_key_anywhere(self, page: Page) -> None:
@@ -201,16 +202,17 @@ class AiConnectionSettings(unittest.TestCase):
         choose(page.get_by_label("Provider", exact=True), label="Anthropic")
         expect(page.get_by_label("Endpoint base URL")).to_have_count(0)
         expect(page.get_by_role("button", name="Show available models")).to_have_count(0)
-        # #1218: Provider → API key → Model; the key's own models fill the Model once the key field is left.
-        expect(page.get_by_label("Model", exact=True)).to_be_disabled()
+        # #1218, #1424: Provider and API key first; the key's own models fill the Model, already chosen, once the key field is left.
+        expect(page.get_by_label("Model", exact=True)).to_have_count(0)
         key = page.get_by_label("API key", exact=True)
         key.fill(KEYS["anthropic"])
         key.blur()
         expect(page.get_by_text("6 models from Anthropic.")).to_be_visible()
         choose(page.get_by_label("Model", exact=True), value="claude-sonnet-5")
-        expect(page.get_by_test_id("connection-price")).to_contain_text("$2.00 input · $10.00 output per 1M tokens · Flux’s price list of ")
+        expect(page.get_by_test_id("connection-price")).to_contain_text("$2.00 for what you send and $10.00 for what it writes, per million tokens · Flux’s price list of ")
         expect(page.get_by_role("group", name="Price per 1M tokens (USD)")).to_have_count(0)
-        page.get_by_label("Name", exact=True).fill("Work Anthropic")
+        open_more(page)
+        page.get_by_label("Name (optional)", exact=True).fill("Work Anthropic")
         self.fill_key(page, KEYS["anthropic"], "12.50")
         # PROV-1: a second key is added beside the first and never replaces it.
         page.get_by_role("button", name="Connect", exact=True).click()
@@ -277,6 +279,7 @@ class AiConnectionSettings(unittest.TestCase):
         choose(page.get_by_label("Provider", exact=True), label="OpenRouter")
         page.get_by_label("Model", exact=True).fill("vendor/model-without-a-listing")
         expect(page.get_by_role("group", name="Price per 1M tokens (USD)")).to_be_visible()
+        open_more(page)
         for label in ("Provider", "Model", "Input price", "Output price", "Daily budget (USD)"):
             box = page.get_by_label(label, exact=True).last.bounding_box()
             self.assertIsNotNone(box)
@@ -424,11 +427,14 @@ class AiConnectionSettings(unittest.TestCase):
         window.get_by_label("API key", exact=True).fill(KEYS["anthropic"])
         window.get_by_label("API key", exact=True).blur()
         choose(window.get_by_label("Model", exact=True), value="claude-sonnet-5")
-        window.get_by_label("Name", exact=True).fill("From the window")
+        open_more(window)
+        window.get_by_label("Name (optional)", exact=True).fill("From the window")
         window.get_by_label("Daily budget (USD)", exact=True).fill("0.10")
         window.get_by_role("button", name="Connect", exact=True).click()
         # One request's input and output at the model's price; its web searches are charged as reported, not reserved (#1113).
         expect(window.get_by_role("alert")).to_contain_text("can cost up to $0.27, so the daily budget must be at least that")
+        # #1424: the problem is in the budget, so More is open by itself with the field in view.
+        expect(window.get_by_label("Daily budget (USD)", exact=True)).to_be_visible()
         window.get_by_label("API key", exact=True).fill(KEYS["anthropic"])
         window.get_by_label("Daily budget (USD)", exact=True).fill("5")
         window.get_by_role("button", name="Connect", exact=True).click()
@@ -438,6 +444,44 @@ class AiConnectionSettings(unittest.TestCase):
         self.no_key_anywhere(page)
         key = next(item for item in json.loads(page.request.get(f"{ORIGIN}/api/v1/background-compute-connections").text()) if item["name"] == "From the window")
         self.assertEqual(page.request.delete(f"{ORIGIN}/api/v1/background-compute-connections/{key['id']}", headers={"origin": ORIGIN}).status, 204)
+
+    def test_11_removing_a_key_asks_once_in_place_and_keeps_it_on_keep(self) -> None:
+        """#1424: Remove is a deletion, so it waits for an OK in the row (as Revoke link does): Keep it changes nothing, Remove key removes it."""
+        page = self.page()
+        page.goto("/settings/ai-connections")
+        page.get_by_role("button", name="Add a key").click()
+        window = page.get_by_role("dialog", name="Connect your AI")
+        choose(window.get_by_label("Provider", exact=True), label="Anthropic")
+        window.get_by_label("API key", exact=True).fill(KEYS["anthropic"])
+        window.get_by_label("API key", exact=True).blur()
+        choose(window.get_by_label("Model", exact=True), value="claude-sonnet-5")
+        open_more(window)
+        window.get_by_label("Name (optional)", exact=True).fill("Key to remove")
+        window.get_by_label("Daily budget (USD)", exact=True).fill("5")
+        window.get_by_role("button", name="Connect", exact=True).click()
+        expect(window).to_have_count(0)
+        row = page.locator(".background-settings__connection").filter(has=page.get_by_role("heading", name="Key to remove"))
+        expect(row).to_be_visible()
+        row.get_by_role("button", name=re.compile("^Remove Key to remove")).click()
+        ask = row.get_by_role("group", name=re.compile("^Remove Key to remove"))
+        expect(ask).to_contain_text("Remove this key? It stops what uses it at once and can’t be restored.")
+        shot(page, "ai-key-remove-asks-desktop-1440")
+        # Nothing has happened yet; the safe answer has the focus.
+        self.assertEqual(self.connection(page, name="Key to remove")["name"], "Key to remove")
+        expect(ask.get_by_role("button", name="Keep it")).to_be_focused()
+        ask.get_by_role("button", name="Keep it").click()
+        expect(ask).to_have_count(0)
+        expect(row.get_by_role("button", name=re.compile("^Remove Key to remove"))).to_be_focused()
+        self.assertEqual(self.connection(page, name="Key to remove")["name"], "Key to remove", "Keep it removes nothing")
+        row.get_by_role("button", name=re.compile("^Remove Key to remove")).click()
+        page.keyboard.press("Escape")
+        expect(row.get_by_role("group")).to_have_count(0)
+        row.get_by_role("button", name=re.compile("^Remove Key to remove")).click()
+        row.get_by_role("group", name=re.compile("^Remove Key to remove")).get_by_role("button", name="Remove key").click()
+        expect(page.get_by_role("status").filter(has_text="Removed from Flux.")).to_be_visible()
+        expect(row).to_have_count(0)
+        self.assertEqual([item for item in self.connections(page) if item["name"] == "Key to remove"], [])
+        self.no_key_anywhere(page)
 
 
 if __name__ == "__main__":

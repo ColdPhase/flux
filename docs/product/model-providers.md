@@ -26,12 +26,23 @@ A person connects AI once, in Settings › AI. Their connections power all of th
   (CA-3).
 - A connection belongs to one person. It is never shared with a team or the company, and nobody
   else's action spends it except through the person's own agents (F-019).
-- Removing a connection pauses the agents that use it until their owner picks another model
-  ([coordinator default C-3](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)).
+- **Agents use "your AI"** (founder decision, Hubert, 2026-11-14, [#1424](https://github.com/ColdPhase/flux/issues/1424),
+  amending [C-3](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)):
+  - With **exactly one connection**, every agent of the person simply uses it. Removing the only key and adding another (or a
+    plan, or the same key again) breaks nothing: an agent whose connection is gone goes on the only connection there is, at that
+    connection's own model (a key's model, a plan's default), the moment it is added and again at any run, page or change that
+    finds it so. Nothing is re-pointed per agent and nothing asks. No data is converted.
+  - With **several connections**, each agent has its own connection and model (CA-2). Removing one pauses the agents that used it
+    until their owner picks another of the rest; Flux never switches an agent between several connections by itself.
+  - An agent with **no usable connection** says "Needs a connection" where its model would show (the agents list and its page), and
+    its run or task says "I can't start: I need a connection. Connect AI in Settings › AI." It never shows the name of a model of
+    a key that is gone.
+  - A task an agent could not take goes back to its owner with the line "(its agent couldn't take it)", not "(its agent finished)".
 
 ## CA-2 — Models
 
-- Each agent picks its model from any of its owner's connections. The picker is grouped by
+- Each agent picks its model from any of its owner's connections. With one connection the picker is only
+  that connection's models, with no group name and no mention of a connection (#1424, above); with several it is grouped by
   connection, for example "Claude plan: Opus · Sonnet · Haiku" and "ChatGPT plan: GPT-6.1-Sol ·
   GPT-6-Astra · GPT-6-Luna", as the signed-in CLI lists them (below). Connect AI sets the default
   for new agents: the connection made first, at its default model (implemented on the assistant,
@@ -42,21 +53,28 @@ A person connects AI once, in Settings › AI. Their connections power all of th
   model and never decides which models show, so a newly released model appears without a Flux
   release. Until the provider's list is read (a key added before v0.2.1 waits for its first
   reading), the key offers only its own model.
-  - **Adding a key** asks Provider → API key → Model. When the key is typed, the Flux server
+  - **Adding a key** shows first only Provider and API key (founder decision, Hubert, 2026-11-14,
+    [#1424](https://github.com/ColdPhase/flux/issues/1424)); the Model appears, already chosen (below), once the key is read, and the
+    daily budget and the name are behind "More" (they have defaults and the name is optional). When the key is typed, the Flux server
     lists that key's models (Anthropic `GET /v1/models`, OpenAI `GET /v1/models`, Gemini
     `models.list`). That one call is also the key test: a key the provider refuses says "This key
     was refused by Anthropic" and is not saved. A list that can't be read (a timeout, a 5xx) leaves
     a free field for the model id with a plain note, and the key can still be saved.
   - **The Model control** is a dropdown of the chat models the key can use, grouped by family
     (Opus, Sonnet, Haiku, Fable…) with the newest family and model first, each with its price or
-    "price unknown, enter it". The provider's own display name is shown where it gives one. Nothing
-    is preselected, except when the list holds exactly one model: there is nothing to pick between,
-    so that model is already chosen (journey review, #1424). "Other model id…" opens a field for an id
-    the list doesn't have.
-  - **A key is saved only on a model its owner chose.** Flux has no default model for a key: Enter
-    in the key field reads the models like leaving it, Connect before a model is chosen says so, and
-    the server refuses a command without a model (422 `AI_MODEL_REQUIRED`) before it sends the key
-    anywhere.
+    "price unknown, enter it". The provider's own display name is shown where it gives one. **A model is
+    already chosen when the list is read** (founder decision, Hubert, 2026-11-14, #1424; it replaces "nothing
+    is preselected"): the only model when the list holds exactly one; for Anthropic, OpenAI and Gemini **the provider's
+    middle, balanced model** (founder decision, Hubert, 2026-11-14, #1424): **Anthropic: the newest Claude Sonnet; OpenAI: the newest Sol**
+    (the mid-tier GPT: Astra is the top tier and Luna the cheap one, and a Pro model is never the default); **Gemini: the newest Flash**
+    (not Flash-Lite, not Pro). It is chosen by family name from the provider's current list, as the family column of the dropdown names
+    them (`AI_DEFAULT_MODEL_FAMILY`), so a newer release appears without a Flux release; only when the list has no such family
+    is the first model of the list chosen. Opus, Fable and the cheaper models stay in the list to be chosen. OpenRouter's and an
+    endpoint's long lists have none chosen until the owner picks (there is no sensible one among hundreds).
+    "Other model id…" opens a field for an id the list doesn't have.
+  - **A key is saved only on a model.** Enter in the key field reads the models like leaving it, Connect before a model is
+    known (the list is still being read, or none was) says so, and the server still refuses a command without a model
+    (422 `AI_MODEL_REQUIRED`) before it sends the key anywhere; Flux's server never picks one for a client that sends none.
   - **OpenRouter and an OpenAI-compatible endpoint** keep their `/models` list read without a key
     (an endpoint's server usually answers it without one), and the free field as a fallback.
   - **Fresh and bounded.** A key's list is read again when its picker opens and the last reading is
@@ -90,6 +108,18 @@ A person connects AI once, in Settings › AI. Their connections power all of th
     Flux accepts, at most 8 long-prompt prices, and for LiteLLM's all three providers present); a
     list that fails, or a fetch that fails, changes nothing, and the last good list stays. Each list
     is kept apart.
+  - **A wrong list cannot lower a price without bound**
+    ([#1270](https://github.com/ColdPhase/flux/issues/1270), final audit, 2026-11-14). The lists come from a
+    third party's repository and OpenRouter's API, and a price sets the hold and the charge against a key's
+    daily budget, so a refreshed list does not move a price Flux knows to 0 or to a tenth or less of it: for
+    that model (input or output) Flux keeps the stored price and logs a warning naming the model and both
+    prices (the shipped list's price when the stored list lacks the model). A model Flux does not know is never
+    first priced at 0: it is left out, logged, and its owner is asked for the price; it is free only when the
+    stored or the shipped list already had it at 0 (Gemini's free models). One exception (coordinator decision
+    on #1499): a model id ending in `:free` in OpenRouter's own list takes its listed price, 0 included, on the
+    first read too, because OpenRouter bills those keys and names the model free. Increases and every smaller
+    decrease apply as before. It applies to LiteLLM's list and to OpenRouter's, whether the worker or the API
+    reads it.
   - **Shipped with the release.** Each release carries LiteLLM's list as fetched on its build day
     (`scripts/update_price_list.py`, run when the release candidate is prepared; the image build
     itself stays offline), and the migrator stores it when the database has none or an older one,

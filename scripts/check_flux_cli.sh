@@ -157,8 +157,11 @@ printf '%s\n' "$out" | grep -q 'seeded  conversation with 4 messages' || fail "c
 printf '%s\n' "$out" | grep -Eq 'seeded  map "Where the sensors go" with 4 connected thoughts|skipped map' || fail "map neither seeded nor skipped"
 printf '%s\n' "$out" | grep -q 'seeded  direct message between Ada Kowalska and Jonas Berg with 4 messages' || fail "direct message not seeded"
 printf '%s\n' "$out" | grep -q 'seeded  Wiki page "How the garden sensors work" with 2 versions' || fail "Wiki page with two versions not seeded"
+# #1419 item 20: the source the conversation cites is a Wiki page, not a separate kind of content.
+printf '%s\n' "$out" | grep -q 'seeded  Wiki page "Sensor shortlist" for a message to cite' || fail "the cited Wiki page 'Sensor shortlist' not seeded"
+printf '%s\n' "$out" | grep -q 'one citing the Wiki page' || fail "no message cites the Wiki page"
 # #1172: the demo says what the app says (Wiki page, Map, Thought, source), never a v0.1 word.
-if printf '%s\n' "$out" | grep -q -i -E 'sketch|published material|seeded  doc '; then fail "the demo output still uses a v0.1 word: $out"; fi
+if printf '%s\n' "$out" | grep -q -i -E 'sketch|material|seeded  doc |seeded  source'; then fail "the demo output still uses a v0.1 word: $out"; fi
 
 jar="$work/jar"
 sign_in() { # email password -> cookie jar $jar
@@ -180,7 +183,7 @@ project=$(api "/api/v1/workspaces/$ws/projects" | sed -n 's/.*"id":"\([^"]*\)".*
 conversation=$(printf '%s\n' "$out" | sed -n 's/.*"conversationId":"\([^"]*\)".*/\1/p')
 thread=$(api "/api/v1/conversations/$conversation")
 [ "$(printf '%s' "$thread" | grep -o '"sequence":' | wc -l | tr -d ' ')" = 4 ] || fail "conversation does not have 4 messages"
-printf '%s' "$thread" | grep -q '"source":{"materialId"' || fail "no message cites the material"
+printf '%s' "$thread" | grep -q '"source":{"materialId"' || fail "no message cites the Wiki page"
 sign_in jonas@demo.flux.test "$partner_pw"
 api "/api/v1/conversations/$conversation" | grep -q 'Moisture first' || fail "partner cannot read the conversation"
 dm=$(printf '%s\n' "$out" | sed -n 's/.*"dmId":"\([^"]*\)".*/\1/p')

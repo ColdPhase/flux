@@ -67,7 +67,7 @@
 /* The phone's sheet rises from the bottom with one height for every tab, as the window keeps (rule 7). */
 .ui-overlay--bottom .create { inset: auto 0 0 0; height: min(600px, 92dvh); max-height: 92dvh; border-radius: var(--r-sheet) var(--r-sheet) 0 0; box-shadow: var(--sh-pop); padding-bottom: env(safe-area-inset-bottom); }
 .ui-overlay--bottom .create .create__head { position: relative; gap: 4px; padding: 22px 8px 0 12px; touch-action: none; }
-/* Five tabs and Close fit a 390px phone; a narrower one (or larger text) scrolls the tabs sideways, and the head still
+/* Five tabs and Close fit a 390px phone, and a 320 px one with the tighter rule below; larger text scrolls the tabs sideways, and the head still
    drags the sheet. */
 .ui-overlay--bottom .create .create__tabs .ui-tabs__bar { padding: 2px; touch-action: pan-x; }
 .ui-overlay--bottom .create .create__tabs .ui-tabs__tab { padding: 0 8px; }
@@ -90,6 +90,14 @@
 .create__place--plain { background: none; box-shadow: none; padding: 0; min-height: 28px; gap: 4px; font-size: var(--fs-base); color: var(--t2); }
 .create__place--plain:hover { background: none; }
 .create__place--plain .create__tile { display: none; }
+
+/* A phone under 360 px (a 320 px one): the five kinds and Close still share the one row, so "Space" is not cut at the sheet's edge and
+   Close is not squeezed to its first letter. The tabs lose their gaps and side room, and each keeps a 44 px wide target (#1424). */
+@media (max-width: 359px) {
+  .ui-overlay--bottom .create .create__head { gap: 0; padding-left: 8px; padding-right: 4px; }
+  .ui-overlay--bottom .create .create__tabs .ui-tabs__bar { gap: 0; }
+  .ui-overlay--bottom .create .create__tabs .ui-tabs__tab { justify-content: center; min-width: 44px; padding: 0 4px; }
+}
 
 /* Touch: every control is a 44 x 44 target. These sit after the plain and phone rules and are as specific as
    the most specific of them, so none of those restores a smaller size. */

@@ -76,7 +76,7 @@ export async function readMarkdownFile(file: File): Promise<ImportedPage> {
 
 /** The page as one Markdown file: `# Title`, a blank line, then the saved text. */
 export function pageMarkdown(title: string, body: string) {
-  const text = body.replace(/\s+$/, '');
+  const text = body.trimEnd();
   return text ? `# ${title}\n\n${text}\n` : `# ${title}\n`;
 }
 

@@ -322,7 +322,7 @@ class MapCanvasJourney(unittest.TestCase):
         self.assertLess(minimap['y'] + minimap['height'], zoom['y'] + 1, 'the minimap sits above the zoom controls')
         self.assertGreater(zoom['x'], bar['x'] + bar['width'], 'zoom does not overlap the toolbar')
         # Fit shows every thought, clear of the minimap and the zoom controls.
-        page.get_by_role('button', name='Fit the sketch to the view', exact=True).click()
+        page.get_by_role('button', name='Fit the map to the view', exact=True).click()
         canvas = page.locator('.sk-canvas').bounding_box()
 
         def overlaps(a, b):

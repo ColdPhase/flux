@@ -66,8 +66,8 @@ motion audit and the coordinator's reading, not from Hubert's decision on #863. 
    [#863](https://github.com/ColdPhase/flux/issues/863)). CSS and script take every duration and easing from the
    tokens below, the sidebar's width animation included; no literal values such as `ease`, `.2s` or 900 ms.
    `--ease-spring`, `--ease-glide` and `--ease-sheet` are retired.
-9. **Reduced motion sets every duration and delay to zero.** This applies to the system setting and to Settings →
-   Appearance → Reduce motion alike, including animation delays, so the end state is there at once. A loop runs only
+9. **Reduced motion sets every duration and delay to zero.** This follows the system's reduced-motion setting alone
+   (Settings has no switch for it, [#1419](https://github.com/ColdPhase/flux/issues/1419) item 17), including animation delays, so the end state is there at once. A loop runs only
    while real work is in progress or, for Kreska, while its ongoing state lasts; under reduced motion, and with Kreska's
    small moments off, Kreska's expressions show their static frame ([final design §3](final/README.md#3-kreska-logo-agent-icon-and-mascot)).
 
@@ -154,9 +154,9 @@ The values after #863:
 | The detail panel | `ui/SidePanel.tsx` |
 | Menus and popovers | `ui/pop.ts` (`usePop`) and `[data-pop]` in `ui/ui.css` |
 | Toasts | `ui/Toast.tsx` |
-| Notices | `notifications/Notices.tsx` |
+| Notices | `notifications/Notices.tsx` (its code comes through `DeferredNotices` in `app/DeferredSurfaces.tsx`, #1428) |
 | View and place switches | `ui/ViewFade.tsx` around the routes in `app/AppLayout.tsx`; `ui/motion-rules.ts` |
-| Surfaces that load their code | `app/DeferredSurfaces.tsx` (preloaded when the browser is idle soon after the shell is up, and on the first pointer-down or ⌘/Ctrl); their skeletons in `app/SurfaceSkeletons.tsx` |
+| Surfaces that load their code (Details, Jump to…, the live strip, the Create window, the notice card) | `app/DeferredSurfaces.tsx` (preloaded when the browser is idle soon after the shell is up, and on the first pointer-down or ⌘/Ctrl); their skeletons in `app/SurfaceSkeletons.tsx` |
 | The loading state of a screen a switch goes to | `app/PendingView.tsx` (the loading state, the thread's panel and the hidden view's keys) over the old view, in `app/AppLayout.tsx`; the code of a project's other views is fetched when idle in `app/viewChunks.ts` |
 | The sidebar's fold and unfold | `ui/SizeSwap.tsx` in the `aside` of `app/AppLayout.tsx` |
 | State changes | `ui/StatusGlyph.tsx`, `ui/Morph.tsx`, `ui/motion.ts` |
@@ -182,7 +182,7 @@ Paths are under `app/apps/web/src/`.
 | 2 | A hidden view's key handlers (the Inbox's `e` and `a`) still acted while a switch waited | `useQuietViewKeys` in `app/PendingView.tsx` |
 | 6 | Phone Home shifted 0.50–0.62 when Continue arrived | `app/Home.tsx` puts Continue last, so nothing sits under it and no space is kept for it while it is read (`test_light_motion` `test_25`) |
 | 8 | Literal durations and easings; rows grew and collapsed on `height` | Every duration and easing comes from a token; rows never animate `height` (`ui/rowMotion.ts`); the two-height phone sheet moves with `transform` in both directions (`ui/DetentSheet.tsx`) |
-| 9 | The in-app Reduce motion kept animation delays; two rules checked only the system setting | Both settings zero durations and delays |
+| 9 | The in-app Reduce motion kept animation delays; two rules checked only the system setting | The system setting zeroes durations and delays (the in-app switch went, #1419 item 17) |
 | 3 | A thread's panel left empty: its text was gone on the first frame and it faded as a blank box on a computer, and the phone's sheet went at once with no fade (#901). The thread is the view's own and goes with its route | `OwnedPanelContent` (`app/ownedPanel.tsx`) leaves an inert copy of what it showed in the panel's slot as the view unmounts, so the 120 ms exit of the panel (docked, overlay or the phone's sheet) carries its content. New content in the slot removes the copy at once, and so does the panel's end. `SidePanel` (`ui/SidePanel.tsx`) also keeps what its head says and which kind of sheet it is from the last time it was open, for the length of the exit: on the phone the sheet of a task, decision or thread used to be swapped for the plain sheet the moment the object closed, which removed the leaving one with no fade (`test_light_motion` `test_10k`, computer and phone) |
 
 ## Still open

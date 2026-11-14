@@ -1,0 +1,15 @@
+# Answer accuracy (#1295): claude-haiku-5-5, variant main, 1381-A-1
+
+Flux 58c10e9e4 (main; harness 7b31d081a) · 2026-11-13 · 62 questions · judge claude-haiku-5-5 · web search off · spend $0.2532 agent + $0.0086 judge
+
+| Category | n | Accuracy | Correct / partial / wrong / don't know | Runs without an answer | Keys | Gold source read | Answer in tool results | Cited (named) gold | Date filter | In tok/q | Out tok/q | $/q | p50 / p95 s |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| old_messages | 15 | 0.733 | 11 / 0 / 1 / 3 | 0 | 0.8 | 0.8 | 0.8 | 0.8 (0.8) | - | 33796 | 635 | 0.0037 | 7.1 / 8.2 |
+| recent | 2 | 1 | 2 / 0 / 0 / 0 | 0 | 1 | 0.5 | 0.5 | 1 (1) | - | 26238 | 401 | 0.00282 | 6.1 / 6.1 |
+| wiki | 8 | 1 | 8 / 0 / 0 / 0 | 0 | 1 | 1 | 1 | 1 (1) | - | 29952 | 532 | 0.00326 | 5.2 / 8.1 |
+| file | 6 | 0 | 0 / 0 / 0 / 6 | 0 | 0 | 0.833 | 0 | 0 (0.833) | - | 56078 | 947 | 0.00608 | 9.1 / 12.1 |
+| task_decision_map | 7 | 1 | 7 / 0 / 0 / 0 | 0 | 1 | 1 | 1 | 0.714 (0.857) | - | 25775 | 504 | 0.00283 | 5.1 / 7.1 |
+| two_source | 7 | 0.714 | 3 / 4 / 0 / 0 | 0 | 0.429 | 1 | 0.571 | 1 (1) | - | 51068 | 1007 | 0.00561 | 8.1 / 10.1 |
+| relative_date | 10 | 0.9 | 9 / 0 / 1 / 0 | 0 | 0.875 | 0.9 | 0.875 | 0.7 (0.7) | 0.5 | 28264 | 705 | 0.00318 | 6.1 / 9.2 |
+| no_answer | 7 | 1 | 7 / 0 / 0 / 0 | 0 | - | - | - | - (-) | - | 51219 | 790 | 0.00552 | 7.2 / 10.2 |
+RESULT accuracy=0.79 questions=62 agentUsd=0.2532 judgeUsd=0.0086

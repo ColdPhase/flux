@@ -202,14 +202,7 @@ class WikiFinal(unittest.TestCase):
 
         page.emulate_media(reduced_motion="no-preference")
         jump("smooth")
-        page.goto("/settings")
-        switch = page.get_by_role("switch", name="Reduce motion")
-        switch.click()
-        expect(switch).to_have_attribute("aria-checked", "true")
-        jump("auto")
-        page.goto("/settings")
-        page.get_by_role("switch", name="Reduce motion").press("Space")
-        expect(page.get_by_role("switch", name="Reduce motion")).to_have_attribute("aria-checked", "false")
+        # The system's setting is the only one: Settings has no Reduce motion switch (#1419 item 17).
         page.emulate_media(reduced_motion="reduce")
         jump("auto")
 

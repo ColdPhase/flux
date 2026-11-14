@@ -8,8 +8,9 @@ import { getSession } from '../live/api';
 import { useLive } from '../live/LiveProvider';
 import { Avatar, Button, IconButton, Kreska, MEDIA, duration, settle, useMediaQuery } from '../ui';
 import { announceInboxChange, getInboxItem, markInboxRead } from './api';
-import { playSound, soundPreferences } from './sound';
+import { playSound, soundPreferences, soundsOn } from './sound';
 import { markPushOfferReady } from './PushOffer';
+import { NOTICE_EVENT, STALE_MS, eventAge } from './noticeEvents';
 import './notices.css';
 
 /**
@@ -19,25 +20,10 @@ import './notices.css';
  * only where the person is: nothing for the place on screen, and nothing that arrived while the tab was hidden.
  */
 
-const NOTICE_EVENT = /^(project|dm)\.notice\.v1$/;
 /** How long a notice stays (a call's stays until the call ends). */
 export const NOTICE_MS = 6000;
-/** Older than this when it reaches the tab (it was held while the tab was hidden): the Inbox and push have it, the card does not. */
-const STALE_MS = 60_000;
-/**
- * How old an event is, from the server's own times: the gap between the client's clock and an event's `createdAt` is smallest for an
- * event that arrived the moment it was written, so the smallest gap seen stands for "now" on the server's clock, whatever the client's
- * clock says (a clock minutes ahead or behind changes nothing).
- */
-let nearest = Infinity;
-function eventAge(createdAt: string) {
-  const gap = Date.now() - Date.parse(createdAt);
-  if (!Number.isFinite(gap)) return 0;
-  nearest = Math.min(nearest, gap);
-  return gap - nearest;
-}
 const MESSAGE_REASONS = new Set(['dm', 'mention', 'question', 'reply']);
-/** "Sound for messages": direct messages, mentions and questions to you; a reply in a thread does not sound (#1243). */
+/** The messages that sound: direct messages, mentions and questions to you; a reply in a thread does not (#1243, #1419 item 18). */
 const SOUNDED_MESSAGES = new Set(['dm', 'mention', 'question']);
 const LIVE_URL = /^\/projects\/[0-9a-f-]+\/live\/([0-9a-f-]+)/i;
 
@@ -126,7 +112,11 @@ function useModalOpen(active: boolean): boolean {
   return active && open;
 }
 
-export function Notices({ identity, meName, placeName }: { identity: string; meName: string; placeName: (projectId: string) => string | null }) {
+/**
+ * `first` is what the stream announced before this code had arrived (`DeferredNotices` holds it and hands it over, #1428): the card judges
+ * those events once, exactly as it judges the ones it hears itself.
+ */
+export function Notices({ identity, meName, placeName, first }: { identity: string; meName: string; placeName: (projectId: string) => string | null; first?: readonly StreamEvent[] }) {
   const location = useLocation();
   const navigate = useNavigate();
   const live = useLive();
@@ -159,7 +149,7 @@ export function Notices({ identity, meName, placeName }: { identity: string; meN
     if (SOUNDED_MESSAGES.has(item.reason ?? '')) markPushOfferReady(identity);
     const sound = item.reason === 'invitation' ? 'call' : SOUNDED_MESSAGES.has(item.reason ?? '') ? 'message' : null;
     if (fresh && sound) {
-      void soundPreferences(identity).then((switches) => { if (switches && (sound === 'call' ? switches.calls : switches.messages)) playSound(sound); });
+      void soundPreferences(identity).then((switches) => { if (switches && soundsOn(switches)) playSound(sound); });
     }
     setLeaving(false);
     setNotice((current) => {
@@ -184,7 +174,7 @@ export function Notices({ identity, meName, placeName }: { identity: string; meN
     return () => document.removeEventListener('visibilitychange', onVisibility);
   }, []);
 
-  useStreamEvents(identity, (event: StreamEvent) => {
+  const hear = (event: StreamEvent) => {
     const age = eventAge(event.createdAt);
     if (NOTICE_EVENT.test(event.kind)) {
       if (hidden.current || age > STALE_MS) return;
@@ -201,7 +191,16 @@ export function Notices({ identity, meName, placeName }: { identity: string; meN
     if (session && event.kind === 'project.live_changed.v1' && current!.items.at(-1)!.source.id === event.objectId) {
       void getSession(session).then((state) => { if (state.state === 'ended' || state.state === 'ending') dismiss(); }, () => dismiss());
     }
-  });
+  };
+  useStreamEvents(identity, hear);
+  const handedOver = useRef(false);
+  useEffect(() => {
+    if (handedOver.current) return;
+    handedOver.current = true;
+    for (const event of first ?? []) hear(event);
+    // Once, when the code has arrived: `hear` is a fresh closure on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Going to the place a notice is about answers it.
   useEffect(() => {

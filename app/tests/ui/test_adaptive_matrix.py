@@ -668,7 +668,7 @@ class AdaptiveMatrix(AdaptiveBase):
                 self.assertTrue(map_width <= 640 if layout == "columns" else map_width > 640, f"the map is {map_width} px wide at {width}×{height}")
                 # The computer's controls, whatever the layout.
                 expect(page.get_by_role("group", name="Zoom")).to_be_visible()
-                expect(page.get_by_role("button", name="Fit the sketch to the view", exact=True)).to_be_visible()
+                expect(page.get_by_role("button", name="Fit the map to the view", exact=True)).to_be_visible()
                 expect(page.locator(".sk-dock__row")).to_be_visible()
                 expect(page.get_by_role("button", name="Map options", exact=True)).to_have_count(0)
                 expect(page.locator(".sk-phone, .sk-fab")).to_have_count(0)
@@ -1397,7 +1397,7 @@ class AdaptiveReflow(AdaptiveBase):
                 self.assertIn("Drag empty space to move around", hint["text"], f"the element found is the first-run hint at {size}: {hint}")
                 self.assertTrue(hint["aside"] or hint["over"] == [], f"the map hint is clear of every thought or steps aside at {size}: {hint}")
                 if width == 1440:
-                    page.get_by_role("button", name="Fit the sketch to the view", exact=True).click()
+                    page.get_by_role("button", name="Fit the map to the view", exact=True).click()
                     page.wait_for_function("z => !document.querySelector('.sk-zoom__level').textContent.startsWith(z + '%')", arg=opened)
                     self.assertLess(self.zoom_level(page), opened, f"Fit still gives the overview at {size}")
 

@@ -119,8 +119,35 @@ class UxSimplicityPartAComposer(unittest.TestCase):
         for name in ("Plan", "Assist"):
             box.fill(f"@{name}")
             expect(page.get_by_role("listbox", name="Mention")).to_have_count(0)
+        # The `/` menu is its commands and nothing under them: the composer's hint already says "@ mention" (#1424).
         box.fill("/")
-        expect(page.get_by_role("listbox", name="Actions").locator(".cmenu__f")).to_have_text("Type @ to mention people")
+        menu = page.get_by_role("listbox", name="Actions")
+        expect(menu).to_be_visible()
+        expect(menu.locator(".cmenu__f")).to_have_count(0)
+        expect(menu).not_to_contain_text("Type @")
+
+    def test_02b_a_direct_messages_slash_menu_has_what_applies_there_in_the_spaces_words(self) -> None:
+        """#1424 (#1419 item 11): `/file` and `/ai` in a direct message, with a space's hints; `/file` opens the picker; the hint says `/` is there."""
+        page = self.page()
+        page.goto(f"/dm/{self.ids['dm']}")
+        box = page.locator("#dm-composer")
+        expect(box).to_be_visible()
+        expect(box).to_have_attribute("placeholder", "Message Jonas · / actions")
+        box.fill("/")
+        menu = page.get_by_role("listbox", name="Actions")
+        expect(menu).to_be_visible()
+        self.assertEqual(menu.get_by_role("option").locator(".cmenu__cmd").all_inner_texts(), ["/file", "/ai"])
+        self.assertEqual(menu.get_by_role("option").locator(".cmenu__hint").all_inner_texts(), ["Attach a file or link", "Ask your assistant"])
+        expect(menu.locator(".cmenu__f")).to_have_count(0)
+        for gone in ("/task", "/decide"):
+            box.fill(gone)
+            expect(page.get_by_role("listbox", name="Actions")).to_have_count(0)
+        box.fill("/fi")
+        with page.expect_file_chooser(timeout=15000) as chooser:
+            page.get_by_role("listbox", name="Actions").get_by_role("option", selected=True).click()
+        chooser.value.set_files({"name": "probe-notes.txt", "mimeType": "text/plain", "buffer": b"probe 4 reads high\n"})
+        expect(page.get_by_text("probe-notes.txt")).to_be_visible()
+        expect(box).to_have_value("")
 
     def test_03_decide_opens_the_one_create_window_with_its_words_and_the_message_as_source(self) -> None:
         page = self.page()
@@ -148,6 +175,11 @@ class UxSimplicityPartAComposer(unittest.TestCase):
         expect(window.get_by_label("Does it replace an earlier decision?")).to_be_focused()
         window.get_by_role("button", name=re.compile("^Propose decision")).click()
         expect(page.locator(".ui-toast", has_text="Decision proposed")).to_be_visible()
+        # #1424: the Undo toast stands above the composer, never on its hint or Send.
+        page.wait_for_timeout(700)
+        toast = page.locator(".ui-toast", has_text="Decision proposed").bounding_box()
+        field = reply.locator("xpath=ancestor::div[contains(@class,'composer__box')]").bounding_box()
+        self.assertLessEqual(toast["y"] + toast["height"], field["y"], f"the toast {toast} stands on the composer {field}")
         # Proposed: the words leave the composer at once, so they are not sent again while the proposal waits out its Undo.
         expect(reply).to_have_value("")
         found = None

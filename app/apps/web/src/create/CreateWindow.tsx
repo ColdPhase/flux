@@ -1,7 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type MouseEvent, type ReactNode } from 'react';
 import { useSpaceAi } from '../ai/spaceAi';
 import { useLocation, useNavigate, useRevalidator } from 'react-router';
-import { SKETCH_LIMITS, WORK_LIMITS, WORK_STATUSES, type CreateWorkCommand, type ObjectRef, type Project, type ProjectPerson, type WorkStatus } from '@flux/contracts';
+import { SKETCH_LIMITS, WORK_LIMITS, type CreateWorkCommand, type ObjectRef, type Project, type ProjectPerson } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { useIntentKeys } from '../api/intent-keys';
 import { getProject } from '../api/sketches';
@@ -16,14 +16,12 @@ import { lastSpace } from '../app/lastSpace';
 import { useShellActions, type CreateRequest } from '../app/shellContext';
 import { searchFlux } from '../search/api';
 import { putThoughtOnMyMap } from '../sketch/myMap';
-import { Button, Icon, MEDIA, Overlay, Spinner, StatusGlyph, Tabs, useMediaQuery, useToast, Select, Option, OptionGroup } from '../ui';
+import { Button, Icon, MEDIA, Overlay, Spinner, Tabs, useMediaQuery, useToast, Select, Option, OptionGroup } from '../ui';
 import { createDoc, docUrl } from '../docs/api';
 import { holdTyping } from '../docs/typeAhead';
 import { createWork, proposeDecision } from '../work/api';
 import { useWorkChoices } from '../work/useDetailReads';
 import { WorkPagination } from '../work/WorkPagination';
-import { STATUS_LABEL } from '../work/format';
-import { WaitingField } from '../work/WaitingField';
 import { useCreatedToast } from '../work/taskState';
 import { ACCEPT_UNDO_MS, startProposal } from '../notifications/pendingAccept';
 import { SpaceFace } from '../ui/SpaceFace';
@@ -206,7 +204,7 @@ function PickChip({ label, icon, shown, value, onChange, children }: { label: st
 
 interface PanelProps { ids: PanelIds; phone: boolean; carried: Carried; projectId: string; onProject: (id: string) => void; onClose: () => void }
 
-interface SavedForm { title: string; outcome: string; status: WorkStatus; blocker: string; owner: string; waiting?: string; sources: { ref: ObjectRef; label: string }[] }
+interface SavedForm { title: string; outcome: string; owner: string; sources: { ref: ObjectRef; label: string }[] }
 const sameRefs = (a: ObjectRef[], b: ObjectRef[]) => a.length === b.length && a.every((ref, i) => ref.type === b[i]!.type && ref.id === b[i]!.id);
 
 /**
@@ -259,16 +257,10 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
   // An unresolved command (its response was lost) comes back whole: every field it sent, not just the title.
   const [saved] = useState(() => savedForm(unresolvedOf(readDraft(me.user.id, pendingContext)), prefilled ? (request.title || '') : draft.text.trim(), prefilled ? (request.sources ?? []).map((s) => s.ref) : null));
   const [outcome, setOutcome] = useState(saved?.outcome ?? '');
-  const [status, setStatus] = useState<WorkStatus>(saved?.status ?? request.status ?? 'open');
-  const [blocker, setBlocker] = useState(saved?.blocker ?? '');
   const [ownerPick, setOwnerPick] = useState({ projectId, value: saved?.owner ?? '' });
   // An owner belongs to one project's people: another project starts with none.
   const owner = ownerPick.projectId === projectId ? ownerPick.value : '';
   const setOwner = (value: string) => setOwnerPick({ projectId, value });
-  // The one person a blocked task waits for (#550); like an owner, one project's people.
-  const [waitingPick, setWaitingPick] = useState({ projectId, value: saved?.waiting ?? '' });
-  const waiting = status === 'blocked' && waitingPick.projectId === projectId ? waitingPick.value : '';
-  const setWaiting = (value: string) => setWaitingPick({ projectId, value });
   // Sources belong to the project they were picked in: another project (from any tab's picker) starts with none, rather
   // than failing on submit.
   const [sourcesFor, setSourcesFor] = useState(() => ({ projectId, list: saved?.sources ?? request.sources ?? [] }));
@@ -310,9 +302,7 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
   const ownerLabel = [...people, ...agents].find((o) => o.value === owner)?.label.replace(/ \((you|agent)\)$/, '') ?? 'No owner';
 
   const text = oneLine(title);
-  // Blocked is one field (#1438 point 12): a person or the reason, one of them says what the task waits for.
-  const needsBlocker = status === 'blocked' && !blocker.trim() && !waiting;
-  const ready = !!text && text.length <= WORK_LIMITS.title && !!projectId && !needsBlocker;
+  const ready = !!text && text.length <= WORK_LIMITS.title && !!projectId;
   const noPlace = !projects.length;
 
   async function submit() {
@@ -321,9 +311,6 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
     const command: CreateWorkCommand = {
       title: text,
       ...(outcome.trim() ? { outcome: outcome.trim() } : {}),
-      ...(status !== 'open' ? { status } : {}),
-      ...(status === 'blocked' && blocker.trim() ? { blocker: blocker.trim() } : {}),
-      ...(waiting ? { waitingFor: { kind: 'human' as const, id: waiting.slice('human:'.length) } } : {}),
       ...(owner && !(aiOff && owner.startsWith('agent:')) ? { owner: { kind: owner.startsWith('agent:') ? 'agent' as const : 'human' as const, id: owner.slice(owner.indexOf(':') + 1) } } : {}),
       ...(sources.length ? { sources: sources.map((s) => s.ref) } : {}),
     };
@@ -334,7 +321,7 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
     let key = records.find((record) => record.payload === payload)?.key ?? crypto.randomUUID() as string;
     if (attempt.current?.payload === payload) key = attempt.current.key;
     attempt.current = { payload, key };
-    const form: SavedForm = { title: text, outcome, status, blocker, owner, waiting, sources };
+    const form: SavedForm = { title: text, outcome, owner, sources };
     const next = [...records.filter((record) => record.payload !== payload), { payload, key, form }].slice(-UNRESOLVED_LIMIT);
     pending.setText(JSON.stringify(next));
     setBusy(true); setError('');
@@ -379,9 +366,6 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
       <textarea className="create__details" aria-label="Details" rows={2} value={outcome} maxLength={WORK_LIMITS.outcome} disabled={busy}
         placeholder="Add details or what “done” means…" onChange={(event) => setOutcome(event.target.value)} />
       <div className="create__props">
-        <PickChip label="Status" icon={<StatusGlyph status={status} size={14} />} shown={STATUS_LABEL[status]} value={status} onChange={(value) => setStatus(value as WorkStatus)}>
-          {WORK_STATUSES.map((s) => <Option key={s} value={s}>{STATUS_LABEL[s]}</Option>)}
-        </PickChip>
         <PickChip label="Owner" icon={<Icon name="person" size={14} />} shown={ownerLabel} value={owner} onChange={setOwner}>
           <Option value="">No owner</Option>
           <OptionGroup label="People">{people.map((p) => <Option key={p.value} value={p.value}>{p.label}</Option>)}</OptionGroup>
@@ -401,8 +385,6 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
           </div>
         </div>
       </div>
-      {status === 'blocked' ? <WaitingField choices={people.map((p) => ({ value: p.value, label: p.label.replace(/ \((you|agent)\)$/, '') }))} choice={waiting} text={blocker} disabled={busy}
-        onChoice={setWaiting} onText={setBlocker} maxLength={WORK_LIMITS.blocker} /> : null}
       {linking && projectId ? <LinkPicker projectId={projectId} taken={sources.map((s) => s.ref)} onPick={(ref, label) => { setSources([...sources, { ref, label }]); setLinking(false); }} onDone={() => setLinking(false)} /> : null}
       <TooLong text={text} limit={WORK_LIMITS.title} />
       {error ? <p className="create__error" role="alert">{error}</p> : null}

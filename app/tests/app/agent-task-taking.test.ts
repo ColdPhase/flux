@@ -96,8 +96,8 @@ describe('people\'s agents take tasks (#856, #904)', () => {
     assert.deepEqual(said, [['agent', 'I can\'t start: AI is switched off on this Flux.']], 'the discussion opens with the refusal, not with a promise it then breaks');
     const activity = expectStatus(await ada.browser.request('GET', taskActivityPath(task.id)), 200) as TaskActivityPage;
     const owners = activity.items.filter((entry) => entry.kind === 'owner');
-    assert.deepEqual(owners.map((entry) => [entry.automation ?? null, entry.owner?.to?.kind]), [['agent_rule', 'human']],
-      'the agent gave it back for Kai, on the task\'s record');
+    assert.deepEqual(owners.map((entry) => [entry.automation ?? null, entry.owner?.to?.kind]), [['agent_unable', 'human']],
+      'the agent gave it back for Kai, on the task\'s record, saying it could not take it (#1424), not that it finished');
     assert.equal((await pool.query('SELECT count(*)::int AS n FROM personal_runs WHERE work_id = $1', [task.id])).rows[0].n, 0, 'no run was made');
     assert.equal((await events(task.id)).length, 1, 'the give-back is not another assignment');
     const state = expectStatus(await kai.browser.request('GET', taskAgentPath(task.id)), 200) as TaskAgentState;

@@ -215,8 +215,8 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName, inviter
         <div className="sset-head">
           <h2>Space settings</h2>
           <p>{encrypted ? 'Only the people added here see this space, and only its admins hold the keys. Not even the company’s admins can open it.'
-            : everyone ? `Everyone in ${companyName} is in this space. Admins of the space and of the company can change this page.`
-              : 'Only people added here, and the company’s owners and admins, can open this space. Admins of the space and of the company can change this page.'}</p>
+            : everyone ? `Everyone in ${companyName} is in this space.`
+              : 'Only people added here, and the company’s owners and admins, can open this space.'}</p>
         </div>
 
         <h3 className="sset-sec">Name</h3>
@@ -241,7 +241,7 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName, inviter
           <p className="people__notice" role="alert"><Icon name="alert" size={13} />Who is in this space couldn’t be loaded.<Button variant="link" size="sm" onClick={() => { setRosterFailed(false); load(); }}>Try again</Button></p>
         ) : everyone && !manager ? (
           <ul className="sset-card" aria-label="People of this space"><li className="sset-row"><span className="sset-row__b"><span className="sset-row__t">Everyone in {companyName}</span>
-            <span className="sset-row__s">Whoever joins the company is in this space.</span></span></li></ul>
+            </span></li></ul>
         ) : (
           <ul className="sset-card" aria-label={`People in ${project.name}`} aria-busy={manager && !roster ? true : undefined}>
             {rows.map((row) => (
@@ -299,7 +299,6 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName, inviter
           ) : <Button variant="secondary" className="spset__leave" onClick={() => { setProblem(''); setLeaving(true); }}>Leave space</Button>) : null}
           {admin && !everyone ? <Button variant="danger" className="spset__delete" onClick={() => setDeleting(true)}>Delete space…</Button> : null}
         </div>
-        {everyone ? <p className="spset__note">Everyone holds the whole company, so nobody leaves it and it can’t be deleted.</p> : null}
         <DeleteSpaceDialog space={deleting ? { id: encrypted ? project.workspaceId : project.id, name: project.name, encrypted } : null} onClose={() => setDeleting(false)}
           onDeleted={(_id, name) => { setDeleting(false); toast({ message: `${name} was deleted.` }); void navigate('/', { replace: true }); void revalidator.revalidate(); }} />
       </div>

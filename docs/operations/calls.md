@@ -76,6 +76,6 @@ certificate: the TURN/TLS overlay `compose.live.turn.yaml` of a source checkout
 ## Turn calls off
 
 Set `FLUX_CALLS=off` and run `./flux up`: the media server is removed, the API no longer offers calls,
-and the app hides Call and the "Sound when someone calls me" switch in Settings › Notifications. The
+and the app hides Call (the "Sounds" switch in Settings › Notifications stays, as it also covers the message tone). The
 key, secret and address stay in `docker/.env` for the next time. The media server keeps no data, so
 backups need nothing for it.

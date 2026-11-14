@@ -99,7 +99,7 @@ describe('search: one query across Flux, only what you may read', () => {
     const byKind = (kind: string) => answer.items.filter((item) => item.kind === kind);
     const materialHit = byKind('material')[0]!;
     assert.equal(text(materialHit.title), 'Sensor comparison');
-    assert.equal(materialHit.label, 'Material · version 2, current');
+    assert.equal(materialHit.label, 'Wiki page', 'a saved source is a Wiki page to the person (#1419 item 20); the word Material is gone');
     assert.deepEqual(materialHit.target, { type: 'material', projectId: lamp.id, materialId: material.materialId, version: 2 });
     assert.deepEqual(materialHit.place, { type: 'project', id: lamp.id, name: 'Gesture lamp' });
     const dmHit = byKind('dm_message')[0]!;
@@ -218,7 +218,7 @@ describe('search: one query across Flux, only what you may read', () => {
     assert.deepEqual(titles(await search(nia, 'dawn')), ['Test the infrared sensor at dawn']);
     const old = await search(nia, 'humidity');
     assert.equal(old.items.length, 1);
-    assert.equal(old.items[0]!.label, 'Material · version 1 of 2');
+    assert.equal(old.items[0]!.label, 'Wiki page · version 1 of 2');
     assert.deepEqual(old.items[0]!.target, { type: 'material', projectId: lamp.id, materialId: material.materialId, version: 1 });
     assert.ok(old.items[0]!.snippet?.some((part) => part.match && part.text.toLowerCase() === 'humidity'));
   });

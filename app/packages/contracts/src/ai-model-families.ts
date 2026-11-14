@@ -71,3 +71,23 @@ export function groupModelsByFamily<T extends { id: string; family?: string; cre
   return [...families.entries()].map(([family, items]) => ({ family, models: items }))
     .sort((a, b) => compareModelsNewestFirst(a.models[0]!, b.models[0]!));
 }
+
+/**
+ * The family Connect AI preselects for a provider whose models are listed with the key (founder decision, Hubert, 2026-11-14, #1424, CA-2): the
+ * provider's middle, balanced model, found by family name in the provider's current list. Anthropic's Sonnet, OpenAI's Sol (Astra is its top
+ * tier and Luna its cheap one) and Gemini's Flash (not Flash-Lite, not Pro). Opus, Fable and the cheaper models stay in the list to be chosen.
+ */
+export const AI_DEFAULT_MODEL_FAMILY: Readonly<Partial<Record<AiProviderKind, string>>> = { anthropic: 'Sonnet', openai: 'Sol', gemini: 'Flash' };
+
+/**
+ * The model Connect AI has chosen when a list is read (#1424): the only model of a list of one; for Anthropic, OpenAI and Gemini the newest
+ * model of their middle family (`AI_DEFAULT_MODEL_FAMILY`), else, only when the list has no such family, the first model as the dropdown
+ * orders them. A long keyless list (OpenRouter's, an endpoint's) has none: there is no sensible one among hundreds, so its owner picks.
+ */
+export function defaultListedModel<T extends { id: string; family?: string; createdAt?: string | null }>(provider: AiProviderKind, models: readonly T[]): T | undefined {
+  if (models.length === 1) return models[0];
+  const family = AI_DEFAULT_MODEL_FAMILY[provider];
+  if (!family) return undefined;
+  const groups = groupModelsByFamily(models);
+  return (groups.find((group) => group.family === family) ?? groups[0])?.models[0];
+}

@@ -4,10 +4,11 @@ const listeners = new Set<() => void>();
 
 /**
  * A place the person opened, kept per account on this device for Search's "Recent" (F-026 E02). A place is an identity, not
- * an address: Home, the Sketchbook, the Inbox, one direct message, or one view of one project. Opening it again moves it to
- * the front with the address last seen there, so a project's Wiki is one place whichever page or version was open.
+ * an address: Home, the Sketchbook, the Inbox, one direct message, or one space. Opening it again moves it to the front with the
+ * address last seen there, so a space is one row whichever of its views (Conversation, Tasks, Map, Wiki) or pages was open (#1424).
  */
 export interface RecentPlace {
+  /** The view's own key (`project:<id>:tasks`); `placeIdentity` is the place it belongs to. */
   key: string;
   path: string;
   /** The object's own title when the place is one object, e.g. a Wiki page; a view is named by its project and view. */
@@ -18,6 +19,9 @@ const PLACE_PREFIX = 'flux.places.recent.';
 const PLACE_MAX = 8;
 const placeCache = new Map<string, RecentPlace[]>();
 const PLACES_EMPTY: RecentPlace[] = [];
+
+/** What a recent row stands for: the space for any view of it, the key itself for Home, the Inbox or a direct message. */
+export const placeIdentity = (key: string) => (key.startsWith('project:') ? key.split(':').slice(0, 2).join(':') : key);
 
 /**
  * The place an address belongs to, or null for what is not a place: settings, setup pages, editors, history, live
@@ -50,23 +54,28 @@ function loadPlaces(userId: string): RecentPlace[] {
   try {
     const parsed: unknown = JSON.parse(localStorage.getItem(PLACE_PREFIX + userId) ?? '[]');
     if (Array.isArray(parsed)) {
-      items = parsed.filter((item): item is RecentPlace => !!item && typeof item.key === 'string' && typeof item.path === 'string'
-        && placeOfPath(item.path)?.key === item.key && (item.title === undefined || typeof item.title === 'string')).slice(0, PLACE_MAX);
+      const valid = parsed.filter((item): item is RecentPlace => !!item && typeof item.key === 'string' && typeof item.path === 'string'
+        && placeOfPath(item.path)?.key === item.key && (item.title === undefined || typeof item.title === 'string'));
+      // One row per place: an earlier version of this list kept a row for each view of a space, and the newest of them stays.
+      items = valid.filter((item, at) => valid.findIndex((other) => placeIdentity(other.key) === placeIdentity(item.key)) === at).slice(0, PLACE_MAX);
     }
   } catch { items = []; }
   placeCache.set(userId, items);
   return items;
 }
 
-/** Records the place in view as the most recent one (the same place moves to the front, never twice). */
+/** Records the place in view as the most recent one (the same place moves to the front, never twice, whichever of its views it was). */
 export function rememberPlace(userId: string, place: RecentPlace) {
   const current = loadPlaces(userId);
   if (current[0]?.key === place.key && current[0].path === place.path && current[0].title === place.title) return;
-  const next = [place, ...current.filter((item) => item.key !== place.key)].slice(0, PLACE_MAX);
+  const next = [place, ...current.filter((item) => placeIdentity(item.key) !== placeIdentity(place.key))].slice(0, PLACE_MAX);
   placeCache.set(userId, next);
   try { localStorage.setItem(PLACE_PREFIX + userId, JSON.stringify(next)); } catch { /* kept for this visit */ }
   listeners.forEach((listener) => listener());
 }
+
+/** The places kept for this account, most recent first (the same list `useRecentPlaces` reads). */
+export const recentPlacesOf = loadPlaces;
 
 export function useRecentPlaces(userId: string): RecentPlace[] {
   return useSyncExternalStore(

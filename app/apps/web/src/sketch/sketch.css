@@ -160,6 +160,8 @@
 .sk-phone__note { display: inline-flex; align-items: center; gap: 8px; margin: 0; padding: 6px 14px; border-radius: var(--r-pill); background: var(--el);
   box-shadow: var(--sh-card), inset 0 0 0 1px var(--line); font-size: var(--fs-md); color: var(--t2); }
 .sk-phone__note svg { flex: none; color: var(--t3); }
+/* Said once (#1424): its own quiet close, inside the pill, remembers that it was seen. */
+.sk-phone__note-x { margin: -6px -10px -6px 0; }
 /* A button like the others (#763, 2026-10-31): --r-btn corners and no drop shadow; the inverted fill sets it off the map. */
 .sk-fab { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 22px 0 18px; border-radius: var(--r-btn);
   background: var(--inv); color: var(--oninv); font-size: var(--fs-lg); font-weight: 500; }
@@ -362,13 +364,16 @@ span.sk-li-img { width: 160px; height: 96px; }
 @media (max-width: 640px) {
   .sk--map .sk-canvas-wrap { background-color: var(--bg); background-image: radial-gradient(var(--line2) 1px, transparent 1.3px); background-size: 20px 20px; }
   .sk--map .sk-canvas { position: absolute; inset: 60px 0 calc(var(--sk-phone-tools-height, 150px) + 8px); height: auto; padding: 0 0 24px; }
-  /* A draft or rename stays below Map options, so changing views cannot cover its entry. */
-  .sk-over { left: auto; right: 10px; top: 64px; align-items: flex-end; }
-  /* A space's map keeps its title, the maps' switcher (#1438 point 7), as the one small pill; My map's title is the header's. */
+  /* A space's map keeps its title, the maps' switcher (#1438 point 7), as the one small pill, on the row of Map options (#1424): the
+     thoughts start under both, so the pill never lies over the first one. A draft stays below that row, so changing views cannot cover its
+     entry. My map has no pill, so its drafts and notices start under Map options as before. */
+  .sk-over { left: 10px; right: 10px; top: 10px; align-items: flex-start; }
+  .sk-over:not(:has(.sk-title-edit, .sk-switch)) { top: 64px; align-items: flex-end; }
   .sk--map .sk-lead:not(:has(.sk-title-edit, .sk-switch)) { display: none; }
-  .sk--map .sk-head { padding: 3px; }
+  .sk--map .sk-head { padding: 3px; max-width: calc(100% - 144px); }
   .sk--map .sk-head:not(:has(.sk-title-edit, .sk-switch)) { display: none; }
-  .sk--map .sk-head .sk-lead { flex: none; }
+  .sk--map .sk-head .sk-lead { flex: 0 1 auto; min-width: 0; }
+  .sk-switch .wiki-switch__t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .sk-over .sk-draft { width: calc(100vw - 20px); }
   /* Composition replaces the Add dock while open and reserves space below the phone
      projection. Map options and the useful map context remain above it. */

@@ -8,7 +8,8 @@ export type ExternalClientDesignation = 'claude_code' | 'codex' | 'other';
  */
 export const AGENT_MAY_DO = ['act', 'ask'] as const;
 export type AgentMayDo = typeof AGENT_MAY_DO[number];
-export const AGENT_MAY_DO_LABELS: Readonly<Record<AgentMayDo, string>> = { act: 'Do it and tell me', ask: 'Ask me first' };
+/** The one name of the switch wherever a state is shown: its tag in a list says the same as the switch on the page (#1424). */
+export const AGENT_MAY_DO_LABELS: Readonly<Record<AgentMayDo, string>> = { act: 'Ask me first off', ask: 'Ask me first on' };
 export const AGENT_MAY_DO_HINTS: Readonly<Record<AgentMayDo, string>> = {
   act: 'Makes new things and changes yours at once, then tells you, with Undo.',
   ask: 'Every change waits for your OK.',

@@ -420,9 +420,9 @@ function DmContent({ initial }: { initial: Dm }) {
   // A 1:1 whose other person left (or was removed) has nobody to send to: say so, disable sending.
   const counterpart = dm.kind === 'pair' ? dm.counterpart : null;
   const recipientGone = Boolean(counterpart && !dm.participants.some((p) => p.id === counterpart.id));
-  // `/` lists `/ai` here as in every composer (#1419 item 11): one composer that behaves the same everywhere. A direct message has no suggestions
-  // (#1224) and no other slash command.
-  const menu = useAskMenu({ fieldId: 'dm-composer', draft, enabled: workspace?.role !== 'guest' && !recipientGone, suggestions: [],
+  // `/` lists the commands that apply here, in a space's words (#1419 item 11, #1424): `/file`, and `/ai` unless the person is a guest. A direct
+  // message has no tasks or decisions to make from a draft, no suggestions (#1224) and no `@`, so the one composer behaves the same everywhere.
+  const menu = useAskMenu({ fieldId: 'dm-composer', draft, enabled: !recipientGone, suggestions: [], commands: workspace?.role === 'guest' ? ['file'] : ['file', 'ai'],
     onDraft: (value) => change(value), onAsk: () => undefined });
   const goneNotice = recipientGone
     ? leftNotice || `${counterpart!.name.split(/\s+/)[0]} left this conversation. They can reopen it by messaging you.`
@@ -493,7 +493,7 @@ function DmContent({ initial }: { initial: Dm }) {
           {asking || recipientGone ? null : <ComposerFiles state={composer} attach="none" />}
           <ComposerBox id="dm-composer" label={`Message ${title}`} fieldRef={textareaRef} value={draft} onChange={(value, position) => { menu.change(position); change(value); }}
             onSelect={menu.setCaret} onBlur={typing.stop} onKeyDown={onKey}
-            disabled={recipientGone} boxDisabled={recipientGone} placeholder={recipientGone ? 'Nobody else is in this conversation' : [`Message ${others.length === 1 ? others[0]!.name.split(/\s+/)[0] : title}…`, 'Message…']}
+            disabled={recipientGone} boxDisabled={recipientGone} placeholder={recipientGone ? 'Nobody else is in this conversation' : [`Message ${others.length === 1 ? others[0]!.name.split(/\s+/)[0] : title} · / actions`, `Message ${others.length === 1 ? others[0]!.name.split(/\s+/)[0] : title}…`, 'Message…']}
             fieldProps={{ 'aria-describedby': asking ? audienceId : undefined, 'aria-controls': menu.open ? 'dm-composer-menu' : undefined,
               'aria-activedescendant': menu.open ? `dm-composer-menu-${menu.options[menu.active]!.id}` : undefined }}
             menu={<ComposerMenu open={menu.open} id="dm-composer-menu" options={menu.options} active={menu.active} trigger="/" onPick={menu.pick} onHover={menu.setIndex} />}

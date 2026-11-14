@@ -58,6 +58,9 @@ version=v0.1.0-rc.1
 previous_version=
 if [ -n "$previous_rev" ]; then version=v0.1.0-rc.2; previous_version=v0.1.0-rc.1; fi
 work=$(mktemp -d "${TMPDIR:-/tmp}/flux-release-dryrun.XXXXXX")
+# The AI key file ./flux up makes outside the install folder (#1438, #1451: <state>/flux/<project>/background.key) stays in this run's own
+# state directory, which `cleanup` removes with $work: the smokes leave nothing in ~/.local/state/flux of the host.
+export XDG_STATE_HOME="$work/state"
 registry="$run_id-registry"
 builder="$run_id-builder"
 step() { printf '\n== %s\n' "$*"; }
@@ -79,7 +82,7 @@ cleanup() {
   rm -rf "$work"
   exit "$status"
 }
-trap cleanup EXIT
+trap cleanup EXIT HUP INT TERM
 
 step "Tools"
 date -u '+%Y-%m-%dT%H:%M:%SZ'

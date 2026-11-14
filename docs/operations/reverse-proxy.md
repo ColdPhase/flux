@@ -25,7 +25,7 @@ FLUX_TRUSTED_PROXIES=
 ```
 
 With an `https` origin and `FLUX_TRUSTED_PROXIES` empty, `./flux` adds
-[`docker/compose.https.yaml`](../../docker/compose.https.yaml) to every command: Caddy 2.11.7, pinned by
+[`docker/compose.https.yaml`](../../docker/compose.https.yaml) to every command: Caddy 2.11.9, pinned by
 digest, as the `proxy` service. It listens on port 80 and on the origin's port (443 unless the origin
 names another; TCP, and UDP for HTTP/3), obtains and renews the certificate for the origin's host
 itself (ACME, Let's Encrypt or ZeroSSL), redirects plain `http` to `https`, and passes everything to
@@ -119,12 +119,12 @@ Choose names unused by another installation.
 ```sh
 docker run --rm --network none \
   -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro,z" \
-  caddy@sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f \
+  caddy@sha256:4e2425f6009577e7c651010f16679c28f7d12df3e7b1914f941a7a3370746b3c \
   caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
 docker run -d --name flux-proxy --restart unless-stopped --network host \
   -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro,z" \
   -v flux-proxy-data:/data -v flux-proxy-config:/config \
-  caddy@sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f
+  caddy@sha256:4e2425f6009577e7c651010f16679c28f7d12df3e7b1914f941a7a3370746b3c
 docker cp flux-proxy:/data/caddy/pki/authorities/local/root.crt ./flux-local-root.crt
 curl --cacert ./flux-local-root.crt -fsS https://localhost:19443/api/v1/health
 ```

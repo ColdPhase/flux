@@ -22,6 +22,7 @@ from playwright.sync_api import Page, expect, sync_playwright
 
 from urllib.parse import urlsplit
 
+from phone_audit import TEXT_SIZE_SCRIPT
 from test_app_shell import ORIGIN, UPSTREAM, panel_task, shot, start_forwarder
 
 PASSWORD = "a calm one row header"
@@ -416,8 +417,8 @@ class SpokojLayout(unittest.TestCase):
                 names["List"].click()
                 expect(names["List"]).to_have_attribute("aria-checked", "true")
                 self.assert_same_place(board, controls(), f"{size['width']} board to list")
-                # The List's search is dimmed in place (it reads server pages), so nothing beside it moves.
-                expect(names["Search"]).to_be_disabled()
+                # The List's search works in place (#1424: it filters the page on screen), never greyed, so nothing beside it moves.
+                expect(names["Search"]).to_be_enabled()
                 # Mine works from the same place; the list has no second checkbox row and no second way to add.
                 names["Mine"].click()
                 expect(names["Mine"]).to_have_attribute("aria-pressed", "true")
@@ -559,7 +560,7 @@ class SpokojLayout(unittest.TestCase):
         expect(page.get_by_role("button", name="Choose messages", exact=True)).to_have_count(0)  # sketches from messages are gone (#866)
         expect(page.get_by_role("button", name="Select", exact=True)).to_have_count(0)
         page.locator("header.top").get_by_role("button", name="More", exact=True).click()
-        expect(page.get_by_role("menu", name="More").get_by_role("menuitem", name="Message info")).to_be_visible()
+        expect(page.get_by_role("menu", name="More").get_by_role("menuitem", name="People and privacy")).to_be_visible()
 
     def test_12_the_views_are_as_wide_as_their_words_and_the_name_has_its_own_slot(self) -> None:
         page = self.page(COMPUTER)
@@ -601,7 +602,8 @@ class SpokojLayout(unittest.TestCase):
             with self.subTest(width=width, text=text):
                 page = self.page({"width": width, "height": height}, touch=width <= 1024)
                 if text:
-                    page.add_init_script(f"localStorage.setItem('flux.textSize', '{text}')")
+                    # The system's text size (a root font size of 113 %, set before the page's own styles run), not a setting of Flux's.
+                    page.add_init_script(TEXT_SIZE_SCRIPT % 113)
                 first = None
                 for path in VIEWS:
                     self.goto_view(page, path)

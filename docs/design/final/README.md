@@ -163,7 +163,7 @@ live panel and the connection's permissions (#1238).
   the old off switch (`--hov` track, white knob) was 1.3:1 in light.
 - High-contrast mode (`forced-colors`) draws the edge and knob in `ButtonText` and an on switch in `Highlight`.
 
-**Segmented controls** (#1238) are one style: the Map / List switch, Board / List, Model, Text size,
+**Segmented controls** (#1238) are one style: the Map / List switch, Board / List, Model,
 the live stage and screen mode, and access. (The space views, Conversation | Tasks | Map | Wiki, become underline
 tabs under #1239; until then they read the same three tokens.) A selected state never rests on a 1.1:1 difference
 (WCAG 2.2 1.4.11 asks for 3:1 for a state a person needs to see; the design asks for this much at least, and adds an edge):
@@ -224,9 +224,10 @@ labels. A time is Geist with tabular figures, as the line under a message alread
 - Section: 16–17 / 600.
 - Body: 14 / 20 on the computer, 15–16 on the phone.
 - Meta: 12, and at least 12.5 on the phone.
-- The phone follows the system text size.
+- Every device follows the system's text size: the type tokens are rem, so the root size the browser or the phone sets scales every size, and Settings has no text-size control ([#1419](https://github.com/ColdPhase/flux/issues/1419) item 17, founder decision, Hubert, 2026-11-13).
 - Every size is a `--fs-*` token. The initials of a 16 px face (the `Avatar` `xs`, the faces under a message, the face in a
   mention chip) are `--fs-face` (px, #1370) scaled by .72 with a transform, so the type stays a token and two letters never run wider than the circle.
+  The initials of the 32 px face are `--fs-face-lg`: 12 px, and 12.5 px on the phone like Meta (px as well, #1424).
 - **The offline page** (`/offline.html`, what an offline navigation shows) uses the same tokens: Geist (the app serves it from `/fonts`,
   and its service worker caches it), `--t1` and `--t3`, a 20 px title at 600, and one flat primary button, "Try again", with radius 10 (32 px high, 44 on touch).
 
@@ -320,7 +321,7 @@ small moment, never noise.
 - Only `transform` and `opacity` move, with durations and easings from the motion tokens
   ([Motion in Flux](../motion.md)): a one-shot takes `--dur-highlight` (600 ms) or twice it, a loop a multiple of
   `--dur-loop`.
-- Nothing moves under reduced motion (the system's or Settings → Appearance) or with Kreska's small moments off
+- Nothing moves under the system's reduced-motion setting or with Kreska's small moments off
   (Settings → Appearance); every face is then its static frame.
 - A face that shows no state (an agent's icon beside its name, with no expression given) stays still, and so does a
   face of 20 px or less, apart from the three loops that already moved there (Thinking, Loading, Working).
@@ -440,7 +441,8 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
 - **One "+".** A floating soft-fill button above the tab bar opens the Create window, **straight on Task**
   (founder direction, Hubert, 2026-11-13, [#1438](https://github.com/ColdPhase/flux/issues/1438) point 8). There is no list of types first: Task,
   Thought, Decision, Page and Space are the window's own tabs, the same five as on the computer, so a task is two taps (the "+", then
-  the title) and the other four are one tap more. There is one "+" for each thing (founder
+  the title) and the other four are one tap more. All five tabs and Close share the sheet's head row down to a 320 px phone (the tabs then
+  lose their gaps and side room and keep 44 px targets, #1424); only large text scrolls the tabs sideways. There is one "+" for each thing (founder
   decision, Hubert, 2026-11-13, #1419): the Spaces tab has no "+ New space" button (the "+" › Space is the one way in), and the
   Messages list has no floating "+" (it cannot make a message), only its own **+ New message**, which starts a message.
 - **Inside a space.** Founder direction, Hubert, 2026-11-12 (#1239); the approved mock-up is the
@@ -462,7 +464,7 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
     first word of the tabs, as the page's own padding.
   - There are no chip rows.
   - **There is no tab bar in a conversation;** the composer sits at the bottom.
-  - **A direct message's title row is a space's** (founder decision on [#1374](https://github.com/ColdPhase/flux/issues/1374), 2026-11-13): Back, the name with the line "Messages" (a group names its people) under it, and ⋯, with **Search** as its first row, then Mute conversation and "Message info". A direct message has no calls (a call belongs to a space's conversation, a task, a map or a page), so it has no Join and no Call row, never a greyed one. Back and ⋯ are the same plain 44 px icons; there are no Call and Search icons in the row and the name is not a menu (a direct message has one view). A long name wraps to two lines as a space's does. The tablet and the computer keep their own header.
+  - **A direct message's title row is a space's** (founder decision on [#1374](https://github.com/ColdPhase/flux/issues/1374), 2026-11-13): Back, the name with the line "Messages" (a group names its people) under it, and ⋯, with **Search** as its first row, then Mute conversation and **People and privacy** (it opens who is in the conversation, two short lines on who reads it, and Leave conversation; it was "Message info", a name that said nothing of what is in it, #1424). A direct message has no calls (a call belongs to a space's conversation, a task, a map or a page), so it has no Join and no Call row, never a greyed one. Back and ⋯ are the same plain 44 px icons; there are no Call and Search icons in the row and the name is not a menu (a direct message has one view). A long name wraps to two lines as a space's does. The tablet and the computer keep their own header.
 - **Sheets.** They have a grabber and two heights: half (the conversation stays visible) and full
   (dragged up). **A choice on the phone opens as a bottom sheet** with the field's name as its title: the Select, and a
   task's Status and Owner (#1359), whose pop-over ran out of a 320 px window. The rows are 48 px.
@@ -543,7 +545,7 @@ The IDs come from the first Prostota canvas; rules that no longer apply are left
 | S2 | The phone tab bar is Home · Spaces · Inbox plus Search. There is none in a conversation. My map is a row on Home, not a tab. |
 | S3 | **One Create.** New, `C` and "+" open the same window or sheet everywhere, with Task, Thought, Decision, Page and Space. In context there are only "+ Task" in Tasks, `/task` in the composer and Create task on a message. |
 | S4 | One detail panel on the computer and one sheet on the phone, for tasks, decisions and threads. At most two content columns. |
-| S5 | The composer has `@` to mention and `/` for actions (`/task`, `/decide`, `/ai`, `/file`: these four, no more), with no separate buttons. Attaching is a paperclip, because "+" means Create. The hint reads "Message · @ mention · / actions". **`@` mentions people only** (founder decision, Hubert, 2026-11-13, [#1419](https://github.com/ColdPhase/flux/issues/1419)): the assistant is not in it (asking it is `/ai`) and agents are not members of a space, so they are not listed (giving work to an agent is the task's Owner, S12). The assistant's suggestions are in the `/` menu, under `/ai`, and nowhere else (see [Agents and AI](#agents-and-ai)). |
+| S5 | The composer has `@` to mention and `/` for actions (`/task`, `/decide`, `/ai`, `/file`: these four, no more), with no separate buttons. Attaching is a paperclip, because "+" means Create. The hint reads "Message · @ mention · / actions", and the `/` menu is its list of commands with nothing under it (no "Type @ to mention people" line: the hint says it; #1424). **`@` mentions people only** (founder decision, Hubert, 2026-11-13, [#1419](https://github.com/ColdPhase/flux/issues/1419)): the assistant is not in it (asking it is `/ai`) and agents are not members of a space, so they are not listed (giving work to an agent is the task's Owner, S12). The assistant's suggestions are in the `/` menu, under `/ai`, and nowhere else (see [Agents and AI](#agents-and-ai)). |
 | S6 | **Message actions.** On the computer, hovering a message shows Reply in thread, Create task and ⋯. The ⋯ menu has one level, in the same order everywhere: Add to map, Copy link, Copy text, then Edit and Delete on your own messages. **Copy text** (founder direction by Hubert, 2026-11-08) is on every message a person can read, not only their own: it copies the message's plain words, with no markup (a mention as `@name`, a Wiki page as its title, a quote without its `>` marks). A deleted message has none. On the phone, long press opens the same list and swipe right replies in thread (#343). |
 | S8 | Several task updates in a row fold into one expandable line. |
 | S9 | One tap on the state glyph (or `1`–`4`) changes the state. Swipe left, then Done, then a toast with **Undo**. |
@@ -859,7 +861,9 @@ Community garden sensors, Rain barrel monitor and Tool library.
   on the right) holds the top three Inbox items. Decisions are one row, "2 decisions waiting",
   without Accept; an agent run is one row, "Planner · Ada's agent · 3 things wait for you".
 - **Continue where you left off** holds what you last worked on, such as a task with its state
-  ("Doing · #1 · Community garden sensors") or a Wiki page you edited.
+  ("Doing · #1 · Community garden sensors") or a Wiki page you edited. **Nothing appears twice** (#1424): what "Waiting for you"
+  already shows (the decision, the task or the question of one of its rows, a decision inside "2 decisions waiting") is not offered
+  again here; the row is the next thing that is not there, and the section is gone when there is none.
 - On the phone, "My tasks (4)" is a row under the waiting items, with "My map" next to it. The
   render draws "My tasks" only; the "My map" row follows this text. Home has nothing else: no
   spaces card, footer links, keyboard hints or assistant banner, except the first-steps card below.
@@ -876,6 +880,14 @@ Community garden sensors, Rain barrel monitor and Tool library.
   - **An owner or admin:** **Name your company** (the company still has the name setup gave it; opens Settings › Company with the
     name's editor open), **Invite people** (nobody else is in the company and no invite link was ever made; opens Settings › Company
     with the invite form open) and **Connect AI** (the person has no AI connection yet; opens Settings › AI's Connect AI).
+  - **Someone joined with your link** (decision of the coordinator, 2026-11-14, [#1424](https://github.com/ColdPhase/flux/issues/1424), on the
+    founder's "the inviter learns when the person joins", [#1438](https://github.com/ColdPhase/flux/issues/1438) point 3). The Inbox stays one list of what needs
+    you, so it has no "joined" item: the person who made the link is told by push (at their level, "<name> joined <company>") and, while their card is
+    shown, by a row in the place of **Invite people**, which is done once a link was made: the title **Nia joined** and the quiet line **Say hello** (a
+    Home row like the others, the `chat` icon; the full name when two share a first name). There is one row for each person who used one of their links
+    and is still in the company, newest first, and none for someone they already have a direct message with. The steps keep their rows first, so
+    together there are at most three. Tapping the row opens the direct message with that person (made if there is none), which is what takes
+    the row away. The card is still the steps: with none left it is done for good and so are these rows, which never keep it or bring it back.
   - **A member:** **Write your first message** (the person has written none; opens Everyone with the composer ready), **Add your
     photo** (no profile photo; opens Settings › Account) and **Get notifications on this phone** (only beside one of those two rows,
     where push is available and this device is not subscribed; the same flow as the one-time offer, which then does not show
@@ -932,7 +944,8 @@ Drawn by the agents before it was built; the rules of what triggers a notice are
 | ![Notices on the computer, light and dark: one notice, a grouped notice, a call](screens/desktop-notices.webp) | ![Notices on the phone, light and dark](screens/phone-notices.webp) |
 
 - **A notice is its own card**, not a toast. Undo toasts stay at the bottom centre, one at a time
-  (#1206); a notice never replaces a toast and a toast never replaces a notice.
+  (#1206); a notice never replaces a toast and a toast never replaces a notice. An Undo toast stands 8 px above the highest composer drawn, so it
+  never covers its hint or Send (#1424).
 - **Where.** At the bottom right on the computer and the tablet, 20 px from the edges, 360 px wide;
   it stands 8 px above a composer, a toast or the map's toolbar that reaches its corner, so it never
   covers the composer or Send. On the phone it is at the top, 8 px under the safe area, 16 px from
@@ -1015,7 +1028,7 @@ screen, setting or mode, and Settings › Notifications stays the overview. Ever
 menu's rows, the sidebar's end slot, the panel head's quiet actions and the existing icons and tokens.
 
 - **Mute and Unmute** are one row of ⋯ in a space's header (the computer's and the phone's) and in a direct message's header menu (the
-  computer's ⋯; on the phone the direct message's ⋯, after Search and one row above "Message info"). A space reads **Mute space** /
+  computer's ⋯; on the phone the direct message's ⋯, after Search and one row above "People and privacy"). A space reads **Mute space** /
   **Unmute space**, a direct message **Mute conversation** / **Unmute conversation**. The row has no key, no switch and no
   confirmation: it acts and the menu closes. Under the label, one line of the menu's small muted text says what it does, so the
   person need not guess: "Quiet for ordinary messages. What needs you still arrives." while it is on, and "Muted. What needs you still
@@ -1268,7 +1281,7 @@ Live strip, someone shares a screen
   (primary) and Open; a compact row keeps Join; it leaves the Inbox when the call is over. The corner notice card is #1243's, and
   push at "Everything" still follows the level for a call started in a space.
 - **The chime** is one short soft tone (no loop), played only for a direct invitation, on an open tab, by #1243's notice.
-  It follows Settings › Notifications › **Sound when someone calls me** (on by default; #1243 draws the two switches).
+  It follows Settings › Notifications › **Sounds** (on by default; one switch for the chime and the message tone, #1419 item 18).
 - **A shared screen.** The sharer's face in the strip carries the `screen` icon as a badge, where the muted-microphone
   badge sits. One `lv-line` (the `screen` icon first): "**Nia** is sharing a screen" (Flux does not know anyone's
   pronouns) and a secondary **View** while the stage is closed (the line keeps its height without it, so the strip does not move when the stage opens). The
@@ -1305,16 +1318,16 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   window names that space. Opened from Home, the Inbox, the Spaces list or My tasks, it names the space you last worked in
   (the last space you opened or made a task in, kept on this device for your account), not Everyone; only a person who has not
   opened any space yet starts on the first one in their list. The space picker in the window's first row changes it, as before.
-- **Blocked is one field** (#1438 point 12). Choosing the status Blocked adds one field under the properties, **Waiting for**, where
-  a task used to ask twice (a person chip, then "What is it waiting for?"). Type the reason ("The permit") or pick someone from the
-  list that opens under the field (the people of the space; in the task panel also the decisions still to make and the other tasks,
-  one thing). A person picked fills the field as a face and name with a remove; typing keeps the field a line of words. One
-  of the two makes a blocked task: Create stays disabled until the field says a person or a reason. The field is the app's own
-  input with a listbox under it (the composer's `@` list is its model: arrows, Enter, Escape, 44 px rows on touch), no
-  native picker. The task panel's Edit on a blocked task opens the same one field.
+- **A new task is always To do, so Create has no Status** (#1424). The window's properties are Owner and Link. A task that starts in
+  another state is changed in the panel that opens on it at once. **Blocked is one field** (#1438 point 12), in the task panel: its
+  Status menu's Blocked adds one field, **Waiting for**, where a task used to ask twice (a person chip, then "What is it waiting
+  for?"). Type the reason ("The permit") or pick someone from the list that opens under the field (the people of the space, the
+  decisions still to make and the other tasks, one thing). A person picked fills the field as a face and name with a remove; typing
+  keeps the field a line of words. One of the two makes a blocked task. The field is the app's own input with a listbox under it (the
+  composer's `@` list is its model: arrows, Enter, Escape, 44 px rows on touch), no native picker. The task panel's Edit on a
+  blocked task opens the same one field.
 - **Batch entry is one step, and the space is kept.** **Add another** in the toast, or `C` pressed
-  next, opens the window again on Task with the same space chosen, an empty title and the default
-  status and owner. `C` keeps the space the last task was created in until the person goes to another
+  next, opens the window again on Task with the same space chosen, an empty title and no owner. `C` keeps the space the last task was created in until the person goes to another
   place.
 
 ### Tasks and the task panel
@@ -1324,7 +1337,9 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
 | ![Tasks board](screens/desktop-tasks.webp) | ![Task panel with agents](screens/desktop-task-agents.webp) |
 
 - **One control row** for Board and List: the Board / List switch, Mine, Search tasks and, on the
-  right, "+ Task". Mine includes tasks owned by your agents. Mine is the system's outline `Button` with the person icon, pressed
+  right, "+ Task". **Search tasks filters both views and is never greyed** (#1424): on the Board it looks through the loaded
+  cards, in the List through the page of rows on screen (the List's groups then count what matches, its line says "2 matches · 9 tasks",
+  and when there are more pages one note says that the search looks through this page, with Previous and Next for the others). Mine includes tasks owned by your agents. Mine is the system's outline `Button` with the person icon, pressed
   with the `--t1` edge; it is a 32 px control (44 on touch), never a circle. "+ Task" is the right end of this row on
   every computer and tablet, in both views and in either orientation, and the space's header holds
   only its own slots (#1366). Over the List, a centred column on a wide window (from 2000 px), the row is
@@ -1381,7 +1396,10 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
 
 - One dialog over the screen, opened by ⌘K, the sidebar's Search or the phone's Search.
 - Results are grouped by kind (Tasks, Messages, Wiki, Files, Thoughts, Spaces, People), with the
-  match marked; decisions are listed with Tasks, and maps and drafts with Thoughts. The server ranks the
+  match marked; decisions are listed with Tasks, and maps and drafts with Thoughts. **A saved source is a Wiki page**
+  (founder decision, Hubert, 2026-11-13, [#1419](https://github.com/ColdPhase/flux/issues/1419) item 20): what was once a
+  "material" is listed in Wiki as a page (the Wiki page's tile, "Wiki page" for its kind, and it opens at the version that
+  matched), and Search has no "Material" kind or word. The server ranks the
   results and the groups follow it: **the group of the best match comes first**, then the one that holds the next best, so a
   task that shares a word with a plain question never stands above the message that answers it
   ([#1424](https://github.com/ColdPhase/flux/issues/1424)); inside a group the server's order stands.
@@ -1409,7 +1427,9 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
 - The hint is one plain sentence: "Finds spaces, people, messages, tasks, Wiki pages, files and
   thoughts you can see." A list of more than 20 ends with one quiet line, "Showing 20 · type more words
   to narrow". There are no filter chips and no Create group.
-- With the field empty it lists the places last opened (named as the sidebar names them: "My tasks", never "Home · Tasks") and one action, **Go to
+- With the field empty it lists the places last opened (named as the sidebar names them: "My tasks", never "Home · Tasks"), **one row per place**: a space is one
+  row whichever of its Conversation, Tasks, Map and Wiki were opened, naming the view opened last ("Gesture lamp · Map"; a Wiki page by its own
+  title), and the space in view is not listed ([#1424](https://github.com/ColdPhase/flux/issues/1424)); and one action, **Go to
   Inbox** (`G` `I`). There is no assistant row (the assistant's suggestions are in the composer's `/` menu under `/ai`, S5, and nowhere else) and
   no sidebar toggle. The field and **Close** (Cancel on the phone) are one height (32 px, 44 on touch), Close is at least 44 px wide on touch, and
   the field's row carries the 2 px `--t1` focus ring ([#1376](https://github.com/ColdPhase/flux/issues/1376), [#1380](https://github.com/ColdPhase/flux/issues/1380)).
@@ -1442,8 +1462,15 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   header is the Wiki's: **the title is the switcher**, "Launch plan ▾" opens the space's maps (newest change first, the open one
   ticked) with "Find a map", then "+ New map" and, for someone who can change the map, "Rename map" (the title itself opens
   the switcher, so rename is a row of its menu, as the Wiki's is in its ⋯). It sits in the same place with 1 map or 50, on the
-  computer and on the phone, where the menu is as wide as the pane, with 44 px rows. A space with no map shows the one
-  empty state, "Map ideas for <space>", with its New map button. My map is one map: its header names it and has no switcher.
+  computer and on the phone, where the menu is as wide as the pane, with 44 px rows. **A space with no map opens the map's own empty
+  canvas** (#1424), not a page about maps with a New map button: the header's title "Untitled map" (not yet a switcher), the one hint
+  "An empty map. Add the first thought with Thought, then keep adding with the + beside it." (on the phone, "Start with Add a thought."),
+  and the toolbar with **Thought** alone (the phone's one **Add a thought**, with no floating "+" beside it: a "+" never means two things on one screen); Select, Move around, Undo and the zoom are not drawn
+  until there is something for them to act on. **The map is made, silently, on the first thought**: Thought (or a double click on the
+  canvas) makes it with the name "Untitled map" and opens it on a draft thought ready to type, with nothing to name first, so a visit
+  that adds nothing leaves no map. A map made from the switcher's "+ New map" still opens with its name ready to type. **A map shows one
+  hint at a time:** the "Drag empty space to move around · Drag a dot to connect…" line waits until there is a thought to drag, so
+  it never stands beside the empty map's own hint. My map is one map: its header names it and has no switcher.
 - A space's map has the same **Copy link** for one selected thought, `/projects/:p/map/:id#thought-:id`, and no Cite: Copy link
   is the one way to point at a thought from a message (Hubert, 2026-11-13, [#1376](https://github.com/ColdPhase/flux/issues/1376)).
   A thought's address pasted into a message (a space's conversation, a thread, a task's discussion or a direct message) reads as a
@@ -1453,7 +1480,10 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   touch screen only (a tablet), a toggle that makes each tap add to the selection, because touch has no Shift-click; a computer selects several with
   Shift-click, and the phone selects one thought at a time (S15).
 - On the phone, My map is a row on Home, next to "My tasks (N)", and not a tab. The phone map
-  follows S15: view and add a thought.
+  follows S15: view and add a thought. **The map is framed below its header** (#1424): a space's title pill and **Map options** share
+  the first row, 10 px from the edges, and the thoughts start under that row, so nothing floats over the first thought; a long title
+  gives way with an ellipsis, never over Map options. The one line "Connect and arrange on a computer" is said **once** per person on a
+  device, with its own quiet close (**Dismiss**), and is not drawn again on any map after that.
 
 ### Settings
 
@@ -1464,6 +1494,12 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
 - **Direction A**, chosen by Hubert: grouped white cards on the grey ground, short rows and text
   buttons such as Change. The sections are Account, Appearance, Notifications, AI, Company and
   Shortcuts, in this order on every device.
+- **Appearance** has **Theme** (Light, Dark, Match system) and the one face switch, "Show the face on loading and empty screens", on
+  every device (on the phone the switch's card is headed "This phone"). **Text size and Reduce motion are gone** (founder decision, Hubert,
+  2026-11-13, [#1419](https://github.com/ColdPhase/flux/issues/1419) item 17): the app follows the system's text size and its reduced-motion
+  setting (the `prefers-reduced-motion` media queries stay), the way the phone always did, and the values the earlier switches stored do nothing.
+  Appearance, **AI**, Space settings, the Spaces list and an empty My tasks carry no explainer sentence under their title (#1419, #1424):
+  only what the screens above draw is said. Space settings keeps its one line about who can open the space.
 - **One header, one column** (#1362). The header says "Settings" on every page of it (the keys and an
   agent's page included), and the sections' pages share one column: 640 px of content (728 with its 44 px
   sides), centred in the area beside the list at every computer width, with the same left edge and
@@ -1475,17 +1511,16 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
     mentions and agents waiting for you. Everything adds new messages and task updates. Nothing
     shows only the count on the Inbox.
   - **Where:** Email me too, On this device, **Hide previews** ([below](#hide-previews), #1346) and Quiet hours
-    ("22:00–7:00 · no email or push then; the Inbox keeps everything", Change), and #1243's two sound switches: **Sound for messages**
-    (off by default) and **Sound when someone calls me** (on by default; the soft chime of a call
-    invitation, F-041).
+    ("22:00–7:00 · no email or push then; the Inbox keeps everything", Change). **Sounds** is one more row in its own card under it (below).
   - **Email addresses:** the sign-in address first, then the others, each ticked on or off.
     "Confirmed", or "Waiting for you to confirm it from that inbox" with Send again. "Add another
     address" sends a confirmation link before any notification goes there.
-  - **Sound** (founder decision, 2026-11-12, #1243): two switches in one card after Where.
-    "Sound for messages", "A soft sound for messages to you and mentions while Flux is open", off
-    by default; "Sound when someone calls me", "One soft chime when someone invites you to a
-    call", on by default. At Nothing each says "Not used while you hear about Nothing". The second appears only on a
-    server with calls (`FLUX_CALLS=on`, #1471); without a media server the card holds "Sound for messages" alone.
+  - **Sounds** (founder decision, Hubert, 2026-11-13, [#1419](https://github.com/ColdPhase/flux/issues/1419) item 18, which merges
+    #1243's two switches): **one** switch, **Sounds**, "A soft sound for messages to you and for calls while Flux is open", **on** by
+    default, in a card of its own after Where with no heading (as Account's "Show when I was last active" has its card). It covers the
+    soft chime of a call invitation and the short tone of a direct message, a mention or a question while Flux is open. At Nothing it
+    says "Not used while you hear about Nothing". It shows on every server, with or without calls. (The API keeps its two stored
+    fields, `sound.messages` and `sound.calls`; the switch writes both together and the page reads `calls`.)
   - **Muted places** sit behind Change. They are the same mutes as the ⋯ menus' Mute
     ([Muting and following](#muting-a-place-and-following-a-thread)).
 - **Company:** only admins can change it.
@@ -1499,7 +1534,10 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
     link** (`primary`). **More** (a quiet disclosure under the field) holds **Joins as** (Member by default; Guest; Admin for an
     owner) and **Works for** (7 days by default; 1 day, 30 days). An address that already has a Flux account is added at once
     ("Maja joined as member"); any other address, or none, makes the link, copied at once, with its card and Copy link as before.
-    "Only for", "Add someone" and the second role picker go. Links waiting to be used stay listed under the form.
+    "Only for", "Add someone" and the second role picker go. Links waiting to be used stay listed under the form, each with Copy and
+    Revoke. **A new link is shown once** (#1424): in its own row of that list, with the link in a read-only field to read or select and
+    the hint "It works once…", not in a card of its own above a row that says the same; the row's Copy is the only Copy, and where the
+    browser refuses to copy, the link is shown in the row it belongs to.
   - **A reset link next to a person** (founder decision, Hubert, 2026-11-13, [#1471](https://github.com/ColdPhase/flux/issues/1471)).
     Without SSO, the person's editor (the role button "Member ▾" opens it under their row) ends with one more group, after Remove:
     "Password" in the group's label style, the line "Make a one-time link that lets {first name} choose a new password." and a
@@ -1509,6 +1547,10 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
     server's link lifetime).
     An owner sees it for everyone but themselves, an admin for members and guests. Nothing else on the page changes.
   - There is no AI switch here; AI is per space.
+  - **Spaces** (owners and admins; the list under People): each space opens, and one the admin is not in has
+    **Add me**. **No row has a Delete** (#1424): a space is deleted in its own settings, **Space settings › Delete space…**, the one way.
+    The only row with a Delete is an encrypted space the admin cannot open (a company admin may delete it, never read it), which has no
+    settings to reach.
 
 #### Hide previews
 
@@ -1564,7 +1606,7 @@ standard switch row in Settings › Notifications, and the rest of the page stay
     the right, centred, and never overlaps the text.
   - The local client as one row, in the same card as the connections (#1363): the terminal mark in
     the same icon tile as the connections (as drawn), "Claude Code on Ada's laptop", "For code on your computer. Same rules as your agents.", its
-    tag, "Do it and tell me" or, with the switch on, "Ask me first" (a link to the page where it is changed), and Disconnect, which asks in the
+    tag, "Ask me first on" or "Ask me first off" (the name of the switch, a link to the page where it is changed), and Disconnect, which asks in the
     row. A person may connect several, each with its own row. There is no section of its own for it and
     no word "agent app" or "co-work".
   - **Connecting one** is the fourth choice of the Connect AI window, "Claude Code or Codex on your
@@ -1587,8 +1629,10 @@ standard switch row in Settings › Notifications, and the rest of the page stay
     face, no new element, no link, no button). Everyone else, and a server whose AI is off altogether, is shown no plan the server does
     not offer, as the next point says.
   - **Your agents**, with New agent. Each row has the agent's Kreska in its own colour (chosen when
-    the agent is created, or assigned automatically), its name, one line about its job, its tag ("Do it
-    and tell me", or "Ask me first" with the switch on) and its model with the connection ("Opus · Claude plan").
+    the agent is created, or assigned automatically), its name, one line about its job, its tag ("Ask me first on" or "Ask me first off", the
+    switch's own name, never another word for the same thing, [#1424](https://github.com/ColdPhase/flux/issues/1424)) and its model
+    ("Opus"), with the connection only for a person who has several ("Opus · Claude plan"; founder decision, Hubert, 2026-11-14, #1424). An
+    agent with no connection to use says "Needs a connection" in that place, never the name of a model of a key that is gone.
     Assistant carries an "Answers /ai" tag. Under the list: "Agents never have more rights than
     you. Deleting and other people's things always wait for your OK."
   - There is no rule that gives the tasks people assign to you to an agent (founder decision, Hubert,
@@ -1598,17 +1642,19 @@ standard switch row in Settings › Notifications, and the rest of the page stay
   - There is no list of spaces with AI off.
 - **An agent's page** (Assistant's is the same). It asks nothing expert before the agent is useful
   (founder decision, Hubert, 2026-11-13, [#1419](https://github.com/ColdPhase/flux/issues/1419) item 10):
-  - "‹ AI", the agent, and "Your agent · uses your Claude plan · can do only what you can".
+  - "‹ AI", the agent, and "Your agent · uses your AI · can do only what you can" ("uses your Claude plan" only for a person who has
+    several connections; "Needs a connection" when it has none to use; #1424, founder decision, Hubert, 2026-11-14).
   - The only dark button, "Message Planner".
   - Name and Instructions.
   - **Ask me first**, one switch (the app's `SwitchRow`), off by default. Its line says what it does
     now: off, "Makes new things and changes yours at once, then tells you, with Undo."; on, "Every
     change waits for your OK." Deleting and other people's things wait either way (AG-3).
   - **More**, a quiet disclosure button (`Button` quiet, `chevron-right` / `chevron-down`, `aria-expanded`;
-    a screen reader hears "More settings", apart from the header's ⋯ More) under the card, with the model in words beside it: "Model: Sonnet · Claude plan". A new agent
+    a screen reader hears "More settings", apart from the header's ⋯ More) under the card, with the model in words beside it: "Model: Sonnet" ("Model: Sonnet · Claude plan" with several connections). A new agent
     runs on its connection's default model, so most people never open it. Open, it shows the
     **Model**, grouped by connection ("Claude plan: Opus · Sonnet · Haiku", the models the signed-in
-    CLI itself lists, #1332), as described below. It is open by itself while the agent is paused on a
+    CLI itself lists, #1332) only when the person has several connections; with one, just its models, with no connection name
+    (an agent uses "your AI"; founder decision, Hubert, 2026-11-14, #1424), as described below. It is open by itself while the agent is paused on a
     model that is no longer offered, so that line is in view.
   - Prices appear only in an API key's group, where the person pays per token; a plan's models have
     none.
@@ -1622,7 +1668,9 @@ standard switch row in Settings › Notifications, and the rest of the page stay
   it will work. **New agent** appears once an AI is connected: an agent without a connection can do nothing, and Assistant comes with the
   first connection.
 - **There is one way to add an AI key: the Connect AI window** (founder decision, Hubert, 2026-11-13, [#1438](https://github.com/ColdPhase/flux/issues/1438) point 9).
-  Settings › AI › Your API keys lists the keys with their budget and Remove and has no form of its own: its **Add a key**
+  Settings › AI › Your API keys lists the keys with their budget and Remove (a deletion, so it asks once in place: "Remove this key? It stops
+  what uses it at once and can't be restored." with **Remove key** and **Keep it**, as Revoke link does; there is nothing to undo, because the key is
+  gone from Flux, #1424) and has no form of its own: its **Add a key**
   (and "Use an API key" in a failed sign-in, and the ask bar's "Add a key") opens the Connect AI window on its API key step,
   and a page with no key says "No API key yet" with the same button. Every key is added in that one window, on the computer and
   on the phone.
@@ -1631,19 +1679,30 @@ standard switch row in Settings › Notifications, and the rest of the page stay
   with Use an API key and Try again; an API key with its one daily budget. The API key offers
   F-020's providers: Anthropic, OpenAI, OpenRouter, Gemini or an OpenAI-compatible or self-hosted
   endpoint (C-11).
-  - **Use an API key** asks, top to bottom: Provider, API key, Model, Daily budget, Name, then
-    Connect (#1218). The Model is the app's `Select`, disabled with "Enter the API key first" until
-    the key is typed. Leaving the key field reads the key's models: the help line says "Reading
-    Anthropic's models…", then the `Select` fills, grouped by family with the newest first ("Sonnet", "Fable",
+  - **Use an API key** is short (founder decision, Hubert, 2026-11-14, #1424). It shows first only **Provider** and **API key**,
+    with one plain line under the key ("Paste the key from your provider's website. Flux uses it only for your agents.") and
+    the key shape of the provider only after a provider is chosen. Leaving the key field reads the key's models: the
+    line says "Reading Anthropic's models…", then the **Model** `Select` appears already chosen (the only model of a list of
+    one; for Anthropic, OpenAI and Gemini the provider's middle, balanced model: the newest Claude Sonnet, the newest Sol, the newest
+    Gemini Flash, chosen by family name from the list and the first of the list only when it has no such family; OpenRouter's and an
+    endpoint's long lists have none chosen until the person picks), grouped by family with the newest first ("Sonnet", "Fable",
     "Opus", "Haiku"), each option "Claude Opus 5.5 · $4 / $20" or "Claude Sonnet 5.7 · price
     unknown, enter it". Its last option, "Other model id…", shows the plain field under it. A model
-    carries the name its provider gives it ("Claude Opus 5.5") here and on the agent's page alike.
+    carries the name its provider gives it ("Claude Opus 5.5") here and on the agent's page alike. Under it is **More**, a quiet
+    disclosure button as on an agent's page, closed: **Daily budget (USD)** with "Your agents stop for the day when it is used."
+    (the default $5.00) and **Name (optional)**. The price fields appear only when Flux knows no price for the model (#1470).
+    The words are plain: no "Chat Completions format", no "per 1M tokens input/output" and no "Console organization". An
+    endpoint reads "A server that works like OpenAI's, such as Ollama or LM Studio. Use an https address."; a price
+    reads "Price in US dollars for a million tokens sent to the model (input) and a million it writes (output)". The window does
+    not scroll at 1440 × 900.
   - **The window's buttons keep their side** (#1424): on every step the secondary action is on the left and the one primary on
     the right, in one row: Cancel and Continue, Use an API key and Try again, Cancel and Connect. Connect does not swap sides with
     Cancel on the key step.
-  - A list of exactly one model has that model chosen already (nothing to pick between); a list of several has none chosen.
-  - Nothing is saved on a model nobody chose. Enter in the key field reads the models, as leaving the
-    field does, instead of saving. Connect before a model is chosen (the list is still being read)
+  - A list of exactly one model has that model chosen already (nothing to pick between); for Anthropic, OpenAI and Gemini a
+    list of several has the provider's middle, balanced model chosen (the newest Sonnet, Sol or Flash; Opus, Fable and the cheaper
+    models stay in the list); OpenRouter's and an endpoint's have none chosen.
+  - Nothing is saved without a model. Enter in the key field reads the models, as leaving the
+    field does, instead of saving. Connect before a model is known (the list is still being read)
     puts "Choose a model first. Flux lists the models of your key once you have entered it and left
     the field." above the form, in the form's error style. The server holds the same line: a key
     without a model is refused (422), never saved on a default model.
@@ -1712,7 +1771,7 @@ standard switch row in Settings › Notifications, and the rest of the page stay
     one group with Approve all.
   - Only the owner approves, in their own session.
 - **`/ai`** in a conversation is answered privately by Assistant in a card marked "Only you can see
-  this". The card shows what you asked, then Dismiss and Show everyone, which posts the answer as
+  this". The card shows what you asked once, in its own words ("You asked: Catch me up", without the `/ai` that was typed), then Dismiss and Show everyone, which posts the answer as
   "Ada's Assistant" (below). A picture the agent attached (#1217) sits in the card under the answer
   exactly as a photo sits in a message (frameless, the same grid and viewer), with its change line
   under it, "Attached the picture Raised garden bed · Undo"; Show everyone posts it with the answer
@@ -1750,8 +1809,10 @@ standard switch row in Settings › Notifications, and the rest of the page stay
   - the task's composer had no `/` menu: typing `/` there now opens the same menu with `/ai` and its
     two suggestions only (the task has no other slash commands), once the task has its first message;
     choosing a row keeps the words written around the `/`, as in the conversation's composer.
-  - a direct message's composer opens the same menu on `/` with `/ai` alone (a direct message has no
-    suggestions and no other slash command), so the composer behaves the same in every place ([#1419](https://github.com/ColdPhase/flux/issues/1419) item 11).
+  - a direct message's composer opens the same menu on `/` with the two commands that apply there, `/file` ("Attach a file or link") and
+    `/ai` ("Ask your assistant"), in a space's words and order (a direct message has no tasks or decisions to make from a draft, no
+    suggestions and no `@`; a guest, who has no AI, sees `/file` alone), and its hint says it, "Message Jonas · / actions", so the composer behaves
+    the same in every place ([#1419](https://github.com/ColdPhase/flux/issues/1419) item 11, [#1424](https://github.com/ColdPhase/flux/issues/1424)).
 - **An answer appears as it is written** ([#1248](https://github.com/ColdPhase/flux/issues/1248), founder pick
   2026-11-10). Not drawn as a screen; it is the `/ai` card and the agent's chat bubble above, in three moments, with no
   new screen, setting or button style:
@@ -1960,6 +2021,12 @@ Founder decision, Hubert, 2026-11-13 ([#1438](https://github.com/ColdPhase/flux/
   encrypted space who has no unlock password yet: one page says so, with Open <space>, as before.
 - **No jargon:** no role explanation (a member is the ordinary case; only Guest and Admin get one plain line), no "work and
   handoffs", no "invite link has nothing more to do". A link already used by this account opens Flux.
+- **A link for one address** ([#1424](https://github.com/ColdPhase/flux/issues/1424)) says "This link works only for ben@…" and fills the
+  Email field in with that address, read-only (a fixed field in the surface's quieter fill, not one that looks editable and ignores typing),
+  with the hint "This invite is for this address.": a different address cannot be sent. Signed in as another account, the page does not
+  offer Join, which could only be refused: it says who the person is signed in as and gives one **Sign out to use this link**
+  (`primary`), which signs out and opens this page again, signed out, with the form and the address in place (for someone who has an
+  account, "Already have an account? Sign in to join" is under it). The Join button of the right account always joins.
 
 ### A place that could not be loaded, and a place that is not available
 
@@ -2052,6 +2119,7 @@ The renders are the approved mockups as drawn; where a later decision differs, f
 - **Messages and creating:**
   - Cite, Record a result, Details and Hand off on messages, and Cite on a space's map with its held citation in the
     composer (Copy link replaces it; Hubert, 2026-11-13, [#1376](https://github.com/ColdPhase/flux/issues/1376));
+  - **Text size** and **Reduce motion** in Appearance, the second of the two sound switches, and "Material" as a kind of Search result (#1419 items 17, 18, 20);
   - the `/map`, `/handoff` and `/source` commands (the composer's `/` has four: `/task`, `/decide`, `/ai`, `/file`) and the Sources tray
     `/source` opened; **My assistant** and the agents in the `@` list (#1419);
   - the separate "Ask an agent" and "Cite" buttons in the composer (S5), and "+" for attaching;

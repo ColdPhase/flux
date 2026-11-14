@@ -118,6 +118,85 @@ export function isPriceList(value: unknown): value is AiPriceList {
     && Object.entries(rows).every(([id, row]) => validModelId(provider as AiProviderKind, id) && saneRate(row)));
 }
 
+/** A price Flux did not take from a refreshed list (#1270): the model, what Flux keeps and what the list offered. */
+export interface HeldPrice {
+  provider: AiProviderKind;
+  model: string;
+  /** The price Flux knew and keeps, or null when it knew none and the model is left out (its owner is asked for the price). */
+  kept: AiRate | null;
+  /** What the refreshed list offered. */
+  offered: AiRate;
+}
+
+/** Whether a price fell to 0, or to a tenth or less of what Flux knows; a known 0 cannot fall. */
+const fallsTooFar = (known: number, offered: number) => known > 0 && offered * 10 <= known;
+/** OpenRouter's own naming of a model it bills nothing for. */
+const openRouterFree = (provider: AiProviderKind, model: string) => provider === 'openrouter' && model.endsWith(':free');
+const own = <T>(rows: Readonly<Record<string, T>> | undefined, id: string): T | undefined =>
+  rows && Object.prototype.hasOwnProperty.call(rows, id) ? rows[id] : undefined;
+
+/**
+ * A refreshed list with what must not move at once held back (#1270). A list comes from a third party's repository (LiteLLM's `main`
+ * branch) or OpenRouter's API and sets what a key's daily budget counts, so a wrong or poisoned file must not lower it without bound:
+ * - a model Flux knows (in the list it has stored, else the shipped one) keeps its known price when the refreshed input or output
+ *   price is 0 or a tenth or less of the known one; increases and smaller decreases apply;
+ * - a model Flux does not know is never given a price of 0 (input or output): it is left out and its owner is asked, so a free
+ *   model is free only when a stored or shipped list already had it at 0 (Gemini's free models);
+ * - except an OpenRouter id ending in `:free`: OpenRouter bills that key and names the model free, so its own price is taken as
+ *   listed, 0 included, on the first read too (coordinator decision, #1499).
+ * `held` names each of them, for the log. The candidate is not changed.
+ */
+export function guardPriceList(candidate: AiPriceList, stored: AiPriceList | null | undefined, shipped: AiPriceList | null | undefined): { list: AiPriceList; held: HeldPrice[] } {
+  const held: HeldPrice[] = [];
+  const prices: Partial<Record<AiProviderKind, AiModelPrices>> = {};
+  for (const [provider, rows] of Object.entries(candidate.prices) as [AiProviderKind, AiModelPrices][]) {
+    const kept: [string, AiRate][] = [];
+    for (const [model, offered] of Object.entries(rows)) {
+      const known = own(stored?.prices[provider], model) ?? own(shipped?.prices[provider], model);
+      if (openRouterFree(provider, model)) kept.push([model, offered]);
+      else if (!known) {
+        if (offered.inputMicrosPerMTok === 0 || offered.outputMicrosPerMTok === 0) held.push({ provider, model, kept: null, offered });
+        else kept.push([model, offered]);
+      } else if (fallsTooFar(known.inputMicrosPerMTok, offered.inputMicrosPerMTok) || fallsTooFar(known.outputMicrosPerMTok, offered.outputMicrosPerMTok)) {
+        held.push({ provider, model, kept: known, offered });
+        kept.push([model, known]);
+      } else kept.push([model, offered]);
+    }
+    prices[provider] = Object.fromEntries(kept);
+  }
+  return { list: { ...candidate, prices }, held };
+}
+
+/** The most held prices one refresh writes to the log; a file that moves every price must not fill it. */
+const MAX_HELD_LOGGED = 50;
+
+/**
+ * The log lines of a refresh's held prices (#1270), one object per model with both prices in micro-dollars per 1M tokens and no
+ * secret in them, then one with the count that was not listed.
+ */
+export function heldPriceLog(list: string, held: readonly HeldPrice[]): Record<string, unknown>[] {
+  const rate = (price: AiRate | null) => (price ? { inputMicrosPerMTok: price.inputMicrosPerMTok, outputMicrosPerMTok: price.outputMicrosPerMTok } : null);
+  const lines = held.slice(0, MAX_HELD_LOGGED).map((row) => ({ event: 'price_list_held', list, provider: row.provider, model: row.model,
+    action: row.kept ? 'kept_known_price' : 'left_out_free_price', kept: rate(row.kept), offered: rate(row.offered) }));
+  return held.length > MAX_HELD_LOGGED ? [...lines, { event: 'price_list_held', list, more: held.length - MAX_HELD_LOGGED }] : lines;
+}
+
+/** The two stored lists' repository, as {@link storeGuardedPriceList} needs it. */
+export interface PriceListStore {
+  read(list: 'litellm' | 'openrouter'): Promise<AiPriceList | null>;
+  store(list: 'litellm' | 'openrouter', value: AiPriceList): Promise<boolean>;
+}
+
+/**
+ * Stores a refreshed list after {@link guardPriceList} (#1270): LiteLLM's against the stored list and the shipped one, OpenRouter's
+ * against the stored one. Returns what was stored (the guarded list, also when a newer one made the store a no-op), whether it was
+ * stored, and the prices held back, which the caller logs with {@link heldPriceLog}.
+ */
+export async function storeGuardedPriceList(store: PriceListStore, name: 'litellm' | 'openrouter', candidate: AiPriceList): Promise<{ list: AiPriceList; stored: boolean; held: HeldPrice[] }> {
+  const { list, held } = guardPriceList(candidate, await store.read(name), name === 'litellm' ? shippedPriceList() : null);
+  return { list, stored: await store.store(name, list), held };
+}
+
 /**
  * The list this release ships (#1465), as `scripts/update_price_list.py` fetched it on the build day: what a server without internet
  * prices with, and what the migrator stores when the database has no list or an older one.

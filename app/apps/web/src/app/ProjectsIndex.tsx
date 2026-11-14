@@ -48,9 +48,6 @@ export function ProjectsIndex() {
   return (
     <div className="pane-scroll">
       <div className="pane-in set">
-        <div className="proj-index__head">
-          <p className="proj-index__lead">Each space has one conversation, tasks, a map and a wiki.</p>
-        </div>
         {projects.length || lockedWorkspaces.length ? (
           <ul className="set-card proj-index__spaces" aria-label="Spaces" ref={list}>
             {projects.map((project, at) => {

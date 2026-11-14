@@ -15,7 +15,7 @@ import unittest
 
 from playwright.sync_api import Browser, Page, Route, expect, sync_playwright
 
-from app_select import choose, open_select, values
+from app_select import choose, open_more, open_select, values
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, shot, start_forwarder
 
 PASSWORD = "a provider of my own choosing"
@@ -97,12 +97,11 @@ class ApiKeyModels(unittest.TestCase):
     def test_02_the_key_comes_before_the_model_and_fills_it_by_family_with_prices(self) -> None:
         page = self.page()
         self.form(page)
-        # The order is Provider, API key, Model; the Model waits for the key.
-        order = page.evaluate("""() => [...document.querySelectorAll('.background-settings__fields > label')].map((label) => label.childNodes[0].textContent.trim())""")
-        self.assertEqual(order[:3], ["Provider", "API key", "Model"])
+        # The order is Provider, API key, then the Model once the key's models are read (#1424); the Model is not there before.
+        order = page.evaluate("""() => [...document.querySelectorAll('fieldset.background-settings__fields > label')].map((label) => label.childNodes[0].textContent.trim())""")
+        self.assertEqual(order, ["Provider", "API key"])
         model = page.get_by_role("combobox", name="Model")
-        expect(model).to_be_disabled()
-        expect(model).to_contain_text("Enter the API key first")
+        expect(model).to_have_count(0)
         expect(page.locator("datalist")).to_have_count(0)
         self.type_key(page, GOOD)
         expect(page.get_by_role("status").filter(has_text="6 models from Anthropic.")).to_be_visible()
@@ -117,11 +116,12 @@ class ApiKeyModels(unittest.TestCase):
         expect(box.get_by_role("option", name="Other model id…", exact=True)).to_be_visible()
         shot(page, named("api-key-models-1440-open"))
         page.keyboard.press("Escape")
-        # Nothing is preselected: the models are the provider's own (founder direction, 2026-11-12). Opus shows its table price.
-        expect(model).to_contain_text("Choose a model")
+        # #1424: Anthropic's newest Sonnet, the balanced model, is already chosen (here a model Flux has no price for, so its price is asked). The models are the provider's own (founder direction, 2026-11-12). Opus shows its list price.
+        expect(model).to_contain_text("Claude Sonnet 5.7")
+        expect(page.get_by_role("group", name="Price per 1M tokens (USD)")).to_be_visible()
         expect(page.get_by_test_id("connection-price")).to_have_count(0)
         choose(model, value="claude-opus-5-5")
-        expect(page.get_by_test_id("connection-price")).to_contain_text("$4.00 input · $20.00 output per 1M tokens · Flux’s price list of ")
+        expect(page.get_by_test_id("connection-price")).to_contain_text("$4.00 for what you send and $20.00 for what it writes, per million tokens · Flux’s price list of ")
         # A model Flux has no price for asks its price; "Other model id…" opens the plain field.
         choose(model, value="claude-sonnet-5-7")
         price = page.get_by_role("group", name="Price per 1M tokens (USD)")
@@ -130,13 +130,101 @@ class ApiKeyModels(unittest.TestCase):
         expect(page.get_by_label("Model id", exact=True)).to_be_visible()
         choose(model, value="claude-opus-5-5")
         expect(page.get_by_label("Model id", exact=True)).to_have_count(0)
+        open_more(page)
         page.get_by_label("Daily budget (USD)", exact=True).last.fill("5")
-        page.get_by_label("Name", exact=True).fill("Ines's Anthropic key")
+        page.get_by_label("Name (optional)", exact=True).fill("Ines's Anthropic key")
         page.get_by_role("button", name="Connect", exact=True).click()
         expect(page.get_by_role("status").filter(has_text="Key saved with a daily budget of $5.00.")).to_be_visible()
         saved = [item for item in json.loads(page.request.get(f"{ORIGIN}/api/v1/background-compute-connections").text()) if item["name"] == "Ines's Anthropic key"]
         self.assertEqual([(item["provider"], item["model"]) for item in saved], [("anthropic", "claude-opus-5-5")])
         self.no_key_in_page(page)
+
+    def test_02b_the_form_asks_first_only_for_the_provider_and_the_key_and_keeps_the_rest_behind_more(self) -> None:
+        """#1424 (founder decision, 2026-11-14): Provider and API key first; the model already chosen once the key is read; the budget and the
+        optional name behind More; plain words; the window does not scroll at 1440 × 900; connecting without opening More uses the default budget."""
+        page = self.page()
+        self.form(page)
+        window = page.locator(".cai-window")
+
+        def fits() -> None:
+            height, visible = window.evaluate("el => [el.scrollHeight, el.clientHeight]")
+            self.assertLessEqual(height, visible + 1, "the window does not scroll")
+
+        self.assertEqual(page.viewport_size, {"width": 1440, "height": 900})
+        expect(page.get_by_label("Provider", exact=True)).to_be_visible()
+        expect(page.get_by_label("API key", exact=True)).to_be_visible()
+        expect(page.get_by_role("combobox", name="Model")).to_have_count(0)
+        expect(page.get_by_role("group", name="Price per 1M tokens (USD)")).to_have_count(0)
+        expect(window.get_by_label("Daily budget (USD)", exact=True)).to_be_hidden()
+        expect(window.get_by_label("Name (optional)", exact=True)).to_be_hidden()
+        more = page.get_by_role("button", name="More settings")
+        expect(more).to_have_attribute("aria-expanded", "false")
+        expect(page.get_by_test_id("budget-line")).to_have_text("Daily budget $5.00")
+        fits()
+        self.type_key(page, GOOD)
+        model = page.get_by_role("combobox", name="Model")
+        expect(model).to_contain_text("Claude Sonnet 5.7")  # Anthropic's newest Sonnet, the balanced model
+        choose(model, value="claude-opus-5-5")
+        expect(page.get_by_role("group", name="Price per 1M tokens (USD)")).to_have_count(0)
+        fits()
+        words = window.inner_text()
+        for jargon in ("Chat Completions", "Console organization", "input / output", "per 1M tokens, input"):
+            self.assertNotIn(jargon, words)
+        more.click()
+        expect(more).to_have_attribute("aria-expanded", "true")
+        expect(window.get_by_label("Daily budget (USD)", exact=True)).to_have_value("5.00")
+        expect(window.get_by_label("Name (optional)", exact=True)).to_be_visible()
+        fits()
+        shot(page, named("api-key-models-1440-more"))
+        more.click()
+        # Connecting with More closed saves the key with the default budget and its provider's default name.
+        before = self.connected(page)
+        page.get_by_role("button", name="Connect", exact=True).click()
+        expect(page.get_by_role("status").filter(has_text="Key saved with a daily budget of $5.00.")).to_be_visible()
+        added = [item for item in json.loads(page.request.get(f"{ORIGIN}/api/v1/background-compute-connections").text()) if item["name"] not in before]
+        self.assertEqual([(item["name"], item["model"], item["dailyBudgetCents"]) for item in added], [("Anthropic key", "claude-opus-5-5", 500)])
+        self.no_key_in_page(page)
+
+    def test_02c_the_model_chosen_is_the_providers_balanced_one_found_by_family_name(self) -> None:
+        """#1424 (founder decision, 2026-11-14): Anthropic's newest Sonnet, OpenAI's newest Sol, Gemini's newest Flash, whatever their place in the
+        list; Opus, Fable, Astra, Carbon and the cheaper models stay in it; with no such family the first of the list."""
+        def model(model_id: str, name: str, family: str, created: str) -> dict:
+            return {"id": model_id, "name": name, "family": family, "createdAt": created}
+
+        lists = {
+            "anthropic": [model("claude-fable-5-3", "Claude Fable 5.3", "Fable", "2026-11-12T00:00:00Z"), model("claude-opus-5-6", "Claude Opus 5.6", "Opus", "2026-11-11T00:00:00Z"),
+                          model("claude-sonnet-5-7", "Claude Sonnet 5.7", "Sonnet", "2026-11-10T00:00:00Z"), model("claude-sonnet-5-5", "Claude Sonnet 5.5", "Sonnet", "2026-09-28T00:00:00Z"),
+                          model("claude-haiku-5", "Claude Haiku 5", "Haiku", "2026-06-01T00:00:00Z")],
+            "openai": [model("gpt-6.2-astra", "GPT-6.2 Astra", "Astra", "2026-11-12T00:00:00Z"), model("gpt-6-luna", "GPT-6 Luna", "Luna", "2026-11-11T00:00:00Z"),
+                       model("gpt-6.1-sol", "GPT-6.1 Sol", "Sol", "2026-10-01T00:00:00Z"), model("gpt-6.2-sol", "GPT-6.2 Sol", "Sol", "2026-11-10T00:00:00Z")],
+            "gemini": [model("gemini-4-carbon", "Gemini 4 Carbon", "Carbon", "2026-11-12T00:00:00Z"), model("gemini-3.5-flash-lite", "Gemini 3.5 Flash-Lite", "Flash-Lite", "2026-11-11T00:00:00Z"),
+                       model("gemini-3.5-flash", "Gemini 3.5 Flash", "Flash", "2026-11-01T00:00:00Z"), model("gemini-3.1-pro-preview", "Gemini 3.1 Pro Preview", "Pro", "2026-09-01T00:00:00Z")],
+        }
+        # Lists with no Sonnet, no Sol and no Flash: the first of the list.
+        without = {"anthropic": lists["anthropic"][:2], "openai": lists["openai"][:2], "gemini": [lists["gemini"][0], lists["gemini"][3]]}
+        served = {"lists": lists}
+
+        def answer(route: Route) -> None:
+            provider = route.request.post_data_json["provider"]
+            route.fulfill(json={"provider": provider, "status": "listed", "checkedOn": "2026-11-14", "models": served["lists"][provider], "priceList": None})
+
+        page = self.page()
+        page.route(re.compile(r".*/api/v1/ai-model-lists$"), answer)
+        self.form(page)
+        keys = {"anthropic": "sk-ant-api03-balanced-model-key-01", "openai": "sk-proj-balanced-model-key-01", "gemini": "AIzabalanced-model-key-0001"}
+        labels = {"anthropic": "Anthropic", "openai": "OpenAI", "gemini": "Google Gemini"}
+        for round_, (shown, expected) in enumerate(((lists, {"anthropic": "Claude Sonnet 5.7", "openai": "GPT-6.2 Sol", "gemini": "Gemini 3.5 Flash"}),
+                                                    (without, {"anthropic": "Claude Fable 5.3", "openai": "GPT-6.2 Astra", "gemini": "Gemini 4 Carbon"}))):
+            served["lists"] = shown
+            for provider in ("anthropic", "openai", "gemini"):
+                choose(page.get_by_label("Provider", exact=True), label=labels[provider])
+                key = page.get_by_label("API key", exact=True)
+                key.fill(f"{keys[provider]}{round_}")
+                key.blur()
+                model = page.get_by_role("combobox", name="Model")
+                expect(model).to_contain_text(expected[provider])
+                # Every model of the provider's list stays to be chosen, the top tiers and the cheaper ones too (and "Other model id…").
+                self.assertEqual(len(values(model)), len(shown[provider]) + 1, f"{provider}: the whole list is there")
 
     def test_03_a_refused_key_says_so_and_connect_waits_for_another(self) -> None:
         page = self.page()
@@ -145,7 +233,7 @@ class ApiKeyModels(unittest.TestCase):
         alert = page.get_by_role("alert").filter(has_text="This key was refused by Anthropic. Check it and try again.")
         expect(alert).to_be_visible()
         expect(page.get_by_label("API key", exact=True)).to_have_attribute("aria-invalid", "true")
-        expect(page.get_by_role("combobox", name="Model")).to_be_disabled()
+        expect(page.get_by_role("combobox", name="Model")).to_have_count(0)
         expect(page.get_by_role("button", name="Connect", exact=True)).to_be_disabled()
         shot(page, named("api-key-models-1440-refused"))
         # Another key clears the refusal and is read again.
@@ -168,7 +256,7 @@ class ApiKeyModels(unittest.TestCase):
         expect(page.get_by_role("status").filter(has_text="6 models from Anthropic.")).to_be_visible()
         model = page.get_by_role("combobox", name="Model")
         expect(model).to_be_enabled()
-        expect(model).to_contain_text("Choose a model")
+        expect(model).to_contain_text("Claude Sonnet 5.7")
         expect(page.get_by_role("status").filter(has_text="Key saved")).to_have_count(0)
         self.assertEqual(self.connected(page), before, "Enter saved nothing")
         # Connect while the list is still being read.
@@ -197,6 +285,7 @@ class ApiKeyModels(unittest.TestCase):
         page.get_by_label("Model id", exact=True).fill("claude-no-tools-1")
         page.get_by_label("Input price", exact=True).fill("1")
         page.get_by_label("Output price", exact=True).fill("5")
+        open_more(page)
         page.get_by_label("Daily budget (USD)", exact=True).last.fill("5")
         page.get_by_role("button", name="Connect", exact=True).click()
         alert = page.get_by_role("alert")
@@ -207,7 +296,7 @@ class ApiKeyModels(unittest.TestCase):
         shot(page, named("api-key-models-1441-no-tools"))
         # Another model of the same key, without typing the key again.
         choose(model, value="claude-opus-5-5")
-        page.get_by_label("Name", exact=True).fill("Ines's second key")
+        page.get_by_label("Name (optional)", exact=True).fill("Ines's second key")
         page.get_by_role("button", name="Connect", exact=True).click()
         expect(page.get_by_role("status").filter(has_text="Key saved with a daily budget of $5.00.")).to_be_visible()
         self.assertIn("Ines's second key", self.connected(page))
@@ -223,7 +312,7 @@ class ApiKeyModels(unittest.TestCase):
         field = page.get_by_label("Model", exact=True)
         expect(field).to_be_editable()
         field.fill("claude-opus-5-5")
-        expect(page.get_by_test_id("connection-price")).to_contain_text("$4.00 input · $20.00 output per 1M tokens")
+        expect(page.get_by_test_id("connection-price")).to_contain_text("$4.00 for what you send and $20.00 for what it writes, per million tokens")
         expect(page.get_by_role("button", name="Connect", exact=True)).to_be_enabled()
 
     def test_05_the_form_fits_a_phone_light_and_dark(self) -> None:

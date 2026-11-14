@@ -87,7 +87,7 @@ type ActivityRow = typeof schema.projectTaskActivity.$inferSelect;
 const sameActor = (a: Actor | null, b: Actor | null) => a?.kind === b?.kind && a?.id === b?.id;
 
 /** One entry for each of status, owner, due date and title that differs between the task before and after a change (#488). */
-async function recordTaskActivity(db: DbExecutor, before: ReturnType<typeof toWorkRecord> | null, after: ReturnType<typeof toWorkRecord>, by: Actor, via?: 'github_rule' | 'agent_rule' | 'agent_deleted' | 'wait_resolved') {
+async function recordTaskActivity(db: DbExecutor, before: ReturnType<typeof toWorkRecord> | null, after: ReturnType<typeof toWorkRecord>, by: Actor, via?: 'github_rule' | 'agent_rule' | 'agent_unable' | 'agent_deleted' | 'wait_resolved') {
   if (!before) return;
   const entries: { kind: ActivityRow['kind']; detail: Record<string, unknown> }[] = [];
   if (before.status !== after.status) {
@@ -122,7 +122,7 @@ async function waitingLabel(db: DbExecutor, on: { kind: 'decision' | 'task'; id:
 }
 
 function toActivityRecord(row: ActivityRow, position: string) {
-  const detail = row.detail as { from: unknown; to: unknown; blocker?: string | null; waitingForUserId?: string | null; waitingOn?: string | null; dropped?: boolean; automation?: 'github_rule' | 'agent_rule' | 'agent_deleted' | 'wait_resolved' };
+  const detail = row.detail as { from: unknown; to: unknown; blocker?: string | null; waitingForUserId?: string | null; waitingOn?: string | null; dropped?: boolean; automation?: 'github_rule' | 'agent_rule' | 'agent_unable' | 'agent_deleted' | 'wait_resolved' };
   const common = { id: row.id, workId: row.workId, at: row.createdAt, position, by: { kind: row.actorKind, id: row.actorId } as Actor, automation: detail.automation ?? null };
   switch (row.kind) {
     case 'status': return { ...common, kind: 'status' as const, from: detail.from as WorkRow['status'], to: detail.to as WorkRow['status'], blocker: detail.blocker ?? null, waitingForUserId: detail.waitingForUserId ?? null, waitingOn: detail.waitingOn ?? null, dropped: detail.dropped === true };
@@ -466,7 +466,7 @@ export function workRows(db: DbExecutor) {
       }) };
     },
     async updateWork(id: string, changes: { title?: string; outcome?: string; status?: WorkRow['status']; blocker?: string | null; waitingFor?: Actor | null; waitingOn?: { kind: 'decision' | 'task'; id: string } | null; dropped?: boolean; cameOfIt?: string | null; dueOn?: string | null; owner?: Actor | null; criteria?: string[] },
-      by: Actor, via?: 'github_rule' | 'agent_rule' | 'agent_deleted' | 'wait_resolved') {
+      by: Actor, via?: 'github_rule' | 'agent_rule' | 'agent_unable' | 'agent_deleted' | 'wait_resolved') {
       // Every path that changes a task ends here, so this is the one place its activity (#488) is kept: the row as it was,
       // then the change, then one entry per field that really differs, all in the caller's transaction. The caller holds the row.
       const [stored] = await db.select().from(w).where(eq(w.id, id)).for('update');
@@ -501,7 +501,7 @@ export function workRows(db: DbExecutor) {
       if (previous && !sameActor(toWorkRecord(previous).owner, next.owner)) {
         // Taken away from an agent that is working on it by someone else (not by one of its own rules): the run has to stop (#856).
         const was = toWorkRecord(previous).owner;
-        if (was?.kind === 'agent' && via !== 'agent_rule' && via !== 'agent_deleted') await agentTaskRows(db).noteReleased(id, was.id, by);
+        if (was?.kind === 'agent' && via !== 'agent_rule' && via !== 'agent_unable' && via !== 'agent_deleted') await agentTaskRows(db).noteReleased(id, was.id, by);
         if (next.owner) await agentTaskRows(db).noteAssigned(id, next.owner, by);
       }
       // A blocked task an agent holds goes back to Doing (#868): what it waited for is resolved, or a person resolves it by moving it to Doing.

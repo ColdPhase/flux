@@ -75,9 +75,16 @@ export const ME_FIRST_STEPS_HIDE_PATH = `${ME_FIRST_STEPS_PATH}/hide`;
  * Only a new person has a card: someone who joined the company in the last 30 days and has a step left, until it is hidden or done once.
  */
 export type FirstStep = 'name_company' | 'invite_people' | 'connect_ai' | 'first_message' | 'photo';
+/** A person who joined with a link the owner or admin made and whom they have not yet written to (#1438, #1424): "Nia joined · Say hello". */
+export interface FirstStepJoined { userId: string; name: string }
 export interface FirstSteps {
   /** The steps left, in the card's order; empty for a guest, someone outside the company, someone who joined it long ago, and once the card was hidden or done. */
   steps: FirstStep[];
+  /**
+   * Who joined with this person's links and has no direct message with them yet, newest first, at most the card's three rows. They ride along only
+   * beside a step that is left, in the place of "Invite people" (that step is done once a link was made), and leave when a direct message is opened.
+   */
+  joined: FirstStepJoined[];
   /** A member whose card has a step left: the browser may add "Get notifications on this device" while it is not subscribed. Never alone: with no step left there is no card. */
   offerPush: boolean;
   /** Everyone, for "Write your first message" (opens it with the composer ready); null when there is none. */

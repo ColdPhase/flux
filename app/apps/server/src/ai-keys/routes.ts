@@ -4,7 +4,7 @@ import type { FastifyError, FastifyInstance } from 'fastify';
 import { AI_BASE_URL_MAX_LENGTH, AI_LISTED_PRICE_PROVIDERS, AI_MODEL_LISTS_PATH, AI_PROVIDERS, providerPriceList, API_KEY_DAILY_BUDGET_CENTS, AI_PRICE_MAX_MICROS_PER_MTOK, AI_PROVIDER_KINDS, type AiModelList, type AiModelListQuery,
   type AiProviderKind, type AiProviderPriceList, type AssistantModelListing, type ConnectBackgroundComputeCommand, type SetApiKeyModelPriceCommand, type UpdateBackgroundComputeConnectionCommand } from '@flux/contracts';
 import { aiPriceListRepository, backgroundConnectionRepository, personalConnectionLookup, sealBackgroundKey, storedProviderPriceList } from '@flux/db';
-import { backgroundConnectionUseCases, openRouterPriceList, baseUrlSyntaxProblem, ConflictError, DomainError, InvalidInputError, keyListing, NotFoundError, normalizeBaseUrl, RateLimitedError, validAiKey } from '@flux/core';
+import { backgroundConnectionUseCases, heldPriceLog, openRouterPriceList, storeGuardedPriceList, baseUrlSyntaxProblem, ConflictError, DomainError, InvalidInputError, keyListing, NotFoundError, normalizeBaseUrl, RateLimitedError, validAiKey } from '@flux/core';
 import type { ModelListRefresh } from './model-refresh.js';
 import type { SessionResolver } from '../identity/index.js';
 import { requireNotGuest } from '../access/guest-no-ai.js';
@@ -17,6 +17,8 @@ interface Options {
   db: Database; sessions: SessionResolver; backgroundMasterKey: Buffer | null; ai?: AiConnectionServerComposition;
   /** Called after a key was saved: connecting AI the first time gives the person Assistant (F-036 AG-1). */
   afterConnect?: (ownerUserId: string) => Promise<void>;
+  /** Called after a key was removed: with one connection left, the agents whose key it was go on it (#1424). */
+  afterRemove?: (ownerUserId: string) => Promise<void>;
   /** Asks the worker to read a stored key's models again (#1218); absent: Try again answers from what is stored. */
   refresh?: ModelListRefresh;
 }
@@ -24,16 +26,18 @@ interface Options {
 const microsPerMTok = { type: 'integer', minimum: 0, maximum: AI_PRICE_MAX_MICROS_PER_MTOK };
 const dailyBudget = { type: 'integer', minimum: API_KEY_DAILY_BUDGET_CENTS.min, maximum: API_KEY_DAILY_BUDGET_CENTS.max };
 
-export async function aiKeyRoutes(app: FastifyInstance, { db, sessions, backgroundMasterKey, ai = aiConnectionServerComposition(process.env), afterConnect, refresh }: Options) {
+export async function aiKeyRoutes(app: FastifyInstance, { db, sessions, backgroundMasterKey, ai = aiConnectionServerComposition(process.env), afterConnect, afterRemove, refresh }: Options) {
   const keys = personalConnectionLookup(db);
   const listing = onePerPerson<AiModelList>();
   // The price lists (#1465), as last stored. OpenRouter's is what an OpenRouter key pays: it is read from OpenRouter's model list when a
   // key is connected, or the form lists OpenRouter's models, and the stored one is more than a day old.
   const priceLists = aiPriceListRepository(db);
   const keepOpenRouterPrices = async (list: AiModelList): Promise<AiProviderPriceList | null> => {
-    const read = openRouterPriceList(list);
-    if (!read) return null;
-    await priceLists.store('openrouter', read);
+    const offered = openRouterPriceList(list);
+    if (!offered) return null;
+    // A price OpenRouter's list drops to 0 or a tenth of what Flux knows is not taken (#1270); the answer carries the guarded list.
+    const { list: read, held } = await storeGuardedPriceList(priceLists, 'openrouter', offered);
+    for (const line of heldPriceLog('openrouter', held)) app.log.warn(line, 'a price list price was held');
     return providerPriceList(read, 'openrouter');
   };
   const priceList = async (provider: AiProviderKind): Promise<AiProviderPriceList | null> => {
@@ -141,7 +145,9 @@ export async function aiKeyRoutes(app: FastifyInstance, { db, sessions, backgrou
     return connections.setModelPrice(principal, request.params.connectionId.toLowerCase(), request.body);
   });
   app.delete<{ Params: { connectionId: string } }>('/api/v1/background-compute-connections/:connectionId', async (request, reply) => {
-    await connections.revoke((await sessions.requirePrincipal(request)).principal, request.params.connectionId);
+    const { principal } = await sessions.requirePrincipal(request);
+    await connections.revoke(principal, request.params.connectionId);
+    await afterRemove?.(principal.id);
     return reply.code(204).send();
   });
 }

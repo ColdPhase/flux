@@ -61,9 +61,15 @@ function pathOf(projectId: string, type: DocMention['type'], id: string, found: 
   }
 }
 
-/** The first words of a Markdown text without its markup, for lists. */
+/** How much of a line the excerpt reads: far more than its words need, and the link pattern below is quadratic in what it reads. */
+const EXCERPT_READ = 4096;
+
+/**
+ * The first words of a Markdown text without its markup, for lists. A page may be 100,000 characters, and one line of `[` made the link
+ * pattern take 5 seconds (v0.2.1 audit #1270), so only the first {@link EXCERPT_READ} characters of the line are read.
+ */
 export function excerpt(markdown: string, max = 160): string {
-  const line = markdown.split('\n').map((item) => item.trim()).find((item) => item && !/^(#{1,6}\s|```|~~~|---|\*\*\*|\|)/.test(item)) ?? '';
+  const line = (markdown.split('\n').map((item) => item.trim()).find((item) => item && !/^(#{1,6}\s|```|~~~|---|\*\*\*|\|)/.test(item)) ?? '').slice(0, EXCERPT_READ);
   const plain = line.replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/^(>|[-*+]|\d+[.)])\s+/, '').replace(/[*_`~\\]/g, '').trim();
   return plain.length > max ? `${plain.slice(0, max - 1)}…` : plain;
 }

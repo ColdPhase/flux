@@ -41,6 +41,21 @@ export function firstStepRows(db: DbExecutor) {
       const ph = schema.personPhotos;
       return exists(db.select({ id: ph.id }).from(ph).where(eq(ph.userId, userId)).limit(1));
     },
+    async joinedPeople(userId: string, companyId: string, limit: number) {
+      const i = schema.workspaceInvites, m = schema.workspaceMembers, u = schema.authUsers, d = schema.dms;
+      // Who used this person's links and is still in the company, newest first; a person who used two links counts once.
+      const used = await db.select({ id: i.acceptedBy, name: u.name, at: sql<Date>`max(${i.acceptedAt})` }).from(i)
+        .innerJoin(m, and(eq(m.workspaceId, i.workspaceId), eq(m.userId, i.acceptedBy)))
+        .innerJoin(u, eq(u.id, i.acceptedBy))
+        .where(and(eq(i.workspaceId, companyId), eq(i.createdBy, userId), sql`${i.acceptedBy} IS NOT NULL`, sql`${i.acceptedBy} <> ${userId}`))
+        .groupBy(i.acceptedBy, u.name).orderBy(desc(sql`max(${i.acceptedAt})`), asc(i.acceptedBy)).limit(limit + 10);
+      if (!used.length) return [];
+      // A direct message between the two (a pair has one, made once) says hello was started, here or anywhere else.
+      const key = (other: string) => [userId, other].sort().join(':');
+      const talked = new Set((await db.select({ key: d.pairKey }).from(d)
+        .where(and(eq(d.workspaceId, companyId), eq(d.kind, 'pair'), inArray(d.pairKey, used.map((row) => key(row.id!)))))).map((row) => row.key));
+      return used.filter((row) => !talked.has(key(row.id!))).slice(0, limit).map((row) => ({ userId: row.id!, name: row.name }));
+    },
     async hide(userId: string, at: Date) {
       const u = schema.authUsers;
       await db.update(u).set({ firstStepsHiddenAt: at }).where(and(eq(u.id, userId), isNull(u.firstStepsHiddenAt)));

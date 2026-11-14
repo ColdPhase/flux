@@ -10,7 +10,7 @@ import './connection.css';
 
 /**
  * The person's own Claude Code or Codex, one row each in Settings › AI's Connect AI card (F-026 §7 Agents and AI, #1363): the terminal mark in
- * the icon tile the connections have (as `desktop-settings-ai` draws it), "Claude Code on this computer", "For code on your computer. Same rules as your agents.", its tag, "Do it and tell me" or "Ask me first" (a link to the page
+ * the icon tile the connections have (as `desktop-settings-ai` draws it), "Claude Code on this computer", "For code on your computer. Same rules as your agents.", its tag, "Ask me first on" or "Ask me first off" (a link to the page
  * where it is changed) and Disconnect. Disconnect asks in the row, in one line, and stops the client's access at once.
  */
 export function ClientRows({ connections, onDisconnected }: { connections: AgentConnection[]; onDisconnected: (connectionId: string) => void }) {

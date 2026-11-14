@@ -2,11 +2,16 @@ import type { NotificationSound } from '@flux/contracts';
 import { getPreferences } from './api';
 
 /**
- * The two sounds of an open tab (founder decision, Hubert, 2026-11-12, #1243): "Sound for messages" (direct messages, mentions and
- * questions), off by default, and "Sound when someone calls me" (one soft chime for a direct call invitation), on by default. They play
+ * The sounds of an open tab, behind one "Sounds" switch (founder decision, Hubert, 2026-11-13, #1419 item 18, which merges #1243's two):
+ * a short tone for direct messages, mentions and questions, and one soft chime for a direct call invitation, on by default. They play
  * only with a notice, which the server sends only when the level lets it through and it is not quiet hours, so both follow those too.
  * Never a loop. The sounds are synthesised (no file): a short soft tone that fades, two notes for a call.
  */
+/** The "Sounds" switch: the switch writes both fields of the stored pair together, and `calls` is the one that is read. */
+export const soundsOn = (sound: NotificationSound) => sound.calls;
+/** What the switch stores: both fields move together. */
+export const soundsChange = (on: boolean): NotificationSound => ({ messages: on, calls: on });
+
 let known: { identity: string; sound: NotificationSound } | null = null;
 let reading: { identity: string; promise: Promise<NotificationSound | null> } | null = null;
 

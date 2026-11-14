@@ -4,10 +4,15 @@ import { pageLeaving, whenPageLive } from '../api/pageLeaving';
 import { useLocation, useParams } from 'react-router';
 import { useLive } from '../live/LiveProvider';
 import type { Details } from './Details';
+import type { CreateHost } from '../create/CreateWindow';
+import type { Notices } from '../notifications/Notices';
+import { NOTICE_EVENT, STALE_MS, eventAge } from '../notifications/noticeEvents';
+import { useStreamEvents } from '../api/stream';
+import type { StreamEvent } from '@flux/contracts';
 import { ReloadRecovery } from './ReloadRecovery';
 import { useShellActions } from './shellContext';
 import { useShellData } from './data';
-import { placeOfPath, useRecentPlaces } from '../search/recent';
+import { placeIdentity, placeOfPath, useRecentPlaces } from '../search/recent';
 import { DetailsSkeleton, JumpSkeleton } from './SurfaceSkeletons';
 import { conversationPage, preloadProjectViews } from './viewChunks';
 
@@ -44,6 +49,11 @@ function Surface<P extends object>({ of, props, fallback }: { of: Deferred<P>; p
   if (failure) throw failure.error;
   return Loaded ? createElement(Loaded, props) : fallback;
 }
+// The Create window (its tabs, fields and the New space form) is not part of the first visit's code (#1428): it comes with the other surfaces,
+// and at once on a press, so it is here before a click on New ends.
+const createWindow = deferred<ComponentProps<typeof CreateHost>>(async () => (await import('../create/CreateWindow')).CreateHost);
+// The notice card's code (#1243) comes when the browser is idle, or at once when the stream announces a notice before that.
+const notices = deferred<ComponentProps<typeof Notices>>(async () => (await import('../notifications/Notices')).Notices);
 const StageContent = lazy(async () => ({ default: (await import('../live/LiveStage')).LiveStage }));
 
 /**
@@ -63,6 +73,8 @@ function preloadSurfaces() {
   void details.download().catch(() => { preloaded = false; });
   void search.download().catch(() => { preloaded = false; });
   void liveBar.download().catch(() => { preloaded = false; });
+  void createWindow.download().catch(() => { preloaded = false; });
+  void notices.download().catch(() => { preloaded = false; });
   // A space opens on its conversation, so its code is here before the first move into one (#1178).
   void conversationPage().catch(() => { preloaded = false; });
 }
@@ -135,7 +147,8 @@ export function DeferredJumpTo({ open, onClose, userId }: JumpToProps) {
   const phone = useMediaQuery(MEDIA.phone);
   const { projects, directMessages } = useShellData();
   const recent = useRecentPlaces(userId);
-  const here = placeOfPath(useLocation().pathname)?.key;
+  const hereKey = placeOfPath(useLocation().pathname)?.key;
+  const here = hereKey === undefined ? undefined : placeIdentity(hereKey);
   const [requested, setRequested] = useState(open);
   if (open && !requested) setRequested(true);
   // A body of its own each time the dialog opens, kept through its exit: the content stays mounted while the dialog fades out, so it
@@ -147,7 +160,7 @@ export function DeferredJumpTo({ open, onClose, userId }: JumpToProps) {
   if (!requested) return null;
   const closer = <Button variant="quiet" onClick={onClose}>Close search</Button>;
   // The recent places the dialog will list (up to four, not the one in view, only those that still exist): what sizes its first list.
-  const places = recent.filter((place) => place.key !== here && (!place.key.startsWith('project:') || projects.some((project) => project.id === place.key.split(':')[1]))
+  const places = recent.filter((place) => placeIdentity(place.key) !== here && (!place.key.startsWith('project:') || projects.some((project) => project.id === place.key.split(':')[1]))
     && (!place.key.startsWith('dm:') || directMessages.some((dm) => dm.id === place.key.split(':')[1]))).slice(0, 4).length;
   // One dialog, once: the code of Search loads inside it, so ⌘K never dims, undims and dims again. Once requested it stays
   // mounted, so its own exit animation and focus restoration stay intact.
@@ -169,6 +182,58 @@ export function DeferredLiveBar() {
   if (shown && !requested) setRequested(true);
   if (!requested) return null;
   return <SurfaceBoundary label="Call"><Surface of={liveBar} props={{}} fallback={null} /></SurfaceBoundary>;
+}
+
+/**
+ * The one Create window (#345), mounted when something first asks for it and kept, so its own exit and focus return stay intact. The window
+ * appears with its content in one piece (its size and styles come with its code), so a request that comes before the code has arrived opens it a
+ * moment later and never in a size it then changes; the code is fetched on the first press and when the browser is idle.
+ */
+export function DeferredCreateHost(props: ComponentProps<typeof CreateHost>) {
+  const { request, onClose } = props;
+  const phone = useMediaQuery(MEDIA.phone);
+  const [requested, setRequested] = useState(request !== null);
+  if (request !== null && !requested) setRequested(true);
+  if (!requested) return null;
+  const wrap = (content: ReactNode) => <Overlay open={request !== null} onClose={onClose} placement={phone ? 'bottom' : 'center'} label="New">{content}<Button variant="quiet" onClick={onClose}>Close</Button></Overlay>;
+  return <SurfaceBoundary label="Create" wrap={wrap}><Surface of={createWindow} props={props} fallback={null} /></SurfaceBoundary>;
+}
+
+/**
+ * In-app notices (#1243) without their code in the first visit (#1428). Until the card's code is here this listens for the stream's notices
+ * (the ones the card would show: not older than a minute, not heard while the tab was hidden), asks for the code at once when one comes, and
+ * hands the card what it heard meanwhile. With the code here (it comes while the browser is idle, a moment after the shell is up) the card
+ * hears the stream itself, as it always did.
+ */
+export function DeferredNotices(props: Omit<ComponentProps<typeof Notices>, 'first'>) {
+  const [here, setHere] = useState(() => notices.loaded() !== null);
+  const [heard, setHeard] = useState<StreamEvent[]>([]);
+  useEffect(() => {
+    if (here) return undefined;
+    return whenIdle(() => { notices.download().then(() => setHere(true), () => undefined); });
+  }, [here]);
+  if (here) return <SurfaceBoundary label="Notices"><Surface of={notices} props={{ ...props, first: heard }} fallback={null} /></SurfaceBoundary>;
+  return <NoticeListener identity={props.identity} onNotice={(event) => {
+    setHeard((events) => [...events, event]);
+    notices.download().then(() => setHere(true), () => undefined);
+  }} />;
+}
+
+/** Hears the stream for notices while the card's code is on its way; it renders nothing. */
+function NoticeListener({ identity, onNotice }: { identity: string; onNotice: (event: StreamEvent) => void }) {
+  // Events held while the tab was hidden arrive when it shows again, before this listener hears that it shows (the stream's own listener
+  // runs first): they were for push and the Inbox, not for a card now.
+  const hidden = useRef(typeof document !== 'undefined' && document.visibilityState === 'hidden');
+  useEffect(() => {
+    const onVisibility = () => { hidden.current = document.visibilityState === 'hidden'; };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, []);
+  useStreamEvents(identity, (event) => {
+    const age = eventAge(event.createdAt);
+    if (NOTICE_EVENT.test(event.kind) && !hidden.current && age <= STALE_MS) onNotice(event);
+  });
+  return null;
 }
 
 export function DeferredLiveStage() {

@@ -34,6 +34,8 @@ export interface SketchMapProps {
   hint: ReactNode;
   /** What a local client changed on this map, with its change line and Undo (#868): in the dock, whose height the map reserves, so it never covers a thought. */
   changes?: ReactNode;
+  /** The phone's one-time line "Connect and arrange on a computer" (S15): shown until this is called, which remembers that it was seen; null once it was. */
+  onDismissComputerNote?: (() => void) | null;
   /** Map/List remains reachable in the phone's named Map options sheet. */
   viewModes: ReactNode;
   bar: SelectionTools;
@@ -991,7 +993,7 @@ export function SketchMap(props: SketchMapProps) {
       <button type="button" className="sk-zoom__level" aria-label={`Zoom ${Math.round(zoom * 100)}%, reset to 100%`} onClick={() => zoomAt(1)}>{Math.round(zoom * 100)}%</button>
       <button type="button" className="sk-zoom__step" aria-label="Zoom in" data-tip="Zoom in" disabled={zoom >= ZOOMS[ZOOMS.length - 1]!} onClick={() => zoomAt(zoomIn(zoom))}><Icon name="plus" size={14} /></button>
       <span className="sk-div" aria-hidden="true" />
-      <button type="button" className="sk-zoom__fit" aria-label="Fit the sketch to the view" onClick={() => fit()}>Fit</button>
+      <button type="button" className="sk-zoom__fit" aria-label="Fit the map to the view" onClick={() => fit()}>Fit</button>
     </div>
   );
 
@@ -1134,7 +1136,8 @@ export function SketchMap(props: SketchMapProps) {
             }}><Icon name="more" size={16} />Thought actions</button> : null}
             {props.bar.canUndo ? <button type="button" className="sk-undo" aria-label="Undo" onClick={props.bar.onUndo}><Icon name="undo" size={16} />Undo</button> : null}
           </div>
-          <p className="sk-phone__note"><Icon name="monitor" size={16} />Connect and arrange on a computer</p>
+          {props.onDismissComputerNote ? <p className="sk-phone__note"><Icon name="monitor" size={16} />Connect and arrange on a computer
+            <IconButton icon="x" size={14} label="Dismiss" className="sk-phone__note-x" onClick={props.onDismissComputerNote} /></p> : null}
           <button type="button" className="sk-fab sk-add" onClick={props.onAddThought}><Icon name="plus" size={18} />Add a thought</button>
           </> : null}
         </div>

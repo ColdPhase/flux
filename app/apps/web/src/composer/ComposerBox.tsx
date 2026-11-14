@@ -1,5 +1,5 @@
 import { useImperativeHandle, useLayoutEffect, useRef, type ReactNode, type Ref, type KeyboardEvent, type ClipboardEvent, type TextareaHTMLAttributes } from 'react';
-import { Icon, useToast } from '../ui';
+import { Icon, publishHighestTopEdge, useToast } from '../ui';
 import { AttachButton } from './Files';
 import type { ComposerState } from './draft';
 import { formatKey } from './formatKeys';
@@ -33,6 +33,8 @@ export function ComposerBox({ id, label, placeholder, value, onChange, onKeyDown
   const own = useRef<HTMLTextAreaElement>(null);
   useImperativeHandle(fieldRef, () => own.current as HTMLTextAreaElement);
   const hint = useFittingHint(own, typeof placeholder === 'string' ? [placeholder] : placeholder);
+  // A toast stands above the highest composer on the screen, never on its hint (#1424).
+  useLayoutEffect(() => { const box = own.current?.closest('.composer__box'); return box ? publishHighestTopEdge(box, '--ui-composer-inset') : undefined; }, []);
   // A place that measures its field's height as it is written to (an empty one is measured with the longer hint) lets the shorter hint size it again.
   useLayoutEffect(() => { const el = own.current; if (el && !el.value) el.style.height = ''; }, [hint]);
   // A pasted screenshot, picture or file attaches to the draft like the paperclip; pasted text stays text.

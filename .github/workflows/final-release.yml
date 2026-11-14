@@ -617,7 +617,7 @@ jobs:
           $upgrade_line
 
           Install: download flux.tar.gz and SHA256SUMS, check them (sha256sum --ignore-missing -c SHA256SUMS), unpack, and run ./flux up in the flux folder; it pulls exactly the images above. Upgrade: ./flux upgrade. Guide: https://github.com/ColdPhase/flux/blob/$RELEASE_VERSION/docs/operations/install.md
-          SHA256SUMS is signed keylessly by this workflow (SHA256SUMS.sigstore.json); ./flux upgrade checks the signature when cosign is installed.
+          SHA256SUMS is signed keylessly by this workflow (SHA256SUMS.sigstore.json); ./flux upgrade always checks the signature, with cosign on the host or the pinned cosign image through Docker, and refuses and changes nothing when it cannot.
           The agent runtime (Claude Code is not included in any image), built-in HTTPS, calls and local embeddings are switches in docker/.env; their images are pinned by digest in the folder's Compose files and in release.json.
           This draft requires independent packaged install, upgrade and restore review before the version tag and release are published.
           EOF
