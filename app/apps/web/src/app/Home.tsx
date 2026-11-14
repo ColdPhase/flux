@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useState, type MouseEvent, type ReactNode } from 'react';
-import { Link } from 'react-router';
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react';
+import { Link, useNavigate } from 'react-router';
 import type { NeedsYouItem, ReturnNextStep, WorkItem } from '@flux/contracts';
-import { Button, Icon, Kreska, MEDIA, StatusGlyph, useMediaQuery } from '../ui';
+import { Button, Icon, Kreska, MEDIA, StatusGlyph, useMediaQuery, useToast } from '../ui';
 import { Face, kindWord } from '../notifications/NeedsYouCard';
 import { useNeedsYou } from '../notifications/needsYou';
 import { getReturnSummary, saveReturnPoint } from '../returns/api';
@@ -18,7 +18,9 @@ import './home.css';
 import { RefLink } from '../place/origin';
 import { PushOffer } from '../notifications/PushOffer';
 import { enablePushNotifications, getPushState } from '../pwa/push';
-import type { FirstStep, FirstSteps as FirstStepsRead } from '@flux/contracts';
+import type { FirstStep, FirstStepJoined, FirstSteps as FirstStepsRead } from '@flux/contracts';
+import { openDm } from '../api/direct-messages';
+import { attemptKeys, firstName } from '../people/api';
 import { getFirstSteps, hideFirstSteps } from './firstSteps';
 
 const dateFormat = new Intl.DateTimeFormat(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
@@ -223,7 +225,7 @@ function WaitingItem({ row }: { row: WaitingRow }) {
   return <HomeRow to="/inbox" state={{ select: item.key }} face={<Face item={item} />} title={item.title} meta={meta} metaFirst />;
 }
 
-type StepRow = { key: FirstStep | 'push'; icon: 'edit' | 'people' | 'spark' | 'chat' | 'person' | 'bell'; title: string; meta: string; to?: string; state?: unknown };
+type StepRow = { key: FirstStep | 'push' | `joined:${string}`; icon: 'edit' | 'people' | 'spark' | 'chat' | 'person' | 'bell'; title: string; meta: string; to?: string; state?: unknown };
 
 const STEP_ROWS: Record<FirstStep, (read: FirstStepsRead) => StepRow> = {
   name_company: () => ({ key: 'name_company', icon: 'edit', title: 'Name your company', meta: 'Shown on the sign-in page and in emails', to: '/settings/company?name=1' }),
@@ -234,11 +236,28 @@ const STEP_ROWS: Record<FirstStep, (read: FirstStepsRead) => StepRow> = {
 };
 
 /**
+ * The card's rows, at most three: the steps left, with the people who joined with the person's links ("Nia joined · Say hello", #1424) in the place of
+ * "Invite people", which is done once a link was made. The steps come first, so a person who joined never pushes one out.
+ */
+function firstStepRows(read: FirstStepsRead): StepRow[] {
+  const steps = read.steps.map((step) => STEP_ROWS[step](read));
+  const room = Math.max(0, 3 - steps.length);
+  const names = (person: FirstStepJoined) => read.joined.filter((other) => firstName(other.name) === firstName(person.name)).length > 1 ? person.name : firstName(person.name);
+  const joined = read.joined.slice(0, room).map((person): StepRow => ({ key: `joined:${person.userId}`, icon: 'chat', title: `${names(person)} joined`, meta: 'Say hello' }));
+  const lead = steps.findIndex((row) => row.key !== 'name_company');
+  return [...steps.slice(0, lead < 0 ? steps.length : lead), ...joined, ...(lead < 0 ? [] : steps.slice(lead))];
+}
+
+/**
  * First steps (founder decisions, Hubert, 2026-11-13, #1438; docs/design/final/README.md "Home"): one card for every new person but a guest
  * (the server decides who is new and still has a step left), at most three rows by role, each gone once done, and one quiet Hide for good. A member's third row turns notifications on for this device
  * where push is available and it is not on yet: the one-time offer then waits (`onPushRow`).
  */
-function FirstStepsCard({ phone, onPushRow }: { phone: boolean; onPushRow: (shown: boolean) => void }) {
+function FirstStepsCard({ phone, workspaceId, onPushRow }: { phone: boolean; workspaceId: string; onPushRow: (shown: boolean) => void }) {
+  const navigate = useNavigate();
+  const toast = useToast();
+  const keys = useRef(attemptKeys());
+  const [greeting, setGreeting] = useState<string | null>(null);
   const [read, setRead] = useState<FirstStepsRead | null>(null);
   const [pushKey, setPushKey] = useState<string | null>(null);
   const [hidden, setHidden] = useState(false);
@@ -254,13 +273,23 @@ function FirstStepsCard({ phone, onPushRow }: { phone: boolean; onPushRow: (show
     }, () => undefined);
     return () => controller.abort();
   }, []);
-  const rows: StepRow[] = read && !hidden ? read.steps.map((step) => STEP_ROWS[step](read)) : [];
+  const rows: StepRow[] = read && !hidden ? firstStepRows(read) : [];
   if (read && !hidden && pushKey) rows.push({ key: 'push', icon: 'bell', title: `Get notifications on this ${phone ? 'phone' : 'computer'}`, meta: 'When someone writes to you or calls' });
   const shown = rows.slice(0, 3);
   const pushShown = shown.some((row) => row.key === 'push');
   useEffect(() => { onPushRow(pushShown); }, [onPushRow, pushShown]);
   if (!shown.length) return null;
   const hide = () => { setHidden(true); void hideFirstSteps().catch(() => undefined); };
+  /** "Say hello" opens the direct message with the person who joined (made now if there is none); that is what takes the row away. */
+  const sayHello = (userId: string) => {
+    if (greeting) return;
+    setGreeting(userId);
+    openDm(workspaceId, [userId], keys.current.for(userId)).then((dm) => {
+      keys.current.done();
+      setRead((current) => current && { ...current, joined: current.joined.filter((person) => person.userId !== userId) });
+      navigate(`/dm/${dm.id}`);
+    }, () => { setGreeting(null); toast({ message: 'Couldn’t open the conversation. Try again.' }); });
+  };
   const turnOn = (publicKey: string) => {
     // Called in the tap itself: the browser asks only after a gesture.
     const pending = enablePushNotifications(publicKey);
@@ -279,6 +308,9 @@ function FirstStepsCard({ phone, onPushRow }: { phone: boolean; onPushRow: (show
           // ask with, it opens Settings › Notifications, where the same switch is.
           <HomeRow key={row.key} to="/settings/notifications" face={<span className="nyc__face nyc__face--icon"><Icon name={row.icon} size={16} /></span>}
             title={row.title} meta={row.meta} onClick={(event) => { if (!pushKey) return; event.preventDefault(); if (!asking) turnOn(pushKey); }} />
+        ) : row.key.startsWith('joined:') ? (
+          <HomeRow key={row.key} to="/dm" face={<span className="nyc__face nyc__face--icon"><Icon name={row.icon} size={16} /></span>} title={row.title} meta={row.meta}
+            onClick={(event) => { event.preventDefault(); sayHello(row.key.slice('joined:'.length)); }} />
         ) : (
           <HomeRow key={row.key} to={row.to!} state={row.state} face={<span className="nyc__face nyc__face--icon"><Icon name={row.icon} size={16} /></span>}
             title={row.title} meta={row.meta} />
@@ -315,7 +347,7 @@ export function Home() {
       {phone ? <><WorkingAssistant /><HomeWorkingAgents /></> : null}
 
       {/* #1438: first steps for every new person but a guest, above what waits (it replaces the new member's empty Home line). */}
-      {firstRun ? null : <FirstStepsCard phone={phone} onPushRow={setPushRow} />}
+      {firstRun || !workspace ? null : <FirstStepsCard phone={phone} workspaceId={workspace.id} onPushRow={setPushRow} />}
 
       {firstRun ? (
         <section className="home__card home__first" aria-labelledby="home-first">

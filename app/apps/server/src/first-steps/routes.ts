@@ -17,7 +17,7 @@ export async function firstStepRoutes(app: FastifyInstance, { db, sessions }: Op
   const { principal } = commandRunner(db, sessions);
   app.get(ME_FIRST_STEPS_PATH, async (request, reply) => {
     const actor = await principal(request);
-    const steps: FirstSteps = actor.kind === 'human' ? await readFirstSteps(actor.id, firstStepRows(db)) : { steps: [], offerPush: false, everyoneSpaceId: null };
+    const steps: FirstSteps = actor.kind === 'human' ? await readFirstSteps(actor.id, firstStepRows(db)) : { steps: [], joined: [], offerPush: false, everyoneSpaceId: null };
     return reply.header('cache-control', 'no-store').send(steps);
   });
   app.post(ME_FIRST_STEPS_HIDE_PATH, async (request, reply) => {

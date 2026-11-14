@@ -29,6 +29,7 @@ PEOPLE = {
     "gus": ("Gus Lind", f"gus.steps+{STAMP}@example.test"),
     "hal": ("Hal Berg", f"hal.steps+{STAMP}@example.test"),
     "ida": ("Ida Ahl", f"ida.steps+{STAMP}@example.test"),
+    "nia": ("Nia Lund", f"nia.steps+{STAMP}@example.test"),
 }
 
 
@@ -132,6 +133,38 @@ class FirstStepsJourney(unittest.TestCase):
         card.get_by_role("link", name=re.compile("^Connect AI")).click()
         expect(page).to_have_url(re.compile(r"/settings/agents\?connect=1$"))
         expect(page.get_by_role("dialog", name="Connect your AI")).to_be_visible()
+
+    def test_01b_a_person_who_joined_with_her_link_is_a_row_that_opens_a_direct_message(self) -> None:
+        """#1438 / #1424: "Nia joined · Say hello" stands where "Invite people" was, opens a direct message with Nia, and leaves once it is open."""
+        owner = self.browser.new_context(base_url=ORIGIN, service_workers="block", storage_state=self.states["fia"])
+        self.addCleanup(owner.close)
+        links = owner.request.get(f"/api/v1/workspaces/{self.ids['company']}/invites")
+        self.assertEqual(links.status, 200, links.text())
+        token = links.json()[0]["link"].split("#", 1)[1]
+        context = self.browser.new_context(base_url=ORIGIN, service_workers="block", storage_state=self.states["nia"])
+        self.addCleanup(context.close)
+        joined = context.request.post("/api/v1/invites/accept", data={"token": token}, headers={"origin": ORIGIN})
+        self.assertEqual(joined.status, 200, joined.text())
+        for phone in (False, True):
+            with self.subTest(phone=phone):
+                page = self.page("fia", phone=phone)
+                page.goto("/")
+                card = self.card(page)
+                expect(card.get_by_role("heading", name="First steps")).to_be_visible()
+                expect(card.locator(".home__row-t")).to_have_count(2)
+                self.assertEqual(self.rows(page), ["Nia joined", "Connect AI"], "the person who joined is a row beside the step that is left")
+                expect(card.get_by_role("link", name=re.compile("^Nia joined"))).to_contain_text("Say hello")
+                shot(page, f"first-steps-joined-{'390' if phone else '1440'}-{UI_BROWSER}")
+        page = self.page("fia")
+        page.goto("/")
+        self.card(page).get_by_role("link", name=re.compile("^Nia joined")).click()
+        expect(page).to_have_url(re.compile(r"/dm/[0-9a-f-]{36}$"))
+        expect(page.locator("#dm-composer")).to_be_visible()
+        expect(page.get_by_role("heading", level=1, name="Nia Lund")).to_be_visible()
+        # Opening the conversation is what takes the row away; the step that is left stays.
+        page.goto("/")
+        expect(self.card(page).get_by_role("heading", name="First steps")).to_be_visible()
+        self.assertEqual(self.rows(page), ["Connect AI"])
 
     def test_02_a_new_member_writes_in_everyone_and_adds_a_photo(self) -> None:
         self.add_people()
