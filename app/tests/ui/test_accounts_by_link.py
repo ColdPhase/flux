@@ -103,8 +103,13 @@ class AccountsByLink(unittest.TestCase):
     def test_01b_the_owner_goes_on_to_name_the_company(self) -> None:
         """B-2: "You name the company next." is true: the owner's account leads to Settings › Company with the name field open."""
         page = self.page()
-        self.capabilities(page, setup=True)
-        page.route("**/api/auth/sign-up/email", lambda route: route.fulfill(json={"token": None}))
+        # Setup is open until the account is made; the test answers the sign-up, so it closes the setup then and nobody is signed in.
+        setup = {"open": True}
+        page.route("**/api/v1/auth/capabilities", lambda route: route.fulfill(json={**INSTALL, "setup": setup["open"]}))
+        def made(route: Route) -> None:
+            setup["open"] = False
+            route.fulfill(json={"token": None})
+        page.route("**/api/auth/sign-up/email", made)
         page.goto(f"/setup#{SETUP_TOKEN}")
         page.get_by_label("Name").fill("Owner Person")
         page.get_by_label("Email").fill(f"owner.named+{STAMP}@example.test")

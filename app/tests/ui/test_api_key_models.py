@@ -368,7 +368,7 @@ class ApiKeyModels(unittest.TestCase):
         expect(page.get_by_role("status").filter(has_text="Reading Anthropic’s models…")).to_be_visible()
         page.get_by_role("button", name="Connect", exact=True).click()
         expect(page.get_by_role("alert").filter(has_text="Choose a model first.")).to_be_visible()
-        held[0].continue_()
+        held[0].fulfill(status=200, content_type="application/json", body=json.dumps({"provider": "anthropic", "status": "key_refused", "models": [], "checkedOn": "2026-11-14"}))
         expect(page.get_by_role("alert").filter(has_text="This key was refused by Anthropic.")).to_be_visible()
         expect(page.get_by_text("Choose a model first")).to_have_count(0)
         expect(page.get_by_role("combobox", name="Model")).to_have_count(0)

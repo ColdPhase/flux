@@ -413,7 +413,7 @@ class InboxFinal(unittest.TestCase):
                 break
             page.keyboard.press("j")
         expect(mention).to_have_attribute("aria-current", "true")
-        expect(mention.get_by_role("button", name="Done").locator("kbd")).to_have_text("E")
+        expect(self.item(page, MENTIONED).get_by_role("button", name="Done").locator("kbd")).to_have_text("E")
         page.keyboard.press("e")
         toast = page.get_by_role("status").filter(has_text="Marked done")
         expect(toast).to_be_visible()
