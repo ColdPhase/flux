@@ -10,6 +10,7 @@ import { feedEntries, mergeMessages } from './feed';
 import type { PaneCore } from './paneCore';
 import type { ThreadReading } from './useThreadReading';
 import type { ThreadReplies } from './useThreadReplies';
+import { focusArrival } from '../ui/keys';
 
 interface Options {
   thread: ThreadReplies; reading: ThreadReading; outbox: ReturnType<typeof outboxView>;
@@ -64,7 +65,7 @@ export function useThreadPlace({ me, project, conversation }: PaneCore, { thread
     if (threadRestore) return;
     const feed = scrollRef.current;
     const anchor = arrived ? document.getElementById(`message-${arrived}`) : null;
-    if (anchor && feed?.contains(anchor)) { anchor.scrollIntoView({ block: 'start' }); if (revealed) anchor.focus({ preventScroll: true }); return; }
+    if (anchor && feed?.contains(anchor)) { anchor.scrollIntoView({ block: 'start' }); if (revealed) focusArrival(anchor); return; }
     if (!feed) return;
     if (revealed && unreadLoaded && !unreadPlaced.current) {
       unreadPlaced.current = true;

@@ -4,6 +4,7 @@ import { Icon } from './Icon';
 import { Kreska, type KreskaExpression } from './Kreska';
 import { duration, settle } from './motion';
 import { useSmallMoments } from './smallMoments';
+import { isTyping } from './keys';
 import './moments.css';
 
 export type ToastTone = 'neutral' | 'success' | 'danger';
@@ -263,7 +264,7 @@ export function ToastProvider({ children, scopeKey }: { children: ReactNode; sco
     const onKey = (event: globalThis.KeyboardEvent) => {
       if (event.key.toLowerCase() !== 'z' || event.metaKey || event.ctrlKey || event.altKey || event.defaultPrevented || event.repeat) return;
       const target = event.target as HTMLElement | null;
-      if (target?.closest('input, textarea, select, [role="combobox"], [role="listbox"], [contenteditable="true"], [role="textbox"], [role="menu"]')) return;
+      if (isTyping(target) || target?.closest('[role="menu"]')) return;
       const newest = [...actions.current.keys()].sort((a, b) => b - a)[0];
       if (newest === undefined) return;
       event.preventDefault();

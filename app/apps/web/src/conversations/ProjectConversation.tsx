@@ -1,4 +1,3 @@
-import { useEffect } from 'react';
 import type { ConversationMessage } from '@flux/contracts';
 import { useLoaderData } from 'react-router';
 import { outboxView } from '../composer/draft';
@@ -52,7 +51,7 @@ export function ProjectConversation() {
  * (`useComposerDrafts`, `useComposerMenu`, `useComposerSend`), the assistant (`useAssistantAsk`, `useAskBar`)
  * and the views (`ThreadFeed`, `PaneComposer`).
  */
-function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessageId = null, objects = [], onPosted, onSending, newestRootAt, onThreadSize, focusComposer = false }: PaneProps) {
+function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessageId = null, objects = [], onPosted, onSending, newestRootAt, onThreadSize }: PaneProps) {
   // Touch devices add a line with Enter and send with the button (#189).
   const touch = useMediaQuery(MEDIA.touch);
   const core = usePaneCore(data, variant);
@@ -87,7 +86,6 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   const owners = useAgentOwners(project);
   // The owner's waiting changes (F-027 A3): refreshed when their run moves.
   const changes = useAssistantChanges(conversation?.id ?? null, `${assistant.run?.id ?? ''}:${assistant.run?.status ?? ''}:${assistant.tick}`, !aiOff);
-  useFocusOnOpen(focusComposer, composerId);
 
   if (accessLost) return <div className="pane-scroll"><div className="pane-in project-setup" role="alert"><h2>Space unavailable</h2><p>Your access to this space may have changed. Reload to check current access.</p></div></div>;
   // The root sits at the thread's top (and in the stream); the list holds its replies.
@@ -108,12 +106,4 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
     <PaneComposer core={core} drafts={drafts} menu={menu} actions={actions} ask={ask} askBar={askBar} assistant={assistant} typing={typing}
       readFailure={thread.readFailure} />
   </div>;
-}
-
-/** When the thread opens for a reply, its field takes focus once. */
-function useFocusOnOpen(focusComposer: boolean, composerId: string) {
-  useEffect(() => {
-    if (focusComposer) document.getElementById(composerId)?.focus();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 }

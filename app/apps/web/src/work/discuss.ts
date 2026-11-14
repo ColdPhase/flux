@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import type { ObjectLink } from '@flux/contracts';
 import { useFollow } from '../place/origin';
+import { awaitField } from '../ui/keys';
 import { MEDIA } from '../ui';
 import { getWorkRelations } from './read-api';
 
@@ -23,6 +24,7 @@ export function decisionThread(links: readonly ObjectLink[], decisionId: string)
 export function useDiscussDecision() {
   const follow = useFollow();
   return useCallback(async (projectId: string, decisionId: string, links?: readonly ObjectLink[]) => {
+    awaitField();
     const known = links ?? await getWorkRelations(projectId, { objects: `decision:${decisionId}`, limit: 50 }).then((page) => page.items, () => noLinks);
     const thread = decisionThread(known, decisionId);
     if (thread) {

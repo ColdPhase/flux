@@ -23,6 +23,7 @@ import { useMessageReadingPosition } from '../work/readingPosition';
 import { useLeftPlace, useReturnPlace } from './returnPlace';
 import { MessageDay } from '../app/messageParts';
 import { NewBelow, UnreadDivider, countBelow, openAtUnread, useNewBelow } from '../app/unreadReading';
+import { focusArrival } from '../ui/keys';
 
 function merge(current: DmMessage[], incoming: DmMessage[]) {
   const byId = new Map(current.map((message) => [message.id, message]));
@@ -143,7 +144,7 @@ export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, others, writ
   }, [target, opening]);
   useLayoutEffect(() => {
     const anchor = target && targetLoaded ? document.getElementById(`thread-message-${target}`) : null;
-    if (anchor) { anchor.scrollIntoView({ block: 'center' }); anchor.focus({ preventScroll: true }); }
+    if (anchor) { anchor.scrollIntoView({ block: 'center' }); focusArrival(anchor); }
   }, [target, targetLoaded]);
   const rootElementId = thread ? `thread-message-${thread.root.id}` : null;
   const returned = useReturnPlace({ wanted, loaded: !opening, have: (id) => id === rootElementId || shown.some((message) => `thread-message-${message.id}` === id), hasOlder: !!older, seek: seekPlace });

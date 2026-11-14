@@ -11,6 +11,7 @@ import { announceInboxChange, getInboxItem, markInboxRead } from './api';
 import { playSound, soundPreferences, soundsOn } from './sound';
 import { markPushOfferReady } from './PushOffer';
 import { NOTICE_EVENT, STALE_MS, eventAge } from './noticeEvents';
+import { awaitField } from '../ui/keys';
 import './notices.css';
 
 /**
@@ -248,6 +249,7 @@ export function Notices({ identity, meName, placeName, first }: { identity: stri
     readAll(notice.items);
     dismiss();
     // `/inbox/:id` reads the item and goes where it points, as a push's tap does; the state reaches the place (Reply focuses its composer).
+    if (focusComposer) awaitField();
     navigate(`/inbox/${newest.id}`, focusComposer ? { state: { focusComposer: true } } : undefined);
   }, [notice, readAll, dismiss, navigate]);
   const join = useCallback(async () => {

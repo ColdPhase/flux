@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useFollow } from '../place/origin';
+import { awaitField } from '../ui/keys';
 import type { NeedsYouItem, ResolveNeedsYouCommand } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { useShellActions } from '../app/shellContext';
@@ -129,9 +130,10 @@ export function useNeedsYouActions(queue: Queue): CardHandlers {
       } } });
     },
 
-    open(item: NeedsYouItem) {
+    open(item: NeedsYouItem, reply = false) {
       if (item.kind === 'decision' && item.decision && item.project) openDetails({ kind: 'decision', id: item.decision.id, projectId: item.project.id });
       else if (item.kind === 'blocked' && item.blocked && item.project) openDetails({ kind: 'work', id: item.blocked.workId, projectId: item.project.id });
+      else if (reply) { awaitField(); void navigate(item.url, { state: { focusComposer: true } }); }
       else void navigate(item.url);
     },
 

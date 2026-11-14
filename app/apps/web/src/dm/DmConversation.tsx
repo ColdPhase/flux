@@ -39,6 +39,7 @@ import { useOriginPanelBack } from '../place/origin';
 import { useReturning } from '../place/memory';
 import { useMessageReadingPosition } from '../work/readingPosition';
 import { useLeftPlace, useReturnPlace } from './returnPlace';
+import { awaitField, focusArrival, focusField } from '../ui/keys';
 
 /**
  * One direct message (#107): a private conversation with its audience always in view. Messages
@@ -127,11 +128,11 @@ function DmContent({ initial }: { initial: Dm }) {
   const [receiptTick, setReceiptTick] = useState(0);
   const opener = useRef<string | null>(null);
   const [replyFocus, setReplyFocus] = useState(false);
-  // A notice's Reply (#1243) arrives asking to write: the composer takes focus, once per arrival.
-  useEffect(() => {
+  // A notice's or the Inbox's Reply (#1243, C-1) arrives asking to write: the composer takes focus, once per arrival, and keeps it from the
+  // message the link names (`focusArrival`).
+  useLayoutEffect(() => {
     if (!(location.state as { focusComposer?: boolean } | null)?.focusComposer) return undefined;
-    const frame = requestAnimationFrame(() => document.getElementById('dm-composer')?.focus({ preventScroll: true }));
-    return () => cancelAnimationFrame(frame);
+    return focusField('dm-composer');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.key]);
   // #537: the task copy being previewed. Nothing is written until it is confirmed there.
@@ -264,7 +265,7 @@ function DmContent({ initial }: { initial: Dm }) {
   const stopUnread = useRef<(() => void) | null>(null);
   useLayoutEffect(() => {
     const anchor = arrived ? document.getElementById(`message-${arrived}`) : null;
-    if (anchor) { anchor.scrollIntoView({ block: 'start' }); anchor.focus({ preventScroll: true }); return; }
+    if (anchor) { anchor.scrollIntoView({ block: 'start' }); focusArrival(anchor); return; }
     // A return positions itself, once its message is loaded; everything else opens on the latest, or on what is new.
     if (returned.pending || returned.restore || waitingForUnread) return;
     const el = feedRef.current;
@@ -379,7 +380,11 @@ function DmContent({ initial }: { initial: Dm }) {
 
   function openThread(rootId: string, reply: boolean) {
     opener.current = rootId;
-    setReplyFocus(reply);
+    // A thread is opened to reply: on a computer its field takes focus, so what is typed next is the reply, never a shortcut (C-1). On a
+    // touch screen only Reply does, as a focused field would raise the keyboard over the thread being read.
+    const write = reply || !touch;
+    if (write) awaitField();
+    setReplyFocus(write);
     const next = new URLSearchParams(params);
     next.set('thread', rootId);
     // Opening another thread replaces the open one, so closing is still one step back to the conversation.

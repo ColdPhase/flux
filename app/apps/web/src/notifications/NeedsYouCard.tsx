@@ -13,8 +13,8 @@ export interface CardHandlers {
   accept(item: NeedsYouItem): void;
   done(item: NeedsYouItem): void;
   snooze(item: NeedsYouItem, choice: SnoozeChoice): void;
-  /** Opens the item in the detail panel or sheet, or at its source. */
-  open(item: NeedsYouItem): void;
+  /** Opens the item in the detail panel or sheet, or at its source. `reply`: Reply opens its source with the reply field focused (C-1). */
+  open(item: NeedsYouItem, reply?: boolean): void;
   discuss(item: NeedsYouItem): void;
   unblock(item: NeedsYouItem): void;
   /** Approve all: everything one agent run waits for (F-036 AG-7), in the owner's own session. */
@@ -134,7 +134,7 @@ export function NeedsYouCard({ item, selected = false, compact = false, list = f
         : item.proposal ? <Button variant="secondary" onClick={() => handlers.open(item)}>Review</Button>
         : run ? <Button variant="secondary" onClick={() => handlers.applyChanges(item)}>Approve all</Button>
         : item.call ? <JoinCall call={item.call} variant="secondary" />
-        : <Button variant="secondary" onClick={() => handlers.open(item)}>{item.reason === 'invitation' ? 'Open' : 'Reply'}</Button>}
+        : <Button variant="secondary" onClick={() => handlers.open(item, item.reason !== 'invitation')}>{item.reason === 'invitation' ? 'Open' : 'Reply'}</Button>}
     </div>
   ) : null;
   const full = !row;
@@ -170,7 +170,7 @@ export function NeedsYouCard({ item, selected = false, compact = false, list = f
           <Button variant="secondary" onClick={() => handlers.open(item)}>Open</Button>
         </>
       ) : (
-        <Button variant="secondary" onClick={() => handlers.open(item)}>{item.reason === 'invitation' ? 'Open' : 'Reply'}</Button>
+        <Button variant="secondary" onClick={() => handlers.open(item, item.reason !== 'invitation')}>{item.reason === 'invitation' ? 'Open' : 'Reply'}</Button>
       )}
       {!decision && !item.proposal && !touch ? <span className="nyc__quiet"><NotNowButton variant="quiet" onClick={notNow} /><Button variant="quiet" aria-keyshortcuts="E" onClick={() => handlers.done(item)}>Done</Button></span> : null}
     </div>

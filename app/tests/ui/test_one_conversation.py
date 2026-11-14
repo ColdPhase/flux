@@ -291,7 +291,8 @@ class OneConversationJourney(unittest.TestCase):
         expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}/conversations/{self.ids['c1']}$"))
         thread = self.thread(page)
         expect(thread).to_be_visible()
-        expect(thread.locator(".ui-panel__body")).to_be_focused()
+        # A thread is opened to reply: on a computer its reply field has the focus, so typing is the reply, never a shortcut (C-1).
+        expect(page.locator("#thread-composer")).to_be_focused()
         expect(thread.locator(".thread__root")).to_contain_text(OPENING)
         expect(thread.locator(f"#message-{self.ids['first']}")).to_contain_text(FIRST_REPLY)
         expect(thread.locator(f"#message-{self.ids['second']}")).to_contain_text(SECOND_REPLY)

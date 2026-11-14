@@ -4,7 +4,7 @@ import { Morph, StatusGlyph } from '../ui';
 import { DateField } from '../ui/DateField';
 import { STATUS_LABEL, TASK_STATES, dueLabel, statusPhrase } from './format';
 import { PropertyMenu } from './PropertyMenu';
-import { inComposer } from '../ui/keys';
+import { isTyping } from '../ui/keys';
 
 // The parts of the task panel that are edited where they are read (F-026 S9, S10): the state with
 // keys 1-5, and the title. Neither has a Save button; both save when the person is done.
@@ -20,7 +20,7 @@ export function useStateKeys(enabled: boolean, choose: (status: WorkStatus) => v
       const status = TASK_STATES[Number(event.key) - 1];
       if (!status || event.key.length !== 1) return;
       const target = event.target as HTMLElement | null;
-      if (target?.closest('input, textarea, select, [role="combobox"], [role="listbox"], [contenteditable="true"], [role="dialog"]:not(#details)') || inComposer(target)) return;
+      if (isTyping(target) || target?.closest('[role="dialog"]:not(#details)')) return;
       // Only while the focus is in the panel or nowhere in particular.
       if (target && target !== document.body && !target.closest('#details')) return;
       event.preventDefault();

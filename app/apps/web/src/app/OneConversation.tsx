@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useRef, useState, type ComponentType, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ComponentType, type ReactNode } from 'react';
 import { useLocation, useNavigate, useRevalidator } from 'react-router';
 import type { Conversation, ConversationMessage, ConversationRoot, NativeWorkRow, ObjectNotice } from '@flux/contracts';
 import type { MessageWorkPreview } from '../work/message-associations';
 import { ApiError } from '../api/client';
-import { PanelMeta } from '../ui';
+import { MEDIA, PanelMeta, useMediaQuery } from '../ui';
+import { awaitField, focusField } from '../ui/keys';
 import { ThreadFollow } from '../notifications/ThreadFollow';
 import { agentAuthorOwner, useAgentOwners } from '../agents/owners';
 import { useRegisterLiveHere } from '../live/LiveProvider';
@@ -47,12 +48,10 @@ export interface PaneProps {
   newestRootAt?: string;
   /** thread: its latest size, so the stream's reply count matches it. */
   onThreadSize?: (conversationId: string, replyCount: number, lastReplyAt: string | null) => void;
-  /** thread: the person chose Reply, or a link asked to write a reply. */
-  focusComposer?: boolean;
 }
 
 /** `found`: a search result brought the person to this message (#1424). */
-interface NavState { fromStream?: boolean; backToStream?: boolean; focusComposer?: boolean; keepPanel?: boolean; sourceOf?: string; found?: boolean }
+interface NavState { fromStream?: boolean; backToStream?: boolean; focusComposer?: boolean; keepPanel?: boolean; sourceOf?: string; found?: boolean; origin?: unknown }
 
 /**
  * One project conversation (UI116-1, 2026-10-02): the stream of roots with its composer, and the open
@@ -121,26 +120,36 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
   useRegisterLiveHere({ projectId: project.id, context: { type: 'space', id: project.id }, label: project.name }, null);
 
   const opener = useRef<string | null>(null);
+  // A thread opened from the stream is opened to reply: on a computer its reply field takes focus, so what is typed next is the reply and never
+  // a shortcut (C-1). On a touch screen only Reply does, as a focused field would raise the keyboard over the thread being read.
+  const touch = useMediaQuery(MEDIA.touch);
   const open = useCallback((item: ConversationRoot, reply: boolean) => {
     opener.current = item.message.id;
+    const write = reply || !touch;
     if (thread && item.conversationId === thread.id) {
       // The thread is already this one: bring its panel back if something closed or covered it, then go to it.
       reopenPanel(`thread:${thread.id}`);
-      document.getElementById(reply ? 'thread-composer' : 'details')?.focus();
+      document.getElementById(write ? 'thread-composer' : 'details')?.focus();
       return;
     }
+    if (write) awaitField();
     // Switching threads replaces the open one, so closing still returns to the stream in one step.
     const backToStream = thread ? state?.backToStream === true : true;
     navigate(`/projects/${project.id}/conversations/${item.conversationId}`,
-      { state: { fromStream: true, backToStream, focusComposer: reply } satisfies NavState, replace: !!thread && backToStream });
-  }, [navigate, project.id, reopenPanel, state?.backToStream, thread]);
+      { state: { fromStream: true, backToStream, focusComposer: write } satisfies NavState, replace: !!thread && backToStream });
+  }, [navigate, project.id, reopenPanel, state?.backToStream, thread, touch]);
+  // Closing never adds an entry (A-1): a thread opened from the stream is one step back; one a link opened (the Inbox's Reply, a search
+  // result, a notice) gives its entry to the conversation, with the origin it was followed from. Back, and the header's "‹", then leave the
+  // conversation for that origin instead of opening the thread again.
+  const backToStream = state?.backToStream === true;
+  const origin = state?.origin;
   const close = useCallback((options?: { keepPanel?: boolean }) => {
     if (!thread) return;
     if (!opener.current) opener.current = root?.message.id ?? null;
     setClosing(thread.id);
-    if (state?.backToStream && !options?.keepPanel) navigate(-1);
-    else navigate(`/projects/${project.id}`, { state: { fromStream: true, ...(options?.keepPanel ? { keepPanel: true } : {}) } satisfies NavState });
-  }, [navigate, project.id, root?.message.id, state?.backToStream, thread]);
+    if (backToStream && !options?.keepPanel) navigate(-1);
+    else navigate(`/projects/${project.id}`, { replace: true, state: { fromStream: true, ...(options?.keepPanel ? { keepPanel: true } : {}), ...(origin ? { origin } : {}) } satisfies NavState });
+  }, [navigate, project.id, root?.message.id, backToStream, origin, thread]);
   // Closing gives focus back to the root's replies, where the person opened the thread.
   useEffect(() => {
     if (thread || !opener.current) return;
@@ -172,11 +181,11 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
     // Only a new arrival (a navigation) asks for it, never a re-render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.key]);
-  // A link that asks to write (Discuss on a decision, #763 D3) focuses the field it lands on, also when that pane was already open.
-  useEffect(() => {
+  // A link that asks to write (Reply, in the stream or the Inbox; Discuss on a decision, #763 D3) focuses the field it lands on, also when that
+  // pane was already open, and keeps it: the message the link names is marked, but it does not take the focus from the field (`focusArrival`).
+  useLayoutEffect(() => {
     if (!state?.focusComposer) return;
-    const frame = requestAnimationFrame(() => document.getElementById(thread ? 'thread-composer' : 'project-composer')?.focus({ preventScroll: true }));
-    return () => cancelAnimationFrame(frame);
+    return focusField(thread ? 'thread-composer' : 'project-composer');
     // Only a new arrival (a navigation) asks for it, never a re-render; the thread is the one the address names.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.key, thread?.id]);
@@ -194,7 +203,7 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
           <PanelMeta>{replies} {replies === 1 ? 'reply' : 'replies'}</PanelMeta>
           <ThreadFollow conversationId={thread.id} projectId={project.id} />
           <Pane key={thread.id} data={data} variant="thread" rootMessageId={rootMessage?.id ?? null} objects={objects}
-            focusComposer={!!state?.focusComposer} onThreadSize={roots.threadSize}
+            onThreadSize={roots.threadSize}
             rootHeader={({ preview, firstDay }) => <ThreadRoot firstDay={firstDay} message={rootMessage} projectId={project.id} body={rootMessage?.body ?? thread.firstMessageBody} author={rootMessage ? author(rootMessage) : null}
               agentOwner={rootMessage?.authorId === null ? agentAuthorOwner(rootMessage.author, owners) ?? null : null} meId={me.user.id} writable replies={replies} preview={preview} onDenied={onDenied}
               photo={{ place: project.name, onReply: () => document.getElementById('thread-composer')?.focus(), onCreateTask: rootMessage ? () => void makeWork.create(rootMessage) : undefined }} />} />

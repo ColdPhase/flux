@@ -5,6 +5,7 @@ import { Icon, useMediaQuery, usePop, useToast, type IconName } from '../ui';
 import { plainWords } from './messageWords';
 import { MessageSheet } from './MessageSheet';
 import { swallowReleaseClick } from './releaseClick';
+import { isTyping } from '../ui/keys';
 import './message-actions.css';
 
 // Actions on one message (F-026 S6, #867). On a computer they appear on hover and focus: Reply in thread, Create task and ⋯. On a phone
@@ -173,7 +174,7 @@ export function MessageActions(options: MessageActionOptions | DmActionOptions) 
     if (!row) return;
     const onKey = (event: globalThis.KeyboardEvent) => {
       if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey || event.repeat || event.defaultPrevented) return;
-      if ((event.target as Element | null)?.closest?.('input, textarea, select, [role="combobox"], [role="listbox"], [contenteditable], [role="menu"]')) return;
+      if (isTyping(event.target) || (event.target as Element | null)?.closest?.('[role="menu"]')) return;
       const key = event.key.toLowerCase();
       if (key === 'r' && writable && onReply) { event.preventDefault(); onReply(); }
       else if (key === 't' && writable && !removed) { event.preventDefault(); onCreateWork(); }

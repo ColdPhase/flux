@@ -20,7 +20,7 @@ import { SpaceFace } from '../ui/SpaceFace';
 import { useLiveSpaces } from '../live/spaces';
 import { lockedLine, useEncryptedWorkspaceIds, useLockedWorkspaces } from '../encryption/state';
 import { usePlaceMutes } from '../notifications/mutes';
-import { inComposer } from '../ui/keys';
+import { isTyping } from '../ui/keys';
 
 export interface SidebarProps {
   workspace: WorkspaceSummary | null;
@@ -182,7 +182,7 @@ export function Sidebar({ directMessages, agents = [], user, onClose, titleId, i
     const onKey = (event: KeyboardEvent) => {
       if (event.key.toLowerCase() !== 'c' || event.metaKey || event.ctrlKey || event.altKey || event.defaultPrevented) return;
       const target = event.target as HTMLElement | null;
-      if (target?.closest('input, textarea, select, [role="combobox"], [role="listbox"], [contenteditable="true"], [role="dialog"]') || inComposer(target)) return;
+      if (isTyping(target) || target?.closest('[role="dialog"]')) return;
       event.preventDefault();
       openCreate(projectId ? { projectId } : {});
     };

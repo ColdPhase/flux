@@ -32,6 +32,7 @@ import { followsProposal, objectTarget } from './objectNotices';
 import './conversation-final.css';
 import { RefLink } from '../place/origin';
 import { onFlush, remember } from '../place/memory';
+import { focusArrival } from '../ui/keys';
 
 // One project conversation (UI116-1, 2026-10-02): a chronological stream of roots. Each root is the
 // opening message of a stored conversation; its replies open beside it in a one-level thread.
@@ -473,7 +474,7 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
       // before is not, or the panel leaving would bring the stream back to it.
       pinRef.current = openRef.current === revealRoot.conversationId ? place : null;
     }
-    if (arrived === revealRoot.message.id) element.focus({ preventScroll: true });
+    if (arrived === revealRoot.message.id) focusArrival(element);
     // Once per link: later refreshes of the same root never move the reader.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reveal?.key, !!revealRoot, revealed]);
