@@ -55,8 +55,8 @@ export const AddKeyForm = forwardRef<AddKeyFormHandle, {
 }>(function AddKeyForm({ onAdded, onCancel }, ref) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  // The provider refused the key in the field (#1218): Connect waits until it changes.
-  const [keyRefused, setKeyRefused] = useState(false);
+  // No provider chosen yet, or the key in the field refused (#1218, #1424): Connect waits until there is something to connect.
+  const [blocked, setBlocked] = useState(true);
   // The daily budget and the name are behind More (#1424). Both stay in the form, so a closed More still sends the budget's default;
   // it opens by itself when the problem is in it.
   const [more, setMore] = useState(false);
@@ -126,7 +126,7 @@ export const AddKeyForm = forwardRef<AddKeyFormHandle, {
     {error ? <p id="background-connect-error" ref={errorRef} className="background-settings__error" role="alert" tabIndex={-1}>{error}</p> : null}
     <form ref={formRef} onSubmit={(event) => void connect(event)}>
       <fieldset disabled={busy} className="background-settings__fields">
-        <ConnectionFields disabled={busy} onKeyRefused={setKeyRefused} keyHelpId="background-key-help" />
+        <ConnectionFields disabled={busy} onBlocked={setBlocked} keyHelpId="background-key-help" />
         <div className="background-settings__more-row">
           <Button variant="quiet" size="sm" icon={more ? 'chevron-down' : 'chevron-right'} aria-label="More settings" aria-expanded={more} aria-controls="background-more"
             onClick={() => setMore(!more)}>More</Button>
@@ -141,7 +141,7 @@ export const AddKeyForm = forwardRef<AddKeyFormHandle, {
         {/* Cancel, then the one primary, on the right: the choose step's Cancel and Continue keep their side here (#1424). */}
         <div className="background-settings__actions background-settings__actions--end">
           {onCancel ? <Button onClick={onCancel}>Cancel</Button> : null}
-          <Button type="submit" variant="primary" busy={busy} disabled={keyRefused}>Connect</Button>
+          <Button type="submit" variant="primary" busy={busy} disabled={blocked}>Connect</Button>
         </div>
       </fieldset>
     </form>

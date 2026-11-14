@@ -139,6 +139,45 @@ class ApiKeyModels(unittest.TestCase):
         self.assertEqual([(item["provider"], item["model"]) for item in saved], [("anthropic", "claude-opus-5-5")])
         self.no_key_in_page(page)
 
+    def test_02a_the_key_step_opens_with_only_the_provider_and_the_key_and_connect_waits_for_a_provider(self) -> None:
+        """Re-review of v0.2.1 (P2), design §7 (#1424, founder decision 2026-11-14): the step shows first only Provider and API key. No Model
+        field before a provider is chosen (it showed an empty free box), and Connect is disabled while nothing can be connected. The plain
+        field stays where it belongs: an endpoint's model before any list is read."""
+        page = self.page()
+        page.goto("/settings/ai-connections?new=1")
+        expect(page.get_by_role("heading", name="Use an API key")).to_be_visible()
+        form = page.locator(".cai-window form")
+        # Every control a person can see and reach, in order: the two fields, More, then Cancel and Connect.
+        visible = """form => [...form.querySelectorAll('button, input, select, textarea')]
+            .filter((el) => el.type !== 'hidden' && el.getAttribute('aria-hidden') !== 'true' && el.getClientRects().length > 0)
+            .map((el) => el.getAttribute('aria-label') || el.labels?.[0]?.childNodes[0]?.textContent.trim() || el.textContent.trim())"""
+        self.assertEqual(form.evaluate(visible), ["Provider", "API key", "More settings", "Cancel", "Connect"])
+        expect(page.get_by_label("Model", exact=True)).to_have_count(0)
+        expect(page.get_by_role("textbox", name="Model")).to_have_count(0)
+        expect(page.get_by_role("combobox", name="Model")).to_have_count(0)
+        connect = page.get_by_role("button", name="Connect", exact=True)
+        expect(connect).to_be_disabled()
+        shot(page, named("api-key-models-1440-first"))
+        # Enter in the key field submits nothing either.
+        before = self.connected(page)
+        key = page.get_by_label("API key", exact=True)
+        key.fill(f"sk-ant-api03-{MARK * 3}KM10")
+        key.press("Enter")
+        expect(page.get_by_role("alert")).to_have_count(0)
+        self.assertEqual(self.connected(page), before, "nothing is saved")
+        # A provider chosen: Connect can be pressed; Anthropic's Model waits for the key to be read, an endpoint's is the plain field.
+        provider = page.get_by_label("Provider", exact=True)
+        choose(provider, label="Anthropic")
+        expect(connect).to_be_enabled()
+        expect(page.get_by_label("Model", exact=True)).to_have_count(0)
+        choose(provider, label="OpenAI-compatible endpoint")
+        expect(page.get_by_role("textbox", name="Model")).to_be_editable()
+        # Back to no provider: the first state again.
+        choose(provider, label="Choose a provider")
+        expect(page.get_by_label("Model", exact=True)).to_have_count(0)
+        expect(connect).to_be_disabled()
+        self.assertEqual(form.evaluate(visible), ["Provider", "API key", "More settings", "Cancel", "Connect"])
+
     def test_02b_the_form_asks_first_only_for_the_provider_and_the_key_and_keeps_the_rest_behind_more(self) -> None:
         """#1424 (founder decision, 2026-11-14): Provider and API key first; the model already chosen once the key is read; the budget and the
         optional name behind More; plain words; the window does not scroll at 1440 × 900; connecting without opening More uses the default budget."""
@@ -250,17 +289,18 @@ class ApiKeyModels(unittest.TestCase):
         self.form(page)
         before = self.connected(page)
         self.type_key(page, f"sk-proj-{MARK * 3}KM07")
-        alert = page.get_by_role("alert").filter(has_text="The key does not look like a key of this provider.")
+        alert = page.get_by_role("alert").filter(has_text="This doesn’t look like an Anthropic key")
         expect(alert).to_be_visible()
         expect(page.get_by_label("API key", exact=True)).to_have_attribute("aria-invalid", "true")
         expect(page.get_by_text("couldn’t be read")).to_have_count(0)
         expect(page.get_by_role("combobox", name="Model")).to_have_count(0)
         expect(page.get_by_role("textbox", name="Model")).to_have_count(0)
         expect(page.get_by_role("button", name="Connect", exact=True)).to_be_disabled()
-        # The server's message ends with Anthropic's key hint; the help line under the key, which says it too, is hidden meanwhile.
+        # One plain sentence with Anthropic's key shape; the help line under the key, which says the shape too, is hidden meanwhile.
+        expect(alert).to_have_text("This doesn’t look like an Anthropic key: those begin with sk-ant-.")
         hint = "An Anthropic API key beginning with sk-ant-."
-        expect(alert).to_contain_text(hint)
-        self.assertEqual(page.evaluate("document.body.innerText").count(hint), 1, "the key hint is said once")
+        self.assertEqual(page.evaluate("document.body.innerText").count("sk-ant-"), 1, "the key shape is said once")
+        self.assertEqual(page.evaluate("document.body.innerText").count(hint), 0, "the help line is hidden while the alert says it")
         expect(page.get_by_label("API key", exact=True)).to_have_attribute("aria-describedby", re.compile(r"^\S+-refused$"))
         shot(page, named("api-key-models-wrong-format"))
         self.assertEqual(self.connected(page), before, "nothing is saved")

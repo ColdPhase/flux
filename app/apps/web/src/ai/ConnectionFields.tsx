@@ -86,10 +86,13 @@ type Listing = { state: 'idle' } | { state: 'reading' } | { state: 'done'; list:
 const LIST_BUSY_WAIT_MS = 2_000;
 const LIST_BUSY_TRIES = 5;
 
-export function ConnectionFields({ disabled, onKeyRefused, keyHelpId }: {
+export function ConnectionFields({ disabled, onBlocked, keyHelpId }: {
   disabled: boolean;
-  /** Whether the provider refused the key now in the field: Connect waits for another key (#1218). */
-  onKeyRefused: (refused: boolean) => void;
+  /**
+   * Whether nothing in the fields can be connected now: no provider is chosen yet, or the provider refused the key in the field or the
+   * server turned it away (#1218, #1424). Connect waits meanwhile.
+   */
+  onBlocked: (blocked: boolean) => void;
   /** The key help the form shows under the key field. */
   keyHelpId: string;
 }) {
@@ -113,17 +116,17 @@ export function ConnectionFields({ disabled, onKeyRefused, keyHelpId }: {
   const rejected = listing.state === 'rejected' ? listing : null;
   // What is wrong with the key now in the field, said under it: refused by the provider, or turned away by the server (#1424).
   const keyProblem = refused ? listFailure(provider as AiProviderKind, 'key_refused') : keyed && rejected ? rejected.message : '';
-  useEffect(() => { onKeyRefused(!!keyProblem); }, [keyProblem, onKeyRefused]);
-  // The server's AI_KEY_FORMAT message already ends with the provider's key hint: while it is shown, the help line under the key is
-  // hidden, so the hint is said in one place, not two.
+  useEffect(() => { onBlocked(!provider || !!keyProblem); }, [provider, keyProblem, onBlocked]);
+  // The server's AI_KEY_FORMAT message already says the provider's key shape ("…: those begin with sk-ant-."): while it is shown, the
+  // help line under the key is hidden, so the shape is said in one place, not two.
   const keyHelp = !(keyed && rejected?.key);
   // Flux's prices of the provider come with its model list, read or not (#1465).
   const prices = list?.priceList ?? null;
   const known = provider && model ? listPrice(prices, model) : null;
   // A dropdown once the provider listed models; the plain field before a key is typed (OpenRouter, an endpoint), when the list
-  // couldn't be read, and for "Other model id…".
+  // couldn't be read, and for "Other model id…". Neither before a provider is chosen: the form shows first only Provider and API key (#1424).
   const dropdown = !!listed && listed.length > 0;
-  const field = !dropdown || other;
+  const field = !!provider && (!dropdown || other);
   const waitingForKey = keyed && (listing.state === 'idle' || listing.state === 'reading' || !!keyProblem);
 
   function choose(next: AiProviderKind | '') {

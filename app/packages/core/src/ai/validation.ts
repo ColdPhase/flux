@@ -19,6 +19,17 @@ export function validAiKey(provider: AiProviderKind, key: unknown): key is strin
   return typeof key === 'string' && KEY_FORMATS[provider].test(key);
 }
 
+/** What a key of another format is told, in one plain sentence with the provider's key shape (AI_KEY_FORMAT, #1424). */
+const KEY_FORMAT_PROBLEMS: Record<AiProviderKind, string> = {
+  anthropic: 'This doesn’t look like an Anthropic key: those begin with sk-ant-.',
+  openai: 'This doesn’t look like an OpenAI project or service-account key: those begin with sk-, and admin keys are refused.',
+  openrouter: 'This doesn’t look like an OpenRouter key: those begin with sk-or-.',
+  gemini: 'This doesn’t look like a Gemini API key: those begin with AIza.',
+  openai_compatible: 'This doesn’t look like a key: use 8 to 512 letters, digits or symbols, without spaces.',
+};
+
+export const aiKeyFormatProblem = (provider: AiProviderKind) => KEY_FORMAT_PROBLEMS[provider];
+
 /**
  * A bounded model id. OpenRouter's `:online` variants add a paid provider-hosted web search, and
  * provider-hosted tools stay off for every provider (PROV-2), so they are refused.
