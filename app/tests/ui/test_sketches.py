@@ -488,7 +488,7 @@ class SketchJourney(unittest.TestCase):
         # Fit brings the whole graph back after zooming in.
         options = open_map_options(page, touch=True)
         options.get_by_role("button", name="Zoom in").tap()
-        page.get_by_role("button", name="Fit the sketch to the view").tap()
+        page.get_by_role("button", name="Fit the map to the view").tap()
         expect(page.get_by_role("button", name=re.compile(r"^Zoom \d+%"))).to_have_attribute("aria-label", zoom)
 
     # ---------------------------------------------------------------- many sketches
@@ -614,7 +614,7 @@ class SketchJourney(unittest.TestCase):
         options = open_map_options(page, touch=touch) if viewport['width'] <= 640 else None
         page.get_by_role("button", name=re.compile(r"^Zoom \d+%")).click()  # reset before the explicit Fit
         canvas.evaluate("el => { el.scrollLeft = 100; el.scrollTop = 100; }")
-        page.get_by_role("button", name="Fit the sketch to the view").click()
+        page.get_by_role("button", name="Fit the map to the view").click()
         if options is not None:
             options.get_by_role("button", name="Close map options", exact=True).tap()
             expect(options).to_have_count(0)

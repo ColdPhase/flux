@@ -253,7 +253,11 @@ function RemovedPeople({ workspaceId, reload, onRestored }: { workspaceId: strin
   );
 }
 
-/** Every space, for the company's owners and admins: the sidebar lists only their own, and here they add themselves to the others, as its admin (#903). */
+/**
+ * Every space, for the company's owners and admins: the sidebar lists only their own, and here they open any of them or add themselves to the others, as its
+ * admin (#903). It has no Delete for a space they can open: Space settings › Delete space… is the one way (#1424). Only an encrypted space they cannot open
+ * has one here, since it has no settings for them.
+ */
 function CompanySpaces({ workspaceId }: { workspaceId: string }) {
   const { me, reachableSpaces } = useShellData();
   const revalidator = useRevalidator();
@@ -285,8 +289,7 @@ function CompanySpaces({ workspaceId }: { workspaceId: string }) {
           <li className="people__item" key={space.id}><div className="people__row">
             <span className="people__who"><b>{space.member === false ? space.name : <Link to={`/projects/${space.id}`}>{space.name}</Link>}</b></span>
             {space.member === false ? <Button variant="quiet" size="sm" className="access__invite" busy={busy === space.id} aria-label={`Add me to ${space.name}`} onClick={() => void join(space.id, space.name)}>Add me</Button> : null}
-            {/* Everyone holds the whole company and cannot be deleted; any other space can be, with a confirmation that names it (F-037). */}
-            {space.visibility === 'workspace' ? null : <Button variant="quiet" size="sm" className="access__invite" aria-label={`Delete ${space.name}`} onClick={() => setDeleting({ id: space.id, name: space.name })}>Delete…</Button>}
+            {/* A space is deleted in its own settings, the one way (Space settings › Delete space…, #1424); this list opens it and adds you to it. */}
           </div></li>
         ))}
         {sealed.map((entry) => (

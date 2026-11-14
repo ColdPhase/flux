@@ -463,13 +463,23 @@ class SpaceSettings(unittest.TestCase):
         self.api(page, "GET", f"/api/v1/projects/{pid}", status=404)
         expect(page.get_by_role("navigation", name="Spaces").get_by_text("Kiln firmware")).to_have_count(0)
 
-    def test_05_a_company_admin_deletes_a_space_from_settings_company_and_everyone_has_no_delete(self) -> None:
+    def test_05_the_company_list_has_no_delete_and_space_settings_is_the_one_way_to_delete(self) -> None:
+        """#1424: Settings › Company lists every space to open it (or add yourself); Delete is only in Space settings › Delete space…."""
         self.ensure_world()
         page = self.page("ada")
         made = self.api(page, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects", {"name": "Old experiments", "visibility": "restricted"}, status=201)
         page.goto("/settings/company")
-        row = page.get_by_role("list", name="Every space in the company").get_by_role("listitem").filter(has_text="Old experiments")
-        row.get_by_role("button", name="Delete Old experiments").click()
+        every = page.get_by_role("list", name="Every space in the company")
+        row = every.get_by_role("listitem").filter(has_text="Old experiments")
+        expect(row.get_by_role("link", name="Old experiments")).to_be_visible()
+        expect(every.get_by_role("button", name=re.compile("^Delete"))).to_have_count(0)
+        expect(page.get_by_role("button", name="Delete…")).to_have_count(0)
+        shot(page, "1424-company-spaces-no-delete")
+        # The row opens the space; its settings hold the one Delete space….
+        row.get_by_role("link", name="Old experiments").click()
+        expect(page).to_have_url(f"{ORIGIN}/projects/{made['id']}")
+        page.goto(f"/projects/{made['id']}/settings")
+        page.get_by_role("button", name="Delete space…").click()
         page.get_by_role("alertdialog", name="Delete Old experiments?").get_by_role("button", name="Delete Old experiments").click()
         expect(page.get_by_text("Old experiments was deleted.")).to_be_visible()
         self.api(page, "GET", f"/api/v1/projects/{made['id']}", status=404)

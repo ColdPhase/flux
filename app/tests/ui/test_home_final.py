@@ -279,6 +279,45 @@ class HomeFinal(unittest.TestCase):
         self.assertEqual(api("GET", f"/api/v1/assistant-runs/{run['id']}")["status"], "stopped")
         expect(page.locator(".agentlive")).to_have_count(0)
 
+    def test_08_what_waits_for_you_is_not_offered_again_under_continue(self) -> None:
+        """#1424: the return summary's next step ("Decide on the proposed decision") is the decision that "N decisions waiting" already shows."""
+        def person(label: str):
+            context = self.browser.new_context(base_url=ORIGIN, service_workers="block", locale="en-GB")
+            self.addCleanup(context.close)
+            email = f"{label}.once+{uuid.uuid4().hex}@example.test"
+            response = context.request.post("/api/auth/sign-up/email", data={"email": email, "password": PASSWORD, "name": f"{label.title()} Once"}, headers={"origin": ORIGIN})
+            self.assertEqual(response.status, 200, response.text())
+            return context, email
+
+        def call(context, method: str, path: str, body: dict | None = None, status: int = 200):
+            response = context.request.fetch(path, method=method, headers={"origin": ORIGIN}, data=body)
+            self.assertEqual(response.status, status, f"{path}: {response.status} {response.text()}")
+            return response.json() if response.text() else None
+
+        ada, _ = person("ada")
+        jonas, jonas_email = person("jonas")
+        workspace = call(ada, "POST", "/api/v1/workspaces", {"name": "Once Makers"}, 201)
+        call(ada, "POST", f"/api/v1/workspaces/{workspace['id']}/members", {"email": jonas_email, "role": "member"}, 201)
+        project = call(ada, "POST", f"/api/v1/workspaces/{workspace['id']}/projects", {"name": "Rain barrel monitor", "visibility": "workspace"}, 201)
+        page = ada.new_page()
+        errors: list[str] = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        self.addCleanup(lambda: self.assertEqual(errors, [], "no uncaught page errors"))
+        # A first visit starts the return point; what happens after it is what she returns to.
+        page.goto("/")
+        expect(page.get_by_role("heading", level=2, name=re.compile("^Good (morning|afternoon|evening), Ada$"))).to_be_visible()
+        decision = call(jonas, "POST", f"/api/v1/projects/{project['id']}/decisions", {"title": "Mesh in front of the diverter", "rationale": "Leaves clog it."}, 201)
+        queued = lambda: call(ada, "GET", "/api/v1/needs-you")["items"]  # noqa: E731
+        self.wait_for(lambda: any(item["key"] == f"decision:{decision['id']}" for item in queued()), "the decision in her queue")
+        step = self.wait_for(lambda: call(ada, "GET", "/api/v1/return?place=home")["nextStep"], "the return summary's next step")
+        self.assertEqual((step["text"], step["source"]["id"]), ("Decide on the proposed decision", decision["id"]), "without the fix this would be the second row for the same decision")
+        page.reload()
+        need = page.get_by_role("region", name=re.compile("^Waiting for you"))
+        expect(need.locator(".home__row").filter(has_text="1 decision waiting")).to_be_visible()
+        expect(page.get_by_role("region", name="Continue where you left off")).to_have_count(0)
+        expect(page.get_by_text("Decide on the proposed decision")).to_have_count(0)
+        shot(page, "home-final-desktop-1440-once")
+
     def test_07_dark_home(self) -> None:
         page = self.page(dark=True)
         page.goto("/")

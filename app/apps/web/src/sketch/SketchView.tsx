@@ -147,6 +147,9 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
   // #509 AC-5: the drag hint is shown only until this person's first successful connect.
   const connectedKey = `${CONNECTED_KEY}:${me.user.id}`;
   const [linkedOnce, setLinkedOnce] = useState(() => readFlag(connectedKey));
+  // #1424: the phone's "Connect and arrange on a computer" is said once per person on a device, not on every map.
+  const computerNoteKey = `${COMPUTER_NOTE_KEY}:${me.user.id}`;
+  const [computerNoted, setComputerNoted] = useState(() => readFlag(computerNoteKey));
   const [connectState, setConnectFrom] = useState<string | null>(null);
   // Narrowing to the phone cancels a connection that was armed on the wider screen.
   const [wasPhone, setWasPhone] = useState(phone);
@@ -836,7 +839,7 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
     const hint = canWrite ? (
       <div className="sk-line">
         {statusLine}
-        {!hasStatus && !phone && !linkedOnce ? <p className="sk-hint">Drag empty space to move around · Drag a dot to connect or add a thought</p> : null}
+        {!hasStatus && !phone && !linkedOnce && sketch.thoughts.length ? <p className="sk-hint">Drag empty space to move around · Drag a dot to connect or add a thought</p> : null}
       </div>
     ) : <div className="sk-line">{statusLine}</div>;
     return (
@@ -847,7 +850,7 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
             {readonlyNote}
             {notices}
           </div>
-          <SketchMap {...shared} changes={clientChanges} coarse={coarse} compact={phone} helpId={helpId} heights={heights} dockHeight={dockHeight} onDockHeight={setDockHeight} dock={dock} hint={hint} viewModes={viewModes} hand={hand}
+          <SketchMap {...shared} changes={clientChanges} coarse={coarse} compact={phone} onDismissComputerNote={computerNoted ? null : () => { writeFlag(computerNoteKey); setComputerNoted(true); }} helpId={helpId} heights={heights} dockHeight={dockHeight} onDockHeight={setDockHeight} dock={dock} hint={hint} viewModes={viewModes} hand={hand}
             onLabel={(linkId) => setConnectionTarget({ linkId })} onConnections={(thoughtId) => setConnectionTarget({ thoughtId })}
             bar={{ canUndo: doc.canUndo, helpOpen, onShape: cycleShape, onMove: moveTo.start, onCopyLink: copyLink, onUndo: undo, onHelp: () => setHelpOpen(!helpOpen) }}
             onConnect={connectTo} onAddAt={(parentId, x, y) => add(parentId, '', false, { x, y })} onConnectFrom={connectFromDot} onAddThought={() => add(selection[selection.length - 1] ?? null)}
@@ -958,6 +961,7 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
 }
 
 const CONNECTED_KEY = 'flux.map.connected.v1';
+const COMPUTER_NOTE_KEY = 'flux.map.phone-note.v1';
 function readFlag(key: string) {
   try { return localStorage.getItem(key) === '1'; } catch { return false; }
 }
