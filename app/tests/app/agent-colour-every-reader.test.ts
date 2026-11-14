@@ -27,14 +27,17 @@ const runs = personalRunUseCases(db, { queue: new FakeQueue().factory, connectio
 const human = (someone: Person): Principal => ({ kind: 'human', id: someone.id });
 const get = async <T>(who: Person, path: string): Promise<T> => expectStatus(await who.browser.request('GET', path), 200, `GET ${path}`) as T;
 
-/** An agent of `owner` with its AI setup, in `colour` (set as the database holds it, so the test knows which one to expect). */
-async function colouredAgent(owner: Person, workspaceId: string, name: string, colour: string) {
-  const agent = expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${workspaceId}/agents`, { body: { name, owner: 'self' } }), 201) as { id: string };
+/** An agent identity of `owner`, with no AI setup yet. */
+async function agentOf(owner: Person, workspaceId: string, name: string): Promise<string> {
+  return (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${workspaceId}/agents`, { body: { name, owner: 'self' } }), 201) as { id: string }).id;
+}
+
+/** Gives `owner`'s agent its AI setup, in `colour` (set as the database holds it, so the test knows which one to expect). */
+async function setUpAgent(owner: Person, agent: { id: string }, colour: string) {
   const connection = randomUUID();
   connections.connect(owner.id, connection);
   await runs.enable(human(owner), { agentId: agent.id, connection, model: 'claude-sonnet-5' });
   await pool.query('UPDATE assistant_settings SET colour = $2 WHERE agent_id = $1', [agent.id, colour]);
-  return agent.id;
 }
 
 describe('every reader gets an agent in its own colour (#1528)', () => {
@@ -50,11 +53,15 @@ describe('every reader gets an agent in its own colour (#1528)', () => {
     await grant(manager!, projectId, owner, 'contributor');
     await grant(manager!, projectId, reader, 'contributor');
     await ensureSpaceAiAllowed(projectId);
-    agentId = await colouredAgent(owner, ws.id, 'Planner', 'plum');
-    // The owner gives a task to their own agent (#904).
+    agentId = await agentOf(owner, ws.id, 'Planner');
+    // The task is the agent's before the agent runs on the server, and its assignment is handled first (#856): an agent with its setup would
+    // take the task, and on this stack (no model connection) give it straight back to its owner, so the task would no longer be the agent's.
     task = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${projectId}/work`, {
       body: { title: 'Calibrate the rain gauge', owner: { kind: 'agent', id: agentId } },
     }), 201) as WorkItem;
+    await waitFor(async () => Number((await pool.query<{ n: number }>('SELECT count(*)::int AS n FROM agent_task_events WHERE work_id = $1 AND handled_at IS NULL',
+      [task.id])).rows[0]!.n) === 0, 'the assignment is handled');
+    await setUpAgent(owner, { id: agentId }, 'plum');
   });
 
   test('a task\'s owner, its agent line and the people in it', async () => {
@@ -64,7 +71,8 @@ describe('every reader gets an agent in its own colour (#1528)', () => {
       assert.ok(row?.kind === 'work' && row.owner?.kind === 'agent');
       assert.equal(row.owner.colour, 'plum', 'the task row names its agent owner in its colour');
       const { object } = await get<WorkDetailProjection>(who, `/api/v1/projects/${projectId}/work-objects/work/${task.id}`);
-      assert.equal(object.kind === 'work' ? object.owner?.colour : null, 'plum', 'the task panel too');
+      assert.ok(object.kind === 'work' && object.owner?.kind === 'agent' && object.owner.id === agentId, 'the task is still the agent\'s');
+      assert.equal(object.owner.colour, 'plum', 'the task panel too');
       const line = await get<TaskAgentState>(who, taskAgentPath(task.id));
       assert.deepEqual([line.agent?.id, line.agent?.colour], [agentId, 'plum'], 'the task\'s agent line');
       const people = await get<TaskPeople>(who, taskPeoplePath(task.id));
