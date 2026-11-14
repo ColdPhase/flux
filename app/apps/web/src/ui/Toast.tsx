@@ -83,9 +83,10 @@ export function useClearOfToast(ref: RefObject<HTMLElement | null>, attached: HT
       const feed = ref.current;
       if (!feed || (top === null && !feed.style.getPropertyValue('--toast-clear'))) return;
       const box = feed.getBoundingClientRect();
-      const toasts = top === null ? null : stack?.current?.getBoundingClientRect() ?? null;
-      const over = !!toasts && toasts.height > 0 && toasts.left < box.right && toasts.right > box.left && toasts.top < box.bottom;
-      const clear = over ? Math.max(0, Math.ceil(box.bottom - toasts.top + 8)) : 0;
+      // The toasts that stay: one that is leaving takes no room, so its going never adds any.
+      const staying = top === null ? [] : [...(stack?.current?.querySelectorAll<HTMLElement>('.ui-toast:not([data-leaving])') ?? [])];
+      const toasts = staying.map((toast) => toast.getBoundingClientRect()).filter((rect) => rect.height > 0 && rect.left < box.right && rect.right > box.left && rect.top < box.bottom);
+      const clear = toasts.length ? Math.max(0, Math.ceil(box.bottom - Math.min(...toasts.map((rect) => rect.top)) + 8)) : 0;
       const was = parseFloat(feed.style.getPropertyValue('--toast-clear')) || 0;
       if (clear === was || (!grow && clear > was)) return;
       const left = feed.scrollHeight - feed.scrollTop - feed.clientHeight;
@@ -97,10 +98,16 @@ export function useClearOfToast(ref: RefObject<HTMLElement | null>, attached: HT
     const measure = () => update(true);
     const scrolled = () => update(false);
     measure();
+    // A toast settles after it is shown (it comes in from below, and stands above a composer that may still be moving): measured again.
+    const frame = requestAnimationFrame(measure);
+    const later = [window.setTimeout(measure, 400), window.setTimeout(measure, 1000)];
     const feed = ref.current;
     window.addEventListener('resize', measure);
     feed?.addEventListener('scroll', scrolled, { passive: true });
-    return () => { window.removeEventListener('resize', measure); feed?.removeEventListener('scroll', scrolled); };
+    return () => {
+      cancelAnimationFrame(frame); later.forEach((id) => window.clearTimeout(id));
+      window.removeEventListener('resize', measure); feed?.removeEventListener('scroll', scrolled);
+    };
   }, [ref, attached, top, stack]);
 }
 
@@ -177,7 +184,7 @@ function ToastItem({ toast, onDone, onLeaving, registerAction, movedAt }: { toas
   }, [leaving, toast, onDone, onLeaving]);
 
   return (
-    <div ref={ref} className={`ui-toast ui-toast--${toast.tone}${toast.also ? ' ui-toast--also' : ''}${scrollable ? ' ui-toast--scrollable' : ''}`} onMouseEnter={() => { held.current.pointer = true; disarm(); }} onMouseLeave={() => { held.current.pointer = false; if (!held.current.focus) arm(); }}
+    <div ref={ref} data-leaving={leaving || toast.leaving ? '' : undefined} className={`ui-toast ui-toast--${toast.tone}${toast.also ? ' ui-toast--also' : ''}${scrollable ? ' ui-toast--scrollable' : ''}`} onMouseEnter={() => { held.current.pointer = true; disarm(); }} onMouseLeave={() => { held.current.pointer = false; if (!held.current.focus) arm(); }}
       onFocus={() => { held.current.focus = true; disarm(); }} onBlur={(event) => { if (event.currentTarget.contains(event.relatedTarget as Node | null)) return; held.current.focus = false; if (!held.current.pointer) arm(); }}>
       {toast.mascot && moments ? <Kreska expression={toast.mascot} size={24} /> : toast.tone === 'success' ? <Icon name="check" /> : toast.tone === 'danger' ? <Icon name="alert" /> : null}
       <span ref={message} className="ui-toast__msg" tabIndex={scrollable ? 0 : undefined}
