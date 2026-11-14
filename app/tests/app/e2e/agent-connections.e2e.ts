@@ -124,10 +124,11 @@ test('a client signs in with one click: Deny makes nothing, Allow makes one conn
     await settings.goto(`${origin}/settings/agents/connect`);
     const row = settings.locator('.connection__saved').filter({ hasText: 'Claude Code on this computer' });
     await row.waitFor({ state: 'visible' });
-    await row.getByRole('radio', { name: 'Ask me first' }).click();
+    // Ask me first is one switch (the app's SwitchRow; #1433 in train #1462, docs/design/final/README.md), off by default.
+    await row.getByRole('switch', { name: 'Ask me first', checked: false }).click();
     // The row takes its value only from the server's answer to the save. (An async predicate of waitForFunction is a Promise, always truthy,
     // so the wait that stood here returned at once and raced the save.)
-    await row.getByRole('radio', { name: 'Ask me first', checked: true }).waitFor();
+    await row.getByRole('switch', { name: 'Ask me first', checked: true }).waitFor();
     assert.equal((await connections())[0]!.may_do, 'ask');
     assert.equal(await settings.getByText('Run approved project actions').count(), 0);
     await row.getByRole('button', { name: 'Disconnect' }).click();
