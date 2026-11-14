@@ -23,6 +23,7 @@ from app_select import choose
 from app_select import labels as app_labels
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, start_forwarder
 from test_settings import UI_BROWSER, shot
+from touch_targets import has_minimum_hit_area, hit_area
 
 PASSWORD = "invite links join the workspace"
 SEALED_PASSWORD = "quartz lantern hollow meadow ripple kestrel 4821"
@@ -165,6 +166,8 @@ class InviteLinksJourney(unittest.TestCase):
         form = page.get_by_role("form", name="Create account and join")
         expect(form).to_be_visible()
         expect(page.get_by_role("link", name="Sign in to join")).to_be_visible()
+        area = hit_area(page.get_by_role("link", name="Sign in to join"))
+        self.assertTrue(has_minimum_hit_area(area), f"the sign-in link is a 44 px target on a phone: {area}")
         shot(page, "invite-join-signed-out-phone-390")
         form.get_by_label("Name").fill(NIA[0])
         form.get_by_label("Email").fill(NIA[1])

@@ -216,7 +216,7 @@ class MapConnectJourney(unittest.TestCase):
                 page = self.page(PHONE, scheme, touch=True)
                 sketch = self.scene(page)
                 expect(page.get_by_text('Connect and arrange on a computer')).to_be_visible()
-                add = page.get_by_role('button', name='Add a thought', exact=True)
+                add = page.get_by_role('button', name='Thought', exact=True)
                 expect(add).to_be_visible()
                 self.assertGreaterEqual(add.evaluate('el => el.offsetHeight'), 44)
                 self.assertGreaterEqual(add.bounding_box()['height'], 44 - 1 / 64)
@@ -259,12 +259,12 @@ class MapConnectJourney(unittest.TestCase):
                 page.get_by_role('dialog', name='Thought actions', exact=True).get_by_role('button', name='Remove from map', exact=True).tap()
                 expect(page.locator('.sk-node')).to_have_count(0 if solo else 2)
                 if solo:
-                    expect(page.locator('.sk-first')).to_have_text('An empty map. Start with Add a thought.')
+                    expect(page.locator('.sk-first')).to_have_text('An empty map. Start with Thought.')
                     expect(page.get_by_role('button', name=re.compile('connected thought|thought connected'))).to_have_count(0)
                 undo = page.get_by_role('button', name='Undo', exact=True)
                 expect(undo).to_be_visible()
                 if solo:
-                    page.get_by_role('button', name='Add a thought', exact=True).tap()
+                    page.get_by_role('button', name='Thought', exact=True).tap()
                     page.get_by_label('Thought text').fill('Keep this private thought while Undo restores the map')
                     expect(undo).to_have_text('Undo last saved change')
                 self.assertGreaterEqual(undo.evaluate('el => el.offsetHeight'), 44)
@@ -322,7 +322,7 @@ class MapConnectJourney(unittest.TestCase):
         page.get_by_role('toolbar', name='Selection actions').get_by_role('button', name='Connect', exact=True).click()
         expect(page.locator('.sk-status')).to_contain_text('Choose the thought to link to')
         page.set_viewport_size(PHONE)
-        expect(page.get_by_role('button', name='Add a thought', exact=True)).to_be_visible()
+        expect(page.get_by_role('button', name='Thought', exact=True)).to_be_visible()
         page.locator('.sk-node', has_text=B).click()
         expect(page.locator('.sk-node[aria-pressed="true"]')).to_have_count(1)
         page.wait_for_timeout(500)
@@ -343,7 +343,7 @@ class MapConnectJourney(unittest.TestCase):
         node.tap()
         expect(page.get_by_role('toolbar', name='Selection actions')).to_have_count(0)
         expect(page.locator('.sk-phone .sk-plus')).to_have_count(0)
-        expect(page.get_by_role('button', name='Add a thought', exact=True)).to_be_visible()
+        expect(page.get_by_role('button', name='Thought', exact=True)).to_be_visible()
         actions = page.get_by_role('button', name='Thought actions', exact=True)
         self.assertGreaterEqual(actions.evaluate('el => el.offsetHeight'), 44)
         self.assertGreaterEqual(actions.bounding_box()['height'], 44 - 1 / 64)
@@ -368,7 +368,7 @@ class MapConnectJourney(unittest.TestCase):
         expect(page.get_by_label('Thought text')).to_be_focused()
         page.get_by_label('Thought text').fill('A private edit not saved')
         page.get_by_role('button', name='Cancel edit', exact=True).tap()
-        page.get_by_role('button', name='Add a thought', exact=True).tap()
+        page.get_by_role('button', name='Thought', exact=True).tap()
         draft = page.get_by_role('form', name='New thought draft')
         expect(draft.get_by_label('Thought text')).to_be_focused()
         expect(draft).to_contain_text('Top level')
@@ -433,7 +433,7 @@ class MapConnectJourney(unittest.TestCase):
                     page.get_by_label('Thought text').fill('Keep this private text after narrowing')
                     page.set_viewport_size(PHONE)
                 elif entry == 'primary':
-                    page.get_by_role('button', name='Add a thought', exact=True).tap()
+                    page.get_by_role('button', name='Thought', exact=True).tap()
                 elif entry == 'keyboard':
                     node.focus()
                     page.keyboard.press('+')
@@ -484,7 +484,7 @@ class MapConnectJourney(unittest.TestCase):
                     canvas = page.locator('.sk-canvas')
                     camera = canvas.evaluate('el => ({left:el.scrollLeft, top:el.scrollTop})')
                     if viewport['width'] <= 640:
-                        page.get_by_role('button', name='Add a thought', exact=True).tap()
+                        page.get_by_role('button', name='Thought', exact=True).tap()
                     else:
                         page.get_by_role('button', name=re.compile('Add a thought connected to')).click()
                     draft = page.get_by_role('form', name='New thought draft')
@@ -919,7 +919,7 @@ class MapConnectJourney(unittest.TestCase):
                 sketch=self.scene(page,link=True)
                 page.evaluate("""() => {Object.defineProperty(window,'sessionStorage',{configurable:true,get(){throw new DOMException('storage access denied','SecurityError')}})}""")
                 page.locator('.sk-node',has_text=B).click()
-                page.get_by_role('button',name='Add a thought',exact=True).click() if viewport==PHONE else page.get_by_role('button',name=re.compile('Add a thought connected to')).click()
+                page.get_by_role('button',name='Thought',exact=True).click() if viewport==PHONE else page.get_by_role('button',name=re.compile('Add a thought connected to')).click()
                 draft=page.get_by_role('form',name='New thought draft')
                 draft.get_by_label('Thought text').fill('Fresh text with no durable unused proof')
                 sent=[]

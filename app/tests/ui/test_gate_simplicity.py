@@ -123,13 +123,13 @@ class GateSimplicity(unittest.TestCase):
         page = self.page(phone=True)
         project = self.empty_space(page, f"Phone ideas {uuid.uuid4().hex[:4]}")
         page.goto(f"/projects/{project}/map")
-        expect(page.locator(".sk-first")).to_have_text("An empty map. Start with Add a thought.")
+        expect(page.locator(".sk-first")).to_have_text("An empty map. Start with Thought.")
         expect(page.get_by_text("Map ideas for")).to_have_count(0)
         expect(page.get_by_text("Connect and arrange on a computer")).to_have_count(0)
         # One add on the screen: the phone's floating "+" steps aside for it.
         expect(page.get_by_role("button", name="Create", exact=True)).to_have_count(0)
         shot(page, "gate-empty-map-phone")
-        page.get_by_role("button", name="Add a thought", exact=True).tap()
+        page.get_by_role("button", name="Thought", exact=True).tap()
         expect(page).to_have_url(re.compile(rf"/projects/{project}/map/[0-9a-f-]{{36}}$"))
         expect(page.get_by_role("textbox", name="Thought text")).to_be_visible()
 
@@ -169,7 +169,7 @@ class GateSimplicity(unittest.TestCase):
         page.goto(f"/projects/{self.mapped}/map/{other}")
         expect(page.locator(".sk-node")).to_have_count(1)
         expect(page.get_by_text("Connect and arrange on a computer")).to_have_count(0)
-        expect(page.get_by_role("button", name="Add a thought", exact=True)).to_be_visible()
+        expect(page.get_by_role("button", name="Thought", exact=True)).to_be_visible()
 
     def test_05_the_fit_button_is_named_for_the_map(self):
         page = self.page()

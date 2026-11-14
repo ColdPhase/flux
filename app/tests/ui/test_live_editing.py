@@ -379,7 +379,7 @@ class LiveEditingJourney(LiveFixture):
         await self.create_map(3)
         ada, kai = self.pages["ada"], self.pages["kai"]
         await ada.set_viewport_size({"width": 390, "height": 844})
-        add = ada.get_by_role("button", name="Add a thought", exact=True)
+        add = ada.get_by_role("button", name="Thought", exact=True)
         await expect(add).to_be_visible()
         self.assertLessEqual(await ada.evaluate("document.documentElement.scrollWidth"), 390)
         await add.click()

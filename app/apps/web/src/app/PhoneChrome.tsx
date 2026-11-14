@@ -37,7 +37,7 @@ export function phoneHidesDock(pathname: string): boolean {
  * "+ New message", so a "+" never means two things on one screen (#1419).
  */
 export function phoneOffersCreate(pathname: string): boolean {
-  // A space's Map tab is the map itself, empty or not (its one "Add a thought" is the phone's add, #1424), so it has no second "+".
+  // A space's Map tab is the map itself, empty or not (its one "Thought" is the phone's add, #1424), so it has no second "+".
   return /^\/(inbox|projects|tasks|map)?$/.test(pathname) || /^\/projects\/[^/]+\/(tasks|docs|agents)$/.test(pathname);
 }
 

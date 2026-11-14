@@ -58,7 +58,7 @@ No rule caps the whole application. Reading measures are set per surface.
 (*container*): a map at most 640 px wide (`NARROW_MAP` in `sketch/SketchMap.tsx`, measured on the map's wrapper with a
 ResizeObserver) shows the two columns, a wider one the plane, on any device. The controls follow the device and window
 as before (*viewport*, `MEDIA.phone`): a computer keeps its toolbar, zoom and Fit with the columns, and never gets
-the phone's Map options sheet or Add a thought button. In the columns nothing is arranged by dragging, as on a phone.
+the phone's Map options sheet or Thought button. In the columns nothing is arranged by dragging, as on a phone.
 So a desktop map beside docked Details at 1001–1200 px (about 450 px wide at 1100) takes the columns with the computer's
 controls, and the plane returns when the map is wider again; each layout keeps its own camera and zoom (test_02b).
 

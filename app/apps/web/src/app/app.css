@@ -740,10 +740,11 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
    computer and the tablet (Spokój: a control keeps its place, #763) instead of jumping 64 px up on Home. */
 .top.top--bare:has(~ .lv-bar:not(.lv-bar--invite, .lv-bar--ended)) { height: auto; min-height: 64px; padding: 12px 16px 12px 20px; border-bottom: 1px solid var(--line); }
 .top.top--bare:has(~ .lv-bar:not(.lv-bar--invite, .lv-bar--ended)) .top__title h1 { position: static; width: auto; height: auto; overflow: hidden; clip-path: none; }
-/* On touch, the "Create an account" style link under the form gets a 44 px tall hit area without moving the text (#434). */
+/* On touch, the "Create an account" style link under the form, and the links in a form's error line ("Sign in to join · Reset password"),
+   get a 44 px tall hit area without moving the text (#434). */
 @media (pointer: coarse) {
-  .auth__alt .ui-link { position: relative; }
-  .auth__alt .ui-link::after { content: ""; position: absolute; left: -4px; right: -4px; top: calc(50% - 22px); height: 44px; }
+  .auth__alt .ui-link, .auth__error .ui-link { position: relative; }
+  .auth__alt .ui-link::after, .auth__error .ui-link::after { content: ""; position: absolute; left: -4px; right: -4px; top: calc(50% - 22px); height: 44px; }
 }
 
 /* F-029 (#614): "Not in <workspace>: AI is off there." is its own line under its card, not the caption of the next heading. */

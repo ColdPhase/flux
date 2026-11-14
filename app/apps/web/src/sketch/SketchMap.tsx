@@ -74,7 +74,7 @@ export interface SketchMapProps {
   onConnectFrom(id: string): void;
   onLabel(linkId: string): void;
   onConnections(thoughtId: string): void;
-  /** S15: phones show an Add a thought button on the map itself. */
+  /** S15: phones show a Thought button on the map itself. */
   onAddThought(): void;
   /** The single local draft that is not saved yet, shown on the map where it will land. */
   draft: { x: number; y: number; parentId: string | null; label: string } | null;
@@ -1138,7 +1138,7 @@ export function SketchMap(props: SketchMapProps) {
           </div>
           {props.onDismissComputerNote ? <p className="sk-phone__note"><Icon name="monitor" size={16} />Connect and arrange on a computer
             <IconButton icon="x" size={14} label="Dismiss" className="sk-phone__note-x" onClick={props.onDismissComputerNote} /></p> : null}
-          <button type="button" className="sk-fab sk-add" onClick={props.onAddThought}><Icon name="plus" size={18} />Add a thought</button>
+          <button type="button" className="sk-fab sk-add" onClick={props.onAddThought}><Icon name="plus" size={18} />Thought</button>
           </> : null}
         </div>
       ) : null}
