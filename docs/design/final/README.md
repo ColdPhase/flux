@@ -1033,7 +1033,7 @@ built. The contract is in [mobile and PWA](../../product/mobile-pwa.md#while-flu
   made it, from what and when: "Ada Kowalska created a task from Jonas’s message · 8:05". "Jonas’s message" is a link that brings
   that message into view, so the way from the message to the task stays on the card. There is no separate event line above the
   card, and the message it came from carries no chip of it. A thread shows a decision made in it as the same card among its
-  replies; a task made from a reply in a thread shows there as the card under that reply, its only place in the thread. An
+  replies; a task made from one of its messages (its root or a reply) shows there as the card under that message, its only place in the thread (a thread has no task notices). An
   acceptance or a task's later step (blocked, can continue) is one line, never a second card: "Ada accepted it" right under its
   card, else "Ada accepted the decision **Double the cinnamon buns**", where the title opens it. One state has one word: a
   decision is **Proposed**, **Accepted** or **Replaced**, never "Proposed decision"; the panel's head already says "Decision", so its
