@@ -1974,8 +1974,6 @@ Founder decision, Hubert, 2026-11-13 ([#1438](https://github.com/ColdPhase/flux/
   offer Join, which could only be refused: it says who the person is signed in as and gives one **Sign out to use this link**
   (`primary`), which signs out and opens this page again, signed out, with the form and the address in place (for someone who has an
   account, "Already have an account? Sign in to join" is under it). The Join button of the right account always joins.
-- **The person who made the link is told** when it is used, in their Inbox ("Basia Wrona joined Riverside Makers", naming the space when
-  the link was made from a space's Add people), on every route to joining: the form on this page, Join, and single sign-on.
 
 ### A place that could not be loaded, and a place that is not available
 

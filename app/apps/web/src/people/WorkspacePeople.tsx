@@ -621,7 +621,8 @@ function InviteForm({ workspace, members, myRole, seen, onJoined, onAdded }: { w
     setEmail('');
     const copied = await copyText(invite.link);
     setStatus(copied ? 'Invite link created and copied. Send it to them yourself.' : 'Invite link created. Copy it and send it to them yourself.');
-    requestAnimationFrame(() => linkRef.current?.select());
+    // The link is in its row of the list under the form: bring it into view, as the card above the list used to be.
+    requestAnimationFrame(() => { linkRef.current?.scrollIntoView({ block: 'nearest' }); linkRef.current?.select(); });
   }
 
   async function submit(event: FormEvent) {
