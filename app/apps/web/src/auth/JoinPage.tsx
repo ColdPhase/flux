@@ -82,23 +82,36 @@ export function JoinPage() {
   const fetchLink = (signal?: AbortSignal) => Promise.all([getMe(signal).catch(() => null), previewInvite(readToken(), signal),
     getCapabilities(signal).catch(() => null)]);
 
-  // Read on arrival, and again when the page is opened again from itself: signing out from here (a link for another address) lands on this same page,
-  // signed out. Its own create-account form also ends on this page (`created` belongs to that location): with what to fix, the form shows it and
-  // nothing is read; with the account made and signed in, the page joins at once, as that account (#1438). One read per location, so the
-  // submission is never also taken for an arrival (which forgot the token and opened Home before the join could land in Everyone).
-  const opened = useRef(false);
+  // A link pasted into this tab while the page is open is a navigation of the fragment only, which leaves `location.key` as it was: it is
+  // counted here, so the page reads the new link the way it reads any arrival.
+  const [pasted, setPasted] = useState(0);
   useEffect(() => {
-    if (!readToken() || (created && !created.created)) return undefined;
-    if (opened.current && !created) setState({ kind: 'loading' });
+    const arrived = () => { if (window.location.hash.length > 1) setPasted((count) => count + 1); };
+    window.addEventListener('hashchange', arrived);
+    return () => window.removeEventListener('hashchange', arrived);
+  }, []);
+
+  // Read on arrival, and again when the page is opened again from itself: signing out from here (a link for another address) lands on this same page,
+  // signed out, and a new link may be pasted into the tab. Its own create-account form also ends on this page (`created` belongs to that location):
+  // with what to fix, the form shows it and nothing is read; with the account made and signed in, the page joins at once, as that account (#1438).
+  // One read per arrival, so the submission is never also taken for an arrival (which forgot the token and opened Home before the join could land
+  // in Everyone); a pasted link is never taken for the form's answer.
+  const opened = useRef(false);
+  const readFor = useRef(pasted);
+  useEffect(() => {
+    const answer = readFor.current === pasted ? created : undefined;
+    readFor.current = pasted;
+    if (!readToken() || (answer && !answer.created)) return undefined;
+    if (opened.current && !answer) setState({ kind: 'loading' });
     opened.current = true;
     // The token is kept in this tab's session storage: take it out of the address and the browser's history.
     if (window.location.hash) window.history.replaceState(window.history.state, '', window.location.pathname + window.location.search);
     const controller = new AbortController();
-    fetchLink(controller.signal).then((read) => show(read, !!created?.created), failed);
+    fetchLink(controller.signal).then((read) => show(read, !!answer?.created), failed);
     return () => controller.abort();
     // `created` is the action's answer for this very location; `show` and `join` only read this tab's token.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.key]);
+  }, [location.key, pasted]);
 
   async function join() {
     const token = readToken();
@@ -218,7 +231,8 @@ export function JoinPage() {
       {head}
       {notes}
       <JoinSignUp result={created} token={readToken()} lockedEmail={preview.email} />
-      <p className="auth__alt">Already have an account? <Link className="ui-link" to="/sign-in?next=%2Fjoin">Sign in to join</Link></p>
+      {/* The form's "An account with this email already exists" offers Sign in to join itself: the way is said once. */}
+      {created?.accountExists ? null : <p className="auth__alt">Already have an account? <Link className="ui-link" to="/sign-in?next=%2Fjoin">Sign in to join</Link></p>}
       {expires}
     </>
   );

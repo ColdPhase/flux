@@ -30,5 +30,27 @@ def hit_area(locator) -> dict:
     return locator.evaluate(HIT_AREA_JS)
 
 
+# The rectangle a finger finds as this element: every point around its box (fine steps down, wider steps across) that hits it or one
+# of its descendants (a ::after counts), so a hit area that reaches over a neighbour shows as an overlap with that neighbour's box.
+HIT_RECT_JS = r"""el => {
+  el.scrollIntoView({block: 'center', inline: 'nearest'});
+  const b = el.getBoundingClientRect();
+  const mine = (x, y) => { const hit = document.elementFromPoint(x, y); return !!hit && (hit === el || el.contains(hit)); };
+  let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity;
+  for (let y = b.top - 60; y <= b.bottom + 60; y += 0.25) {
+    for (let x = b.left - 60; x <= b.right + 30; x += 4) {
+      if (!mine(x, y)) continue;
+      left = Math.min(left, x); right = Math.max(right, x); top = Math.min(top, y); bottom = Math.max(bottom, y);
+    }
+  }
+  return {left, top, right, bottom, height: bottom - top, width: right - left};
+}"""
+
+
+def hit_rect(locator) -> dict:
+    """The element's hit area as a rectangle in viewport CSS px: `left`, `top`, `right`, `bottom`, `width` and `height` (accurate to a quarter pixel down, four across)."""
+    return locator.evaluate(HIT_RECT_JS)
+
+
 def has_minimum_hit_area(area: dict) -> bool:
     return min(area["across"], area["down"]) >= 44 - SAMPLING_STEP

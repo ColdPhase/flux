@@ -5,7 +5,7 @@ import { InvalidInputError, NotFoundError, RuleViolationError } from '../access/
 import type { Principal } from '../principal.js';
 import { refuseAllEndpoints, toolsRequired, type AiEndpointPolicyPort, type ToolCheck } from '../ai/index.js';
 import { requestReservationMicros, resolveConnectionPrice } from '../ai/price.js';
-import { baseUrlSyntaxProblem, normalizeBaseUrl, validAiKey, validModelId, validPrice } from '../ai/validation.js';
+import { aiKeyFormatProblem, baseUrlSyntaxProblem, normalizeBaseUrl, validAiKey, validModelId, validPrice } from '../ai/validation.js';
 
 export interface BackgroundKeySealer {
   seal(plainKey: string, ownerUserId: string, connectionId: string): string;
@@ -81,7 +81,7 @@ export function validateBackgroundConnection(input: ConnectBackgroundComputeComm
   if (!input || typeof input !== 'object' || !isAiProviderKind(input.provider))
     throw new InvalidInputError('Choose a supported provider', 'AI_PROVIDER_INVALID');
   if (!validAiKey(input.provider, input.apiKey))
-    throw new InvalidInputError(`The key does not look like a key of this provider. ${AI_PROVIDERS[input.provider].keyHint}`, 'AI_KEY_FORMAT');
+    throw new InvalidInputError(aiKeyFormatProblem(input.provider), 'AI_KEY_FORMAT');
   // Flux never picks a model for a key: the models are the provider's own, so the owner chooses one from the list of their key
   // (or names it), and a command without one is refused rather than saved on a model nobody chose (#1218).
   const model = input.model;

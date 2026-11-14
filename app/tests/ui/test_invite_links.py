@@ -263,8 +263,8 @@ class InviteLinksJourney(unittest.TestCase):
         visitor.goto(link)
         expect(visitor.get_by_role("heading", level=1, name="This invite link no longer works")).to_be_visible()
         # A link that never existed says only that it does not work.
+        # Pasted into the same tab, without a reload: only the fragment changes, and the page reads the new link (re-review of v0.2.1, P3).
         visitor.goto(f"/join#{'A' * 54}")
-        visitor.reload()
         expect(visitor.get_by_role("heading", level=1, name="This invite link doesn’t work")).to_be_visible()
 
     def test_04b_with_single_sign_on_the_first_sign_in_makes_the_account(self) -> None:
@@ -295,6 +295,44 @@ class InviteLinksJourney(unittest.TestCase):
         fresh = self.page(None)
         fresh.goto("/join")
         expect(fresh.get_by_role("heading", level=1, name="Open the invite link again in this tab")).to_be_visible()
+
+    def fresh_link(self) -> str:
+        context = self.browser.new_context(base_url=ORIGIN, service_workers="block", storage_state=self.states["ada"])
+        self.addCleanup(context.close)
+        invite = context.request.post(f"/api/v1/workspaces/{self.riverside}/invites", data={"role": "member"}, headers={"origin": ORIGIN, "idempotency-key": str(uuid.uuid4())})
+        self.assertEqual(invite.status, 201, invite.text())
+        return invite.json()["link"]
+
+    def test_04c_a_new_link_pasted_into_the_tab_opens_and_an_existing_account_is_offered_sign_in_once(self) -> None:
+        """Re-review of v0.2.1 (P3): a fresh /join#… link pasted into a tab that shows "already used" opens without a reload, and after
+        "An account with this email already exists" the way to sign in is said once (in the error), not again under the form."""
+        visitor = self.page(None)
+        visitor.goto(self.member_link)  # Nia used it in test_02
+        expect(visitor.get_by_role("heading", level=1, name="This invite link was already used")).to_be_visible()
+        visitor.goto(self.fresh_link())
+        expect(visitor.get_by_role("heading", level=1, name="Join Riverside Makers")).to_be_visible()
+        expect(visitor.get_by_role("heading", level=1, name="This invite link was already used")).to_have_count(0)
+        self.assertEqual(visitor.evaluate("location.hash"), "", "the new token leaves the address too")
+        sign_in = visitor.get_by_role("link", name="Sign in to join")
+        expect(sign_in).to_have_count(1)
+        form = visitor.get_by_role("form", name="Create account and join")
+        form.get_by_label("Name").fill(PEOPLE["cleo"][0])
+        form.get_by_label("Email").fill(PEOPLE["cleo"][1])
+        form.get_by_label("Password").fill("not the password of this account")
+        form.get_by_role("button", name="Create account and join").click()
+        alert = visitor.get_by_role("alert")
+        expect(alert).to_contain_text("An account with this email already exists.")
+        expect(sign_in).to_have_count(1)
+        expect(alert.get_by_role("link", name="Sign in to join")).to_be_visible()
+        expect(visitor.get_by_text("Already have an account?")).to_have_count(0)
+        shot(visitor, "invite-account-exists-desktop-1440")
+        # Another link pasted now is a new arrival, not the form's answer: its page opens clean.
+        visitor.goto(self.fresh_link())
+        expect(visitor.get_by_role("alert")).to_have_count(0)
+        expect(visitor.get_by_text("Already have an account?")).to_be_visible()
+        expect(sign_in).to_have_count(1)
+        expect(visitor.get_by_role("form", name="Create account and join").get_by_label("Name")).to_have_value("")
+        self.assertNotIn(PEOPLE["cleo"][1], self.roles(self.riverside))
 
     def test_05_an_admin_joining_an_encrypted_workspace_learns_how_keys_work(self) -> None:
         context = self.browser.new_context(base_url=ORIGIN, service_workers="block", storage_state=self.states["ada"])

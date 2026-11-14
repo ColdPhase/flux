@@ -420,7 +420,11 @@ class SketchJourney(unittest.TestCase):
         plus = page.get_by_role("button", name="Thought", exact=True)
         expect(plus).to_be_visible()
         self.assertGreaterEqual(box(page, plus)["width"], 44, "touch target")
-        expect(page.get_by_text("Tap a thought to select it")).to_be_visible()
+        help_line = page.get_by_text("Tap a thought to select it")
+        expect(help_line).to_be_visible()
+        # The help names the buttons plainly: "the Thought button" starts a thought and its draft has "a Paste button" (the label reads "Thought" on every device).
+        expect(help_line).to_contain_text("The Thought button starts a new thought; its draft has a Paste button for copied lines, a link or an image.")
+        expect(help_line).not_to_contain_text("Thought, then Paste")
         show_map_as(page, "List", touch=True)
         expect(page.get_by_role("tree", name="Thoughts in My map")).to_be_visible()
         shot(page, "sketch-phone-390-list")

@@ -73,8 +73,19 @@ function ProjectFace({ result }: { result: SearchResult }) {
   return <SpaceFace name={plainTitle(result)} icon={icon} size={28} />;
 }
 
+/** One piece of a result's second line: a plain string, or what is drawn together with the same in words for the row's name. */
+type Line = string | { text: string; node: ReactNode };
+const lineText = (line: Line) => (typeof line === 'string' ? line : line.text);
+const lineNode = (line: Line) => (typeof line === 'string' ? line : line.node);
+const quoted = (snippet: SearchText): Line => ({ text: `“${snippet.map((part) => part.text).join('')}”`, node: <span key="snip">“<Highlighted parts={snippet} />”</span> });
+const written = (result: SearchResult): Line => ({ text: when(result.at), node: <time key="at" dateTime={result.at}>{when(result.at)}</time> });
+
 /** The second line: the words the group does not already say, then where it lives and when it was written. */
-function meta(result: SearchResult): ReactNode[] {
+function meta(result: SearchResult): Line[] {
+  return pieces(result).filter((line): line is Line => !!line);
+}
+
+function pieces(result: SearchResult): Array<Line | null> {
   const place = result.place;
   // In a DM with the author, "With Ari · Ari" would say the same thing twice.
   const author = result.author && !(place.type === 'dm' && place.name === result.author) ? result.author : null;
@@ -82,16 +93,16 @@ function meta(result: SearchResult): ReactNode[] {
   const { task } = result;
   if (task) return [`#${task.number}`, TASK_STATE_WORD[task.status], where];
   switch (result.kind) {
-    case 'message': case 'dm_message': return [author, where, <time key="at" dateTime={result.at}>{when(result.at)}</time>];
+    case 'message': case 'dm_message': return [author, where, written(result)];
     case 'doc': case 'material': {
       const snippet = plainSnippet(result.snippet);
-      return snippet ? [<span key="snip">“<Highlighted parts={snippet} />”</span>] : [where];
+      return snippet ? [quoted(snippet)] : [where];
     }
     case 'file': {
       // What the file says where it matched (and the page, for a PDF); a file found by its name says where it lives.
       const snippet = plainSnippet(result.snippet);
       const page = result.target.type === 'file' ? result.target.page : undefined;
-      return snippet ? [page ? `Page ${page}` : null, <span key="snip">“<Highlighted parts={snippet} />”</span>] : [author, where, <time key="at" dateTime={result.at}>{when(result.at)}</time>];
+      return snippet ? [page ? `Page ${page}` : null, quoted(snippet)] : [author, where, written(result)];
     }
     case 'thought': case 'sketch': return place.type === 'private' ? ['My map', 'only you'] : [result.label, where];
     case 'project': return [];
@@ -100,16 +111,24 @@ function meta(result: SearchResult): ReactNode[] {
   }
 }
 
+/**
+ * The row's accessible name: the title, then each piece of the second line, set apart by commas. The drawn " · " is hidden from a
+ * screen reader, which would otherwise run the pieces together ("Ada KowalskaCommunity garden sensors18:45").
+ */
+export function resultName(result: SearchResult) {
+  return [plainTitle(result), ...meta(result).map(lineText)].join(', ');
+}
+
 /** The body of a row; the caller supplies the option element. */
 export function ResultBody({ result }: { result: SearchResult }) {
-  const lines = meta(result).filter(Boolean);
+  const lines = meta(result);
   const plain = result.kind === 'message' || result.kind === 'dm_message';
   return (
     <>
       <Tile result={result} />
       <span className="sr__main">
         <span className={`sr__title${plain ? ' sr__title--text' : ''}`}><Highlighted parts={result.title} /></span>
-        {lines.length ? <span className="sr__meta">{lines.map((line, index) => <Fragment key={index}>{index ? <span aria-hidden="true"> · </span> : null}<span>{line}</span></Fragment>)}</span> : null}
+        {lines.length ? <span className="sr__meta">{lines.map((line, index) => <Fragment key={index}>{index ? <span aria-hidden="true"> · </span> : null}<span>{lineNode(line)}</span></Fragment>)}</span> : null}
       </span>
       <kbd className="sr__enter" aria-hidden="true">↵</kbd>
     </>

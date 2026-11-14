@@ -105,8 +105,8 @@
 @media (pointer: coarse) {
   .ui-overlay .create .create__chip, .ui-overlay .create .create__results button { min-height: 44px; }
   .ui-overlay .create .create__x { width: 44px; height: 44px; }
-  /* The title (or name) field is a 44 px target too, as tall as the chips and buttons around it. */
-  .ui-overlay .create :is(.create__title, .create__name) { min-height: 44px; }
+  /* The title (or name) and Details fields are 44 px targets too, as tall as the chips and buttons around them. */
+  .ui-overlay .create :is(.create__title, .create__name, .create__details) { min-height: 44px; }
   .ui-overlay .create .create__place, .ui-overlay .create .create__place--plain { min-height: 44px; min-width: 44px; }
   /* Remove's 44 x 44 box stays inside the chip's own area and does not reach over the label: the label keeps a clear band
      before it, so a tap on the label is not taken for Remove. The drawn × keeps its place at the chip's end. */

@@ -189,6 +189,14 @@ class SearchJourney(unittest.TestCase):
         field.fill("sensor reacts")
         reacts = dialog.locator("[role=option].sr").filter(has_text="The infrared sensor reacts at 5 lux in the hallway test.")
         expect(reacts).to_have_count(1)
+        # A screen reader hears the pieces of a row apart: the drawn " · " is hidden from it, so the name carries commas
+        # ("title, author, space, time"), not "Ari NowakGesture lamp18:45".
+        pieces = reacts.first.locator(".sr__meta > span:not([aria-hidden])").all_inner_texts()
+        self.assertEqual(len(pieces), 3, pieces)
+        self.assertEqual(pieces[:2], ["Ari Nowak", "Gesture lamp"])
+        name = ", ".join(["The infrared sensor reacts at 5 lux in the hallway test.", *pieces])
+        self.assertEqual(reacts.first.get_attribute("aria-label"), name)
+        expect(dialog.get_by_role("option", name=name, exact=True)).to_have_count(1)
         first_message = dialog.locator(".jump__sh", has_text="Messages").locator("xpath=following-sibling::*[@role='option'][1]")
         expect(first_message).to_contain_text("The infrared sensor reacts at 5 lux in the hallway test.")
         reacts.first.click()

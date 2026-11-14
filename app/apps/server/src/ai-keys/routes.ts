@@ -1,10 +1,10 @@
 import { createHash } from 'node:crypto';
 import type { Database } from '@flux/db';
 import type { FastifyError, FastifyInstance } from 'fastify';
-import { AI_BASE_URL_MAX_LENGTH, AI_LISTED_PRICE_PROVIDERS, AI_MODEL_LISTS_PATH, AI_PROVIDERS, providerPriceList, API_KEY_DAILY_BUDGET_CENTS, AI_PRICE_MAX_MICROS_PER_MTOK, AI_PROVIDER_KINDS, type AiModelList, type AiModelListQuery,
+import { AI_BASE_URL_MAX_LENGTH, AI_LISTED_PRICE_PROVIDERS, AI_MODEL_LISTS_PATH, providerPriceList, API_KEY_DAILY_BUDGET_CENTS, AI_PRICE_MAX_MICROS_PER_MTOK, AI_PROVIDER_KINDS, type AiModelList, type AiModelListQuery,
   type AiProviderKind, type AiProviderPriceList, type AssistantModelListing, type ConnectBackgroundComputeCommand, type SetApiKeyModelPriceCommand, type UpdateBackgroundComputeConnectionCommand } from '@flux/contracts';
 import { aiPriceListRepository, backgroundConnectionRepository, personalConnectionLookup, sealBackgroundKey, storedProviderPriceList } from '@flux/db';
-import { backgroundConnectionUseCases, heldPriceLog, openRouterPriceList, storeGuardedPriceList, baseUrlSyntaxProblem, ConflictError, DomainError, InvalidInputError, keyListing, NotFoundError, normalizeBaseUrl, RateLimitedError, validAiKey } from '@flux/core';
+import { aiKeyFormatProblem, backgroundConnectionUseCases, heldPriceLog, openRouterPriceList, storeGuardedPriceList, baseUrlSyntaxProblem, ConflictError, DomainError, InvalidInputError, keyListing, NotFoundError, normalizeBaseUrl, RateLimitedError, validAiKey } from '@flux/core';
 import type { ModelListRefresh } from './model-refresh.js';
 import type { SessionResolver } from '../identity/index.js';
 import { requireNotGuest } from '../access/guest-no-ai.js';
@@ -109,7 +109,7 @@ export async function aiKeyRoutes(app: FastifyInstance, { db, sessions, backgrou
     } else if (baseUrl !== undefined) throw new InvalidInputError('A named provider always uses its own public API address', 'AI_BASE_URL_INVALID');
     const apiKey = request.body.apiKey?.trim();
     if (apiKey !== undefined && !validAiKey(provider, apiKey))
-      throw new InvalidInputError(`The key does not look like a key of this provider. ${AI_PROVIDERS[provider].keyHint}`, 'AI_KEY_FORMAT');
+      throw new InvalidInputError(aiKeyFormatProblem(provider), 'AI_KEY_FORMAT');
     const address = provider === 'openai_compatible' ? normalizeBaseUrl(baseUrl!) : null;
     // One listing at a time for this person: the same one shares it, another waits for it to end (#1347).
     const same = createHash('sha256').update(JSON.stringify([provider, address, apiKey ?? null])).digest('hex');
