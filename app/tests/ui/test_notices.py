@@ -341,14 +341,14 @@ class NoticeJourney(unittest.TestCase):
         page = self.page("ada")
         page.add_init_script(self.FAKE_AUDIO_AND_BADGE)
         page.goto("/settings/notifications")
-        sounds = page.get_by_role("switch", name="Sounds", exact=True)
+        sounds = page.get_by_role("switch", name="Sounds")
         expect(sounds).to_have_attribute("aria-checked", "true")
         # One switch, not two: the old pair is gone, whether or not this server has calls.
         expect(page.get_by_role("switch", name="Sound for messages")).to_have_count(0)
         expect(page.get_by_role("switch", name="Sound when someone calls me")).to_have_count(0)
         expect(page.get_by_role("heading", name="Sound", exact=True)).to_have_count(0)
         # Its own card after Where, with no heading, and Hide previews / Quiet hours stay where #1346 drew them.
-        expect(page.get_by_role("group", name="Where").get_by_role("switch", name="Sounds", exact=True)).to_have_count(0)
+        expect(page.get_by_role("group", name="Where").get_by_role("switch", name="Sounds")).to_have_count(0)
         shot(page, "notices-desktop-1440-light-sound-settings")
         page.goto("/")
         page.wait_for_timeout(1500)
@@ -364,7 +364,7 @@ class NoticeJourney(unittest.TestCase):
 
         # Turning the one switch off silences the next notice, and stores both of the pair.
         page.goto("/settings/notifications")
-        switch = page.get_by_role("switch", name="Sounds", exact=True)
+        switch = page.get_by_role("switch", name="Sounds")
         switch.click()
         expect(switch).to_have_attribute("aria-checked", "false")
         self.addCleanup(lambda: self.request("ada", "PATCH", "/api/v1/notification-preferences", {"sound": {"messages": False, "calls": True}}))
