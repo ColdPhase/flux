@@ -110,10 +110,15 @@ class AgentColourForEveryone(unittest.TestCase):
         cls.call("ada", "PATCH", f"/api/v1/work/{task['id']}", {"owner": {"kind": "agent", "id": cls.ids["Planner"]}}, headers={"if-match": f"\"{task['version']}\""})
         deadline = time.time() + 90
         state: dict = {}
+        approved = False
         while time.time() < deadline:
             state = cls.call("ada", "GET", f"/api/v1/work/{task['id']}/agent")
             if state.get("line") in ("done", "handed_back"):
                 break
+            # A proposal about someone else's task waits for its owner's OK whatever Ask me first says (#1419): Ada gives it, as Approve does.
+            if state.get("line") == "waiting_for_ok" and state.get("runId") and not approved:
+                cls.call("ada", "POST", f"/api/v1/assistant-runs/{state['runId']}/changes/apply", {})
+                approved = True
             time.sleep(0.5)
         assert state.get("line") in ("done", "handed_back"), f"Planner never finished the task: {state}"
         # The proposal is the run's: say what its tool answered if it is not there.

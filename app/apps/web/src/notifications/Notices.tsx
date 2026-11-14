@@ -88,7 +88,7 @@ function useLift(active: boolean, card: React.RefObject<HTMLElement | null>, pho
         const box = card.current?.getBoundingClientRect();
         if (!box) return;
         const width = document.documentElement.clientWidth;
-        const docked = document.querySelector<HTMLElement>(DOCKED_PANEL);
+        const docked = [...document.querySelectorAll<HTMLElement>(DOCKED_PANEL)].find((element) => element.getBoundingClientRect().width > 0);
         const panel = docked?.getBoundingClientRect();
         // Where the panel stands once it has come in: its entrance slides it, which the box would include.
         const shift = docked ? ((transform) => (transform === 'none' ? 0 : new DOMMatrixReadOnly(transform).m41))(getComputedStyle(docked).transform) : 0;
