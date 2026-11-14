@@ -85,6 +85,9 @@ describe('listing a key\'s models from its provider (#1218)', () => {
     const first = expectStatus(await owner.browser.request('POST', AI_MODEL_LISTS_PATH, { body: { provider: 'anthropic', apiKey: key } }), 200) as AiModelList;
     assert.equal(first.status, 'listed');
     assert.ok(first.models.some((model) => model.id === 'claude-opus-5-5'), 'Opus is listed');
+    // Flux's price list of the provider comes with it (#1465): the form prices a model with it, or asks its owner.
+    assert.deepEqual(first.priceList?.prices['claude-opus-5-5'], { inputMicrosPerMTok: 4_000_000, outputMicrosPerMTok: 20_000_000 });
+    assert.match(first.priceList?.fetchedOn ?? '', /^\d{4}-\d{2}-\d{2}$/);
     const again = await owner.browser.request('POST', AI_MODEL_LISTS_PATH, { body: { provider: 'anthropic', apiKey: key } });
     assert.equal(again.text.includes(key), false);
     assert.equal((await askedWith(key)).length, 1, 'the second look and later the save use the same reading');
@@ -103,6 +106,7 @@ describe('listing a key\'s models from its provider (#1218)', () => {
     // OpenAI-compatible endpoints keep their keyless `/models`.
     const compatible = expectStatus(await owner.browser.request('POST', AI_MODEL_LISTS_PATH, { body: { provider: 'openai_compatible', baseUrl: `${MOCK}/openai/v1` } }), 200) as AiModelList;
     assert.deepEqual(compatible.models.map((model) => model.id), ['llama3.1:8b', 'qwen2.5:7b-instruct']);
+    assert.equal(compatible.priceList, null, 'Flux knows no price of an endpoint\'s models: their owner enters it');
   });
 });
 

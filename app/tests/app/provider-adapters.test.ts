@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import { after, afterEach, before, beforeEach, describe, test } from 'node:test';
-import { tablePrice, type AiProviderKind } from '@flux/contracts';
+import { type AiProviderKind } from '@flux/contracts';
 import { costMicros, type PersonalCompute, type PersonalComputeRequest } from '@flux/core';
 import { BRIEF } from './support/brief.js';
 import { listProviderModels, parsePrivateTargets, providerPersonalCompute } from '../../packages/agent-runtime/src/index.js';
 import type { RecordedProviderRequest } from './support/provider-mock.js';
+import { FAKE_PRICE } from './support/personal-runs.js';
 
 // The adapter contract suite (F-020 PROV-6): ONE set of cases runs identically against the Docker
 // mock of each wire format (`providermock`, app/tests/app/support/provider-mock.ts): Anthropic
@@ -17,7 +18,7 @@ import type { RecordedProviderRequest } from './support/provider-mock.js';
 const MOCK = process.env.FLUX_PROVIDER_MOCK_URL ?? 'http://providermock:8095';
 // The operator allowlist of this suite: the mock's host only, as `FLUX_AI_PRIVATE_TARGETS` would.
 const policy = parsePrivateTargets(new URL(MOCK).hostname);
-const PRICE = tablePrice('anthropic', 'claude-sonnet-5')!;
+const PRICE = FAKE_PRICE;
 
 interface WireCase {
   wire: 'anthropic' | 'openai';
@@ -280,8 +281,11 @@ describe('wire details beyond the shared contract', () => {
     assert.deepEqual(routed.models, [
       { id: 'openrouter/auto', family: 'openrouter', price: null },
       { id: 'vendor/free-model:free', family: 'vendor', price: { inputMicrosPerMTok: 0, outputMicrosPerMTok: 0 } },
+      { id: 'vendor/long-model', family: 'vendor', price: { inputMicrosPerMTok: 2_000_000, outputMicrosPerMTok: 10_000_000,
+        tiers: [{ fromTokens: 200_000, inputMicrosPerMTok: 4_000_000, outputMicrosPerMTok: 18_000_000 }] } },
+      { id: 'vendor/odd-tier-model', family: 'vendor', price: null },
       { id: 'vendor/priced-model', family: 'vendor', price: { inputMicrosPerMTok: 3_000_000, outputMicrosPerMTok: 15_000_000 } },
-    ], 'a variable price is unknown, and provider-hosted search variants are not offered');
+    ], 'a variable price or a malformed long-prompt price is unknown, and provider-hosted search variants are not offered');
     for (const listed of (await sent()).filter((item) => item.method === 'GET')) assert.equal(listed.key, null, 'no key is sent to list models');
     for (const provider of ['anthropic', 'openai', 'gemini'] as const) assert.equal((await listProviderModels(provider, null, { policy })).status, 'needs_key');
     assert.equal((await listProviderModels('openai_compatible', 'http://10.1.2.3:11434/v1', { policy })).status, 'refused');

@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { customType, pgTable, text, timestamp, date, uuid, integer, smallint, jsonb, boolean, bigserial, bigint, index, uniqueIndex, primaryKey, foreignKey, unique, check, type AnyPgColumn, type PgTableExtraConfigValue } from 'drizzle-orm/pg-core';
 import { AGENT_MAY_DO, AGENT_OPERATIONS, withoutInvisibleFormat, type AgentJsonValue, type AgentPostcondition, type CoWorkSourceRef } from '@flux/contracts';
-import { AI_PROVIDER_KINDS, ASSISTANT_RUN_END_REASONS, type AiProviderKind } from '@flux/contracts';
+import { AI_PROVIDER_KINDS, ASSISTANT_RUN_END_REASONS, type AiProviderKind, type AiRate } from '@flux/contracts';
 
 /**
  * The name of a person, an agent or a connection (#1347): plain text in the database, and cleaned of direction controls and invisible format
@@ -1354,7 +1354,8 @@ export const backgroundComputeConnections = pgTable('background_compute_connecti
   /** Micro-dollars per 1M tokens; all null when no price is known. */
   inputPriceMicrosPerMTok: integer('input_price_micros_per_mtok'),
   outputPriceMicrosPerMTok: integer('output_price_micros_per_mtok'),
-  priceSource: text('price_source', { enum: ['table', 'owner'] }),
+  /** 'list': Flux's price list (#1465); 'owner': the owner's. A list price is replaced by the list's current one when read. */
+  priceSource: text('price_source', { enum: ['list', 'owner'] }),
   priceCheckedOn: date('price_checked_on', { mode: 'string' }),
   encryptedKey: text('encrypted_key'),
   keyLastFour: text('key_last_four').notNull(),
@@ -1371,7 +1372,7 @@ export const backgroundComputeConnections = pgTable('background_compute_connecti
   /** The last attempt to list, whatever its outcome: a key is listed again when this is over 6 hours old. */
   modelsCheckedAt: timestamp('models_checked_at', { withTimezone: true }),
   modelsListStatus: text('models_list_status', { enum: ['listed', 'key_refused', 'unavailable', 'refused'] }),
-  /** Prices the owner entered for this key's models that Flux's table does not price, by model id. */
+  /** Prices the owner entered for this key's models that Flux's price list does not price, by model id. */
   modelPrices: jsonb('model_prices').$type<Record<string, { inputMicrosPerMTok: number; outputMicrosPerMTok: number }>>().notNull().default({}),
   /** Models in an earlier list that a later one no longer had: "no longer offered" (their agents pause). */
   retiredModels: text('retired_models').array().notNull().default([]),
@@ -1394,6 +1395,15 @@ export const apiKeyChecks = pgTable('api_key_checks', {
 }, (table) => [
   index('api_key_checks_connection_idx').on(table.connectionId, table.checkedAt),
 ]);
+
+/** The model price lists (0081, #1465): one row per list, the last one fetched that passed every check. */
+export const aiPriceLists = pgTable('ai_price_lists', {
+  list: text('list', { enum: ['litellm', 'openrouter'] }).primaryKey(),
+  fetchedOn: date('fetched_on', { mode: 'string' }).notNull(),
+  source: text('source').notNull(),
+  prices: jsonb('prices').$type<Partial<Record<AiProviderKind, Record<string, AiRate>>>>().notNull(),
+  storedAt: timestamp('stored_at', { withTimezone: true }).notNull().defaultNow(),
+});
 
 // Durable project-bound live sessions and identifier-only presentation trace (#61).
 // Access belongs to the existing project policy; media room IDs do not encode titles or users.

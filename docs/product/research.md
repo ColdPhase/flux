@@ -4,6 +4,10 @@ Open research beside #1437 (no decision yet): [one agent harness contract for ev
 compares Claude Code, Codex, pi, opencode, Goose, Crush, Qwen Code and others for running every Flux agent with the same
 capabilities, with an offline probe of each, and recommends the vendor harness per model family plus pi behind one model gateway.
 
+Research choice for #1465 (v0.2.1): [model prices from a maintained public list, 2026-11-13](research/2026-11-13-model-price-list.md)
+compares OpenRouter's keyless model list and LiteLLM's price file with Anthropic's, OpenAI's and Gemini's pricing pages on a dated
+sample and picks LiteLLM for Flux's daily price list ([CA-2](model-providers.md#ca-2--models)).
+
 Open research for #1242 (v0.2.1, no decision yet): [how agents read long conversations, 2026-11-12](research/2026-11-ai-context-retrieval.md)
 measures today's window and search against PostgreSQL full text, BM25 (`pg_search`), pgvector hybrids and Meilisearch on a
 seeded 10k-message Polish/English space, with the questions Hubert must answer before the decision is recorded.

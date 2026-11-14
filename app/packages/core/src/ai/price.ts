@@ -1,27 +1,29 @@
-import { maxRequestMicros, tablePrice, type AiPrice, type AiProviderKind } from '@flux/contracts';
+import { listPrice, maxRequestMicros, type AiPrice, type AiProviderPriceList, type AiRate } from '@flux/contracts';
 import { InvalidInputError } from '../access/errors.js';
 
 // PROV-3 prices. A reservation needs a price before any response exists, so a connection's price
-// per 1M tokens comes only from Flux's dated price table or from the owner (zero allowed for a
+// per 1M tokens comes only from Flux's price list (refreshed daily, #1465) or from the owner (zero allowed for a
 // self-hosted endpoint). A connection with neither cannot be enabled. A cost a provider reports in
 // a response (OpenRouter's `usage.cost`) never raises or bypasses the reservation; it only
 // reconciles the actual charge of that run (`usageMicros`), and a charge is never stored above the
 // reservation (`boundedUsageMicros`).
 
 export function resolveConnectionPrice(input: {
-  provider: AiProviderKind; model: string;
+  model: string;
   ownerPrice: { inputMicrosPerMTok: number; outputMicrosPerMTok: number } | undefined;
+  /** Flux's price list of the connection's provider. */
+  list: AiProviderPriceList | null;
 }): AiPrice | null {
-  const table = tablePrice(input.provider, input.model);
-  if (table && input.ownerPrice)
-    throw new InvalidInputError('Flux’s price table has this model; leave the price empty', 'AI_PRICE_ALREADY_KNOWN');
-  if (table) return { inputMicrosPerMTok: table.inputMicrosPerMTok, outputMicrosPerMTok: table.outputMicrosPerMTok, source: 'table', checkedOn: table.checkedOn };
+  const known = listPrice(input.list, input.model);
+  if (known && input.ownerPrice)
+    throw new InvalidInputError('Flux’s price list has this model; leave the price empty', 'AI_PRICE_ALREADY_KNOWN');
+  if (known) return known;
   if (input.ownerPrice) return { ...input.ownerPrice, source: 'owner', checkedOn: null };
   return null;
 }
 
 /** The PROV-3 reservation of one request in micro-dollars, with the web searches it may make (#954), or null without a known price. */
-export function requestReservationMicros(price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'> | null, maxInputTokens: number, maxOutputTokens: number, webSearches = 0): number | null {
+export function requestReservationMicros(price: AiRate | null, maxInputTokens: number, maxOutputTokens: number, webSearches = 0): number | null {
   return price ? maxRequestMicros(price, maxInputTokens, maxOutputTokens, webSearches) : null;
 }
 
@@ -29,11 +31,12 @@ export function requestReservationMicros(price: Pick<AiPrice, 'inputMicrosPerMTo
  * Micro-dollars of one completed request, for reconciliation only: the provider-reported cost when
  * the response carries one, otherwise the reported tokens at the connection's price, rounded up.
  */
-export function usageMicros(price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'>, usage: { inputTokens: number; outputTokens: number; reportedCostMicros?: number | null; webSearches?: number; cache?: UsageCache }): number {
+export function usageMicros(price: AiRate, usage: { inputTokens: number; outputTokens: number; reportedCostMicros?: number | null; webSearches?: number; cache?: UsageCache }): number {
   if (typeof usage.reportedCostMicros === 'number' && Number.isSafeInteger(usage.reportedCostMicros) && usage.reportedCostMicros >= 0) return usage.reportedCostMicros;
   // Each search of the provider's built-in web search is billed on top of its tokens (#954). What the provider wrote to its cache and
   // read from it (#1410) is charged at its rates of the input price, rounded up: the rest of the input at the full price.
-  return maxRequestMicros(price, billedInputTokens(usage), usage.outputTokens, usage.webSearches ?? 0);
+  // The tier is the prompt's whole length, cache reads and writes included (#1465): what the provider prices the request by.
+  return maxRequestMicros(price, billedInputTokens(usage), usage.outputTokens, usage.webSearches ?? 0, usage.inputTokens);
 }
 
 /** What the provider wrote to its prompt cache and read from it (#1410), within the request's input tokens, and the rates they cost. */
@@ -71,7 +74,7 @@ export function usageTokensWithin(usage: { inputTokens: number; outputTokens: nu
  * (reported or token-derived) above its reservation. A null charge is never stored: the caller
  * keeps the reservation counted as `unknown` and withholds the result (PROV-3).
  */
-export function boundedUsageMicros(price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'>,
+export function boundedUsageMicros(price: AiRate,
   usage: { inputTokens: number; outputTokens: number; reportedCostMicros?: number | null; webSearches?: number; cache?: UsageCache },
   bounds: { maxInputTokens: number; maxOutputTokens: number; maxWebSearches?: number; reservedMicros: number }): number | null {
   if (!usageTokensWithin(usage, bounds)) return null;

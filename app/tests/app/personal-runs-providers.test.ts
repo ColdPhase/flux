@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
 import { apiKeySpendToday } from '@flux/db';
-import type { Principal } from '@flux/core';
-import { type AssistantRun, type Conversation, type Project, type Workspace } from '@flux/contracts';
+import { shippedPriceList, type Principal } from '@flux/core';
+import { providerPriceList, type AssistantRun, type Conversation, type Project, type Workspace } from '@flux/contracts';
 import { personalRunUseCases } from '../../apps/server/src/personal-runs/adapters.js';
 import { db, pool } from './support/db.js';
 import { expectStatus, person, project as createProject, workspace as createWorkspace, type Person } from './support/people.js';
@@ -62,7 +62,7 @@ describe('personal runs on any provider through the same path (#179)', () => {
     { provider: 'openai_compatible' as const, model: 'llama3.1:8b', baseUrl: OWN_ENDPOINT, path: '/openai_compatible/chat/completions',
       price: { inputMicrosPerMTok: 1_000_000, outputMicrosPerMTok: 2_000_000, source: 'owner' as const, checkedOn: null } },
     { provider: 'anthropic' as const, model: 'claude-sonnet-5', baseUrl: null, path: '/anthropic/v1/messages',
-      price: { inputMicrosPerMTok: 2_000_000, outputMicrosPerMTok: 10_000_000, source: 'table' as const, checkedOn: '2026-11-12' } },
+      price: { inputMicrosPerMTok: 2_000_000, outputMicrosPerMTok: 10_000_000, source: 'list' as const, checkedOn: '2026-11-12' } },
   ]) {
     test(`${target.provider}: the model of a key, a run that holds nothing until it starts, pi on the provider's wire with the run's own token, the answer names provider and model`, async () => {
       pi.gateway.script([{ text: 'Fact: the camera fails below 5 lux.' }]);
@@ -123,7 +123,8 @@ describe('the assistant\'s model from any connection (F-027 AST-11, #854)', () =
       listed: [listed('claude-sonnet-5', 'Sonnet', '2026-06-01T00:00:00Z'), listed('claude-sonnet-5-5', 'Sonnet', '2026-09-28T00:00:00Z'),
         listed('claude-opus-5-5', 'Opus', '2026-09-21T00:00:00Z'), listed('claude-haiku-5-5', 'Haiku', '2026-10-07T00:00:00Z'),
         listed('claude-fable-5-2', 'Fable', '2026-11-05T00:00:00Z')],
-      listedAt: new Date(), checkedAt: new Date(), status: 'listed', prices: {}, retired: [] } });
+      // Priced by Flux's price list as the release ships it (#1465), as the repository passes it with the key.
+      listedAt: new Date(), checkedAt: new Date(), status: 'listed', prices: {}, retired: [], list: providerPriceList(shippedPriceList(), 'anthropic') } });
     pi = await startPiRuntime();
     processor = pi.processor(connections);
     await pi.place(owner.id);
@@ -138,7 +139,7 @@ describe('the assistant\'s model from any connection (F-027 AST-11, #854)', () =
     assert.deepEqual(choice.groups[0]!.options.map((option) => [option.id, option.name, option.note]), [
       // By family, the family with the newest model first (#1218).
       ['claude-fable-5-2', 'Fable 5.2', 'Input $8, output $40 per 1M tokens'],
-      ['claude-haiku-5-5', 'Haiku 5.5', 'Input $0.50, output $2.50 per 1M tokens'],
+      ['claude-haiku-5-5', 'Haiku 5.5', 'Input $0.10, output $0.50 per 1M tokens'],
       ['claude-sonnet-5-5', 'Sonnet 5.5', 'Input $2, output $10 per 1M tokens'],
       ['claude-sonnet-5', 'Sonnet 5', 'Input $2, output $10 per 1M tokens'],
       ['claude-opus-5-5', 'Opus 5.5', 'Input $4, output $20 per 1M tokens'],

@@ -114,7 +114,7 @@ function AiConnectionsPage({ initial }: { initial: { connections: BackgroundComp
             <div><dt>Model</dt><dd>{assistantModelName(item.model)}</dd></div>
             {item.baseUrl ? <div><dt>Endpoint</dt><dd>{item.baseUrl}</dd></div> : null}
             <div><dt>Price</dt><dd>{item.price
-              ? <>{priceText(item.price)} · {priceSourceText(item.price)}</>
+              ? <>{priceText(item.price)} · {priceSourceText(item.price, item.provider)}</>
               : 'Unknown. It cannot be used until a price is known; add the key again with a price.'}</dd></div>
             <div><dt>Key</dt><dd>Ending {item.keyLastFour}</dd></div>
           </dl>

@@ -12,6 +12,7 @@ import { personalRunWorkerComposition, registerPersonalRunWorker } from './perso
 import { workerRuntimeAvailability } from './personal-runs/runtime-standing.js';
 import { registerSpaceAiSweep } from './space-ai/index.js';
 import { registerApiKeyModelLists } from './ai-keys/model-lists.js';
+import { registerPriceList } from './ai-keys/price-list.js';
 import { startSearchVectors } from './search-vectors/index.js';
 import { startFileText } from './file-text/index.js';
 import { startWorkspaceEncryption } from './workspace-encryption/index.js';
@@ -61,6 +62,8 @@ await registerSearchChangesCleanup(boss, db);
 await registerSpaceAiSweep(boss, db);
 // An API key's models, read with the key by the only process that opens one (#1218).
 await registerApiKeyModelLists(boss, db);
+// Flux's model prices, fetched every day from a maintained public list (#1465).
+await registerPriceList(boss, db);
 // Optional local embeddings (F-042, #1294): off unless FLUX_EMBEDDINGS_URL is set; woken by NOTIFY, no polling.
 const searchVectors = await startSearchVectors({ db, connectionString });
 // What is inside the files people send (C-63, #1382): read in a sandboxed child process, woken by NOTIFY, no polling.

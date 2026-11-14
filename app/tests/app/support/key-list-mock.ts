@@ -13,13 +13,26 @@ import { offeredTools, toolAnswer, toolWireOf } from './tool-answers.js';
  * `POST /lists/anthropic/v1/messages`, OpenAI `…/openai/v1/responses`, Gemini `…/gemini/v1beta/openai/chat/completions`, OpenRouter
  * `…/openrouter/v1/chat/completions`): the model calls the first tool it is offered (`ping`), unless its id contains `no-tools` (it answers
  * in words) or `check-fails` (500); a key containing `refused` is refused (401) as by its listing; the key's `fail` and `broken`/`slow` apply to its
- * listing only. Usage is `TOOL_ANSWER_USAGE`. `GET /__key-lists` also returns `checks`: what each check carried.
+ * listing only. Usage is `TOOL_ANSWER_USAGE`. OpenRouter's public priced list is `GET /lists/openrouter/v1/models` (#1465). `GET /__key-lists` also returns `checks`: what each check carried.
  */
 export interface KeyListRequest { provider: 'anthropic' | 'openai' | 'gemini' | 'openrouter'; path: string; key: string | null; at: number; /** Anthropic's `anthropic-version` header. */ version: string | null }
 export const keyListRequests: KeyListRequest[] = [];
 /** One check that a model calls tools (#1441): the model, the tools the request offered and its output bound, with the key it carried. */
 export interface ToolCheckRequest { provider: KeyListRequest['provider']; path: string; key: string | null; model: string | null; tools: string[]; body: unknown; at: number }
 export const toolCheckRequests: ToolCheckRequest[] = [];
+/**
+ * OpenRouter's public model list with its prices (#1465): the list a key of OpenRouter pays by, read without a key. The same answer is
+ * `GET /lists/openrouter/v1/models`, where a check stack reads it, and the provider mock's `/openrouter/v1/models`.
+ */
+export const OPENROUTER_MODELS = { data: [
+  { id: 'vendor/priced-model', pricing: { prompt: '0.000003', completion: '0.000015' } },
+  // A higher price from a prompt length on, as OpenRouter lists Gemini's and OpenAI's long-context prices.
+  { id: 'vendor/long-model', pricing: { prompt: '0.000002', completion: '0.00001', overrides: [{ min_prompt_tokens: 200000, prompt: '0.000004', completion: '0.000018' }] } },
+  { id: 'vendor/odd-tier-model', pricing: { prompt: '0.000002', completion: '0.00001', overrides: [{ min_prompt_tokens: 'many', prompt: '0.000004' }] } },
+  { id: 'vendor/free-model:free', pricing: { prompt: '0', completion: '0' } },
+  { id: 'openrouter/auto', pricing: { prompt: '-1', completion: '-1' } },
+  { id: 'vendor/search-model:online', pricing: { prompt: '0.000001', completion: '0.000001' } },
+] };
 const scripted = new Map<string, { omit: Set<string>; fail: boolean; noTools: Set<string> }>();
 
 const ANTHROPIC = [
@@ -73,6 +86,12 @@ export function handleKeyLists(request: http.IncomingMessage, response: http.Ser
       else json(response, 401, { type: 'error', error: { type: 'authentication_error', message: 'invalid x-api-key' } });
     } else if (model?.includes('check-fails')) json(response, 500, { error: { message: 'scripted failure', type: 'server_error' } });
     else json(response, 200, toolAnswer(wire, body, { call: !model?.includes('no-tools') && !scripted.get(key)?.noTools.has(model ?? '') }));
+    return true;
+  }
+  // OpenRouter's list is public: it is answered without a key, and a key is never needed to read it (#1465).
+  if (provider === 'openrouter' && request.method === 'GET' && url.pathname === '/lists/openrouter/v1/models') {
+    keyListRequests.push({ provider, path: `${url.pathname}${url.search}`, key, at: Date.now(), version: null });
+    json(response, 200, OPENROUTER_MODELS);
     return true;
   }
   keyListRequests.push({ provider, path: `${url.pathname}${url.search}`, key, at: Date.now(), version: (request.headers['anthropic-version'] as string | undefined) ?? null });

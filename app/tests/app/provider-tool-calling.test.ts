@@ -6,6 +6,7 @@ import { PERSONAL_RUN_LIMITS } from '@flux/contracts';
 import type { PersonalCompute, PersonalComputeRequest, PersonalTurn } from '@flux/core';
 import { BRIEF } from './support/brief.js';
 import { parsePrivateTargets, providerPersonalCompute } from '../../packages/agent-runtime/src/index.js';
+import { FAKE_PRICE } from './support/personal-runs.js';
 import {
   ANTHROPIC_DUPLICATE_IDS, ANTHROPIC_FINAL, ANTHROPIC_TOOL_USE, ANTHROPIC_TWO_CALLS, ANTHROPIC_TOOL_USE_TRUNCATED, ANTHROPIC_TOOL_USE_WITH_THINKING, CHAT_FINAL, CHAT_TOOL_CALLS,
   CHAT_TOOL_CALLS_TRUNCATED, CHAT_TWO_CALLS, FLUX_TOOLS, PROJECT_ID, RESPONSES_FINAL, RESPONSES_TOOL_CALLS, TOOL_WIRE_CASES, type ToolWireCase,

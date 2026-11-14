@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { after, before, beforeEach, describe, test } from 'node:test';
-import { tablePrice, type AiPrice, type AiProviderKind, type BackgroundComputeConnection } from '@flux/contracts';
-import { costMicros, type Principal, type ToolChecking } from '@flux/core';
+import { listPrice, providerPriceList, type AiPrice, type AiProviderKind, type BackgroundComputeConnection } from '@flux/contracts';
+import { costMicros, shippedPriceList, type Principal, type ToolChecking } from '@flux/core';
 import { apiKeyCheckRows, apiKeySpendToday, createDatabase, personalConnectionLookup, personalKeyResolver } from '@flux/db';
 import { personalRunUseCases } from '../../apps/server/src/personal-runs/adapters.js';
 import { largestToolCheckMicros, parsePrivateTargets, providerToolCheck } from '../../packages/agent-runtime/src/index.js';
@@ -220,9 +220,11 @@ describe('putting an agent on another model of a key checks that model once (#14
       baseUrls: { anthropic: `${MOCK}/lists/anthropic`, openai: `${MOCK}/lists/openai/v1`, openrouter: `${MOCK}/lists/openrouter/v1`, gemini: `${MOCK}/lists/gemini/v1beta/openai` } }),
     passed: rows.passed, record: rows.record,
   };
-  const SONNET = tablePrice('anthropic', 'claude-sonnet-5')!;
-  const SONNET_5_5 = tablePrice('anthropic', 'claude-sonnet-5-5')!;
-  const OPUS = tablePrice('anthropic', 'claude-opus-5-5')!;
+  // The models at the price list this release ships (#1465).
+  const anthropicPrice = (model: string) => listPrice(providerPriceList(shippedPriceList(), 'anthropic'), model)!;
+  const SONNET = anthropicPrice('claude-sonnet-5');
+  const SONNET_5_5 = anthropicPrice('claude-sonnet-5-5');
+  const OPUS = anthropicPrice('claude-opus-5-5');
   const check = (model: { inputMicrosPerMTok: number; outputMicrosPerMTok: number }) => costMicros(MOCK_USAGE, model);
   let owner: Person; let me: Principal; let agentId: string; let key: BackgroundComputeConnection;
   let runs: ReturnType<typeof personalRunUseCases>;

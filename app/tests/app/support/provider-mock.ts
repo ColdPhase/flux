@@ -1,7 +1,7 @@
 import http from 'node:http';
 import zlib from 'node:zlib';
 import { handleCliVendor } from './cli-vendor-mock.js';
-import { handleKeyLists } from './key-list-mock.js';
+import { handleKeyLists, OPENROUTER_MODELS } from './key-list-mock.js';
 import { toolAnswer, toolWireOf } from './tool-answers.js';
 
 /**
@@ -199,13 +199,7 @@ const server = http.createServer((request, response) => {
     if (url.pathname === '/__redirected') return json(response, 200, { redirected: true });
     if (request.method === 'GET' && url.pathname === '/openai/v1/models')
       return json(response, 200, { object: 'list', data: [{ id: 'llama3.1:8b', object: 'model' }, { id: 'qwen2.5:7b-instruct', object: 'model' }, { id: 'not a valid id', object: 'model' }] });
-    if (request.method === 'GET' && url.pathname === '/openrouter/v1/models')
-      return json(response, 200, { data: [
-        { id: 'vendor/priced-model', pricing: { prompt: '0.000003', completion: '0.000015' } },
-        { id: 'vendor/free-model:free', pricing: { prompt: '0', completion: '0' } },
-        { id: 'openrouter/auto', pricing: { prompt: '-1', completion: '-1' } },
-        { id: 'vendor/search-model:online', pricing: { prompt: '0.000001', completion: '0.000001' } },
-      ] });
+    if (request.method === 'GET' && url.pathname === '/openrouter/v1/models') return json(response, 200, OPENROUTER_MODELS);
     if (wire === 'other') return json(response, 404, { error: 'not found' });
     const script = scripts[wire];
     const answer = () => {

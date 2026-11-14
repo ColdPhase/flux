@@ -105,6 +105,14 @@ The points of #851, with the later answers applied (point 11 comes from #868):
    Together the connections power all of the person's agents. Flux sets no limits of its own and
    shows the provider's remaining usage. An API key keeps one daily budget. When a plan hits its
    limit the agent pauses until the reset and never switches to another connection (#854, #843).
+   **Model prices update themselves** (founder decision, Hubert, 2026-11-13,
+   [#1465](https://github.com/ColdPhase/flux/issues/1465)): Flux refreshes the prices daily from a
+   maintained public list (LiteLLM's model price file, chosen on a dated sample:
+   [research](research/2026-11-13-model-price-list.md)); a release ships the list as fetched on its
+   build day; when Flux knows no price for a model, Connect AI asks the owner for it, for every
+   provider; the hand-kept price table is gone ([price, PROV-3](model-providers.md#ca-2--models)).
+   One rule, the price of the place the key pays: OpenRouter keys use OpenRouter's own listed prices
+   (coordinator answer on #1470, 2026-11-13), and a long prompt is reserved and charged at its tier.
 3. **Everything is an agent.** Each agent has a name, saved instructions, its own model from any
    of the person's connections, and a memory of only what its owner told it to remember, which
    the owner sees and edits. An item is added only by the owner's own message ("remember

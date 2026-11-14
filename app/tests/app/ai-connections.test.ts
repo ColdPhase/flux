@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, beforeEach, describe, test } from 'node:test';
 import { createDatabase, personalConnectionLookup, personalKeyResolver } from '@flux/db';
 import { AI_MODEL_LISTS_PATH, type AiModelList, type BackgroundComputeConnection } from '@flux/contracts';
-import { costMicros } from '@flux/core';
+import { costMicros, shippedPriceList } from '@flux/core';
 import { personalRunUseCases } from '../../apps/server/src/personal-runs/adapters.js';
 import { Browser } from './support/http.js';
 import { expectStatus, person, workspace, type Person } from './support/people.js';
@@ -52,15 +52,16 @@ async function mock(pathname: string, body?: unknown) {
 
 describe('provider-neutral owner AI connections (#179)', () => {
   let owner: Person;
+  let startedAt = 0;
   // The compatible endpoint's model answers the check (#1441) with a call of `ping`, as a model that can be an agent does.
-  beforeEach(async () => { await mock('/__reset', {}); await mock('/__script', { wire: 'openai', mode: 'tool' }); });
+  beforeEach(async () => { startedAt = Date.now(); await mock('/__reset', {}); await mock('/__script', { wire: 'openai', mode: 'tool' }); });
   before(async () => { owner = await person('ai-connection-owner'); });
 
   test('every provider kind saves under its own key format, model and price source; the key never comes back', async () => {
     const cases: { body: Record<string, unknown>; key: string; expect: Partial<BackgroundComputeConnection> }[] = [
       { body: { provider: 'anthropic', model: 'claude-sonnet-5' }, key: keys.anthropic,
         expect: { provider: 'anthropic', model: 'claude-sonnet-5', baseUrl: null,
-          price: { inputMicrosPerMTok: 2_000_000, outputMicrosPerMTok: 10_000_000, source: 'table', checkedOn: '2026-11-12' } } },
+          price: { inputMicrosPerMTok: 2_000_000, outputMicrosPerMTok: 10_000_000, source: 'list', checkedOn: shippedPriceList().fetchedOn } } },
       { body: { provider: 'openai', model: 'gpt-model', price: { inputMicrosPerMTok: 400_000, outputMicrosPerMTok: 1_600_000 } }, key: keys.openai,
         expect: { provider: 'openai', model: 'gpt-model', baseUrl: null, price: { inputMicrosPerMTok: 400_000, outputMicrosPerMTok: 1_600_000, source: 'owner', checkedOn: null } } },
       { body: { provider: 'gemini', model: 'gemini-model', price: { inputMicrosPerMTok: 0, outputMicrosPerMTok: 0 } }, key: keys.gemini,
@@ -93,6 +94,10 @@ describe('provider-neutral owner AI connections (#179)', () => {
     const sent = (await mock('/__requests')).requests;
     assert.deepEqual(sent.map((item) => [item.method, item.path]), [['POST', '/openai/v1/chat/completions']], 'only the endpoint the owner named, once');
     assert.deepEqual(offeredTools('chat', sent[0]!.body), ['ping']);
+    // Only OpenRouter's public model list is read, without a key, for what an OpenRouter key pays (#1465): no listing of another provider.
+    const listed = ((await mock('/__key-lists')) as unknown as { requests: { provider: string; path: string; key: string | null; at: number }[] }).requests
+      .filter((item) => item.at >= startedAt);
+    for (const item of listed) assert.deepEqual([item.provider, item.path, item.key], ['openrouter', '/lists/openrouter/v1/models', null], 'saving lists no model of a key');
   });
 
   test('wrong key formats, models, URLs and prices are refused and nothing is stored', async () => {
@@ -152,7 +157,7 @@ describe('provider-neutral owner AI connections (#179)', () => {
 });
 
 describe('a key whose budget is below one request is refused when saved (#179 PROV-3)', () => {
-  test('a provider\'s own listing or reported cost is never a reservation price', async () => {
+  test('a reported cost is never a reservation price; OpenRouter\'s own listed price is the price an OpenRouter key pays (#1465)', async () => {
     const owner = await person('ai-budget-owner');
     // 64,000 × $30/M + 4,000 × $60/M = $2.16 per request, above this key's $0.20 daily budget: it would wait for a day that never comes.
     assert.equal(codeOf(await owner.browser.request('POST', path, { body: { ...consent, provider: 'openai', model: 'gpt-model',
@@ -160,7 +165,7 @@ describe('a key whose budget is below one request is refused when saved (#179 PR
     // A model without a known price is not saved, through the form or the API (#1424): no key that "can't be used" can exist. The owner is asked
     // for the price (0 is one), and nothing is stored.
     const before = expectStatus(await owner.browser.request('GET', path), 200) as BackgroundComputeConnection[];
-    for (const body of [{ provider: 'openrouter', model: 'vendor/priced-model', apiKey: keys.openrouter }, { provider: 'gemini', model: 'gemini-model', apiKey: keys.gemini },
+    for (const body of [{ provider: 'openrouter', model: 'openrouter/auto', apiKey: keys.openrouter }, { provider: 'gemini', model: 'gemini-model', apiKey: keys.gemini },
       { provider: 'openai_compatible', model: 'llama3.1:8b', baseUrl: COMPATIBLE, apiKey: keys.openai_compatible }]) {
       const refused = await owner.browser.request('POST', path, { body: { ...consent, ...body } });
       assert.deepEqual([refused.status, codeOf(refused)], [422, 'AI_PRICE_REQUIRED'], body.provider);
@@ -168,8 +173,16 @@ describe('a key whose budget is below one request is refused when saved (#179 PR
       assert.equal(refused.text.includes(body.apiKey), false, 'no key in an error body');
     }
     assert.deepEqual(expectStatus(await owner.browser.request('GET', path), 200), before, 'a refused save stores nothing');
-    assert.equal((expectStatus(await owner.browser.request('POST', path, { body: { ...consent, provider: 'openrouter', model: 'vendor/priced-model',
+    assert.equal((expectStatus(await owner.browser.request('POST', path, { body: { ...consent, provider: 'openrouter', model: 'openrouter/auto',
       price: { inputMicrosPerMTok: 0, outputMicrosPerMTok: 0 }, apiKey: keys.openrouter } }), 201) as BackgroundComputeConnection).price?.source, 'owner');
+    // OpenRouter's model list states what its key pays (#1465): read at connect, it prices the model with no owner entry, and an owner
+    // price for it is refused like any listed one.
+    const priced = (expectStatus(await owner.browser.request('POST', path, { body: { ...consent, provider: 'openrouter', model: 'vendor/priced-model',
+      apiKey: keys.openrouter } }), 201) as BackgroundComputeConnection).price;
+    assert.deepEqual([priced?.inputMicrosPerMTok, priced?.outputMicrosPerMTok, priced?.source], [3_000_000, 15_000_000, 'list']);
+    assert.match(priced?.checkedOn ?? '', /^\d{4}-\d{2}-\d{2}$/);
+    assert.equal(codeOf(await owner.browser.request('POST', path, { body: { ...consent, provider: 'openrouter', model: 'vendor/priced-model',
+      price: { inputMicrosPerMTok: 1, outputMicrosPerMTok: 1 }, apiKey: keys.openrouter } })), 'AI_PRICE_ALREADY_KNOWN');
   });
 });
 
