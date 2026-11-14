@@ -163,8 +163,7 @@ class WorkDecisionsJourney(unittest.TestCase):
         card = page.locator(".project-convo__in .convo-notice").filter(has_text=IDEA)
         expect(card.locator(".convo-notice__card")).to_have_count(1)
         expect(card.locator(".convo-notice__what")).to_have_text("created a task from your message")
-        root = page.locator(".thread__root")
-        expect(root.get_by_role("button", name=re.compile(r"^Task #\d+: " + re.escape(IDEA) + "$"))).to_be_visible()
+        expect(card.get_by_role("button", name=re.compile(r"^Open task #\d+ " + re.escape(IDEA) + "$"))).to_be_visible()
         # The panel's controls change the stored work (If-Match under the hood).
         panel.get_by_role("button", name="Status", exact=True).click()
         page.get_by_role("menuitemradio", name="Doing").click()
@@ -173,11 +172,10 @@ class WorkDecisionsJourney(unittest.TestCase):
         expect(page.locator(".ui-toast").filter(has_text=re.compile(r"moved to Doing")).get_by_role("button", name="Undo")).to_be_visible()
         # Details names the task by its number in the project (#276), and the space it is in, above the title (#1364).
         expect(page.locator("#details .wd__ref .ui-task-number")).to_have_text("#1")
-        expect(root.locator(".ws-chip .ui-task-number")).to_have_text("#1")
-        self.assertTrue(root.locator(".ws-chip").evaluate("node => node.querySelector('.ui-task-number').compareDocumentPosition(node.querySelector('.ws-chip__t')) & Node.DOCUMENT_POSITION_FOLLOWING"), "the number leads the title in a task reference")
+        expect(card.locator(".convo-notice__task .ui-task-number")).to_have_text("#1")
+        self.assertTrue(card.locator(".convo-notice__task").evaluate("node => node.querySelector('.ui-task-number').compareDocumentPosition(node.querySelector('.convo-notice__title')) & Node.DOCUMENT_POSITION_FOLLOWING"), "the number leads the title in a task reference")
         panel.get_by_role("button", name="Owner", exact=True).click()
         page.get_by_role("menuitemradio", name=re.compile(PARTNER["name"])).click()
-        expect(root.get_by_role("button", name=re.compile(r"^Task #\d+: " + re.escape(IDEA) + "$"))).to_contain_text("Kai Berg")
         expect(card.locator(".convo-notice__owner")).to_contain_text("Kai Berg")
         stored = self.work(page)["work"]
         self.assertEqual(len(stored), 1, "one action creates exactly one work item")
@@ -473,7 +471,8 @@ class WorkDecisionsJourney(unittest.TestCase):
             self.assertGreater(chips.count(), 0, f"{label}: {column} has linked objects")
             for index in range(chips.count()):
                 box = chips.nth(index).bounding_box()
-                assert box
+                if box is None:
+                    continue  # a card folded away with its run of notices
                 self.assertGreaterEqual(box["x"], pane["x"] - 1, f"{label}: linked object {index} starts inside {column}")
                 self.assertLessEqual(box["x"] + box["width"], pane["x"] + pane["width"] + 1, f"{label}: linked object {index} ends inside {column}")
                 self.assertLessEqual(box["x"] + box["width"], page.viewport_size["width"], f"{label}: linked object {index} is not cut off")

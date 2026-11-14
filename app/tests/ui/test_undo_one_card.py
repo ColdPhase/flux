@@ -141,12 +141,12 @@ class UndoAndOneCard(unittest.TestCase):
         expect(page.locator(f"#message-{self.ids['reader']}")).to_be_visible()
 
     def create_task(self, page: Page, title: str, phone: bool) -> None:
-        if phone:
-            page.get_by_role("button", name="Create", exact=True).click()
-        else:
-            page.locator("body").press("c")
+        # `/task` in the space's composer opens the one Create window with the words, on a computer and a phone alike.
+        composer = page.locator("#project-composer")
+        composer.fill(f"/task {title}")
+        composer.press("Enter")
         expect(dialog(page)).to_be_visible()
-        title_field(page).fill(title)
+        expect(title_field(page)).to_have_value(title)
         submit_button(page).click()
         expect(dialog(page)).to_have_count(0)
 
@@ -291,7 +291,7 @@ class UndoAndOneCard(unittest.TestCase):
                     close = page.locator("#details").get_by_role("button", name=re.compile("^Close"))
                     if close.count():
                         close.first.click()
-                page.get_by_role("navigation", name="Space views").get_by_role("tab", name="Tasks", exact=True).click()
+                page.get_by_role("navigation", name="Space views").get_by_role("tab", name=re.compile(r"^Tasks")).click()
                 expect(page).to_have_url(re.compile(r"/tasks$"))
                 expect(page.locator(".ui-toast").filter(has_text="created")).to_have_count(0, timeout=3000)
                 page.locator("body").press("z")
@@ -307,7 +307,7 @@ class UndoAndOneCard(unittest.TestCase):
                 break
             time.sleep(0.25)
         page.goto("/inbox")
-        row = page.locator(".nyc--decision").filter(has_text=rule["title"])
+        row = page.locator("li.nyc--decision").filter(has_text=rule["title"])
         open_item(row).get_by_role("button", name=re.compile("^Accept")).click()
         self.settled_toast(page, "Accepted")
         status = lambda: page.request.get(f"/api/v1/projects/{self.ids['project']}/decisions?limit=100").json()["items"]

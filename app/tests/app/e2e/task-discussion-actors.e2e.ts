@@ -183,7 +183,7 @@ async function captureVisibleAuthor(page: Page, row: Locator, name: string, evid
     const observation = await inspect();
     const sample = observation.sample;
     assert.ok(sample.parts.every((part) => part.width > 0 && part.height > 0 && part.inViewport && part.uncovered),
-      `${name}: the actual full author and face are in the viewport and uncovered`);
+      `${name}: the actual full author and face are in the viewport and uncovered: ${JSON.stringify(sample.parts.filter((part) => !(part.width > 0 && part.height > 0 && part.inViewport && part.uncovered)).map((part) => ({ ...part, ancestors: undefined })))}`);
     assert.ok(sample.parts.every((part) => part.ancestors.every((a, index) => a.opacity === 1 && a.display !== 'none'
       && a.visibility === 'visible' && !a.hidden && !a.inert
       && (a.ariaHidden !== 'true' || (part.name === 'face' && index === 0)))),
