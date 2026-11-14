@@ -567,13 +567,51 @@ the live strip. None of those is needed to show Home, and the sign-in pages are 
   invitation.
 - Its code, and the conversation's, is fetched while the browser is idle after the shell is up, or on the first press, and the
   service worker precaches it. So a move into a space or a call finds the code already there.
-- The Create window stays in the first screen. Deferred, it opened a moment after the first click on a freshly loaded page, and
-  + Create is the one action of every view.
+- The Create window stayed in the first screen here: deferred then, it opened a moment after the first click on a freshly loaded page, and
+  + Create is the one action of every view. [#1428](https://github.com/ColdPhase/flux/issues/1428) defers it after all, with the preloads below.
 
 **Observed after** (the same count, built from the branch on `main` at `229b32483`): 36 files and **241 KB** brotli, and 224 KB
 with the Create window deferred too. The entry chunk is 112 KB.
 
 **Not changed.** The conversation is still the first screen of a space; on a cold deep link its code comes beside its reads.
+
+### Back under 250 KB ([#1428](https://github.com/ColdPhase/flux/issues/1428), 2026-11-13)
+
+**Observed.** On `main` at `c24afddc3` the first screen was 39 files and **268.2 KB** brotli (v0.2.0: 242 KB, 35 files), and at `585be00c5`
+(the head this was finished on) 38 files and **271.8 KB** (240.3 KB of JS and 31.5 KB of CSS), counted with `scripts/perf-bundle.mjs`. Nine days of features each went into the entry chunk (see the per-commit table in the issue). The Create
+window (36 KB of code before minifying, and its three stylesheets), the date and time fields, the notice card and the sign-out wiring of the
+composer were all in it, although none of them is needed to show Home.
+
+**Changed.** Each is loaded with the code that needs it, and none is removed.
+- **The Create window** (`create/CreateWindow.tsx`, with the New space form and its styles) is a deferred surface (`DeferredCreateHost`),
+  fetched with Details and Jump to… when the browser is idle a moment after the shell is up and on the first press, so it is here before a
+  click on New ends. A press that still comes first opens the window when its code arrives: in one piece, in its own size (its geometry is
+  in its stylesheet, which comes with it), after the shell has stood still meanwhile; a failed download says so in a dialog with Close.
+- **The date and time fields** (`DateField`, `TimeField`, `pickerText`, 33 KB before minifying) leave the `ui` barrel: the three screens that use them
+  (a task's Due, a schedule's time, Quiet hours) import them from their own files, so the first screen no longer carries them through
+  `../ui`.
+- **The notice card** (`notifications/Notices.tsx`) is a deferred surface (`DeferredNotices`). Until its code is here (it comes when idle,
+  or at once when the stream announces a notice) a small listener hears the stream's notices, judged exactly as the card judges them
+  (`notifications/noticeEvents.ts`), and hands what it heard to the card, so no notice is lost.
+- **Signing out** retired the composer's drafts through `composer/draft.ts` (sending, uploads, the outbox: 38 KB before minifying) and the
+  other tabs' sign-outs were heard there. The retirement, its cross-tab fence and the stored copies it removes are now `composer/retirement.ts`,
+  loaded from the first screen on, so every tab still hears a sign-out; the composer registers what it keeps in memory (`onRetire`) and comes only
+  with a conversation.
+
+**Observed after** (`scripts/perf-bundle.mjs`, the same count, built from the branch): on `c24afddc3` 41 files and **238.1 KB** brotli, by step 268.2 KB
+before, about 251 KB with the Create window deferred, 245.6 KB with the pickers out of the barrel, 243.4 KB with the notice card deferred and 238.1 KB
+with the sign-out wiring apart from the composer. The entry chunk is 106.5 KB (was 118.7) and the stylesheet 20.8 KB (was 26.1). Rebased on `585be00c5`:
+40 files and **239.1 KB** (213.5 KB of JS and 25.6 KB of CSS; 945 KB raw before, 816 KB after), the entry chunk 106.6 KB (was 121.0) and the stylesheet 20.8 KB (was 26.0).
+
+**Guard.** `tests/app/first-screen-budget.test.ts` runs against the finished build with the API tests (`./scripts/check_application.sh`,
+or `ci_test.sh api tests/app/first-screen-budget.test.ts`): it counts the files of `index.html` as `perf-bundle.mjs` does and fails above 250 KB,
+and it fails when the Create window, the notice card, Settings, Details, Jump to…, Tasks, the Wiki or the live stage turns up in the first
+screen's files again. `tests/test_first_screen_budget.py` keeps the two counts the same. `test_route_chunks` also holds that a cold Home
+requests neither the Create window nor the notice card, and that a press and an idle page fetch them (and the Create window's held and failed
+downloads).
+
+**Not changed.** The date and time fields still add their weight to the screens that use them. The encrypted-space unlock page, the drag
+reorder code of the Spaces list and the call buttons of the header stay in the first screen: together about 6 KB, well inside the budget's room.
 
 ## Idle statements
 

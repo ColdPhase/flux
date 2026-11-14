@@ -2,7 +2,8 @@
 // What the first screen downloads before any route code (#850 AC-4, #862: at most 250 KB of JS and CSS, brotli). Runs with plain Node
 // inside the API container, fed on stdin by scripts/check_performance.sh: it reads the built app's `index.html`, follows its script,
 // modulepreload and stylesheet links, and prints the file count and the bytes raw and brotli-compressed, then what the service worker
-// precaches (every first visit also downloads those), and the largest chunks.
+// precaches (every first visit also downloads those), and the largest chunks. `app/tests/app/first-screen-budget.test.ts` holds the first
+// screen to its budget with the same count (tests/test_first_screen_budget.py keeps the two the same).
 
 import { brotliCompressSync, constants } from 'node:zlib';
 import { readFileSync, readdirSync, statSync } from 'node:fs';

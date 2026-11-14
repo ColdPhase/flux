@@ -385,7 +385,7 @@ class RouteChunksJourney(unittest.TestCase):
                 page.on("request", lambda request: requested.append(request.url))
                 self.home(page)
                 worker = page.request.get(f"{ORIGIN}/sw.js").text()
-                for module in ("SettingsHome", "SketchView", "WikiEditor", "ProjectTasks", "Details", "JumpTo", "LiveStage"):
+                for module in ("SettingsHome", "SketchView", "WikiEditor", "ProjectTasks", "Details", "JumpTo", "LiveStage", "CreateWindow", "Notices"):
                     self.assertRegex(worker, rf"/assets/{module}-[^/\"]+\.js", f"{module} has an actual emitted lazy chunk")
                     self.assertFalse(any(re.search(rf"/assets/{module}-[^/]+\.js", url) for url in requested), f"Cold Home never imports {module}")
 
@@ -654,7 +654,7 @@ class RouteChunksJourney(unittest.TestCase):
                 self.assertLessEqual(geometry["right"], page.viewport_size["width"])
                 shot(page, f"route-chunks-first-message-info-{engine}-phone")
 
-    CODE = {"Details": "Details", "JumpTo": "JumpTo", "ProjectTasks": "ProjectTasks", "ProjectViews": "ProjectViews", "Wiki": "Wiki"}
+    CODE = {"Details": "Details", "JumpTo": "JumpTo", "ProjectTasks": "ProjectTasks", "ProjectViews": "ProjectViews", "Wiki": "Wiki", "CreateWindow": "CreateWindow", "Notices": "Notices"}
 
     def wait_for_chunks(self, page: Page, requested: list, seconds: float) -> list[str]:
         """The deferred code that has been asked for, waiting up to `seconds` for all of it."""
@@ -696,6 +696,41 @@ class RouteChunksJourney(unittest.TestCase):
                 dialog = page.get_by_role("dialog", name="Search", exact=True)
                 expect(dialog.get_by_role("combobox", name="Search", exact=True)).to_be_visible()
                 self.assertEqual(dialog.locator(".ui-spin, .jump-skeleton").count(), 0)
+
+    def test_16_a_press_on_new_before_the_create_code_arrives_opens_the_window_whole_when_it_does(self):
+        """The Create window's code is not in the first screen (#1428): a press on New that comes first holds nothing of the shell still, and
+        the window then opens in its own size with its content (not a frame that is resized), or says it could not be loaded."""
+        for engine in self.browsers:
+            with self.subTest(engine=engine):
+                page = self.page(engine)
+                held = self.hold(page, "CreateWindow")
+                self.home(page)
+                before = self.layout(page)
+                page.get_by_role("complementary", name="Sidebar").get_by_role("button", name="New", exact=True).click()
+                self.request_is_held(page, held)
+                self.assertEqual(self.layout(page), before, "waiting for the Create window's code moves nothing")
+                expect(page.get_by_role("dialog")).to_have_count(0)
+                with page.expect_response(re.compile(r"/assets/CreateWindow-[^/]+\.js")):
+                    held.pop().continue_()
+                dialog = page.get_by_role("dialog", name="New task", exact=True)
+                expect(dialog).to_be_visible()
+                expect(dialog.get_by_role("tab", name=re.compile("^Task"))).to_be_visible()
+                page.keyboard.press("Escape")
+                expect(dialog).to_have_count(0)
+
+    def test_17_a_create_window_whose_code_cannot_be_downloaded_says_so_and_closes(self):
+        for engine in self.browsers:
+            with self.subTest(engine=engine):
+                page = self.page(engine)
+                held = self.hold(page, "CreateWindow")
+                self.home(page)
+                page.get_by_role("complementary", name="Sidebar").get_by_role("button", name="New", exact=True).click()
+                self.request_is_held(page, held)
+                held.pop().abort("failed")
+                dialog = page.get_by_role("dialog", name="New", exact=True)
+                expect(dialog).to_contain_text("Create couldn’t be loaded")
+                dialog.get_by_role("button", name="Close", exact=True).click()
+                expect(dialog).to_have_count(0)
 
 
 if __name__ == "__main__":

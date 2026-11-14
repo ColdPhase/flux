@@ -1,6 +1,7 @@
 import { useId, useState } from 'react';
 import type { AssistantJob, AssistantJobSchedule } from '@flux/contracts';
-import { Button, Option, Select, TimeField } from '../ui';
+import { Button, Option, Select } from '../ui';
+import { TimeField } from '../ui/TimeField';
 import type { AgentSchedulesState } from './useAgentSchedules';
 
 // Change (F-036 AG-9, #858; mockup AgentReports "Turned on · Change"): what a schedule does, in the owner's own words, and for a daily, weekday or
