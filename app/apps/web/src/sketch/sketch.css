@@ -309,6 +309,8 @@ span.sk-li-img { width: 160px; height: 96px; }
 .sk-over > * { pointer-events: auto; }
 .sk--map .sk-head { flex-wrap: nowrap; justify-content: flex-start; gap: 4px 10px; padding: 4px 4px 4px 14px; border-radius: var(--r-pill);
   background: var(--el); box-shadow: var(--sh-card), inset 0 0 0 1px var(--line); }
+/* The head is as tall as its tallest content, the Map | List switch (36 px) with the pill's 4 px each side, so an empty map's title pill (no switch yet) is as tall as a made map's. */
+.sk--map .sk-head { min-height: 44px; }
 .sk--map .sk-lead { flex-wrap: nowrap; position: relative; }
 /* "Only you" stays beside My map's title, as drawn (README §7, #1376); the pill's title gives way to it with an ellipsis, never the words. */
 .sk--map .sk-aud { flex: none; white-space: nowrap; }
@@ -373,7 +375,7 @@ span.sk-li-img { width: 160px; height: 96px; }
   .sk-over { left: 10px; right: 10px; top: 10px; align-items: flex-start; }
   .sk-over:not(:has(.sk-title-edit, .sk-switch)) { top: 64px; align-items: flex-end; }
   .sk--map .sk-lead:not(:has(.sk-title-edit, .sk-switch)) { display: none; }
-  .sk--map .sk-head { padding: 3px 3px 3px 14px; max-width: calc(100% - 144px); }
+  .sk--map .sk-head { padding: 3px 3px 3px 14px; min-height: 0; max-width: calc(100% - 144px); }
   .sk--map .sk-head:not(:has(.sk-title-edit, .sk-switch)) { display: none; }
   .sk--map .sk-head .sk-lead { flex: 0 1 auto; min-width: 0; }
   .sk-switch .wiki-switch__t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

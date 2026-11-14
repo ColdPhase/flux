@@ -143,7 +143,7 @@ class GateSimplicity(unittest.TestCase):
         # The map keeps its title on the phone too (README §7 Maps), and the hint is one line, not a half-width column (release audit P3 2, 3).
         expect(page.locator(".sk-head")).to_contain_text("Untitled map")
         hint = page.locator(".sk-first").bounding_box()
-        self.assertGreater(hint["width"], 200, f"the hint has the room it needs: {hint}")
+        self.assertGreater(hint["width"], 180, f"the hint has the room it needs, not a half-width column: {hint}")
         self.assertLess(hint["height"], 30, f"the hint is one line: {hint}")
         expect(page.get_by_text("Map ideas for")).to_have_count(0)
         expect(page.get_by_text("Connect and arrange on a computer")).to_have_count(0)

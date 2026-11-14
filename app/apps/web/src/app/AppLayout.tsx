@@ -787,7 +787,7 @@ function AppLayoutContent() {
     <header className={`phead${mainPlace ? ' phead--large' : ''}${spaceHeader || lockedHere ? ' phead--space' : activeDm ? ' phead--space phead--dm' : ''}${activeAgent ? ' phead--agent' : ''}`}>
       {backOnly ? (
         <>{phoneBack(settingsPage ? settingsParent : homePage ? '/' : '/projects')}
-          <div className="phead__id"><div className="phead__title"><h1>{place.title}</h1></div></div></>
+          <div className="phead__id"><div className="phead__title"><h1>{place.title}</h1>{'topic' in place && place.topic ? <p className="phead__sub">{place.topic}</p> : null}</div></div></>
       ) : activeProject && projectViews ? (
         // The title is the title, not a menu: the views are the same underline tabs as on every width, in the row under it (#873).
         <>{routeOrigin ? phoneBack('/projects') : <PhoneBack onBack={() => goBackAPlace('/projects')} />}
