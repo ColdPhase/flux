@@ -103,6 +103,8 @@ class GateSimplicity(unittest.TestCase):
         page.get_by_role("button", name="Save thought").click()
         expect(page.locator(".sk-node")).to_have_count(1)
         expect(page.locator(".sk-first")).to_have_count(0)
+        page.reload()
+        expect(page.locator(".sk-node")).to_have_count(1)
         expect(page.locator(".sk-hint")).to_contain_text("Drag empty space to move around")
         # Back leaves the tab instead of returning to the empty canvas.
         page.go_back()

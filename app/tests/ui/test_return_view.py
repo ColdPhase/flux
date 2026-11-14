@@ -13,6 +13,7 @@ import json
 import re
 import time
 import unittest
+import urllib.parse
 import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
@@ -97,6 +98,20 @@ class ReturnViewJourney(unittest.TestCase):
     def say(self, page: Page, body: str) -> str:
         return self.api(page, "POST", f"/api/v1/conversations/{self.conversation_id}/messages", {"body": body, "clientMessageId": str(uuid.uuid4())}, status=201)["id"]
 
+    def settle_waiting(self, who: str, message_id: str) -> None:
+        """#1424: Home does not offer a next step again under "Continue where you left off" while the same thing waits in "Waiting for you";
+        the person handles it in the Inbox first, which is what these journeys then continue from."""
+        page = self.page(who)
+        mine: list[dict] = []
+        for _ in range(80):
+            mine = [item for item in self.api(page, "GET", "/api/v1/needs-you", status=200)["items"] if message_id in item["url"]]
+            if mine:
+                break
+            page.wait_for_timeout(250)
+        self.assertTrue(mine, "the question reached her Inbox")
+        for item in mine:
+            self.api(page, "POST", f"/api/v1/needs-you/{urllib.parse.quote(item['key'], safe='')}", {"action": "done"}, status=200)
+
     def no_horizontal_scroll(self, page: Page) -> None:
         self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("window.innerWidth"))
 
@@ -169,6 +184,14 @@ class ReturnViewJourney(unittest.TestCase):
         page = self.page("nia")
         page.goto("/")
         expect(page.get_by_role("heading", level=2, name=re.compile("^Good (morning|afternoon|evening), Nia$"))).to_be_visible()
+        # The question waits for her in "Waiting for you", so Home does not offer it a second time under Continue (#1424) ...
+        expect(page.get_by_role("region", name=re.compile("^Waiting for you")).locator(".home__row").first).to_be_visible()
+        expect(page.get_by_role("region", name="Continue where you left off")).to_have_count(0)
+        self.assertEqual(self.summary(page, "home")["nextStep"]["text"], "Answer Ari's question", "the return summary still names it")
+        # ... and once she has handled it in the Inbox it is what she continues from.
+        self.settle_waiting("nia", self.ids["question"])
+        page.reload()
+        expect(page.get_by_role("heading", level=2, name=re.compile("^Good (morning|afternoon|evening), Nia$"))).to_be_visible()
         card = page.get_by_role("region", name="Continue where you left off").get_by_role("link")
         expect(card).to_be_visible()
         expect(card).to_contain_text("Answer Ari's question")
@@ -196,9 +219,11 @@ class ReturnViewJourney(unittest.TestCase):
     def test_08_matched_viewports_navigation_audience_and_composer(self) -> None:
         """Same state at 1440x900, 1280x800, 768x1024 and 390x844 (100% zoom): Home, the conversation with nothing over it, then navigation."""
         ari = self.page("ari")
-        self.say(ari, "The PIR mount fits, but the cable needs 2 cm more slack. Nia, can you print the clip with the longer channel?")
+        asked = self.say(ari, "The PIR mount fits, but the cable needs 2 cm more slack. Nia, can you print the clip with the longer channel?")
         self.api(ari, "POST", f"/api/v1/projects/{self.project_id}/decisions", {"title": "Route the cable through the lamp stem", "rationale": "Keeps the base flat"}, status=201)
         self.api(ari, "POST", f"/api/v1/projects/{self.project_id}/work", {"title": "Print a new cable clip", "owner": {"kind": "human", "id": NIA["id"]}}, status=201)
+        # The question waits in her Inbox first; Home offers it under Continue once she has handled it there (#1424).
+        self.settle_waiting("nia", asked)
         for label, viewport, phone in (("desktop-1440", {"width": 1440, "height": 900}, False),
                                        ("desktop-1280", {"width": 1280, "height": 800}, False),
                                        ("tablet-768", {"width": 768, "height": 1024}, True),
@@ -281,7 +306,8 @@ class ReturnViewJourney(unittest.TestCase):
         self.api(ari, "POST", f"/api/v1/workspaces/{self.workspace_id}/members", {"email": olek["email"], "role": "member"}, status=201)
         # Olek has a Home point (so he would see anything visible to him), then Ari writes in the restricted project.
         self.api(signup, "PUT", "/api/v1/return-points", {"place": {"type": "home"}, "mark": self.summary(signup, "home")["mark"]}, status=200)
-        self.say(ari, secret)
+        asked = self.say(ari, secret)
+        self.settle_waiting("nia", asked)
 
         # One tab: Nia signs in fresh and sees the restricted item on Home.
         page = self.page(None)
