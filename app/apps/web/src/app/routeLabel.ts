@@ -2,6 +2,7 @@
 export function routeLabel(pathname: string): string {
   if (/^\/(login|sign-in)(\/|$)/.test(pathname)) return 'sign-in';
   if (pathname === '/sign-up') return 'account registration';
+  if (pathname === '/setup') return 'setup';
   if (pathname === '/sign-out') return 'sign-out';
   if (/^\/(forgot-password|reset-password)(\/|$)/.test(pathname)) return 'password reset';
   if (/^\/(connect-agent|consent)(\/|$)/.test(pathname)) return 'agent connection';

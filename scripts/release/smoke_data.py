@@ -32,6 +32,7 @@ import argparse
 import hashlib
 import http.cookiejar
 import json
+import os
 import secrets
 import time
 import urllib.error
@@ -129,19 +130,22 @@ def new_id() -> str:
     return str(uuid.uuid4())
 
 
-def sign_up(origin: str, name: str, tag: str) -> tuple[Client, dict[str, str]]:
+def sign_up(origin: str, name: str, tag: str, invite_token: str) -> tuple[Client, dict[str, str]]:
     client = Client(origin)
     person = {"name": name, "email": f"{name.split()[0].lower()}-{tag}-{secrets.token_hex(6)}@example.test", "password": secrets.token_urlsafe(32)}
-    client.expect("POST", "/api/auth/sign-up/email", person, (200,))
+    # From v0.2.1 an account comes only from a link (#1471); an older release ignores the token and opens sign-up.
+    client.expect("POST", "/api/auth/sign-up/email", {**person, "inviteToken": invite_token}, (200,))
     person["id"] = client.expect("GET", "/api/v1/me")["user"]["id"]
     return client, person
 
 
 def join(owner: Client, origin: str, company_id: str, role: str, name: str, tag: str) -> tuple[Client, dict[str, str]]:
-    """A person signs up and joins through an invite link of the company (a member, or a guest)."""
-    client, person = sign_up(origin, name, tag)
+    """A person signs up from an invite link of the company and joins (a member, or a guest)."""
     invite = owner.expect("POST", f"/api/v1/workspaces/{company_id}/invites", {"role": role})
-    joined = client.expect("POST", "/api/v1/invites/accept", {"token": invite["link"].split("#", 1)[1]})
+    token = invite["link"].split("#", 1)[1]
+    client, person = sign_up(origin, name, tag, token)
+    # Joined as the account was made (v0.2.1 on, the same answer again), or joining now (an older release).
+    joined = client.expect("POST", "/api/v1/invites/accept", {"token": token})
     if joined.get("role") != role:
         raise RuntimeError(f"{name} joined as {joined.get('role')!r}, not {role!r}")
     person["role"] = role
@@ -327,7 +331,11 @@ def seed(client: Client, state_file: Path, provider_url: str | None = None) -> N
     tag = secrets.token_hex(4)
     email = f"release-{secrets.token_hex(8)}@example.test"
     password = secrets.token_urlsafe(32)
-    client.expect("POST", "/api/auth/sign-up/email", {"email": email, "password": password, "name": "Release smoke user"}, (200,))
+    # The first account comes from the setup link (#1471): FLUX_SETUP_TOKEN of the instance's environment file, which an older release has not.
+    first = {"email": email, "password": password, "name": "Release smoke user"}
+    if os.environ.get("FLUX_SETUP_TOKEN"):
+        first["setupToken"] = os.environ["FLUX_SETUP_TOKEN"]
+    client.expect("POST", "/api/auth/sign-up/email", first, (200,))
     user_id = client.expect("GET", "/api/v1/me")["user"]["id"]
     # F-037: the first account on a fresh install owns the company and names it. Every release that is upgraded (v0.2.0 on) has one.
     company = next((item for item in client.expect("GET", "/api/v1/workspaces") if item.get("company")), None)

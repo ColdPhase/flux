@@ -341,9 +341,9 @@ class NoticeJourney(unittest.TestCase):
         page.add_init_script(self.FAKE_AUDIO_AND_BADGE)
         page.goto("/settings/notifications")
         messages = page.get_by_role("switch", name="Sound for messages")
-        calls = page.get_by_role("switch", name="Sound when someone calls me")
         expect(messages).to_have_attribute("aria-checked", "false")
-        expect(calls).to_have_attribute("aria-checked", "true")
+        # This stack has no media server: nobody can call, so the call sound is not offered (#1471; test_live_sessions has it).
+        expect(page.get_by_role("switch", name="Sound when someone calls me")).to_have_count(0)
         shot(page, "notices-desktop-1440-light-sound-settings")
         page.goto("/")
         page.wait_for_timeout(1500)

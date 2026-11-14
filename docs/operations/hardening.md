@@ -56,28 +56,24 @@ described in the [security policy](../SECURITY.md).
 
 ## Checklist for the operator
 
-1. **Serve HTTPS only**, through one [reverse proxy](reverse-proxy.md), with
-   `FLUX_PUBLIC_ORIGIN=https://…`. Redirect port 80 to 443. Flux sends `Strict-Transport-Security` itself for an `https` origin;
+1. **Serve HTTPS only**, with `FLUX_PUBLIC_ORIGIN=https://…`: built in, or through one
+   [reverse proxy](reverse-proxy.md) of your own. Redirect port 80 to 443 (the built-in proxy does). Flux sends `Strict-Transport-Security` itself for an `https` origin;
    do not add `includeSubDomains` or `preload` at the proxy unless every subdomain of the name serves https too.
-   **Create your own account before the address is public:** the first account to sign up becomes the company's owner
-   ([install step 1](install.md#1-get-the-code-and-start-once-on-loopback)). `./flux up` and the API log warn while nobody has.
+   **Keep the setup link private:** the first account, the company's owner, is made only from the link `./flux up` prints
+   (its token is `FLUX_SETUP_TOKEN` in `docker/.env`, [#1471](https://github.com/ColdPhase/flux/issues/1471)); once the
+   company exists the link does nothing.
 2. **Firewall** everything except 80 and 443 (and the media ports if you run
-   [live media](../development/live-media.md)). Docker publishes ports past some host firewalls; Flux
+   [calls](calls.md)). Docker publishes ports past some host firewalls; Flux
    publishes only on loopback, so keep any port you add in an override on `127.0.0.1` too.
-3. **Trust only your proxy.** Set `FLUX_TRUSTED_PROXIES` to the measured address of the proxy hop
-   ([how](reverse-proxy.md#trust-only-the-measured-proxy-peer)); never a whole private range or
-   `0.0.0.0/0`.
-4. **Decide who may sign up** ([the options](install.md#5-decide-who-can-sign-up)). `open` lets anyone
-   who reaches the server create an account. `verified` only proves that the person can read a
-   mailbox, not that they belong to your team. For a private team on the internet, use
-   [single sign-on](single-sign-on.md), or create your team's accounts and then set `FLUX_SIGNUP=off`
-   (open it briefly to add someone later). A new account belongs to no company, and sees nothing, until an owner or admin adds it.
-   Password accounts have no multi-factor sign-in. OWASP ASVS Level 2 asks for it, and the way to get
-   it is single sign-on with your identity provider's MFA.
-   With `open` sign-up, the sign-up page tells a person that an address already has an account (it signs the new
-   account in, so it cannot answer the same way); `verified` answers every address alike and mails the owner of the
-   mailbox. The page is behind the per-address limit, and the accepted risk is that someone who can reach the server
-   can find out which addresses have accounts. `verified` or single sign-on removes it.
+3. **Trust only your proxy.** The built-in proxy is trusted by its exact address automatically. A proxy of your own:
+   set `FLUX_TRUSTED_PROXIES` to the measured address of the proxy hop
+   ([how](reverse-proxy.md#trust-only-the-measured-proxy-peer)); never a whole private range or `0.0.0.0/0`.
+4. **Accounts come only from links** ([who can create an account](install.md#5-who-can-create-an-account)): the setup
+   link, an invite link an owner or admin makes, or [single sign-on](single-sign-on.md). A sign-up without one is refused before
+   Flux looks at the address, so a stranger cannot make an account or find out which addresses have one. A forgotten
+   password is a one-time reset link (mailed, made in Settings › Company, or `./flux reset-link`), which a newer link or a
+   changed password stops. Password accounts have no multi-factor sign-in. OWASP ASVS Level 2 asks for it, and the way to
+   get it is single sign-on with your identity provider's MFA.
    Sessions end after 7 days unused and 30 days after sign-in; shorten them with `FLUX_SESSION_IDLE` and
    `FLUX_SESSION_MAX_AGE` (ASVS Level 2 asks for `30m` and `12h`; [configuration](configuration.md)).
 5. **Protect the settings file.** `docker/.env` (or the release `.env`) is mode `600` and holds the
@@ -97,9 +93,10 @@ described in the [security policy](../SECURITY.md).
     links. A new database password needs the same change inside PostgreSQL first. **Never** change
     `FLUX_KEY_PIN_SECRET`: encrypted spaces would refuse to unlock.
 
-## In a source checkout
+## Test switches
 
-`./flux up` generates `FLUX_FIXTURE_TOKEN`, which the source Compose file requires: it enables the
-integration-fixture endpoints used by the checks, for a caller holding that token only. Test-only
-switches such as `FLUX_TEST_FAILURE_INJECTION` stay off unless set; never set them on a server. The
+A release leaves `FLUX_FIXTURE_TOKEN` empty and its Compose file passes no test switch. Only a Flux developer's source checkout
+generates the token (its Compose file requires it for the integration-fixture endpoints of the checks, for a caller holding that
+token only) and passes switches such as `FLUX_TEST_FAILURE_INJECTION`, which stay off unless set; never run a source checkout
+as a server. The
 [configuration reference](configuration.md#set-by-flux-not-by-you) lists every such name.

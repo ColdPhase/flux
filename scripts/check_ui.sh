@@ -1,5 +1,5 @@
 #!/bin/sh
-# Browser tests for the web app: builds the image (which runs build, lint and typecheck),
+# Browser tests for the web app: builds the images (the type check and the lint run in the `test` stage, so scripts/check_application.sh and CI have them, not this script),
 # starts the Compose app on its own project and loopback port, and runs tests/ui in the
 # pinned Playwright container. Screenshots go to FLUX_UI_SCREENSHOT_DIR when it is set
 # (an absolute path), e.g. FLUX_UI_SCREENSHOT_DIR="$PWD/docs/design/app-shell".

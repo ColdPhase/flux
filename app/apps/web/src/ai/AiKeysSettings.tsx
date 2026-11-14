@@ -114,7 +114,7 @@ function AiConnectionsPage({ initial }: { initial: { connections: BackgroundComp
             <div><dt>Model</dt><dd>{assistantModelName(item.model)}</dd></div>
             {item.baseUrl ? <div><dt>Endpoint</dt><dd>{item.baseUrl}</dd></div> : null}
             <div><dt>Price</dt><dd>{item.price
-              ? <>{priceText(item.price)} · {priceSourceText(item.price)}</>
+              ? <>{priceText(item.price)} · {priceSourceText(item.price, item.provider)}</>
               : 'Unknown. It cannot be used until a price is known; add the key again with a price.'}</dd></div>
             <div><dt>Key</dt><dd>Ending {item.keyLastFour}</dd></div>
           </dl>
@@ -132,7 +132,7 @@ function AiConnectionsPage({ initial }: { initial: { connections: BackgroundComp
         </li>)}
       </ul>
     </section>
-    {adding ? <ConnectAiWindow startAt="key" runtime={null} runtimeFailed={false} apiKeys have={new Set()} onClose={closeWindow} onLocalClient={closeWindow}
+    {adding ? <ConnectAiWindow startAt="key" runtime={null} runtimeFailed={false} apiKeys manager={false} have={new Set()} onClose={closeWindow} onLocalClient={closeWindow}
       onConnected={(added) => {
         void listBackgroundConnections().catch(() => (added ? [added, ...connections] : connections)).then(setConnections);
         // The first key gives a person their Assistant on the server: the shell's agents and the models are read again, so Back to AI is not stale (#959).

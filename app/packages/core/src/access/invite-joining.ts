@@ -73,7 +73,7 @@ export async function previewInvite(principal: Principal | null, token: unknown,
   const member = !joined && self ? (await ports.invites(db).memberRole(invite.workspaceId, self)) !== null : false;
   return {
     workspaceName: found.workspaceName, invitedBy: found.creatorName, role: invite.role, expiresAt: invite.expiresAt.toISOString(),
-    emailLocked: invite.email !== null, encrypted: found.encrypted, state: joined ? 'joined' : member ? 'member' : 'pending',
+    emailLocked: invite.email !== null, email: invite.email, encrypted: found.encrypted, state: joined ? 'joined' : member ? 'member' : 'pending',
   };
 }
 

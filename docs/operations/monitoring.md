@@ -33,13 +33,13 @@ minute, three failures in a row make a container `unhealthy`.
 
 ```sh
 cd /srv/flux
-dc() { docker compose --env-file docker/.env -p "$(sed -n 's/^FLUX_PROJECT=//p' docker/.env)" -f docker/compose.source.yaml "$@"; }
+dc() { docker compose --env-file docker/release.env --env-file docker/.env -p "$(sed -n 's/^FLUX_PROJECT=//p' docker/.env)" -f docker/compose.yaml "$@"; }
 dc ps            # STATUS shows (healthy), (unhealthy) or Restarting
 docker stats     # memory against each container's limit
 ```
 
-For a release installation use `docker compose --env-file .env -f compose.yaml ps` in its
-directory.
+`docker/release.env` gives Compose the release's image names, as `./flux` does. A developer's source checkout uses
+`--env-file docker/.env -f docker/compose.source.yaml` instead.
 
 ## What is configured
 
@@ -68,6 +68,7 @@ dc logs api | grep '"channel":"security"' | grep '"outcome":"failure"\|"outcome"
 | `rate_limited` | `limited` | The per-address limit answered `429` (`address_limit`) | `route` |
 | `password_reset_requested` | `success` | A reset mail was asked for, whether or not the address has an account (the answer is the same) | `account` |
 | `password_reset` | `success`, `failure` | A reset was completed, or its link was refused (`invalid_token`) | `userId` on success |
+| `reset_link_created` | `success` | An owner or admin made a reset link in Settings › Company (`settings`, #1471) | `userId` (whose password), `byUserId` (who made it) |
 | `password_changed`, `email_changed` | `success`, `failure`, `limited` | Settings → Account. `failure` is a wrong current password (`bad_current_password`) | `userId` |
 | `sessions_revoked` | `success` | `password_reset`, `password_change`, `sign_out_everywhere` or `one_session` | `userId`, `count` |
 | `client_disconnected` | `success` | A local AI client was disconnected, by the person (`disconnect`) or with their sessions (`password_reset`, `password_change`, `sign_out_everywhere`) | `userId`, `count` |

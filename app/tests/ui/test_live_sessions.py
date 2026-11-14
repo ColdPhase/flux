@@ -659,6 +659,9 @@ class LiveJourney(LiveBase):
         kai = self.page("kai")
         self.api(kai, "PATCH", "/api/v1/notification-preferences", {"level": "everything"}, status=200)
         self.addCleanup(lambda: self.api(kai, "PATCH", "/api/v1/notification-preferences", {"level": "needsYou"}))
+        # A server with calls offers their sound in Settings › Notifications, on by default (#1243; hidden without calls, #1471).
+        kai.goto("/settings/notifications")
+        expect(kai.get_by_role("switch", name="Sound when someone calls me")).to_have_attribute("aria-checked", "true")
         kai.goto("/")
         expect(kai.locator(".app__pane")).to_be_visible()
         kai.wait_for_timeout(1500)

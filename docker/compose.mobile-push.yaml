@@ -64,6 +64,7 @@ services:
       <<: *app-env
       DATABASE_URL: postgres://flux:${MOBILE_DB_PASSWORD:?}@db:5432/flux
       FLUX_AUTH_SECRET: ${MOBILE_AUTH_SECRET:?}
+      FLUX_SETUP_TOKEN: ${MOBILE_SETUP_TOKEN:?}
       FLUX_AUTH_RATE_LIMIT: "true"
       FLUX_TRUSTED_PROXIES: ""
       FLUX_FIXTURE_TOKEN: ""

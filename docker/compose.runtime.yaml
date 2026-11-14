@@ -1,19 +1,12 @@
-# Flux agent runtime for an operator install of a PUBLISHED release (#358, F-022 AIM-3): the optional
-# second Compose file next to compose.yaml. It is OFF by default: with FLUX_AGENT_RUNTIME empty no
-# service below starts, and an installation that never loads this file never pulls the runtime image.
-#
-# The repository copy is the example for a future release. It does not start as is: its placeholder
-# digests RELEASE_DIGEST (ghcr.io/coldphase/flux) and RUNTIME_DIGEST (ghcr.io/coldphase/flux-agent-runtime)
-# are replaced by the release workflow with the accepted manifest digests. Download compose.yaml,
-# compose.runtime.yaml, runtime.sh and env.example from ONE GitHub Release. Operate it with runtime.sh
-# (on, off, up, status, release, purge) or pass BOTH files to every `docker compose` command:
-#   docker compose --env-file .env -f compose.yaml -f compose.runtime.yaml --profile runtime ...
-# The settings and limits are those of docker/compose.source.yaml (docs/operations/agent-runtime.md);
+# The agent runtime of a Flux release (#358, F-022 AIM-3; #1471 decision 5): the second Compose file next to compose.yaml, which
+# `./flux` layers while FLUX_AGENT_RUNTIME is set and runs with the `runtime` profile (docs/operations/agent-runtime.md). Its images
+# come from docker/release.env through FLUX_RELEASE_RUNTIME_IMAGE and FLUX_RELEASE_IMAGE, which the launcher exports; an installation
+# with the runtime off never pulls the runtime image. The settings and limits are those of docker/compose.source.yaml;
 # scripts/release/compare_runtime_overlay.py fails when the two drift apart.
 #
-# No service here, or anywhere in Flux, mounts a Docker or Podman socket: one runtime serves everyone, and
-# every container setting is static. Claude Code is never in an image: `runtime-install` installs the
-# pinned, signature-checked official release into the tools volume when FLUX_AGENT_RUNTIME includes it.
+# No service here, or anywhere in Flux, mounts a Docker or Podman socket: one runtime serves everyone, and every container setting is
+# static. Claude Code is never in an image: `runtime-install` installs the pinned, signature-checked official release into the tools
+# volume when FLUX_AGENT_RUNTIME includes it. The runtime image holds the agents' fixed toolbox (#1437).
 x-runtime-network-opts: &runtime-network-opts
   com.docker.network.bridge.inhibit_ipv4: "true"
 x-runtime-logging: &runtime-logging
@@ -31,10 +24,10 @@ x-runtime-hardening: &runtime-hardening
   logging: *runtime-logging
 x-runtime-slot: &runtime-slot
   <<: *runtime-hardening
-  image: ghcr.io/coldphase/flux-agent-runtime@sha256:RUNTIME_DIGEST
+  image: ${FLUX_RELEASE_RUNTIME_IMAGE:?run Flux with ./flux, which names the images}
   # One runtime for everyone (#860). Its supervisor starts as root inside the container, with only these capabilities, to run
   # each person's CLIs under that person's own user id; the CLIs have no capabilities at all. FLUX_RUNTIME_MEMORY bounds all the
-  # agents together, and how many run at once follows from it (./flux and runtime.sh set it from the server's memory).
+  # agents together, and how many run at once follows from it (./flux sets it from the server's memory).
   user: "0:0"
   cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, KILL, SETGID, SETUID]
   mem_limit: ${FLUX_RUNTIME_MEMORY:-2560m}
@@ -91,7 +84,7 @@ services:
     # One-shot: installs the pinned, signature-checked Claude Code into the tools volume when
     # FLUX_AGENT_RUNTIME includes claude_code; otherwise a no-op.
     <<: *runtime-hardening
-    image: ghcr.io/coldphase/flux-agent-runtime@sha256:RUNTIME_DIGEST
+    image: ${FLUX_RELEASE_RUNTIME_IMAGE:?run Flux with ./flux, which names the images}
     command: ["node", "apps/runtime/dist/install/main.js"]
     tmpfs:
       - /tmp:rw,nosuid,nodev,size=64m,mode=1777
@@ -111,7 +104,7 @@ services:
     # No database and no Docker access. Listens only on runtime-control (its alias there); on the slot
     # networks it only connects out to each supervisor with that slot's secret.
     <<: *runtime-hardening
-    image: ghcr.io/coldphase/flux@sha256:RELEASE_DIGEST
+    image: ${FLUX_RELEASE_IMAGE:?run Flux with ./flux, which names the images}
     command: ["node", "apps/runtime/dist/manager/main.js"]
     mem_limit: 128m
     pids_limit: 64
@@ -127,7 +120,7 @@ services:
     # The runtime's only way out: CONNECT to the enabled CLIs' documented hosts, the API's /mcp only, and the
     # providers' model paths only, to the worker's model gateway (#1441), which alone holds API keys.
     <<: *runtime-hardening
-    image: ghcr.io/coldphase/flux@sha256:RELEASE_DIGEST
+    image: ${FLUX_RELEASE_IMAGE:?run Flux with ./flux, which names the images}
     command: ["node", "apps/runtime/dist/egress/main.js"]
     mem_limit: 128m
     pids_limit: 128

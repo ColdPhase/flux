@@ -34,6 +34,8 @@ export FLUX_SIM_CERT_DIR="$work/certs" FLUX_SIM_CA_DIR="$work/ca" FLUX_SIM_CTL_D
 export POSTGRES_USER=flux POSTGRES_DB=flux
 export POSTGRES_PASSWORD="flux-sim-$$-$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
 export FLUX_FIXTURE_TOKEN="flux-sim-fixture-$$-$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
+# A test deployment (#1471): the simulated people sign up on the sign-up page without an invite link.
+export FLUX_TEST_FAILURE_INJECTION=true
 export FLUX_AUTH_SECRET="auth-sim-$$-$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
 export FLUX_PORT="${FLUX_SIM_API_PORT:-35210}"
 export FLUX_PUBLIC_ORIGIN=https://flux.sim.test

@@ -4,12 +4,13 @@ Start with the services' state and their last log lines; most problems name them
 
 ```sh
 cd /srv/flux
-dc() { docker compose --env-file docker/.env -p "$(sed -n 's/^FLUX_PROJECT=//p' docker/.env)" -f docker/compose.source.yaml "$@"; }
+dc() { docker compose --env-file docker/release.env --env-file docker/.env -p "$(sed -n 's/^FLUX_PROJECT=//p' docker/.env)" -f docker/compose.yaml "$@"; }
 dc ps -a
 dc logs --tail 50 migrate api worker keyring
 ```
 
-For a release installation use `docker compose --env-file .env -f compose.yaml` in place of `dc`.
+`docker/release.env` gives Compose the release's image names, as `./flux` does. A developer's source checkout uses
+`--env-file docker/.env -f docker/compose.source.yaml` instead.
 
 ## Flux does not start
 
@@ -38,19 +39,22 @@ For a release installation use `docker compose --env-file .env -f compose.yaml` 
 | Uploads fail with `413` from the proxy | Raise the proxy's body limit to at least 5 MiB, and to at least [`FLUX_VIDEO_MAX_MIB`](configuration.md#flux_video_max_mib) if people send videos (nginx: `client_max_body_size`). |
 | A video plays but cannot seek, or starts only after it has loaded in full | The proxy or a CDN strips `Range` requests or buffers the whole answer. Let `Range` and `206 Partial Content` through for `/api/v1/files/` ([other proxies](reverse-proxy.md#other-proxies)). |
 | "This browser can't play this video" | Flux plays what the browser plays natively and never converts a file. The video's codec (for example HEVC or a rare audio format) is one this browser lacks; Download opens it in a player, and sending it as H.264/AAC in an MP4 plays everywhere. |
-| Every session shows the same address, the proxy's | Set `FLUX_TRUSTED_PROXIES` to the proxy's measured address ([how](reverse-proxy.md#trust-only-the-measured-proxy-peer)). |
-| The reset page says password reset is unavailable | No email configured: set `FLUX_SMTP_URL` and `FLUX_MAIL_FROM`. |
+| Every session shows the same address, the proxy's | With the built-in proxy, run `./flux up` (it restarts the API with Caddy's current address). With your own, set `FLUX_TRUSTED_PROXIES` to the proxy's measured address ([how](reverse-proxy.md#trust-only-the-measured-proxy-peer)). |
+| `./flux up` fails with `Bind for 0.0.0.0:80 failed: port is already allocated` (or 443) | Another proxy holds the port. Stop it and let the [built-in HTTPS](reverse-proxy.md#built-in-https) take over, or keep it and set `FLUX_TRUSTED_PROXIES` to its address ([your own proxy](reverse-proxy.md#your-own-proxy-instead)). |
+| The reset page says password reset is unavailable | No email configured: an owner or admin makes the person a reset link in Settings › Company, `./flux reset-link <email>` prints one for any account (the owner's too), or set `FLUX_SMTP_URL` and `FLUX_MAIL_FROM`. |
+| A reset link says it no longer works | It works once and for `FLUX_PASSWORD_RESET_TTL_SECONDS` (one hour); a newer link for the same account stops it. Make a new one. |
 | Sign-in answers `429` "Too many sign-in attempts for this account. Try again in a few minutes" | The account's own back-off: five wrong passwords in a row make the account wait 30 seconds, then 1, 2, 4 and 8 minutes, and at most 15 minutes. It counts every API process together and does not depend on the client address. A browser that has signed in to the account before carries a signed `flux.device` cookie and is not held by other people's guesses (it waits only for its own five wrong passwords); a new device or a browser with cleared cookies waits, even with the right password. The person can wait, or use **Forgot password**: a reset clears the wait, and the browser that finishes it is remembered (a reset and "Sign out all other devices" also end every older copy of the cookie). Answers do not carry `Retry-After` on purpose. A `429` that says "Too many attempts in a short time" is the separate per-address limit and clears in a minute. |
 | Sign-up says "That password is too easy to guess" | Passwords need at least 12 characters and must not be a common password or built from the person's name or email. A short phrase of unrelated words works. |
-| New people cannot create an account | `FLUX_SIGNUP` is `off`, or `verified` without email (then sign-up is closed). `GET /api/v1/auth/capabilities` shows the rule in effect. Invite links never open closed sign-up. |
+| New people cannot create an account | Accounts come only from a link (#1471): send them an invite link from Settings › Company (the sign-up page without one says to ask for it). A link that was used, revoked or expired, or one for another address, makes no account. |
+| Nobody can create the first account | The owner's account comes from the setup link `./flux up` prints while no company exists. "This setup link doesn't work": open the whole link; the API log says so at start when `FLUX_SETUP_TOKEN` is not set. |
 
 ## Features that stay unavailable
 
 | Feature | Check |
 | --- | --- |
-| Push notifications | HTTPS origin, all three `FLUX_VAPID_*` set, outbound HTTPS to the push services ([push](mobile-and-push.md)). |
+| Push notifications | An https `FLUX_PUBLIC_ORIGIN`, both `FLUX_VAPID_PUBLIC_KEY` and `FLUX_VAPID_PRIVATE_KEY` set (the contact `FLUX_VAPID_SUBJECT` is optional), outbound HTTPS to the push services ([push](mobile-and-push.md)). |
 | Installing on a phone | HTTPS at the root of its own origin; iPhone and iPad install from Safari's Share menu. |
-| Agents answering in Flux (API keys) | `FLUX_PERSONAL_RUNS=on` and a readable `FLUX_BACKGROUND_KEY_HOST_FILE` (a release install mounts it from a Compose file of its own, see [the guide](release-guide.md#agents-on-your-own-ai-key-optional)). Also the agent runtime with `pi` in `FLUX_AGENT_RUNTIME` (every agent runs in the runtime, #1441). The space's AI must be on, and the person must not be a guest. Settings › AI says "Off on this Flux server" while neither this nor the runtime below is on. |
+| Agents answering in Flux (API keys) | `FLUX_PERSONAL_RUNS=on` and a readable `FLUX_BACKGROUND_KEY_HOST_FILE`. Also the agent runtime with `pi` in `FLUX_AGENT_RUNTIME` (every agent runs in the runtime, #1441). The space's AI must be on, and the person must not be a guest. Settings › AI says "Off on this Flux server" while neither this nor the runtime below is on. |
 | Sign-in with Claude or ChatGPT subscriptions | `FLUX_AGENT_RUNTIME` set and applied with `./flux up`; `./flux runtime status` ([agent runtime](agent-runtime.md)). A host with Yama `ptrace_scope` 0 stops the runtime with one message and the fix. Agents beyond what the server's memory allows wait with "Waiting for room on the server" (`FLUX_RUNTIME_MAX_RUNS`). |
 | Agents do not search or read the web | `FLUX_WEB_READS=off` turns both off. On, the server needs outbound HTTPS; an agent reads only an address it was given and never one that carries private Flux text. |
 | An MCP client on another computer | It needs an `https` origin; `http://127.0.0.1` works only on the server itself. The server also needs outbound HTTPS to fetch the client's metadata. |

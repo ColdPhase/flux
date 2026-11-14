@@ -9,6 +9,7 @@ export { sql } from 'drizzle-orm';
 export type { SQL } from 'drizzle-orm';
 export * from './repositories/sessions.js';
 export * from './repositories/person-time-zone.js';
+export * from './repositories/reset-links.js';
 export * from './repositories/person-photos.js';
 export * from './repositories/space-icons.js';
 export * from './repositories/person-last-active.js';
@@ -38,6 +39,7 @@ export * from './repositories/agent-project-objects.js';
 export * from './repositories/idp-standing.js';
 export * from './repositories/idp-logout.js';
 export * from './migrations/ledger.js';
+export * from './repositories/ai-price-list.js';
 // Highest numbered file in packages/db/migrations. The API refuses other versions.
 export const FLUX_SCHEMA_VERSION = 83;
 // pg-boss 12.38.0 declares schema 46. Update this with the pinned package.

@@ -19,11 +19,12 @@ Optional parts:
 | Part | Turned on by | Adds |
 | --- | --- | --- |
 | Agent runtime | `FLUX_AGENT_RUNTIME` ([guide](agent-runtime.md)) | `runtime-install`, `runtime-manager`, `runtime-egress` and one `runtime-1` for everyone, each person under their own user id, on their own internal networks; the egress proxy is their only way out |
-| Live media | `docker/compose.live.yaml`, `docker/compose.live.turn.yaml` ([guide](../development/live-media.md)) | `livekit`, with ICE and TURN ports reached directly by browsers, and signaling only through the API at `/media` |
+| Built-in HTTPS | An `https` `FLUX_PUBLIC_ORIGIN` with `FLUX_TRUSTED_PROXIES` empty (`docker/compose.https.yaml`, [guide](reverse-proxy.md#built-in-https)) | `proxy`, Caddy on 80 and 443 with automatic certificates, on an `edge` network shared only with `api`, which trusts exactly its address |
+| Live media | `FLUX_CALLS=on` (`docker/compose.live.yaml`, [guide](calls.md)) | `livekit`, with ICE and TURN ports reached directly by browsers, and signaling only through the API at `/media` |
 | Hot-reload development | `./flux dev` | A Vite server and a mail catcher; never on a server |
 
-`api`, `worker`, `keyring` and `migrate` run one image at one revision. The release `compose.yaml`
-pulls it by digest; a source checkout builds it from the checkout.
+`api`, `worker`, `keyring` and `migrate` run one image at one revision. A release's `./flux` pulls it by the digest that
+`docker/release.env` names; a developer's source checkout builds it from the checkout.
 
 ## How requests flow
 

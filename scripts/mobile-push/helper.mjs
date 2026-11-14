@@ -46,16 +46,19 @@ async function seed(directory, state) {
   state.seedStarted = true; await writeJson(directory, 'state.json', state);
   const secret = await readJson(directory, 'secrets.json'); const clients = {};
   try {
-    for (const person of ['producer', 'recipient']) {
+    // #1471: the producer's account comes from the setup link and sets up this fresh fixture's company (F-037); the recipient's from an
+    // invite link the producer makes for their address, which joins them as the account is made.
+    const signUp = async (person, link) => {
       const client = new Client(process.env.MOBILE_API ?? 'http://api:8080', state.origin); clients[person] = client;
-      await client.request('POST', '/api/auth/sign-up/email', secret[person]);
+      await client.request('POST', '/api/auth/sign-up/email', { ...secret[person], ...link });
       state[person] = { id: (await client.request('GET', '/api/v1/me')).user.id };
-    }
-    const owner = clients.producer; const recipient = clients.recipient;
-    // F-037: the producer's first account set up this fresh fixture's company.
+      return client;
+    };
+    const owner = await signUp('producer', { setupToken: secret.setupToken });
     const [company] = await owner.request('GET', '/api/v1/workspaces');
+    const invite = await owner.request('POST', `/api/v1/workspaces/${company.id}/invites`, { role: 'member', email: secret.recipient.email }, 201);
+    const recipient = await signUp('recipient', { inviteToken: new URL(invite.link).hash.slice(1) });
     const workspace = await owner.request('PATCH', `/api/v1/workspaces/${company.id}`, { name: 'Disposable mobile push verification' });
-    await owner.request('POST', `/api/v1/workspaces/${workspace.id}/members`, { email: secret.recipient.email, role: 'member' }, 201);
     const project = await owner.request('POST', `/api/v1/workspaces/${workspace.id}/projects`, { name: 'Phone push fixture' }, 201);
     await owner.request('POST', `/api/v1/projects/${project.id}/grants`, { principal: { kind: 'human', id: state.recipient.id }, role: 'contributor' }, 201);
     const conversation = await recipient.request('POST', `/api/v1/projects/${project.id}/conversations`, {

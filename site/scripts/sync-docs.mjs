@@ -38,8 +38,6 @@ export const PAGES = [
   { route: 'operate/hardening', from: 'docs/operations/hardening.md' },
   { route: 'operate/troubleshooting', from: 'docs/operations/troubleshooting.md' },
   { route: 'operate/mobile-and-push', from: 'docs/operations/mobile-and-push.md' },
-  { route: 'operate/install-release', from: 'docs/operations/install-release.md' },
-  { route: 'operate/release-guide', from: 'docs/operations/release-guide.md' },
   { route: 'operate/upgrade', from: 'docs/operations/upgrade.md' },
   { route: 'operate/backup-restore', from: 'docs/operations/backup-restore.md' },
   { route: 'operate/export', from: 'docs/operations/export.md' },

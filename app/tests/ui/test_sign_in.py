@@ -128,7 +128,7 @@ class SignIn(_Browser):
 
 class SignInPages(_Browser):
     def page(self):
-        context = self.browser.new_context(base_url=ORIGIN, viewport=DESKTOP, color_scheme="light", locale="en-GB")
+        context = self.browser.new_context(base_url=ORIGIN, viewport=DESKTOP, color_scheme="light", locale="en-GB", service_workers="block")
         self.addCleanup(context.close)
         return context.new_page()
 
@@ -141,7 +141,7 @@ class SignInPages(_Browser):
         expect(page.get_by_role("link", name="Forgot password?")).to_be_visible()
         expect(page.get_by_role("button", name="Sign in with Keycloak")).to_have_count(0)
         capabilities = json.loads(page.request.get(f"{ORIGIN}/api/v1/auth/capabilities").text())
-        self.assertEqual(capabilities, {"company": None, "passwordReset": "available", "signup": "open", "ssoOnly": False, "linkable": False, "sso": None})
+        self.assertEqual(capabilities, {"company": None, "setup": False, "passwordReset": "available", "signup": "open", "ssoOnly": False, "linkable": False, "sso": None})
 
     def test_02_a_new_account_signs_up_and_a_wrong_password_is_refused(self) -> None:
         page = self.page()
@@ -159,6 +159,20 @@ class SignInPages(_Browser):
         other.get_by_label("Password").fill("the wrong password entirely")
         other.get_by_role("button", name="Sign in", exact=True).click()
         expect(other.get_by_text("That email and password don’t match an account.")).to_be_visible()
+
+    def test_06_a_page_opened_from_a_refused_address_is_told_the_one_flux_accepts(self) -> None:
+        """#1471: the old loopback address of a server that has moved to its public one says which address to open. The server names the one
+        it accepts in the refusal; when that is the page's own address, the words stay general."""
+        for named, line in (("https://flux.example.org", "Open Flux at https://flux.example.org and try again."),
+                            (ORIGIN, "Open Flux at its usual address and try again.")):
+            page = self.page()
+            page.route("**/api/auth/sign-in/email", lambda route, _request, named=named: route.fulfill(status=403, content_type="application/json",
+                       body=json.dumps({"error": "Forbidden", "code": "ORIGIN_REJECTED", "reason": "origin does not match", "origin": named})))
+            page.goto("/sign-in")
+            page.get_by_label("Email").fill(PERSON["email"])
+            page.get_by_label("Password").fill(PASSWORD)
+            page.get_by_role("button", name="Sign in", exact=True).click()
+            expect(page.get_by_text(f"This page was opened from an address Flux doesn’t accept. {line}")).to_be_visible()
 
     def test_04_a_common_password_is_refused_with_the_reason_and_the_account_is_not_made(self) -> None:
         page = self.page()

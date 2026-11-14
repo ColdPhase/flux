@@ -1,0 +1,1 @@
+- When a server runs ChatGPT plans but its owner answered No to Anthropic's Commercial Terms at the first `./flux up`, the owners and admins of the company read in Connect AI how to turn the Claude plan on: "Not turned on. Run `./flux ai on` on the server." ([#1471](https://github.com/ColdPhase/flux/issues/1471)).

@@ -5,7 +5,7 @@
 #
 # Each image must be named by digest (a tag can move) and must carry a keyless Sigstore signature whose certificate says it was made by
 # this repository's `final-release.yml` workflow on `main`, with GitHub's OIDC issuer. This is the check publish-release.yml makes
-# before a draft becomes a release, and the one operators make before `docker pull` (docs/operations/release-guide.md). It needs
+# before a draft becomes a release, and the one owners can make before `docker pull` (docs/operations/upgrade.md#signatures). It needs
 # `cosign` v3 or later on the PATH (the release is signed with v3) and, for ghcr.io, a Docker login if the images are private.
 #
 # FLUX_RELEASE_REPOSITORY (default ColdPhase/flux) names the repository whose workflow signed. FLUX_COSIGN_KEY (a public key file) and

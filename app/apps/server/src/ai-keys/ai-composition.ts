@@ -55,6 +55,7 @@ export function aiConnectionServerComposition(env: NodeJS.ProcessEnv): AiConnect
     providers: { endpoints: endpointPolicyPort(policy), toolCheck: providerToolCheck({ ...keyed }), keyModels: (provider, apiKey) => listsWithKey(provider) ? keyModels(provider, apiKey) : Promise.resolve({ provider, status: 'needs_key', models: [], checkedOn: new Date().toISOString().slice(0, 10) }) },
     listModels: (provider, baseUrl, apiKey) => (listsWithKey(provider)
       ? (apiKey ? keyModels(provider, apiKey) : listProviderModels(provider, baseUrl, { policy }))
-      : listProviderModels(provider, baseUrl, { policy })),
+      // OpenRouter's list is also its price list (#1465); a check stack asks its mock for it (`keyListingOptions`).
+      : listProviderModels(provider, baseUrl, provider === 'openrouter' ? keyed : { policy })),
   };
 }

@@ -85,6 +85,9 @@ describe('listing a key\'s models from its provider (#1218)', () => {
     const first = expectStatus(await owner.browser.request('POST', AI_MODEL_LISTS_PATH, { body: { provider: 'anthropic', apiKey: key } }), 200) as AiModelList;
     assert.equal(first.status, 'listed');
     assert.ok(first.models.some((model) => model.id === 'claude-opus-5-5'), 'Opus is listed');
+    // Flux's price list of the provider comes with it (#1465): the form prices a model with it, or asks its owner.
+    assert.deepEqual(first.priceList?.prices['claude-opus-5-5'], { inputMicrosPerMTok: 4_000_000, outputMicrosPerMTok: 20_000_000 });
+    assert.match(first.priceList?.fetchedOn ?? '', /^\d{4}-\d{2}-\d{2}$/);
     const again = await owner.browser.request('POST', AI_MODEL_LISTS_PATH, { body: { provider: 'anthropic', apiKey: key } });
     assert.equal(again.text.includes(key), false);
     assert.equal((await askedWith(key)).length, 1, 'the second look and later the save use the same reading');
@@ -103,6 +106,7 @@ describe('listing a key\'s models from its provider (#1218)', () => {
     // OpenAI-compatible endpoints keep their keyless `/models`.
     const compatible = expectStatus(await owner.browser.request('POST', AI_MODEL_LISTS_PATH, { body: { provider: 'openai_compatible', baseUrl: `${MOCK}/openai/v1` } }), 200) as AiModelList;
     assert.deepEqual(compatible.models.map((model) => model.id), ['llama3.1:8b', 'qwen2.5:7b-instruct']);
+    assert.equal(compatible.priceList, null, 'Flux knows no price of an endpoint\'s models: their owner enters it');
   });
 });
 
@@ -169,7 +173,7 @@ describe('a key, its models and its agents (#1218)', () => {
     await runs.enable(human(owner), { agentId, connection: key.id, model: 'claude-opus-5-5' });
     await assert.rejects(chooseModel(runs, human(owner), { connection: key.id, model: 'claude-sonnet-5-7' }),
       { code: 'ASSISTANT_MODEL_UNAVAILABLE', message: /Flux doesn't know the price of Claude Sonnet 5\.7 yet\. Enter it to use it with a daily budget\./ });
-    // A price for a model Flux's table prices, or nonsense, is refused; the owner's price for the unpriced one is kept on the key.
+    // A price for a model Flux's price list prices, or nonsense, is refused; the owner's price for the unpriced one is kept on the key.
     assert.equal(codeOf(await owner.browser.request('PUT', `${path}/${key.id}/model-price`, { body: { model: 'claude-opus-5-5', inputMicrosPerMTok: 1, outputMicrosPerMTok: 1 } })), 'AI_PRICE_ALREADY_KNOWN');
     assert.equal(codeOf(await owner.browser.request('PUT', `${path}/${key.id}/model-price`, { body: { model: 'claude sonnet', inputMicrosPerMTok: 1, outputMicrosPerMTok: 1 } })), 'AI_MODEL_INVALID');
     const priced = expectStatus(await owner.browser.request('PUT', `${path}/${key.id}/model-price`,

@@ -78,12 +78,14 @@ class EnvChangesTest(unittest.TestCase):
         self.assertRegex(upgrade, r'apply_env_changes \|\| upgrade_failed "[^"]+"')
         self.assertNotIn('die "docker/env-changes.txt', launcher_function("apply_env_changes"), "a bare die would leave the writers stopped without the way back")
 
-    def test_the_shipped_file_lists_no_change_and_the_launcher_calls_it_during_an_upgrade(self) -> None:
+    def test_the_shipped_file_lists_the_changes_and_the_launcher_calls_it_during_an_upgrade(self) -> None:
         lines = [l for l in (ROOT / "docker" / "env-changes.txt").read_text(encoding="utf-8").splitlines() if l.strip() and not l.startswith("#")]
-        self.assertEqual(lines, [], "a release that renames or removes a setting adds its line here and to its notes")
+        # v0.2.1 removed FLUX_SIGNUP (#1471): accounts come only from a link. A release that renames or removes a setting adds its line
+        # here and to its notes.
+        self.assertEqual([line.split()[:2] for line in lines], [["remove", "FLUX_SIGNUP"]])
         upgrade = launcher_function("upgrade_apply")
         self.assertIn("apply_env_changes", upgrade)
-        self.assertLess(upgrade.index("apply_env_changes"), upgrade.index("build_main"), "reported before the build, after the backup")
+        self.assertLess(upgrade.index("apply_env_changes"), upgrade.index("get_images"), "reported before the images, after the backup")
 
 
 if __name__ == "__main__":

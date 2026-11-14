@@ -5,7 +5,8 @@
 // Development data only: the launcher refuses to run it against a production origin.
 //
 // Input (environment): FLUX_DEMO_API (default http://127.0.0.1:8080), FLUX_PUBLIC_ORIGIN,
-// FLUX_DEMO_OWNER_PASSWORD, FLUX_DEMO_PARTNER_PASSWORD.
+// FLUX_DEMO_OWNER_PASSWORD, FLUX_DEMO_PARTNER_PASSWORD, FLUX_SETUP_TOKEN (#1471: the owner's account comes from the setup
+// link, the partner's from an invite link the owner makes, as for real use).
 // Output: human-readable progress on stdout; with FLUX_DEMO_JSON=1 also a final
 // `FLUX_DEMO_RESULT {json}` line for scripts/check_flux_cli.sh.
 
@@ -62,10 +63,10 @@ class Session {
   }
 }
 
-/** Signs up, or signs in when the account already exists from an earlier `./flux demo`. */
-async function account(person) {
+/** Signs up from the given link, or signs in when the account already exists from an earlier `./flux demo`. */
+async function account(person, link = {}) {
   const session = new Session();
-  const signUp = await session.request('POST', '/api/auth/sign-up/email', { email: person.email, password: person.password, name: person.name });
+  const signUp = await session.request('POST', '/api/auth/sign-up/email', { email: person.email, password: person.password, name: person.name, ...link });
   if (signUp.status !== 200) {
     const signIn = await session.request('POST', '/api/auth/sign-in/email', { email: person.email, password: person.password });
     if (signIn.status !== 200) {
@@ -84,8 +85,8 @@ async function hasRoute(session, path) {
 }
 
 const ids = () => crypto.randomUUID();
-const owner = await account(people.owner);
-const partner = await account(people.partner);
+const setupToken = process.env.FLUX_SETUP_TOKEN || undefined;
+const owner = await account(people.owner, setupToken ? { setupToken } : {});
 
 // F-037: one Flux is one company, set up by its first account. On a fresh install the demo owner signs up first and
 // owns it; the demo names it and adds the partner. On a server someone else set up, the demo stops instead.
@@ -95,11 +96,19 @@ if (!company || (company.role !== 'owner' && company.role !== 'admin')) {
 }
 const existing = company.name === WORKSPACE_NAME ? company : null;
 const summary = { workspace: WORKSPACE_NAME, seeded: [], skipped: [], alreadySeeded: Boolean(existing) };
+// The partner joins from an invite link for their address (#1471), or signs in when an earlier demo made the account.
+let partner;
+if (existing) partner = await account(people.partner);
+else {
+  const invite = await owner.session.expect('POST', `/api/v1/workspaces/${company.id}/invites`, { role: 'member', email: people.partner.email }, [201]);
+  partner = await account(people.partner, { inviteToken: new URL(invite.link).hash.slice(1) });
+  const joined = (await partner.session.expect('GET', '/api/v1/workspaces')).some((ws) => ws.id === company.id);
+  if (!joined) await owner.session.expect('POST', `/api/v1/workspaces/${company.id}/members`, { email: partner.email, role: 'member' }, [200, 201]);
+}
 if (existing) {
   console.log(`Demo company "${WORKSPACE_NAME}" already exists; nothing new was seeded.`);
 } else {
   const ws = await owner.session.expect('PATCH', `/api/v1/workspaces/${company.id}`, { name: WORKSPACE_NAME });
-  await owner.session.expect('POST', `/api/v1/workspaces/${ws.id}/members`, { email: partner.email, role: 'member' });
   summary.seeded.push(`company "${ws.name}" with ${owner.name} (owner) and ${partner.name} (member)`);
 
   const project = await owner.session.expect('POST', `/api/v1/workspaces/${ws.id}/projects`, { name: 'Community garden sensors' });

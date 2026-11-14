@@ -9,7 +9,7 @@ consent, caps and fail-closed rules are those of
 
 | Path | Role |
 | --- | --- |
-| `app/packages/contracts/src/ai-providers.ts` | Provider kinds, labels, fixed base URLs, key hints, the dated price table, `maxRequestMicros`, the model-list wire types. |
+| `app/packages/contracts/src/ai-providers.ts` | Provider kinds, labels, fixed base URLs, key hints, the price list's types and `listPrice`, `maxRequestMicros`, the model-list wire types. |
 | `app/packages/core/src/ai/` | Key-format, model-id, base-URL and price validation; the conservative token estimate; price resolution; the endpoint-policy port. |
 | `app/packages/core/src/personal-runs/` | The personal-run brief, answer parsing, processor and commit, and `flux_web_search`'s one search request (`key-search.ts`), shared by every provider. |
 | `app/packages/core/src/model-gateway/`, `app/apps/worker/src/model-gateway/` | Flux's model gateway: a key run's model requests in pi's own wire format, passed to the provider with the sealed key, each held and charged against the key's daily budget ([RT-4](../product/ai-modes.md#the-model-gateway-1441)). |
@@ -100,28 +100,37 @@ Anthropic was confirmed in O-007/O-008 and is unchanged.
 
 ## Prices and the gateway's holds
 
-A connection's price per 1M tokens (micro-dollars) comes only from Flux's dated table
-(`AI_PRICE_TABLE`; source `table`) or from the owner
-(`owner`, zero allowed), because a request is held at its worst cost before any response exists. An owner
-price is refused when the table has the model. A price OpenRouter lists is shown in the form as
-the starting value of the owner's price, never stored as a source of its own. A connection without
-a price can be saved but not enabled: `BACKGROUND_PRICE_UNKNOWN`, `PERSONAL_RUN_PRICE_UNKNOWN`, the
-refusal `CONNECTION_PRICE_UNKNOWN`, and the assistant state `unavailable` /
-`price_unknown`.
+A connection's price per 1M tokens (micro-dollars) comes only from the price list of the place the key pays (source `list`, with
+the day the list was fetched: LiteLLM's for Anthropic, OpenAI and Gemini, OpenRouter's own for OpenRouter) or from the owner (`owner`,
+zero allowed), because a reservation needs a price before any response exists (#1465,
+[CA-2](../product/model-providers.md#ca-2--models)). An owner price is refused when a list has the model. A key without
+a price is not saved: Connect AI asks for the price in the same step and the server refuses the key (`AI_PRICE_REQUIRED`, 422, #1424); a stored connection
+that has none (one saved before that) cannot be used: `BACKGROUND_PRICE_UNKNOWN`, `PERSONAL_RUN_PRICE_UNKNOWN`,
+the refusal `CONNECTION_PRICE_UNKNOWN` and the assistant state `unavailable` / `price_unknown`.
 
-The table rows come from these pages (all vendor claims), all read on 2026-11-12 (#1218):
+A list price may carry long-prompt tiers (`AiPrice.tiers`, `{ fromTokens, inputMicrosPerMTok, outputMicrosPerMTok }`):
+`maxRequestMicros(price, input, output, searches, promptTokens)` prices at `rateAt(price, promptTokens)`, the highest price the
+prompt reaches. A reservation passes the longest prompt the request can be (a server run's bound; the gateway's `inputBoundTokens`),
+a charge (`usageMicros`) the reported `inputTokens`, the whole prompt with cache reads and writes, while the billed tokens keep their
+cache rates. An owner price has no tiers.
 
-| Provider | Page | What the rows are |
-| --- | --- | --- |
-| Anthropic | [platform.claude.com pricing](https://platform.claude.com/docs/en/about-claude/pricing) and the [model overview](https://platform.claude.com/docs/en/models/overview) | Standard rates of every model the page lists, Mythos (verified organizations only) included; Claude Haiku 5.5 at its over-100k-token tier ($0.50 / $2.50), because a request with web search can pass 100,000 tokens |
-| OpenAI | [developers.openai.com pricing](https://developers.openai.com/api/docs/pricing) (undated) | Standard text rates, the ≤272k-token tier; not batch, flex or fast |
-| Gemini | [aistudio.google.com/docs/pricing](https://aistudio.google.com/docs/pricing) (ai.google.dev's pricing page redirects there; undated) | Paid tier, ≤200k-token prompt tier |
+How the lists move:
 
-Left out because the provider has announced the price will change on a known date (a stale row would under-hold; the owner
-enters the price): Gemini 4 Carbon and Argon ($2 / $10 until 2026-11-30, $4 / $20 from 2026-12-01), Gemini 3.6 and 3.8 Flash ($0.75 /
-$3.75 until 2026-12-31), and GPT-5.6 Sol (promotional until 2026-11-30). Gone since the last reading: `gemini-3.5-flash` and `o3-mini`
-(no longer on the pages). A listed model without a row is still offered: its owner enters its price for that key
-(`PUT /api/v1/background-compute-connections/:id/model-price`, kept in `model_prices`).
+| Piece | Where |
+| --- | --- |
+| Reading LiteLLM's file into Flux's prices (provider and mode filter, ids, bounds, `_above_<N>k_tokens` tiers from N×1000+1 tokens, whole-file refusal) | `parsePriceList`, `isPriceList` in `app/packages/core/src/ai/price-list.ts` |
+| OpenRouter's prices: its keyless model list with `overrides` (`min_prompt_tokens`) as tiers; a variable or malformed price is none | `openRouterRate` in `app/packages/agent-runtime/src/model-list.ts`, `openRouterPriceList` in core |
+| The anonymous daily GET of LiteLLM's file through the egress guard (16 MB, 30 s); test stacks ask `<FLUX_TEST_PROVIDER_LISTS>/price-list` and `/lists/openrouter/v1/models` | `fetchPriceList`, `priceListFetchOptions`, `keyListingOptions` in `app/packages/agent-runtime/src/` |
+| The job: daily at 04:17 UTC and at start when the stored LiteLLM list is a day old; OpenRouter's list too while anyone has an OpenRouter key; retried 3 times 15 minutes apart; a failure keeps the last good list | `app/apps/worker/src/ai-keys/price-list.ts` (`ai-price-list.refresh.v1`) |
+| OpenRouter's list read by the API: when the form lists OpenRouter's models, and at connect when the stored one is a day old | `priceList` in `app/apps/server/src/ai-keys/routes.ts` |
+| The stored lists: one row per list (`litellm`, `openrouter`), each replaced only by a list fetched the same day or later | `ai_price_lists` (migration 0081), `aiPriceListRepository`, `storedPriceLists` |
+| The shipped list: LiteLLM's entries for Anthropic, OpenAI and Gemini text models as fetched on the release's build day, stored by the migrator when the database has none or an older one | `scripts/update_price_list.py` writes `app/packages/core/src/ai/price-list-snapshot.ts`; `shippedPriceList()`; `app/tooling/migrate.ts` |
+| A stored connection's price: the list's price of today for its model, else the stored one (a stored price keeps no tiers) | `currentConnectionPrice` (contracts), applied by `connectionPrice` in the connection repositories |
+| The Connect AI form's prices: `priceList` of the `POST /api/v1/ai-model-lists` answer; OpenRouter's list is read when it is chosen | `app/apps/server/src/ai-keys/routes.ts`, `ConnectionFields.tsx` |
+
+A listed model the list does not price is still offered: its owner enters its price for that key
+(`PUT /api/v1/background-compute-connections/:id/model-price`, kept in `model_prices`); once the list prices it, the list's price
+is used.
 
 - **A run's request** through the model gateway is held at its most it can cost before it is sent: its body's bytes as input tokens plus
   1,024 (at the provider's cache-write rate where it has one, Anthropic's 1.25) and its output bound (at most 32,000 tokens), at the run

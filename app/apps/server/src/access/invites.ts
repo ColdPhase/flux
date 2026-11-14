@@ -2,8 +2,9 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { INVITE_ACCEPT_PATH, INVITE_EXPIRY_DAYS, INVITE_PREVIEW_PATH, WORKSPACES_PATH, type CreateInviteCommand, type InviteTokenCommand } from '@flux/contracts';
 import type { PgBoss } from 'pg-boss';
 import { accessPorts, inviteNoticeRows, type Database } from '@flux/db';
-import { ConflictError, acceptInvite, createInvite, createNotification, listInvites, NotFoundError, previewInvite, revokeInvite, withLink,
+import { ConflictError, acceptInvite, checkInviteForSignUp, createInvite, createNotification, listInvites, NotFoundError, previewInvite, revokeInvite, withLink,
   type CreatedInvite, type InviteJoined, type InviteSigner } from '@flux/core';
+import type { InviteSignUp } from '../identity/index.js';
 import { notificationUnitOfWork, pgBossQueue } from '../push/adapters.js';
 import { joinRateLimiter, type JoinRateLimiter } from '../live/rate-limit.js';
 import { requires } from '../http/commands.js';
@@ -21,15 +22,11 @@ export function inviteLimiters(): InviteLimiters {
 const tokenBody = { type: 'object', required: ['token'], additionalProperties: false, properties: { token: { type: 'string', maxLength: 128 } } } as const;
 
 /**
- * Invite links (F-035, #763 PE-2; docs/development/access-policy.md#invite-links-f-035): they join the company (F-037).
- * Create, list and revoke need a company owner or admin. Preview needs no session; accept needs one and is idempotent by itself (no Idempotency-Key row,
- * which would only store the token's answer). The token never reaches a stored answer, an event or a log.
+ * #763 FT-3: the person who made the link hears that it was used, in the same transaction as the join. F-037: a new member is in the
+ * company's Everyone space already; a guest is in nothing until a space adds them.
  */
-export function inviteRoutes(app: FastifyInstance, { db, principal, command, sessions, workspaceScope, inviteVerifiedEmail, ssoOnly }: AccessContext,
-  signer: InviteSigner, limits: InviteLimiters, boss: Pick<PgBoss, 'send'>) {
-  // #763 FT-3: the person who made the link hears that it was used, in the same transaction as the join. F-037: a new
-  // member is in the company's Everyone space already; a guest is in nothing until a space adds them.
-  const onJoined: InviteJoined = async (tx, joined) => {
+export function inviteJoinedNotice(boss: Pick<PgBoss, 'send'>): InviteJoined {
+  return async (tx, joined) => {
     // An encrypted workspace's notifications carry no content (F-030): the People list shows the new member instead.
     if (joined.encrypted) return;
     const names = await inviteNoticeRows(tx as Database).names([joined.userId]);
@@ -49,6 +46,28 @@ export function inviteRoutes(app: FastifyInstance, { db, principal, command, ses
       });
     } catch (error) { if (!(error instanceof NotFoundError)) throw error; }
   };
+}
+
+/**
+ * The invite links a new account may come from (#1471): the sign-up checks the link before the account exists and joins with it as it is
+ * made, with the same notice to the link's maker as a join by a signed-in person.
+ */
+export function inviteSignUp(db: Database, signer: InviteSigner, boss: Pick<PgBoss, 'send'>, verifiedEmailOnly: boolean): InviteSignUp {
+  const onJoined = inviteJoinedNotice(boss);
+  return {
+    check: (token, email) => checkInviteForSignUp(token, email, db, accessPorts, signer, { verifiedEmailOnly }),
+    accept: async (userId, token) => { await acceptInvite({ kind: 'human', id: userId }, token, db, accessPorts, signer, { verifiedEmailOnly, onJoined }); },
+  };
+}
+
+/**
+ * Invite links (F-035, #763 PE-2; docs/development/access-policy.md#invite-links-f-035): they join the company (F-037).
+ * Create, list and revoke need a company owner or admin. Preview needs no session; accept needs one and is idempotent by itself (no Idempotency-Key row,
+ * which would only store the token's answer). The token never reaches a stored answer, an event or a log.
+ */
+export function inviteRoutes(app: FastifyInstance, { db, principal, command, sessions, workspaceScope, inviteVerifiedEmail, ssoOnly }: AccessContext,
+  signer: InviteSigner, limits: InviteLimiters, boss: Pick<PgBoss, 'send'>) {
+  const onJoined = inviteJoinedNotice(boss);
   const who = async (request: FastifyRequest) => {
     const session = await sessions.resolveSession(request.headers);
     return { session, key: session ? `user:${session.principal.id}` : `ip:${request.ip}` };

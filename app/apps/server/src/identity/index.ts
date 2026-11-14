@@ -25,10 +25,13 @@ import { createSessionResolver, type SessionResolver } from './session.js';
 import { registerBackchannelLogout } from './backchannel.js';
 import { createIdpStanding, type IdpStanding } from './standing.js';
 import { createOfflineStep } from './offline-step.js';
-import { unclaimedCompanyWarning } from './first-owner.js';
+import { setupNotice } from './first-owner.js';
+import { createSignUpLinks, type InviteSignUp } from './sign-up-links.js';
+import { registerResetLinkRoutes } from './reset-links.js';
 import { securityEvent } from '../security-log.js';
 
 export { loadIdentityConfig, type IdentityConfig } from './config.js';
+export type { InviteSignUp } from './sign-up-links.js';
 export { UnauthenticatedError, type SessionContext, type SessionResolver } from './session.js';
 
 export interface IdentityOptions {
@@ -41,6 +44,10 @@ export interface IdentityOptions {
    * and the report route (http/csp-reports.ts) only appends a bounded line to an in-memory list. Never set in an install.
    */
   originExemptPaths?: readonly string[];
+  /** Invite links a sign-up may come from (F-035, #1471); the access module's `inviteSignUp`. Without it only the setup link makes an account. */
+  invites?: InviteSignUp | null;
+  /** A test deployment (fixture token and failure injection) also makes an account without a link (#1471). Never on an install. */
+  openSignUp?: boolean;
 }
 
 export interface Identity extends SessionResolver {
@@ -76,7 +83,8 @@ export function registerIdentity(app: FastifyInstance, options: IdentityOptions)
   const claims = createEmailClaims(db);
   const links = createLinkIntents(db);
   const onMailError = (error: unknown) => app.log.error({ error }, 'Password reset mail failed');
-  const build = (oidc: OidcConfig | null) => createAuth({ db, config, installProvider: oidc !== null, mailer, oauthRequests, signIns, standing, confirmation, claims, links, log: app.log, onMailError });
+  const signUpLinks = createSignUpLinks({ db, setupToken: config.setupToken, invites: options.invites ?? null, open: options.openSignUp ?? false });
+  const build = (oidc: OidcConfig | null) => createAuth({ db, config, installProvider: oidc !== null, mailer, oauthRequests, signIns, standing, confirmation, claims, links, log: app.log, onMailError, signUpLinks });
   // The OIDC plugin reads the provider's discovery document once, when its Better Auth instance starts, and
   // drops the provider if that read fails. The instance is therefore created at startup, and again once the
   // provider answers if it was down then (#310 AC-4), so no restart is needed. Routes hold this stable reference.
@@ -134,9 +142,9 @@ export function registerIdentity(app: FastifyInstance, options: IdentityOptions)
       app.log.warn({ issuer: config.oidc.issuer }, 'The identity provider did not answer; single sign-on is reported as not reachable until it does');
       awaitProvider(config.oidc);
     }
-    // The first sign-up owns the company: on a public address, say so while nobody has signed up (#994).
-    const unclaimed = unclaimedCompanyWarning(config, !!await accessPorts.workspaces(db).company());
-    if (unclaimed) app.log.warn(unclaimed);
+    // The first account comes from the setup link (#1471): say where it is while nobody has set the company up, or that it cannot exist.
+    const notice = setupNotice(config, !!await accessPorts.workspaces(db).company());
+    if (notice) app.log[notice.level](notice.text);
     // What startup found out is the first answer of the sign-in page, which then never waits for a probe of its own (#1023).
     reachable?.known(providerInstalled);
     await idpStanding?.reconcile();
@@ -168,7 +176,8 @@ export function registerIdentity(app: FastifyInstance, options: IdentityOptions)
     if (violation) {
       // The Origin header is the sender's own text and is not copied: the reason says what was wrong with it (#997).
       securityEvent(request.log, { event: 'origin_refused', outcome: 'refused', reason: violation, route: request.routeOptions?.url ?? '/', ip: request.ip });
-      return reply.code(403).send({ error: 'Forbidden', code: 'ORIGIN_REJECTED', reason: violation } satisfies ApiError & { reason: string });
+      // `origin` is the address Flux accepts, so the page can name it: the old loopback address of an install that has moved to its public one (#1471).
+      return reply.code(403).send({ error: 'Forbidden', code: 'ORIGIN_REJECTED', reason: violation, origin: config.publicOrigin } satisfies ApiError & { reason: string; origin: string });
     }
   });
 
@@ -180,12 +189,12 @@ export function registerIdentity(app: FastifyInstance, options: IdentityOptions)
     config.oidc && reachable ? { providerId: config.oidc.providerId, label: config.oidc.label, reachable: providerInstalled && await reachable() } : null;
   // Operators register this exact redirect URI with their identity provider (#113).
   if (config.oidc) app.log.info({ issuer: config.oidc.issuer, redirectUri: `${config.publicOrigin}/api/auth/callback/${config.oidc.providerId}` }, 'Single sign-on is on');
-  registerIdentityRoutes(app, { sessions, devices: createDevices(db, config.secret, config.publicOrigin.startsWith('https:')), store: createSessionRepository(db), clients: agentConnectionRepository(db), timeZones: personTimeZones(db), lastActive: personLastActive(db), passwordReset, signup: config.signup, ssoOnly: config.ssoOnly, linkable: config.oidc !== null && config.ssoMode === 'prepare', sso,
-    company: () => companyDisplayName(db, accessPorts) });
+  registerIdentityRoutes(app, { sessions, devices: createDevices(db, config.secret, config.publicOrigin.startsWith('https:')), store: createSessionRepository(db), clients: agentConnectionRepository(db), timeZones: personTimeZones(db), lastActive: personLastActive(db), passwordReset, signup: options.openSignUp ? 'open' : 'link', ssoOnly: config.ssoOnly, linkable: config.oidc !== null && config.ssoMode === 'prepare', sso,
+    company: () => companyDisplayName(db, accessPorts), setup: async () => !config.ssoOnly && !await accessPorts.workspaces(db).company() });
+  registerResetLinkRoutes(app, { db, sessions, publicOrigin: config.publicOrigin, ttlSeconds: config.passwordResetTtlSeconds, ssoOnly: config.ssoOnly, log: app.log });
   registerLinkRoutes(app, { db, sessions, links, ssoMode: config.ssoMode, publicOrigin: config.publicOrigin,
     provider: config.oidc ? { providerId: config.oidc.providerId, issuer: config.oidc.issuer, label: config.oidc.label } : null });
   registerClaimRoutes(app, { claims, publicOrigin: config.publicOrigin });
-  if (config.signupRequested !== config.signup) app.log.warn({ requested: config.signupRequested }, 'FLUX_SIGNUP=verified needs email (FLUX_SMTP_URL), and a sign-on provider closes password sign-up, so password sign-up is closed');
   if (config.oidc) registerBackchannelLogout(app, { db, oidc: config.oidc, standing, log: app.log });
   registerAgentOauthContext(app, db, sessions, auth, config.publicOrigin);
 

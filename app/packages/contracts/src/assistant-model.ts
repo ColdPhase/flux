@@ -1,4 +1,4 @@
-import { AI_PROVIDERS, aiModelSeesPictures, tablePrice, type AiPrice, type AiProviderKind } from './ai-providers.js';
+import { AI_PROVIDERS, aiModelSeesPictures, listPrice, type AiPrice, type AiProviderKind, type AiProviderPriceList } from './ai-providers.js';
 import { aiModelFamily, groupModelsByFamily } from './ai-model-families.js';
 import type { AiConnectionRef } from './personal-runs.js';
 
@@ -139,6 +139,8 @@ export interface ApiKeyModels {
   listed: readonly { id: string; name: string | null; family: string; createdAt: string | null }[] | null;
   prices: ApiKeyModelPrices;
   retired: readonly string[];
+  /** Flux's price list of the key's provider (#1465); absent or null when it knows no price for the provider's models. */
+  list?: AiProviderPriceList | null;
 }
 
 /** "Flux doesn't know this model's price yet" (#1218): the note of a listed model without one. */
@@ -148,7 +150,7 @@ export const PRICE_UNKNOWN_NOTE = 'Price unknown, enter it';
  * The list for the owner's API key connection (F-020 PROV-1, CA-2). It comes only from the provider's own list, read with the key
  * (founder direction, Hubert, 2026-11-12, #1218): its chat models by family, newest first, each with its price or "Price unknown,
  * enter it", and the key's own model where the list doesn't have it ("Other model id…", or one no longer offered). Flux's price
- * table only prices a listed model; it never adds one. Until the provider's list is read, the key offers only its own model.
+ * list only prices a listed model; it never adds one (#1465). Until the provider's list is read, the key offers only its own model.
  * A model of an earlier list that the provider stopped offering stays in the list as `retired` (CA-2: "no longer offered by
  * Anthropic"), so an agent on it shows why it is paused, and a stale pick of it says so.
  * A listed model is named as its provider names it ("Claude Opus 5.5"), on every surface; Flux's short names serve a model the
@@ -158,10 +160,11 @@ export function assistantApiModels(connection: { provider: AiProviderKind; model
   models?: ApiKeyModels | null | undefined }): AssistantModelOption[] {
   const { provider } = connection;
   const prices = connection.models?.prices ?? {};
+  const list = connection.models?.list ?? null;
   const retired = new Set(connection.models?.retired ?? []);
   const option = (id: string, name: string | null, family: string): AssistantModelOption => {
     const own = id === connection.model;
-    const price = own && connection.price !== undefined ? connection.price : assistantApiPrice(provider, id, prices);
+    const price = own && connection.price !== undefined ? connection.price : assistantApiPrice(id, prices, list);
     return {
       id, name: name ?? assistantModelName(id), note: price ? priceNote(price) : PRICE_UNKNOWN_NOTE,
       ...(aiModelSeesPictures(provider, id) ? {} : { seesPictures: false }),
@@ -178,12 +181,12 @@ export function assistantApiModels(connection: { provider: AiProviderKind; model
 }
 
 /**
- * The price of an API model the owner may choose besides the connection's own: Flux's table, else the price its owner entered for
- * it on this key (#1218); null when there is neither.
+ * The price of an API model the owner may choose besides the connection's own: Flux's price list (#1465), else the price its owner
+ * entered for it on this key (#1218); null when there is neither. `list` is the key's provider's.
  */
-export function assistantApiPrice(provider: AiProviderKind, model: string, prices: ApiKeyModelPrices = {}): AiPrice | null {
-  const row = tablePrice(provider, model);
-  if (row) return { inputMicrosPerMTok: row.inputMicrosPerMTok, outputMicrosPerMTok: row.outputMicrosPerMTok, source: 'table', checkedOn: row.checkedOn };
+export function assistantApiPrice(model: string, prices: ApiKeyModelPrices = {}, list: AiProviderPriceList | null = null): AiPrice | null {
+  const known = listPrice(list, model);
+  if (known) return known;
   const owner = Object.prototype.hasOwnProperty.call(prices, model) ? prices[model] : undefined;
   return owner ? { inputMicrosPerMTok: owner.inputMicrosPerMTok, outputMicrosPerMTok: owner.outputMicrosPerMTok, source: 'owner', checkedOn: null } : null;
 }

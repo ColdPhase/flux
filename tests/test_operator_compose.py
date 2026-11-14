@@ -1,4 +1,4 @@
-"""The operator Compose example (#76) must stay pull-only and bound to one release image.
+"""The owner's Compose file (#76; #1471 decision 5) must stay pull-only and take every Flux image from the release.
 
 Standard library only (no YAML parser), so it runs in the repository check. The file is
 read by its line structure, the same way the release packaging (#77) reads it: two-space
@@ -15,10 +15,14 @@ ROOT = Path(__file__).resolve().parents[1]
 COMPOSE = ROOT / "docker" / "compose.yaml"
 ENV_EXAMPLE = ROOT / "docker" / ".env.example"
 SOURCE_ENV_EXAMPLE = ROOT / "app" / ".env.example"
-MARKER = "ghcr.io/coldphase/flux@sha256:RELEASE_DIGEST"
-# Flux's database image (F-042): built by the same release, so its digest is a marker too, on the db service only.
-DATABASE_MARKER = "ghcr.io/coldphase/flux-database@sha256:DATABASE_DIGEST"
-FLUX_SERVICES = ("migrate", "api", "worker", "keyring")
+# The launcher exports both from the release's docker/release.env; a bare `docker compose` without them stops with this message.
+MARKER = "${FLUX_RELEASE_IMAGE:?run Flux with ./flux, which names the images}"
+# Flux's database image (F-042): built by the same release, on db and the backup helper.
+DATABASE_MARKER = "${FLUX_RELEASE_DATABASE_IMAGE:?run Flux with ./flux, which names the images}"
+FLUX_SERVICES = ("migrate", "files-init", "api", "worker", "keyring")
+DATABASE_SERVICES = ("db", "files-archive")
+# Set by the launcher from docker/release.env, never by docker/.env.
+RELEASE_VARIABLES = {"FLUX_RELEASE_IMAGE", "FLUX_RELEASE_DATABASE_IMAGE"}
 PINNED = re.compile(r"[a-z0-9][a-z0-9._/-]*(:[A-Za-z0-9._-]+)?@sha256:[0-9a-f]{64}\Z")
 # ${VAR}, ${VAR:-default}, ${VAR:?message}; `$${VAR}` is a literal for the container shell.
 REFERENCE = re.compile(r"(?<!\$)\$\{([A-Za-z_][A-Za-z0-9_]*)(?:(:?[-?])([^}]*))?\}")
@@ -46,7 +50,7 @@ def services(text: str) -> dict[str, list[str]]:
 
 def image_of(block: list[str]) -> str | None:
     for line in block:
-        match = re.fullmatch(r"    image:\s*(\S+)\s*", line)
+        match = re.fullmatch(r"    image:\s*(\S.*?)\s*", line)
         if match:
             return match.group(1)
     return None
@@ -79,20 +83,19 @@ class OperatorComposeTest(unittest.TestCase):
         for name in FLUX_SERVICES:
             self.assertIn(name, self.services)
             self.assertEqual(image_of(self.services[name]), MARKER, name)
-        images = re.findall(r"(?m)^\s*image:\s*(\S+)\s*$", self.body)
-        # The release step (#77) substitutes the digest and expects exactly these three.
+        images = re.findall(r"(?m)^\s*image:\s*(\S.*?)\s*$", self.body)
         self.assertEqual(images.count(MARKER), len(FLUX_SERVICES))
-        self.assertEqual(self.body.count("RELEASE_DIGEST"), len(FLUX_SERVICES))
 
     def test_the_database_runs_the_release_database_image(self) -> None:
-        self.assertEqual(image_of(self.services["db"]), DATABASE_MARKER)
-        self.assertEqual(self.body.count("DATABASE_DIGEST"), 1)
+        for name in DATABASE_SERVICES:
+            self.assertEqual(image_of(self.services[name]), DATABASE_MARKER, name)
+        self.assertEqual(self.body.count("FLUX_RELEASE_DATABASE_IMAGE"), len(DATABASE_SERVICES))
 
     def test_every_other_image_is_pinned_by_digest(self) -> None:
         for name, block in self.services.items():
             image = image_of(block)
             self.assertIsNotNone(image, f"{name} has no image")
-            if name not in FLUX_SERVICES and name != "db":
+            if name not in FLUX_SERVICES and name not in DATABASE_SERVICES:
                 self.assertNotIn("coldphase/flux", image, name)
                 self.assertRegex(image, PINNED, f"{name} image must be pinned by digest")
 
@@ -119,25 +122,28 @@ class OperatorComposeTest(unittest.TestCase):
     def test_test_only_switches_are_not_exposed(self) -> None:
         self.assertNotIn("FLUX_TEST_FAILURE_INJECTION", self.text)
         self.assertNotIn("FLUX_PUSH_ALLOW_PRIVATE_NETWORK", self.text)
-        self.assertNotIn("profiles:", self.body)
+        # Only the launcher's one-shots have profiles: files-init (`up`) and files-archive (backup and restore).
+        self.assertEqual(sorted(re.findall(r'(?m)^    profiles: \["([a-z]+)"\]$', self.body)), ["ops", "setup"])
 
     def test_every_variable_is_in_the_env_example(self) -> None:
-        referenced = {match.group(1) for match in REFERENCE.finditer(self.body)}
+        referenced = {match.group(1) for match in REFERENCE.finditer(self.body)} - RELEASE_VARIABLES
         self.assertEqual(sorted(referenced - set(self.env)), [], "missing from docker/.env.example")
         # One executable template also serves the source launcher/dev profile.
         source_only = {"FLUX_MAILPIT_PORT", "FLUX_DEV_PORT", "FLUX_DEMO_OWNER_PASSWORD", "FLUX_DEMO_PARTNER_PASSWORD",
-                       "FLUX_BACKGROUND_KEY_HOST_FILE", "FLUX_OIDC_CLIENT_SECRET_HOST_FILE", "FLUX_AGENT_RUNTIME", "FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS",
+                       "FLUX_AGENT_RUNTIME", "FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS",
                        "FLUX_AGENT_RUNTIME_IDLE_DAYS", "FLUX_RUNTIME_MANAGER_SECRET", "FLUX_RUNTIME_SECRET_1",
-                       "FLUX_RUNTIME_MAX_RUNS", "FLUX_RUNTIME_MEMORY", "FLUX_RUNTIME_CPUS", "FLUX_EMBEDDINGS"}
+                       "FLUX_RUNTIME_MAX_RUNS", "FLUX_RUNTIME_MEMORY", "FLUX_RUNTIME_CPUS", "FLUX_EMBEDDINGS", "FLUX_CALLS"}
         self.assertEqual(set(self.env) - referenced, source_only, "unexpected unconsumed template variable")
-        consumers = (ROOT / "docker/compose.source.yaml").read_text() + (ROOT / "docker/compose.dev.yaml").read_text() + (ROOT / "flux").read_text()
+        consumers = "".join((ROOT / name).read_text() for name in ("docker/compose.source.yaml", "docker/compose.dev.yaml", "flux",
+                                                                    "docker/compose.runtime.yaml"))
         for name in source_only:
             self.assertIn(name, consumers, f"{name} has no source consumer")
 
     def test_defaults_match_the_env_example(self) -> None:
         for match in REFERENCE.finditer(self.body):
             name, kind, default = match.groups()
-            if kind == ":-" and default:
+            # A secret file's default is the tracked empty placeholder, which means "not set".
+            if kind == ":-" and default and not name.endswith("_HOST_FILE"):
                 self.assertEqual(self.env[name], default, f"{name} default differs")
 
     def test_documented_sso_migration_mode_reaches_both_api_deployments(self) -> None:
@@ -148,7 +154,7 @@ class OperatorComposeTest(unittest.TestCase):
 
     def test_required_values_are_marked_and_empty_secrets_fail_closed(self) -> None:
         lines = ENV_EXAMPLE.read_text(encoding="utf-8").splitlines()
-        required = {m.group(1) for m in REFERENCE.finditer(self.body) if m.group(2) == ":?"}
+        required = {m.group(1) for m in REFERENCE.finditer(self.body) if m.group(2) == ":?"} - RELEASE_VARIABLES
         self.assertEqual(required, {"POSTGRES_PASSWORD", "FLUX_AUTH_SECRET", "FLUX_PUBLIC_ORIGIN"})
         for name in required:
             index = next(i for i, line in enumerate(lines) if line.startswith(f"{name}="))
@@ -177,12 +183,17 @@ class OperatorComposeTest(unittest.TestCase):
 
     def test_header_states_the_release_contract(self) -> None:
         header = self.text.split("\nname:", 1)[0]
-        self.assertIn("RELEASE_DIGEST", header)
-        self.assertRegex(header, r"It is NOT\s+#\s+what `./flux up` runs")
+        self.assertIn("docker/release.env", header)
         self.assertIn("./flux up", header)
-        self.assertIn("--env-file docker/.env -f docker/compose.yaml", header)
-        self.assertIn("docs/operations/install-release.md", header)
-        self.assertTrue((ROOT / "docs" / "operations" / "install-release.md").is_file())
+        self.assertIn("docs/operations/install.md", header)
+        self.assertNotIn("DIGEST", header)
+
+    def test_the_launcher_runs_this_file_for_a_release_and_the_source_file_otherwise(self) -> None:
+        launcher = (ROOT / "flux").read_text(encoding="utf-8")
+        self.assertIn('COMPOSE_MAIN="$FLUX_ROOT/docker/compose.yaml"', launcher)
+        self.assertIn('COMPOSE_MAIN="$FLUX_ROOT/docker/compose.source.yaml"', launcher)
+        for service in ("files-init", "files-archive", "migrate"):
+            self.assertIn(service, launcher, f"the launcher no longer uses {service}")
 
 
 if __name__ == "__main__":

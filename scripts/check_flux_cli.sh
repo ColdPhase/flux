@@ -100,12 +100,13 @@ printf '%s' "$run" | grep -Eqx 'flux-[0-9a-f]{8}' || fail "default project name 
 mode=$(ls -l "$copy/docker/.env" | cut -c1-10)
 [ "$mode" = "-rw-------" ] || fail ".env mode is $mode, expected -rw-------"
 if grep -q 'replace-with' "$copy/docker/.env"; then fail "placeholder secrets left in .env"; fi
-for key in POSTGRES_PASSWORD FLUX_FIXTURE_TOKEN FLUX_AUTH_SECRET FLUX_VAPID_PUBLIC_KEY FLUX_VAPID_PRIVATE_KEY FLUX_DEMO_OWNER_PASSWORD; do
+for key in POSTGRES_PASSWORD FLUX_FIXTURE_TOKEN FLUX_AUTH_SECRET FLUX_SETUP_TOKEN FLUX_VAPID_PUBLIC_KEY FLUX_VAPID_PRIVATE_KEY FLUX_DEMO_OWNER_PASSWORD; do
   value=$(sed -n "s/^$key=//p" "$copy/docker/.env")
   [ "${#value}" -ge 20 ] || fail "$key is missing or short in .env"
 done
 grep -qx "FLUX_PUBLIC_ORIGIN=$base" "$copy/docker/.env" || fail "FLUX_PUBLIC_ORIGIN is not $base"
-grep -q '^FLUX_VAPID_SUBJECT=mailto:' "$copy/docker/.env" || fail "FLUX_VAPID_SUBJECT not set"
+# #1471: no placeholder contact (Apple refuses it): empty, the worker uses the https public address.
+grep -qx 'FLUX_VAPID_SUBJECT=' "$copy/docker/.env" || fail "FLUX_VAPID_SUBJECT is not left empty: $(grep '^FLUX_VAPID_SUBJECT=' "$copy/docker/.env")"
 curl -fsS "$base/api/v1/health" | grep -q '"status":"ok"' || fail "health not ok"
 # AI works right after install (#1438): agents on API keys are on, with a 32-byte key file the API and the worker read.
 grep -qx 'FLUX_PERSONAL_RUNS=on' "$copy/docker/.env" || fail "FLUX_PERSONAL_RUNS is not on after the first up"
@@ -127,8 +128,20 @@ cat "$work/second-up.err" >&2
 no_compose_warnings "the second ./flux up" "$work/second-up.err"
 [ "$(cksum < "$copy/docker/.env")" = "$before" ] || fail ".env changed on the second up"
 [ ! -e "$copy/app/.env" ] || fail "application reference became an executable env"
-# Sign-up is open by default, so ./flux up invites the first account.
-printf '%s\n' "$second_up" | grep -q 'Create an account there' || fail "./flux up did not point to sign-up: $second_up"
+# #1471: while no company exists, ./flux up prints the setup link; only its token makes the first account.
+setup_token=$(sed -n 's/^FLUX_SETUP_TOKEN=//p' "$copy/docker/.env")
+printf '%s\n' "$second_up" | grep -qx "  $base/setup#$setup_token" || fail "./flux up did not print the setup link: $second_up"
+curl -fsS "$base/api/v1/auth/capabilities" | grep -q '"setup":true' || fail "a fresh Flux does not say it needs setting up"
+refused=$(curl -sS -o /dev/null -w '%{http_code}' -H "Origin: $base" -H 'Content-Type: application/json' \
+  -d '{"email":"stranger@example.test","password":"a stranger without a link","name":"Stranger"}' "$base/api/auth/sign-up/email")
+[ "$refused" = 403 ] || fail "a sign-up without the setup link answered $refused, not 403"
+wrong=$(curl -sS -o /dev/null -w '%{http_code}' -H "Origin: $base" -H 'Content-Type: application/json' \
+  -d '{"email":"stranger@example.test","password":"a stranger without a link","name":"Stranger","setupToken":"0000000000000000000000000000000000000000"}' "$base/api/auth/sign-up/email")
+[ "$wrong" = 403 ] || fail "a sign-up with a wrong setup token answered $wrong, not 403"
+# #1471: the end of up is a short status, one plain line each.
+for line in "  Address   $base" '  Email     off (' '  Push      on for this computer; iPhone and iPad need an https address' '  AI        plans off (' '  Calls     off' '  Backups   none yet ('; do
+  printf '%s\n' "$second_up" | grep -qF "$line" || fail "./flux up did not end with the status line '$line': $second_up"
+done
 curl -fsS "$base/api/v1/health" >/dev/null || fail "health after second up"
 
 step "./flux demo seeds through the API and prints working logins"
@@ -178,6 +191,22 @@ step "A second ./flux demo seeds nothing new"
 "$copy/flux" demo | grep -q 'already exists; nothing new was seeded' || fail "second demo was not idempotent"
 sign_in ada@demo.flux.test "$owner_pw"
 [ "$(api /api/v1/workspaces | grep -o 'Riverside Makers (demo)' | wc -l | tr -d ' ')" = 1 ] || fail "duplicate demo workspace"
+
+step "./flux reset-link prints a one-time link that resets the owner's password (#1471)"
+reset_out=$("$copy/flux" reset-link ada@demo.flux.test 2> "$work/reset-link.err") || { cat "$work/reset-link.err" >&2; fail "./flux reset-link failed"; }
+link=$(printf '%s\n' "$reset_out" | sed -n "s#^  \($base/reset-password\#[A-Za-z0-9_-]\{24\}\)\$#\1#p")
+[ -n "$link" ] || fail "./flux reset-link printed no link: $reset_out"
+reset_token=${link##*#}
+api_container=$(docker ps -q --filter "label=com.docker.compose.project=$run" --filter "label=com.docker.compose.service=api")
+if docker logs "$api_container" 2>&1 | grep -qF "$reset_token"; then fail "the reset token is in the API log"; fi
+reset() { curl -sS -o /dev/null -w '%{http_code}' -H "Origin: $base" -H 'Content-Type: application/json' \
+  -d "{\"token\":\"$reset_token\",\"newPassword\":\"$1\"}" "$base/api/auth/reset-password"; }
+[ "$(reset 'the owner chose a new passphrase')" = 200 ] || fail "the reset link did not reset the password"
+sign_in ada@demo.flux.test 'the owner chose a new passphrase'
+[ "$(reset 'and once more with the same link')" = 400 ] || fail "the reset link worked twice"
+owner_pw='the owner chose a new passphrase'
+if "$copy/flux" reset-link nobody@example.test > "$work/reset-nobody.out" 2>&1; then fail "./flux reset-link made a link for an address without an account"; fi
+grep -q 'No Flux account has the address nobody@example.test' "$work/reset-nobody.out" || fail "unexpected answer: $(cat "$work/reset-nobody.out")"
 
 step "./flux demo refuses a production-looking origin"
 cp "$copy/docker/.env" "$work/env.saved"
@@ -253,6 +282,7 @@ step "./flux up after reset starts empty with the same .env; ./flux clean remove
   fail "up after reset failed"
 }
 no_compose_warnings "./flux up after reset" "$work/up-after-reset.out"
+grep -qx "  $base/setup#$setup_token" "$work/up-after-reset.out" || fail "an empty Flux did not print its setup link again"
 sign_in_code=$(curl -sS -o /dev/null -w '%{http_code}' -H "Origin: $base" -H 'Content-Type: application/json' \
   -d "{\"email\":\"ada@demo.flux.test\",\"password\":\"$owner_pw\"}" "$base/api/auth/sign-in/email")
 [ "$sign_in_code" != 200 ] || fail "demo account survived reset"

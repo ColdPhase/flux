@@ -7,7 +7,7 @@
 # 1. The released migrations are byte-identical to their tags (scripts/release/check_released_migrations.py).
 # 2. For every published release from v0.2.0 on (gh release list; v0.1 is not upgraded, #1176) before the candidate:
 #      a. RELEASE INSTALLATION: the release's own assets are downloaded and checked against SHA256SUMS, the release is installed
-#         from them (compose.yaml, its image by digest, env.example), seeded through its API (scripts/release/smoke_data.py:
+#         from them (its Compose file and settings template, from flux.tar.gz from v0.2.1 on; its images by digest), seeded through its API (scripts/release/smoke_data.py:
 #         people and a guest, spaces with an encrypted one, threads, direct messages, files, wiki history, a map, tasks with due dates
 #         and waits, notification settings, a second device, an AI connection with an API key, an agent with memory and schedules and a
 #         completed run, on a provider mock), backed up, and upgraded to the candidate by the release guide's steps. Then everything
@@ -168,11 +168,8 @@ if [ -z "$candidate_assets" ]; then
   ( cd "$work/candidate-src" && python3 scripts/release/prepare_assets.py --version "$candidate_version" --source-sha "$sha" --digest "$digest" \
       --sbom "$work/releases/$newest/sbom.spdx.json" --runtime-digest "$runtime_digest" \
       --runtime-sbom "$work/releases/$newest/sbom-agent-runtime.spdx.json" --database-digest "$database_digest" --database-sbom "$database_sbom" \
-      --destination "$work/candidate-assets" ) > "$work/prepare.log" 2>&1 || { cat "$work/prepare.log"; fail "the candidate's release assets did not render"; }
-  for file in compose.yaml release.json; do
-    sed "s#ghcr.io/coldphase/#127.0.0.1:$registry_port/#g" "$work/candidate-assets/$file" > "$work/candidate-assets/$file.edit"
-    mv "$work/candidate-assets/$file.edit" "$work/candidate-assets/$file"
-  done
+      --source . --registry "127.0.0.1:$registry_port" --destination "$work/candidate-assets" ) > "$work/prepare.log" 2>&1 ||
+    { cat "$work/prepare.log"; fail "the candidate's release assets did not render"; }
   candidate_assets="$work/candidate-assets"
   echo "candidate image $digest, database image $database_digest"
 fi
@@ -237,7 +234,7 @@ for tag in $releases; do
     docker run -d --name "$run_id-s$n-provider-mock" --network "${project}_default" --network-alias provider-mock \
       -v "$root/scripts/release/provider_mock.mjs:/mock/provider_mock.mjs:ro,z" --entrypoint node "$node_image" /mock/provider_mock.mjs >/dev/null
     for _ in $(seq 1 30); do docker exec "$run_id-s$n-provider-mock" node -e "fetch('http://127.0.0.1:8091/__health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))" && break; sleep 1; done
-    python3 "$root/scripts/release/smoke_data.py" seed --origin "http://127.0.0.1:$port" --state "$work/source-$tag.json" --provider-url http://provider-mock:8091/v1
+    FLUX_SETUP_TOKEN=$(sed -n 's/^FLUX_SETUP_TOKEN=//p' "$env_file") python3 "$root/scripts/release/smoke_data.py" seed --origin "http://127.0.0.1:$port" --state "$work/source-$tag.json" --provider-url http://provider-mock:8091/v1
     # `git pull`: the files of the checkout change, its .env and the data stay.
     cp "$env_file" "$work/source-$tag.env"
     find "$checkout" -mindepth 1 -maxdepth 1 -exec rm -rf {} +

@@ -55,7 +55,7 @@ what needs you, so you do not have to ask around.
 
 - **Conversations that turn into work.** One action makes a message a task or a decision with its
   reason, and each stays linked to the message it came from.
-- **One company, many spaces.** The first account sets up the company and its default space,
+- **One company, many spaces.** The first account, from the setup link `./flux up` prints, sets up the company and its default space,
   **Everyone**. Everything else happens in spaces, and you see only the spaces you were added to.
   Each space has its own AI switch, and can be encrypted.
 - **Simple AI: everything is an agent.** Connect AI once (a Claude plan, a ChatGPT plan or an API
@@ -116,10 +116,9 @@ planned, so keep [backups](docs/operations/backup-restore.md) from the start. Th
 first published version, [v0.1.0](https://github.com/ColdPhase/flux/releases/tag/v0.1.0), had no
 users, so **v0.2 does not upgrade it**: install v0.2 fresh ([upgrade guide](docs/operations/upgrade.md)).
 The image (`ghcr.io/coldphase/flux`) is built for `linux/amd64` only; `linux/arm64` is planned for
-v0.3 ([#833](https://github.com/ColdPhase/flux/issues/833)). To run it on a server, download every
-file of the [latest release](https://github.com/ColdPhase/flux/releases/latest) and follow its
-`INSTALL.md` ([install from a release](docs/operations/install-release.md)). To look around first,
-use the quick start below.
+v0.3 ([#833](https://github.com/ColdPhase/flux/issues/833)). There is one way to install it, on
+your computer or a server: the quick start below, then the [installation guide](docs/operations/install.md)
+for a server on your domain.
 
 What comes next is tracked in the [milestones](https://github.com/ColdPhase/flux/milestones).
 
@@ -129,20 +128,21 @@ reference for every UI change.
 
 ## Quick start
 
-Prerequisites: Git and Docker Engine 25 or newer (or Docker Desktop) with Compose. No host Node.js or PostgreSQL
+Prerequisites: Docker Engine 25 or newer (or Docker Desktop) with Compose, `curl` and `tar`. No host Node.js or PostgreSQL
 ([requirements](docs/operations/requirements.md)).
 
 ```sh
-git clone --depth 1 https://github.com/ColdPhase/flux.git
-cd flux
-./flux up      # creates docker/.env with random secrets once, builds, migrates, starts, prints the URL
+curl -fLO https://github.com/ColdPhase/flux/releases/latest/download/flux.tar.gz
+curl -fLO https://github.com/ColdPhase/flux/releases/latest/download/SHA256SUMS
+sha256sum --ignore-missing -c SHA256SUMS    # flux.tar.gz: OK  (macOS: shasum -a 256 --ignore-missing -c SHA256SUMS)
+tar -xzf flux.tar.gz && cd flux
+./flux up      # creates docker/.env with random secrets once, pulls the release's images, migrates, starts, prints the URL
 ./flux demo    # optional: a sample company with a space, conversation, Map and Wiki page; prints two logins
 ```
 
 Then open the URL that `./flux up` prints, <http://127.0.0.1:8081/> by default. If port 8081 is
 taken, start the first time with another free port, for example `FLUX_PORT=8090 ./flux up`. The first
-`./flux up` takes a few minutes, because it downloads the dependencies and builds Flux
-([measured times](docs/development/time-to-first-run.md)). To connect your own MCP client, such
+`./flux up` downloads the release's images, pinned by digest; nothing is built on your machine. On a server, also check the release's signature first ([installation](docs/operations/install.md#1-download-the-release-and-start-once-on-loopback)). To connect your own MCP client, such
 as Claude Code or Codex, follow [Connect your own agent](#connect-your-own-agent).
 
 AI is off until someone connects it in **Settings › AI**. An API key needs the operator's
@@ -154,10 +154,9 @@ Commercial Terms; a host that cannot run it gets one line saying why instead); `
 later, and without a terminal nothing is asked ([operator guide](docs/operations/agent-runtime.md)).
 `./flux up` never overwrites an existing `docker/.env`.
 
-Other commands: `./flux down`, `./flux logs`, `./flux reset` (deletes data after confirmation),
-`./flux clean` (also removes the images this checkout built) and `./flux help`. The shallow clone
-skips older commits and their review captures, which remain available through the
-[evidence archive](docs/agents/evidence/README.md); `git fetch --unshallow` brings the full history.
+Other commands: `./flux down`, `./flux logs`, `./flux upgrade` (to the next release), `./flux reset` (deletes data after
+confirmation), `./flux clean` and `./flux help`. To work on Flux itself, clone this repository: a source checkout builds Flux
+with the same launcher ([development](docs/development/containers.md)).
 
 ## Self-hosting
 
@@ -167,8 +166,7 @@ To run Flux for a team on your own domain, start with the
 | Guide | Covers |
 | --- | --- |
 | [Requirements](docs/operations/requirements.md) | Linux with Docker Compose, 4 GB of memory, a domain name |
-| [Install from a release](docs/operations/install-release.md) | A production server from the published image, without the source |
-| [Installation](docs/operations/install.md) | A production server from a source checkout, step by step |
+| [Installation](docs/operations/install.md) | Download a release and `./flux up`: a production server on your domain, step by step |
 | [HTTPS and reverse proxies](docs/operations/reverse-proxy.md) | Caddy, nginx and Traefik examples, each tested |
 | [Configuration reference](docs/operations/configuration.md) | Every setting with its type and default, generated from the code |
 | [Backup and restore](docs/operations/backup-restore.md), [upgrade](docs/operations/upgrade.md) | `./flux backup`, `./flux restore`, `./flux upgrade` (v0.1 is not upgraded) |

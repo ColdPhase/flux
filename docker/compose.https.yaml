@@ -1,0 +1,74 @@
+# Built-in HTTPS (#1471, founder decision 3, 2026-11-13). `./flux` layers this file on compose.source.yaml when FLUX_PUBLIC_ORIGIN is
+# https and FLUX_TRUSTED_PROXIES is empty; the owner only points the origin's DNS at the server. Caddy, pinned by digest, listens on
+# 80 and on the origin's port (443 unless the origin names another), gets and renews the certificate itself (ACME; a name Caddy treats
+# as internal, such as localhost, *.localhost, *.local, *.internal, *.home.arpa or an IP address, gets one from Caddy's own CA instead) and
+# passes every request to the API over the `edge` network, which only the API and Caddy join. The API's own port stays on loopback.
+#
+# The API trusts exactly Caddy's address: at each start it looks up the `proxy` service on `edge` and runs with
+# FLUX_TRUSTED_PROXIES=<that address>/32. Nothing else can send from that address (the network has only these two containers, and the
+# host's own address on it is the gateway, which is not trusted), and Caddy replaces any X-Forwarded-For a client sends. A Caddy that
+# Compose recreates restarts the API with it, so the trusted address always follows Caddy's.
+#
+# Certificates, Caddy's account key and its own CA live in the `proxy-data` volume (`proxy-config` keeps its saved configuration).
+# `./flux backup` does not include them: a new server gets new certificates by itself once the DNS points at it.
+services:
+  proxy:
+    image: caddy:2.11.7@sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f
+    restart: unless-stopped
+    # docker/caddy/Caddyfile: the whole origin to the API (the image's own command runs it).
+    environment:
+      FLUX_PUBLIC_ORIGIN: ${FLUX_PUBLIC_ORIGIN:-https://localhost}
+      FLUX_HTTPS_HOST: ${FLUX_HTTPS_HOST:-localhost}
+    networks: [edge]
+    ports:
+      - "80:80/tcp"
+      - "${FLUX_HTTPS_PORT:-443}:${FLUX_HTTPS_PORT:-443}/tcp"
+      # HTTP/3. Browsers fall back to TCP when UDP does not get through.
+      - "${FLUX_HTTPS_PORT:-443}:${FLUX_HTTPS_PORT:-443}/udp"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro,z
+      - proxy-data:/data
+      - proxy-config:/config
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=16m
+    # The image's caddy binary carries the file capability cap_net_bind_service: without it in the bounding set, exec fails
+    # ("operation not permitted"). It is the only capability left.
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 256m
+    memswap_limit: 256m
+    # Healthy once it listens on the origin's port, so that `./flux up` fails when Caddy cannot start (for example 80 or 443 taken).
+    healthcheck:
+      test: ["CMD", "nc", "-z", "127.0.0.1", "${FLUX_HTTPS_PORT:-443}"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 30s
+      start_interval: 1s
+  api:
+    networks: [edge]
+    # The image's command, run with FLUX_TRUSTED_PROXIES set to Caddy's current address (the API refuses to start without it).
+    command:
+      - sh
+      - -ec
+      - |
+        for attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+          proxy=$$(getent ahostsv4 proxy | awk 'NR == 1 { print $$1 }')
+          [ -n "$$proxy" ] && break
+          sleep 1
+        done
+        [ -n "$$proxy" ] || { echo 'flux: the bundled HTTPS proxy (service proxy) has no address on the edge network' >&2; exit 1; }
+        export FLUX_TRUSTED_PROXIES="$$proxy/32"
+        exec node apps/server/dist/index.js
+    depends_on:
+      proxy:
+        condition: service_healthy
+        restart: true
+volumes:
+  proxy-data: {}
+  proxy-config: {}
+networks:
+  # Caddy and the API only. Not internal: Caddy publishes 80/443 and reaches the ACME servers through it.
+  edge: {}

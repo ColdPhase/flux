@@ -32,7 +32,7 @@ export interface BackgroundComputeConnection {
   /** Today's use of the budget by everything that runs on the key: what was spent, not what work in progress holds. */
   today: { spentMicros: number; resetsAt: string };
   createdAt: string;
-  /** Prices the owner entered for the key's other models that Flux's table does not price, by model id (#1218). */
+  /** Prices the owner entered for the key's other models that Flux's price list does not price, by model id (#1218, #1465). */
   modelPrices?: Readonly<Record<string, { inputMicrosPerMTok: number; outputMicrosPerMTok: number }>>;
 }
 
@@ -43,7 +43,7 @@ export interface SetApiKeyModelPriceCommand { model: string; inputMicrosPerMTok:
 export const backgroundComputeModelListPath = (connectionId: string) => `/api/v1/background-compute-connections/${connectionId}/model-list`;
 
 /**
- * Adds an API key. The price comes from Flux's dated table when it has the model; an owner `price` is accepted only when
+ * Adds an API key. The price comes from Flux's price list when it has the model (#1465); an owner `price` is accepted only when
  * it does not (PROV-3), in micro-dollars per 1M tokens, and may be zero (a self-hosted endpoint).
  */
 export interface ConnectBackgroundComputeCommand {

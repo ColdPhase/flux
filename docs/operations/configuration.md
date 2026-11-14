@@ -4,28 +4,25 @@
      application code. Do not edit by hand: change the code or the script's tables, then run
      python3 scripts/config_reference.py. The repository check fails when this page drifts. -->
 
-Flux is configured with environment variables in one private file: `docker/.env` in a source checkout
-(`./flux up` creates it from [`docker/.env.example`](../../docker/.env.example) with new secrets) or `.env`
-beside a release's `compose.yaml`. Compose reads the file and passes each value to the services that need it.
-After a change, apply it with `./flux up` (source) or `docker compose --env-file .env -f compose.yaml up -d --wait`
-(release). A variable exported in your shell overrides the file, so do not export Flux variables on a server.
+Flux is configured with environment variables in one private file, `docker/.env` in the Flux folder
+(`./flux up` creates it from [`docker/.env.example`](../../docker/.env.example) with new secrets).
+Compose reads the file and passes each value to the services that need it. After a change, apply it with
+`./flux up`. A variable exported in your shell overrides the file, so do not export Flux variables on a server.
 Keep the file private (`chmod 600`) and keep it with your backups: it holds the database password and the
 secrets that cannot change.
 
 Each variable lists its type, its default, the services that receive it and where it applies:
-**release** is the release `compose.yaml`, **source** the source checkout's Compose file that `./flux` runs,
+**release** is the `docker/compose.yaml` that `./flux` runs in a release, **source** the source checkout's
+Compose file that `./flux` runs for developers,
 an **overlay** an optional extra Compose file, and `./flux` the launcher itself. **Override only** means the
 application reads it but no shipped Compose file passes it in:
 add it under the service's `environment:` in `docker/compose.override.yaml`, which `./flux` includes when it
-exists. A release install has no such file: `docker compose -f compose.yaml` never reads an override on its
-own, so put it in a Compose file of your own and name it after `compose.yaml` in every command
-(`-f compose.yaml -f compose.local.yaml`). A wrong value stops the service at start with a message that names
-the variable.
+exists. A wrong value stops the service at start with a message that names the variable.
 
 ## Settings you will probably change
 
 - [`FLUX_PUBLIC_ORIGIN`](#flux_public_origin): origin URL
-- [`FLUX_SIGNUP`](#flux_signup): `open`, `verified`, `off`
+- [`FLUX_SETUP_TOKEN`](#flux_setup_token): secret, 32–256 letters, digits, `-` or `_`
 - [`FLUX_SMTP_URL`](#flux_smtp_url): SMTP URL
 - [`FLUX_MAIL_FROM`](#flux_mail_from): address
 - [`FLUX_TRUSTED_PROXIES`](#flux_trusted_proxies): list of IPs or CIDRs
@@ -47,6 +44,7 @@ the variable.
 | [`FLUX_AUTH_SECRET`](#flux_auth_secret) | Accounts, sign-up and sessions | **required** |
 | [`FLUX_BACKGROUND_KEY_HOST_FILE`](#flux_background_key_host_file) | AI providers | empty; made by `./flux up` |
 | [`FLUX_BACKUP_DIR`](#flux_backup_dir) | Source checkout, launcher and checks | `backups/` in the checkout |
+| [`FLUX_CALLS`](#flux_calls) | Live media: LiveKit and TURN | `off` |
 | [`FLUX_COWORK_WATCHDOG_SECONDS`](#flux_cowork_watchdog_seconds) | Source checkout, launcher and checks | `300` |
 | [`FLUX_DB_CONNECT_TIMEOUT_MS`](#flux_db_connect_timeout_ms) | Database | `1500` |
 | [`FLUX_DB_MEMORY`](#flux_db_memory) | Memory limits | `768m` |
@@ -57,7 +55,6 @@ the variable.
 | [`FLUX_EMBEDDINGS`](#flux_embeddings) | Local embeddings (optional) | `off` |
 | [`FLUX_EMBEDDINGS_CPUS`](#flux_embeddings_cpus) | Local embeddings (optional) | `1` |
 | [`FLUX_EMBEDDINGS_MEMORY`](#flux_embeddings_memory) | Local embeddings (optional) | `6g` |
-| [`FLUX_ENV_FILE`](#flux_env_file) | Source checkout, launcher and checks | `.env` beside `runtime.sh` |
 | [`FLUX_FIXTURE_TOKEN`](#flux_fixture_token) | Source checkout, launcher and checks | **required** (source); release: empty |
 | [`FLUX_GITHUB_APP_ID`](#flux_github_app_id) | GitHub App (optional) | empty |
 | [`FLUX_GITHUB_APP_SLUG`](#flux_github_app_slug) | GitHub App (optional) | empty |
@@ -109,7 +106,7 @@ the variable.
 | [`FLUX_SEALED_SEARCH_PROCESS_MAX_BYTES`](#flux_sealed_search_process_max_bytes) | Encrypted spaces and the keyring | a quarter of the container memory, 64–512 MiB |
 | [`FLUX_SESSION_IDLE`](#flux_session_idle) | Accounts, sign-up and sessions | empty |
 | [`FLUX_SESSION_MAX_AGE`](#flux_session_max_age) | Accounts, sign-up and sessions | empty |
-| [`FLUX_SIGNUP`](#flux_signup) | Accounts, sign-up and sessions | `open` |
+| [`FLUX_SETUP_TOKEN`](#flux_setup_token) | Accounts, sign-up and sessions | empty |
 | [`FLUX_SMTP_URL`](#flux_smtp_url) | Email | empty (`./flux dev`: `smtp://mailpit:1025`) |
 | [`FLUX_SSO_MODE`](#flux_sso_mode) | Single sign-on (OpenID Connect) | `sso` |
 | [`FLUX_STREAM_HEARTBEAT_MS`](#flux_stream_heartbeat_ms) | Collaboration, link cards and the live stream | `25000` |
@@ -144,7 +141,7 @@ Port of the API on the host's loopback address (`127.0.0.1`). Point the TLS reve
 
 ### `FLUX_PUBLIC_ORIGIN`
 
-**Type** origin URL · **Default** **required** · **Used by** api, worker (release, source)
+**Type** origin URL · **Default** **required** · **Used by** api, proxy, worker (release, source, HTTPS overlay)
 
 The exact origin people open, without a path. It is the only origin accepted for state-changing browser requests, the base of mailed links, OAuth and MCP addresses. `https` makes cookies `Secure`; plain `http` is accepted only for loopback (`localhost`, `127.0.0.0/8`, `[::1]`), any other `http` origin stops the API. Example: `https://flux.example.org`.
 
@@ -152,7 +149,7 @@ The exact origin people open, without a path. It is the only origin accepted for
 
 **Type** list of IPs or CIDRs · **Default** empty · **Used by** api (release, source)
 
-Comma-separated reverse-proxy addresses whose `X-Forwarded-For` is believed. Empty trusts none, and the socket peer is the client address. Measure the proxy's address as in the [reverse proxy guide](reverse-proxy.md#trust-only-the-measured-proxy-peer); never `0.0.0.0/0`. Example: `172.27.0.1/32`.
+Comma-separated reverse-proxy addresses whose `X-Forwarded-For` is believed. Empty trusts none, and the socket peer is the client address. It also chooses the HTTPS front: with an `https` origin and this empty, `./flux up` runs the bundled Caddy (automatic certificates, ports 80 and 443) and the API trusts exactly Caddy's address; set it only for a proxy of your own, which then owns 80 and 443 ([reverse proxy guide](reverse-proxy.md#your-own-proxy-instead)). Never `0.0.0.0/0`. Example: `172.27.0.1/32`.
 
 ## Database
 
@@ -190,17 +187,17 @@ How long a request waits for a database connection (pool of 10 per process) befo
 
 Signs session cookies, invite-link tokens and cursors. Changing it signs everyone out and voids pending invite links.
 
-### `FLUX_SIGNUP`
+### `FLUX_SETUP_TOKEN`
 
-**Type** `open`, `verified`, `off` · **Default** `open` · **Used by** api (release, source)
+**Type** secret, 32–256 letters, digits, `-` or `_` · **Default** empty · **Used by** api (release, source)
 
-Who may create a password account. `open`: anyone who reaches Flux. `verified`: anyone who can confirm an address by mail; it proves a mailbox, not membership of your team (needs email; without it sign-up is closed). `off`: nobody, including you, so create your own account first. A provider in `sso` mode closes password sign-up whatever this says, and an invite link never opens closed sign-up. See [who can sign up](install.md#5-decide-who-can-sign-up). Example: `off`.
+The setup link's token: the first account, the company's owner, is made only from `<origin>/setup#<token>`, and every other account from an invite link or single sign-on. `./flux up` writes a random one and prints the link while no company exists. Empty: no first account can be made. Once the company exists it does nothing. See [install](install.md).
 
 ### `FLUX_PASSWORD_RESET_TTL_SECONDS`
 
 **Type** integer, 60–86400 s · **Default** `3600` · **Used by** api (release, source)
 
-Lifetime of a password reset link. Links are single use and stored hashed. Example: `3600`.
+Lifetime of a password reset link, mailed or made in Settings › Company or by `./flux reset-link`. Links are single use, stored hashed, and stop when a newer one is made for the same account. Example: `3600`.
 
 ### `FLUX_SESSION_IDLE`
 
@@ -238,9 +235,9 @@ Client id registered at the provider. Example: `flux`.
 
 ### `FLUX_OIDC_CLIENT_SECRET_HOST_FILE`
 
-**Type** absolute host path · **Default** empty · **Used by** api (source)
+**Type** absolute host path · **Default** empty · **Used by** api (release, source)
 
-File on the host holding the client secret, mounted read-only into the API at `/run/secrets/flux_oidc_client_secret`. The source Compose file mounts it; with the release `compose.yaml`, mount the file at that path from a Compose file of your own, passed after `compose.yaml` with `-f` ([how](single-sign-on.md#set-it-up)). Example: `/etc/flux/oidc-client-secret`.
+File on the host holding the client secret, mounted read-only into the API at `/run/secrets/flux_oidc_client_secret` ([how](single-sign-on.md#set-it-up)). Example: `/etc/flux/oidc-client-secret`.
 
 ### `FLUX_OIDC_LABEL`
 
@@ -290,13 +287,13 @@ Sender of every mail. Required when `FLUX_SMTP_URL` is set. Example: `Flux <flux
 
 ## Web Push
 
-Optional, all three or none. See [phones, tablets and push](mobile-and-push.md).
+Optional: both keys or neither; the contact is optional. See [phones, tablets and push](mobile-and-push.md).
 
 ### `FLUX_VAPID_PUBLIC_KEY`
 
 **Type** base64url P-256 key · **Default** empty · **Used by** api, worker (release, source)
 
-Public VAPID key; the API gives it to browsers. Generate the pair once (`web-push generate-vapid-keys`, see [push](mobile-and-push.md)); `./flux up` does it for a source checkout.
+Public VAPID key; the API gives it to browsers. Generate the pair once (`web-push generate-vapid-keys`, see [push](mobile-and-push.md)); `./flux up` does it.
 
 ### `FLUX_VAPID_PRIVATE_KEY`
 
@@ -308,7 +305,7 @@ Private VAPID key; only the worker receives it. Changing the pair makes every de
 
 **Type** `mailto:` or `https:` URL · **Default** empty · **Used by** worker (release, source)
 
-Operator contact sent to the push services. Use a real, reachable address. Example: `mailto:ops@example.org`.
+Optional contact sent to the push services. Empty, it is `FLUX_PUBLIC_ORIGIN` when that is `https:` (Apple's push service accepts it). Set it only to give a `mailto:` address at your own domain; a contact Apple cannot reach (`localhost`, `.local`, `.test`) makes iPhone and iPad notifications fail with 403. Example: `mailto:ops@example.org`.
 
 ## Collaboration, link cards and the live stream
 
@@ -342,31 +339,37 @@ The largest video one person can send (#1352, C-61). MP4, WebM and MOV files tha
 
 ## Live media: LiveKit and TURN
 
-Only with the optional overlays `compose.live.yaml` and `compose.live.turn.yaml`, layered on the release `compose.yaml` (both ship with every release; the repository copies are in `docker/`) or on the source Compose file. Set them in `.env`; [INSTALL.md](release-guide.md#calls-and-screen-sharing-optional) has the ports and firewall.
+Calls and screen sharing. `FLUX_CALLS=on` is all: `./flux` layers `compose.live.yaml` and writes the key, the secret and the public address itself ([calls](calls.md)). The values below are its own.
+
+### `FLUX_CALLS`
+
+**Type** `on`, `off` · **Default** `off` · **Used by** `./flux`
+
+`on` makes `./flux` layer `docker/compose.live.yaml` (the LiveKit media server) on every command, write `FLUX_LIVEKIT_API_KEY` and `FLUX_LIVEKIT_API_SECRET` once, use the origin's host as `FLUX_LIVEKIT_DOMAIN` and keep `FLUX_LIVEKIT_PUBLIC_IP` at the IPv4 address that host resolves to. `./flux up` prints the address and the ports to open. `off` removes the media server at the next `./flux up`, and the app offers no calls. Example: `on`.
 
 ### `FLUX_LIVEKIT_API_KEY`
 
 **Type** string · **Default** **required** · **Used by** api, livekit (live-media overlay, TURN overlay)
 
-LiveKit API key, shared by the API and the SFU. Rotate with the secret. Example: `livekit-key-1`.
+LiveKit API key, shared by the API and the SFU. Rotate with the secret. `./flux` writes it when `FLUX_CALLS=on`. Example: `livekit-key-1`.
 
 ### `FLUX_LIVEKIT_API_SECRET`
 
 **Type** secret · **Default** **required** · **Used by** api, livekit (live-media overlay, TURN overlay)
 
-LiveKit API secret.
+LiveKit API secret. `./flux` writes it when `FLUX_CALLS=on`.
 
 ### `FLUX_LIVEKIT_PUBLIC_IP`
 
 **Type** IP address · **Default** **required** · **Used by** livekit (live-media overlay, TURN overlay)
 
-Public media address advertised to browsers in ICE candidates. Example: `203.0.113.20`.
+Public media address advertised to browsers in ICE candidates. With `FLUX_CALLS=on`, `./flux up` sets it to the address the origin's host resolves to. Example: `203.0.113.20`.
 
 ### `FLUX_LIVEKIT_DOMAIN`
 
 **Type** DNS name · **Default** **required** · **Used by** livekit (live-media overlay)
 
-Operator-owned media name used for STUN and TURN/UDP. Example: `media.example.org`.
+Operator-owned media name used for STUN and TURN/UDP. With `FLUX_CALLS=on`, `./flux` uses the origin's host and ignores this line. Example: `media.example.org`.
 
 ### `FLUX_LIVEKIT_MEDIA_CIDR`
 
@@ -418,7 +421,7 @@ Host port of TURN/TLS. Keep 443 for a public deployment.
 
 ## AI providers
 
-People connect their own AI in **Settings → AI** (Connect AI). These switches decide what the instance allows: agents that run on an API key, and agents that search and read the web. A Claude or ChatGPT plan needs the agent runtime below instead. Both Compose files pass the switches to `api` and `worker`; agents on API keys also need the key file `FLUX_BACKGROUND_KEY_HOST_FILE`, which the release `compose.yaml` does not mount (see below). On a source checkout AI works right after install (founder decision, 2026-11-13, #1438): while both are empty, `./flux up` makes the key file and sets `FLUX_PERSONAL_RUNS=on`, and people connect AI in the app; `off` stays off.
+People connect their own AI in **Settings → AI** (Connect AI). These switches decide what the instance allows: agents that run on an API key, and agents that search and read the web. A Claude or ChatGPT plan needs the agent runtime below instead. Both Compose files pass the switches to `api` and `worker`; agents on API keys also need the key file `FLUX_BACKGROUND_KEY_HOST_FILE` (see below). AI works right after install (founder decision, 2026-11-13, #1438): while both are empty, `./flux up` makes the key file and sets `FLUX_PERSONAL_RUNS=on`, and people connect AI in the app; `off` stays off.
 
 ### `FLUX_WEB_READS`
 
@@ -428,9 +431,9 @@ On by default (founder direction 2026-11-08, C-29): a server agent's run reads p
 
 ### `FLUX_BACKGROUND_KEY_HOST_FILE`
 
-**Type** absolute host path · **Default** empty; made by `./flux up` · **Used by** api, worker (source)
+**Type** absolute host path · **Default** empty; made by `./flux up` · **Used by** api, worker (release, source)
 
-File with 32 random bytes that seals owners' AI keys for work the worker does on their behalf. Keep it outside the checkout and the database backup. Empty leaves agents on API keys unavailable. The source Compose file mounts it into `api` and `worker` at `/run/secrets/flux_background_key`; with the release `compose.yaml`, mount the file at that path in both services from a Compose file of your own ([how](release-guide.md#agents-on-your-own-ai-key-optional)). While this and `FLUX_PERSONAL_RUNS` are both empty, `./flux up` writes 32 random bytes to `${XDG_STATE_HOME:-~/.local/state}/flux/<project>/background.key` and records the path here: the directory is `0700`; the file is `0400` when the containers' user 1000 runs `./flux`, given to user 1000 when root does, and otherwise `0444` inside that private directory (another host user, a rootless engine). It never replaces a file, never prints the bytes and leaves a path you set alone. Back it up with `docker/.env`; it is not in the archive of `./flux backup`. Example: `/etc/flux/background.key`.
+File with 32 random bytes that seals owners' AI keys for work the worker does on their behalf. Keep it outside the Flux folder and the database backup. Empty leaves agents on API keys unavailable. `./flux` mounts it into `api` and `worker` at `/run/secrets/flux_background_key`. While this and `FLUX_PERSONAL_RUNS` are both empty, `./flux up` writes 32 random bytes to `${XDG_STATE_HOME:-~/.local/state}/flux/<project>/background.key` and records the path here: the directory is `0700`; the file is `0400` when the containers' user 1000 runs `./flux`, given to user 1000 when root does, and otherwise `0444` inside that private directory (another host user, a rootless engine). It never replaces a file, never prints the bytes and leaves a path you set alone. Back it up with `docker/.env`; it is not in the archive of `./flux backup`. Example: `/etc/flux/background.key`.
 
 ### `FLUX_PERSONAL_RUNS`
 
@@ -452,7 +455,7 @@ Off by default (F-042). Search ranks by BM25 alone; with the overlay `compose.em
 
 **Type** `on`, `off` · **Default** `off` · **Used by** `./flux`
 
-`on` makes `./flux` layer `docker/compose.embeddings.yaml`: a text-embeddings-inference container running bge-m3 (about 3.2 GiB idle, 3.9 GiB peak; a 2.3 GB model downloaded on its first start). The worker embeds every searchable row of a space whose AI is on, and search fuses the nearest vectors with BM25. Encrypted spaces and spaces with AI off are never embedded; nothing is embedded through a person's own AI connection. `off` removes the container at the next `./flux up` (the downloaded model stays in the `embeddings` volume until `./flux clean`), and the next worker start deletes every vector. A release install passes the overlay file with `-f` instead. Example: `off`.
+`on` makes `./flux` layer `docker/compose.embeddings.yaml`: a text-embeddings-inference container running bge-m3 (about 3.2 GiB idle, 3.9 GiB peak; a 2.3 GB model downloaded on its first start). The worker embeds every searchable row of a space whose AI is on, and search fuses the nearest vectors with BM25. Encrypted spaces and spaces with AI off are never embedded; nothing is embedded through a person's own AI connection. `off` removes the container at the next `./flux up` (the downloaded model stays in the `embeddings` volume until `./flux clean`), and the next worker start deletes every vector. Example: `off`.
 
 ### `FLUX_EMBEDDINGS_MEMORY`
 
@@ -492,7 +495,7 @@ Release a person's place in the runtime after this many days without a run. Empt
 
 **Type** secret, ≥ 32 characters · **Default** empty; generated by `./flux` · **Used by** api, runtime-manager, worker (release runtime overlay, source)
 
-Authenticates the API and worker to the runtime manager. Generated by `./flux` or `runtime.sh`.
+Authenticates the API and worker to the runtime manager. Generated by `./flux`.
 
 ### `FLUX_RUNTIME_SECRET_1`
 
@@ -510,13 +513,13 @@ How many agents run at once. Empty works it out from the runtime's memory, about
 
 **Type** Compose memory size · **Default** `2560m` · **Used by** runtime-<n> (release runtime overlay, source)
 
-Memory of all the agents together. Empty: `./flux` and `runtime.sh` take the server's memory less 1.25 GiB; plain Compose takes `2560m`. Example: `6g`.
+Memory of all the agents together. Empty: `./flux` takes the server's memory less 1.25 GiB. Example: `6g`.
 
 ### `FLUX_RUNTIME_CPUS`
 
 **Type** number of CPUs · **Default** `1` · **Used by** runtime-<n> (release runtime overlay, source)
 
-CPUs of all the agents together. Empty: `./flux` and `runtime.sh` take all the server's CPUs but one; plain Compose takes `1`. Example: `3`.
+CPUs of all the agents together. Empty: `./flux` takes all the server's CPUs but one. Example: `3`.
 
 ### `FLUX_AGENT_RUNTIME_RECONCILE_MS`
 
@@ -526,7 +529,7 @@ How often the worker reconciles people's places with the runtime manager.
 
 ## Encrypted spaces and the keyring
 
-See [operating encrypted spaces](encrypted-spaces.md). `./flux up` generates the secrets. A release install has no `./flux`: set `FLUX_KEYRING_TOKEN` and `FLUX_KEY_PIN_SECRET` by hand, `openssl rand -hex 32` each ([release install](release-guide.md#clean-installation), step 1).
+See [operating encrypted spaces](encrypted-spaces.md). `./flux up` generates the secrets.
 
 ### `FLUX_KEYRING`
 
@@ -544,7 +547,7 @@ Authenticates the API and worker to the keyring on its internal network. Empty l
 
 **Type** secret, ≥ 32 characters · **Default** empty; generated by `./flux` · **Used by** api, worker (release, source)
 
-Pins every unlock password and key version, so rows planted in the database are refused. Never change it; back it up with the settings file (`docker/.env`, or `.env` of a release install), not with the database.
+Pins every unlock password and key version, so rows planted in the database are refused. Never change it; back it up with the settings file (`docker/.env`), not with the database.
 
 ### `FLUX_SWAP_ACKNOWLEDGED`
 
@@ -646,7 +649,7 @@ AES key for stored GitHub credentials. Keep it with your backups to reconnect th
 
 ## Source checkout, launcher and checks
 
-Read by `./flux`, the hot-reload `dev` profile, the release `runtime.sh` or the check scripts, not by the application.
+Read by `./flux`, the hot-reload `dev` profile or the check scripts, not by the application.
 
 ### `FLUX_FIXTURE_TOKEN`
 
@@ -668,21 +671,15 @@ Where `./flux backup` writes archives. Example: `/mnt/backup/flux`.
 
 ### `FLUX_WAIT_TIMEOUT`
 
-**Type** seconds · **Default** `300` · **Used by** `./flux`, `runtime.sh`
+**Type** seconds · **Default** `300` · **Used by** `./flux`
 
-How long `./flux` and `runtime.sh` wait for services to become healthy. Example: `600`.
+How long `./flux` waits for services to become healthy. Example: `600`.
 
 ### `FLUX_COWORK_WATCHDOG_SECONDS`
 
 **Type** seconds · **Default** `300` · **Used by** `./flux`
 
 Stops a native `./flux cowork` run after this long. Example: `600`.
-
-### `FLUX_ENV_FILE`
-
-**Type** path · **Default** `.env` beside `runtime.sh` · **Used by** `runtime.sh`
-
-Settings file the release `runtime.sh` reads. Example: `/srv/flux/.env`.
 
 ### `FLUX_DEV_PORT`
 
@@ -716,20 +713,22 @@ Password `./flux demo` gives the second demo account.
 
 ## Set by Flux, not by you
 
-The services also read 69 names that Compose, the launcher or the code sets: wiring
+The services also read 80 names that Compose, the launcher or the code sets: wiring
 between services and test switches. Do not set them. They are listed for developers in
 [internal configuration names](../development/configuration-internal.md).
 
 ## Launcher commands
 
-`./flux help` in a source checkout prints this list; it is copied here from the launcher. The
+`./flux help` prints this list; it is copied here from the launcher. The
 [operations overview](README.md) links each command to its guide.
 
 ```text
 Flux launcher. Flux runs in Docker; the external cowork action also needs the native Codex CLI.
 
   ./flux up              Create docker/.env with new secrets if it is missing (never overwrites it),
-                         build, migrate, start and print the URL.
+                         get the images (a release pulls its own, pinned by digest; a source
+                         checkout builds them), migrate, start and print the URL; while no
+                         company exists, the setup link that makes the owner's account.
   ./flux demo [--dev]    Seed demo data through the public API and print two logins.
                          Refuses non-loopback (production-looking) origins unless --force.
   ./flux dev [--build]   Hot-reload development in Docker: Vite for the web app, tsx watch
@@ -749,13 +748,18 @@ Flux launcher. Flux runs in Docker; the external cowork action also needs the na
   ./flux export <space> [--as EMAIL] [--output FILE]
                          Write a space's JSON-plus-files bundle to exports/ (as the company
                          owner by default; the account needs project.manage).
+  ./flux reset-link <email>
+                         Print a one-time password reset link for that account, the owner's too
+                         (works once, for FLUX_PASSWORD_RESET_TTL_SECONDS; a newer link stops it).
   ./flux identity link <userId> --subject <sub> --reason "<why>" [--old-issuer <URL>] [--allow-sso]
                          Audited operator recovery by Flux account id; requires the running API.
   ./flux identity unlink <userId> --reason "<why>"
                          Audited operator removal of the provider sign-in; refused as the last way in.
-  ./flux upgrade [--pull] [-y]
-                         Back up, (git pull,) build this checkout, migrate and check health; on
-                         failure print the restore instructions.
+  ./flux upgrade [VERSION | --file flux.tar.gz] [--output DIR] [-y]
+                         A release: download the latest release (or VERSION), check it against
+                         SHA256SUMS and its signature (cosign, or its image), pull its images, back up,
+                         put its files in place, migrate and check health; on failure print the
+                         way back. A source checkout: ./flux upgrade [--pull] builds its own code.
   ./flux runtime status | release <email> | purge [-y]
                          Agent runtime (FLUX_AGENT_RUNTIME): show who is in it, release one person's
                          place (they are signed out and told), or sign out and delete every login.
@@ -776,6 +780,7 @@ checkout; --force-project overrides that check.
 Environment: FLUX_PROJECT (Compose project; default flux-<dir>-<hash of this checkout's path>,
 stored in docker/.env on first use; dev uses <project>-dev),
 FLUX_PORT (8081, used when creating .env), FLUX_DEV_PORT (5173), FLUX_MAILPIT_PORT (8025),
-FLUX_NO_CACHE=1 (build without the Docker cache), FLUX_BACKUP_DIR (default backups/).
+FLUX_NO_CACHE=1 (a source checkout: build without the Docker cache), FLUX_BACKUP_DIR (default backups/),
+FLUX_RELEASE_URL (where ./flux upgrade downloads releases; default the GitHub Releases of Flux).
 Operations guide: docs/operations/README.md.
 ```

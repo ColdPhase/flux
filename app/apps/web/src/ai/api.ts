@@ -13,7 +13,7 @@ export const connectBackgroundCompute = (command: ConnectBackgroundComputeComman
   request<BackgroundComputeConnection>(backgroundComputeConnectionsPath, { method: 'POST', body: command });
 export const revokeBackgroundConnection = (id: string) =>
   request<null>(backgroundComputeConnectionPath(encodeURIComponent(id)), { method: 'DELETE' });
-/** The owner's price for one of their key's models that Flux's table does not price (#1218). */
+/** The owner's price for one of their key's models that no price list prices (#1218, #1465). */
 export const setKeyModelPrice = (id: string, command: SetApiKeyModelPriceCommand) =>
   request<BackgroundComputeConnection>(backgroundComputeModelPricePath(encodeURIComponent(id)), { method: 'PUT', body: command });
 /** Try again: the server reads the key's models from its provider again and says how fresh its list is now (#1218). */

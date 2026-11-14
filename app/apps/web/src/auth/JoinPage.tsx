@@ -33,7 +33,8 @@ function forgetToken() { try { sessionStorage.removeItem(STORE); } catch { /* no
 type State =
   | { kind: 'loading' }
   | { kind: 'problem'; title: string; text: string }
-  | { kind: 'ready'; preview: InvitePreview; me: MeResponse | null; signup: IdentityCapabilities['signup']; sso: string | null }
+  /** `ssoOnly`: the provider's label when single sign-on is the only way in (then the provider makes the account, F-024). */
+  | { kind: 'ready'; preview: InvitePreview; me: MeResponse | null; ssoOnly: string | null }
   /** Only an admin of an encrypted space without an unlock password stops here: everyone else opens the space at once. */
   | { kind: 'joined'; result: AcceptInviteResult };
 
@@ -67,11 +68,12 @@ export function JoinPage() {
 
   /** What the page shows for the link and this tab's session; `joinNow`: the account was just made here, so it joins at once. */
   function show([me, preview, capabilities]: [MeResponse | null, InvitePreview, IdentityCapabilities | null], joinNow: boolean) {
+    // An account made from this link joined as it was made (#1471): the page lands it as a join from here does (#763 FT-3, #1438).
+    const madeHere = joinNow || new URLSearchParams(window.location.search).get('created') === '1';
     // A link this account already used, or someone already here: Flux opens, with nothing more to say (#1438).
-    if (me && preview.state !== 'pending') { forgetToken(); navigate('/', { replace: true }); return; }
-    setState({ kind: 'ready', preview, me, signup: capabilities?.signup ?? 'open', sso: capabilities?.sso?.label ?? null });
-    // An account made from this link joins as it is made (#763 FT-3): the person said so when they created it here or on the sign-up page.
-    if (me && preview.state === 'pending' && (joinNow || new URLSearchParams(window.location.search).get('created') === '1')) {
+    if (me && preview.state !== 'pending' && !(madeHere && preview.state === 'joined')) { forgetToken(); navigate('/', { replace: true }); return; }
+    setState({ kind: 'ready', preview, me, ssoOnly: capabilities?.ssoOnly ? capabilities.sso?.label ?? 'single sign-on' : null });
+    if (me && preview.state !== 'member' && madeHere) {
       window.history.replaceState(window.history.state, '', window.location.pathname);
       void join();
     }
@@ -149,13 +151,13 @@ export function JoinPage() {
     );
   }
 
-  const { preview, me, signup, sso } = state;
+  const { preview, me, ssoOnly } = state;
   const roleLine = ROLE_SENTENCE[preview.role];
   const notes = preview.emailLocked || preview.encrypted ? (
     <div className="auth__notice" role="note">
       <Icon name={preview.encrypted ? 'lock' : 'mail'} />
       <div>
-        {preview.emailLocked ? <p>This link works only for the email address it was sent to.</p> : null}
+        {preview.emailLocked ? <p>This link works only for {preview.email ? <strong>{preview.email}</strong> : 'the email address it was sent to'}.</p> : null}
         {preview.encrypted ? <p>{preview.workspaceName} is encrypted. After a restart it stays locked until an owner or admin unlocks it.
           {preview.role === 'admin' ? ' As an admin you get your own unlock password only when someone who has one lets you set it.' : ''}</p> : null}
       </div>
@@ -183,29 +185,17 @@ export function JoinPage() {
       </>
     );
   }
-  // F-024: with single sign-on and password sign-up closed, the first sign-in makes the account; with sign-up closed, someone makes it for them.
-  if (signup === 'off') {
+  // F-024: with single sign-on as the only way in, the first sign-in makes the account. Otherwise an invite link always allows one (#1471).
+  if (ssoOnly) {
     return (
       <>
         {head}
         {notes}
         <div className="auth__card">
           <Button variant="primary" size="lg" block onClick={() => navigate('/sign-in?next=%2Fjoin')}>Sign in to join</Button>
-          {sso ? <p className="auth__alt">New here? Sign in with {sso}; your account is made the first time.</p>
-            : <p className="auth__alt">New accounts are closed on this Flux server. Ask {preview.invitedBy} to have one made for you.</p>}
+          <p className="auth__alt">New here? Sign in with {ssoOnly}; your account is made the first time.</p>
         </div>
         {expires}
-      </>
-    );
-  }
-  if (created?.verifyEmailAt) {
-    return (
-      <>
-        <div className="auth__head"><h1 className="auth__title">Check your email</h1></div>
-        <div className="auth__sent" role="status">
-          <p>We sent a link to <strong>{created.verifyEmailAt}</strong>. Open it to confirm the address, then open this invite link again.</p>
-          <p>Nothing arrived? Check spam. Signing in with the password sends a new link.</p>
-        </div>
       </>
     );
   }
@@ -213,7 +203,7 @@ export function JoinPage() {
     <>
       {head}
       {notes}
-      <JoinSignUp result={created} verified={signup === 'verified'} />
+      <JoinSignUp result={created} token={readToken()} lockedEmail={preview.email} />
       <p className="auth__alt">Already have an account? <Link className="ui-link" to="/sign-in?next=%2Fjoin">Sign in to join</Link></p>
       {expires}
     </>
@@ -221,7 +211,7 @@ export function JoinPage() {
 }
 
 /** The create-account form first (#1438): the same fields and rules as the sign-up page; the route's action makes the account, then the page joins. */
-function JoinSignUp({ result, verified }: { result: FormResult | undefined; verified: boolean }) {
+function JoinSignUp({ result, token, lockedEmail }: { result: FormResult | undefined; token: string; lockedEmail: string | null }) {
   const navigation = useNavigation();
   const submitting = navigation.state === 'submitting' || (navigation.state === 'loading' && navigation.formMethod !== undefined) || !!result?.created;
   const formRef = useRef<HTMLFormElement>(null);
@@ -238,8 +228,11 @@ function JoinSignUp({ result, verified }: { result: FormResult | undefined; veri
           {result.accountExists ? <p><Link className="ui-link" to="/sign-in?next=%2Fjoin">Sign in to join</Link> · <Link className="ui-link" to="/forgot-password">Reset password</Link></p> : null}</div></div>
       ) : null}
       <Input label="Name" name="name" autoComplete="name" defaultValue={result?.values?.name} error={result?.fieldErrors?.name} hint="Shown to people you work with." autoFocus />
+      {/* #1471: the account is made from this link; a link for one address fills it in, read-only. */}
+      <input type="hidden" name="inviteToken" value={token} />
       <Input label="Email" name="email" type="email" autoComplete="email" inputMode="email" autoCapitalize="none" spellCheck={false}
-        defaultValue={result?.values?.email} error={result?.fieldErrors?.email} hint={verified ? 'We’ll email a link to confirm it.' : undefined} />
+        readOnly={lockedEmail !== null} defaultValue={lockedEmail ?? result?.values?.email} error={result?.fieldErrors?.email}
+        hint={lockedEmail !== null ? 'This invite is for this address.' : undefined} />
       <Input label="Password" name="password" type="password" autoComplete="new-password" error={passwordError}
         onChange={(event) => { setPasswordLength(event.target.value.length); setEditedAfter(result); }}
         hint={passwordLength >= PASSWORD_MIN_LENGTH ? undefined : `At least ${PASSWORD_MIN_LENGTH} characters. A short sentence works well.`} />

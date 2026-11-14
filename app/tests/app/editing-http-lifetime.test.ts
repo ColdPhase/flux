@@ -122,7 +122,7 @@ async function fixture(developmentEditing = true) {
   // In-process instances share the API container's secret: the database's JWKS private key is
   // encrypted with it, so a fresh random secret cannot sign up (compose.test.yaml).
   const config = loadIdentityConfig({ FLUX_PUBLIC_ORIGIN: origin, FLUX_AUTH_SECRET: process.env.FLUX_AUTH_SECRET ?? randomBytes(32).toString('hex'), FLUX_AUTH_RATE_LIMIT: 'false' });
-  const identity = registerIdentity(app, { db: database.db, config, mailer: null });
+  const identity = registerIdentity(app, { db: database.db, config, mailer: null, openSignUp: true });
   const backend = mapBackend(database, { beforeHandoff: () => beforeHandoff('map') });
   const routeBackend = { ...backend, deliverNative: async (...args: Parameters<typeof backend.deliverNative>) => {
     const pause = nativeDeliveryPause; nativeDeliveryPause = null;

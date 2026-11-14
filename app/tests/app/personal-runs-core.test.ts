@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { describe, test } from 'node:test';
-import { tablePrice } from '@flux/contracts';
 import { costMicros, parseOutput, runReservationMicros, withoutCitationMarks, type SuppliedSource } from '@flux/core';
+import { FAKE_PRICE } from './support/personal-runs.js';
 
 // Pure output and cost rules of personal runs (#68, O-008 §3/§5). No database, no provider.
 
@@ -32,8 +32,8 @@ describe('personal run output rules', () => {
   });
 
   test('cost uses the connection price, and a run reserves its largest request (F-020 PROV-3)', () => {
-    const sonnet = tablePrice('anthropic', 'claude-sonnet-5')!;
-    assert.deepEqual([sonnet.inputMicrosPerMTok, sonnet.outputMicrosPerMTok, sonnet.checkedOn], [2_000_000, 10_000_000, '2026-11-12']);
+    const sonnet = FAKE_PRICE;
+    assert.deepEqual([sonnet.inputMicrosPerMTok, sonnet.outputMicrosPerMTok, sonnet.checkedOn], [2_000_000, 10_000_000, '2026-11-13']);
     assert.equal(costMicros({ inputTokens: 32_000, outputTokens: 4_000 }, sonnet), 104_000);
     assert.equal(runReservationMicros(sonnet), 104_000, 'max input × input price + max output × output price');
     // Rounded up, never down; a provider-reported cost replaces the token estimate when present.

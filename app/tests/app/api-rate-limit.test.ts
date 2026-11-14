@@ -18,6 +18,8 @@ import { sessionCookieName } from '../../apps/server/src/identity/session-cookie
 const env: NodeJS.ProcessEnv = {
   ...process.env,
   FLUX_AUTH_RATE_LIMIT: 'true',
+  // A test deployment, as the API container is: its people sign up without a link (#1471).
+  FLUX_TEST_FAILURE_INJECTION: 'true',
   FLUX_AUTH_SECRET: process.env.FLUX_AUTH_SECRET ?? `api-rate-limit-${'x'.repeat(40)}`,
   FLUX_PUBLIC_ORIGIN: process.env.FLUX_PUBLIC_ORIGIN ?? 'http://127.0.0.1:8080',
 };

@@ -12,7 +12,8 @@ import { createHmac } from 'node:crypto';
  */
 export type SecurityEventName =
   | 'sign_in' | 'rate_limited' | 'password_reset_requested' | 'password_reset' | 'password_changed' | 'email_changed' | 'sessions_revoked'
-  | 'oauth_consent' | 'oauth_token' | 'client_disconnected' | 'origin_refused' | 'access_denied' | 'space_lock' | 'space_unlock';
+  | 'oauth_consent' | 'oauth_token' | 'client_disconnected' | 'origin_refused' | 'access_denied' | 'space_lock' | 'space_unlock'
+  | 'reset_link_created';
 export type SecurityOutcome = 'success' | 'failure' | 'allowed' | 'denied' | 'refused' | 'limited' | 'sampled';
 
 export interface SecurityEvent {
@@ -21,6 +22,8 @@ export interface SecurityEvent {
   /** A short code such as `bad_credentials` or `ORIGIN_MISMATCH`; anything else is logged as `other`. */
   reason?: string;
   userId?: string;
+  /** Who acted on `userId`'s account, when it was someone else (an owner or admin making a reset link, #1471). */
+  byUserId?: string;
   /** `accountKey` of the address a sign-in or reset named. */
   account?: string;
   ip?: string;
@@ -47,7 +50,7 @@ export function securityEvent(log: SecurityLogger, event: SecurityEvent): void {
   const line: Record<string, unknown> = { channel: 'security', event: event.event, outcome: event.outcome };
   if (event.reason !== undefined) line.reason = SAFE_REASON.test(event.reason) ? event.reason : 'other';
   if (event.route !== undefined) line.route = SAFE_ROUTE.test(event.route) ? event.route : 'other';
-  for (const key of ['userId', 'account', 'ip', 'reqId', 'clientId', 'workspaceId', 'count'] as const) if (event[key] !== undefined) line[key] = event[key];
+  for (const key of ['userId', 'byUserId', 'account', 'ip', 'reqId', 'clientId', 'workspaceId', 'count'] as const) if (event[key] !== undefined) line[key] = event[key];
   log[WARNING.has(event.outcome) ? 'warn' : 'info'](line, `Security event: ${event.event} ${event.outcome}`);
 }
 

@@ -225,7 +225,7 @@ describe('real requests racing a reset (the running API containers)', () => {
     }
   });
 
-  test('a password change with the old password that is running when the reset commits does not put the old password back or keep a session', async () => {
+  test('a password change that is running when the reset commits does not put a password back or keep a session, and no change stops the reset link', async () => {
     for (let round = 1; round <= 3; round++) {
       const email = uniqueEmail(`pc-change-${round}`);
       const { browser: owner } = await register(email, password);
@@ -233,12 +233,16 @@ describe('real requests racing a reset (the running API containers)', () => {
       const { browser: thief, response } = await signIn(email, password);
       assert.equal(response.status, 200);
       const token = await resetToken(email, owner);
+      // The thief has a session and the old password: they change it to one of their own and sign the other devices out. A change of
+      // password stops no reset link (#1471, coordinator decision 2026-11-13), so the owner's link mailed before still works.
+      const thiefPassword = `the thief chose this one ${round}`;
+      assert.equal((await thief.request('POST', '/api/auth/change-password', { body: { currentPassword: password, newPassword: thiefPassword, revokeOtherSessions: true } })).status, 200);
       let stop = false;
       let changes = 0;
-      // The thief has a session and the old password, and keeps changing the password and signing the other devices out.
+      // Then they keep changing it and signing the other devices out while the owner resets.
       const loop = async () => {
         while (!stop) {
-          const out = await thief.request('POST', '/api/auth/change-password', { body: { currentPassword: password, newPassword: password, revokeOtherSessions: true } });
+          const out = await thief.request('POST', '/api/auth/change-password', { body: { currentPassword: thiefPassword, newPassword: thiefPassword, revokeOtherSessions: true } });
           if (out.status === 200) changes += 1; else return;
         }
       };
@@ -251,6 +255,7 @@ describe('real requests racing a reset (the running API containers)', () => {
       assert.equal(await sessionCount(userId), 0, 'no session of the thief outlives the reset');
       assert.equal((await thief.request('GET', '/api/v1/me')).status, 401);
       assert.equal((await new Browser().request('POST', '/api/auth/sign-in/email', { body: { email, password } })).status, 401, 'the old password is not back');
+      assert.equal((await new Browser().request('POST', '/api/auth/sign-in/email', { body: { email, password: thiefPassword } })).status, 401, 'nor the thief\'s');
       assert.equal((await signIn(email, NEW_PASSWORD)).response.status, 200, 'the owner\'s new password stands');
     }
   });

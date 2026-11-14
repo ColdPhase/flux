@@ -72,11 +72,13 @@ export interface IdentityRouteOptions {
   sso: () => Promise<IdentityCapabilities['sso']>;
   /** Evaluated per request: an admin can rename the company at any time. */
   company: () => Promise<string | null>;
+  /** Evaluated per request: no company exists yet, so the first account comes from the setup link (#1471). */
+  setup: () => Promise<boolean>;
 }
 
 /** Flux's own identity routes: capabilities, the current principal and session management. */
-export function registerIdentityRoutes(app: FastifyInstance, { sessions, devices, store, clients, timeZones, lastActive, passwordReset, signup, ssoOnly, linkable, sso, company }: IdentityRouteOptions) {
-  app.get(IDENTITY_CAPABILITIES_PATH, async (): Promise<IdentityCapabilities> => ({ company: await company(), passwordReset, signup, ssoOnly, linkable, sso: await sso() }));
+export function registerIdentityRoutes(app: FastifyInstance, { sessions, devices, store, clients, timeZones, lastActive, passwordReset, signup, ssoOnly, linkable, sso, company, setup }: IdentityRouteOptions) {
+  app.get(IDENTITY_CAPABILITIES_PATH, async (): Promise<IdentityCapabilities> => ({ company: await company(), setup: await setup(), passwordReset, signup, ssoOnly, linkable, sso: await sso() }));
 
   app.get(ME_PATH, async (request, reply): Promise<MeResponse> => {
     if (request.headers[ME_PROBE_HEADER] === '1') {

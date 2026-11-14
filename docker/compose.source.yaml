@@ -28,7 +28,7 @@ x-runtime-slot: &runtime-slot
   image: flux-agent-runtime:${FLUX_IMAGE_TAG:-${COMPOSE_PROJECT_NAME:-local}}
   # One runtime for everyone (#860). Its supervisor starts as root inside the container, with only these capabilities, to run
   # each person's CLIs under that person's own user id; the CLIs have no capabilities at all. FLUX_RUNTIME_MEMORY bounds all the
-  # agents together, and how many run at once follows from it (./flux and runtime.sh set it from the server's memory).
+  # agents together, and how many run at once follows from it (./flux sets it from the server's memory).
   user: "0:0"
   cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, KILL, SETGID, SETUID]
   mem_limit: ${FLUX_RUNTIME_MEMORY:-2560m}
@@ -149,8 +149,9 @@ services:
       FLUX_OIDC_STANDING: ${FLUX_OIDC_STANDING:-refresh}
       FLUX_OIDC_STANDING_INTERVAL_SECONDS: ${FLUX_OIDC_STANDING_INTERVAL_SECONDS:-900}
       FLUX_AUTH_RATE_LIMIT: ${FLUX_AUTH_RATE_LIMIT:-true}
-      # Who may create a password account: open, verified (needs email) or off. An invite link never opens closed sign-up.
-      FLUX_SIGNUP: ${FLUX_SIGNUP:-open}
+      # The setup link's token (#1471): the first account, the company's owner, comes from <origin>/setup#<token>; every other one from
+      # an invite link or single sign-on. ./flux up writes it; once the company exists it does nothing.
+      FLUX_SETUP_TOKEN: ${FLUX_SETUP_TOKEN:-}
       # Web Push (issue #41). The API only needs the public key; empty reports push unavailable.
       FLUX_VAPID_PUBLIC_KEY: ${FLUX_VAPID_PUBLIC_KEY:-}
       FLUX_STREAM_HEARTBEAT_MS: ${FLUX_STREAM_HEARTBEAT_MS:-25000}
@@ -231,7 +232,7 @@ services:
       FLUX_PUBLIC_ORIGIN: ${FLUX_PUBLIC_ORIGIN:?Set FLUX_PUBLIC_ORIGIN}
       FLUX_SMTP_URL: ${FLUX_SMTP_URL:-}
       FLUX_MAIL_FROM: ${FLUX_MAIL_FROM:-}
-      # The worker signs Web Push requests. Set all three or none.
+      # The worker signs Web Push requests. Set both keys or neither; the contact is optional (empty: the https FLUX_PUBLIC_ORIGIN).
       FLUX_VAPID_PUBLIC_KEY: ${FLUX_VAPID_PUBLIC_KEY:-}
       FLUX_VAPID_PRIVATE_KEY: ${FLUX_VAPID_PRIVATE_KEY:-}
       FLUX_VAPID_SUBJECT: ${FLUX_VAPID_SUBJECT:-}

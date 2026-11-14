@@ -208,7 +208,7 @@ class AiConnectionSettings(unittest.TestCase):
         key.blur()
         expect(page.get_by_text("6 models from Anthropic.")).to_be_visible()
         choose(page.get_by_label("Model", exact=True), value="claude-sonnet-5")
-        expect(page.get_by_test_id("connection-price")).to_contain_text("$2.00 input · $10.00 output per 1M tokens · Flux price table, checked 2026-11-12")
+        expect(page.get_by_test_id("connection-price")).to_contain_text("$2.00 input · $10.00 output per 1M tokens · Flux’s price list of ")
         expect(page.get_by_role("group", name="Price per 1M tokens (USD)")).to_have_count(0)
         page.get_by_label("Name", exact=True).fill("Work Anthropic")
         self.fill_key(page, KEYS["anthropic"], "12.50")
@@ -221,7 +221,7 @@ class AiConnectionSettings(unittest.TestCase):
         expect(work.locator("div").filter(has_text="Model")).to_contain_text("Sonnet 5")
         expect(work.get_by_test_id("key-usage")).to_have_text("$0.00 of $12.50 today")
         current = self.connection(page, name="Work Anthropic")
-        self.assertEqual((current["price"]["source"], current["dailyBudgetCents"]), ("table", 1250))
+        self.assertEqual((current["price"]["source"], current["dailyBudgetCents"]), ("list", 1250))
         self.no_key_anywhere(page)
 
     def test_04b_the_one_daily_budget_is_changed_in_place_and_bounded(self) -> None:

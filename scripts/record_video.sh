@@ -35,6 +35,8 @@ export FLUX_PUBLIC_ORIGIN="http://127.0.0.1:${FLUX_PORT}"
 export FLUX_AUTH_SECRET="auth-vid-$$-$(date +%s)-$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
 export FLUX_SMTP_URL="smtp://mailpit:1025"
 export FLUX_MAIL_FROM="Flux <flux@example.test>"
+# The setup link's token (#1471): the demo owner's account is made from it.
+export FLUX_SETUP_TOKEN="$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')"
 owner_password="demo-$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
 partner_password="demo-$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
 shots=$(mktemp -d)
@@ -59,7 +61,7 @@ $compose up -d db migrate
 $compose --profile setup run --rm files-init
 $compose up -d --wait api worker
 echo "Seeding the ./flux demo data through the public API..."
-$compose exec -T -e FLUX_PUBLIC_ORIGIN="$FLUX_PUBLIC_ORIGIN" \
+$compose exec -T -e FLUX_PUBLIC_ORIGIN="$FLUX_PUBLIC_ORIGIN" -e FLUX_SETUP_TOKEN="$FLUX_SETUP_TOKEN" \
   -e FLUX_DEMO_OWNER_PASSWORD="$owner_password" -e FLUX_DEMO_PARTNER_PASSWORD="$partner_password" \
   api node --input-type=module - < scripts/flux-demo.mjs
 # Pillow is needed only because record_video.py reuses the journey helpers of record_demo.py; it is installed

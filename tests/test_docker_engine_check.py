@@ -1,7 +1,7 @@
 """The scripts that start Flux refuse a Docker Engine older than 25 with one line and the fix (#878).
 
 The health checks use `start_interval`; `docker compose up` refuses on Engine 24 ("can't set healthcheck.start_interval as
-feature require Docker Engine v25 or later") and starts nothing. `./flux` and the release's `runtime.sh` check the engine
+feature require Docker Engine v25 or later") and starts nothing. `./flux` checks the engine
 first. Standard library only; `need_docker` is run from the real scripts with a stub of `docker`.
 """
 
@@ -59,7 +59,7 @@ class EngineCheckTest(unittest.TestCase):
                                   env={**os.environ, "PATH": f"{base / 'bin'}{os.pathsep}{os.environ['PATH']}"})
 
     def test_an_engine_older_than_25_is_refused_with_one_line_and_the_fix(self) -> None:
-        for path in ("flux", "docker/runtime.sh"):
+        for path in ("flux",):
             for version in ("24.0.9", "20.10.24", "17.03.0-ce"):
                 with self.subTest(path=path, version=version):
                     result = self.need_docker(path, version)
@@ -68,14 +68,14 @@ class EngineCheckTest(unittest.TestCase):
                     self.assertNotIn("passed", result.stdout)
 
     def test_engine_25_and_newer_pass(self) -> None:
-        for path in ("flux", "docker/runtime.sh"):
+        for path in ("flux",):
             for version in ("25.0.0", "25.0.0-rc.1", "28.0.4", "29.4.2"):
                 with self.subTest(path=path, version=version):
                     result = self.need_docker(path, version)
                     self.assertEqual((result.returncode, result.stdout.strip(), result.stderr), (0, "passed", ""))
 
     def test_an_engine_that_is_not_docker_or_does_not_say_is_left_to_compose(self) -> None:
-        for path in ("flux", "docker/runtime.sh"):
+        for path in ("flux",):
             for version in ("5.4.0", "", "unknown"):
                 with self.subTest(path=path, version=version):
                     result = self.need_docker(path, version)

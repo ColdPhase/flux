@@ -115,7 +115,7 @@ describe('human identity', () => {
     const email = uniqueEmail('reset');
     const { browser: before } = await register(email, password);
     const capabilities = await new Browser().request('GET', '/api/v1/auth/capabilities');
-    assert.deepEqual(capabilities.json, { company: null, passwordReset: 'available', signup: 'open', ssoOnly: false, linkable: false, sso: null });
+    assert.deepEqual(capabilities.json, { company: null, setup: false, passwordReset: 'available', signup: 'open', ssoOnly: false, linkable: false, sso: null });
 
     const request = await new Browser().request('POST', '/api/auth/request-password-reset', {
       body: { email, redirectTo: `${publicOrigin}/reset-password` },
@@ -181,6 +181,7 @@ describe('human identity', () => {
       const response = await browser.request('POST', '/api/v1/sessions/revoke-others', { origin });
       assert.equal(response.status, 403, `origin ${origin}`);
       assert.equal((response.json as { code: string }).code, 'ORIGIN_REJECTED');
+      assert.equal((response.json as { origin?: string }).origin, publicOrigin, 'the refusal names the address Flux accepts (#1471)');
     }
     const login = await new Browser().request('POST', '/api/auth/sign-in/email', { body: { email, password }, origin: 'https://evil.example' });
     assert.equal(login.status, 403, 'login CSRF is rejected');

@@ -17,9 +17,9 @@ export function getCapabilities(signal?: AbortSignal) {
   return request<IdentityCapabilities>(IDENTITY_CAPABILITIES_PATH, { signal });
 }
 
-/** With verified sign-up the mailed link lands on the sign-in page (#313); otherwise the person is signed in at once. */
-export function signUp(input: { name: string; email: string; password: string }) {
-  return request<{ token: string | null }>(AUTH_SIGN_UP_EMAIL_PATH, { method: 'POST', body: { ...input, callbackURL: '/sign-in?notice=email-verified' } });
+/** An account comes from the setup link or an invite link (#1471): the sign-up carries its token. The person is signed in at once. */
+export function signUp(input: { name: string; email: string; password: string; setupToken?: string; inviteToken?: string }) {
+  return request<{ token: string | null }>(AUTH_SIGN_UP_EMAIL_PATH, { method: 'POST', body: input });
 }
 
 /** The address a provider sign-in found held by an unverified account (#313), or null without a pending claim. */

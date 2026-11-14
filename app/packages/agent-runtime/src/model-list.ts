@@ -1,4 +1,5 @@
-import { AI_PRICE_MAX_MICROS_PER_MTOK, AI_PROVIDERS, aiModelFamily, compareModelsNewestFirst, type AiListedModel, type AiModelList, type AiProviderKind } from '@flux/contracts';
+import { AI_PRICE_MAX_MICROS_PER_MTOK, AI_PRICE_MAX_TIERS, AI_PROVIDERS, aiModelFamily, compareModelsNewestFirst, type AiListedModel, type AiModelList, type AiPriceTier, type AiProviderKind,
+  type AiRate } from '@flux/contracts';
 import { validModelId, type AiEndpointPolicyPort } from '@flux/core';
 import { chatBaseUrl } from './chat-completions.js';
 import { checkEndpoint, parsePrivateTargets, PUBLIC_ONLY, type AiEndpointPolicy, type Resolver, systemResolver } from './endpoint-policy.js';
@@ -7,8 +8,8 @@ import { endpointRefusal, guardedFetch } from './guarded-fetch.js';
 // A provider's model list (F-020 PROV-1, CA-2). OpenRouter lists its models and their prices publicly, and an OpenAI-compatible
 // server usually answers `GET /models` without a key (`listProviderModels`). Anthropic, OpenAI and Gemini list only the models a key
 // can use, with that key (`listKeyModels`, #1218): the API while the key is being added (the same call is its test), the worker for a
-// stored key, the only process that opens one (CA-4). The same guarded transport bounds every listing. A listed price is only a
-// suggestion the owner may enter; it is never a reservation price (PROV-3).
+// stored key, the only process that opens one (CA-4). The same guarded transport bounds every listing. OpenRouter's listed prices,
+// with their long-prompt overrides, are what an OpenRouter key pays: they become OpenRouter's price list (#1465).
 
 export interface ModelListOptions {
   policy?: AiEndpointPolicy;
@@ -46,6 +47,31 @@ function perMillion(value: unknown): number | null {
   return micros <= AI_PRICE_MAX_MICROS_PER_MTOK ? micros : null;
 }
 
+/**
+ * OpenRouter's price of one model with its long-prompt overrides (`overrides: [{ min_prompt_tokens, prompt, completion }]`, a prompt of
+ * at least `min_prompt_tokens` tokens), or null when its price is variable or not a sane price; a malformed override makes it null too,
+ * so a price is never lower than OpenRouter charges.
+ */
+function openRouterRate(pricing: { prompt?: unknown; completion?: unknown; overrides?: unknown } | undefined): AiRate | null {
+  const input = perMillion(pricing?.prompt);
+  const output = perMillion(pricing?.completion);
+  if (input === null || output === null) return null;
+  const overrides = pricing?.overrides;
+  if (overrides === undefined) return { inputMicrosPerMTok: input, outputMicrosPerMTok: output };
+  if (!Array.isArray(overrides) || overrides.length > AI_PRICE_MAX_TIERS) return null;
+  const tiers: AiPriceTier[] = [];
+  for (const override of overrides as { min_prompt_tokens?: unknown; prompt?: unknown; completion?: unknown }[]) {
+    const from = override?.min_prompt_tokens;
+    if (typeof from !== 'number' || !Number.isSafeInteger(from) || from < 1) return null;
+    const tierInput = override.prompt === undefined ? input : perMillion(override.prompt);
+    const tierOutput = override.completion === undefined ? output : perMillion(override.completion);
+    if (tierInput === null || tierOutput === null) return null;
+    tiers.push({ fromTokens: from, inputMicrosPerMTok: tierInput, outputMicrosPerMTok: tierOutput });
+  }
+  tiers.sort((a, b) => a.fromTokens - b.fromTokens);
+  return { inputMicrosPerMTok: input, outputMicrosPerMTok: output, ...(tiers.length ? { tiers } : {}) };
+}
+
 export async function listProviderModels(provider: AiProviderKind, baseUrl: string | null, options: ModelListOptions = {}): Promise<AiModelList> {
   const { policy = PUBLIC_ONLY, baseUrls = {}, timeoutMs = 8_000, maxResponseBytes = provider === 'openrouter' ? OPENROUTER_LIST_MAX_BYTES : MODEL_LIST_MAX_BYTES, resolve = systemResolver } = options;
   const checkedOn = (options.now?.() ?? new Date()).toISOString().slice(0, 10);
@@ -64,10 +90,8 @@ export async function listProviderModels(provider: AiProviderKind, baseUrl: stri
     for (const item of body.data.slice(0, MAX_MODELS * 2)) {
       const id = (item as { id?: unknown })?.id;
       if (!validModelId(provider, id) || models.has(id)) continue;
-      const pricing = (item as { pricing?: { prompt?: unknown; completion?: unknown } }).pricing;
-      const input = provider === 'openrouter' ? perMillion(pricing?.prompt) : null;
-      const output = provider === 'openrouter' ? perMillion(pricing?.completion) : null;
-      models.set(id, { id, family: aiModelFamily(provider, id), price: input !== null && output !== null ? { inputMicrosPerMTok: input, outputMicrosPerMTok: output } : null });
+      const pricing = (item as { pricing?: { prompt?: unknown; completion?: unknown; overrides?: unknown } }).pricing;
+      models.set(id, { id, family: aiModelFamily(provider, id), price: provider === 'openrouter' ? openRouterRate(pricing) : null });
       if (models.size >= MAX_MODELS) break;
     }
     return result('listed', [...models.values()].sort((a, b) => a.id.localeCompare(b.id)));
@@ -176,7 +200,7 @@ export async function listKeyModels(provider: AiProviderKind, apiKey: string, op
  * key to a real provider. Refused unless `FLUX_TEST_FAILURE_INJECTION=true`; empty in production, where a key is only ever sent to
  * its provider's fixed address. Returns the listing options for the API and the worker alike. The same origin answers the check that a key's model
  * calls tools (RT-1 rule 2, #1441, `providerToolCheck`) under the same `/lists/<provider>/…` roots, OpenRouter's included
- * (`/lists/openrouter/v1/chat/completions`), which has no listing with a key.
+ * (`/lists/openrouter/v1/chat/completions`); OpenRouter's priced list, read without a key, is `/lists/openrouter/v1/models` (#1465).
  */
 export function keyListingOptions(env: NodeJS.ProcessEnv, policy: AiEndpointPolicy): Pick<ModelListOptions, 'policy' | 'baseUrls'> {
   const mock = env.FLUX_TEST_PROVIDER_LISTS ?? '';
@@ -186,6 +210,7 @@ export function keyListingOptions(env: NodeJS.ProcessEnv, policy: AiEndpointPoli
   if (!origin) throw new Error('FLUX_TEST_PROVIDER_LISTS must be the http origin of the mock provider');
   return {
     policy: parsePrivateTargets([env.FLUX_AI_PRIVATE_TARGETS ?? '', origin[1]].join(',')),
+    // OpenRouter's model list, which is also its price list (#1465), is under the same root as its tool check.
     baseUrls: { anthropic: `${mock}/lists/anthropic`, openai: `${mock}/lists/openai/v1`, gemini: `${mock}/lists/gemini/v1beta/openai`, openrouter: `${mock}/lists/openrouter/v1` },
   };
 }

@@ -1,43 +1,54 @@
 # Installation
 
-There are three ways to run Flux. All of them are Docker Compose on one host.
+Flux installs one way, on your computer or on a server ([#1471](https://github.com/ColdPhase/flux/issues/1471), founder
+decision 5): download a release, check it, unpack it and run `./flux up`. The release is a folder with the `flux` launcher and
+the Compose files it runs; `./flux up` pulls that release's images, pinned by digest, and sets everything up: the secrets, the
+push keys, HTTPS for an `https` address, calls when you switch them on, and the agent runtime. It keeps its settings in
+`docker/.env` and gives you [backups](backup-restore.md), restores and [upgrades](upgrade.md) as single commands. Nothing is
+built on your machine. (Building Flux from its source is the Flux developers' path: [development](../development/containers.md).)
 
-| Path | For | Guide |
-| --- | --- | --- |
-| **Try it on your computer** | Seeing Flux with sample data, at `http://127.0.0.1:8081` | [Quick start](../../README.md#quick-start) |
-| **Your own server, from a source checkout** | A team instance that builds on the server, for example on `arm64` | This page |
-| **Your own server, from a published release** | A team instance without the source or a build | [Install from a release](install-release.md) |
+This page is a fresh installation. **v0.2 does not upgrade a v0.1 installation** (v0.1 had no users): if this host already
+runs v0.1, [read why and what to do](upgrade.md#from-v01-install-v02-fresh) first.
 
-Flux v0.2 can run from the digest-pinned image of the [latest release](https://github.com/ColdPhase/flux/releases/latest). That image is
-`linux/amd64` only; `linux/arm64` is planned for v0.3. A source checkout uses the `./flux` launcher,
-which builds the image on the server, keeps its settings in `docker/.env`, and gives you
-[backups](backup-restore.md), restores and [upgrades](upgrade.md) as single commands. The release
-path runs the same services without the source or a build.
+Check the [requirements](requirements.md) first: a Linux host with Docker Engine 25 or newer and the Compose plugin,
+`curl` (or `wget`) and `tar`, 4 GB of memory, and a DNS name pointing at the host. The images are built for `linux/amd64`;
+`linux/arm64` is planned ([#833](https://github.com/ColdPhase/flux/issues/833)).
 
-This page is a fresh installation. **v0.2 does not upgrade a v0.1 installation** (v0.1 had no users): if this host or checkout
-already runs v0.1, [read why and what to do](upgrade.md#from-v01-install-v02-fresh) first.
-
-Check the [requirements](requirements.md) first: a Linux host with Docker Engine 25 or newer and the Compose
-plugin, 4 GB of memory, and a DNS name pointing at the host.
-
-## Production installation from a source checkout
+## Production installation
 
 The example uses `/srv/flux` and `https://flux.example.org`; replace both.
 
-### 1. Get the code and start once on loopback
+### 1. Download the release and start once on loopback
 
 ```sh
-sudo mkdir -p /srv/flux && sudo chown "$USER" /srv/flux
-git clone --depth 1 https://github.com/ColdPhase/flux.git /srv/flux
-cd /srv/flux
+cd /srv                       # the release unpacks into /srv/flux
+for f in flux.tar.gz SHA256SUMS SHA256SUMS.sigstore.json; do
+  curl -fLO "https://github.com/ColdPhase/flux/releases/latest/download/$f"
+done
+# SHA256SUMS must be signed by Flux's release workflow (the official cosign image, pinned by digest; prints: Verified OK)
+docker run --rm --read-only --cap-drop ALL --security-opt no-new-privileges --user "$(id -u):$(id -g)" -e HOME=/tmp --tmpfs /tmp \
+  -v "$PWD/SHA256SUMS:/verify/SHA256SUMS:ro,z" -v "$PWD/SHA256SUMS.sigstore.json:/verify/SHA256SUMS.sigstore.json:ro,z" \
+  ghcr.io/sigstore/cosign/cosign:v3.0.6@sha256:de9c65609e6bde17e6b48de485ee788407c9502fa08b8f4459f595b21f56cd00 \
+  verify-blob --bundle /verify/SHA256SUMS.sigstore.json \
+  --certificate-identity https://github.com/ColdPhase/flux/.github/workflows/final-release.yml@refs/heads/main \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com /verify/SHA256SUMS
+sha256sum --ignore-missing -c SHA256SUMS      # must print: flux.tar.gz: OK
+tar -xzf flux.tar.gz
+cd flux
 ./flux up
 ```
 
-The first `./flux up` creates `docker/.env` with new random secrets, builds the image (a few
-minutes), runs the migrations, starts the services and prints `http://127.0.0.1:8081`. In a terminal
-it also asks once whether people may sign in with their own ChatGPT and Claude subscriptions; the
-[agent runtime guide](agent-runtime.md) explains the choice, and Enter or `n` can be changed later
-with `./flux ai on`. Start with another port if 8081 is taken: `FLUX_PORT=8090 ./flux up`.
+The `docker run` line is the check `./flux upgrade` makes on every later release ([signatures](upgrade.md#signatures)): it gives
+the cosign container only the two files, read-only. Do not go on if it does not print `Verified OK`. On macOS, check the
+checksum with `shasum -a 256 --ignore-missing -c SHA256SUMS`. A different version is under `releases/download/<version>/`
+instead of `releases/latest/download/`.
+
+The first `./flux up` creates `docker/.env` with new random secrets and push keys, downloads the images of this release (a
+few minutes the first time; `docker/release.env` names them), runs the migrations, starts the services and prints
+`http://127.0.0.1:8081`. In a terminal it also asks once whether people may sign in with their own ChatGPT and Claude
+subscriptions; the [agent runtime guide](agent-runtime.md) explains the choice, and Enter or `n` can be changed later with
+`./flux ai on`. Start with another port if 8081 is taken: `FLUX_PORT=8090 ./flux up`. To look around on your own
+computer, `./flux demo` adds a sample company and prints two logins (it refuses a public address).
 
 Check that it answers:
 
@@ -45,12 +56,12 @@ Check that it answers:
 curl -fsS http://127.0.0.1:8081/api/v1/health    # {"status":"ok","schemaVersion":…}
 ```
 
-**Create your account now, before the server has a public address.** The first account to sign up
-becomes the company's owner, with every space, and `FLUX_SIGNUP` is `open` until you change it. On a server,
-open `http://127.0.0.1:8081` through an SSH tunnel (`ssh -L 8081:127.0.0.1:8081 you@server`), choose
-**Sign up**, and keep this account: it is yours. It works because the address is still the loopback one; once you
-set `FLUX_PUBLIC_ORIGIN` in step 2, Flux accepts sign-up only from that address. If you set it first, `./flux up` says
-that nobody has signed up yet, and so does the API log at each start, until someone has.
+**The setup link.** While no company exists, `./flux up` ends by printing a link like
+`http://127.0.0.1:8081/setup#4f0c…` (decision [F-044](../product/decisions.md#f-044--accounts-and-password-resets-by-link-1471), [#1471](https://github.com/ColdPhase/flux/issues/1471)). Only that link makes the first
+account, which becomes the company's owner with every space: its token, `FLUX_SETUP_TOKEN` in `docker/.env`, is in nobody else's
+hands. Every later account comes from an invite link that an owner or admin makes, or from single sign-on. You can create the owner's
+account now (on a server, through an SSH tunnel: `ssh -L 8081:127.0.0.1:8081 you@server`) or after step 3 on the public
+address: `./flux up` prints the link with the address it has, each time, until the company exists.
 
 Do not run `./flux demo` on a server: it creates accounts with printed passwords, and it refuses a
 non-loopback origin unless forced.
@@ -66,11 +77,10 @@ FLUX_MAIL_FROM=Flux <flux@example.org>
 ```
 
 `FLUX_PUBLIC_ORIGIN` must be exactly the address people type, with `https` and no path. Flux refuses
-any non-loopback `http` origin. Leave `FLUX_SIGNUP` as it is for now (`open`): you close sign-up in
-step 5, after your own account exists. Every other setting is in the
-[configuration reference](configuration.md).
+any non-loopback `http` origin. Every other setting is in the [configuration reference](configuration.md).
 
-Email is optional, but without it nobody can reset a forgotten password. In the SMTP URL,
+Email is optional. Without it, people still get a new password from a reset link that an owner or admin
+makes in **Settings › Company**, and you get one for any account, your own too, with `./flux reset-link <email>` on the server. In the SMTP URL,
 percent-encode special characters of the user name and password (`@` is `%40`, `/` is `%2F`). Use
 `smtps://…:465` or `smtp://…:587?requireTLS=true`; plain `smtp://` without TLS is only for a mail
 relay on a trusted network.
@@ -83,30 +93,28 @@ Apply the change:
 
 `./flux up` never overwrites `docker/.env`; it recreates the containers whose settings changed.
 
-### 3. Put HTTPS in front
+### 3. HTTPS: point the DNS name at the server
 
-Flux's API stays on `127.0.0.1:8081`. A reverse proxy on the same host terminates TLS on port 443
-and forwards everything to it, WebSocket upgrades included. With [Caddy](reverse-proxy.md) the whole
-configuration is:
+HTTPS is built in ([#1471](https://github.com/ColdPhase/flux/issues/1471)). Because the origin in step 2 is
+`https`, `./flux up` also starts a bundled, pinned Caddy on ports 80 and 443 that gets and renews the
+certificate for `flux.example.org` itself and passes everything to the API, which stays on
+`127.0.0.1:8081`. The API trusts exactly Caddy's address, so sign-in limits and session lists see real
+client addresses; `./flux up` prints that address.
 
-```caddyfile
-flux.example.org {
-	reverse_proxy 127.0.0.1:8081
-}
-```
-
-Caddy obtains and renews the certificate itself. [nginx](reverse-proxy.md#nginx) and
-[Traefik](reverse-proxy.md#traefik) work the same way; on a network without public DNS see
-[private network or home lab](#private-network-or-home-lab). Then
-[trust only the proxy's address](reverse-proxy.md#trust-only-the-measured-proxy-peer) with
-`FLUX_TRUSTED_PROXIES`, so sign-in limits and session lists see real client addresses.
+Your part is DNS: an A record for `flux.example.org` pointing at the server, and inbound 80/tcp and
+443/tcp open to it. Add no AAAA record unless Docker on the server has IPv6 networking enabled (see the
+[guide](reverse-proxy.md#built-in-https)). Caddy retries until the name resolves, so the order
+does not matter. The details, and how to keep [a proxy of your own](reverse-proxy.md#your-own-proxy-instead)
+instead (the same file, with its address in `FLUX_TRUSTED_PROXIES`), are in the
+[reverse proxy guide](reverse-proxy.md#built-in-https).
 
 ### 4. Create your account and check mail
 
-Open `https://flux.example.org` and sign in with the account you made in step 1 (if you did not,
-sign up now: the first account sets up the company and is its owner, and nothing stops a stranger who reaches the
-address first). It owns the default space **Everyone**; everyone else joins by an invite link from an admin (or
-by signing in, with single sign-on). Spaces are added from **New › Space**. The password needs 12 to 128 characters.
+Open the setup link that `./flux up` printed (run it again to see it with the public address) and create the owner's
+account, or sign in with the one you made in step 1. A Flux with no company opens on **Set up Flux** by itself; without
+the link's token it makes no account. The owner has the default space **Everyone**; everyone else joins by an invite link
+from an owner or admin (or by signing in, with single sign-on). Spaces are added from **New › Space**. The password
+needs 12 to 128 characters.
 
 <p align="center">
   <picture>
@@ -121,38 +129,29 @@ Check that email works:
 
 ```sh
 curl -fsS https://flux.example.org/api/v1/auth/capabilities
-# {"passwordReset":"available","signup":"open",…}
+# {"passwordReset":"available","setup":false,"signup":"link",…}
 ```
 
 `passwordReset` must be `available`. Then sign out, choose **Forgot password** with your own address
 and check that the mail arrives. A send that fails is logged by the API as `Password reset mail
 failed`, with the SMTP server's answer.
 
-### 5. Decide who can sign up
+### 5. Who can create an account
 
-With `open`, anyone who can reach the server can create an account. Choose the rule for your
-instance in `docker/.env` and apply it with `./flux up`:
+Nobody can create an account on their own (decision [F-044](../product/decisions.md#f-044--accounts-and-password-resets-by-link-1471), [#1471](https://github.com/ColdPhase/flux/issues/1471)). An account comes from:
 
-| You want | Set | What happens |
+| Way in | Who makes it | What happens |
 | --- | --- | --- |
-| Anyone who reaches the server may join | `FLUX_SIGNUP=open` | Fine on a private network; not on the open internet. |
-| Anyone with a working mailbox may join | `FLUX_SIGNUP=verified` (needs email) | A new account confirms its address by mail before it can sign in. This proves a mailbox, **not membership**: any address that can receive mail can sign up. Without email, sign-up is closed. |
-| Only your team, with your identity provider | [single sign-on](single-sign-on.md) | Only people your provider lets in can sign in. In `sso` mode password sign-up is closed whatever `FLUX_SIGNUP` says. |
-| Only the people you add, without single sign-on | `FLUX_SIGNUP=off` after their accounts exist | Nobody can create an account, **including you**. An invite link never opens closed sign-up. |
+| The setup link | `./flux up`, while no company exists | The first account; it sets up the company and is its owner. |
+| An invite link | An owner or admin, in **Settings › Company** ([administration](administration.md#invite-links)) | Always lets the person create an account, with the address filled in when the link is for one, and joins them with the link's role. One link, one person. |
+| Single sign-on | Your identity provider ([single sign-on](single-sign-on.md)) | Everyone your provider lets in gets an account and joins as a member on their first sign-in; there are no invite links then. |
 
-One Flux is one company. The first account on the server sets it up and becomes its owner, so create
-your own account first. A later account with a password belongs to no company until an owner or admin
-adds it with **Add someone** or an invite link ([administration](administration.md#invite-links)): a
-stranger who signs up sees nothing and can start nothing. With single sign-on, everyone your provider
-lets in joins the company as a member on their first sign-in. Inside the company, a person sees only
-the spaces they were added to, and the default space Everyone.
+One Flux is one company. Inside it, a person sees only the spaces they were added to, and the default space Everyone.
 
-**To add someone while sign-up is `off`**: set `FLUX_SIGNUP=verified` (or `open`), run `./flux up`,
-send them an invite link, and set it back to `off` with `./flux up` once they have joined.
-
-**Locked out?** If you closed sign-up before creating your own account, set `FLUX_SIGNUP=open`, run
-`./flux up`, create the account, then close it again. Flux has no command that creates an account or
-sets a password.
+**A forgotten password** is a reset link: **Forgot password** mails one when the server has email, an owner or admin
+makes one next to the person in **Settings › Company** and sends it themselves, and `./flux reset-link <email>` prints
+one for any account, the owner's too. A link works once and for `FLUX_PASSWORD_RESET_TTL_SECONDS` (one hour); a newer
+link or a changed password stops it.
 
 After you sign up you are the company's owner, in the default space **Everyone**. Make your first space with
 **New › Space**: a name, the people (chosen from the company) and an AI switch that starts on. To bring in the
@@ -170,36 +169,37 @@ rest of the team, open **Settings › Company** and use **Invite with a link**
 
 - **Backups.** Add the daily `./flux backup --keep 14` cron entry from
   [backup and restore](backup-restore.md#backup-schedule) and copy archives off the machine.
-- **Push notifications.** `./flux up` generated VAPID keys with a placeholder contact. Set
-  `FLUX_VAPID_SUBJECT=mailto:you@example.org` in `docker/.env` and run `./flux up`
+- **Push notifications.** `./flux up` generated the VAPID keys. The contact the push services get
+  is your public `https://` address, so iPhone and iPad work once `FLUX_PUBLIC_ORIGIN` is that
+  address and you have run `./flux up` again; there is nothing else to set
   ([phones, tablets and push](mobile-and-push.md)).
 - **Monitoring.** Watch `/api/v1/health` and the containers' health ([monitoring](monitoring.md)).
 - **Hardening.** Go through the [hardening checklist](hardening.md).
 
 ## Private network or home lab
 
-Without public DNS, Caddy cannot get a public certificate. Use an internal name (for example
-`flux.home.arpa` in your router's DNS) and Caddy's own certificate authority:
+Without public DNS there is no public certificate. Use an internal name (for example `flux.home.arpa`
+in your router's DNS; `*.internal`, `*.local` and an IP address work the same way) and set
+`FLUX_PUBLIC_ORIGIN=https://flux.home.arpa`: the bundled Caddy then issues the certificate from its own
+certificate authority, with nothing else to set. Every device that opens Flux must trust that
+authority's root certificate once: copy it out with
+`docker cp <FLUX_PROJECT>-proxy-1:/data/caddy/pki/authorities/local/root.crt flux-root.crt` and install
+it as a trusted root on each computer, phone and tablet. Phones need it trusted for the installed app
+and push. A certificate from your own CA works through [your own proxy](reverse-proxy.md#your-own-proxy-instead).
 
-```caddyfile
-flux.home.arpa {
-	tls internal
-	reverse_proxy 127.0.0.1:8081
-}
-```
+## Calls and screen sharing
 
-Set `FLUX_PUBLIC_ORIGIN=https://flux.home.arpa`. Every device that opens Flux must trust Caddy's
-root certificate: copy it out with
-`docker cp <caddy container>:/data/caddy/pki/authorities/local/root.crt flux-root.crt` (the
-[Caddy example](reverse-proxy.md#local-https-example) shows the full commands) and install it as a
-trusted root on each computer, phone and tablet. Phones need it trusted for the installed app and
-push. A certificate from your own CA works the same way.
+Set `FLUX_CALLS=on` in `docker/.env` and run `./flux up`: it starts the media server, writes its key and
+secret, takes the media address from the origin's DNS name and prints the ports to open
+(7881/tcp, 7882/udp, 3478/udp). See [calls](calls.md).
 
-## What the source path leaves on
+## Without internet access
 
-`./flux up` writes a random `FLUX_FIXTURE_TOKEN`, which the source Compose file requires. It enables
-the integration-fixture endpoints used by the checks, only for a caller that holds that token. Keep
-`docker/.env` private; a release installation leaves the token empty.
+`./flux up` downloads only the images this Docker does not have yet, and each is pinned by digest. On a server without access
+to `ghcr.io`, copy them there once: on a machine with access, `docker pull` each image that `docker/release.env` names (the
+agent runtime's only if you switch it on) and `docker save` them into one file; on the server, `docker load` that file, then run
+`./flux up`. The same works for the pinned images of the optional overlays (`docker/compose.https.yaml`, `compose.live.yaml`,
+`compose.embeddings.yaml`).
 
 ## Kubernetes
 

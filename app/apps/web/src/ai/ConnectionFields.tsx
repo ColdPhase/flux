@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import { AI_PROVIDER_KINDS, AI_PROVIDERS, assistantModelName, groupModelsByFamily, tablePrice,
-  type AiListedModel, type AiModelList, type AiPrice, type AiProviderKind } from '@flux/contracts';
+import { AI_PROVIDER_KINDS, AI_PROVIDERS, assistantModelName, groupModelsByFamily, listPrice,
+  type AiListedModel, type AiModelList, type AiPrice, type AiProviderKind, type AiProviderPriceList } from '@flux/contracts';
 import { Button, Select, Option, OptionGroup } from '../ui';
 import { ApiError } from '../api/client';
 import { listAiModels } from './api';
@@ -13,13 +13,12 @@ import { listAiModels } from './api';
 //   and "Other model id…" for an id the list lacks. A refused key says so and Connect waits for another; a list that can't be
 //   read leaves the plain field with a note.
 // - OpenRouter and an OpenAI-compatible endpoint list without a key ("Show available models"), with the plain field as fallback.
+//   OpenRouter's list is read as soon as it is chosen: its prices are what an OpenRouter key pays (#1465).
 // No model list is written into Flux: the models are only ever the provider's own (founder direction, Hubert, 2026-11-12), and
-// Flux's price table only prices one.
-// A price comes from Flux's dated table when it has the model; otherwise the owner enters it (PROV-3). A price the provider lists
-// is only offered as the starting value of the owner's price. The key exists only in its password field and the request.
-
-/** USD per 1M tokens for an input field, from micro-dollars. */
-const usd = (micros: number) => String(micros / 1_000_000);
+// Flux's price list only prices one.
+// A price comes from the price list of the place the key pays, which the server refreshes every day and sends with the model list
+// (#1465: LiteLLM's for Anthropic, OpenAI and Gemini, OpenRouter's own); when no list prices the model, the owner enters it (PROV-3),
+// for every provider alike. The key exists only in its password field and the request.
 
 const perMillion = (micros: number) => `$${(micros / 1_000_000).toFixed(micros % 10_000 === 0 ? 2 : 4)}`;
 /** "$4", "$0.50": a short price for a dropdown option. */
@@ -28,14 +27,17 @@ const short = (micros: number) => {
   return `$${Number.isInteger(value) ? value : value >= 0.01 ? value.toFixed(2) : value.toFixed(4)}`;
 };
 
-/** "12 Nov 2026" from the price table's ISO day. */
+/** "12 Nov 2026" from the price list's ISO day. */
 export const checkedDay = (isoDay: string) => {
   const day = new Date(`${isoDay}T12:00:00Z`);
   return Number.isNaN(day.getTime()) ? isoDay : day.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
 };
 
-export function priceSourceText(price: AiPrice) {
-  return price.source === 'table' ? (price.checkedOn ? `Flux’s price list, checked ${checkedDay(price.checkedOn)}` : 'Flux’s price list') : 'Entered by you';
+/** "Flux’s price list of 13 Nov 2026", or "OpenRouter’s prices of 13 Nov 2026" for a key that pays OpenRouter (#1465). */
+export function priceSourceText(price: AiPrice, provider?: AiProviderKind) {
+  if (price.source === 'owner') return 'Entered by you';
+  const list = provider === 'openrouter' ? 'OpenRouter’s prices' : 'Flux’s price list';
+  return price.checkedOn ? `${list} of ${checkedDay(price.checkedOn)}` : list;
 }
 
 export const priceText = (price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'>) =>
@@ -58,9 +60,9 @@ const listFailure = (provider: AiProviderKind, status: Exclude<AiModelList['stat
 };
 
 /** The model's name in the dropdown, with its price or that Flux doesn't know it. */
-function optionText(provider: AiProviderKind, model: AiListedModel) {
+function optionText(prices: AiProviderPriceList | null, model: AiListedModel) {
   const name = model.name ?? assistantModelName(model.id);
-  const row = tablePrice(provider, model.id);
+  const row = listPrice(prices, model.id);
   return row ? `${name} · ${short(row.inputMicrosPerMTok)} / ${short(row.outputMicrosPerMTok)}` : `${name} · price unknown, enter it`;
 }
 
@@ -81,6 +83,9 @@ export function ConnectionFields({ disabled, onKeyRefused, keyHelpId }: {
   const [provider, setProvider] = useState<AiProviderKind | ''>('');
   const [model, setModel] = useState('');
   const [other, setOther] = useState(false);
+  // The model id as typed now, for a list that arrives while the owner types one (OpenRouter's is read as soon as it is chosen).
+  const typed = useRef(model);
+  useEffect(() => { typed.current = model; }, [model]);
   const [baseUrl, setBaseUrl] = useState('');
   const [listing, setListing] = useState<Listing>({ state: 'idle' });
   // The key last listed, so leaving the field again without a change asks nothing; only in memory, like the field itself.
@@ -92,8 +97,9 @@ export function ConnectionFields({ disabled, onKeyRefused, keyHelpId }: {
   const listed = list?.status === 'listed' ? list.models : null;
   const refused = list?.status === 'key_refused';
   useEffect(() => { onKeyRefused(refused); }, [refused, onKeyRefused]);
-  const listedPrice = listed?.find((entry) => entry.id === model)?.price ?? null;
-  const table = provider && model ? tablePrice(provider, model) : null;
+  // Flux's prices of the provider come with its model list, read or not (#1465).
+  const prices = list?.priceList ?? null;
+  const known = provider && model ? listPrice(prices, model) : null;
   // A dropdown once the provider listed models; the plain field before a key is typed (OpenRouter, an endpoint), when the list
   // couldn't be read, and for "Other model id…".
   const dropdown = !!listed && listed.length > 0;
@@ -102,6 +108,8 @@ export function ConnectionFields({ disabled, onKeyRefused, keyHelpId }: {
 
   function choose(next: AiProviderKind | '') {
     setProvider(next); setListing({ state: 'idle' }); setOther(false); listedKey.current = ''; setModel('');
+    // OpenRouter's models and prices are public: read as soon as it is chosen, so a model OpenRouter prices asks nothing (#1465).
+    if (next === 'openrouter') void read({}, next);
   }
 
   /**
@@ -118,19 +126,22 @@ export function ConnectionFields({ disabled, onKeyRefused, keyHelpId }: {
     }
   }
 
-  async function read(query: { apiKey?: string }) {
-    if (!provider) return;
+  async function read(query: { apiKey?: string }, kind: AiProviderKind | '' = provider) {
+    if (!kind) return;
     const ask = ++asked.current;
     setListing({ state: 'reading' });
     try {
-      const result = await readList(provider, query, ask);
+      const result = await readList(kind, query, ask);
       if (!result || ask !== asked.current) return;
       setListing({ state: 'done', list: result });
       if (result.status === 'listed' && result.models.length) {
         // Nothing is preselected among several: the models are the provider's own, and the owner picks one (#1218). A list of one has
-        // nothing to pick between (the journey review, #1424), so that model is already chosen.
-        setModel((current) => (result.models.some((entry) => entry.id === current) ? current : result.models.length === 1 ? result.models[0]!.id : ''));
-        setOther(false);
+        // nothing to pick between (the journey review, #1424), so that model is already chosen. An id typed into the plain field
+        // while a keyless list was read, and not in it, stays as "Other model id…" instead of being wiped (#1465).
+        const current = typed.current;
+        const kept = !query.apiKey && current.trim() !== '' && !result.models.some((entry) => entry.id === current);
+        if (!kept) setModel(result.models.some((entry) => entry.id === current) ? current : result.models.length === 1 ? result.models[0]!.id : '');
+        setOther(kept);
       }
     } catch {
       if (ask === asked.current) setListing({ state: 'failed' });
@@ -177,7 +188,7 @@ export function ConnectionFields({ disabled, onKeyRefused, keyHelpId }: {
           onChange={(next) => { if (next === OTHER) { setOther(true); setModel(''); } else { setOther(false); setModel(next); } }}>
           {groupModelsByFamily(listed!).map((group) => (
             <OptionGroup key={group.family} label={group.family}>
-              {group.models.map((entry) => <Option key={entry.id} value={entry.id}>{optionText(provider as AiProviderKind, entry)}</Option>)}
+              {group.models.map((entry) => <Option key={entry.id} value={entry.id}>{optionText(prices, entry)}</Option>)}
             </OptionGroup>
           ))}
           <Option value={OTHER}>Other model id…</Option>
@@ -197,16 +208,15 @@ export function ConnectionFields({ disabled, onKeyRefused, keyHelpId }: {
         : null}
       <p className="background-settings__help" role="status">{status || (provider && !keyed && !dropdown ? 'Type the model id exactly as the provider names it.' : '')}</p>
     </div>
-    {provider && model && !waitingForKey ? table
-      ? <p className="background-settings__help" data-testid="connection-price">Price: {priceText(table)} · Flux price table, checked {table.checkedOn}.</p>
-      // Remounted per model, so a listed price becomes the starting value of the owner's price.
+    {provider && model && !waitingForKey ? known
+      ? <p className="background-settings__help" data-testid="connection-price">Price: {priceText(known)} · {priceSourceText(known, provider as AiProviderKind)}.</p>
+      // Remounted per model, so a price typed for one model is not kept for another.
       : <fieldset key={`${provider}:${model}`} className="background-settings__price" disabled={disabled}>
         <legend>Price per 1M tokens (USD)</legend>
         <p className="background-settings__help">Flux doesn’t know this model’s price yet. Enter it to use it with a daily budget: from your provider’s pricing, or 0 for a self-hosted server you pay for otherwise. Flux prices each request at it before sending, so your daily budget holds.</p>
-        {listedPrice ? <p className="background-settings__help" data-testid="listed-price">{info!.label} lists {priceText(listedPrice)} (read {list!.checkedOn}); it is filled in below for you to confirm.</p> : null}
         <div className="background-settings__limits">
-          <label>Input price<input name="inputPrice" type="number" min="0" max="1000" step="any" inputMode="decimal" aria-required="true" defaultValue={listedPrice ? usd(listedPrice.inputMicrosPerMTok) : undefined} /></label>
-          <label>Output price<input name="outputPrice" type="number" min="0" max="1000" step="any" inputMode="decimal" aria-required="true" defaultValue={listedPrice ? usd(listedPrice.outputMicrosPerMTok) : undefined} /></label>
+          <label>Input price<input name="inputPrice" type="number" min="0" max="1000" step="any" inputMode="decimal" aria-required="true" /></label>
+          <label>Output price<input name="outputPrice" type="number" min="0" max="1000" step="any" inputMode="decimal" aria-required="true" /></label>
         </div>
       </fieldset> : null}
   </>;

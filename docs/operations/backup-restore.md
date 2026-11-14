@@ -63,6 +63,8 @@ the host except `sh`, `tar` and a SHA-256 tool. The rest of this page is the ref
    | `files.tar.gz` | The files volume (uploaded files; the API's own health probe files are transient). |
    | `flux.env` | A copy of `docker/.env`: the database password, signing secret and VAPID keys that sessions and push subscriptions depend on. |
 
+   **Not in the archive: the AI key file** (`FLUX_BACKGROUND_KEY_HOST_FILE`), the 32 random bytes that seal people's AI keys. It stays out of the database backup on purpose, so a leaked archive does not open the keys it holds. `./flux backup` ends with one line naming the file and where it lives. Copy it to the same safe place as the archive; on a new machine, put it at the path the restored `docker/.env` names. Without it people connect their AI keys again.
+
 3. **Manifest** (`formatVersion` 1). One key per line, so the launcher reads it without a JSON
    tool:
 
@@ -212,6 +214,15 @@ worker starts, it compares the restored bindings with what the runtime holds: a 
 gone shows the owner *Sign in again*, and a directory that has no binding in the restored database is
 signed out (best effort) and deleted.
 A disk-level or host snapshot is different: it does capture that volume and its logins.
+
+### HTTPS certificates and calls
+
+With the [built-in HTTPS](reverse-proxy.md#built-in-https), the `proxy-data` volume holds Caddy's
+certificates, its ACME account key and its own CA. **`./flux backup` does not include it**: a restore on
+the same server keeps the volume, and on a new server Caddy gets new certificates by itself once the
+DNS name points there (a home-lab name gets a new internal CA, whose root the devices then trust again).
+[Calls](calls.md) keep no data; the archive's `flux.env` holds their key and secret, and the next
+`./flux up` looks up the media address of the new server.
 
 ### Encrypted spaces that say their keys were changed
 

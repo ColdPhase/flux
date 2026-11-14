@@ -1,5 +1,5 @@
 import { forwardRef, useImperativeHandle, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
-import { AI_PROVIDERS, API_KEY_DAILY_BUDGET_CENTS, isAiProviderKind, tablePrice, type AiProviderKind, type BackgroundComputeConnection,
+import { AI_PROVIDERS, API_KEY_DAILY_BUDGET_CENTS, isAiProviderKind, type AiProviderKind, type BackgroundComputeConnection,
   type ConnectBackgroundComputeCommand } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { Button, Input } from '../ui';
@@ -86,9 +86,10 @@ export const AddKeyForm = forwardRef<AddKeyFormHandle, {
     const model = String(data.get('model') ?? '').trim();
     // Never saved on a model nobody chose: Enter in the key field, or Connect while the models are still being read, stops here.
     if (!model) { setError(MODEL_PROBLEM(chosen)); return; }
-    // Never saved on a model that can't be used: the daily budget prices every request, so a model Flux's table doesn't know needs the
-    // owner's price here, in the same step (PROV-3, #1424); 0 is a price (a server you pay for otherwise).
-    if (!tablePrice(chosen, model) && input === null) { setError(PRICE_PROBLEM); focusError.current = true; return; }
+    // Never saved on a model that can't be used: the daily budget prices every request, so a model no price list knows needs the
+    // owner's price here, in the same step (PROV-3, #1424, #1465); 0 is a price (a server you pay for otherwise). The form asks for the
+    // price (its price fields are there) exactly when the list it read does not price the model.
+    if (form.elements.namedItem('inputPrice') && input === null) { setError(PRICE_PROBLEM); focusError.current = true; return; }
     const command: ConnectBackgroundComputeCommand = {
       ...(name ? { name } : {}),
       provider: chosen, model,

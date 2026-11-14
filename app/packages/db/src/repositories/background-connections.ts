@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
-import type { AiModelList, AiPrice, BackgroundComputeConnection } from '@flux/contracts';
+import { currentConnectionPrice, type AiModelList, type AiPrice, type AiPriceLists, type BackgroundComputeConnection } from '@flux/contracts';
+import { storedPriceLists } from './ai-price-list.js';
 import * as schema from '../schema.js';
 import type { createDatabase } from '../index.js';
 import { apiKeySpendToday } from './api-key-spend.js';
@@ -12,19 +13,23 @@ const settings = schema.assistantSettings;
 type Database = Pick<ReturnType<typeof createDatabase>['db'], 'select' | 'update' | 'insert' | 'transaction' | 'execute'>;
 type ConnectionRow = typeof c.$inferSelect;
 
-/** The stored price, or null when the connection has none (it cannot be enabled, PROV-3). */
-export function connectionPrice(row: Pick<ConnectionRow, 'inputPriceMicrosPerMTok' | 'outputPriceMicrosPerMTok' | 'priceSource' | 'priceCheckedOn'>): AiPrice | null {
-  if (row.priceSource === null || row.inputPriceMicrosPerMTok === null || row.outputPriceMicrosPerMTok === null) return null;
-  return { inputMicrosPerMTok: row.inputPriceMicrosPerMTok, outputMicrosPerMTok: row.outputPriceMicrosPerMTok,
-    source: row.priceSource, checkedOn: row.priceCheckedOn };
+/**
+ * The price the connection runs at now, or null when it has none (it cannot be enabled, PROV-3): Flux's price list today when it knows
+ * the key's model (#1465), else the stored price.
+ */
+export function connectionPrice(row: Pick<ConnectionRow, 'provider' | 'model' | 'inputPriceMicrosPerMTok' | 'outputPriceMicrosPerMTok' | 'priceSource' | 'priceCheckedOn'>,
+  lists: AiPriceLists): AiPrice | null {
+  const stored: AiPrice | null = row.priceSource === null || row.inputPriceMicrosPerMTok === null || row.outputPriceMicrosPerMTok === null ? null
+    : { inputMicrosPerMTok: row.inputPriceMicrosPerMTok, outputMicrosPerMTok: row.outputPriceMicrosPerMTok, source: row.priceSource, checkedOn: row.priceCheckedOn };
+  return currentConnectionPrice(stored, row.model, lists[row.provider]);
 }
 
-async function metadata(db: Pick<Database, 'execute'>, row: ConnectionRow): Promise<BackgroundComputeConnection> {
+async function metadata(db: Pick<Database, 'execute'>, row: ConnectionRow, lists: AiPriceLists): Promise<BackgroundComputeConnection> {
   const spend = await apiKeySpendToday(db, row.id);
   return {
     id: row.id, ownerUserId: row.ownerUserId, name: row.name,
     provider: row.provider, model: row.model, baseUrl: row.baseUrl,
-    price: connectionPrice(row),
+    price: connectionPrice(row, lists),
     keyLastFour: row.keyLastFour, keyFingerprint: row.keyFingerprint,
     dailyBudgetCents: row.dailyBudgetCents, timeZone: row.timeZone,
     today: { spentMicros: spend?.chargedMicros ?? 0, resetsAt: (spend?.resetsAt ?? new Date()).toISOString() },
@@ -75,14 +80,15 @@ export function backgroundConnectionRepository(db: Database) {
           ...(input.modelList ? listingColumns(input.modelList, new Date(), null) : {}),
         }).returning();
         if (input.check) await tx.insert(schema.apiKeyChecks).values({ id: randomUUID(), connectionId: input.id, model: input.check.model, callsTools: true, chargedMicros: input.check.chargedMicros });
-        return metadata(tx, row!);
+        return metadata(tx, row!, await storedPriceLists(tx));
       });
     },
     /** A guest of the company sees none of their keys and changes none: they are kept, hidden and refused until they are a member again (AG-2, C-50). */
     async list(ownerUserId: string): Promise<BackgroundComputeConnection[]> {
       const rows = await db.select().from(c).where(and(eq(c.ownerUserId, ownerUserId), isNull(c.revokedAt), sql`NOT ${companyGuestSql(sql`${ownerUserId}`)}`))
         .orderBy(desc(c.createdAt), desc(c.id));
-      return Promise.all(rows.map((row) => metadata(db, row)));
+      const lists = rows.length ? await storedPriceLists(db) : {};
+      return Promise.all(rows.map((row) => metadata(db, row, lists)));
     },
     /**
      * `guard` gets the models the owner's agents run on this key, read under the owner's assistant lock (the one a model change
@@ -105,7 +111,7 @@ export function backgroundConnectionRepository(db: Database) {
         }
         const [row] = await tx.update(c).set({ ...(change.name !== undefined ? { name: change.name } : {}),
           ...(change.dailyBudgetCents !== undefined ? { dailyBudgetCents: change.dailyBudgetCents } : {}) }).where(eq(c.id, connectionId)).returning();
-        return metadata(tx, row!);
+        return metadata(tx, row!, await storedPriceLists(tx));
       });
     },
     /**
@@ -128,7 +134,7 @@ export function backgroundConnectionRepository(db: Database) {
       return row ? { checkedAt: row.checkedAt } : null;
     },
     /**
-     * The owner's price for one of the key's models that Flux's table does not price (PROV-3, #1218), or null to remove it. Returns
+     * The owner's price for one of the key's models that Flux's price list does not price (PROV-3, #1218, #1465), or null to remove it. Returns
      * false when the key is not the owner's.
      */
     async setModelPrice(ownerUserId: string, connectionId: string, model: string, price: { inputMicrosPerMTok: number; outputMicrosPerMTok: number } | null): Promise<boolean> {

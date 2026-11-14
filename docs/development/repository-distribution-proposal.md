@@ -10,7 +10,7 @@ this decision is not itself a release or permission to move active branches.
 [`docker/.env.example`](../../docker/.env.example) with the release marker
 `ghcr.io/coldphase/flux@sha256:RELEASE_DIGEST` on `api`, `worker` and `migrate`, checked by
 `tests/test_operator_compose.py` and `scripts/check_operator_compose.sh`
-([install guide](../operations/install-release.md)). The `app/` move, the source/dev/test
+([install guide](../operations/install.md)). The `app/` move, the source/dev/test
 Compose files under `docker/`, the launcher switch to `docker/.env` and the single env
 template are implemented together in the remaining #76 slice. The historical prototype stays at
 the repository root; application/configuration paths now follow the accepted map below.

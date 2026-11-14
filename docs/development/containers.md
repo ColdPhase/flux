@@ -15,15 +15,18 @@ API and a separate worker with named `pgdata` and `files` volumes. The
 [application foundation guide](application-foundation.md) has the clean-start,
 validation and backup/restore commands and what the application includes today.
 
-`docker/compose.yaml` and `docker/.env.example` are the **operator** files for a published
-release (#76 phase 1): pull-only, with `api`, `worker` and `migrate` on the one marker image
-`ghcr.io/coldphase/flux@sha256:RELEASE_DIGEST` that the release workflow (#77) replaces with
-the accepted digest, and the same pinned PostgreSQL, runtime variables, volumes, health checks
-and migration ordering as the production-mode services here. They are not used by `./flux` or
-the checks below; see [install from a release](../operations/install-release.md).
-`./scripts/check_operator_compose.sh` runs them against the locally built source image
-(port `FLUX_OPERATOR_TEST_PORT`, default `18951`) and `tests/test_operator_compose.py`
-checks them statically. The #75 layout is implemented with the application workspace
+**Two kinds of folder, one launcher** (#1471, founder decision 5). An owner installs a release: its `flux.tar.gz` holds
+`./flux` and `docker/compose.yaml` with the optional overlays, and `docker/release.env` names the release's images by digest,
+so `./flux up` pulls them and builds nothing ([installation](../operations/install.md)). A source checkout, this repository,
+is the Flux developers' path: without `docker/release.env`, the same `./flux` builds `docker/compose.source.yaml` (with the
+test switches the checks need), and `./flux dev` runs the hot-reload stack. `docker/compose.yaml` and
+`docker/compose.runtime.yaml` are pull-only and take every Flux image from `FLUX_RELEASE_IMAGE`, `FLUX_RELEASE_DATABASE_IMAGE`
+and `FLUX_RELEASE_RUNTIME_IMAGE`, which the launcher exports from `docker/release.env`; `scripts/release/prepare_assets.py`
+packages them ([release pipeline](release-pipeline.md)). `./scripts/check_operator_compose.sh` runs `docker/compose.yaml`
+against the locally built source images (port `FLUX_OPERATOR_TEST_PORT`, default `18951`),
+`tests/test_operator_compose.py` checks it statically, and `tests/test_launcher_release.py` checks the launcher in a release
+folder. To try the owner's path from a checkout, package it with `prepare_assets.py --registry <a local registry>` and run
+`scripts/release/smoke_launcher.sh` on the result. The #75 layout is implemented with the application workspace
 under `app/` and source/dev/test/live Docker inputs under `docker/` (#76).
 `./flux` and the source checks use `docker/compose.source.yaml`; the operator file
 remains pull-only.
@@ -319,11 +322,11 @@ choice activates it. Placeholder icons are regenerated with
 | --- | --- | --- |
 | `FLUX_VAPID_PUBLIC_KEY` | API, worker | Base64url P-256 public key given to browsers as `applicationServerKey`. Empty on the API means `GET /api/v1/push/public-key` and `POST /api/v1/push/subscriptions` answer `503 PUSH_UNAVAILABLE`. |
 | `FLUX_VAPID_PRIVATE_KEY` | worker only | Signs the VAPID JWT. Keep it secret; it never reaches the API container. |
-| `FLUX_VAPID_SUBJECT` | worker only | Operator contact for push services, `mailto:` or `https:`. Use a contact Apple can reach, such as `mailto:` at your own domain or your public https origin. Apple's push service refuses `localhost`, `.local`, `.test` and similar contacts with 403, so iPhone and iPad notifications fail. The worker warns at startup (#20). `./flux` writes `mailto:admin@localhost.localdomain`; replace it before you serve phones over HTTPS. |
+| `FLUX_VAPID_SUBJECT` | worker only | Optional contact for push services, `mailto:` or `https:`. Empty, it is `FLUX_PUBLIC_ORIGIN` when that is https (#1471); `./flux` writes nothing. Set it only for a `mailto:` at your own domain. Apple's push service refuses `localhost`, `.local`, `.test` and similar contacts with 403, so iPhone and iPad notifications fail. The worker warns at startup (#20) and, on a 403 `BadJwtToken`, says the contact was refused and what to set. Without an https origin the worker uses the placeholder `mailto:admin@localhost.localdomain` (desktop push works; Apple refuses it); a `.env` of v0.2.0 that holds it counts as empty. |
 | `FLUX_PUSH_ALLOW_PRIVATE_NETWORK` | worker | `false` by default: the worker refuses push endpoints that resolve to private, loopback or link-local addresses at connect time. Only the test override sets `true` for its local push mock. |
 
-The worker requires all three VAPID values together, checks that the public key
-matches the private key and stops at startup otherwise. Generate a key pair once
+The worker requires both VAPID keys together (the contact is optional), checks that the
+public key matches the private key and stops at startup otherwise. Generate a key pair once
 per deployment with the pinned `web-push` CLI in the built image and copy both
 values into `docker/.env`:
 
@@ -411,7 +414,7 @@ checks ordinary saved behavior instead, including the explicit-off first-render 
 Existing-doc Wiki editing is shared in the normal lane; creating a new page and restoring a
 historical version keep their private editor. Saving shared text creates an immutable version.
 For opt-out recovery, save working copies before planned disable; if disabled while dirty,
-re-enable and save before ordinary writes can proceed (see [installation](../operations/install-release.md#upgrade-backup-and-restore)).
+re-enable and save before ordinary writes can proceed (see [backup and restore](../operations/backup-restore.md)).
 
 The configured test command runs one application test file at a time
 (`--test-concurrency=1`), never more than four. The controlled comparison scheduling
@@ -436,7 +439,7 @@ image) is served by the API on the same origin. Its design tokens and components
 described in [the app shell record](../design/app-shell/README.md).
 `python3 scripts/check_contrast.py` checks token contrast without Docker.
 
-`./scripts/check_ui.sh` builds the image (which runs build, typecheck and lint), starts the
+`./scripts/check_ui.sh` builds the image (the build only; the type check and the lint run in the Dockerfile's `verify` stage, which `check_application.sh` and the Application validation build, #1471), starts the
 stack in its own Compose project on `127.0.0.1:${FLUX_UI_PORT:-18591}` with Mailpit, and runs
 `app/tests/ui` (copied into the image, `unittest discover`; pass module names such as
 `./scripts/check_ui.sh test_docs test_people`, or `Module.Class.test_name`, to run only those) in a Playwright 1.65 container (`docker/ui-tests.Dockerfile`, image pinned by

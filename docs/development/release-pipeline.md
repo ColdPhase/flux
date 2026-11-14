@@ -4,41 +4,34 @@ The [distribution decision](repository-distribution-proposal.md) requires an
 explicit final build and publication after the complete application is accepted.
 Both workflows below run only by an explicit `workflow_dispatch`, refuse any ref but
 `main`, and default to read-only permissions; they are dormant during ordinary PR and `main`
-pushes. Operators
-install the result with the release's `INSTALL.md`
-([source](../operations/release-guide.md)); the repository-side overview is
-[Install Flux from a release](../operations/install-release.md).
+pushes. Owners install the result one way ([installation](../operations/install.md); #1471, founder decision 5): download
+`flux.tar.gz` and `SHA256SUMS`, check, unpack, `./flux up`.
 
 ## Release assets
 
-`scripts/release/prepare_assets.py` renders these files from the repository and the
-accepted digest, deterministically and without timestamps:
+`scripts/release/prepare_assets.py` packages these files from the candidate's tree and the accepted digests,
+deterministically (sorted archive members, owner root, fixed modes, the candidate commit's time):
 
-| Asset | Source |
+| Asset | Content |
 | --- | --- |
-| `compose.yaml` | [`docker/compose.yaml`](../../docker/compose.yaml) with the marker `ghcr.io/coldphase/flux@sha256:RELEASE_DIGEST` replaced by the accepted digest on `api`, `worker`, `keyring` and `migrate`. Only the leading repository-oriented header comment is replaced by a release header; every other line is unchanged. |
-| `compose.runtime.yaml` | [`docker/compose.runtime.yaml`](../../docker/compose.runtime.yaml): the optional agent-runtime overlay (#358). `ghcr.io/coldphase/flux@sha256:RELEASE_DIGEST` is replaced on `runtime-manager` and `runtime-egress`, `ghcr.io/coldphase/flux-agent-runtime@sha256:RUNTIME_DIGEST` on the slot anchor and `runtime-install`; the leading header comment is replaced. Off unless the operator opts in. |
-| `runtime.sh` | [`docker/runtime.sh`](../../docker/runtime.sh), unchanged: `on`, `off`, `up`, `status`, `release`, `purge`. |
-| `compose.live.yaml`, `compose.live.turn.yaml` | [`docker/compose.live.yaml`](../../docker/compose.live.yaml) and [`docker/compose.live.turn.yaml`](../../docker/compose.live.turn.yaml): the optional calls and screen-sharing overlays (#63). Only the leading header comment is replaced; the third-party LiveKit image is already pinned by digest in the repository file and recorded as `live_media_image` in `release.json`. `prepare_assets.py` refuses a build, an image not pinned by digest, a Flux image, a socket or a source path. Flux builds no image for them. |
-| `env.example` | [`docker/.env.example`](../../docker/.env.example), unchanged. GitHub stores a Release asset whose name begins with a period under another name (`.env.example` becomes `default.env.example`) and `actions/upload-artifact` skips hidden files, so the template is published without the period. |
-| `INSTALL.md` | [`docs/operations/release-guide.md`](../operations/release-guide.md). It must stay self-contained (no repository-relative links). |
-| `release.json` | Version, source SHA, the images (`ghcr.io/coldphase/flux@sha256:…`, `ghcr.io/coldphase/flux-agent-runtime@sha256:…`, `ghcr.io/coldphase/flux-database@sha256:…`), their platforms (the dispatch input `platforms`, `linux/amd64` by default), the pinned Codex tag, that Claude Code is not included, and the LiveKit image (`live_media_image`). |
+| `flux.tar.gz` | The owner's install folder `flux/`: the [`flux`](../../flux) launcher, [`docker/compose.yaml`](../../docker/compose.yaml) and [`docker/compose.runtime.yaml`](../../docker/compose.runtime.yaml) (pull-only; every Flux image comes from the variables below), the optional overlays the launcher layers (`docker/compose.https.yaml` with `docker/caddy/Caddyfile`, `docker/compose.live.yaml`, `docker/compose.embeddings.yaml`; third-party images pinned by digest), `docker/.env.example`, `docker/env-changes.txt`, the two empty secret placeholders, `scripts/flux-demo.mjs`, `LICENSE`, and **`docker/release.env`**: `FLUX_RELEASE_VERSION`, `FLUX_RELEASE_COMMIT`, `FLUX_RELEASE_SCHEMA` (the highest migration) and `FLUX_RELEASE_IMAGE`, `FLUX_RELEASE_DATABASE_IMAGE`, `FLUX_RELEASE_RUNTIME_IMAGE`, each `ghcr.io/coldphase/…@sha256:…`. The launcher exports the three images for Compose and pulls only the ones the host lacks. Every file but `docker/release.env` ships byte for byte. |
+| `release.json` | The same version, source SHA, schema and images, the archive's SHA-256, the platforms (the dispatch input `platforms`, `linux/amd64` by default), the pinned Codex tag, that Claude Code is not included, and the overlays' third-party images (`https_image`, `live_media_image`, `embeddings_image`). |
 | `sbom.spdx.json`, `THIRD_PARTY_NOTICES.json` | SPDX SBOM generated from the pushed application image digest and the dependency notice inventory derived from it. |
 | `sbom-agent-runtime.spdx.json`, `THIRD_PARTY_NOTICES.agent-runtime.json` | The same for the agent-runtime image; the notices add the pinned official Codex (Apache-2.0, tag read from `docker/Dockerfile`) when the scanner does not list the vendor binary. |
+| `sbom-database.spdx.json`, `THIRD_PARTY_NOTICES.database.json` | The same for the database image. |
 | `LICENSE`, `SHA256SUMS` | The repository license and the checksums of every other asset. |
+| `SHA256SUMS.sigstore.json` | The `sign` job's keyless cosign signature of `SHA256SUMS` (not listed in it). `./flux upgrade` always verifies it (host cosign, else the pinned cosign image; [signatures](../operations/upgrade.md#signatures)). |
 
-`tests/test_release_assets.py` packages the real operator files and fails when the
-packaged `compose.yaml` differs from the tested one in anything but comments and the
-digest, when an asset name would not survive GitHub, or when `INSTALL.md` stops matching
-the assets and variables. The application image is built from `docker/Dockerfile` (target `runtime`)
-with `app/` as the context, the same inputs as the source Compose and the PR check. The agent-runtime
-image is built from the same file and context with target `agent-runtime-release` (the slot supervisor,
-node-pty, the checksum-pinned official Codex and gpg for `runtime-install`; never Claude Code). Both
-are pushed by digest, untagged, attested, with SBOMs. `scripts/release/verify_assets.py` checks an asset
-directory (exact asset set, checksums, both digests in every file that pins them, platforms, the
-LiveKit digest in `compose.live.yaml`, no marker, build, floating tag, socket or Flux image in the
-live overlays); the workflow runs it on the prepared assets and the draft, and
-the publication workflow on the draft and again on the public downloads.
+`tests/test_release_assets.py` packages the real files and checks the archive (its members, modes, `docker/release.env`,
+byte-for-byte copies, reproducibility) and each refusal; `tests/test_launcher_release.py` runs the real launcher in an unpacked
+archive. The application image is built from `docker/Dockerfile` (target `runtime`) with `app/` as the context, the same inputs
+as the source Compose and the PR check. The agent-runtime image is built from the same file and context with target
+`agent-runtime-release` (the slot supervisor, node-pty, the checksum-pinned official Codex, the toolbox and gpg for
+`runtime-install`; never Claude Code). All are pushed by digest, untagged, attested, with SBOMs.
+`scripts/release/verify_assets.py` checks an asset directory (exact asset set, checksums, the archive's members, its
+`docker/release.env` against `release.json`, pull-only Compose files, the overlays' pinned images, no fixture token); the
+workflow runs it on the prepared assets and the draft, and the publication workflow on the draft and again on the public
+downloads.
 
 ## Flow
 
@@ -60,13 +53,14 @@ the publication workflow on the draft and again on the public downloads.
    v0.1 ships amd64 only, v0.1.1 dispatches `linux/amd64,linux/arm64` and QEMU is set up only then)
    and pushes only by digest, with BuildKit provenance and SBOM
    attestations and an `actions/attest` build provenance attestation for the index. It writes
-   the assets above. The packaged image must then install, create account/workspace data and
-   restore a paired PostgreSQL/files backup in fresh Compose volumes
-   (`scripts/release/smoke_artifacts.sh`), and the packaged agent runtime must start, stay inside its
-   limits and networks and purge cleanly (`scripts/release/smoke_runtime.sh`; the overlay is compared with
-   the source stack by `scripts/release/compare_runtime_overlay.py`), and the live-media overlays must resolve on the
-   packaged `compose.yaml` (`scripts/release/check_live_overlay.sh`) before the workflow creates a **draft** GitHub
-   Release. The same job upgrades from the previous release's own assets (`smoke_artifacts.sh` leg 2, with a failing migration restored from its
+   the assets above. The owner's path must then pass on the pushed images (`scripts/release/smoke_launcher.sh`: the
+   download check, `./flux up`, backup, restore, `./flux upgrade` and its refusal of a damaged archive); the packaged Compose
+   files must install, create account/workspace data and restore a paired PostgreSQL/files backup in fresh Compose volumes
+   (`scripts/release/smoke_artifacts.sh`), the packaged agent runtime must start through `./flux`, stay inside its
+   limits and networks and purge cleanly (`scripts/release/smoke_runtime.sh`; the runtime file is compared with
+   the source stack by `scripts/release/compare_runtime_overlay.py`), and the HTTPS, calls and embeddings overlays must resolve on the
+   packaged `compose.yaml` (`scripts/release/check_overlays.sh`) before the workflow creates a **draft** GitHub
+   Release. The `sign` job signs the three digests and `SHA256SUMS`. The same job upgrades from the previous release's own assets (`smoke_artifacts.sh` leg 2, with a failing migration restored from its
    backup), and the `upgrade` job (`scripts/check_upgrade_matrix.sh`) upgrades from every earlier release from v0.2.0 on, by release installation and by
    source checkout; neither the signing nor the draft happens when one fails, and the draft's notes say which versions it upgrades from
    ([#1241](https://github.com/ColdPhase/flux/issues/1241), [upgrade compatibility](upgrade-compatibility.md)). The draft job checks the asset set against `SHA256SUMS` first. The `scan` job (#835) scans both pushed
@@ -76,8 +70,8 @@ the publication workflow on the draft and again on the public downloads.
    artifact, and the draft notes link the run.
 3. Independently review that draft and its exact digest. Test downloaded assets
    on every published platform (`linux/amd64` for v0.1), a real forward upgrade from the previous
-   supported version, backup/restore, the `gh attestation verify` command of
-   `INSTALL.md` and user-facing behavior. The packaged install, upgrade and both backup/restore
+   supported version, backup/restore, the signature check of
+   [upgrade](../operations/upgrade.md#signatures) and user-facing behavior. The packaged install, upgrade and both backup/restore
    paths are one command per platform: download the previous release's assets and the draft's assets
    into two directories and run
    `FLUX_SMOKE_PREVIOUS_ASSETS=<previous assets> bash scripts/release/smoke_artifacts.sh <draft assets> <state dir> <project> <restore project>`
@@ -113,15 +107,15 @@ one platform (amd64), does not cover a bound slot's sign-out and reuse (they nee
 (#779) plus migration 0002 (#806), and v0.2 does not upgrade it (v0.1 had no users, #1176), so `FLUX_DRYRUN_PREVIOUS`
 must name a revision that has migration 0003, the first of v0.2. From v0.2 on, publish a candidate `-rc.N` first and upgrade from it. Arm64 QEMU build and manifest inspection are not a native arm64 install test. Those
 results remain open until the independent artifact review records them. The source
-workspace and test stack continue using their own Compose path; the attached
-`compose.yaml` is the pull-only operator path.
+workspace and test stack continue using their own Compose path; `flux.tar.gz`'s
+`docker/compose.yaml`, run by its `./flux`, is the pull-only owner path.
 
 ## The upgrade leg
 
 `scripts/release/smoke_artifacts.sh` runs the clean-install leg always. With
 `FLUX_SMOKE_PREVIOUS_ASSETS=<directory>` (the downloaded assets of the previous release: `compose.yaml`,
 `env.example`, `release.json` and `SHA256SUMS` are required; the previous release must pin another image
-and the same PostgreSQL digest, or the script stops before pulling anything) it adds `INSTALL.md`'s upgrade,
+and the same PostgreSQL digest, or the script stops before pulling anything) it adds the upgrade,
 followed literally, with throwaway credentials and the same ports as the first leg:
 
 1. Install the previous release from its own assets and create content through its public API
@@ -138,7 +132,7 @@ followed literally, with throwaway credentials and the same ports as the first l
    item reads back (explicit fields and the exact attachment bytes) and the instance accepts a new message.
    The downtime from stopping the writers to a healthy candidate is printed.
 5. Back up the upgraded installation and restore it into fresh volumes with the candidate's files.
-6. Recovery path of `INSTALL.md`: restore the **pre-upgrade** backup into fresh volumes with the **previous**
+6. Recovery path: restore the **pre-upgrade** backup into fresh volumes with the **previous**
    release's files, check it, then upgrade that restored installation to the candidate and check it again.
 
 `scripts/release/dry_run.sh` runs it against locally built images. `FLUX_DRYRUN_PREVIOUS=<git revision>`
@@ -153,7 +147,7 @@ FLUX_DRYRUN_PORT=25800 FLUX_DRYRUN_PROJECT=fluxdry FLUX_DRYRUN_PREVIOUS=<revisio
 The leg is not wired into `final-release.yml`: the first release has no predecessor, and which published
 release is "previous" is a decision for the reviewer, who runs the command above on each platform. The
 leg proves the documented upgrade for one pair of releases; it does not cover a PostgreSQL major
-change (`INSTALL.md`: restore into a fresh installation instead), the optional agent runtime, a TLS
+change (restore into a fresh installation instead), the optional agent runtime, a TLS
 proxy, or content created through the browser.
 
 ## Local multi-platform dry run
@@ -226,7 +220,7 @@ this repository, and no release workflow has been dispatched.
   vendor CLIs and the Claude Code installation (`runtime-install` reaching `downloads.claude.ai`) are
   independent-review items on the downloaded draft (#358 AC-3).
 - **Packaged installation on amd64 (arm64 from v0.1.1), and a forward upgrade**, by the independent
-  evaluator from the downloaded draft assets, following `INSTALL.md` literally; the upgrade leg of
+  evaluator from the downloaded draft assets, following `docs/operations/install.md` literally; the upgrade leg of
   `smoke_artifacts.sh` is the checked command ([above](#the-upgrade-leg)). A local run of it on arm64
   and amd64 with locally built images is not this evidence: it is not the published digest.
 - **Public downloads and the documented installation path** after publication, recorded in #77.

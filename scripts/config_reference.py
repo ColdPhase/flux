@@ -46,8 +46,9 @@ COMPOSE = {
     "docker/compose.live.yaml": "live-media overlay",
     "docker/compose.live.turn.yaml": "TURN overlay",
     "docker/compose.embeddings.yaml": "embeddings overlay",
+    "docker/compose.https.yaml": "HTTPS overlay",
 }
-OTHER_DEPLOY = ["docker/Dockerfile", "docker/runtime.sh", "docker/.env.example", "flux"]
+OTHER_DEPLOY = ["docker/Dockerfile", "docker/.env.example", "flux"]
 CODE_ROOTS = ["app/apps", "app/packages"]
 CODE_SUFFIXES = {".ts", ".tsx", ".js", ".mjs", ".cjs"}
 NAME = re.compile(r"\bFLUX_[A-Z0-9_]+")
@@ -71,7 +72,7 @@ class Var:
 
 
 # The settings most operators change, shown first on the page.
-COMMON = ["FLUX_PUBLIC_ORIGIN", "FLUX_SIGNUP", "FLUX_SMTP_URL", "FLUX_MAIL_FROM", "FLUX_TRUSTED_PROXIES",
+COMMON = ["FLUX_PUBLIC_ORIGIN", "FLUX_SETUP_TOKEN", "FLUX_SMTP_URL", "FLUX_MAIL_FROM", "FLUX_TRUSTED_PROXIES",
           "FLUX_VAPID_SUBJECT", "FLUX_API_MEMORY", "FLUX_WORKER_MEMORY"]
 
 GROUPS = [
@@ -82,36 +83,32 @@ GROUPS = [
     ("sso", "Single sign-on (OpenID Connect)",
      "Optional, one provider. The [single sign-on guide](single-sign-on.md) walks through it."),
     ("email", "Email", "Optional. Without it password reset reports unavailable; the in-app Inbox and push keep working."),
-    ("push", "Web Push", "Optional, all three or none. See [phones, tablets and push](mobile-and-push.md)."),
+    ("push", "Web Push", "Optional: both keys or neither; the contact is optional. See [phones, tablets and push](mobile-and-push.md)."),
     ("collaboration", "Collaboration, link cards and the live stream", ""),
     ("files", "Files and video",
      "Every file is at most 5 MiB, except a video, which has its own limit. See [requirements](requirements.md) for the disk."),
     ("media", "Live media: LiveKit and TURN",
-     "Only with the optional overlays `compose.live.yaml` and `compose.live.turn.yaml`, layered on the release "
-     "`compose.yaml` (both ship with every release; the repository copies are in `docker/`) or on the source Compose "
-     "file. Set them in `.env`; [INSTALL.md](release-guide.md#calls-and-screen-sharing-optional) has the ports and firewall."),
+     "Calls and screen sharing. `FLUX_CALLS=on` is all: `./flux` layers `compose.live.yaml` and writes the "
+     "key, the secret and the public address itself ([calls](calls.md)). The values below are its own."),
     ("ai", "AI providers",
      "People connect their own AI in **Settings → AI** (Connect AI). These switches decide what the instance allows: "
      "agents that run on an API key, and agents that search and read the web. A Claude or ChatGPT plan needs the agent runtime below instead. "
      "Both Compose files pass the switches to `api` and `worker`; agents on API keys also need the "
-     "key file `FLUX_BACKGROUND_KEY_HOST_FILE`, which the release `compose.yaml` does not mount (see below). On a source checkout "
-     "AI works right after install (founder decision, 2026-11-13, #1438): while both are empty, `./flux up` makes the key file and "
-     "sets `FLUX_PERSONAL_RUNS=on`, and people connect AI in the app; `off` stays off."),
+     "key file `FLUX_BACKGROUND_KEY_HOST_FILE` (see below). AI works right after install (founder decision, 2026-11-13, #1438): while "
+     "both are empty, `./flux up` makes the key file and sets `FLUX_PERSONAL_RUNS=on`, and people connect AI in the app; `off` stays off."),
     ("embeddings", "Local embeddings (optional)",
      "Off by default (F-042). Search ranks by BM25 alone; with the overlay `compose.embeddings.yaml` it also ranks by meaning. "
      "See [requirements](requirements.md#local-embeddings-optional) for the memory it needs."),
     ("runtime", "Agent runtime: the owner's own Claude Code or Codex",
      "Off by default. See the [agent runtime guide](agent-runtime.md); `./flux ai on` writes these for you."),
     ("encryption", "Encrypted spaces and the keyring",
-     "See [operating encrypted spaces](encrypted-spaces.md). `./flux up` generates the secrets. A release install has "
-     "no `./flux`: set `FLUX_KEYRING_TOKEN` and `FLUX_KEY_PIN_SECRET` by hand, `openssl rand -hex 32` each "
-     "([release install](release-guide.md#clean-installation), step 1)."),
+     "See [operating encrypted spaces](encrypted-spaces.md). `./flux up` generates the secrets."),
     ("limits", "Memory limits",
      "Memory and swap are limited to the same value, so these containers cannot write memory to a swap device."),
     ("github", "GitHub App (optional)",
      "A read-only GitHub App links pull requests to tasks. Set all six secrets together, or none."),
     ("launcher", "Source checkout, launcher and checks",
-     "Read by `./flux`, the hot-reload `dev` profile, the release `runtime.sh` or the check scripts, not by the application."),
+     "Read by `./flux`, the hot-reload `dev` profile or the check scripts, not by the application."),
 ]
 
 VARIABLES: dict[str, Var] = {
@@ -130,8 +127,10 @@ VARIABLES: dict[str, Var] = {
         "https://flux.example.org"),
     "FLUX_TRUSTED_PROXIES": Var("instance", "list of IPs or CIDRs",
         "Comma-separated reverse-proxy addresses whose `X-Forwarded-For` is believed. Empty trusts none, and the socket "
-        "peer is the client address. Measure the proxy's address as in the [reverse proxy guide](reverse-proxy.md#trust-only-the-measured-proxy-peer); "
-        "never `0.0.0.0/0`.", "172.27.0.1/32"),
+        "peer is the client address. It also chooses the HTTPS front: with an `https` origin and this empty, `./flux up` "
+        "runs the bundled Caddy (automatic certificates, ports 80 and 443) and the API trusts exactly Caddy's address; set it only for a "
+        "proxy of your own, which then owns 80 and 443 ([reverse proxy guide](reverse-proxy.md#your-own-proxy-instead)). Never `0.0.0.0/0`.",
+        "172.27.0.1/32"),
     # --- database
     "POSTGRES_USER": Var("database", "name", "PostgreSQL user, also part of the database URL of every Flux service.", "flux"),
     "POSTGRES_PASSWORD": Var("database", "secret",
@@ -145,14 +144,14 @@ VARIABLES: dict[str, Var] = {
     "FLUX_AUTH_SECRET": Var("identity", "secret, ≥ 32 characters",
         "Signs session cookies, invite-link tokens and cursors. Changing it signs everyone out and voids pending invite "
         "links.", secret=True),
-    "FLUX_SIGNUP": Var("identity", "`open` · `verified` · `off`",
-        "Who may create a password account. `open`: anyone who reaches Flux. `verified`: anyone who can confirm an "
-        "address by mail; it proves a mailbox, not membership of your team (needs email; without it sign-up is closed). "
-        "`off`: nobody, including you, so create your own account first. A provider in `sso` mode closes password "
-        "sign-up whatever this says, and an invite link never opens closed sign-up. See "
-        "[who can sign up](install.md#5-decide-who-can-sign-up).", "off"),
+    "FLUX_SETUP_TOKEN": Var("identity", "secret, 32–256 letters, digits, `-` or `_`",
+        "The setup link's token: the first account, the company's owner, is made only from `<origin>/setup#<token>`, "
+        "and every other account from an invite link or single sign-on. `./flux up` writes a random one and prints the "
+        "link while no company exists. Empty: no first account can be made. Once the company exists it does nothing. See "
+        "[install](install.md).", secret=True),
     "FLUX_PASSWORD_RESET_TTL_SECONDS": Var("identity", "integer, 60–86400 s",
-        "Lifetime of a password reset link. Links are single use and stored hashed.", "3600"),
+        "Lifetime of a password reset link, mailed or made in Settings › Company or by `./flux reset-link`. Links are single "
+        "use, stored hashed, and stop when a newer one is made for the same account.", "3600"),
     "FLUX_SESSION_IDLE": Var("identity", "number and unit: `30m`, `12h`, `7d` (5m–365d)",
         "How long a signed-in session lasts without use. Using it renews it. Empty is `7d`, or `FLUX_SESSION_MAX_AGE` if that is shorter. Set, it must not be longer than `FLUX_SESSION_MAX_AGE`.", "empty (7d)"),
     "FLUX_SESSION_MAX_AGE": Var("identity", "number and unit: `30m`, `12h`, `7d` (5m–365d)",
@@ -170,9 +169,7 @@ VARIABLES: dict[str, Var] = {
     "FLUX_OIDC_CLIENT_ID": Var("sso", "string", "Client id registered at the provider.", "flux"),
     "FLUX_OIDC_CLIENT_SECRET_HOST_FILE": Var("sso", "absolute host path",
         "File on the host holding the client secret, mounted read-only into the API at "
-        "`/run/secrets/flux_oidc_client_secret`. The source Compose file mounts it; with the release `compose.yaml`, "
-        "mount the file at that path from a Compose file of your own, passed after `compose.yaml` with `-f` "
-        "([how](single-sign-on.md#set-it-up)).", "/etc/flux/oidc-client-secret"),
+        "`/run/secrets/flux_oidc_client_secret` ([how](single-sign-on.md#set-it-up)).", "/etc/flux/oidc-client-secret"),
     "FLUX_OIDC_LABEL": Var("sso", "text, ≤ 60 characters", "Name on the sign-in button. Empty shows “single sign-on”.", "Example ID"),
     "FLUX_SSO_MODE": Var("sso", "`sso` · `prepare`",
         "`prepare` keeps password sign-in while existing accounts link their provider identity; `sso` is the cutover, "
@@ -193,11 +190,13 @@ VARIABLES: dict[str, Var] = {
     # --- push
     "FLUX_VAPID_PUBLIC_KEY": Var("push", "base64url P-256 key",
         "Public VAPID key; the API gives it to browsers. Generate the pair once (`web-push generate-vapid-keys`, "
-        "see [push](mobile-and-push.md)); `./flux up` does it for a source checkout."),
+        "see [push](mobile-and-push.md)); `./flux up` does it."),
     "FLUX_VAPID_PRIVATE_KEY": Var("push", "secret",
         "Private VAPID key; only the worker receives it. Changing the pair makes every device subscribe again.", secret=True),
     "FLUX_VAPID_SUBJECT": Var("push", "`mailto:` or `https:` URL",
-        "Operator contact sent to the push services. Use a real, reachable address.", "mailto:ops@example.org"),
+        "Optional contact sent to the push services. Empty, it is `FLUX_PUBLIC_ORIGIN` when that is `https:` (Apple's push service "
+        "accepts it). Set it only to give a `mailto:` address at your own domain; a contact Apple cannot reach (`localhost`, `.local`, "
+        "`.test`) makes iPhone and iPad notifications fail with 403.", "mailto:ops@example.org"),
     # --- collaboration
     "FLUX_LIVE_EDITING": Var("collaboration", "`on` · `off`",
         "Shared live editing of maps and Wiki pages. `off` keeps the ordinary saved views and editors; save shared "
@@ -227,10 +226,15 @@ VARIABLES: dict[str, Var] = {
     "FLUX_STREAM_HEARTBEAT_MS": Var("collaboration", "integer, ≥ 100 ms",
         "Ping, session recheck and polling interval of the live WebSocket stream. Keep it below your proxy's idle timeout.", "25000"),
     # --- media
-    "FLUX_LIVEKIT_API_KEY": Var("media", "string", "LiveKit API key, shared by the API and the SFU. Rotate with the secret.", "livekit-key-1"),
-    "FLUX_LIVEKIT_API_SECRET": Var("media", "secret", "LiveKit API secret.", secret=True),
-    "FLUX_LIVEKIT_PUBLIC_IP": Var("media", "IP address", "Public media address advertised to browsers in ICE candidates.", "203.0.113.20"),
-    "FLUX_LIVEKIT_DOMAIN": Var("media", "DNS name", "Operator-owned media name used for STUN and TURN/UDP.", "media.example.org"),
+    "FLUX_CALLS": Var("media", "`on` · `off`",
+        "`on` makes `./flux` layer `docker/compose.live.yaml` (the LiveKit media server) on every command, write `FLUX_LIVEKIT_API_KEY` and "
+        "`FLUX_LIVEKIT_API_SECRET` once, use the origin's host as `FLUX_LIVEKIT_DOMAIN` and keep `FLUX_LIVEKIT_PUBLIC_IP` at the IPv4 address "
+        "that host resolves to. `./flux up` prints the address and the ports to open. `off` removes the media server at the next `./flux up`, "
+        "and the app offers no calls.", "on"),
+    "FLUX_LIVEKIT_API_KEY": Var("media", "string", "LiveKit API key, shared by the API and the SFU. Rotate with the secret. `./flux` writes it when `FLUX_CALLS=on`.", "livekit-key-1"),
+    "FLUX_LIVEKIT_API_SECRET": Var("media", "secret", "LiveKit API secret. `./flux` writes it when `FLUX_CALLS=on`.", secret=True),
+    "FLUX_LIVEKIT_PUBLIC_IP": Var("media", "IP address", "Public media address advertised to browsers in ICE candidates. With `FLUX_CALLS=on`, `./flux up` sets it to the address the origin's host resolves to.", "203.0.113.20"),
+    "FLUX_LIVEKIT_DOMAIN": Var("media", "DNS name", "Operator-owned media name used for STUN and TURN/UDP. With `FLUX_CALLS=on`, `./flux` uses the origin's host and ignores this line.", "media.example.org"),
     "FLUX_LIVEKIT_MEDIA_CIDR": Var("media", "CIDR",
         "The SFU's media interface when the host has several; the default keeps every IPv4 interface.", "203.0.113.20/32"),
     "FLUX_LIVEKIT_ICE_TCP_PORT": Var("media", "port", "Host port of ICE over TCP."),
@@ -245,10 +249,8 @@ VARIABLES: dict[str, Var] = {
     # --- ai
     "FLUX_BACKGROUND_KEY_HOST_FILE": Var("ai", "absolute host path",
         "File with 32 random bytes that seals owners' AI keys for work the worker does on their behalf. Keep it outside "
-        "the checkout and the database backup. Empty leaves agents on API keys unavailable. The "
-        "source Compose file mounts it into `api` and `worker` at `/run/secrets/flux_background_key`; with the release "
-        "`compose.yaml`, mount the file at that path in both services from a Compose file of your own "
-        "([how](release-guide.md#agents-on-your-own-ai-key-optional)). While this and `FLUX_PERSONAL_RUNS` are both empty, "
+        "the Flux folder and the database backup. Empty leaves agents on API keys unavailable. `./flux` "
+        "mounts it into `api` and `worker` at `/run/secrets/flux_background_key`. While this and `FLUX_PERSONAL_RUNS` are both empty, "
         "`./flux up` writes 32 random bytes to `${XDG_STATE_HOME:-~/.local/state}/flux/<project>/background.key` and records the "
         "path here: the directory is `0700`; the file is `0400` when the containers' user 1000 runs `./flux`, given to user 1000 "
         "when root does, and otherwise `0444` inside that private directory (another host user, a rootless engine). It never "
@@ -274,15 +276,15 @@ VARIABLES: dict[str, Var] = {
     "FLUX_AGENT_RUNTIME_IDLE_DAYS": Var("runtime", "integer, 1–365 days",
         "Release a person's place in the runtime after this many days without a run. Empty is off.", "30"),
     "FLUX_RUNTIME_MANAGER_SECRET": Var("runtime", "secret, ≥ 32 characters",
-        "Authenticates the API and worker to the runtime manager. Generated by `./flux` or `runtime.sh`.", secret=True),
+        "Authenticates the API and worker to the runtime manager. Generated by `./flux`.", secret=True),
     "FLUX_RUNTIME_SECRET_1": Var("runtime", "secret", "The runtime's own secret, shared only with the manager.", secret=True),
     "FLUX_RUNTIME_MAX_RUNS": Var("runtime", "integer, 1–9999",
         "How many agents run at once. Empty works it out from the runtime's memory, about 2 on a 4 GB server; the others wait with "
         "\"Waiting for room on the server\" ([what each agent needs](agent-runtime.md#what-each-agent-needs)).", "4"),
     "FLUX_RUNTIME_MEMORY": Var("runtime", "Compose memory size",
-        "Memory of all the agents together. Empty: `./flux` and `runtime.sh` take the server's memory less 1.25 GiB; plain Compose takes `2560m`.", "6g"),
+        "Memory of all the agents together. Empty: `./flux` takes the server's memory less 1.25 GiB.", "6g"),
     "FLUX_RUNTIME_CPUS": Var("runtime", "number of CPUs",
-        "CPUs of all the agents together. Empty: `./flux` and `runtime.sh` take all the server's CPUs but one; plain Compose takes `1`.", "3"),
+        "CPUs of all the agents together. Empty: `./flux` takes all the server's CPUs but one.", "3"),
     "FLUX_AGENT_RUNTIME_RECONCILE_MS": Var("runtime", "integer, 500–600000 ms",
         "How often the worker reconciles people's places with the runtime manager.", override=True, services="worker", default="`10000`"),
     # --- encryption
@@ -293,7 +295,7 @@ VARIABLES: dict[str, Var] = {
         "every encrypted space locked.", secret=True),
     "FLUX_KEY_PIN_SECRET": Var("encryption", "secret, ≥ 32 characters",
         "Pins every unlock password and key version, so rows planted in the database are refused. Never change it; back "
-        "it up with the settings file (`docker/.env`, or `.env` of a release install), not with the database.", secret=True),
+        "it up with the settings file (`docker/.env`), not with the database.", secret=True),
     "FLUX_SWAP_ACKNOWLEDGED": Var("encryption", "empty · `encrypted-swap`",
         "Declares that every swap device is encrypted with a key not stored on disk. Only then may keys be held where "
         "swap is on and not limited per container.", "encrypted-swap"),
@@ -311,7 +313,7 @@ VARIABLES: dict[str, Var] = {
         "a 2.3 GB model downloaded on its first start). The worker embeds every searchable row of a space whose AI is on, and search fuses the nearest vectors "
         "with BM25. Encrypted spaces and spaces with AI off are never embedded; nothing is embedded through a person's own AI connection. `off` removes the "
         "container at the next `./flux up` (the downloaded model stays in the `embeddings` volume until `./flux clean`), and the next worker start deletes "
-        "every vector. A release install passes the overlay file with `-f` instead.", "off"),
+        "every vector.", "off"),
     "FLUX_EMBEDDINGS_MEMORY": Var("embeddings", "Compose memory size",
         "Memory of the `embeddings` container, memory and swap alike. bge-m3 with 2,048 batch tokens idled at 3.15 GiB and peaked at 3.9 GiB (#1242); "
         "a limit of 4 GiB killed it while it warmed up.", "6g"),
@@ -341,10 +343,8 @@ VARIABLES: dict[str, Var] = {
     "FLUX_BACKUP_DIR": Var("launcher", "path", "Where `./flux backup` writes archives.", "/mnt/backup/flux",
         default="`backups/` in the checkout"),
     "FLUX_NO_CACHE": Var("launcher", "`1`", "`1` builds the image without the Docker build cache (`./flux up`, `./flux upgrade`).", "1"),
-    "FLUX_WAIT_TIMEOUT": Var("launcher", "seconds", "How long `./flux` and `runtime.sh` wait for services to become healthy.", "600"),
+    "FLUX_WAIT_TIMEOUT": Var("launcher", "seconds", "How long `./flux` waits for services to become healthy.", "600"),
     "FLUX_COWORK_WATCHDOG_SECONDS": Var("launcher", "seconds", "Stops a native `./flux cowork` run after this long.", "600"),
-    "FLUX_ENV_FILE": Var("launcher", "path", "Settings file the release `runtime.sh` reads.", "/srv/flux/.env",
-        default="`.env` beside `runtime.sh`"),
     "FLUX_DEV_PORT": Var("launcher", "port", "`./flux dev` only: port of the Vite dev server; the dev origin is `http://127.0.0.1:<port>`. Does nothing on a server."),
     "FLUX_DEV_POLL": Var("launcher", "`true` · `false`", "`./flux dev` only: watch files by polling, for file systems without change events.", "true"),
     "FLUX_MAILPIT_PORT": Var("launcher", "port", "`./flux dev` and checks: port of the local mail catcher's web page. Does nothing on a server."),
@@ -364,6 +364,17 @@ INTERNAL: dict[str, str] = {
     "FLUX_API_INTERNAL_URL": "How the worker reaches the API inside Compose; default `http://api:8080`.",
     "FLUX_EMBEDDINGS_URL": "Set by the embeddings overlay to `http://embeddings:8080` on `api` and `worker`; empty (every other stack) is off.",
     "FLUX_LIVEKIT_API_URL": "Set by the live-media overlay to `http://livekit:7880` on its internal network.",
+    "FLUX_HTTPS_PORT": "Set by `./flux` from `FLUX_PUBLIC_ORIGIN` (its port, 443 by default) for the bundled Caddy of the HTTPS overlay.",
+    "FLUX_HTTPS_HOST": "Set by `./flux` from `FLUX_PUBLIC_ORIGIN` (its host) for the bundled Caddy's `default_sni`.",
+    "FLUX_RELEASE_VERSION": "In a release's `docker/release.env` (#1471): the version. Written by the release workflow, read by `./flux`.",
+    "FLUX_RELEASE_COMMIT": "In a release's `docker/release.env`: the source commit the release was built from.",
+    "FLUX_RELEASE_SCHEMA": "In a release's `docker/release.env`: the highest migration of the release.",
+    "FLUX_RELEASE_IMAGE": "In a release's `docker/release.env`: the application image, pinned by digest; `./flux` exports it for `docker/compose.yaml`.",
+    "FLUX_RELEASE_DATABASE_IMAGE": "In a release's `docker/release.env`: the database image, pinned by digest.",
+    "FLUX_RELEASE_RUNTIME_IMAGE": "In a release's `docker/release.env`: the agent-runtime image, pinned by digest; pulled only while the runtime is on.",
+    "FLUX_RELEASE_URL": "Where `./flux upgrade` downloads releases (default `https://github.com/ColdPhase/flux/releases`): a mirror with the same layout, or a test server.",
+    "FLUX_TEST_COSIGN_KEY": "TEST ONLY: a public key file that `./flux upgrade` verifies a release's `SHA256SUMS` signature with instead of the release workflow's identity (`scripts/release/smoke_launcher.sh`).",
+    "FLUX_UPGRADE_PREVIOUS_FILES": "Set by `./flux upgrade` for the new launcher: the archive of the previous release's files, for the way back.",
     "FLUX_RUNTIME_MANAGER_URL": "How the API and worker reach the runtime manager; default `http://runtime-manager-control:7600`.",
     "FLUX_RUNTIME_MANAGER_LISTEN": "Listen address of the runtime manager.",
     "FLUX_RUNTIME_EGRESS_API": "Set by Compose: where the runtime egress proxy forwards `/mcp`.",
@@ -438,7 +449,6 @@ NOT_SETTINGS: dict[str, str] = {
     "FLUX_RUNTIME_PURGE": "output marker of the operations tool",
     "FLUX_RUNTIME_NOT_INSTALLED": "output marker of the runtime manager",
     "FLUX_GITHUB": "prefix in an error message",
-    "FLUX_VAPID": "prefix in a message",
 }
 
 # Non-FLUX names the services read. They are listed for completeness; the check confirms each still appears.
@@ -515,7 +525,7 @@ def compose_uses() -> dict[str, Use]:
 
 
 def launcher_defaults() -> dict[str, str]:
-    text = LAUNCHER.read_text(encoding="utf-8") + (ROOT / "docker/runtime.sh").read_text(encoding="utf-8")
+    text = LAUNCHER.read_text(encoding="utf-8")
     found = {}
     for match in REFERENCE.finditer(text):
         var, kind, value = match.groups()
@@ -594,14 +604,12 @@ def where_of(name: str, var: Var, uses: dict[str, Use], launcher: dict[str, str]
     files = found.get(name, set())
     if "flux" in files and (not use or name in launcher or name in LAUNCHER_READS):
         places.append("`./flux`")
-    if "docker/runtime.sh" in files and name in ("FLUX_ENV_FILE", "FLUX_WAIT_TIMEOUT"):
-        places.append("`runtime.sh`")
     where = ", ".join(places)
     return f"{services} ({where})" if services else where
 
 
-# Settings the launcher or the release runtime.sh reads from the shell environment or the settings file.
-LAUNCHER_READS = {"FLUX_ENV_FILE", "FLUX_PROJECT", "FLUX_PORT", "FLUX_BACKUP_DIR", "FLUX_NO_CACHE", "FLUX_WAIT_TIMEOUT",
+# Settings the launcher reads from the shell environment or the settings file.
+LAUNCHER_READS = {"FLUX_PROJECT", "FLUX_PORT", "FLUX_BACKUP_DIR", "FLUX_NO_CACHE", "FLUX_WAIT_TIMEOUT",
                   "FLUX_COWORK_WATCHDOG_SECONDS", "FLUX_DEV_PORT", "FLUX_MAILPIT_PORT", "FLUX_DEMO_OWNER_PASSWORD",
                   "FLUX_DEMO_PARTNER_PASSWORD", "FLUX_AGENT_RUNTIME"}
 
@@ -622,23 +630,20 @@ def render() -> str:
         "     application code. Do not edit by hand: change the code or the script's tables, then run",
         "     python3 scripts/config_reference.py. The repository check fails when this page drifts. -->",
         "",
-        "Flux is configured with environment variables in one private file: `docker/.env` in a source checkout",
-        "(`./flux up` creates it from [`docker/.env.example`](../../docker/.env.example) with new secrets) or `.env`",
-        "beside a release's `compose.yaml`. Compose reads the file and passes each value to the services that need it.",
-        "After a change, apply it with `./flux up` (source) or `docker compose --env-file .env -f compose.yaml up -d --wait`",
-        "(release). A variable exported in your shell overrides the file, so do not export Flux variables on a server.",
+        "Flux is configured with environment variables in one private file, `docker/.env` in the Flux folder",
+        "(`./flux up` creates it from [`docker/.env.example`](../../docker/.env.example) with new secrets).",
+        "Compose reads the file and passes each value to the services that need it. After a change, apply it with",
+        "`./flux up`. A variable exported in your shell overrides the file, so do not export Flux variables on a server.",
         "Keep the file private (`chmod 600`) and keep it with your backups: it holds the database password and the",
         "secrets that cannot change.",
         "",
         "Each variable lists its type, its default, the services that receive it and where it applies:",
-        "**release** is the release `compose.yaml`, **source** the source checkout's Compose file that `./flux` runs,",
+        "**release** is the `docker/compose.yaml` that `./flux` runs in a release, **source** the source checkout's",
+        "Compose file that `./flux` runs for developers,",
         "an **overlay** an optional extra Compose file, and `./flux` the launcher itself. **Override only** means the",
         "application reads it but no shipped Compose file passes it in:",
         "add it under the service's `environment:` in `docker/compose.override.yaml`, which `./flux` includes when it",
-        "exists. A release install has no such file: `docker compose -f compose.yaml` never reads an override on its",
-        "own, so put it in a Compose file of your own and name it after `compose.yaml` in every command",
-        "(`-f compose.yaml -f compose.local.yaml`). A wrong value stops the service at start with a message that names",
-        "the variable.",
+        "exists. A wrong value stops the service at start with a message that names the variable.",
         "",
     ]
     titles = {key: title for key, title, _intro in GROUPS}
@@ -672,7 +677,7 @@ def render() -> str:
         "",
         "## Launcher commands",
         "",
-        "`./flux help` in a source checkout prints this list; it is copied here from the launcher. The",
+        "`./flux help` prints this list; it is copied here from the launcher. The",
         "[operations overview](README.md) links each command to its guide.",
         "",
         "```text",

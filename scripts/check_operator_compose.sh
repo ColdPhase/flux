@@ -1,8 +1,9 @@
 #!/bin/sh
-# Exercises the operator Compose example (docker/compose.yaml, issue #76) without a published
-# image: builds the checked-out source image, puts it in place of the release marker in a
-# temporary copy, generates a .env from docker/.env.example, and starts the stack the way an
-# operator does (`--env-file .env -f compose.yaml up -d --wait`) on its own project and port.
+# Exercises the owner's Compose file (docker/compose.yaml, issue #76; #1471 decision 5) without a published
+# image: builds the checked-out source images, names them as a release's docker/release.env does
+# (FLUX_RELEASE_IMAGE, FLUX_RELEASE_DATABASE_IMAGE), generates a .env from docker/.env.example, and starts
+# the stack with plain Compose on its own project and port. scripts/release/smoke_launcher.sh runs the
+# same file through ./flux with a release's own images.
 # Removes the project, its volumes and the per-run image afterwards.
 set -eu
 
@@ -10,13 +11,11 @@ cd "$(dirname "$0")/.."
 project="flux-operator-$(date +%s)-$$"
 port="${FLUX_OPERATOR_TEST_PORT:-18951}"
 origin="http://127.0.0.1:${port}"
-marker='ghcr.io/coldphase/flux@sha256:RELEASE_DIGEST'
-database_marker='ghcr.io/coldphase/flux-database@sha256:DATABASE_DIGEST'
 image="flux-foundation:${project}"
 database_image="flux-database:${project}"
 work=$(mktemp -d)
 env_file="$work/.env"
-compose_file="$work/compose.yaml"
+compose_file="$PWD/docker/compose.yaml"
 compose="docker compose --env-file $env_file -p $project -f $compose_file"
 . scripts/test_images.sh
 
@@ -53,11 +52,9 @@ docker build -q -f docker/Dockerfile -t "$image" app >/dev/null ||
 docker build -q -t "$database_image" docker/database >/dev/null ||
   docker build -q -t "$database_image" docker/database >/dev/null
 
-count=$(grep -c "image: $marker\$" docker/compose.yaml) || true
-[ "$count" = 4 ] || fail "expected the release marker on 4 services (migrate, api, worker, keyring), found $count"
-[ "$(grep -c "image: $database_marker\$" docker/compose.yaml)" = 1 ] || fail "expected the database image marker on db"
-sed -e "s#$marker#$image#" -e "s#$database_marker#$database_image#" docker/compose.yaml > "$compose_file"
-! grep -v '^ *#' "$compose_file" | grep -q -E 'RELEASE_DIGEST|DATABASE_DIGEST' || fail "marker left in the temporary Compose file"
+# What ./flux exports from a release's docker/release.env.
+FLUX_RELEASE_IMAGE=$image FLUX_RELEASE_DATABASE_IMAGE=$database_image
+export FLUX_RELEASE_IMAGE FLUX_RELEASE_DATABASE_IMAGE
 
 umask 077
 cp docker/.env.example "$env_file"
@@ -68,6 +65,8 @@ set_env FLUX_PORT "$port"
 set_env FLUX_PUBLIC_ORIGIN "$origin"
 set_env POSTGRES_PASSWORD "$(random_hex)"
 set_env FLUX_AUTH_SECRET "$(random_hex)"
+setup_token=$(random_hex)
+set_env FLUX_SETUP_TOKEN "$setup_token"
 set_env FLUX_FIXTURE_TOKEN "$(random_hex)"
 $compose config --quiet
 [ "$($compose config --images | grep -c "^$image\$")" = 4 ] || fail "migrate, api, worker and keyring must use one image"
@@ -106,11 +105,16 @@ $compose logs --no-color migrate | grep -q "Flux schema $expected and pg-boss re
 [ "$($compose ps --status running --format '{{.Service}}' | sort | tr '\n' ' ')" = "api db keyring worker " ] ||
   fail "expected api, db, keyring and worker running"
 
-# A person signs up, which sets up the company (F-037), names it and reads it back; the web app is served.
+# A sign-up without a link makes no account (#1471); the owner's, from the setup link, sets up the company (F-037), names it and
+# reads it back; the web app is served.
 jar="$work/cookies"
 body="$work/body"
+code=$(curl -sS -o "$body" -w '%{http_code}' -H "Origin: $origin" -H 'Content-Type: application/json' \
+  -d "{\"email\":\"stranger-$$@example.test\",\"password\":\"$(random_hex)\",\"name\":\"Stranger\"}" \
+  "$origin/api/auth/sign-up/email")
+[ "$code" = 403 ] && grep -q SIGNUP_NEEDS_LINK "$body" || { cat "$body" >&2; fail "a sign-up without a link returned $code"; }
 code=$(curl -sS -o "$body" -w '%{http_code}' -c "$jar" -H "Origin: $origin" -H 'Content-Type: application/json' \
-  -d "{\"email\":\"operator-$$@example.test\",\"password\":\"$(random_hex)\",\"name\":\"Operator check\"}" \
+  -d "{\"email\":\"operator-$$@example.test\",\"password\":\"$(random_hex)\",\"name\":\"Operator check\",\"setupToken\":\"$setup_token\"}" \
   "$origin/api/auth/sign-up/email")
 [ "$code" = 200 ] || { cat "$body" >&2; fail "sign-up returned $code"; }
 curl -fsS -b "$jar" "$origin/api/v1/workspaces" > "$body"

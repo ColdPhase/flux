@@ -22,7 +22,7 @@ from test_app_shell import DESKTOP, ORIGIN, UPSTREAM, start_forwarder
 
 CAPABILITIES = "**/api/v1/auth/capabilities"
 BUTTON = "Sign in with Recovery provider"
-SSO_ONLY = {"passwordReset": "unavailable", "signup": "off", "ssoOnly": True, "sso": {"providerId": "oidc-recovery", "label": "Recovery provider", "reachable": True}}
+SSO_ONLY = {"passwordReset": "unavailable", "setup": False, "signup": "link", "ssoOnly": True, "sso": {"providerId": "oidc-recovery", "label": "Recovery provider", "reachable": True}}
 # Records, from the first byte of the document, whether anything that cannot work in SSO-only mode was ever attached.
 WATCH = """() => {
   window.__passwordForm = false;
@@ -114,12 +114,13 @@ class SignInWhileProviderIsDown(unittest.TestCase):
                 expect(page.get_by_label("Email")).to_be_visible()
                 expect(page.get_by_label("Password")).to_be_visible()
                 expect(page.get_by_role("link", name="Forgot password?")).to_be_visible()
-                expect(page.get_by_role("link", name="Create an account")).to_be_visible()
+                # #1471: without the capabilities the page cannot know it is a test deployment; accounts come from links.
+                expect(page.get_by_text("New here? Open the invite link you were sent.")).to_be_visible()
 
     def test_04_password_mode_is_the_page_it_was(self) -> None:
         context = self.context()
         context.route(CAPABILITIES, lambda route: route.fulfill(status=200, content_type="application/json",
-                                                                 body=json.dumps({"passwordReset": "available", "signup": "open", "ssoOnly": False, "sso": None})))
+                                                                 body=json.dumps({"passwordReset": "available", "setup": False, "signup": "open", "ssoOnly": False, "sso": None})))
         page = context.new_page()
         page.goto("/sign-in")
         expect(page.get_by_label("Password")).to_be_visible()

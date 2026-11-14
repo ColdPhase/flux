@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { beforeEach, describe, test } from 'node:test';
-import { tablePrice, WEB_SEARCH_MICROS } from '@flux/contracts';
-import { keySearchHoldMicros, KEY_SEARCH_LIMITS, searchWithKey, type KeySearchMeter, type PersonalConnection } from '@flux/core';
+import { listPrice, providerPriceList, WEB_SEARCH_MICROS } from '@flux/contracts';
+import { keySearchHoldMicros, KEY_SEARCH_LIMITS, searchWithKey, shippedPriceList, type KeySearchMeter, type PersonalConnection } from '@flux/core';
 import { parsePrivateTargets, providerPersonalCompute } from '../../packages/agent-runtime/src/index.js';
 
 // `flux_web_search` (#1441, RT-5) through the REAL provider adapters against the provider mock (security review of #1453, P2-1 and P2-2):
@@ -29,9 +29,10 @@ function meter() {
 }
 
 function connection(provider: 'anthropic' | 'openai', model: string): PersonalConnection {
-  const price = tablePrice(provider, model)!;
+  // The model at the price list this release ships (#1465).
+  const price = listPrice(providerPriceList(shippedPriceList(), provider), model)!;
   return { id: randomUUID(), ownerUserId: randomUUID(), status: 'active', keyRef: 'ref', name: 'Key', provider, model, baseUrl: null, dailyBudgetCents: 1_000,
-    timeZone: 'UTC', price: { inputMicrosPerMTok: price.inputMicrosPerMTok, outputMicrosPerMTok: price.outputMicrosPerMTok, source: 'table', checkedOn: price.checkedOn } };
+    timeZone: 'UTC', price };
 }
 
 describe('flux_web_search through the real adapters (#1441, security review of #1453)', () => {
