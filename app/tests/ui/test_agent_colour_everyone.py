@@ -92,7 +92,7 @@ class AgentColourForEveryone(unittest.TestCase):
         # Ada makes a task of Ben's message and gives it to Planner with its Owner field: Planner takes it, proposes a decision about Ben's task
         # with its Flux tool and reports (Ask me first is off, so it marks the task done).
         mock("/__script", {"reset": True, "text": REPORT, "tool": {"name": "flux_propose_decision", "input": {
-            "projectId": project, "clientCommandId": str(uuid.uuid4()), "sources": [], "decision": {"title": DECISION, "affects": [cls.ids["bens_task"]]}}}})
+            "projectId": project, "clientCommandId": str(uuid.uuid4()), "decision": {"title": DECISION, "affects": [cls.ids["bens_task"]]}}}})
         task = cls.call("ada", "POST", f"/api/v1/projects/{project}/work", {
             "title": TASK, "owner": {"kind": "human", "id": cls.ids["ada"]}, "sources": [{"type": "message", "id": cls.ids["reading"]}], "clientCommandId": str(uuid.uuid4())})
         cls.ids["task"] = task["id"]
