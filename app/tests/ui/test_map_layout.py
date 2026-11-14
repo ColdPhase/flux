@@ -172,6 +172,28 @@ class MapLayoutJourney(unittest.TestCase):
         self.assertEqual(len(stored['thoughts']), 3, 'layout changes never publish a private draft')
         shot(page, 'map-layout-private-draft-1440-light')
 
+    def test_03b_new_thoughts_land_in_free_space_in_view_clear_of_each_other_and_of_the_minimap(self):
+        """C-9: a thought with no parent lands where it can be seen, not in the map's corner under the toolbar or over another thought."""
+        page = self.page()
+        self.scene(page)
+        for index in range(3):
+            page.get_by_role('toolbar', name='Map tools').get_by_role('button', name='Thought', exact=True).click()
+            draft = page.get_by_role('form', name='New thought draft').get_by_label('Thought text')
+            draft.fill(f'Placed in free space number {index + 1}')
+            draft.press('Enter')
+            expect(page.locator('.sk-node')).to_have_count(3 + index)
+        boxes = [node.bounding_box() for node in page.locator('.sk-node').all()]
+        floating = [box for box in (page.locator(selector).first.bounding_box() for selector in ('.sk-minimap', '.sk-zoom')) if box]
+        meet = lambda a, b: a['x'] < b['x'] + b['width'] and b['x'] < a['x'] + a['width'] and a['y'] < b['y'] + b['height'] and b['y'] < a['y'] + a['height']  # noqa: E731
+        for at, box in enumerate(boxes):
+            for other in boxes[at + 1:]:
+                self.assertFalse(meet(box, other), 'no two thoughts overlap')
+            for over in floating:
+                self.assertFalse(meet(box, over), 'no thought sits under the minimap or the zoom')
+        for node in page.locator('.sk-node').all()[2:]:
+            expect(node).to_be_in_viewport(ratio=1)
+        shot(page, 'map-layout-new-thoughts-1440-light')
+
     def test_04_very_short_phone_keeps_full_hint_and_draft_reachable_by_scrolling(self):
         page = self.page(320, 430, has_touch=True, is_mobile=True, reduced_motion='reduce')
         self.scene(page)
