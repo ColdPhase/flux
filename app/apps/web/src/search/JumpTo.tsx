@@ -8,7 +8,7 @@ import { targetHref } from './api';
 import { SEARCH_HINT } from './hint';
 import { placeIdentity, placeOfPath, useRecentPlaces, type RecentPlace } from './recent';
 import { groupResults } from './groups';
-import { ResultBody } from './ResultRow';
+import { ResultBody, resultName } from './ResultRow';
 import { useSearch } from './useSearch';
 import { UnsearchedSpaces } from '../encryption/LockedSpace';
 import './search.css';
@@ -132,7 +132,7 @@ function SearchBody({ onClose, userId, phone }: { onClose: () => void; userId: s
         const head = option.section !== options[index - 1]?.section ? <li key={`h-${option.section}`} role="presentation" className="jump__sh">{option.section}</li> : null;
         return [head, (
           <li key={option.id} id={`${listId}-${index}`} role="option" aria-selected={index === current}
-            aria-label={option.kind === 'place' ? placeName(option) : undefined}
+            aria-label={option.kind === 'place' ? placeName(option) : option.kind === 'result' ? resultName(option.result) : undefined}
             className={`jump__opt${option.kind === 'result' ? ' sr' : ''}${index === current ? ' is-active' : ''}`}
             onMouseMove={() => { if (index !== current) setActive(index); }} onClick={() => choose(option)}>
             {option.kind === 'result' ? <ResultBody result={option.result} />

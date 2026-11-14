@@ -20,6 +20,7 @@ import unittest
 from playwright.sync_api import Browser, Page, expect, sync_playwright
 
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+from touch_targets import has_minimum_hit_area, hit_area
 
 
 UI_BROWSER = os.environ.get("FLUX_UI_BROWSER", "chromium")
@@ -97,6 +98,12 @@ class SignIn(_Browser):
                 submit = page.get_by_role("button", name="Sign in", exact=True)
                 if viewport == PHONE:
                     self.assertGreaterEqual(submit.bounding_box()["height"], 44)
+                    # "Forgot password?" is a 17 px line beside the label: on a phone its hit area is 44 px tall, and its text does not move.
+                    self.assertTrue(page.evaluate("matchMedia('(pointer: coarse)').matches"), "the phone's pointer is coarse")
+                    forgot = page.get_by_role("link", name="Forgot password?")
+                    area = hit_area(forgot)
+                    self.assertTrue(has_minimum_hit_area(area), f"Forgot password? offers a 44 px target on a phone: {area}")
+                    self.assertLess(area["box"][1], 24, f"the link keeps its own small line, only its hit area is larger: {area}")
                 shot(page, f"351-signin-{name}-{scheme}")
 
     def test_02_keyboard_order_and_errors(self) -> None:
