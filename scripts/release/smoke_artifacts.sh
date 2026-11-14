@@ -39,6 +39,12 @@
 # final-release.yml runs Leg 2 from the previous release in its `package` job and the matrix of every earlier release in its
 # `upgrade` job; the draft needs both. The agents' data is on a provider mock (provider-mock.compose.yaml, provider_mock.mjs), in Leg 2 and after only.
 #
+# Every agent on an API key runs in pi in the agent runtime from v0.2.1 on (#1441): the candidate of Leg 2 runs with the runtime overlay of its
+# own archive (docker/compose.runtime.yaml, the `runtime` profile, FLUX_AGENT_RUNTIME=pi, its own images by digest), and pi's model requests go
+# through the worker's model gateway to the provider mock, so the "new agent run" is the real path. A release before v0.2.1 ran its agents in the
+# worker and needs no runtime. The runtime's supervisor needs a host with kernel.yama.ptrace_scope >= 1 (docs/operations/agent-runtime.md): Leg 2
+# stops at its start and says so on a host without it.
+#
 # Ports default to 18081 (installation) and 18082 (restore); set FLUX_SMOKE_PORT and FLUX_SMOKE_RESTORE_PORT for
 # a machine where those are taken. Both legs use them one after the other. Runs on GNU/Linux and macOS (bash 3.2).
 set -euo pipefail
@@ -81,6 +87,7 @@ unpacked() {
   printf '%s/flux' "$state_dir/unpacked-$key"
 }
 compose_file() { if [ -f "$1/compose.yaml" ]; then printf '%s' "$1/compose.yaml"; else printf '%s' "$(unpacked "$1")/docker/compose.yaml"; fi; }
+runtime_file() { if [ -f "$1/compose.runtime.yaml" ]; then printf '%s' "$1/compose.runtime.yaml"; else printf '%s' "$(unpacked "$1")/docker/compose.runtime.yaml"; fi; }
 env_template() { if [ -f "$1/env.example" ]; then printf '%s' "$1/env.example"; else printf '%s' "$(unpacked "$1")/docker/.env.example"; fi; }
 db_image() {
   if [ -f "$1/compose.yaml" ]; then sed -n 's/^ *image: *\(\(postgres\|[^ ]*\/flux-database\)@sha256:[0-9a-f]*\).*/\1/p' "$1/compose.yaml"
@@ -106,6 +113,14 @@ if [ -n "$previous_assets" ]; then
   # not, which INSTALL.md answers with a restore into a fresh installation. The data directory is checked on the new image below.
   [ "$(db_image "$previous_assets")" = "$(db_image "$assets")" ] ||
     echo "the database image changes: $(db_image "$previous_assets") -> $(db_image "$assets") (the PostgreSQL major must stay; checked after the upgrade)"
+  # The candidate runs its agent runtime with pi (see the header), which needs the engine's kernel to have Yama ptrace_scope >= 1: read with the
+  # candidate's own image, as smoke_runtime.sh does, so that a host without it is told so here and not by a runtime that never gets ready.
+  scope=$(docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges \
+    --entrypoint cat "$candidate_image" /proc/sys/kernel/yama/ptrace_scope 2>/dev/null || true)
+  case "$scope" in
+    1|2|3) ;;
+    *) echo "smoke_artifacts: this engine's kernel has no Yama ptrace_scope of 1 or higher (got '${scope:-none}'); the candidate's agent runtime would refuse to start. Use a Linux host with kernel.yama.ptrace_scope=1." >&2; exit 3 ;;
+  esac
 fi
 
 # The agents' provider is a mock on the project's network (provider-mock.compose.yaml): the AI connection of the seeded data
@@ -118,15 +133,25 @@ inject_overlay="" # set while the candidate runs with the injected migration (Le
 # A project has the provider mock exactly when its environment file names the background key file (make_env ... agents): the default
 # install of Leg 1 has neither the settings nor the overlay.
 agents_on() { [ -f "$1" ] && grep -q '^FLUX_BACKGROUND_KEY_HOST_FILE=.' "$1"; }
+# The agent runtime's secrets of this run: its manager's and its one slot's (./flux makes them for an owner), passed in the environment of the
+# candidate's Compose commands only.
+runtime_manager_secret=$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')
+runtime_slot_secret=$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')
 dc() { # project, environment file, assets directory, then Compose arguments
-  local project=$1 env_file=$2 dir=$3 files env_files=()
+  local project=$1 env_file=$2 dir=$3 files env_files=() runtime_env=() profiles=()
   files=(-f "$(compose_file "$3")")
   # The images of a release archive come from its docker/release.env, as ./flux exports them; the environment file comes second.
   if [ ! -f "$3/compose.yaml" ]; then env_files=(--env-file "$(unpacked "$3")/docker/release.env"); fi
   shift 3
   if agents_on "$env_file"; then files+=(-f "$provider_overlay"); fi
   if [ -n "$inject_overlay" ] && [ "$dir" = "$assets" ]; then files+=(-f "$inject_overlay"); fi
-  docker compose ${env_files[@]+"${env_files[@]}"} --env-file "$env_file" -p "$project" "${files[@]}" "$@"
+  # The candidate with agents runs its agent runtime with pi, as `./flux up` does (FLUX_AGENT_RUNTIME=pi, the `runtime` profile, the
+  # archive's compose.runtime.yaml); the previous release, which ran its agents in the worker, is not given it.
+  if agents_on "$env_file" && [ "$dir" = "$assets" ]; then
+    files+=(-f "$(runtime_file "$dir")"); profiles=(--profile runtime)
+    runtime_env=("FLUX_AGENT_RUNTIME=pi" "FLUX_RUNTIME_MANAGER_SECRET=$runtime_manager_secret" "FLUX_RUNTIME_SECRET_1=$runtime_slot_secret")
+  fi
+  env ${runtime_env[@]+"${runtime_env[@]}"} docker compose ${env_files[@]+"${env_files[@]}"} --env-file "$env_file" -p "$project" ${profiles[@]+"${profiles[@]}"} "${files[@]}" "$@"
 }
 down() { # project, environment file (the candidate's compose file names the same services as the previous one)
   if [ -f "$2" ]; then dc "$1" "$2" "$assets" down -v --remove-orphans >/dev/null 2>&1 || true; fi
@@ -138,6 +163,7 @@ cleanup() {
       if [ -f "${pair#*|}" ]; then
         echo "-- logs of ${pair%%|*} (${pair#*|})" >&2
         dc "${pair%%|*}" "${pair#*|}" "$assets" logs --no-color --tail 30 db migrate api worker >&2 2>&1 || true
+        dc "${pair%%|*}" "${pair#*|}" "$assets" logs --no-color --tail 30 runtime-egress runtime-manager runtime-1 >&2 2>&1 || true
       fi
     done
   fi

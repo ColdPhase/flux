@@ -22,8 +22,11 @@ sys.path.insert(0, str(ROOT / "scripts" / "release"))
 from smoke_data import PROJECT_NAME, WORKSPACE_NAME, check, check_more, check_next_times, seed_vault  # noqa: E402
 
 POSTGRES = "postgres@sha256:" + "f" * 64
+# The engine's kernel check of the candidate's agent runtime (Yama ptrace_scope, read with `docker run ... cat`) is answered, as 1 unless the
+# test sets STUB_PTRACE_SCOPE; every other call fails.
 STUB = """#!/bin/sh
 echo "$*" >> "$STUB_LOG"
+case "$*" in *yama/ptrace_scope) echo "${STUB_PTRACE_SCOPE-1}"; exit 0 ;; esac
 exit 99
 """
 
@@ -305,12 +308,22 @@ class LegSettingsTest(StubbedDocker):
     def test_the_upgrade_leg_carries_the_agent_settings_and_the_provider_mock_overlay(self) -> None:
         result = self.run_with(FLUX_SMOKE_LEGS="upgrade")
         self.assertNotEqual(result.returncode, 0)  # the stub docker fails the first compose call
-        first = self.log.read_text().splitlines()[0]
+        first = next(call for call in self.log.read_text().splitlines() if call.startswith("compose "))
         self.assertIn("provider-mock.compose.yaml", first)
         env = (self.dir / "state" / "upgrade" / "source.env").read_text(encoding="utf-8")
         for line in ("FLUX_PERSONAL_RUNS=on", "FLUX_AI_PRIVATE_TARGETS=provider-mock"):
             self.assertIn(line, env.splitlines())
         self.assertRegex(env, r"(?m)^FLUX_BACKGROUND_KEY_HOST_FILE=/.+background\.key$")
+
+    def test_a_host_without_ptrace_scope_is_refused_before_any_compose_call(self) -> None:
+        """The candidate's agent runtime (pi, #1441) needs Yama ptrace_scope >= 1: the upgrade leg says so at once, not after a runtime that never gets ready."""
+        for scope in ("0", ""):
+            self.log.unlink(missing_ok=True)
+            result = self.run_with(FLUX_SMOKE_LEGS="upgrade", STUB_PTRACE_SCOPE=scope)
+            self.assertEqual(result.returncode, 3, result.stderr)
+            self.assertIn("no Yama ptrace_scope of 1 or higher", result.stderr)
+            self.assertFalse(any(call.startswith("compose ") for call in self.log.read_text().splitlines()))
+        self.assertFalse((self.dir / "state" / "upgrade").exists())
 
     def test_the_clean_default_install_has_no_agent_settings_and_no_overlay(self) -> None:
         """Leg 1 installs exactly as INSTALL.md says: the template filled in with its secrets and port, nothing else (P2 of #1262)."""

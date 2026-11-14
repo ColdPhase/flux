@@ -12,17 +12,20 @@
 #         and waits, notification settings, a second device, an AI connection with an API key, an agent with memory and schedules and a
 #         completed run, on a provider mock), backed up, and upgraded to the candidate by the release guide's steps. Then everything
 #         is read back, the second device's session still works, the encrypted space unlocks, a schedule's next times lie ahead and
-#         the instance accepts new work, including a new agent run on the mock. The upgraded instance and the pre-upgrade backup are
+#         the instance accepts new work, including a new agent run on the mock: the candidate runs it in pi in its agent runtime, the
+#         only place an agent on an API key runs from v0.2.1 on (#1441), through the worker's model gateway to the mock. The upgraded instance and the pre-upgrade backup are
 #         restored into fresh volumes (scripts/release/smoke_artifacts.sh, leg 2).
 #      b. SOURCE CHECKOUT: the release's source tree is started with ./flux up, seeded the same way, replaced by the candidate's tree,
-#         and moved with ./flux upgrade -y; everything is read back and written to again.
+#         and moved with ./flux upgrade -y (FLUX_AGENT_RUNTIME=pi, so the candidate's runtime starts); everything is read back and written to
+#         again, a new agent run included.
 #    Each release goes straight to the candidate, so every release but the newest also proves that versions can be skipped.
 # 3. A migration that breaks old data is added to the candidate: against the oldest release the upgrade must stop, API and worker must
 #    not start, and the paired backup taken with the old files must restore into fresh volumes and read back (smoke_artifacts.sh leg 3).
 #
-# The candidate is the working tree (committed or not), built into an image and pushed by digest to a throwaway registry on
-# 127.0.0.1 and rendered into release assets by prepare_assets.py, as dry_run.sh does, or the assets that FLUX_MATRIX_CANDIDATE_ASSETS
-# names (the release workflow's own `release-assets`, whose image is on ghcr.io).
+# The candidate is the working tree (committed or not), built into its application, database and agent-runtime images and pushed by digest to
+# a throwaway registry on 127.0.0.1 and rendered into release assets by prepare_assets.py, as dry_run.sh does, or the assets that
+# FLUX_MATRIX_CANDIDATE_ASSETS names (the release workflow's own `release-assets`, whose images are on ghcr.io). The agent runtime needs a
+# host with kernel.yama.ptrace_scope >= 1 (smoke_artifacts.sh says so when it is missing).
 #
 # Negative controls (each makes the check fail; run with FLUX_MATRIX_CONTROL=<name>, the run succeeds only when the check refuses):
 #   edited-migration   a released migration file is changed in a copy of the tree: check_released_migrations.py must refuse it.
@@ -73,7 +76,7 @@ cleanup() {
     docker network ls -q --filter "label=com.docker.compose.project=$project" | xargs -r docker network rm >/dev/null 2>&1 || true
   done
   docker rm -f "$registry" >/dev/null 2>&1 || true
-  docker image rm -f "127.0.0.1:$registry_port/flux:matrix" "127.0.0.1:$registry_port/flux-database:matrix" >/dev/null 2>&1 || true
+  docker image rm -f "127.0.0.1:$registry_port/flux:matrix" "127.0.0.1:$registry_port/flux-database:matrix" "127.0.0.1:$registry_port/flux-agent-runtime:matrix" >/dev/null 2>&1 || true
   rm -rf "$work"
   exit "$status"
 }
@@ -159,10 +162,19 @@ if [ -z "$candidate_assets" ]; then
   database_digest=$(curl -fsSI -H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json' \
     "http://127.0.0.1:$registry_port/v2/flux-database/manifests/matrix" | tr -d '\r' | sed -n 's/^[Dd]ocker-[Cc]ontent-[Dd]igest: *//p')
   [ -n "$database_digest" ] || fail "the registry did not report the database image's digest"
-  # The SBOMs and the agent-runtime image are not under test: the newest release's stand in, so that the asset set renders
+  # The candidate's agent-runtime image, built from this tree like the release builds it (target agent-runtime-release): every agent on an API
+  # key runs in pi in it (#1441), so the new agent run after each upgrade goes through the runtime of the candidate, not a release's.
+  ( cd "$work/candidate-src" && docker buildx build --platform "$platform" --target agent-runtime-release -f docker/Dockerfile \
+      --label "org.opencontainers.image.revision=$sha" --label "org.opencontainers.image.version=$candidate_version" \
+      -t "127.0.0.1:$registry_port/flux-agent-runtime:matrix" --load --progress plain app ) > "$work/build-runtime.log" 2>&1 \
+    || { tail -n 40 "$work/build-runtime.log"; fail "the candidate's agent-runtime image did not build"; }
+  docker push "127.0.0.1:$registry_port/flux-agent-runtime:matrix" > "$work/push-runtime.log" 2>&1 || { cat "$work/push-runtime.log"; fail "push of the agent-runtime image failed"; }
+  runtime_digest=$(curl -fsSI -H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json' \
+    "http://127.0.0.1:$registry_port/v2/flux-agent-runtime/manifests/matrix" | tr -d '\r' | sed -n 's/^[Dd]ocker-[Cc]ontent-[Dd]igest: *//p')
+  [ -n "$runtime_digest" ] || fail "the registry did not report the agent-runtime image's digest"
+  # The SBOMs are not under test: the newest release's stand in, so that the asset set renders
   # (a release before v0.2.1 has no database SBOM: its application SBOM stands in).
   newest=$(printf '%s\n' "$releases" | tail -n 1)
-  runtime_digest=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["runtime_image"].split("@")[1])' "$work/releases/$newest/release.json")
   database_sbom="$work/releases/$newest/sbom-database.spdx.json"
   [ -f "$database_sbom" ] || database_sbom="$work/releases/$newest/sbom.spdx.json"
   ( cd "$work/candidate-src" && python3 scripts/release/prepare_assets.py --version "$candidate_version" --source-sha "$sha" --digest "$digest" \
@@ -171,7 +183,7 @@ if [ -z "$candidate_assets" ]; then
       --source . --registry "127.0.0.1:$registry_port" --destination "$work/candidate-assets" ) > "$work/prepare.log" 2>&1 ||
     { cat "$work/prepare.log"; fail "the candidate's release assets did not render"; }
   candidate_assets="$work/candidate-assets"
-  echo "candidate image $digest, database image $database_digest"
+  echo "candidate image $digest, database image $database_digest, agent-runtime image $runtime_digest"
 fi
 
 record() { echo "$1" >> "$results"; }
@@ -240,9 +252,17 @@ for tag in $releases; do
     find "$checkout" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
     (cd "$root" && git ls-files -z --cached --others --exclude-standard | tar --null -T - -cf -) | (cd "$checkout" && tar -xf -)
     mkdir -p "$checkout/docker"; cp "$work/source-$tag.env" "$env_file"; chmod 600 "$env_file"
+    # The candidate runs every agent on an API key in pi in its agent runtime (#1441), as its own ./flux up writes it on a first start. The
+    # release's launcher refuses `pi`, so the setting is made only now, for the upgrade (the runtime secrets are the release's own).
+    if grep -q '^FLUX_AGENT_RUNTIME=' "$env_file"; then sed 's#^FLUX_AGENT_RUNTIME=.*#FLUX_AGENT_RUNTIME=pi#' "$env_file" > "$env_file.edit" && mv "$env_file.edit" "$env_file"; else echo "FLUX_AGENT_RUNTIME=pi" >> "$env_file"; fi
+    chmod 600 "$env_file"
     ( cd "$checkout" && FLUX_PORT=$port FLUX_DEV_PORT=$((port + 1)) FLUX_MAILPIT_PORT=$((port + 2)) ./flux upgrade -y ) > "$work/upgrade-$tag.out" 2>&1 || { cat "$work/upgrade-$tag.out"; fail "./flux upgrade from $tag failed"; }
     tail -n 4 "$work/upgrade-$tag.out"
     grep -q "Upgraded $project from schema [0-9]* to [0-9]*" "$work/upgrade-$tag.out" || fail "./flux upgrade did not report the schemas"
+    # ./flux upgrade only warns when the agent runtime does not start on the new version; the new agent run below needs it, so it is read here.
+    ! grep -q 'the agent runtime did not start' "$work/upgrade-$tag.out" || fail "the agent runtime did not start on the candidate after ./flux upgrade from $tag"
+    [ "$(docker ps -q --filter "label=com.docker.compose.project=$project" --filter label=com.docker.compose.service=runtime-1 --filter health=healthy | wc -l)" = 1 ] ||
+      fail "the candidate's agent runtime (runtime-1, pi) is not healthy after ./flux upgrade from $tag"
     python3 "$root/scripts/release/smoke_data.py" verify --origin "http://127.0.0.1:$port" --state "$work/source-$tag.json" --write
     record "$tag -> $candidate_version  source checkout        PASS  $(( $(date +%s) - started )) s"
     ( cd "$checkout" && FLUX_PORT=$port FLUX_DEV_PORT=$((port + 1)) FLUX_MAILPIT_PORT=$((port + 2)) ./flux clean -y >/dev/null 2>&1 ) || true
