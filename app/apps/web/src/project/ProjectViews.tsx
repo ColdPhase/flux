@@ -76,9 +76,9 @@ export function ProjectMap() {
         <div className="sk-over">
           <div className="sk-head"><p className="sk-lead"><span className="sk-title">{UNTITLED_SKETCH}</span></p></div>
         </div>
-        <p className="sk-first">{phone ? <>An empty map. Start with <b>Add a thought</b>.</> : <>An empty map. Add the first thought with <b>Thought</b>, then keep adding with the <b>+</b> beside it.</>}</p>
+        <p className="sk-first">{phone ? <>An empty map. Start with <b>Thought</b>.</> : <>An empty map. Add the first thought with <b>Thought</b>, then keep adding with the <b>+</b> beside it.</>}</p>
         {phone ? (
-          <div className="sk-phone"><button type="button" className="sk-fab sk-add" disabled={creating} onClick={() => void start()}><Icon name="plus" size={18} />Add a thought</button></div>
+          <div className="sk-phone"><button type="button" className="sk-fab sk-add" disabled={creating} onClick={() => void start()}><Icon name="plus" size={18} />Thought</button></div>
         ) : (
           <div className="sk-dock"><DockRow>
             <div className="sk-tools" role="toolbar" aria-label="Map tools">

@@ -417,7 +417,7 @@ class SketchJourney(unittest.TestCase):
         node = self.thought(page, "Gesture-controlled desk lamp")
         node.tap()
         expect(node).to_have_attribute("aria-pressed", "true")
-        plus = page.get_by_role("button", name="Add a thought", exact=True)
+        plus = page.get_by_role("button", name="Thought", exact=True)
         expect(plus).to_be_visible()
         self.assertGreaterEqual(box(page, plus)["width"], 44, "touch target")
         expect(page.get_by_text("Tap a thought to select it")).to_be_visible()
@@ -464,12 +464,12 @@ class SketchJourney(unittest.TestCase):
                 self.assertFalse(overlap, f"thoughts {i} and {j} do not overlap")
         # S15: the phone map is the whole screen; no toolbar row. It views and adds, and says where to connect.
         expect(page.get_by_role("toolbar", name="Map tools")).to_have_count(0)
-        expect(page.get_by_role("button", name="Add a thought", exact=True)).to_be_visible()
+        expect(page.get_by_role("button", name="Thought", exact=True)).to_be_visible()
         expect(page.get_by_text("Connect and arrange on a computer")).to_be_visible()
         options = open_map_options(page, touch=True)
         expect(options.get_by_role("radio", name="List")).to_be_visible()
         options.get_by_role("button", name="Close map options", exact=True).tap()
-        # Selecting offers named secondary actions; Add a thought stays the only primary add.
+        # Selecting offers named secondary actions; Thought stays the only primary add.
         node = self.thought(page, "Gesture-controlled desk lamp")
         node.tap()
         page.get_by_role("button", name="Thought actions", exact=True).tap()
@@ -725,7 +725,7 @@ class SketchJourney(unittest.TestCase):
                     self.assertLessEqual(bounds["x"] + bounds["width"], viewport_box["x"] + viewport_box["width"] + 1)
                     self.assertLessEqual(bounds["y"] + bounds["height"], viewport_box["y"] + viewport_box["height"] + 1)
                     self.assert_no_overlap(bounds, control_box, "the complete last thought and author stay clear of the Fit and zoom entry")
-                self.assert_no_overlap(box(page, corner), box(page, page.locator(".sk-phone")), "the last thought scrolls clear of the floating Add a thought")
+                self.assert_no_overlap(box(page, corner), box(page, page.locator(".sk-phone")), "the last thought scrolls clear of the floating Thought button")
                 expect(corner.locator(".sk-p")).to_contain_text("From you")
                 self.assertGreaterEqual(corner.locator(".sk-t").evaluate("el => parseFloat(getComputedStyle(el).fontSize)"), 15)
                 self.assertGreaterEqual(corner.locator(".sk-p").evaluate("el => parseFloat(getComputedStyle(el).fontSize)"), 12.5)

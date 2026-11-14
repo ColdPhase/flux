@@ -93,8 +93,8 @@ function changeText(entry: TaskActivityEntry): string {
   return `changed it${rule}`;
 }
 
-// The day is a word in the text face; only the clock is in Geist Mono (README §2: mono for times).
-function stamp(at: string) { return <>{day(at)}, <span className="wd-act__clock">{clock(at)}</span></>; }
+// A time is Geist with tabular figures (README §2 Typography), never a monospace: Geist Mono gives the colon a cell of its own ("17 : 48").
+function stamp(at: string) { return <>{day(at)}, {clock(at)}</>; }
 /** The name a line goes by: first names, as drawn; the full name is one hover away. */
 const firstName = (name: string) => name.trim().split(/\s+/)[0] || name;
 

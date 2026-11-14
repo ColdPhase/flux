@@ -358,7 +358,7 @@ span.sk-li-img { width: 160px; height: 96px; }
 .sk-taskline { display: flex; align-items: center; gap: 6px; margin-top: 3px; font-size: var(--fs-xs); color: var(--t2); line-height: 1.4; }
 .sk-taskline svg { flex: none; }
 @media (pointer: coarse) { .sk-edit-btn--icon { width: 44px; } .sk-tool { width: 44px; height: 44px; } .sk-dock .ui-btn { min-height: 44px; } }
-/* S15: one primary Add a thought. Secondary map and selection controls open named sheets. */
+/* S15: one primary Thought. Secondary map and selection controls open named sheets. */
 .sk-phone { position: absolute; left: 0; right: 0; bottom: max(14px, env(safe-area-inset-bottom)); z-index: 7; display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; }
 .sk-phone > * { pointer-events: auto; }
 @media (max-width: 640px) {

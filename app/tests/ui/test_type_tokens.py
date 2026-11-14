@@ -9,7 +9,9 @@ The checks use the audit's own in-page measurement (`visual_consistency_audit.ME
 - Search's field and its Close share one height on a tablet, Close is a 44 px target, and the field shows the focus ring of README §2;
 - Mine on the Tasks board is a system button (radius 10, 44 px on touch), not a circle or a pill;
 - a material opened directly has a token-sized title (it drew the browser's 1.5em h2, 21 px), and the notification address tick is a 44 px
-  target on touch. (The Inbox's filter counts of #1380 went with the filters, #1367.)
+  target on touch. (The Inbox's filter counts of #1380 went with the filters, #1367.);
+- on a phone the small quiet controls reach a 44 px hit area without growing: "Seen by" under a message, a space's name in Settings › Company
+  and "Open in Conversation" in a task; and the times in a task's activity are Geist, not Geist Mono (which spreads "17:48" into "17 : 48").
 """
 
 from __future__ import annotations
@@ -23,7 +25,8 @@ import uuid
 from playwright.sync_api import Browser, Page, expect, sync_playwright
 
 import visual_consistency_audit as vca
-from test_app_shell import ORIGIN, UI_BROWSER, UPSTREAM, start_forwarder
+from test_app_shell import ORIGIN, PHONE, UI_BROWSER, UPSTREAM, start_forwarder
+from touch_targets import has_minimum_hit_area, hit_area
 
 PASSWORD = "a long passphrase for the type checks"
 STAMP = int(time.time() * 1000)
@@ -37,6 +40,7 @@ class TypeTokens(unittest.TestCase):
     states: dict[str, dict] = {}
     project = ""
     material = ""
+    work = ""
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -54,7 +58,9 @@ class TypeTokens(unittest.TestCase):
         workspace = cls.api("ada", "POST", "/api/v1/workspaces", {"name": "Type checks"})["id"]
         cls.api("ada", "POST", f"/api/v1/workspaces/{workspace}/members", {"email": PEOPLE["kai"][1], "role": "member"})
         cls.project = cls.api("ada", "POST", f"/api/v1/workspaces/{workspace}/projects", {"name": "Community garden sensors", "visibility": "workspace"})["id"]
-        cls.api("ada", "POST", f"/api/v1/projects/{cls.project}/work", {"title": "Calibrate the probes", "owner": {"kind": "human", "id": cls.me("ada")}})
+        cls.work = cls.api("ada", "POST", f"/api/v1/projects/{cls.project}/work", {"title": "Calibrate the probes", "owner": {"kind": "human", "id": cls.me("ada")}})["id"]
+        # The task has a discussion (Kai's first message), so its Details show "Open in Conversation" and a timed line.
+        cls.api("kai", "POST", f"/api/v1/work/{cls.work}/discussion", {"body": "The probes drift after rain.", "clientMessageId": str(uuid.uuid4())})
         cls.material = cls.api("ada", "POST", f"/api/v1/projects/{cls.project}/materials", {"clientMutationId": str(uuid.uuid4()), "title": "Probe datasheet notes",
                                                                                          "body": "The capacitive probe drifts with humidity."})["materialId"]
         mine = cls.api("kai", "POST", f"/api/v1/projects/{cls.project}/conversations", {"body": "@Ada Kowalska the rota is in the Wiki now.", "clientMessageId": str(uuid.uuid4())})
@@ -80,9 +86,9 @@ class TypeTokens(unittest.TestCase):
     def me(cls, who: str) -> str:
         return cls.api(who, "GET", "/api/v1/me")["user"]["id"]
 
-    def page(self, who: str = "ada", touch: bool = False, dark: bool = False) -> Page:
+    def page(self, who: str = "ada", touch: bool = False, dark: bool = False, phone: bool = False) -> Page:
         options = {"service_workers": "block", "base_url": ORIGIN, "storage_state": self.states[who], "color_scheme": "dark" if dark else "light"}
-        options.update({"viewport": TABLET, "has_touch": True, "is_mobile": True} if touch else {"viewport": {"width": 1440, "height": 900}})
+        options.update({"viewport": PHONE if phone else TABLET, "has_touch": True, "is_mobile": True} if touch or phone else {"viewport": {"width": 1440, "height": 900}})
         context = self.browser.new_context(**options)
         self.addCleanup(context.close)
         return context.new_page()
@@ -167,6 +173,42 @@ class TypeTokens(unittest.TestCase):
         box = tick.bounding_box()
         self.assertGreaterEqual(min(box["width"], box["height"]), 44, box)
         self.assertEqual([flag for flag in self.flags(page, "b") if "nset__tick" in flag], [])
+
+    def test_06_on_a_phone_the_small_quiet_controls_have_a_44_px_hit_area(self) -> None:
+        page = self.page(phone=True)
+        self.assertTrue(page.evaluate("matchMedia('(pointer: coarse)').matches"), "the phone's pointer is coarse")
+        page.goto(f"/projects/{self.project}")
+        seen = page.get_by_role("button", name=re.compile("^Seen by"))
+        expect(seen.first).to_be_visible()
+        area = hit_area(seen.first)
+        self.assertTrue(has_minimum_hit_area(area), f"Seen by (a 16 px row of faces) offers a 44 px target: {area}")
+        page.goto("/settings/company")
+        space = page.get_by_role("list", name="Every space in the company").get_by_role("link", name="Community garden sensors")
+        expect(space).to_be_visible()
+        area = hit_area(space)
+        self.assertTrue(has_minimum_hit_area(area), f"a space's name in Company offers a 44 px target: {area}")
+        row = page.get_by_role("list", name="Every space in the company").get_by_role("listitem").first.bounding_box()
+        self.assertLessEqual(row["height"], 57, f"the row keeps its own height, it does not grow with the hit area: {row}")
+        page.goto(f"/projects/{self.project}/tasks?open=work:{self.work}")
+        thread = page.get_by_role("link", name="Open in Conversation")
+        expect(thread).to_be_visible()
+        area = hit_area(thread)
+        self.assertTrue(has_minimum_hit_area(area), f"Open in Conversation offers a 44 px target: {area}")
+
+    def test_07_a_task_activity_time_is_geist_with_tabular_figures_never_a_monospace(self) -> None:
+        for dark in (False, True):
+            page = self.page(dark=dark)
+            page.goto(f"/projects/{self.project}/tasks?open=work:{self.work}")
+            activity = page.locator("#details .wd-act")
+            expect(activity.locator("time").first).to_be_visible()
+            page.evaluate("document.fonts.ready")
+            body = page.evaluate("getComputedStyle(document.body).fontFamily")
+            looks = activity.locator("time, time *").evaluate_all("els => els.map((e) => [e.textContent, getComputedStyle(e).fontFamily, getComputedStyle(e).fontVariantNumeric])")
+            self.assertTrue(looks, "the activity has timed lines")
+            for text, family, numeric in looks:
+                self.assertEqual(family, body, f"the time {text!r} is in the interface font")
+                self.assertIn("tabular-nums", numeric, f"the time {text!r} has tabular figures")
+            self.assertEqual(activity.locator(".wd-act__clock").count(), 0, "no clock span of its own")
 
 
 if __name__ == "__main__":

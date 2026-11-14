@@ -65,19 +65,15 @@ export function JoinPage() {
   const location = useLocation();
   const revalidator = useRevalidator();
   const created = useActionData() as FormResult | undefined;
-  const handled = useRef<FormResult | undefined>(undefined);
 
-  /** What the page shows for the link and this tab's session; `joinNow`: the account was just made here, so it joins at once. */
-  function show([me, preview, capabilities]: [MeResponse | null, InvitePreview, IdentityCapabilities | null], joinNow: boolean) {
+  /** What the page shows for the link and this tab's session; `madeHere`: the account was just made on this page, so it joins at once. */
+  function show([me, preview, capabilities]: [MeResponse | null, InvitePreview, IdentityCapabilities | null], madeHere: boolean) {
     // An account made from this link joined as it was made (#1471): the page lands it as a join from here does (#763 FT-3, #1438).
-    const madeHere = joinNow || new URLSearchParams(window.location.search).get('created') === '1';
+    const joinNow = !!me && madeHere && preview.state !== 'member';
     // A link this account already used, or someone already here: Flux opens, with nothing more to say (#1438).
-    if (me && preview.state !== 'pending' && !(madeHere && preview.state === 'joined')) { forgetToken(); navigate('/', { replace: true }); return; }
+    if (me && preview.state !== 'pending' && !joinNow) { forgetToken(); navigate('/', { replace: true }); return; }
     setState({ kind: 'ready', preview, me, ssoOnly: capabilities?.ssoOnly ? capabilities.sso?.label ?? 'single sign-on' : null });
-    if (me && preview.state !== 'member' && madeHere) {
-      window.history.replaceState(window.history.state, '', window.location.pathname);
-      void join();
-    }
+    if (joinNow) void join();
   }
   const failed = (error: unknown) => {
     if (error instanceof DOMException && error.name === 'AbortError') return;
@@ -86,28 +82,23 @@ export function JoinPage() {
   const fetchLink = (signal?: AbortSignal) => Promise.all([getMe(signal).catch(() => null), previewInvite(readToken(), signal),
     getCapabilities(signal).catch(() => null)]);
 
-  // Read on arrival, and again when the page is opened again from itself: signing out from here (a link for another address) lands on this same page, signed out.
+  // Read on arrival, and again when the page is opened again from itself: signing out from here (a link for another address) lands on this same page,
+  // signed out. Its own create-account form also ends on this page (`created` belongs to that location): with what to fix, the form shows it and
+  // nothing is read; with the account made and signed in, the page joins at once, as that account (#1438). One read per location, so the
+  // submission is never also taken for an arrival (which forgot the token and opened Home before the join could land in Everyone).
   const opened = useRef(false);
   useEffect(() => {
-    if (!readToken()) return undefined;
-    if (opened.current) setState({ kind: 'loading' });
+    if (!readToken() || (created && !created.created)) return undefined;
+    if (opened.current && !created) setState({ kind: 'loading' });
     opened.current = true;
     // The token is kept in this tab's session storage: take it out of the address and the browser's history.
     if (window.location.hash) window.history.replaceState(window.history.state, '', window.location.pathname + window.location.search);
     const controller = new AbortController();
-    fetchLink(controller.signal).then((read) => show(read, false), failed);
+    fetchLink(controller.signal).then((read) => show(read, !!created?.created), failed);
     return () => controller.abort();
-    // `join` only reads this tab's token.
+    // `created` is the action's answer for this very location; `show` and `join` only read this tab's token.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.key]);
-
-  // The create-account form on this page made the account and signed it in: join now, as the same account (#1438).
-  useEffect(() => {
-    if (!created?.created || handled.current === created) return;
-    handled.current = created;
-    fetchLink().then((read) => show(read, true), failed);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [created]);
 
   async function join() {
     const token = readToken();

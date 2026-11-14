@@ -316,6 +316,7 @@ class CreateWindow(unittest.TestCase):
             self.assertEqual([item.strip() for item in tabs.all_inner_texts()], ["Task", "Thought", "Decision", "Page", "Space"])
             expect(kind_tab(page, "Task")).to_have_attribute("aria-selected", "true")
             expect(title_field(page)).to_be_focused()
+            self.assertGreaterEqual(title_field(page).bounding_box()["height"], 43.9, "the title field is a 44 px target on touch")
             self.assertLessEqual(window.bounding_box()["x"] + window.bounding_box()["width"], PHONE["width"])
             shot(page, f"345-create-sheet-390-{scheme}")
             # Type first, then pick another project: the typed title moves with the task (F2).

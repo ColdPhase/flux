@@ -327,13 +327,17 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
 .wd-activity { margin-top: 22px; }
 .wd-activity .wd-sechead { justify-content: flex-end; }
 .wd-activity__open { font-size: var(--fs-sm); }
+/* On touch "Open in Conversation" keeps its line and gets a 44 px hit area centred on it. */
+@media (pointer: coarse) {
+  .wd-activity__open { position: relative; }
+  .wd-activity__open::after { content: ""; position: absolute; left: -8px; right: -8px; top: calc(50% - 22px); height: 44px; }
+}
 .wd-act { display: flex; flex-direction: column; gap: 12px; margin: 10px 0 0; padding: 0; list-style: none; }
 .wd-act__item { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
 .wd-act__item > .ui-avatar, .wd-act__face { flex: none; margin-top: 1px; }
 .wd-act__line { margin: 0; min-width: 0; font-size: var(--fs-md); line-height: 1.45; color: var(--t2); overflow-wrap: anywhere; }
 .wd-act__line b, .wd-act__who b { font-weight: 600; color: var(--t1); }
 .wd-act__line time, .wd-act__who time { font-family: var(--font); color: var(--t3); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.wd-act__clock { font-family: var(--mono); }
 .wd-act__body { flex: 1; min-width: 0; }
 .wd-act__who { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; margin: 0 0 4px; font-size: var(--fs-md); color: var(--t2); }
 .wd-act__who .agent-id { flex-wrap: wrap; min-width: 0; }

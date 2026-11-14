@@ -4,6 +4,11 @@
 .people__list { list-style: none; margin: 0; padding: 0; }
 .people__item + .people__item { border-top: 1px solid var(--line); }
 .people__row { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 8px 0; }
+/* A space's name is a link in its row: on touch its hit area is 44 px tall, centred on the line, without growing the row. */
+@media (pointer: coarse) {
+  .people__who b a { position: relative; }
+  .people__who b a::after { content: ""; position: absolute; left: -8px; right: -8px; top: calc(50% - 22px); height: 44px; }
+}
 .people__row .ui-avatar { flex: none; font-size: var(--fs-face-lg); color: var(--t2); }
 .people__who { display: flex; flex: 1; flex-direction: column; min-width: 0; font-size: var(--fs-md); line-height: 1.45; }
 .people__who b { font-weight: 500; color: var(--t1); overflow-wrap: anywhere; }
@@ -24,7 +29,8 @@
 .people__field label, .access__seg legend { font-size: var(--fs-sm); font-weight: 500; color: var(--t2); }
 .people__field .ui-select { width: 100%; min-height: var(--ctl-lg); padding: 0 10px; border: 0; border-radius: var(--r); background: var(--el); color: var(--t1); font-size: var(--fs-base); box-shadow: inset 0 0 0 1px var(--line2); }
 .people__hint { margin: 0; font-size: var(--fs-sm) !important; color: var(--t3) !important; line-height: 1.45; }
-.people__add { display: grid; gap: 14px; }
+/* The company-name form is also an .sset-card: the compound selector keeps it a grid whatever order the stylesheets load in. */
+.people__add, .sset-card.people__add { display: grid; gap: 14px; }
 /* #1438: the invite form keeps the role and the expiry under a quiet More. */
 .people__add > .people__more { justify-self: start; }
 .people__more-fields { display: grid; gap: 14px; }
