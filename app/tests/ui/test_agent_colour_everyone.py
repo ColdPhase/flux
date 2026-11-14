@@ -169,7 +169,7 @@ class AgentColourForEveryone(unittest.TestCase):
         expect(owner.locator(".agent-tag > .kreska")).to_have_class(TEAL)
         page.goto(f"/projects/{project}/tasks?open=work:{self.ids['task']}")
         panel = page.get_by_role("complementary", name="Details")
-        expect(panel.get_by_role("button", name="Owner").locator(".kreska")).to_have_class(TEAL)
+        expect(panel.get_by_role("button", name="Owner").locator(".agent-id > .kreska")).to_have_class(TEAL)
         # The agent's line and its own messages in the task's discussion: the same face.
         expect(panel.locator("[data-agent-line] .wd-agent__line > .kreska")).to_have_class(TEAL)
         said = panel.locator(".wd-act__item--message").filter(has_text="the gutter")
