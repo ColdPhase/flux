@@ -1449,7 +1449,7 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   computer and on the phone, where the menu is as wide as the pane, with 44 px rows. **A space with no map opens the map's own empty
   canvas** (#1424), not a page about maps with a New map button: the header's title "Untitled map" (not yet a switcher), the one hint
   "An empty map. Add the first thought with Thought, then keep adding with the + beside it." (on the phone, "Start with Add a thought."),
-  and the toolbar with **Thought** alone (the phone's one **Add a thought**); Select, Move around, Undo and the zoom are not drawn
+  and the toolbar with **Thought** alone (the phone's one **Add a thought**, with no floating "+" beside it: a "+" never means two things on one screen); Select, Move around, Undo and the zoom are not drawn
   until there is something for them to act on. **The map is made, silently, on the first thought**: Thought (or a double click on the
   canvas) makes it with the name "Untitled map" and opens it on a draft thought ready to type, with nothing to name first, so a visit
   that adds nothing leaves no map. A map made from the switcher's "+ New map" still opens with its name ready to type. **A map shows one

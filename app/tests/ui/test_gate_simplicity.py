@@ -126,6 +126,8 @@ class GateSimplicity(unittest.TestCase):
         expect(page.locator(".sk-first")).to_have_text("An empty map. Start with Add a thought.")
         expect(page.get_by_text("Map ideas for")).to_have_count(0)
         expect(page.get_by_text("Connect and arrange on a computer")).to_have_count(0)
+        # One add on the screen: the phone's floating "+" steps aside for it.
+        expect(page.get_by_role("button", name="Create", exact=True)).to_have_count(0)
         shot(page, "gate-empty-map-phone")
         page.get_by_role("button", name="Add a thought", exact=True).tap()
         expect(page).to_have_url(re.compile(rf"/projects/{project}/map/[0-9a-f-]{{36}}$"))
