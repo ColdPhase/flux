@@ -58,14 +58,22 @@ export function DueField({ value, editable, finished, disabled, onSave }: { valu
   // The editor is left. Focus goes back to the "Due" button only when it was inside the editor or its calendar (a key closed it, or a
   // day was chosen), so nothing is on `body` once they are gone; a press elsewhere (the composer, the Status menu) took focus where
   // the person meant to go, and it stays there.
+  const restore = useRef(false);
   const leave = (how: 'close' | 'away' = 'close') => {
     setEditing(false);
-    if (how === 'away') return;
-    requestAnimationFrame(() => {
+    restore.current = how !== 'away';
+  };
+  // The frame is asked for once the button is back: a day saved after its request answers can render after a frame asked for at once,
+  // and that frame found no button to focus (the editor stands in its place until then).
+  useLayoutEffect(() => {
+    if (editing || !restore.current) return undefined;
+    restore.current = false;
+    const frame = requestAnimationFrame(() => {
       const now = document.activeElement;
       if (!now || now === document.body) opener.current?.focus({ preventScroll: true });
     });
-  };
+    return () => cancelAnimationFrame(frame);
+  }, [editing]);
   const late = !!value && !finished && value < todayKey();
   const text = value ? dueLabel(value) : 'Add a date';
   if (!editable) return <span className="wd-value">{value ? <>{text}{late ? <span className="wd-muted"> · overdue</span> : null}</> : <span className="wd-muted">No date</span>}</span>;
