@@ -144,7 +144,11 @@ class UndoAndOneCard(unittest.TestCase):
         # `/task` in the space's composer opens the one Create window with the words, on a computer and a phone alike.
         composer = page.locator("#project-composer")
         composer.fill(f"/task {title}")
-        composer.press("Enter")
+        # Enter sends on a computer; a phone's Enter is a new line, so it uses Send.
+        if phone:
+            page.get_by_role("button", name="Send message", exact=True).click()
+        else:
+            composer.press("Enter")
         expect(dialog(page)).to_be_visible()
         expect(title_field(page)).to_have_value(title)
         submit_button(page).click()
