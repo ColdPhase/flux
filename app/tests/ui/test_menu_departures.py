@@ -3,7 +3,7 @@
 - ⌘K with an empty field lists the places last opened ("My tasks", not "Home · Tasks") and Go to Inbox; no assistant row, no sidebar toggle;
 - a space's ⋯ has no row for the sidebar (and no key hint);
 - My map says "Only you", visibly (beside its title once the map has one; on the phone, under the title in the header), and an empty one offers
-  Thought alone, as a space's empty map does (release audit P3 10);
+  Thought alone (no Select, Move around, Undo or zoom), as a space's empty map does (release audit P3 10);
 - the Inbox's ⋯ is there on every Inbox address, an open item or a missing one included.
 """
 
@@ -96,7 +96,6 @@ class MenuDepartures(unittest.TestCase):
         expect(tools.get_by_role("button", name="Thought", exact=True)).to_be_visible()
         expect(tools.get_by_role("button")).to_have_count(1)
         expect(page.get_by_role("group", name="Zoom")).to_have_count(0)
-        expect(page.get_by_role("radiogroup", name="Show as")).to_have_count(0)
         expect(page.locator(".sk-aud")).to_have_text(re.compile("Only you"))
         tools.get_by_role("button", name="Thought", exact=True).click()
         page.get_by_role("textbox", name="Thought text").fill("A first private thought")
@@ -106,7 +105,6 @@ class MenuDepartures(unittest.TestCase):
         for name in ("Select", "Move around", "Undo"):
             expect(tools.get_by_role("button", name=name, exact=True)).to_be_visible()
         expect(page.get_by_role("group", name="Zoom")).to_be_visible()
-        expect(page.get_by_role("radiogroup", name="Show as")).to_be_visible()
 
     def test_03c_on_a_phone_my_map_says_only_you_under_its_title(self) -> None:
         context = self.browser.new_context(service_workers="block", base_url=ORIGIN, storage_state=self.state, viewport=PHONE, is_mobile=True, has_touch=True)

@@ -1440,8 +1440,8 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
 
 - The former Sketchbook: a private map of thoughts. "Only you" is shown once, beside the title,
   because its audience differs from the default (on the phone, whose map has no head of its own, under the title in the header).
-  An empty My map is drawn like a space's empty map: **Thought** alone, with no Select, Move around, Undo, zoom or Map | List until
-  there is a thought for them to act on.
+  An empty My map is drawn like a space's empty map: **Thought** alone, with no Select, Move around, Undo or zoom until there is a thought
+  for them to act on (its Map | List switch stays, so the header keeps its shape).
 - A selected thought offers Move to a space map and Copy link. The tools are Select, Move the
   map, + Thought and Undo, with zoom at the bottom right.
   - **Move to a space map** (#948) opens a small window: choose the space (any space you are in), then its map. A

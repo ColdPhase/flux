@@ -729,8 +729,8 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
   };
 
   const mapMode = mode === 'map';
-  // An empty map offers Thought alone, as a space's empty map does: Select, Move around, Undo, the zoom and Map | List are not drawn until
-  // there is something for them to act on (README §7 Maps, #1424).
+  // An empty map offers Thought alone, as a space's empty map does: Select, Move around, Undo and the zoom are not drawn until there is
+  // something for them to act on (README §7 Maps, #1424). Map | List is a view, not a tool: it stays, so the header keeps its shape.
   const bare = mapMode && !sketch.thoughts.length && !doc.canUndo;
   const viewModes = <div className="seg sk-mode" role="radiogroup" aria-label="Show as">
     {(['map', 'list'] as const).map((m) => (
@@ -756,7 +756,7 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
             {/* Said only when it differs from the default: a map made in a space is read by the space; a private one is "Only you" (#871). */}
             {sketch.scope === 'project' ? null : <span className="sk-aud" title="Who can see this map"><Icon name="lock" size={12} />{audience(sketch, me.user.id, projectName)}</span>}
           </p>
-          {(!phone || !mapMode || (!sketch.thoughts.length && !canWrite)) && !(bare && !phone) ? viewModes : null}
+          {!phone || !mapMode || (!sketch.thoughts.length && !canWrite) ? viewModes : null}
         </div>
   );
   const confirmPrevious = !!capture.draft && (capture.draft.lines ?? [capture.draft]).some((row) => row.unknown || (phone && row.attempt?.parentId));
