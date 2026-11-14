@@ -420,7 +420,9 @@ if [ -n "$recovery" ]; then
   fi
   tail -n 3 "$up_dir/break.out"
   [ "$(docker inspect -f '{{.State.ExitCode}}' "$(dc "$restore_project" "$up_restore_env" "$assets" ps -aq migrate)")" != 0 ] || fail "the migrate service exited 0 with a broken migration"
-  dc "$restore_project" "$up_restore_env" "$assets" logs --no-color migrate 2>&1 | grep -q 'upgrade_check_no_messages' || fail "the migrate service did not name the failing migration"
+  # The log is read into a variable before grep -q: under pipefail grep's early exit would make the writer's SIGPIPE fail the pipeline, whatever it says.
+  migrate_log=$(dc "$restore_project" "$up_restore_env" "$assets" logs --no-color migrate 2>&1) || fail "the migrate service's log could not be read"
+  printf '%s\n' "$migrate_log" | grep -q 'upgrade_check_no_messages' || { printf '%s\n' "$migrate_log" | tail -n 20 >&2; fail "the migrate service did not name the failing migration"; }
   [ -z "$(dc "$restore_project" "$up_restore_env" "$assets" ps -q --status running api worker)" ] || fail "API or worker run after a failed migration"
   if health "$restore_port" >/dev/null 2>&1; then fail "the instance answers after a failed migration"; fi
   case ",$(ledger "$restore_project" "$up_restore_env" "$assets")," in *,"$injected_number",*) fail "the failed migration is in the ledger" ;; esac
