@@ -876,6 +876,14 @@ Community garden sensors, Rain barrel monitor and Tool library.
   - **An owner or admin:** **Name your company** (the company still has the name setup gave it; opens Settings › Company with the
     name's editor open), **Invite people** (nobody else is in the company and no invite link was ever made; opens Settings › Company
     with the invite form open) and **Connect AI** (the person has no AI connection yet; opens Settings › AI's Connect AI).
+  - **Someone joined with your link** (decision of the coordinator, 2026-11-14, [#1424](https://github.com/ColdPhase/flux/issues/1424), on the
+    founder's "the inviter learns when the person joins", [#1438](https://github.com/ColdPhase/flux/issues/1438) point 3). The Inbox stays one list of what needs
+    you, so it has no "joined" item: the person who made the link is told by push (at their level, "<name> joined <company>") and, while their card is
+    shown, by a row in the place of **Invite people**, which is done once a link was made: the title **Nia joined** and the quiet line **Say hello** (a
+    Home row like the others, the `chat` icon; the full name when two share a first name). There is one row for each person who used one of their links
+    and is still in the company, newest first, and none for someone they already have a direct message with. The steps keep their rows first, so
+    together there are at most three. Tapping the row opens the direct message with that person (made if there is none), which is what takes
+    the row away. The card is still the steps: with none left it is done for good and so are these rows, which never keep it or bring it back.
   - **A member:** **Write your first message** (the person has written none; opens Everyone with the composer ready), **Add your
     photo** (no profile photo; opens Settings › Account) and **Get notifications on this phone** (only beside one of those two rows,
     where push is available and this device is not subscribed; the same flow as the one-time offer, which then does not show
