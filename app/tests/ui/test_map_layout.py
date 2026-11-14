@@ -184,11 +184,6 @@ class MapLayoutJourney(unittest.TestCase):
             expect(page.locator('.sk-ghost--draft')).to_be_attached()
             # Where the draft stands on the map: whole in view, clear of the minimap and the zoom, and over no thought.
             spot = page.locator('.sk-ghost--draft').bounding_box()
-            where = {'index': index, 'spot': spot, 'canvas': page.locator('.sk-canvas').bounding_box(),
-                     'scroll': page.locator('.sk-canvas').evaluate('el => [el.scrollLeft, el.scrollTop]'),
-                     'nodes': [node.bounding_box() for node in page.locator('.sk-node').all()],
-                     'zoom': page.locator('.sk-zoom__level').inner_text(), 'floating': [page.locator(sel).first.bounding_box() for sel in ('.sk-minimap', '.sk-zoom')]}
-            print('PLACEMENT', where, flush=True)
             self.assertGreaterEqual(spot['x'], 0)
             self.assertGreaterEqual(spot['y'], 0)
             self.assertLessEqual(spot['x'] + spot['width'], window['width'], 'the draft is whole in view')
@@ -201,6 +196,9 @@ class MapLayoutJourney(unittest.TestCase):
             draft.fill(f'Placed in free space number {index + 1}')
             draft.press('Enter')
             expect(page.locator('.sk-node')).to_have_count(3 + index)
+            # The new thought is selected, and a thought added while one is selected is its child; with nothing selected it has no parent.
+            page.keyboard.press('Escape')
+            expect(page.locator('.sk-node[aria-pressed="true"]')).to_have_count(0)
         shot(page, 'map-layout-new-thoughts-1440-light')
 
     def test_04_very_short_phone_keeps_full_hint_and_draft_reachable_by_scrolling(self):
