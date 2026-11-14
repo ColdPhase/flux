@@ -262,7 +262,8 @@ class UndoAndOneCard(unittest.TestCase):
         page.wait_for_timeout(TOAST_MS - 2000)
         expect(toast).to_be_visible()
         expect(toast).to_have_count(0, timeout=5000)
-        self.assertGreaterEqual(time.monotonic() - started, (TOAST_MS - 500) / 1000, "it stayed about 10 s")
+        # Timed from when it had settled on screen, a little after its 10 s began.
+        self.assertGreaterEqual(time.monotonic() - started, (TOAST_MS - 1500) / 1000, "it stayed about 10 s")
         # Held by the pointer: it stays past its 10 s, and runs on when the pointer leaves.
         self.create_task(page, f"Bring the bags {uuid.uuid4().hex[:4]}", phone=False)
         toast = self.settled_toast(page, "created")
@@ -348,11 +349,11 @@ class UndoAndOneCard(unittest.TestCase):
                   const top = el.getBoundingClientRect().top; still = top === last ? still + 1 : 0; last = top;
                   if (still > 10) resolve(true); else requestAnimationFrame(check); }; requestAnimationFrame(check); })""", arg=card.element_handle())
                 below = box(page, card)
-                scrolled = page.evaluate("() => { const el = document.querySelector('.project-convo__feed'); return [el.scrollTop, el.scrollHeight]; }")
+                scrolled = page.evaluate("() => { const el = document.querySelector('.project-convo__feed'); const t = document.querySelector('.ui-toasts').getBoundingClientRect(); return [el.scrollTop, el.scrollHeight, getComputedStyle(document.querySelector('.project-convo__in')).borderBottomWidth, Math.round(t.top), Math.round(t.height), Math.round(el.getBoundingClientRect().bottom)]; }")
                 toast.locator(".ui-toast__close").evaluate("el => el.click()")
                 expect(page.locator(".ui-toast")).to_have_count(0)
                 page.wait_for_timeout(300)
-                after = page.evaluate("() => { const el = document.querySelector('.project-convo__feed'); return [el.scrollTop, el.scrollHeight]; }")
+                after = page.evaluate("() => { const el = document.querySelector('.project-convo__feed'); const t = document.querySelector('.ui-toasts').getBoundingClientRect(); return [el.scrollTop, el.scrollHeight, getComputedStyle(document.querySelector('.project-convo__in')).borderBottomWidth, Math.round(t.top), Math.round(t.height), Math.round(el.getBoundingClientRect().bottom)]; }")
                 self.assertAlmostEqual(box(page, card)["top"], below["top"], delta=1, msg=f"the card stays put when the toast leaves: scroll {scrolled} -> {after}")
                 # Reading up gives the room back without a jump; the end is the conversation's own again.
                 page.evaluate("() => { const el = document.querySelector('.project-convo__feed'); el.scrollTop = 0; }")
