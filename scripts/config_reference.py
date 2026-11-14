@@ -150,7 +150,7 @@ VARIABLES: dict[str, Var] = {
         "[install](install.md).", secret=True),
     "FLUX_PASSWORD_RESET_TTL_SECONDS": Var("identity", "integer, 60–86400 s",
         "Lifetime of a password reset link, mailed or made in Settings › Company or by `./flux reset-link`. Links are single "
-        "use, stored hashed, and stop when a newer one is made or the password changes.", "3600"),
+        "use, stored hashed, and stop when a newer one is made for the same account.", "3600"),
     "FLUX_SESSION_IDLE": Var("identity", "number and unit: `30m`, `12h`, `7d` (5m–365d)",
         "How long a signed-in session lasts without use. Using it renews it. Empty is `7d`, or `FLUX_SESSION_MAX_AGE` if that is shorter. Set, it must not be longer than `FLUX_SESSION_MAX_AGE`.", "empty (7d)"),
     "FLUX_SESSION_MAX_AGE": Var("identity", "number and unit: `30m`, `12h`, `7d` (5m–365d)",

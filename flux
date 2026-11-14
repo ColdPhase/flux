@@ -1410,7 +1410,7 @@ cmd_identity() {
 }
 
 # A one-time password reset link for any password account, the owner's too (#1471). It is printed here, never logged, recorded as made by
-# this command, and it stops working when used, when the password changes, when a newer link is made, or after
+# this command, and it stops working when used, when a newer link is made, or after
 # FLUX_PASSWORD_RESET_TTL_SECONDS (1 hour by default).
 cmd_reset_link() {
   [ "$#" -eq 1 ] || die "usage: ./flux reset-link <email>"

@@ -3,7 +3,7 @@
 --
 -- A reset link's token is a Better Auth `reset-password:` verification value, which Better Auth keeps only as the SHA-256 (base64url) of
 -- its identifier. This table records each link (for whom, by whom, how, when it was used or stopped working) by that same hash, so a
--- password change can end the account's other links. It never holds the token. Works on data left by v0.2.0: a new table.
+-- link used, or a newer one, can end the account's other links. It never holds the token. Works on data left by v0.2.0: a new table.
 CREATE TABLE public.password_reset_links (
     id uuid NOT NULL,
     user_id text NOT NULL,

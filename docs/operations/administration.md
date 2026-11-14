@@ -77,8 +77,8 @@ In **Settings › Company**, open the person's role (**Member ▾**) and choose 
 one-time link, which you send yourself. An owner makes one for anyone else, an admin for members and guests.
 `./flux reset-link <email>` on the server prints one for any account, the owner's included, which is the way back
 for an owner who forgot theirs. With email set up, **Forgot password** on the sign-in page mails the same kind of link.
-A link works once and for `FLUX_PASSWORD_RESET_TTL_SECONDS` (one hour by default); a newer link, the person's
-next password change and its use each stop it. Each link is recorded with who made it and when; the token itself is
+A link works once and for `FLUX_PASSWORD_RESET_TTL_SECONDS` (one hour by default); a newer link for the same
+person stops it, and using it stops the others and signs the person out everywhere. Changing the password in Settings stops no link. Each link is recorded with who made it and when; the token itself is
 never stored. There are no reset links with single sign-on as the only way in.
 
 <p align="center">

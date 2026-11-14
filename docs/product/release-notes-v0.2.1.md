@@ -123,7 +123,7 @@ Documentation: <https://coldphase.github.io/flux/>. Flux is open source under th
   so a server reachable from the internet can no longer be claimed or filled with accounts by strangers.
 - **A forgotten password is a reset link**, with or without email: an owner or admin makes one next to the person in
   **Settings › Company**, `./flux reset-link <email>` prints one for any account (the owner's too), and **Forgot password** mails
-  one when the server has email. A link works once, for one hour, and a newer link or a password change stops it.
+  one when the server has email. A link works once, for one hour, and a newer link stops it; using it signs the person out everywhere.
 
 ## Security
 

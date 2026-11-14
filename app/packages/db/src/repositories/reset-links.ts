@@ -5,7 +5,7 @@ import type { DbExecutor } from './push.js';
 /**
  * Password reset links (#1471; docs/development/access-policy.md#password-reset-links-1471). A link's token is a Better Auth
  * `reset-password:` verification value (`auth_verifications`, its identifier stored hashed); `password_reset_links` records each link by
- * that hashed identifier, so a newer link or a password change can stop the account's other links. Nothing here holds a token.
+ * that hashed identifier, so a newer link or the use of one can stop the account's other links. Nothing here holds a token.
  */
 export type ResetLinkVia = 'settings' | 'command' | 'email';
 
@@ -65,7 +65,7 @@ export function passwordResetLinks(db: DbExecutor) {
       await db.execute(sql`UPDATE password_reset_links SET used_at = ${at.toISOString()}::timestamptz WHERE verification_identifier = ${identifier} AND used_at IS NULL`);
     },
 
-    /** The account's password changed (a reset or Settings › Account): every other open link stops working. */
+    /** A link of the account was used (#1471): every other open link stops working. A change in Settings › Account stops none. */
     async stopAll(userId: string, at = new Date()): Promise<void> {
       await db.execute(stopOpen(userId, at, null));
     },

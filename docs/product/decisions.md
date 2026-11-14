@@ -532,8 +532,11 @@ failure injection, which no installation sets) also accepts a sign-up without a 
 it already differs the same way for isolated companies. The rule itself is tested in-process with a non-test configuration.
 
 **2. Password reset always by link.** A reset link works once, expires after `FLUX_PASSWORD_RESET_TTL_SECONDS` (one hour by
-default), is stored only as a hash (Better Auth's hashed verification identifier), and stops working when it is used, when the
-account's password changes, and when a newer link is made for the same account. One mechanism, made three ways:
+default), is stored only as a hash (Better Auth's hashed verification identifier), and stops working when it is used or when a newer link is
+made for the same account; using one also stops every other link of the account and signs the person out of every session. A password
+change in Settings › Account stops no link, so someone who knows the current password cannot cancel the owner's way back
+(coordinator decision, 2026-11-13, on the author's question in [#1484](https://github.com/ColdPhase/flux/pull/1484)). One mechanism,
+made three ways:
 
 - **Settings › Company:** an owner makes one for anyone else in the company, an admin for members and guests, next to the person
   (in the person's editor, as an invite link is made and copied). Flux sends it nowhere; the maker passes it on.
@@ -541,8 +544,9 @@ account's password changes, and when a newer link is made for the same account. 
 - **Forgot password** mails the same kind of link when the server has email.
 
 Every link is recorded in `password_reset_links`: for whom, by whom (a person, the server command or the person's own request), how,
-when, and when it was used or stopped working; never the token. Each one also writes a security event. Making links is limited per
-person. There is no reset link in SSO-only mode, and none for an account without a password (single sign-on accounts).
+when, and when it was used or stopped working; never the token. A link made in Settings also writes the `reset_link_created`
+security event, a mailed one `password_reset_requested`; the server command's row is its record. Making links in Settings is limited
+per person. There is no reset link in SSO-only mode, and none for an account without a password (single sign-on accounts).
 
 ## F-042 — agents find what they need with BM25 search in PostgreSQL
 

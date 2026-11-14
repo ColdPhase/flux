@@ -45,7 +45,7 @@ describe('a reset link made next to a person (#1471)', () => {
     assert.ok((await rows(member.id))[0]?.used_at, 'and is recorded as used');
   });
 
-  test('a newer link, a change of password and the time stop a link', async () => {
+  test('a newer link and the time stop a link; a change of password does not', async () => {
     const owner = await inCompany('Reset Owner', 'owner');
     const member = await inCompany('Reset Stopped', 'member');
     const first = tokenOf((expectStatus(await make(owner, member.id), 201) as ResetLink).link);
@@ -53,14 +53,18 @@ describe('a reset link made next to a person (#1471)', () => {
     assert.equal((await reset(first, 'the first link should not work')).status, 400, 'a newer link stops the older one');
     assert.ok((await rows(member.id))[0]?.stopped_at, 'recorded as stopped');
 
+    // Coordinator decision (2026-11-13): someone who knows the current password must not be able to cancel the owner's way back.
     const changed = await member.browser.request('POST', '/api/auth/change-password', { body: { currentPassword: password, newPassword: 'changed in settings account' } });
     expectStatus(changed, 200);
-    assert.equal((await reset(second, 'after a change of password')).status, 400, 'a change of password stops every link');
+    assert.equal((await rows(member.id))[1]?.stopped_at, null, 'a change of password stops no link');
+    expectStatus(await reset(second, 'the link still works after a change'), 200, 'a change of password does not stop a link');
+    assert.equal((await member.browser.request('GET', '/api/v1/me')).status, 401, 'using the link signs the person out everywhere');
+    assert.equal((await signIn(member.email, 'changed in settings account')).response.status, 401, 'the changed password is replaced');
 
     const third = tokenOf((expectStatus(await make(owner, member.id), 201) as ResetLink).link);
     await pool.query("UPDATE auth_verifications SET expires_at = now() - interval '1 minute' WHERE identifier = $1", [resetIdentifier(third)]);
     assert.equal((await reset(third, 'an expired link changes nothing')).status, 400);
-    assert.equal((await signIn(member.email, 'changed in settings account')).response.status, 200, 'the password is the one set in Settings');
+    assert.equal((await signIn(member.email, 'the link still works after a change')).response.status, 200, 'the password is the one the link set');
   });
 
   test('who may make one for whom', async () => {

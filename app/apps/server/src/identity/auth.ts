@@ -457,14 +457,9 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
         }
         // "Sign out my other devices" with a password change ends the person's other browsers, and so their local AI clients (#989)
         // and every copy of the device cookie but this browser's own (#1031).
+        // A password change in Settings › Account stops no reset link (#1471, coordinator decision 2026-11-13): someone who knows the
+        // current password must not be able to cancel the owner's way back. Only a newer link or the use of one stops a link.
         let disconnected = 0;
-        // A changed password stops every reset link of the account (#1471). Setting the same password again changes nothing and stops
-        // nothing, so a session that keeps "changing" it cannot keep a reset from going through (#1088).
-        if (ctx.path === '/change-password' && !(ctx.context.returned instanceof APIError) && ctx.body?.newPassword !== ctx.body?.currentPassword) {
-          // Only a change that signs the other devices out makes a new session; otherwise the person is the session's.
-          const changer = signedIn?.id ?? (await getSessionFromCtx(ctx))?.user.id;
-          if (changer) await resetLinks.stopAll(changer);
-        }
         if (ctx.path === '/change-password' && ctx.body?.revokeOtherSessions === true && signedIn) {
           disconnected = await connectionStore.disconnectClients(signedIn.id);
           const generation = await devices.endAll(signedIn.id);

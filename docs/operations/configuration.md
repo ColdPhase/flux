@@ -200,7 +200,7 @@ The setup link's token: the first account, the company's owner, is made only fro
 
 **Type** integer, 60–86400 s · **Default** `3600` · **Used by** api (release, source)
 
-Lifetime of a password reset link, mailed or made in Settings › Company or by `./flux reset-link`. Links are single use, stored hashed, and stop when a newer one is made or the password changes. Example: `3600`.
+Lifetime of a password reset link, mailed or made in Settings › Company or by `./flux reset-link`. Links are single use, stored hashed, and stop when a newer one is made for the same account. Example: `3600`.
 
 ### `FLUX_SESSION_IDLE`
 

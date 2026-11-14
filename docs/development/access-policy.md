@@ -414,9 +414,12 @@ a Better Auth `reset-password:` verification value, stored as its SHA-256 only, 
 - `./flux reset-link <email>` runs the same in the API container for any password account (`via: command`).
 - `POST /api/auth/request-password-reset` with email set up mails a link (`via: email`).
 
-Making a link stops the account's earlier links. Using one, or a change of the password to another one (a reset or Settings › Account), stops
-every other link of the account. `password_reset_links` keeps who made each link, for whom, how and when it was used or stopped,
-never the token; each one also writes a `reset_link_created` security event.
+Making a link stops the account's earlier links. Using one stops every other link of the account and ends every session of the
+person (`revokeSessionsOnPasswordReset`, and their local clients, C-42). A password change in Settings › Account stops no link
+(coordinator decision, 2026-11-13): someone who knows the current password must not be able to cancel the owner's way back.
+`password_reset_links` keeps who made each link, for whom, how and when it was used or stopped, never the token. A link made in
+Settings also writes a `reset_link_created` security event and a mailed one `password_reset_requested`; a link of the server command
+is recorded in the table only (`via: command`).
 
 ## Agents have their owner's rights (F-036 AG-3, #855)
 
