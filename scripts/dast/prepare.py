@@ -37,6 +37,8 @@ AUTH_ROUTES = (
     ("POST", "/api/auth/sign-up/email", {"type": "object", "required": ["email", "password", "name"], "properties": {"email": {"type": "string"}, "password": {"type": "string"}, "name": {"type": "string"}}}),
     ("GET", "/api/auth/get-session", None),
     ("POST", "/api/auth/request-password-reset", {"type": "object", "required": ["email"], "properties": {"email": {"type": "string"}}}),
+    # A reset link's page sends the token and the new password here (#1471); the scan has no valid token, so it attacks the refusal paths.
+    ("POST", "/api/auth/reset-password", {"type": "object", "required": ["token", "newPassword"], "properties": {"token": {"type": "string"}, "newPassword": {"type": "string"}}}),
 )
 # Which list answers an id parameter's name (workspace and project first), and where in the answer the id is.
 LISTS = {
@@ -54,7 +56,12 @@ UUID = "00000000-0000-4000-8000-000000000000"
 # picture (F-040; the same route also takes JSON `{ emoji }`) and a file upload.
 RAW_BODY_ROUTES = {("PUT", "/api/v1/me/photo"): "image/png", ("PUT", "/api/v1/projects/:projectId/icon"): "image/png",
                    ("POST", "/api/v1/projects/:projectId/files"): "application/octet-stream",
-                   ("POST", "/api/v1/projects/:projectId/files/:fileId/poster"): "application/octet-stream"}
+                   ("POST", "/api/v1/projects/:projectId/files/:fileId/poster"): "application/octet-stream",
+                   # A direct message's and an agent chat's files are staged the same way (#1438 point 10, #1448, #1464).
+                   ("POST", "/api/v1/dms/:dmId/files"): "application/octet-stream",
+                   ("POST", "/api/v1/dms/:dmId/files/:fileId/poster"): "application/octet-stream",
+                   ("POST", "/api/v1/my-agents/:agentId/files"): "application/octet-stream",
+                   ("POST", "/api/v1/my-agents/:agentId/files/:fileId/poster"): "application/octet-stream"}
 # Request headers a route needs before its handler runs, with the value a browser sends: a file preview answers only a frame of a Flux
 # page (C-60), so without them every request of the scan would stop at the same 403.
 # A stored file and a video are read whole or by one byte range (C-61, #1352): the scan sends a range, so the range parser is attacked too.
