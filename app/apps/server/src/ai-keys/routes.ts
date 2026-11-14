@@ -17,6 +17,8 @@ interface Options {
   db: Database; sessions: SessionResolver; backgroundMasterKey: Buffer | null; ai?: AiConnectionServerComposition;
   /** Called after a key was saved: connecting AI the first time gives the person Assistant (F-036 AG-1). */
   afterConnect?: (ownerUserId: string) => Promise<void>;
+  /** Called after a key was removed: with one connection left, the agents whose key it was go on it (#1424). */
+  afterRemove?: (ownerUserId: string) => Promise<void>;
   /** Asks the worker to read a stored key's models again (#1218); absent: Try again answers from what is stored. */
   refresh?: ModelListRefresh;
 }
@@ -24,7 +26,7 @@ interface Options {
 const microsPerMTok = { type: 'integer', minimum: 0, maximum: AI_PRICE_MAX_MICROS_PER_MTOK };
 const dailyBudget = { type: 'integer', minimum: API_KEY_DAILY_BUDGET_CENTS.min, maximum: API_KEY_DAILY_BUDGET_CENTS.max };
 
-export async function aiKeyRoutes(app: FastifyInstance, { db, sessions, backgroundMasterKey, ai = aiConnectionServerComposition(process.env), afterConnect, refresh }: Options) {
+export async function aiKeyRoutes(app: FastifyInstance, { db, sessions, backgroundMasterKey, ai = aiConnectionServerComposition(process.env), afterConnect, afterRemove, refresh }: Options) {
   const keys = personalConnectionLookup(db);
   const listing = onePerPerson<AiModelList>();
   // The price lists (#1465), as last stored. OpenRouter's is what an OpenRouter key pays: it is read from OpenRouter's model list when a
@@ -141,7 +143,9 @@ export async function aiKeyRoutes(app: FastifyInstance, { db, sessions, backgrou
     return connections.setModelPrice(principal, request.params.connectionId.toLowerCase(), request.body);
   });
   app.delete<{ Params: { connectionId: string } }>('/api/v1/background-compute-connections/:connectionId', async (request, reply) => {
-    await connections.revoke((await sessions.requirePrincipal(request)).principal, request.params.connectionId);
+    const { principal } = await sessions.requirePrincipal(request);
+    await connections.revoke(principal, request.params.connectionId);
+    await afterRemove?.(principal.id);
     return reply.code(204).send();
   });
 }

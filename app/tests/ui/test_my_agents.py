@@ -17,7 +17,7 @@ import unittest
 
 from playwright.sync_api import Browser, expect, sync_playwright
 
-from app_select import choose
+from app_select import choose, open_more
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
 from themed_shots import shot_both
 
@@ -102,7 +102,8 @@ class MyAgentsJourney(unittest.TestCase):
         window.get_by_label("API key", exact=True).fill(KEY)
         window.get_by_label("API key", exact=True).blur()
         choose(window.get_by_label("Model", exact=True), value="claude-sonnet-5")
-        window.get_by_label("Name", exact=True).fill("Ada's Anthropic key")
+        open_more(window)
+        window.get_by_label("Name (optional)", exact=True).fill("Ada's Anthropic key")
         window.get_by_label("Daily budget (USD)", exact=True).fill("5")
         window.get_by_role("button", name="Connect", exact=True).click()
         expect(window).to_have_count(0)
@@ -146,7 +147,7 @@ class MyAgentsJourney(unittest.TestCase):
         if group.get_by_role("combobox").count():
             expect(group.get_by_role("combobox")).to_contain_text(re.compile(r"· \$[\d.]+ / \$[\d.]+"))
             expect(group).not_to_contain_text("Input $")
-            expect(group).to_contain_text("Prices are US dollars per 1M tokens, input / output.")
+            expect(group).to_contain_text("Prices are in US dollars for a million tokens: what you send / what it writes.")
         # #1419: one switch instead of three choices; off is "Do it and tell me", the default.
         switch = page.get_by_role("switch", name="Ask me first")
         expect(switch).not_to_be_checked()
@@ -257,6 +258,51 @@ class MyAgentsJourney(unittest.TestCase):
                 sighted.get_by_role("button", name="More settings").click()
                 expect(sighted.get_by_role("combobox", name="Ada's Anthropic key")).to_contain_text("Test model")
                 expect(sighted.get_by_role("note").filter(has_text="see pictures")).to_have_count(0)
+
+    def test_03c_agents_use_your_ai_with_one_connection_and_say_needs_a_connection_with_none(self) -> None:
+        """#1424 (founder decision, 2026-11-14): with one connection an agent says "uses your AI" and no connection is named or asked per agent; with
+        several each agent names its connection; one with none to use says "Needs a connection", never the name of a model of a key that is gone."""
+        agent = self.api(self.page(), "GET", f"/api/v1/my-agents/{self.ids['planner']}")
+        model = agent["model"]
+
+        def stub(page, groups: list[dict]) -> None:
+            choice = {"current": model, "default": model, "groups": groups, "saved": True}
+            page.route("**/api/v1/personal-assistant/model", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(choice))
+                       if route.request.method == "GET" else route.continue_())
+
+        def key(connection: str, label: str) -> dict:
+            return {"connection": connection, "account": "api_key", "label": label, "company": "Anthropic",
+                    "options": [{"id": model["model"], "name": "Test model", "note": "Input $1, output $2 per 1M tokens"}]}
+
+        one = self.page()
+        stub(one, [key(model["connection"], "Ada's Anthropic key")])
+        one.goto(f"/settings/agents/{agent['id']}")
+        expect(one.get_by_text("Your agent · uses your AI · can do only what you can")).to_be_visible()
+        expect(one.locator("[data-agent-model]")).to_have_text("Model: Test model")
+        one.get_by_role("button", name="More settings").click()
+        expect(one.locator(".agp__group-name")).to_have_count(0)
+        self.assertNotIn("Ada's Anthropic key", one.locator("#agent-more").inner_text(), "one connection is not named")
+        one.goto("/settings/agents")
+        expect(one.locator(f"[data-agent='{agent['id']}'] .agl__model")).to_have_text("Test model")
+
+        several = self.page()
+        stub(several, [key(model["connection"], "Ada's Anthropic key"), key("4c1f0a52-7d3e-4b8a-9f61-2e5d8c7b9a10", "Work key")])
+        several.goto(f"/settings/agents/{agent['id']}")
+        expect(several.get_by_text("Your agent · uses your Ada's Anthropic key · can do only what you can")).to_be_visible()
+        expect(several.locator("[data-agent-model]")).to_have_text("Model: Test model · Ada's Anthropic key")
+        several.get_by_role("button", name="More settings").click()
+        expect(several.locator(".agp__group-name")).to_have_count(2)
+
+        none = self.page()
+        stub(none, [])
+        none.goto("/settings/agents")
+        row = none.locator(f"[data-agent='{agent['id']}'] .agl__model")
+        expect(row).to_have_text("Needs a connection")
+        self.assertNotIn(model["model"], none.locator(f"[data-agent='{agent['id']}']").inner_text(), "no stale model name")
+        none.goto(f"/settings/agents/{agent['id']}")
+        expect(none.get_by_text("Your agent · needs a connection · can do only what you can")).to_be_visible()
+        expect(none.locator("[data-agent-model]")).to_have_text("Needs a connection")
+        shot(none, "agent-needs-a-connection-1440")
 
     def test_04_each_agent_is_a_private_conversation_in_messages(self) -> None:
         page = self.page()
@@ -414,7 +460,8 @@ class MyAgentsJourney(unittest.TestCase):
         ben.get_by_label("API key", exact=True).fill(f"sk-ant-api03-{'agents-ui-ben-' * 3}AG03")
         ben.get_by_label("API key", exact=True).blur()
         choose(ben.get_by_label("Model", exact=True), value="claude-sonnet-5")
-        ben.get_by_label("Name", exact=True).fill("Ben's Anthropic key")
+        open_more(ben)
+        ben.get_by_label("Name (optional)", exact=True).fill("Ben's Anthropic key")
         ben.get_by_label("Daily budget (USD)", exact=True).last.fill("5")
         ben.get_by_role("button", name="Connect", exact=True).click()
         expect(ben.locator(".background-settings__connection")).to_have_count(1)

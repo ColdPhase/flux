@@ -64,7 +64,7 @@ import { searchQueryVectors } from './search/vectors.js';
 import { personalRunRoutes } from './personal-runs/routes.js';
 import { personalRunServerComposition } from './personal-runs/composition.js';
 import { keyToolChecking } from './ai-keys/tool-checking.js';
-import { firstAgentMaker } from './personal-runs/make-agent.js';
+import { agentsSettler, firstAgentMaker } from './personal-runs/make-agent.js';
 import { pgBossPersonalRunQueue } from './personal-runs/adapters.js';
 import { registerPersonalRunTokenRoute } from './personal-runs/run-tokens.js';
 import { personalRuntimeAvailability } from './personal-runs/runtime.js';
@@ -330,9 +330,11 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   if (personalRuns.mode !== 'production') app.log.warn({ mode: personalRuns.mode }, 'TEST ONLY: personal runs use fixture connections and a mock provider');
   // RT-1 rule 2 (#1441): an agent is put on a model of a key that called the check's `ping` (a fixture key of the test deployment has none to open).
   const toolChecking = personalRuns.mode === 'production' ? keyToolChecking(env, db, config.backgroundMasterKey) : null;
-  const firstAgent = firstAgentMaker(db, { queue: pgBossPersonalRunQueue(boss), connections: personalRuns.connections, providerEnabled: personalRuns.providerEnabled,
-    runtime: personalRuntimeAvailability(config.agentRuntime, db), ...(toolChecking ? { toolChecking } : {}) }, app.log);
+  const agentComposition = { queue: pgBossPersonalRunQueue(boss), connections: personalRuns.connections, providerEnabled: personalRuns.providerEnabled,
+    runtime: personalRuntimeAvailability(config.agentRuntime, db), ...(toolChecking ? { toolChecking } : {}) };
+  const firstAgent = firstAgentMaker(db, agentComposition, app.log);
   await app.register(aiRoutes(aiKeyRoutes), { db, sessions: identity, backgroundMasterKey: config.backgroundMasterKey, afterConnect: firstAgent,
+    afterRemove: agentsSettler(db, agentComposition, app.log),
     refresh: modelListRefresh(db, boss) });
   // The agents' web page reads (#918): the link cards' guard, a test deployment's closed world, and only when the operator turned them on.
   const webReader = createWebReader({ enabled: config.webReads.enabled, pictures, ...(config.linkPreviews.testHosts.size ? { rules: CLOSED_WORLD_RULES,

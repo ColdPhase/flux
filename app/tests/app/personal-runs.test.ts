@@ -135,10 +135,13 @@ describe('personal assistant runs (#68, pi in the runtime on a scripted model: n
     connections.disconnect(hubert.id);
     assert.deepEqual([(await runs.status(human(hubert))).unavailableReason, (await runs.status(human(hubert))).setup.connection], ['no_connection', 'none']);
     await assert.rejects(ask(hubert), { code: 'PERSONAL_RUN_UNAVAILABLE' });
-    connections.connect(hubert.id, randomUUID());
-    const changed = await runs.status(human(hubert));
-    assert.equal(changed.unavailableReason, 'connection_changed', 'another key is never used by itself: the owner picks a model of it');
-    assert.equal(changed.setup.connection, 'active', 'setup does not also claim that no key is connected (#192 note 5)');
+    // The only key was replaced by another (#1424, founder decision 2026-11-14): with exactly one connection the agent simply uses it; nothing is re-pointed.
+    const replacement = randomUUID();
+    connections.connect(hubert.id, replacement);
+    const replaced = await runs.status(human(hubert));
+    assert.deepEqual([replaced.state, replaced.unavailableReason, replaced.enablement?.connection], ['ready', null, replacement], 'the agent runs on the key there is');
+    assert.equal(replaced.setup.connection, 'active', 'setup does not also claim that no key is connected (#192 note 5)');
+    connections.disconnect(hubert.id, replacement);
     connections.connect(hubert.id, hubertConnection);
     assert.equal((await runs.status(human(hubert))).state, 'ready');
     assert.equal(await runCount(hubert.id), 0);
@@ -545,15 +548,16 @@ describe('personal assistant runs (#68, pi in the runtime on a scripted model: n
     // Before the fix an agent's private chat read the first agent's status, so Planner on a live key looked paused (v0.2 J12).
     const owner = await person('pr-c3');
     await addMember(ada, ws.id, owner, 'member');
-    const first = randomUUID(); const second = randomUUID();
+    const first = randomUUID(); const second = randomUUID(); const third = randomUUID();
     const assistant = (await post<{ id: string }>(owner, `/api/v1/workspaces/${ws.id}/agents`, { name: 'c3 assistant', owner: 'self' })).id;
     const planner = (await post<{ id: string }>(owner, `/api/v1/workspaces/${ws.id}/agents`, { name: 'c3 planner', owner: 'self' })).id;
-    connections.connect(owner.id, first); connections.connect(owner.id, second);
+    connections.connect(owner.id, first); connections.connect(owner.id, second); connections.connect(owner.id, third);
     try {
       await runs.enable(human(owner), { agentId: assistant, connection: first, model: 'claude-sonnet-5' });
       await runs.enable(human(owner), { agentId: planner, connection: second, model: 'claude-sonnet-5' });
       assert.equal((await runs.agentStatus(human(owner), planner)).state, 'ready');
       connections.disconnect(owner.id, first);
+      // Two connections are left: the person has several, so each agent has its own and the one that lost its key waits for a pick (C-3 stays for several).
       const paused = await runs.agentStatus(human(owner), assistant);
       assert.deepEqual([paused.state, paused.unavailableReason, paused.enablement?.agentId], ['unavailable', 'connection_changed', assistant]);
       assert.equal((await runs.status(human(owner))).unavailableReason, 'connection_changed', '`/ai` (the first agent) waits for a model');
@@ -563,8 +567,15 @@ describe('personal assistant runs (#68, pi in the runtime on a scripted model: n
       await assert.rejects(runs.agentStatus(human(hubert), planner), { code: 'AGENT_NOT_FOUND' });
       expectStatus(await hubert.browser.request('GET', `/api/v1/my-agents/${planner}/status`), 404, 'another person\'s agent');
       expectStatus(await owner.browser.request('GET', `/api/v1/my-agents/${planner}/status`), 200, 'the owner reads it over HTTP');
+      // With exactly one connection left the agent that had lost its key simply uses it (#1424): no pick, nothing asked.
+      connections.disconnect(owner.id, third);
+      const sole = await runs.agentStatus(human(owner), assistant);
+      assert.deepEqual([sole.state, sole.unavailableReason, sole.enablement?.connection], ['ready', null, second]);
+      assert.equal((await runs.status(human(owner))).state, 'ready', '`/ai` is on the one connection too');
+      assert.deepEqual((await runs.listAgents(human(owner))).map((agent) => agent.model.connection), [second, second], 'the agents list shows where each runs now');
     } finally {
       connections.disconnect(owner.id, second);
+      connections.disconnect(owner.id, third);
     }
   });
 

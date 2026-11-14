@@ -68,3 +68,11 @@ def labels(select: Locator) -> list[str]:
 def expect_value(select: Locator, value: str | re.Pattern[str]) -> None:
     """What `to_have_value` was for a native select: the value the select shows now."""
     expect(select.first).to_have_attribute("data-value", value)
+
+
+def open_more(scope) -> None:
+    """Opens the Connect AI form's More (the daily budget and the optional name, #1424) when it is closed, as a person does."""
+    more = scope.get_by_role("button", name="More settings")
+    if more.first.get_attribute("aria-expanded") == "false":
+        more.first.click()
+    expect(more.first).to_have_attribute("aria-expanded", "true")

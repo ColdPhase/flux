@@ -3,7 +3,7 @@ import { prepareReferencedTaskUse } from './task-targets.js';
 import { fileRows, runPictureRows } from './files.js';
 import { and, asc, desc, eq, inArray, isNotNull, isNull, notInArray, or, sql, type SQL } from 'drizzle-orm';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
-import { docHeadings, type AgentChatMessage, type AgentMayDo, type AssistantSourceRef } from '@flux/contracts';
+import { docHeadings, type AgentChatMessage, type AgentMayDo, type AiProviderKind, type AssistantSourceRef } from '@flux/contracts';
 import * as schema from '../schema.js';
 import { openRows } from '../sealing.js';
 import type { DbExecutor } from './push.js';
@@ -118,6 +118,12 @@ export function personalRunRows(db: DbExecutor) {
   return {
     enablement,
     lockOwner,
+
+    /** An agent whose key is gone goes on the one connection left (#1424); the caller holds the agent's lock (`enablement(..., { lock })`). */
+    async rebind(agentId: string, placement: { engine: 'server' | 'runtime'; apiKeyId: string | null; provider: AiProviderKind; model: string | null }) {
+      await db.update(e).set({ engine: placement.engine, apiKeyId: placement.apiKeyId, provider: placement.provider, model: placement.model,
+        version: sql`${e.version} + 1`, updatedAt: new Date() }).where(eq(e.agentId, agentId));
+    },
 
     /** The person's own time zone, their browser's (#1168, C-57; UTC until one has said): a schedule they ask for runs in it, and the brief's clock reads in it. */
     personTimeZone: (userId: string) => personTimeZones(db).get(userId),

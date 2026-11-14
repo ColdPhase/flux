@@ -97,7 +97,7 @@ function KeyModels({ group, chosen, agentName, onChoose, onError }: {
         ))}
       </Select>
       {current?.retired ? <p className="agp__hint" role="note">{current.name} is {`no longer offered by ${company}`}. {agentName} is paused until you choose another model.</p> : null}
-      {group.options.some((option) => option.priced !== false && !option.retired) ? <p className="agp__hint">Prices are US dollars per 1M tokens, input / output.</p> : null}
+      {group.options.some((option) => option.priced !== false && !option.retired) ? <p className="agp__hint">Prices are in US dollars for a million tokens: what you send / what it writes.</p> : null}
       {pricing && priceFor ? (
         <form className="agp__price" onSubmit={(event) => void savePrice(event)} aria-label={`Price of ${priceFor.name}`}>
           <p className="agp__hint">Flux doesn’t know this model’s price yet. Enter it to use it with a daily budget.</p>
@@ -195,7 +195,9 @@ function AgentSettings({ agent }: { agent: MyAgent }) {
   const [more, setMore] = useState(false);
 
   const group = choice?.groups.find((item) => item.connection === agent.model.connection);
-  const uses = group ? `uses your ${group.label}` : 'has no connection now';
+  // An agent uses "your AI" (#1424): the connection is named only for a person who has several; an agent with none to use says so.
+  const several = (choice?.groups.length ?? 0) > 1;
+  const uses = !choice ? '' : group ? (several ? `uses your ${group.label}` : 'uses your AI') : 'needs a connection';
   const picked = group?.options.find((option) => option.id === agent.model.model);
   // Opus and the Claude limit are named only to someone whose Claude plan offers Opus (#1173); an API key spends its own budget.
   const opus = !!choice?.groups.some((item) => item.account === 'claude_plan' && item.options.some((option) => option.id === 'opus'));
@@ -240,7 +242,7 @@ function AgentSettings({ agent }: { agent: MyAgent }) {
         <Kreska size={40} hue={agent.colour} />
         <div className="agp__who">
           <h2 className="agp__name">{agent.name}</h2>
-          <p className="agp__sub">Your agent · {uses} · can do only what you can</p>
+          <p className="agp__sub">Your agent{uses ? ` · ${uses}` : ''} · can do only what you can</p>
         </div>
         <Link className="ui-btn ui-btn--primary agp__message" to={`/agents/${agent.id}`}>Message {agent.name}</Link>
       </header>
@@ -262,7 +264,7 @@ function AgentSettings({ agent }: { agent: MyAgent }) {
       <div className="agp__more">
         {/* Named apart from the header's ⋯ More, which a screen reader lists beside it; the visible word starts the name (WCAG 2.5.3). */}
         <Button variant="quiet" size="sm" icon={showModel ? 'chevron-down' : 'chevron-right'} aria-label="More settings" aria-expanded={showModel} aria-controls="agent-more" onClick={() => setMore(!showModel)}>More</Button>
-        {showModel ? null : <span className="agp__hint" data-agent-model="">Model: {model.name}{model.connection ? ` · ${model.connection}` : ''}</span>}
+        {showModel || !choice ? null : <span className="agp__hint" data-agent-model="">{model.needsConnection ? model.name : `Model: ${model.name}`}{model.connection ? ` · ${model.connection}` : ''}</span>}
       </div>
       {showModel ? (
       <section className="sset-card agp__card" id="agent-more" aria-label="More">
@@ -271,7 +273,8 @@ function AgentSettings({ agent }: { agent: MyAgent }) {
           <div className="agp__models" role="group" aria-labelledby="agent-model">
             {choice.groups.map((item) => (
               <div key={item.connection} className="agp__model-group">
-                <span className="agp__group-name" id={`model-${item.connection}`}>{item.label}</span>
+                {/* A person with one connection has nothing to choose between: its name is not asked or shown (#1424). */}
+                <span className={several ? 'agp__group-name' : 'ui-vh'} id={`model-${item.connection}`}>{item.label}</span>
                 {item.account === 'api_key' ? (
                   <KeyModels group={item} chosen={agent.model.connection === item.connection ? agent.model.model : null} agentName={agent.name}
                     onChoose={(model) => save({ connection: item.connection, model }, 'Model changed')} onError={(cause) => setError(failure(cause))} />

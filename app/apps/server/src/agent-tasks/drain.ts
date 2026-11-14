@@ -90,11 +90,11 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
    * The task goes back to the person who owns the agent. `by` is who changes it; `asAgent` names the agent that hands it back for
    * review, which tells its owner (an Inbox item and a notification, AG-7), and falls back to the person if the agent cannot write.
    */
-  async function giveBack(tx: Transaction, work: WorkRecord, ownerId: string, by: string, asAgent?: string) {
+  async function giveBack(tx: Transaction, work: WorkRecord, ownerId: string, by: string, asAgent?: string, via: 'agent_rule' | 'agent_unable' = 'agent_rule') {
     const current = (await workRows(tx).findWork(work.id, { lock: true }))!;
     if (current.owner?.kind !== 'agent') return;
     const give = (principal: Principal) => attempt('give back', () => workUseCases(tx as unknown as Database).updateWork(principal, work.id,
-      { owner: { kind: 'human', id: ownerId } }, current.version, 'agent_rule'));
+      { owner: { kind: 'human', id: ownerId } }, current.version, via));
     if (asAgent && await give(agent(asAgent))) return;
     await give(human(by));
   }
@@ -168,7 +168,7 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
       const current = (await workRows(tx).findWork(work.id, { lock: true }))!;
       if (current.owner?.kind !== 'agent' || current.owner.id !== asker.id) return;
       await say(tx, current, asker.id, 'I couldn\'t get an answer. It\'s back with you.', `gave-up:${event.id}`);
-      await giveBack(tx, current, asker.ownerUserId, asker.ownerUserId);
+      await giveBack(tx, current, asker.ownerUserId, asker.ownerUserId, undefined, 'agent_unable');
       await stopRuns(asker.id, asker.ownerUserId, undefined, true);
       return;
     }
@@ -182,7 +182,7 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
     const held = current.owner?.kind === 'agent' && current.owner.id === holder.id;
     if (held) {
       await say(tx, current, holder.id, 'I couldn\'t take care of this. It\'s back with you.', `gave-up:${event.id}`);
-      await giveBack(tx, current, holder.ownerUserId, holder.ownerUserId);
+      await giveBack(tx, current, holder.ownerUserId, holder.ownerUserId, undefined, 'agent_unable');
       // A rule's hand-back writes no `released` event, so the run is stopped here.
       await stopRuns(holder.id, holder.ownerUserId, undefined, true);
     }
@@ -246,7 +246,8 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
     }
     if (refusal !== null) {
       await say(tx, work, holder.id, refusal, `refused:${event.id}`);
-      await giveBack(tx, work, ownerId, ownerId);
+      // It never started: its owner reads "its agent couldn't take it", not "its agent finished" (#1424).
+      await giveBack(tx, work, ownerId, ownerId, undefined, 'agent_unable');
     }
   }
 
@@ -332,7 +333,7 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
     if (!holds) return;
     if (ended === 'paused' || ended === 'revoked' || ended === 'denied') {
       await say(tx, work, run.agentId, ended === 'paused' ? 'I can\'t work on this: your agent is paused.' : 'I can\'t work on this: I\'m no longer allowed here.', `ended:${run.id}`);
-      await giveBack(tx, work, run.ownerUserId, run.ownerUserId);
+      await giveBack(tx, work, run.ownerUserId, run.ownerUserId, undefined, 'agent_unable');
       return;
     }
     // A run that failed keeps the task with the agent: its owner chooses Try again or Take it back.
@@ -342,7 +343,7 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
   /** An exchange that stops returns to the people: one line, and the task goes back to its owner. */
   async function toThePeople(tx: Transaction, work: WorkRecord, asker: { id: string; ownerUserId: string }, line: string, key: string) {
     await say(tx, work, asker.id, line, key);
-    await giveBack(tx, work, asker.ownerUserId, asker.ownerUserId);
+    await giveBack(tx, work, asker.ownerUserId, asker.ownerUserId, undefined, 'agent_unable');
   }
 
   /** Agent A asked agent B: both owners must be among the task's people, the exchange is bounded, and B only answers. */

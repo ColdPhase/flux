@@ -59,6 +59,8 @@ export function firstAgentMaker(db: Database, composition: PersonalRunCompositio
       await db.transaction(async (tx) => {
         const scoped = tx as unknown as Database;
         await lockAssistantOwner(scoped, ownerUserId);
+        // A key added after the only one was removed (or a plan signed in) takes the agents whose key is gone: they use "your AI" (#1424).
+        await personalRunUseCases(scoped, composition).settleAgents(actor);
         if (await personalRunUseCases(scoped, composition).hadAnAgent(actor)) return;
         // The workspace the app shows as the person's own (the company, else the oldest they are in), and the same rule for a guest of it as
         // the page's: a guest has no AI, whatever other workspace they are in (#959).
@@ -70,6 +72,25 @@ export function firstAgentMaker(db: Database, composition: PersonalRunCompositio
     } catch (error) {
       // A rule's refusal (a guest, no connection to choose a model on yet) means there is nothing to make now; anything else is logged.
       if (!(error instanceof DomainError)) log.warn({ error }, 'The first agent could not be made');
+    }
+  };
+}
+
+/**
+ * Agents use "your AI" (#1424, founder decision, Hubert, 2026-11-14): called after a key is removed. With exactly one connection left, an agent
+ * whose key was the one removed goes on it, at that connection's own model; with several or none it stays as it was (C-3). It never fails the
+ * removal that called it.
+ */
+export function agentsSettler(db: Database, composition: PersonalRunComposition, log: { warn(object: unknown, message: string): void } = { warn: () => undefined }) {
+  return async (ownerUserId: string): Promise<void> => {
+    try {
+      await db.transaction(async (tx) => {
+        const scoped = tx as unknown as Database;
+        await lockAssistantOwner(scoped, ownerUserId);
+        await personalRunUseCases(scoped, composition).settleAgents({ kind: 'human', id: ownerUserId });
+      });
+    } catch (error) {
+      if (!(error instanceof DomainError)) log.warn({ error }, 'The agents could not be moved onto the connection that is left');
     }
   };
 }
