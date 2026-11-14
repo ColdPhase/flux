@@ -24,7 +24,8 @@
 .people__field label, .access__seg legend { font-size: var(--fs-sm); font-weight: 500; color: var(--t2); }
 .people__field .ui-select { width: 100%; min-height: var(--ctl-lg); padding: 0 10px; border: 0; border-radius: var(--r); background: var(--el); color: var(--t1); font-size: var(--fs-base); box-shadow: inset 0 0 0 1px var(--line2); }
 .people__hint { margin: 0; font-size: var(--fs-sm) !important; color: var(--t3) !important; line-height: 1.45; }
-.people__add { display: grid; gap: 14px; }
+/* The company-name form is also an .sset-card: the compound selector keeps it a grid whatever order the stylesheets load in. */
+.people__add, .sset-card.people__add { display: grid; gap: 14px; }
 /* #1438: the invite form keeps the role and the expiry under a quiet More. */
 .people__add > .people__more { justify-self: start; }
 .people__more-fields { display: grid; gap: 14px; }
