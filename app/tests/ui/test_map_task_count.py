@@ -200,10 +200,14 @@ class MapTaskCountJourney(unittest.TestCase):
         }""")
 
     def settle(self, page: Page, selector: str) -> None:
-        """Wait until an element and its ancestors finished their enter motion."""
+        """Wait until an element and its ancestors finished their enter motion: opaque, with no animation of theirs still running or pending
+        (opacity alone let WebKit's contrast check meet the chooser mid-fade)."""
         page.wait_for_function("""selector => {
           const el = document.querySelector(selector); if (!el) return false;
-          for (let n = el; n; n = n.parentElement) if (Number(getComputedStyle(n).opacity) !== 1) return false;
+          for (let n = el; n; n = n.parentElement) {
+            if (Number(getComputedStyle(n).opacity) !== 1) return false;
+            if (n.getAnimations().some((a) => a.pending || a.playState === 'running')) return false;
+          }
           return true;
         }""", arg=selector)
 
