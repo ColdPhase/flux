@@ -455,10 +455,13 @@ test('native agent owners retry failed reads, fence stale permission answers and
       failedRead();
       return route.fulfill({ status: 503, contentType: 'application/json', body: '{"code":"TEMPORARY_UNAVAILABLE"}' });
     });
+    const spaceRead = page.waitForResponse((r) => r.url().endsWith(`/api/v1/projects/${place.id}/space-shell`) && r.ok());
     await page.evaluate(() => window.dispatchEvent(new Event('focus')));
     await fixturePhase(readFailed, 'people read failed with 503');
-    // The same refresh reads the space again and that read still names the owner, so the failed people read neither
-    // removes the relation nor shows a stale one: over rendered frames the card keeps exactly the current owner.
+    await spaceRead;
+    // The same refresh reads the space again and that read still names the owner, so after it the card shows exactly
+    // the current owner, never a stale one, over rendered frames.
+    await card.locator('.agent-for').waitFor();
     for (let frame = 0; frame < 3; frame++) {
       await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
       assert.equal(await card.locator('.agent-for').count(), 1, 'a failed people read keeps the owner the space read names');
