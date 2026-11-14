@@ -661,7 +661,7 @@ class LiveJourney(LiveBase):
         self.addCleanup(lambda: self.api(kai, "PATCH", "/api/v1/notification-preferences", {"level": "needsYou"}))
         # The one Sounds switch (a call's chime and the message tone together, #1419 item 18) is on by default.
         kai.goto("/settings/notifications")
-        expect(kai.get_by_role("switch", name="Sounds")).to_have_attribute("aria-checked", "true")
+        expect(kai.get_by_role("switch", name=re.compile("^Sounds"))).to_have_attribute("aria-checked", "true")
         kai.goto("/")
         expect(kai.locator(".app__pane")).to_be_visible()
         kai.wait_for_timeout(1500)
