@@ -55,7 +55,8 @@ describe('an answer is a Reply in an encrypted space as in a plain one (#1424 de
         assert.equal(item.title, 'Here it is, the left side is done.');
       }
       // A notification that is not an answer keeps the flag off, and the database refuses the flag on a reason that cannot answer.
-      const other = (await pool.query<{ n: number }>("SELECT count(*)::int AS n FROM notifications WHERE user_id = $1 AND answer AND id <> $2", [ada.id, item.key.slice(5)])).rows[0]!.n;
+      const other = (await pool.query<{ n: number }>("SELECT count(*)::int AS n FROM notifications WHERE user_id = $1 AND workspace_id = $2 AND answer AND id <> $3",
+        [ada.id, spaces[side].workspace, item.key.slice(5)])).rows[0]!.n;
       assert.equal(other, 0);
       if (side === 'plain') {
         await assert.rejects(pool.query(`INSERT INTO notifications (id, user_id, workspace_id, source_type, source_id, reason, title, body, url, ai_origin, answer)
