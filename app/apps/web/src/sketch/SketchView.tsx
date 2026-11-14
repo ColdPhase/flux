@@ -802,9 +802,9 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
   );
   const hasStatus = !!doc.problem || !!status.text;
   const helpText = phone
-    ? 'Tap a thought to select it. Thought, then Paste, fills a draft from copied lines, a link or an image. List shows the same thoughts in order.'
+    ? 'Tap a thought to select it. The Thought button starts a new thought; its draft has a Paste button for copied lines, a link or an image. List shows the same thoughts in order.'
     : coarse
-      ? 'Tap a thought to select it, then drag it, or drag its dot onto another thought to connect them. Pinch with two fingers to zoom; Move around makes one finger drag the map. Add links a new thought to it. Select several adds taps to the selection. Thought, then Paste, turns copied lines, a link or an image into a draft. List shows the same thoughts in order.'
+      ? 'Tap a thought to select it, then drag it, or drag its dot onto another thought to connect them. Pinch with two fingers to zoom; Move around makes one finger drag the map. Add links a new thought to it. Select several adds taps to the selection. The Thought button starts a new thought; its draft has a Paste button for copied lines, a link or an image. List shows the same thoughts in order.'
       : 'Drag to move, drag a thought’s dot onto another thought to connect, or release it on empty space for a connected draft thought. Drag empty space, or hold Space and drag, to move around; with the map itself focused, arrows move the view. Ctrl/⌘ + wheel or a pinch zooms around the pointer. Shift-click to select several. On a focused thought: arrows move (Shift further, Alt resizes) · Enter edits · Space selects · Enter on the dot connects · + adds a linked thought · Delete removes · Ctrl/⌘ Z undoes · Ctrl/⌘ V pastes lines, a link or an image as a draft.';
 
   if (mapMode && !(sketch.thoughts.length || canWrite)) {

@@ -21,7 +21,7 @@
 .auth__lead { font-size: var(--fs-base); color: var(--t2); line-height: var(--lh); }
 .auth__card, .auth__form { display: flex; flex-direction: column; gap: 14px; padding: 20px; border-radius: 18px; background: var(--el); box-shadow: var(--sh-card); }
 .auth__card .auth__form { padding: 0; background: none; box-shadow: none; border-radius: 0; }
-.auth__form { gap: 14px; }
+.auth__form { --auth-gap: 14px; gap: var(--auth-gap); }
 .auth__form .ui-btn--primary { margin-top: 6px; }
 .auth__sso { display: flex; flex-direction: column; gap: 10px; }
 .auth__sso-error { margin: 0; font-size: var(--fs-sm); color: var(--t1, var(--t1)); }
@@ -579,6 +579,7 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
   .auth .brand .flux-logo { width: 52px; height: 52px; }
   .auth__lead { font-size: var(--fs-lg); line-height: var(--lh); }
   .auth__card, .auth__form { padding: 0; background: none; box-shadow: none; border-radius: 0; gap: 16px; }
+  .auth__form { --auth-gap: 16px; }
   .auth .ui-btn--lg, .auth .ui-input { min-height: var(--ctl-lg); }
   .auth .ui-input { border-radius: 16px; font-size: var(--fs-input-touch); padding: 0 16px; }
 }
@@ -745,6 +746,12 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 @media (pointer: coarse) {
   .auth__alt .ui-link, .auth__error .ui-link { position: relative; }
   .auth__alt .ui-link::after, .auth__error .ui-link::after { content: ""; position: absolute; left: -4px; right: -4px; top: calc(50% - 22px); height: 44px; }
+  /* "Forgot password?" sits between the Email and the Password fields, with 5 px under it and the form's gap above it, so a 44 px area
+     cannot fit without covering an input. Its hit area stays in that gap, 7 px short of the Email's bottom edge and ending with the
+     line: a touch browser takes a tap within a few px of a link for the link, so a tap on either input's edge must stay at least
+     that far from it. It is wider than the text to the left, and covers neither input. */
+  .auth__form .ui-field__aside .ui-link { position: relative; }
+  .auth__form .ui-field__aside .ui-link::after { content: ""; position: absolute; left: -24px; right: -8px; top: calc(5px - var(--auth-gap)); bottom: 0; }
 }
 
 /* F-029 (#614): "Not in <workspace>: AI is off there." is its own line under its card, not the caption of the next heading. */
