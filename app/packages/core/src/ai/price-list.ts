@@ -1,4 +1,4 @@
-import { AI_LISTED_PRICE_PROVIDERS, AI_PRICE_LIST_PROVIDERS, AI_PRICE_LIST_URL, AI_PRICE_MAX_MICROS_PER_MTOK, AI_PRICE_MAX_TIERS, AI_PROVIDERS,
+import { AI_LISTED_PRICE_PROVIDERS, AI_PRICE_LIST_PROVIDERS, AI_PRICE_LIST_URL, AI_PRICE_MAX_MICROS_PER_MTOK, AI_PRICE_MAX_TIERS, AI_PROVIDERS, rateAt,
   type AiModelList, type AiModelPrices, type AiPriceList, type AiPriceTier, type AiProviderKind, type AiRate } from '@flux/contracts';
 import { validModelId } from './validation.js';
 import { SHIPPED_PRICE_FILE } from './price-list-snapshot.js';
@@ -130,6 +130,19 @@ export interface HeldPrice {
 
 /** Whether a price fell to 0, or to a tenth or less of what Flux knows; a known 0 cannot fall. */
 const fallsTooFar = (known: number, offered: number) => known > 0 && offered * 10 <= known;
+/**
+ * Whether `offered` charges 0, or a tenth or less of what `known` charges, for a prompt of some length, input or output. A request is
+ * charged the highest price its length reaches ({@link rateAt}), so this looks at a short prompt and at every length where `known`
+ * rises to a long-prompt price: dropping or lowering a long-prompt price counts, and a long-prompt price below its own base, which
+ * never lowers a charge, does not.
+ */
+function fallsTooFarFrom(known: AiRate, offered: AiRate): boolean {
+  return [0, ...(known.tiers ?? []).map((tier) => tier.fromTokens)].some((promptTokens) => {
+    const was = rateAt(known, promptTokens);
+    const now = rateAt(offered, promptTokens);
+    return fallsTooFar(was.inputMicrosPerMTok, now.inputMicrosPerMTok) || fallsTooFar(was.outputMicrosPerMTok, now.outputMicrosPerMTok);
+  });
+}
 /** OpenRouter's own naming of a model it bills nothing for. */
 const openRouterFree = (provider: AiProviderKind, model: string) => provider === 'openrouter' && model.endsWith(':free');
 const own = <T>(rows: Readonly<Record<string, T>> | undefined, id: string): T | undefined =>
@@ -138,8 +151,12 @@ const own = <T>(rows: Readonly<Record<string, T>> | undefined, id: string): T | 
 /**
  * A refreshed list with what must not move at once held back (#1270). A list comes from a third party's repository (LiteLLM's `main`
  * branch) or OpenRouter's API and sets what a key's daily budget counts, so a wrong or poisoned file must not lower it without bound:
- * - a model Flux knows (in the list it has stored, else the shipped one) keeps its known price when the refreshed input or output
- *   price is 0 or a tenth or less of the known one; increases and smaller decreases apply;
+ * - a model Flux knows keeps its known price when the refreshed input or output price, for a short prompt or for a long one (the
+ *   long-prompt `tiers`), is 0 or a tenth or less of what Flux knows. Flux knows a model from both the stored list and the shipped
+ *   one, and the refresh is compared with each: against the stored list alone, a price that fell just under a tenth a day would
+ *   walk down without a stop, each day's accepted price being the next day's baseline. Held, the model keeps its stored price, else
+ *   the shipped one, so the stored price never falls below a tenth of the shipped one. A real fall of more than that stays held
+ *   until a release ships a newer list; the log names it each day. Increases and smaller decreases apply;
  * - a model Flux does not know is never given a price of 0 (input or output): it is left out and its owner is asked, so a free
  *   model is free only when a stored or shipped list already had it at 0 (Gemini's free models);
  * - except an OpenRouter id ending in `:free`: OpenRouter bills that key and names the model free, so its own price is taken as
@@ -152,12 +169,13 @@ export function guardPriceList(candidate: AiPriceList, stored: AiPriceList | nul
   for (const [provider, rows] of Object.entries(candidate.prices) as [AiProviderKind, AiModelPrices][]) {
     const kept: [string, AiRate][] = [];
     for (const [model, offered] of Object.entries(rows)) {
-      const known = own(stored?.prices[provider], model) ?? own(shipped?.prices[provider], model);
+      const baselines = [own(stored?.prices[provider], model), own(shipped?.prices[provider], model)].filter((rate): rate is AiRate => !!rate);
+      const known = baselines[0];
       if (openRouterFree(provider, model)) kept.push([model, offered]);
       else if (!known) {
         if (offered.inputMicrosPerMTok === 0 || offered.outputMicrosPerMTok === 0) held.push({ provider, model, kept: null, offered });
         else kept.push([model, offered]);
-      } else if (fallsTooFar(known.inputMicrosPerMTok, offered.inputMicrosPerMTok) || fallsTooFar(known.outputMicrosPerMTok, offered.outputMicrosPerMTok)) {
+      } else if (baselines.some((baseline) => fallsTooFarFrom(baseline, offered))) {
         held.push({ provider, model, kept: known, offered });
         kept.push([model, known]);
       } else kept.push([model, offered]);

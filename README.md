@@ -145,13 +145,14 @@ taken, start the first time with another free port, for example `FLUX_PORT=8090 
 `./flux up` downloads the release's images, pinned by digest; nothing is built on your machine. On a server, also check the release's signature first ([installation](docs/operations/install.md#1-download-the-release-and-start-once-on-loopback)). To connect your own MCP client, such
 as Claude Code or Codex, follow [Connect your own agent](#connect-your-own-agent).
 
-AI is off until someone connects it in **Settings › AI**. An API key needs the operator's
-`FLUX_PERSONAL_RUNS=on` and a key file ([configuration](docs/operations/configuration.md#ai-providers)).
-To let people use their own Claude or ChatGPT subscription, Flux runs the Claude Code or Codex on the
-server for them, in one isolated runtime. The first `./flux up` in a terminal asks once
-whether to allow it (Enter means yes, for Codex; Claude Code needs a typed `y` to Anthropic's
-Commercial Terms; a host that cannot run it gets one line saying why instead); `./flux ai on` asks
-later, and without a terminal nothing is asked ([operator guide](docs/operations/agent-runtime.md)).
+AI works right after install: people connect their own API key or their Claude or ChatGPT subscription in
+**Settings › AI**. `./flux up` makes the key file that seals API keys, in `~/.local/state/flux/<project>/`, outside the
+backups ([back it up](docs/operations/backup-restore.md#the-ai-key-file)), sets `FLUX_PERSONAL_RUNS=on` and starts the agent
+runtime, in which every agent runs. That needs a Linux host with kernel 6.7 or later and `ptrace_scope` of 1 or higher ([requirements](docs/operations/requirements.md#host));
+a host that cannot run it gets one line saying why, and AI stays off. In a terminal the first `./flux up` also asks once whether people may sign
+in with their own subscriptions (Enter means yes, for Codex; Claude Code needs a typed `y` to Anthropic's Commercial Terms). Without
+a terminal nothing is asked and Codex is on, Claude Code off. `./flux ai on` asks later and only adds
+([operator guide](docs/operations/agent-runtime.md)).
 `./flux up` never overwrites an existing `docker/.env`.
 
 Other commands: `./flux down`, `./flux logs`, `./flux upgrade` (to the next release), `./flux reset` (deletes data after
