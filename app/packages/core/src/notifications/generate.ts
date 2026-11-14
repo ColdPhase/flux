@@ -100,6 +100,17 @@ function humanId(actorId: string) {
   return actorId.startsWith('human:') ? actorId.slice('human:'.length) : null;
 }
 
+/**
+ * Who a person's message answers (#1424 decision 1): the authors of what others wrote at its level since its author last wrote there
+ * (`since`) that named the author and asked them something, which reached the author's Inbox as a question. The answer addresses
+ * them as a name does, so it is a mention for them (a question when it asks back): an answer to your question reaches you.
+ */
+export function askersAnswered(since: readonly { authorId: string; body: string }[] | undefined, authorName: string): Set<string> {
+  const askers = new Set<string>();
+  for (const earlier of since ?? []) if (isQuestion(earlier.body) && mentions(earlier.body, authorName)) askers.add(earlier.authorId);
+  return askers;
+}
+
 async function actorName(facts: NotificationFacts, actorId: string): Promise<string> {
   const human = humanId(actorId);
   if (!human) return 'An agent';
@@ -138,17 +149,20 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
       const chosen = new Map((message.threadFollows ?? []).map((choice) => [choice.userId, choice.following]));
       const follows = (userId: string) => chosen.get(userId) ?? involved.has(userId);
       const url = `/projects/${message.projectId}/conversations/${message.conversationId}#message-${message.id}`;
+      // A person's message answers what was asked of them here (#1424 decision 1): the asker is told as if named.
+      const answered = authorId ? askersAnswered(message.since, names.get(authorId) ?? '') : new Set<string>();
       const result: Candidate[] = [];
       for (const userId of people) {
         const name = names.get(userId) ?? '';
         // An agent's question card asks exactly one person, whatever the text says (#347 S14).
         const askedThis = message.asked?.userId === userId;
         if (message.asked && !askedThis) continue;
-        const addressed = mentions(message.body, name);
+        const named = mentions(message.body, name);
+        const addressed = named || answered.has(userId);
         const reason: NotificationReason | null = askedThis ? 'question' : addressed ? (isQuestion(message.body) ? 'question' : 'mention') : follows(userId) ? 'reply' : null;
         if (!reason) continue;
         const title = reason === 'question' ? `${author} asked you in ${message.projectName}`
-          : reason === 'mention' ? `${author} mentioned you in ${message.projectName}`
+          : reason === 'mention' ? `${author} ${named ? 'mentioned' : 'answered'} you in ${message.projectName}`
             : `${author} replied in ${quote(excerpt(message.opening, 60))}`;
         result.push({ userId, reason, source: { type: 'project', id: message.projectId }, title,
           body: askedThis ? excerpt(message.asked!.question) : excerpt(messagePreview(message.body, message.attachmentCount)), url,
@@ -166,12 +180,15 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
       const author = names.get(message.authorId) ?? 'Someone';
       const marked = viaName(author, message.via, message.viaAgent);
       const place = message.kind === 'pair' ? '' : ` in ${message.title ? quote(message.title) : 'a group message'}`;
+      // The message answers what was asked of its author at its level (#1424 decision 1): the asker is told as if named.
+      const answered = askersAnswered(message.since, author);
       return people.map((userId) => {
         // A message that names the person with "@" (or opens with their name) is a mention, or a question when it asks something, as in a
         // space (#1249): those reasons still arrive from a place the person muted, while every other message of the conversation does not.
-        const addressed = mentions(message.body, names.get(userId) ?? '');
+        const named = mentions(message.body, names.get(userId) ?? '');
+        const addressed = named || answered.has(userId);
         const reason: NotificationReason = addressed ? (isQuestion(message.body) ? 'question' : 'mention') : 'dm';
-        const title = reason === 'question' ? `${marked} asked you${place}` : reason === 'mention' ? `${marked} mentioned you${place}`
+        const title = reason === 'question' ? `${marked} asked you${place}` : reason === 'mention' ? `${marked} ${named ? 'mentioned' : 'answered'} you${place}`
           : message.kind === 'pair' ? `${marked} sent you a message` : `${marked}${place}`;
         return { userId, reason, source: { type: 'dm' as const, id: message.dmId }, title, body: message.body.trim() ? excerpt(message.body) : 'Sent a file',
           url: `/dm/${message.dmId}#message-${message.id}`, who: author, where: message.kind === 'pair' ? '' : message.title ? quote(message.title) : 'a group',

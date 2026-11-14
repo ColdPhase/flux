@@ -153,6 +153,8 @@ body:has(.app) { background: var(--side); }
 /* A space with unread messages (#1250): its name in the primary colour and semibold; a read space keeps the quiet colour. The dot is for
    what needs the person, not for news. A muted space stays quiet (#1249). */
 .side__project.is-unread { color: var(--t1); font-weight: 600; }
+/* A conversation with something unread is bold, as a space (#1424 decision 10): a person's message, an agent's answer or report. */
+.side__dm.is-unread { color: var(--t1); font-weight: 600; }
 /* A space's row holds the link and, after it, its ⋯ (Move up, Move down, #1250): shown while the pointer is over the row or the ⋯ has focus,
    on the end slot it covers (the lock and the dot), and never on Everyone. A touch screen shows it always, as a 44 px target after the
    name: a long press moves too, but a gesture is never the only way (#343). */

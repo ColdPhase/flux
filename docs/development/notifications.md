@@ -15,7 +15,7 @@ A notification exists only for a reason a person can act on (`reason` on every r
 
 | Reason | Event | Who |
 | --- | --- | --- |
-| `mention` | `project.message_sent.v1` / `project.conversation_created.v1`, and `dm.message_sent.v1` (#1249) | People named with `@Name` (or opened with `Name,`), as the return view (#106) matches them, in a space or in a direct message. |
+| `mention` | `project.message_sent.v1` / `project.conversation_created.v1`, and `dm.message_sent.v1` (#1249) | People named with `@Name` (or opened with `Name,`), as the return view (#106) matches them, in a space or in a direct message; and a person whose question the message answers (#1424 decision 1): its author was named and asked in that conversation (or at that level of a direct message) after their own last message there. "Marta answered you in Product". |
 | `question` | same | A mention that asks something (`?`); or, for an agent's question card (`flux_ask_question`, #347), exactly the one person asked, and nobody else because of that message. |
 | `reply` | same | The people who **follow** the conversation (a thread), unless the message mentions them: by default its starter and earlier writers, and whoever followed it (see "Follow a thread" under Preferences, #1249). |
 | `dm` | `dm.message_sent.v1` (now carries `messageId`) | The other current participants, except those the message names (they get a `mention` or a `question`, #1249; their reply in that DM answers it: it leaves Needs You as in a space thread, #1170). |

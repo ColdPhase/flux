@@ -12,6 +12,9 @@ import { usePlaceMutes } from '../notifications/mutes';
 import { useShellData } from './data';
 import { useShellActions } from './shellContext';
 import { SpaceFace } from '../ui/SpaceFace';
+import { useAgentUnread } from '../my-agents/AgentChatDots';
+import { useDmUnread } from '../dm/dmUnread';
+import type { MyAgent } from '@flux/contracts';
 import './settings.css';
 
 /**
@@ -45,6 +48,8 @@ export function ProjectsIndex() {
   const encryptedIn = useEncryptedWorkspaceIds();
   // A call is on in the space (F-041): the call glyph after its name, as in the sidebar.
   const calls = useLiveSpaces();
+  // A conversation with something unread is bold, as a space (#1424 decision 10); a muted one has the quiet count.
+  const dmUnread = useDmUnread();
   return (
     <div className="pane-scroll">
       <div className="pane-in set">
@@ -101,30 +106,25 @@ export function ProjectsIndex() {
             {/* The same card and grid as the spaces, with a fixed time column, so a long preview never pushes the date out (#763 NV-5). */}
             {directMessages.length || agents.length ? (
               <ul className="set-card proj-index__dmlist" aria-label="Conversations">
-                {agents.map((agent, index) => (
-                  <li key={agent.id}>
-                    <Link to={`/agents/${agent.id}`} className="set-row" data-agent={agent.id}>
-                      <Kreska size={36} hue={agent.colour} />
-                      <span className="set-row__b">
-                        <span className="set-row__t proj-index__one">{agent.name}</span>
-                        <span className="set-row__s proj-index__one">{index === 0 ? 'Your agent · answers /ai' : 'Your agent'}</span>
-                      </span>
-                    </Link>
-                  </li>
-                ))}
-                {directMessages.map((dm) => (
+                {agents.map((agent, index) => <AgentRow key={agent.id} agent={agent} first={index === 0} />)}
+                {directMessages.map((dm) => {
+                  const quiet = muted.has(`dm:${dm.id}`);
+                  const fresh = dmUnread.get(dm.id) ?? 0;
+                  return (
                   <li key={dm.id}>
-                    <Link to={`/dm/${dm.id}`} className="set-row" aria-label={muted.has(`dm:${dm.id}`) ? `${dm.title}, muted` : undefined}>
+                    <Link to={`/dm/${dm.id}`} className={`set-row${fresh && !quiet ? ' is-unread' : ''}`} aria-label={quiet ? `${dm.title}, muted` : fresh ? `${dm.title}, new messages` : undefined}>
                       <Avatar name={dm.kind === 'group' ? dm.title : dm.people[0] ?? dm.title} id={dm.kind === 'pair' ? dm.peopleIds[0] : null} size="lg" />
                       <span className="set-row__b">
                         <span className="set-row__t proj-index__one">{dm.title}</span>
                         <span className="set-row__s proj-index__one">{dm.preview ?? 'No messages yet'}</span>
                       </span>
-                      {muted.has(`dm:${dm.id}`) ? <Icon name="quiet" size={12} className="proj-index__muted" data-muted-mark="" /> : null}
+                      {quiet ? <Icon name="quiet" size={12} className="proj-index__muted" data-muted-mark="" /> : null}
+                      {quiet && fresh ? <span className="proj-index__quiet" aria-hidden="true">{fresh}</span> : null}
                       {dm.lastAt ? <time className="proj-index__time" dateTime={dm.lastAt}>{new Date(dm.lastAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</time> : null}
                     </Link>
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             ) : <p className="proj-index__lead">No conversations yet. Only the people in each one can read it.</p>}
             <Link to="/dm/new" className="ui-btn ui-btn--secondary"><Icon name="plus" />New message</Link>
@@ -132,5 +132,21 @@ export function ProjectsIndex() {
         ) : null}
       </div>
     </div>
+  );
+}
+
+/** One of your agents in Messages: its name bold while its chat has an answer or a report you have not read (#919, #1424 decision 10). */
+function AgentRow({ agent, first }: { agent: MyAgent; first: boolean }) {
+  const unread = useAgentUnread(agent.id);
+  return (
+    <li>
+      <Link to={`/agents/${agent.id}`} className={`set-row${unread ? ' is-unread' : ''}`} data-agent={agent.id} aria-label={unread ? `${agent.name}, new messages` : undefined}>
+        <Kreska size={36} hue={agent.colour} />
+        <span className="set-row__b">
+          <span className="set-row__t proj-index__one">{agent.name}</span>
+          <span className="set-row__s proj-index__one">{first ? 'Your agent · answers /ai' : 'Your agent'}</span>
+        </span>
+      </Link>
+    </li>
   );
 }

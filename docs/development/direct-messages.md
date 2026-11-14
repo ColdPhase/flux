@@ -181,6 +181,16 @@ Migration `0103_message_receipts_dm_threads.sql` (numbered 0103; the coordinator
   ones exist, or that is still being sent. New observations record `dm.observed.v1` (no data). The project
   conversation records `project.messages_observed.v1` for the authors of the observed messages (#862); its
   receipts are read again on that event and on focus, and on an 8 s timer only while the live stream is down.
+- **Unread (#1424 decision 10, migration 0084).** A direct message is unread for a participant while a root message by someone else
+  (text, not deleted) comes after where they left off: the newest root they observed (the receipts above, the same viewing as the New
+  divider of S23), their own newest root, and their read mark in `dm_reads` (`dm_id`, `user_id`, `read_through` sequence), the greatest of
+  the three. `GET /api/v1/workspaces/:id/dms` answers `unread` on each summary: how many such messages, at most 99 (0 when read). Only
+  "Mark all as read" (`POST /api/v1/me/read-all`, #1250) writes `dm_reads`: every unread DM of the person's readable workspaces is read
+  through its newest sequence, and the undo answer carries `{ dmId, before, now }` for each, so `POST /api/v1/me/read-all/undo` puts a
+  mark back only while it still stands at `now`. The New divider (`unreadFrom`) honours the mark too. The state is the server's, so every
+  device and tab agrees: the shell lists it, the open DM counts as read, and a tab reads the list again (at most once every 4 s) on
+  `dm.message_sent.v1` and `dm.observed.v1` of a DM it holds, on focus and after leaving a DM. `dm_reads` holds ids and a position only
+  (class `content`, `user_id` visible); its rows go with the DM, the workspace and the account.
 - **Faces under a message (#1231).** The receipt is drawn as small faces ([design](../design/final/README.md#time-and-who-has-read-it)),
   so it answers a count and a few readers, never the audience. `POST .../receipts` takes the runs oldest first and
   answers, for each, `{ messageIds, count, readers }`: `count` is every current reader who observed every message of

@@ -230,6 +230,9 @@
 .proj-index__muted { flex: none; color: var(--t3); }
 .proj-index__live { display: inline-block; margin-left: 6px; vertical-align: -1px; color: var(--t2); }
 .proj-index__dmlist { width: 100%; justify-self: stretch; }
+/* A conversation reads as a space does (#1424 decision 10): `--t2` when read, bold in the primary colour while something is unread. */
+.proj-index__dmlist .set-row__t { color: var(--t2); }
+.proj-index__dmlist .set-row.is-unread .set-row__t { color: var(--t1); font-weight: 600; }
 .proj-index__one { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; overflow-wrap: normal; }
 .proj-index__time { flex: none; width: 4.5em; text-align: right; white-space: nowrap; font-size: var(--fs-xs); color: var(--t3); font-variant-numeric: tabular-nums; }
 .proj-index__empty { display: grid; gap: 12px; justify-items: start; padding: 20px 2px; color: var(--t2); font-size: var(--fs-md); }

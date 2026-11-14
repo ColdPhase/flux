@@ -7,7 +7,7 @@ import { request } from './client';
 import { isWorkspaceLocked } from '../encryption/api';
 
 /** Direct messages (#107): private conversations with people, outside any project. */
-export async function listAllDms(signal?: AbortSignal, workspaces?: Workspace[]) {
+export async function listAllDms(signal?: AbortSignal, workspaces?: readonly Pick<Workspace, 'id'>[]) {
   const spaces = workspaces ?? await request<Workspace[]>(WORKSPACES_PATH, { signal });
   // Every workspace at once (#850).
   const lists = await Promise.all(spaces.map(async (space) => {

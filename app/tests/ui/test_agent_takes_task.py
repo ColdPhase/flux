@@ -193,14 +193,16 @@ class AgentTakesTask(unittest.TestCase):
         self.assertEqual(self.api(ada, "GET", f"/api/v1/work/{task['id']}", status=200)["status"], "done")
 
     def test_04a_the_report_waits_in_the_agents_chat_with_an_unread_dot_and_never_in_the_inbox(self) -> None:
-        """#919: when the run ends, one line in the agent's private chat; the dot shows in the sidebar and in Messages until Kai opens it."""
+        """#919: when the run ends, one line in the agent's private chat; the agent's name is bold in the sidebar and in Messages until Kai opens
+        it, as every unread conversation (#1424 decision 10)."""
         kai = self.page("kai")
         agent = self.ids["agent"]
+        unread = re.compile(r"\bis-unread\b")
         kai.goto("/")
-        expect(kai.locator(f".side__agent[data-agent='{agent}'] .side__dot")).to_have_count(1)
+        expect(kai.locator(f".side__agent[data-agent='{agent}']")).to_have_class(unread)
         kai.goto("/dm")
         row = kai.locator(f".dm-index [data-agent='{agent}']")
-        expect(row.locator(".dm-index__dot")).to_have_count(1)
+        expect(row).to_have_class(unread)
         shot(kai, "919-agent-report-unread-messages-1440")
         # Reports never go to the Inbox.
         inbox = self.api(kai, "GET", "/api/v1/inbox", status=200)
@@ -215,10 +217,10 @@ class AgentTakesTask(unittest.TestCase):
         expect(line.locator(".agc__line")).not_to_contain_text("change")
         expect(line.get_by_role("button", name="Undo")).to_have_count(0)
         shot(kai, "919-agent-report-line-1440")
-        # Opening the chat read it: no dot in Messages, none in the sidebar.
+        # Opening the chat read it: not bold in Messages, nor in the sidebar.
         kai.goto("/dm")
-        expect(kai.locator(f".dm-index [data-agent='{agent}'] .dm-index__dot")).to_have_count(0)
-        expect(kai.locator(f".side__agent[data-agent='{agent}'] .side__dot")).to_have_count(0)
+        expect(kai.locator(f".dm-index [data-agent='{agent}']")).not_to_have_class(unread)
+        expect(kai.locator(f".side__agent[data-agent='{agent}']")).not_to_have_class(unread)
 
     def test_05_undo_takes_it_back_to_kai_and_reopens_it(self) -> None:
         page = self.open_task("kai", self.ids["task"])

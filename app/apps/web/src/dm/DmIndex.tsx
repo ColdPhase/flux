@@ -6,6 +6,8 @@ import { openDm } from '../api/direct-messages';
 import { listWorkspaceMembers } from '../project/api';
 import { useShellData } from '../app/data';
 import { useAgentUnread } from '../my-agents/AgentChatDots';
+import { useDmUnread } from './dmUnread';
+import { usePlaceMutes } from '../notifications/mutes';
 import { Avatar, Button, EmptyState, Icon, Kreska } from '../ui';
 import { audienceOf } from './names';
 import './dm.css';
@@ -13,32 +15,39 @@ import './dm.css';
 /** The rows of conversations with people; Home's Projects shows them on the phone (#341). */
 export function DmRows() {
   const { directMessages, agents } = useShellData();
+  // Unread is bold, as a space's; a muted conversation is never bold, its unread is the quiet count (#1424 decision 10, #1249).
+  const unread = useDmUnread();
+  const { muted } = usePlaceMutes();
   return (
     <ul className="dm-index" aria-label="Conversations">
       {/* Your agents come first, Assistant at the top (F-036 AG-4). */}
       {agents.map((agent, index) => <AgentRow key={agent.id} agent={agent} first={index === 0} />)}
-      {directMessages.map((dm) => (
+      {directMessages.map((dm) => {
+        const quiet = muted.has(`dm:${dm.id}`);
+        const fresh = unread.get(dm.id) ?? 0;
+        return (
         <li key={dm.id}>
-          <Link to={`/dm/${dm.id}`} className="dm-index__item">
+          <Link to={`/dm/${dm.id}`} className={`dm-index__item${fresh && !quiet ? ' is-unread' : ''}`} aria-label={quiet ? `${dm.title}, muted` : fresh ? `${dm.title}, new messages` : undefined}>
             <Avatar name={dm.kind === 'group' ? dm.title : dm.people[0] ?? dm.title} id={dm.kind === 'pair' ? dm.peopleIds[0] : null} size="lg" />
             <span className="dm-index__text"><b>{dm.title}</b><span>{dm.preview ?? 'No messages yet'}</span></span>
+            {quiet && fresh ? <span className="dm-index__quiet" aria-hidden="true">{fresh}</span> : null}
             {dm.lastAt ? <time dateTime={dm.lastAt}>{new Date(dm.lastAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</time> : null}
           </Link>
         </li>
-      ))}
+        );
+      })}
     </ul>
   );
 }
 
-/** One of your agents in the list; the dot says its chat has an answer or a report you have not read (#919). */
+/** One of your agents in the list; its name is bold while its chat has an answer or a report you have not read (#919, #1424 decision 10). */
 function AgentRow({ agent, first }: { agent: MyAgent; first: boolean }) {
   const unread = useAgentUnread(agent.id);
   return (
     <li>
-      <Link to={`/agents/${agent.id}`} className="dm-index__item" data-agent={agent.id}>
+      <Link to={`/agents/${agent.id}`} className={`dm-index__item${unread ? ' is-unread' : ''}`} data-agent={agent.id} aria-label={unread ? `${agent.name}, new messages` : undefined}>
         <Kreska size={36} hue={agent.colour} />
         <span className="dm-index__text"><b>{agent.name}</b><span>{first ? 'Your agent · answers /ai' : 'Your agent'}</span></span>
-        {unread ? <span className="dm-index__dot"><span className="ui-vh">New messages</span></span> : null}
       </Link>
     </li>
   );

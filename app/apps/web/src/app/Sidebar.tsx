@@ -15,6 +15,7 @@ import { useShellActions } from './shellContext';
 import { WorkingAgent } from './WorkingAgent';
 import { NewMenu } from './NewMenu';
 import { useAgentUnread } from '../my-agents/AgentChatDots';
+import { useDmUnread } from '../dm/dmUnread';
 import type { SpaceIcon } from '@flux/contracts';
 import { SpaceFace } from '../ui/SpaceFace';
 import { useLiveSpaces } from '../live/spaces';
@@ -115,6 +116,8 @@ export function Sidebar({ directMessages, agents = [], user, onClose, titleId, i
   const news = useProjectNews(useMemo(() => projects.map((project) => project.id), [projects]));
   // The places this person muted (#1249): a small muted mark after the name; what is new there is a quiet count, never bold.
   const { muted } = usePlaceMutes();
+  // What the person has not read in each direct message (#1424 decision 10), kept fresh from the server.
+  const dmUnread = useDmUnread();
   // The dot is for what needs the person: a space that holds an Inbox item (a question to them, a decision, a blocked task).
   const needing = useNeedsYouSpaces(useShellData().me.user.id);
   // A call is on in the space (F-041): the call glyph after its name, before the muted mark and the unread mark.
@@ -231,9 +234,10 @@ export function Sidebar({ directMessages, agents = [], user, onClose, titleId, i
           {agents.map((agent) => <RailAgent key={agent.id} agent={agent} />)}
           {directMessages.map((dm) => (
             <NavLink key={dm.id} to={`/dm/${dm.id}`} end={false} className="side__rail-dm"
-              aria-label={`${dm.title}${muted.has(`dm:${dm.id}`) ? ', muted' : ''}${dm.hasNew && !muted.has(`dm:${dm.id}`) ? ', new messages' : ''}`} title={`${dm.title}${muted.has(`dm:${dm.id}`) ? ' · Muted' : ''}`}>
+              aria-label={`${dm.title}${muted.has(`dm:${dm.id}`) ? ', muted' : ''}${dmUnread.has(dm.id) && !muted.has(`dm:${dm.id}`) ? ', new messages' : ''}`} title={`${dm.title}${muted.has(`dm:${dm.id}`) ? ' · Muted' : ''}`}>
               <Avatar name={dm.kind === 'group' ? dm.title : dm.people[0] ?? dm.title} id={dm.kind === 'pair' ? dm.peopleIds[0] : null} size="lg" />
-              {dm.hasNew && !muted.has(`dm:${dm.id}`) ? <span className="side__dot" aria-hidden="true" /> : null}
+              {/* The rail has no names to make bold: an unread conversation has the dot on its face (#1424 decision 10). */}
+              {dmUnread.has(dm.id) && !muted.has(`dm:${dm.id}`) ? <span className="side__dot" aria-hidden="true" /> : null}
             </NavLink>
           ))}
         </nav>
@@ -343,16 +347,21 @@ export function Sidebar({ directMessages, agents = [], user, onClose, titleId, i
           {directMessages.length || agents.length ? (
             <ul className="side__list">
               {agents.map((agent, index) => <ListAgent key={agent.id} agent={agent} pinned={index === 0} onNavigate={navigate} />)}
-              {directMessages.map((dm) => (
-                <li key={dm.id}>
-                  <NavLink to={`/dm/${dm.id}`} end={false} className="side__item side__dm" onClick={navigate} title={dm.title}
-                    aria-label={muted.has(`dm:${dm.id}`) ? `${dm.title}, muted` : undefined}>
-                    <Avatar name={dm.kind === 'group' ? dm.title : dm.people[0] ?? dm.title} id={dm.kind === 'pair' ? dm.peopleIds[0] : null} size="sm" /><span className="side__label">{dm.title}</span>
-                    {muted.has(`dm:${dm.id}`) ? <Icon name="quiet" size={12} className="side__muted" data-muted-mark="" />
-                      : dm.hasNew ? <span className="side__dot"><span className="ui-vh">, new messages</span></span> : null}
-                  </NavLink>
-                </li>
-              ))}
+              {directMessages.map((dm) => {
+                // Unread is bold, as a space's; a muted conversation is never bold, its unread is the quiet count (#1424 decision 10, #1249).
+                const quiet = muted.has(`dm:${dm.id}`);
+                const fresh = dmUnread.get(dm.id) ?? 0;
+                return (
+                  <li key={dm.id}>
+                    <NavLink to={`/dm/${dm.id}`} end={false} className={`side__item side__dm${fresh && !quiet ? ' is-unread' : ''}`} onClick={navigate} title={dm.title}
+                      aria-label={quiet ? `${dm.title}, muted` : fresh ? `${dm.title}, new messages` : undefined}>
+                      <Avatar name={dm.kind === 'group' ? dm.title : dm.people[0] ?? dm.title} id={dm.kind === 'pair' ? dm.peopleIds[0] : null} size="sm" /><span className="side__label">{dm.title}</span>
+                      {quiet ? <Icon name="quiet" size={12} className="side__muted" data-muted-mark="" /> : null}
+                      {quiet && fresh ? <span className="side__quiet" aria-hidden="true">{fresh}</span> : null}
+                    </NavLink>
+                  </li>
+                );
+              })}
             </ul>
           ) : null /* Its heading leads to Messages; an empty list says nothing (#763 FR-4). */}
         </nav>
@@ -374,15 +383,15 @@ function RailAgent({ agent }: { agent: MyAgent }) {
   );
 }
 
-/** An agent in Messages, with a dot while its chat has something unread. */
+/** An agent in Messages, its name bold while its chat has something unread, as every conversation (#1424 decision 10). */
 function ListAgent({ agent, pinned, onNavigate }: { agent: MyAgent; pinned: boolean; onNavigate?: () => void }) {
   const unread = useAgentUnread(agent.id);
   return (
     <li>
-      <NavLink to={`/agents/${agent.id}`} end={false} className="side__item side__dm side__agent" onClick={onNavigate} title={`${agent.name} · Your agent`} data-agent={agent.id}>
+      <NavLink to={`/agents/${agent.id}`} end={false} className={`side__item side__dm side__agent${unread ? ' is-unread' : ''}`} onClick={onNavigate} title={`${agent.name} · Your agent`} data-agent={agent.id}>
         <Kreska size={20} hue={agent.colour} /><span className="side__label">{agent.name}</span>
         {pinned ? <Icon name="pin" size={12} className="side__pin" aria-label="Pinned" /> : null}
-        {unread ? <span className="side__dot"><span className="ui-vh">, new messages</span></span> : null}
+        {unread ? <span className="ui-vh">, new messages</span> : null}
       </NavLink>
     </li>
   );

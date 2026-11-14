@@ -202,13 +202,15 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
       const from = note.from?.id ? { kind: note.from.kind, id: note.from.id, name: note.from.name } : null;
       const project = note.source.type === 'project' ? { id: note.source.id, name: projectNames.get(note.source.id) ?? 'Space' } : null;
       // A message between two people has a sender and no space: its sentence ends with the phrase, where a group's names the group.
-      const pair = note.source.type === 'dm' && / (asked|mentioned) you$/.test(note.title);
+      const pair = note.source.type === 'dm' && / (asked|mentioned|answered) you$/.test(note.title);
       const words = from && (project || pair) ? excerpt(note.body) : '';
       const plain = words && (note.reason === 'mention' || note.reason === 'question');
+      // An answer to a question the person asked (#1424 decision 1) is a mention that the notification's sentence calls an answer.
+      const answer = note.reason === 'mention' && / answered you(?: in .+)?$/.test(note.title);
       items.push({
         key: `note:${note.id}`, kind, title: plain ? words : note.title, detail: plain ? '' : excerpt(note.body), project, from,
         at: iso(note.createdAt), url: note.url ?? `/inbox/${note.id}`, decision: null, blocked: null, reason: note.reason, snoozeTask: null,
-        ...(call ? { call } : {}),
+        ...(call ? { call } : {}), ...(answer ? { answer: true } : {}),
       });
     }
     // Suggestions agents you connected made through MCP (#661), one question each.

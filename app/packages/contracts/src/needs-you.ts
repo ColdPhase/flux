@@ -111,6 +111,11 @@ export interface NeedsYouItem {
   proposal?: NeedsYouProposal | null;
   /** Why a notification-based item reached you (`mention`, `question` or `invitation`); null for the others. */
   reason: 'mention' | 'question' | 'invitation' | null;
+  /**
+   * Set on a `mention` that answers a question you asked (#1424 decision 1: an answer to your question reaches you). Its kind word is
+   * "Reply"; everything else is a mention's.
+   */
+  answer?: boolean;
   /** Set for a call started in your space or an invitation to one (F-041): the call to Join. Listed only while someone is in it. */
   call?: { projectId: string; sessionId: string } | null;
   /** The task "Not now: when #N is done" waits for; null when the item has none. */

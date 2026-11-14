@@ -1606,6 +1606,23 @@ export const dmMessageObservations = pgTable('dm_message_observations', {
   index('dm_message_observations_viewer_idx').on(table.dmId, table.viewerId),
 ]);
 
+/**
+ * A person's read mark in a direct message (migration 0084, #1424 decision 10): the DM is read through `read_through` (a sequence). Only
+ * "Mark all as read" (#1250) writes it; what the person observed, and their own messages, read the DM too.
+ */
+export const dmReads = pgTable('dm_reads', {
+  workspaceId: uuid('workspace_id').notNull(),
+  dmId: uuid('dm_id').notNull(),
+  userId: text('user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  readThrough: integer('read_through').notNull(),
+  readAt: timestamp('read_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  primaryKey({ columns: [table.dmId, table.userId] }),
+  foreignKey({ name: 'dm_reads_dm_fkey', columns: [table.workspaceId, table.dmId], foreignColumns: [dms.workspaceId, dms.id] }).onDelete('cascade'),
+  index('dm_reads_user_idx').on(table.userId),
+  check('dm_reads_read_through_check', sql`${table.readThrough} >= 0`),
+]);
+
 /** Who observed which project message, roots and thread replies alike (migration 0103, #534). */
 export const projectMessageObservations = pgTable('project_message_observations', {
   workspaceId: uuid('workspace_id').notNull(),
