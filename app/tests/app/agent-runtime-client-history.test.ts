@@ -128,8 +128,8 @@ test('purge: a client the slots reported not_installed is confirmed only against
   for (const scenario of cases) {
     // Purge updates every binding. Roll back the whole fixture, including nested adapter transactions.
     await assert.rejects(db.transaction(async (tx) => {
-      await tx.execute(sql`INSERT INTO agent_runtime_slots(slot, state) VALUES ('runtime-998', 'ready')`);
-      await tx.execute(sql`INSERT INTO agent_runtime_bindings(id, owner_user_id, slot, state) VALUES (${bindingId}, ${owner.id}, 'runtime-998', 'active')`);
+      await tx.execute(sql`INSERT INTO agent_runtime_slots(slot, state) VALUES ('runtime-981', 'ready')`);
+      await tx.execute(sql`INSERT INTO agent_runtime_bindings(id, owner_user_id, slot, state) VALUES (${bindingId}, ${owner.id}, 'runtime-981', 'active')`);
       for (const client of scenario.history) await tx.execute(sql`INSERT INTO agent_runtime_client_history(binding_id, client) VALUES (${bindingId}, ${client})`);
       const purgeId = await agentRuntimeOperations(tx).beginPurge();
       await agentRuntimeOperations(tx).forgetAll(purgeId, scenario.confirmed, scenario.pairs);
