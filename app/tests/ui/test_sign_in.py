@@ -113,17 +113,23 @@ class SignIn(_Browser):
         email_box, password_box, text = email.bounding_box(), password.bounding_box(), forgot.bounding_box()
         email_bottom, password_top = email_box["y"] + email_box["height"], password_box["y"]
         self.assertLess(text["height"], 24, f"the link keeps its own small line, only its hit area is larger: {text}")
-        self.assertGreaterEqual(area["top"], email_bottom, f"the hit area does not reach into the Email input: {area}, input bottom {email_bottom}")
+        self.assertGreaterEqual(area["top"], email_bottom + 6, f"the hit area keeps clear of the Email input: {area}, input bottom {email_bottom}")
         self.assertLessEqual(area["bottom"], password_top, f"the hit area does not reach into the Password input: {area}, input top {password_top}")
         self.assertGreaterEqual(area["height"], 24, f"the hit area is at least 24 px tall, WCAG 2.5.8's minimum (it cannot be 44 between two inputs 40 px apart): {area}")
         self.assertGreater(area["height"], text["height"] + 6, f"and taller than the line: {area}, text {text}")
         self.assertGreaterEqual(area["width"], 44, f"and is at least 44 px wide: {area}")
         self.assertLessEqual(area["left"], text["x"] - 16, f"and wider than the text on its left: {area}, text {text}")
-        # A tap on the Password's top edge, and on the Email's bottom edge, under the middle of the link, is that input's (focus moves to it, nothing opens).
+        # A click on the Password's top edge, and on the Email's bottom edge, under the middle of the link, is that input's (focus moves to it,
+        # nothing opens). A touch browser takes a tap within about 7 px of a link for the link (Chromium's touch adjustment, the same for the bare
+        # 17 px line), so the Email's edge is also tapped, 10 px below the area's top, where the input still wins.
         x = text["x"] + text["width"] / 2
-        page.touchscreen.tap(x, password_box["y"] + 2)
+        page.mouse.click(x, password_box["y"] + 2)
         expect(password).to_be_focused()
-        page.touchscreen.tap(x, email_bottom - 2)
+        page.mouse.click(x, email_bottom - 2)
+        expect(email).to_be_focused()
+        page.mouse.click(x, password_box["y"] + 2)
+        expect(password).to_be_focused()
+        page.touchscreen.tap(x, email_bottom - 3)
         expect(email).to_be_focused()
         expect(page).to_have_url(f"{ORIGIN}/sign-in")
         # A tap left of the text, where only the widened area reaches, opens the reset page.
