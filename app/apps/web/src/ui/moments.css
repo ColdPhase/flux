@@ -17,8 +17,8 @@
 .opening__row span { display: grid; gap: 8px; flex: 1; }
 .opening__row b { display: block; height: 9px; border-radius: var(--r-pill); background: var(--sub); }
 @media (prefers-reduced-motion: no-preference) {
-  :root:not([data-motion="reduce"]) .opening__line { animation: opening-in var(--dur-in) var(--ease-out) var(--delay-wait) backwards; }
-  :root:not([data-motion="reduce"]) .opening__rows { animation: opening-pulse var(--dur-loop) var(--ease-loop) infinite; }
+  :root .opening__line { animation: opening-in var(--dur-in) var(--ease-out) var(--delay-wait) backwards; }
+  :root .opening__rows { animation: opening-pulse var(--dur-loop) var(--ease-loop) infinite; }
 }
 @keyframes opening-in { from { opacity: 0; } }
 @keyframes opening-pulse { 50% { opacity: .55; } }

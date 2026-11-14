@@ -899,8 +899,9 @@ class CreateWindow(unittest.TestCase):
         expect(palette.get_by_role("option")).to_have_text([re.compile("^Go to Inbox")])
         page.keyboard.press("Escape")
         expect(palette).to_have_count(0)
-        # Places by identity, most recent first: a second visit moves a place up once, a doc's version is its doc (named by
-        # its own title), and the place in view and pages that are not places (not found) are left out.
+        # Places by identity, most recent first: a space is one row whichever of its views were open (#1424: the Conversation, Tasks and
+        # Wiki of one space are not three rows), a doc's version is its doc (named by its own title), and the place in view and pages
+        # that are not places (not found) are left out.
         self.visit(page, f"/projects/{project}", "Community garden sensors")
         self.visit(page, f"/projects/{project}/tasks", "Community garden sensors")
         self.visit(page, f"/projects/{other}", "Cargo bike co-op")
@@ -909,16 +910,15 @@ class CreateWindow(unittest.TestCase):
         expect(page.get_by_role("heading", name="How the garden sensors work").first).to_be_visible()
         page.goto(f"/projects/{project}/nowhere")
         expect(page.get_by_role("heading", name="This page doesn’t exist")).to_be_visible()
-        self.visit(page, f"/projects/{project}", "Community garden sensors")
+        self.visit(page, "/", "Home")
         palette, field = self.jump(page, "")
         listbox = palette.get_by_role("listbox", name="Recent places and actions")
-        self.assertEqual(self.option_names(listbox), ["How the garden sensors work · Wiki", "Community garden sensors · Tasks", "Cargo bike co-op · Conversation", "Home",
-                                                      "Go to Inbox"])
+        self.assertEqual(self.option_names(listbox), ["How the garden sensors work · Wiki", "Cargo bike co-op · Conversation", "Go to Inbox"],
+                         "the garden space once (its newest view), the other space once, and not Home, which is in view")
         options = listbox.get_by_role("option")
         expect(options.first.locator(".jump__side")).to_have_text("Wiki")
-        expect(options.nth(3).locator(".jump__side")).to_have_count(0)
         expect(listbox.locator(".jump__sh")).to_have_text(["Recent", "Actions"])
-        expect(options.nth(4).locator(".jump__key")).to_have_text(["G", "I"])
+        expect(options.nth(2).locator(".jump__key")).to_have_text(["G", "I"])
         expect(palette.locator(".jump__foot")).to_contain_text("Finds spaces, people, messages, tasks, Wiki pages, files and thoughts you can see.")
         shot(page, "521-empty-palette-1440-light")
         # ↑↓ move (and wrap), Enter opens, Esc closes.
@@ -926,7 +926,7 @@ class CreateWindow(unittest.TestCase):
         expect(selected).to_have_attribute("aria-label", "How the garden sensors work · Wiki")
         field.press("ArrowUp")
         expect(selected).to_have_text(re.compile("^Go to Inbox"))
-        for _ in range(3):
+        for _ in range(2):
             field.press("ArrowDown")
         expect(selected).to_have_attribute("aria-label", "Cargo bike co-op · Conversation")
         self.assertEqual(field.get_attribute("aria-activedescendant"), selected.get_attribute("id"))
@@ -935,7 +935,7 @@ class CreateWindow(unittest.TestCase):
         expect(page).to_have_url(re.compile(rf"/projects/{other}$"))
         palette, field = self.jump(page, "")
         names = self.option_names(palette.get_by_role("listbox", name="Recent places and actions"))
-        self.assertEqual(names[:2], ["Community garden sensors · Conversation", "How the garden sensors work · Wiki"])
+        self.assertEqual(names[:2], ["Home", "How the garden sensors work · Wiki"], "the space in view is left out, the garden space is still one row")
         # The Wiki page opens at the doc itself, not the version that was open.
         palette.get_by_role("option", name="How the garden sensors work · Wiki", exact=True).click()
         expect(page).to_have_url(re.compile(rf"/projects/{project}/docs/{doc['id']}$"))

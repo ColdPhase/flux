@@ -61,8 +61,8 @@
   --agent-indigo: #5e6fa4; --agent-plum: #886191; --agent-rose: #9c5c66;
 
   /* Type: Geist and Geist Mono, README §2. Every font size in the app is one of these tokens
-     (tests/test_ui_tokens.py rejects literal sizes elsewhere), so the person's text size (Settings →
-     Appearance, which scales the root) reaches all text. The roles: Title 32 (28 on the phone), Section
+     (tests/test_ui_tokens.py rejects literal sizes elsewhere), so the system's text size (the root
+     size, which the browser or the phone sets) reaches all text. The roles: Title 32 (28 on the phone), Section
      16, Body 14 (15 on the phone) and Meta 12 (12.5 on the phone); the rest are the in-page title, the
      Wiki reading size, and glyphs. Weights are 400, 500 and 600 only. */
   --font: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -184,12 +184,6 @@
     --fs-page: 1.75rem; --fs-doc-title: 1.75rem;
   }
 }
-/* The person's text size on the computer (Settings → Appearance; app/textSize.ts). The rem tokens scale
-   with the root size. The phone keeps the system size, so this starts where the phone breakpoint ends. */
-@media (min-width: 641px) {
-  :root[data-text-size="small"] { font-size: 93.75%; }
-  :root[data-text-size="large"] { font-size: 112.5%; }
-}
 @media (min-width: 1600px) { :root { --space-page: 44px; } }
 /* Spokój: large screens keep the panel at 480 px; the extra width is margin, never a third column. */
 @media (min-width: 1920px) { :root { --panel-w: 480px; } }
@@ -201,5 +195,3 @@
 @media (prefers-reduced-motion: reduce) {
   :root { --dur-1: 0ms; --dur-in: 0ms; --dur-out: 0ms; --dur-highlight: 0ms; --dur-spin: 0ms; --dur-loop: 0ms; --delay-wait: 0ms; --delay-tip: 0ms; --press: 1; }
 }
-/* The person's own reduce-motion choice (Settings → Appearance) gives the same durations. */
-:root[data-motion="reduce"] { --dur-1: 0ms; --dur-in: 0ms; --dur-out: 0ms; --dur-highlight: 0ms; --dur-spin: 0ms; --dur-loop: 0ms; --delay-wait: 0ms; --delay-tip: 0ms; --press: 1; }

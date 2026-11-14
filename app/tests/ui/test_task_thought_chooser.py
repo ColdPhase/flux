@@ -56,7 +56,7 @@ TITLE_METRICS = """els => {
              glyphRight: glyph.right, glyphMid: glyph.top + glyph.height / 2, rowMid: row.top + row.height / 2 };
   }) };
 }"""
-# The title scaled with the root text size: the phone follows the system size, the computer's setting scales the same rem tokens.
+# The title scaled with the root text size: the system's size (the root font size) scales the rem tokens.
 TITLE_SCALES = """() => {
   const html = document.documentElement, title = document.querySelector('.wd-pick .wd-links .wd-link span');
   const before = parseFloat(getComputedStyle(title).fontSize), saved = html.style.fontSize;

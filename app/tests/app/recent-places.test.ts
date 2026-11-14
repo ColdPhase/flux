@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { placeOfPath } from '../../apps/web/src/search/recent.js';
+import { placeIdentity, placeOfPath, recentPlacesOf, rememberPlace } from '../../apps/web/src/search/recent.js';
 
 /**
- * ⌘K's "Recent" (#521, F-026 E02) keeps places by identity, not by address: one entry per project view, direct message,
- * the Inbox and Home, holding the address last seen there. Pages that are not places are never kept.
+ * ⌘K's "Recent" (#521, F-026 E02) keeps places by identity, not by address: one entry per space, direct message,
+ * the Inbox and Home, holding the address last seen there (#1424: a space is one row, not one per view). Pages that are not places are never kept.
  */
 const P = '11111111-1111-4111-8111-111111111111';
 const key = (path: string) => placeOfPath(path)?.key ?? null;
@@ -39,4 +39,17 @@ test('a direct message, the Inbox and Home are one place each', () => {
   assert.equal(key('/tasks'), 'home:tasks');
   assert.equal(placeOfPath('/docs'), null, 'the workspace-wide Wiki is gone (#865): its address is no place');
   assert.equal(key('/map/s1'), 'sketchbook');
+});
+
+test('every view of a space is the same place, and a space is one row in Recent', () => {
+  for (const path of [`/projects/${P}`, `/projects/${P}/tasks`, `/projects/${P}/map/s1`, `/projects/${P}/docs/d1`]) {
+    assert.equal(placeIdentity(placeOfPath(path)!.key), `project:${P}`, path);
+  }
+  assert.equal(placeIdentity('home'), 'home');
+  assert.equal(placeIdentity('dm:d1'), 'dm:d1');
+  const user = 'recent-places-test-user';
+  const Q = '22222222-2222-4222-8222-222222222222';
+  for (const path of [`/projects/${P}`, `/projects/${P}/tasks`, `/projects/${Q}/map`, `/projects/${P}/map`, `/projects/${P}/conversations/abc`, '/']) rememberPlace(user, placeOfPath(path)!);
+  const kept = recentPlacesOf(user);
+  assert.deepEqual(kept.map((place) => place.path), ['/', `/projects/${P}/conversations/abc`, `/projects/${Q}/map`], 'the newest view of each space, one row per place');
 });

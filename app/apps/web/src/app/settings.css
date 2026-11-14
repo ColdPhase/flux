@@ -199,7 +199,6 @@
 .set-row__s { font-size: var(--fs-sm); line-height: 1.4; color: var(--t3); }
 .set-row__go { flex: none; color: var(--t3); }
 @media (max-width: 640px) { .set { padding-top: 14px; } }
-.proj-index__head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; margin: 4px 2px 14px; }
 .proj-index__lead { flex: 1 1 16em; margin: 0; font-size: var(--fs-sm); color: var(--t3); line-height: 1.5; }
 /* The Spaces list in the person's order (#1250): a long press then a drag moves a row, and a row's ⋯ (Move up, Move down) is for the keyboard.
    The card lets its rows and their menu out of its box, so a lifted row keeps its shadow; the first and last rows keep its rounded corners. */

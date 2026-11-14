@@ -13,7 +13,7 @@ export { useRowMotion } from './rowMotion';
 export { DetentSheet, SheetGrabber } from './DetentSheet';
 export { ViewFade } from './ViewFade';
 export { SizeSwap } from './SizeSwap';
-export { applyStoredReduceMotion, prefersReducedMotion, setReduceMotion, useReduceMotion } from './motion-preference';
+export { prefersReducedMotion } from './motion-preference';
 export { Drawer, Overlay, Sheet, focusableIn, trapTab, useStripOnlyModal } from './Overlay';
 export { AgentIdentity, AgentTag } from './AgentIdentity';
 export { AGENT_HUES, FluxLogo, Kreska, agentHue, type AgentHue, type KreskaExpression } from './Kreska';

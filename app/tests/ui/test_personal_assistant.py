@@ -318,7 +318,7 @@ class PersonalAssistantJourney(unittest.TestCase):
         expect(card).to_be_visible(timeout=20000)
         expect(working).to_have_count(0)
         expect(card).to_contain_text("Only you can see this")
-        expect(card).to_contain_text("You asked: /ai Summarize where we are")
+        expect(card).to_contain_text("You asked: Summarize where we are")
         expect(card).not_to_contain_text("claude-sonnet-5")
         expect(card.get_by_role("button", name="Show everyone")).to_be_visible()
         shot(jo, "assistant-1440-answer-owner")
@@ -563,7 +563,7 @@ class PersonalAssistantJourney(unittest.TestCase):
         question = "How do we calibrate the north barrel?"
         self.ask(jo, question)
         # The card of this question and this run, and no other: a run still in flight from before would take the script above and show the same chips.
-        card = jo.locator(".assistant-private").filter(has_text=f"You asked: /ai {question}")
+        card = jo.locator(".assistant-private").filter(has_text=f"You asked: {question}")
         expect(card).to_be_visible(timeout=20000)
         chips = card.locator(".assistant-cite")
         expect(chips).to_have_count(3)
@@ -584,7 +584,7 @@ class PersonalAssistantJourney(unittest.TestCase):
         expect(heading).to_be_in_viewport()
         # A decision opens in Details (the thread, which is the same one panel, makes room for it); the answer is still the owner's to read.
         again = self.conversation("jo")
-        card = again.locator(".assistant-private").filter(has_text=f"You asked: /ai {question}")
+        card = again.locator(".assistant-private").filter(has_text=f"You asked: {question}")
         expect(card).to_be_visible(timeout=20000)
         expect(card.locator(".assistant-cite")).to_have_count(3)
         card.locator(".assistant-cite").nth(2).click()

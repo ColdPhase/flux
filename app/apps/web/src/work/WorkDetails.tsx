@@ -173,7 +173,7 @@ function Sources({ links, id, project, of }: { links: ObjectLink[]; id: string; 
           ? `/projects/${project.id}/conversations/${link.conversationId}#message-${link.to.id}`
           : link.to.type === 'material' ? `/materials/${link.to.id}/versions/${link.to.version}`
             : link.to.type === 'thought' && link.sketchId ? `/projects/${project.id}/map/${link.sketchId}#thought-${link.to.id}` : null;
-        const kind = link.to.type === 'message' ? 'Message' : link.to.type === 'thought' ? 'Thought' : `Material v${link.to.type === 'material' ? link.to.version : ''}`;
+        const kind = link.to.type === 'message' ? 'Message' : link.to.type === 'thought' ? 'Thought' : `Wiki page v${link.to.type === 'material' ? link.to.version : ''}`;
         return <li key={link.id}>{to ? <RefLink className="wd-link" to={to} state={link.to.type === 'message' ? { keepPanel: true, ...(of ? { sourceOf: of } : {}) } : undefined}><span><b>{kind}:</b> {link.toTitle}</span><Icon name="chevron-right" size={14} /></RefLink> : null}</li>;
       })}
     </ul>

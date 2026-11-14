@@ -1,11 +1,11 @@
 import type { SearchKind, SearchResult } from '@flux/contracts';
 
-/** The kinds a group lists under one name (a decision stands with the tasks, a map with the thoughts). */
+/** The kinds a group lists under one name (a decision stands with the tasks, a map with the thoughts, a saved source with the Wiki pages, #1419 item 20). */
 const GROUPS: { label: string; kinds: SearchKind[] }[] = [
   { label: 'Tasks', kinds: ['work', 'decision'] },
   { label: 'Messages', kinds: ['message', 'dm_message'] },
-  { label: 'Wiki', kinds: ['doc'] },
-  { label: 'Files', kinds: ['file', 'material'] },
+  { label: 'Wiki', kinds: ['doc', 'material'] },
+  { label: 'Files', kinds: ['file'] },
   { label: 'Thoughts', kinds: ['thought', 'sketch'] },
   { label: 'Spaces', kinds: ['project'] },
   { label: 'People', kinds: ['person'] },

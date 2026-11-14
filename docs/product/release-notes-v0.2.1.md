@@ -117,7 +117,7 @@ Documentation: <https://coldphase.github.io/flux/>. Flux is open source under th
 - **A calm card while Flux is open.** A direct message, a mention, a question, a task, a decision or a call shows one card (bottom
   right; at the top on a phone) with Open, Reply or Join. A burst from one place is one card, and it follows your level and quiet hours.
 - **The tab shows (N)**, with a dot on its icon and the installed app's badge.
-- **Two sound switches** in Settings › Notifications: "Sound for messages" (off by default) and "Sound when someone calls me" (on).
+- **One "Sounds" switch** in Settings › Notifications (on by default): the soft chime of a call invitation and the tone of a message to you.
 
 ## Accounts and passwords
 

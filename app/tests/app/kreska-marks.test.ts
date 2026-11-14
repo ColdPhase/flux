@@ -213,7 +213,7 @@ test('each expression has its motion: a one-shot plays once, only the ongoing st
   // Every Kreska motion is off under reduced motion and with Kreska's small moments off.
   const media = css.slice(css.indexOf('@media (prefers-reduced-motion: no-preference) {', css.indexOf('Kreska moves only where it says something true')));
   const block = media.slice(0, media.indexOf('\n}\n'));
-  for (const line of block.split('\n').filter((text) => text.includes('.kreska['))) assert.ok(line.trimStart().startsWith(':root:not([data-motion="reduce"]):not([data-kreska="off"]) .kreska'), line);
+  for (const line of block.split('\n').filter((text) => text.includes('.kreska['))) assert.ok(line.trimStart().startsWith(':root:not([data-kreska="off"]) .kreska'), line);
   assert.equal(moving.length, block.split('\n').filter((text) => /animation:\s*kreska-/.test(text)).length, 'every Kreska motion rule sits behind the reduced-motion and small-moments gate');
 });
 

@@ -123,17 +123,12 @@ class LightMotionJourney(unittest.TestCase):
         # The retired tokens are gone: no spring, no glide, no sheet curve, no separate view or press duration.
         for gone in ("--ease-spring", "--ease-glide", "--ease-sheet", "--dur-view", "--dur-press", "--shift-view"):
             self.assertEqual(page.evaluate("(name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim()", gone), "", f"{gone} is retired")
-        # The system setting and Settings → Appearance → Reduce motion give the same zeroes.
+        # The system's reduced-motion setting gives the zeroes; Settings has no switch of its own for it (#1419 item 17).
         calm = self.page(reduced=True)
         self.open(calm, self.fx.project_url())
         self.assertEqual({name: self.token_ms(calm, name) for name in names}, {name: 0 for name in names})
-        chosen = self.page()
-        self.open(chosen, "/settings/appearance")
-        chosen.get_by_role("switch", name="Reduce motion").click()
-        self.assertEqual(chosen.evaluate("document.documentElement.dataset.motion"), "reduce")
-        self.assertEqual({name: self.token_ms(chosen, name) for name in names}, {name: 0 for name in names})
-        # Both settings zero the delays too, so an end state is there at once.
-        for page_ in (calm, chosen):
+        # The setting zeroes the delays too, so an end state is there at once.
+        for page_ in (calm,):
             delays = page_.evaluate("""() => { const el = document.createElement('div'); el.style.animation = 'ui-spin 1s linear 2s infinite'; el.style.transition = 'opacity 1s 2s'; document.body.append(el);
               const style = getComputedStyle(el); const result = [style.animationDelay, style.transitionDelay, style.animationDuration]; el.remove(); return result; }""")
             self.assertEqual([delays[0], delays[1], delays[2]], ["0s", "0s", "0s"], "durations and delays are zero under reduced motion")
@@ -197,8 +192,7 @@ class LightMotionJourney(unittest.TestCase):
             running: surface ? surface.getAnimations().length : 0, appInert: document.getElementById('root').inert,
             visibility: document.visibilityState, focused: document.hasFocus(), now: Math.round(performance.now()),
             durOut: getComputedStyle(document.documentElement).getPropertyValue('--dur-out'), reduce: matchMedia('(prefers-reduced-motion: reduce)').matches,
-            lastAnimations: (window.__animations || []).slice(-4).map((a) => [a.id, a.playState, a.effect && a.effect.target ? (a.effect.target.className || a.effect.target.tagName) : null, a.effect ? a.effect.getComputedTiming().duration : null]),
-            stored: (() => { try { return localStorage.getItem('flux.reduceMotion'); } catch (error) { return 'x'; } })(), root: document.documentElement.getAttribute('data-motion') };
+            lastAnimations: (window.__animations || []).slice(-4).map((a) => [a.id, a.playState, a.effect && a.effect.target ? (a.effect.target.className || a.effect.target.tagName) : null, a.effect ? a.effect.getComputedTiming().duration : null]) };
         }""")
         self.assertTrue(verdict["inside"], "focus was inside the dialog")
         self.assertTrue(verdict["returned"], f"focus is back on its opener in the same task as the close: {verdict}")
@@ -1450,17 +1444,15 @@ class LightMotionJourney(unittest.TestCase):
         self.assertEqual([entry for entry in recorded(page) if entry["kind"] == "script"], [], "no script motion")
         self.assertEqual([entry for entry in recorded(page) if entry["kind"] == "css" and entry["duration"] > 0], [], "no CSS motion")
 
-    def test_22_the_persons_own_reduce_motion_choice_gives_the_same_static_frame(self):
+    def test_22_a_value_stored_by_an_earlier_reduce_motion_switch_does_nothing(self):
+        # Settings has no Reduce motion switch any more (#1419 item 17): motion follows the system's setting alone, so an old stored "on" changes nothing.
         page = self.page()
         self.open(page, self.fx.project_url())
         page.evaluate("localStorage.setItem('flux.reduceMotion', 'on')")
         page.reload()
         ready(page)
-        self.assertEqual(page.evaluate("document.documentElement.dataset.motion"), "reduce")
-        clear(page)
-        self.open_jump(page)
-        self.assertEqual(page.locator(".ui-overlay__surface").evaluate("el => el.getAnimations().length"), 0)
-        self.assertEqual([entry for entry in recorded(page) if entry["kind"] == "script"], [])
+        self.assertIsNone(page.evaluate("document.documentElement.dataset.motion ?? null"))
+        self.assertEqual(self.token_ms(page, "--dur-in"), 180)
 
     # ------------------------------------------------------------------ phone
     def test_23_on_the_phone_the_sheet_follows_the_same_rules(self):

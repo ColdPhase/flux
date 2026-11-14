@@ -211,12 +211,11 @@ anyone to turn push on. The rules below are the contract; the card is drawn in t
   the device's.
 - **Accessible.** `role=status`, announced politely; it never takes focus, never covers
   the composer, Send or an open dialog, and is instant with reduced motion.
-- **Sound** (founder decisions, Hubert, 2026-11-12): two switches in Settings ›
-  Notifications under **Sound**. "Sound for messages" (a soft tone for a direct message,
-  a mention or a question to you) is **off** by default; "Sound when someone calls me"
-  (one soft two-note chime for a direct call invitation, #1223, F-039) is **on** by
-  default. An open tab plays a sound only with a new notice card, so both follow the
-  level and quiet hours, and a burst that joins the card shown does not sound again.
+- **Sound** (founder decisions, Hubert, 2026-11-12 and 2026-11-13, #1419 item 18): one switch,
+  **Sounds**, in its own card in Settings › Notifications, **on** by default. It covers a soft
+  tone for a direct message, a mention or a question to you and one soft two-note chime for a
+  direct call invitation (#1223, F-039). An open tab plays a sound only with a new notice card,
+  so it follows the level and quiet hours, and a burst that joins the card shown does not sound again.
   Never a loop, never for a call started in a space, never for a reply.
 - **The tab and the app** (founder decision, 2026-11-12). The tab title gets "(N)" and
   the favicon a dot (`/icons/icon-dot.svg`) while unread notifications wait that would

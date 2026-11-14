@@ -106,9 +106,10 @@ export interface NotificationPreferences {
   quietHours: QuietHours;
   muted: MutedPlace[];
   /**
-   * Two sound switches (founder decision, Hubert, 2026-11-12, #1243): `messages`, a soft sound for direct messages, mentions and
-   * questions to you (off by default); `calls`, the single soft chime of a direct call invitation (on by default). An open tab plays
-   * them with the notice, so both follow the level and quiet hours.
+   * The one "Sounds" switch (founder decision, Hubert, 2026-11-13, #1419 item 18, which merges #1243's two): a soft sound for a direct call
+   * invitation and for direct messages, mentions and questions to you, while Flux is open. The switch writes both fields together and the
+   * page reads `calls` (on by default); `messages` is kept in step and collapses into it with the next schema change. An open tab plays
+   * them with the notice, so they follow the level and quiet hours.
    */
   sound: NotificationSound;
   /**

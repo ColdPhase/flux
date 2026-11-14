@@ -4,8 +4,7 @@ import { prefersReducedMotion } from './motion-preference.js';
 
 /**
  * Motion helpers. Durations and easings come from the CSS tokens, which are 0ms under
- * prefers-reduced-motion (or the person's own choice, motion-preference.ts), so script-driven motion
- * switches off together with CSS motion.
+ * prefers-reduced-motion (motion-preference.ts), so script-driven motion switches off together with CSS motion.
  */
 
 export function token(name: string): string {

@@ -163,7 +163,7 @@ live panel and the connection's permissions (#1238).
   the old off switch (`--hov` track, white knob) was 1.3:1 in light.
 - High-contrast mode (`forced-colors`) draws the edge and knob in `ButtonText` and an on switch in `Highlight`.
 
-**Segmented controls** (#1238) are one style: the Map / List switch, Board / List, Model, Text size,
+**Segmented controls** (#1238) are one style: the Map / List switch, Board / List, Model,
 the live stage and screen mode, and access. (The space views, Conversation | Tasks | Map | Wiki, become underline
 tabs under #1239; until then they read the same three tokens.) A selected state never rests on a 1.1:1 difference
 (WCAG 2.2 1.4.11 asks for 3:1 for a state a person needs to see; the design asks for this much at least, and adds an edge):
@@ -224,7 +224,7 @@ labels. A time is Geist with tabular figures, as the line under a message alread
 - Section: 16–17 / 600.
 - Body: 14 / 20 on the computer, 15–16 on the phone.
 - Meta: 12, and at least 12.5 on the phone.
-- The phone follows the system text size.
+- Every device follows the system's text size: the type tokens are rem, so the root size the browser or the phone sets scales every size, and Settings has no text-size control ([#1419](https://github.com/ColdPhase/flux/issues/1419) item 17, founder decision, Hubert, 2026-11-13).
 - Every size is a `--fs-*` token. The initials of a 16 px face (the `Avatar` `xs`, the faces under a message, the face in a
   mention chip) are `--fs-face` (px, #1370) scaled by .72 with a transform, so the type stays a token and two letters never run wider than the circle.
 - **The offline page** (`/offline.html`, what an offline navigation shows) uses the same tokens: Geist (the app serves it from `/fonts`,
@@ -320,7 +320,7 @@ small moment, never noise.
 - Only `transform` and `opacity` move, with durations and easings from the motion tokens
   ([Motion in Flux](../motion.md)): a one-shot takes `--dur-highlight` (600 ms) or twice it, a loop a multiple of
   `--dur-loop`.
-- Nothing moves under reduced motion (the system's or Settings → Appearance) or with Kreska's small moments off
+- Nothing moves under the system's reduced-motion setting or with Kreska's small moments off
   (Settings → Appearance); every face is then its static frame.
 - A face that shows no state (an agent's icon beside its name, with no expression given) stays still, and so does a
   face of 20 px or less, apart from the three loops that already moved there (Thinking, Loading, Working).
@@ -1268,7 +1268,7 @@ Live strip, someone shares a screen
   (primary) and Open; a compact row keeps Join; it leaves the Inbox when the call is over. The corner notice card is #1243's, and
   push at "Everything" still follows the level for a call started in a space.
 - **The chime** is one short soft tone (no loop), played only for a direct invitation, on an open tab, by #1243's notice.
-  It follows Settings › Notifications › **Sound when someone calls me** (on by default; #1243 draws the two switches).
+  It follows Settings › Notifications › **Sounds** (on by default; one switch for the chime and the message tone, #1419 item 18).
 - **A shared screen.** The sharer's face in the strip carries the `screen` icon as a badge, where the muted-microphone
   badge sits. One `lv-line` (the `screen` icon first): "**Nia** is sharing a screen" (Flux does not know anyone's
   pronouns) and a secondary **View** while the stage is closed (the line keeps its height without it, so the strip does not move when the stage opens). The
@@ -1381,7 +1381,10 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
 
 - One dialog over the screen, opened by ⌘K, the sidebar's Search or the phone's Search.
 - Results are grouped by kind (Tasks, Messages, Wiki, Files, Thoughts, Spaces, People), with the
-  match marked; decisions are listed with Tasks, and maps and drafts with Thoughts. The server ranks the
+  match marked; decisions are listed with Tasks, and maps and drafts with Thoughts. **A saved source is a Wiki page**
+  (founder decision, Hubert, 2026-11-13, [#1419](https://github.com/ColdPhase/flux/issues/1419) item 20): what was once a
+  "material" is listed in Wiki as a page (the Wiki page's tile, "Wiki page" for its kind, and it opens at the version that
+  matched), and Search has no "Material" kind or word. The server ranks the
   results and the groups follow it: **the group of the best match comes first**, then the one that holds the next best, so a
   task that shares a word with a plain question never stands above the message that answers it
   ([#1424](https://github.com/ColdPhase/flux/issues/1424)); inside a group the server's order stands.
@@ -1409,7 +1412,9 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
 - The hint is one plain sentence: "Finds spaces, people, messages, tasks, Wiki pages, files and
   thoughts you can see." A list of more than 20 ends with one quiet line, "Showing 20 · type more words
   to narrow". There are no filter chips and no Create group.
-- With the field empty it lists the places last opened (named as the sidebar names them: "My tasks", never "Home · Tasks") and one action, **Go to
+- With the field empty it lists the places last opened (named as the sidebar names them: "My tasks", never "Home · Tasks"), **one row per place**: a space is one
+  row whichever of its Conversation, Tasks, Map and Wiki were opened, naming the view opened last ("Gesture lamp · Map"; a Wiki page by its own
+  title), and the space in view is not listed ([#1424](https://github.com/ColdPhase/flux/issues/1424)); and one action, **Go to
   Inbox** (`G` `I`). There is no assistant row (the assistant's suggestions are in the composer's `/` menu under `/ai`, S5, and nowhere else) and
   no sidebar toggle. The field and **Close** (Cancel on the phone) are one height (32 px, 44 on touch), Close is at least 44 px wide on touch, and
   the field's row carries the 2 px `--t1` focus ring ([#1376](https://github.com/ColdPhase/flux/issues/1376), [#1380](https://github.com/ColdPhase/flux/issues/1380)).
@@ -1464,6 +1469,12 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
 - **Direction A**, chosen by Hubert: grouped white cards on the grey ground, short rows and text
   buttons such as Change. The sections are Account, Appearance, Notifications, AI, Company and
   Shortcuts, in this order on every device.
+- **Appearance** has **Theme** (Light, Dark, Match system) and the one face switch, "Show the face on loading and empty screens", on
+  every device (on the phone the switch's card is headed "This phone"). **Text size and Reduce motion are gone** (founder decision, Hubert,
+  2026-11-13, [#1419](https://github.com/ColdPhase/flux/issues/1419) item 17): the app follows the system's text size and its reduced-motion
+  setting (the `prefers-reduced-motion` media queries stay), the way the phone always did, and the values the earlier switches stored do nothing.
+  Appearance, **AI**, Space settings, the Spaces list and an empty My tasks carry no explainer sentence under their title (#1419, #1424):
+  only what the screens above draw is said. Space settings keeps its one line about who can open the space.
 - **One header, one column** (#1362). The header says "Settings" on every page of it (the keys and an
   agent's page included), and the sections' pages share one column: 640 px of content (728 with its 44 px
   sides), centred in the area beside the list at every computer width, with the same left edge and
@@ -1475,17 +1486,16 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
     mentions and agents waiting for you. Everything adds new messages and task updates. Nothing
     shows only the count on the Inbox.
   - **Where:** Email me too, On this device, **Hide previews** ([below](#hide-previews), #1346) and Quiet hours
-    ("22:00–7:00 · no email or push then; the Inbox keeps everything", Change), and #1243's two sound switches: **Sound for messages**
-    (off by default) and **Sound when someone calls me** (on by default; the soft chime of a call
-    invitation, F-041).
+    ("22:00–7:00 · no email or push then; the Inbox keeps everything", Change). **Sounds** is one more row in its own card under it (below).
   - **Email addresses:** the sign-in address first, then the others, each ticked on or off.
     "Confirmed", or "Waiting for you to confirm it from that inbox" with Send again. "Add another
     address" sends a confirmation link before any notification goes there.
-  - **Sound** (founder decision, 2026-11-12, #1243): two switches in one card after Where.
-    "Sound for messages", "A soft sound for messages to you and mentions while Flux is open", off
-    by default; "Sound when someone calls me", "One soft chime when someone invites you to a
-    call", on by default. At Nothing each says "Not used while you hear about Nothing". The second appears only on a
-    server with calls (`FLUX_CALLS=on`, #1471); without a media server the card holds "Sound for messages" alone.
+  - **Sounds** (founder decision, Hubert, 2026-11-13, [#1419](https://github.com/ColdPhase/flux/issues/1419) item 18, which merges
+    #1243's two switches): **one** switch, **Sounds**, "A soft sound for messages to you and for calls while Flux is open", **on** by
+    default, in a card of its own after Where with no heading (as Account's "Show when I was last active" has its card). It covers the
+    soft chime of a call invitation and the short tone of a direct message, a mention or a question while Flux is open. At Nothing it
+    says "Not used while you hear about Nothing". It shows on every server, with or without calls. (The API keeps its two stored
+    fields, `sound.messages` and `sound.calls`; the switch writes both together and the page reads `calls`.)
   - **Muted places** sit behind Change. They are the same mutes as the ⋯ menus' Mute
     ([Muting and following](#muting-a-place-and-following-a-thread)).
 - **Company:** only admins can change it.
@@ -1712,7 +1722,7 @@ standard switch row in Settings › Notifications, and the rest of the page stay
     one group with Approve all.
   - Only the owner approves, in their own session.
 - **`/ai`** in a conversation is answered privately by Assistant in a card marked "Only you can see
-  this". The card shows what you asked, then Dismiss and Show everyone, which posts the answer as
+  this". The card shows what you asked once, in its own words ("You asked: Catch me up", without the `/ai` that was typed), then Dismiss and Show everyone, which posts the answer as
   "Ada's Assistant" (below). A picture the agent attached (#1217) sits in the card under the answer
   exactly as a photo sits in a message (frameless, the same grid and viewer), with its change line
   under it, "Attached the picture Raised garden bed · Undo"; Show everyone posts it with the answer
@@ -2052,6 +2062,7 @@ The renders are the approved mockups as drawn; where a later decision differs, f
 - **Messages and creating:**
   - Cite, Record a result, Details and Hand off on messages, and Cite on a space's map with its held citation in the
     composer (Copy link replaces it; Hubert, 2026-11-13, [#1376](https://github.com/ColdPhase/flux/issues/1376));
+  - **Text size** and **Reduce motion** in Appearance, the second of the two sound switches, and "Material" as a kind of Search result (#1419 items 17, 18, 20);
   - the `/map`, `/handoff` and `/source` commands (the composer's `/` has four: `/task`, `/decide`, `/ai`, `/file`) and the Sources tray
     `/source` opened; **My assistant** and the agents in the `@` list (#1419);
   - the separate "Ask an agent" and "Cite" buttons in the composer (S5), and "+" for attaching;

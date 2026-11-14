@@ -122,11 +122,11 @@ export function ProjectOverview({ messageId, selection }: { messageId: string; s
   const byRef = new Map(rows.map((row) => [`${row.kind}:${row.id}`, row]));
   const relationItems = read.links?.items ?? [];
 
-  // Sources: the version this message cites, and materials the linked objects are based on.
+  // Wiki pages the message cites (a saved source is a Wiki page, #1419 item 20), and the ones the linked objects are based on.
   const sources = new Map<string, Row>();
   if (message?.source) {
     const key = `${message.source.materialId}:${message.source.version}`;
-    sources.set(key, { key, icon: 'doc', kind: `Source · v${message.source.version}`, title: 'Saved material', sub: 'Cited in this message', to: `/materials/${message.source.materialId}/versions/${message.source.version}` });
+    sources.set(key, { key, icon: 'doc', kind: `Wiki page · v${message.source.version}`, title: 'Wiki page', sub: 'Cited in this message', to: `/materials/${message.source.materialId}/versions/${message.source.version}` });
   }
   const thoughts = new Map<string, Row>();
   for (const link of relationItems) {
@@ -134,7 +134,7 @@ export function ProjectOverview({ messageId, selection }: { messageId: string; s
     if (!object) continue;
     if (link.to.type === 'material') {
       const key = `${link.to.id}:${link.to.version}`;
-      sources.set(key, { key, icon: 'doc', kind: `Source · v${link.to.version}`, title: link.toTitle, sub: sources.get(key)?.sub ?? `Used by “${object.title}”`, to: `/materials/${link.to.id}/versions/${link.to.version}` });
+      sources.set(key, { key, icon: 'doc', kind: `Wiki page · v${link.to.version}`, title: link.toTitle, sub: sources.get(key)?.sub ?? `Used by “${object.title}”`, to: `/materials/${link.to.id}/versions/${link.to.version}` });
     }
     if (link.to.type === 'thought' && link.sketchId && !thoughts.has(link.to.id)) {
       thoughts.set(link.to.id, { key: link.to.id, icon: 'map', kind: 'Thought on a map', title: link.toTitle, sub: `Linked to “${object.title}”`, to: `${base}/map/${link.sketchId}#thought-${link.to.id}` });

@@ -388,7 +388,7 @@ class SmallMomentsJourney(unittest.TestCase):
 
     def test_12_each_moment_moves_as_drawn_and_reduced_motion_or_the_switch_stops_it(self) -> None:
         """#1342: the empty Inbox's eyes settle into the smile once, the offline face's z drifts and it breathes (loops of an
-        ongoing state), and Settings → Appearance (the face switch off, or Reduce motion) leaves every face still."""
+        ongoing state), and Settings → Appearance (the face switch off) or the system's reduced motion leaves every face still."""
         self.ensure_account()
         page = self.page()
         page.goto("/inbox")
@@ -414,17 +414,16 @@ class SmallMomentsJourney(unittest.TestCase):
             .map((style) => `${style.animationName} ${style.animationIterationCount}`).sort(); }"""
         self.assertEqual(page.evaluate(probe, "thinking"), ["kreska-wave infinite"])
         self.assertEqual(page.evaluate(probe, "worried"), ["kreska-drop 1"])
-        for name in (SWITCH, "Reduce motion"):
-            with self.subTest(setting=name):
-                switch = page.get_by_role("switch", name=name)
-                before = switch.get_attribute("aria-checked")
-                switch.click()
-                expect(switch).not_to_have_attribute("aria-checked", before)
-                self.assertEqual(page.evaluate(probe, "thinking"), [], name)
-                self.assertEqual(page.evaluate(probe, "worried"), [], name)
-                switch.click()
-                expect(switch).to_have_attribute("aria-checked", before)
-                self.assertEqual(page.evaluate(probe, "thinking"), ["kreska-wave infinite"], name)
+        switch = page.get_by_role("switch", name=SWITCH)
+        before = switch.get_attribute("aria-checked")
+        switch.click()
+        expect(switch).not_to_have_attribute("aria-checked", before)
+        self.assertEqual(page.evaluate(probe, "thinking"), [], SWITCH)
+        self.assertEqual(page.evaluate(probe, "worried"), [], SWITCH)
+        switch.click()
+        expect(switch).to_have_attribute("aria-checked", before)
+        self.assertEqual(page.evaluate(probe, "thinking"), ["kreska-wave infinite"], SWITCH)
+        self.assertEqual(page.get_by_role("switch", name="Reduce motion").count(), 0, "no Reduce motion switch: the system's setting decides")
         reduced = self.page(reduced=True)
         reduced.goto("/settings")
         expect(reduced.get_by_role("switch", name=SWITCH)).to_be_visible()

@@ -92,10 +92,10 @@ export function ContributionMark({ contribution }: { contribution: NonNullable<C
 }
 
 export function SourceCitation({ materialId, version, onDenied }: { materialId: string; version: number; onDenied: (cause: unknown) => void }) {
-  const [title, setTitle] = useState('Material');
+  const [title, setTitle] = useState('Wiki page');
   const onDeniedRef = useRef(onDenied);
   useEffect(() => { onDeniedRef.current = onDenied; }, [onDenied]);
-  useEffect(() => { const controller = new AbortController(); getMaterialVersion(materialId, version, controller.signal).then((item) => setTitle(item.title)).catch((cause: unknown) => { if (!controller.signal.aborted) { onDeniedRef.current(cause); setTitle('Material unavailable'); } }); return () => controller.abort(); }, [materialId, version]);
+  useEffect(() => { const controller = new AbortController(); getMaterialVersion(materialId, version, controller.signal).then((item) => setTitle(item.title)).catch((cause: unknown) => { if (!controller.signal.aborted) { onDeniedRef.current(cause); setTitle('Page unavailable'); } }); return () => controller.abort(); }, [materialId, version]);
   return <RefLink to={`/materials/${materialId}/versions/${version}`} className="wiki-card" data-ref="wiki">
     <span className="wiki-card__glyph" aria-hidden="true"><Icon name="doc" size={14} /></span>
     <span className="wiki-card__text"><strong>{title}</strong><small>Wiki page · v{version}</small></span>

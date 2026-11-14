@@ -6,7 +6,7 @@ import { useShellData } from '../app/data';
 import { Icon, MEDIA, Mascot, Spinner, useMediaQuery, type IconName } from '../ui';
 import { targetHref } from './api';
 import { SEARCH_HINT } from './hint';
-import { placeOfPath, useRecentPlaces, type RecentPlace } from './recent';
+import { placeIdentity, placeOfPath, useRecentPlaces, type RecentPlace } from './recent';
 import { groupResults } from './groups';
 import { ResultBody } from './ResultRow';
 import { useSearch } from './useSearch';
@@ -81,6 +81,7 @@ function SearchBody({ onClose, userId, phone }: { onClose: () => void; userId: s
   // With no text: up to four recent places (not the one in view, and only those the person can still open, named as
   // their header names them), then the actions with their keys as drawn (E02).
   const hereKey = placeOfPath(location.pathname)?.key;
+  const here = hereKey === undefined ? undefined : placeIdentity(hereKey);
   const named = (place: RecentPlace): PlaceName | null => {
     const own = OWN_PLACE[place.key];
     if (own) return own;
@@ -92,7 +93,7 @@ function SearchBody({ onClose, userId, phone }: { onClose: () => void; userId: s
     // A Wiki page is named by its own title; the doc it folds its versions into is the place.
     return { label: view === 'docs' && place.title && /\/docs\/[^/]+$/.test(place.path) ? place.title : project.name, side: shownView.side, icon: shownView.icon };
   };
-  const places = recentPlaces.filter((place) => place.key !== hereKey)
+  const places = recentPlaces.filter((place) => placeIdentity(place.key) !== here)
     .flatMap((place) => { const name = named(place); return name ? [{ place, ...name }] : []; }).slice(0, 4);
   // An encrypted space that waits to be unlocked is not searched and not listed here: the sidebar and Home say it waits (#1419 item 16).
   const emptyOptions: Option[] = [

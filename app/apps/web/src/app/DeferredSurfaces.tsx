@@ -12,7 +12,7 @@ import type { StreamEvent } from '@flux/contracts';
 import { ReloadRecovery } from './ReloadRecovery';
 import { useShellActions } from './shellContext';
 import { useShellData } from './data';
-import { placeOfPath, useRecentPlaces } from '../search/recent';
+import { placeIdentity, placeOfPath, useRecentPlaces } from '../search/recent';
 import { DetailsSkeleton, JumpSkeleton } from './SurfaceSkeletons';
 import { conversationPage, preloadProjectViews } from './viewChunks';
 
@@ -147,7 +147,8 @@ export function DeferredJumpTo({ open, onClose, userId }: JumpToProps) {
   const phone = useMediaQuery(MEDIA.phone);
   const { projects, directMessages } = useShellData();
   const recent = useRecentPlaces(userId);
-  const here = placeOfPath(useLocation().pathname)?.key;
+  const hereKey = placeOfPath(useLocation().pathname)?.key;
+  const here = hereKey === undefined ? undefined : placeIdentity(hereKey);
   const [requested, setRequested] = useState(open);
   if (open && !requested) setRequested(true);
   // A body of its own each time the dialog opens, kept through its exit: the content stays mounted while the dialog fades out, so it
@@ -159,7 +160,7 @@ export function DeferredJumpTo({ open, onClose, userId }: JumpToProps) {
   if (!requested) return null;
   const closer = <Button variant="quiet" onClick={onClose}>Close search</Button>;
   // The recent places the dialog will list (up to four, not the one in view, only those that still exist): what sizes its first list.
-  const places = recent.filter((place) => place.key !== here && (!place.key.startsWith('project:') || projects.some((project) => project.id === place.key.split(':')[1]))
+  const places = recent.filter((place) => placeIdentity(place.key) !== here && (!place.key.startsWith('project:') || projects.some((project) => project.id === place.key.split(':')[1]))
     && (!place.key.startsWith('dm:') || directMessages.some((dm) => dm.id === place.key.split(':')[1]))).slice(0, 4).length;
   // One dialog, once: the code of Search loads inside it, so ⌘K never dims, undims and dims again. Once requested it stays
   // mounted, so its own exit animation and focus restoration stay intact.
