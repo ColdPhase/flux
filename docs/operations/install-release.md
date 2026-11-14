@@ -45,7 +45,7 @@ they are.
    | `FLUX_SIGNUP` | after your account | `open` until you have signed up; then decide [who can sign up](install.md#5-decide-who-can-sign-up). |
    | `FLUX_TRUSTED_PROXIES` | with a proxy | The proxy's IP/CIDR, so client addresses are taken from `X-Forwarded-For`. |
    | `FLUX_SMTP_URL`, `FLUX_MAIL_FROM` | optional | Password reset and notification mail. |
-   | `FLUX_VAPID_*` | optional | Web Push, all three or none (step 3). |
+   | `FLUX_VAPID_*` | optional | Web Push: both keys or neither; the contact is optional and defaults to your https address (step 3). |
    | `FLUX_LIVE_EDITING` | optional | Map/wiki collaboration: missing, empty or `on` enables it; `off` keeps ordinary saved views/editors. Other values stop startup. |
    | `FLUX_FIXTURE_TOKEN` | no | Smoke checks only; leave empty. |
 

@@ -1,0 +1,1 @@
+- A page opened from an address Flux does not accept (the old loopback address of a server that moved to its public one) now says which address to open instead of "its usual address" ([#1471](https://github.com/ColdPhase/flux/issues/1471)).

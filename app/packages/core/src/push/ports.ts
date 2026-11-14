@@ -154,7 +154,8 @@ export interface PushDeliveryRepository {
 
 export type PushSendResult =
   | { kind: 'accepted'; status: number }
-  | { kind: 'http-error'; status: number }
+  /** `body`: the start of the push service's answer, which names the cause for some (Apple: `{"reason":"BadJwtToken"}`). */
+  | { kind: 'http-error'; status: number; body?: string }
   /** Refused before any request, e.g. the endpoint resolves to a private address. */
   | { kind: 'refused'; reason: string }
   | { kind: 'network'; message: string };

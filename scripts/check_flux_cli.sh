@@ -105,7 +105,8 @@ for key in POSTGRES_PASSWORD FLUX_FIXTURE_TOKEN FLUX_AUTH_SECRET FLUX_VAPID_PUBL
   [ "${#value}" -ge 20 ] || fail "$key is missing or short in .env"
 done
 grep -qx "FLUX_PUBLIC_ORIGIN=$base" "$copy/docker/.env" || fail "FLUX_PUBLIC_ORIGIN is not $base"
-grep -q '^FLUX_VAPID_SUBJECT=mailto:' "$copy/docker/.env" || fail "FLUX_VAPID_SUBJECT not set"
+# #1471: no placeholder contact (Apple refuses it): empty, the worker uses the https public address.
+grep -qx 'FLUX_VAPID_SUBJECT=' "$copy/docker/.env" || fail "FLUX_VAPID_SUBJECT is not left empty: $(grep '^FLUX_VAPID_SUBJECT=' "$copy/docker/.env")"
 curl -fsS "$base/api/v1/health" | grep -q '"status":"ok"' || fail "health not ok"
 # AI works right after install (#1438): agents on API keys are on, with a 32-byte key file the API and the worker read.
 grep -qx 'FLUX_PERSONAL_RUNS=on' "$copy/docker/.env" || fail "FLUX_PERSONAL_RUNS is not on after the first up"
@@ -129,6 +130,10 @@ no_compose_warnings "the second ./flux up" "$work/second-up.err"
 [ ! -e "$copy/app/.env" ] || fail "application reference became an executable env"
 # Sign-up is open by default, so ./flux up invites the first account.
 printf '%s\n' "$second_up" | grep -q 'Create an account there' || fail "./flux up did not point to sign-up: $second_up"
+# #1471: the end of up is a short status, one plain line each.
+for line in "  Address   $base" '  Email     off (' '  Push      on for this computer; iPhone and iPad need an https address' '  AI        plans off (' '  Calls     off' '  Backups   none yet ('; do
+  printf '%s\n' "$second_up" | grep -qF "$line" || fail "./flux up did not end with the status line '$line': $second_up"
+done
 curl -fsS "$base/api/v1/health" >/dev/null || fail "health after second up"
 
 step "./flux demo seeds through the API and prints working logins"

@@ -1571,6 +1571,13 @@ standard switch row in Settings › Notifications, and the rest of the page stay
     runs for the person (the window's first two choices; their pages read "Sign in to Claude" and "Sign
     in to ChatGPT", and where the server doesn't offer them, "Signing in with a Claude plan isn't offered
     on this Flux server."). "Claude Code" and "Codex" are only the apps on the person's own computer.
+  - **A Claude plan the server has left off** (founder decision, Hubert, 2026-11-13,
+    [#1471](https://github.com/ColdPhase/flux/issues/1471)): the first `./flux up` asks whether the person who runs Flux has accepted
+    Anthropic's Commercial Terms, and the default answer is No, so a server can run ChatGPT plans and no Claude plan. The Connect AI
+    window keeps the Claude plan choice for the company's owners and admins, who can turn it on, as it keeps a choice that is only late
+    (below), and its one detail line says how to get it: "Not turned on. Run `./flux ai on` on the server." (the command in the mono
+    face, no new element, no link, no button). Everyone else, and a server whose AI is off altogether, is shown no plan the server does
+    not offer, as the next point says.
   - **Your agents**, with New agent. Each row has the agent's Kreska in its own colour (chosen when
     the agent is created, or assigned automatically), its name, one line about its job, its tag ("Do it
     and tell me", or "Ask me first" with the switch on) and its model with the connection ("Opus · Claude plan").

@@ -149,7 +149,7 @@ services:
       FLUX_PUBLIC_ORIGIN: ${FLUX_PUBLIC_ORIGIN:?Set FLUX_PUBLIC_ORIGIN in .env}
       FLUX_SMTP_URL: ${FLUX_SMTP_URL:-}
       FLUX_MAIL_FROM: ${FLUX_MAIL_FROM:-}
-      # The worker signs Web Push requests. Set all three or none.
+      # The worker signs Web Push requests. Set both keys or neither; the contact is optional (empty: the https FLUX_PUBLIC_ORIGIN).
       FLUX_VAPID_PUBLIC_KEY: ${FLUX_VAPID_PUBLIC_KEY:-}
       FLUX_VAPID_PRIVATE_KEY: ${FLUX_VAPID_PRIVATE_KEY:-}
       FLUX_VAPID_SUBJECT: ${FLUX_VAPID_SUBJECT:-}

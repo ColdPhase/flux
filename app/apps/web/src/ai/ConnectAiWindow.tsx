@@ -43,8 +43,11 @@ type Step =
  * The window itself. `runtime`: null while it could not be read (`runtimeFailed`), so a plan is not called unavailable by
  * mistake. `have`: what the person has connected; a plan is one connection, a key can be added again.
  */
-export function ConnectAiWindow({ runtime, runtimeFailed, apiKeys, have, onClose, onConnected, onLocalClient, startAt }: {
-  runtime: AgentRuntimeStatus | null; runtimeFailed: boolean; apiKeys: boolean; have: ReadonlySet<AiConnectionKind>;
+export function ConnectAiWindow({ runtime, runtimeFailed, apiKeys, manager, have, onClose, onConnected, onLocalClient, startAt }: {
+  runtime: AgentRuntimeStatus | null; runtimeFailed: boolean; apiKeys: boolean;
+  /** The person is an owner or admin of the company: the only ones told how to turn a Claude plan on (#1471). */
+  manager: boolean;
+  have: ReadonlySet<AiConnectionKind>;
   onClose: () => void; onConnected: (added?: BackgroundComputeConnection) => void; onLocalClient: () => void;
   /** `key` opens the window on its API key step (Your API keys' "Add a key", #1438 point 9); Cancel there closes the window. */
   startAt?: 'key';
@@ -69,7 +72,12 @@ export function ConnectAiWindow({ runtime, runtimeFailed, apiKeys, have, onClose
   // Only what this server offers is listed (#1419): a plan it cannot run is not a greyed row. One that is merely late keeps its row with the
   // one line that says so: the sign-in place is still starting, or Flux could not check just now.
   const late = (kind: Choice) => kind !== 'api_key' && kind !== 'local_client' && (runtimeFailed || notReady);
-  const choices = CHOICES.filter((choice) => (choice.kind === 'api_key' || choice.kind === 'local_client' || !have.has(choice.kind)) && (offered(choice.kind) || late(choice.kind)));
+  // A server that runs ChatGPT plans but not Claude plans (its owner answered No to Anthropic's Commercial Terms) keeps the Claude plan row for its
+  // owners and admins, who can turn it on: it too will work, and the one line of the row says how (#1471). Everyone else is not shown a plan
+  // the server does not offer.
+  const claudeLeftOff = (kind: Choice) => manager && kind === 'claude_plan' && !!runtime?.enabled && runtime.clients.claude_code === 'off';
+  const choices = CHOICES.filter((choice) => (choice.kind === 'api_key' || choice.kind === 'local_client' || !have.has(choice.kind))
+    && (offered(choice.kind) || late(choice.kind) || claudeLeftOff(choice.kind)));
   const [chosen, setChosen] = useState<Choice | null>(null);
   const selected = chosen && offered(chosen) ? chosen : choices.find((choice) => offered(choice.kind))?.kind ?? null;
 
@@ -107,8 +115,8 @@ export function ConnectAiWindow({ runtime, runtimeFailed, apiKeys, have, onClose
                   <Icon name={choice.icon} size={16} />
                   <span className="cai-window__text">
                     <span className="cai-window__name">{choice.title}</span>
-                    <span className="cai-window__detail">{on ? choice.detail : runtimeFailed && choice.kind !== 'api_key' ? 'Flux couldn’t check this just now'
-                      : 'Not ready yet. If this stays, ask whoever runs Flux.'}</span>
+                    <span className="cai-window__detail">{on ? choice.detail : claudeLeftOff(choice.kind) ? <>Not turned on. Run <code>./flux ai on</code> on the server.</>
+                      : runtimeFailed && choice.kind !== 'api_key' ? 'Flux couldn’t check this just now' : 'Not ready yet. If this stays, ask whoever runs Flux.'}</span>
                   </span>
                 </label>
               );

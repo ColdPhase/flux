@@ -485,6 +485,34 @@ class ConnectAiJourney(unittest.TestCase):
                 for plan in ("claude_plan", "chatgpt_plan"):
                     expect(window.locator(f"[data-choice={plan}]")).to_have_count(0)
                 expect(window.locator("[data-choice=api_key] input")).to_be_enabled()
+
+    def test_08i_a_claude_plan_the_server_has_left_off_tells_its_owners_how_to_turn_it_on(self) -> None:
+        """#1471: the first ./flux up asks about Anthropic's Commercial Terms and the default answer is No: ChatGPT plans on, Claude plans off.
+        An owner or admin keeps the Claude plan row, with how to turn it on in its one line and the command in the mono face; a member is
+        shown no plan the server does not offer (#1419), and a server whose plans are all off shows none to anyone. The ChatGPT plan is still offered."""
+        claude_off = {**RUNTIME_ON, "clients": {"claude_code": "off", "codex": "available"}}
+        everything_off = {**RUNTIME_ON, "enabled": False, "clients": {"claude_code": "off", "codex": "off"}}
+        for who, status, line in (("ines", claude_off, "Not turned on. Run ./flux ai on on the server."),
+                                  ("tom", claude_off, None),
+                                  ("ines", everything_off, None)):
+            with self.subTest(who=who, enabled=status["enabled"]):
+                page = self.page(who)
+                self.stub_runtime(page, status)
+                page.goto("/settings/agents")
+                connect, _, _ = self.sections(page)
+                connect.get_by_role("button", name=re.compile(r"^Connect (AI|another)$")).click()
+                window = page.get_by_role("dialog", name="Connect your AI")
+                claude = window.locator("[data-choice=claude_plan]")
+                if line is None:
+                    expect(claude).to_have_count(0)
+                else:
+                    expect(claude.locator(".cai-window__detail")).to_have_text(line)
+                    expect(claude.locator("input")).to_be_disabled()
+                    expect(claude.locator("code")).to_have_text("./flux ai on")
+                    self.no_horizontal_scroll(page)
+                if status["enabled"]:
+                    expect(window.locator("[data-choice=chatgpt_plan] input")).to_be_enabled()
+                window.get_by_role("button", name="Cancel").click()
                 page.context.close()
 
     def test_08b_a_plan_at_its_limit_says_so_in_one_line_and_nothing_switches(self) -> None:

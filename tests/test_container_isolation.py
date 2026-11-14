@@ -314,6 +314,16 @@ class ContainerIsolationTest(unittest.TestCase):
         self.assertEqual(stages[-1], "runtime")
         self.assertIn("agent-runtime", stages)
 
+    def test_type_check_and_lint_run_where_the_checks_build_and_not_in_the_image_an_operator_builds(self) -> None:
+        # #1471: ./flux up builds the last stage; `test` (CI's Application validation, check_application.sh) is built on `verify`.
+        text = (ROOT / "docker" / "Dockerfile").read_text(encoding="utf-8")
+        stages = {m.group(2): (m.group(1), m.group(3)) for m in re.finditer(r"^FROM (\S+) AS (\S+)\n((?:(?!FROM ).*\n?)*)", text, re.M)}
+        self.assertNotRegex(stages["build"][1], r"pnpm (typecheck|lint)")
+        self.assertEqual(stages["verify"][0], "build")
+        self.assertRegex(stages["verify"][1], r"(?m)^RUN pnpm typecheck && pnpm lint$")
+        self.assertEqual(stages["test"][0], "verify")
+        self.assertNotIn("--from=verify", stages["runtime"][1])
+
     def test_the_release_compose_file_keeps_the_runtime_off(self) -> None:
         text = (ROOT / "docker" / "compose.yaml").read_text(encoding="utf-8")
         self.assertNotIn("FLUX_AGENT_RUNTIME", text)

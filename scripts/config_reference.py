@@ -83,7 +83,7 @@ GROUPS = [
     ("sso", "Single sign-on (OpenID Connect)",
      "Optional, one provider. The [single sign-on guide](single-sign-on.md) walks through it."),
     ("email", "Email", "Optional. Without it password reset reports unavailable; the in-app Inbox and push keep working."),
-    ("push", "Web Push", "Optional, all three or none. See [phones, tablets and push](mobile-and-push.md)."),
+    ("push", "Web Push", "Optional: both keys or neither; the contact is optional. See [phones, tablets and push](mobile-and-push.md)."),
     ("collaboration", "Collaboration, link cards and the live stream", ""),
     ("files", "Files and video",
      "Every file is at most 5 MiB, except a video, which has its own limit. See [requirements](requirements.md) for the disk."),
@@ -201,7 +201,9 @@ VARIABLES: dict[str, Var] = {
     "FLUX_VAPID_PRIVATE_KEY": Var("push", "secret",
         "Private VAPID key; only the worker receives it. Changing the pair makes every device subscribe again.", secret=True),
     "FLUX_VAPID_SUBJECT": Var("push", "`mailto:` or `https:` URL",
-        "Operator contact sent to the push services. Use a real, reachable address.", "mailto:ops@example.org"),
+        "Optional contact sent to the push services. Empty, it is `FLUX_PUBLIC_ORIGIN` when that is `https:` (Apple's push service "
+        "accepts it). Set it only to give a `mailto:` address at your own domain; a contact Apple cannot reach (`localhost`, `.local`, "
+        "`.test`) makes iPhone and iPad notifications fail with 403.", "mailto:ops@example.org"),
     # --- collaboration
     "FLUX_LIVE_EDITING": Var("collaboration", "`on` · `off`",
         "Shared live editing of maps and Wiki pages. `off` keeps the ordinary saved views and editors; save shared "
@@ -449,7 +451,6 @@ NOT_SETTINGS: dict[str, str] = {
     "FLUX_RUNTIME_PURGE": "output marker of the operations tool",
     "FLUX_RUNTIME_NOT_INSTALLED": "output marker of the runtime manager",
     "FLUX_GITHUB": "prefix in an error message",
-    "FLUX_VAPID": "prefix in a message",
 }
 
 # Non-FLUX names the services read. They are listed for completeness; the check confirms each still appears.

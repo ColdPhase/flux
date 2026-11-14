@@ -6,6 +6,7 @@ import {
   buildPushPayload,
   deliverPushJob,
   getInboxItem,
+  PUSH_CONTACT_FIX,
   type NotificationRecord,
   type PushDeliveryTarget,
   type PushSubscriptionRecord,
@@ -77,6 +78,21 @@ describe('push payload privacy (core)', () => {
     assert.equal((await deliverPushJob(ended.ports, job)).outcome, 'removed');
     assert.deepEqual(ended.deleted, [subscription.id]);
     assert.deepEqual(ended.sent, []);
+  });
+
+  test('a refused push contact (Apple 403 BadJwtToken) is logged with the fix, and another 403 is not blamed on it (#1471)', async () => {
+    const log: string[] = [];
+    const answering = (body?: string) => ({
+      ...ports(reads).ports,
+      sender: { send: async () => ({ kind: 'http-error' as const, status: 403, body }) },
+      log: (message: string) => { log.push(message); },
+    });
+    assert.deepEqual(await deliverPushJob(answering('{"reason":"BadJwtToken"}'), job), { outcome: 'rejected', status: 403, reason: 'push service refused the push contact (FLUX_VAPID_SUBJECT)' });
+    assert.equal(log.length, 1);
+    assert.match(log[0] ?? '', /refused Flux's push contact/);
+    assert.ok((log[0] ?? '').endsWith(PUSH_CONTACT_FIX), 'the log says what to set');
+    assert.deepEqual(await deliverPushJob(answering('{"reason":"Forbidden"}'), job), { outcome: 'rejected', status: 403, reason: 'push service answered 403' });
+    assert.equal(log[1], 'Push rejected by push service');
   });
 
   test('the inbox answers 404 for an unreadable source and for someone else\'s id', async () => {
