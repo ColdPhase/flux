@@ -176,22 +176,26 @@ class MapLayoutJourney(unittest.TestCase):
         """C-9: a thought with no parent lands where it can be seen, not in the map's corner under the toolbar or over another thought."""
         page = self.page()
         self.scene(page)
+        meet = lambda a, b: a['x'] < b['x'] + b['width'] and b['x'] < a['x'] + a['width'] and a['y'] < b['y'] + b['height'] and b['y'] < a['y'] + a['height']  # noqa: E731
+        window = page.viewport_size
         for index in range(3):
             page.get_by_role('toolbar', name='Map tools').get_by_role('button', name='Thought', exact=True).click()
             draft = page.get_by_role('form', name='New thought draft').get_by_label('Thought text')
+            expect(page.locator('.sk-ghost--draft')).to_be_attached()
+            # Where the draft stands on the map: whole in view, clear of the minimap and the zoom, and over no thought.
+            spot = page.locator('.sk-ghost--draft').bounding_box()
+            self.assertGreaterEqual(spot['x'], 0)
+            self.assertGreaterEqual(spot['y'], 0)
+            self.assertLessEqual(spot['x'] + spot['width'], window['width'], 'the draft is whole in view')
+            self.assertLessEqual(spot['y'] + spot['height'], window['height'], 'the draft is whole in view')
+            for selector in ('.sk-minimap', '.sk-zoom'):
+                over = page.locator(selector).first.bounding_box()
+                self.assertFalse(over and meet(spot, over), f'the draft is not under {selector}')
+            for node in page.locator('.sk-node').all():
+                self.assertFalse(meet(spot, node.bounding_box()), 'the draft is over no thought')
             draft.fill(f'Placed in free space number {index + 1}')
             draft.press('Enter')
             expect(page.locator('.sk-node')).to_have_count(3 + index)
-        boxes = [node.bounding_box() for node in page.locator('.sk-node').all()]
-        floating = [box for box in (page.locator(selector).first.bounding_box() for selector in ('.sk-minimap', '.sk-zoom')) if box]
-        meet = lambda a, b: a['x'] < b['x'] + b['width'] and b['x'] < a['x'] + a['width'] and a['y'] < b['y'] + b['height'] and b['y'] < a['y'] + a['height']  # noqa: E731
-        for at, box in enumerate(boxes):
-            for other in boxes[at + 1:]:
-                self.assertFalse(meet(box, other), 'no two thoughts overlap')
-            for over in floating:
-                self.assertFalse(meet(box, over), 'no thought sits under the minimap or the zoom')
-        for node in page.locator('.sk-node').all()[2:]:
-            expect(node).to_be_in_viewport(ratio=1)
         shot(page, 'map-layout-new-thoughts-1440-light')
 
     def test_04_very_short_phone_keeps_full_hint_and_draft_reachable_by_scrolling(self):
