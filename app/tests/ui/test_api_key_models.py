@@ -15,9 +15,11 @@ import unittest
 
 from playwright.sync_api import Browser, Page, Route, expect, sync_playwright
 
-from app_select import choose, open_more, open_select, values
+from app_select import choose, labels, open_more, open_select, values
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, shot, start_forwarder
 
+# The price fields' plain words (design §7, founder decision 2026-11-14, #1424).
+PRICE = "Price in US dollars for a million tokens sent to the model (input) and a million it writes (output)"
 PASSWORD = "a provider of my own choosing"
 STAMP = int(time.time() * 1000)
 OWNER = {"name": "Ines Park", "email": f"ines.park+{STAMP}@example.test"}
@@ -118,13 +120,13 @@ class ApiKeyModels(unittest.TestCase):
         page.keyboard.press("Escape")
         # #1424: Anthropic's newest Sonnet, the balanced model, is already chosen (here a model Flux has no price for, so its price is asked). The models are the provider's own (founder direction, 2026-11-12). Opus shows its list price.
         expect(model).to_contain_text("Claude Sonnet 5.7")
-        expect(page.get_by_role("group", name="Price per 1M tokens (USD)")).to_be_visible()
+        expect(page.get_by_role("group", name=PRICE)).to_be_visible()
         expect(page.get_by_test_id("connection-price")).to_have_count(0)
         choose(model, value="claude-opus-5-5")
         expect(page.get_by_test_id("connection-price")).to_contain_text("$4.00 for what you send and $20.00 for what it writes, per million tokens · Flux’s price list of ")
         # A model Flux has no price for asks its price; "Other model id…" opens the plain field.
         choose(model, value="claude-sonnet-5-7")
-        price = page.get_by_role("group", name="Price per 1M tokens (USD)")
+        price = page.get_by_role("group", name=PRICE)
         expect(price).to_contain_text("Flux doesn’t know this model’s price yet. Enter it to use it with a daily budget")
         choose(model, value="__other__")
         expect(page.get_by_label("Model id", exact=True)).to_be_visible()
@@ -178,12 +180,8 @@ class ApiKeyModels(unittest.TestCase):
         expect(help_line).to_have_text(f"{plain} An Anthropic API key beginning with sk-ant-. A key of your Claude Max, Ultra or Team plan uses its monthly API credits.")
         choose(provider, label="OpenAI-compatible endpoint")
         expect(page.get_by_role("textbox", name="Model")).to_be_editable()
-        # Back to no provider: the first state again.
-        choose(provider, label="Choose a provider")
-        expect(page.get_by_label("Model", exact=True)).to_have_count(0)
-        expect(connect).to_be_disabled()
-        expect(help_line).to_have_text(plain)
-        self.assertEqual(form.evaluate(visible), ["Provider", "API key", "More settings", "Cancel", "Connect"])
+        # "Choose a provider" is the closed field's placeholder, not an option to tick (v0.2.1 UI audit, P3 4).
+        self.assertNotIn("Choose a provider", labels(provider))
 
     def test_02b_the_form_asks_first_only_for_the_provider_and_the_key_and_keeps_the_rest_behind_more(self) -> None:
         """#1424 (founder decision, 2026-11-14): Provider and API key first; the model already chosen once the key is read; the budget and the
@@ -200,7 +198,7 @@ class ApiKeyModels(unittest.TestCase):
         expect(page.get_by_label("Provider", exact=True)).to_be_visible()
         expect(page.get_by_label("API key", exact=True)).to_be_visible()
         expect(page.get_by_role("combobox", name="Model")).to_have_count(0)
-        expect(page.get_by_role("group", name="Price per 1M tokens (USD)")).to_have_count(0)
+        expect(page.get_by_role("group", name=PRICE)).to_have_count(0)
         expect(window.get_by_label("Daily budget (USD)", exact=True)).to_be_hidden()
         expect(window.get_by_label("Name (optional)", exact=True)).to_be_hidden()
         more = page.get_by_role("button", name="More settings")
@@ -211,7 +209,7 @@ class ApiKeyModels(unittest.TestCase):
         model = page.get_by_role("combobox", name="Model")
         expect(model).to_contain_text("Claude Sonnet 5.7")  # Anthropic's newest Sonnet, the balanced model
         choose(model, value="claude-opus-5-5")
-        expect(page.get_by_role("group", name="Price per 1M tokens (USD)")).to_have_count(0)
+        expect(page.get_by_role("group", name=PRICE)).to_have_count(0)
         fits()
         words = window.inner_text()
         for jargon in ("Chat Completions", "Console organization", "input / output", "per 1M tokens, input"):
@@ -230,6 +228,55 @@ class ApiKeyModels(unittest.TestCase):
         added = [item for item in json.loads(page.request.get(f"{ORIGIN}/api/v1/background-compute-connections").text()) if item["name"] not in before]
         self.assertEqual([(item["name"], item["model"], item["dailyBudgetCents"]) for item in added], [("Anthropic key", "claude-opus-5-5", 500)])
         self.no_key_in_page(page)
+
+    def test_02b2_an_unpriced_model_asks_its_price_in_plain_words_and_the_window_still_does_not_scroll(self) -> None:
+        """v0.2.1 UI audit P2-2, design §7 (founder decision 2026-11-14, #1424): the price reads "Price in US dollars for a million tokens sent
+        to the model (input) and a million it writes (output)", never "per 1M tokens" or "Input price". With the price fields and More open,
+        the window does not scroll and Cancel and Connect stay in view, at 1440 × 900 and at 1280 × 800. The fields have no native steppers."""
+        for size in ({"width": 1440, "height": 900}, {"width": 1280, "height": 800}):
+            with self.subTest(size=size):
+                page = self.page()
+                page.set_viewport_size(size)
+                self.form(page)
+                self.type_key(page, GOOD)
+                model = page.get_by_role("combobox", name="Model")
+                expect(model).to_contain_text("Claude Sonnet 5.7")  # the default, a model Flux has no price for in the stack
+                price = page.get_by_role("group", name=PRICE)
+                expect(price).to_be_visible()
+                expect(price).to_contain_text("Flux doesn’t know this model’s price yet. Enter it to use it with a daily budget.")
+                for field in ("Input", "Output"):
+                    expect(price.get_by_label(field, exact=True)).to_be_editable()
+                    self.assertEqual(price.get_by_label(field, exact=True).evaluate("el => getComputedStyle(el).appearance"), "textfield", f"{field}: no steppers")
+                open_more(page)
+                window = page.locator(".cai-window")
+                expect(window.get_by_label("Name (optional)", exact=True)).to_be_visible()
+                words = window.inner_text()
+                for jargon in ("1M", "Input price", "Output price", "USD per"):
+                    self.assertNotIn(jargon, words, "plain words")
+                height, visible = window.evaluate("el => [el.scrollHeight, el.clientHeight]")
+                self.assertLessEqual(height, visible + 1, f"the window does not scroll: {height} px in {visible}")
+                frame = page.locator(".cai-dialog").bounding_box()
+                for name in ("Cancel", "Connect"):
+                    button = window.get_by_role("button", name=name, exact=True).bounding_box()
+                    self.assertLessEqual(button["y"] + button["height"], min(frame["y"] + frame["height"], size["height"]), f"{name} is in view: {button} {frame}")
+                # The two prices sit on one line, and the budget beside the name.
+                inputs = [price.get_by_label(field, exact=True).bounding_box() for field in ("Input", "Output")]
+                self.assertAlmostEqual(inputs[0]["y"], inputs[1]["y"], delta=1)
+                budget, name = window.get_by_label("Daily budget (USD)", exact=True).bounding_box(), window.get_by_label("Name (optional)", exact=True).bounding_box()
+                self.assertAlmostEqual(budget["y"], name["y"], delta=1)
+                shot(page, named(f"api-key-models-{size['width']}-unpriced-more"))
+        # The phone: one column, the price fields touch-sized and without the WebKit steppers.
+        phone = self.page(phone=True)
+        self.form(phone)
+        self.type_key(phone, GOOD)
+        price = phone.get_by_role("group", name=PRICE)
+        expect(price).to_be_visible()
+        for field in ("Input", "Output"):
+            box = price.get_by_label(field, exact=True)
+            self.assertEqual(box.evaluate("el => getComputedStyle(el).appearance"), "textfield", f"{field}: no steppers on the phone")
+            self.assertGreaterEqual(box.bounding_box()["height"], 44, field)
+        self.assertLessEqual(phone.evaluate("document.documentElement.scrollWidth"), phone.evaluate("window.innerWidth"))
+        shot(phone, named("api-key-models-390-unpriced"))
 
     def test_02c_the_model_chosen_is_the_providers_balanced_one_found_by_family_name(self) -> None:
         """#1424 (founder decision, 2026-11-14): Anthropic's newest Sonnet, OpenAI's newest Sol, Gemini's newest Flash, whatever their place in the
@@ -368,8 +415,8 @@ class ApiKeyModels(unittest.TestCase):
         model = page.get_by_role("combobox", name="Model")
         choose(model, value="__other__")
         page.get_by_label("Model id", exact=True).fill("claude-no-tools-1")
-        page.get_by_label("Input price", exact=True).fill("1")
-        page.get_by_label("Output price", exact=True).fill("5")
+        page.get_by_label("Input", exact=True).fill("1")
+        page.get_by_label("Output", exact=True).fill("5")
         open_more(page)
         page.get_by_label("Daily budget (USD)", exact=True).last.fill("5")
         page.get_by_role("button", name="Connect", exact=True).click()

@@ -23,6 +23,14 @@
 .background-settings__price { display: grid; gap: 6px; min-width: 0; margin: 0; padding: 0; border: 0; }
 .background-settings__price legend { padding: 0; font-size: var(--fs-sm); font-weight: 500; color: var(--t2); }
 .background-settings__price .background-settings__limits { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+/* An unpriced model's two fields are one line, each named beside its field (#1424: the window does not scroll at 1440 × 900). No native steppers:
+   a price is typed, and WebKit's arrows on the phone crowded the field. */
+.background-settings__price .background-settings__limits label { grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 8px; }
+.background-settings__price input { appearance: textfield; }
+.background-settings__price input::-webkit-inner-spin-button, .background-settings__price input::-webkit-outer-spin-button { -webkit-appearance: none; appearance: none; margin: 0; }
+/* More: the daily budget with its line, and the name, side by side; one column on a narrow window. */
+.background-settings__more { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 12px; }
+.background-settings__budget-field { display: grid; gap: 4px; min-width: 0; }
 .background-settings__price input { width: 100%; min-width: 0; min-height: 36px; padding: 6px 10px; border: 1px solid var(--line2); border-radius: var(--r); color: var(--t1); background: var(--el); font-size: var(--fs-md); font-weight: 400; }
 .background-settings__more-row { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; }
 .background-settings__more-row > .ui-btn { margin-left: -8px; }
@@ -32,6 +40,8 @@
 .background-settings__check input { flex: none; width: 18px; height: 18px; margin: 1px 0 0; accent-color: var(--t1); }
 .background-settings__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .background-settings__actions--end { justify-content: flex-end; }
+/* Remove starts at the card's text edge, as its words do, not 12 px in (v0.2.1 UI audit). */
+.background-settings__actions > .background-settings__remove { margin-left: -12px; }
 .background-settings__confirm { display: grid; gap: 8px; font-size: var(--fs-sm); line-height: 1.5; color: var(--t2); }
 .background-settings__confirm .background-settings__actions { margin-top: 0; }
 .background-settings__select { display: grid; gap: 4px; margin: 10px 0; font-size: var(--fs-sm); font-weight: 500; color: var(--t2); }
@@ -54,6 +64,7 @@
 .background-usage__context a { display: inline-flex; align-items: center; min-height: 28px; color: var(--t1); text-underline-offset: 3px; }
 @media (max-width: 640px) {
   .background-settings__limits { grid-template-columns: 1fr; gap: 8px; }
+  .background-settings__more { grid-template-columns: 1fr; }
   .background-settings__metadata > div { grid-template-columns: 1fr; gap: 1px; }
 }
 /* On the phone the header already names the page: one title (#513). */

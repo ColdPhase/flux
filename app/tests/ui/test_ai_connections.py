@@ -24,6 +24,8 @@ from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forward
 
 MOCK = os.environ.get("FLUX_OPENAI_MOCK_URL", "http://127.0.0.1:8091")
 ENDPOINT = "http://openai-mock:8091/v1"
+# The price fields' plain words (design §7, founder decision 2026-11-14, #1424).
+PRICE = "Price in US dollars for a million tokens sent to the model (input) and a million it writes (output)"
 PASSWORD = "a provider of my own choosing"
 STAMP = int(time.time() * 1000)
 OWNER = {"name": "Ada Nowak", "email": f"ada.nowak+{STAMP}@example.test"}
@@ -120,7 +122,9 @@ class AiConnectionSettings(unittest.TestCase):
         provider = page.get_by_label("Provider", exact=True)
         expect_value(provider, "")
         options = [text.strip() for text in labels(provider)]
-        self.assertEqual(options, ["Choose a provider", *PROVIDERS])
+        # The placeholder is the closed field's words, never an option of the list (v0.2.1 UI audit, P3 4).
+        self.assertEqual(options, PROVIDERS)
+        expect(provider).to_have_text("Choose a provider")
         body = window.inner_text()
         for vendor in ("Claude Platform", "claude-sonnet-5", "pays Anthropic", "sk-ant-"):
             self.assertNotIn(vendor, body, "no vendor is named before the owner chooses one (PROV-2)")
@@ -148,15 +152,15 @@ class AiConnectionSettings(unittest.TestCase):
                          "the server lists models without any key")
         expect(page.locator("datalist")).to_have_count(0)
         choose(model, value="llama3.1:8b")
-        expect(page.get_by_role("group", name="Price per 1M tokens (USD)")).to_be_visible()
+        expect(page.get_by_role("group", name=PRICE)).to_be_visible()
         # #1424: a key is never saved on a model with no price, which could not be used: Connect says so above the form and saves nothing.
         self.fill_key(page, KEYS["openai_compatible"])
         before = self.connections(page)
         page.get_by_role("button", name="Connect", exact=True).click()
         expect(page.get_by_role("alert").filter(has_text="Enter this model’s price to use it with a daily budget")).to_be_visible()
         self.assertEqual(self.connections(page), before, "a key without a price is not saved")
-        page.get_by_label("Input price").fill("0")
-        page.get_by_label("Output price").fill("0")
+        page.get_by_label("Input", exact=True).fill("0")
+        page.get_by_label("Output", exact=True).fill("0")
         self.fill_key(page, KEYS["openai_compatible"])
         shot(page, "ai-connection-1440-compatible-form")
         page.get_by_role("button", name="Connect", exact=True).click()
@@ -190,7 +194,7 @@ class AiConnectionSettings(unittest.TestCase):
         page.get_by_role("button", name="Show available models").click()
         expect(page.get_by_role("status").filter(has_text="1 model from OpenAI-compatible endpoint")).to_be_visible()
         expect_value(page.get_by_label("Model", exact=True), "only-model")
-        expect(page.get_by_role("group", name="Price per 1M tokens (USD)")).to_be_visible()
+        expect(page.get_by_role("group", name=PRICE)).to_be_visible()
         cancel, connect = page.get_by_role("button", name="Cancel", exact=True).last.bounding_box(), page.get_by_role("button", name="Connect", exact=True).bounding_box()
         self.assertLess(cancel["x"], connect["x"], "Cancel is left of the one primary, as in the window's first step")
         self.assertGreater(connect["x"] + connect["width"], page.viewport_size["width"] * 0.5, "the pair sits on the right")
@@ -210,7 +214,7 @@ class AiConnectionSettings(unittest.TestCase):
         expect(page.get_by_text("6 models from Anthropic.")).to_be_visible()
         choose(page.get_by_label("Model", exact=True), value="claude-sonnet-5")
         expect(page.get_by_test_id("connection-price")).to_contain_text("$2.00 for what you send and $10.00 for what it writes, per million tokens · Flux’s price list of ")
-        expect(page.get_by_role("group", name="Price per 1M tokens (USD)")).to_have_count(0)
+        expect(page.get_by_role("group", name=PRICE)).to_have_count(0)
         open_more(page)
         page.get_by_label("Name (optional)", exact=True).fill("Work Anthropic")
         self.fill_key(page, KEYS["anthropic"], "12.50")
@@ -261,8 +265,8 @@ class AiConnectionSettings(unittest.TestCase):
         page.get_by_role("button", name="Show available models").click()
         expect(page.get_by_role("status").filter(has_text="This endpoint is not allowed on this server")).to_be_visible()
         page.get_by_label("Model", exact=True).fill("llama3.1:8b")
-        page.get_by_label("Input price").fill("0")
-        page.get_by_label("Output price").fill("0")
+        page.get_by_label("Input", exact=True).fill("0")
+        page.get_by_label("Output", exact=True).fill("0")
         self.fill_key(page, KEYS["openai_compatible"])
         page.get_by_role("button", name="Connect", exact=True).click()
         alert = page.get_by_role("alert")
@@ -278,9 +282,9 @@ class AiConnectionSettings(unittest.TestCase):
         page.get_by_role("button", name="Add a key").tap()
         choose(page.get_by_label("Provider", exact=True), label="OpenRouter")
         page.get_by_label("Model", exact=True).fill("vendor/model-without-a-listing")
-        expect(page.get_by_role("group", name="Price per 1M tokens (USD)")).to_be_visible()
+        expect(page.get_by_role("group", name=PRICE)).to_be_visible()
         open_more(page)
-        for label in ("Provider", "Model", "Input price", "Output price", "Daily budget (USD)"):
+        for label in ("Provider", "Model", "Input", "Output", "Daily budget (USD)"):
             box = page.get_by_label(label, exact=True).last.bounding_box()
             self.assertIsNotNone(box)
             self.assertGreaterEqual(box["height"], 44, label)

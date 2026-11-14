@@ -200,8 +200,8 @@ export function ConnectionFields({ disabled, onBlocked, keyHelpId }: {
   return <>
     <label>Provider
       {/* Named explicitly: inside its label, the options would otherwise join the field's name. */}
-      <Select name="provider" aria-label="Provider" required value={provider} disabled={disabled} onChange={(next) => choose(next as AiProviderKind | '')}>
-        <Option value="">Choose a provider</Option>
+      {/* "Choose a provider" is the closed field's placeholder, never an option to tick (v0.2.1 UI audit). */}
+      <Select name="provider" aria-label="Provider" required value={provider} placeholder="Choose a provider" disabled={disabled} onChange={(next) => choose(next as AiProviderKind | '')}>
         {AI_PROVIDER_KINDS.map((kind) => <Option key={kind} value={kind}>{AI_PROVIDERS[kind].label}</Option>)}
       </Select>
     </label>
@@ -244,12 +244,13 @@ export function ConnectionFields({ disabled, onBlocked, keyHelpId }: {
     {provider && model && !waitingForKey ? known
       ? <p className="background-settings__help" data-testid="connection-price">Price: {plainPrice(known)} · {priceSourceText(known, provider as AiProviderKind)}.</p>
       // Remounted per model, so a price typed for one model is not kept for another.
+      // Plain words (founder decision, 2026-11-14, #1424): no "per 1M tokens", and the two fields on one line, so the window does not scroll.
       : <fieldset key={`${provider}:${model}`} className="background-settings__price" disabled={disabled}>
-        <legend>Price per 1M tokens (USD)</legend>
-        <p className="background-settings__help">Flux doesn’t know this model’s price yet. Enter it to use it with a daily budget. Take it from your provider’s pricing page, or 0 if you run the model yourself.</p>
+        <legend>Price in US dollars for a million tokens sent to the model (input) and a million it writes (output)</legend>
+        <p className="background-settings__help">Flux doesn’t know this model’s price yet. Enter it to use it with a daily budget.</p>
         <div className="background-settings__limits">
-          <label>Input price<input name="inputPrice" type="number" min="0" max="1000" step="any" inputMode="decimal" aria-required="true" /></label>
-          <label>Output price<input name="outputPrice" type="number" min="0" max="1000" step="any" inputMode="decimal" aria-required="true" /></label>
+          <label>Input<input name="inputPrice" type="number" min="0" max="1000" step="any" inputMode="decimal" aria-required="true" /></label>
+          <label>Output<input name="outputPrice" type="number" min="0" max="1000" step="any" inputMode="decimal" aria-required="true" /></label>
         </div>
       </fieldset> : null}
   </>;

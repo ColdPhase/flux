@@ -188,4 +188,5 @@
 .connection__list { display: flex; flex-direction: column; gap: 12px; margin: 0; padding: 0; list-style: none; }
 .connection__saved.sset-card { display: flex; flex-direction: column; align-items: stretch; gap: 10px; padding: 14px 16px; }
 .connection__saved .connection__row { display: flex; align-items: center; gap: 12px; }
+.connection__mark { display: grid; place-items: center; flex: none; width: 24px; color: var(--t1); }
 .connection__saved.sset-card > * { border-top: 0; }
