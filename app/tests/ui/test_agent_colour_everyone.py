@@ -61,6 +61,15 @@ class AgentColourForEveryone(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
+        try:
+            cls.set_up()
+        except BaseException:
+            if cls.pw:
+                cls.pw.stop()
+            raise
+
+    @classmethod
+    def set_up(cls) -> None:
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
@@ -84,8 +93,10 @@ class AgentColourForEveryone(unittest.TestCase):
             made = cls.call("ada", "POST", f"/api/v1/workspaces/{workspace}/agents", {"name": name, "owner": "self"})
             cls.call("ada", "POST", "/api/v1/my-agents", {"agentId": made["id"], "connection": pick["connection"], "model": pick["model"]})
             cls.ids[name] = made["id"]
-        colours = {item["id"]: item["colour"] for item in cls.call("ada", "GET", "/api/v1/my-agents")["items"]}
-        assert (colours[cls.ids["Assistant"]], colours[cls.ids["Planner"]]) == ("ink", "teal"), colours
+        mine = {item["id"]: item for item in cls.call("ada", "GET", "/api/v1/my-agents")["items"]}
+        assert (mine[cls.ids["Assistant"]]["colour"], mine[cls.ids["Planner"]]["colour"]) == ("ink", "teal"), mine
+        # Ask me first off: Planner proposes without waiting for Ada's OK.
+        cls.call("ada", "PATCH", f"/api/v1/agent-connections/{mine[cls.ids['Planner']]['connectionId']}", {"mayDo": "act"})
         cls.ids["bens_task"] = cls.call("ben", "POST", f"/api/v1/projects/{project}/work", {"title": BENS_TASK, "owner": {"kind": "human", "id": cls.ids["ben"]}})["id"]
         reading = cls.call("ben", "POST", f"/api/v1/projects/{project}/conversations", {"body": READING, "clientMessageId": str(uuid.uuid4())})
         cls.ids["reading"] = reading["messages"][0]["id"]
