@@ -71,6 +71,8 @@
 }
 .nset__row input:focus-visible, .nset__add input:focus-visible { outline: 2px solid var(--t1); outline-offset: 1px; }
 .nset__add input[aria-invalid="true"] { border-color: var(--t1); }
+/* The field and its Add button are one row of one height: a row's button is 32 px (README §2), so the field is too. Touch makes both 44 below. */
+.nset__add input { min-height: var(--ctl); }
 .nset__add-error { display: flex; align-items: center; gap: 6px; flex: 1 1 100%; margin: 0; font-size: var(--fs-sm); color: var(--t1); }
 
 /* Muted places. */

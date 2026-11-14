@@ -143,6 +143,13 @@ html.tb-is-dragging, html.tb-is-dragging * { cursor: grabbing !important; user-s
   .tb-bar { flex-wrap: nowrap; padding-top: 10px; }
   .tb-search { flex: 1 1 0; margin-left: 2px; }
 }
+/* A 320 px phone: the three controls give up a few pixels of room each, so the search keeps its whole placeholder ("Search") instead of "Searc". */
+@media (max-width: 359px) {
+  .tb-bar { gap: 6px; }
+  .tb-mode__b { padding: 0 9px; }
+  .tb-bar .tb-mine { padding-inline: 9px; }
+  .tb-search { gap: 4px; }
+}
 
 @media (pointer: coarse) {
   .tb-mode__b { min-height: 44px; min-width: 44px; }

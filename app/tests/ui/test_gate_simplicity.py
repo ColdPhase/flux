@@ -16,6 +16,15 @@ from test_app_shell import ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
 DESKTOP = {"width": 1440, "height": 900}
 THOUGHTS = ("Six sensors for twelve beds", "Far beds: test LoRa range first", "Borrow two sensors from the school?")
 TASKS = ("Buy two level sensors", "Mesh in front of the diverter", "Paint the rain barrel")
+# The map's title pill: its height, where its words start and how much room is left to their right (the empty map's title and a made map's switcher).
+HEAD_BOX = """() => {
+  const head = document.querySelector('.sk-head');
+  const label = head.querySelector('.sk-title, .wiki-switch__t');
+  const range = document.createRange();
+  range.selectNodeContents(label);
+  const text = range.getBoundingClientRect(), box = head.getBoundingClientRect();
+  return { height: box.height, left: text.left - box.left, right: box.right - text.right };
+}"""
 
 
 class GateSimplicity(unittest.TestCase):
@@ -87,6 +96,10 @@ class GateSimplicity(unittest.TestCase):
         tools = page.get_by_role("toolbar", name="Map tools")
         expect(tools.get_by_role("button")).to_have_count(1)
         shot(page, "gate-empty-map-desktop")
+        # The title pill is the same box before and after the first thought (release audit P3 1): the words start at the same place, the pill is as
+        # tall, and the words are inside it with room to spare on the right.
+        empty_pill = page.evaluate(HEAD_BOX)
+        self.assertGreaterEqual(empty_pill["right"], 10, f"the title has room inside its pill: {empty_pill}")
         # Visiting made nothing; the first thought makes the map and opens a draft ready to type.
         self.assertEqual(self.maps_of(page, project), 0)
         tools.get_by_role("button", name="Thought", exact=True).click()
@@ -106,6 +119,9 @@ class GateSimplicity(unittest.TestCase):
         page.reload()
         expect(page.locator(".sk-node")).to_have_count(1)
         expect(page.locator(".sk-hint")).to_contain_text("Drag empty space to move around")
+        filled_pill = page.evaluate(HEAD_BOX)
+        self.assertAlmostEqual(filled_pill["height"], empty_pill["height"], delta=1, msg=f"the pill keeps its height: {empty_pill} then {filled_pill}")
+        self.assertAlmostEqual(filled_pill["left"], empty_pill["left"], delta=1, msg=f"the words keep their place: {empty_pill} then {filled_pill}")
         # Back leaves the tab instead of returning to the empty canvas.
         page.go_back()
         expect(page).to_have_url(f"{ORIGIN}/")
@@ -124,6 +140,11 @@ class GateSimplicity(unittest.TestCase):
         project = self.empty_space(page, f"Phone ideas {uuid.uuid4().hex[:4]}")
         page.goto(f"/projects/{project}/map")
         expect(page.locator(".sk-first")).to_have_text("An empty map. Start with Thought.")
+        # The map keeps its title on the phone too (README §7 Maps), and the hint is one line, not a half-width column (release audit P3 2, 3).
+        expect(page.locator(".sk-head")).to_contain_text("Untitled map")
+        hint = page.locator(".sk-first").bounding_box()
+        self.assertGreater(hint["width"], 180, f"the hint has the room it needs, not a half-width column: {hint}")
+        self.assertLess(hint["height"], 30, f"the hint is one line: {hint}")
         expect(page.get_by_text("Map ideas for")).to_have_count(0)
         expect(page.get_by_text("Connect and arrange on a computer")).to_have_count(0)
         # One add on the screen: the phone's floating "+" steps aside for it.

@@ -649,7 +649,8 @@ function AppLayoutContent() {
     ? { crumb: null, title: activeProject.name, noDetails: true }
     // My map (#866) is named in the header at its own address too; its privacy line is the first thing in the map's head.
     : /^\/map(\/|$)/.test(location.pathname)
-    ? { crumb: null, title: 'My map', noDetails: true }
+    // On the phone the map's own head is not drawn, so "Only you" (README §7 My map) stands under the title; the computer's head says it.
+    ? { crumb: null, title: 'My map', ...(phone ? { topic: 'Only you' } : {}), noDetails: true }
     : where === 'inbox'
       ? location.pathname.startsWith('/settings/')
         ? { crumb: null, title: 'Notification settings', noDetails: true }
@@ -782,7 +783,7 @@ function AppLayoutContent() {
     <header className={`phead${mainPlace ? ' phead--large' : ''}${spaceHeader || lockedHere ? ' phead--space' : activeDm ? ' phead--space phead--dm' : ''}${activeAgent ? ' phead--agent' : ''}`}>
       {backOnly ? (
         <>{phoneBack(settingsPage ? settingsParent : homePage ? '/' : '/projects')}
-          <div className="phead__id"><div className="phead__title"><h1>{place.title}</h1></div></div></>
+          <div className="phead__id"><div className="phead__title"><h1>{place.title}</h1>{'topic' in place && place.topic ? <p className="phead__sub">{place.topic}</p> : null}</div></div></>
       ) : activeProject && projectViews ? (
         // The title is the title, not a menu: the views are the same underline tabs as on every width, in the row under it (#873).
         <>{routeOrigin ? phoneBack('/projects') : <PhoneBack onBack={() => goBackAPlace('/projects')} />}
@@ -827,7 +828,7 @@ function AppLayoutContent() {
         {activeDm ? <MoreMenu items={phoneDmItems} className="phead__round" size={24} /> : null}
         {bulkRead.length && !activeProject && !activeDm ? <MoreMenu items={bulkRead} className="phead__round" size={24} /> : null}
         {activeAgent ? <MoreMenu items={[{ label: 'Settings', run: () => void navigate(`/settings/agents/${activeAgent.id}`) }]} className="phead__round" size={24} /> : null}
-        {!backOnly && !activeProject && !activeDm && !activeAgent && location.pathname !== '/settings' ? <PhoneAvatar id={me.user.id} name={me.user.name} /> : null}
+        {!backOnly && !activeProject && !activeDm && !activeAgent && !lockedHere && location.pathname !== '/settings' ? <PhoneAvatar id={me.user.id} name={me.user.name} /> : null}
       </div>
       {spaceHeader && projectViews ? <Tabs className="phead__views" label="Space views" items={projectViews} /> : null}
       {lockedHere ? <Tabs className="phead__views" label="Space views" items={LOCKED_VIEWS} inactive /> : null}

@@ -22,9 +22,9 @@ import './settings.css';
 import { SwitchRow } from '../ui/SwitchRow';
 
 // Settings (F-026, #350; Spokój #513): one calm place with Account, Appearance, Notifications, AI, Company (F-037,
-// #874) and Keyboard shortcuts, in that order on every device. On the computer the section list sits beside the
+// #874) and Keyboard shortcuts, in that order on every device. On the computer and the tablet the section list sits beside the
 // page; on the phone Settings is that list (the account card, then the sections) and each section is a page.
-// Keyboard shortcuts appear only where there is a keyboard, so not on touch-only phones and tablets.
+// A tablet lists Shortcuts too: a keyboard can be attached to it (README §7 Settings). The phone has no keyboard to attach.
 
 const SECTIONS: { to: string; label: string; match: RegExp }[] = [
   { to: '/settings/account', label: 'Account', match: /^\/settings\/account$/ },
@@ -44,13 +44,11 @@ export function SettingsLayout() {
   const { pathname } = useLocation();
   const { workspace } = useShellData();
   const phone = useMediaQuery(MEDIA.phone);
-  // A touch-only tablet has no keyboard to use shortcuts with (AC-1).
-  const touch = useMediaQuery(MEDIA.touch);
   return (
     <div className="sset">
       {phone ? null : (
         <nav className="sset__nav" aria-label="Settings sections">
-          {SECTIONS.filter((section) => (!touch || section.to !== '/settings/shortcuts') && (section.to !== '/settings/agents' || !isGuest(workspace))).map((section) => (
+          {SECTIONS.filter((section) => section.to !== '/settings/agents' || !isGuest(workspace)).map((section) => (
             <Link key={section.to} to={section.to} className="sset__link" aria-current={section.match.test(pathname) ? 'page' : undefined}>
               {section.label}
             </Link>
@@ -209,8 +207,8 @@ export function SettingsAppearance() {
 }
 
 /**
- * Settings on the phone (Spokój E04p): the account, the same sections in the same order as the computer's
- * list (Keyboard shortcuts only with a keyboard, so not here), and Sign out.
+ * Settings on the phone (Spokój E04p): the account and the same sections in the same order as the computer's list (Keyboard shortcuts
+ * only with a keyboard, so not here). Sign out is in Account alone, where the design draws it (README §4, §7).
  */
 function PhoneSettings() {
   const { me, workspace, agents } = useShellData();
@@ -237,12 +235,6 @@ function PhoneSettings() {
           {isGuest(workspace) ? null : <LinkRow to="/settings/agents" icon={<Icon name="spark" size={16} />} title="AI" detail={agents.length ? `${agents.length} ${agents.length === 1 ? 'agent' : 'agents'}` : undefined} />}
           <LinkRow to="/settings/company" icon={<Icon name="people" size={16} />} title="Company" detail={workspace ? `${workspace.name} · its people and their roles` : 'Its people and their roles'} />
         </ul>
-        <Form method="post" action="/sign-out" className="sset-card sset-gap">
-          <button type="submit" className="sset-row sset-row--link">
-            <span className="sset-row__ic" aria-hidden="true"><Icon name="sign-out" size={16} /></span>
-            <span className="sset-row__b"><span className="sset-row__t">Sign out</span></span>
-          </button>
-        </Form>
       </div>
     </div>
   );
@@ -285,11 +277,10 @@ export function SettingsAgents() {
  */
 export function SettingsCompany() {
   const { workspace } = useShellData();
-  const phone = useMediaQuery(MEDIA.phone);
   return (
     <div className="pane-scroll">
       <div className="pane-in sset-in">
-        {phone ? null : <PageHead title="Company" />}
+        <PageHead title="Company" />
         {workspace ? <WorkspacePeople key={workspace.id} workspaceId={workspace.id} page onBack={() => undefined} />
           : <p className="sset-note">You’re not in a company on this Flux yet. Ask an admin for an invite link.</p>}
       </div>

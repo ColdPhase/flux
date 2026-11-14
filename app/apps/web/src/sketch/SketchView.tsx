@@ -735,6 +735,9 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
   };
 
   const mapMode = mode === 'map';
+  // An empty map offers Thought alone, as a space's empty map does: Select, Move around, Undo and the zoom are not drawn until there is
+  // something for them to act on (README §7 Maps, #1424). Map | List is a view, not a tool: it stays, so the header keeps its shape.
+  const bare = mapMode && !sketch.thoughts.length && !doc.canUndo;
   const viewModes = <div className="seg sk-mode" role="radiogroup" aria-label="Show as">
     {(['map', 'list'] as const).map((m) => (
       <button key={m} type="button" role="radio" className="seg__b" aria-checked={mode === m} onClick={() => setMode(m)}>{m === 'map' ? 'Map' : 'List'}</button>
@@ -823,19 +826,23 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
   // they are dimmed, not removed, so + Thought and Undo keep their places.
   const dock = canWrite && !phone ? (
     <div className="sk-tools" role="toolbar" aria-label="Map tools">
-      <button type="button" className="sk-tool" aria-label="Select" aria-pressed={mapMode && !connectFrom && !hand} aria-disabled={!mapMode} data-tip="Select"
-        onClick={() => { if (!mapMode) return; setHand(false); if (connectFrom) escape(); }}>
-        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"><path d="M3.5 2.5 12 6.2 8 7.6 6.6 11.7z" /></svg>
-      </button>
-      <button type="button" className="sk-tool" aria-label="Move around" aria-pressed={mapMode && hand} aria-disabled={!mapMode} data-tip="Move around: drag to pan"
-        onClick={() => { if (!mapMode) return; setHand(!hand); if (connectFrom) escape(); }}>
-        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 8.5V3.75a1 1 0 012 0V7.5M7 7.5V2.75a1 1 0 012 0V7.5M9 7.5V3.5a1 1 0 012 0v4M11 7V5.25a1 1 0 012 0V10a4 4 0 01-4 4H7.75a4 4 0 01-3-1.4L2.75 10.1a1 1 0 011.4-1.4L5 9.9" /></svg>
-      </button>
-      <span className="sk-div" aria-hidden="true" />
+      {bare ? null : <>
+        <button type="button" className="sk-tool" aria-label="Select" aria-pressed={mapMode && !connectFrom && !hand} aria-disabled={!mapMode} data-tip="Select"
+          onClick={() => { if (!mapMode) return; setHand(false); if (connectFrom) escape(); }}>
+          <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"><path d="M3.5 2.5 12 6.2 8 7.6 6.6 11.7z" /></svg>
+        </button>
+        <button type="button" className="sk-tool" aria-label="Move around" aria-pressed={mapMode && hand} aria-disabled={!mapMode} data-tip="Move around: drag to pan"
+          onClick={() => { if (!mapMode) return; setHand(!hand); if (connectFrom) escape(); }}>
+          <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 8.5V3.75a1 1 0 012 0V7.5M7 7.5V2.75a1 1 0 012 0V7.5M9 7.5V3.5a1 1 0 012 0v4M11 7V5.25a1 1 0 012 0V10a4 4 0 01-4 4H7.75a4 4 0 01-3-1.4L2.75 10.1a1 1 0 011.4-1.4L5 9.9" /></svg>
+        </button>
+        <span className="sk-div" aria-hidden="true" />
+      </>}
       <button type="button" className="ui-btn ui-btn--quiet sk-add" onClick={() => add(selection[selection.length - 1] ?? null)}><Icon name="plus" size={16} />Thought</button>
-      {coarse ? <button type="button" className="ui-btn ui-btn--quiet sk-select-several" aria-label="Select several" title="Select several" aria-pressed={selectSeveral} onClick={() => { setSelectSeveral(!selectSeveral); say(selectSeveral ? 'Tapping selects one thought' : 'Tap thoughts to add them to the selection'); }}><Icon name="check" size={16} /><span className="sk-bl">Select several</span></button> : null}
-      <span className="sk-div" aria-hidden="true" />
-      <button type="button" className="sk-tool" aria-label="Undo" data-tip="Undo" aria-disabled={!doc.canUndo} onClick={undo}><Icon name="undo" size={16} /></button>
+      {coarse && !bare ? <button type="button" className="ui-btn ui-btn--quiet sk-select-several" aria-label="Select several" title="Select several" aria-pressed={selectSeveral} onClick={() => { setSelectSeveral(!selectSeveral); say(selectSeveral ? 'Tapping selects one thought' : 'Tap thoughts to add them to the selection'); }}><Icon name="check" size={16} /><span className="sk-bl">Select several</span></button> : null}
+      {bare ? null : <>
+        <span className="sk-div" aria-hidden="true" />
+        <button type="button" className="sk-tool" aria-label="Undo" data-tip="Undo" aria-disabled={!doc.canUndo} onClick={undo}><Icon name="undo" size={16} /></button>
+      </>}
     </div>
   ) : null;
   const readonlyNote = !canWrite ? <p className="sk-readonly"><Icon name="lock" size={12} />{doc.liveStatus === 'connecting' ? 'Reconnecting to the shared map. Wait for confirmation before changing it.' : 'You can look at this map; people who can change it keep it up to date.'}</p> : null;

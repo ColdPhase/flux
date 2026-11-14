@@ -3,7 +3,7 @@
 Runs with the other tests/ui journeys through scripts/check_ui.sh against the running Compose
 application. One project with open, in-progress, blocked and done tasks owned by two people and an
 agent. The tests cover what the renders show at 1440x900 and 390x844 in light and dark (state as
-glyph plus word, #number, title, owner as a 20 px avatar or Kreska, inverted Blocked pill, a phone
+glyph plus word, #number, title, owner as a 20 px avatar or Kreska (no second Blocked pill: the line says it), a phone
 list with the one control row), one tap on the glyph and the keys 1 to 4 changing the state, swipe left then
 Done on the phone, a toast with Undo (button and key Z) that restores the previous state through the
 API, and the board's drag and drop keyboard alternative with its announcement. Every change is
@@ -226,7 +226,8 @@ class TasksFinalJourney(unittest.TestCase):
             expect(row.locator(".ws-task__glyph .ui-glyph--" + status)).to_have_count(1)
             expect(row.locator(".ws-item__s")).to_contain_text(f"#{self.numbers[key]}")
             expect(row.locator(".ws-item__s")).to_contain_text(WORD[status])  # the word accompanies the glyph
-        expect(self.row(page, ENCLOSURE).locator(".ui-pill--inv")).to_have_text("Blocked")
+        # The line already says Blocked: the row has no second, dark "Blocked" pill, and shows its owner like every other row (release audit P3 9).
+        expect(self.row(page, ENCLOSURE).locator(".ui-pill--inv")).to_have_count(0)
         expect(self.row(page, ENCLOSURE).locator(".ws-item__s")).to_contain_text(f"waiting for {BLOCKER}")
         expect(self.row(page, SUPPLIER).locator(".ws-av")).to_have_text("AK")
         expect(self.row(page, CALIBRATE).locator(".ws-item__r .kreska")).to_have_count(1)
@@ -476,7 +477,8 @@ class TasksFinalJourney(unittest.TestCase):
                 mine = page.locator(".tb-bar")
                 expect(mine.get_by_role("button", name="Mine", exact=True)).to_have_attribute("aria-pressed", "false")
                 enclosure = self.row(page, ENCLOSURE)
-                expect(enclosure.locator(".ui-pill--inv")).to_have_text("Blocked")
+                expect(enclosure.locator(".ui-pill--inv")).to_have_count(0)
+                expect(enclosure.locator(".ws-item__r .ws-av")).to_have_count(1)
                 expect(enclosure.locator(".ws-item__s")).to_have_text(f"#{self.numbers['enclosure']} · you · Blocked · waiting for {BLOCKER}", use_inner_text=True)  # the owner stays named and the word accompanies the glyph
                 expect(enclosure.locator(".ws-task__glyph .ui-glyph--blocked")).to_have_count(1)
                 expect(self.row(page, CALIBRATE).locator(".ws-item__s")).to_contain_text("Claude Code")
@@ -598,6 +600,12 @@ class TasksFinalJourney(unittest.TestCase):
                     page.set_viewport_size({'width': width, 'height': 844 if width == 390 else 568})
                     page.add_style_tag(content=f'html {{ font-size: {16 * factor}px !important; }}')
                     row = self.row(page, LABELS)
+                    if width == 320 and factor == 1:
+                        # The search keeps its whole placeholder on a 320 px phone: "Search", not "Searc" (release audit P3 20).
+                        room = page.get_by_label('Search tasks').evaluate("""el => { const ctx = document.createElement('canvas').getContext('2d'), s = getComputedStyle(el);
+                            ctx.font = `${s.fontWeight} ${s.fontSize} ${s.fontFamily}`;
+                            return { room: el.clientWidth - parseFloat(s.paddingLeft) - parseFloat(s.paddingRight), word: ctx.measureText(el.placeholder).width }; }""")
+                        self.assertGreaterEqual(room['room'] + 0.5, room['word'], f'the placeholder fits its field: {room}')
                     before = self.task(page, 'labels')
                     row.get_by_role('button', name='To do. Set to Doing').tap()
                     toast = page.locator('.ui-toast')

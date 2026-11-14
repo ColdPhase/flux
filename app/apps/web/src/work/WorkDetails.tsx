@@ -20,6 +20,7 @@ import { acceptDecision, resolveWaiting, undoTaskCreation, updateWork } from './
 import { STATUS_LABEL, decisionState, isFinished, linked, shortDate, statusPhrase, taskNumber } from './format';
 import { docsLinking } from '../docs/AddToDoc';
 import { useAgentOwners } from '../agents/owners';
+import { useAgentHue } from '../agents/hues';
 import { TaskPeople } from '../agents/TaskPeople';
 import { listProjectPeople, useProjectShell } from '../project/data';
 import { useWorkRead } from './useWorkRead';
@@ -243,6 +244,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
   useEffect(() => { labelPanel(label); return () => labelPanel(null); }, [labelPanel, label]);
   // Your own agents (the shell's list, #904): the only agents the Owner field offers.
   const { me, agents: ownAgents } = useShellData();
+  const hue = useAgentHue();
   // A task whose creation was undone (#238) stays as read-only history: no change, live or new-target control.
   const reverted = item.lifecycle?.state === 'creation_reverted' ? item.lifecycle : null;
   const writable = !reverted;
@@ -367,12 +369,12 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
   const ownerOptions = [
     { value: '', label: 'Nobody yet', icon: <Icon name="person" size={16} /> },
     ...people.map(({ name, ...person }) => ({ ...person, group: 'People', icon: <Avatar name={name} id={humanId(person.value)} size="sm" /> })),
-    ...agents.map((agent) => ({ ...agent, group: 'Your agents', icon: <Kreska size={16} /> })),
+    ...agents.map((agent) => ({ ...agent, group: 'Your agents', icon: <Kreska size={16} hue={hue(agent.value.slice('agent:'.length))} /> })),
   ];
   const shownOwner = ownerDraft ?? ownerValue;
   const ownerView = shownOwner
     ? (shownOwner.startsWith('agent:')
-      ? <AgentIdentity name={(agents.find((agent) => agent.value === shownOwner)?.label ?? item.owner?.name ?? '').replace(/ \(agent\)$/, '')} owner={owners.get(shownOwner.slice('agent:'.length))} icon={16} />
+      ? <AgentIdentity name={(agents.find((agent) => agent.value === shownOwner)?.label ?? item.owner?.name ?? '').replace(/ \(agent\)$/, '')} owner={owners.get(shownOwner.slice('agent:'.length))} icon={16} hue={hue(shownOwner.slice('agent:'.length))} />
       : <><Avatar name={people.find((person) => person.value === shownOwner)?.name ?? item.owner?.name ?? ''} id={humanId(shownOwner)} size="sm" tone={shownOwner === `human:${me.user.id}` ? 'me' : 'neutral'} /><span>{people.find((person) => person.value === shownOwner)?.label ?? item.owner?.name}</span></>)
     : <><Icon name="person" size={16} /><span className="wd-muted">{ownerDraft === '' ? 'Nobody yet' : 'Assign'}</span></>;
   // What it can wait for (#868): a person, a decision still to make or another task, one thing. The last two are read only while the blocker is edited.

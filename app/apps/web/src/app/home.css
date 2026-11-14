@@ -5,8 +5,6 @@
 .home__sech { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 20px 10px; }
 .home__sech h3 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: var(--fs-lg); font-weight: 600; letter-spacing: -.01em; }
 .home__n { display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 6px; color: var(--t3); font-size: var(--fs-xs); font-weight: 500; font-variant-numeric: tabular-nums; }
-.home__all { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; font-size: var(--fs-sm); font-weight: 600; color: var(--t1); text-decoration: none; }
-.home__all:hover { text-decoration: underline; text-underline-offset: 3px; }
 .home__card { display: block; background: var(--el); border-radius: var(--r-card); box-shadow: var(--sh-card); color: var(--t1); text-decoration: none; }
 .home__quiet, .home__clear { padding: 18px 20px; font-size: var(--fs-base); color: var(--t2); }
 .home__clear { display: flex; align-items: center; gap: 12px; }
@@ -35,7 +33,7 @@
 @media (max-width: 640px) { .home__first .ui-btn { align-self: stretch; } }
 .home__continue { margin-top: 28px; }
 /* Touch: the "Open Inbox" link and each row are 44 px tall on a phone (#393 review). */
-@media (pointer: coarse) { .home__all { min-height: 44px; } .home__row { min-height: 56px; } }
+@media (pointer: coarse) { .home__row { min-height: 56px; } }
 @media (max-width: 680px) {
   .pane-in.home { padding-top: 20px; }
   .home__hello { margin-bottom: 20px; font-size: var(--fs-2xl); }

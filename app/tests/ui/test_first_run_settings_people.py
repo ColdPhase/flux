@@ -361,7 +361,9 @@ class FirstRunSettingsPeople(unittest.TestCase):
         expect(olek.get_by_role("list", name="People in Riverside Makers")).to_contain_text("Maria Nowak")
         expect(olek.get_by_role("button", name="Invite", exact=True)).to_have_count(0)
         expect(olek.get_by_role("region", name="Name").get_by_role("button", name=re.compile("^Change"))).to_have_count(0)
-        expect(olek.get_by_text("Only owners and admins add people or change roles in Riverside Makers.")).to_be_visible()
+        # A member is told once, at the top of the page: "Only admins can change this page." (release audit P3 20).
+        expect(olek.get_by_text(re.compile("Only admins can change this page"))).to_have_count(1)
+        expect(olek.get_by_text("Only owners and admins add people or change roles in Riverside Makers.")).to_have_count(0)
         # The account menu holds no People any more; on the phone Settings lists Company.
         phone = self.page("maria", viewport=PHONE)
         phone.goto("/settings")

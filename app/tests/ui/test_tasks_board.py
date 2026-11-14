@@ -549,7 +549,9 @@ class TasksBoardJourney(unittest.TestCase):
         mine = bar.get_by_role("button", name="Mine", exact=True)
         in_list = mine.bounding_box()
         solder = rows.filter(has_text=SOLDER)
-        expect(solder.locator(".ui-pill--inv")).to_have_text("Blocked")
+        # The line says Blocked; the row has no second, dark "Blocked" pill (release audit P3 9).
+        expect(solder.locator(".ui-pill--inv")).to_have_count(0)
+        expect(solder.locator(".ws-item__s")).to_contain_text("Blocked")
         expect(solder.locator(".ui-task-number")).to_have_text(f"#{self.numbers['solder']}")
         self.assertGreaterEqual(solder.locator(".ui-task-number").evaluate("node => parseFloat(getComputedStyle(node).fontSize)"), 12.5, "F-026 phone metadata remains readable")
         self.no_sideways_scroll(page, PHONE["width"], "phone")

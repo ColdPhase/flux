@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { Link, redirect, useLoaderData, useLocation, useNavigate, useSearchParams, type LoaderFunctionArgs, type ShouldRevalidateFunctionArgs } from 'react-router';
 import type { Doc, DocVersion, DocVersionSummary, LiveDocBootstrap } from '@flux/contracts';
 import { ApiError } from '../api/client';
-import { Icon, Select, Option } from '../ui';
+import { Button, Icon, Select, Option } from '../ui';
 import { useShellData } from '../app/data';
 import { useRegisterLiveHere } from '../live/LiveProvider';
 import { docUrl, getDoc, getLiveDoc, getVersion, listVersions } from './api';
@@ -196,11 +196,11 @@ function Changes({ from, to }: { from: DocVersion | null; to: DocVersion }) {
  */
 function RestoreButton({ docUrl: base, version, quiet = false }: { docUrl: string; version: number; quiet?: boolean }) {
   const navigate = useNavigate();
-  return (
-    <button type="button" className={quiet ? 'ui-link wiki-restore-link' : 'ui-btn ui-btn--soft wiki-head__restore'} onClick={() => navigate(base, { state: { restore: version } })}>
-      {quiet ? null : <Icon name="undo" size={14} />}{quiet ? 'Restore this version' : `Restore version ${version}`}
-    </button>
-  );
+  const restore = () => navigate(base, { state: { restore: version } });
+  // In a sentence it is a link; as the history page's action it is a button of the system (an outline: the page's main action, not a Send).
+  return quiet
+    ? <button type="button" className="ui-link wiki-restore-link" onClick={restore}>Restore this version</button>
+    : <Button variant="outline" size="sm" icon="undo" onClick={restore}>{`Restore version ${version}`}</Button>;
 }
 
 /** History (⋯ › History): every version with who made it and when, what changed between two, and Restore. */

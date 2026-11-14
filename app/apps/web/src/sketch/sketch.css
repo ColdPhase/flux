@@ -14,6 +14,8 @@
 .sk-title { min-height: 28px; padding: 0 6px; margin: 0 -6px; border-radius: var(--r-sm); font-weight: 600; color: var(--t1); text-align: left; transition: var(--tr); }
 /* The space map's title is the switcher (#1438 point 7); its menu is the Wiki's (docs.css). */
 .sk-switch { position: relative; display: inline-flex; min-width: 0; }
+/* The empty map's title (not yet a switcher) has the switcher's box: the same height and padding, so the header does not change shape when the first thought arrives. */
+.sk--map .sk-switch > .sk-title { display: inline-flex; align-items: center; min-height: 32px; margin: 0 4px 0 -6px; padding: 0 6px; font-size: inherit; }
 .sk-switch .wiki-switch { min-height: 32px; margin: 0 0 0 -6px; padding: 0 6px; gap: 4px; border-radius: var(--r-sm); font-weight: 600; }
 .sk-switch .wiki-menu { z-index: var(--z-menu); max-width: calc(100vw - 20px); }
 .sk-title-edit { min-width: 12ch; height: 28px; padding: 0 6px; margin: 0 -6px; border: 0; border-radius: var(--r-sm); font: 600 var(--fs-md)/1 var(--font);
@@ -224,7 +226,7 @@
   .sk-plus--labelled { width: auto; }
   .sk-plus--labelled { width: auto; gap: 6px; padding: 0 16px 0 14px; border-radius: var(--r-pill); font-size: var(--fs-md); font-weight: 500; }
 .sk-edit-btn { min-height: 44px; min-width: 44px; padding: 0 16px; font-size: var(--fs-md); }
-  .sk-li-edit, .sk-title, .sk-switch .wiki-switch { min-height: 44px; }
+  .sk-li-edit, .sk-title, .sk--map .sk-switch > .sk-title, .sk-switch .wiki-switch { min-height: 44px; }
   .sk-zoom button, .sk-zoom .sk-zoom__fit { min-width: 44px; height: 44px; }
   /* The count stays compact inside the thought; its touch target reaches 44px around it. */
   .sk { --sk-work-h: 28px; }
@@ -307,6 +309,8 @@ span.sk-li-img { width: 160px; height: 96px; }
 .sk-over > * { pointer-events: auto; }
 .sk--map .sk-head { flex-wrap: nowrap; justify-content: flex-start; gap: 4px 10px; padding: 4px 4px 4px 14px; border-radius: var(--r-pill);
   background: var(--el); box-shadow: var(--sh-card), inset 0 0 0 1px var(--line); }
+/* The head is as tall as its tallest content, the Map | List switch (36 px) with the pill's 4 px each side, so an empty map's title pill (no switch yet) is as tall as a made map's. */
+.sk--map .sk-head { min-height: 44px; }
 .sk--map .sk-lead { flex-wrap: nowrap; position: relative; }
 /* "Only you" stays beside My map's title, as drawn (README §7, #1376); the pill's title gives way to it with an ellipsis, never the words. */
 .sk--map .sk-aud { flex: none; white-space: nowrap; }
@@ -322,7 +326,8 @@ span.sk-li-img { width: 160px; height: 96px; }
 .sk-composition .sk-draft { margin: 0; box-shadow: var(--sh-pop); }
 .sk-composition .sk-undo { margin-top: 8px; }
 .sk-over .sk-edit-controls { margin: 0; }
-.sk--map .sk-first { position: absolute; left: 50%; top: 42%; z-index: 6; margin: 0; transform: translateX(-50%); text-align: center; pointer-events: none; }
+/* Its own width, not what is left of the 50% it starts at: the hint wraps only where the pane is narrower than it is. */
+.sk--map .sk-first { position: absolute; left: 50%; top: 42%; z-index: 6; width: max-content; max-width: calc(100% - 32px); margin: 0; transform: translateX(-50%); text-align: center; pointer-events: none; }
 .sk-dock { position: absolute; left: 0; right: 0; bottom: 16px; z-index: 7; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 0 12px; pointer-events: none; }
 .sk-dock__row { pointer-events: auto; display: flex; align-items: center; gap: 6px; max-width: 100%; padding: 5px 8px 5px 5px; border-radius: var(--r-pill);
   background: var(--el); box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line); }
@@ -370,7 +375,7 @@ span.sk-li-img { width: 160px; height: 96px; }
   .sk-over { left: 10px; right: 10px; top: 10px; align-items: flex-start; }
   .sk-over:not(:has(.sk-title-edit, .sk-switch)) { top: 64px; align-items: flex-end; }
   .sk--map .sk-lead:not(:has(.sk-title-edit, .sk-switch)) { display: none; }
-  .sk--map .sk-head { padding: 3px; max-width: calc(100% - 144px); }
+  .sk--map .sk-head { padding: 3px 3px 3px 14px; min-height: 0; max-width: calc(100% - 144px); }
   .sk--map .sk-head:not(:has(.sk-title-edit, .sk-switch)) { display: none; }
   .sk--map .sk-head .sk-lead { flex: 0 1 auto; min-width: 0; }
   .sk-switch .wiki-switch__t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

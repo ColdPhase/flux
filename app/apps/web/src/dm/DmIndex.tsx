@@ -173,7 +173,7 @@ export function NewDm() {
   }
   return (
     <div className="pane-scroll"><div className="pane-in dm-new">
-      <h2>New message</h2>
+      {/* The header already names the page, "New message": the page does not say it again. */}
       <p className="dm-new__lead">Pick one person for a one-to-one conversation, or a few for a small group. It stays outside every space.</p>
       {!workspaceId ? <p className="dm-new__note">You’re not in a company on this Flux yet. Ask an admin for an invite link.</p> : null}
       {workspaceId ? (

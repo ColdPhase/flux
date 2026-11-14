@@ -1109,7 +1109,7 @@ export function SketchMap(props: SketchMapProps) {
         </div>
       </div>
     </div>
-      {!compact ? <div className="sk-corner"><Minimap canvas={canvasRef} zoom={zoom} origin={origin} rects={rects} />{zoomControls}</div> : null}
+      {!compact && (hasThoughts || props.bar.canUndo) ? <div className="sk-corner"><Minimap canvas={canvasRef} zoom={zoom} origin={origin} rects={rects} />{zoomControls}</div> : null}
       <div className="sk-dock" ref={dockRef}>
         {!compact ? props.changes : null}
         {!compact ? (wire ? <p className="sk-hint" aria-hidden="true">{wire.over ? 'Release to link' : 'Release to add a connected thought'}</p> : props.hint) : null}

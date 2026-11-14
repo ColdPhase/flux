@@ -51,8 +51,7 @@
 
 /* New message */
 .dm-new { max-width: 560px; }
-.dm-new h2 { padding-top: 16px; font-size: var(--fs-xl); letter-spacing: -0.015em; }
-.dm-new__lead { margin: 4px 0 18px; font-size: var(--fs-md); color: var(--t3); }
+.dm-new__lead { margin: 16px 0 18px; font-size: var(--fs-md); color: var(--t3); }
 .dm-new__space { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; font-size: var(--fs-sm); color: var(--t2); }
 .dm-new__space .ui-select, .dm-new__search, .dm-new__title input { min-height: 36px; border: 1px solid var(--line2); border-radius: var(--r); padding: 0 10px; background: var(--el); color: var(--t1); font: inherit; font-size: var(--fs-md); }
 .dm-new__search { width: 100%; }

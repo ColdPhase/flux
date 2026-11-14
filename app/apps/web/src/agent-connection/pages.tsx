@@ -106,9 +106,9 @@ export function AgentConnectionPage() {
       <AskMeFirst connectionId={connection.id} initial={connection.mayDo} />
       {confirming === connection.id
         ? <div className="connection__revoke"><span>Disconnect now? Its access stops at once and what it had waiting is dropped.</span>
-          <Button variant="secondary" busy={busy} onClick={() => { void disconnect(connection.id); }}>Disconnect</Button>
-          <Button variant="link" onClick={() => setConfirming(null)}>Cancel</Button></div>
-        : <Button variant="link" onClick={() => setConfirming(connection.id)}>Disconnect</Button>}
+          <Button variant="secondary" size="sm" busy={busy} onClick={() => { void disconnect(connection.id); }}>Disconnect</Button>
+          <Button variant="quiet" size="sm" onClick={() => setConfirming(null)}>Cancel</Button></div>
+        : <Button variant="quiet" size="sm" onClick={() => setConfirming(connection.id)}>Disconnect</Button>}
     </li>)}</ul> : <p className="connection__help">Nothing is connected yet. Add Flux to the app you use below; it asks you once.</p>}
     {ended.length ? <details className="connection__history">
       <summary>Disconnected ({ended.length})</summary>

@@ -10,6 +10,7 @@ import { useSmallMoments } from './smallMoments';
 import { getOwnWorkingAgents } from '../agents/api';
 import { stopFailure, stopAgentWork } from '../agents/stop';
 import { holdsLine, workingLine } from '../agents/status';
+import { useAgentHue } from '../agents/hues';
 import { useShellData } from './data';
 import { RefLink } from '../place/origin';
 import { useAllAiBlocked, useProjectAiBlocked } from '../ai/spaceAi';
@@ -262,6 +263,7 @@ export function WorkingAssistant({ compact = false }: { compact?: boolean }) {
   const { run, stop, dismissFailure, stopping, failed } = useWorkingRun(me.user.id);
   const stopButton = useRef<HTMLButtonElement>(null);
   const moments = useSmallMoments();
+  const hue = useAgentHue();
   const aiOff = useProjectAiBlocked();
   if (!run || (run.projectId !== null && aiOff(run.projectId))) return null;
   const label = stopping ? 'Stopping your assistant…' : `Your assistant is ${doing(run)}`;
@@ -273,11 +275,11 @@ export function WorkingAssistant({ compact = false }: { compact?: boolean }) {
     <div className={`agentlive${compact ? ' agentlive--compact' : ''}`} role="status" aria-label={label} data-ai-surface="working-assistant">
       {compact ? (
         <RefLink className="agentlive__link" to={destination} title={label} aria-label={label}>
-          {moments ? <Kreska size={24} expression={face(run)} /> : <span className="agentlive__mark" aria-hidden="true"><Icon name="spark" size={20} /></span>}
+          {moments ? <Kreska size={24} expression={face(run)} hue={hue(run.agentId)} /> : <span className="agentlive__mark" aria-hidden="true"><Icon name="spark" size={20} /></span>}
         </RefLink>
       ) : (
         <>
-          {moments ? <Kreska size={24} expression={face(run)} /> : <span className="agentlive__mark" aria-hidden="true"><Icon name="spark" size={20} /></span>}
+          {moments ? <Kreska size={24} expression={face(run)} hue={hue(run.agentId)} /> : <span className="agentlive__mark" aria-hidden="true"><Icon name="spark" size={20} /></span>}
           <RefLink className="agentlive__text" to={destination}>
             <b>Your assistant</b>
             <span>{stopping ? 'requesting Stop…' : doing(run)}</span>

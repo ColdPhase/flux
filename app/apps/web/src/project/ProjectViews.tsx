@@ -74,7 +74,7 @@ export function ProjectMap() {
       <div className="sk sk--map">
         <div className="sk-canvas-wrap"><div className="sk-canvas" onDoubleClick={() => void start()} /></div>
         <div className="sk-over">
-          <div className="sk-head"><p className="sk-lead"><span className="sk-title">{UNTITLED_SKETCH}</span></p></div>
+          <div className="sk-head"><p className="sk-lead"><span className="sk-switch"><span className="sk-title">{UNTITLED_SKETCH}</span></span></p></div>
         </div>
         <p className="sk-first">{phone ? <>An empty map. Start with <b>Thought</b>.</> : <>An empty map. Add the first thought with <b>Thought</b>, then keep adding with the <b>+</b> beside it.</>}</p>
         {phone ? (

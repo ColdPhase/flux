@@ -1,5 +1,5 @@
 """Kreska (#339, final design F-026 §3): the Flux logo, every agent's icon with the "Agent" tag and
-"for <owner>", agent colours only in the Agents section, and the install icons.
+"for <owner>", each agent's own colour wherever it appears (final design §2), and the install icons.
 
 Runs with the other tests/ui journeys through scripts/check_ui.sh against the running Compose app.
 """
@@ -113,7 +113,7 @@ class KreskaJourney(unittest.TestCase):
         person_card = page.locator(".tb-card", has_text="Order the enclosures")
         expect(person_card.locator(".tb-av")).to_have_text("AL")
         expect(person_card.locator(".kreska")).to_have_count(0)
-        # Outside the Agents section an agent is monochrome: no colour class.
+        # Codex is a bare identity here, not one of Ada's agents with its own settings, so it has no colour of its own to show (test_03c has one that does).
         self.assertEqual(owner.locator(".agent-id > .kreska").get_attribute("class").strip(), "kreska")
         shot(page, "339-tasks-agent-owner")
 
@@ -159,6 +159,45 @@ class KreskaJourney(unittest.TestCase):
                         self.assertTrue(relation.evaluate("e => { const r=e.getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth; }"), "the full owner stays in the phone viewport")
                         self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth - innerWidth"), 1)
                         shot(page, f"339-native-{mode}-{engine.browser_type.name}-phone-{scheme}{'-text200' if enlarged else ''}")
+
+    def test_03c_an_agents_own_colour_shows_everywhere_it_appears_in_tasks(self) -> None:
+        """Final design §2 (release audit P2-3): the colour is on a task's owner (the board card, the list row, the Owner field), the Owner picker's
+        "Your agents" and "In this task", not only in Messages and Settings > AI."""
+        self.ensure_account()
+        page = self.page()
+        project = self.ids["project"]
+        # Two of Ada's own agents: the first takes ink, the second the next colour (teal), so a colour that shows is not the plain default. The task
+        # is given to the second before it is one of her agents, so nothing runs on it (a run would be a different test).
+        first = self.api(page, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/agents", {"name": "Assistant", "owner": "self"})
+        second = self.api(page, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/agents", {"name": "Planner", "owner": "self"})
+        self.api(page, "POST", f"/api/v1/projects/{project}/work", {"title": "Check the planner's colour", "owner": {"kind": "agent", "id": second["id"]}})
+        pick = json.loads(page.request.get(f"{ORIGIN}/api/v1/personal-assistant/model").text())["default"]
+        for made in (first, second):
+            self.api(page, "POST", "/api/v1/my-agents", {"agentId": made["id"], "connection": pick["connection"], "model": pick["model"]})
+        mine = {item["id"]: item["colour"] for item in json.loads(page.request.get(f"{ORIGIN}/api/v1/my-agents").text())["items"]}
+        self.assertEqual((mine[first["id"]], mine[second["id"]]), ("ink", "teal"), "the first agent is ink and the second takes the first colour after it (#1377)")
+        coloured = re.compile(r"(^|\s)kreska--teal(\s|$)")
+        page.goto(f"/projects/{project}/tasks?view=board")
+        expect(page.locator(".tb-card", has_text="Check the planner's colour").locator(".tb-card__owner .kreska")).to_have_class(coloured)
+        page.goto(f"/projects/{project}/tasks?view=list")
+        row = page.locator(".ws-task", has_text="Check the planner's colour")
+        expect(row.locator(".ws-item__r .kreska")).to_have_class(coloured)
+        # A person's row keeps its initials and no colour.
+        expect(page.locator(".ws-task", has_text="Order the enclosures").locator(".kreska")).to_have_count(0)
+        row.get_by_role("button", name=re.compile("Check the planner's colour")).click()
+        panel = page.get_by_role("complementary", name="Details")
+        owner = panel.get_by_role("button", name="Owner")
+        # The agent's own icon, not the small Kreska of the "Agent" tag that stands in until the owner's name is read.
+        expect(owner.locator(".agent-id > .kreska")).to_have_class(coloured)
+        # "In this task": Ada's two agents, Assistant in ink and Planner in teal.
+        people = panel.locator("[data-task-people]")
+        expect(people.locator(".kreska--teal")).to_have_count(1)
+        expect(people.locator(".kreska--ink")).to_have_count(1)
+        owner.click()
+        menu = page.get_by_role("menu", name="Owner")
+        expect(menu.get_by_role("menuitemradio", name=re.compile("Planner")).locator(".kreska")).to_have_class(coloured)
+        expect(menu.get_by_role("menuitemradio", name=re.compile("Assistant")).locator(".kreska")).to_have_class(re.compile(r"kreska--ink"))
+        shot(page, "kreska-agent-colour-task-panel")
 
     def test_04_install_icons_and_the_tab_icon_are_the_logo(self) -> None:
         page = self.page(signed_in=False)

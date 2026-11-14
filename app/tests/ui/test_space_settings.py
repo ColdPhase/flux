@@ -705,7 +705,8 @@ class SpaceSettings(unittest.TestCase):
         # New message no longer offers the company's people.
         noa.get_by_role("navigation", name="Messages").get_by_role("link", name="Messages").click()
         noa.get_by_role("link", name="New message").first.click()
-        expect(noa.locator("#content").get_by_role("heading", name="New message")).to_be_visible()
+        expect(noa.get_by_role("heading", level=1, name="New message")).to_be_visible()
+        expect(noa.get_by_role("heading", name="New message")).to_have_count(1)
         expect(noa.get_by_text("Ada Kowalska")).to_have_count(0)
 
 
