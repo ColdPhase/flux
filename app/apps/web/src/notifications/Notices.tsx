@@ -70,9 +70,15 @@ export function noticeWords(notice: Pick<Notice, 'family' | 'items'>, placeName:
   return { title: `${count} ${noun}${where}`, body: named };
 }
 
-/** Keeps the card 8 px above whatever reaches its corner on a computer: a composer, a toast, the map's dock. */
-function useLift(active: boolean, card: React.RefObject<HTMLElement | null>, phone: boolean): number {
-  const [lift, setLift] = useState(0);
+/** A docked panel (from 1001 px; below it a panel lies over the work, `--float`): the notice keeps to the work beside it (audit P3 17). */
+const DOCKED_PANEL = '.ui-panel--docked:not(.is-leaving):not(.ui-panel--float)';
+
+/**
+ * Where the card stands on a computer: 8 px above whatever reaches its corner (a composer, a toast, the map's dock), and over the work, never
+ * over a docked panel: its right edge 20 px left of the panel (`right`, null when no panel is docked).
+ */
+function useLift(active: boolean, card: React.RefObject<HTMLElement | null>, phone: boolean): { lift: number; right: number | null } {
+  const [place, setPlace] = useState<{ lift: number; right: number | null }>({ lift: 0, right: null });
   useLayoutEffect(() => {
     if (!active || phone) return undefined;
     let frame = 0;
@@ -81,13 +87,23 @@ function useLift(active: boolean, card: React.RefObject<HTMLElement | null>, pho
       frame = requestAnimationFrame(() => {
         const box = card.current?.getBoundingClientRect();
         if (!box) return;
+        const width = document.documentElement.clientWidth;
+        const docked = document.querySelector<HTMLElement>(DOCKED_PANEL);
+        const panel = docked?.getBoundingClientRect();
+        // Where the panel stands once it has come in: its entrance slides it, which the box would include.
+        const shift = docked ? ((transform) => (transform === 'none' ? 0 : new DOMMatrixReadOnly(transform).m41))(getComputedStyle(docked).transform) : 0;
+        const right = panel && panel.width ? Math.round(width - (panel.left - shift) + 20) : null;
+        // Where the card is about to stand, so what it avoids is what is under it there.
+        const cardRight = width - (right ?? 20);
+        const cardLeft = cardRight - box.width;
         let bottom = 0;
         for (const node of document.querySelectorAll<HTMLElement>('.composer__box, .ui-toast, [data-notice-avoid]')) {
+          if (node.closest(DOCKED_PANEL)) continue;
           const rect = node.getBoundingClientRect();
-          if (!rect.height || rect.right <= box.left || rect.left >= box.right || rect.top < window.innerHeight / 2) continue;
+          if (!rect.height || rect.right <= cardLeft || rect.left >= cardRight || rect.top < window.innerHeight / 2) continue;
           bottom = Math.max(bottom, Math.round(window.innerHeight - rect.top + 8));
         }
-        setLift(bottom);
+        setPlace((now) => (now.lift === bottom && now.right === right ? now : { lift: bottom, right }));
       });
     };
     const observer = new MutationObserver(measure);
@@ -96,7 +112,7 @@ function useLift(active: boolean, card: React.RefObject<HTMLElement | null>, pho
     measure();
     return () => { cancelAnimationFrame(frame); observer.disconnect(); window.removeEventListener('resize', measure); };
   }, [active, phone, card]);
-  return active && !phone ? lift : 0;
+  return active && !phone ? place : { lift: 0, right: null };
 }
 
 /** Whether a dialog or a sheet is open: a notice waits for it to close. */
@@ -212,7 +228,7 @@ export function Notices({ identity, meName, placeName, first }: { identity: stri
 
   const modal = useModalOpen(!!notice);
   const visible = !!notice && !modal;
-  const lift = useLift(visible, card, phone);
+  const { lift, right } = useLift(visible, card, phone);
 
   // Enters once per notice; a newer one that replaces or joins it changes the text in place (docs/design/motion.md).
   useLayoutEffect(() => {
@@ -273,7 +289,7 @@ export function Notices({ identity, meName, placeName, first }: { identity: stri
   const words = notice ? noticeWords(notice, placeName, meName) : null;
   return createPortal(
     <div className="ui-notices" role="status" aria-live="polite" aria-atomic="true"
-      style={lift ? { '--notice-lift': `${lift}px` } as CSSProperties : undefined}>
+      style={lift || right !== null ? { ...(lift ? { '--notice-lift': `${lift}px` } : {}), ...(right !== null ? { '--notice-right': `${right}px` } : {}) } as CSSProperties : undefined}>
       {visible && newest && words ? (
         <div ref={card} className="ui-notice" data-family={notice!.family} data-count={notice!.items.length}
           onMouseEnter={() => setHeld((value) => ({ ...value, hover: true }))} onMouseLeave={() => setHeld((value) => ({ ...value, hover: false }))}

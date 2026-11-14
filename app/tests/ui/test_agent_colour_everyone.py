@@ -105,6 +105,14 @@ class AgentColourForEveryone(unittest.TestCase):
                 break
             time.sleep(0.5)
         assert state.get("line") in ("done", "handed_back"), f"Planner never finished the task: {state}"
+        # The proposal is the run's: say what its tool answered if it is not there.
+        decisions = cls.call("ada", "GET", f"/api/v1/projects/{project}/decisions")
+        if not any(item["title"] == DECISION for item in decisions.get("items", [])):
+            sent = mock("/__requests")["requests"]
+            tools = sorted({tool.get("name", "") for request in sent for tool in request["body"].get("tools", []) if "decision" in tool.get("name", "")})
+            results = [block for request in sent for message in request["body"].get("messages", []) if isinstance(message.get("content"), list)
+                       for block in message["content"] if isinstance(block, dict) and block.get("type") in ("tool_result", "tool_use")]
+            raise AssertionError(f"Planner proposed no decision; decision tools offered {tools}; tool blocks {json.dumps(results)[:3000]}")
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -139,7 +147,10 @@ class AgentColourForEveryone(unittest.TestCase):
         # Ben's own task keeps his initials and no colour.
         expect(page.locator(f'.ws-task[data-work-id="{self.ids["bens_task"]}"] .kreska')).to_have_count(0)
         page.goto(f"/projects/{project}/tasks?view=board")
-        expect(page.locator(".tb-card", has_text=TASK).locator(".tb-card__owner .kreska")).to_have_class(TEAL)
+        owner = page.locator(".tb-card", has_text=TASK).locator(".tb-card__owner")
+        expect(owner.locator(".agent-id > .kreska")).to_have_class(TEAL)
+        # The Agent tag's small face is the same agent's, in the same colour.
+        expect(owner.locator(".agent-tag > .kreska")).to_have_class(TEAL)
         page.goto(f"/projects/{project}/tasks?open=work:{self.ids['task']}")
         panel = page.get_by_role("complementary", name="Details")
         expect(panel.get_by_role("button", name="Owner").locator(".kreska")).to_have_class(TEAL)
@@ -160,6 +171,26 @@ class AgentColourForEveryone(unittest.TestCase):
         expect(card).to_be_visible(timeout=30000)
         expect(card.locator(".nyc__face .kreska")).to_have_class(TEAL)
         shot(page, f"agent-colour-inbox-ben-{UI_BROWSER}")
+
+
+    def test_04_the_chat_task_chip_ends_in_an_ellipsis_and_the_agent_page_fields_are_14_px_round(self) -> None:
+        """Release audit (skipped by #1524): the Planner chat's task chip was cut with no ellipsis; the agent page's fields took 12 px corners."""
+        context = self.browser.new_context(base_url=ORIGIN, viewport={"width": 360, "height": 780}, device_scale_factor=2, is_mobile=True, has_touch=True,
+                                           locale="en-GB", timezone_id="Europe/Warsaw", storage_state=self.states["ada"], service_workers="block")
+        self.addCleanup(context.close)
+        page = context.new_page()
+        page.goto(f"/agents/{self.ids['Planner']}")
+        chip = page.locator(".agc__chip").first
+        expect(chip).to_be_visible()
+        words = chip.locator(".agc__chip-t")
+        cut = words.evaluate("el => ({ overflow: getComputedStyle(el).textOverflow, clipped: el.scrollWidth > el.clientWidth, chip: el.closest('.agc__chip').getBoundingClientRect().right, bubble: el.closest('.dm-msg__body').getBoundingClientRect().right })")
+        self.assertEqual(cut["overflow"], "ellipsis", cut)
+        self.assertLessEqual(cut["chip"], cut["bubble"] + 0.5, f"the chip stays inside its bubble: {cut}")
+        shot(page, f"agent-colour-chat-chip-360-{UI_BROWSER}")
+        page.goto(f"/settings/agents/{self.ids['Planner']}")
+        field = page.locator("#agent-name")
+        expect(field).to_be_visible()
+        self.assertEqual(field.evaluate("el => getComputedStyle(el).borderTopLeftRadius"), "14px")
 
 
 if __name__ == "__main__":
