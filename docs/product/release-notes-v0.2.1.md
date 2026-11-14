@@ -13,8 +13,8 @@ Documentation: <https://coldphase.github.io/flux/>. Flux is open source under th
 - **One install path** ([#1471](https://github.com/ColdPhase/flux/issues/1471), founder decision 5). Download `flux.tar.gz`,
   `SHA256SUMS` and its signature, check, unpack, `./flux up` ([installation](https://coldphase.github.io/flux/operate/install/)). The
   release is a folder; its launcher pulls the release's images by digest, and nothing is built. Later releases install with
-  `./flux upgrade`, which always checks the download against `SHA256SUMS` and its signature first, and refuses and changes nothing
-  when it cannot.
+  `./flux upgrade`, which always checks the download against `SHA256SUMS` and its signature first (with cosign on the host, or the pinned
+  cosign image through Docker), and refuses and changes nothing when it cannot.
 - **From v0.2.0: install fresh.** v0.2.0 was installed from loose Compose files, so v0.2.1 brings no way to move that installation
   into the release folder. Its data would upgrade: this release was tested to upgrade the data of **v0.2.0** (the "Upgrades from"
   line of the release page names what was tested).
