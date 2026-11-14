@@ -94,10 +94,11 @@ describe('provider-neutral owner AI connections (#179)', () => {
     const sent = (await mock('/__requests')).requests;
     assert.deepEqual(sent.map((item) => [item.method, item.path]), [['POST', '/openai/v1/chat/completions']], 'only the endpoint the owner named, once');
     assert.deepEqual(offeredTools('chat', sent[0]!.body), ['ping']);
-    // Only OpenRouter's public model list is read, without a key, for what an OpenRouter key pays (#1465): no listing of another provider.
+    // OpenRouter's public model list is read without a key, for what an OpenRouter key pays (#1465); the other providers' lists are read with the key
+    // being saved, which is its test (#1218), so a key is sent to its own provider only.
     const listed = ((await mock('/__key-lists')) as unknown as { requests: { provider: string; path: string; key: string | null; at: number }[] }).requests
       .filter((item) => item.at >= startedAt);
-    for (const item of listed) assert.deepEqual([item.provider, item.path, item.key], ['openrouter', '/lists/openrouter/v1/models', null], 'saving lists no model of a key');
+    for (const item of listed.filter((entry) => entry.provider === 'openrouter')) assert.deepEqual([item.path, item.key], ['/lists/openrouter/v1/models', null], 'no key is sent to read OpenRouter\'s list');
   });
 
   test('wrong key formats, models, URLs and prices are refused and nothing is stored', async () => {
