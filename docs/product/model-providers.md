@@ -90,6 +90,16 @@ A person connects AI once, in Settings › AI. Their connections power all of th
     Flux accepts, at most 8 long-prompt prices, and for LiteLLM's all three providers present); a
     list that fails, or a fetch that fails, changes nothing, and the last good list stays. Each list
     is kept apart.
+  - **A wrong list cannot lower a price without bound**
+    ([#1270](https://github.com/ColdPhase/flux/issues/1270), final audit, 2026-11-14). The lists come from a
+    third party's repository and OpenRouter's API, and a price sets the hold and the charge against a key's
+    daily budget, so a refreshed list does not move a price Flux knows to 0 or to a tenth or less of it: for
+    that model (input or output) Flux keeps the stored price and logs a warning naming the model and both
+    prices (the shipped list's price when the stored list lacks the model). A model Flux does not know is never
+    first priced at 0: it is left out, logged, and its owner is asked for the price; it is free only when the
+    stored or the shipped list already had it at 0 (Gemini's free models). Increases and every smaller decrease
+    apply as before. It applies to LiteLLM's list and to OpenRouter's, whether the worker or the API reads it.
+    OpenRouter's free models are therefore asked for once: the owner enters 0.
   - **Shipped with the release.** Each release carries LiteLLM's list as fetched on its build day
     (`scripts/update_price_list.py`, run when the release candidate is prepared; the image build
     itself stays offline), and the migrator stores it when the database has none or an older one,

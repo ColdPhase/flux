@@ -3,9 +3,9 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { after, before, describe, test } from 'node:test';
 import { AI_PRICE_LIST_PROVIDERS, AI_PRICE_MAX_MICROS_PER_MTOK, assistantApiPrice, currentConnectionPrice, listPrice, maxRequestMicros, rateAt, type AiPrice,
-  type AiPriceList, type AiRate } from '@flux/contracts';
-import { boundedUsageMicros, gatewayChargeMicros, gatewayHoldMicros, isPriceList, openRouterPriceList, parsePriceList, runReservationMicros, shippedPriceList,
-  usageMicros } from '@flux/core';
+  type AiPriceList, type AiRate, providerPriceList } from '@flux/contracts';
+import { boundedUsageMicros, gatewayChargeMicros, gatewayHoldMicros, guardPriceList, heldPriceLog, isPriceList, openRouterPriceList, parsePriceList, runReservationMicros,
+  shippedPriceList, storeGuardedPriceList, usageMicros } from '@flux/core';
 import { aiPriceListRepository, storedPriceLists, storedProviderPriceList } from '@flux/db';
 import { fetchPriceList, parsePrivateTargets, PUBLIC_ONLY } from '../../packages/agent-runtime/src/index.js';
 import { db } from './support/db.js';
@@ -175,6 +175,112 @@ describe('the stored list (#1465)', () => {
       assert.deepEqual(lists.openrouter, { fetchedOn: '2099-01-03', prices: { 'vendor/model': price(1, 2) } });
       assert.equal(lists.anthropic?.fetchedOn, '2099-01-02');
       assert.equal(await storedProviderPriceList(tx, 'openai_compatible'), null);
+    });
+  });
+});
+
+describe('a refreshed list cannot lower a known price without bound (#1270)', () => {
+  const list = (prices: AiPriceList['prices'], fetchedOn = '2026-11-14'): AiPriceList => ({ fetchedOn, source: 'test', prices });
+  const known = list({
+    anthropic: { 'claude-sonnet-5': price(3_000_000, 15_000_000), 'claude-haiku-5-5': { ...price(1_000_000, 5_000_000), tiers: [{ fromTokens: 100_001, ...price(2_000_000, 8_000_000) }] } },
+    openai: { 'gpt-6.1-sol': price(2_000_000, 10_000_000), 'gpt-5-pro': price(15_000_000, 120_000_000) },
+  }, '2026-11-13');
+
+  test('a price that falls to 0, to 1% or to exactly a tenth keeps the known price, whichever of input or output fell, and is named', () => {
+    const poisoned = list({
+      anthropic: { 'claude-sonnet-5': price(0, 0), 'claude-haiku-5-5': price(10_000, 5_000_000) },
+      openai: { 'gpt-6.1-sol': price(2_000_000, 1_000_000), 'gpt-5-pro': price(15_000_000, 1_200_000) },
+    });
+    const { list: guarded, held } = guardPriceList(poisoned, known, null);
+    assert.deepEqual(guarded.prices, known.prices, 'every poisoned price stays as it was, a stored one with its long-prompt tier');
+    assert.deepEqual(held.map((row) => `${row.provider}/${row.model}`).sort(), ['anthropic/claude-haiku-5-5', 'anthropic/claude-sonnet-5', 'openai/gpt-5-pro', 'openai/gpt-6.1-sol']);
+    assert.deepEqual(held.find((row) => row.model === 'claude-sonnet-5'), { provider: 'anthropic', model: 'claude-sonnet-5', kept: price(3_000_000, 15_000_000), offered: price(0, 0) });
+    assert.deepEqual(poisoned.prices.anthropic?.['claude-sonnet-5'], price(0, 0), 'the list that was offered is not changed');
+    // What the budget counts is unchanged: the same hold for a request, before and after a poisoned day.
+    const priced = (prices: AiPriceList) => listPrice(providerPriceList(prices, 'anthropic'), 'claude-sonnet-5')!;
+    assert.equal(maxRequestMicros(priced(guarded), 10_000, 1_000), maxRequestMicros(priced(known), 10_000, 1_000));
+    assert.equal(maxRequestMicros(priced(poisoned), 10_000, 1_000), 0, 'unguarded, the same request would be held at nothing');
+  });
+
+  test('a decrease of a third, an increase and a change of tiers apply as before', () => {
+    const next = list({
+      anthropic: { 'claude-sonnet-5': price(2_100_000, 10_500_000), 'claude-haiku-5-5': { ...price(1_000_000, 5_000_000), tiers: [{ fromTokens: 100_001, ...price(0, 0) }] } },
+      openai: { 'gpt-6.1-sol': price(4_000_000, 20_000_000), 'gpt-5-pro': price(1_500_001, 120_000_000) },
+    });
+    const { list: guarded, held } = guardPriceList(next, known, null);
+    assert.deepEqual(held, [], 'a fall to 70% and to 10.00007% of the known price is not held');
+    assert.deepEqual(guarded.prices, next.prices, 'including a tier price of 0, which never lowers a charge');
+  });
+
+  test('a known price of 0 stays 0 and may rise; a model the list is new to may rise from nothing', () => {
+    const free = list({ gemini: { 'free-model': price(0, 0), 'half-free': price(0, 4_000_000) } }, '2026-11-13');
+    const { list: guarded, held } = guardPriceList(list({ gemini: { 'free-model': price(0, 0), 'half-free': price(0, 2_500_000), 'new-model': price(1, 1) } }), free, null);
+    assert.deepEqual(held, []);
+    assert.deepEqual(guarded.prices.gemini, { 'free-model': price(0, 0), 'half-free': price(0, 2_500_000), 'new-model': price(1, 1) });
+  });
+
+  test('a model Flux does not know is never first given a price of 0, unless the shipped list has it at 0', () => {
+    const shipped = shippedPriceList();
+    const [freeId] = Object.entries(shipped.prices.gemini ?? {}).find(([, rate]) => rate.inputMicrosPerMTok === 0 && rate.outputMicrosPerMTok === 0) ?? [];
+    assert.ok(freeId, 'the shipped list has free Gemini models');
+    const offered = list({ gemini: { [freeId!]: price(0, 0), 'gemini-9-poison': price(0, 0), 'gemini-9-half': price(0, 5), 'gemini-9-new': price(1_000_000, 4_000_000) } });
+    const { list: guarded, held } = guardPriceList(offered, null, shipped);
+    assert.deepEqual(guarded.prices.gemini, { [freeId!]: price(0, 0), 'gemini-9-new': price(1_000_000, 4_000_000) });
+    assert.deepEqual(held.map((row) => [row.model, row.kept]), [['gemini-9-poison', null], ['gemini-9-half', null]], 'left out: its owner is asked for the price');
+    // Without a shipped list (OpenRouter's) a free model is left out the first time too.
+    assert.deepEqual(guardPriceList(offered, null, null).held.map((row) => row.model), [freeId, 'gemini-9-poison', 'gemini-9-half']);
+  });
+
+  test('a model the stored list lacks falls back to the shipped price', () => {
+    const shipped = shippedPriceList();
+    const [id, rate] = Object.entries(shipped.prices.anthropic ?? {}).find(([, row]) => row.inputMicrosPerMTok > 0)!;
+    const { list: guarded, held } = guardPriceList(list({ anthropic: { [id]: price(0, 0) } }), list({ anthropic: {} }), shipped);
+    assert.deepEqual(guarded.prices.anthropic, { [id]: rate });
+    assert.equal(held.length, 1);
+    assert.deepEqual(guardPriceList(list({ anthropic: { constructor: price(0, 0) } }), known, null).held.map((row) => row.kept), [null], 'only the list\'s own models are known');
+  });
+
+  test('the log names each held model and both prices, and never more than 50 lines and a count', () => {
+    const { held } = guardPriceList(list({ anthropic: { 'claude-sonnet-5': price(0, 0) } }), known, null);
+    assert.deepEqual(heldPriceLog('litellm', held), [{ event: 'price_list_held', list: 'litellm', provider: 'anthropic', model: 'claude-sonnet-5', action: 'kept_known_price',
+      kept: price(3_000_000, 15_000_000), offered: price(0, 0) }]);
+    const many = Array.from({ length: 70 }, (_, i) => ({ provider: 'openrouter' as const, model: `vendor/m${i}`, kept: null, offered: price(0, 0) }));
+    const lines = heldPriceLog('openrouter', many);
+    assert.equal(lines.length, 51);
+    assert.deepEqual(lines[50], { event: 'price_list_held', list: 'openrouter', more: 20 });
+    assert.equal(lines[0]!.action, 'left_out_free_price');
+  });
+
+  test('a stored list is only replaced by the guarded one; LiteLLM\'s and OpenRouter\'s are each guarded against their own', async () => {
+    await rolledBack(async (tx) => {
+      const store = aiPriceListRepository(tx);
+      const day1 = parsePriceList(FILE, '2099-01-02', 'test')!;
+      assert.equal(await store.store('litellm', day1), true);
+      const poisonedFile = { ...FILE,
+        'claude-sonnet-5': { ...FILE['claude-sonnet-5'], input_cost_per_token: 0, output_cost_per_token: 1e-7 },
+        'gpt-5-pro': { ...FILE['gpt-5-pro'], input_cost_per_token: 1.5e-6, output_cost_per_token: 1.2e-4 },
+        'gpt-6.1-sol': { ...FILE['gpt-6.1-sol'], input_cost_per_token: 1.5e-6, output_cost_per_token: 1e-5 },
+        'claude-new-free': { litellm_provider: 'anthropic', mode: 'chat', input_cost_per_token: 0, output_cost_per_token: 0 } };
+      const day2 = parsePriceList(poisonedFile, '2099-01-03', 'test')!;
+      const result = await storeGuardedPriceList(store, 'litellm', day2);
+      assert.equal(result.stored, true);
+      assert.deepEqual(result.held.map((row) => `${row.model}:${row.kept ? 'kept' : 'left out'}`), ['claude-new-free:left out', 'claude-sonnet-5:kept', 'gpt-5-pro:kept']);
+      const stored = (await store.read('litellm'))!;
+      assert.equal(stored.fetchedOn, '2099-01-03');
+      assert.deepEqual(stored.prices.anthropic?.['claude-sonnet-5'], price(2_000_000, 10_000_000), 'yesterday\'s price');
+      assert.deepEqual(stored.prices.openai?.['gpt-5-pro'], price(15_000_000, 120_000_000));
+      assert.deepEqual(stored.prices.openai?.['gpt-6.1-sol']!.inputMicrosPerMTok, 1_500_000, 'a decrease of a quarter applies');
+      assert.equal(stored.prices.anthropic?.['claude-new-free'], undefined);
+      assert.deepEqual(await storedProviderPriceList(tx, 'anthropic'), providerPriceList(stored, 'anthropic'));
+
+      const model = (id: string, input: number, output: number) => ({ id, family: 'vendor', price: price(input, output) });
+      const read = (...models: ReturnType<typeof model>[]) => ({ provider: 'openrouter' as const, status: 'listed' as const, checkedOn: '2099-01-02', models });
+      const first = await storeGuardedPriceList(store, 'openrouter', openRouterPriceList(read(model('vendor/dear', 5_000_000, 25_000_000), model('vendor/zero', 0, 0)))!);
+      assert.deepEqual(first.list.prices.openrouter, { 'vendor/dear': price(5_000_000, 25_000_000) }, 'a free model OpenRouter lists first is not priced at 0');
+      const next = await storeGuardedPriceList(store, 'openrouter', openRouterPriceList({ ...read(model('vendor/dear', 0, 0), model('vendor/free:free', 0, 0), model('vendor/new', 1, 1)), checkedOn: '2099-01-03' })!);
+      assert.deepEqual(next.list.prices.openrouter, { 'vendor/dear': price(5_000_000, 25_000_000), 'vendor/new': price(1, 1) });
+      assert.deepEqual(next.held.map((row) => row.model), ['vendor/dear', 'vendor/free:free']);
+      assert.deepEqual((await store.read('openrouter'))?.prices.openrouter, next.list.prices.openrouter);
     });
   });
 });
