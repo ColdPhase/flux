@@ -164,7 +164,7 @@ class NativeDetailsJourney(unittest.TestCase):
         self.in_panel_viewport(phone,mobile.get_by_role("button",name="Accept",exact=True));self.in_panel_viewport(phone,mobile.locator(".wd-decision-identity"))
         shot(phone,"bounded-details-replaces-phone")
         accept.click()
-        expect(panel).to_contain_text("Decision · accepted")
+        expect(panel).to_contain_text("Accepted")
         after=api(self.ctx,"GET",self.root+"/work?limit=100")["items"]
         self.assertEqual([(item["id"],item["version"]) for item in before],[(item["id"],item["version"]) for item in after],"no task was moved")
         self.assertFalse(any(link["role"]=="still_applies" for link in self.native("decision",self.pivot["id"])["links"]))

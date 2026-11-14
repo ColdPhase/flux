@@ -327,6 +327,9 @@ input::placeholder, textarea::placeholder { color: var(--t3); opacity: 1; }
 .ui-sheet .ui-panel__body { padding: 18px 16px 28px; }
 
 /* ---------- Toast: an inverted pill ---------- */
+/* A conversation's end stays clear of a toast (#1424, useClearOfToast): its column ends with a transparent border as tall as the part of
+   the toast over the feed. A border, not padding or a margin, so every engine counts it in the scrolled height. */
+:is(.project-convo__feed, .thread__feed, .dm__feed) > :is(.project-convo__in, .thread__in, .dm__in) { border-bottom: var(--toast-clear, 0px) solid transparent; }
 .ui-toasts {
   /* Above the bottom safe area, the capsule of places and the phone's Create control, each as measured: PhoneDock and
      BottomNav and the map's toolbar (sketch/DockRow.tsx) publish their top edges (edgeInset.ts), absent where the control is not drawn. Feedback keeps 8 px

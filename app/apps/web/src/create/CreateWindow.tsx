@@ -23,7 +23,7 @@ import { createWork, proposeDecision } from '../work/api';
 import { useWorkChoices } from '../work/useDetailReads';
 import { WorkPagination } from '../work/WorkPagination';
 import { useCreatedToast } from '../work/taskState';
-import { ACCEPT_UNDO_MS, startProposal } from '../notifications/pendingAccept';
+import { startProposal } from '../notifications/pendingAccept';
 import { SpaceFace } from '../ui/SpaceFace';
 import './create.css';
 
@@ -525,7 +525,7 @@ function DecisionForm({ ids, phone, carried, projectId, onProject, onClose, requ
     request.onCreated?.();
     // Stays set: the window closes, and a second submit in the same tick must not hold a second proposal.
     onClose();
-    toast({ message: 'Decision proposed', tone: 'neutral', timeout: ACCEPT_UNDO_MS, action: { label: 'Undo', key: 'Z', onClick: () => {
+    toast({ message: 'Decision proposed', tone: 'neutral', onLeave: handle.send, action: { label: 'Undo', key: 'Z', onClick: () => {
       if (handle.undo()) toast({ message: 'Not proposed' });
       else toast({ message: 'It was already proposed; it waits in the Inbox of those who can accept it.' });
     } } });

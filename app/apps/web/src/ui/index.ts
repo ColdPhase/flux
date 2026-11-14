@@ -23,7 +23,7 @@ export { PanelActions, PanelGlyph, PanelMeta, SidePanel, useSidePanelMode, type 
 export { BottomNav, Tabs, type BottomNavItem, type TabItem } from './Tabs';
 export { publishHighestTopEdge, publishTopEdge } from './edgeInset';
 export { useFocusBack } from './focusBack';
-export { ToastProvider, useToast, useToastScope, useToastTop, type ToastAction, type ToastOptions } from './Toast';
+export { ToastProvider, UNDO_MS, useClearOfToast, useToast, useToastScope, useToastTop, type ToastAction, type ToastOptions } from './Toast';
 export { Mascot, Opening, OpeningRows, PullToRefresh } from './Moments';
 export { Slider } from './Slider';
 export { Option, OptionGroup, Select, type OptionGroupProps, type OptionProps, type SelectProps } from './Select';

@@ -6,6 +6,7 @@ import { threadPlace, useMessageWork } from '../work/useMessageWork';
 import { useProjectWorkSummary } from '../work/WorkReadContext';
 import { useReferenceWork } from '../work/useReferenceWork';
 import type { PaneCore } from './paneCore';
+import { useClearOfToast } from '../ui';
 
 interface Options {
   messages: Conversation['messages']; rootMessageId: string | null;
@@ -20,6 +21,8 @@ export function useThreadReading({ me, project, conversation }: PaneCore, { mess
   const scrollRef = useRef<HTMLDivElement>(null);
   const [feedNode, setFeedNode] = useState<HTMLDivElement | null>(null);
   const attachFeed = useCallback((node: HTMLDivElement | null) => { scrollRef.current = node; setFeedNode(node); }, []);
+  // The thread's end stays clear of a toast (#1424).
+  useClearOfToast(scrollRef, feedNode);
   // A short thread starts at the top of its panel, its root whole (S23); only the space's stream and a direct message sit against their field.
   const columnRef = useRef<HTMLDivElement>(null);
   // The thread shows its root whole at the top (with what was made from it), then the replies: one bounded

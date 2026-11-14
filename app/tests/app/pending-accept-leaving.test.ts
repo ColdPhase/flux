@@ -99,3 +99,30 @@ test('an accept held while the page is left can still be undone, and then never 
   assert.equal(calls.length, 0);
   assert.equal(hasWaitingAccepts(), false);
 });
+
+test('an accept whose window is its Undo toast is sent only when the toast leaves, once, and Undo after that changes nothing (#1424)', async () => {
+  decisionNumber += 1;
+  const accept = startAccept({ id: `d${decisionNumber}`, version: 1 }, (outcome) => { outcomes.push(outcome); }, null);
+  mock.timers.tick(60_000);
+  await settle();
+  assert.equal(calls.length, 0, 'no timer of its own: it waits for its toast');
+  assert.equal(hasWaitingAccepts(), true);
+  accept.send();
+  accept.send();
+  await settle();
+  assert.equal(calls.length, 1, 'sent once when the toast left');
+  assert.equal(calls[0]?.keepalive, false);
+  assert.deepEqual(outcomes, ['accepted']);
+  assert.equal(accept.undo(), false, 'too late to undo');
+  assert.equal(hasWaitingAccepts(), false);
+});
+
+test('an accept undone while its toast shows is never sent, even when the toast then leaves (#1424)', async () => {
+  decisionNumber += 1;
+  const accept = startAccept({ id: `d${decisionNumber}`, version: 1 }, (outcome) => { outcomes.push(outcome); }, null);
+  assert.equal(accept.undo(), true);
+  accept.send();
+  await settle();
+  assert.equal(calls.length, 0);
+  assert.equal(hasWaitingAccepts(), false);
+});

@@ -613,20 +613,12 @@ class FilesReferencesPhotos(unittest.TestCase):
                 with self.subTest(phone=phone, dark=dark):
                     page = self.page(phone=phone, dark=dark)
                     root = self.message(page, "files")
-                    reference = root.locator(f'.ws-chip[data-work-id="{self.ids["files-task"]}"]')
                     root.scroll_into_view_if_needed()
-                    self.assert_inside_bubble(root, reference)
-                    expect(reference).to_have_count(1)
+                    # A task shows once in the stream (#1424): its card, not also a chip in the message it came from.
+                    expect(root.locator(f'.ws-chip[data-work-id="{self.ids["files-task"]}"]')).to_have_count(0)
+                    expect(page.locator(f'.convo-notice[data-work-id="{self.ids["files-task"]}"] .convo-notice__card')).to_have_count(1)
                     expect(root.locator(":scope > .message-bubble > .message-body")).to_contain_text("Drawing and range readings")
                     if not phone and not dark:
-                        # Negative controls reproduce the exact prior defects without mocking the API.
-                        reference.evaluate("e => { const card = e.parentElement; card.before(Object.assign(document.createElement('span'), {id: 'reference-slot'})); card.closest('[data-message-id]').append(card); }")
-                        try:
-                            with self.assertRaises(AssertionError):
-                                self.assert_inside_bubble(root, reference)
-                        finally:
-                            reference.evaluate("e => { const slot = document.getElementById('reference-slot'); slot.replaceWith(e.parentElement); }")
-                        self.assert_inside_bubble(root, reference)
                         photo = self.message(page, "two")
                         photo.evaluate("e => e.insertBefore(e.querySelector(':scope > .message-bubble'), e.querySelector(':scope > .photo-grid'))")
                         try:
@@ -638,7 +630,19 @@ class FilesReferencesPhotos(unittest.TestCase):
                     conversation = self.ids[f"conversation:{self.ids['files']}"]
                     page.goto(f"/projects/{self.ids['project']}/conversations/{conversation}")
                     thread_root = page.locator(".thread__root")
-                    self.assert_inside_bubble(thread_root, thread_root.locator(f'.ws-chip[data-work-id="{self.ids["files-task"]}"]'))
+                    # The thread has no task cards: there the task is the chip in its message, its one place in the thread.
+                    reference = thread_root.locator(f'.ws-chip[data-work-id="{self.ids["files-task"]}"]')
+                    self.assert_inside_bubble(thread_root, reference)
+                    expect(reference).to_have_count(1)
+                    if not phone and not dark:
+                        # Negative control reproduces the exact prior defect without mocking the API.
+                        reference.evaluate("e => { const card = e.parentElement; card.before(Object.assign(document.createElement('span'), {id: 'reference-slot'})); card.closest('[data-message-id]').append(card); }")
+                        try:
+                            with self.assertRaises(AssertionError):
+                                self.assert_inside_bubble(thread_root, reference)
+                        finally:
+                            reference.evaluate("e => { const slot = document.getElementById('reference-slot'); slot.replaceWith(e.parentElement); }")
+                        self.assert_inside_bubble(thread_root, reference)
                     # The thread's root shows the same inline chip and link preview as the stream (no raw text).
                     expect(thread_root.locator(".ref-chip[data-ref=task]")).to_have_text("#8")
                     expect(thread_root.get_by_role("list", name="Link preview")).to_be_visible()

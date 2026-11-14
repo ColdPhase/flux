@@ -40,12 +40,22 @@ export function workPieces(item: Pick<WorkItem, 'status' | 'owner' | 'lifecycle'
 }
 
 export function decisionPieces(decision: Pick<Decision, 'status' | 'supersedes' | 'decidedAt' | 'supersededAt'>): StatePiece[] {
-  if (decision.status === 'proposed') return decision.supersedes ? [{ text: 'Proposed decision' }, { text: ' · replaces an earlier decision', extra: true }] : [{ text: 'Proposed decision' }];
+  // One state, one word (#1424): "proposed", as the conversation's card says "Proposed"; the kind is the flag and "Decision".
+  if (decision.status === 'proposed') return [{ text: 'Decision · ', extra: true }, { text: 'proposed' }, ...(decision.supersedes ? [{ text: ' · replaces an earlier decision', extra: true }] : [])];
   if (decision.status === 'accepted') return [{ text: 'Decision · ', extra: true }, { text: `accepted ${shortDate(decision.decidedAt!)}` }];
   return [{ text: 'Decision · ', extra: true }, { text: `replaced ${shortDate(decision.supersededAt!)}` }];
 }
 
 export const decisionLine = (decision: Pick<Decision, 'status' | 'supersedes' | 'decidedAt' | 'supersededAt'>) => stateText(decisionPieces(decision));
+
+/**
+ * The state alone, where the kind is already said (the panel's head says "Decision", #1424 P3-17): "Proposed", "Accepted 14 Nov",
+ * "Replaced 3 Dec", and "· replaces an earlier decision" while a proposal names none below.
+ */
+export function decisionState(decision: Pick<Decision, 'status' | 'supersedes' | 'decidedAt' | 'supersededAt'>): string {
+  const text = decisionPieces(decision).filter((piece) => !piece.text.startsWith('Decision')).map((piece) => piece.text).join('');
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
 
 /**
  * What a blocked task waits for, composed the same way on the board, the list and the panel (#763 C1): "Waiting for

@@ -569,7 +569,7 @@ The IDs come from the first Prostota canvas; rules that no longer apply are left
 | P1 | **Home** has two parts: Waiting for you (the top three, with Open Inbox) and Continue where you left off. Every row is clickable and ends in an arrow. |
 | P3 | Kreska is the agent icon everywhere (section 3). |
 | P4 | **A decision is one card on both devices:** who proposed it, the decision, its reason, then Accept / Not now / Discuss and who can accept it. Plain sentences appear only when they apply: "This replaces the decision **Wi-Fi in every bed** (12 Oct)." and "Shown on the Wiki page **Sensor network**." Accepting only marks the replaced decision "replaced"; Flux never moves or parks tasks. |
-| P5 | **Creating a task is separate from its notice.** The conversation only announces it, in one line with its source: "Ada created #1 …", "created a task from Jonas's message", "Planner · Ada's agent is on it". A new task is **created** everywhere it is said: the line, the toast ("Task #12 created"), the task's activity ("created the task", "created it from a message") and Home's "since you were away" line (#1424). (The Map has no Create task, #867.) Founder report 2026-10-28 ([#694](https://github.com/ColdPhase/flux/issues/694)): a decision is announced the same way, because a decision proposed in a thread left no trace anywhere. One line, "Ada proposed a decision" (or "accepted a decision"; a message has no Propose a decision, #867), then the decision as one card with its state now (Proposed, Accepted, Replaced) that opens it in the one panel. The line is in the space's stream by time and in the thread it came from; it updates for every member who can read the space, and it is information, not a message. There is no result card: Done may carry one "What came of it" line in the task's discussion. |
+| P5 | **Creating a task is separate from its notice.** The conversation only announces it, as its one card with one quiet line of its source: "Ada created a task", "created a task from Jonas's message", "Planner · Ada's agent is on it" ([A space](#a-space-header-conversation-and-message-actions), #1424: one card, never a chip in the message, a line and a card). A new task is **created** everywhere it is said: the card's line, the toast ("Task #12 created"), the task's activity ("created the task", "created it from a message") and Home's "since you were away" line (#1424). (The Map has no Create task, #867.) Founder report 2026-10-28 ([#694](https://github.com/ColdPhase/flux/issues/694)): a decision is announced the same way, because a decision proposed in a thread left no trace anywhere. The decision is one card with its state now (Proposed, Accepted, Replaced) that opens it in the one panel, and inside it one line, "Ada proposed a decision" (a message has no Propose a decision, #867); an acceptance is one line, never a second card (#1424). The line is in the space's stream by time and in the thread it came from; it updates for every member who can read the space, and it is information, not a message. There is no result card: Done may carry one "What came of it" line in the task's discussion. |
 | P6 | Attachments sit inside their message (section 6). |
 | P7 | Monochrome with light, dark and system; no accent colour. |
 | P8 | The action is called "Create task", never "Create work". |
@@ -957,6 +957,19 @@ Drawn by the agents before it was built; the rules of what triggers a notice are
 - **A notice is its own card**, not a toast. Undo toasts stay at the bottom centre, one at a time
   (#1206); a notice never replaces a toast and a toast never replaces a notice. An Undo toast stands 8 px above the highest composer drawn, so it
   never covers its hint or Send (#1424).
+- **An Undo toast lasts 10 s, and only where you are** (founder decision, Hubert, 2026-11-14,
+  [#1424](https://github.com/ColdPhase/flux/issues/1424); it replaces "Undo stays until it is used or closed", #347 N1). One rule for
+  every toast that offers Undo or takes a step back (Hand back): it leaves on its own after 10 s, and at once when you go to another
+  place (the address changes: another space, view, page or thread, Back). The 10 s pause while the pointer is over it or focus is in
+  it, as a notice's do, so Undo can always be reached with Tab or a screen reader; they run on when the pointer or focus leaves.
+  `Z` undoes only the Undo toast on screen: once it has left, `Z` does nothing, and an action done in another place is never undone
+  from here. A change held for Undo (Accept, an answer, Decision proposed) is sent the moment its toast leaves, for whichever reason
+  (its 10 s, ×, a newer toast, another place, the page closing). A toast without Undo keeps its own short time (about 5 s, 8 s with
+  Open); an error stays until it is closed.
+- **It never covers the newest thing.** While a toast shows, a conversation (a space's, a thread's, a direct message's) keeps its
+  end clear of it: the end of the list moves up by the part of the toast over it, so the new task's card, the last message and an
+  inline Delete / Keep row stay readable and reachable above the toast. A reader at the end stays at the end; one reading higher up
+  is not moved. When the toast goes, nothing moves: the room is given back once the reader scrolls up from the end.
 - **Where.** At the bottom right on the computer and the tablet, 20 px from the edges, 360 px wide;
   it stands 8 px above a composer, a toast or the map's toolbar that reaches its corner, so it never
   covers the composer or Send. On the phone it is at the top, 8 px under the safe area, 16 px from
@@ -1024,8 +1037,21 @@ built. The contract is in [mobile and PWA](../../product/mobile-pwa.md#while-flu
   Call and ⋯.
 - The right-hand drawing's list of types under the phone's "+" is replaced: the "+" opens the Create
   window on Task (#1438 point 8, [Phone](#phone)); the message actions beside it are as drawn.
-- The reading column is at most 760 px. A task event is one line: "Ada created #1 Calibrate the
-  soil moisture probes · 8:05".
+- The reading column is at most 760 px. A task or a decision shows **once** in a conversation, as
+  **one card** where and when it was made (founder decision, Hubert, 2026-11-14, [#1424](https://github.com/ColdPhase/flux/issues/1424)),
+  in the author column with its maker's face. Its first line, quiet and beside the face, says who
+  made it, from what and when ("Ada Kowalska created a task from Jonas’s message · 8:05"); under it, in the same card, the row is the
+  object (the task's state glyph, `#1`, its title, its owner and its state word; a decision's flag, its title and its state word),
+  which opens it in the one panel. "Jonas’s message" is a link that brings
+  that message into view, so the way from the message to the task stays on the card. There is no separate event line above the
+  card, and the message it came from carries no chip of it. A thread shows a decision made in it as the same card among its
+  replies; a task made from one of its messages (its root or a reply) shows there as the card under that message, its only place in the thread (a thread has no task notices). An
+  acceptance or a task's later step (blocked, can continue) is one line, never a second card: "Ada accepted it" right under its
+  card, else "Ada accepted the decision **Double the cinnamon buns**", where the title opens it. One state has one word: a
+  decision is **Proposed**, **Accepted** or **Replaced**, never "Proposed decision"; the panel's head already says "Decision", so its
+  eyebrow is the state alone ("Proposed", "Accepted 14 Nov"). The card's title always keeps room: where the card is narrow (beside a
+  docked panel at 1024 px, a phone) the owner's name gives way first (ellipsis, then the face alone), and the state word stays whole
+  inside the card.
 - The message toolbar sits at the bubble's top corner, as
   [Spokój](../spokoj/README.md#message-toolbar-and-selection) places it. A line in the ⋯ menu
   divides Add to map, Copy link and Copy text from Edit and Delete.

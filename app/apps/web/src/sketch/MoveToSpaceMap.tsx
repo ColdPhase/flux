@@ -91,7 +91,7 @@ export function useMoveToSpaceMap({ sketch, selection, versionOf, onMoved, onBac
         setMoving(null);
         const where = `${project.name}`;
         onMoved();
-        toast({ message: `Moved to ${where}${mapTitle && mapTitle !== UNTITLED_SKETCH ? ` · ${mapTitle}` : ''}`, tone: 'success', timeout: 8000, action: { label: 'Undo', key: 'Z', onClick: () => { void undo(moved, where); } } });
+        toast({ message: `Moved to ${where}${mapTitle && mapTitle !== UNTITLED_SKETCH ? ` · ${mapTitle}` : ''}`, tone: 'success', action: { label: 'Undo', key: 'Z', onClick: () => { void undo(moved, where); } } });
       }} />
   );
   return { start, dialog };

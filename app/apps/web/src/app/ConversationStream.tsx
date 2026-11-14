@@ -1,9 +1,9 @@
 import { Fragment, startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { FORMER_MEMBER } from '../docs/format';
 import type { Conversation, LiveCallLine, ConversationMessage, ConversationRoot, ConversationRootWindow, NativeWorkRow, ObjectNotice, Page, Project, ReturnSummary, TaskCreationNotice } from '@flux/contracts';
-import { AgentIdentity, Avatar, Button, EmptyState, Icon, Kreska, Opening, StatusGlyph, useArrivals } from '../ui';
+import { AgentIdentity, Avatar, Button, EmptyState, Icon, Kreska, Opening, StatusGlyph, useArrivals, useClearOfToast } from '../ui';
 import { useSpareHeight } from '../ui/spareHeight';
-import { MessageObjects, useCreateWorkFromMessage } from '../work/inline';
+import { MessageObjects, ShownObjects, shownObjects, useCreateWorkFromMessage } from '../work/inline';
 import { MessageActions, useTouchActions } from '../work/messageActions';
 import { useOwnMessage } from '../work/ownMessage';
 import { onMessageChanged, projectMessageEdits } from '../conversations/messageChanges';
@@ -332,9 +332,16 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
   const display = foldEntries<Extract<StreamEntry, { kind: 'root' | 'object' | 'call' }>, Extract<StreamEntry, { kind: 'notice' }>>(entries);
   const authorOf = useMemo(() => rootAuthor(roots, author), [roots, author]);
   const rootMessageIds = useMemo(() => new Set(roots.map((root) => root.message.id)), [roots]);
+  // A task or decision shows once (#1424): its card in the stream, never also a chip under the message it came from.
+  const shown = useMemo(() => shownObjects([
+    ...notices.filter((notice) => notice.kind === 'task.created' || notice.kind === 'task.creation_reverted').map((notice) => ({ kind: 'work' as const, id: notice.workId, sources: notice.sources })),
+    ...objects.filter((notice) => notice.kind === 'decision.proposed').map((notice) => ({ kind: 'decision' as const, id: notice.decisionId, sources: notice.sources })),
+  ]), [notices, objects]);
   const feedRef = useRef<HTMLDivElement>(null);
   const [feedNode, setFeedNode] = useState<HTMLDivElement | null>(null);
   const attachFeed = useCallback((node: HTMLDivElement | null) => { feedRef.current = node; setFeedNode(node); }, []);
+  // The new task's card and the last message stay clear of a toast (#1424, B-8).
+  useClearOfToast(feedRef, feedNode);
   // Bounded native reads (#155), never the project's work collection: the chips of the roots around the
   // viewport (at most 100), and the current title and state of the tasks that visible announcements and
   // discussed-task chips name. This view keeps its own reading position (below); the reads never move it.
@@ -642,7 +649,7 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
     : 'workId' in unread
     ? (entry.kind === 'notice' && entry.notice.workId === unread.workId) || (entry.kind === 'fold' && entry.notices.some((item) => item.notice.workId === unread.workId))
     : !unread.conversationId && entry.kind === 'root' && entry.root.message.id === unread.messageId);
-  return (<>
+  return (<ShownObjects value={shown}>
     <div className="convo-stream">
     {revealed ? null : <Opening name={project.name} />}
     <div className={`project-convo__feed is-stream${revealed ? '' : ' is-opening'}`} ref={attachFeed} aria-busy={revealed ? undefined : true}
@@ -707,13 +714,13 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
     <NewBelow count={newBelow.count} onClick={toEnd} />
     </div>
     <MessageWorkPages read={messageWork} />
-  </>);
+  </ShownObjects>);
 }
 
 /**
- * One announcement that a task was created (UI116-3, F-026 P5): who made it and where it came from in one
- * line, then the task as a row with its current state and owner. It is information, not a message: it has
- * no replies or actions of its own.
+ * One announcement that a task was created (UI116-3, F-026 P5): the task's one card in the conversation (#1424), its row with the
+ * current state and owner, and inside the card one quiet line of who made it, from what and when ("from Jonas’s message" brings that
+ * message into view). It is information, not a message: it has no replies or actions of its own.
  */
 function NoticeItem({ notice, meId, owners, row, authorOf, hasMessage, onOpenTask }: {
   notice: TaskCreationNotice; meId: string; owners: AgentOwners; row: NativeWorkRow | null;
@@ -755,10 +762,22 @@ function NoticeItem({ notice, meId, owners, row, authorOf, hasMessage, onOpenTas
     message.focus({ preventScroll: true });
   };
   const reverted = notice.kind === 'task.creation_reverted' || notice.lifecycle?.state === 'creation_reverted';
+  const task = (
+    <button type="button" className="convo-notice__task" data-native-ref={`work:${notice.workId}`} onClick={() => onOpenTask(notice.workId)} aria-label={`Open task #${notice.workNumber} ${title}`}>
+      <StatusGlyph status={current?.status} size={16} />
+      {/* The immutable announcement number names the task before and after the current row arrives. */}
+      <span className="convo-notice__num ui-task-number">#{notice.workNumber}</span>
+      <span className="convo-notice__title">{title}</span>
+      {owner ? <span className="convo-notice__owner">{owner.kind === 'agent' ? <Kreska size={20} /> : <Avatar name={owner.name} id={owner.id} size="sm" />}<span className="convo-notice__owner-name">{owner.name}</span></span> : null}
+      {/* A word always goes with the glyph, at the card's right edge like a decision's (#763 A8). */}
+      <span className="convo-object__state convo-notice__state">{reverted ? 'Undone' : STATUS_LABEL[current?.status ?? 'open']}</span>
+      <Icon name="chevron-right" size={14} />
+    </button>
+  );
   return (
     <li className={`convo-notice${reverted ? ' convo-notice--undone' : ''}`} id={`notice-${notice.id}`} data-work-id={notice.workId}>
       <AuthorFace kind={creator.kind} id={creator.id} name={name} mine={mine} />
-      <div className="convo-notice__body">
+      <div className="convo-notice__body convo-notice__card">
         <p className="convo-notice__meta">
           {creator.kind === 'agent' ? <strong><AgentIdentity name={name} owner={agentAuthorOwner(creator, owners)} icon={false} /></strong> : <strong>{name}{mine ? ' · you' : ''}</strong>}
           <span className="convo-notice__what" data-source={source.kind}>{phrase.lead}{phrase.link ? <> {source.kind === 'message' && hasMessage(source.messageId)
@@ -767,16 +786,7 @@ function NoticeItem({ notice, meId, owners, row, authorOf, hasMessage, onOpenTas
             ? <span className="convo-notice__kind">Task creation undone</span> : null}
           <time dateTime={notice.createdAt} title={when(notice.createdAt)}>{clock(notice.createdAt)}</time>
         </p>
-        <button type="button" className="convo-notice__task" data-native-ref={`work:${notice.workId}`} onClick={() => onOpenTask(notice.workId)} aria-label={`Open task #${notice.workNumber} ${title}`}>
-          <StatusGlyph status={current?.status} size={16} />
-          {/* The immutable announcement number names the task before and after the current row arrives. */}
-          <span className="convo-notice__num ui-task-number">#{notice.workNumber}</span>
-          <span className="convo-notice__title">{title}</span>
-          {owner ? <span className="convo-notice__owner">{owner.kind === 'agent' ? <Kreska size={20} /> : <Avatar name={owner.name} id={owner.id} size="sm" />}<span className="convo-notice__owner-name">{owner.name}</span></span> : null}
-          {/* A word always goes with the glyph, at the card's right edge like a decision's (#763 A8). */}
-          <span className="convo-object__state convo-notice__state">{reverted ? 'Undone' : STATUS_LABEL[current?.status ?? 'open']}</span>
-          <Icon name="chevron-right" size={14} />
-        </button>
+        {task}
       </div>
     </li>
   );

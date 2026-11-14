@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { createContext, useCallback, useContext } from 'react';
 import { useNavigate } from 'react-router';
 import { messagePreview, type ConversationMessage, type NativeWorkRow, type Project } from '@flux/contracts';
 import { Icon } from '../ui';
@@ -36,6 +36,20 @@ function ObjectChip({ icon, number, state, title, need, onOpen, label, objectKin
   );
 }
 
+/**
+ * The tasks and decisions this conversation already shows as their own card, by the message they came from (#1424): a task or a
+ * decision shows once, so the message they came from carries no chip of them. Keys are `shownKey(messageId, kind, id)`.
+ */
+const ShownHere = createContext<ReadonlySet<string> | null>(null);
+export const ShownObjects = ShownHere.Provider;
+export const shownKey = (messageId: string, kind: 'work' | 'decision', id: string) => `${messageId}|${kind}:${id}`;
+/** The keys of the cards a conversation draws, from each card's object and its message sources. */
+export function shownObjects(cards: Iterable<{ kind: 'work' | 'decision'; id: string; sources: readonly { type: string; id: string }[] }>): ReadonlySet<string> {
+  const keys = new Set<string>();
+  for (const card of cards) for (const source of card.sources) if (source.type === 'message') keys.add(shownKey(source.id, card.kind, card.id));
+  return keys;
+}
+
 /** Objects made from this message. The message itself is unchanged; these link back to it. */
 export function MessageObjects({ message, projectId, preview, thread = null, threadRow = null }: {
   message: ConversationMessage; projectId: string; preview: MessageWorkPreview | null;
@@ -45,13 +59,17 @@ export function MessageObjects({ message, projectId, preview, thread = null, thr
   const { openDetails } = useShellActions();
   const { me } = useShellData();
   const navigate = useNavigate();
+  const shown = useContext(ShownHere);
   const counts = preview?.counts ?? { work: 0, decisions: 0 };
-  const items = preview?.items ?? [];
+  const read = preview?.items ?? [];
   const total = counts.work + counts.decisions;
   const thoughts = preview?.thoughts ?? [];
-  // The discussed task, unless the task was also made from this message (then its own chip shows it).
-  const discussed = thread && !items.some((item) => item.kind === 'work' && item.id === thread.workId) ? thread : null;
-  if (!discussed && !total && !thoughts.length) return null;
+  // The discussed task, unless the task was also made from this message (then its own chip, or its card, shows it).
+  const discussed = thread && !read.some((item) => item.kind === 'work' && item.id === thread.workId) ? thread : null;
+  // What the conversation shows as its own card is not repeated here (#1424).
+  const items = shown ? read.filter((item) => !shown.has(shownKey(message.id, item.kind, item.id))) : read;
+  const more = read.length < total;
+  if (!discussed && !items.length && !more && !thoughts.length) return null;
   return (
     <div className="ws-attach">
       {discussed ? <DiscussedTask task={discussed} row={threadRow} /> : null}
@@ -59,7 +77,7 @@ export function MessageObjects({ message, projectId, preview, thread = null, thr
       {/* CW-2: the thought made from this message, as its decisions are; it opens the map with the thought selected. */}
       {thoughts.map((thought) => <ObjectChip key={`thought:${thought.thoughtId}`} objectKind="thought" objectId={thought.thoughtId} icon="map" title={thought.text} state={[{ text: `On the map · ${thought.sketchTitle}` }]} label="On the map"
         onOpen={() => navigate(`/projects/${projectId}/map/${thought.sketchId}#thought-${thought.thoughtId}`)} />)}
-      {items.length < total ? <button type="button" className="ws-attach__more" onClick={() => openDetails({ kind: 'overview', messageId: message.id, selection: { accountId: me.user.id, projectId, message } })}>{[counts.work ? `${counts.work} ${counts.work === 1 ? 'task' : 'tasks'}` : null, counts.decisions ? `${counts.decisions} ${counts.decisions === 1 ? 'decision' : 'decisions'}` : null].filter(Boolean).join(' · ')} · view linked objects</button> : null}
+      {more ? <button type="button" className="ws-attach__more" onClick={() => openDetails({ kind: 'overview', messageId: message.id, selection: { accountId: me.user.id, projectId, message } })}>{[counts.work ? `${counts.work} ${counts.work === 1 ? 'task' : 'tasks'}` : null, counts.decisions ? `${counts.decisions} ${counts.decisions === 1 ? 'decision' : 'decisions'}` : null].filter(Boolean).join(' · ')} · view linked objects</button> : null}
     </div>
   );
 }

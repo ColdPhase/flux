@@ -12,8 +12,9 @@
   .convo-object { padding-left: 42px; margin: 18px 0; }
   .convo-object + :is(.convo-object, .convo-notice), .convo-notice + .convo-object { margin-top: 12px; }
   .convo-object .convo-notice__meta, .convo-object .convo-notice__task { font-size: var(--fs-base); }
+  .convo-object .convo-notice__card > .convo-notice__meta, .convo-object .convo-notice__card > .convo-notice__meta strong { font-size: var(--fs-sm); }
 }
-/* An acceptance right under its proposal (#763 H11-9) is one quiet line beneath that card, never a second card. */
+/* An acceptance is one line, never a second card (#1424); right under its proposal (#763 H11-9) it sits close beneath that card. */
 .convo-object + .convo-object.is-follow { margin-top: 6px; }
 /* In a thread the line sits among the replies at the replies' own column. */
 .thread__list > .convo-object { margin: 14px 0; }

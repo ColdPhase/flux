@@ -221,9 +221,9 @@ class TaskAnnouncements(unittest.TestCase):
         made.get_by_role("button", name=opens_task(FROM_MESSAGE)).click()
         details = page.locator("#details")
         expect(details.get_by_role("heading", name=FROM_MESSAGE)).to_be_visible()
-        # The task made from the question also shows under the question itself, as before.
+        # The task shows once (#1424): its card, not also a chip under the question it was made from.
         question = page.locator(f"#message-{self.ids['question']}")
-        expect(question.get_by_role("button", name=re.compile(r"^Task #\d+: " + re.escape(FROM_MESSAGE) + "$"))).to_be_visible()
+        expect(question.locator(".ws-chip")).to_have_count(0)
 
     def test_03_the_first_contribution_is_the_tasks_root_in_its_discussion(self) -> None:
         page = self.page("ada")

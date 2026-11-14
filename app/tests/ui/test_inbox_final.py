@@ -644,11 +644,14 @@ class InboxFinal(unittest.TestCase):
         page = self.page()
         page.goto("/inbox")
         self.item(page, "Label every bed").get_by_role("button", name=re.compile("^Accept")).click()
-        # Going to Home inside the app sends it at once, with Undo still on screen.
+        # Going to Home inside the app sends it at once, and the Undo toast stays behind with the Inbox (#1424): Z on Home undoes nothing.
         page.get_by_role("navigation", name="Places").get_by_role("link", name="Home").click()
         self.wait_for(lambda: self.contexts["ada"].request.get(f"/api/v1/decisions/{proposed['id']}").json()["status"] == "accepted", "the accept sent on leaving")
-        page.get_by_role("button", name="Undo").click()
-        expect(page.get_by_role("status").filter(has_text="already accepted")).to_be_visible()
+        expect(page.locator(".ui-toast").filter(has_text="Accepted")).to_have_count(0)
+        page.locator("body").press("z")
+        page.wait_for_timeout(1000)
+        expect(page.locator(".ui-toast")).to_have_count(0)
+        self.assertEqual(self.contexts["ada"].request.get(f"/api/v1/decisions/{proposed['id']}").json()["status"], "accepted")
 
     def test_07a_another_persons_item_shows_during_an_accept_window(self) -> None:
         """An accept is not pending: while its Undo window is open, a new item from someone else shows at once (#519).
@@ -673,7 +676,7 @@ class InboxFinal(unittest.TestCase):
         expect(card).to_have_count(0)
         self.assertEqual(self.contexts["ada"].request.get(f"/api/v1/decisions/{proposed['id']}").json()["status"], "proposed", "the incoming item appears before Accept is sent")
         page.mouse.move(0, 0)
-        page.clock.run_for(6001)
+        page.clock.run_for(10_001)  # an Undo toast's 10 s (#1424): the accept is sent when it leaves
         self.wait_for(lambda: self.contexts["ada"].request.get(f"/api/v1/decisions/{proposed['id']}").json()["status"] == "accepted", "the accept to be sent")
         expect(toast).to_have_count(0)
 

@@ -17,7 +17,7 @@ import { NotNowButton, WaitingLine } from '../notifications/NeedsYouCard';
 import '../notifications/needs-you.css';
 import { useDiscussDecision } from './discuss';
 import { acceptDecision, resolveWaiting, undoTaskCreation, updateWork } from './api';
-import { STATUS_LABEL, decisionLine, isFinished, linked, shortDate, statusPhrase, taskNumber } from './format';
+import { STATUS_LABEL, decisionState, isFinished, linked, shortDate, statusPhrase, taskNumber } from './format';
 import { docsLinking } from '../docs/AddToDoc';
 import { useAgentOwners } from '../agents/owners';
 import { TaskPeople } from '../agents/TaskPeople';
@@ -349,7 +349,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
           : { status: before.status };
       // Closing says it in the words of the wink (#N done); the other states keep their status label, in the board's words.
       // Z takes it back from the panel too, as on the board (#763 C2).
-      toast({ message: stateWords(item, next), timeout: 8000, mascot, action: { label: 'Undo', key: 'Z', onClick: () => { void change(restore, latest.current); } } });
+      toast({ message: stateWords(item, next), mascot, action: { label: 'Undo', key: 'Z', onClick: () => { void change(restore, latest.current); } } });
     }
   }
   useStateKeys(writable, (status) => void setState(status));
@@ -711,7 +711,7 @@ function DecisionPanel({ decision, context, detail, relations, reload, revision,
   return (
     <div className="details wd" data-detail-kind="decision" data-detail-id={decision.id}>
       <div className="wd-decision-identity">
-        <p className={`details__eyebrow wd-eyebrow${decision.status === 'proposed' ? ' wd-need' : ''}`}><Icon name="flag" size={13} /><Morph value={decision.status}>{earlier ? decisionLine({ ...decision, supersedes: null }) : decisionLine(decision)}</Morph></p>
+        <p className={`details__eyebrow wd-eyebrow${decision.status === 'proposed' ? ' wd-need' : ''}`}><Icon name="flag" size={13} /><Morph value={decision.status}>{earlier ? decisionState({ ...decision, supersedes: null }) : decisionState(decision)}</Morph></p>
         <h3 className={`details__title${decision.status === 'superseded' ? ' wd-was' : ''}`}>{decision.title}</h3>
       </div>
       {decision.rationale ? <p className="details__lead">{decision.rationale}</p> : null}
