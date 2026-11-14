@@ -231,6 +231,19 @@ describe('a refreshed list cannot lower a known price without bound (#1270)', ()
     assert.deepEqual(guardPriceList(offered, null, null).held.map((row) => row.model), [freeId, 'gemini-9-poison', 'gemini-9-half']);
   });
 
+  test('OpenRouter\'s own :free ids are taken at 0 from its list, the first read included; no other model, and no other provider\'s id', () => {
+    const offered = list({ openrouter: { 'vendor/model:free': price(0, 0), 'vendor/model': price(0, 0), 'vendor/free-model': price(0, 0), 'vendor/model:free:extended': price(0, 0), 'vendor/known': price(0, 0) } });
+    const stored = list({ openrouter: { 'vendor/known:free': price(0, 0), 'vendor/known': price(5_000_000, 25_000_000) } }, '2026-11-13');
+    const first = guardPriceList(offered, null, null);
+    assert.deepEqual(first.list.prices.openrouter, { 'vendor/model:free': price(0, 0) });
+    assert.deepEqual(first.held.map((row) => row.model), ['vendor/model', 'vendor/free-model', 'vendor/model:free:extended', 'vendor/known']);
+    const later = guardPriceList(offered, stored, null);
+    assert.deepEqual(later.list.prices.openrouter?.['vendor/known'], price(5_000_000, 25_000_000), 'a paid model keeps its price');
+    assert.deepEqual(later.list.prices.openrouter?.['vendor/model:free'], price(0, 0));
+    // Only OpenRouter names its own free models: the same id in LiteLLM's list is a model no one knows.
+    assert.deepEqual(guardPriceList(list({ openai: { 'gpt-x:free': price(0, 0) } }), null, null).held.map((row) => row.model), ['gpt-x:free']);
+  });
+
   test('a model the stored list lacks falls back to the shipped price', () => {
     const shipped = shippedPriceList();
     const [id, rate] = Object.entries(shipped.prices.anthropic ?? {}).find(([, row]) => row.inputMicrosPerMTok > 0)!;
@@ -275,11 +288,13 @@ describe('a refreshed list cannot lower a known price without bound (#1270)', ()
 
       const model = (id: string, input: number, output: number) => ({ id, family: 'vendor', price: price(input, output) });
       const read = (...models: ReturnType<typeof model>[]) => ({ provider: 'openrouter' as const, status: 'listed' as const, checkedOn: '2099-01-02', models });
-      const first = await storeGuardedPriceList(store, 'openrouter', openRouterPriceList(read(model('vendor/dear', 5_000_000, 25_000_000), model('vendor/zero', 0, 0)))!);
-      assert.deepEqual(first.list.prices.openrouter, { 'vendor/dear': price(5_000_000, 25_000_000) }, 'a free model OpenRouter lists first is not priced at 0');
+      const first = await storeGuardedPriceList(store, 'openrouter', openRouterPriceList(read(model('vendor/dear', 5_000_000, 25_000_000), model('vendor/zero', 0, 0), model('vendor/first:free', 0, 0)))!);
+      assert.deepEqual(first.list.prices.openrouter, { 'vendor/dear': price(5_000_000, 25_000_000), 'vendor/first:free': price(0, 0) },
+        'a model OpenRouter lists first at 0 is not priced at 0, unless its id ends in :free');
+      assert.deepEqual(first.held.map((row) => row.model), ['vendor/zero']);
       const next = await storeGuardedPriceList(store, 'openrouter', openRouterPriceList({ ...read(model('vendor/dear', 0, 0), model('vendor/free:free', 0, 0), model('vendor/new', 1, 1)), checkedOn: '2099-01-03' })!);
-      assert.deepEqual(next.list.prices.openrouter, { 'vendor/dear': price(5_000_000, 25_000_000), 'vendor/new': price(1, 1) });
-      assert.deepEqual(next.held.map((row) => row.model), ['vendor/dear', 'vendor/free:free']);
+      assert.deepEqual(next.list.prices.openrouter, { 'vendor/dear': price(5_000_000, 25_000_000), 'vendor/free:free': price(0, 0), 'vendor/new': price(1, 1) });
+      assert.deepEqual(next.held.map((row) => row.model), ['vendor/dear']);
       assert.deepEqual((await store.read('openrouter'))?.prices.openrouter, next.list.prices.openrouter);
     });
   });

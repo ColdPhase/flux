@@ -97,9 +97,11 @@ A person connects AI once, in Settings › AI. Their connections power all of th
     that model (input or output) Flux keeps the stored price and logs a warning naming the model and both
     prices (the shipped list's price when the stored list lacks the model). A model Flux does not know is never
     first priced at 0: it is left out, logged, and its owner is asked for the price; it is free only when the
-    stored or the shipped list already had it at 0 (Gemini's free models). Increases and every smaller decrease
-    apply as before. It applies to LiteLLM's list and to OpenRouter's, whether the worker or the API reads it.
-    OpenRouter's free models are therefore asked for once: the owner enters 0.
+    stored or the shipped list already had it at 0 (Gemini's free models). One exception (coordinator decision
+    on #1499): a model id ending in `:free` in OpenRouter's own list takes its listed price, 0 included, on the
+    first read too, because OpenRouter bills those keys and names the model free. Increases and every smaller
+    decrease apply as before. It applies to LiteLLM's list and to OpenRouter's, whether the worker or the API
+    reads it.
   - **Shipped with the release.** Each release carries LiteLLM's list as fetched on its build day
     (`scripts/update_price_list.py`, run when the release candidate is prepared; the image build
     itself stays offline), and the migrator stores it when the database has none or an older one,
