@@ -18,7 +18,7 @@ from playwright.sync_api import Browser, Page, expect, sync_playwright
 
 from app_select import choose
 from app_select import labels as app_labels
-from create_window import kind_tab, new_space_window, open_create, window
+from create_window import create_other, kind_tab, new_space_window, open_create, window
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
 from test_settings import assert_touch_target
 
@@ -377,13 +377,21 @@ class FirstRunSettingsPeople(unittest.TestCase):
         newcomer = f"piotr.new+{STAMP}@example.test"
         invite.get_by_label("Email (optional)").fill(newcomer)
         invite.get_by_role("button", name="Create invite link").click()
-        field = invite.get_by_role("group", name="New invite link").get_by_role("textbox")
+        field = page.get_by_role("group", name="New invite link").get_by_role("textbox")
         expect(field).to_have_value(re.compile(f"^{re.escape(ORIGIN)}/join#[A-Za-z0-9_-]{{54}}$"))
-        expect(invite.get_by_role("list", name=re.compile("^Waiting to be used"))).to_contain_text(newcomer)
+        waiting = page.get_by_role("list", name=re.compile("^Waiting to be used"))
+        expect(waiting).to_contain_text(newcomer)
+        # #1424 (persona B-5): the links waiting to be used stay listed with Invite closed, and after a reload.
+        page.get_by_role("button", name="Invite", exact=True).click()
+        expect(page.get_by_role("region", name="Invite people")).to_have_count(0)
+        expect(waiting).to_contain_text(newcomer)
+        page.goto("/settings/company")
+        expect(page.get_by_role("list", name=re.compile("^Waiting to be used"))).to_contain_text(newcomer)
+        link = next(item["link"] for item in self.api(page, "GET", f"/api/v1/workspaces/{self.ids['maria:space']}/invites", status=200) if item["email"] == newcomer)
         shot(page, f"874-company-invite-link-1440-{UI_BROWSER}")
         # The link opens the join page; Piotr creates his account there and joins as a member.
         stranger = self.page()
-        stranger.goto(field.input_value())
+        stranger.goto(link)
         # #1438: the invite page is the create-account form; joining lands in the space everyone reads, or Home.
         stranger.get_by_label("Name").fill("Piotr Nowy")
         # #1471: the link is for his address, so the form has it filled in and locked.
@@ -432,6 +440,62 @@ class FirstRunSettingsPeople(unittest.TestCase):
         expect(page.get_by_role("list", name=re.compile("^People in "))).to_contain_text("Wera Removed")
         expect(page.get_by_role("list", name="People who were removed")).to_have_count(0)
         shot(page, f"874-company-every-space-1440-{UI_BROWSER}")
+
+    def test_11d_new_space_invites_someone_new_who_lands_in_it(self) -> None:
+        """Founder decision 2026-11-14 (#1424, persona B-3): New space offers Someone new? as Space settings does, the same component. The link is
+        made, copied and shown in place at once; Create space ties it to the new space, and the person who joins with it lands there."""
+        for viewport in (DESKTOP, PHONE):
+            phone = viewport == PHONE
+            with self.subTest(width=viewport["width"]):
+                page = self.page("maria", viewport=viewport)
+                page.goto("/")
+                if phone:
+                    page.get_by_role("button", name="Create", exact=True).tap()
+                else:
+                    expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+                    page.keyboard.press("c")
+                create_other(page, "Space")
+                win = new_space_window(page)
+                name = f"Herb garden {viewport['width']}"
+                win.get_by_label("Space name").fill(name)
+                win.get_by_role("button", name="Add people").click()
+                new = win.get_by_role("form", name="Invite someone new")
+                expect(win.get_by_text(re.compile(rf"^They join .+ and {name} with the link\.$"))).to_be_visible()
+                email = f"herbs{viewport['width']}.new+{STAMP}@example.test"
+                new.get_by_label("Someone new?").fill(email)
+                # Enter makes the link; it never submits the window around it.
+                new.get_by_label("Someone new?").press("Enter")
+                field = win.get_by_role("group", name="New invite link").get_by_role("textbox")
+                expect(field).to_have_value(re.compile(f"^{re.escape(ORIGIN)}/join#[A-Za-z0-9_-]{{54}}$"))
+                link = field.input_value()
+                # One sentence about the link (#1424, persona B-4), and the window is still open on the space not yet made.
+                expect(win.get_by_role("status").filter(has_text="Invite link created")).to_have_text(
+                    re.compile(r"^Invite link created( and copied)?\. .*paste it into your message to them"))
+                expect(win.get_by_text("Flux doesn’t send it")).to_have_count(0)
+                expect(win.get_by_role("button", name="Create space")).to_be_visible()
+                projects = self.api(page, "GET", f"/api/v1/workspaces/{self.ids['maria:space']}/projects", status=200)["items"]
+                self.assertNotIn(name, [project["name"] for project in projects])
+                if not phone:
+                    self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), viewport["width"])
+                shot(page, f"1424-new-space-someone-new-{viewport['width']}-{UI_BROWSER}")
+                win.get_by_role("button", name="Create space").click()
+                expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}$"))
+                pid = re.search(r"/projects/([0-9a-f-]{36})", page.url).group(1)
+                invites = self.api(page, "GET", f"/api/v1/workspaces/{self.ids['maria:space']}/invites", status=200)
+                made = next(item for item in invites if item["email"] == email)
+                self.assertEqual(made["space"], {"id": pid, "name": name})
+                # She creates her account from the link and lands in the new space with the composer ready (decision 2); a reload stays there.
+                newcomer = self.page(viewport=viewport)
+                newcomer.goto(link)
+                newcomer.get_by_label("Name").fill("Hanna Zielna")
+                expect(newcomer.get_by_label("Email")).to_have_value(email)
+                newcomer.get_by_label("Password").fill(PASSWORD)
+                newcomer.get_by_role("button", name="Create account and join").click()
+                expect(newcomer).to_have_url(f"{ORIGIN}/projects/{pid}")
+                expect(newcomer.locator("#project-composer")).to_be_focused()
+                newcomer.reload()
+                expect(newcomer).to_have_url(f"{ORIGIN}/projects/{pid}")
+                expect(newcomer.get_by_role("heading", level=1, name=name)).to_be_visible()
 
     def test_11b_the_sign_in_page_names_the_company(self) -> None:
         """The guide: the company's name is on the sign-in page, and the name setup gave it says nothing."""

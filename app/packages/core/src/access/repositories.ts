@@ -75,6 +75,8 @@ export interface InviteRepository {
   memberRole(workspaceId: string, userId: string): Promise<WorkspaceRole | null>;
   revoke(inviteId: string, revokedBy: string, at: Date): Promise<void>;
   markAccepted(inviteId: string, acceptedBy: string, at: Date): Promise<void>;
+  /** Ties a pending link to the space made with it in the New space window (#1424). */
+  setSpace(inviteId: string, spaceId: string): Promise<void>;
   /** The workspace's oldest space everyone in it reads (the company's Everyone), or null: where a new member lands (#1438). */
   everyoneSpace(workspaceId: string): Promise<string | null>;
 }

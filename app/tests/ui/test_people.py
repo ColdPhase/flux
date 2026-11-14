@@ -232,8 +232,9 @@ class PeopleJourney(unittest.TestCase):
         form = self.add_form(page)
         # #1438: an address nobody has an account with gets a link locked to it, at once.
         self.add(page, NOBODY)
-        expect(form.get_by_role("group", name="New invite link")).to_be_visible()
-        expect(form.get_by_role("list", name=re.compile("^Waiting to be used"))).to_contain_text(NOBODY)
+        # The new link shows once, in its row of the links waiting to be used, listed under the people (#1424).
+        expect(page.get_by_role("group", name="New invite link")).to_be_visible()
+        expect(page.get_by_role("list", name=re.compile("^Waiting to be used"))).to_contain_text(NOBODY)
         shot(page, "people-desktop-1440-not-found")
 
         self.add(page, PEOPLE["kai"][1].upper())
@@ -414,12 +415,24 @@ class PeopleJourney(unittest.TestCase):
     def test_09_remove_someone_and_leave(self) -> None:
         page = self.page("ada")
         self.open_people(page, "Riverside Makers")
+        # Founder decision 2026-11-14 (#1424): Remove is on the person's row, as in Space settings, and asks in place (Remove / Keep);
+        # the role button opens only the role.
+        row = page.get_by_role("list", name="People in Riverside Makers").get_by_role("listitem").filter(has_text="Mia Novak")
         page.get_by_role("button", name="Change Mia Novak").click()
-        editor = page.get_by_role("group", name="Change Mia Novak")
-        editor.get_by_role("button", name="Remove from Riverside Makers").click()
-        confirm = editor.get_by_role("group", name="Remove Mia Novak")
-        expect(confirm).to_contain_text("Mia loses access to Riverside Makers at once: its spaces, and anything given to them there.")
-        confirm.get_by_role("button", name="Remove Mia").click()
+        expect(page.get_by_role("group", name="Change Mia Novak").get_by_role("button", name=re.compile("^Remove"))).to_have_count(0)
+        page.keyboard.press("Escape")
+        remove = row.get_by_role("button", name="Remove Mia Novak from Riverside Makers")
+        expect(remove).to_be_visible()
+        remove.click()
+        confirm = row.get_by_role("group", name="Remove Mia Novak")
+        expect(row).to_contain_text("Mia loses access to Riverside Makers at once: its spaces, and anything given to them there.")
+        expect(confirm.get_by_role("button", name="Keep")).to_be_focused()
+        page.keyboard.press("Escape")
+        expect(confirm).to_have_count(0)
+        expect(remove).to_be_focused()
+        remove.click()
+        shot(page, "people-desktop-1440-remove-on-the-row")
+        confirm.get_by_role("button", name="Remove", exact=True).click()
         expect(page.locator(".people__done")).to_have_text("Mia Novak is no longer in Riverside Makers.")
         expect(page.get_by_role("list", name="People in Riverside Makers").get_by_text("Mia Novak")).to_have_count(0)
         self.assertNotIn(self.ids["mia"], self.roles(page, self.riverside))
@@ -449,6 +462,11 @@ class PeopleJourney(unittest.TestCase):
             change = sheet.get_by_role("button", name="Change Kai Tanaka")
             size = box(page, change)
             self.assertGreaterEqual(size["height"], 44, "touch target")
+            # #1424: Reset link and Remove sit on the row on the phone too, as 44 px targets, with nothing running off the screen.
+            for name in ("Reset link for Kai Tanaka", "Remove Kai Tanaka from Riverside Makers"):
+                target = sheet.get_by_role("button", name=name)
+                expect(target).to_be_visible()
+                self.assertGreaterEqual(box(page, target)["height"], 44, name)
             self.no_horizontal_scroll(page, PHONE["width"])
             shot(page, f"people-phone-390-{theme}")
 

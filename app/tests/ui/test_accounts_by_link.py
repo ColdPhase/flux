@@ -153,7 +153,8 @@ class AccountsByLink(unittest.TestCase):
     def test_05_the_owner_makes_a_reset_link_next_to_the_person_and_it_works_once(self) -> None:
         owner = self.page(owner=True)
         owner.goto("/settings/company")
-        owner.get_by_role("button", name=f"Change {NEWCOMER[0]}, Member").click()
+        # Founder decision 2026-11-14 (#1424): Reset link is on the person's row, not inside the role button.
+        owner.get_by_role("button", name=f"Reset link for {NEWCOMER[0]}").click()
         group = owner.get_by_role("group", name="Password")
         expect(group.get_by_text("Make a one-time link that lets Rosa choose a new password.")).to_be_visible()
         group.get_by_role("button", name="Make reset link").click()

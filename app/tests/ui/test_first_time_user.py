@@ -173,7 +173,11 @@ class FirstTimeUser(unittest.TestCase):
         new.get_by_role("button", name="Invite").click(); clicks += 1
         link = add.get_by_role("group", name="New invite link").get_by_role("textbox")
         expect(link).to_have_value(re.compile(r"/join#[A-Za-z0-9_-]{54}$"))
-        expect(add.get_by_role("status")).to_contain_text("Invite link created")
+        # #1424 (persona B-4): one sentence says what happened and what to do; no hint repeats it, and no dead Add or Cancel stays under it.
+        expect(add.get_by_role("status")).to_have_text(re.compile(r"^Invite link created( and copied)?\. .*paste it into your message to them"))
+        expect(add.get_by_text("Flux doesn’t send it")).to_have_count(0)
+        expect(add.get_by_role("button", name=re.compile("^(Add|Cancel)$"))).to_have_count(0)
+        expect(add.get_by_role("button", name="Close")).to_be_visible()
         listed = self.api(anna, "GET", f"/api/v1/workspaces/{self.ids['workspace']}/invites", status=200)
         made = next(item for item in listed if item["email"] == basia_email)
         self.assertEqual((made["role"], made["space"]["id"]), ("member", self.ids["project"]))
@@ -187,7 +191,13 @@ class FirstTimeUser(unittest.TestCase):
         expect(basia.get_by_label("Email")).not_to_be_editable()
         basia.get_by_label("Password").fill(PASSWORD)
         basia.get_by_role("button", name="Create account and join").click()
-        expect(basia).not_to_have_url(re.compile(r"/join"))
+        # Founder decision 2026-11-14 (#1424): a link made from a space lands in that space with the composer ready, not in Everyone.
+        expect(basia).to_have_url(f"{ORIGIN}/projects/{self.ids['project']}")
+        expect(basia.locator("#project-composer")).to_be_focused()
+        # The landing replaced /join in the tab's history (persona A-2): a reload opens the space again, never the invite page.
+        basia.reload()
+        expect(basia).to_have_url(f"{ORIGIN}/projects/{self.ids['project']}")
+        expect(basia.get_by_text("Open the invite link again in this tab")).to_have_count(0)
         expect(basia.get_by_role("heading", level=1, name="You joined Volunteer space")).to_have_count(0)
         # She is in the space at once, and the inviter hears it, naming the space.
         self.assertEqual(self.api(basia, "GET", f"/api/v1/projects/{self.ids['project']}", status=200)["access"], "contributor")

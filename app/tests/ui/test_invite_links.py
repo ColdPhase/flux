@@ -126,9 +126,10 @@ class InviteLinksJourney(unittest.TestCase):
             choose(region.get_by_label("Joins as"), label=role)
         region.get_by_label("Email (optional)").fill(email)
         region.get_by_role("button", name="Create invite link").click()
-        link = region.get_by_role("group", name="New invite link").get_by_role("textbox")
+        # The new link shows once, in its row of the links waiting to be used, under the people (#1424).
+        link = page.get_by_role("group", name="New invite link").get_by_role("textbox")
         expect(link).to_have_value(re.compile(f"^{re.escape(ORIGIN)}/join#[A-Za-z0-9_-]{{54}}$"))
-        expect(region.get_by_role("status")).to_contain_text("Invite link created")
+        expect(page.get_by_role("status").filter(has_text="Invite link created")).to_be_visible()
         return link.input_value()
 
     # ---------------------------------------------------------------- the journey
@@ -144,14 +145,23 @@ class InviteLinksJourney(unittest.TestCase):
         # Ada is an owner: Admin is offered; never Owner.
         self.assertEqual(app_labels(region.get_by_label("Joins as")), ["Member", "Guest", "Admin"])
         link = self.make_link(page, "Member")
-        pending = region.get_by_role("list", name=re.compile("^Waiting to be used"))
+        pending = page.get_by_role("list", name=re.compile("^Waiting to be used"))
         expect(pending.get_by_role("listitem")).to_have_count(1)
         expect(pending.get_by_role("listitem").first).to_contain_text("Anyone with the link")
         expect(pending.get_by_role("listitem").first).to_contain_text("Member")
         # #1424: the new link is shown once, in its own row, whose Copy is the only one: not a card beside a row that says the same.
         expect(pending.get_by_role("listitem").first.get_by_role("group", name="New invite link").get_by_role("textbox")).to_have_value(link)
-        expect(region.get_by_role("button", name=re.compile("^Copy"))).to_have_count(1)
-        expect(region.get_by_role("group", name="New invite link")).to_have_count(1)
+        expect(page.get_by_role("button", name=re.compile("^Copy"))).to_have_count(1)
+        expect(page.get_by_role("group", name="New invite link")).to_have_count(1)
+        # #1424 (persona B-4): one sentence about the new link, said once; its field has no second hint.
+        expect(page.get_by_role("status").filter(has_text="Invite link created")).to_have_text(
+            re.compile(r"^Invite link created( and copied)?\. .*paste it into your message to them"))
+        expect(page.get_by_text("Flux doesn’t send it")).to_have_count(0)
+        # #1424 (persona B-5): the links waiting to be used are listed under the people with Invite closed too, counted apart from them.
+        page.get_by_role("button", name="Invite", exact=True).click()
+        expect(region).to_have_count(0)
+        expect(pending.get_by_role("listitem")).to_have_count(1)
+        expect(page.get_by_role("heading", name=re.compile(r"^Waiting to be used · 1$"))).to_be_visible()
         listed = self.pending(self.riverside)
         self.assertEqual([(item["role"], item["email"], item["link"]) for item in listed], [("member", None, link)])
         type(self).member_link = link
@@ -183,6 +193,7 @@ class InviteLinksJourney(unittest.TestCase):
             form.get_by_role("button", name="Create account and join").click()
         # #763 FT-3, #1438: an account made from the link joins as it is made, and lands in Everyone with the composer ready: no "You joined"
         # step, no detour through Home.
+        # Founder decision 2026-11-14 (#1424): a link made for the company (Settings › Company) lands in Everyone.
         expect(page).to_have_url(f"{ORIGIN}/projects/{self.everyone}")
         expect(page.locator("#project-composer")).to_be_focused()
         expect(page.get_by_role("heading", level=1, name="You joined Riverside Makers")).to_have_count(0)
@@ -195,6 +206,12 @@ class InviteLinksJourney(unittest.TestCase):
         notices = context.request.get("/api/v1/inbox").json()["items"]
         self.assertIn(f"{NIA[0]} joined Riverside Makers", [item["title"] for item in notices])
         self.assertEqual(self.pending(self.riverside), [], "the used link is no longer listed")
+        # Persona A-2 (#1424): the landing replaced /join, so a reload opens the space; even a tab that still reaches /join opens Flux.
+        page.reload()
+        expect(page).to_have_url(f"{ORIGIN}/projects/{self.everyone}")
+        page.goto("/join")
+        expect(page).not_to_have_url(re.compile(r"/join"))
+        expect(page.get_by_text("Open the invite link again in this tab")).to_have_count(0)
         # The link worked once: opening it again from this account just opens Flux.
         page.goto(self.member_link)
         expect(page).not_to_have_url(re.compile(r"/join"))
@@ -256,7 +273,7 @@ class InviteLinksJourney(unittest.TestCase):
         owner.get_by_role("button", name="Revoke link for Anyone with the link").click()
         # #763 FT-13: a revoked link can't come back, so Revoke asks once, in place.
         owner.get_by_role("group", name="Revoke link for Anyone with the link").get_by_role("button", name="Revoke link").click()
-        expect(owner.get_by_role("region", name="Invite people").get_by_role("status")).to_have_text("Invite link revoked. It no longer works.")
+        expect(owner.get_by_role("status").filter(has_text="Invite link revoked")).to_have_text("Invite link revoked. It no longer works.")
         self.assertEqual(self.pending(self.riverside), [])
         shot(owner, "invite-people-phone-390")
         visitor = self.page(None, phone=True)

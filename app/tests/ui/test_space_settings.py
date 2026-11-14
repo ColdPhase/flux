@@ -233,7 +233,12 @@ class SpaceSettings(unittest.TestCase):
         expect(add.get_by_label("Someone new?")).to_be_visible()
         expect(add.get_by_role("button", name="Invite", exact=True)).to_be_visible()
         expect(add.get_by_role("group", name="New invite link")).to_have_count(0)
+        # No dead control (#1424, persona B-4): with nobody ticked the panel has one Close, and Add appears with the first tick.
+        expect(add.get_by_role("button", name=re.compile("^Add"))).to_have_count(0)
+        expect(add.get_by_role("button", name="Cancel")).to_have_count(0)
+        expect(add.get_by_role("button", name="Close")).to_be_visible()
         add.get_by_role("checkbox", name=re.compile("Lee Moreno")).check()
+        expect(add.get_by_role("button", name="Close")).to_have_count(0)
         add.get_by_role("button", name="Add 1 person").click()
         expect(page.locator(".spset__status")).to_have_text("Lee is now in Kiln firmware.")
         choose(card.get_by_label("Role of Lee Moreno"), label="Admin")
