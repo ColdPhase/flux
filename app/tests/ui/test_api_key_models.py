@@ -157,6 +157,11 @@ class ApiKeyModels(unittest.TestCase):
         expect(page.get_by_role("combobox", name="Model")).to_have_count(0)
         connect = page.get_by_role("button", name="Connect", exact=True)
         expect(connect).to_be_disabled()
+        # One plain line under the key; the provider's key shape only once a provider is chosen (design §7, #1424).
+        plain = "Paste the key from your provider’s website. Flux uses it only for your agents."
+        help_line = page.locator("#background-key-help")
+        expect(help_line).to_have_text(plain)
+        expect(page.get_by_label("API key", exact=True)).to_have_attribute("aria-describedby", "background-key-help")
         shot(page, named("api-key-models-1440-first"))
         # Enter in the key field submits nothing either.
         before = self.connected(page)
@@ -170,12 +175,15 @@ class ApiKeyModels(unittest.TestCase):
         choose(provider, label="Anthropic")
         expect(connect).to_be_enabled()
         expect(page.get_by_label("Model", exact=True)).to_have_count(0)
+        expect(help_line).to_have_text(re.compile(f"^{re.escape(plain)} An Anthropic API key beginning with sk-ant-\\. "))
+        expect(help_line).to_contain_text("Flux checks it when you leave the field.")
         choose(provider, label="OpenAI-compatible endpoint")
         expect(page.get_by_role("textbox", name="Model")).to_be_editable()
         # Back to no provider: the first state again.
         choose(provider, label="Choose a provider")
         expect(page.get_by_label("Model", exact=True)).to_have_count(0)
         expect(connect).to_be_disabled()
+        expect(help_line).to_have_text(plain)
         self.assertEqual(form.evaluate(visible), ["Provider", "API key", "More settings", "Cancel", "Connect"])
 
     def test_02b_the_form_asks_first_only_for_the_provider_and_the_key_and_keeps_the_rest_behind_more(self) -> None:

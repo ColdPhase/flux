@@ -52,6 +52,8 @@ export const plainPrice = (price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMi
 
 /** Providers whose models the server lists with the key being added (#1218). */
 const KEY_LISTED: ReadonlySet<AiProviderKind> = new Set(['anthropic', 'openai', 'gemini']);
+/** The one plain line under the key (design §7, #1424); the provider's key shape follows it once a provider is chosen. */
+const KEY_HELP = 'Paste the key from your provider’s website. Flux uses it only for your agents.';
 const OTHER = '__other__';
 
 const listFailure = (provider: AiProviderKind, status: Exclude<AiModelList['status'], 'listed'>) => {
@@ -211,7 +213,7 @@ export function ConnectionFields({ disabled, onBlocked, keyHelpId }: {
       onKeyDown={(event) => { if (event.key === 'Enter' && waitingForKey) { event.preventDefault(); keyLeft(event.currentTarget.value); } }}
       onChange={() => { if (keyProblem) { setListing({ state: 'idle' }); listedKey.current = ''; } }} /></label>
     {keyProblem ? <p id={`${id}-refused`} className="background-settings__error" role="alert">{keyProblem}</p> : null}
-    {keyHelp ? <p id={keyHelpId} className="background-settings__help">{info ? info.keyHint : 'Choose a provider first.'}{provider === 'anthropic' ? ' If the key belongs to your Claude Max, Ultra or Team plan, the plan’s monthly API credits pay for it.' : ''}{keyed ? ' Flux checks it when you leave the field.' : ''}</p> : null}
+    {keyHelp ? <p id={keyHelpId} className="background-settings__help">{KEY_HELP}{info ? ` ${info.keyHint}` : ''}{provider === 'anthropic' ? ' If the key belongs to your Claude Max, Ultra or Team plan, the plan’s monthly API credits pay for it.' : ''}{keyed ? ' Flux checks it when you leave the field.' : ''}</p> : null}
     {dropdown ? (
       <label>Model
         <Select name={other ? undefined : 'model'} required={!other} aria-label="Model" value={other ? OTHER : model} placeholder="Choose a model" disabled={disabled} aria-describedby={`${id}-model`}
