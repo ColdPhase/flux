@@ -298,7 +298,7 @@ class MyAgentsJourney(unittest.TestCase):
         none.goto("/settings/agents")
         row = none.locator(f"[data-agent='{agent['id']}'] .agl__model")
         expect(row).to_have_text("Needs a connection")
-        self.assertNotIn(model["model"], none.locator(f"[data-agent='{agent['id']}']").inner_text(), "no stale model name")
+        self.assertNotIn(model["model"], none.locator(f".agl__row[data-agent='{agent['id']}']").inner_text(), "no stale model name")
         none.goto(f"/settings/agents/{agent['id']}")
         expect(none.get_by_text("Your agent · needs a connection · can do only what you can")).to_be_visible()
         expect(none.locator("[data-agent-model]")).to_have_text("Needs a connection")
