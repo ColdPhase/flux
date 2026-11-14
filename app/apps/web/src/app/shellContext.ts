@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react';
-import type { ConversationMessage, ObjectRef, WorkStatus } from '@flux/contracts';
+import type { ConversationMessage, ObjectRef } from '@flux/contracts';
 
 /** A project object shown in the Details panel (#101). */
 export interface ObjectView {
@@ -84,7 +84,6 @@ export interface CreateRequest {
   kind?: 'task' | 'space' | 'decision' | 'thought' | 'page';
   projectId?: string;
   title?: string;
-  status?: WorkStatus;
   /** What the task comes from (a message or the thoughts of a Map selection): linked, never moved or copied. */
   sources?: { ref: ObjectRef; label: string }[];
   /** Called once the task or decision exists, e.g. a `/task` or `/decide` command consumes its composer text only then (closing the window keeps it). */

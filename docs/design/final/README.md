@@ -1307,16 +1307,16 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   window names that space. Opened from Home, the Inbox, the Spaces list or My tasks, it names the space you last worked in
   (the last space you opened or made a task in, kept on this device for your account), not Everyone; only a person who has not
   opened any space yet starts on the first one in their list. The space picker in the window's first row changes it, as before.
-- **Blocked is one field** (#1438 point 12). Choosing the status Blocked adds one field under the properties, **Waiting for**, where
-  a task used to ask twice (a person chip, then "What is it waiting for?"). Type the reason ("The permit") or pick someone from the
-  list that opens under the field (the people of the space; in the task panel also the decisions still to make and the other tasks,
-  one thing). A person picked fills the field as a face and name with a remove; typing keeps the field a line of words. One
-  of the two makes a blocked task: Create stays disabled until the field says a person or a reason. The field is the app's own
-  input with a listbox under it (the composer's `@` list is its model: arrows, Enter, Escape, 44 px rows on touch), no
-  native picker. The task panel's Edit on a blocked task opens the same one field.
+- **A new task is always To do, so Create has no Status** (#1424). The window's properties are Owner and Link. A task that starts in
+  another state is changed in the panel that opens on it at once. **Blocked is one field** (#1438 point 12), in the task panel: its
+  Status menu's Blocked adds one field, **Waiting for**, where a task used to ask twice (a person chip, then "What is it waiting
+  for?"). Type the reason ("The permit") or pick someone from the list that opens under the field (the people of the space, the
+  decisions still to make and the other tasks, one thing). A person picked fills the field as a face and name with a remove; typing
+  keeps the field a line of words. One of the two makes a blocked task. The field is the app's own input with a listbox under it (the
+  composer's `@` list is its model: arrows, Enter, Escape, 44 px rows on touch), no native picker. The task panel's Edit on a
+  blocked task opens the same one field.
 - **Batch entry is one step, and the space is kept.** **Add another** in the toast, or `C` pressed
-  next, opens the window again on Task with the same space chosen, an empty title and the default
-  status and owner. `C` keeps the space the last task was created in until the person goes to another
+  next, opens the window again on Task with the same space chosen, an empty title and no owner. `C` keeps the space the last task was created in until the person goes to another
   place.
 
 ### Tasks and the task panel
