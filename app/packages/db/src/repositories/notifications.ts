@@ -88,11 +88,12 @@ export function notificationGeneratorRows(db: DbExecutor) {
     },
     async insertNotification(row: {
       id: string; userId: string; source: { workspaceId: string; type: SourceType; id: string }; reason: Reason; eventId: string;
-      title: string; body: string; url: string; inInbox: boolean; aiOrigin: boolean;
+      title: string; body: string; url: string; inInbox: boolean; aiOrigin: boolean; answer?: boolean;
     }) {
       const inserted = await db.insert(n).values({
         id: row.id, userId: row.userId, workspaceId: row.source.workspaceId, sourceType: row.source.type, sourceId: row.source.id,
         reason: row.reason, eventId: row.eventId, title: row.title, body: row.body, url: row.url, inInbox: row.inInbox, aiOrigin: row.aiOrigin,
+        answer: row.answer === true,
       }).onConflictDoNothing({ target: [n.userId, n.eventId], where: sql`${n.eventId} IS NOT NULL` }).returning({ id: n.id });
       return inserted.length > 0;
     },

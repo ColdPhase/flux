@@ -38,6 +38,8 @@ export interface NotificationRecord {
   readAt: Date | null;
   /** Why it exists (#116); null for notifications created directly through `createNotification`. */
   reason: NotificationReason | null;
+  /** Set when it tells the asker that their question was answered (#1424 decision 1), as the generator recorded it. */
+  answer?: boolean;
   /** Who it comes from, on the one-item read only (#1243): the actor of the event it was made from. */
   from?: { kind: 'human' | 'agent'; name: string; /** Only on the Inbox's list read (#1424). */ id?: string } | null;
 }

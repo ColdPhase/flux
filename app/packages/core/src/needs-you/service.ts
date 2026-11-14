@@ -205,8 +205,8 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
       const pair = note.source.type === 'dm' && / (asked|mentioned|answered) you$/.test(note.title);
       const words = from && (project || pair) ? excerpt(note.body) : '';
       const plain = words && (note.reason === 'mention' || note.reason === 'question');
-      // An answer to a question the person asked (#1424 decision 1) is a mention that the notification's sentence calls an answer.
-      const answer = note.reason === 'mention' && / answered you(?: in .+)?$/.test(note.title);
+      // An answer to a question the person asked (#1424 decision 1), as the generator recorded it: a Reply in a plain and an encrypted space alike.
+      const answer = note.answer === true;
       items.push({
         key: `note:${note.id}`, kind, title: plain ? words : note.title, detail: plain ? '' : excerpt(note.body), project, from,
         at: iso(note.createdAt), url: note.url ?? `/inbox/${note.id}`, decision: null, blocked: null, reason: note.reason, snoozeTask: null,

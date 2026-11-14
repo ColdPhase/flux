@@ -629,7 +629,10 @@ export const notifications = pgTable('notifications', {
   inInbox: boolean('in_inbox').notNull().default(true),
   // Migration 0117 (F-029): came from AI work, set by whoever writes the row (no default: a writer that forgets it fails). While the workspace's AI is off it is hidden and never sent.
   aiOrigin: boolean('ai_origin').notNull(),
+  // Migration 0084 (#1424 decision 1): the asker's notice of an answer to their question, set by the generator from the answer it found.
+  answer: boolean('answer').notNull().default(false),
 }, (table) => [
+  check('notifications_answer_reason', sql`NOT ${table.answer} OR ${table.reason} IN ('mention', 'question')`),
   index('notifications_user_created_idx').on(table.userId, table.createdAt.desc()),
   index('notifications_source_idx').on(table.sourceType, table.sourceId),
 ]);

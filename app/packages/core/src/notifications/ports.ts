@@ -197,6 +197,8 @@ export interface GeneratedNotification {
   inInbox: boolean;
   /** F-029: from AI work, by the event's actor or the source's author. */
   aiOrigin: boolean;
+  /** The notice tells the asker that their question was answered (#1424 decision 1): the Inbox names it a Reply. */
+  answer?: boolean;
 }
 
 export interface EmailJob { emailId: string }

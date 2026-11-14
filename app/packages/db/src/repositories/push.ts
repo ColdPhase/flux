@@ -46,6 +46,7 @@ export function toNotificationRecord(row: NotificationRow) {
     createdAt: row.createdAt,
     readAt: row.readAt,
     reason: row.reason ?? null,
+    ...(row.answer ? { answer: true } : {}),
   };
 }
 

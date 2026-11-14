@@ -53,6 +53,8 @@ export interface Candidate {
   who: string;
   /** The conversation this notice is about, for a mention or a question in it: the person follows that thread from now on (#1249). */
   thread?: string;
+  /** It tells the asker their question was answered (#1424 decision 1): recorded on the notification, so the Inbox names it a Reply everywhere. */
+  answer?: boolean;
   /**
    * Where it happened, as a push says it under "Hide previews" (#1346): the space's name, a group message's name (or "a group"), and
    * nothing for a message between two people. A name, never content.
@@ -167,7 +169,7 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
         result.push({ userId, reason, source: { type: 'project', id: message.projectId }, title,
           body: askedThis ? excerpt(message.asked!.question) : excerpt(messagePreview(message.body, message.attachmentCount)), url,
           aiOrigin: message.author.kind === 'agent' || !!message.via, who: authorId ? names.get(authorId) ?? 'Someone' : 'An agent', where: message.projectName,
-          ...(reason === 'question' || reason === 'mention' ? { thread: message.conversationId } : {}) });
+          ...(reason === 'question' || reason === 'mention' ? { thread: message.conversationId } : {}), ...(addressed && !named && !askedThis ? { answer: true } : {}) });
       }
       return result;
     }
@@ -192,7 +194,7 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
           : message.kind === 'pair' ? `${marked} sent you a message` : `${marked}${place}`;
         return { userId, reason, source: { type: 'dm' as const, id: message.dmId }, title, body: message.body.trim() ? excerpt(message.body) : 'Sent a file',
           url: `/dm/${message.dmId}#message-${message.id}`, who: author, where: message.kind === 'pair' ? '' : message.title ? quote(message.title) : 'a group',
-          ...(message.via ? { aiOrigin: true } : {}) };
+          ...(message.via ? { aiOrigin: true } : {}), ...(addressed && !named ? { answer: true } : {}) };
       });
     }
     case 'project.work_created.v1':
@@ -337,6 +339,7 @@ async function deliver(ports: GeneratorPorts, event: GeneratorEvent, candidate: 
     url: candidate.url, inInbox: channels.inApp,
     // AI origin is persisted at write time (F-029): an agent actor or an agent-authored source.
     aiOrigin: candidate.aiOrigin === true || isAgentActor(event.actorId),
+    ...(candidate.answer ? { answer: true } : {}),
   });
   if (!inserted) return false;
 

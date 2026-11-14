@@ -15,3 +15,9 @@ CREATE TABLE public.dm_reads (
     CONSTRAINT dm_reads_read_through_check CHECK (read_through >= 0)
 );
 CREATE INDEX dm_reads_user_idx ON public.dm_reads USING btree (user_id);
+
+-- An answer to your question reaches you (founder decision, Hubert, 2026-11-14, #1424 decision 1; docs/development/needs-you.md): the
+-- generator marks the asker's notification of an answer as one, from the answer it found, never from the words. The Inbox names it a Reply
+-- in a plain and an encrypted space alike (an encrypted space's title stays its fixed words). A flag, no content; false for every other row.
+ALTER TABLE public.notifications ADD COLUMN answer boolean DEFAULT false NOT NULL;
+ALTER TABLE public.notifications ADD CONSTRAINT notifications_answer_reason CHECK (NOT answer OR reason IN ('mention', 'question'));

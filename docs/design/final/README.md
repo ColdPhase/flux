@@ -931,7 +931,8 @@ Community garden sensors, Rain barrel monitor and Tool library.
   answer in that thread (Inbox › Reply, or in the thread itself) or, in a direct message, in that conversation, the answer is an item of
   your Inbox: **"Reply · Marta · Product"**, titled by what she wrote ("Sent a file" for a photo alone), with Reply and Done as a mention
   has, and it reaches you by notice, push and email as a mention does at your level. It is the mention rule and not a new kind: an answer
-  addresses the person who asked, as a name does. Only the person's first message after the question answers it, and your own reply in the
+  addresses the person who asked, as a name does. It is a Reply in an encrypted space too, where the notice says only who and where. Only the
+  person's first message after the question answers it, and your own reply in the
   thread takes the item out as any reply does (#1170). An agent's question card is answered with its buttons and tells nobody.
 - **A call is a Call, never a Question** (F-041, #1368). An invitation to a call or a call started in your space is one item,
   "Call · Nia · Gesture lamp", with **Join** as its primary and Open as its second action; it is on Home and in the Inbox only while

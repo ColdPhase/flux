@@ -112,8 +112,9 @@ export interface NeedsYouItem {
   /** Why a notification-based item reached you (`mention`, `question` or `invitation`); null for the others. */
   reason: 'mention' | 'question' | 'invitation' | null;
   /**
-   * Set on a `mention` that answers a question you asked (#1424 decision 1: an answer to your question reaches you). Its kind word is
-   * "Reply"; everything else is a mention's.
+   * Set on an item that answers a question you asked (#1424 decision 1: an answer to your question reaches you), a `mention` (a `question`
+   * when the answer asks back). Its kind word is "Reply", in a plain and an encrypted space alike: it is the notification's own `answer`
+   * flag, which the generator sets from the answer it found, never from the words.
    */
   answer?: boolean;
   /** Set for a call started in your space or an invitation to one (F-041): the call to Join. Listed only while someone is in it. */
