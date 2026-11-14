@@ -872,14 +872,28 @@ class LightMotionJourney(unittest.TestCase):
                 except Exception:  # the page already gave the request up
                     pass
         self.addCleanup(release)
+        # The two wait windows (the stream's and the thread's, 1 s each, #155) are judged on the frame they open on: a page records what it
+        # shows the moment both loading states stand, so a slower engine's round trips between the checks (WebKit's took the stream's window
+        # away before its rows were read) cannot take the state being checked away. Every check below is the one it was, on that state.
+        page.add_init_script("""(() => {
+          const rowsOf = (root) => [...(root?.querySelectorAll('.opening__row') ?? [])];
+          const shown = (el) => { const box = el.getBoundingClientRect(); return box.width > 0 && box.height > 0 && getComputedStyle(el).visibility !== 'hidden'; };
+          const look = () => {
+            const stream = document.querySelector('.convo-stream .opening'), thread = document.querySelector('.thread__opening');
+            if (window.__opening || !stream || !thread || !rowsOf(stream).length || !rowsOf(thread).length) return;
+            window.__opening = { threadRows: rowsOf(thread).length, threadShown: shown(rowsOf(thread)[0]), streamShown: shown(rowsOf(stream)[0]),
+              hiddenFeeds: document.querySelectorAll('.thread__feed.is-opening').length, streamOpacity: getComputedStyle(stream).opacity };
+          };
+          new MutationObserver(look).observe(document, { childList: true, subtree: true });
+        })()""")
         page.goto(self.fx.thread_url())
-        stream_rows = page.locator(".convo-stream .opening .opening__row")
-        thread_rows = page.locator(".thread__opening .opening__row")
-        expect(thread_rows.first).to_be_visible()
-        expect(stream_rows.first).to_be_visible()
-        self.assertEqual(page.locator(".thread__feed.is-opening").count(), 1, "the replies are laid out but hidden")
-        self.assertEqual(page.locator(".convo-stream .opening").evaluate("el => getComputedStyle(el).opacity"), "1", "and the stream's rows are not waiting behind a delay")
-        self.assertGreaterEqual(thread_rows.count(), 2)
+        page.wait_for_function("() => !!window.__opening")
+        opening = page.evaluate("window.__opening")
+        self.assertTrue(opening["threadShown"], f"the thread's loading rows are drawn: {opening}")
+        self.assertTrue(opening["streamShown"], f"the stream's loading rows are drawn: {opening}")
+        self.assertEqual(opening["hiddenFeeds"], 1, f"the replies are laid out but hidden: {opening}")
+        self.assertEqual(opening["streamOpacity"], "1", f"and the stream's rows are not waiting behind a delay: {opening}")
+        self.assertGreaterEqual(opening["threadRows"], 2)
         # The panel's frame and composer are there meanwhile; once the wait is over the rows give way to the replies.
         expect(page.locator("#thread-composer")).to_be_visible()
         expect(page.locator(".thread__feed.is-opening")).to_have_count(0, timeout=5000)
