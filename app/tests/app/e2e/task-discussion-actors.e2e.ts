@@ -442,11 +442,31 @@ test('native agent owners retry failed reads, fence stale permission answers and
       }
     };
     const endpoint = `**/api/v1/projects/${place.id}/people`;
-    await page.route(endpoint, (route) => route.fulfill({ status: 503, contentType: 'application/json', body: '{"code":"TEMPORARY_UNAVAILABLE"}' }));
+    // Entering a space reads its people inside the space's own fresh read (#1109), so the first owner label comes from that read, not from
+    // an address the page asks for. A later read of the people (the tab coming back) is the one that can fail: it must take the label away.
     await page.goto(`/projects/${place.id}/tasks?view=board`);
     const card = page.locator(`[data-card-id="${task.id}"]`);
     await card.waitFor();
-    assert.equal(await card.locator('.agent-for').count(), 0, 'failed owner reads show no obsolete relation');
+    await card.locator('.agent-for').waitFor();
+    assert.equal((await card.locator('.agent-for').innerText()).trim(), "· Scoped's agent", 'the space read named the owner');
+    let failedRead!: () => void;
+    const readFailed = new Promise<void>((resolve) => { failedRead = resolve; });
+    await page.route(endpoint, (route) => {
+      failedRead();
+      return route.fulfill({ status: 503, contentType: 'application/json', body: '{"code":"TEMPORARY_UNAVAILABLE"}' });
+    });
+    const spaceRead = page.waitForResponse((r) => r.url().endsWith(`/api/v1/projects/${place.id}/space-shell`) && r.ok());
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await fixturePhase(readFailed, 'people read failed with 503');
+    await spaceRead;
+    // The same refresh reads the space again and that read still names the owner, so after it the card shows exactly
+    // the current owner, never a stale one, over rendered frames.
+    await card.locator('.agent-for').waitFor();
+    for (let frame = 0; frame < 3; frame++) {
+      await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+      assert.equal(await card.locator('.agent-for').count(), 1, 'a failed people read keeps the owner the space read names');
+      assert.equal((await card.locator('.agent-for').innerText()).trim(), "· Scoped's agent");
+    }
     await page.unrouteAll({ behavior: 'wait' });
     await page.evaluate(() => window.dispatchEvent(new Event('focus')));
     await card.locator('.agent-for').waitFor();
