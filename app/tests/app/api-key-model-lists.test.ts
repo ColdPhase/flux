@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { before, after, describe, test } from 'node:test';
 import { personalConnectionLookup } from '@flux/db';
 import type { Principal } from '@flux/core';
-import { AI_MODEL_LISTS_PATH, groupModelsByFamily, type AiModelList, type AssistantModelListing, type BackgroundComputeConnection, type Conversation } from '@flux/contracts';
+import { AI_MODEL_LISTS_PATH, defaultListedModel, groupModelsByFamily, type AiModelList, type AssistantModelListing, type BackgroundComputeConnection, type Conversation } from '@flux/contracts';
 import { listKeyModels, parsePrivateTargets, PUBLIC_ONLY } from '../../packages/agent-runtime/src/index.js';
 import { personalRunUseCases } from '../../apps/server/src/personal-runs/adapters.js';
 import { db, pool } from './support/db.js';
@@ -67,7 +67,7 @@ describe('listing a key\'s models from its provider (#1218)', () => {
     assert.deepEqual(openai.models.map((model) => model.family), ['Sol', 'Astra', 'Terra', 'Luna', 'GPT', 'o-series']);
     const gemini = await listKeyModels('gemini', keyOf('gemini'), lists);
     assert.deepEqual([gemini.status, gemini.models.map((model) => [model.id, model.name])], ['listed',
-      [['gemini-4-carbon', 'Gemini 4 Carbon'], ['gemini-3.5-flash-lite', 'Gemini 3.5 Flash-Lite'], ['gemini-3.1-pro-preview', 'Gemini 3.1 Pro Preview']]],
+      [['gemini-4-carbon', 'Gemini 4 Carbon'], ['gemini-3.5-flash', 'Gemini 3.5 Flash'], ['gemini-3.5-flash-lite', 'Gemini 3.5 Flash-Lite'], ['gemini-3.1-pro-preview', 'Gemini 3.1 Pro Preview']]],
       'Gemini gives no release date: the version in the id orders them, newest first');
     for (const provider of ['anthropic', 'openai', 'gemini'] as const) {
       assert.equal((await listKeyModels(provider, keyOf(provider, 'refused-'), lists)).status, 'key_refused', `${provider}: a refused key`);
@@ -77,6 +77,34 @@ describe('listing a key\'s models from its provider (#1218)', () => {
     }
     // The endpoint guard: a private address not allowed by the operator is never asked.
     assert.equal((await listKeyModels('anthropic', keyOf('anthropic'), { ...lists, policy: PUBLIC_ONLY })).status, 'refused');
+  });
+
+  test('#1424: Connect AI chooses the provider\'s middle, balanced model by family name: Anthropic\'s newest Sonnet, OpenAI\'s newest Sol, Gemini\'s newest Flash', async () => {
+    // Each provider's own listing, as the form reads it: the model is found by family, so Opus, Fable, Astra, Carbon and Pro stay in the list but are never the default.
+    const anthropic = await listKeyModels('anthropic', keyOf('anthropic'), lists);
+    assert.equal(defaultListedModel('anthropic', anthropic.models)?.id, 'claude-sonnet-5-7', 'Anthropic: the newest Claude Sonnet');
+    const openai = await listKeyModels('openai', keyOf('openai'), lists);
+    assert.equal(defaultListedModel('openai', openai.models)?.id, 'gpt-6.1-sol', 'OpenAI: the newest Sol, not Astra (the top tier) nor Luna (the cheap one)');
+    const gemini = await listKeyModels('gemini', keyOf('gemini'), lists);
+    assert.equal(defaultListedModel('gemini', gemini.models)?.id, 'gemini-3.5-flash', 'Gemini: the newest Flash, not Flash-Lite, not Pro, not the newest family');
+    // By name, not by place: a newer model of a higher family above it changes nothing, and a newer release of the family takes over.
+    const model = (id: string, family: string, createdAt: string) => ({ id, family, createdAt });
+    assert.equal(defaultListedModel('anthropic', [model('claude-fable-5-3', 'Fable', '2026-11-12T00:00:00Z'), model('claude-opus-5-6', 'Opus', '2026-11-11T00:00:00Z'),
+      model('claude-sonnet-5-7', 'Sonnet', '2026-11-10T00:00:00Z'), model('claude-sonnet-5-5', 'Sonnet', '2026-09-28T00:00:00Z')])?.id, 'claude-sonnet-5-7');
+    assert.equal(defaultListedModel('openai', [model('gpt-6.2-astra', 'Astra', '2026-11-12T00:00:00Z'), model('gpt-6.1-sol', 'Sol', '2026-10-01T00:00:00Z'),
+      model('gpt-6.2-sol', 'Sol', '2026-11-11T00:00:00Z'), model('gpt-6-luna', 'Luna', '2026-11-13T00:00:00Z')])?.id, 'gpt-6.2-sol');
+    assert.equal(defaultListedModel('gemini', [model('gemini-4-carbon', 'Carbon', '2026-11-12T00:00:00Z'), model('gemini-3.5-flash-lite', 'Flash-Lite', '2026-11-11T00:00:00Z'),
+      model('gemini-3.5-flash', 'Flash', '2026-11-01T00:00:00Z'), model('gemini-3.1-pro-preview', 'Pro', '2026-09-01T00:00:00Z')])?.id, 'gemini-3.5-flash');
+    // Only when the provider\'s list has no such family is the first model of the list chosen; a list of one is that one; a long keyless list has none.
+    for (const [provider, first, other] of [['anthropic', model('claude-opus-5-5', 'Opus', '2026-09-21T00:00:00Z'), model('claude-haiku-5', 'Haiku', '2026-06-01T00:00:00Z')],
+      ['openai', model('gpt-6-astra', 'Astra', '2026-11-01T00:00:00Z'), model('gpt-6-luna', 'Luna', '2026-06-01T00:00:00Z')],
+      ['gemini', model('gemini-4-carbon', 'Carbon', '2026-11-01T00:00:00Z'), model('gemini-3.1-pro-preview', 'Pro', '2026-06-01T00:00:00Z')]] as const) {
+      assert.equal(defaultListedModel(provider, [other, first])?.id, first.id, `${provider}: no middle family in the list, so its first model`);
+      assert.equal(defaultListedModel(provider, [other])?.id, other.id, `${provider}: a list of one`);
+      assert.equal(defaultListedModel(provider, []), undefined, `${provider}: an empty list`);
+    }
+    assert.equal(defaultListedModel('openrouter', [model('vendor/a', 'vendor', '2026-11-01T00:00:00Z'), model('vendor/b', 'vendor', '2026-10-01T00:00:00Z')]), undefined);
+    assert.equal(defaultListedModel('openai_compatible', [model('llama3.1:8b', 'Models', '2026-11-01T00:00:00Z')])?.id, 'llama3.1:8b');
   });
 
   test('the API: the key\'s list while it is typed, read once for 6 hours; a refused key, a timeout and a 5xx say so and echo nothing', async () => {

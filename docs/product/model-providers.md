@@ -54,7 +54,7 @@ A person connects AI once, in Settings › AI. Their connections power all of th
   release. Until the provider's list is read (a key added before v0.2.1 waits for its first
   reading), the key offers only its own model.
   - **Adding a key** shows first only Provider and API key (founder decision, Hubert, 2026-11-14,
-    [#1424](https://github.com/ColdPhase/flux/issues/1424)); the Model appears, already chosen, once the key is read, and the
+    [#1424](https://github.com/ColdPhase/flux/issues/1424)); the Model appears, already chosen (below), once the key is read, and the
     daily budget and the name are behind "More" (they have defaults and the name is optional). When the key is typed, the Flux server
     lists that key's models (Anthropic `GET /v1/models`, OpenAI `GET /v1/models`, Gemini
     `models.list`). That one call is also the key test: a key the provider refuses says "This key
@@ -64,9 +64,13 @@ A person connects AI once, in Settings › AI. Their connections power all of th
     (Opus, Sonnet, Haiku, Fable…) with the newest family and model first, each with its price or
     "price unknown, enter it". The provider's own display name is shown where it gives one. **A model is
     already chosen when the list is read** (founder decision, Hubert, 2026-11-14, #1424; it replaces "nothing
-    is preselected"): the only model when the list holds exactly one, and for Anthropic, OpenAI and Gemini the
-    first of the list as the dropdown orders it (the newest model of the newest family), the one the owner sees at the top;
-    OpenRouter's and an endpoint's long lists have none chosen until the owner picks (there is no sensible first among hundreds).
+    is preselected"): the only model when the list holds exactly one; for Anthropic, OpenAI and Gemini **the provider's
+    middle, balanced model** (founder decision, Hubert, 2026-11-14, #1424): **Anthropic: the newest Claude Sonnet; OpenAI: the newest Sol**
+    (the mid-tier GPT: Astra is the top tier and Luna the cheap one, and a Pro model is never the default); **Gemini: the newest Flash**
+    (not Flash-Lite, not Pro). It is chosen by family name from the provider's current list, as the family column of the dropdown names
+    them (`AI_DEFAULT_MODEL_FAMILY`), so a newer release appears without a Flux release; only when the list has no such family
+    is the first model of the list chosen. Opus, Fable and the cheaper models stay in the list to be chosen. OpenRouter's and an
+    endpoint's long lists have none chosen until the owner picks (there is no sensible one among hundreds).
     "Other model id…" opens a field for an id the list doesn't have.
   - **A key is saved only on a model.** Enter in the key field reads the models like leaving it, Connect before a model is
     known (the list is still being read, or none was) says so, and the server still refuses a command without a model

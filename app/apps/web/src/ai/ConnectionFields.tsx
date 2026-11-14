@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import { AI_PROVIDER_KINDS, AI_PROVIDERS, assistantModelName, groupModelsByFamily, listPrice,
+import { AI_PROVIDER_KINDS, AI_PROVIDERS, assistantModelName, defaultListedModel, groupModelsByFamily, listPrice,
   type AiListedModel, type AiModelList, type AiPrice, type AiProviderKind, type AiProviderPriceList } from '@flux/contracts';
 import { Button, Select, Option, OptionGroup } from '../ui';
 import { ApiError } from '../api/client';
@@ -8,8 +8,9 @@ import { listAiModels } from './api';
 // Provider, API key, model, endpoint and price of an owner's AI connection (F-020, #179; CA-2, #1218), in that order: the key
 // comes before the model because the model list is the key's own. Every provider is offered the same way and none is preselected. The form
 // shows first only Provider and key; once the key's models are read the Model appears already chosen (#1424, founder decision 2026-11-14):
-// the only model of a list of one, and for Anthropic, OpenAI and Gemini the first of the list as the dropdown orders it (the newest model
-// of the newest family). OpenRouter's and an endpoint's long lists have none chosen until the owner picks.
+// the only model of a list of one, and for Anthropic, OpenAI and Gemini the newest model of the provider's middle, balanced family
+// (Sonnet, Sol, Flash), the first of the list only when the list has no such family. OpenRouter's and an endpoint's long lists have none
+// chosen until the owner picks.
 // - Anthropic, OpenAI and Gemini: when the key field is left, the server lists the models that key can use, and that one call is
 //   also the key's test. The Model is then a dropdown by family, newest first, each with its price or "price unknown, enter it",
 //   and "Other model id…" for an id the list lacks. A refused key says so and Connect waits for another; a list that can't be
@@ -71,11 +72,8 @@ function optionText(prices: AiProviderPriceList | null, model: AiListedModel) {
   return row ? `${name} · ${short(row.inputMicrosPerMTok)} / ${short(row.outputMicrosPerMTok)}` : `${name} · price unknown, enter it`;
 }
 
-/** The model chosen when a list is read (#1424): the only one, else for the key-listed providers the first as the dropdown orders them. */
-function defaultModel(provider: AiProviderKind, models: readonly AiListedModel[]): string {
-  if (models.length === 1) return models[0]!.id;
-  return KEY_LISTED.has(provider) ? groupModelsByFamily(models)[0]?.models[0]?.id ?? '' : '';
-}
+/** The model chosen when a list is read (#1424, CA-2): the only one, else the middle family of Anthropic, OpenAI and Gemini (`defaultListedModel`). */
+const defaultModel = (provider: AiProviderKind, models: readonly AiListedModel[]) => defaultListedModel(provider, models)?.id ?? '';
 
 type Listing = { state: 'idle' } | { state: 'reading' } | { state: 'done'; list: AiModelList } | { state: 'failed' };
 
@@ -147,8 +145,7 @@ export function ConnectionFields({ disabled, onKeyRefused, keyHelpId }: {
       setListing({ state: 'done', list: result });
       if (result.status === 'listed' && result.models.length) {
         // The models are the provider's own (#1218). A list of one has nothing to pick between, so that model is chosen; Anthropic, OpenAI
-        // and Gemini have their first chosen, the one at the top of the dropdown (#1424), and a long keyless list (OpenRouter's, an endpoint's)
-        // is left for the owner. An id typed into the plain field while a keyless list was read, and not in it, stays as "Other model id…"
+        // and Gemini have their middle family's newest chosen (#1424), and a long keyless list (OpenRouter's, an endpoint's) is left for the owner. An id typed into the plain field while a keyless list was read, and not in it, stays as "Other model id…"
         // instead of being wiped (#1465).
         const current = typed.current;
         const kept = !query.apiKey && current.trim() !== '' && !result.models.some((entry) => entry.id === current);
