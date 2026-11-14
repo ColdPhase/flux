@@ -188,17 +188,20 @@ class BackgroundRefresh(unittest.TestCase):
         self.world()
         space = self.state["space"]
         pattern = space_read(space)
-        # A page that was opened by its address, or returned to, lands on the nearest place that opens, with one line (#592).
+        # A page that was opened by its address says that it is not available, where it is: the first screen's own entry is no return (#1460,
+        # docs/development/return-to-origin.md, "Access"), so it does not land on the nearest place. Landing there with one line is what Back or
+        # Forward to a place that is gone does (test_return_to_origin) and what a space this tab heard it lost does (test_space_settings).
         page = self.page()
         self.open(page, f"/projects/{space}")
         expect(page.locator("header.top .top__title h1")).to_have_text(self.state["name"])
         reads = self.failing(page, pattern, "gone")
         self.rename(page)
-        expect(page).to_have_url(f"{ORIGIN}/projects")
-        expect(page.get_by_text("That space is no longer available to you.")).to_be_visible()
+        expect(page.get_by_role("heading", name=GONE)).to_be_visible()
+        expect(page).to_have_url(f"{ORIGIN}/projects/{space}")
+        expect(page.get_by_text("That space is no longer available to you.")).to_have_count(0)
         self.assertGreaterEqual(reads["reads"], 1)
         expect(page.get_by_text(ERROR)).to_have_count(0)
-        # A page that a click opened says that it is not available.
+        # A page that a click opened says the same.
         page = self.page()
         self.open(page, "/")
         self.sidebar_space(page, self.state["name"]).click()
