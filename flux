@@ -139,7 +139,7 @@ origin_port() {
 https_on() {
   case "$(public_origin)" in https://*) [ -z "$(env_value FLUX_TRUSTED_PROXIES | tr -d '[:space:]')" ] ;; *) return 1 ;; esac
 }
-# Names Caddy certifies from its own CA instead of ACME (checked with Caddy 2.11.7): local names and IP addresses.
+# Names Caddy certifies from its own CA instead of ACME (checked with Caddy 2.11.9): local names and IP addresses.
 https_internal_name() {
   case "$1" in localhost|*.localhost|*.local|*.internal|*.home.arpa|*:*) return 0 ;; esac
   is_ipv4 "$1"
