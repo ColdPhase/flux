@@ -4,7 +4,7 @@ import type { FastifyError, FastifyInstance } from 'fastify';
 import { AI_BASE_URL_MAX_LENGTH, AI_LISTED_PRICE_PROVIDERS, AI_MODEL_LISTS_PATH, AI_PROVIDERS, providerPriceList, API_KEY_DAILY_BUDGET_CENTS, AI_PRICE_MAX_MICROS_PER_MTOK, AI_PROVIDER_KINDS, type AiModelList, type AiModelListQuery,
   type AiProviderKind, type AiProviderPriceList, type AssistantModelListing, type ConnectBackgroundComputeCommand, type SetApiKeyModelPriceCommand, type UpdateBackgroundComputeConnectionCommand } from '@flux/contracts';
 import { aiPriceListRepository, backgroundConnectionRepository, personalConnectionLookup, sealBackgroundKey, storedProviderPriceList } from '@flux/db';
-import { backgroundConnectionUseCases, openRouterPriceList, baseUrlSyntaxProblem, ConflictError, DomainError, InvalidInputError, keyListing, NotFoundError, normalizeBaseUrl, RateLimitedError, validAiKey } from '@flux/core';
+import { backgroundConnectionUseCases, heldPriceLog, openRouterPriceList, storeGuardedPriceList, baseUrlSyntaxProblem, ConflictError, DomainError, InvalidInputError, keyListing, NotFoundError, normalizeBaseUrl, RateLimitedError, validAiKey } from '@flux/core';
 import type { ModelListRefresh } from './model-refresh.js';
 import type { SessionResolver } from '../identity/index.js';
 import { requireNotGuest } from '../access/guest-no-ai.js';
@@ -31,9 +31,11 @@ export async function aiKeyRoutes(app: FastifyInstance, { db, sessions, backgrou
   // key is connected, or the form lists OpenRouter's models, and the stored one is more than a day old.
   const priceLists = aiPriceListRepository(db);
   const keepOpenRouterPrices = async (list: AiModelList): Promise<AiProviderPriceList | null> => {
-    const read = openRouterPriceList(list);
-    if (!read) return null;
-    await priceLists.store('openrouter', read);
+    const offered = openRouterPriceList(list);
+    if (!offered) return null;
+    // A price OpenRouter's list drops to 0 or a tenth of what Flux knows is not taken (#1270); the answer carries the guarded list.
+    const { list: read, held } = await storeGuardedPriceList(priceLists, 'openrouter', offered);
+    for (const line of heldPriceLog('openrouter', held)) app.log.warn(line, 'a price list price was held');
     return providerPriceList(read, 'openrouter');
   };
   const priceList = async (provider: AiProviderKind): Promise<AiProviderPriceList | null> => {

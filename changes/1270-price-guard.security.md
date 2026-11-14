@@ -1,0 +1,1 @@
+- A wrong or poisoned daily price list can no longer drop a model's price to 0 or to a tenth of what Flux knows, which would have unbound the daily budget of every key on that model: that price stays and a warning names the model and both prices, and a model Flux does not know is never first priced at 0 ([#1270](https://github.com/ColdPhase/flux/issues/1270)).
