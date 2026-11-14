@@ -184,6 +184,11 @@ class MapLayoutJourney(unittest.TestCase):
             expect(page.locator('.sk-ghost--draft')).to_be_attached()
             # Where the draft stands on the map: whole in view, clear of the minimap and the zoom, and over no thought.
             spot = page.locator('.sk-ghost--draft').bounding_box()
+            where = {'index': index, 'spot': spot, 'canvas': page.locator('.sk-canvas').bounding_box(),
+                     'scroll': page.locator('.sk-canvas').evaluate('el => [el.scrollLeft, el.scrollTop]'),
+                     'nodes': [node.bounding_box() for node in page.locator('.sk-node').all()],
+                     'zoom': page.locator('.sk-zoom__level').inner_text(), 'floating': [page.locator(sel).first.bounding_box() for sel in ('.sk-minimap', '.sk-zoom')]}
+            print('PLACEMENT', where, flush=True)
             self.assertGreaterEqual(spot['x'], 0)
             self.assertGreaterEqual(spot['y'], 0)
             self.assertLessEqual(spot['x'] + spot['width'], window['width'], 'the draft is whole in view')
