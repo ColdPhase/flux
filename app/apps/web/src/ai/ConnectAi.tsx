@@ -5,7 +5,6 @@ import { getRuntime } from '../agent-runtime/api';
 import { Button, Icon, Spinner } from '../ui';
 import { useShellData } from '../app/data';
 import { refreshAssistantModel } from '../assistant/model';
-import { useShellData } from '../app/data';
 import { isManagerRole } from '../people/api';
 import { connectionLines, type AiConnectionKind, type AiConnectionLine } from './connections';
 import { ConnectAiWindow } from './ConnectAiWindow';
