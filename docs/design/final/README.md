@@ -859,7 +859,9 @@ Community garden sensors, Rain barrel monitor and Tool library.
   on the right) holds the top three Inbox items. Decisions are one row, "2 decisions waiting",
   without Accept; an agent run is one row, "Planner · Ada's agent · 3 things wait for you".
 - **Continue where you left off** holds what you last worked on, such as a task with its state
-  ("Doing · #1 · Community garden sensors") or a Wiki page you edited.
+  ("Doing · #1 · Community garden sensors") or a Wiki page you edited. **Nothing appears twice** (#1424): what "Waiting for you"
+  already shows (the decision, the task or the question of one of its rows, a decision inside "2 decisions waiting") is not offered
+  again here; the row is the next thing that is not there, and the section is gone when there is none.
 - On the phone, "My tasks (4)" is a row under the waiting items, with "My map" next to it. The
   render draws "My tasks" only; the "My map" row follows this text. Home has nothing else: no
   spaces card, footer links, keyboard hints or assistant banner, except the first-steps card below.
@@ -1305,16 +1307,16 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   window names that space. Opened from Home, the Inbox, the Spaces list or My tasks, it names the space you last worked in
   (the last space you opened or made a task in, kept on this device for your account), not Everyone; only a person who has not
   opened any space yet starts on the first one in their list. The space picker in the window's first row changes it, as before.
-- **Blocked is one field** (#1438 point 12). Choosing the status Blocked adds one field under the properties, **Waiting for**, where
-  a task used to ask twice (a person chip, then "What is it waiting for?"). Type the reason ("The permit") or pick someone from the
-  list that opens under the field (the people of the space; in the task panel also the decisions still to make and the other tasks,
-  one thing). A person picked fills the field as a face and name with a remove; typing keeps the field a line of words. One
-  of the two makes a blocked task: Create stays disabled until the field says a person or a reason. The field is the app's own
-  input with a listbox under it (the composer's `@` list is its model: arrows, Enter, Escape, 44 px rows on touch), no
-  native picker. The task panel's Edit on a blocked task opens the same one field.
+- **A new task is always To do, so Create has no Status** (#1424). The window's properties are Owner and Link. A task that starts in
+  another state is changed in the panel that opens on it at once. **Blocked is one field** (#1438 point 12), in the task panel: its
+  Status menu's Blocked adds one field, **Waiting for**, where a task used to ask twice (a person chip, then "What is it waiting
+  for?"). Type the reason ("The permit") or pick someone from the list that opens under the field (the people of the space, the
+  decisions still to make and the other tasks, one thing). A person picked fills the field as a face and name with a remove; typing
+  keeps the field a line of words. One of the two makes a blocked task. The field is the app's own input with a listbox under it (the
+  composer's `@` list is its model: arrows, Enter, Escape, 44 px rows on touch), no native picker. The task panel's Edit on a
+  blocked task opens the same one field.
 - **Batch entry is one step, and the space is kept.** **Add another** in the toast, or `C` pressed
-  next, opens the window again on Task with the same space chosen, an empty title and the default
-  status and owner. `C` keeps the space the last task was created in until the person goes to another
+  next, opens the window again on Task with the same space chosen, an empty title and no owner. `C` keeps the space the last task was created in until the person goes to another
   place.
 
 ### Tasks and the task panel
@@ -1324,7 +1326,9 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
 | ![Tasks board](screens/desktop-tasks.webp) | ![Task panel with agents](screens/desktop-task-agents.webp) |
 
 - **One control row** for Board and List: the Board / List switch, Mine, Search tasks and, on the
-  right, "+ Task". Mine includes tasks owned by your agents. Mine is the system's outline `Button` with the person icon, pressed
+  right, "+ Task". **Search tasks filters both views and is never greyed** (#1424): on the Board it looks through the loaded
+  cards, in the List through the page of rows on screen (the List's groups then count what matches, its line says "2 matches · 9 tasks",
+  and when there are more pages one note says that the search looks through this page, with Previous and Next for the others). Mine includes tasks owned by your agents. Mine is the system's outline `Button` with the person icon, pressed
   with the `--t1` edge; it is a 32 px control (44 on touch), never a circle. "+ Task" is the right end of this row on
   every computer and tablet, in both views and in either orientation, and the space's header holds
   only its own slots (#1366). Over the List, a centred column on a wide window (from 2000 px), the row is
@@ -1447,8 +1451,15 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   header is the Wiki's: **the title is the switcher**, "Launch plan ▾" opens the space's maps (newest change first, the open one
   ticked) with "Find a map", then "+ New map" and, for someone who can change the map, "Rename map" (the title itself opens
   the switcher, so rename is a row of its menu, as the Wiki's is in its ⋯). It sits in the same place with 1 map or 50, on the
-  computer and on the phone, where the menu is as wide as the pane, with 44 px rows. A space with no map shows the one
-  empty state, "Map ideas for <space>", with its New map button. My map is one map: its header names it and has no switcher.
+  computer and on the phone, where the menu is as wide as the pane, with 44 px rows. **A space with no map opens the map's own empty
+  canvas** (#1424), not a page about maps with a New map button: the header's title "Untitled map" (not yet a switcher), the one hint
+  "An empty map. Add the first thought with Thought, then keep adding with the + beside it." (on the phone, "Start with Add a thought."),
+  and the toolbar with **Thought** alone (the phone's one **Add a thought**, with no floating "+" beside it: a "+" never means two things on one screen); Select, Move around, Undo and the zoom are not drawn
+  until there is something for them to act on. **The map is made, silently, on the first thought**: Thought (or a double click on the
+  canvas) makes it with the name "Untitled map" and opens it on a draft thought ready to type, with nothing to name first, so a visit
+  that adds nothing leaves no map. A map made from the switcher's "+ New map" still opens with its name ready to type. **A map shows one
+  hint at a time:** the "Drag empty space to move around · Drag a dot to connect…" line waits until there is a thought to drag, so
+  it never stands beside the empty map's own hint. My map is one map: its header names it and has no switcher.
 - A space's map has the same **Copy link** for one selected thought, `/projects/:p/map/:id#thought-:id`, and no Cite: Copy link
   is the one way to point at a thought from a message (Hubert, 2026-11-13, [#1376](https://github.com/ColdPhase/flux/issues/1376)).
   A thought's address pasted into a message (a space's conversation, a thread, a task's discussion or a direct message) reads as a
@@ -1458,7 +1469,10 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   touch screen only (a tablet), a toggle that makes each tap add to the selection, because touch has no Shift-click; a computer selects several with
   Shift-click, and the phone selects one thought at a time (S15).
 - On the phone, My map is a row on Home, next to "My tasks (N)", and not a tab. The phone map
-  follows S15: view and add a thought.
+  follows S15: view and add a thought. **The map is framed below its header** (#1424): a space's title pill and **Map options** share
+  the first row, 10 px from the edges, and the thoughts start under that row, so nothing floats over the first thought; a long title
+  gives way with an ellipsis, never over Map options. The one line "Connect and arrange on a computer" is said **once** per person on a
+  device, with its own quiet close (**Dismiss**), and is not drawn again on any map after that.
 
 ### Settings
 
@@ -1519,6 +1533,10 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
     server's link lifetime).
     An owner sees it for everyone but themselves, an admin for members and guests. Nothing else on the page changes.
   - There is no AI switch here; AI is per space.
+  - **Spaces** (owners and admins; the list under People): each space opens, and one the admin is not in has
+    **Add me**. **No row has a Delete** (#1424): a space is deleted in its own settings, **Space settings › Delete space…**, the one way.
+    The only row with a Delete is an encrypted space the admin cannot open (a company admin may delete it, never read it), which has no
+    settings to reach.
 
 #### Hide previews
 

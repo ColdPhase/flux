@@ -378,14 +378,14 @@ class MapConnectJourney(unittest.TestCase):
         shot(page, 'map-phone-plain-draft-390-light')
         draft.get_by_role('button', name='Cancel', exact=True).tap()
         options = open_map_options(page, touch=True)
-        for name in ('Fit the sketch to the view', 'Zoom out', 'Zoom in'):
+        for name in ('Fit the map to the view', 'Zoom out', 'Zoom in'):
             control = options.get_by_role('button', name=name, exact=True)
             expect(control).to_be_visible()
             self.assertGreaterEqual(control.evaluate('el => el.offsetHeight'), 44)
             self.assertGreaterEqual(control.bounding_box()['height'], 44 - 1 / 64)
         shot(page, 'map-phone-options-390-light')
         options.get_by_role('button', name='Zoom in', exact=True).tap()
-        options.get_by_role('button', name='Fit the sketch to the view', exact=True).tap()
+        options.get_by_role('button', name='Fit the map to the view', exact=True).tap()
         options.get_by_role('button', name='Close map options', exact=True).tap()
         expect(page.get_by_role('button', name='Map options', exact=True)).to_be_focused()
         show_map_as(page, 'List', touch=True)

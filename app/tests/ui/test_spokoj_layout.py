@@ -417,8 +417,8 @@ class SpokojLayout(unittest.TestCase):
                 names["List"].click()
                 expect(names["List"]).to_have_attribute("aria-checked", "true")
                 self.assert_same_place(board, controls(), f"{size['width']} board to list")
-                # The List's search is dimmed in place (it reads server pages), so nothing beside it moves.
-                expect(names["Search"]).to_be_disabled()
+                # The List's search works in place (#1424: it filters the page on screen), never greyed, so nothing beside it moves.
+                expect(names["Search"]).to_be_enabled()
                 # Mine works from the same place; the list has no second checkbox row and no second way to add.
                 names["Mine"].click()
                 expect(names["Mine"]).to_have_attribute("aria-pressed", "true")

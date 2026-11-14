@@ -109,9 +109,12 @@ class CreateWindow(unittest.TestCase):
             window = dialog(page)
             expect(window).to_be_visible()
             expect(title_field(page)).to_be_focused()
-            for control in (window.get_by_label("Details"), window.get_by_role("combobox", name="Status"), window.get_by_role("combobox", name="Owner"),
+            for control in (window.get_by_label("Details"), window.get_by_role("combobox", name="Owner"),
                             window.get_by_role("button", name="+ Link a message or thought"), submit_button(page)):
                 expect(control).to_be_visible()
+            # A new task is always To do, so there is no Status to choose (#1424), and so no Waiting for either.
+            expect(window.get_by_role("combobox", name="Status")).to_have_count(0)
+            expect(window.get_by_role("combobox", name="Waiting for")).to_have_count(0)
             self.assertEqual(window.evaluate("el => el.offsetWidth"), 640)
             # The place picker is a 10px frame around a 6px tile, not a pill (concentric corners).
             frame = window.locator(".create__place")
@@ -201,45 +204,21 @@ class CreateWindow(unittest.TestCase):
                 self.assertEqual(stored[f"First of two {tag}"]["outcome"], "Done when both are listed")
                 self.assertIn(f"Second of two {tag}", stored)
 
-    def test_04_a_blocked_task_has_one_field_a_person_or_the_reason(self) -> None:
-        """#1438 point 12: Blocked adds one field, "Waiting for": type the reason, or pick a person from the list under it. One of the two is needed."""
+    def test_04_a_new_task_is_always_to_do_so_the_window_has_no_status_and_no_waiting_for(self) -> None:
+        """#1424: Create has no Status (a new task is To do); Blocked and its one "Waiting for" field are in the task panel (#1438 point 12)."""
         self.ensure_account()
         page = self.page()
         page.goto(f"/projects/{self.ids['project']}/tasks")
         field = open_from_tasks(page)
         field.fill("Waiting on the supplier")
+        expect(dialog(page).get_by_role("combobox", name="Status")).to_have_count(0)
         expect(dialog(page).get_by_role("combobox", name="Waiting for")).to_have_count(0)
-        choose(dialog(page).get_by_role("combobox", name="Status"), "blocked")
-        # One field, not two: no second "What is it waiting for?" box and no person chip beside the status.
-        waiting = dialog(page).get_by_role("combobox", name="Waiting for")
-        expect(waiting).to_have_count(1)
         expect(dialog(page).get_by_label("What is it waiting for?")).to_have_count(0)
-        expect(submit_button(page)).to_be_disabled()
-        waiting.fill("Probe drawing v2")
-        expect(dialog(page).get_by_role("listbox")).to_have_count(0)  # words that match no one are a reason
         expect(submit_button(page)).to_be_enabled()
         submit_button(page).click()
         expect(dialog(page)).to_have_count(0)
         stored = {item["title"]: item for item in self.work(page)}
-        self.assertEqual((stored["Waiting on the supplier"]["status"], stored["Waiting on the supplier"]["blocker"]), ("blocked", "Probe drawing v2"))
-        # A person picked from the list is enough: the task waits for them, with no reason typed.
-        page.goto(f"/projects/{self.ids['project']}/tasks")
-        field = open_from_tasks(page)
-        field.fill("Waiting on a person")
-        choose(dialog(page).get_by_role("combobox", name="Status"), "blocked")
-        waiting = dialog(page).get_by_role("combobox", name="Waiting for")
-        waiting.focus()
-        options = dialog(page).get_by_role("listbox", name="Waiting for").get_by_role("option")
-        expect(options.first).to_be_visible()
-        options.first.click()
-        expect(dialog(page).get_by_role("button", name=re.compile("^Stop waiting for "))).to_be_visible()
-        expect(submit_button(page)).to_be_enabled()
-        submit_button(page).click()
-        expect(dialog(page)).to_have_count(0)
-        person = {item["title"]: item for item in self.work(page)}["Waiting on a person"]
-        self.assertEqual(person["status"], "blocked")
-        self.assertIsNotNone(person["waitingFor"])
-        self.assertFalse(person.get("blocker"))
+        self.assertEqual((stored["Waiting on the supplier"]["status"], stored["Waiting on the supplier"].get("blocker")), ("open", None))
 
     # ---------------------------------------------------------------- AC-4: a message is the task's source
 
@@ -343,9 +322,10 @@ class CreateWindow(unittest.TestCase):
             title_field(page).fill("Print labels for the beds")
             choose(window.get_by_role("combobox", name="Space"), self.ids["other"])
             expect(title_field(page)).to_have_value("Print labels for the beds")
-            for control in (window.get_by_label("Details"), window.get_by_role("combobox", name="Status"), window.get_by_role("combobox", name="Owner"),
+            for control in (window.get_by_label("Details"), window.get_by_role("combobox", name="Owner"),
                             window.get_by_role("button", name="+ Link a message or thought"), submit_button(page)):
                 expect(control).to_be_visible()
+            expect(window.get_by_role("combobox", name="Status")).to_have_count(0)
             box = submit_button(page).bounding_box()
             self.assertGreaterEqual(box["height"], 44)
             self.assertLessEqual(box["x"] + box["width"], PHONE["width"])
@@ -444,7 +424,7 @@ class CreateWindow(unittest.TestCase):
     def test_10_a_lost_response_is_retried_with_the_same_identity_from_every_entry_point(self) -> None:
         self.ensure_account()
         notices = lambda page: self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/task-notices?limit=100", status=200)["total"]  # noqa: E731
-        # From a message: source, details and status all come back after closing and reopening.
+        # From a message: source and details come back after closing and reopening.
         page = self.page()
         made = self.thread(page, "Lost response from a message: check the ESP32 kits")
         page.goto(f"/projects/{self.ids['project']}/conversations/{made['conversation']}")
@@ -456,7 +436,6 @@ class CreateWindow(unittest.TestCase):
         message.get_by_role("button", name="Create task", exact=True).click()
         window = dialog(page)
         window.get_by_label("Details").fill("Done when both kits are counted")
-        choose(window.get_by_role("combobox", name="Status"), "in_progress")
         submit_button(page).click()
         expect(window.get_by_role("alert")).to_have_text("The response was lost")
         page.keyboard.press("Escape")
@@ -465,7 +444,6 @@ class CreateWindow(unittest.TestCase):
         message.get_by_role("button", name="Create task", exact=True).click()
         expect(title_field(page)).to_have_value("Lost response from a message")  # its first clause (#763 B5)
         expect(window.get_by_label("Details")).to_have_value("Done when both kits are counted")
-        expect_value(window.get_by_role("combobox", name="Status"), "in_progress")
         expect(window.get_by_role("button", name=re.compile("^Remove link to"))).to_have_count(1)
         submit_button(page).click()
         expect(window).to_have_count(0)
@@ -473,9 +451,9 @@ class CreateWindow(unittest.TestCase):
         self.assertEqual(keys[0], keys[1], "the retry carries the first attempt's identity")
         stored = [item for item in self.work(page) if item["title"].startswith("Lost response from a message")]
         self.assertEqual(len(stored), 1, "one persisted task")
-        self.assertEqual((stored[0]["outcome"], stored[0]["status"]), ("Done when both kits are counted", "in_progress"))
+        self.assertEqual((stored[0]["outcome"], stored[0]["status"]), ("Done when both kits are counted", "open"))
         self.assertEqual(notices(page), before + 1, "one notice")
-        # From a blank form: details, status and owner survive too (the title-only control).
+        # From a blank form: details survive too (the title-only control).
         page = self.page()
         page.goto(f"/projects/{self.ids['project']}/tasks")
         keys = []
@@ -483,20 +461,18 @@ class CreateWindow(unittest.TestCase):
         field = open_from_tasks(page)
         field.fill("Lost response from a blank form")
         dialog(page).get_by_label("Details").fill("Blank form details")
-        choose(dialog(page).get_by_role("combobox", name="Status"), "in_progress")
         submit_button(page).click()
         expect(dialog(page).get_by_role("alert")).to_have_text("The response was lost")
         page.keyboard.press("Escape")
         field = open_from_tasks(page)
         expect(field).to_have_value("Lost response from a blank form")
         expect(dialog(page).get_by_label("Details")).to_have_value("Blank form details")
-        expect_value(dialog(page).get_by_role("combobox", name="Status"), "in_progress")
         submit_button(page).click()
         expect(dialog(page)).to_have_count(0)
         self.assertEqual(keys[0], keys[1])
         stored = [item for item in self.work(page) if item["title"] == "Lost response from a blank form"]
         self.assertEqual(len(stored), 1)
-        self.assertEqual((stored[0]["outcome"], stored[0]["status"]), ("Blank form details", "in_progress"))
+        self.assertEqual((stored[0]["outcome"], stored[0]["status"]), ("Blank form details", "open"))
 
     def test_12_the_phone_window_proposes_a_decision_in_the_space_it_shows(self) -> None:
         self.ensure_account()
