@@ -111,7 +111,7 @@ class MyAgentsJourney(unittest.TestCase):
         list_ = page.get_by_role("list", name="Your agents")
         expect(list_.get_by_role("link", name=re.compile("^Assistant"))).to_be_visible()
         expect(list_).to_contain_text("Answers /ai")
-        expect(list_).to_contain_text("Do it and tell me")
+        expect(list_).to_contain_text("Ask me first off")
         expect(page.get_by_text("Agents never have more rights than you.")).to_be_visible()
         mine = self.api(page, "GET", "/api/v1/my-agents")["items"]
         self.assertEqual([(item["name"], item["answersAi"], item["colour"]) for item in mine], [("Assistant", True, "ink")])
@@ -165,6 +165,12 @@ class MyAgentsJourney(unittest.TestCase):
         expect(page.get_by_role("heading", name="Schedules")).to_have_count(0)
         expect(page.get_by_text("Morning summary")).to_have_count(0)
         shot(page, "my-agent-page-1440")
+        # The list's tag is the switch's own name, on or off (#1424): not another name for the same thing.
+        page.goto("/settings/agents")
+        rows = page.get_by_role("list", name="Your agents").locator("[data-agent]")
+        expect(rows.filter(has_text="Planner").locator(".agl__may")).to_have_text("Ask me first on")
+        expect(rows.filter(has_text="Assistant").locator(".agl__may")).to_have_text("Ask me first off")
+        expect(page.get_by_text("Do it and tell me")).to_have_count(0)
 
     def test_02b_the_agents_list_matches_its_render_and_the_first_agents_are_told_apart(self) -> None:
         """#1377 (F-026 §7 Agents and AI): Assistant says what it is for before it has instructions, its Ask me first is a tag, a second new agent is
@@ -181,7 +187,7 @@ class MyAgentsJourney(unittest.TestCase):
         rows = page.get_by_role("list", name="Your agents")
         expect(rows.locator("[data-agent]").first.locator(".agl__job")).to_have_text("Answers your questions and runs your schedules.")
         tag = rows.locator("[data-agent]").first.locator(".agl__may")
-        expect(tag).to_have_text("Do it and tell me")
+        expect(tag).to_have_text("Ask me first off")
         card = rows.evaluate("el => getComputedStyle(el).backgroundColor")
         self.assertNotEqual(tag.evaluate("el => getComputedStyle(el).backgroundColor"), card, "the tag is drawn against its card")
         hues = rows.locator(".kreska").evaluate_all("els => els.map((el) => [...el.classList].find((name) => name.startsWith('kreska--')) ?? 'ink')")

@@ -158,7 +158,7 @@ def panel_task(page: Page, project_id: str) -> str:
 
 
 def open_details(page: Page, tap: bool = False) -> None:
-    """The one detail panel (a sheet on the phone). A direct message has its own, "Message info", in More; a space has none (#1419), so
+    """The one detail panel (a sheet on the phone). A direct message has its own, "People and privacy", in More; a space has none (#1419), so
     there the panel is a task's, opened from the task's address on a task made for the purpose."""
     if re.search(r"/dm/[0-9a-f-]{36}", page.url):
         if page.viewport_size["width"] <= 640:
@@ -166,14 +166,14 @@ def open_details(page: Page, tap: bool = False) -> None:
             more = page.locator("header.phead").get_by_role("button", name="More", exact=True)
             close_modal_thread(page, tap)
             more.tap() if tap else more.click()
-            item = page.get_by_role("menu", name="More").get_by_role("menuitem", name="Message info")
+            item = page.get_by_role("menu", name="More").get_by_role("menuitem", name="People and privacy")
             item.tap() if tap else item.click()
             return
         close_modal_thread(page, tap)
         header = page.locator("header.top")
         page.locator("header.top:not(.top--bare) button[aria-label='More']").first.wait_for()
         header.get_by_role("button", name="More", exact=True).click()
-        page.get_by_role("menu", name="More").get_by_role("menuitem", name="Message info").click()
+        page.get_by_role("menu", name="More").get_by_role("menuitem", name="People and privacy").click()
         return
     project = re.search(r"/projects/([0-9a-f-]{36})", page.url)
     assert project, page.url
@@ -1384,7 +1384,7 @@ class AppShellJourney(unittest.TestCase):
         saved = page.get_by_role("list", name="Connected clients").get_by_role("listitem")
         expect(saved).to_have_count(1)
         expect(saved.get_by_text("Research laptop", exact=True)).to_be_visible()
-        # Ask me first (#1419) starts off ("Do it and tell me"); the owner turns it on here, and it is kept.
+        # Ask me first (#1419) starts off; the owner turns it on here, and it is kept.
         ask = saved.get_by_role("switch", name="Ask me first")
         expect(ask).to_have_attribute("aria-checked", "false")
         ask.click()

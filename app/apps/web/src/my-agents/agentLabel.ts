@@ -13,7 +13,7 @@ export function modelLine(agent: Pick<MyAgent, 'model'>, choice: AssistantModelC
   return { name: option?.name ?? assistantModelName(agent.model.model), connection: choice.groups.length > 1 ? group.label : '', needsConnection: false };
 }
 
-/** Its tag: "Do it and tell me", or "Ask me first" with that switch on (AG-3, #1419). */
+/** Its tag: "Ask me first on" or "Ask me first off", the name of the switch on its page (AG-3, #1419, #1424). */
 export const mayDoLabel = (agent: Pick<MyAgent, 'mayDo'>) => AGENT_MAY_DO_LABELS[agent.mayDo];
 
 /** The first line of the instructions, as the one line about what the agent is for in the list. */

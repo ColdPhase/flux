@@ -560,7 +560,7 @@ class SpokojLayout(unittest.TestCase):
         expect(page.get_by_role("button", name="Choose messages", exact=True)).to_have_count(0)  # sketches from messages are gone (#866)
         expect(page.get_by_role("button", name="Select", exact=True)).to_have_count(0)
         page.locator("header.top").get_by_role("button", name="More", exact=True).click()
-        expect(page.get_by_role("menu", name="More").get_by_role("menuitem", name="Message info")).to_be_visible()
+        expect(page.get_by_role("menu", name="More").get_by_role("menuitem", name="People and privacy")).to_be_visible()
 
     def test_12_the_views_are_as_wide_as_their_words_and_the_name_has_its_own_slot(self) -> None:
         page = self.page(COMPUTER)

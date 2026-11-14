@@ -108,19 +108,19 @@ class UxSimplicityPartAMenus(unittest.TestCase):
                 expect(page.get_by_role("heading", level=1, name=re.compile("Jonas Berg"))).to_be_visible()
                 page.locator(header).get_by_role("button", name="More", exact=True).click()
                 menu = page.get_by_role("menu", name="More")
-                expect(menu.get_by_role("menuitem", name="Message info")).to_be_visible()
+                expect(menu.get_by_role("menuitem", name="People and privacy")).to_be_visible()
                 for gone in (r"^Call", r"^Live now"):
                     expect(menu.get_by_role("menuitem", name=re.compile(gone))).to_have_count(0)
                 expect(page.locator(header).get_by_role("button", name=re.compile("^(Call|Join)"))).to_have_count(0)
 
     def test_06_message_info_left_open_does_not_follow_into_a_space(self) -> None:
-        # A space has no panel of its own: the docked Message info of a direct message closes on the way to a space, never an empty panel.
+        # A space has no panel of its own: the docked People and privacy of a direct message closes on the way to a space, never an empty panel.
         page = self.page()
         page.goto(f"/dm/{self.ids['dm']}")
         expect(page.get_by_role("heading", level=1, name=re.compile("Jonas Berg"))).to_be_visible()
         page.locator("header.top").get_by_role("button", name="More", exact=True).click()
-        page.get_by_role("menu", name="More").get_by_role("menuitem", name="Message info").click()
-        expect(page.locator("#details")).to_contain_text("Message info")
+        page.get_by_role("menu", name="More").get_by_role("menuitem", name="People and privacy").click()
+        expect(page.locator("#details")).to_contain_text("People and privacy")
         page.locator(".app__side").get_by_role("link", name=re.compile("^Community garden sensors")).first.click()
         expect(page.get_by_label("Write a message", exact=True)).to_be_visible()
         expect(page.locator("#details")).to_have_count(0)

@@ -67,7 +67,7 @@ const REPLACING = new Set(['owned', 'thought-tasks', 'work', 'decision']);
 const replaces = (view: DetailsView) => typeof view === 'object' && REPLACING.has(view.kind);
 const KIND_LABEL: Record<string, string> = { work: 'Task', decision: 'Decision', 'thought-tasks': 'Tasks' };
 /**
- * The heading of a panel that has no kind chip is the label of what opened it (#1058; #871 one label per thing): "Message info" for a
+ * The heading of a panel that has no kind chip is the label of what opened it (#1058; #871 one label per thing): "People and privacy" for a
  * direct message's own panel (a space has no panel of its own, #1419), "Linked objects" for a message's, the button's own words for the rest.
  * Its close control is "Close <heading>", except where the heading is a request ("Add to a Wiki page"), which only reads as "Close". A panel
  * with a chip keeps "Details" as its name for assistive technology, with its kind after it.
@@ -75,7 +75,7 @@ const KIND_LABEL: Record<string, string> = { work: 'Task', decision: 'Decision',
 const panelHeading = (view: DetailsView): { title: string; close: string } => {
   const named = (title: string) => ({ title, close: `Close ${title.charAt(0).toLowerCase()}${title.slice(1)}` });
   const asked = (title: string) => ({ title, close: 'Close' });
-  if (view === 'place') return named('Message info');
+  if (view === 'place') return named('People and privacy');
   if (view === 'connect-ai') return asked('Connect your AI');
   switch (view.kind) {
     case 'add-to-doc': return asked('Add to a Wiki page');
@@ -649,7 +649,7 @@ function AppLayoutContent() {
     : activeAgent
     ? { crumb: null, title: activeAgent.name, noDetails: true }
     : activeProject
-    // A space has no panel of its own (#1419): a place panel left open from a direct message closes here, never an empty "Message info".
+    // A space has no panel of its own (#1419): a place panel left open from a direct message closes here, never an empty "People and privacy".
     ? { crumb: null, title: activeProject.name, noDetails: true }
     // My map (#866) is named in the header at its own address too; its privacy line is the first thing in the map's head.
     : /^\/map(\/|$)/.test(location.pathname)
@@ -720,7 +720,7 @@ function AppLayoutContent() {
     // An agent's chat keeps its Settings in ⋯ on the computer as on the phone (#1419 item 14): the header names it once.
     ...(activeAgent ? [{ label: 'Settings', run: () => void navigate(`/settings/agents/${activeAgent.id}`) }] : []),
     // Only a direct message has a panel of its own; a space's people, AI and GitHub are in its settings (#1419).
-    ...(activeDm ? [{ label: 'Message info', run: () => shell.openDetails('place') }] : []),
+    ...(activeDm ? [{ label: 'People and privacy', run: () => shell.openDetails('place') }] : []),
     // No sidebar row: the sidebar folds with its own control and `[`, and the rail and the navigation button open it (README §4, #1376).
   ];
   // The same conditions as the rows above: My tasks, My map, an agent's chat and Settings have none, and then no ⋯ is shown (#1424).
@@ -772,11 +772,11 @@ function AppLayoutContent() {
     { label: 'Settings', run: () => void navigate(`/projects/${projectId}/settings`) },
     ...(spaceMute ? [{ label: spaceMute.label, hint: spaceMute.hint, run: spaceMute.run }] : []),
   ] : [];
-  // A direct message's More holds what a space's does that applies to it: Search first, Mute and Message info (#1374). It has no calls (#1419).
+  // A direct message's More holds what a space's does that applies to it: Search first, Mute and People and privacy (#1374). It has no calls (#1419).
   const phoneDmItems: MoreItem[] = activeDm ? [
     { label: 'Search', run: shell.openSearch },
     ...(dmMute ? [{ label: dmMute.label, hint: dmMute.hint, run: dmMute.run }] : []),
-    { label: 'Message info', run: () => shell.openDetails('place') },
+    { label: 'People and privacy', run: () => shell.openDetails('place') },
   ] : [];
   const mainPlace = ['/projects', '/inbox', '/dm', '/settings'].includes(location.pathname) || /^\/inbox\//.test(location.pathname);
   const homePage = /^\/(tasks|map|docs)(\/|$)/.test(location.pathname);

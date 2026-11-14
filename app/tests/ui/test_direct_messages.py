@@ -284,6 +284,11 @@ class DirectMessageJourney(unittest.TestCase):
         expect(ada.get_by_text("PETG in white")).to_be_visible(timeout=15000)
         open_details(ada)
         expect(ada.get_by_role("heading", name="People in this conversation")).to_be_visible()
+        # #1424: who reads it is said once, in two short sentences; there is no second paragraph about what stays private.
+        details = ada.locator("#details")
+        expect(details).to_contain_text("can read this conversation. Company owners and admins can’t, unless they are in it.")
+        expect(details.get_by_role("heading", name="What stays private")).to_have_count(0)
+        expect(details.get_by_role("button", name="Leave conversation")).to_be_visible()
         shot(ada, "dm-desktop-1440-group-details")
         ada.keyboard.press("Escape")
 
