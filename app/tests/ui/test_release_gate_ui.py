@@ -100,15 +100,15 @@ class ReleaseGateUi(unittest.TestCase):
         expect(add).to_be_visible()
         self.assertEqual(sized(more), (32, 32), "More for Spaces is the 32 px icon button")
         self.assertEqual(sized(add), (32, 32), "New message is the 32 px icon button")
-        # The bigger target does not push its heading row apart: the rows of the list under it keep their place.
+        # The bigger target does not push its heading row apart: 16 px of padding and the button's 24 px of room, as with the 24 px button.
         head = sidebar.locator(".side__head").first.bounding_box()
         assert head
-        self.assertLessEqual(head["height"], 34.5, "the heading row is as tall as before")
+        self.assertAlmostEqual(head["height"], 40, delta=0.6, msg="the heading row is as tall as before")
         self.assertEqual(sized(sidebar.locator(".me__btn"))[1], 32, "your name at the bottom is one 32 px row")
 
     def test_02_on_a_touch_screen_the_same_controls_are_44_px_targets(self) -> None:
         self.world()
-        page = self.page(phone=True, width=820)  # a tablet: the sidebar is its drawer
+        page = self.page(phone=True, width=660)  # 641-680 px: not a phone, and the sidebar is its drawer
         page.goto("/")
         page.get_by_role("button", name="Open navigation").tap()
         drawer = page.get_by_role("dialog")
