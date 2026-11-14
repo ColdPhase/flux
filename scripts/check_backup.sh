@@ -38,12 +38,16 @@
 #     FLUX_BACKUP_CASES=encryption runs only this case.
 #  FLUX_BACKUP_CASES=upgrade runs only 2. (and then 3.): the upgrade from the previous version, or the v0.1 refusal.
 set -eu
+# The agent runtime is on by default where the host can run it (#1438); these backups are of Flux without it.
+export FLUX_AGENT_RUNTIME=
 
 here=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd -P)
 unset FLUX_PROJECT FLUX_PUBLIC_ORIGIN
 base_port=${FLUX_BACKUP_TEST_PORT:-19571}
 port_a=$base_port port_b=$((base_port + 3)) port_u=$((base_port + 6))
 work=$(mktemp -d "${TMPDIR:-/tmp}/flux-backup-check.XXXXXX")
+# The AI key files ./flux up makes (#1438) stay in this run's own state directory, removed with it.
+export XDG_STATE_HOME="$work/state"
 work=$(cd "$work" && pwd -P)
 A="$work/a/flux" B="$work/b/flux" U="$work/u/flux" E="$work/e/flux" port_e=$((base_port + 9))
 

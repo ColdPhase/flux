@@ -338,7 +338,7 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
   // viewport (at most 100), and the current title and state of the tasks that visible announcements and
   // discussed-task chips name. This view keeps its own reading position (below); the reads never move it.
   const rootIds = useMemo(() => roots.map((root) => root.message.id), [roots]);
-  const messageWork = useMessageWorkRead(meId, project.id, `stream:${project.id}`, rootIds, feedRef, feedNode);
+  const messageWork = useMessageWorkRead(meId, project.id, `stream:${project.id}`, rootIds, feedRef, feedNode, true);
   const referenceIds = useMemo(() => [...new Set(notices.map((notice) => `work:${notice.workId}`))].sort(), [notices]);
   const referenceWork = useReferenceWork(meId, project.id, referenceIds, feedNode, true);
   // A read refused because access ended reloads the route (onDenied); other failures keep the stream readable.

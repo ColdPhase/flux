@@ -215,10 +215,10 @@ class MyAgentsJourney(unittest.TestCase):
         expect(page.get_by_text("Nothing yet.")).to_be_visible()
         self.assertEqual(self.api(page, "GET", f"/api/v1/my-agents/{self.ids['planner']}/memory")["items"], [])
 
-    def stub_models(self, page, agent: dict, *, sees_pictures: bool | None, calls_tools: bool = True) -> None:
+    def stub_models(self, page, agent: dict, *, sees_pictures: bool | None) -> None:
         """The model list of the agent's connection, with the agent's own model in it; `sees_pictures` None leaves the field out (it sees them)."""
         model = agent["model"]
-        option = {"id": model["model"], "name": "Test model", "note": "Input $1, output $2 per 1M tokens", "callsTools": calls_tools}
+        option = {"id": model["model"], "name": "Test model", "note": "Input $1, output $2 per 1M tokens"}
         if sees_pictures is not None:
             option["seesPictures"] = sees_pictures
         group = {"connection": model["connection"], "account": "api_key", "label": "Ada's Anthropic key", "company": "Anthropic", "options": [option]}
@@ -229,9 +229,9 @@ class MyAgentsJourney(unittest.TestCase):
     def stub_plan_models(self, page, agent: dict) -> None:
         """The agent's connection as a Claude plan: its few models are segments (#1219), the agent's own model among them."""
         model = agent["model"]
-        options = [{"id": model["model"], "name": "Sonnet", "note": "Everyday work", "callsTools": True},
-                   {"id": "opus", "name": "Opus", "note": "Harder requests", "callsTools": True},
-                   {"id": "haiku", "name": "Haiku", "note": "Quick, simple requests", "callsTools": True}]
+        options = [{"id": model["model"], "name": "Sonnet", "note": "Everyday work"},
+                   {"id": "opus", "name": "Opus", "note": "Harder requests"},
+                   {"id": "haiku", "name": "Haiku", "note": "Quick, simple requests"}]
         group = {"connection": model["connection"], "account": "claude_plan", "label": "Claude plan", "company": "Claude", "options": options}
         choice = {"current": model, "default": model, "groups": [group], "saved": True}
         page.route("**/api/v1/personal-assistant/model", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(choice))
@@ -248,7 +248,6 @@ class MyAgentsJourney(unittest.TestCase):
         # An API key's models are the app's dropdown, named by the key (#1218); it shows the agent's model.
         expect(blind.get_by_role("combobox", name="Ada's Anthropic key")).to_contain_text("Test model")
         expect(blind.get_by_role("note").filter(has_text=note)).to_have_text(f"Test model: {note}")
-        expect(blind.get_by_role("note").filter(has_text="can answer but can’t make changes")).to_have_count(0)
         shot(blind, "agent-vision-note-1440")
         for label, vision in (("a model that sees pictures", True), ("a model whose list says nothing of it", None)):
             with self.subTest(label):

@@ -158,7 +158,9 @@ class AgentTaskQuestions(unittest.TestCase):
         # The answer only reads: none of the change tools was offered to it, whatever Fieldbot may do.
         asked = [r for r in mock("/__requests")["requests"] if ANSWERING in json.dumps(r["body"])]
         self.assertTrue(asked, "the mock saw the answering run")
-        tools = {tool["name"] for tool in asked[0]["body"].get("tools", [])}
+        # pi names Flux's tools mcp__flux__<tool> (#1441).
+        tools = {tool["name"].removeprefix("mcp__flux__") for tool in asked[0]["body"].get("tools", [])}
+        self.assertTrue(any(name.startswith("flux_") for name in tools), f"the answering run reads with Flux's tools: {sorted(tools)}")
         self.assertFalse({"flux_create_task", "flux_update_task", "flux_create_doc", "flux_update_doc"} & tools, f"an answer reads only: {sorted(tools)}")
         # The thread shows the exchange in the task panel as the agents' own messages.
         page = self.page("jonas")

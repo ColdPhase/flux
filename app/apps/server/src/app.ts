@@ -62,12 +62,14 @@ import { searchRoutes } from './search/routes.js';
 import { searchQueryVectors } from './search/vectors.js';
 import { personalRunRoutes } from './personal-runs/routes.js';
 import { personalRunServerComposition } from './personal-runs/composition.js';
+import { keyToolChecking } from './ai-keys/tool-checking.js';
 import { firstAgentMaker } from './personal-runs/make-agent.js';
 import { pgBossPersonalRunQueue } from './personal-runs/adapters.js';
 import { registerPersonalRunTokenRoute } from './personal-runs/run-tokens.js';
 import { personalRuntimeAvailability } from './personal-runs/runtime.js';
 import { exportRoutes } from './export/routes.js';
 import { agentRuntimeRoutes } from './agent-runtime/routes.js';
+import { keyWebSearcher, type KeyWebSearcher } from './agent-connection/web-search.js';
 import { typingRoutes } from './typing/routes.js';
 import { typingTaskDiscussion } from './typing/tasks.js';
 import { githubCredentials } from './github/credentials.js';
@@ -118,8 +120,8 @@ declare module 'fastify' {
  * `index.ts` only loads the configuration, builds and listens.
  */
 export async function buildApp(config: ServerConfig, migrationsDir = 'packages/db/migrations',
-  /** Test seam: a fixture in place of the GitHub App provider, for the agent PR link and the reads of personal runs. */
-  overrides: { githubProvider?: GithubUnitProvider } = {}): Promise<FastifyInstance> {
+  /** Test seam: a fixture in place of the GitHub App provider, for the agent PR link and the reads of personal runs; pi's web search with a mock provider (#1441). */
+  overrides: { githubProvider?: GithubUnitProvider; keySearcher?: KeyWebSearcher } = {}): Promise<FastifyInstance> {
   const { connectionString, identity: identityConfig, push: pushConfig, filesDir, env } = config;
   const { exposeWork } = fixtureFlags(config.fixture);
   // F-030: the request serializer drops query strings (a search text is content); bodies are never logged.
@@ -320,10 +322,12 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   await app.register(aiRoutes(agentStopRoutes), { db, sessions: identity });
   await app.register(aiRoutes(agentQuestionRoutes), { db, sessions: identity });
   // Connecting AI the first time (a key saved, a plan signed in) gives a person Assistant (F-036 AG-1).
-  const personalRuns = personalRunServerComposition(env, db);
+  const personalRuns = personalRunServerComposition(env, db, config.agentRuntime);
   if (personalRuns.mode !== 'production') app.log.warn({ mode: personalRuns.mode }, 'TEST ONLY: personal runs use fixture connections and a mock provider');
+  // RT-1 rule 2 (#1441): an agent is put on a model of a key that called the check's `ping` (a fixture key of the test deployment has none to open).
+  const toolChecking = personalRuns.mode === 'production' ? keyToolChecking(env, db, config.backgroundMasterKey) : null;
   const firstAgent = firstAgentMaker(db, { queue: pgBossPersonalRunQueue(boss), connections: personalRuns.connections, providerEnabled: personalRuns.providerEnabled,
-    runtime: personalRuntimeAvailability(config.agentRuntime, db) }, app.log);
+    runtime: personalRuntimeAvailability(config.agentRuntime, db), ...(toolChecking ? { toolChecking } : {}) }, app.log);
   await app.register(aiRoutes(aiKeyRoutes), { db, sessions: identity, backgroundMasterKey: config.backgroundMasterKey, afterConnect: firstAgent,
     refresh: modelListRefresh(db, boss) });
   // The agents' web page reads (#918): the link cards' guard, a test deployment's closed world, and only when the operator turned them on.
@@ -338,11 +342,14 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   configureRunCredentialScan(config.agentRuntime.manager);
   // The optional embedding container's query hook (F-042, #1294), one for the process: undefined while it is off.
   const queryVectors = searchQueryVectors(config.embeddings);
+  // pi's web search (#1441, RT-5): the key's provider's hosted search, run here with the run owner's key.
+  const keySearcher = overrides.keySearcher ?? keyWebSearcher(env, db, config.backgroundMasterKey, personalRuns.providerEnabled);
   registerMcpRoute(app, db, identity.auth, identityConfig.publicOrigin, config.fixture.failureInjection && !!config.fixture.token,
     identity.standing && identityConfig.oidc ? { checker: identity.standing, label: identityConfig.oidc.label } : null,
-    identity.confirmation, identityConfig.oidc?.label, githubReadProvider, webReader, queryVectors);
-  // A personal run's MCP token (F-027 A2): signed here, the authorization server, for the worker only.
-  registerPersonalRunTokenRoute(app, db, identity.auth, identityConfig.publicOrigin);
+    identity.confirmation, identityConfig.oidc?.label, githubReadProvider, webReader, queryVectors, keySearcher);
+  // A personal run's MCP token (F-027 A2): signed here, the authorization server, for the worker only. A run in pi is given
+  // flux_web_search only where the route registers it: the web on and a searcher here (#1452 review).
+  registerPersonalRunTokenRoute(app, db, identity.auth, identityConfig.publicOrigin, webReader.enabled && !!keySearcher?.compute.enabled);
   await app.register(returnRoutes, { db, sessions: identity });
   await app.register(firstStepRoutes, { db, sessions: identity });
   await app.register(needsYouRoutes, { db, sessions: identity, github: githubReadProvider });
@@ -352,7 +359,7 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   // Personal assistant runs (#68): the server queues; the worker dispatches.
   await app.register(aiRoutes(assistantRoutes), { db, sessions: identity, boss, github: githubReadProvider });
   await app.register(aiRoutes(personalRunRoutes), { db, sessions: identity, boss, connections: personalRuns.connections, providerEnabled: personalRuns.providerEnabled,
-    runtime: personalRuntimeAvailability(config.agentRuntime, db), storage: fileStorage });
+    runtime: personalRuntimeAvailability(config.agentRuntime, db), storage: fileStorage, toolChecking });
   // People's agents take tasks (#856): the setting, the state line and the drain of what the work and the worker wrote.
   await app.register(aiRoutes(agentTaskRoutes), { db, sessions: identity, boss, connectionString,
     composition: { connections: personalRuns.connections, providerEnabled: personalRuns.providerEnabled, runtime: personalRuntimeAvailability(config.agentRuntime, db) } });

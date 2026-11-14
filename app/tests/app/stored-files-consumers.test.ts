@@ -1,18 +1,18 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
-import { createPersonalRunProcessor, type Principal } from '@flux/core';
+import type { Principal } from '@flux/core';
 import {
   type Conversation, type ConversationMessage, type ConversationSummary, type InboxItem, type InboxResponse, type Project,
   type ReturnSummary, type SearchResponse, type SearchResult, type StagedFile, type Workspace,
 } from '@flux/contracts';
 import { personalRunUseCases } from '../../apps/server/src/personal-runs/adapters.js';
-import { personalRunWorkerUnitOfWork } from '../../apps/worker/src/personal-runs/adapters.js';
 import { db, pool } from './support/db.js';
 import { toolValue } from './support/mcp.js';
 import { agentConnection } from './support/mcp-actions.js';
 import { addMember, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
-import { FakeCompute, FakeConnections, FakeQueue } from './support/personal-runs.js';
+import { FakeConnections, FakeQueue } from './support/personal-runs.js';
+import { startPiRuntime } from './support/pi-runtime.js';
 import { waitFor } from './support/wait.js';
 
 // A file-only message (empty body plus attachments, #154) reads as its attachments, never as empty
@@ -122,19 +122,27 @@ describe('a file-only message in every consumer that quotes it', () => {
   });
 
   test('a personal run names the attached files without their contents', async () => {
-    const connections = new FakeConnections();
-    const compute = new FakeCompute();
-    const runs = personalRunUseCases(db, { queue: new FakeQueue().factory, connections, providerEnabled: true });
-    const processor = createPersonalRunProcessor({ uow: personalRunWorkerUnitOfWork(db), connections, compute, stopPollMs: 20 });
-    const agentId = await agent(owner, ws.id, place.id, 'Owner assistant');
-    connections.connect(owner.id, randomUUID());
-    await runs.enable(human(owner), { agentId, ...connections.latest(owner.id) });
-    const { run } = await runs.invoke(human(owner), talk.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'What did the writer send?' });
-    assert.equal(await processor.process(run.id), 'completed');
-    assert.equal(compute.dispatched.length, 1);
-    const input = compute.dispatched[0]!.input;
-    assert.ok(input.includes(`<attachment name="findings.txt" bytes="${file.size}"/>`), input);
-    assert.match(compute.dispatched[0]!.system, /You cannot open attached files; you see only their names\./, 'the model is told it cannot open them (#1064)');
-    assert.equal(input.includes(SECRET), false, 'the file bytes never reach the provider input');
+    // Every API-key agent runs in pi in the agent runtime (#1441, RT-1): it reads the conversation with the Flux tools.
+    const pi = await startPiRuntime();
+    try {
+      const connections = new FakeConnections();
+      const runs = personalRunUseCases(db, { queue: new FakeQueue().factory, connections, providerEnabled: true });
+      const processor = pi.processor(connections);
+      const agentId = await agent(owner, ws.id, place.id, 'Owner assistant');
+      connections.connect(owner.id, randomUUID());
+      await runs.enable(human(owner), { agentId, ...connections.latest(owner.id) });
+      await pi.place(owner.id);
+      pi.gateway.script([{ tool: 'mcp__flux__flux_get_conversation', args: { projectId: place.id, id: talk.id } }, { text: 'The writer sent findings.txt.' }]);
+      const { run } = await runs.invoke(human(owner), talk.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'What did the writer send?' });
+      assert.equal(await processor.process(run.id), 'completed', JSON.stringify(pi.lastPi()));
+      assert.equal(pi.gateway.requests.length, 2);
+      const [first, second] = pi.gateway.requests;
+      assert.match(first!.prompt, /you see other files only by their names\./, 'the model is told it sees a file that is not a picture only by its name (#1064, #1217)');
+      const read = second!.results[0] ?? '';
+      assert.ok(read.includes('findings.txt'), read);
+      assert.equal(JSON.stringify(pi.gateway.requests).includes(SECRET), false, 'the file bytes never reach the provider');
+    } finally {
+      await pi.close();
+    }
   });
 });

@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { chmod, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { FLUX_TOOL_NAME, INIT_NAME, SEARCH_FRAME_LIMITS, TEXT_FRAME_LIMITS, WEB_ADDRESS, type RunOutcome, type SupervisorRequest, type SupervisorResult } from '@flux/runtime-protocol';
+import { FLUX_TOOL_NAME, INIT_NAME, SEARCH_FRAME_LIMITS, TEXT_FRAME_LIMITS, WEB_ADDRESS, type RunOutcome, type RuntimeClient, type SupervisorRequest, type SupervisorResult } from '@flux/runtime-protocol';
 import { openAppServer, readRateLimits, readUsage, type UsageReading } from './app-server.js';
 import { readCodexModels } from './models.js';
 import { clearClientPaths, clearLeftovers, clearScratch } from './data.js';
@@ -61,11 +61,11 @@ const TRANSCRIPT_DIRS: Record<RunRequest['client'], string[]> = {
 /** How long the Codex app-server may take for its preflight or its rate-limit read. */
 export const APP_SERVER_TIMEOUT_MS = 15_000;
 
-type RunRequest = Extract<SupervisorRequest, { kind: 'run' }>;
+type RunRequest = Extract<SupervisorRequest, { kind: 'run'; client: RuntimeClient }>;
 
 /** The runs in progress, each person's lane holding at most one. */
 const active = new WeakMap<SupervisorConfig, Map<string, { bindingId: string; stop: () => void }>>();
-const runsOf = (config: SupervisorConfig) => {
+export const runsOf = (config: SupervisorConfig) => {
   let runs = active.get(config);
   if (!runs) { runs = new Map(); active.set(config, runs); }
   return runs;
@@ -86,7 +86,7 @@ export function stopRun(config: SupervisorConfig, runId: string, bindingId: stri
 /** How long a finished run stays in the report: its worker may still be committing the answer. */
 const REPORTED_AFTER_END_MS = 2 * 60_000;
 const finishedRuns = new WeakMap<SupervisorConfig, Map<string, number>>();
-const finishedOf = (config: SupervisorConfig) => {
+export const finishedOf = (config: SupervisorConfig) => {
   let finished = finishedRuns.get(config);
   if (!finished) { finished = new Map(); finishedRuns.set(config, finished); }
   return finished;
@@ -379,7 +379,7 @@ export async function runCli(config: SupervisorConfig, request: RunRequest, dir:
   // It executes nothing but its own program and the sandbox shell, which hands each command to the run's broker.
   const homes = codex ? ['--home', join(dir, CLIENT_DIRS.codex), '--read', join(dir, 'home')] : ['--home', join(dir, CLIENT_DIRS.claude_code), '--home', join(dir, 'home')];
   const [file, args] = sandbox && scratch
-    ? [sandbox.binary, ['cli', scratch, ...homes, '--read', runDir, ...(sandbox.testExec ?? []).flatMap((path) => ['--exec', path]), '--', config.cliPaths[request.client], ...argv]]
+    ? [sandbox.binary, ['cli', scratch, ...homes, '--read', runDir, ...(sandbox.testExec?.[request.client] ? ['--exec', sandbox.testExec[request.client]!] : []), '--', config.cliPaths[request.client], ...argv]]
     : [config.cliPaths[request.client], argv];
   /** The run's searches the CLI started and whose result has not come back yet: tool use id → the search's number. */
   const searching = new Map<string, number>();

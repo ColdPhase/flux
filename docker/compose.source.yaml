@@ -181,6 +181,8 @@ services:
       FLUX_AGENT_RUNTIME: ${FLUX_AGENT_RUNTIME:-}
       FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS: ${FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS:-}
       FLUX_AGENT_RUNTIME_IDLE_DAYS: ${FLUX_AGENT_RUNTIME_IDLE_DAYS:-}
+      # Written by ./flux up when the host cannot run the agent runtime (#1438): Settings › AI says why in one line.
+      FLUX_AGENT_RUNTIME_OFF_REASON: ${FLUX_AGENT_RUNTIME_OFF_REASON:-}
       FLUX_RUNTIME_MANAGER_SECRET: ${FLUX_RUNTIME_MANAGER_SECRET:-}
       # Encrypted workspaces (F-030): the keyring on the internal `keyring` network; FLUX_KEYRING=off disables it
       # (every encrypted workspace then stays locked). See docs/product/encrypted-workspaces.md.

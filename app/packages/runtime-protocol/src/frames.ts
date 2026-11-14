@@ -85,10 +85,12 @@ export const PLAN_MODEL_LIMITS = { name: 80, note: 200 } as const;
  * `input_too_large` (#1129): the model refused the request as longer than its context window (Claude Code's `prompt_too_long`, Codex's
  *   `context_length_exceeded`).
  * `model_unavailable`: the CLI said the chosen model is not available to the account (F-027 AST-11).
+ * `budget` and `credits` (#1441, pi only): Flux's model gateway refused a request because the key's daily budget is used (CA-3, #854), or
+ *   the provider said the key's API credits ran out. Nothing falls back to another connection.
  */
 export const RUN_OUTCOMES = [
   'completed', 'stopped', 'local_tool', 'sign_in_again', 'plan_limit', 'max_turns', 'wall_clock', 'no_event', 'crashed', 'answer_too_large', 'unknown', 'refused',
-  'model_unavailable', 'input_too_large',
+  'model_unavailable', 'input_too_large', 'budget', 'credits',
 ] as const;
 export type RunOutcome = (typeof RUN_OUTCOMES)[number];
 

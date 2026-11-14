@@ -2,6 +2,7 @@ import http from 'node:http';
 import zlib from 'node:zlib';
 import { handleCliVendor } from './cli-vendor-mock.js';
 import { handleKeyLists } from './key-list-mock.js';
+import { toolAnswer, toolWireOf } from './tool-answers.js';
 
 /**
  * TEST ONLY (#179, F-020 PROV-6): a local stand-in for the two AI wire formats, run as the Compose
@@ -22,7 +23,10 @@ import { handleKeyLists } from './key-list-mock.js';
  * Modes: `success`, `truncated`, `refusal`, `status` (HTTP `status`, with an error body that echoes
  * the received key, to prove adapters never surface error bodies), `hang` (never answers),
  * `malformed` (2xx that is not JSON), `no_usage`, `redirect` (302 to /__redirected, which records a
- * hit), `oversized` (2 MB body), `paused` (Anthropic: the answer stops with `pause_turn`, the server's own search loop limit, #1116).
+ * hit), `oversized` (2 MB body), `paused` (Anthropic: the answer stops with `pause_turn`, the server's own search loop limit, #1116),
+ * `tool` (#1441, RT-1 rule 2: the answer is one call of the first tool the request offers, with no arguments, on every wire format: what
+ * a model that can be an agent does with the check's `ping`; the scripted `usage` is its usage; a request that offers no tool is answered
+ * in words, and `success` answers in words always).
  *
  * A request with `stream: true` (#1248) is answered as the provider streams it: the same answer as Server-Sent Events (Anthropic's
  * `message_start` … `message_stop`, the Responses API's `response.output_text.delta` … `response.completed`), its text in small pieces,
@@ -35,7 +39,7 @@ import { handleKeyLists } from './key-list-mock.js';
  */
 
 type Wire = 'anthropic' | 'openai';
-type Mode = 'success' | 'truncated' | 'refusal' | 'status' | 'hang' | 'malformed' | 'no_usage' | 'redirect' | 'oversized' | 'paused';
+type Mode = 'success' | 'truncated' | 'refusal' | 'status' | 'hang' | 'malformed' | 'no_usage' | 'redirect' | 'oversized' | 'paused' | 'tool';
 interface Search { query: string; results: string[]; cite: string }
 interface Script { mode: Mode; text: string; usage: { input: number; output: number }; cost: number | null; status: number; delayMs: number; search: Search | null; errorMessage: string | null; streamGapMs: number; crlf: boolean }
 export interface RecordedProviderRequest {
@@ -215,6 +219,8 @@ const server = http.createServer((request, response) => {
       if (script.mode === 'malformed') { response.writeHead(200, { 'content-type': 'application/json' }); return response.end(`not json {${key}`); }
       if (script.mode === 'oversized') return json(response, 200, { padding: 'x'.repeat(2_000_000) });
       if (url.pathname === '/anthropic/v1/messages/count_tokens') return json(response, 200, { input_tokens: Math.max(1, Math.ceil(raw.length / 4)) });
+      const toolWire = script.mode === 'tool' && request.method === 'POST' ? toolWireOf(url.pathname) : null;
+      if (toolWire) return json(response, 200, toolAnswer(toolWire, body, { usage: script.usage }));
       const streamed = (body as { stream?: unknown } | null)?.stream === true;
       if (url.pathname === '/anthropic/v1/messages' && streamed) return sse(response, anthropicEvents(anthropicAnswer(script, body as { model?: string })), script.streamGapMs);
       if (url.pathname === '/anthropic/v1/messages') return json(response, 200, anthropicAnswer(script, body as { model?: string }));

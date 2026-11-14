@@ -5,11 +5,11 @@ import {
   PERSONAL_RUN_JOB,
   recoverPersonalRuns,
   unavailablePersonalCompute,
+  type KeyRunGateway,
   type PersonalCompute,
   type PersonalConnectionLookup,
   type PersonalRunTokenIssuer,
   type PersonalRuntime,
-  type PersonalToolHost,
 } from '@flux/core';
 import { runLiveText, type Database } from '@flux/db';
 import { personalRunWorkerUnitOfWork } from './adapters.js';
@@ -34,16 +34,18 @@ const STOP_WAIT_MS = 5_000;
  * The queue never retries a dispatch (`PERSONAL_RUN_QUEUE`, created by the migrator).
  */
 export async function registerPersonalRunWorker(boss: PgBoss, db: Database, options: {
-  connections?: PersonalConnectionLookup; compute?: PersonalCompute; tools?: PersonalToolHost; tokens?: PersonalRunTokenIssuer; runtime?: PersonalRuntime;
+  connections?: PersonalConnectionLookup; compute?: PersonalCompute; tokens?: PersonalRunTokenIssuer; runtime?: PersonalRuntime;
+  /** Flux's model gateway (#1441): API-key runs in pi need it. */
+  gateway?: KeyRunGateway | null;
 } = {}) {
   const uow = personalRunWorkerUnitOfWork(db);
   const processor = createPersonalRunProcessor({
     uow,
     connections: options.connections ?? noPersonalConnections,
     compute: options.compute ?? unavailablePersonalCompute,
-    ...(options.tools ? { tools: options.tools } : {}),
     ...(options.tokens ? { tokens: options.tokens } : {}),
     ...(options.runtime ? { runtime: options.runtime } : {}),
+    ...(options.gateway ? { gateway: options.gateway } : {}),
     // The asker sees `/ai` and a chat answered as they are written (#1248), over the API's live stream.
     live: runLiveText(db),
   });
@@ -63,7 +65,7 @@ export async function registerPersonalRunWorker(boss: PgBoss, db: Database, opti
   });
   // The lane is free again: the owner's next queued request starts. A duplicate job is harmless (only a queued run is claimed).
   async function startNextRequests() {
-    for (const runId of await uow.run((ports) => ports.runs.startableQueued(20))) await boss.send(PERSONAL_RUN_JOB, { runId });
+    for (const runId of await uow.run((ports) => ports.runs.startableQueued(20, true))) await boss.send(PERSONAL_RUN_JOB, { runId });
   }
   const recovery = startPersonalRunRecovery({ recover: async () => { const ended = await recoverPersonalRuns(uow); await startNextRequests(); return ended; } });
   return {

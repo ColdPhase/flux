@@ -167,6 +167,13 @@ The points of #851, with the later answers applied (point 11 comes from #868):
     number in the config file; there is no setting in the app (Hubert, 2026-11-03, #860;
     [where agents run](ai-modes.md#rt-3--isolation-and-capacity)).
 
+13. **Where agents run** (founder decision, Hubert, 2026-11-13, [#1441](https://github.com/ColdPhase/flux/issues/1441#issuecomment-6861942373),
+    replacing the option C comment before it; [RT-1](ai-modes.md#rt-1--engines-on-the-server)). Every agent runs in the agent runtime:
+    API keys in pi, plans in Claude Code or Codex, everywhere with the same capabilities (shell, files, toolbox, Flux tools). The
+    runtime is a requirement of Flux AI, like Docker: the install checks it and says in one sentence what to fix; where it cannot run,
+    AI is unavailable. The worker's own tool loop is removed in v0.2.1. Only models that call tools can be agents, decided by one
+    check with a `ping` tool when a key is added or a model chosen (founder-approved direction, 2026-11-13); there is no answer-only mode.
+
 **What goes away:** Flux's own run limits and the seven reasons a change waits; agent project
 grants and manager requests; MCP scopes, capability switches and standing grants; reactions and
 background suggestions; the local waiter (#754, closed); drafts of messages to other people; the
@@ -446,6 +453,7 @@ unchanged (RT-9).
 | O-011 (GitHub task rules) | **Amended.** Task statuses are To do, Doing, Blocked and Done | F-038 |
 | F-035 (invite links), F-037's "links join the company only" | **Amended** (founder decisions, Hubert, 2026-11-13, [#1438](https://github.com/ColdPhase/flux/issues/1438)). One invite form (optional email, Create invite link; role and expiry under More, Member and 7 days by default). A space's Add people also takes a new person's email: the company link then adds them to that space when they join, and the maker hears it naming the space. The invite page is the create-account form first and lands in Everyone with the composer ready, with no "You joined" step. Only company owners and admins make links, as before; expiry, role and email-lock checks are unchanged ([contract](../development/access-policy.md#invite-links-f-035)) | Founder, #1438 |
 | F-026 Home ("Home has nothing else") | **Amended** (founder decisions, 2026-11-13, #1438). Every new person but a guest gets one first-steps card on Home with at most three rows by role and one Hide: an owner or admin Name your company, Invite people, Connect AI; a member Write your first message, Add your photo, Get notifications on this device (only beside a step that is left). A new person is one who joined the company in the last 30 days and has a step left; hiding or finishing the card ends it for good on every device, and notifications alone never bring it back. It replaces the new member's empty Home line ([Home](../design/final/README.md#home)) | Founder, #1438 |
+| F-020 (provider-neutral agent), O-008's operator switch | **Amended** (founder decision, Hubert, 2026-11-13, [#1438](https://github.com/ColdPhase/flux/issues/1438)). AI works right after install: `./flux up` makes the key file and sets `FLUX_PERSONAL_RUNS=on` while both are empty, and people connect AI in the app; the first `./flux up` also turns the agent runtime on (`codex,pi`: pi runs agents on API keys) where the host can run it (#1441), and otherwise records why for Settings › AI, which offers no plan it cannot run. `off` stays the operator's switch and is never changed; nobody is told to ask an admin. A release install still sets both itself. Key custody, the space AI switch and guests without AI are unchanged | Founder, #1438 |
 
 Not affected: F-010, F-014's draft-before-save thoughts, F-015, F-021, F-031, F-033, O-002, O-004, O-005 and O-012.
 

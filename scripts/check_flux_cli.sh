@@ -1,7 +1,7 @@
 #!/bin/sh
 # End-to-end check of the ./flux launcher (issue #72) in Docker, on an isolated copy of this
 # checkout with its own (default, path-derived) Compose project names, ports, volumes and
-# image tags: origin guard cases; up (fresh .env, never overwritten), demo (logins work,
+# image tags: origin guard cases; up (fresh .env, never overwritten, AI key file, #1438), demo (logins work,
 # idempotent, refuses production), dev (web and API hot reload through the Vite proxy),
 # down/reset/clean scoped to this checkout, a second checkout with default names surviving
 # the first one's clean, and a copied .env refused by ownership checks (also for the #123
@@ -20,6 +20,11 @@ base2="http://127.0.0.1:$((FLUX_PORT + 3))"
 dev="http://127.0.0.1:$FLUX_DEV_PORT"
 work=$(mktemp -d "${TMPDIR:-/tmp}/flux-cli-check.XXXXXX")
 work=$(cd "$work" && pwd -P)   # the launcher records physical paths
+# The AI key files ./flux up makes (#1438) go under this run's own state directory, removed with it.
+export XDG_STATE_HOME="$work/state"
+# The agent runtime, on by default where the host can run it (#1438, #1441), is the operator's choice here: off. Its default is
+# tested in tests/test_flux_subscription_question.py and the runtime itself by check_agent_runtime.sh.
+export FLUX_AGENT_RUNTIME=
 copy="$work/a/flux"
 copy2="$work/b/flux"
 copy3="$work/c/flux"
@@ -102,6 +107,18 @@ done
 grep -qx "FLUX_PUBLIC_ORIGIN=$base" "$copy/docker/.env" || fail "FLUX_PUBLIC_ORIGIN is not $base"
 grep -q '^FLUX_VAPID_SUBJECT=mailto:' "$copy/docker/.env" || fail "FLUX_VAPID_SUBJECT not set"
 curl -fsS "$base/api/v1/health" | grep -q '"status":"ok"' || fail "health not ok"
+# AI works right after install (#1438): agents on API keys are on, with a 32-byte key file the API and the worker read.
+grep -qx 'FLUX_PERSONAL_RUNS=on' "$copy/docker/.env" || fail "FLUX_PERSONAL_RUNS is not on after the first up"
+ai_key=$(sed -n 's/^FLUX_BACKGROUND_KEY_HOST_FILE=//p' "$copy/docker/.env")
+[ "$ai_key" = "$XDG_STATE_HOME/flux/$run/background.key" ] || fail "the AI key file is '$ai_key', not under the state directory"
+[ "$(wc -c < "$ai_key" | tr -d ' ')" = 32 ] || fail "the AI key file is not 32 bytes"
+[ "$(ls -ld "$(dirname "$ai_key")" | cut -c1-10)" = drwx------ ] || fail "the AI key directory is not private"
+case "$(ls -l "$ai_key" | cut -c1-10)" in -r--------|-r--r--r--) ;; *) fail "the AI key file mode is $(ls -l "$ai_key" | cut -c1-10)" ;; esac
+for service in api worker; do
+  id=$(docker ps -q --filter "label=com.docker.compose.project=$run" --filter "label=com.docker.compose.service=$service" | head -n 1)
+  [ "$(docker exec "$id" sh -c 'wc -c < /run/secrets/flux_background_key' | tr -d ' ')" = 32 ] || fail "$service cannot read the AI key file"
+done
+if grep -q "$(od -An -tx1 "$ai_key" | tr -d ' \n' | cut -c1-16)" "$work/first-up.out"; then fail "the first up printed the AI key"; fi
 
 step "A second ./flux up keeps .env byte for byte"
 before=$(cksum < "$copy/docker/.env")

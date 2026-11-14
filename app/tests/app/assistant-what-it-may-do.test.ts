@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { before, beforeEach, describe, test } from 'node:test';
+import { after, before, beforeEach, describe, test } from 'node:test';
 import {
   agentConnectionPath, assistantChangeActionPath, assistantChangeLine, ASSISTANT_RUN_EFFECT_TOOLS, assistantRunChangesActionPath, assistantRunChangesPath, docPath, NEEDS_YOU_PATH,
   type AssistantChange, type AssistantChangeDecision, type AssistantRunUndone, type Conversation, type NeedsYouResponse,
@@ -10,14 +10,18 @@ import { apiUrl } from './support/http.js';
 import { toolValue } from './support/mcp.js';
 import { agentConnection } from './support/mcp-actions.js';
 import { addMember, expectStatus, grant, removeFromSpace, project as createProject, workspace as createWorkspace, type Person } from './support/people.js';
+import { startPiRuntime, type PiRuntime } from './support/pi-runtime.js';
 import { assistantScene, changesOf, human, result, text, type AssistantScene } from './support/assistant-scene.js';
 
 // F-036 AG-3 and AG-7 (#855): an agent's rights are exactly its owner's, and its Ask me first switch (#1419; off is "Do it and tell me")
 // decides what happens within them. Deleting and other people's things always wait; only the owner decides, in their own session;
 // Undo sits on the agent's message and restores the earlier versions; the Inbox holds one item per run. Run changes go through the real
-// `/mcp` route with the run's own token, and every state is read back from the store. Fake engines stand in for every vendor.
+// `/mcp` route with the run's own token, and every state is read back from the store. Fake engines stand in for every vendor; the one run the worker
+// takes up is an API-key agent's, which runs in pi in the agent runtime (#1441, RT-1) and is refused before pi starts.
 
 let scene: AssistantScene;
+/** The runtime of the one test that has the worker take up a queued run; made there, closed at the end. */
+let pi: PiRuntime | null = null;
 const decide = (who: Person, id: string, action: 'apply' | 'skip' | 'edit', body: unknown = {}) => who.browser.request('POST', assistantChangeActionPath(id, action), { body });
 const undoRun = async (who: Person, runId: string) => expectStatus(await who.browser.request('POST', assistantRunChangesActionPath(runId, 'undo'), { body: {} }), 200) as AssistantRunUndone;
 const ownItems = async (who: Person = scene.owner) => (expectStatus(await who.browser.request('GET', NEEDS_YOU_PATH), 200) as NeedsYouResponse).items.filter((item) => item.key.startsWith('assistant:'));
@@ -55,6 +59,7 @@ async function keptOut(work: () => Promise<void>) {
 
 describe('Ask me first, approvals, Undo and the Inbox (F-036 AG-3, AG-7, #855)', () => {
   before(async () => { scene = await assistantScene('wd'); });
+  after(async () => { await pi?.close(); });
   beforeEach(async () => { await scene.reset(); });
 
   test('the default is Do it and tell me: new things and what is yours are made at once, and each is on the change log', async () => {
@@ -331,7 +336,8 @@ describe('Ask me first, approvals, Undo and the Inbox (F-036 AG-3, AG-7, #855)',
   });
 
   test('a guest has no AI, at once, even with a grant on the space: a client, a running assistant, a queued run, saved changes and the Inbox all stop', async (t) => {
-    const own = await assistantScene('wg');
+    pi ??= await startPiRuntime();
+    const own = await assistantScene('wg', { pi });
     const { lab, rig, thread, newAgent } = await laboratory(own);
     const mine = await own.task(own.owner, 'Ada wires the rig', rig.id);
     const [first, second] = [await own.task(own.peer, 'Jonas aligns the rig', rig.id), await own.task(own.peer, 'Jonas cleans the rig', rig.id)];
@@ -371,7 +377,8 @@ describe('Ask me first, approvals, Undo and the Inbox (F-036 AG-3, AG-7, #855)',
     });
     await t.test('a queued run never starts', async () => {
       await own.complete(running.runId);
-      assert.equal(await own.processor.process(queued.run.id), 'revoked');
+      assert.equal(await own.processor!.process(queued.run.id), 'revoked', JSON.stringify(pi?.lastPi()));
+      assert.equal(pi?.gateway.requests.length, 0, 'it was refused before pi started');
     });
     await t.test('nothing waits for a guest in the Inbox', async () => {
       assert.deepEqual(await ownItems(own.owner), []);

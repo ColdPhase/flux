@@ -12,8 +12,15 @@ import { createMcpHandler, isJsonContentType, isLegacyRequest,
 export const MCP_MAX_REQUEST_BODY_BYTES = 1024 * 1024;
 export const MCP_MAX_TOOL_INPUT_ELEMENTS = 10_000;
 
-export const FLUX_MCP_PROTOCOL_VERSIONS = ['2025-06-18', '2026-07-28'] as const;
-const legacyVersion = FLUX_MCP_PROTOCOL_VERSIONS[0]!;
+/**
+ * The legacy revisions Flux admits (PC-1): 2025-06-18, which the pinned Codex and Claude Code speak, and 2025-11-25, which pi offers and
+ * cannot be told otherwise (#1441: pi 1.5.2's MCP client always offers its latest, 2025-11-25; the pinned SDK serves both). Each is
+ * admitted exactly: the answer names the revision offered, and later requests must carry it.
+ */
+export const FLUX_MCP_LEGACY_VERSIONS = ['2025-06-18', '2025-11-25'] as const;
+export const FLUX_MCP_PROTOCOL_VERSIONS = [...FLUX_MCP_LEGACY_VERSIONS, '2026-07-28'] as const;
+const legacyVersions: readonly string[] = FLUX_MCP_LEGACY_VERSIONS;
+const isLegacyVersion = (value: unknown): value is string => typeof value === 'string' && legacyVersions.includes(value);
 
 function object(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
@@ -81,11 +88,11 @@ export function createFluxMcpHandler(factory: () => McpServer,
     if (!rpc) return handler.fetch(request, { parsedBody: body });
     const header = request.headers.get('mcp-protocol-version');
     const unsupported = (requested: unknown) => refuse(body, -32022, 'Unsupported protocol version',
-      { requested: typeof requested === 'string' ? requested : 'unknown', supported: [legacyVersion] });
+      { requested: typeof requested === 'string' ? requested : 'unknown', supported: [...legacyVersions] });
     if (rpc.method === 'notifications/initialized') {
       if ('id' in rpc || !isSpecType.JSONRPCNotification(body) || !isSpecType.InitializedNotification(body))
         return refuse(body, -32600, 'Invalid initialized notification');
-      if (header !== null && header !== legacyVersion) return unsupported(header);
+      if (header !== null && !isLegacyVersion(header)) return unsupported(header);
       return new Response(null, { status: 202 });
     }
     if (!('id' in rpc) && typeof rpc.method === 'string')
@@ -96,9 +103,9 @@ export function createFluxMcpHandler(factory: () => McpServer,
       if (!isSpecType.JSONRPCRequest(body) || !isSpecType.InitializeRequest(body))
         return refuse(body, -32602, 'Invalid initialize request');
       const offered = object(rpc.params)?.protocolVersion;
-      if (offered !== legacyVersion) return unsupported(offered);
+      if (!isLegacyVersion(offered)) return unsupported(offered);
       if (header !== null && header !== offered) return unsupported(header);
-    } else if (header !== legacyVersion) return unsupported(header);
+    } else if (!isLegacyVersion(header)) return unsupported(header);
     if (options.noResources) { const answered = noResources(body); if (answered) return answered; }
     return handler.fetch(request, { parsedBody: body });
   } };

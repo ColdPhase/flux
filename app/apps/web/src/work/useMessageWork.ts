@@ -60,7 +60,7 @@ function useMessageBatch(ref: RefObject<HTMLElement | null>, ids: string[], node
  * object chips and matched-edge pages. It reads, it never positions the feed. `scopeKey` names where
  * the batch belongs (a conversation id, or the project's stream of roots); null reads nothing.
  */
-export function useMessageWorkRead(accountId: string, projectId: string, scopeKey: string | null, messageIds: string[], ref: RefObject<HTMLElement | null>, node: HTMLElement | null) {
+export function useMessageWorkRead(accountId: string, projectId: string, scopeKey: string | null, messageIds: string[], ref: RefObject<HTMLElement | null>, node: HTMLElement | null, keepWhileLoading = false) {
   const selected = useMessageBatch(ref, messageIds, node).slice().sort().join(',');
   const base = `flux:message-work:${JSON.stringify([accountId, projectId, scopeKey, selected])}`;
   const [stored, setPosition] = useState(() => ({ base, ...remembered(base) }));
@@ -73,7 +73,15 @@ export function useMessageWorkRead(accountId: string, projectId: string, scopeKe
   const load = useCallback((signal: AbortSignal) => getWorkAssociations(projectId, query, signal), [projectId, query]);
   const state = useWorkRead(scope, load, revision, revalidator.state === 'idle');
   const page = state.phase === 'ready' || state.phase === 'refreshing' ? state.value : null;
-  const previews = useMemo(() => page ? messageWorkPreviews(page) : null, [page]);
+  const current = useMemo(() => page ? messageWorkPreviews(page) : null, [page]);
+  // The project's stream only (`keepWhileLoading`): a message that arrives widens the batch, so the read's scope changes and its answer is on its
+  // way for a moment. The chips already under the messages stay until it comes: taking them away and putting them back moves everything below
+  // a chip by its height, under a finger that is about to tap it. They stay for the same place (account, space and stream) and only while the
+  // read is loading: an unavailable read shows none. A thread's read retires its chips when its selector changes (the reading place holds, #195).
+  const lineage = JSON.stringify([accountId, projectId, scopeKey]);
+  const [kept, setKept] = useState<{ lineage: string; previews: NonNullable<typeof current> } | null>(null);
+  if (keepWhileLoading && current && kept?.previews !== current) setKept({ lineage, previews: current });
+  const previews = current ?? (keepWhileLoading && state.phase === 'loading' && kept?.lineage === lineage ? kept.previews : null);
   useEffect(() => {
     const value = { cursor: position.cursor, edgeCursor: position.edgeCursor };
     positions.set(base, value);

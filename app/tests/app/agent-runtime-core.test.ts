@@ -18,14 +18,17 @@ const on: AgentRuntimeConfig = { clients: ['claude_code'], commercialTermsAgreed
 
 describe('operator configuration', () => {
   test('off by default; on needs the manager secret and, for Claude Code, the Commercial Terms date', () => {
-    assert.deepEqual(loadAgentRuntimeConfig({}), { clients: [], commercialTermsAgreedOn: null, idleDays: null, manager: null });
+    assert.deepEqual(loadAgentRuntimeConfig({}), { clients: [], commercialTermsAgreedOn: null, idleDays: null, manager: null, keys: false, offReason: null });
+    // #1438: the launcher's one line about a host that cannot run it, only while it is off, in one bounded line.
+    assert.equal(loadAgentRuntimeConfig({ FLUX_AGENT_RUNTIME_OFF_REASON: '  the Docker engine\n is not a Linux engine ' }).offReason, 'the Docker engine is not a Linux engine');
+    assert.equal(loadAgentRuntimeConfig({ FLUX_AGENT_RUNTIME_OFF_REASON: 'x'.repeat(400) }).offReason?.length, 300);
     assert.throws(() => loadAgentRuntimeConfig({ FLUX_AGENT_RUNTIME: 'claude_code' }), /FLUX_RUNTIME_MANAGER_SECRET/);
     assert.throws(() => loadAgentRuntimeConfig({ FLUX_AGENT_RUNTIME: 'claude_code', FLUX_RUNTIME_MANAGER_SECRET: secret }), /COMMERCIAL_TERMS/);
     for (const bad of ['yes', '2026-13-01', '2026-02-30', '01.10.2026', '2099-01-01', '2019-01-01']) {
       assert.throws(() => loadAgentRuntimeConfig({ FLUX_AGENT_RUNTIME: 'claude_code', FLUX_RUNTIME_MANAGER_SECRET: secret, FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS: bad }, new Date('2026-10-06')), /COMMERCIAL_TERMS/, bad);
     }
     const config = loadAgentRuntimeConfig({ FLUX_AGENT_RUNTIME: 'claude_code', FLUX_RUNTIME_MANAGER_SECRET: secret, FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS: '2026-10-01', FLUX_AGENT_RUNTIME_IDLE_DAYS: '30' }, new Date('2026-10-06'));
-    assert.deepEqual(config, { ...on, idleDays: 30 });
+    assert.deepEqual(config, { ...on, idleDays: 30, keys: false });
     assert.equal(loadAgentRuntimeConfig({ FLUX_AGENT_RUNTIME: 'codex', FLUX_RUNTIME_MANAGER_SECRET: secret }).commercialTermsAgreedOn, null);
     for (const bad of ['0', '366', '-1', 'x', '1.5']) assert.throws(() => loadAgentRuntimeConfig({ FLUX_AGENT_RUNTIME_IDLE_DAYS: bad }), /IDLE_DAYS/, bad);
   });
@@ -259,7 +262,9 @@ describe('a place in the runtime', () => {
     const { store } = memoryStore();
     const runtime = agentRuntimeUseCases({ clients: [], commercialTermsAgreedOn: null, idleDays: null, manager: null }, store, null);
     assert.deepEqual(await runtime.status('ada'), { enabled: false, clients: { claude_code: 'off', codex: 'off' }, commercialTerms: null, idleReleaseDays: null, pool: 'off', binding: null, lastRelease: null,
-      connections: { claude_code: null, codex: null } });
+      connections: { claude_code: null, codex: null }, offReason: null });
+    const reasoned = agentRuntimeUseCases({ clients: [], commercialTermsAgreedOn: null, idleDays: null, manager: null, offReason: 'the Docker engine is not a Linux engine' }, store, null);
+    assert.equal((await reasoned.status('ada')).offReason, 'the Docker engine is not a Linux engine', 'Settings › AI can say why (#1438)');
     await assert.rejects(runtime.bind('ada'), (error: DomainError) => error.code === 'AGENT_RUNTIME_OFF');
     await assert.rejects(runtime.remove('ada'), (error: DomainError) => error.code === 'AGENT_RUNTIME_OFF');
     // T4: the sign-in commands answer the same way.

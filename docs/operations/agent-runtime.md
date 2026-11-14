@@ -5,10 +5,13 @@ optional agent runtime: people connect their own Claude or ChatGPT subscription 
 that CLI (Claude Code or Codex) for their agents, isolated from everyone else, on your server. One runtime serves everyone
 ([product contract](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/ai-modes.md#aim-3--the-runtime-transport)).
 
-**It is off by default.** With `FLUX_AGENT_RUNTIME` empty, no runtime service runs, the API reports the
-feature as not enabled, and nothing below applies. The published release `compose.yaml` does not
-contain it and never asks; the runtime is available from a source checkout with `./flux`, which asks
-once ([Switch it on](#switch-it-on)), or from a release install with the release's optional
+**The first `./flux up` turns it on where the host can run it** (founder decisions, Hubert, 2026-11-13,
+[#1438](https://github.com/ColdPhase/flux/issues/1438) and [#1441](https://github.com/ColdPhase/flux/issues/1441): AI works
+right after install). With `FLUX_AGENT_RUNTIME` empty, no runtime service runs, the API reports the
+feature as not enabled, and nothing below applies; on a host that cannot run it, that is how it stays, and the company's owners
+and admins read why in one line in Settings › AI. The published release `compose.yaml` does not
+contain it and never asks; the runtime is available from a source checkout with `./flux`
+([Switch it on](#switch-it-on)), or from a release install with the release's optional
 `compose.runtime.yaml` and `runtime.sh` ([Installing from a release](#installing-from-a-release)).
 
 ## Before you switch it on
@@ -24,8 +27,9 @@ once ([Switch it on](#switch-it-on)), or from a release install with the release
   snapshots. Owners are told so before they sign in. Offer the runtime only where owners trust you.
 - **Vendors may restrict this use.** Both vendors recommend API keys for products and automation and
   may act "without prior notice", possibly on an owner's account
-  ([accepted risks](../product/ai-modes.md#accepted-risks)). `server` connections with an API key are
-  the recommended path; the runtime is for owners who choose it.
+  ([accepted risks](../product/ai-modes.md#accepted-risks)). An API key is the recommended path, and it too runs in the runtime
+  since #1441 (as pi: it needs no operator statement and no sign-in; see [Switch it on](#switch-it-on)); signing in with a plan is
+  for owners who choose it.
 
 ## Switch it on
 
@@ -47,35 +51,40 @@ organization). Have you accepted them?  [y/N]
 - **When it asks.** `./flux up` asks while it *creates* `docker/.env` (a fresh checkout), before the
   build, and only when stdin and stdout are a terminal. An existing `docker/.env` is never asked about,
   and neither is a second `./flux up`, so a deployment that is already running stays as it is. Without a
-  terminal (CI, a pipe, `./flux up > log`) nothing is asked, checked or written, and the runtime stays
-  off. To skip the question in a terminal, set `FLUX_AGENT_RUNTIME` in the environment, even empty
-  (`FLUX_AGENT_RUNTIME= ./flux up`). `./flux dev` never asks.
+  terminal (CI, a pipe, `./flux up > log`) nothing is asked: the host is checked and the default answer applies,
+  `FLUX_AGENT_RUNTIME=codex,pi` (#1438; pi runs agents on API keys, #1441, and comes with every answer that turns the runtime on). Claude Code is never on without a typed yes. A host that fails the check keeps the runtime
+  off and `./flux up` writes the one line it found to `FLUX_AGENT_RUNTIME_OFF_REASON`, which Settings › AI shows the company's
+  owners and admins; `./flux ai on` clears it. To skip the check and the question, set `FLUX_AGENT_RUNTIME` in the environment,
+  even empty (`FLUX_AGENT_RUNTIME= ./flux up` keeps it off). `./flux dev` never asks.
 - **`./flux ai on`** asks the same questions on an existing instance, writes the answer to `docker/.env`
   and applies it like `./flux up` (builds and starts the runtime). It needs a terminal and refuses without
   one; set the variables by hand then. It only adds: if Codex is already on, it asks only the
   Commercial Terms question; if Claude Code is on too, it says so and changes nothing. It never removes a
   client. To turn the runtime off, empty `FLUX_AGENT_RUNTIME` and run `./flux up` (see
   [Switching off](#switching-off-purging-reset-and-clean)).
-- **Enter means yes, for Codex.** `Enter` on the first question writes `FLUX_AGENT_RUNTIME=codex`.
+- **Enter means yes, for Codex.** `Enter` on the first question writes `FLUX_AGENT_RUNTIME=codex,pi`.
   Codex is available: owners sign in with ChatGPT on Settings → AI (Connect AI).
-  `n` writes nothing and does not ask the second question.
+  `n` does not ask the second question and writes `FLUX_AGENT_RUNTIME=pi`: every agent runs in the runtime
+  ([RT-1](../product/ai-modes.md#rt-1--engines-on-the-server), #1441), so agents on API keys run there in pi whatever the answer
+  about subscriptions. `pi` comes with every answer.
 - **Claude Code needs a typed `y`.** The second question records *your* statement that you have agreed to
   Anthropic's Commercial Terms (see [Before you switch it on](#before-you-switch-it-on)), so `Enter`, `n`
   or any other answer does not make it. `y` writes `FLUX_AGENT_RUNTIME=codex,claude_code` and
   `FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS=<today>`; the API records that statement, with the date, in
   `agent_runtime_operator_statements` when it starts. Flux does not check it. An unclear answer to the
-  first question is asked again, and three of them count as `n`; Ctrl-D decides nothing.
+  first question is asked again, and three of them count as `n`; Ctrl-D decides nothing about subscriptions (`pi` is written).
 - **Hosts that fail the checks are not asked.** Before it asks, the launcher checks the Docker engine (not
-  the machine you type on: the runtime runs in the engine's kernel, which on Docker Desktop is a VM) and
-  prints one line saying why when a check fails; `./flux up` then carries on with the runtime off and
-  `./flux ai on` stops with that line:
+  the machine you type on: the runtime runs in the engine's kernel; Flux AI needs a Linux host, RT-1) and
+  prints one line saying why when a check fails ("AI agents stay off, as the agent runtime cannot run here: …"); `./flux up` then
+  carries on with the runtime, and so Flux AI, off, and `./flux ai on` stops with that line:
 
   | Check | How the launcher asks | Reason line says |
   | --- | --- | --- |
   | Linux engine | `docker info`, `OSType` | the engine is not a Linux engine |
+  | Linux 6.7 or later (Landlock ABI 4; founder decision 2026-11-13, #1441) | `docker info`, `KernelVersion` (the runtime's own start check then probes Landlock itself and refuses to start without ABI 4) | Flux AI needs a newer Linux (kernel 6.7 or later, e.g. Ubuntu 24.04 or Debian 13). |
   | Memory, CPU and process limits | `docker info`: `MemoryLimit`, `CpuCfsQuota`, `PidsLimit` | the engine cannot set the limits the runtime has |
   | `internal` networks | `docker network create --internal`, removed at once | the engine cannot create an internal network |
-  | Yama `ptrace_scope` of 1 or higher | one throwaway container (read-only, no network, no capabilities) of the Dockerfile's pinned `node` base image runs `cat /proc/sys/kernel/yama/ptrace_scope`, the same file the supervisor reads | the kernel has no Yama policy or it is 0 (Docker Desktop has none) |
+  | Yama `ptrace_scope` of 1 or higher | one throwaway container (read-only, no network, no capabilities) of the Dockerfile's pinned `node` base image runs `cat /proc/sys/kernel/yama/ptrace_scope`, the same file the supervisor reads | the kernel has no Yama (use a Linux host whose kernel has it), or it is 0: then the line gives the fix now (`sudo sysctl -w kernel.yama.ptrace_scope=1`) and how to keep it after a restart (`/etc/sysctl.d/90-flux.conf`) |
 
   If the engine cannot answer (for example it cannot pull the base image), the line says the check could
   not be run. The check image is the one the build pulls anyway.
@@ -96,8 +105,13 @@ FLUX_AGENT_RUNTIME=claude_code
 FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS=2026-10-05   # the date you agreed with Anthropic
 ```
 
-Then `./flux up`. The values are `claude_code`, `codex`, or `claude_code,codex`. Codex needs no operator
-statement; Claude Code needs the Commercial Terms date.
+Then `./flux up`. The value is a comma-separated list of `claude_code`, `codex` and `pi`, each at most once. Codex needs no
+operator statement; Claude Code needs the Commercial Terms date. **`pi`** (#1441) runs every API-key agent (Anthropic, OpenAI,
+OpenRouter, Gemini, OpenAI-compatible and self-hosted keys) in pi in the runtime, with shell and files in a scratch of each run, like
+Claude Code and Codex. **Every agent runs in the runtime** ([RT-1](../product/ai-modes.md#rt-1--engines-on-the-server), founder decision
+2026-11-13, #1441): Flux has no other engine, so without `pi` (or without the runtime) no API key can run an agent. It needs no statement
+and no sign-in; `FLUX_AGENT_RUNTIME=pi` alone runs the runtime for API keys only. The key stays sealed in Flux: pi reaches the model through the model gateway (`runtime-egress:8081`) with
+a gateway token of its run, and the gateway meters every request against the key's daily budget.
 
 `./flux up` then also builds and starts the Compose profile `runtime`:
 
@@ -106,7 +120,7 @@ statement; Claude Code needs the Commercial Terms date.
 | `runtime-install` | One-shot. Installs the pinned Claude Code release into the `runtime-tools` volume (the runtime mounts it read-only), after checking Anthropic's GPG-signed release manifest against the key fingerprint Anthropic publishes and the binary's SHA-256 against that manifest. Flux never ships Claude Code in an image. It reaches only `downloads.claude.ai`, through `runtime-egress`. A verified install of the pinned version is kept on later starts. |
 | `runtime-1` | One runtime for everyone. A small supervisor (and, during a sign-in or a run, each person's CLI under their own user id), with its own volume and its own internal network. |
 | `runtime-manager` | Drives the supervisors for the API and worker. No database and no Docker access. |
-| `runtime-egress` | The runtime's only way out: HTTPS to the hosts the enabled CLIs document, and the Flux `/mcp` route. |
+| `runtime-egress` | The runtime's only way out: HTTPS to the hosts the enabled CLIs document, the Flux `/mcp` route and, for an API-key run (#1441), the model gateway on port 8081. |
 
 `./flux` generates the secrets it needs in `docker/.env` (`FLUX_RUNTIME_MANAGER_SECRET`, one
 `FLUX_RUNTIME_SECRET_1`) and never changes an existing value. The runtime receives only its own
@@ -169,9 +183,10 @@ Docker's local volumes have no size quota, so the supervisor refuses a run while
   Linux 6.7 or later** (Landlock ABI 4, with Landlock enabled: the default on Ubuntu 24.04+, Debian 13+, Fedora 40+ and RHEL 10)
   and Docker's default seccomp profile (Docker Engine 25 allows its system calls); on an older kernel a shell could reach the
   egress, and through it an allowed vendor host under someone else's account (coordinator decision on #1437). **On a host without
-  Landlock ABI 4 the runtime still starts and logs `{"event":"tools_off"}` once**; its agents then work as before, with Flux's tools
-  and the CLI's own web search only, and cannot attach files they made. Check with
-  `docker compose … exec runtime-1 /opt/flux-runtime/sandbox/flux-sandbox abi` (4 or more: the tools are on).
+  Landlock ABI 4 the runtime does not start** (founder decision 2026-11-13, #1441: agents never run without their own shell and
+  files), so Flux AI is off: `./flux up` (by the engine's kernel version) and the runtime's start check (by the sandbox's own probe,
+  `{"event":"runtime_refused"}`) say "Flux AI needs a newer Linux (kernel 6.7 or later, e.g. Ubuntu 24.04 or Debian 13)." Check with
+  `docker compose … exec runtime-1 /opt/flux-runtime/sandbox/flux-sandbox abi` (4 or more).
 
 ### The toolbox
 
@@ -243,7 +258,10 @@ Each run's tools have their own limits (#1437), checked by the supervisor every 
 | Wall clock | the run's hour (below) | the run ends, every process of the person goes and the scratch is deleted |
 | Out of memory | the run's processes are chosen before the supervisor | the kernel kills the largest of them |
 
-So one active agent is planned at 1 GiB: about 256 MiB for its CLI, 512 MiB for its tools and 256 MiB of scratch. **On a 2 vCPU /
+So one active agent is planned at 1 GiB: about 256 MiB for its CLI (pi included), 512 MiB for its tools and 256 MiB of scratch.
+An API-key agent in pi (#1441) counts as one of them like a plan's: it waits for room the same way, and pi itself is lighter than
+Claude Code (124 MiB at its largest and 0.45 s of CPU to answer with one Flux tool call against an instant mock model; harness
+research 2026-11-13). **On a 2 vCPU /
 4 GB server** the runtime gets about 2.5 GiB and one CPU (`FLUX_RUNTIME_CPUS`, all the server's CPUs but one): two agents at once,
 sharing that CPU, the tools of each below every CLI, while Flux itself keeps the other CPU. A run that converts or computes for
 minutes slows the other run, never Flux. The memory limit is still shared: a CLI far over its planned 256 MiB can get another
@@ -266,6 +284,7 @@ Measured 2026-11-05 in Docker with the runtime's own settings (2560 MiB, one CPU
 | The runtime image with the toolbox (#1437, `agent-runtime`, amd64; 2026-11-13) | 1,000 MB, against 438 MB without it (`main` at the same day): the toolbox adds about 560 MB, once per server |
 | pandoc with typst, a one-page HTML file to PDF, in a run's sandbox on one CPU | 124 MiB at its peak |
 | Python with pandas and matplotlib, one chart to PNG, in a run's sandbox on one CPU | 108 MiB at its peak, 0.9 s |
+| pi 1.5.2, one prompt with one MCP tool call against a mock model, 1 CPU, read-only root (harness research, 2026-11-13) | 124 MiB at its peak, 0.45 s of CPU |
 
 The toolbox rows come from `docker image inspect` and the `MEASURE toolbox` lines of `scripts/check_runtime_sandbox.sh` (a container with one CPU, as a 2 vCPU server gives the runtime); both fit well inside a run's 512 MiB for its tools. The first three rows come from `scripts/check_runtime_people.sh`, which uses fake CLIs and works on any Linux engine. The last two
 are the real binaries, so they show what a CLI costs before it does any work.
@@ -455,8 +474,8 @@ chat) then runs their own Claude Code (or Codex) under their own user id, with t
   directories (`projects`, `todos`, `shell-snapshots`, `session-env`, `transcripts`) from the binding
   directory, the instructions and settings Codex reads from its home, the run's scratch, and the run's MCP configuration from `/tmp`.
 
-The worker reaches the API at `FLUX_API_INTERNAL_URL` (default `http://api:8080`) for the token and, for
-API-key runs, for `/mcp`.
+The worker reaches the API at `FLUX_API_INTERNAL_URL` (default `http://api:8080`) for the run token. The harness (Claude Code, Codex or
+pi) is the client of `/mcp`, through `runtime-egress`; the worker has no agent loop of its own and does not call `/mcp` in a run.
 
 ### The model gateway (#1441)
 
@@ -510,7 +529,14 @@ None of them is hidden by the checks.
 - **Reconciliation decides from sightings that can be a moment old (m8, low, accepted).** A binding missing from the
   sightings is looked for once more before the owner is told to sign in again. What is not serialized is the gap between
   those two reads.
-- **Docker Desktop is unsupported** (see *What the runtime gets*).
+- **Flux AI needs a Linux host** with the agent runtime ([RT-1](../product/ai-modes.md#rt-1--engines-on-the-server)): self-hosting is on Linux, and Docker Desktop on macOS or Windows is not a target (see *What the runtime gets*). Checked
+  2026-11-13 rather than assumed (#1441): the kernel of Docker Desktop 4.99.0 for macOS (and of its Docker VMM engine on Windows),
+  `7.0.14-linuxkit`, has Landlock (`CONFIG_SECURITY_LANDLOCK=y`, `landlock` in `CONFIG_LSM`; ABI 8 from the v7.0 source) but **no Yama**
+  (`# CONFIG_SECURITY_YAMA is not set`, observed in the configs embedded in the 4.99.0 arm64 and amd64 kernels; Docker's release notes say
+  4.93.0 moved to kernel 7.0.14 and 4.60.0 enabled Landlock). `/proc/sys/kernel/yama/ptrace_scope` does not exist there and cannot be set,
+  so the runtime's `ptrace_scope` requirement cannot be met and the launcher's check says so. Docker Desktop on Windows with the WSL2
+  backend uses Microsoft's WSL kernel, whose `config-wsl` at `linux-msft-wsl-6.18.58.1` has both Landlock and Yama (WSL 2.7.5 or later;
+  Yama's default of 1 there is inferred from the kernel source, not observed): not tested with Flux.
 
 ## Installing from a release
 
@@ -580,7 +606,9 @@ A GitHub Release carries the runtime as two more assets next to
 ## Versions
 
 Each Flux release pins the CLI versions its flag contract check passed: Claude Code 2.1.285 (in
-`app/apps/runtime/src/install/pins.ts`) and Codex rust-v0.160.1 (in `docker/Dockerfile`, by checksum).
+`app/apps/runtime/src/install/pins.ts`), Codex rust-v0.160.1 (in `docker/Dockerfile`, by checksum) and pi 1.5.2 (MIT, in
+`app/apps/runtime/pi/package-lock.json`, every package by its sha512 integrity, installed into the runtime image with `npm ci
+--ignore-scripts`; #1441).
 `./flux upgrade` reinstalls Claude Code at the new pin on its next start; nothing updates itself
 (`DISABLE_UPDATES=1`).
 
@@ -596,14 +624,15 @@ changes. It proves the flags exist, not how the CLIs behave in a run; the automa
 
 | Check | What it proves |
 | --- | --- |
+| `./scripts/check_first_up.sh` | The first `./flux up` of a fresh checkout with nothing set (no `FLUX_AGENT_RUNTIME`, no `docker/.env`, no terminal), on a host that can run the runtime: the default answer writes `pi` (with Codex), and the API, the worker, `runtime-manager`, `runtime-egress` and `runtime-1` (ready for pi) are up and healthy, `runtime-install` exited 0 (#1441: every other launcher check sets `FLUX_AGENT_RUNTIME` itself, so a default the runtime refused passed them all). Set `FLUX_FIRST_UP_PORT` for concurrent runs. |
 | `./scripts/check_agent_runtime.sh` | The whole runtime through `./flux` with fake CLIs: off by default; on; `docker inspect` limits; many owners in one runtime, no cross-owner reach; escape attempts from inside the runtime; a run's own shell (#1437, step 9e) on the runtime's real networks reaching nothing but the egress (with Landlock ABI 4 not even that); the supervisor's closed request set; release and reuse; bind refused with any entry in `/data`; operator release; the sign-in console (each method's exact command in a terminal, the URL, a pasted code, signed in only from `auth status`, sign-out and a failed logout, another member refused, the terminal gone after exit and after the page left, a seeded-secret scan of the database, frames, API answers and logs, and the pages at phone width in a browser); backup without slot volumes; restore reconciliation; switching off; purge; reset. Set `FLUX_RUNTIME_SCREENSHOT_DIR` to keep the browser's screenshots. |
 | `./scripts/check_runtime_sandbox.sh` | The per-run sandbox of the CLIs' own tools (#1437) with the real Landlock, in a container with the runtime's settings (any Linux engine with Landlock, also one with `ptrace_scope=0`): from a run's own shell, the person's login, `/data`, another run's scratch, the CLI's and every other process's environment, `/tmp`, the tools volume, links out of the scratch, TCP and listening (ABI 4) all refused; an HTML page, a CSV and a PDF made in the scratch; a file larger than the scratch, a fork bomb and a memory hog stopped while the run goes on; every scratch gone after its run; the reader `flux_attach_file` uses (no link, no `..`, no other person); Codex's shell found as `bash`, its own writes kept to its home and the scratch, a change outside the scratch stopping the run, and the instructions it wrote into its home removed. |
 | `./scripts/check_application.sh` (`agent-runtime-own-tools.test.ts`) | The supervisor's part of #1437 with a pass-through sandbox: the templates with the CLIs' own tools, the scratch as the working directory, the read-back that lets exactly those tools through (Codex: a command not in the sandbox shell, a file change outside the scratch stop the run), and the scratch gone after the run. |
 | `./scripts/check_application.sh` | With the runtime off: the API reports it disabled; no request input selects a runtime or a binding; the runtime tables hold display facts only; core, supervisor, manager and egress tests, including the fuzz tests of the supervisor-stream reader and `runtime-egress`; the sign-in console in process with real terminals (the 15-minute end with injected timers, disconnect, the closed request set, the session-bound ticket). |
 | `./scripts/check_model_gateway.sh` | The model gateway (#1441) with the runtime: a request from inside the runtime under a person's kind of user id, with only a run's gateway token, reaches a mock provider through `runtime-egress` and the worker, which swaps in the key and charges the run; a request without the token and another provider path are refused. Then the key is looked for in the runtime's and the egress's environments, every process's environment and command line, their files and their logs, and in the worker's log, with the token: nowhere (the provider received it: positive control). |
 | `./scripts/check_application.sh` (`model-gateway-core.test.ts`, `model-gateway.test.ts`) | The gateway's routes, tokens, admission, usage of every wire format (whole and streamed, cache fields, malformed and missing) and charges; end to end through the egress forwarder and the worker's gateway to a provider mock for every provider, on real run rows: the key only in the provider's own header, never in an answer, error, log or row; unknown, expired, replaced and closed tokens; stopped and ended runs; the key's day shared with the owner's other runs; four requests at once; size and idle bounds. |
-| `python3 -m unittest tests.test_container_isolation tests.test_runtime_inspect` | No Compose file mounts a Docker or Podman socket, and none binds a host path outside the checkout (so no `/var/run` or `/run` directory mount); `inspect.py` refuses the same on a running project. |
-| `python3 -m unittest tests.test_flux_subscription_question` | The launcher's question with a pseudo-terminal and a stub `docker` as the fake host check: Enter, Enter writes `codex` and no statement; Enter, `y` writes `codex,claude_code` and today's date; `n` writes nothing; no terminal asks and writes nothing; each failing host check shows no question and one reason line; an existing `docker/.env` and a second `./flux up` are never asked; `./flux ai on` asks the same, only adds and refuses without a terminal. It creates no Docker resource. |
+| `python3 -m unittest tests.test_container_isolation tests.test_runtime_inspect` | No Compose file mounts a Docker or Podman socket, and none binds a host path outside the checkout (so no `/var/run` or `/run` directory mount); `inspect.py` refuses the same on a running project, except the one file `./flux up` keeps outside the checkout (#1451): the background key, read-only, in the API and the worker. |
+| `python3 -m unittest tests.test_flux_subscription_question` | The launcher's question with a pseudo-terminal and a stub `docker` as the fake host check: Enter, Enter writes `codex,pi` and no statement; Enter, `y` writes `codex,claude_code,pi` and today's date; `n` and Ctrl-D write `pi`; no terminal asks and writes nothing; each failing host check shows no question and one reason line; an existing `docker/.env` and a second `./flux up` are never asked; `./flux ai on` asks the same, only adds and refuses without a terminal. It creates no Docker resource. |
 | `./scripts/check_application.sh` (`agent-runtime-runs.test.ts`) | A run end to end with the TEST ONLY fake `claude`: the real worker processor and engine, an in-process `runtime-manager` and supervisor, and real MCP calls to the API with a minted run token. Progress, the commit recheck, the exact argv, the token only in `FLUX_RUN_TOKEN` and the `Authorization` header, no transcript, the read-back (an extra tool or server), every end state, results past the bound, Stop (SIGINT and SIGTERM), a busy slot, redaction, revocation mid-run, switches off before and during a run, no runs a day, a plan limit that pauses and resumes the request by itself, and the DM/private/other-project canaries. |
 | `./scripts/check_mcp_clients.sh` (last step, `runtime-run-claude.e2e.ts`) | Opt-in, needs the internet: the pinned real `claude` with the run template's exact argv against the scripted local model (no account): its `system/init` field names, a start-up tool list equal to the run's switch-derived list, a connected Flux server and a call answered through `/mcp` with `FLUX_RUN_TOKEN`. |
 | `./scripts/check_runtime_cli_contract.sh` | Opt-in: the fixed templates' flags and the sign-in, status and sign-out assertion table (golden `--help`, status JSON keys, exit codes, streams; `--network none`, no account) against the pinned real CLIs. |

@@ -4,17 +4,20 @@ import { readFileSync } from 'node:fs';
 import { after, before, beforeEach, describe, test } from 'node:test';
 import { createDatabase, personalConnectionLookup, personalKeyResolver } from '@flux/db';
 import { AI_MODEL_LISTS_PATH, type AiModelList, type BackgroundComputeConnection } from '@flux/contracts';
+import { costMicros } from '@flux/core';
 import { personalRunUseCases } from '../../apps/server/src/personal-runs/adapters.js';
 import { Browser } from './support/http.js';
 import { expectStatus, person, workspace, type Person } from './support/people.js';
 import { chooseModel, FakeQueue } from './support/personal-runs.js';
 import type { RecordedProviderRequest } from './support/provider-mock.js';
+import { offeredTools } from './support/tool-answers.js';
 
 // Provider-neutral owner AI connections through the running API (#179, F-020 PROV-1/3/4): every
 // provider kind is saved the same way under its own key format, model and price source; owner
 // endpoints pass the SSRF guard when saved; a key whose budget is below one request is refused.
 // Seeded keys carry the marker check_application.sh looks for in the API and worker logs. No real
-// provider is called.
+// provider is called. A mock answers the check that the key's model calls tools (#1441): Connect AI sends one small request with the tool
+// `ping` on every model that has a price, the named providers' to the key-list mock (`/lists/…`), a compatible endpoint's to the endpoint itself.
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) throw new Error('DATABASE_URL is required');
@@ -49,7 +52,8 @@ async function mock(pathname: string, body?: unknown) {
 
 describe('provider-neutral owner AI connections (#179)', () => {
   let owner: Person;
-  beforeEach(() => mock('/__reset', {}));
+  // The compatible endpoint's model answers the check (#1441) with a call of `ping`, as a model that can be an agent does.
+  beforeEach(async () => { await mock('/__reset', {}); await mock('/__script', { wire: 'openai', mode: 'tool' }); });
   before(async () => { owner = await person('ai-connection-owner'); });
 
   test('every provider kind saves under its own key format, model and price source; the key never comes back', async () => {
@@ -71,7 +75,10 @@ describe('provider-neutral owner AI connections (#179)', () => {
       const response = await owner.browser.request('POST', path, { body: { ...consent, ...body, apiKey: key } });
       const saved = expectStatus(response, 201, String(body.provider)) as BackgroundComputeConnection;
       for (const [field, value] of Object.entries(expect)) assert.deepEqual(saved[field as keyof BackgroundComputeConnection], value, `${body.provider} ${field}`);
-      assert.deepEqual([saved.dailyBudgetCents, saved.today.spentMicros], [50, 0], 'one daily budget, nothing spent yet');
+      // The only spend is the check that the model calls tools (#1441): 60 tokens in and 8 out at the model's price, counted on the key's day from
+      // the start. The compatible endpoint's mock reports 1,200 and 80 at a price of zero; a model without a price is not checked yet.
+      const checked = saved.price && body.provider !== 'openai_compatible' ? costMicros({ inputTokens: 60, outputTokens: 8 }, saved.price) : 0;
+      assert.deepEqual([saved.dailyBudgetCents, saved.today.spentMicros], [50, checked], 'one daily budget, only the check spent');
       assert.equal(saved.keyLastFour, key.slice(-4));
       assert.equal(response.text.includes(key), false, 'the key is never returned');
       const listed = await owner.browser.request('GET', path);
@@ -81,7 +88,11 @@ describe('provider-neutral owner AI connections (#179)', () => {
       assert.ok(stored.startsWith('v1.') && !stored.includes(key));
       assert.equal(decrypt(stored, owner.id, saved.id), key, 'custody is the same AEAD for every provider');
     }
-    assert.equal((await mock('/__requests')).requests.length, 0, 'saving a connection calls no provider');
+    // Saving calls no provider but for the check that the model calls tools (#1441), which each named provider's goes to its own list mock: the one
+    // request that reached the endpoint the owner named is its check, with the one tool, `ping`.
+    const sent = (await mock('/__requests')).requests;
+    assert.deepEqual(sent.map((item) => [item.method, item.path]), [['POST', '/openai/v1/chat/completions']], 'only the endpoint the owner named, once');
+    assert.deepEqual(offeredTools('chat', sent[0]!.body), ['ping']);
   });
 
   test('wrong key formats, models, URLs and prices are refused and nothing is stored', async () => {

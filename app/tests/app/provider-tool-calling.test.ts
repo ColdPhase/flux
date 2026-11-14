@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { createServer, type IncomingMessage } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { after, before, beforeEach, describe, test } from 'node:test';
-import { PERSONAL_RUN_LIMITS, tablePrice } from '@flux/contracts';
-import { runToolLoop, type PersonalCompute, type PersonalComputeRequest, type PersonalToolCall, type PersonalTurn } from '@flux/core';
+import { PERSONAL_RUN_LIMITS } from '@flux/contracts';
+import type { PersonalCompute, PersonalComputeRequest, PersonalTurn } from '@flux/core';
 import { BRIEF } from './support/brief.js';
 import { parsePrivateTargets, providerPersonalCompute } from '../../packages/agent-runtime/src/index.js';
 import {
@@ -11,13 +11,12 @@ import {
   CHAT_TOOL_CALLS_TRUNCATED, CHAT_TWO_CALLS, FLUX_TOOLS, PROJECT_ID, RESPONSES_FINAL, RESPONSES_TOOL_CALLS, TOOL_WIRE_CASES, type ToolWireCase,
 } from './support/provider-tool-fixtures.js';
 
-// Tool calling in each provider adapter (F-027 AST-8.1, issue #406): the Flux tools written in each
-// wire format, the tool calls read back, and the results sent in the next request. Every test runs
-// against a LOCAL MOCK HTTP server in this process that answers with the documented-shape fixtures
-// of `support/provider-tool-fixtures.ts`. No real provider is called and no key exists: the "key"
-// is a fixed test string. These tests prove what the adapters send and how they map answers; they
-// are not a provider, billing or compatibility pass. The loopback mock is reached only because this
-// suite's endpoint policy allows 127.0.0.1.
+// Tool calling in each provider adapter (F-027 AST-8.1, issue #406): the Flux tools written in each wire format, the tool calls read back,
+// and the results sent in the next request. Since #1441 an API-key agent runs in pi in the agent runtime and no worker loop drives these
+// turns; the adapters stay (`flux_web_search` and a tool-calling probe use them). Every test runs against a LOCAL MOCK HTTP server in this
+// process that answers with the documented-shape fixtures of `support/provider-tool-fixtures.ts`. No real provider is called and no key
+// exists: the "key" is a fixed test string. These tests prove what the adapters send and how they map answers; they are not a provider,
+// billing or compatibility pass. The loopback mock is reached only because this suite's endpoint policy allows 127.0.0.1.
 
 const KEY = 'test-only-not-a-key-tool-7f3a';
 const KEY_REF = 'key-ref-of-owner';
@@ -299,20 +298,9 @@ describe('tool calling on every provider wire format (AST-8.1; local mock, docum
       assert.deepEqual((seen[1]!.body.messages[2]!.content as { tool_use_id: string }[]).map((block) => block.tool_use_id), ['toolu_01first', 'toolu_02second']);
     });
 
-    test('Anthropic: two tool_use blocks with one id are a malformed answer, refused before any call runs (as Chat Completions refuses them)', async () => {
+    test('Anthropic: two tool_use blocks with one id are a malformed answer, refused before any call is returned (as Chat Completions refuses them)', async () => {
       script = [{ body: ANTHROPIC_DUPLICATE_IDS }];
       assert.deepEqual(await compute().dispatch(requestFor(anthropic), live), { kind: 'failed', reason: 'provider_error', billed: 'unknown' });
-      // Through the loop: the run ends on the failed request and no tool is called.
-      script = [{ body: ANTHROPIC_DUPLICATE_IDS }];
-      const ran: PersonalToolCall[] = [];
-      const result = await runToolLoop({
-        compute: compute(), first: requestFor(anthropic), price: tablePrice('anthropic', 'claude-sonnet-5')!, reservedMicros: 470_000, maxTurns: PERSONAL_RUN_LIMITS.maxTurns,
-        deadline: Number.MAX_SAFE_INTEGER, now: () => 0, gate: async () => null, signal: live,
-        session: { tools: FLUX_TOOLS, call: async (call) => { ran.push(call); return { content: 'ok', isError: false }; }, close: async () => undefined },
-      });
-      assert.deepEqual(result.end, { kind: 'failed', result: { kind: 'failed', reason: 'provider_error', billed: 'unknown' } });
-      assert.deepEqual(ran, [], 'neither call ran');
-      assert.equal(result.account.unknown, true, 'the request was sent, so its charge is unknown');
     });
 
     test('Anthropic: the token count carries the tools and the earlier turns, so the preflight bound is not understated', async () => {
@@ -347,7 +335,7 @@ describe('tool calling on every provider wire format (AST-8.1; local mock, docum
     for (const [name, overrides] of refused) {
       for (const wire of [anthropic, openai]) {
         test(`${wire.name}: ${name}`, async () => {
-          await assert.rejects(compute().dispatch(requestFor(wire, overrides), live));
+          assert.deepEqual(await compute().dispatch(requestFor(wire, overrides), live), { kind: 'failed', reason: 'provider_error', billed: 'none' }, 'never sent, so free');
           if (wire.wire === 'anthropic') await assert.rejects(compute().countInputTokens!(requestFor(wire, overrides)));
           assert.equal(seen.length, 0, 'no request reached the provider');
           assert.deepEqual(resolved, [], 'no key was resolved');
@@ -363,9 +351,9 @@ describe('tool calling on every provider wire format (AST-8.1; local mock, docum
       assert.equal(seen[0]!.path, '/v1/responses');
     });
 
-    test('web search is never offered without the Flux tools, nor to a provider without one (#954)', async () => {
-      await assert.rejects(compute().dispatch(requestFor(anthropic, { tools: undefined, webSearch: true }), live), /Web search is not offered/);
-      await assert.rejects(compute().dispatch(requestFor(chat, { webSearch: true }), live), /Web search is not offered/);
+    test('web search is never offered to a provider without one, and such a request is never sent and costs nothing (#954, #1441)', async () => {
+      // A search alone is `flux_web_search`'s request (#1441, web-search.test.ts and key-search-adapters.test.ts): allowed where the provider has one.
+      assert.deepEqual(await compute().dispatch(requestFor(chat, { webSearch: true }), live), { kind: 'failed', reason: 'provider_error', billed: 'none' });
       assert.equal(seen.length, 0, 'nothing was sent');
     });
   });

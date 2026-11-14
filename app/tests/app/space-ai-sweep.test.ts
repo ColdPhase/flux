@@ -9,6 +9,7 @@ import { db, pool } from './support/db.js';
 import { publicOrigin } from './support/http.js';
 import { mcp } from './support/mcp.js';
 import { addMember, expectStatus, grant, person, type Person } from './support/people.js';
+import { startPiRuntime, type PiRuntime } from './support/pi-runtime.js';
 import { waitFor } from './support/wait.js';
 import { ensureSpaceAiAllowed, setSpaceAi, spaceAiRow } from './support/space-ai.js';
 import { createConnection, oauthTokenFor } from './support/mcp-actions.js';
@@ -16,6 +17,7 @@ import { createConnection, oauthTokenFor } from './support/mcp-actions.js';
 // AG-10 (F-029 S2 review fixes, #614; per space under F-037): the sweep with a real row in every state of every table it touches;
 // a REAL role change of the flipping admin against the REAL flip, in both orders; the backstop per table; no events of the
 // blocked period reach agents; flip against a run commit in both orders; and the delivery fence's refusal of a chunk held by the test gate.
+// The one test that runs the owner's assistant runs it as an API-key run in pi in the agent runtime (#1441, RT-1; support/pi-runtime.ts).
 
 const code = (json: unknown) => (json as { code?: string } | null)?.code;
 const errorCode = (message: Record<string, unknown> | null) => ((message?.error as { data?: { code?: string } } | undefined)?.data?.code);
@@ -23,16 +25,17 @@ const lists = (response: { message: Record<string, unknown> | null }) => (((resp
 const epochOf = async (projectId: string) => (await spaceAiRow(projectId))!.epoch;
 
 describe('space AI switch: sweep, role changes against the flip and remaining rows', () => {
-  let scene: AssistantScene;
+  let scene: AssistantScene; let pi: PiRuntime;
   const put = async (who: Person, state: 'allowed' | 'blocked') => who.browser.request('PUT', projectAiPolicyPath(scene.place.id), { body: { state } });
 
   before(async () => {
-    scene = await assistantScene('ai-sweep');
+    pi = await startPiRuntime();
+    scene = await assistantScene('ai-sweep', { pi });
     // The company admin is also one of the space's members, so a demotion leaves them an ordinary member of it.
     await grant(scene.lead, scene.place.id, scene.admin, 'contributor');
   });
   beforeEach(async () => { await ensureSpaceAiAllowed(scene.place.id); await scene.reset(); });
-  after(async () => { await ensureSpaceAiAllowed(scene.place.id); });
+  after(async () => { await ensureSpaceAiAllowed(scene.place.id); await pi.close(); });
 
   test('the sweep ends a real row in every state of every table it touches, and leaves rows of a newer epoch alone', async () => {
     const { ws, place, thread, owner } = scene;
@@ -140,22 +143,21 @@ describe('space AI switch: sweep, role changes against the flip and remaining ro
 
   test('flip against a run commit, both orders: a flip before the commit posts nothing, a commit before the flip stays posted', async () => {
     const answers = async (runId: string) => (await pool.query('SELECT status, end_reason, answer_body FROM personal_runs WHERE id = $1', [runId])).rows[0];
-    // The flip lands between the provider's answer and the commit.
+    // The flip lands between the end of pi and the commit.
+    pi.gateway.script([{ text: 'Looked at it, and here is the answer.' }]);
     const first = await scene.runs.invoke(human(scene.owner), scene.thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Flip before commit' });
-    const { personalRunWorkerUnitOfWork } = await import('../../apps/worker/src/personal-runs/adapters.js');
-    const { createPersonalRunProcessor } = await import('@flux/core');
-    const between = createPersonalRunProcessor({ uow: personalRunWorkerUnitOfWork(db), connections: scene.connections, compute: scene.compute, stopPollMs: 20,
-      hooks: { afterDispatch: async () => { expectStatus(await put(scene.owner, 'blocked'), 200); } } });
+    const between = pi.processor(scene.connections, { hooks: { afterDispatch: async () => { expectStatus(await put(scene.owner, 'blocked'), 200); } } });
     await between.process(first.run.id);
     const refused = await answers(first.run.id);
-    assert.deepEqual([refused.status, refused.end_reason, refused.answer_body], ['stopped', 'ai_off', null], 'the late answer is not posted');
+    assert.deepEqual([refused.status, refused.end_reason, refused.answer_body], ['stopped', 'ai_off', null], `the late answer is not posted: ${JSON.stringify(pi.lastPi())}`);
     expectStatus(await put(scene.owner, 'allowed'), 200);
     // The commit first, then the flip: the answer was posted before AI was turned off and stays as history.
+    pi.gateway.script([{ text: 'Looked at it, and here is the answer.' }]);
     const second = await scene.runs.invoke(human(scene.owner), scene.thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Commit before flip' });
-    await scene.processor.process(second.run.id);
+    await scene.processor!.process(second.run.id);
     expectStatus(await put(scene.owner, 'blocked'), 200);
     const kept = await answers(second.run.id);
-    assert.match(kept.status, /completed|truncated/);
+    assert.equal(kept.status, 'completed', JSON.stringify(pi.lastPi()));
     assert.ok(kept.answer_body, 'the earlier answer stays');
   });
 

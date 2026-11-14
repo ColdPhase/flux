@@ -4,7 +4,6 @@ import { CITE_MARK_PATTERN, markKey, type CiteKind } from './cites.js';
 import { createHash } from 'node:crypto';
 import {
   AGENT_LIMITS,
-  aiModelCallsTools,
   FILE_LIMITS,
   PERSONAL_RUN_LIMITS,
   personalRunMaxInputTokens,
@@ -21,8 +20,7 @@ import { InvalidInputError } from '../access/errors.js';
 import { invisibleFormatRefused } from '../access/validation.js';
 import { id } from '../work/validation.js';
 import { boundedUsageMicros, requestReservationMicros, usageMicros, usageTokensWithin } from '../ai/price.js';
-import type { PersonalComputeUsage, PersonalConnection } from './ports.js';
-import type { SuppliedSource } from './brief.js';
+import type { PersonalComputeUsage } from './ports.js';
 
 // Input and output rules of personal runs (#68, O-008). Pure functions shared by every entry
 // point and by the worker.
@@ -192,17 +190,13 @@ export function budgetedReservationMicros(price: Pick<AiPrice, 'inputMicrosPerMT
   return tools ? Math.min(one * Math.max(1, Math.floor(turns)), leftMicros) : one;
 }
 
-/**
- * Whether a run on this connection may be offered tools (F-027 AST-8.3). A model the owner marked,
- * or Flux's dated table lists, as unable to call tools answers in one request and cannot change anything.
- */
-export function connectionCallsTools(connection: Pick<PersonalConnection, 'provider' | 'model' | 'toolCalling'>): boolean {
-  return connection.toolCalling !== false && aiModelCallsTools(connection.provider, connection.model);
-}
-
 export const centsToMicros = (value: number) => value * 10_000;
 
-export type { SuppliedSource } from './brief.js';
+/** One numbered source an answer may cite as `[S<n>]`. */
+export interface SuppliedSource {
+  label: string;
+  ref: AssistantSourceRef;
+}
 
 /** What makes two citations one: the same message, task, thought, decision or page (a page cited at two sections is two places). */
 const refKey = (ref: AssistantSourceRef) => `${ref.type}:${ref.id}${ref.type === 'doc' && ref.section ? `#${ref.section.n}` : ''}`;
@@ -212,7 +206,7 @@ const refKey = (ref: AssistantSourceRef) => `${ref.type}:${ref.id}${ref.type ===
  * Citations count only for supplied labels (`[S3]`) and for the Flux marks (`[doc:ID#2]`, C-62) that `fluxRefs` resolved, by mark key, to an object the run
  * may cite; both are renumbered `[1]`… in the order they stand, one number for an object however it was cited.
  */
-export function parseOutput(text: string, sources: readonly Pick<SuppliedSource, 'label' | 'ref'>[], fluxRefs: ReadonlyMap<string, AssistantSourceRef> = new Map()) {
+export function parseOutput(text: string, sources: readonly SuppliedSource[], fluxRefs: ReadonlyMap<string, AssistantSourceRef> = new Map()) {
   const byLabel = new Map(sources.map((source) => [source.label, source]));
   // Marks the model invented (`[8]`, `[S9]` of no supplied source, `【3†source】`) are taken out first (#1222): what is left of `[n]` after the numbering
   // below is exactly a supplied source's.

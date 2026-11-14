@@ -33,6 +33,8 @@ function ownerPrice(value: FormDataEntryValue | null): number | null {
 export function keyFailure(error: unknown) {
   if (error instanceof ApiError) {
     if (error.code === 'BACKGROUND_KEY_CUSTODY_UNAVAILABLE') return 'This server cannot store background credentials yet. Contact its operator.';
+    // The model is refused, not the key (RT-1 rule 2, #1441): the key stays in its field for another model, so only the reason is said.
+    if (error.code === 'AI_TOOLS_REQUIRED') return error.message;
     // Provider, model, endpoint and price refusals carry a safe, specific reason.
     if ((error.status === 400 || error.status === 422) && error.code?.startsWith('AI_')) return `${error.message.replace(/\.$/, '')}. The key was cleared; enter it again.`;
     if (error.status === 401) return 'Your session ended. Sign in again before changing the connection.';
@@ -96,12 +98,17 @@ export const AddKeyForm = forwardRef<AddKeyFormHandle, {
       dailyBudgetCents: budget, timeZone: browserZone(),
     };
     setBusy(true); setError('');
+    // A model that cannot use tools is refused with the key still good: the key stays in its field, so another model can be chosen.
+    let keepKey = false;
     try {
       onAdded(await connectBackgroundCompute(command));
-    } catch (cause) { setError(keyFailure(cause)); focusError.current = true; }
+    } catch (cause) {
+      keepKey = cause instanceof ApiError && cause.code === 'AI_TOOLS_REQUIRED';
+      setError(keyFailure(cause)); focusError.current = true;
+    }
     finally {
       const key = form.elements.namedItem('apiKey');
-      if (key instanceof HTMLInputElement) key.value = '';
+      if (!keepKey && key instanceof HTMLInputElement) key.value = '';
       command.apiKey = ''; data.delete('apiKey');
       setBusy(false);
     }

@@ -28,11 +28,11 @@ RESET = (datetime.now(timezone.utc) + timedelta(hours=1)).replace(second=0, micr
 RESET_ISO = RESET.isoformat().replace("+00:00", ".000Z")
 RESUMES = f"at {RESET:%H:%M}" if RESET.date() == datetime.now(timezone.utc).date() else f"tomorrow at {RESET:%H:%M}"
 CLAUDE_GROUP = {"connection": "claude_plan", "account": "claude_plan", "label": "Claude plan", "company": "Claude", "options": [
-    {"id": "sonnet", "name": "Sonnet", "note": "Everyday work", "callsTools": True},
-    {"id": "opus", "name": "Opus", "note": "Harder requests", "callsTools": True},
-    {"id": "haiku", "name": "Haiku", "note": "Quick, simple requests", "callsTools": True}]}
+    {"id": "sonnet", "name": "Sonnet", "note": "Everyday work"},
+    {"id": "opus", "name": "Opus", "note": "Harder requests"},
+    {"id": "haiku", "name": "Haiku", "note": "Quick, simple requests"}]}
 KEY_GROUP = {"connection": "6f1d2c3b-4a59-4e6f-8a7b-9c0d1e2f3a4b", "account": "api_key", "label": "Ada OpenAI key", "company": "OpenAI", "options": [
-    {"id": "gpt-6.1-sol", "name": "GPT-6.1 Sol", "note": "$1.25 in · $10 out per 1M tokens", "callsTools": True}]}
+    {"id": "gpt-6.1-sol", "name": "GPT-6.1 Sol", "note": "$1.25 in · $10 out per 1M tokens"}]}
 
 
 class AssistantRuntime(unittest.TestCase):

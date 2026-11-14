@@ -3,6 +3,7 @@ import type { SessionResolver } from '../identity/session.js';
 import { EDITING_CHANNEL, listen, sql, type createDatabase, type DbExecutor, type EditingConfirmationPolicy } from '@flux/db';
 import type { ProcessKeys } from '@flux/core';
 import { editingGate } from './gate.js';
+import type { EditingReport } from './background.js';
 import { wikiAuthority } from './authority.js';
 import { wikiController } from './wiki-controller.js';
 import { editingRoutes } from './routes.js';
@@ -41,16 +42,18 @@ export function liveWorkspaceOf(db: DbExecutor) {
 
 export async function registerEditing(app: FastifyInstance, options: Options) {
   const outputBudget = apiEditingOutputBudget;
+  // Work nobody awaits (a read, a commit, a cursor) is logged, never left to end the process as an unhandled rejection.
+  const report:EditingReport=(error,what)=>app.log.error({ error }, `Live editing ${what} failed`);
   let telemetry:EditingQueueTelemetry|null=null;
   const authority = options.enabled ? wikiAuthority(options.database,undefined,{outputBudget,confirmation:options.confirmation}) : null;
-  const controller = authority ? wikiController(authority, outputBudget,()=>telemetry) : null;
+  const controller = authority ? wikiController(authority, outputBudget,()=>telemetry,report) : null;
   const mapsBackend=options.enabled?mapBackend(options.database,{confirmation:options.confirmation}):null;
   const mapsAuthority=mapsBackend?mapAuthority(mapsBackend,outputBudget):null;
-  const mapsController=mapsAuthority?mapController(mapsAuthority,outputBudget,()=>telemetry):null;
+  const mapsController=mapsAuthority?mapController(mapsAuthority,outputBudget,()=>telemetry,report):null;
   const workspaceOf = liveWorkspaceOf(options.database.db as unknown as DbExecutor);
   await app.register(editingRoutes, { sessions: options.sessions, authority, outputBudget,maps:mapsAuthority });
   if (!authority || !controller||!mapsBackend||!mapsAuthority||!mapsController) return null;
-  const gate = editingGate({ sessions: options.sessions, publicOrigin: options.publicOrigin,
+  const gate = editingGate({ sessions: options.sessions, publicOrigin: options.publicOrigin, report,
     async authorize(context) {
       if(context.target.kind==='wiki')await authority.handoff(context.session,context.target.id,()=>{});
       else await mapsAuthority.authorize(context.session,context.target.id,()=>{});

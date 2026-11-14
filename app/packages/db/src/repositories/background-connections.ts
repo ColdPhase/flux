@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import type { AiModelList, AiPrice, BackgroundComputeConnection } from '@flux/contracts';
 import * as schema from '../schema.js';
@@ -39,6 +40,11 @@ export interface NewApiKeyConnection {
   provider: BackgroundComputeConnection['provider']; model: string; baseUrl: string | null; dailyBudgetCents: number; timeZone: string;
   /** The list read with the key while it was added (#1218); absent when none was read. */
   modelList?: AiModelList | null;
+  /**
+   * The check that the key's model called tools (#1441, RT-1 rule 2), recorded in the same transaction as the key, so it is charged to the key's
+   * day from the start. Absent only for a caller without the check; a key whose model has no price is not saved (#1424).
+   */
+  check?: { model: string; chargedMicros: number };
 }
 
 /** The columns a listing writes (#1218): a list the provider gave replaces the stored one; any other outcome keeps it. */
@@ -68,6 +74,7 @@ export function backgroundConnectionRepository(db: Database) {
           dailyBudgetCents: input.dailyBudgetCents, timeZone: input.timeZone,
           ...(input.modelList ? listingColumns(input.modelList, new Date(), null) : {}),
         }).returning();
+        if (input.check) await tx.insert(schema.apiKeyChecks).values({ id: randomUUID(), connectionId: input.id, model: input.check.model, callsTools: true, chargedMicros: input.check.chargedMicros });
         return metadata(tx, row!);
       });
     },

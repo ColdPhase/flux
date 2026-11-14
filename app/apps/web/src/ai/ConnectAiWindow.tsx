@@ -107,7 +107,8 @@ export function ConnectAiWindow({ runtime, runtimeFailed, apiKeys, have, onClose
                   <Icon name={choice.icon} size={16} />
                   <span className="cai-window__text">
                     <span className="cai-window__name">{choice.title}</span>
-                    <span className="cai-window__detail">{on ? choice.detail : runtimeFailed ? 'Flux couldn’t check this just now' : 'Not ready yet. If this stays, ask whoever runs Flux.'}</span>
+                    <span className="cai-window__detail">{on ? choice.detail : runtimeFailed && choice.kind !== 'api_key' ? 'Flux couldn’t check this just now'
+                      : 'Not ready yet. If this stays, ask whoever runs Flux.'}</span>
                   </span>
                 </label>
               );

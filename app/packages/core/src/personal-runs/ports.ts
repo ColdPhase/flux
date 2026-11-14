@@ -238,14 +238,15 @@ export interface PersonalRunRepository {
   /** Another run of this owner holds the lane (reading or dispatching), or this background run would pass a queued owner request: it waits. */
   laneBusy(ownerUserId: string, exceptRunId: string): Promise<boolean>;
   /** The runtime has room for one more agent (#860). Held until the transaction ends, so two claims never take the last place. */
-  roomForRuntimeRun(): Promise<boolean>;
+  /** `keys`: API-key runs run in the runtime too (pi, #1441) and share its room. */
+  roomForRuntimeRun(keys?: boolean): Promise<boolean>;
   /** The run holding the owner's lane (reading or dispatching), if any: what a queued request waits behind. */
   workingOf(ownerUserId: string): Promise<RunRecord | null>;
   /**
    * Queued runs whose owner's lane is free and whose resume time (a run paused by a limit) has come, the owner's requests
    * first and then oldest first: the next starts when the one before it ends.
    */
-  startableQueued(limit: number): Promise<string[]>;
+  startableQueued(limit: number, keys?: boolean): Promise<string[]>;
   insertRun(run: NewRun): Promise<RunRecord>;
   updateRun(id: string, changes: RunChanges): Promise<RunRecord>;
   /**
@@ -439,12 +440,6 @@ export interface PersonalConnection {
   /** `openai_compatible` only; null for a named provider's fixed URL. */
   baseUrl: string | null;
   price: AiPrice | null;
-  /**
-   * `false` when the owner marked this model as unable to call tools (F-027 AST-8.3): it then
-   * answers in one request and cannot change anything. Absent means not marked; Flux's own dated
-   * table of known models without tool calling applies as well (`aiModelCallsTools`).
-   */
-  toolCalling?: boolean;
   /** When the owner added it: Connect AI's default is the connection made first (#854). */
   createdAt?: Date;
   /** The key's one daily budget and the time zone whose midnight starts its day (#854). */
@@ -538,6 +533,11 @@ export interface PersonalComputeRequest {
    * to a provider that has one (`AI_PROVIDERS[kind].searchesWeb`); as many searches as the question needs (#1113). Absent: no search.
    */
   webSearch?: true;
+  /**
+   * The most searches the provider may make for this request (Anthropic `max_uses`, OpenAI Responses `max_tool_calls`): a search-only
+   * request of `flux_web_search` (#1441) is held for exactly this many searches, so its cost has a bound. Absent: not bounded.
+   */
+  webSearchMaxUses?: number;
   /**
    * Ask the provider to cache the stable prefix (the tool definitions and the brief) and the conversation as it grows (#1410), where
    * Flux asks for caching (`PROMPT_CACHE_RATES`). The tool loop sets it only while the request's largest cost with every input token
@@ -661,7 +661,8 @@ export type PersonalToolHost = (run: RunRecord, connection: PersonalConnection) 
  * `close` ends the token whatever the run does next. The token is never stored.
  */
 export interface PersonalRunTokenIssuer {
-  issue(runId: string): Promise<PersonalRunTokenGrant | null>;
+  /** `pi`: the run is an API-key run in pi (#1441), which gets Flux's web search where its provider has a hosted one. */
+  issue(runId: string, options?: { pi?: boolean }): Promise<PersonalRunTokenGrant | null>;
   close(runId: string): Promise<void>;
 }
 
@@ -683,8 +684,11 @@ export interface PersonalRuntimeAvailability {
   standing(ownerUserId: string, client?: PersonalRuntimeClient): Promise<PersonalRuntimeStanding>;
 }
 
-/** Where one owner's runtime run goes: their bound slot and binding directory, never chosen by a request. */
-export interface PersonalRuntimeTarget { slot: string; bindingId: string; client?: PersonalRuntimeClient }
+/**
+ * Where one owner's runtime run goes: their bound slot and binding directory, never chosen by a request. `client` `pi`: an API-key agent's
+ * run in pi (#1441), which needs no sign-in.
+ */
+export interface PersonalRuntimeTarget { slot: string; bindingId: string; client?: PersonalRuntimeClient | 'pi' }
 
 /**
  * What the runtime reported while a run ran (the CLI's JSONL reduced by the slot to closed shapes). `search` and `found` (#1065): Claude
@@ -714,6 +718,8 @@ export interface PersonalRuntimeRunRequest {
   model?: string;
   /** The CLI keeps its own web search (#1065, C-29): Claude Code's `WebSearch`, Codex's web search on OpenAI's cached index. */
   webSearch?: true;
+  /** A run in pi (#1441): the key's provider (the model gateway speaks its wire format) and whether the model takes pictures. */
+  key?: { provider: AiProviderKind; pictures: boolean; modelToken: string };
 }
 
 /**
@@ -724,8 +730,13 @@ export interface PersonalRuntime {
   readonly enabled: boolean;
   /** The operator's web switch (`FLUX_WEB_READS`, C-29): a run on the owner's CLI searches with the CLI's own web search (#1065). */
   readonly webSearch?: boolean;
-  /** The owner's signed-in CLI of the run (Claude Code or Codex), or why it cannot run now. */
-  target(ownerUserId: string, client?: PersonalRuntimeClient): Promise<{ ok: true; target: PersonalRuntimeTarget } | { ok: false; reason: 'off' | 'sign_in_again' | 'unavailable' }>;
+  /**
+   * `pi` in FLUX_AGENT_RUNTIME (#1441, RT-1): every API-key agent runs in pi in the runtime, not in the worker's own loop. The one switch
+   * between the two engines for keys.
+   */
+  readonly keys?: boolean;
+  /** The owner's signed-in CLI of the run (Claude Code or Codex), or why it cannot run now; for `pi`, the owner's place, made when needed. */
+  target(ownerUserId: string, client?: PersonalRuntimeClient | 'pi'): Promise<{ ok: true; target: PersonalRuntimeTarget } | { ok: false; reason: 'off' | 'sign_in_again' | 'unavailable' }>;
   run(target: PersonalRuntimeTarget, request: PersonalRuntimeRunRequest, onEvent: (event: PersonalRuntimeEvent) => void): Promise<PersonalRuntimeEnd>;
   /** SIGINT, then SIGTERM, then kill (F-022 "Stop"). `stopping`: the slot acknowledged the stop. */
   stop(target: PersonalRuntimeTarget, runId: string): Promise<'stopping' | 'not_running' | 'failed'>;

@@ -110,7 +110,7 @@ In v0.2 everything that works for a person with AI is an **agent**, and each per
 
 - **Connect AI.** A person adds an API key (Anthropic, OpenAI, OpenRouter, Gemini or an OpenAI-compatible
   endpoint) and, when the operator has switched the [agent runtime](agent-runtime.md) on, signs in with their
-  own Claude plan (Claude Code) or ChatGPT plan (Codex). They can hold several at once. Each shows one usage
+  own Claude plan (Claude Code) or ChatGPT plan (Codex). Agents on an API key run in the same runtime (as pi), which the operator turns on with `pi`. They can hold several at once. Each shows one usage
   line. Flux sets no limits of its own: a plan at its limit pauses the agent until the reset, and an API key has the
   one daily budget its owner sets. Nothing switches to another connection by itself. Connections belong to one person and
   are never shared with the company.
@@ -140,8 +140,10 @@ In v0.2 everything that works for a person with AI is an **agent**, and each per
 <p align="center"><sub>Settings › AI of one person: a connection, their agents and their own Claude Code, connected.</sub></p>
 
 What the operator decides, in the [settings file](configuration.md#ai-providers): `FLUX_PERSONAL_RUNS` and a key file for
-agents on API keys, the [agent runtime](agent-runtime.md) for Claude and ChatGPT plans, and `FLUX_WEB_READS`. Until one of the two ways is on,
-Settings › AI says "Off on this Flux server · ask your admin to turn it on". The full model is in
+agents on API keys, the [agent runtime](agent-runtime.md) for Claude and ChatGPT plans, and `FLUX_WEB_READS`. AI works right after
+install (#1438): `./flux up` makes the key file and turns agents on API keys on, so each person, the owner first, connects AI in
+**Settings › AI** without editing a file. An operator who wants no AI sets `FLUX_PERSONAL_RUNS=off`; Settings › AI then says "Off on
+this Flux server" and offers only the person's own Claude Code or Codex, and nobody is told to ask anyone. The full model is in
 [agents: everything is an agent](../product/assistant.md).
 
 ## Personal settings

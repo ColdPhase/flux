@@ -12,6 +12,7 @@ import { db, pool } from './support/db.js';
 import { publicOrigin } from './support/http.js';
 import { mcp } from './support/mcp.js';
 import { addMember, expectStatus, grant, person, type Person } from './support/people.js';
+import { startPiRuntime, type PiRuntime } from './support/pi-runtime.js';
 import { waitFor } from './support/wait.js';
 import { ensureSpaceAiAllowed, setSpaceAi, spaceAiRow } from './support/space-ai.js';
 import { createConnection, oauthTokenFor } from './support/mcp-actions.js';
@@ -21,7 +22,8 @@ import { createConnection, oauthTokenFor } from './support/mcp-actions.js';
 // progress makes the flip wait, a check after the flip sees it, a person's own write never fails, a held membership row makes the
 // flip wait); a provider request in flight is aborted within the watcher's bound and its late answer is not posted; the sweep
 // touches only work admitted before its flip, so turning AI on before it runs never replays anything; and a second API process
-// (this test process) sees the change made through the first, with no cache.
+// (this test process) sees the change made through the first, with no cache. The owner's assistant runs here are API-key runs in pi in the
+// agent runtime (#1441, RT-1; support/pi-runtime.ts), scripted through `pi.gateway`.
 
 const code = (json: unknown) => (json as { code?: string } | null)?.code;
 /** The tool list really came back (a refusal is also HTTP 200, as a JSON-RPC error). */
@@ -29,7 +31,7 @@ const lists = (response: { message: Record<string, unknown> | null }) => (((resp
 const errorCode = (message: Record<string, unknown> | null) => ((message?.error as { data?: { code?: string } } | undefined)?.data?.code);
 
 describe('space AI switch: flip and cutover', () => {
-  let scene: AssistantScene; let member: Person; let accessToken: string; let connectionId: string;
+  let scene: AssistantScene; let pi: PiRuntime; let member: Person; let accessToken: string; let connectionId: string;
   const put = (who: Person, state: 'allowed' | 'blocked', headers: Record<string, string> = {}) =>
     who.browser.request('PUT', projectAiPolicyPath(scene.place.id), { body: { state }, headers });
   /** A request bound to the scene's space, which a space whose AI is off refuses before any tool, resource or prompt. */
@@ -53,7 +55,8 @@ describe('space AI switch: flip and cutover', () => {
   }
 
   before(async () => {
-    scene = await assistantScene('ai-cutover');
+    pi = await startPiRuntime();
+    scene = await assistantScene('ai-cutover', { pi });
     member = await person('ai-cutover-member');
     await addMember(scene.lead, scene.ws.id, member, 'member');
     // The company admin is also one of the space's members, so a demotion leaves them an ordinary member of it, with a way in.
@@ -70,7 +73,7 @@ describe('space AI switch: flip and cutover', () => {
     accessToken = (await oauthTokenFor(pool, scene.owner.browser, String(connection.id), clientId, redirectUri)).access_token;
   });
   beforeEach(async () => { await ensureSpaceAiAllowed(scene.place.id); await scene.reset(); });
-  after(async () => { await ensureSpaceAiAllowed(scene.place.id); });
+  after(async () => { await ensureSpaceAiAllowed(scene.place.id); await pi.close(); });
 
   test('a space admin and company owners and admins turn AI off and on; members, guests and outsiders cannot; a replay re-checks authority', async () => {
     const start = await spaceAiRow(scene.place.id);
@@ -146,33 +149,23 @@ describe('space AI switch: flip and cutover', () => {
     } finally { await pool.query(`UPDATE workspace_members SET role = 'admin' WHERE workspace_id = $1 AND user_id = $2`, [scene.ws.id, scene.admin.id]); }
   });
 
-  test('a provider request in flight is aborted within the bound, and its late answer is not posted', async () => {
-    let release: () => void = () => undefined;
-    const late = new Promise<void>((resolve) => { release = resolve; });
-    let abortedAt = 0;
-    scene.compute.respond = async (request, signal) => {
-      signal.addEventListener('abort', () => { abortedAt = Date.now(); }, { once: true });
-      await late;
-      return { kind: 'completed', stopReason: 'end_turn', usage: { inputTokens: Math.ceil(request.input.length / 4), outputTokens: 40 }, text: 'A late answer [S1]' };
-    };
-    try {
-      const started = await scene.runs.invoke(human(scene.owner), scene.thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Look around' });
-      const dispatched = scene.compute.dispatched.length;
-      const processing = scene.processor.process(started.run.id);
-      await waitFor(async () => scene.compute.dispatched.length > dispatched, 'the provider request in flight');
-      const turnedOff = expectStatus(await put(scene.owner, 'blocked'), 200) as SetSpaceAiResult;
-      const flippedAt = Date.now();
-      assert.ok(turnedOff.stopped!.runs >= 1, 'the sweep asked the run to stop');
-      await waitFor(async () => abortedAt > 0, 'the provider request aborted', 2_000);
-      assert.ok(abortedAt - flippedAt < 1_000, `aborted ${abortedAt - flippedAt} ms after the turn-off answered (bound: stopPollMs plus one poll)`);
-      release();
-      await processing;
-      const row = (await pool.query('SELECT status, end_reason, answer_body, committed_at FROM personal_runs WHERE id = $1', [started.run.id])).rows[0];
-      assert.deepEqual(row, { status: 'stopped', end_reason: 'ai_off', answer_body: null, committed_at: null }, 'the late answer is not posted');
-      assert.equal((await pool.query(`SELECT count(*)::int AS n FROM events WHERE kind = 'project.assistant_answer_committed.v1' AND data->>'runId' = $1`,
-        [started.run.id])).rows[0].n, 0);
-      assert.equal(scene.compute.dispatched.length, dispatched + 1, 'no provider request was decided after the turn-off');
-    } finally { release(); scene.compute.respond = (await import('./support/personal-runs.js')).echo; }
+  test('a run in flight is stopped within the bound when AI is turned off, and its late answer is not posted', async () => {
+    // pi's shell holds the run at a tool call for far longer than the test waits; its next request would be the late answer.
+    pi.gateway.script([{ tool: 'bash', args: { command: 'sleep 30' } }, { text: 'A late answer.' }]);
+    const started = await scene.runs.invoke(human(scene.owner), scene.thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Look around' });
+    const processing = scene.processor!.process(started.run.id);
+    await waitFor(async () => pi.gateway.requests.length > 0, 'pi\'s first model request', 20_000);
+    await new Promise((wait) => setTimeout(wait, 500));
+    const turnedOff = expectStatus(await put(scene.owner, 'blocked'), 200) as SetSpaceAiResult;
+    const flippedAt = Date.now();
+    assert.ok(turnedOff.stopped!.runs >= 1, 'the sweep asked the run to stop');
+    await processing;
+    assert.ok(Date.now() - flippedAt < 10_000, `pi was stopped ${Date.now() - flippedAt} ms after the turn-off answered, not waited for (its shell held it for 30 s)`);
+    const row = (await pool.query('SELECT status, end_reason, answer_body, committed_at FROM personal_runs WHERE id = $1', [started.run.id])).rows[0];
+    assert.deepEqual(row, { status: 'stopped', end_reason: 'ai_off', answer_body: null, committed_at: null }, `the late answer is not posted: ${JSON.stringify(pi.lastPi())}`);
+    assert.equal((await pool.query(`SELECT count(*)::int AS n FROM events WHERE kind = 'project.assistant_answer_committed.v1' AND data->>'runId' = $1`,
+      [started.run.id])).rows[0].n, 0);
+    assert.equal(pi.gateway.requests.length, 1, 'no model request was made after the turn-off');
   });
 
   test('turned on again before the sweep runs: old work never runs, new work is untouched, the sweep is idempotent', async () => {
@@ -180,25 +173,25 @@ describe('space AI switch: flip and cutover', () => {
     const blockedEpoch = await setSpaceAi(scene.place.id, 'blocked'); // a flip whose sweep has not run yet
     await setSpaceAi(scene.place.id, 'allowed');
     const fresh = await scene.runs.invoke(human(scene.owner), scene.thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'New' });
+    pi.gateway.script([{ text: 'Looked at it.' }]);
     const swept = await sweepSpaceAi({ projectId: scene.place.id, epoch: blockedEpoch }, db, accessPorts);
     assert.ok(swept.runs >= 1);
     const status = async (id: string) => (await pool.query('SELECT status, end_reason FROM personal_runs WHERE id = $1', [id])).rows[0];
     assert.deepEqual(await status(old.run.id), { status: 'stopped', end_reason: 'ai_off' }, 'the late sweep ends what was admitted before the flip');
     assert.deepEqual(await status(fresh.run.id), { status: 'queued', end_reason: null }, 'and never touches work admitted after AI was turned on again');
     assert.deepEqual(await sweepSpaceAi({ projectId: scene.place.id, epoch: blockedEpoch }, db, accessPorts), { runs: 0, tokens: 0, units: 0, failed: [] }, 'a second sweep changes nothing');
-    const dispatched = scene.compute.dispatched.length;
-    await scene.processor.process(fresh.run.id);
-    assert.ok(scene.compute.dispatched.length > dispatched, 'control: the new run reaches the provider');
+    assert.equal(await scene.processor!.process(fresh.run.id), 'completed', JSON.stringify(pi.lastPi()));
+    assert.ok(pi.gateway.requests.length > 0, 'control: the new run reaches the model');
   });
 
   test('turning AI on again resumes standing configuration and replays nothing that was stopped', async () => {
+    pi.gateway.script([{ text: 'Looked at it.' }]);
     const queued = await scene.runs.invoke(human(scene.owner), scene.thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Before' });
     expectStatus(await put(scene.owner, 'blocked'), 200);
     expectStatus(await put(scene.owner, 'allowed'), 200);
-    const dispatched = scene.compute.dispatched.length;
-    await scene.processor.process(queued.run.id);
+    await scene.processor!.process(queued.run.id);
     assert.equal((await pool.query('SELECT end_reason FROM personal_runs WHERE id = $1', [queued.run.id])).rows[0].end_reason, 'ai_off');
-    assert.equal(scene.compute.dispatched.length, dispatched, 'the stopped run does not run');
+    assert.equal(pi.gateway.requests.length, 0, 'the stopped run does not run');
     assert.ok(lists(await mcp(accessToken, 3, 'tools/list', {}, bound())), 'the connection works again');
   });
 

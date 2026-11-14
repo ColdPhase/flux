@@ -24,7 +24,7 @@ const ai = [
   'agent_runtime_sessions', 'agent_runtime_slots', 'agent_stops', 'agents', 'assistant_background_notes',
   'assistant_changes', 'assistant_job_runs', 'assistant_jobs',
   'agent_task_taking',
-  'assistant_settings', 'background_compute_connections', 'cowork_checkpoints', 'cowork_connection_slots',
+  'api_key_checks', 'assistant_settings', 'background_compute_connections', 'cowork_checkpoints', 'cowork_connection_slots',
   'cowork_units', 'personal_run_cites', 'personal_run_pictures', 'personal_run_private_texts', 'personal_run_web_reads', 'personal_run_web_searches',
   'personal_runs',
 ] as const;

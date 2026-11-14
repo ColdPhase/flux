@@ -110,7 +110,7 @@ export function agentRuntimeUseCases(config: AgentRuntimeConfig, store: AgentRun
   const noConnections = (): AgentRuntimeStatus['connections'] => ({ claude_code: null, codex: null });
   const off = (): AgentRuntimeStatus => ({
     enabled: false, clients: clientAvailability(config), commercialTerms: null, idleReleaseDays: config.idleDays, pool: 'off', binding: null, lastRelease: null,
-    connections: noConnections(),
+    connections: noConnections(), offReason: config.offReason ?? null,
   });
   const requireOn = () => {
     if (!enabled) throw new ConflictError('The agent runtime is off on this instance', AGENT_RUNTIME_ERRORS.off);
@@ -265,4 +265,22 @@ export function agentRuntimeUseCases(config: AgentRuntimeConfig, store: AgentRun
       return status(ownerUserId);
     },
   };
+}
+
+/**
+ * The owner's place in the runtime for an API-key run in pi (#1441): their live, active binding, or a new one made now. pi needs no sign-in,
+ * so this is all a key run needs; a plan's sign-in, if any, shares the same place and user id. Null while the runtime has no room for a new
+ * place or the owner's is being removed.
+ */
+export async function keyRunPlace(store: AgentRuntimeStore, manager: RuntimeManagerPort, ownerUserId: string): Promise<{ slot: string; bindingId: string } | null> {
+  const reserved = await store.reserve(ownerUserId, randomUUID());
+  if (reserved.kind === 'starting') return null;
+  const { binding } = reserved;
+  if (binding.state === 'releasing') return null;
+  if (reserved.kind === 'reserved' || binding.state !== 'active') {
+    const outcome = await manager.bind(binding.slot, binding.id);
+    if (!outcome.ok) { if (binding.state === 'binding') await store.abandon(binding.id); return null; }
+    await store.activate(binding.id);
+  }
+  return { slot: binding.slot, bindingId: binding.id };
 }

@@ -1,4 +1,4 @@
-import { AI_PROVIDERS, aiModelCallsTools, PERSONAL_RUN_LIMITS, type AiWireFormat } from '@flux/contracts';
+import { AI_PROVIDERS, PERSONAL_RUN_LIMITS, type AiWireFormat } from '@flux/contracts';
 import { validModelId, type PersonalComputeRequest } from '@flux/core';
 
 /** Turns a connection's `keyRef` into its key, or null when it cannot be used (#124 custody). */
@@ -24,7 +24,6 @@ function checkTools(request: PersonalComputeRequest) {
     if (turns?.length) throw new Error('Earlier turns need the tools they used');
     return;
   }
-  if (!aiModelCallsTools(request.connection.provider, request.model)) throw new Error('This model cannot call tools');
   if (tools.length > MAX_TOOLS) throw new Error('Too many tools');
   const names = new Set<string>();
   for (const tool of tools) {
@@ -55,6 +54,9 @@ export function checkRequestLimits(request: PersonalComputeRequest, wire: AiWire
   if (request.maxTokens > PERSONAL_RUN_LIMITS.maxOutputTokens || request.maxTokens < 1) throw new Error('max_tokens exceeds the O-008 limit');
   if (request.effort !== PERSONAL_RUN_LIMITS.effort) throw new Error('Only low effort is allowed');
   checkTools(request);
-  // The provider's own web search (#954) goes only with the Flux tools, and only to a provider that has one.
-  if (request.webSearch && (!request.tools?.length || !AI_PROVIDERS[request.connection.provider].searchesWeb)) throw new Error('Web search is not offered on this request');
+  // The provider's own web search (#954) goes only to a provider that has one: with the Flux tools, or alone as `flux_web_search`'s one
+  // search request (#1441), whose number of searches is bounded.
+  if (request.webSearch && !AI_PROVIDERS[request.connection.provider].searchesWeb) throw new Error('Web search is not offered on this request');
+  if (request.webSearchMaxUses !== undefined && (!request.webSearch || !Number.isSafeInteger(request.webSearchMaxUses) || request.webSearchMaxUses < 1
+    || request.webSearchMaxUses > 10)) throw new Error('The searches of a request are bounded from 1 to 10');
 }

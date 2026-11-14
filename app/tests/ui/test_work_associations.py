@@ -118,7 +118,12 @@ class MessageWorkJourney(unittest.TestCase):
                 first = self.chips(page); self.assertEqual(len(first), 50)
                 # Nothing in the thread is new, so it opens at its end (S23, #1246), after the 50 chips' own lines. The reader whose place is kept
                 # here is one who read back to the top: that is the place the next page of links must not move.
-                page.locator(".thread__feed").evaluate("el => { el.scrollTop = 0; }")
+                # By the wheel, as a reader does: only the reader's own input leaves the end of a feed that follows its end (#1424).
+                if phone and os.environ.get("FLUX_UI_BROWSER", "chromium") == "webkit":
+                    # Mobile WebKit has no wheel API: a touch gesture on the feed is the reader's own input there (as test_return_to_origin does).
+                    page.locator(".thread__feed").evaluate("el => { el.dispatchEvent(new Event('touchstart', { bubbles: true })); el.dispatchEvent(new Event('touchmove', { bubbles: true })); el.scrollTop = 0; }")
+                else:
+                    page.locator(".thread__feed").hover(); page.mouse.wheel(0, -100000)
                 page.wait_for_function("() => document.querySelector('.thread__feed').scrollTop === 0")
                 anchor = self.anchor(page)
                 edges.get_by_role("button", name="Next", exact=True).click(); self.ready(page)
@@ -129,7 +134,9 @@ class MessageWorkJourney(unittest.TestCase):
                 self.assertEqual(self.chips(page), first)
                 objects.get_by_role("button", name="Next", exact=True).click(); self.ready(page)
                 expect(objects).to_contain_text("51–67 of 67 objects")
-                expect(edges).to_contain_text("1–31 of 31 links")
+                # A whole list says how many it holds, not where it is (#1372): the 31 links of this objects page are all of them.
+                expect(edges).to_contain_text("31 links")
+                expect(edges).not_to_contain_text("of 31 links")
                 last = self.chips(page); self.assertEqual(len(last), 31)
                 self.assertEqual({(chip["kind"], chip["id"]) for chip in first + second_edges + last}, self.expected)
                 self.assertLessEqual(len(self.chips(page)), 50)

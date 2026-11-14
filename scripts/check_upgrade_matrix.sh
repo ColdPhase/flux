@@ -56,6 +56,8 @@ fail() { echo "check_upgrade_matrix: $*" >&2; exit 1; }
 sha256() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$@"; else shasum -a 256 "$@"; fi; }
 case "$control" in ''|edited-migration|old-data) ;; *) fail "FLUX_MATRIX_CONTROL is 'edited-migration' or 'old-data', not '$control'" ;; esac
 work=$(mktemp -d "${TMPDIR:-/tmp}/flux-upgrade-matrix.XXXXXX")
+# The AI key files ./flux up makes (#1438) stay in this run's own state directory, removed with it.
+export XDG_STATE_HOME="$work/state"
 work=$(cd "$work" && pwd -P)
 results="$work/results"
 : > "$results"

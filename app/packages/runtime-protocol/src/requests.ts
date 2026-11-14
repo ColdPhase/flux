@@ -1,4 +1,8 @@
-import { BINDING_ID, FLUX_TOOL_NAME, MODEL_ID, RUN_TOKEN, RUNTIME_CLIENTS, RUNTIME_LOGIN_METHODS, UUID, type RuntimeClient, type RuntimeLoginMethod } from './names.js';
+import {
+  BINDING_ID, FLUX_TOOL_NAME, KEY_ENGINE, KEY_MODEL_ID, KEY_PROVIDERS, MODEL_ID, RUN_ENGINES, RUN_TOKEN, RUNTIME_CLIENTS, RUNTIME_LOGIN_METHODS, UUID,
+  type KeyProvider, type RuntimeClient, type RuntimeLoginMethod,
+} from './names.js';
+import { MODEL_GATEWAY_TOKEN } from './model-gateway.js';
 import { arrayOf, firstBadKey, int, object, oneOf, str, text, type Check } from './shape.js';
 
 /** The terminal size a sign-in console may ask for (F-022 T4): a phone held upright to a wide screen. */
@@ -49,12 +53,20 @@ export type SupervisorRequest =
    * web search on OpenAI's cached index (`web_search="cached"`).
    */
   | { kind: 'run'; bindingId: string; client: RuntimeClient; runId: string; prompt: string; runToken: string; tools: string[]; caps: RunCaps; model?: string; webSearch?: true }
+  /**
+   * An API-key agent's run in pi (#1441, RT-1): the key's `provider` and `model` (required; pi has no account default). The key itself never
+   * comes here: pi reaches Flux's model gateway through the egress with the run token, and the gateway holds the key and meters each request.
+   * `pictures`: the model takes image input (Flux's table for the provider and model).
+   */
+  | { kind: 'run'; bindingId: string; client: typeof KEY_ENGINE; runId: string; prompt: string; runToken: string; tools: string[]; caps: RunCaps; model: string;
+    provider: KeyProvider; modelToken: string; pictures?: true; webSearch?: true }
   | { kind: 'stop'; bindingId: string; runId: string }
   | { kind: 'logout'; bindingId: string; bootId: string; client: RuntimeClient }
   | { kind: 'release'; bindingId: string };
 
 const bindingId = str(BINDING_ID, 36);
 const client = oneOf(RUNTIME_CLIENTS);
+const engine = oneOf(RUN_ENGINES);
 const caps = object({
   maxTurns: int(RUN_CAP_BOUNDS.maxTurns.min, RUN_CAP_BOUNDS.maxTurns.max),
   wallClockSeconds: int(RUN_CAP_BOUNDS.wallClockSeconds.min, RUN_CAP_BOUNDS.wallClockSeconds.max),
@@ -64,6 +76,8 @@ const caps = object({
 const uniqueTools: Check<string[]> = (value): value is string[] =>
   arrayOf(str(FLUX_TOOL_NAME, 67), REQUEST_LIMITS.tools, 1)(value) && new Set(value).size === value.length;
 
+const yes = (value: unknown): value is true => value === true;
+
 type Fields = { required: Record<string, Check<unknown>>; optional?: Record<string, Check<unknown>> };
 const SHAPES: Record<SupervisorRequestKind, Fields> = {
   bind: { required: { bindingId } },
@@ -71,8 +85,8 @@ const SHAPES: Record<SupervisorRequestKind, Fields> = {
   models: { required: { bindingId, bootId: str(UUID, 36), client } },
   login: { required: { bindingId, bootId: str(UUID, 36), client, method: oneOf([...RUNTIME_LOGIN_METHODS.claude_code, ...RUNTIME_LOGIN_METHODS.codex]),
     cols: int(CONSOLE_SIZE.cols.min, CONSOLE_SIZE.cols.max), rows: int(CONSOLE_SIZE.rows.min, CONSOLE_SIZE.rows.max) } },
-  run: { required: { bindingId, client, runId: str(UUID, 36), prompt: text(REQUEST_LIMITS.promptCharacters, 1), runToken: str(RUN_TOKEN, 12_300), tools: uniqueTools, caps },
-    optional: { model: str(MODEL_ID, 64), webSearch: (value: unknown): value is true => value === true } },
+  run: { required: { bindingId, client: engine, runId: str(UUID, 36), prompt: text(REQUEST_LIMITS.promptCharacters, 1), runToken: str(RUN_TOKEN, 12_300), tools: uniqueTools, caps },
+    optional: { model: str(KEY_MODEL_ID, 128), webSearch: yes, provider: oneOf(KEY_PROVIDERS), pictures: yes, modelToken: str(MODEL_GATEWAY_TOKEN, 51) } },
   stop: { required: { bindingId, runId: str(UUID, 36) } },
   logout: { required: { bindingId, bootId: str(UUID, 36), client } },
   release: { required: { bindingId } },
@@ -98,6 +112,16 @@ export function parseSupervisorRequest(kind: unknown, body: unknown): ParsedRequ
   const fields = body as Record<string, unknown>;
   if (kind === 'status' && fields.client !== undefined && fields.bindingId === undefined) return { ok: false, code: 'invalid_request', field: 'bindingId' };
   if (kind === 'status' && fields.client !== undefined && fields.bootId === undefined) return { ok: false, code: 'invalid_request', field: 'bootId' };
+  if (kind === 'run') {
+    // A plan CLI takes the narrower `MODEL_ID` and no key fields; pi (#1441) needs its key's provider and model.
+    const pi = fields.client === KEY_ENGINE;
+    if (pi && fields.model === undefined) return { ok: false, code: 'invalid_request', field: 'model' };
+    if (!pi && fields.model !== undefined && !MODEL_ID.test(fields.model as string)) return { ok: false, code: 'invalid_request', field: 'model' };
+    if (pi !== (fields.provider !== undefined)) return { ok: false, code: 'invalid_request', field: 'provider' };
+    // Its model gateway token (#1441): pi's API key, which only Flux's gateway takes.
+    if (pi !== (fields.modelToken !== undefined)) return { ok: false, code: 'invalid_request', field: 'modelToken' };
+    if (!pi && fields.pictures !== undefined) return { ok: false, code: 'invalid_request', field: 'pictures' };
+  }
   if (kind === 'login' && !(RUNTIME_LOGIN_METHODS[fields.client as RuntimeClient] as readonly string[]).includes(fields.method as string)) {
     return { ok: false, code: 'invalid_request', field: 'method' };
   }

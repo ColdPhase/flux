@@ -3,7 +3,7 @@ import { AI_PROVIDERS, API_KEY_DAILY_BUDGET_CENTS, assistantApiPrice, assistantM
   type AiModelList, type ConnectBackgroundComputeCommand, type UpdateBackgroundComputeConnectionCommand, tablePrice } from '@flux/contracts';
 import { InvalidInputError, NotFoundError, RuleViolationError } from '../access/errors.js';
 import type { Principal } from '../principal.js';
-import { refuseAllEndpoints, type AiEndpointPolicyPort } from '../ai/index.js';
+import { refuseAllEndpoints, toolsRequired, type AiEndpointPolicyPort, type ToolCheck } from '../ai/index.js';
 import { requestReservationMicros, resolveConnectionPrice } from '../ai/price.js';
 import { baseUrlSyntaxProblem, normalizeBaseUrl, validAiKey, validModelId, validPrice } from '../ai/validation.js';
 
@@ -14,7 +14,9 @@ export interface BackgroundConnectionPort {
   /** Adds a connection (PROV-1: it never replaces another). */
   add(input: { id: string; ownerUserId: string; encryptedKey: string; keyLastFour: string; keyFingerprint: string;
     price: AiPrice | null; name: string; provider: BackgroundComputeConnection['provider']; model: string;
-    baseUrl: string | null; dailyBudgetCents: number; timeZone: string; modelList?: AiModelList | null }): Promise<BackgroundComputeConnection>;
+    baseUrl: string | null; dailyBudgetCents: number; timeZone: string; modelList?: AiModelList | null;
+    /** The check that the model called tools (#1441), saved in the same transaction as the key; absent when the model has no known price to check it with. */
+    check?: { model: string; chargedMicros: number } }): Promise<BackgroundComputeConnection>;
   /** The owner's active connections, newest first. */
   list(ownerUserId: string): Promise<BackgroundComputeConnection[]>;
   /**
@@ -35,6 +37,11 @@ export interface BackgroundConnectionProviders {
    * for providers listed with a key (Anthropic, OpenAI, Gemini): `needs_key` for the others. Absent: nothing is listed.
    */
   keyModels?(provider: AiProviderKind, apiKey: string): Promise<AiModelList>;
+  /**
+   * The check that the key's model calls tools (RT-1 rule 2, #1441), sent with the key being added, after its listing and the price and budget
+   * checks. Absent: nothing is checked (only a composition that can reach the providers has it).
+   */
+  toolCheck?: ToolCheck;
 }
 
 function owner(principal: Principal): string {
@@ -131,12 +138,23 @@ export function backgroundConnectionUseCases(port: BackgroundConnectionPort, sea
       if (modelList?.status === 'key_refused')
         throw new InvalidInputError(`This key was refused by ${AI_PROVIDERS[input.provider].label}`, 'AI_KEY_REFUSED');
       const id = randomUUID();
+      // Sealed first: a server that cannot keep the key (no instance key) refuses it before a request is sent for it.
       const encryptedKey = sealer.seal(input.apiKey, ownerUserId, id);
+      // RT-1 rule 2 (#1441): only a model that calls tools can be an agent, decided by one small request on this model with the new key. It needs
+      // the model's price to be charged (CA-3), which every saved key has (#1424: a key without one is refused above). A model that does not call `ping`, or a request that failed, refuses the key and nothing is saved. That
+      // request has no connection to be charged to, so a refused key costs its check without it counting on any key's day; one that passes is
+      // recorded with the key in one transaction, and so is counted from its first moment.
+      let check: { model: string; chargedMicros: number } | undefined;
+      if (providers.toolCheck && price) {
+        const checked = await providers.toolCheck({ provider: input.provider, baseUrl, model, price, key: { apiKey: input.apiKey } });
+        if (!checked.callsTools) throw toolsRequired();
+        check = { model, chargedMicros: checked.chargedMicros };
+      }
       const keyFingerprint = createHash('sha256').update(input.apiKey).digest('hex').slice(0, 16);
       const name = input.name ?? `${AI_PROVIDERS[input.provider].label} key`.slice(0, 80);
       return port.add({ id, ownerUserId, encryptedKey, keyLastFour: input.apiKey.slice(-4), keyFingerprint, price, name,
         provider: input.provider, model, baseUrl, dailyBudgetCents: input.dailyBudgetCents, timeZone,
-        modelList: modelList?.status === 'listed' || modelList?.status === 'unavailable' ? modelList : null });
+        modelList: modelList?.status === 'listed' || modelList?.status === 'unavailable' ? modelList : null, ...(check ? { check } : {}) });
     },
     list(principal: Principal): Promise<BackgroundComputeConnection[]> { return port.list(owner(principal)); },
     async update(principal: Principal, connectionId: string, change: UpdateBackgroundComputeConnectionCommand): Promise<BackgroundComputeConnection> {

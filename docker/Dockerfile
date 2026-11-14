@@ -15,6 +15,17 @@ COPY apps/runtime/native/sandbox.c /native/sandbox.c
 # Static (#1437): the CLI's domain may execute only its own program and this one, so this one needs no loader.
 RUN cc -std=c11 -O2 -Wall -Wextra -Werror -static /native/sandbox.c -o /native/flux-sandbox
 
+# pi (#1441, RT-1): the engine of every API-key agent in the runtime. MIT (earendil-works/pi); its dependencies are MIT, Apache-2.0, BSD,
+# ISC, BlueOak-1.0.0, 0BSD and Unlicense (checked 2026-11-13). Pinned by apps/runtime/pi/package-lock.json, whose sha512 integrity of every
+# package `npm ci` checks; no install script runs, and nothing is ever installed at run time (pi's own updates and packages are off).
+FROM node@sha256:a34ab6d7f6f4813f4d0c5469d74685604b962fbdbf5793a7bc7b4998ecb867c8 AS pi
+WORKDIR /opt/flux-runtime/pi
+COPY apps/runtime/pi/package.json apps/runtime/pi/package-lock.json ./
+RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund \
+  && npm cache clean --force \
+  && find node_modules -type f \( -name '*.map' -o -name '*.d.ts' -o -name '*.d.mts' -o -name '*.d.cts' \) -delete \
+  && test "$(node -p "require('./node_modules/@earendil-works/pi-coding-agent/package.json').version")" = 1.5.2
+
 # The toolchain shared by the build and the production dependencies: pnpm, the compiler node-pty needs, and the
 # lockfile with its patches. Each stage below downloads its own locked dependencies in a layer that source edits
 # do not invalidate.
@@ -40,6 +51,8 @@ RUN cc -std=gnu11 -Wall -Wextra -Werror -fPIC -shared -I/usr/local/include/node 
 RUN pnpm build && pnpm typecheck && pnpm lint
 
 FROM build AS test
+# The pinned pi (#1441), where the runtime has it: the runtime tests run the real pi against fake model providers.
+COPY --from=pi /opt/flux-runtime/pi /opt/flux-runtime/pi
 # Fixtures share the private files volume with the runtime API. Use its identity so
 # a fixture's 0700 object shard remains writable by the API, independent of UUID order.
 USER node
@@ -111,6 +124,7 @@ COPY --from=build /app/apps/runtime/package.json ./apps/runtime/package.json
 COPY --from=build /app/apps/runtime/dist ./apps/runtime/dist
 COPY --from=runtime-hardening-build /native/protect.node ./apps/runtime/native/protect.node
 COPY --from=runtime-hardening-build /native/flux-sandbox ./sandbox/flux-sandbox
+COPY --from=pi /opt/flux-runtime/pi ./pi
 COPY --from=build /app/apps/runtime/keys ./apps/runtime/keys
 COPY --from=production-dependencies /app/apps/runtime/node_modules ./apps/runtime/node_modules
 # The toolbox of every harness's own tools (#1437, founder decision 2026-11-13): fixed in the image and pinned to exact Alpine 3.24 package
@@ -192,14 +206,21 @@ COPY --from=codex-catalog /codex-models.json /opt/flux-runtime/codex/models.json
 # TEST ONLY (#1125, scripts/check_cli_runtime.sh): the runtime image above with its REAL pinned Codex behind a wrapper that points
 # its vendor hosts at the local mock, plus the Claude Code wrapper and the install step that puts it in the tools volume
 # (app/tests/cli-runtime). The supervisor, its templates and the binaries are the ones above. Never deployed.
+# The wrapper is a static program, not a script (#1437): the CLI's sandbox domain then holds what production holds, the wrapper file and the
+# real CLI's own file with its loader, and no /bin/sh or directory.
+FROM node@sha256:a34ab6d7f6f4813f4d0c5469d74685604b962fbdbf5793a7bc7b4998ecb867c8 AS cli-mock-wrapper-build
+RUN apk add --no-cache gcc musl-dev
+COPY tests/cli-runtime/wrap.c /native/wrap.c
+RUN cc -std=c11 -O2 -Wall -Wextra -Werror -static /native/wrap.c -o /native/wrap
 FROM agent-runtime AS agent-runtime-cli-mock
 USER root
 COPY tests/cli-runtime/ /opt/flux-cli-mock/
+COPY --from=cli-mock-wrapper-build /native/wrap /opt/flux-cli-mock/wrap
 RUN mv /opt/flux-runtime/codex/bin/codex /opt/flux-cli-mock/codex \
-  && install -m 0755 /opt/flux-cli-mock/codex.sh /opt/flux-runtime/codex/bin/codex \
-  && chmod 0755 /opt/flux-cli-mock/claude.sh /opt/flux-cli-mock/install.sh
-# The wrappers are scripts that start the real CLIs: the CLI's domain (#1437) must execute those too. Never set in a release image.
-ENV FLUX_RUNTIME_TEST_EXEC=/opt/flux-cli-mock:/opt/flux-tools/claude/versions
+  && install -m 0755 /opt/flux-cli-mock/wrap /opt/flux-runtime/codex/bin/codex \
+  && chmod 0755 /opt/flux-cli-mock/wrap /opt/flux-cli-mock/install.sh
+# The one real program each wrapper starts, allowed only in that CLI's own domain (one file each). Never set in a release image.
+ENV FLUX_RUNTIME_TEST_EXEC=codex=/opt/flux-cli-mock/codex,claude_code=/opt/flux-tools/claude/bin/claude-real
 USER node
 
 # The one-shot installer needs gpg to check Anthropic's signed release manifest; slots do not.

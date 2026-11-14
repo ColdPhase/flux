@@ -60,6 +60,11 @@ export const MODEL_GATEWAY_LIMITS = {
   errorBodyBytes: 64 * 1024,
   /** Request bodies of every run held in the worker's memory at once (#1441 review: the worker has 512 MiB for all its jobs). */
   bodiesInFlightBytes: 48 * 1024 * 1024,
+  /**
+   * Of those, one run's at once (security review of #1444, P3-3): its four places cannot take the whole bound, so one run never makes
+   * the others wait. One request of the largest size fits.
+   */
+  bodiesInFlightPerRunBytes: 16 * 1024 * 1024,
 } as const;
 
 export interface ModelGatewayRoute {
@@ -93,7 +98,10 @@ export function parseModelGatewayUrl(url: unknown): ModelGatewayRoute | null {
   const [, provider, path, query] = match;
   if (!isProvider(provider!) || path!.includes('//') || path!.includes('/.')) return null;
   const operation = FIXED[provider][path!];
-  if (operation) return query === undefined ? { provider, operation, path: path!, model: null, stream: null } : null;
+  // Anthropic's own client sends its beta API as `?beta=true` (pi's does, #1441): the same Messages API, sent on without the query; the
+  // `anthropic-beta` values that go with it are filtered as any request's.
+  const beta = provider === 'anthropic' && query === 'beta=true';
+  if (operation) return query === undefined || beta ? { provider, operation, path: path!, model: null, stream: null } : null;
   const native = provider === 'gemini' ? GEMINI_NATIVE.exec(path!) : null;
   if (!native) return null;
   const stream = native[2] === 'streamGenerateContent';

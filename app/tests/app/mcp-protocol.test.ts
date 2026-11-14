@@ -11,6 +11,9 @@ import { createFluxMcpHandler, MCP_MAX_REQUEST_BODY_BYTES } from '../../apps/ser
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- decoded public JSON-RPC responses
 type Json = any;
 const legacy = '2025-06-18'; const modern = '2026-07-28';
+/** Both legacy revisions Flux admits (PC-1; 2025-11-25 since #1441, for pi). */
+const legacies = [legacy, '2025-11-25'];
+const unknownLegacy = '2025-03-26';
 const initialize = (version = legacy) => ({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {
   protocolVersion: version, capabilities: {}, clientInfo: { name: 'admission-wire-test', version: '1' },
 } });
@@ -35,26 +38,33 @@ test('two-era HTTP admission keeps exact revisions, notification semantics, mode
     return { status: response.status, text, message, headers: response.headers };
   }
   await t.test('authentication precedes connection-specific protocol refusal', async () => {
-    const denied = await send(initialize('2025-11-25'), {}, 'POST', null);
+    const denied = await send(initialize(unknownLegacy), {}, 'POST', null);
     assert.equal(denied.status, 401); assert.ok(denied.headers.get('www-authenticate'));
     assert.ok(!denied.text.includes('Planned project'));
   });
   await t.test('initialize accepts an absent or agreeing header and reports the exact legacy revision', async () => {
-    for (const headers of [{}, { 'mcp-protocol-version': legacy }] as Record<string, string>[]) {
-      const reply = await send(initialize(), headers); assert.equal(reply.status, 200);
-      assert.equal(reply.message.result.protocolVersion, legacy);
+    for (const version of legacies) for (const headers of [{}, { 'mcp-protocol-version': version }] as Record<string, string>[]) {
+      const reply = await send(initialize(version), headers); assert.equal(reply.status, 200);
+      assert.equal(reply.message.result.protocolVersion, version, 'the exact revision offered, never another');
       assert.ok(reply.message.result.instructions.includes('Flux co-work'));
     }
+    // 2025-11-25 (#1441, pi) widens nothing: the same capabilities as 2025-06-18, none of that revision's own (tasks, URL elicitation).
+    const capabilities = await Promise.all(legacies.map(async (version) => (await send(initialize(version))).message.result.capabilities));
+    assert.deepEqual(capabilities[1], capabilities[0]);
+    assert.equal(capabilities[1].tasks, undefined);
   });
   await t.test('unknown legacy offer and conflicting header cannot silently negotiate another era', async () => {
-    for (const headers of [{}, { 'mcp-protocol-version': '2025-11-25' }] as Record<string, string>[]) {
-      const reply = await send(initialize('2025-11-25'), headers); assert.equal(reply.status, 400);
+    for (const headers of [{}, { 'mcp-protocol-version': unknownLegacy }] as Record<string, string>[]) {
+      const reply = await send(initialize(unknownLegacy), headers); assert.equal(reply.status, 400);
       assert.equal(reply.message.error.code, -32022);
-      assert.deepEqual(reply.message.error.data, { requested: '2025-11-25', supported: [legacy] });
+      assert.deepEqual(reply.message.error.data, { requested: unknownLegacy, supported: legacies });
     }
-    const unsupportedHeader = await send(initialize(), { 'mcp-protocol-version': '2025-11-25' }); assert.equal(unsupportedHeader.status, 400);
+    const unsupportedHeader = await send(initialize(), { 'mcp-protocol-version': unknownLegacy }); assert.equal(unsupportedHeader.status, 400);
     assert.equal(unsupportedHeader.message.error.code, -32022); assert.equal(unsupportedHeader.message.id, 1);
-    assert.deepEqual(unsupportedHeader.message.error.data, { requested: '2025-11-25', supported: [legacy] });
+    assert.deepEqual(unsupportedHeader.message.error.data, { requested: unknownLegacy, supported: legacies });
+    // Two admitted revisions that disagree are refused too: the header names the revision the body does not offer.
+    const crossed = await send(initialize(legacy), { 'mcp-protocol-version': '2025-11-25' }); assert.equal(crossed.status, 400);
+    assert.deepEqual(crossed.message.error.data, { requested: '2025-11-25', supported: legacies });
     // A modern header on a legacy initialize stays on the SDK's modern refusal (header/body mismatch); it never reaches legacy handling.
     const modernHeader = await send(initialize(), { 'mcp-protocol-version': modern }); assert.equal(modernHeader.status, 400);
     assert.equal(modernHeader.message.error.code, -32020); assert.equal(modernHeader.message.id, 1); assert.equal(modernHeader.message.result, undefined);
@@ -62,7 +72,7 @@ test('two-era HTTP admission keeps exact revisions, notification semantics, mode
   await t.test('initialize offering modern 2026-07-28 is a refused legacy handshake, never negotiated through initialize', async () => {
     const reply = await send(initialize(modern)); assert.equal(reply.status, 400);
     assert.equal(reply.message.error.code, -32022); assert.equal(reply.message.id, 1);
-    assert.deepEqual(reply.message.error.data, { requested: modern, supported: [legacy] });
+    assert.deepEqual(reply.message.error.data, { requested: modern, supported: legacies });
     assert.equal(reply.message.result, undefined);
   });
   await t.test('single valid initialized notification returns 202 with no body', async () => {
@@ -79,18 +89,21 @@ test('two-era HTTP admission keeps exact revisions, notification semantics, mode
       { jsonrpc: '2.0', method: 'notifications/cancelled', params: { requestId: 1 } },
       { jsonrpc: '2.0', method: 'tools/list' },
     ]) assert.equal((await send(body, { 'mcp-protocol-version': legacy })).status, 400);
-    assert.equal((await send({ jsonrpc: '2.0', method: 'notifications/initialized' }, { 'mcp-protocol-version': '2025-11-25' })).status, 400);
+    assert.equal((await send({ jsonrpc: '2.0', method: 'notifications/initialized' }, { 'mcp-protocol-version': unknownLegacy })).status, 400);
   });
   await t.test('ordinary legacy requests require their own header and refuse session methods', async () => {
     const list = { jsonrpc: '2.0', id: 3, method: 'tools/list', params: {} };
     const missing = await send(list); assert.equal(missing.status, 400); assert.equal(missing.message.error.code, -32022);
-    assert.deepEqual(missing.message.error.data, { requested: 'unknown', supported: [legacy] });
-    assert.equal((await send(list, { 'mcp-protocol-version': legacy })).status, 200);
+    assert.deepEqual(missing.message.error.data, { requested: 'unknown', supported: legacies });
+    for (const version of legacies) assert.equal((await send(list, { 'mcp-protocol-version': version })).status, 200);
+    // A request of 2025-11-25's own vocabulary is not served: Flux keeps no tasks (#1441 review).
+    const tasks = await send({ jsonrpc: '2.0', id: 7, method: 'tasks/list', params: {} }, { 'mcp-protocol-version': '2025-11-25' });
+    assert.equal(tasks.message?.result, undefined, 'no task list'); assert.ok(tasks.status >= 400 || tasks.message?.error, 'refused');
     // A modern-format request that claims the legacy revision is modern-classified: it is refused with the modern support list.
     const claimed = await send(modernRequest(legacy), { 'mcp-protocol-version': legacy, 'mcp-method': 'tools/list' });
     assert.equal(claimed.status, 400); assert.equal(claimed.message.error.code, -32022);
     assert.deepEqual(claimed.message.error.data, { requested: legacy, supported: [modern] });
-    for (const method of ['GET', 'DELETE']) assert.equal((await send(null, { 'mcp-protocol-version': legacy }, method)).status, 405);
+    for (const version of legacies) for (const method of ['GET', 'DELETE']) assert.equal((await send(null, { 'mcp-protocol-version': version }, method)).status, 405);
   });
   await t.test('modern revision errors list modern support only; malformed modern traffic cannot enter legacy', async () => {
     const unknown = await send(modernRequest('2027-01-01'), { 'mcp-protocol-version': '2027-01-01', 'mcp-method': 'tools/list' });

@@ -9,6 +9,7 @@ import { EditingOutput, EditingOutputBudget } from './output.js';
 import type { MapAuthority } from './map-authority.js';
 import { editingResourcesChanged } from './resource-observation.js';
 import type { EditingQueueTelemetry } from './telemetry.js';
+import { background, type EditingReport } from './background.js';
 import { TICK_MS, newCadence, readDue, touch, type Cadence } from './cadence.js';
 
 type Command = { type: 'map-move'; command: MapMove } | { type: 'map-cancel'; command: MapCancel } | { type: 'map-presence'; command: MapPresence };
@@ -52,7 +53,7 @@ function presence(value: Record<string, unknown>): MapPresence {
 const transientKey = (value: MapTransient) => value.type === 'map-presence' ? `presence:${value.connectionId}` : `lease:${value.leaseId}`;
 
 /** Every protected frame uses the current SQL fence; only replaceable transient intents coalesce. */
-export function mapController(authority: MapAuthority, outputBudget: EditingOutputBudget,telemetry?:()=>EditingQueueTelemetry|null) {
+export function mapController(authority: MapAuthority, outputBudget: EditingOutputBudget,telemetry?:()=>EditingQueueTelemetry|null,report?:EditingReport) {
   const connections = new Map<string, Connection>();
   /** Per room, the connection whose movement, cancel or presence committed last here. */
   const lastProducer = new Map<string, Connection>();
@@ -85,9 +86,11 @@ export function mapController(authority: MapAuthority, outputBudget: EditingOutp
     const room = [...connections.values()].filter((c) => c.context.target.id === sketchId);
     const producer = (c: Connection) => c.working || lastProducer.get(sketchId) === c;
     for (const c of room) touch(c.cadence);
-    for (const c of room) if (!producer(c)) void catchup(c);
-    for (const c of room) if (producer(c)) void catchup(c);
+    for (const c of room) if (!producer(c)) wake(c);
+    for (const c of room) if (producer(c)) wake(c);
   }
+  /** A read nobody awaits. */
+  function wake(c: Connection) { background(catchup(c), 'map read', report); }
   async function catchup(c: Connection) {
     if (c.closed || !c.subscribed || !c.generation) return;
     if (c.reading) { c.pendingRead = true; return; }
@@ -117,7 +120,7 @@ export function mapController(authority: MapAuthority, outputBudget: EditingOutp
             telemetry?.()?.schedule('map',{resourceId:result.resourceId,generation:result.generation,commandId:result.delta.commandId,confirmedSequence:sequence});
             const payload = preparation.encode(result.delta);
             c.output.sendJSONPayload({ type: 'map-delta', generation: result.generation, sequence, commandId: result.delta.commandId }, payload,
-              () => { c.sequence = sequence; void catchup(c); });
+              () => { c.sequence = sequence; wake(c); });
             c.pendingRead = c.output.canPump; return;
           }
           // Every transient change this protected read observed goes out from it: cleared leases
@@ -160,12 +163,12 @@ export function mapController(authority: MapAuthority, outputBudget: EditingOutp
       : authority.presence(c.context.session, c.context.target.id, c.context.connectionId, command.command, retained.rawBytes);
     // The authority synchronously reserves its own operation before its first await.
     retained.release();
-    void action.then(() => {
+    background(action.then(() => {
       if(command.type==='map-move')telemetry?.()?.schedule('map',{resourceId:c.context.target.id,generation:command.command.generation,interactionId:command.command.gestureId,inputSequence:command.command.sequence});
       // Its transaction's own NOTIFY starts the room's reads, once: a second, local wakeup made every
       // connection read the same change twice, and reads queue on the room's head row (#228 Gate 4).
       lastProducer.set(c.context.target.id, c);
-    }, (error: unknown) => fail(c, error)).finally(() => { c.working = false;completed(); work(c); });
+    }, (error: unknown) => fail(c, error)).finally(() => { c.working = false;completed(); work(c); }), 'map movement', report);
   }
   function enqueue(c: Connection, value: Command, rawBytes: number) {
     const slot = value.type === 'map-presence' ? 'presence' : 'movement';
@@ -180,7 +183,7 @@ export function mapController(authority: MapAuthority, outputBudget: EditingOutp
   const timer = setInterval(() => {
     for (const c of connections.values()) {
       work(c);
-      if (readDue(c.cadence, c.output.busy || c.reading || c.pendingRead || c.working || !!c.movement || !!c.presence)) void catchup(c);
+      if (readDue(c.cadence, c.output.busy || c.reading || c.pendingRead || c.working || !!c.movement || !!c.presence)) wake(c);
     }
   }, TICK_MS); timer.unref();
   return {
@@ -201,13 +204,13 @@ export function mapController(authority: MapAuthority, outputBudget: EditingOutp
           if (message.type === 'subscribe') {
             closed(message, ['type','generation','afterSequence']);
             if (c.subscribed || !id(message.generation) || !integer(message.afterSequence, 0, Number.MAX_SAFE_INTEGER)) throw invalid('Invalid map subscription');
-            c.generation = message.generation; c.sequence = message.afterSequence; c.subscribed = true; void catchup(c); return;
+            c.generation = message.generation; c.sequence = message.afterSequence; c.subscribed = true; wake(c); return;
           }
           if (!c.subscribed || !c.generation) throw invalid('Subscribe before a map action');
           if (message.type === 'received') {
             closed(message, ['type','deliveryId','index']);
             if (!id(message.deliveryId) || !integer(message.index, 0, EDITING_LIMITS.chunks - 1)) throw invalid('Invalid map delivery acknowledgment');
-            c.output.received(message.deliveryId, message.index); void catchup(c); return;
+            c.output.received(message.deliveryId, message.index); wake(c); return;
           }
           if (message.generation !== c.generation) throw invalid('The map generation changed');
           if (message.type === 'map-move') enqueue(c, { type: 'map-move', command: movement(message) }, data.byteLength);
@@ -222,7 +225,7 @@ export function mapController(authority: MapAuthority, outputBudget: EditingOutp
         } catch (error) { fail(c, error); }
       });
     },
-    notify, notifyAll() { for (const c of connections.values()) { touch(c.cadence); void catchup(c); } },
+    notify, notifyAll() { for (const c of connections.values()) { touch(c.cadence); wake(c); } },
     async close() { closing = true; clearInterval(timer); for (const c of [...connections.values()]) { c.socket.terminate(); close(c); } await authority.close();await Promise.allSettled([...operations]); },
     get externalOutputBytes() { return outputBudget.bytes; },
     get resources(){return{mapConnections:connections.size,mapOperations:operations.size,mapPendingMovement:pendingMovement,mapPendingPresence:pendingPresence};},

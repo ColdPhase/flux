@@ -128,7 +128,6 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
     await slot.close();
   });
   beforeEach(async () => {
-    compute.dispatched = [];
     await resetFake();
     await pool.query(`UPDATE personal_runs SET status = 'stopped', completed_at = now(), cost_state = 'released', charged_micros = 0
       WHERE owner_user_id = $1 AND status IN ('queued', 'reading', 'dispatching')`, [owner.id]);
@@ -326,7 +325,6 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
         await pool.query(`UPDATE agent_runtime_connections SET state = 'signed_in', signed_in_at = now() WHERE owner_user_id = $1 AND client = 'claude_code'`, [owner.id]);
       }
     }
-    assert.equal(compute.dispatched.length, 0, 'no API key request was ever made');
   });
 
   test('tool results past the route\'s bound end the run in its own state', async () => {
@@ -495,13 +493,11 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
       assert.deepEqual([waiting!.state, waiting!.wait_reason], ['waiting', 'ask']);
       assert.equal((await pool.query(`SELECT count(*)::int AS n FROM project_work_items WHERE title = 'Waits for the owner'`)).rows[0].n, 0);
       const cliCalls = (await calls()).length;
-      const dispatched = compute.dispatched.length;
       expectStatus(await owner.browser.request('POST', assistantChangeActionPath(waiting!.id, 'apply'), { body: { expectedVersion: waiting!.version } }), 200);
       const [after] = await changeRows(second.run.id);
       assert.deepEqual([after!.state, after!.authority, after!.decided_by, after!.receipt!.engine], ['applied_after_wait', 'owner_approval', owner.id, 'runtime']);
       assert.equal((await pool.query(`SELECT count(*)::int AS n FROM project_work_items WHERE title = 'Waits for the owner'`)).rows[0].n, 1);
       assert.equal((await calls()).length, cliCalls, 'Apply started no CLI');
-      assert.equal(compute.dispatched.length, dispatched, 'and no provider');
       assert.equal((await row(second.run.id)).status, 'completed', 'the source run is not revived');
     } finally { await setMode('act'); }
   });
@@ -541,7 +537,6 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
     await resetFake(); await script({ calls: [], answer: 'Done.' });
     const later = await ask();
     assert.equal(await processor.process(later.run.id), 'completed');
-    assert.equal(compute.dispatched.length, 0);
   });
 
   test('#854: the plan\'s limit pauses the request with its reset time; it waits, queued, and starts again by itself; nothing switches', async () => {
@@ -571,7 +566,6 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
     const done = await row(resumed[0].id as string);
     assert.deepEqual([done.end_reason, done.answer_body], [null, 'Done after the reset.']);
     assert.equal(await limited(), false, 'a finished run shows the plan is usable again');
-    assert.equal(compute.dispatched.length, 0, 'no API key request was ever made');
   });
 
   test('#854: choosing an API key for the next request does not touch a request already sent to the plan', async () => {
@@ -690,7 +684,6 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
     assert.equal((await runs.get(human(owner), started.run.id)).endReason, 'model_unavailable');
     assert.deepEqual((await runs.model(human(owner))).current, { connection: 'claude_plan', model: 'opus' }, 'the setting stays');
     assert.equal((await calls()).filter((entry) => entry.event === 'run').length, 1, 'no other model was tried');
-    assert.equal(compute.dispatched.length, 0);
   });
 
   test('AG-10: a CLI run in flight when AI is turned off is stopped through the slot and its late answer is not posted', async () => {

@@ -1379,6 +1379,22 @@ export const backgroundComputeConnections = pgTable('background_compute_connecti
   index('background_compute_connections_owner_idx').on(table.ownerUserId, table.createdAt, table.id),
 ]);
 
+/**
+ * 0083 (#1441, RT-1 rule 2): one check that a model of an API key calls tools. The server sent the provider one small request with one
+ * tool, `ping`, and asked the model to call it; `callsTools` says whether it did. `chargedMicros` is what the request cost, charged to
+ * the key's day like any request (CA-3). A key + model with a row that `callsTools` is not checked again.
+ */
+export const apiKeyChecks = pgTable('api_key_checks', {
+  id: uuid('id').primaryKey(),
+  connectionId: uuid('connection_id').notNull().references(() => backgroundComputeConnections.id, { onDelete: 'cascade' }),
+  model: text('model').notNull(),
+  checkedAt: timestamp('checked_at', { withTimezone: true }).notNull().defaultNow(),
+  chargedMicros: bigint('charged_micros', { mode: 'number' }).notNull(),
+  callsTools: boolean('calls_tools').notNull(),
+}, (table) => [
+  index('api_key_checks_connection_idx').on(table.connectionId, table.checkedAt),
+]);
+
 // Durable project-bound live sessions and identifier-only presentation trace (#61).
 // Access belongs to the existing project policy; media room IDs do not encode titles or users.
 export const liveSessions = pgTable('live_sessions', {

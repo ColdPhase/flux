@@ -48,9 +48,10 @@ const generator = startNotificationGenerator({ db, boss, connectionString, email
 const agentRuntimeConfig = loadAgentRuntimeConfig(process.env);
 const personalRuns = personalRunWorkerComposition(process.env, db, agentRuntimeConfig);
 if (personalRuns.mode !== 'production') console.warn(JSON.stringify({ warning: 'TEST ONLY: personal runs use fixture connections and a mock provider', mode: personalRuns.mode }));
-const personalRunRecovery = await registerPersonalRunWorker(boss, db, personalRuns);
-// The model gateway (#1441): API-key runs in the runtime reach their provider through the worker, which alone opens keys.
+// The model gateway (#1441): API-key runs in the runtime reach their provider through the worker, which alone opens keys. Started first:
+// the runs of pi (FLUX_AGENT_RUNTIME=pi) get their model tokens from it.
 const modelGateway = await startModelGateway({ db, composition: personalRuns, runtime: agentRuntimeConfig, env: process.env });
+const personalRunRecovery = await registerPersonalRunWorker(boss, db, { ...personalRuns, gateway: modelGateway.gateway });
 // The owner's schedules (F-027 A8): the same personal-run path, one tick a minute.
 const assistantRuns = { connections: personalRuns.connections, providerEnabled: personalRuns.compute.enabled,
   runtime: workerRuntimeAvailability(agentRuntimeConfig, db) };

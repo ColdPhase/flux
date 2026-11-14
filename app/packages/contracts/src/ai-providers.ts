@@ -72,21 +72,6 @@ export const AI_PROVIDERS: Readonly<Record<AiProviderKind, AiProviderInfo>> = {
   },
 };
 
-/**
- * Models Flux knows cannot make tool calls on the wire format Flux speaks to their provider (F-027
- * AST-8: such a connection answers in one request and cannot change anything). An absent model is
- * not marked: a provider that cannot call tools refuses the request and the run fails closed. This
- * is a dated table like `AI_PRICE_TABLE`; recheck a row before relying on it after its date. It is
- * empty since #954: GPT-6 Astra and GPT-6.1 Sol, which OpenAI's function calling guide (read
- * 2026-10-11) says "require the Responses API for tool calling", call tools now that Flux speaks the
- * Responses API to OpenAI.
- */
-export const AI_MODELS_WITHOUT_TOOL_CALLING: readonly { provider: AiProviderKind; model: string; checkedOn: string; reason: string }[] = [];
-
-/** False when Flux knows the model cannot call tools on its wire format (see {@link AI_MODELS_WITHOUT_TOOL_CALLING}). */
-export const aiModelCallsTools = (provider: AiProviderKind, model: string): boolean =>
-  !AI_MODELS_WITHOUT_TOOL_CALLING.some((entry) => entry.provider === provider && entry.model === model);
-
 export const isAiProviderKind = (value: unknown): value is AiProviderKind =>
   typeof value === 'string' && (AI_PROVIDER_KINDS as readonly string[]).includes(value);
 
@@ -238,7 +223,7 @@ export function maxRequestMicros(price: Pick<AiPrice, 'inputMicrosPerMTok' | 'ou
 
 /**
  * Models whose provider has a built-in web search that they cannot use (#954): a run on one is not offered the search, as on a provider
- * without one. A dated table like `AI_MODELS_WITHOUT_TOOL_CALLING`; recheck a row before relying on it after its date. An absent model
+ * without one. A dated table like `AI_PRICE_TABLE`; recheck a row before relying on it after its date. An absent model
  * is not marked: if its provider refuses the search tool, the request is sent again once without it and the key's model is not offered
  * it for a while (the worker remembers).
  */

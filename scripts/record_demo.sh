@@ -60,7 +60,12 @@ partner_password="demo-$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
 shots=$(mktemp -d)
 export FLUX_UI_SCREENSHOT_DIR="$shots"
 . scripts/test_images.sh
-compose="docker compose --env-file /dev/null -p $project -f docker/compose.source.yaml --profile ui"
+# Every agent on an API key runs in pi in the agent runtime (#1441, RT-1), as in scripts/check_ui.sh: the stack has the runtime with
+# `pi`, and the worker's model gateway sends pi's requests to the mock provider. The runtime's supervisor needs kernel.yama.ptrace_scope >= 1.
+export FLUX_AGENT_RUNTIME=pi
+export FLUX_RUNTIME_MANAGER_SECRET="$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')"
+export FLUX_RUNTIME_SECRET_1="$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')"
+compose="docker compose --env-file /dev/null -p $project -f docker/compose.source.yaml -f docker/compose.source.runtime.yaml --profile ui --profile runtime"
 
 cleanup() {
   status=$?
@@ -75,7 +80,7 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
-$compose build migrate ui-test
+$compose build migrate ui-test runtime-1 runtime-install
 $compose up -d db migrate
 $compose --profile setup run --rm files-init
 # The same pinned command `./flux up` uses; the keys exist only for this run.
@@ -87,7 +92,7 @@ if [ -n "$vapid_public" ] && [ -n "$vapid_private" ]; then
 else
   echo "Could not generate VAPID keys; the notification settings will say push is not set up." >&2
 fi
-$compose up -d --wait api worker
+$compose up -d --wait api worker runtime-egress runtime-manager runtime-1
 echo "Seeding the ./flux demo data through the public API..."
 $compose exec -T -e FLUX_PUBLIC_ORIGIN="$FLUX_PUBLIC_ORIGIN" \
   -e FLUX_DEMO_OWNER_PASSWORD="$owner_password" -e FLUX_DEMO_PARTNER_PASSWORD="$partner_password" \

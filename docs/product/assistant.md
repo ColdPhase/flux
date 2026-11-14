@@ -350,9 +350,9 @@ Server agents act only inside Flux, with their owner's rights:
 | Decisions | Propose; never accept |
 | Search | Everything the owner can see, in spaces with AI on, ranked by BM25 ([AG-12](#ag-12--finding-older-messages-f-042)); a DM only in a run in that DM |
 | GitHub | Read the connected repository (issues, pull requests, checks); never write |
-| Web | Search with its own web search tool (the provider's, or the owner's Claude Code's or Codex's), and open any public web page (`flux_read_web`) as much as a question needs, never putting anything from Flux into an address (the server refuses one that carries private text the run read), always citing the sources; never post or fill in anything. On by default; the operator can turn both off ([C-29](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override), [C-30](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)) |
+| Web | Search with its own web search tool (the provider's, or the owner's Claude Code's or Codex's; on an API key in pi, Flux's `flux_web_search`, run by the Flux server through the key's provider's hosted search, #1441), and open any public web page (`flux_read_web`) as much as a question needs, never putting anything from Flux into an address (the server refuses one that carries private text the run read), always citing the sources; never post or fill in anything. On by default; the operator can turn both off ([C-29](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override), [C-30](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)) |
 | Pictures | Attach a public picture from the web to its answer to `/ai` in a space (with the waits and Undo of AG-3) or in its private chat, downloaded by the Flux server under the web rules; look at a picture attached to a message it may read, when its model sees pictures. Never generate one ([#1217](https://github.com/ColdPhase/flux/issues/1217), below) |
-| Files | On the owner's Claude Code or Codex: use the CLI's own shell and file tools in the run's scratch, a sandbox that exists for one run (convert HTML to PDF, make a CSV, run a script), and attach a file it made to its answer with `flux_attach_file`; on an API key, attach a file by its content (HTML, CSV, Markdown, JSON, text). An attached file is the asker's, like their own upload (the same types, size limits and checks, preview, waits and Undo of AG-3, Show everyone), on an answer to `/ai` in a space; on its answer in its private chat it is the owner's alone, at once, like a picture there (coordinator decision 2026-11-13); never in an encrypted space. A local client gives a file's content (text, or base64) to `flux_attach_file`, which stages it as its owner's upload in that space, and names the returned `fileId` in `attachmentIds` of the message it posts next. A file is never refused for being a file; one that holds the CLI's own login is ([#1437](https://github.com/ColdPhase/flux/issues/1437), [RT-5](ai-modes.md#rt-5--tools)) |
+| Files | On the owner's Claude Code or Codex, and on an API key where the server runs API keys in pi (#1441, [RT-1](ai-modes.md#rt-1--engines-on-the-server)): use the agent's own shell and file tools in the run's scratch, a sandbox that exists for one run (convert HTML to PDF, make a CSV, run a script), and attach a file it made to its answer with `flux_attach_file`; on an API key in the worker's own loop, attach a file by its content (HTML, CSV, Markdown, JSON, text). An attached file is the asker's, like their own upload (the same types, size limits and checks, preview, waits and Undo of AG-3, Show everyone), on an answer to `/ai` in a space; on its answer in its private chat it is the owner's alone, at once, like a picture there (coordinator decision 2026-11-13); never in an encrypted space. A local client gives a file's content (text, or base64) to `flux_attach_file`, which stages it as its owner's upload in that space, and names the returned `fileId` in `attachmentIds` of the message it posts next. A file is never refused for being a file; one that holds the CLI's own login is ([#1437](https://github.com/ColdPhase/flux/issues/1437), [RT-5](ai-modes.md#rt-5--tools)) |
 | Not allowed | Code or commands outside the run's sandbox, email, other apps, generating pictures |
 
 Code changes to the owner's repositories come only from the owner's own Claude Code or Codex on their computer
@@ -363,7 +363,8 @@ make a file to attach, never reach a repository, the network beyond its vendor o
 other people's messages, and the prompt marks them so. The defence is in the rules, not in the model's obedience: only the
 owner instructs (AG-2), rights and waits and the never-list hold (AG-3), every change has Undo, and nothing is posted or filled in on
 the web. **Search** (founder direction, Hubert, 2026-11-08, #954) is the provider's own built-in tool on the owner's connection, with
-no other account or key: Anthropic's `web_search` and OpenAI's Responses `web_search`; on the owner's own Claude Code its `WebSearch`,
+no other account or key: Anthropic's `web_search` and OpenAI's Responses `web_search`, which an agent on an API key reaches through Flux's
+`flux_web_search` tool, run by the Flux server with that key (pi has no search of its own, [RT-5](ai-modes.md#rt-5--tools), #1441); on the owner's own Claude Code its `WebSearch`,
 and on their Codex its own search on OpenAI's cached index (#1065). A provider or wire format without one has no search, and the
 agent's brief says so; nothing fails. **Any address opens** (founder direction, Hubert, 2026-11-09, #1065: open any address, the same
 for Claude and Codex, with no approval taps): the same rule on every engine. The brief tells the agent to open only what its answer
@@ -376,9 +377,8 @@ link a person wrote that the read began with, and a run's change may not write s
 **Accepted risk** (founder, Hubert, 2026-11-09): what the agent rewrote (other words, hyphens for spaces, pieces under 12
 characters), or signals by which address it chooses, can leave through an address, and a search query reaches the search's vendor; the
 check stops the copy. The defence is the one above, and the list of every address the
-server asked for. The key's daily budget is what stops spending: each search is charged as the provider reports it. On the owner's
-API key a page's text is sent to the model once and, once the model has noted it, left out of later requests, so a long read fits;
-the Claude Code and Codex engines manage their own context. A test shows that web content cannot bypass an approval, and what
+server asked for. The key's daily budget is what stops spending: each search is charged as the provider reports it. Every engine (pi, Claude Code and
+Codex) manages its own context; Flux no longer rewrites what a model has read (page notes, #1113, went with the worker's own loop, #1441). A test shows that web content cannot bypass an approval, and what
 happens when a page tells an agent to send what it read to a site (#918, #953, #1065). The server reads the page, not the agent's
 process, so the runtime's egress stays closed to the web ([network](ai-modes.md#rt-4--network)); the run lists every address the
 server asked for, those that failed too, in Flux's own words, written down before each request goes out, and its searches and the
@@ -501,17 +501,14 @@ database backstop) is the starting point at space level for #855 and #874; see i
 - **Failures in plain words**: "Claude limit reached, resumes at 14:00", "Sign in to Claude
   again", "Claude refused this request", "Stopped". Nothing falls back to another connection or
   payer, and human work continues.
-- **A run on an API key answers at its bounds** (#1410). A tool result adds at most 16 KiB to the next request (a longer one
-  is cut and says how much is left and how to read on). When the next request would leave less than 8,000 tokens below the
-  64,000-token input bound, or the step cap allows no further step, it is the run's last: no tool can be called, and Flux asks
-  the model to answer from what it found and to say what it could not read; if even that would not fit, the longest results
-  are shortened until it does. Only a request that cannot fit at all ends the run "too large", as before.
-- **Prompt caching** (#1410). On Anthropic a run's requests mark the tool definitions, the brief and the growing conversation
-  for the provider's five-minute cache, so each step reads what the step before sent; the charge counts a cache write at 1.25×
-  and a read at 0.1× of the input price (never less than Anthropic bills). A request asks for caching only while its cost
-  with every input token written to the cache still fits what is left of the run's reservation, so the daily budget holds.
-  The run's last request (which asks for the answer) keeps the tools' and the brief's marks but does not write the conversation
-  to the cache: nothing reads it after. A run records its input tokens as the whole prompt (uncached, written and read); in
+- **A run on an API key has no bounds of Flux's on its context** (#1441). The worker's loop cut a tool result to 16 KiB, left 8,000
+  tokens below its 64,000-token input bound and made its last request answer-only; all of that went with the loop. The agent runs in pi,
+  which manages its own context, and a tool result is bounded by the MCP route (256 KiB a result, 8 MiB a run). What stops a run is the key's
+  daily budget, which Flux's model gateway holds against before each request, and the runtime's safety bounds ([RT-4](ai-modes.md#the-model-gateway-1441)).
+- **Prompt caching** (#1410). The gateway charges a cache write at 1.25× and a read at 0.1× of the input price on Anthropic only when the
+  request asked for caching (`cache_control`, and only the default five-minute cache; a one-hour write costs twice and is refused),
+  otherwise at the full price, and it holds a request at the write rate, so the daily budget holds. A run records its input tokens as the whole prompt
+  (uncached, written and read); in
   v0.2.1 how much of it was written to or read from the cache is not stored per run, and its charge (spend) already reflects
   the cache. OpenAI and Gemini cache repeated prefixes by themselves; Flux charges their input at the full price.
 
@@ -579,10 +576,10 @@ searching ([F-042](decisions.md#f-042--agents-find-what-they-need-with-bm25-sear
 - **Citations.** Every tool result that returns a page, task, decision or message carries the mark that cites it as `cite` (search hits of those kinds, the lists and reads of
   pages, tasks and decisions, and every message a conversation, thread or discussion read returns). An answer that states a fact it read in Flux with a tool copies that mark after
   the statement: `[doc:ID]`, `[doc:ID#2]` (a section: the heading's number in `flux_get_doc`'s `sections`), `[task:ID]`, `[decision:ID]`, `[message:ID]`; an answer with no Flux fact has none.
-  The brief's answer-format line says so on both engines, for every run that reads with tools except a run in a DM. The objects whose `cite` a run's tools returned are kept per
+  The brief's answer-format line says so on every engine, for every run that reads with tools except a run in a DM. The objects whose `cite` a run's tools returned are kept per
   run while it is in flight (`personal_run_cites`, migration 0074); at the commit Flux resolves each mark of the answer that one of them returned (a mark someone wrote in a message, a page or the request is
   words, and is taken out) to an object the run may cite (a run in a space: that space; a private chat or a schedule: any space its owner reads with AI on; never a DM's run,
-  never an encrypted space), and numbers it `[n]` with the supplied sources' `[S3]` in one list, in the order they stand, one number for an object however it was cited; a
+  never an encrypted space), and numbers it `[n]` in the order they stand, one number for an object however it was cited (no run is given numbered sources `[S3]` since #1441); a
   mark that points at nothing the run may cite is taken out like an invented `[8]`. The chip opens exactly the page (a section opens the version it was numbered in, at its
   heading), task, decision or message, and its label says which. Each time the answer is read, a source in another space than the answer's (a private chat's or schedule's)
   is checked against its owner's access again: one they no longer read keeps its number, says only what kind of thing it was and opens nothing. Show everyone keeps the

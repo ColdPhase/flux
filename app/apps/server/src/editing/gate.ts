@@ -5,6 +5,7 @@ import type { SessionContext, SessionResolver } from '../identity/session.js';
 import { upgradePath } from '../http/routed-path.js';
 import type { UpgradeGate } from '../http/upgrades.js';
 import { editingResourcesChanged } from './resource-observation.js';
+import { background, type EditingReport } from './background.js';
 
 export const EDITING_PATH = '/api/v1/editing';
 export const EDITING_FRAME_BYTES = 65_536;
@@ -26,6 +27,8 @@ export interface EditingGateOptions {
   authorize(context: EditingContext): Promise<{ workspaceId: string; sealed: boolean } | void>;
   /** Installs message/error handlers synchronously; protected delivery uses the SQL fence. */
   accept(socket: WebSocket, context: EditingContext): void;
+  /** Where a failure nobody awaits goes (the API's logger); stderr when absent. */
+  report?: EditingReport;
 }
 export interface EditingGate extends UpgradeGate {
   close(): Promise<void>;
@@ -116,7 +119,7 @@ export function editingGate(options: EditingGateOptions): EditingGate {
         } catch { refuse(socket, 503, 'Unavailable'); }
         finally { clearTimeout(timer); reservations.delete(socket);editingResourcesChanged(); }
       })();
-      work.add(pending);void pending.finally(()=>work.delete(pending));
+      work.add(pending);background(pending.finally(()=>work.delete(pending)), 'upgrade', options.report);
       return true;
     },
     closeSealed(workspaceId) {

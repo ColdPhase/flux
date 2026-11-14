@@ -12,6 +12,7 @@ the wiring between services or enables test-only code.
 | `DATABASE_URL` | Set by Compose from `POSTGRES_USER`, `POSTGRES_PASSWORD` and `POSTGRES_DB`. |
 | `PORT` | Set by Compose to `8080`, the API's port inside its container. |
 | `NODE_EXTRA_CA_CERTS` | Node.js: extra CA certificates, for an SMTP server or provider with a private CA. Set it in an override and mount the file. |
+| `FLUX_AGENT_RUNTIME_OFF_REASON` | Written by the first `./flux up` when its host check finds the agent runtime cannot run (#1438, #1441), cleared by `./flux ai on`; the API shows that one line to the company's owners and admins in Settings › AI. |
 | `FLUX_ANTHROPIC_MOCK_URL` | Browser-test profile only (mock provider). |
 | `FLUX_API_INTERNAL_URL` | How the worker reaches the API inside Compose; default `http://api:8080`. |
 | `FLUX_API_URL` | Test profile only. |
@@ -57,7 +58,7 @@ the wiring between services or enables test-only code.
 | `FLUX_RUNTIME_SLOT` | Set by Compose on the runtime to its own name. |
 | `FLUX_RUNTIME_SLOT_1` | Set by Compose on the runtime manager from `FLUX_RUNTIME_SECRET_1`. |
 | `FLUX_RUNTIME_SLOT_SECRET` | Set by Compose on the runtime from `FLUX_RUNTIME_SECRET_1`. |
-| `FLUX_RUNTIME_TEST_EXEC` | Test image only: what the check images' CLI wrappers must also execute inside the CLI's sandbox domain (#1437). |
+| `FLUX_RUNTIME_TEST_EXEC` | Test image only: `codex=<file>,claude_code=<file>`, the real program each check wrapper starts, allowed in that CLI's sandbox domain (#1437). |
 | `FLUX_RUN_TOKEN` | Per-run bearer the runtime gives the CLI it starts. |
 | `FLUX_SANDBOX_BROKER` | The socket of the run's broker the runtime gives the CLI it starts, for its sandbox shell (#1437); never an operator setting. |
 | `FLUX_SANDBOX_DIR` | The run's scratch the runtime gives the CLI it starts, for its sandbox shell (#1437); never an operator setting. |
@@ -85,6 +86,7 @@ Names in the code that are not settings at all:
 | `FLUX_AGENT_ACCESS` | output marker of the operations tool |
 | `FLUX_GITHUB` | prefix in an error message |
 | `FLUX_LIVE_QUEUE` | log marker |
+| `FLUX_MCP_LEGACY_VERSIONS` | constant: the legacy MCP protocol versions Flux admits |
 | `FLUX_MCP_PROTOCOL_VERSIONS` | constant: supported MCP protocol versions |
 | `FLUX_MIGRATIONS` | output marker of the operations tool |
 | `FLUX_MIGRATION_GATE` | output marker of the operations tool |

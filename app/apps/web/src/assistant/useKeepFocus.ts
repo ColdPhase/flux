@@ -27,21 +27,26 @@ export function useKeepFocus<T extends HTMLElement>(fallback?: () => HTMLElement
     target.focus({ preventScroll: true });
     return !lost();
   }, []);
+  /** Watches the screen for `SETTLE_MS` and puts focus back the moment it falls to the page. */
+  const watch = useCallback(() => {
+    watching.current?.();
+    const watcher = new MutationObserver(() => { if (rescue()) stop(); });
+    const timer = window.setTimeout(() => stop(), SETTLE_MS);
+    const stop = () => { watcher.disconnect(); window.clearTimeout(timer); watching.current = null; };
+    watching.current = stop;
+    watcher.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['disabled', 'hidden', 'inert'] });
+    requestAnimationFrame(() => { if (rescue()) stop(); });
+  }, [rescue]);
   const keep = useCallback(async <R>(action: () => Promise<R>): Promise<R> => {
     const inside = holds();
+    // Watched from the press, not only from the action's end: a stream update may take the pressed button away while the action still
+    // waits for a read, and focus must not sit on the page until then.
+    if (inside) watch();
     try {
       return await action();
     } finally {
-      if (inside) {
-        watching.current?.();
-        const watcher = new MutationObserver(() => { if (rescue()) stop(); });
-        const timer = window.setTimeout(() => stop(), SETTLE_MS);
-        const stop = () => { watcher.disconnect(); window.clearTimeout(timer); watching.current = null; };
-        watching.current = stop;
-        watcher.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['disabled', 'hidden', 'inert'] });
-        requestAnimationFrame(() => { if (rescue()) stop(); });
-      }
+      if (inside) watch();
     }
-  }, [holds, rescue]);
+  }, [holds, watch]);
   return { ref, holds, keep };
 }

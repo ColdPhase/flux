@@ -3,11 +3,11 @@ import { chmod, chown, lstat, readFile, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { url as inspectorUrl } from 'node:inspector';
 import { totalmem } from 'node:os';
-import { parseRuntimeSwitch, RUNTIME_PORTS, RUNTIME_SECRET, SLOT_NAME } from '@flux/runtime-protocol';
+import { parseRuntimeEngines, RUNTIME_PORTS, RUNTIME_SECRET, SLOT_NAME } from '@flux/runtime-protocol';
 import { runCapacity } from './capacity.js';
 import type { SupervisorConfig } from './handlers.js';
 import { hostProblem } from './requirements.js';
-import { findSandbox } from './sandbox.js';
+import { findSandbox, NEWER_LINUX_NEEDED, parseTestExec } from './sandbox.js';
 import { createSupervisorServer } from './server.js';
 import { CLI_PATHS } from './templates.js';
 
@@ -70,9 +70,13 @@ async function start() {
     capacity = runCapacity(env.FLUX_RUNTIME_MAX_RUNS, limit > 0 ? Math.min(limit, totalmem()) : totalmem());
   } catch (error) { refuse((error as Error).message); }
 
-  // The CLIs keep their own shell and file tools only inside Flux's sandbox (#1437, RT-5); without it they run as before, and it says so once.
+  // Every run keeps its own shell and file tools inside Flux's sandbox (#1437, RT-5). Without Landlock ABI 4 the runtime refuses to start
+  // (founder decision 2026-11-13, #1441): there is no mode where agents run without them, so Flux AI is off and says why.
   const sandbox = await findSandbox();
-  if (!sandbox.setup) console.log(JSON.stringify({ event: 'tools_off', reason: sandbox.reason }));
+  if (!sandbox.setup) refuse(sandbox.reason ?? NEWER_LINUX_NEEDED);
+
+  let engines: ReturnType<typeof parseRuntimeEngines> = { clients: [], pi: false };
+  try { engines = parseRuntimeEngines(env.FLUX_AGENT_RUNTIME); } catch (error) { refuse((error as Error).message); }
 
   const config: SupervisorConfig = {
     slot,
@@ -82,20 +86,20 @@ async function start() {
     tmpDir: '/tmp',
     separate: true,
     capacity,
-    enabled: parseRuntimeSwitch(env.FLUX_AGENT_RUNTIME),
+    enabled: engines.clients,
+    pi: engines.pi,
     cliPaths: CLI_PATHS,
     egressHost: 'runtime-egress',
     bindingLimitBytes: 256 * 1024 * 1024,
     cliTimeoutMs: 30_000,
-    // TEST ONLY (#1437): the check images run the real CLIs through wrapper scripts, whose programs the CLI's domain must also execute.
-    sandbox: sandbox.setup && env.FLUX_RUNTIME_TEST_EXEC
-      ? { ...sandbox.setup, testExec: env.FLUX_RUNTIME_TEST_EXEC.split(':').filter((path) => path.startsWith('/')) } : sandbox.setup,
+    // TEST ONLY (#1437): the check image starts each real CLI through a static wrapper, so that CLI's domain must also execute the real program.
+    sandbox: sandbox.setup && env.FLUX_RUNTIME_TEST_EXEC ? { ...sandbox.setup, testExec: parseTestExec(env.FLUX_RUNTIME_TEST_EXEC) } : sandbox.setup,
   };
 
   const { server } = createSupervisorServer(config);
   server.listen(RUNTIME_PORTS.supervisor, '0.0.0.0', () => {
     // Only the health check reads it, as root. The container's /tmp is new at each start, so nobody can have put anything here first.
-    void writeFile(READY_FILE, '', { mode: 0o600, flag: 'wx' }).catch(() => undefined).then(() => console.log(JSON.stringify({ event: 'ready', slot, bootId: config.bootId, enabled: config.enabled, capacity, landlock: sandbox.setup?.abi ?? 0 })));
+    void writeFile(READY_FILE, '', { mode: 0o600, flag: 'wx' }).catch(() => undefined).then(() => console.log(JSON.stringify({ event: 'ready', slot, bootId: config.bootId, enabled: config.enabled, pi: config.pi, capacity, landlock: sandbox.setup?.abi ?? 0 })));
   });
   const stop = () => { server.close(); process.exit(0); };
   process.on('SIGTERM', stop);

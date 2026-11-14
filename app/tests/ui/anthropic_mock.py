@@ -1,23 +1,30 @@
-"""TEST ONLY (#68): a local mock of the two Anthropic endpoints the personal-run adapter uses.
+"""TEST ONLY (#68): a local mock of the Anthropic Messages endpoint that Flux's model gateway sends a run's requests to.
 
-The browser suite runs the real worker and the real `@flux/agent-runtime` Anthropic adapter
-against this server (the `anthropic-mock` Compose service of scripts/check_ui.sh). It is never a
-provider: nothing here proves compatibility, billing or model behaviour. The tests script its
-next answers through `POST /__script` and read what the adapter sent through `GET /__requests`.
+The browser suite runs the real worker, and every agent on the fixture API key runs in pi in the agent runtime (#1441, RT-1): pi sends its
+streamed Messages requests to the worker's model gateway, which holds the key and forwards them to this server (the `anthropic-mock` Compose
+service of scripts/check_ui.sh). It is never a provider: nothing here proves compatibility, billing or model behaviour. The tests script its
+next answers through `POST /__script` and read what pi sent through `GET /__requests`.
+
+pi's first request carries Flux's brief and not the space's messages: the model reads them with Flux's tools (pi names them
+`mcp__flux__<tool>`; a script names a tool either way). A request also offers pi's own tools (read, bash, edit, write), so a test that checks
+the Flux tools of a run keeps the `mcp__flux__` ones.
 
 Script fields (all optional): `rules` (a list of `{"match": "...", "text": "..."}`: the first whose `match` is in the request answers
-with its `text` instead of `text`, so one script can answer several runs differently), `text` (a template; `{first}`, `{message}` and `{work}` become the
-source labels found in the request input; `{second}` is the second message), `delay` (seconds before answering), `status` (an HTTP
-error status to return instead), `stop_reason`, `input_tokens`, `output_tokens`, `search` (#954: `{"query": "...", "results": [url, ...],
-"cite": url}` answers with Anthropic's own web search in its documented shape: a `server_tool_use` block, a `web_search_tool_result` block and
-the text split around a sentence that cites `cite`, with `usage.server_tool_use.web_search_requests` 1), `tool` (#1217: `{"name": "...",
-"input": {...}}` answers a request that carries no `tool_result` yet with one call of that offered Flux tool, `stop_reason` `tool_use`; the
-next request, which carries its result, gets `text`; a list of such calls makes one call per request, in order, #1381), `stream_gap` (#1248: seconds
-between two events of a streamed answer; a request with `"stream": true` is answered as Server-Sent Events, its text in small pieces).
+with its `text` instead of `text`, so one script can answer several runs differently), `text` (a template: `{cite1}`, `{cite2}`, … become the
+C-62 cite marks (`[message:ID]`, `[doc:ID]`, `[task:ID]`, `[decision:ID]`) that the tool results the request carries returned, in the order they
+stand in them, and are empty when there is no such mark), `delay` (seconds before answering), `status` (an HTTP error status to return instead),
+`stop_reason`, `input_tokens`, `output_tokens`, `search` (#954: `{"query": "...", "results": [url, ...], "cite": url}` answers a request that
+offers Anthropic's own `web_search` tool in its documented shape: a `server_tool_use` block, a `web_search_tool_result` block and the text split
+around a sentence that cites `cite`, with `usage.server_tool_use.web_search_requests` 1; pi has no such tool, so no run of this stack asks for it
+today), `tool` (#1217: `{"name": "...", "input": {...}}` answers a request that carries no `tool_result` yet with one call of that offered Flux
+tool, `stop_reason` `tool_use`; the next request, which carries its result, gets `text`; a list of such calls makes one call per request, in
+order, #1381), `stream_gap` (#1248: seconds between two events of a streamed answer; a request with `"stream": true`, as every request of pi is,
+is answered as Server-Sent Events, its text in small pieces).
 
 #1218: it also answers the key listings of Anthropic, OpenAI and Gemini under `/lists/…` (`FLUX_TEST_PROVIDER_LISTS`), like the app
 suite's provider mock (app/tests/app/support/key-list-mock.ts): a key containing `refused` is refused, `broken` fails with a 500,
-`slow` answers after 12 seconds (past the 8-second bound), any other key gets the lists in `KEY_LISTS`.
+`slow` answers after 12 seconds (past the 8-second bound), any other key gets the lists in `KEY_LISTS`. #1441: the same roots answer the
+check that the model of a key being added calls tools (`tool_check_mock.py`; what reached it is at `GET /__checks`).
 """
 
 from __future__ import annotations
@@ -28,6 +35,8 @@ import threading
 import time
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+import tool_check_mock
 
 FIXTURE_KEY = "flux-test-fixture-not-a-provider-key"
 DEFAULT = {"text": "Fact: the camera fails below 5 lux {first}. Interpretation: the ToF sensor is the better next test {message}.",
@@ -67,25 +76,36 @@ KEY_LISTS = {
 lock = threading.Lock()
 script: dict = dict(DEFAULT)
 requests: list[dict] = []
+# The checks that a key's model calls tools (#1441), kept apart: the tests that count `requests` count runs.
+checks: list[dict] = []
 
 
-def labels(text: str) -> dict[str, str]:
-    """Source labels of the adapter's input (#1064), e.g. `<message ref="S3" …>` or `<task ref="S5" …>`, in the order they were numbered."""
-    found = {"first": "", "second": "", "message": "", "work": "", "works": ""}
-    tagged = sorted(re.findall(r'<(message|task|selected_thought) ref="(S\d+)"', text), key=lambda item: int(item[1][1:]))
-    messages = 0
-    for kind, label in tagged:
-        found["first"] = found["first"] or f"[{label}]"
-        if kind == "message":
-            found["message"] = f"[{label}]"
-            messages += 1
-            if messages == 2:
-                found["second"] = f"[{label}]"
-        if kind == "task":
-            found["works"] += f"[{label}] "
-            if not found["work"]:
-                found["work"] = label
-    return found
+CITE_MARK = re.compile(r"\[(?:doc|task|decision|message):[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\]")
+
+
+class Fields(dict):
+    """The fields of a `text` template: a field no request gave is empty, as a mark the tools did not return is not in an answer."""
+
+    def __missing__(self, _key: str) -> str:
+        return ""
+
+
+def tool_results(body: dict) -> str:
+    """The text of every tool result the request carries, in order (pi sends each Flux tool's answer back as an Anthropic `tool_result` block)."""
+    found = []
+    for message in body.get("messages", []):
+        content = message.get("content")
+        for block in content if isinstance(content, list) else []:
+            if isinstance(block, dict) and block.get("type") == "tool_result":
+                inner = block.get("content")
+                found.append(inner if isinstance(inner, str) else "".join(part.get("text", "") for part in inner or [] if isinstance(part, dict)))
+    return "\n".join(found)
+
+
+def cites(body: dict) -> Fields:
+    """C-62 (#1381): the cite marks of the tool results the request carries, each once, in the order they stand, as `cite1`, `cite2`, …"""
+    marks = list(dict.fromkeys(CITE_MARK.findall(tool_results(body))))
+    return Fields({f"cite{number}": mark for number, mark in enumerate(marks, 1)})
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -160,6 +180,18 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(200, KEY_LISTS[path])
         return self.reply(404, {"error": "not found"})
 
+    def tool_check(self, body: dict) -> None:
+        """#1441: the check that the model of a key being added calls tools, sent where the key's listing goes (`/lists/<provider>/…`); a
+        refused key is refused here as it is by its listing, any other is answered by `tool_check_mock`."""
+        path = self.path.split("?")[0]
+        key = self.headers.get("x-goog-api-key") or (self.headers.get("authorization") or "").removeprefix("Bearer ") or self.headers.get("x-api-key") or ""
+        with lock:
+            checks.append({"path": self.path, "key": key, "body": body, "at": time.time()})
+        if not key or "refused" in key:
+            return self.reply(401, {"type": "error", "error": {"type": "authentication_error", "message": "invalid x-api-key"}})
+        answered = tool_check_mock.answer(path, body)
+        return self.reply(*answered) if answered else self.reply(404, {"error": "not found"})
+
     def do_GET(self) -> None:
         if self.path.startswith("/lists/"):
             return self.key_list()
@@ -168,6 +200,9 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/__requests":
             with lock:
                 return self.reply(200, {"requests": list(requests)})
+        if self.path == "/__checks":
+            with lock:
+                return self.reply(200, {"requests": list(checks)})
         return self.reply(404, {"type": "error", "error": {"type": "not_found_error", "message": "Not found"}})
 
     def do_POST(self) -> None:
@@ -180,6 +215,8 @@ class Handler(BaseHTTPRequestHandler):
                 if body.get("reset"):
                     requests.clear()
             return self.reply(200, {"ok": True})
+        if self.path.startswith("/lists/"):
+            return self.tool_check(body)
         with lock:
             current = dict(script)
             requests.append({"path": self.path, "key_ok": self.presented_key() == FIXTURE_KEY,
@@ -187,8 +224,6 @@ class Handler(BaseHTTPRequestHandler):
         if self.presented_key() != FIXTURE_KEY:
             return self.reply(401, {"type": "error", "error": {"type": "authentication_error", "message": "invalid x-api-key"}})
         text_in = "\n".join(str(message.get("content", "")) for message in body.get("messages", []))
-        if self.path == "/v1/messages/count_tokens":
-            return self.reply(200, {"input_tokens": max(1, len(text_in) // 4)})
         if self.path != "/v1/messages":
             return self.reply(404, {"type": "error", "error": {"type": "not_found_error", "message": "Not found"}})
         if current.get("delay"):
@@ -201,16 +236,19 @@ class Handler(BaseHTTPRequestHandler):
             if str(rule.get("match", "")) and str(rule["match"]) in haystack:
                 wanted = str(rule.get("text", ""))
                 break
-        text = wanted.format(**labels(text_in))
+        text = wanted.format_map(cites(body))
         planned = current.get("tool")
         planned = planned if isinstance(planned, list) else [planned] if planned else []
         # Each request carries the results of the calls before it: the next call is the one after them.
         done = haystack.count('"tool_result"')
         tool = planned[done] if done < len(planned) else None
-        if tool and any(offered.get("name") == tool["name"] for offered in body.get("tools") or []):
+        # pi names a tool of Flux's MCP server `mcp__flux__<tool>` (#1441): a script names the Flux tool either way.
+        offered = next((name for name in (str(item.get("name", "")) for item in body.get("tools") or [])
+                        if tool and name in (tool["name"], f"mcp__flux__{tool['name']}")), None)
+        if tool and offered:
             called = {
                 "id": f"msg_{uuid.uuid4().hex}", "type": "message", "role": "assistant", "model": body.get("model"),
-                "content": [{"type": "tool_use", "id": f"toolu_ui_mock_{uuid.uuid4().hex[:8]}", "name": tool["name"], "input": tool.get("input") or {}}],
+                "content": [{"type": "tool_use", "id": f"toolu_ui_mock_{uuid.uuid4().hex[:8]}", "name": offered, "input": tool.get("input") or {}}],
                 "stop_reason": "tool_use", "stop_sequence": None, "usage": {"input_tokens": max(1, len(text_in) // 4), "output_tokens": 30},
             }
             if body.get("stream"):

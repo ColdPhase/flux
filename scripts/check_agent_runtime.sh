@@ -25,6 +25,8 @@ export FLUX_PORT="${FLUX_RUNTIME_TEST_PORT:-19571}"
 export FLUX_DEV_PORT=$((FLUX_PORT + 1))
 export FLUX_MAILPIT_PORT=$((FLUX_PORT + 2))
 work=$(mktemp -d "${TMPDIR:-/tmp}/flux-runtime-check.XXXXXX")
+# The AI key files ./flux up makes (#1438) stay in this run's own state directory, removed with it.
+export XDG_STATE_HOME="$work/state"
 work=$(cd "$work" && pwd -P)
 copy="$work/flux"
 marker="fake-login-marker-$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
@@ -77,8 +79,9 @@ runtime_containers() { docker ps -aq --filter "label=com.docker.compose.project=
 host_addr() { docker run --rm --network host --cap-drop ALL --read-only --entrypoint ip "flux-test-tools:$project" -4 addr show dev "$1" 2>/dev/null | sed -n 's/^ *inet \([0-9.]*\).*/\1/p'; }
 ip_on() { docker inspect -f "{{ with index .NetworkSettings.Networks \"${project}_$2\" }}{{ .IPAddress }}{{ end }}" "$1"; }
 
-step "1. Off by default: no runtime service starts and the API reports the feature disabled"
-./flux up </dev/null   # no terminal: the first-run subscription question is not asked
+step "1. Off by the operator's choice: no runtime service starts and the API reports the feature disabled"
+# The runtime is on by default where the host can run it (#1438, #1441); an empty FLUX_AGENT_RUNTIME in the environment is the operator saying no.
+FLUX_AGENT_RUNTIME= ./flux up </dev/null
 project=$(sed -n 's/^FLUX_PROJECT=//p' docker/.env)
 [ -n "$project" ] || fail "no project name"
 [ -z "$(runtime_containers)" ] || fail "runtime containers exist while FLUX_AGENT_RUNTIME is empty: $(runtime_containers)"
@@ -89,7 +92,8 @@ live off
 step "2. Switch on (claude_code with the Commercial Terms date)"
 # The live steps sign the same test owners in many times from one address.
 env_set FLUX_AUTH_RATE_LIMIT false
-env_set FLUX_AGENT_RUNTIME claude_code,codex
+# pi (#1441): every API-key agent runs in the same runtime, with its shell through the run's broker like the CLIs' (#1461).
+env_set FLUX_AGENT_RUNTIME claude_code,codex,pi
 if ./flux up 2>"$work/up.err"; then fail "claude_code started without the Commercial Terms statement"; fi
 grep -q 'FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS' "$work/up.err" || fail "the refusal does not name FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS"
 env_set FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS 2026-10-05
@@ -102,7 +106,8 @@ compose --profile runtime logs --no-color runtime-install | grep -q 'TEST ONLY: 
 step "3. docker inspect: limits and security options of the runtime; no engine socket anywhere"
 # shellcheck disable=SC2046
 docker inspect $(docker ps -q --filter "label=com.docker.compose.project=$project") > "$work/inspect.json"
-python3 "$here/scripts/agent-runtime/inspect.py" "$project" "$copy" < "$work/inspect.json"
+# ./flux up keeps the key that seals people's API keys in the state directory (#1451), outside the checkout: inspect.py allows that one file, read-only, in the api and the worker.
+python3 "$here/scripts/agent-runtime/inspect.py" "$project" "$copy" "$XDG_STATE_HOME/flux/$project/background.key" < "$work/inspect.json"
 # Negative controls: the same check fails on a writable root, an added capability or a socket mount.
 for mutation in 'c["HostConfig"]["ReadonlyRootfs"] = False' 'c["HostConfig"]["CapAdd"] = ["NET_ADMIN"]' \
   'c["Mounts"].append({"Type": "bind", "Source": "/var/run/docker.sock", "Destination": "/var/run/docker.sock", "RW": True})' \
@@ -254,10 +259,11 @@ docker exec -u "$(person_of "$t_binding")" "$t_cid" sh -c "rm -f /data/$t_bindin
 
 step "9e. A run's own tools (#1437): from the sandbox shell, on the runtime's real networks, nothing but the egress (and with Landlock ABI 4 not even that); HTML to PDF with pandoc and typst, attached with flux_attach_file"
 abi=$(docker exec "$t_cid" /opt/flux-runtime/sandbox/flux-sandbox abi)
-# The tools need Landlock's network rules (ABI 4, Linux 6.7; coordinator decision on #1437): below that the runtime keeps them off.
-[ "$abi" -ge 4 ] || fail "this host's Landlock (ABI $abi) cannot forbid TCP: the runtime keeps the CLIs' tools off (needs Linux 6.7, ABI 4)"
+# The runtime needs Landlock's network rules (ABI 4, Linux 6.7; #1437, founder decision 2026-11-13 on #1441): below that it does not start.
+[ "$abi" -ge 4 ] || fail "this host's Landlock (ABI $abi) cannot forbid TCP: Flux AI needs a newer Linux (kernel 6.7 or later)"
 tcp_rule=1
 compose --profile runtime logs --no-color runtime-1 | grep -q '"event":"ready".*"landlock":'"$abi" || fail "the runtime did not report Landlock ABI $abi at start"
+compose --profile runtime logs --no-color runtime-1 | grep -q '"event":"ready".*"pi":true' || fail "the runtime did not start ready for API keys in pi"
 python3 - "$here/scripts/agent-runtime/probe-sandbox-net.mjs" "$(docker exec "$t_cid" cat "/data/$t_binding/claude/.credentials.json")" > "$work/sandbox-run.json" <<PY
 import json, sys
 probe = open(sys.argv[1]).read()

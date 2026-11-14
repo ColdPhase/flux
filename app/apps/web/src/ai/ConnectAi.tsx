@@ -3,6 +3,7 @@ import { Link, useNavigate, useRevalidator, useSearchParams } from 'react-router
 import type { AgentRuntimeStatus, BackgroundComputeConnection } from '@flux/contracts';
 import { getRuntime } from '../agent-runtime/api';
 import { Button, Icon, Spinner } from '../ui';
+import { useShellData } from '../app/data';
 import { refreshAssistantModel } from '../assistant/model';
 import { connectionLines, type AiConnectionKind, type AiConnectionLine } from './connections';
 import { ConnectAiWindow } from './ConnectAiWindow';
@@ -45,6 +46,8 @@ export function ConnectAi({ apiKeys, keys, keysFailed, onRetryKeys, onListed, cl
   clients?: ReactNode;
 }) {
   const navigate = useNavigate();
+  const { workspace } = useShellData();
+  const companyAdmin = workspace?.role === 'owner' || workspace?.role === 'admin';
   const [runtime, setRuntime] = useState<AgentRuntimeStatus | null>(null);
   const [runtimeFailed, setRuntimeFailed] = useState(false);
   // Home's first step "Connect AI" opens the window at once (`?connect=1`, #1438).
@@ -76,6 +79,8 @@ export function ConnectAi({ apiKeys, keys, keysFailed, onRetryKeys, onListed, cl
       {lines.length || clients ? <ul className="sset-card cai__list">{lines.map((line) => <ConnectionRow key={line.id} line={line} />)}{clients}</ul> : null}
       {keysFailed ? <p className="sset-note" role="note">Your API keys couldn’t be loaded. <button type="button" className="ui-link" onClick={onRetryKeys}>Try again</button></p> : null}
       {runtimeFailed ? <p className="sset-note" role="note">Your plans couldn’t be loaded. <button type="button" className="ui-link" onClick={() => loadRuntime()}>Try again</button></p> : null}
+      {/* #1438, #1441: the runtime is on after install where the host can run it; where not, its owners and admins read why, in one line. */}
+      {runtime && !runtime.enabled && runtime.offReason && companyAdmin ? <p className="sset-note" role="note" data-runtime-off-reason="">Claude and ChatGPT plans can’t run on this Flux server: {runtime.offReason}.</p> : null}
       {keys !== null && !lines.length ? (
         <div className="sset-card cai__empty">
           {/* With Claude Code or Codex listed above, the line must not say nothing is connected (review of #1363). */}

@@ -88,8 +88,9 @@ const RESPONSE_HEADERS = ['content-type', 'retry-after', 'request-id', 'x-reques
 export function createModelGatewayServer({ gateway, resolveKey, policy = PUBLIC_ONLY, upstreams = {}, limits: given = {}, log = () => undefined }: ModelGatewayServerOptions): Server {
   const limits = { ...MODEL_GATEWAY_LIMITS, ...given };
   const transport = guardedFetch(policy, { timeoutMs: limits.requestMs, maxResponseBytes: limits.responseBytes });
-  /** Bytes of request bodies held in memory by every request in flight. */
+  /** Bytes of request bodies held in memory by every request in flight, and by each run's. */
   let bodiesInFlight = 0;
+  const runBodies = new Map<string, number>();
 
   async function handle(req: IncomingMessage, res: ServerResponse) {
     const route = parseModelGatewayUrl(req.url);
@@ -111,21 +112,33 @@ export function createModelGatewayServer({ gateway, resolveKey, policy = PUBLIC_
       refuse(res, claimed.refusal.status, claimed.refusal.code, claimed.refusal.message);
       return;
     }
-    // The bodies of every run's requests in flight share one bound in the worker's memory (its other jobs run in the same 512 MiB):
-    // a request past it is told to wait and send again.
+    // The bodies of every run's requests in flight share one bound in the worker's memory (its other jobs run in the same 512 MiB), and
+    // one run may hold only part of it: a request past either is told to wait and send again. A body counts until it has been sent to the
+    // provider (the answer's headers came back), not while the answer streams (security review of #1444, P3-3).
+    const runId = claimed.claim.runId;
     let kept = 0;
+    const release = () => {
+      if (!kept) return;
+      bodiesInFlight -= kept;
+      const left = (runBodies.get(runId) ?? 0) - kept;
+      if (left > 0) runBodies.set(runId, left); else runBodies.delete(runId);
+      kept = 0;
+    };
     try {
       await relay(req, res, route, claimed.claim, (bytes) => {
-        if (bodiesInFlight + bytes > limits.bodiesInFlightBytes) return false;
+        const run = runBodies.get(runId) ?? 0;
+        if (bodiesInFlight + bytes > limits.bodiesInFlightBytes || run + bytes > limits.bodiesInFlightPerRunBytes) return false;
         bodiesInFlight += bytes; kept += bytes;
+        runBodies.set(runId, run + bytes);
         return true;
-      });
+      }, release);
     } finally {
-      bodiesInFlight -= kept;
+      release();
     }
   }
 
-  async function relay(req: IncomingMessage, res: ServerResponse, route: ModelGatewayRoute, claim: GatewayClaim, keep: (bytes: number) => boolean) {
+  async function relay(req: IncomingMessage, res: ServerResponse, route: ModelGatewayRoute, claim: GatewayClaim, keep: (bytes: number) => boolean,
+    sent: () => void) {
     let raw: Buffer | 'too_large' | 'busy';
     try {
       raw = await readBody(req, limits.requestBytes, keep);
@@ -175,6 +188,7 @@ export function createModelGatewayServer({ gateway, resolveKey, policy = PUBLIC_
       quiet();
       // The admitted body itself, not a copy (the transport sends a Buffer as it is).
       answer = await transport(url, { method: 'POST', headers: upstreamHeaders(route, req, key), body: ticket.request.body as unknown as Uint8Array<ArrayBuffer>, signal: controller.signal });
+      sent();
     } catch (error) {
       clearTimeout(idle);
       // Sent, or perhaps sent: what it may have cost stays charged. Refused before a byte left (the address guard): nothing.

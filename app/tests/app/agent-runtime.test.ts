@@ -18,7 +18,7 @@ describe('the operator switch is off by default', () => {
     const ada = await person('Runtime Off Ada');
     const status = expectStatus(await ada.browser.request('GET', AGENT_RUNTIME_PATH), 200);
     assert.deepEqual(status, { enabled: false, clients: { claude_code: 'off', codex: 'off' }, commercialTerms: null, idleReleaseDays: null,
-      pool: 'off', binding: null, lastRelease: null, connections: { claude_code: null, codex: null } });
+      pool: 'off', binding: null, lastRelease: null, connections: { claude_code: null, codex: null }, offReason: null });
     for (const method of ['POST', 'DELETE']) {
       const refused = expectStatus(await ada.browser.request(method, AGENT_RUNTIME_BINDING_PATH), 409) as { code: string };
       assert.equal(refused.code, 'AGENT_RUNTIME_OFF');
