@@ -81,9 +81,9 @@ supersedes the quiet start of #59 (2026-09-27).
    noticed once in 5 minutes (the pending invitation is there, the Inbox item, the push and the chime are not repeated).
 5. **Sound.** Only for a direct invitation, never for an open call in a space. One
    soft chime, no ringing loop and no answer/reject takeover screen. It is on by
-   default and follows the switch "Sound when someone calls me" in Settings ›
-   Notifications (founder decision on #1243, 2026-11-12: two switches, "Sound for
-   messages" off by default and this one on), the level and quiet hours. #1243's
+   default and follows the one "Sounds" switch in Settings ›
+   Notifications (founder decision on #1419 item 18, 2026-11-13, which merged #1243's
+   two switches), the level and quiet hours. #1243's
    notice plays it.
 6. **Nobody joined.** While nobody else has joined, the starter's strip says "Nobody
    joined · Invite someone". A call nobody else joins ends after **10 minutes** alone;

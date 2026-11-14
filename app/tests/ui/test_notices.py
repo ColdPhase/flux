@@ -336,32 +336,21 @@ class NoticeJourney(unittest.TestCase):
         expect(icon).to_have_attribute("href", "/icons/icon.svg")
         page.wait_for_function("() => window.__badges.at(-1) === 0")
 
-    def test_11_sound_for_messages_is_off_by_default_and_plays_once_when_on(self) -> None:
+    def test_11_sounds_are_one_switch_on_by_default_that_plays_once_and_turns_off(self) -> None:
+        """#1419 item 18: one "Sounds" switch (a call's chime and the message tone together) replaces the two of #1243."""
         page = self.page("ada")
         page.add_init_script(self.FAKE_AUDIO_AND_BADGE)
         page.goto("/settings/notifications")
-        messages = page.get_by_role("switch", name="Sound for messages")
-        expect(messages).to_have_attribute("aria-checked", "false")
-        # This stack has no media server: nobody can call, so the call sound is not offered (#1471; test_live_sessions has it).
+        sounds = page.get_by_role("switch", name="Sounds", exact=True)
+        expect(sounds).to_have_attribute("aria-checked", "true")
+        # One switch, not two: the old pair is gone, whether or not this server has calls.
+        expect(page.get_by_role("switch", name="Sound for messages")).to_have_count(0)
         expect(page.get_by_role("switch", name="Sound when someone calls me")).to_have_count(0)
+        expect(page.get_by_role("heading", name="Sound", exact=True)).to_have_count(0)
+        # Its own card after Where, with no heading, and Hide previews / Quiet hours stay where #1346 drew them.
+        expect(page.get_by_role("group", name="Where").get_by_role("switch", name="Sounds", exact=True)).to_have_count(0)
         shot(page, "notices-desktop-1440-light-sound-settings")
         page.goto("/")
-        page.wait_for_timeout(1500)
-        self.dm("Silent by default.")
-        expect(self.card(page)).to_be_visible(timeout=5000)
-        page.wait_for_timeout(500)
-        self.assertEqual(page.evaluate("window.__tones"), 0, "no sound while Sound for messages is off")
-        self.card(page).get_by_role("button", name="Close").click()
-
-        page.goto("/settings/notifications")
-        messages.click()
-        expect(messages).to_have_attribute("aria-checked", "true")
-        self.addCleanup(lambda: self.request("ada", "PATCH", "/api/v1/notification-preferences", {"sound": {"messages": False}}))
-        for _ in range(40):
-            if self.request("ada", "GET", "/api/v1/notification-preferences")["sound"]["messages"]:
-                break
-            time.sleep(0.1)
-        page.get_by_role("link", name=re.compile("^Home")).first.click()
         page.wait_for_timeout(1500)
         self.dm("Now you hear me.")
         expect(self.card(page)).to_be_visible(timeout=5000)
@@ -371,6 +360,25 @@ class NoticeJourney(unittest.TestCase):
         expect(self.card(page)).to_contain_text("2 new messages", timeout=5000)
         page.wait_for_timeout(500)
         self.assertEqual(page.evaluate("window.__tones"), 1)
+        self.card(page).get_by_role("button", name="Close").click()
+
+        # Turning the one switch off silences the next notice, and stores both of the pair.
+        page.goto("/settings/notifications")
+        switch = page.get_by_role("switch", name="Sounds", exact=True)
+        switch.click()
+        expect(switch).to_have_attribute("aria-checked", "false")
+        self.addCleanup(lambda: self.request("ada", "PATCH", "/api/v1/notification-preferences", {"sound": {"messages": False, "calls": True}}))
+        for _ in range(40):
+            if self.request("ada", "GET", "/api/v1/notification-preferences")["sound"] == {"messages": False, "calls": False}:
+                break
+            time.sleep(0.1)
+        self.assertEqual(self.request("ada", "GET", "/api/v1/notification-preferences")["sound"], {"messages": False, "calls": False})
+        page.get_by_role("link", name=re.compile("^Home")).first.click()
+        page.wait_for_timeout(1500)
+        self.dm("Silent again.")
+        expect(self.card(page)).to_be_visible(timeout=5000)
+        page.wait_for_timeout(500)
+        self.assertEqual(page.evaluate("window.__tones"), 0, "no sound while Sounds is off")
 
 
 if __name__ == "__main__":

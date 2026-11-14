@@ -12,7 +12,7 @@ import type { ShellData } from '../app/data';
 // words marked, and one line of where it lives, who wrote it and when. The groups are `groups.ts`.
 
 const ICONS: Record<Exclude<SearchKind, 'project' | 'message' | 'dm_message' | 'file'>, IconName> = {
-  work: 'tasks', material: 'link', doc: 'doc', decision: 'flag', sketch: 'map', thought: 'map', person: 'people',
+  work: 'tasks', material: 'doc', doc: 'doc', decision: 'flag', sketch: 'map', thought: 'map', person: 'people',
 };
 
 const time = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' });
@@ -83,7 +83,7 @@ function meta(result: SearchResult): ReactNode[] {
   if (task) return [`#${task.number}`, TASK_STATE_WORD[task.status], where];
   switch (result.kind) {
     case 'message': case 'dm_message': return [author, where, <time key="at" dateTime={result.at}>{when(result.at)}</time>];
-    case 'doc': {
+    case 'doc': case 'material': {
       const snippet = plainSnippet(result.snippet);
       return snippet ? [<span key="snip">“<Highlighted parts={snippet} />”</span>] : [where];
     }

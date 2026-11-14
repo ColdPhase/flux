@@ -125,7 +125,7 @@ class PrivateAiJourney(unittest.TestCase):
 
     def asked_card(self, page: Page, prompt: str):
         """The card of one question: cards that other tests left in a place are not mistaken for it."""
-        return self.private_card(page).filter(has_text=f"You asked: /ai {prompt}")
+        return self.private_card(page).filter(has_text=f"You asked: {prompt}")
 
     def messages_sent(self) -> list[dict]:
         """The Messages requests pi's runs sent to the provider since the script was reset, oldest first."""
@@ -206,7 +206,9 @@ class PrivateAiJourney(unittest.TestCase):
         expect(working).to_have_count(0)
         expect(card).to_contain_text("Assistant")
         expect(card).to_contain_text("Only you can see this")
-        expect(card).to_contain_text("You asked: /ai summarise what we decided about the network")
+        expect(card).to_contain_text("You asked: summarise what we decided about the network")
+        # The question is said once, in its own words: the `/ai` the person typed is not part of it (#1424).
+        expect(card).not_to_contain_text("/ai")
         expect(card).to_contain_text("far beds will use LoRa")
         expect(card).to_contain_text("Kai and Lee don’t see this. Show everyone posts it as “Jo's Assistant”.")
         shot(jo, "private-ai-1440-main-conversation")
@@ -351,7 +353,7 @@ class PrivateAiJourney(unittest.TestCase):
         jo.locator("#thread-composer").fill("/")
         jo.get_by_role("listbox", name="Actions").get_by_role("option", name="Ask your assistant: Catch me up on this thread", exact=True).click()
         expect(jo.locator("#thread-composer")).to_have_value("")
-        card = self.private_card(jo).filter(has_text="You asked: /ai Catch me up on this thread")
+        card = self.private_card(jo).filter(has_text="You asked: Catch me up on this thread")
         expect(card).to_be_visible(timeout=20000)
         expect(card).to_contain_text("Only you can see this")
         expect(card).to_contain_text("far beds will use LoRa")
@@ -374,7 +376,7 @@ class PrivateAiJourney(unittest.TestCase):
         expect(menu.get_by_role("option", selected=True)).to_have_attribute("aria-label", "Ask your assistant: What's left?")
         box.press("Enter")
         expect(box).to_have_value("")
-        asked = task.locator("#details .assistant-private").filter(has_text="You asked: /ai What's left?")
+        asked = task.locator("#details .assistant-private").filter(has_text="You asked: What's left?")
         expect(asked).to_be_visible(timeout=20000)
         # `/ai` itself fills the box with the command, as typing it would, and the words around the "/" stay.
         box.fill("check the probes")

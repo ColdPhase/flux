@@ -22,6 +22,7 @@ from playwright.sync_api import Page, expect, sync_playwright
 
 from urllib.parse import urlsplit
 
+from phone_audit import TEXT_SIZE_SCRIPT
 from test_app_shell import ORIGIN, UPSTREAM, panel_task, shot, start_forwarder
 
 PASSWORD = "a calm one row header"
@@ -601,7 +602,8 @@ class SpokojLayout(unittest.TestCase):
             with self.subTest(width=width, text=text):
                 page = self.page({"width": width, "height": height}, touch=width <= 1024)
                 if text:
-                    page.add_init_script(f"localStorage.setItem('flux.textSize', '{text}')")
+                    # The system's text size (a root font size of 113 %, set before the page's own styles run), not a setting of Flux's.
+                    page.add_init_script(TEXT_SIZE_SCRIPT % 113)
                 first = None
                 for path in VIEWS:
                     self.goto_view(page, path)

@@ -91,9 +91,7 @@ export function HomeTasks() {
       : narrow ? <Button onClick={openNavigation}>Open your spaces</Button> : null;
     return pulling(
       <div className="view-empty">
-        <EmptyState icon="tasks" title="Nothing is waiting for you" action={action}>
-          <p>Tasks you own in your spaces show up here: in progress, blocked and open. Nothing is due, and nothing needs clearing.</p>
-        </EmptyState>
+        <EmptyState icon="tasks" title="Nothing is waiting for you" action={action} />
       </div>,
     );
   }

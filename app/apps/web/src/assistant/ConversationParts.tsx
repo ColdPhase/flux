@@ -141,7 +141,7 @@ export function WritingAnswer({ run, text, onStop, people = null }: { run: Assis
         <span className="assistant-writing__state">· {run.stopRequested ? 'stopping…' : 'writing…'}</span>
         <span className="assistant-private__lock"><Icon name="lock" size={13} />Only you can see this</span>
       </div>
-      <p className="assistant-private__asked">You asked: <code>/ai</code> {run.prompt}</p>
+      <p className="assistant-private__asked">You asked: {run.prompt}</p>
       <WritingWords words={words} reduced={reduced} people={people} />
       {run.stopRequested ? null : <div className="assistant-writing__foot"><Button variant="outline" icon="stop" busy={busy} onClick={() => void stop()}>Stop</Button></div>}
       {failed ? <p className="assistant-answer__error" role="alert">{failed}</p> : null}

@@ -116,27 +116,30 @@ if (existing) {
   summary.seeded.push(`space "${project.name}" with both of them`);
 
   const conversationsPath = `/api/v1/projects/${project.id}/conversations`;
+  const docsPath = `/api/v1/projects/${project.id}/docs`;
   if (await hasRoute(owner.session, conversationsPath)) {
-    const material = await owner.session.expect('POST', `/api/v1/projects/${project.id}/materials`, {
-      clientMutationId: ids(),
-      title: 'Sensor shortlist',
-      body: 'Capacitive soil moisture probe (no exposed metal), DS18B20 temperature probe, '
-        + 'ESP32 board with LoRa for the far beds. About 18 EUR per bed.',
-    });
-    summary.seeded.push(`source "${material.title}" for a message to cite`);
+    // The shortlist the conversation cites is a Wiki page (a saved source is a Wiki page, #1419 item 20).
+    const shortlist = await hasRoute(owner.session, docsPath)
+      ? await owner.session.expect('POST', docsPath, {
+        title: 'Sensor shortlist',
+        body: 'Capacitive soil moisture probe (no exposed metal), DS18B20 temperature probe, '
+          + 'ESP32 board with LoRa for the far beds. About 18 EUR per bed.',
+      }, [201], { 'idempotency-key': ids() })
+      : null;
+    if (shortlist) summary.seeded.push(`Wiki page "${shortlist.title}" for a message to cite`);
 
     const thread = await owner.session.expect('POST', conversationsPath, {
       body: 'Should the first sensors measure soil moisture, or only temperature for the frost warnings?', clientMessageId: ids(),
     });
     const replies = [
       [partner, 'Moisture first. The volunteers keep overwatering the raised beds, and frost is only a spring problem.'],
-      [owner, 'Agreed. I compared probes in the shortlist; the capacitive one should survive a season outdoors.', { materialId: material.materialId, version: material.version }],
+      [owner, 'Agreed. I compared probes in the shortlist; the capacitive one should survive a season outdoors.', shortlist ? { materialId: shortlist.id, version: shortlist.version } : undefined],
       [partner, 'Then let us order six and put two on the far beds to test the LoRa range. I can ask the school about two more.'],
     ];
     for (const [person, body, source] of replies) {
       await person.session.expect('POST', `/api/v1/conversations/${thread.id}/messages`, { body, clientMessageId: ids(), ...(source ? { source } : {}) });
     }
-    summary.seeded.push(`conversation with ${replies.length + 1} messages between ${owner.name} and ${partner.name}, one citing the source`);
+    summary.seeded.push(`conversation with ${replies.length + 1} messages between ${owner.name} and ${partner.name}, ${shortlist ? 'one citing the Wiki page' : 'none citing a page'}`);
     summary.conversationId = thread.id;
   } else {
     summary.skipped.push('conversation: this build has no conversation API yet (#36)');
@@ -180,7 +183,6 @@ if (existing) {
     summary.skipped.push('direct message: this build has no direct-message API yet (#107)');
   }
 
-  const docsPath = `/api/v1/projects/${project.id}/docs`;
   if (await hasRoute(owner.session, docsPath)) {
     // A Wiki page of the space with two versions: Ada starts it, Jonas saves an update.
     const doc = await owner.session.expect('POST', docsPath, {

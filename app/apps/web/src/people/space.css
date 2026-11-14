@@ -103,7 +103,6 @@
 .spset__status:empty { display: none; }
 .spset__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
 .spset__actions .ui-btn { min-height: 32px; }
-.spset__note { margin: 10px 2px 0; font-size: var(--fs-sm); color: var(--t3); }
 /* Delete is destructive, and keeps a clear style: a 1 px outline, never the inverted fill (Prostota, quiet buttons). */
 .ui-btn--danger.spset__delete { color: var(--t1); }
 

@@ -1,10 +1,8 @@
-"""Browser tests for Settings → Appearance's text size and reduce-motion rows (#350, F-026 "Prostota" §2, §9).
+"""Browser tests for Settings → Appearance and the system's text size and reduced motion (#350; #1419 item 17, F-026 "Prostota" §2, §9).
 
-On the computer the Appearance card holds Text size (Small, Default, Large), Reduce motion and Kreska's
-small-moments switch. On the phone the text size follows the system and is a plain value, and Reduce
-motion is not shown. Both choices are kept on this device, applied before the first render, and only
-ever add reduction: a stored "off" never overrides the operating system's reduced-motion setting. A choice
-made in Settings reaches the other tabs of the same browser at once, without a reload.
+Appearance holds Theme and the face switch, on the computer and on the phone: no Text size and no Reduce motion. The app follows the
+system instead: the type tokens are rem, so the root font size the browser or the phone sets scales the text, and the CSS and the
+scripts follow the system's reduced-motion setting. A value stored by the earlier switches (`flux.textSize`, `flux.reduceMotion`) does nothing.
 
 Runs with the other tests/ui modules through scripts/check_ui.sh against the running Compose application.
 FLUX_UI_BROWSER selects chromium (default) or webkit.
@@ -19,7 +17,6 @@ import unittest
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot as save_shot, start_forwarder
-from touch_targets import has_minimum_touch_size
 
 UI_BROWSER = os.environ.get("FLUX_UI_BROWSER", "chromium")
 if UI_BROWSER not in ("chromium", "webkit"):
@@ -137,145 +134,81 @@ class ReadingAndMotion(unittest.TestCase):
             PROBE,
         )
 
-    # ---------------------------------------------------------------- text size, computer
+    # ---------------------------------------------------------------- what Appearance holds
 
-    def test_01_text_size_on_the_computer_applies_and_persists(self) -> None:
+    def test_01_appearance_has_the_theme_and_the_face_switch_only(self) -> None:
+        for phone in (False, True):
+            with self.subTest(phone=phone):
+                page = self.page(phone=phone)
+                page.goto("/settings/appearance")
+                expect(page.get_by_role("radiogroup", name="Theme")).to_be_visible()
+                expect(page.get_by_role("switch", name="Show the face on loading and empty screens")).to_be_visible()
+                self.assertEqual(page.get_by_role("switch").count(), 1, "the face switch is the only switch")
+                self.assertEqual(page.get_by_role("radiogroup").count(), 1, "Theme is the only choice")
+                self.assertEqual(page.get_by_text("Text size").count(), 0)
+                self.assertEqual(page.get_by_text("Reduce motion").count(), 0)
+                self.assertEqual(page.get_by_text("one neutral palette", exact=False).count(), 0, "no sentence that explains the palette")
+                shot(page, f"settings-appearance-{'phone-390' if phone else 'desktop-1440'}")
+
+    # ---------------------------------------------------------------- text size follows the system
+
+    def test_02_the_text_follows_the_systems_text_size(self) -> None:
+        for phone in (False, True):
+            with self.subTest(phone=phone):
+                page = self.page(phone=phone)
+                page.goto("/")
+                self.assertEqual(self.root_font_size(page), "16px", "Flux sets no root size of its own")
+                body = "parseFloat(getComputedStyle(document.body).fontSize)"
+                normal = page.evaluate(body)
+                # The system's text size is the root font size: the rem tokens scale with it, on the computer as on the phone.
+                page.evaluate("document.documentElement.style.fontSize = '125%'")
+                self.assertAlmostEqual(page.evaluate(body), normal * 1.25, delta=0.05, msg="the text grows with the system's size")
+                page.evaluate("document.documentElement.style.removeProperty('font-size')")
+
+    def test_03_a_text_size_stored_by_the_old_choice_does_nothing(self) -> None:
+        for phone in (False, True):
+            with self.subTest(phone=phone):
+                page = self.page(phone=phone)
+                page.context.add_init_script("localStorage.setItem('flux.textSize', 'large')")
+                page.goto("/settings/appearance")
+                self.assertEqual(self.root_font_size(page), "16px")
+                self.assertIsNone(page.evaluate("document.documentElement.dataset.textSize ?? null"))
+
+    # ---------------------------------------------------------------- motion follows the system
+
+    def test_04_motion_runs_when_the_system_allows_it_and_stops_when_it_asks(self) -> None:
+        allowed = self.page()
+        allowed.goto("/settings")
+        self.assertEqual(self.probe_animation_duration(allowed), "1.2s", "the system allows motion")
+        self.assertGreater(self.script_duration_ms(allowed), 0, "script motion runs")
+        shot(allowed, "settings-desktop-1440-motion-allowed")
+        for phone in (False, True):
+            with self.subTest(phone=phone):
+                reduced = self.page(phone=phone, reduced_motion="reduce")
+                reduced.goto("/settings")
+                self.assertEqual(self.probe_animation_duration(reduced), "0s", "CSS motion stops under the system's setting")
+                self.assertEqual(self.script_duration_ms(reduced), 0, "script motion reads 0 ms")
+
+    def test_05_a_choice_stored_by_the_old_reduce_motion_switch_does_nothing(self) -> None:
         page = self.page()
+        page.context.add_init_script("localStorage.setItem('flux.reduceMotion', 'on')")
         page.goto("/settings")
-        size = page.get_by_role("radiogroup", name="Text size")
-        expect(size).to_be_visible()
-        self.assertEqual(size.get_by_role("radio").all_inner_texts(), ["Small", "Default", "Large"])
-        expect(size.get_by_role("radio", name="Default")).to_be_checked()
-        self.assertIsNone(page.evaluate("document.documentElement.dataset.textSize ?? null"), "Default is the unscaled root")
-        self.assertEqual(self.root_font_size(page), "16px")
-        shot(page, "settings-desktop-1440-text-size-default")
-
-        size.get_by_role("radio", name="Large").click()
-        self.assertEqual(page.evaluate("[document.documentElement.dataset.textSize, localStorage.getItem('flux.textSize')]"), ["large", "large"])
-        self.assertEqual(self.root_font_size(page), "18px", "the rem tokens scale with the root size")
-        page.reload()
-        expect(page.get_by_role("radiogroup", name="Text size").get_by_role("radio", name="Large")).to_be_checked()
-        self.assertEqual(page.evaluate("document.documentElement.dataset.textSize"), "large", "applied before the page renders")
-        self.assertEqual(self.root_font_size(page), "18px")
-        shot(page, "settings-desktop-1440-text-size-large")
-
-        # Arrow keys move the choice and its focus: Large to Default, then Default to Small.
-        size.get_by_role("radio", name="Large").press("ArrowLeft")
-        expect(size.get_by_role("radio", name="Default")).to_be_checked()
-        expect(size.get_by_role("radio", name="Default")).to_be_focused()
-        self.assertIsNone(page.evaluate("localStorage.getItem('flux.textSize')"), "Default is the stored absence of a choice")
-        self.assertEqual(self.root_font_size(page), "16px")
-        size.get_by_role("radio", name="Default").press("ArrowLeft")
-        expect(size.get_by_role("radio", name="Small")).to_be_checked()
-        self.assertEqual(self.root_font_size(page), "15px")
-        self.assertEqual(page.evaluate("localStorage.getItem('flux.textSize')"), "small")
-        size.get_by_role("radio", name="Default").click()
-        self.assertIsNone(page.evaluate("document.documentElement.dataset.textSize ?? null"))
-
-    def test_02_phone_follows_the_system_text_size_and_has_no_control(self) -> None:
-        phone = self.page(phone=True)
-        # A stored Large choice (from the computer) must not scale the phone: the phone keeps the system size.
-        # The init script stores it before the first render, so no reload races the first load's requests.
-        phone.context.add_init_script("localStorage.setItem('flux.textSize', 'large')")
-        phone.goto("/settings/appearance")
-        self.assertEqual(self.root_font_size(phone), "16px")
-        self.assertEqual(phone.get_by_role("radiogroup", name="Text size").count(), 0)
-        # The phone's text size is the phone's: there is no row for it, not even one that only says so (a row that is not a control, #1424).
-        expect(phone.get_by_text("Follows your phone")).to_have_count(0)
-        expect(phone.locator(".sset-row", has_text="Text size")).to_have_count(0)
-        self.assertEqual(phone.get_by_role("switch", name="Reduce motion").count(), 0, "Reduce motion is drawn for the computer only")
-        shot(phone, "settings-phone-390-text-size-follows")
-
-    # ---------------------------------------------------------------- reduce motion
-
-    def test_03_reduce_motion_switch_turns_css_and_script_motion_off_and_persists(self) -> None:
-        page = self.page()
-        page.goto("/settings")
-        switch = page.get_by_role("switch", name="Reduce motion")
-        expect(switch).to_have_attribute("aria-checked", "false")
         self.assertIsNone(page.evaluate("document.documentElement.dataset.motion ?? null"))
-        self.assertEqual(self.probe_animation_duration(page), "1.2s", "the system allows motion and the choice is off")
-        self.assertGreater(self.script_duration_ms(page), 0, "the system allows motion and the choice is off")
-        shot(page, "settings-desktop-1440-reduce-motion-off")
+        self.assertEqual(self.probe_animation_duration(page), "1.2s", "the system allows motion, and nothing else decides")
+        self.assertGreater(self.script_duration_ms(page), 0)
 
-        switch.click()
-        expect(switch).to_have_attribute("aria-checked", "true")
-        self.assertEqual(page.evaluate("[document.documentElement.dataset.motion, localStorage.getItem('flux.reduceMotion')]"), ["reduce", "on"])
-        self.assertEqual(self.probe_animation_duration(page), "0s", "CSS motion stops at once")
-        self.assertEqual(self.script_duration_ms(page), 0, "script motion reads 0 ms")
-        page.reload()
-        expect(page.get_by_role("switch", name="Reduce motion")).to_have_attribute("aria-checked", "true")
-        self.assertEqual(page.evaluate("document.documentElement.dataset.motion"), "reduce", "applied before the page renders")
-        self.assertEqual(self.probe_animation_duration(page), "0s")
-        shot(page, "settings-desktop-1440-reduce-motion-on")
-
-        page.get_by_role("switch", name="Reduce motion").press("Space")
-        expect(page.get_by_role("switch", name="Reduce motion")).to_have_attribute("aria-checked", "false")
-        self.assertIsNone(page.evaluate("localStorage.getItem('flux.reduceMotion')"))
-        self.assertEqual(self.probe_animation_duration(page), "1.2s")
-
-    def test_04_stored_off_never_overrides_the_system_reduced_motion_setting(self) -> None:
-        page = self.page(reduced_motion="reduce")
-        page.goto("/settings")
-        expect(page.get_by_role("switch", name="Reduce motion")).to_have_attribute("aria-checked", "false")
-        self.assertIsNone(page.evaluate("localStorage.getItem('flux.reduceMotion')"), "the choice stays off")
-        self.assertEqual(self.probe_animation_duration(page), "0s", "the operating system still reduces motion")
-        self.assertEqual(self.script_duration_ms(page), 0, "the system setting still reads 0 ms")
-        shot(page, "settings-desktop-1440-reduce-motion-system")
-
-    def test_05_reduce_motion_is_not_shown_on_the_phone(self) -> None:
-        page = self.page(phone=True)
-        page.goto("/settings/appearance")
-        expect(page.get_by_role("radiogroup", name="Theme")).to_be_visible()
-        self.assertEqual(page.get_by_role("switch", name="Reduce motion").count(), 0)
-        self.assertEqual(page.get_by_text("Reduce motion").count(), 0)
-
-    # ---------------------------------------------------------------- other tabs of the same browser
-
-    def test_06_reduce_motion_chosen_in_settings_stops_motion_in_a_tab_already_open(self) -> None:
-        context = self.context()
-        open_tab = self.watch(context.new_page())
-        open_tab.goto("/")
-        self.start_live_probe(open_tab)
-        self.assertEqual(self.live_probe(open_tab)["duration"], "1.2s", "motion runs in the open tab before the choice")
-        self.assertGreater(self.script_duration_ms(open_tab), 0, "script motion runs before the choice")
-
-        settings = self.watch(context.new_page())
-        settings.goto("/settings")
-        switch = settings.get_by_role("switch", name="Reduce motion")
-        expect(switch).to_have_attribute("aria-checked", "false")
-        switch.click()
-        expect(switch).to_have_attribute("aria-checked", "true")
-
-        # The open tab is not reloaded: it applies the stored choice when the browser reports the change.
-        open_tab.wait_for_function("document.documentElement.dataset.motion === 'reduce'", timeout=10000)
-        live = self.live_probe(open_tab)
-        self.assertEqual(live["duration"], "0s", "the running animation in the open tab stops at once")
-        self.assertEqual(live["running"], 0, "nothing keeps running in the open tab")
-        self.assertEqual(self.script_duration_ms(open_tab), 0, "script motion reads 0 ms in the open tab")
-
-        switch.press("Space")
-        expect(switch).to_have_attribute("aria-checked", "false")
-        open_tab.wait_for_function("document.documentElement.dataset.motion === undefined", timeout=10000)
-        self.assertEqual(self.live_probe(open_tab)["duration"], "1.2s", "motion returns in the open tab")
-        self.assertGreater(self.script_duration_ms(open_tab), 0)
-
-    def test_07_text_size_chosen_in_settings_reaches_a_tab_already_open(self) -> None:
-        context = self.context()
-        open_tab = self.watch(context.new_page())
-        open_tab.goto("/")
-        self.assertEqual(self.root_font_size(open_tab), "16px")
-
-        settings = self.watch(context.new_page())
-        settings.goto("/settings")
-        size = settings.get_by_role("radiogroup", name="Text size")
-        size.get_by_role("radio", name="Large").click()
-        open_tab.wait_for_function("document.documentElement.dataset.textSize === 'large'", timeout=10000)
-        self.assertEqual(self.root_font_size(open_tab), "18px", "the open tab scales without a reload")
-
-        size.get_by_role("radio", name="Default").click()
-        open_tab.wait_for_function("document.documentElement.dataset.textSize === undefined", timeout=10000)
-        self.assertEqual(self.root_font_size(open_tab), "16px", "the open tab returns to the default size")
+    def test_06_a_change_of_the_systems_setting_reaches_an_open_page(self) -> None:
+        page = self.page()
+        page.goto("/")
+        self.start_live_probe(page)
+        self.assertEqual(self.live_probe(page)["duration"], "1.2s")
+        page.emulate_media(reduced_motion="reduce")
+        live = self.live_probe(page)
+        self.assertEqual(live["duration"], "0s", "the running animation stops at once")
+        self.assertEqual(live["running"], 0)
+        self.assertEqual(self.script_duration_ms(page), 0)
+        page.emulate_media(reduced_motion="no-preference")
+        self.assertEqual(self.live_probe(page)["duration"], "1.2s", "motion returns with the setting")
 
 
 if __name__ == "__main__":

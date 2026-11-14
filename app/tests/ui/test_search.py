@@ -102,7 +102,7 @@ class SearchJourney(unittest.TestCase):
     def groups(self, dialog) -> list[str]:
         return dialog.locator(".jump__sh").all_inner_texts()
 
-    GROUP_OF = {"work": "Tasks", "decision": "Tasks", "message": "Messages", "dm_message": "Messages", "doc": "Wiki", "file": "Files", "material": "Files",
+    GROUP_OF = {"work": "Tasks", "decision": "Tasks", "message": "Messages", "dm_message": "Messages", "doc": "Wiki", "file": "Files", "material": "Wiki",
                 "thought": "Thoughts", "sketch": "Thoughts", "project": "Spaces", "person": "People"}
 
     def ranked_groups(self, page: Page, query: str) -> list[str]:
@@ -170,13 +170,15 @@ class SearchJourney(unittest.TestCase):
         options = dialog.get_by_role("option")
         expect(options.first).to_be_visible()
         expect(dialog.get_by_role("listbox", name="Results")).to_contain_text("Sensor comparison")
-        expect(dialog).to_contain_text("Material · version 2, current")
+        # A saved source is a Wiki page to the person: it stands in the Wiki group, and the word Material is nowhere (#1419 item 20).
+        expect(dialog.locator(".jump__sh", has_text="Wiki").locator("xpath=following-sibling::*[@role='option']").filter(has_text="Sensor comparison")).to_have_count(1)
+        expect(dialog).not_to_contain_text("Material")
         expect(dialog).to_contain_text("Gesture lamp")
         expect(dialog.locator(".sr__hit").first).to_be_visible()
         self.assertEqual(options.first.get_attribute("aria-selected"), "true")
         # The results are in groups by kind, in one order, and there is nothing to filter with (#870).
         shown = self.groups(dialog)
-        for name in ("Tasks", "Messages", "Wiki", "Files", "Thoughts"):
+        for name in ("Tasks", "Messages", "Wiki", "Thoughts"):
             self.assertIn(name, shown)
         self.assertEqual(shown, self.ranked_groups(page, "sensor"), "the groups follow the ranking: the group of the best match leads (#1424)")
         self.assertEqual(dialog.get_by_role("group").count(), 0, "no filter chips")
@@ -204,7 +206,8 @@ class SearchJourney(unittest.TestCase):
         expect(field).to_be_focused()
         field.fill("humidity")
         option = dialog.locator("[role=option].sr").first
-        expect(option).to_contain_text("Material · version 1 of 2")
+        expect(option).to_contain_text("humidity")
+        expect(option).not_to_contain_text("Material")
         dialog.locator("[role=option].sr").first.click()
         expect(page).to_have_url(re.compile(rf"/materials/{self.ids['material']}/versions/1$"))
         # A rule opens in Details on its project.

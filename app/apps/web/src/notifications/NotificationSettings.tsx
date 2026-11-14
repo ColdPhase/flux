@@ -4,11 +4,10 @@ import { MAX_EXTRA_ADDRESSES, type NotificationAddress, type NotificationLevel, 
 import { ApiError } from '../api/client';
 import { useStreamEvents } from '../api/stream';
 import { useShellData } from '../app/data';
-import { useLiveCapability } from '../live/LiveProvider';
 import { InstallFlux, NotificationsButton } from '../pwa';
 import { getPushState, pushOnServer } from '../pwa/push';
 import { SwitchRow } from '../ui/SwitchRow';
-import { noteSoundPreferences } from './sound';
+import { noteSoundPreferences, soundsChange, soundsOn } from './sound';
 import { captureNotificationSession, isCurrentNotificationSession } from './session';
 import { Button, ErrorState, Icon, MEDIA, Spinner, useMediaQuery, useToast, Select, Option, OptionGroup, TimeField } from '../ui';
 import { addAddress, getPreferences, removeAddress, resendVerification, setAddressEnabled, setMute, unsubscribe, updatePreferences, verifyAddress } from './api';
@@ -49,7 +48,6 @@ function AccountNotificationSettings() {
   const ownerId = me.user.id;
   const mounted = useRef(false);
   const phone = useMediaQuery(MEDIA.phone);
-  const callsOn = useLiveCapability() === 'configured';
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const [prefs, setPrefs] = useState<NotificationPreferences | null>(null);
   const [failed, setFailed] = useState(false);
@@ -60,7 +58,7 @@ function AccountNotificationSettings() {
   const [mutedOpen, setMutedOpen] = useState(false);
   const hasPreferences = useRef(false);
   const toast = useToast();
-  const ids = { level: useId(), where: useId(), sound: useId(), email: useId(), quiet: useId(), muted: useId() };
+  const ids = { level: useId(), where: useId(), email: useId(), quiet: useId(), muted: useId() };
 
   const queue = useRef<Promise<void>>(Promise.resolve());
   const sequence = useRef(0);
@@ -209,18 +207,11 @@ function AccountNotificationSettings() {
         <QuietHours prefs={prefs} open={quietOpen} panelId={ids.quiet} onToggle={() => setQuietOpen((open) => !open)} onChange={change} />
       </div>
 
-      {/* Two sound switches (founder decision, 2026-11-12, #1243): an open tab plays them with a notice, so the level and quiet hours hold them too. */}
-      <h3 className="sset-sec" id={ids.sound}>Sound</h3>
-      <div className="sset-card" role="group" aria-labelledby={ids.sound}>
-        <SwitchRow label="Sound for messages" checked={prefs.sound.messages}
-          detail={prefs.level === 'nothing' ? 'Not used while you hear about Nothing' : 'A soft sound for messages to you and mentions while Flux is open'}
-          onChange={(messages) => change({ sound: { messages } }, (current) => ({ ...current, sound: { ...current.sound, messages } }))} />
-        {/* Only on a server with calls (#1471): without a media server nobody can call, so the switch would do nothing. */}
-        {callsOn ? (
-          <SwitchRow label="Sound when someone calls me" checked={prefs.sound.calls}
-            detail={prefs.level === 'nothing' ? 'Not used while you hear about Nothing' : 'One soft chime when someone invites you to a call'}
-            onChange={(calls) => change({ sound: { calls } }, (current) => ({ ...current, sound: { ...current.sound, calls } }))} />
-        ) : null}
+      {/* One switch in its own card, with no heading (founder decision, 2026-11-13, #1419 item 18): an open tab plays the sounds with a notice, so the level and quiet hours hold them too. */}
+      <div className="sset-card sset-gap">
+        <SwitchRow label="Sounds" checked={soundsOn(prefs.sound)}
+          detail={prefs.level === 'nothing' ? 'Not used while you hear about Nothing' : 'A soft sound for messages to you and for calls while Flux is open'}
+          onChange={(on) => change({ sound: soundsChange(on) }, (current) => ({ ...current, sound: soundsChange(on) }))} />
       </div>
 
       {email.available ? (

@@ -21,13 +21,8 @@ const WORK_STATUS: Record<string, string> = {
 };
 const DECISION_STATUS: Record<string, string> = { accepted: 'Decision · accepted', proposed: 'Decision · proposed', superseded: 'Decision · replaced' };
 
-function materialLabel(row: SearchRow) {
-  const version = row.version ?? 1;
-  const current = row.currentVersion ?? version;
-  if (current <= 1) return 'Material';
-  return version >= current ? `Material · version ${version}, current` : `Material · version ${version} of ${current}`;
-}
-
+// A saved source is a Wiki page to the person (founder decision, Hubert, 2026-11-13, #1419 item 20): Search says "Wiki page" for it, and the
+// "Material" word is gone. It still opens at the version that matched (the page by its own address).
 function docLabel(row: SearchRow) {
   const version = row.version ?? 1;
   const current = row.currentVersion ?? version;
@@ -56,7 +51,7 @@ export const SEARCH_SOURCES: Record<SearchKind, SearchSource> = {
     target: (row) => ({ type: 'dm_message', dmId: row.parentId ?? '', messageId: row.objectId }),
   },
   material: {
-    filter: 'material', audience: 'project', textIsTitle: false, label: materialLabel,
+    filter: 'material', audience: 'project', textIsTitle: false, label: docLabel,
     target: (row) => ({ type: 'material', projectId: inProject(row), materialId: row.objectId, version: row.version ?? 1 }),
   },
   doc: {

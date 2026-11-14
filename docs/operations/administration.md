@@ -162,7 +162,7 @@ this Flux server" and offers only the person's own Claude Code or Codex, and nob
 ## Personal settings
 
 Each person manages their own **Account** (name, email, password and signed-in sessions, which they
-can end), **Appearance** (light, dark or system; text size), **Notifications** (what reaches the
+can end), **Appearance** (light, dark or system, and Kreska's face; text size and reduced motion follow the system), **Notifications** (what reaches the
 Inbox, push and email, quiet hours) and **Keyboard shortcuts**. On a computer,
 Settings opens from your name at the bottom left → **All settings**.
 

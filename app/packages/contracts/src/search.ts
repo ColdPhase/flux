@@ -96,7 +96,7 @@ export interface SearchResult {
   /** Stable within the answer. */
   id: string;
   kind: SearchKind;
-  /** What it is, in human language: "Message", "Material · version 2 of 3", "Task · blocked". */
+  /** What it is, in human language: "Message", "Wiki page · version 2 of 3", "Task · blocked". */
   label: string;
   /** The main line with the matched words marked. For a message it is the matching part of the message. */
   title: SearchText;

@@ -130,7 +130,6 @@
 .assistant-private__who { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; font-size: var(--fs-md); }
 .assistant-private__lock { display: inline-flex; align-items: center; gap: 5px; color: var(--t3); font-size: var(--fs-xs); }
 .assistant-private__asked { margin: 10px 0 0; color: var(--t3); font-size: var(--fs-sm); }
-.assistant-private__asked code { font-family: var(--mono); color: var(--t2); }
 .assistant-private .assistant-answer__body, .assistant-writing .assistant-answer__body { margin-top: 8px; }
 .assistant-private__source { margin: 8px 0 0; color: var(--t3); font-size: var(--fs-xs); }
 .assistant-private__foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 12px; }

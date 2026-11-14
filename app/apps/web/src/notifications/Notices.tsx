@@ -8,7 +8,7 @@ import { getSession } from '../live/api';
 import { useLive } from '../live/LiveProvider';
 import { Avatar, Button, IconButton, Kreska, MEDIA, duration, settle, useMediaQuery } from '../ui';
 import { announceInboxChange, getInboxItem, markInboxRead } from './api';
-import { playSound, soundPreferences } from './sound';
+import { playSound, soundPreferences, soundsOn } from './sound';
 import { markPushOfferReady } from './PushOffer';
 import './notices.css';
 
@@ -37,7 +37,7 @@ function eventAge(createdAt: string) {
   return gap - nearest;
 }
 const MESSAGE_REASONS = new Set(['dm', 'mention', 'question', 'reply']);
-/** "Sound for messages": direct messages, mentions and questions to you; a reply in a thread does not sound (#1243). */
+/** The messages that sound: direct messages, mentions and questions to you; a reply in a thread does not (#1243, #1419 item 18). */
 const SOUNDED_MESSAGES = new Set(['dm', 'mention', 'question']);
 const LIVE_URL = /^\/projects\/[0-9a-f-]+\/live\/([0-9a-f-]+)/i;
 
@@ -159,7 +159,7 @@ export function Notices({ identity, meName, placeName }: { identity: string; meN
     if (SOUNDED_MESSAGES.has(item.reason ?? '')) markPushOfferReady(identity);
     const sound = item.reason === 'invitation' ? 'call' : SOUNDED_MESSAGES.has(item.reason ?? '') ? 'message' : null;
     if (fresh && sound) {
-      void soundPreferences(identity).then((switches) => { if (switches && (sound === 'call' ? switches.calls : switches.messages)) playSound(sound); });
+      void soundPreferences(identity).then((switches) => { if (switches && soundsOn(switches)) playSound(sound); });
     }
     setLeaving(false);
     setNotice((current) => {

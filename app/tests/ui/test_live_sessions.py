@@ -630,7 +630,7 @@ class LiveJourney(LiveBase):
         """#1223 points 2 to 6 (F-041), #1438 point 11: Lee starts a call; Ada's open tab on Home shows the space's call glyph, within 2 s, and
         her Inbox and Home hold nothing for it: she joins from the space's header. Lee alone reads "Nobody joined · Invite someone"; Invite…
         invites Jonas and Kai, and an invitation is the one thing that waits in an Inbox, with Join. (The invitation's chime is #1243's
-        "Sound when someone calls me".)"""
+        "Sounds" switch.)"""
         self.seed()
         ada = self.page("ada")
         project = self.api(ada, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects", {"name": "Repair cafe", "visibility": "restricted"}, status=201)
@@ -659,9 +659,9 @@ class LiveJourney(LiveBase):
         kai = self.page("kai")
         self.api(kai, "PATCH", "/api/v1/notification-preferences", {"level": "everything"}, status=200)
         self.addCleanup(lambda: self.api(kai, "PATCH", "/api/v1/notification-preferences", {"level": "needsYou"}))
-        # A server with calls offers their sound in Settings › Notifications, on by default (#1243; hidden without calls, #1471).
+        # The one Sounds switch (a call's chime and the message tone together, #1419 item 18) is on by default.
         kai.goto("/settings/notifications")
-        expect(kai.get_by_role("switch", name="Sound when someone calls me")).to_have_attribute("aria-checked", "true")
+        expect(kai.get_by_role("switch", name="Sounds", exact=True)).to_have_attribute("aria-checked", "true")
         kai.goto("/")
         expect(kai.locator(".app__pane")).to_be_visible()
         kai.wait_for_timeout(1500)
