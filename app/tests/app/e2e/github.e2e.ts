@@ -105,7 +105,7 @@ test('real settings UI binds, verifies PR links and removes private projections 
   // An older shell remembered the last place per project only, including settings; that key is retired (#189) and ignored.
   await page.addInitScript(({ projectId }) => sessionStorage.setItem(`flux.project-conversation.${projectId}`, `/projects/${projectId}/github`), { projectId: place.id });
   await page.goto(`/projects/${place.id}/github`);
-  await page.getByRole('heading', { name: 'GitHub is not configured on this server' }).waitFor();
+  await page.getByRole('heading', { name: 'GitHub isn’t set up on this server' }).waitFor();
   const views = page.getByRole('navigation', { name: 'Space views', exact: true });
   assert.equal(await views.locator('[aria-current="page"]').count(), 0, 'settings do not select a conversation tab');
   assert.equal(await views.getByRole('tab', { name: 'Conversation', exact: true }).getAttribute('href'), `/projects/${place.id}`, 'a destination remembered under the retired key is ignored');
@@ -117,7 +117,7 @@ test('real settings UI binds, verifies PR links and removes private projections 
   await page.getByRole('heading', { name: 'AI', exact: true }).waitFor();
   assert.equal(await page.locator('[data-github-row]').count(), 0, 'no GitHub row where the server has none');
   await page.goto(`/projects/${place.id}/github`);
-  await page.getByRole('heading', { name: 'GitHub is not configured on this server' }).waitFor();
+  await page.getByRole('heading', { name: 'GitHub isn’t set up on this server' }).waitFor();
   configuredFixture = true; await page.getByRole('button', { name: 'Check again', exact: true }).click();
   await page.getByRole('button', { name: 'Continue to GitHub', exact: true }).click();
   await page.getByRole('heading', { name: 'Connected repositories', exact: true }).waitFor();
@@ -146,7 +146,8 @@ test('real settings UI binds, verifies PR links and removes private projections 
   await page.getByLabel('Find task',{exact:true}).fill('Native repository task');await expect(choices).toContainText('51–100 of 104 tasks');
   await page.getByLabel('Find task',{exact:true}).fill(task.title);
   // The app Select (#699) shows its options only while open: wait for the one-task page, then read the placeholder and that task.
-  await expect(choices).toContainText('1–1 of 1 tasks');
+  // A whole list says how many it holds in plain words ("1 task", #1372); only a page of a longer list says "1–50 of 105 tasks".
+  await expect(choices.getByRole('status')).toHaveText('1 task');
   assert.deepEqual(await optionValues(page.getByLabel('Task',{exact:true})), ['', task.id]);
   await chooseOption(page.getByLabel('Task', { exact: true }), task.id);
   const noPulls = page.getByText('No pull requests are linked to this task yet.', { exact: true });

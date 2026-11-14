@@ -84,9 +84,10 @@ test('a saved blocker, what came of a finished task and a handoff appear as mark
     await page.getByRole('menuitemradio', { name: 'Blocked' }).click();
     assert.equal((await blockedStatus).status(), 200);
     assert.equal((await discussion()).root, null, 'blocking alone is not a comment');
-    // Since the unified task panel (#601) the reason is written after Edit in the Blocker section.
+    // Since the unified task panel (#601) the reason is written after Edit in the Blocker section. Blocked is one field, "Waiting for"
+    // (#1447, #1438 point 12): the reason as typed words, or a person, decision or task picked from the list under it.
     await page.getByRole('region', { name: 'Blocker' }).getByRole('button', { name: 'Edit', exact: true }).click();
-    const waiting = page.getByRole('textbox', { name: 'What is it waiting for?' });
+    const waiting = page.getByRole('combobox', { name: 'Waiting for', exact: true });
     await waiting.fill('Waiting for the replacement hinge');
     const saved = page.waitForResponse((response) => response.request().method() === 'PATCH' && new URL(response.url()).pathname === `/api/v1/work/${task.id}`);
     await page.getByRole('button', { name: 'Save', exact: true }).click();
