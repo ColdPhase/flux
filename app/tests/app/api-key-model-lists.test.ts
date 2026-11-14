@@ -173,7 +173,7 @@ describe('a key, its models and its agents (#1218)', () => {
     await runs.enable(human(owner), { agentId, connection: key.id, model: 'claude-opus-5-5' });
     await assert.rejects(chooseModel(runs, human(owner), { connection: key.id, model: 'claude-sonnet-5-7' }),
       { code: 'ASSISTANT_MODEL_UNAVAILABLE', message: /Flux doesn't know the price of Claude Sonnet 5\.7 yet\. Enter it to use it with a daily budget\./ });
-    // A price for a model Flux's table prices, or nonsense, is refused; the owner's price for the unpriced one is kept on the key.
+    // A price for a model Flux's price list prices, or nonsense, is refused; the owner's price for the unpriced one is kept on the key.
     assert.equal(codeOf(await owner.browser.request('PUT', `${path}/${key.id}/model-price`, { body: { model: 'claude-opus-5-5', inputMicrosPerMTok: 1, outputMicrosPerMTok: 1 } })), 'AI_PRICE_ALREADY_KNOWN');
     assert.equal(codeOf(await owner.browser.request('PUT', `${path}/${key.id}/model-price`, { body: { model: 'claude sonnet', inputMicrosPerMTok: 1, outputMicrosPerMTok: 1 } })), 'AI_MODEL_INVALID');
     const priced = expectStatus(await owner.browser.request('PUT', `${path}/${key.id}/model-price`,

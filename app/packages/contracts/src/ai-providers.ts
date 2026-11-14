@@ -237,7 +237,7 @@ export function maxRequestMicros(price: AiRate, maxInputTokens: number, maxOutpu
 
 /**
  * Models whose provider has a built-in web search that they cannot use (#954): a run on one is not offered the search, as on a provider
- * without one. A dated table like `AI_PRICE_TABLE`; recheck a row before relying on it after its date. An absent model
+ * without one. A dated table; recheck a row before relying on it after its date. An absent model
  * is not marked: if its provider refuses the search tool, the request is sent again once without it and the key's model is not offered
  * it for a while (the worker remembers).
  */
