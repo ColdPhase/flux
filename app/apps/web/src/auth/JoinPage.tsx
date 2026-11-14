@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Form, Link, useActionData, useNavigate, useNavigation, useRevalidator } from 'react-router';
+import { Form, Link, useActionData, useLocation, useNavigate, useNavigation, useRevalidator } from 'react-router';
 import type { AcceptInviteResult, IdentityCapabilities, InvitePreview, InviteRole } from '@flux/contracts';
 import { PASSWORD_MIN_LENGTH, getCapabilities, getMe, type MeResponse } from '../api/auth';
 import { ApiError, NetworkError } from '../api/client';
@@ -62,6 +62,7 @@ export function JoinPage() {
   const [busy, setBusy] = useState(false);
   const [refusal, setRefusal] = useState('');
   const navigate = useNavigate();
+  const location = useLocation();
   const revalidator = useRevalidator();
   const created = useActionData() as FormResult | undefined;
   const handled = useRef<FormResult | undefined>(undefined);
@@ -85,16 +86,20 @@ export function JoinPage() {
   const fetchLink = (signal?: AbortSignal) => Promise.all([getMe(signal).catch(() => null), previewInvite(readToken(), signal),
     getCapabilities(signal).catch(() => null)]);
 
+  // Read on arrival, and again when the page is opened again from itself: signing out from here (a link for another address) lands on this same page, signed out.
+  const opened = useRef(false);
   useEffect(() => {
     if (!readToken()) return undefined;
+    if (opened.current) setState({ kind: 'loading' });
+    opened.current = true;
     // The token is kept in this tab's session storage: take it out of the address and the browser's history.
     if (window.location.hash) window.history.replaceState(window.history.state, '', window.location.pathname + window.location.search);
     const controller = new AbortController();
     fetchLink(controller.signal).then((read) => show(read, false), failed);
     return () => controller.abort();
-    // Read once on arrival; `join` only reads this tab's token.
+    // `join` only reads this tab's token.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [location.key]);
 
   // The create-account form on this page made the account and signed it in: join now, as the same account (#1438).
   useEffect(() => {

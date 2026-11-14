@@ -458,6 +458,7 @@ class AiConnectionSettings(unittest.TestCase):
         row.get_by_role("button", name=re.compile("^Remove Key to remove")).click()
         ask = row.get_by_role("group", name=re.compile("^Remove Key to remove"))
         expect(ask).to_contain_text("Remove this key? It stops what uses it at once and can’t be restored.")
+        shot(page, "ai-key-remove-asks-desktop-1440")
         # Nothing has happened yet; the safe answer has the focus.
         self.assertEqual(self.connection(page, name="Key to remove")["name"], "Key to remove")
         expect(ask.get_by_role("button", name="Keep it")).to_be_focused()

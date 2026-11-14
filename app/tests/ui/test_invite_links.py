@@ -174,10 +174,11 @@ class InviteLinksJourney(unittest.TestCase):
         expect(page).not_to_have_url(re.compile(r"/join"))
         expect(page.get_by_role("heading", level=1, name="You joined Riverside Makers")).to_have_count(0)
         self.assertEqual(self.roles(self.riverside).get(NIA[1]), "member")
-        # The one who made the link is told in the Inbox when the person joins, as the decision says (#1438 point 3, checked again for #1424).
-        owner = self.page("ada")
-        owner.goto("/inbox")
-        expect(owner.get_by_text(f"{NIA[0]} joined Riverside Makers").first).to_be_visible()
+        # The one who made the link is told when the person joins, also when the account was made on this page (#1438 point 3, checked again for #1424).
+        context = self.browser.new_context(base_url=ORIGIN, service_workers="block", storage_state=self.states["ada"])
+        self.addCleanup(context.close)
+        notices = context.request.get("/api/v1/inbox").json()["items"]
+        self.assertIn(f"{NIA[0]} joined Riverside Makers", [item["title"] for item in notices])
         self.assertEqual(self.pending(self.riverside), [], "the used link is no longer listed")
         # The link worked once: opening it again from this account just opens Flux.
         page.goto(self.member_link)
@@ -203,6 +204,7 @@ class InviteLinksJourney(unittest.TestCase):
         # #1424: another account is not offered a Join that could only be refused: it is told who it is, and the way on is signing out.
         expect(cleo.get_by_text(PEOPLE["cleo"][1])).to_be_visible()
         expect(cleo.get_by_role("button", name="Join Riverside Makers")).to_have_count(0)
+        shot(cleo, "invite-other-account-desktop-1440")
         cleo.get_by_role("button", name="Sign out to use this link").click()
         # Signed out, the same page opens with the address filled in and fixed: it cannot be changed, so nothing else can be sent.
         expect(cleo.get_by_role("heading", level=1, name="Join Riverside Makers")).to_be_visible()
@@ -212,6 +214,7 @@ class InviteLinksJourney(unittest.TestCase):
         expect(email).to_have_attribute("readonly", "")
         expect(cleo.get_by_text("This invite is for this address.")).to_be_visible()
         expect(cleo.get_by_role("button", name="Create account and join")).to_be_enabled()
+        shot(cleo, "invite-locked-address-desktop-1440")
         self.assertNotIn(PEOPLE["cleo"][1], self.roles(self.riverside))
 
         # Ben, signed out, signs in through the link and joins as a guest.

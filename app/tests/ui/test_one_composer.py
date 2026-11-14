@@ -130,20 +130,18 @@ class OneComposer(unittest.TestCase):
                 measured = self.measure(page.locator(selector))
                 self.assertEqual(measured["audience"], [], f"{name} says nothing about its audience")
 
-    def test_03_the_plus_takes_files_where_they_are_kept_and_is_greyed_where_not(self) -> None:
+    def test_03_the_plus_takes_files_in_every_place(self) -> None:
+        """Files go in direct messages as in a space (#1438 point 10): the paperclip is live in each, never greyed (this test still expected a text-only direct message)."""
         page = self.page()
-        page.goto(f"/dm/{self.dm}")
-        plus = page.locator("#dm-composer").locator("xpath=ancestor::div[contains(@class,'composer__box')]").get_by_role("button", name=re.compile("^Attach files"))
-        expect(plus).to_have_attribute("aria-disabled", "true")
-        expect(plus).to_have_accessible_name("Attach files (not available here)")
-        expect(plus).to_have_accessible_description("This place takes text only.")
-        plus.click(force=True)
-        expect(page.get_by_text("Files cannot be added here.")).to_be_visible()
-        page.goto(f"/projects/{self.project}")
-        with page.expect_file_chooser() as chooser:
-            page.locator("#project-composer").locator("xpath=ancestor::div[contains(@class,'composer__box')]").get_by_role("button", name=re.compile("^Attach files")).click()
-        chooser.value.set_files({"name": "measurements.bin", "mimeType": "application/octet-stream", "buffer": b"\x00\x01"})
-        expect(page.get_by_role("list", name="Files in your draft")).to_be_visible()
+        for url, field in ((f"/dm/{self.dm}", "#dm-composer"), (f"/projects/{self.project}", "#project-composer")):
+            with self.subTest(place=url):
+                page.goto(url)
+                plus = page.locator(field).locator("xpath=ancestor::div[contains(@class,'composer__box')]").get_by_role("button", name=re.compile("^Attach files"))
+                expect(plus).not_to_have_attribute("aria-disabled", "true")
+                with page.expect_file_chooser() as chooser:
+                    plus.click()
+                chooser.value.set_files({"name": "measurements.bin", "mimeType": "application/octet-stream", "buffer": b"\x00\x01"})
+                expect(page.get_by_role("list", name="Files in your draft")).to_be_visible()
 
     def test_04_typing_enables_the_send_button_in_every_place(self) -> None:
         page = self.page()
