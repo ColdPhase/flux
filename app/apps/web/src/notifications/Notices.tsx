@@ -91,7 +91,8 @@ function useLift(active: boolean, card: React.RefObject<HTMLElement | null>, pho
         const docked = [...document.querySelectorAll<HTMLElement>(DOCKED_PANEL)].find((element) => element.getBoundingClientRect().width > 0);
         const panel = docked?.getBoundingClientRect();
         // Where the panel stands once it has come in: its entrance slides it, which the box would include.
-        const shift = docked ? ((transform) => (transform === 'none' ? 0 : new DOMMatrixReadOnly(transform).m41))(getComputedStyle(docked).transform) : 0;
+        const transform = docked ? getComputedStyle(docked).transform : 'none';
+        const shift = transform === 'none' ? 0 : Number(/^matrix\((?:[^,]+,){4}\s*([-\d.e]+)/.exec(transform)?.[1] ?? 0);
         const right = panel && panel.width ? Math.round(width - (panel.left - shift) + 20) : null;
         // Where the card is about to stand, so what it avoids is what is under it there.
         const cardRight = width - (right ?? 20);
