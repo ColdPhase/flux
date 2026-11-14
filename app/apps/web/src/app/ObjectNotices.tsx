@@ -52,13 +52,13 @@ export function ObjectNoticeItem({ notice, meId, owners, authorOf, inThread = fa
     <li className={`convo-object${follows ? ' is-follow' : ''}${card ? '' : ' is-line'}`} id={`object-${notice.id}`} data-object-kind={notice.kind} data-object-id={target.id} data-object-state={state.state}>
       <AuthorFace kind={by.kind} id={by.id} name={name} mine={mine} />
       {card ? <div className="convo-notice__body convo-notice__card">
+        {meta}
         <button type="button" className="convo-notice__task convo-object__card" onClick={() => onOpen(target)} aria-label={`Open decision ${notice.title}, ${state.word.toLowerCase()}`}>
           <Icon name="flag" size={16} />
           <span className="convo-notice__title">{notice.title}</span>
           <span className="convo-object__state" data-state={state.state}>{state.word}</span>
           <Icon name="chevron-right" size={14} />
         </button>
-        {meta}
       </div> : <div className="convo-notice__body">{meta}</div>}
     </li>
   );

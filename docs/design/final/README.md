@@ -1028,9 +1028,10 @@ built. The contract is in [mobile and PWA](../../product/mobile-pwa.md#while-flu
   window on Task (#1438 point 8, [Phone](#phone)); the message actions beside it are as drawn.
 - The reading column is at most 760 px. A task or a decision shows **once** in a conversation, as
   **one card** where and when it was made (founder decision, Hubert, 2026-11-14, [#1424](https://github.com/ColdPhase/flux/issues/1424)),
-  in the author column with its maker's face: the card's row is the object (the task's state glyph, `#1`, its title, its owner and
-  its state word; a decision's flag, its title and its state word), and under it, inside the same card, one quiet line says who
-  made it, from what and when: "Ada Kowalska created a task from Jonas’s message · 8:05". "Jonas’s message" is a link that brings
+  in the author column with its maker's face. Its first line, quiet and beside the face, says who
+  made it, from what and when ("Ada Kowalska created a task from Jonas’s message · 8:05"); under it, in the same card, the row is the
+  object (the task's state glyph, `#1`, its title, its owner and its state word; a decision's flag, its title and its state word),
+  which opens it in the one panel. "Jonas’s message" is a link that brings
   that message into view, so the way from the message to the task stays on the card. There is no separate event line above the
   card, and the message it came from carries no chip of it. A thread shows a decision made in it as the same card among its
   replies; a task made from one of its messages (its root or a reply) shows there as the card under that message, its only place in the thread (a thread has no task notices). An

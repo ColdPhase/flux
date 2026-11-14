@@ -777,7 +777,6 @@ function NoticeItem({ notice, meId, owners, row, authorOf, hasMessage, onOpenTas
     <li className={`convo-notice${reverted ? ' convo-notice--undone' : ''}`} id={`notice-${notice.id}`} data-work-id={notice.workId}>
       <AuthorFace kind={creator.kind} id={creator.id} name={name} mine={mine} />
       <div className="convo-notice__body convo-notice__card">
-        {task}
         <p className="convo-notice__meta">
           {creator.kind === 'agent' ? <strong><AgentIdentity name={name} owner={agentAuthorOwner(creator, owners)} icon={false} /></strong> : <strong>{name}{mine ? ' · you' : ''}</strong>}
           <span className="convo-notice__what" data-source={source.kind}>{phrase.lead}{phrase.link ? <> {source.kind === 'message' && hasMessage(source.messageId)
@@ -786,6 +785,7 @@ function NoticeItem({ notice, meId, owners, row, authorOf, hasMessage, onOpenTas
             ? <span className="convo-notice__kind">Task creation undone</span> : null}
           <time dateTime={notice.createdAt} title={when(notice.createdAt)}>{clock(notice.createdAt)}</time>
         </p>
+        {task}
       </div>
     </li>
   );
