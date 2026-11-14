@@ -11,6 +11,8 @@ import './background.css';
 // are read (#1218), already chosen (#1424); the Daily budget (it has a default) and the Name (optional) are behind More. The key exists
 // only in its password input and the same-origin requests, never in app storage. The Connect AI window is the one place that shows it.
 
+/** The daily budget a new key starts with, as the field shows it ("5.00"). */
+const DEFAULT_BUDGET = (API_KEY_DAILY_BUDGET_CENTS.default / 100).toFixed(2);
 export const money = (cents: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
 export const BUDGET_PROBLEM = `Enter a daily budget from ${money(API_KEY_DAILY_BUDGET_CENTS.min)} to ${money(API_KEY_DAILY_BUDGET_CENTS.max)}.`;
 /** A daily budget typed in US dollars, in whole cents; null when it is not one Flux accepts. */
@@ -58,8 +60,7 @@ export const AddKeyForm = forwardRef<AddKeyFormHandle, {
   // The daily budget and the name are behind More (#1424). Both stay in the form, so a closed More still sends the budget's default;
   // it opens by itself when the problem is in it.
   const [more, setMore] = useState(false);
-  const defaultBudget = (API_KEY_DAILY_BUDGET_CENTS.default / 100).toFixed(2);
-  const [budgetText, setBudgetText] = useState(defaultBudget);
+  const [budgetText, setBudgetText] = useState(DEFAULT_BUDGET);
   const formRef = useRef<HTMLFormElement>(null);
   const errorRef = useRef<HTMLParagraphElement>(null);
   const focusError = useRef(false);
@@ -69,7 +70,7 @@ export const AddKeyForm = forwardRef<AddKeyFormHandle, {
     errorRef.current?.focus();
   });
   useImperativeHandle(ref, () => ({
-    reset() { formRef.current?.reset(); setError(''); setMore(false); setBudgetText(defaultBudget); },
+    reset() { formRef.current?.reset(); setError(''); setMore(false); setBudgetText(DEFAULT_BUDGET); },
     focusFirst() { formRef.current?.querySelector<HTMLSelectElement | HTMLButtonElement>('[name="provider"], button')?.focus({ preventScroll: true }); },
   }), []);
 
@@ -132,7 +133,7 @@ export const AddKeyForm = forwardRef<AddKeyFormHandle, {
           {more ? null : <span className="background-settings__help" data-testid="budget-line">Daily budget ${budgetText.trim() || '?'}</span>}
         </div>
         <div id="background-more" className="background-settings__fields" hidden={!more}>
-          <Input label="Daily budget (USD)" name="dailyBudget" inputMode="decimal" autoComplete="off" defaultValue={defaultBudget}
+          <Input label="Daily budget (USD)" name="dailyBudget" inputMode="decimal" autoComplete="off" defaultValue={DEFAULT_BUDGET}
             onChange={(event) => setBudgetText(event.target.value)} aria-describedby="background-budget-help" />
           <p id="background-budget-help" className="background-settings__help">Your agents stop for the day when this is used up.</p>
           <label>Name (optional)<input name="connectionName" autoComplete="off" maxLength={80} placeholder="For example: Work OpenRouter" /></label>
