@@ -36,7 +36,11 @@ export function uuidFrom(text: string): string {
 
 /** The row's name from the sentence: its first words. */
 export function titleFromText(text: string): string {
-  const line = text.trim().split('\n')[0]!.replace(/\s+/g, ' ').replace(/[.!?:;,\s]+$/, '');
+  const first = text.trim().split('\n')[0]!.replace(/\s+/g, ' ');
+  // The trailing punctuation off from the end by hand: the pattern for it is quadratic on a long run of it (v0.2.1 audit #1270).
+  let end = first.length;
+  while (end > 0 && /[.!?:;,\s]/.test(first[end - 1]!)) end -= 1;
+  const line = first.slice(0, end);
   if (line.length <= ASSISTANT_JOB_LIMITS.title) return line || 'Schedule';
   const cut = line.slice(0, ASSISTANT_JOB_LIMITS.title - 1);
   const space = cut.lastIndexOf(' ');

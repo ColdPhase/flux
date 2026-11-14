@@ -16,8 +16,12 @@ export function mentions(body: string, name: string) {
   return at.test(body) || opening.test(body);
 }
 
-/** A message that asks something: a question mark at the end or before a space. */
-export const isQuestion = (body: string) => /\?\s*(\p{Emoji_Presentation})?\s*$/u.test(body.trim()) || /\?\s/.test(body);
+/**
+ * A message that asks something: a question mark at the end (with at most one emoji after it) or before a space. A question mark
+ * followed by space is the second test's, so the first needs none: a run of spaces after a `?` cost this check quadratic time, and a
+ * message may be 100,000 characters long (v0.2.1 audit #1270).
+ */
+export const isQuestion = (body: string) => /\?\p{Emoji_Presentation}?$/u.test(body.trim()) || /\?\s/.test(body);
 
 /** Whether a message names someone with "@" (#763 A2): a question to "@Jonas" is his to answer, not everyone's in the thread. */
 export const mentionsSomeone = (body: string) => /(^|[^\p{L}\p{N}_])@\p{L}/u.test(body);

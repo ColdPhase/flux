@@ -150,6 +150,6 @@ export function placeDecisionReference(text: string, id: string, title: string, 
       return { body: [...lines.slice(0, last), '', line, ...(after.length ? ['', ...after] : [''])].join('\n'), replaced: false };
     }
   }
-  const kept = text.replace(/\s+$/, '');
+  const kept = text.trimEnd();
   return { body: kept ? `${kept}\n\n${line}\n` : `${line}\n`, replaced: false };
 }
