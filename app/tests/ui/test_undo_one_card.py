@@ -343,11 +343,17 @@ class UndoAndOneCard(unittest.TestCase):
                 below, above = box(page, card), box(page, toast)
                 self.assertLessEqual(below["bottom"], above["top"] + 0.5, f"the new task's card is above the toast: {below} {above}")
                 shot(page, f"toast-clear-card-{'phone' if phone else 'desktop'}-{UI_BROWSER}")
-                # When the toast goes, nothing moves under the reader: the card stays where it was.
+                # When the toast goes, nothing moves under the reader: the card stays where it was (measured once the stream is still).
+                page.wait_for_function("""(el) => new Promise(resolve => { let last = null, still = 0; const check = () => {
+                  const top = el.getBoundingClientRect().top; still = top === last ? still + 1 : 0; last = top;
+                  if (still > 10) resolve(true); else requestAnimationFrame(check); }; requestAnimationFrame(check); })""", arg=card.element_handle())
+                below = box(page, card)
+                scrolled = page.evaluate("() => { const el = document.querySelector('.project-convo__feed'); return [el.scrollTop, el.scrollHeight]; }")
                 toast.locator(".ui-toast__close").evaluate("el => el.click()")
                 expect(page.locator(".ui-toast")).to_have_count(0)
                 page.wait_for_timeout(300)
-                self.assertAlmostEqual(box(page, card)["top"], below["top"], delta=1, msg="the card stays put when the toast leaves")
+                after = page.evaluate("() => { const el = document.querySelector('.project-convo__feed'); return [el.scrollTop, el.scrollHeight]; }")
+                self.assertAlmostEqual(box(page, card)["top"], below["top"], delta=1, msg=f"the card stays put when the toast leaves: scroll {scrolled} -> {after}")
                 # Reading up gives the room back without a jump; the end is the conversation's own again.
                 page.evaluate("() => { const el = document.querySelector('.project-convo__feed'); el.scrollTop = 0; }")
                 page.wait_for_timeout(300)
