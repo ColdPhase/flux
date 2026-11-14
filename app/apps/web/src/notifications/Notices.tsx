@@ -152,15 +152,15 @@ export function Notices({ identity, meName, placeName, first }: { identity: stri
       void soundPreferences(identity).then((switches) => { if (switches && soundsOn(switches)) playSound(sound); });
     }
     setLeaving(false);
-    setNotice((current) => {
-      const live = current && shown.current === current ? current : null;
-      // A call stays until it ends or is closed; only another call takes its place (the rest is in the Inbox).
-      if (live?.family === 'call' && family !== 'call') return current;
-      if (live && family !== 'call' && live.family === family && live.place === place && !live.items.some((known) => known.id === item.id)) {
-        return { ...live, items: [...live.items, item].slice(-99) };
-      }
-      return { serial: ++serial.current, place, family, items: [item] };
-    });
+    // The card shown is read from `shown` and written back at once, not left to the render's effect: a burst read together (the events
+    // handed over when this code arrives, #1428) adds several items before React renders, and each must join the card the last one made.
+    // A call stays until it ends or is closed; only another call takes its place (the rest is in the Inbox).
+    if (showing?.family === 'call' && family !== 'call') return;
+    const next = showing && family !== 'call' && showing.family === family && showing.place === place && !showing.items.some((known) => known.id === item.id)
+      ? { ...showing, items: [...showing.items, item].slice(-99) }
+      : { serial: ++serial.current, place, family, items: [item] };
+    shown.current = next;
+    setNotice(next);
   }, [identity]);
 
   const dismiss = useCallback(() => setLeaving(true), []);
