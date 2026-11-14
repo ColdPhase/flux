@@ -271,12 +271,13 @@ class ConnectAiJourney(unittest.TestCase):
         choice = self.api(ines, "GET", "/api/v1/personal-assistant/model", status=200)
         self.assertIsNotNone(choice["default"])
         self.api(ines, "POST", "/api/v1/my-agents", {"agentId": assistant["id"], **choice["default"]}, status=201)
-        # Settings lists the owner’s agents with their model and connection; the app list holds only the computer's apps (#857).
+        # Settings lists the owner’s agents with their model (and the connection only with several); the app list holds only the computer's apps (#857).
         ines.goto("/settings/agents")
         _, section, app = self.sections(ines)
         expect(app).to_have_count(1)
         expect(section.get_by_role("list", name="Your agents")).to_contain_text("Ines personal assistant")
-        expect(section).to_contain_text("Test fixture key")
+        # #1424: with one connection the agents just use it, so the list names the model and not the connection.
+        expect(section).not_to_contain_text("Test fixture key")
         # #1173: the model line names Opus and the Claude limit only beside a Claude plan that offers Opus; an API key is not one.
         section.get_by_role("link", name=re.compile("Ines personal assistant")).click()
         ines.get_by_role("button", name="More settings").click()  # the Model is behind More (#1419)

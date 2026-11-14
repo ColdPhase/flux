@@ -1618,7 +1618,9 @@ standard switch row in Settings › Notifications, and the rest of the page stay
     not offer, as the next point says.
   - **Your agents**, with New agent. Each row has the agent's Kreska in its own colour (chosen when
     the agent is created, or assigned automatically), its name, one line about its job, its tag ("Do it
-    and tell me", or "Ask me first" with the switch on) and its model with the connection ("Opus · Claude plan").
+    and tell me", or "Ask me first" with the switch on) and its model ("Opus"), with the connection only for a person who has several
+    ("Opus · Claude plan"; founder decision, Hubert, 2026-11-14, [#1424](https://github.com/ColdPhase/flux/issues/1424)). An agent with no
+    connection to use says "Needs a connection" in that place, never the name of a model of a key that is gone.
     Assistant carries an "Answers /ai" tag. Under the list: "Agents never have more rights than
     you. Deleting and other people's things always wait for your OK."
   - There is no rule that gives the tasks people assign to you to an agent (founder decision, Hubert,
@@ -1628,17 +1630,19 @@ standard switch row in Settings › Notifications, and the rest of the page stay
   - There is no list of spaces with AI off.
 - **An agent's page** (Assistant's is the same). It asks nothing expert before the agent is useful
   (founder decision, Hubert, 2026-11-13, [#1419](https://github.com/ColdPhase/flux/issues/1419) item 10):
-  - "‹ AI", the agent, and "Your agent · uses your Claude plan · can do only what you can".
+  - "‹ AI", the agent, and "Your agent · uses your AI · can do only what you can" ("uses your Claude plan" only for a person who has
+    several connections; "Needs a connection" when it has none to use; #1424, founder decision, Hubert, 2026-11-14).
   - The only dark button, "Message Planner".
   - Name and Instructions.
   - **Ask me first**, one switch (the app's `SwitchRow`), off by default. Its line says what it does
     now: off, "Makes new things and changes yours at once, then tells you, with Undo."; on, "Every
     change waits for your OK." Deleting and other people's things wait either way (AG-3).
   - **More**, a quiet disclosure button (`Button` quiet, `chevron-right` / `chevron-down`, `aria-expanded`;
-    a screen reader hears "More settings", apart from the header's ⋯ More) under the card, with the model in words beside it: "Model: Sonnet · Claude plan". A new agent
+    a screen reader hears "More settings", apart from the header's ⋯ More) under the card, with the model in words beside it: "Model: Sonnet" ("Model: Sonnet · Claude plan" with several connections). A new agent
     runs on its connection's default model, so most people never open it. Open, it shows the
     **Model**, grouped by connection ("Claude plan: Opus · Sonnet · Haiku", the models the signed-in
-    CLI itself lists, #1332), as described below. It is open by itself while the agent is paused on a
+    CLI itself lists, #1332) only when the person has several connections; with one, just its models, with no connection name
+    (an agent uses "your AI"; founder decision, Hubert, 2026-11-14, #1424), as described below. It is open by itself while the agent is paused on a
     model that is no longer offered, so that line is in view.
   - Prices appear only in an API key's group, where the person pays per token; a plan's models have
     none.
@@ -1661,19 +1665,28 @@ standard switch row in Settings › Notifications, and the rest of the page stay
   with Use an API key and Try again; an API key with its one daily budget. The API key offers
   F-020's providers: Anthropic, OpenAI, OpenRouter, Gemini or an OpenAI-compatible or self-hosted
   endpoint (C-11).
-  - **Use an API key** asks, top to bottom: Provider, API key, Model, Daily budget, Name, then
-    Connect (#1218). The Model is the app's `Select`, disabled with "Enter the API key first" until
-    the key is typed. Leaving the key field reads the key's models: the help line says "Reading
-    Anthropic's models…", then the `Select` fills, grouped by family with the newest first ("Sonnet", "Fable",
+  - **Use an API key** is short (founder decision, Hubert, 2026-11-14, #1424). It shows first only **Provider** and **API key**,
+    with one plain line under the key ("Paste the key from your provider's website. Flux uses it only for your agents.") and
+    the key shape of the provider only after a provider is chosen. Leaving the key field reads the key's models: the
+    line says "Reading Anthropic's models…", then the **Model** `Select` appears already chosen (the only model of a list of
+    one; for Anthropic, OpenAI and Gemini the first of the list, the newest model of the newest family; OpenRouter's and an
+    endpoint's long lists have none chosen until the person picks), grouped by family with the newest first ("Sonnet", "Fable",
     "Opus", "Haiku"), each option "Claude Opus 5.5 · $4 / $20" or "Claude Sonnet 5.7 · price
     unknown, enter it". Its last option, "Other model id…", shows the plain field under it. A model
-    carries the name its provider gives it ("Claude Opus 5.5") here and on the agent's page alike.
+    carries the name its provider gives it ("Claude Opus 5.5") here and on the agent's page alike. Under it is **More**, a quiet
+    disclosure button as on an agent's page, closed: **Daily budget (USD)** with "Your agents stop for the day when it is used."
+    (the default $5.00) and **Name (optional)**. The price fields appear only when Flux knows no price for the model (#1470).
+    The words are plain: no "Chat Completions format", no "per 1M tokens input/output" and no "Console organization". An
+    endpoint reads "A server that works like OpenAI's, such as Ollama or LM Studio. Use an https address."; a price
+    reads "Price in US dollars for a million tokens sent to the model (input) and a million it writes (output)". The window does
+    not scroll at 1440 × 900.
   - **The window's buttons keep their side** (#1424): on every step the secondary action is on the left and the one primary on
     the right, in one row: Cancel and Continue, Use an API key and Try again, Cancel and Connect. Connect does not swap sides with
     Cancel on the key step.
-  - A list of exactly one model has that model chosen already (nothing to pick between); a list of several has none chosen.
-  - Nothing is saved on a model nobody chose. Enter in the key field reads the models, as leaving the
-    field does, instead of saving. Connect before a model is chosen (the list is still being read)
+  - A list of exactly one model has that model chosen already (nothing to pick between); for Anthropic, OpenAI and Gemini a
+    list of several has its first model chosen (the one at the top); OpenRouter's and an endpoint's have none chosen.
+  - Nothing is saved without a model. Enter in the key field reads the models, as leaving the
+    field does, instead of saving. Connect before a model is known (the list is still being read)
     puts "Choose a model first. Flux lists the models of your key once you have entered it and left
     the field." above the form, in the form's error style. The server holds the same line: a key
     without a model is refused (422), never saved on a default model.

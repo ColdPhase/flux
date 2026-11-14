@@ -362,9 +362,10 @@ export interface TaskActivityEntry {
   /**
    * Set when the change was made by a task rule of a linked pull request on its author's behalf (`actor` is that author),
    * so a reader never mistakes it for the author's own action. `agent_deleted`: the owner deleted the agent that held the task
-   * and it came back to them (#1003).
+   * and it came back to them (#1003). `agent_unable`: the agent could not take or work on it (it needs a connection, it is paused, or it gave
+   * up) and it came back to its owner (#1424); `agent_rule` is the agent's own hand-back when it finished.
    */
-  automation?: 'github_rule' | 'agent_rule' | 'agent_deleted' | 'wait_resolved';
+  automation?: 'github_rule' | 'agent_rule' | 'agent_unable' | 'agent_deleted' | 'wait_resolved';
   /**
    * `kind: 'status'`. `blocker`, `waitingFor` and `waitingOn` (a decision's or task's name, as the line said it) are what a move into Blocked said;
    * null for any other `to`. `dropped` is for a move into Done.

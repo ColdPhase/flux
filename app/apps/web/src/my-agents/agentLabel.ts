@@ -1,10 +1,16 @@
 import { AGENT_MAY_DO_LABELS, assistantModelName, type AssistantModelChoice, type MyAgent } from '@flux/contracts';
 
-/** "Opus", and with the connection "Opus · Claude plan" when the person has more than one (the list's second line). */
-export function modelLine(agent: Pick<MyAgent, 'model'>, choice: AssistantModelChoice | null): { name: string; connection: string } {
-  const group = choice?.groups.find((item) => item.connection === agent.model.connection);
-  const option = group?.options.find((item) => item.id === agent.model.model);
-  return { name: option?.name ?? assistantModelName(agent.model.model), connection: group?.label ?? '' };
+/**
+ * What an agent runs on, in words (#1424, founder decision 2026-11-14: agents use "your AI"). "Opus", and "Opus · Claude plan" only for a person
+ * who has several connections. An agent whose connection is gone says "Needs a connection" and never the name of a model of a key that is no
+ * longer there; while the choice is still loading there is nothing to say yet.
+ */
+export function modelLine(agent: Pick<MyAgent, 'model'>, choice: AssistantModelChoice | null): { name: string; connection: string; needsConnection: boolean } {
+  if (!choice) return { name: '', connection: '', needsConnection: false };
+  const group = choice.groups.find((item) => item.connection === agent.model.connection);
+  if (!group) return { name: 'Needs a connection', connection: '', needsConnection: true };
+  const option = group.options.find((item) => item.id === agent.model.model);
+  return { name: option?.name ?? assistantModelName(agent.model.model), connection: choice.groups.length > 1 ? group.label : '', needsConnection: false };
 }
 
 /** Its tag: "Do it and tell me", or "Ask me first" with that switch on (AG-3, #1419). */

@@ -215,7 +215,10 @@ open for every named provider.
   - Several connections per owner, each named. Adding one never replaces another.
   - The assistant uses the one its consent names, chosen when enabling. (Background comparisons
     used the one the owner marked, `usedForBackground`; they went in #858.)
-  - Removing a connection stops its use, with no fallback.
+  - Removing a connection stops its use, with no fallback between several. With exactly one connection left, the agents that
+    were on the removed key go on it (founder decision, 2026-11-14, #1424): `settleAgents` runs after a key is added, signed in or
+    removed, and every run, status and agent read resolves the same rule (`currentEnablement`), so an agent never answers "your AI
+    account changed" with one connection to use.
   - The production personal-run lookup, key resolver and the `FLUX_PERSONAL_RUNS` operator switch
     are in place (see personal-runs.md).
 - Real-key smoke tests per named provider (PROV-6). The provider terms, the base URLs (Gemini and

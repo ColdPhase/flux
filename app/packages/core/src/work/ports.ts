@@ -147,7 +147,7 @@ export type TaskActivityRecord = TaskActivityDetail & {
 /** Where an older page of activity starts: strictly before this entry in (time, id) order. */
 export interface TaskActivityPosition { position: string; id: string }
 /** Who a change is made by when it is a task rule acting for its author. */
-export type TaskChangeVia = 'github_rule' | 'agent_rule' | 'agent_deleted' | 'wait_resolved';
+export type TaskChangeVia = 'github_rule' | 'agent_rule' | 'agent_unable' | 'agent_deleted' | 'wait_resolved';
 export type NewDecision = Pick<DecisionRecord, 'id' | 'workspaceId' | 'projectId' | 'title' | 'rationale' | 'proposedBy' | 'supersedesId'>;
 export type DecisionChanges = Partial<Pick<DecisionRecord, 'status' | 'decidedBy' | 'decidedAt' | 'supersededById' | 'supersededAt'>>;
 export interface NewObjectLink {

@@ -7,10 +7,12 @@ import { connectBackgroundCompute } from './api';
 import { ConnectionFields } from './ConnectionFields';
 import './background.css';
 
-// The form that adds one API key with its one daily budget (F-020 PROV-1, #854): Provider, API key, Model (#1218), Daily budget,
-// Name. The key exists only in its password input and the same-origin requests, never in app storage. The page of keys and the
-// Connect AI window share it.
+// The form that adds one API key with its one daily budget (F-020 PROV-1, #854): Provider and API key, then the Model once the key's models
+// are read (#1218), already chosen (#1424); the Daily budget (it has a default) and the Name (optional) are behind More. The key exists
+// only in its password input and the same-origin requests, never in app storage. The Connect AI window is the one place that shows it.
 
+/** The daily budget a new key starts with, as the field shows it ("5.00"). */
+const DEFAULT_BUDGET = (API_KEY_DAILY_BUDGET_CENTS.default / 100).toFixed(2);
 export const money = (cents: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
 export const BUDGET_PROBLEM = `Enter a daily budget from ${money(API_KEY_DAILY_BUDGET_CENTS.min)} to ${money(API_KEY_DAILY_BUDGET_CENTS.max)}.`;
 /** A daily budget typed in US dollars, in whole cents; null when it is not one Flux accepts. */
@@ -55,6 +57,10 @@ export const AddKeyForm = forwardRef<AddKeyFormHandle, {
   const [error, setError] = useState('');
   // The provider refused the key in the field (#1218): Connect waits until it changes.
   const [keyRefused, setKeyRefused] = useState(false);
+  // The daily budget and the name are behind More (#1424). Both stay in the form, so a closed More still sends the budget's default;
+  // it opens by itself when the problem is in it.
+  const [more, setMore] = useState(false);
+  const [budgetText, setBudgetText] = useState(DEFAULT_BUDGET);
   const formRef = useRef<HTMLFormElement>(null);
   const errorRef = useRef<HTMLParagraphElement>(null);
   const focusError = useRef(false);
@@ -64,7 +70,7 @@ export const AddKeyForm = forwardRef<AddKeyFormHandle, {
     errorRef.current?.focus();
   });
   useImperativeHandle(ref, () => ({
-    reset() { formRef.current?.reset(); setError(''); },
+    reset() { formRef.current?.reset(); setError(''); setMore(false); setBudgetText(DEFAULT_BUDGET); },
     focusFirst() { formRef.current?.querySelector<HTMLSelectElement | HTMLButtonElement>('[name="provider"], button')?.focus({ preventScroll: true }); },
   }), []);
 
@@ -81,7 +87,7 @@ export const AddKeyForm = forwardRef<AddKeyFormHandle, {
       setError('Enter both prices as numbers of US dollars per 1M tokens.'); return;
     }
     const budget = budgetCents(data.get('dailyBudget'));
-    if (budget === null) { setError(BUDGET_PROBLEM); return; }
+    if (budget === null) { setMore(true); setError(BUDGET_PROBLEM); return; }
     const name = String(data.get('connectionName') ?? '').trim();
     const model = String(data.get('model') ?? '').trim();
     // Never saved on a model nobody chose: Enter in the key field, or Connect while the models are still being read, stops here.
@@ -105,6 +111,7 @@ export const AddKeyForm = forwardRef<AddKeyFormHandle, {
       onAdded(await connectBackgroundCompute(command));
     } catch (cause) {
       keepKey = cause instanceof ApiError && cause.code === 'AI_TOOLS_REQUIRED';
+      if (cause instanceof ApiError && cause.code?.startsWith('AI_BUDGET')) setMore(true);
       setError(keyFailure(cause)); focusError.current = true;
     }
     finally {
@@ -117,14 +124,20 @@ export const AddKeyForm = forwardRef<AddKeyFormHandle, {
 
   return <>
     {error ? <p id="background-connect-error" ref={errorRef} className="background-settings__error" role="alert" tabIndex={-1}>{error}</p> : null}
-    <p className="background-settings__help">Anthropic, OpenAI, OpenRouter, Gemini or an OpenAI-compatible endpoint, including a self-hosted model. An Anthropic key from a Console organization linked to a Claude Max, Ultra or Team plan uses that plan’s monthly API credits.</p>
     <form ref={formRef} onSubmit={(event) => void connect(event)}>
       <fieldset disabled={busy} className="background-settings__fields">
         <ConnectionFields disabled={busy} onKeyRefused={setKeyRefused} keyHelpId="background-key-help" />
-        <Input label="Daily budget (USD)" name="dailyBudget" inputMode="decimal" autoComplete="off" defaultValue={(API_KEY_DAILY_BUDGET_CENTS.default / 100).toFixed(2)}
-          aria-describedby="background-budget-help" />
-        <p id="background-budget-help" className="background-settings__help">Your agents pause for the day when it’s used. It’s the only limit.</p>
-        <label>Name<input name="connectionName" autoComplete="off" maxLength={80} placeholder="For example: Work OpenRouter" /></label>
+        <div className="background-settings__more-row">
+          <Button variant="quiet" size="sm" icon={more ? 'chevron-down' : 'chevron-right'} aria-label="More settings" aria-expanded={more} aria-controls="background-more"
+            onClick={() => setMore(!more)}>More</Button>
+          {more ? null : <span className="background-settings__help" data-testid="budget-line">Daily budget ${budgetText.trim() || '?'}</span>}
+        </div>
+        <div id="background-more" className="background-settings__fields" hidden={!more}>
+          <Input label="Daily budget (USD)" name="dailyBudget" inputMode="decimal" autoComplete="off" defaultValue={DEFAULT_BUDGET}
+            onChange={(event) => setBudgetText(event.target.value)} aria-describedby="background-budget-help" />
+          <p id="background-budget-help" className="background-settings__help">Your agents stop for the day when this is used up.</p>
+          <label>Name (optional)<input name="connectionName" autoComplete="off" maxLength={80} placeholder="For example: Work OpenRouter" /></label>
+        </div>
         {/* Cancel, then the one primary, on the right: the choose step's Cancel and Continue keep their side here (#1424). */}
         <div className="background-settings__actions background-settings__actions--end">
           {onCancel ? <Button onClick={onCancel}>Cancel</Button> : null}

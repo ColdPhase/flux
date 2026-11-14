@@ -5,6 +5,7 @@ import { apiKeySpendToday } from '@flux/db';
 import { shippedPriceList, type Principal } from '@flux/core';
 import { providerPriceList, type AssistantRun, type Conversation, type Project, type Workspace } from '@flux/contracts';
 import { personalRunUseCases } from '../../apps/server/src/personal-runs/adapters.js';
+import { agentsSettler } from '../../apps/server/src/personal-runs/make-agent.js';
 import { db, pool } from './support/db.js';
 import { expectStatus, person, project as createProject, workspace as createWorkspace, type Person } from './support/people.js';
 import { chooseModel, FakeConnections, FakeQueue } from './support/personal-runs.js';
@@ -252,11 +253,13 @@ describe('no payer switching; the API key\'s one daily budget pauses a request u
   });
   after(async () => { await pi.close(); });
 
-  test('a removed key stops its assistant; it never switches to the owner\'s other connection and nothing is sent', async () => {
+  test('a removed key stops its assistant while the owner has several connections; it never switches between them and nothing is sent', async () => {
     const used = randomUUID();
     const spare = randomUUID();
+    const another = randomUUID();
     connections.connect(owner.id, used, { provider: 'anthropic', model: 'claude-sonnet-5' });
     connections.connect(owner.id, spare, { provider: 'openai', model: 'gpt-6-luna' });
+    connections.connect(owner.id, another, { provider: 'anthropic', model: 'claude-sonnet-5' });
     await runs.enable(human(owner), { agentId, connection: used, model: 'claude-sonnet-5' });
     connections.disconnect(owner.id, used);
     const status = await runs.status(human(owner));
@@ -267,12 +270,61 @@ describe('no payer switching; the API key\'s one daily budget pauses a request u
     // Only the owner's own pick moves it: then the next request goes to the other connection.
     await chooseModel(runs, human(owner), { connection: spare, model: 'gpt-6-luna' });
     assert.equal((await runs.status(human(owner))).state, 'ready');
+    connections.disconnect(owner.id, spare); connections.disconnect(owner.id, another);
+    await runs.remove(human(owner));
+    agentId = (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'My assistant', owner: 'self' } }), 201) as { id: string }).id;
+  });
+
+  test('#1424: the only key is removed and another is added: the agent answers on it, nothing is re-pointed, and a second key added later moves nothing', async () => {
+    const settle = agentsSettler(db, { queue: queue.factory, connections, providerEnabled: true });
+    const first = randomUUID(); const replacement = randomUUID(); const lazy = randomUUID(); const later = randomUUID();
+    connections.connect(owner.id, first, { provider: 'anthropic', model: 'claude-sonnet-5' });
+    await runs.enable(human(owner), { agentId, connection: first, model: 'claude-sonnet-5' });
+    await pi.place(owner.id);
+
+    // The only key is removed: no connection to use, and the agent says so (the page reads "Needs a connection").
+    connections.disconnect(owner.id);
+    await settle(owner.id);
+    const none = await runs.status(human(owner));
+    assert.deepEqual([none.state, none.unavailableReason], ['unavailable', 'no_connection']);
+    await assert.rejects(runs.invoke(human(owner), thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Where are we?' }), { code: 'PERSONAL_RUN_UNAVAILABLE' });
+
+    // Another key is added: what the API does after a connect (and after a removal) moves the agent onto the one connection there is, at that key's own model.
+    connections.connect(owner.id, replacement, { provider: 'anthropic', model: 'claude-haiku-5-5' });
+    assert.equal(await runs.settleAgents(human(owner)), 1);
+    assert.deepEqual((await pool.query('SELECT api_key_id, engine, provider, model FROM assistant_settings WHERE agent_id = $1', [agentId])).rows,
+      [{ api_key_id: replacement, engine: 'server', provider: 'anthropic', model: 'claude-haiku-5-5' }], 'the agent is on the new key; nothing was asked');
+    assert.deepEqual((await runs.listAgents(human(owner))).map((agent) => [agent.model.connection, agent.model.model]), [[replacement, 'claude-haiku-5-5']]);
+    assert.equal(await runs.settleAgents(human(owner)), 0, 'an agent on a live key is never touched');
+    pi.gateway.script([{ text: 'Fact: the camera fails below 5 lux.' }]);
+    const asked = await runs.invoke(human(owner), thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Where are we?' });
+    assert.equal(await processor.process(asked.run.id), 'completed', JSON.stringify(pi.lastPi()));
+    assert.deepEqual([(await row(asked.run.id)).provider, (await row(asked.run.id)).model], ['anthropic', 'claude-haiku-5-5'], 'the answer came from the new key\'s model');
+
+    // The same without any hook (a plan signed in somewhere the API was not told of): the first request finds it so and keeps it.
+    connections.disconnect(owner.id);
+    connections.connect(owner.id, lazy, { provider: 'anthropic', model: 'claude-sonnet-5' });
+    const seen = await runs.status(human(owner));
+    assert.deepEqual([seen.state, seen.enablement!.connection, seen.enablement!.model], ['ready', lazy, 'claude-sonnet-5'], 'a reader shows where it runs now');
+    assert.equal((await pool.query('SELECT api_key_id FROM assistant_settings WHERE agent_id = $1', [agentId])).rows[0].api_key_id, replacement, 'reading changes nothing stored');
+    const again = await runs.invoke(human(owner), thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'And now?' });
+    assert.equal(again.run.status, 'queued');
+    assert.equal((await pool.query('SELECT api_key_id FROM assistant_settings WHERE agent_id = $1', [agentId])).rows[0].api_key_id, lazy, 'the request that found it so kept it');
+    await runs.stop(human(owner), again.run.id);
+
+    // A second key added later moves nothing: the agent keeps the one it is on, and a person with two connections chooses per agent.
+    connections.connect(owner.id, later, { provider: 'openai', model: 'gpt-6-luna' });
+    const stays = await runs.status(human(owner));
+    assert.deepEqual([stays.state, stays.enablement!.connection], ['ready', lazy]);
+    connections.disconnect(owner.id, later);
+    connections.disconnect(owner.id, lazy);
     await runs.remove(human(owner));
     agentId = (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'My assistant', owner: 'self' } }), 201) as { id: string }).id;
   });
 
   test('at the key\'s budget a request waits for the next day, with one line and no switch; the assistant reads "capped"', async () => {
     const tiny = randomUUID();
+    const sentBefore = pi.gateway.requests.length;
     // A model whose one request is above the key's whole budget would wait for a day that never comes: it is refused.
     connections.connect(owner.id, tiny, { provider: 'anthropic', model: 'claude-sonnet-5', dailyBudgetCents: 10 });
     await assert.rejects(runs.enable(human(owner), { agentId, connection: tiny, model: 'claude-sonnet-5' }), /can cost more than this key's daily budget/);
@@ -293,7 +345,7 @@ describe('no payer switching; the API key\'s one daily budget pauses a request u
     assert.equal(queue.runIds.includes(asked.run.id), false, 'a paused request is not dispatched now');
     assert.equal(await processor.process(asked.run.id), 'skipped', 'the worker does not start it before its resume time');
     assert.equal((await row(asked.run.id)).status, 'queued');
-    assert.equal(pi.gateway.requests.length, 0, 'and nothing is sent to anyone');
+    assert.equal(pi.gateway.requests.length, sentBefore, 'and nothing is sent to anyone');
     await runs.stop(human(owner), asked.run.id);
     await runs.remove(human(owner));
     agentId = (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'My assistant', owner: 'self' } }), 201) as { id: string }).id;

@@ -202,6 +202,11 @@ export interface PersonalRunRepository {
   prepareTaskUse(projectId: string | null, conversationId: string | null, sources?: readonly { type: string; id: string }[]): Promise<{ mark(): Promise<void> }>;
   /** The AI setup of one of the owner's agents: the one named, else their first (Assistant). A deleted agent has none. */
   enablement(ownerUserId: string, options?: { lock?: boolean; agentId?: string; workspaceId?: string }): Promise<EnablementRecord | null>;
+  /**
+   * Puts an agent on the connection and model it runs on now (#1424): its key was removed and one connection is left to use. Written by a
+   * request that holds the agent's lock, so the next one reads the same.
+   */
+  rebind(agentId: string, placement: { engine: 'server' | 'runtime'; apiKeyId: string | null; provider: AiProviderKind; model: string | null }): Promise<void>;
   agentBrief(agentId: string): Promise<AgentBrief | null>;
   /** The person's own time zone (their notification settings'; UTC when unset): a schedule they ask for runs in it, and their agents tell time in it (#1064). */
   personTimeZone(userId: string): Promise<string>;
