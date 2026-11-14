@@ -56,7 +56,7 @@ class UpStatusTest(unittest.TestCase):
 
     def run_flux(self, command: str, lines: list[str], *extra: str) -> subprocess.CompletedProcess[str]:
         env_file = self.checkout / "docker/.env"
-        env_file.write_text("\n".join(["FLUX_PROJECT=flux-status-test", "FLUX_PORT=8081", "FLUX_SIGNUP=open", *lines]) + "\n")
+        env_file.write_text("\n".join(["FLUX_PROJECT=flux-status-test", "FLUX_PORT=8081", *lines]) + "\n")
         env_file.chmod(0o600)
         env = {k: v for k, v in os.environ.items() if not k.startswith("FLUX_")}
         env.update(PATH=f"{self.bin_dir}:{os.environ['PATH']}", FLUX_TEST_LOG=str(self.log), FLUX_TEST_INFO=INFO_OK, FLUX_WAIT_TIMEOUT="5")
