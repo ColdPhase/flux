@@ -23,8 +23,10 @@ Documentation: <https://coldphase.github.io/flux/>. Flux is open source under th
   302,000 messages it took 28 s (the whole `./flux upgrade`, with its images already built, 77 s), while Flux was stopped. A
   database that is not Flux's image (your own PostgreSQL) stops the upgrade before anything changes, with `FLUX_DATABASE_IMAGE …`
   and what to do ([upgrade notes](https://coldphase.github.io/flux/operate/upgrade/#v021-the-database-image-changes)).
-- **No setting was renamed or removed.** New, all optional: `FLUX_VIDEO_MAX_MIB` (200), `FLUX_EMBEDDINGS` (off) and
-  `FLUX_EMBEDDINGS_MEMORY` (6g). Your `.env` keeps working unchanged.
+- **`FLUX_SIGNUP` is removed.** Accounts now come only from a link ([below](#accounts-and-passwords)); `./flux upgrade` names the
+  old line, which you can delete. New: `FLUX_SETUP_TOKEN` (the setup link's token; `./flux up` writes it, and an instance that
+  already has its company never needs it), and, all optional, `FLUX_VIDEO_MAX_MIB` (200), `FLUX_EMBEDDINGS` (off) and
+  `FLUX_EMBEDDINGS_MEMORY` (6g).
 - **Your reverse proxy** must now accept request bodies as large as the largest video you allow (`FLUX_VIDEO_MAX_MIB`, 200 MiB by
   default; nginx: `client_max_body_size 210m`) and pass `Range` requests and `206 Partial Content` answers through, or videos fail to
   upload (413) or to seek ([reverse proxy](https://coldphase.github.io/flux/operate/reverse-proxy/)).
@@ -116,6 +118,16 @@ Documentation: <https://coldphase.github.io/flux/>. Flux is open source under th
   right; at the top on a phone) with Open, Reply or Join. A burst from one place is one card, and it follows your level and quiet hours.
 - **The tab shows (N)**, with a dot on its icon and the installed app's badge.
 - **Two sound switches** in Settings › Notifications: "Sound for messages" (off by default) and "Sound when someone calls me" (on).
+
+## Accounts and passwords
+
+- **Accounts come only from a link.** The first `./flux up` prints a setup link, and only it makes the first account, the company's
+  owner; a new Flux opens on **Set up Flux**. Everyone else creates their account from an invite link (which always allows that,
+  with the address filled in when the link is for one) or signs in with single sign-on. Nobody can create an account on their own,
+  so a server reachable from the internet can no longer be claimed or filled with accounts by strangers.
+- **A forgotten password is a reset link**, with or without email: an owner or admin makes one next to the person in
+  **Settings › Company**, `./flux reset-link <email>` prints one for any account (the owner's too), and **Forgot password** mails
+  one when the server has email. A link works once, for one hour, and a newer link stops it; using it signs the person out everywhere.
 
 ## Security
 

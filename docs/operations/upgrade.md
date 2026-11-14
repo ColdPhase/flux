@@ -160,7 +160,7 @@ What to do:
 2. **Install v0.2 fresh.** Either in a new folder, with its own `FLUX_PROJECT`, volumes and port
    ([installation](install.md)), or in the same folder after `./flux reset`, which
    deletes this instance's data after you confirm. Do not point v0.2 at v0.1's volumes.
-3. **Sign up first.** The first account on the new Flux sets up the company and owns it, then invite everyone else.
+3. **Set up first.** The first account on the new Flux, made from the setup link `./flux up` prints, sets up the company and owns it; then invite everyone else.
 
 ## Signatures
 

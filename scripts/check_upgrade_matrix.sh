@@ -234,7 +234,7 @@ for tag in $releases; do
     docker run -d --name "$run_id-s$n-provider-mock" --network "${project}_default" --network-alias provider-mock \
       -v "$root/scripts/release/provider_mock.mjs:/mock/provider_mock.mjs:ro,z" --entrypoint node "$node_image" /mock/provider_mock.mjs >/dev/null
     for _ in $(seq 1 30); do docker exec "$run_id-s$n-provider-mock" node -e "fetch('http://127.0.0.1:8091/__health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))" && break; sleep 1; done
-    python3 "$root/scripts/release/smoke_data.py" seed --origin "http://127.0.0.1:$port" --state "$work/source-$tag.json" --provider-url http://provider-mock:8091/v1
+    FLUX_SETUP_TOKEN=$(sed -n 's/^FLUX_SETUP_TOKEN=//p' "$env_file") python3 "$root/scripts/release/smoke_data.py" seed --origin "http://127.0.0.1:$port" --state "$work/source-$tag.json" --provider-url http://provider-mock:8091/v1
     # `git pull`: the files of the checkout change, its .env and the data stay.
     cp "$env_file" "$work/source-$tag.env"
     find "$checkout" -mindepth 1 -maxdepth 1 -exec rm -rf {} +

@@ -35,16 +35,16 @@ class ConfigReferenceTest(unittest.TestCase):
             reference.scan_names = original
 
     def test_a_setting_without_a_way_in_is_reported(self) -> None:
-        reference.VARIABLES["FLUX_SIGNUP_COPY"] = reference.Var("identity", "x", "y")
+        reference.VARIABLES["FLUX_SETUP_TOKEN_COPY"] = reference.Var("identity", "x", "y")
         original = reference.scan_names
         found = reference.scan_names()
-        found["FLUX_SIGNUP_COPY"] = {"app/apps/server/src/identity/config.ts"}
+        found["FLUX_SETUP_TOKEN_COPY"] = {"app/apps/server/src/identity/config.ts"}
         reference.scan_names = lambda: found
         try:
-            self.assertTrue(any("FLUX_SIGNUP_COPY is read by the code, but no Compose file" in error for error in reference.problems()))
+            self.assertTrue(any("FLUX_SETUP_TOKEN_COPY is read by the code, but no Compose file" in error for error in reference.problems()))
         finally:
             reference.scan_names = original
-            del reference.VARIABLES["FLUX_SIGNUP_COPY"]
+            del reference.VARIABLES["FLUX_SETUP_TOKEN_COPY"]
 
     def test_launcher_help_is_copied(self) -> None:
         self.assertIn("./flux backup [--output DIR] [--keep N]", reference.PAGE.read_text(encoding="utf-8"))

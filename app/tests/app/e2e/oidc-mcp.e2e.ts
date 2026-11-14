@@ -347,9 +347,9 @@ test('/login says the provider is reachable, and offers no password form (single
   await page.goto(authorizeUrl(clientId, loopback, challenge));
   assert.equal(await page.getByRole('button', { name: 'Sign in with Keycloak', exact: true }).isEnabled(), true);
   assert.equal(await page.getByLabel('Password').count(), 0, 'no password field while the provider is the only way in');
-  const capabilities = await (await page.context().request.get(`${origin}/api/v1/auth/capabilities`)).json() as { sso: { reachable: boolean }; signup: string; passwordReset: string };
+  const capabilities = await (await page.context().request.get(`${origin}/api/v1/auth/capabilities`)).json() as { sso: { reachable: boolean }; ssoOnly: boolean; setup: boolean; passwordReset: string };
   assert.equal(capabilities.sso.reachable, true);
-  assert.deepEqual([capabilities.signup, capabilities.passwordReset], ['off', 'unavailable']);
+  assert.deepEqual([capabilities.ssoOnly, capabilities.setup, capabilities.passwordReset], [true, false, 'unavailable']);
   // Negative control at the API: the password route is refused even when called directly.
   const direct = await page.context().request.post(`${origin}/api/auth/sign-in/email`, { data: { email: 'nobody@example.test', password: 'pw-direct-call-1' }, headers: { origin } });
   assert.equal(direct.status(), 403, 'password sign-in is refused under single sign-on');

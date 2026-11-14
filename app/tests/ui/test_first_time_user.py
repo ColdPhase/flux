@@ -182,7 +182,9 @@ class FirstTimeUser(unittest.TestCase):
         basia.goto(f"/join#{link.input_value().split('#', 1)[1]}")
         # The invite page is the create-account form first.
         basia.get_by_label("Name").fill("Basia Wrona")
-        basia.get_by_label("Email").fill(basia_email)
+        # #1471: the link is for her address, so the form has it filled in and locked.
+        expect(basia.get_by_label("Email")).to_have_value(basia_email)
+        expect(basia.get_by_label("Email")).not_to_be_editable()
         basia.get_by_label("Password").fill(PASSWORD)
         basia.get_by_role("button", name="Create account and join").click()
         expect(basia).not_to_have_url(re.compile(r"/join"))

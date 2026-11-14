@@ -114,6 +114,8 @@ What was decided when the two P2 findings were fixed (2026-11-08). Each stays he
   create the owner while the server is still on loopback, before the address is public (the origin guard accepts sign-up only from the
   configured origin, which is the loopback one at that point), and `./flux up` and the API log warn at each start while nobody has signed up
   and the origin is public. Nothing else changes for an operator who follows the guide; one who does not is told, repeatedly.
+  **Superseded 2026-11-13 by the setup code ([#1471](https://github.com/ColdPhase/flux/issues/1471)):** the first account needs the
+  setup link's token (`FLUX_SETUP_TOKEN`) and every other one an invite link or single sign-on; test deployments keep sign-up without a link.
 - **#997, the security log.** One line per event with a fixed shape, in the log the operator already collects ([events](../operations/monitoring.md#security-events)).
   A failed sign-in is identified by a keyed hash of the address, never the address; refused requests carry the route template, never the URL;
   at most ten refusals a minute per person are written. No new store, no new endpoint.
@@ -377,7 +379,7 @@ What was decided when the two P2 findings were fixed (2026-11-08). Each stays he
 | ID | Requirement | Result | Evidence |
 | --- | --- | --- | --- |
 | 14.1.1 | Repeatable, secure build | Pass | Multi-stage Dockerfile with pinned digests and a frozen lockfile |
-| 14.1.3 | Server configuration hardened | **Partial** | `docs/operations/hardening.md`; non-root, loopback-only port. A newly exposed server is claimable by its first sign-up ([#994](https://github.com/ColdPhase/flux/issues/994)) |
+| 14.1.3 | Server configuration hardened | **Partial** | `docs/operations/hardening.md`; non-root, loopback-only port. A newly exposed server was claimable by its first sign-up ([#994](https://github.com/ColdPhase/flux/issues/994)); since [#1471](https://github.com/ColdPhase/flux/issues/1471) the first account needs the setup link's token |
 | 14.1.4 | Automated deploy and restore | Pass | `./flux up`, `./flux upgrade`, `docs/operations/backup-restore.md` |
 | 14.2.1 | Components up to date | Pass | Dependabot and the dependency audit (#834 to #836, #913) |
 | 14.2.2 | Unneeded features removed | Pass | Link cards, web reads, AI, runtime, GitHub and live media are off until set (hardening item 9); test fixtures need `FLUX_FIXTURE_TOKEN` (**probe:** `/api/v1/test/routes` without it answered 401) |

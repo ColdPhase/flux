@@ -9,6 +9,7 @@ export { sql } from 'drizzle-orm';
 export type { SQL } from 'drizzle-orm';
 export * from './repositories/sessions.js';
 export * from './repositories/person-time-zone.js';
+export * from './repositories/reset-links.js';
 export * from './repositories/person-photos.js';
 export * from './repositories/space-icons.js';
 export * from './repositories/person-last-active.js';

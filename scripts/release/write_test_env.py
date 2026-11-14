@@ -25,11 +25,15 @@ def write(source: Path, destination: Path, port: int) -> None:
         "FLUX_PORT": str(port),
         "FLUX_PUBLIC_ORIGIN": f"http://127.0.0.1:{port}",
     }
+    # The setup link's token (#1471), when the template has the line (v0.2.1 on; an older release's template has none).
+    setup = secrets.token_hex(32)
     lines = []
     seen = set()
     for line in source.read_text(encoding="utf-8").splitlines():
         key = line.split("=", 1)[0]
-        if key in replacements:
+        if key == "FLUX_SETUP_TOKEN":
+            lines.append(f"{key}={setup}")
+        elif key in replacements:
             lines.append(f"{key}={replacements[key]}")
             seen.add(key)
         else:

@@ -20,6 +20,7 @@ import {
   loginLoader,
   signInLoader,
   resetPasswordAction,
+  setupLoader,
   signInAction,
   signOutAction,
   signOutLoader,
@@ -123,6 +124,8 @@ export const router = createBrowserRouter([
           { path: 'login', loader: loginLoader, action: signInAction, ...lazyComponent(authPages, (page) => page.SignInPage) },
           { path: 'sign-in', loader: signInLoader, action: signInAction, ...lazyComponent(authPages, (page) => page.SignInPage) },
           { path: 'sign-up', loader: signUpLoader, action: signUpAction, ...lazyComponent(authPages, (page) => page.SignUpPage) },
+          // The setup link (#1471): `/setup#<token>`, the owner's account while no company exists.
+          { path: 'setup', loader: setupLoader, action: signUpAction, ...lazyComponent(authPages, (page) => page.SignUpPage) },
           { path: 'forgot-password', loader: forgotPasswordLoader, action: forgotPasswordAction, ...lazyComponent(authPages, (page) => page.ForgotPasswordPage) },
           { path: 'reset-password', action: resetPasswordAction, ...lazyComponent(authPages, (page) => page.ResetPasswordPage) },
           { path: 'claim', ...lazyComponent(authPages, (page) => page.ClaimPage) },

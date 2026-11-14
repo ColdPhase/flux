@@ -6,9 +6,6 @@ import { buildNotificationEmail, COMPANY_NAME, EVERYONE_SPACE_NAME, getProject, 
 import { accessPorts } from '@flux/db';
 import Fastify from 'fastify';
 import { workspaceRoutes } from '../../apps/server/src/access/workspaces.js';
-import { createAuth } from '../../apps/server/src/identity/auth.js';
-import { loadIdentityConfig } from '../../apps/server/src/identity/index.js';
-import { createOauthRequests } from '../../apps/server/src/identity/oauth-flow.js';
 import type { AccessContext } from '../../apps/server/src/access/context.js';
 import { db, insertedHuman, pool } from './support/db.js';
 import { Browser } from './support/http.js';
@@ -249,31 +246,6 @@ describe('in the company', () => {
     const after = expectStatus(await admin.browser.request('GET', `/api/v1/workspaces/${companyId}/removed-people`), 200) as RemovedPerson[];
     assert.equal(after.some((entry) => entry.userId === leaver.id), false, 'off the list');
     expectStatus(await admin.browser.request('POST', `/api/v1/workspaces/${companyId}/removed-people/${leaver.id}/restore`), 404, 'nobody to restore');
-  });
-
-  test('with verified sign-up the company is set up when the address is verified, so a mistyped address leaves no owner nobody can be', async () => {
-    const sent: { text: string }[] = [];
-    const config = loadIdentityConfig({ ...process.env, FLUX_SIGNUP: 'verified', FLUX_SMTP_URL: 'smtp://mail.example.test:25', FLUX_MAIL_FROM: 'flux@example.test' });
-    const auth = createAuth({ db, config, mailer: { send: async (mail) => { sent.push(mail); }, close: () => undefined }, oauthRequests: createOauthRequests() });
-    const [existing] = await company();
-    const email = `company-verified-${randomUUID()}@example.test`;
-    await pool.query('UPDATE workspaces SET company = false WHERE id = $1', [existing!.id]);
-    try {
-      await auth.api.signUpEmail({ body: { name: 'Verified First', email, password: 'a long enough password for this' } });
-      assert.deepEqual(await company(), [], 'an address nobody proved sets up nothing');
-      const token = /token=([^&\s]+)/.exec(sent.at(-1)!.text)?.[1];
-      assert.ok(token, sent.at(-1)!.text);
-      await auth.api.verifyEmail({ query: { token: decodeURIComponent(token) } });
-      const made = await company();
-      assert.equal(made.length, 1, 'the first verified account set it up');
-      const owner = (await pool.query<{ email: string }>(`SELECT u.email FROM workspace_members m JOIN auth_users u ON u.id = m.user_id
-        WHERE m.workspace_id = $1 AND m.role = 'owner'`, [made[0]!.id])).rows;
-      assert.deepEqual(owner.map((row) => row.email), [email]);
-    } finally {
-      await pool.query('DELETE FROM workspaces WHERE company');
-      await pool.query('UPDATE workspaces SET company = true WHERE id = $1', [existing!.id]);
-      await pool.query('DELETE FROM auth_users WHERE email = $1', [email]);
-    }
   });
 
   test('a password account joins on its first provider sign-in, however it came to exist', async () => {

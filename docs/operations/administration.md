@@ -7,7 +7,7 @@ only lever over the whole instance. This page describes Flux v0.2: one Flux is o
 
 ## The company and its spaces
 
-One Flux is one company. The first account sets it up and owns it, with the default space **Everyone**,
+One Flux is one company. The first account, made from the setup link that `./flux up` prints, sets it up and owns it, with the default space **Everyone**,
 which holds the whole company. Everything else people do together happens in **spaces**: a space can be a
 department, a team or a project. You see only the spaces you were added to, and the sidebar lists exactly
 those. **New › Space** is one window: a name, the people (chosen from the company), an AI switch that starts
@@ -64,9 +64,22 @@ lets in joins on their first sign-in.
 
 Flux copies the link; it sends no email itself, so send it yourself. The link works once. Pending
 links are listed in the same place, where any owner or admin can copy or revoke them. The person
-signs in or creates an account under the instance's sign-up rule: an invite never opens sign-up that
-`FLUX_SIGNUP` or [single sign-on](single-sign-on.md) has closed. Changing `FLUX_AUTH_SECRET` voids
-every pending link.
+signs in, or creates an account from the link: an invite link always allows that, and it is the only way
+to a password account after the owner's ([#1471](https://github.com/ColdPhase/flux/issues/1471)). A link
+for one address fills it in on the sign-up form and makes no account for another. With
+[single sign-on](single-sign-on.md) as the only way in there are no invite links. Changing
+`FLUX_AUTH_SECRET` voids every pending link.
+
+## Reset links
+
+Someone who forgot their password gets a reset link ([#1471](https://github.com/ColdPhase/flux/issues/1471)).
+In **Settings › Company**, open the person's role (**Member ▾**) and choose **Make reset link**: Flux copies a
+one-time link, which you send yourself. An owner makes one for anyone else, an admin for members and guests.
+`./flux reset-link <email>` on the server prints one for any account, the owner's included, which is the way back
+for an owner who forgot theirs. With email set up, **Forgot password** on the sign-in page mails the same kind of link.
+A link works once and for `FLUX_PASSWORD_RESET_TTL_SECONDS` (one hour by default); a newer link for the same
+person stops it, and using it stops the others and signs the person out everywhere. Changing the password in Settings stops no link. Each link is recorded with who made it and when; the token itself is
+never stored. There are no reset links with single sign-on as the only way in.
 
 <p align="center">
   <img src="../assets/screens/invite-link.webp" width="48%" alt="Invite with a link in Settings, Company: Joins as Member, Only for (optional), Works for 7 days, the Create invite link button, and the new link with a Copy link button and the note that it works once and Flux does not send it.">
@@ -157,7 +170,8 @@ Settings opens from your name at the bottom left → **All settings**.
 
 | Task | How |
 | --- | --- |
-| Who may create accounts | `FLUX_SIGNUP`, [single sign-on](single-sign-on.md) |
+| The owner's first account | The setup link `./flux up` prints (`FLUX_SETUP_TOKEN`); later accounts come from invite links or [single sign-on](single-sign-on.md) |
+| A reset link for any account, the owner's too | `./flux reset-link <email>` ([reset links](#reset-links)) |
 | Email, push, link cards, live editing | The [configuration reference](configuration.md) |
 | Whether people can connect an API key or a Claude or ChatGPT plan, and whether agents use the web | [AI providers](configuration.md#ai-providers), [agent runtime](agent-runtime.md) |
 | Recover a person's single sign-on link | `./flux identity link` / `unlink` ([single sign-on](single-sign-on.md)) |

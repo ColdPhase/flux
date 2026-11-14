@@ -83,8 +83,15 @@ export interface FirstSteps {
   /** Everyone, for "Write your first message" (opens it with the composer ready); null when there is none. */
   everyoneSpaceId: string | null;
 }
-/** Better Auth's own endpoints the web client calls, below AUTH_BASE_PATH. */
+/**
+ * Better Auth's own endpoints the web client calls, below AUTH_BASE_PATH. A sign-up also carries the link it comes from (#1471):
+ * `setupToken` (the first account, from `SETUP_PAGE#<token>`) or `inviteToken` (an invite link).
+ */
 export const AUTH_SIGN_UP_EMAIL_PATH = `${AUTH_BASE_PATH}/sign-up/email`;
+/** The page the setup link opens; the token follows `#` (#1471). */
+export const SETUP_PAGE = '/setup';
+/** The page a reset link opens; the token follows `#` (a mailed link arrives as `?token=`). */
+export const RESET_PASSWORD_PAGE = '/reset-password';
 export const AUTH_SIGN_IN_EMAIL_PATH = `${AUTH_BASE_PATH}/sign-in/email`;
 export const AUTH_SIGN_IN_SOCIAL_PATH = `${AUTH_BASE_PATH}/sign-in/social`;
 export const AUTH_SIGN_OUT_PATH = `${AUTH_BASE_PATH}/sign-out`;
@@ -115,8 +122,13 @@ export interface IdentityCapabilities {
   /** The company's name for the sign-in page (F-037), or null before setup and while it has the name setup gave it. */
   company: string | null;
   passwordReset: 'available' | 'unavailable';
-  /** Who can create a password account (#313): `verified` mails a link first; `off` is closed, including `verified` without email. */
-  signup: 'open' | 'verified' | 'off';
+  /** No company exists yet (and sign-in is not SSO-only): the first account, its owner, comes from the setup link (#1471). */
+  setup: boolean;
+  /**
+   * Who can create a password account (#1471): `link`, only from the setup link or an invite link; `open`, also without a link, only
+   * on a test deployment. Single sign-on makes accounts too (`sso`).
+   */
+  signup: 'link' | 'open';
   /** With the one provider in SSO-only mode (#315): no password sign-in, sign-up or reset; the page offers only SSO. */
   ssoOnly: boolean;
   /** Prepare mode (#315): the signed-in password account may link the provider now, before cutover. */

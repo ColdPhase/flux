@@ -65,6 +65,8 @@ set_env FLUX_PORT "$port"
 set_env FLUX_PUBLIC_ORIGIN "$origin"
 set_env POSTGRES_PASSWORD "$(random_hex)"
 set_env FLUX_AUTH_SECRET "$(random_hex)"
+setup_token=$(random_hex)
+set_env FLUX_SETUP_TOKEN "$setup_token"
 set_env FLUX_FIXTURE_TOKEN "$(random_hex)"
 $compose config --quiet
 [ "$($compose config --images | grep -c "^$image\$")" = 4 ] || fail "migrate, api, worker and keyring must use one image"
@@ -103,11 +105,16 @@ $compose logs --no-color migrate | grep -q "Flux schema $expected and pg-boss re
 [ "$($compose ps --status running --format '{{.Service}}' | sort | tr '\n' ' ')" = "api db keyring worker " ] ||
   fail "expected api, db, keyring and worker running"
 
-# A person signs up, which sets up the company (F-037), names it and reads it back; the web app is served.
+# A sign-up without a link makes no account (#1471); the owner's, from the setup link, sets up the company (F-037), names it and
+# reads it back; the web app is served.
 jar="$work/cookies"
 body="$work/body"
+code=$(curl -sS -o "$body" -w '%{http_code}' -H "Origin: $origin" -H 'Content-Type: application/json' \
+  -d "{\"email\":\"stranger-$$@example.test\",\"password\":\"$(random_hex)\",\"name\":\"Stranger\"}" \
+  "$origin/api/auth/sign-up/email")
+[ "$code" = 403 ] && grep -q SIGNUP_NEEDS_LINK "$body" || { cat "$body" >&2; fail "a sign-up without a link returned $code"; }
 code=$(curl -sS -o "$body" -w '%{http_code}' -c "$jar" -H "Origin: $origin" -H 'Content-Type: application/json' \
-  -d "{\"email\":\"operator-$$@example.test\",\"password\":\"$(random_hex)\",\"name\":\"Operator check\"}" \
+  -d "{\"email\":\"operator-$$@example.test\",\"password\":\"$(random_hex)\",\"name\":\"Operator check\",\"setupToken\":\"$setup_token\"}" \
   "$origin/api/auth/sign-up/email")
 [ "$code" = 200 ] || { cat "$body" >&2; fail "sign-up returned $code"; }
 curl -fsS -b "$jar" "$origin/api/v1/workspaces" > "$body"

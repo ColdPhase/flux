@@ -36,6 +36,8 @@ mkdir -p "$out"
 export POSTGRES_USER=flux POSTGRES_DB=flux
 export POSTGRES_PASSWORD="flux-perf-$$-$(date +%s)"
 export FLUX_FIXTURE_TOKEN="fixture-perf-$$-$(date +%s)"
+# The setup link's token (#1471): Ada's first account, the owner, is made from it.
+export FLUX_SETUP_TOKEN="$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')"
 export FLUX_PORT="$port"
 export FLUX_PUBLIC_ORIGIN="http://127.0.0.1:$port"
 export FLUX_AUTH_SECRET="auth-perf-$$-$(date +%s)-$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
@@ -83,7 +85,7 @@ $compose up -d --wait api worker
 } > "$out/commit.txt"
 
 echo "Seeding through the public API (a few minutes)..."
-$compose exec -T -e FLUX_PERF_PASSWORD="$perf_password" api node --input-type=module - < scripts/perf-seed.mjs | tee "$out/seed.log"
+$compose exec -T -e FLUX_PERF_PASSWORD="$perf_password" -e FLUX_SETUP_TOKEN="$FLUX_SETUP_TOKEN" api node --input-type=module - < scripts/perf-seed.mjs | tee "$out/seed.log"
 
 # The worker turns committed events into notifications; wait until the count stops changing.
 previous=-1

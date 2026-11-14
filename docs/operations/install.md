@@ -56,12 +56,12 @@ Check that it answers:
 curl -fsS http://127.0.0.1:8081/api/v1/health    # {"status":"ok","schemaVersion":…}
 ```
 
-**Create your account now, before the server has a public address.** The first account to sign up
-becomes the company's owner, with every space, and `FLUX_SIGNUP` is `open` until you change it. On a server,
-open `http://127.0.0.1:8081` through an SSH tunnel (`ssh -L 8081:127.0.0.1:8081 you@server`), choose
-**Sign up**, and keep this account: it is yours. It works because the address is still the loopback one; once you
-set `FLUX_PUBLIC_ORIGIN` in step 2, Flux accepts sign-up only from that address. If you set it first, `./flux up` says
-that nobody has signed up yet, and so does the API log at each start, until someone has.
+**The setup link.** While no company exists, `./flux up` ends by printing a link like
+`http://127.0.0.1:8081/setup#4f0c…` (decision [F-044](../product/decisions.md#f-044--accounts-and-password-resets-by-link-1471), [#1471](https://github.com/ColdPhase/flux/issues/1471)). Only that link makes the first
+account, which becomes the company's owner with every space: its token, `FLUX_SETUP_TOKEN` in `docker/.env`, is in nobody else's
+hands. Every later account comes from an invite link that an owner or admin makes, or from single sign-on. You can create the owner's
+account now (on a server, through an SSH tunnel: `ssh -L 8081:127.0.0.1:8081 you@server`) or after step 3 on the public
+address: `./flux up` prints the link with the address it has, each time, until the company exists.
 
 Do not run `./flux demo` on a server: it creates accounts with printed passwords, and it refuses a
 non-loopback origin unless forced.
@@ -77,11 +77,10 @@ FLUX_MAIL_FROM=Flux <flux@example.org>
 ```
 
 `FLUX_PUBLIC_ORIGIN` must be exactly the address people type, with `https` and no path. Flux refuses
-any non-loopback `http` origin. Leave `FLUX_SIGNUP` as it is for now (`open`): you close sign-up in
-step 5, after your own account exists. Every other setting is in the
-[configuration reference](configuration.md).
+any non-loopback `http` origin. Every other setting is in the [configuration reference](configuration.md).
 
-Email is optional, but without it nobody can reset a forgotten password. In the SMTP URL,
+Email is optional. Without it, people still get a new password from a reset link that an owner or admin
+makes in **Settings › Company**, and you get one for any account, your own too, with `./flux reset-link <email>` on the server. In the SMTP URL,
 percent-encode special characters of the user name and password (`@` is `%40`, `/` is `%2F`). Use
 `smtps://…:465` or `smtp://…:587?requireTLS=true`; plain `smtp://` without TLS is only for a mail
 relay on a trusted network.
@@ -111,10 +110,11 @@ instead (the same file, with its address in `FLUX_TRUSTED_PROXIES`), are in the
 
 ### 4. Create your account and check mail
 
-Open `https://flux.example.org` and sign in with the account you made in step 1 (if you did not,
-sign up now: the first account sets up the company and is its owner, and nothing stops a stranger who reaches the
-address first). It owns the default space **Everyone**; everyone else joins by an invite link from an admin (or
-by signing in, with single sign-on). Spaces are added from **New › Space**. The password needs 12 to 128 characters.
+Open the setup link that `./flux up` printed (run it again to see it with the public address) and create the owner's
+account, or sign in with the one you made in step 1. A Flux with no company opens on **Set up Flux** by itself; without
+the link's token it makes no account. The owner has the default space **Everyone**; everyone else joins by an invite link
+from an owner or admin (or by signing in, with single sign-on). Spaces are added from **New › Space**. The password
+needs 12 to 128 characters.
 
 <p align="center">
   <picture>
@@ -129,38 +129,29 @@ Check that email works:
 
 ```sh
 curl -fsS https://flux.example.org/api/v1/auth/capabilities
-# {"passwordReset":"available","signup":"open",…}
+# {"passwordReset":"available","setup":false,"signup":"link",…}
 ```
 
 `passwordReset` must be `available`. Then sign out, choose **Forgot password** with your own address
 and check that the mail arrives. A send that fails is logged by the API as `Password reset mail
 failed`, with the SMTP server's answer.
 
-### 5. Decide who can sign up
+### 5. Who can create an account
 
-With `open`, anyone who can reach the server can create an account. Choose the rule for your
-instance in `docker/.env` and apply it with `./flux up`:
+Nobody can create an account on their own (decision [F-044](../product/decisions.md#f-044--accounts-and-password-resets-by-link-1471), [#1471](https://github.com/ColdPhase/flux/issues/1471)). An account comes from:
 
-| You want | Set | What happens |
+| Way in | Who makes it | What happens |
 | --- | --- | --- |
-| Anyone who reaches the server may join | `FLUX_SIGNUP=open` | Fine on a private network; not on the open internet. |
-| Anyone with a working mailbox may join | `FLUX_SIGNUP=verified` (needs email) | A new account confirms its address by mail before it can sign in. This proves a mailbox, **not membership**: any address that can receive mail can sign up. Without email, sign-up is closed. |
-| Only your team, with your identity provider | [single sign-on](single-sign-on.md) | Only people your provider lets in can sign in. In `sso` mode password sign-up is closed whatever `FLUX_SIGNUP` says. |
-| Only the people you add, without single sign-on | `FLUX_SIGNUP=off` after their accounts exist | Nobody can create an account, **including you**. An invite link never opens closed sign-up. |
+| The setup link | `./flux up`, while no company exists | The first account; it sets up the company and is its owner. |
+| An invite link | An owner or admin, in **Settings › Company** ([administration](administration.md#invite-links)) | Always lets the person create an account, with the address filled in when the link is for one, and joins them with the link's role. One link, one person. |
+| Single sign-on | Your identity provider ([single sign-on](single-sign-on.md)) | Everyone your provider lets in gets an account and joins as a member on their first sign-in; there are no invite links then. |
 
-One Flux is one company. The first account on the server sets it up and becomes its owner, so create
-your own account first. A later account with a password belongs to no company until an owner or admin
-adds it with **Add someone** or an invite link ([administration](administration.md#invite-links)): a
-stranger who signs up sees nothing and can start nothing. With single sign-on, everyone your provider
-lets in joins the company as a member on their first sign-in. Inside the company, a person sees only
-the spaces they were added to, and the default space Everyone.
+One Flux is one company. Inside it, a person sees only the spaces they were added to, and the default space Everyone.
 
-**To add someone while sign-up is `off`**: set `FLUX_SIGNUP=verified` (or `open`), run `./flux up`,
-send them an invite link, and set it back to `off` with `./flux up` once they have joined.
-
-**Locked out?** If you closed sign-up before creating your own account, set `FLUX_SIGNUP=open`, run
-`./flux up`, create the account, then close it again. Flux has no command that creates an account or
-sets a password.
+**A forgotten password** is a reset link: **Forgot password** mails one when the server has email, an owner or admin
+makes one next to the person in **Settings › Company** and sends it themselves, and `./flux reset-link <email>` prints
+one for any account, the owner's too. A link works once and for `FLUX_PASSWORD_RESET_TTL_SECONDS` (one hour); a newer
+link or a changed password stops it.
 
 After you sign up you are the company's owner, in the default space **Everyone**. Make your first space with
 **New › Space**: a name, the people (chosen from the company) and an AI switch that starts on. To bring in the

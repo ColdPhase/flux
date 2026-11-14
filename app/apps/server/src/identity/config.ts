@@ -52,13 +52,10 @@ export interface IdentityConfig {
   /** With a provider in `sso` mode: password sign-in, sign-up, reset and password-only sessions are refused. */
   ssoOnly: boolean;
   /**
-   * Who may create a password account (F-024 S5a, #313). `open` is today's behaviour; `verified` makes a new
-   * account prove its address by mail before it can sign in; `off` closes password sign-up. `verified` without
-   * SMTP cannot send that mail, and any sign-on provider makes password sign-up ordinary-closed (SSO-only mode),
-   * so the effective value is `off` (`signupRequested` keeps what the operator asked for).
+   * `FLUX_SETUP_TOKEN` (#1471): the token of the setup link `<origin>/setup#<token>` that `./flux up` writes and prints. The sign-up that
+   * makes the first account, the company's owner, must carry it. Null when unset: then no first account can be made.
    */
-  signup: 'open' | 'verified' | 'off';
-  signupRequested: 'open' | 'verified' | 'off';
+  setupToken: string | null;
 }
 
 function isAddressOrRange(value: string) {
@@ -194,8 +191,8 @@ export function loadIdentityConfig(env: NodeJS.ProcessEnv = process.env): Identi
   const idleSetting = env.FLUX_SESSION_IDLE?.trim();
   const sessionIdleSeconds = idleSetting ? parseSessionDuration('FLUX_SESSION_IDLE', idleSetting, 0, 300, 365 * 86_400) : Math.min(DEFAULT_SESSION_IDLE_SECONDS, sessionMaxAgeSeconds);
   if (sessionIdleSeconds > sessionMaxAgeSeconds) throw new Error('FLUX_SESSION_IDLE must not be longer than FLUX_SESSION_MAX_AGE');
-  const requested = (env.FLUX_SIGNUP ?? 'open').trim().toLowerCase();
-  if (requested !== 'open' && requested !== 'verified' && requested !== 'off') throw new Error('FLUX_SIGNUP must be open, verified or off');
+  const setupToken = env.FLUX_SETUP_TOKEN?.trim() || null;
+  if (setupToken !== null && !/^[A-Za-z0-9_-]{32,256}$/.test(setupToken)) throw new Error('FLUX_SETUP_TOKEN must be 32 to 256 letters, digits, - or _ (./flux up writes one)');
   const oidc = loadOidcConfig(env);
   const mode = (env.FLUX_SSO_MODE ?? 'sso').trim().toLowerCase();
   if (mode !== 'prepare' && mode !== 'sso') throw new Error('FLUX_SSO_MODE must be prepare or sso');
@@ -203,9 +200,7 @@ export function loadIdentityConfig(env: NodeJS.ProcessEnv = process.env): Identi
   return {
     publicOrigin,
     secret,
-    signupRequested: requested,
-    // In SSO-only mode password sign-up is closed; prepare mode keeps it as configured, since password accounts exist then.
-    signup: (oidc && mode === 'sso') || (requested === 'verified' && !(smtpUrl && from)) ? 'off' : requested,
+    setupToken,
     ssoMode: mode,
     ssoOnly: oidc !== null && mode === 'sso',
     trustedProxies,

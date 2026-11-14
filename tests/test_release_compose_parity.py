@@ -121,7 +121,7 @@ class ReleaseComposeParityTest(unittest.TestCase):
         source = ("services:\n  api:\n    environment:\n      FLUX_PERSONAL_RUNS: ${FLUX_PERSONAL_RUNS:-}\n"
                   "      FLUX_TEST_FAILURE_INJECTION: ${FLUX_TEST_FAILURE_INJECTION:-false}\n"
                   "    mem_limit: 1g\n  worker:\n    environment:\n      FLUX_PERSONAL_RUNS: ${FLUX_PERSONAL_RUNS:-}\n")
-        release = ("services:\n  api:\n    environment:\n      FLUX_SIGNUP: ${FLUX_SIGNUP:-open}\n"
+        release = ("services:\n  api:\n    environment:\n      FLUX_SETUP_TOKEN: ${FLUX_SETUP_TOKEN:-}\n"
                    "  worker:\n    environment:\n      FLUX_PERSONAL_RUNS: ${FLUX_PERSONAL_RUNS:-}\n")
         overlay = "services:\n  api:\n    environment:\n      FLUX_PERSONAL_RUNS: ${FLUX_PERSONAL_RUNS:-}\n"
         self.assertEqual(missing_in_release(source, [release]), {"api": ["FLUX_PERSONAL_RUNS"]})

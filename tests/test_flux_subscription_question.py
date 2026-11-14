@@ -179,7 +179,7 @@ class SubscriptionQuestionTest(unittest.TestCase):
 
     def existing_env(self, runtime: str = "", terms: str = "") -> None:
         self.env_file.write_text(
-            "FLUX_PROJECT=flux-ai-test\nFLUX_PORT=8081\nFLUX_PUBLIC_ORIGIN=http://127.0.0.1:8081\n"
+            "FLUX_PROJECT=flux-ai-test\nFLUX_PORT=8081\nFLUX_PUBLIC_ORIGIN=http://127.0.0.1:8081\nFLUX_SETUP_TOKEN=" + "c" * 64 + "\n"
             f"FLUX_AGENT_RUNTIME={runtime}\nFLUX_AGENT_RUNTIME_COMMERCIAL_TERMS={terms}\n"
             "FLUX_RUNTIME_MANAGER_SECRET=" + "a" * 64 + "\nFLUX_RUNTIME_SECRET_1=" + "b" * 64 + "\n")
         self.env_file.chmod(0o600)

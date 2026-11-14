@@ -24,6 +24,7 @@ case "$1" in
     case "$*" in
       *'psql'*'max(version)'*) printf '78\n' ;;
       *'psql'*'string_agg'*) printf '1,2,3\n' ;;
+      *'psql'*'FROM workspaces WHERE company'*) printf '%s\n' "${FLUX_TEST_COMPANIES:-0}" ;;
       *'psql'*) printf '1\n' ;;
       *'pg_dump --version'*) printf 'pg_dump (PostgreSQL) 17.0\n' ;;
       *'pg_dump'*) printf 'dump' ;;
@@ -59,6 +60,7 @@ class UpStatusTest(unittest.TestCase):
         env_file.chmod(0o600)
         env = {k: v for k, v in os.environ.items() if not k.startswith("FLUX_")}
         env.update(PATH=f"{self.bin_dir}:{os.environ['PATH']}", FLUX_TEST_LOG=str(self.log), FLUX_TEST_INFO=INFO_OK, FLUX_WAIT_TIMEOUT="5")
+        env["FLUX_TEST_COMPANIES"] = os.environ.get("FLUX_TEST_COMPANIES", "0")
         return subprocess.run([str(self.checkout / "flux"), command, *extra], cwd=self.base, env=env, stdin=subprocess.DEVNULL,
                               capture_output=True, text=True, timeout=60)
 
@@ -78,7 +80,9 @@ class UpStatusTest(unittest.TestCase):
             "  Calls     off (FLUX_CALLS=on in docker/.env turns them on)",
             "  Backups   none yet (run ./flux backup, and add it to cron: docs/operations/backup-restore.md)",
         ])
-        self.assertIn("Create an account there, or run ./flux demo for sample data and two logins.", done.stdout)
+        # #1484 with #1477: no company yet, so the setup link is printed, and the demo is offered on a local address only.
+        self.assertRegex(done.stdout, r"\n  http://127\.0\.0\.1:8081/setup#[0-9a-f]{64}\n")
+        self.assertIn("Or run ./flux demo for sample data and two logins.", done.stdout)
 
     def test_a_server_with_everything_on_says_so_and_never_suggests_the_demo(self) -> None:
         backups = self.checkout / "backups"
@@ -97,7 +101,15 @@ class UpStatusTest(unittest.TestCase):
             "  Backups   last one 2026-11-13, in backups",
         ])
         self.assertNotIn("./flux demo", done.stdout + done.stderr)
-        self.assertIn("Create an account there.", done.stdout)
+        self.assertRegex(done.stdout, r"\n  https://flux\.example\.org/setup#[0-9a-f]{64}\n")
+
+    def test_once_a_company_exists_up_prints_no_setup_link(self) -> None:
+        """#1484: the link is for the first account only; afterwards ./flux up points at the invite links and the reset link."""
+        os.environ["FLUX_TEST_COMPANIES"] = "1"
+        self.addCleanup(os.environ.pop, "FLUX_TEST_COMPANIES", None)
+        done = self.run_flux("up", ["FLUX_PUBLIC_ORIGIN=http://127.0.0.1:8081", "FLUX_AGENT_RUNTIME="])
+        self.assertNotIn("/setup#", done.stdout)
+        self.assertIn("Sign in there. People join from the invite links you make in Settings › Company; ./flux reset-link <email> makes a password reset link.", done.stdout)
 
     def test_calls_and_https_read_their_switches(self) -> None:
         """#1472 with #1477: the Calls line reads FLUX_CALLS, and the Address line says who serves HTTPS."""

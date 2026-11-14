@@ -118,7 +118,7 @@ describe('the real routes, with their log read back', () => {
       logger: { level: 'info', serializers: { req: requestLogSerializer }, stream: { write: (line: string) => { lines.push(JSON.parse(line) as Record<string, unknown>); } } } });
     useDomainErrors(instance);
     const config = loadIdentityConfig({ FLUX_PUBLIC_ORIGIN: ORIGIN, FLUX_AUTH_SECRET: SECRET, FLUX_AUTH_RATE_LIMIT: options.rateLimit ? 'true' : 'false' });
-    const identity = registerIdentity(instance, { db: database.db, config, mailer: { send: async (message) => { sent.push(message); }, close: () => undefined } });
+    const identity = registerIdentity(instance, { db: database.db, config, mailer: { send: async (message) => { sent.push(message); }, close: () => undefined }, openSignUp: true });
     // As a real route: it knows the person first (the session), then the access policy refuses.
     instance.get('/api/v1/probe/:projectId', async (request) => { await identity.requirePrincipal(request); throw new DomainError(403, 'PROJECT_FORBIDDEN', 'You cannot open this'); });
     await instance.ready();

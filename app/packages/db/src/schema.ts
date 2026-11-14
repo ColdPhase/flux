@@ -51,8 +51,6 @@ export const authUsers = pgTable('auth_users', {
   name: displayName('name').notNull(),
   email: text('email').notNull().unique(),
   emailVerified: boolean('email_verified').notNull().default(false),
-  /** Set on a password sign-up while sign-up is `verified` (migration 0091, #313): no password sign-in until the address is verified. */
-  verificationRequired: boolean('verification_required').notNull().default(false),
   /** Raised by a password reset and by "Sign out all other devices" (migration 0036, #1031): device cookies of an older generation stop counting. */
   deviceGeneration: integer('device_generation').notNull().default(0),
   /** The IANA zone of the browser the person uses Flux in, saved by the web app when it differs (migration 0052, #1168, C-57); UTC until one has said. */
@@ -162,6 +160,22 @@ export const authLinkIntents = pgTable('auth_link_intents', {
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   usedAt: timestamp('used_at', { withTimezone: true }),
 }, (table) => [index('auth_link_intents_user_idx').on(table.userId)]);
+
+/**
+ * Password reset links (migration 0082, #1471): one row per link, mailed or made in Settings › Company or by `./flux reset-link`, keyed by
+ * the hashed verification identifier Better Auth stores for its token. Never the token.
+ */
+export const passwordResetLinks = pgTable('password_reset_links', {
+  id: uuid('id').primaryKey(),
+  userId: text('user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  verificationIdentifier: text('verification_identifier').notNull().unique(),
+  via: text('via').$type<'settings' | 'command' | 'email'>().notNull(),
+  madeBy: text('made_by').references(() => authUsers.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  usedAt: timestamp('used_at', { withTimezone: true }),
+  stoppedAt: timestamp('stopped_at', { withTimezone: true }),
+}, (table) => [index('password_reset_links_open_idx').on(table.userId).where(sql`used_at IS NULL AND stopped_at IS NULL`)]);
 
 /** Operator re-keys and provider unlinks (migrations 0093/0095, #315). Old issuer fields stay NULL when history never recorded them. */
 export const authIdentityAudit = pgTable('auth_identity_audit', {

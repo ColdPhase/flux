@@ -50,7 +50,7 @@ export async function writeEnv(directory, state) {
     MOBILE_PROJECT: state.project, MOBILE_STATE: process.env.MOBILE_HOST_STATE ?? directory, MOBILE_PORT: state.port,
     MOBILE_UID: process.getuid(), MOBILE_GID: process.getgid(),
     MOBILE_IMAGE: state.image ?? 'flux-mobile-unbuilt', MOBILE_ORIGIN: state.origin,
-    MOBILE_DB_PASSWORD: secret.databasePassword, MOBILE_AUTH_SECRET: secret.authSecret,
+    MOBILE_DB_PASSWORD: secret.databasePassword, MOBILE_AUTH_SECRET: secret.authSecret, MOBILE_SETUP_TOKEN: secret.setupToken,
     MOBILE_VAPID_PUBLIC: secret.vapid.publicKey, MOBILE_VAPID_PRIVATE: secret.vapid.privateKey,
     // Apple's push service refused the unreachable `mailto:…@example.test` contact with 403 BadJwtToken
     // on a real iPhone (#20, 2026-10-05). Once public, the session signs with its own https origin.
@@ -70,6 +70,8 @@ export async function initialize(directory, candidate, port = '8232') {
   const ecdh = createECDH('prime256v1'); ecdh.generateKeys();
   const credentials = alias => ({ email: `${alias}-${suffix.slice(0, 4)}@example.test`, password: readablePassword(), name: `Mobile fixture ${alias}` });
   const secret = { databasePassword: randomBytes(32).toString('hex'), authSecret: randomBytes(32).toString('hex'),
+    // The setup link's token (#1471): the producer's first account, the owner, is made from it.
+    setupToken: randomBytes(32).toString('hex'),
     vapid: { publicKey: ecdh.getPublicKey().toString('base64url'), privateKey: ecdh.getPrivateKey().toString('base64url') },
     recipient: credentials('recipient'), producer: credentials('producer') };
   const state = { schema: 1, candidate, project: `flux-mobile-${suffix}`, port: number,
