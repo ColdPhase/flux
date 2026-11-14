@@ -114,6 +114,9 @@ export function ConnectionFields({ disabled, onKeyRefused, keyHelpId }: {
   // What is wrong with the key now in the field, said under it: refused by the provider, or turned away by the server (#1424).
   const keyProblem = refused ? listFailure(provider as AiProviderKind, 'key_refused') : keyed && rejected ? rejected.message : '';
   useEffect(() => { onKeyRefused(!!keyProblem); }, [keyProblem, onKeyRefused]);
+  // The server's AI_KEY_FORMAT message already ends with the provider's key hint: while it is shown, the help line under the key is
+  // hidden, so the hint is said in one place, not two.
+  const keyHelp = !(keyed && rejected?.key);
   // Flux's prices of the provider come with its model list, read or not (#1465).
   const prices = list?.priceList ?? null;
   const known = provider && model ? listPrice(prices, model) : null;
@@ -199,13 +202,13 @@ export function ConnectionFields({ disabled, onKeyRefused, keyHelpId }: {
       <p id={`${id}-endpoint`} className="background-settings__help">A server that works like OpenAI’s, such as Ollama, LM Studio or vLLM. Use an https address.</p>
     </> : null}
     <label>API key<input name="apiKey" type="password" autoComplete="off" spellCheck={false} required minLength={8} maxLength={512}
-      aria-invalid={refused || rejected?.key || undefined} aria-describedby={`${keyHelpId}${keyProblem ? ` ${id}-refused` : ''}`}
+      aria-invalid={refused || rejected?.key || undefined} aria-describedby={[keyHelp ? keyHelpId : '', keyProblem ? `${id}-refused` : ''].filter(Boolean).join(' ') || undefined}
       onBlur={(event) => keyLeft(event.currentTarget.value)}
       // Enter before the models are read reads them (the key's test) instead of saving: the form never goes on without a chosen model.
       onKeyDown={(event) => { if (event.key === 'Enter' && waitingForKey) { event.preventDefault(); keyLeft(event.currentTarget.value); } }}
       onChange={() => { if (keyProblem) { setListing({ state: 'idle' }); listedKey.current = ''; } }} /></label>
     {keyProblem ? <p id={`${id}-refused`} className="background-settings__error" role="alert">{keyProblem}</p> : null}
-    <p id={keyHelpId} className="background-settings__help">{info ? info.keyHint : 'Choose a provider first.'}{provider === 'anthropic' ? ' If the key belongs to your Claude Max, Ultra or Team plan, the plan’s monthly API credits pay for it.' : ''}{keyed ? ' Flux checks it when you leave the field.' : ''}</p>
+    {keyHelp ? <p id={keyHelpId} className="background-settings__help">{info ? info.keyHint : 'Choose a provider first.'}{provider === 'anthropic' ? ' If the key belongs to your Claude Max, Ultra or Team plan, the plan’s monthly API credits pay for it.' : ''}{keyed ? ' Flux checks it when you leave the field.' : ''}</p> : null}
     {dropdown ? (
       <label>Model
         <Select name={other ? undefined : 'model'} required={!other} aria-label="Model" value={other ? OTHER : model} placeholder="Choose a model" disabled={disabled} aria-describedby={`${id}-model`}

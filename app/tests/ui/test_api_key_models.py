@@ -257,11 +257,17 @@ class ApiKeyModels(unittest.TestCase):
         expect(page.get_by_role("combobox", name="Model")).to_have_count(0)
         expect(page.get_by_role("textbox", name="Model")).to_have_count(0)
         expect(page.get_by_role("button", name="Connect", exact=True)).to_be_disabled()
+        # The server's message ends with Anthropic's key hint; the help line under the key, which says it too, is hidden meanwhile.
+        hint = "An Anthropic API key beginning with sk-ant-."
+        expect(alert).to_contain_text(hint)
+        self.assertEqual(page.evaluate("document.body.innerText").count(hint), 1, "the key hint is said once")
+        expect(page.get_by_label("API key", exact=True)).to_have_attribute("aria-describedby", re.compile(r"^\S+-refused$"))
         shot(page, named("api-key-models-wrong-format"))
         self.assertEqual(self.connected(page), before, "nothing is saved")
         # An Anthropic key clears it and is read.
         self.type_key(page, f"sk-ant-api03-{MARK * 3}KM08")
         expect(alert).to_have_count(0)
+        self.assertEqual(page.evaluate("document.body.innerText").count(hint), 1, "the help line says the hint again, once")
         expect(page.get_by_role("combobox", name="Model")).to_be_enabled()
         expect(page.get_by_role("button", name="Connect", exact=True)).to_be_enabled()
         # A list the server can't read (a 5xx) is the one case for the free field.
