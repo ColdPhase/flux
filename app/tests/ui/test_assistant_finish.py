@@ -205,8 +205,8 @@ class AssistantFinish(unittest.TestCase):
                 self.axe(page, f"your agents ({tag})")
                 row.get_by_role("link").click()
                 expect(page.get_by_label("Instructions")).to_be_visible()
-                expect(page.get_by_role("heading", name="Schedules")).to_be_visible()
-                self.axe(page, f"an agent's page, with its schedules ({tag})")
+                # An agent's schedules are listed in its conversation's header only, not on its page (#1419).
+                self.axe(page, f"an agent's page ({tag})")
 
     def test_14_the_conversation_with_the_ask_bar_has_no_axe_violations(self) -> None:
         for phone, dark in ((False, False), (True, True)):

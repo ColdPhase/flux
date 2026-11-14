@@ -951,10 +951,13 @@ class ScenarioJourney:
         s, lamp = self.s, self.s["lamp"]
         page = self.page("ada")
         page.goto("/")
-        # Home continues with the one next step (F5, #342); the changes themselves are in the summary.
-        card = page.get_by_role("region", name="Continue where you left off").get_by_role("link")
-        expect(card).to_be_visible()
-        expect(card).to_contain_text("Answer Jonas's question")
+        # The one next step (F5, #342) is Jonas's question. Home shows each thing once (#1424): it waits in "Waiting for you", so
+        # "Continue where you left off" does not repeat it. The changes themselves are in the summary.
+        summary = self.api("ada", "GET", "/api/v1/return?place=home", status=200)
+        self.assertEqual(summary["nextStep"]["text"], "Answer Jonas's question")
+        waiting = page.get_by_role("region", name=re.compile("^Waiting for you"))
+        expect(waiting.get_by_role("link").filter(has_text="solder the VL53L1X board")).to_be_visible()
+        expect(page.get_by_role("region", name="Continue where you left off")).to_have_count(0)
         changed = [item for item in self.api("ada", "GET", "/api/v1/return?place=home", status=200)["items"] if item["text"] == f"Decision changed: {D2}"]
         self.assertEqual([item["detail"] for item in changed], [f"Previously: {D1}"])
         expect(page.get_by_role("button", name=re.compile("Mark all", re.I))).to_have_count(0)

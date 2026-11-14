@@ -161,6 +161,10 @@ class WindowOverEmptyPages(unittest.TestCase):
         for behind in PAGES:
             with self.subTest(behind=behind):
                 self.open_page(page, behind)
+                if behind == "Map":
+                    # A space's Map tab is the map itself, empty or not: its one add is "Thought", so it has no "+" (#1424).
+                    expect(page.get_by_role("button", name="Create", exact=True)).to_have_count(0)
+                    continue
                 for kind in ("Task", "Thought", "Decision", "Page", "Space"):
                     page.get_by_role("button", name="Create", exact=True).tap()
                     # The "+" opens Create on Task (#1438 point 8); the other four are its tabs.

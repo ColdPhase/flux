@@ -13,6 +13,7 @@ import uuid
 from playwright.sync_api import Page, expect, sync_playwright
 
 from account import account_link, sign_out_button
+from create_window import kind_tab
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, start_forwarder
 
 PASSWORD = "one way to do each thing"
@@ -98,8 +99,8 @@ class UxSimplicityPartAAccount(unittest.TestCase):
         expect(page.get_by_role("button", name="New space")).to_have_count(0)
         expect(page.locator(".phone-fab")).to_have_count(1)
         page.locator(".phone-fab").tap()
-        sheet = page.get_by_role("dialog", name="Create")
-        expect(sheet.get_by_role("button", name="Space", exact=True)).to_be_visible()
+        # The "+" opens the one Create window on Task (#1438 point 8); a space is its Space tab.
+        expect(kind_tab(page, "Space")).to_be_visible()
         page.keyboard.press("Escape")
         # The Messages list: its own "+ New message" starts a message; the floating "+" (which cannot) is not there.
         page.goto("/dm")
