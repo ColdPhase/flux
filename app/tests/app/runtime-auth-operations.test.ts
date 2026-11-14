@@ -7,15 +7,14 @@ import {
   RuntimeAuthSupersededError,
   type RuntimeAuthClaim, type RuntimeAuthOperation,
 } from '@flux/db';
-import { database, db, insertedHuman, pool, connectionString } from './support/db.js';
+import { database, db, insertedHuman, insertedRuntimeSlot, pool, connectionString } from './support/db.js';
 
 async function fixture(work: (target: RuntimeAuthClaim, operation: ReturnType<typeof runtimeAuthOperations>) => Promise<void>) {
   const owner = await insertedHuman('auth-fence-owner');
   const sessionId = randomUUID(), bindingId = randomUUID(), boot = randomUUID();
-  const slot = `runtime-${900 + Math.floor(Math.random() * 99)}`;
+  const slot = await insertedRuntimeSlot(boot);
   await pool.query(`INSERT INTO auth_sessions(id, user_id, token, expires_at) VALUES ($1,$2,$3,clock_timestamp()+interval '1 hour')`,
     [sessionId, owner.id, `test-cookie-${randomUUID()}`]);
-  await pool.query(`INSERT INTO agent_runtime_slots(slot,state,boot_id) VALUES ($1,'ready',$2)`, [slot, boot]);
   await pool.query(`INSERT INTO agent_runtime_bindings(id,owner_user_id,slot,state) VALUES ($1,$2,$3,'active')`, [bindingId, owner.id, slot]);
   try {
     await work({ ownerUserId: owner.id, sessionId, bindingId, client: 'claude_code', kind: 'check', leaseMs: 60_000, lifetimeMs: 120_000 }, runtimeAuthOperations(db));

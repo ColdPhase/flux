@@ -38,7 +38,8 @@ const { db, pool } = createDatabase(connectionString);
 const origin = 'http://127.0.0.1:18279';
 const authSecret = process.env.FLUX_AUTH_SECRET ?? `runtime-console-${'x'.repeat(40)}`;
 // Two slots: each describe's owner keeps theirs (a released test supervisor does not restart).
-const base = 900 + Math.floor(Math.random() * 98);
+// 300-497: the files that draw a slot by chance in 500-999 and the pi harness's rows (#1474) are elsewhere, and 100-299 is `insertedRuntimeSlot`'s.
+const base = 300 + Math.floor(Math.random() * 198);
 const slotNames = [`runtime-${base}`, `runtime-${base + 1}`];
 const managerSecret = slotSecret();
 const logs: string[] = [];

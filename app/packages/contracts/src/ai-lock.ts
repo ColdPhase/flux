@@ -183,6 +183,7 @@ export const AI_WORK_QUEUES = {
   ai: ['PERSONAL_RUN_JOB', 'ASSISTANT_TICK_JOB', 'SPACE_AI_SWEEP_JOB'],
   /** Jobs that start no AI work, each with the reason (the test fails on a job that is in neither list). */
   notAi: {
+    AI_PRICE_LIST_JOB: 'ai-price-list.refresh.v1 fetches the public model price lists (LiteLLM\'s file and OpenRouter\'s model list, #1465) and stores them; it reads no workspace content, sends none and starts no AI work',
     API_KEY_MODEL_LIST_JOB: 'api-key.model-list.v1 reads which models a person\'s API key can use from its provider (#1218); it sends no content and starts no AI work',
     IDEMPOTENCY_CLEANUP_JOB: 'idempotency.cleanup.v1 deletes expired idempotency keys; it reads no workspace content',
     NOTIFICATION_EMAIL_JOB: 'notification.email.v1 sends a person\'s e-mail; it skips an AI-origin notification of a space whose AI is off (ai_origin)',

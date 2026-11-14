@@ -20,6 +20,22 @@ export async function insertedHuman(label: string): Promise<Principal> {
 }
 
 /**
+ * A `ready` runtime slot row under a name nobody else holds, for tests that drive the runtime's rows with a fake manager; returns the name.
+ * A slot name is `runtime-<1..999>` (`agent_runtime_slots_slot_check`), so it cannot carry a random id, and the files of the suite share one
+ * database and run together: the insert is the claim (`ON CONFLICT DO NOTHING` says whether the name was free), and another name is tried.
+ * 100-299 is this helper's own range. The tests that start a real test slot pick theirs by chance in 300-999, and the pi harness leaves a row
+ * behind for every file that used it (#1474), so a name drawn by chance there was already taken (duplicate key `agent_runtime_slots_pkey`).
+ */
+export async function insertedRuntimeSlot(bootId: string): Promise<string> {
+  const names = Array.from({ length: 200 }, (_, index) => `runtime-${100 + index}`).sort(() => Math.random() - 0.5);
+  for (const slot of names) {
+    const claimed = await pool.query(`INSERT INTO agent_runtime_slots(slot, state, boot_id) VALUES ($1, 'ready', $2) ON CONFLICT (slot) DO NOTHING`, [slot, bootId]);
+    if (claimed.rowCount === 1) return slot;
+  }
+  throw new Error('every runtime slot name of 100-299 is taken');
+}
+
+/**
  * Puts a person in the state of a company member who was never added to a space, for one check, and returns the way back.
  * A company owner or admin always reaches every space (#903), so this edits the rows directly: it drops their grant, makes the
  * space restricted and makes them a plain member. Tests whose fixture person is the company's owner use it to show what an agent,

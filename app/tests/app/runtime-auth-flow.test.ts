@@ -3,7 +3,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import { test } from 'node:test';
 import { agentRuntimeUseCases, type RuntimeManagerPort, type RuntimeAuthOperation, type AgentRuntimeConfig } from '@flux/core';
 import { agentRuntimeStore, agentRuntimeOperations, createDatabase } from '@flux/db';
-import { db, pool, insertedHuman, connectionString } from './support/db.js';
+import { db, pool, insertedHuman, insertedRuntimeSlot, connectionString } from './support/db.js';
 
 // Actual DB adapter + production core. Manager barriers hold external responses without a DB
 // connection. Physical late-CLI/reboot behavior is separately exercised by real supervisor/PTY tests.
@@ -31,9 +31,8 @@ async function fixture(work: (f: Awaited<ReturnType<typeof setup>>) => Promise<v
 }
 async function setup() {
   const owner = await insertedHuman('auth-core-owner'), sessionId = randomUUID(), bindingId = randomUUID(), bootId = randomUUID();
-  const slot = `runtime-${900 + Math.floor(Math.random()*99)}`;
+  const slot = await insertedRuntimeSlot(bootId);
   await pool.query(`INSERT INTO auth_sessions(id,user_id,token,expires_at) VALUES ($1,$2,$3,clock_timestamp()+interval '1 hour')`, [sessionId,owner.id,`fixture-${randomUUID()}`]);
-  await pool.query(`INSERT INTO agent_runtime_slots(slot,state,boot_id) VALUES ($1,'ready',$2)`, [slot,bootId]);
   await pool.query(`INSERT INTO agent_runtime_bindings(id,owner_user_id,slot,state) VALUES ($1,$2,$3,'active')`, [bindingId,owner.id,slot]);
   const manager: RuntimeManagerPort = {
     async slots() { return { ok: true, value: [] }; }, async bind() { return { ok:true,value:undefined }; },

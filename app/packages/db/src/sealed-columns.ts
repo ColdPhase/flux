@@ -34,6 +34,9 @@ const account = [
   'oauth_client_resource', 'oauth_consent', 'oauth_grant_authentication', 'oauth_refresh_token', 'oauth_resource', 'jwks', 'push_subscriptions',
   'notification_addresses', 'notification_address_tokens', 'notification_address_sends', 'notification_preferences', 'notification_verification_sends', 'github_credentials',
   'github_oauth_flows',
+  // #1471: who made a password reset link for whom, how, and when it was used or stopped. A company-level account row (user ids, a hashed
+  // identifier, times): no workspace path, no text a person wrote, never the token; a sealed workspace has no part in it.
+  'password_reset_links',
 ] as const;
 const system = [
   'flux_schema_version', 'outbox', 'file_garbage', 'notification_cursor', 'password_attempts', 'auth_rate_limits', 'auth_sign_in_throttle', 'encrypted_workspace_creations', 'samples', 'sample_results', 'live_access_fences',
