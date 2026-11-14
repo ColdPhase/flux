@@ -227,6 +227,7 @@ labels. A time is Geist with tabular figures, as the line under a message alread
 - The phone follows the system text size.
 - Every size is a `--fs-*` token. The initials of a 16 px face (the `Avatar` `xs`, the faces under a message, the face in a
   mention chip) are `--fs-face` (px, #1370) scaled by .72 with a transform, so the type stays a token and two letters never run wider than the circle.
+  The initials of the 32 px face are `--fs-face-lg`: 12 px, and 12.5 px on the phone like Meta (px as well, #1424).
 - **The offline page** (`/offline.html`, what an offline navigation shows) uses the same tokens: Geist (the app serves it from `/fonts`,
   and its service worker caches it), `--t1` and `--t3`, a 20 px title at 600, and one flat primary button, "Try again", with radius 10 (32 px high, 44 on touch).
 
@@ -440,7 +441,8 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
 - **One "+".** A floating soft-fill button above the tab bar opens the Create window, **straight on Task**
   (founder direction, Hubert, 2026-11-13, [#1438](https://github.com/ColdPhase/flux/issues/1438) point 8). There is no list of types first: Task,
   Thought, Decision, Page and Space are the window's own tabs, the same five as on the computer, so a task is two taps (the "+", then
-  the title) and the other four are one tap more. There is one "+" for each thing (founder
+  the title) and the other four are one tap more. All five tabs and Close share the sheet's head row down to a 320 px phone (the tabs then
+  lose their gaps and side room and keep 44 px targets, #1424); only large text scrolls the tabs sideways. There is one "+" for each thing (founder
   decision, Hubert, 2026-11-13, #1419): the Spaces tab has no "+ New space" button (the "+" › Space is the one way in), and the
   Messages list has no floating "+" (it cannot make a message), only its own **+ New message**, which starts a message.
 - **Inside a space.** Founder direction, Hubert, 2026-11-12 (#1239); the approved mock-up is the

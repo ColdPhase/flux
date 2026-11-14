@@ -7,6 +7,7 @@ import { request } from '../api/client';
 
 let choice: AssistantModelChoice | null = null;
 let started = false;
+let failed = false;
 const listeners = new Set<() => void>();
 const emit = () => listeners.forEach((listener) => listener());
 const subscribe = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
@@ -16,21 +17,25 @@ const subscribe = (listener: () => void) => { listeners.add(listener); return ()
 export async function refreshAssistantModel(signal?: AbortSignal) {
   try {
     choice = await request<AssistantModelChoice>(ASSISTANT_MODEL_PATH, { signal });
-    started = true;
+    started = true; failed = false;
     emit();
   } catch (error) {
-    if (!(error instanceof DOMException)) { started = true; emit(); }
+    if (!(error instanceof DOMException)) { started = true; failed = true; emit(); }
   }
 }
 
-/** The caller's own choice, shared by every control on the page; read again whenever one mounts. */
-export function useAssistantModel(): { choice: AssistantModelChoice | null; loaded: boolean } {
+/**
+ * The caller's own choice, shared by every control on the page; read again whenever one mounts. `failed` is true when the read answered
+ * badly and there is nothing to show (an older choice is kept, and shown, when a later read fails), so "no connection" is never said of a read that failed.
+ */
+export function useAssistantModel(): { choice: AssistantModelChoice | null; loaded: boolean; failed: boolean } {
   const current = useSyncExternalStore(subscribe, () => choice, () => null);
   const loaded = useSyncExternalStore(subscribe, () => started, () => false);
+  const unread = useSyncExternalStore(subscribe, () => failed && choice === null, () => false);
   useEffect(() => {
     const controller = new AbortController();
     void refreshAssistantModel(controller.signal);
     return () => controller.abort();
   }, []);
-  return { choice: current, loaded };
+  return { choice: current, loaded, failed: unread };
 }
