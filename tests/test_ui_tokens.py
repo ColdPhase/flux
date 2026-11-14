@@ -32,7 +32,7 @@ class SharedStylesUseTokens(unittest.TestCase):
 
 
 class TypeUsesTheRamp(unittest.TestCase):
-    """#763 TY-1/TY-2: every size comes from the type tokens, so Settings → Appearance → Text size reaches all
+    """#763 TY-1/TY-2: every size comes from the type tokens, so the system's text size (the root font size) reaches all
     text, and the app keeps the design's weights (README §2: Geist 400 / 500 / 600)."""
 
     SIZE = re.compile(r"font-size:\s*([^;}]+)")
