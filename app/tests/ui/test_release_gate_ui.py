@@ -25,6 +25,11 @@ if UI_BROWSER not in ("chromium", "webkit"):
     raise ValueError(f"FLUX_UI_BROWSER must be chromium or webkit, got {UI_BROWSER!r}")
 
 
+# What the audit's deep links read: the place's own read (the route's space-shell, the board's or the conversation's) and the sheet's.
+TASK_READS = re.compile(r".*/api/v1/projects/[^/]+/(work-objects/work/[^/?]+|work-view|work-relations|space-shell)(\?.*)?$")
+DECISION_READS = re.compile(r".*/api/v1/projects/[^/]+/(work-objects/decision/[^/?]+|conversation-view|work-relations|space-shell)(\?.*)?$")
+
+
 def sized(locator) -> tuple[float, float]:
     box = locator.bounding_box()
     assert box, "rendered"
@@ -87,7 +92,7 @@ class ReleaseGateUi(unittest.TestCase):
         page.goto("/")
         sidebar = page.get_by_role("complementary", name="Sidebar")
         expect(sidebar).to_be_visible()
-        ctl = page.evaluate("() => { const p = document.createElement('i'); p.style.height = 'var(--ctl)'; document.body.append(p); const h = p.getBoundingClientRect().height; p.remove(); return h; }")
+        ctl = page.evaluate("() => { const p = document.createElement('i'); p.style.cssText = 'display:block;height:var(--ctl)'; document.body.append(p); const h = p.getBoundingClientRect().height; p.remove(); return h; }")
         self.assertEqual(ctl, 32, "--ctl is 32 px with a mouse")
         more = sidebar.get_by_role("button", name="More for Spaces", exact=True)
         add = sidebar.get_by_role("link", name="New message", exact=True)
@@ -103,15 +108,16 @@ class ReleaseGateUi(unittest.TestCase):
 
     def test_02_on_a_touch_screen_the_same_controls_are_44_px_targets(self) -> None:
         self.world()
-        page = self.page(phone=True)
+        page = self.page(phone=True, width=820)  # a tablet: the sidebar is its drawer
         page.goto("/")
-        page.get_by_role("button", name="Open navigation").tap() if page.get_by_role("button", name="Open navigation").count() else None
-        drawer = page.get_by_role("dialog").first
-        if drawer.count() and drawer.is_visible():
-            for target in (drawer.get_by_role("button", name="More for Spaces", exact=True), drawer.locator(".me__btn")):
-                if target.count():
-                    width, height = sized(target.first)
-                    self.assertGreaterEqual(min(width, height), 43.9, f"a 44 px target: {width}x{height}")
+        page.get_by_role("button", name="Open navigation").tap()
+        drawer = page.get_by_role("dialog")
+        expect(drawer).to_be_visible()
+        page.wait_for_timeout(400)
+        for target in (drawer.get_by_role("button", name="More for Spaces", exact=True), drawer.get_by_role("link", name="New message", exact=True), drawer.locator(".me__btn")):
+            expect(target).to_be_visible()
+            width, height = sized(target)
+            self.assertGreaterEqual(min(width, height), 43.9, f"a 44 px target: {width}x{height}")
 
     # ---------------------------------------------------------------- #1424 point 6: the 32 px face's initials
 
@@ -148,7 +154,8 @@ class ReleaseGateUi(unittest.TestCase):
         expect(sheet.get_by_role("heading", name="The details couldn’t be loaded")).to_be_visible()
         # One error block and one Try again: the sheet's. The place beneath it (inert, under the scrim) does not say its own.
         expect(page.get_by_role("button", name="Try again")).to_have_count(1)
-        expect(page.get_by_text(place_error)).to_have_count(0)
+        expect(page.get_by_role("heading", name=place_error)).to_have_count(0)
+        expect(page.get_by_text(place_error)).to_be_hidden()
         self.assertEqual(sheet.get_by_role("button", name="Try again").count(), 1)
         # It works with a finger: the reads come back, the sheet shows the object.
         state["on"] = False
@@ -158,25 +165,29 @@ class ReleaseGateUi(unittest.TestCase):
 
     def test_04_a_task_opened_by_address_with_failing_reads_shows_the_sheets_error_once(self) -> None:
         self.check_one_error("task", "/projects/{space}/tasks?view=board&open=work:{task}",
-                             re.compile(r".*/api/v1/projects/[^/]+/(work-objects/work/[^/?]+|work-view|work-relations)(\?.*)?$"), "Tasks couldn’t be loaded", "Check the gate hinges")
+                             TASK_READS, "Tasks couldn’t be loaded", "Check the gate hinges")
 
     def test_05_a_decision_opened_by_address_with_failing_reads_shows_the_sheets_error_once(self) -> None:
         self.check_one_error("decision", "/projects/{space}?open=decision:{decision}",
-                             re.compile(r".*/api/v1/projects/[^/]+/(work-objects/decision/[^/?]+|conversation-view|work-relations)(\?.*)?$"), "The conversation couldn’t be loaded", "Use steel hinges")
+                             DECISION_READS, "The conversation couldn’t be loaded", "Use steel hinges")
 
     def test_06_the_place_says_its_own_error_again_once_the_sheet_is_closed(self) -> None:
         self.world()
-        page = self.page(phone=True)
-        state = {"on": True}
-        self.open_failing(page, f"/projects/{self.state['space']}/tasks?view=board&open=work:{self.state['task']}",
-                          re.compile(r".*/api/v1/projects/[^/]+/(work-objects/work/[^/?]+|work-view)(\?.*)?$"), state)
-        sheet = page.get_by_role("dialog", name=re.compile("Details|Task"))
-        expect(sheet.get_by_role("heading", name="The details couldn’t be loaded")).to_be_visible()
-        sheet.get_by_role("button", name=re.compile("^Close")).tap()
-        expect(page.get_by_role("dialog")).to_have_count(0)
-        expect(page.get_by_role("heading", name="Tasks couldn’t be loaded")).to_be_visible()
-        expect(page.get_by_role("button", name="Try again")).to_have_count(1)
-
+        for kind, path, reads, error in (
+            ("task", "/projects/{space}/tasks?view=board&open=work:{task}", TASK_READS, "Tasks couldn’t be loaded"),
+            ("decision", "/projects/{space}?open=decision:{decision}", DECISION_READS, "The conversation couldn’t be loaded"),
+        ):
+            with self.subTest(kind):
+                page = self.page(phone=True)
+                state = {"on": True}
+                self.open_failing(page, path.format(**self.state), reads, state)
+                sheet = page.get_by_role("dialog", name=re.compile("Details|Task|Decision"))
+                expect(sheet.get_by_role("heading", name="The details couldn’t be loaded")).to_be_visible()
+                expect(page.get_by_role("heading", name=error)).to_have_count(0)
+                sheet.get_by_role("button", name=re.compile("^Close")).tap()
+                expect(page.get_by_role("dialog")).to_have_count(0)
+                expect(page.get_by_role("heading", name=error)).to_be_visible()
+                expect(page.get_by_role("button", name="Try again")).to_have_count(1)
 
 if __name__ == "__main__":
     unittest.main()
