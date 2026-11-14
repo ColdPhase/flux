@@ -1,0 +1,1 @@
+- Files, photos and videos can be sent in direct messages, with the same limits, checks and previews as in a space, and in the chat with your agent, where the agent looks at the photos and reads the files ([#1448](https://github.com/ColdPhase/flux/issues/1448), [#1464](https://github.com/ColdPhase/flux/issues/1464)).
