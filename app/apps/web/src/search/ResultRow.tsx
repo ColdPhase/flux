@@ -15,7 +15,7 @@ const ICONS: Record<Exclude<SearchKind, 'project' | 'message' | 'dm_message' | '
   work: 'tasks', material: 'doc', doc: 'doc', decision: 'flag', sketch: 'map', thought: 'map', person: 'people',
 };
 
-const time = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' });
+const time = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
 const day = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' });
 const dayYear = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 

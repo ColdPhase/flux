@@ -780,11 +780,11 @@ These functional rules from UI116-4 remain required:
     page icon a 72 × 40 poster (the first frame the sender's browser drew), radius `--r-sm`, cropped
     to fill, with the play glyph (the voice note's icon) centred on it over the same dark scrim as a
     photo grid's "+N", no other colour. The
-    name, "Video · 0:42 · 14.2 MiB" (the playing time only when the file says it) and the download
+    name, "Video · 0:42 · 14.2 MB" (the playing time only when the file says it) and the download
     button follow as in any file row. Pressing the poster or the name opens the viewer; the download
     button downloads. A video without a poster (the sender's browser could not draw one, or an
     encrypted space) keeps the page icon with its video pictogram and the same row. The phone draws
-    the same row; under 480 px the poster is 56 × 32 so that the name and "Video · 0:42 · 14.2 MiB"
+    the same row; under 480 px the poster is 56 × 32 so that the name and "Video · 0:42 · 14.2 MB"
     keep their room.
   - **The viewer** is the file preview's frame (always dark, Close at the top left, the name with
     "Video · size" in the middle, Download in the bottom bar, Esc closes and focus returns to the
@@ -799,7 +799,7 @@ These functional rules from UI116-4 remain required:
   - **A video this browser cannot play** (its codec is not one the browser has) shows on the stage
     "This browser can't play this video." with Download as the one button, as a PDF does. A person
     who lost access sees "You no longer have access to this file." and nothing else.
-  - **The limits line** ("Private until sent · 5 MiB each, videos 200 MiB · 10 files / 20 MiB per message") is not under
+  - **The limits line** ("Private until sent · 5 MB each, videos 200 MB · 10 files / 20 MB per message") is not under
     the composer the whole time files are attached ([#1424](https://github.com/ColdPhase/flux/issues/1424)): each row already
     says "Ready, private". It shows below the files only when a file or the draft was refused, or when the draft is
     within two files of the count or at four fifths of the message's bytes (the videos together against their own cap).
@@ -808,8 +808,8 @@ These functional rules from UI116-4 remain required:
     inside a composer, its paperclip, Send and a file's × included.
   - **In the composer** a video is a thumbnail like a photo's (its poster once drawn, else the page
     icon), with its name, "Video · size · Uploading 42%" and ×; Retry upload as for any file. Over the
-    limit it says "A video can be at most 200 MiB." (the operator's number); in an encrypted space a
-    video is an ordinary file ("A file can be at most 5 MiB.") and downloads.
+    limit it says "A video can be at most 200 MB." (the operator's number); in an encrypted space a
+    video is an ordinary file ("A file can be at most 5 MB.") and downloads.
 
 | | |
 | --- | --- |
@@ -2100,6 +2100,10 @@ Founder priorities (calm; plain words), decided by the agents for the v0.2.1 aud
   sentence** as the heading ("This conversation isn't available", "This agent isn't here", "This page doesn't exist") and **one way back** as a `secondary` button
   ("Back to Messages", "Back to the Inbox", "Back to the space", "Go to Home"), under the shell's header, on the page's own column. It never says why (a place nobody
   may open is not told apart from one that is gone) and has no Try again, which could not succeed.
+- **A person who is no longer in the company** (they left it or were removed, and are still signed in) is told so in the places that would
+  otherwise say they have no spaces: Home's one card and the Spaces page say "You’re no longer in {company}" and "Ask an owner or admin of
+  the company for an invite link to come back.", with no Create. Anyone else without a company (nobody has invited them yet) keeps "You’re
+  not in a company here yet" (persona walkthrough finding D-7, v0.2.1).
 - **The header names the place or nothing.** A Wiki page by its own address is "Wiki", a missing agent "Messages", a space that did not open "Spaces". "Home" with the company before it
   is only Home's own, and Home has no header row on the computer.
 - **A Wiki page by its address** (the old "material") is a card on the page: its back link, "Version 1", the title (`--fs-xl`), "You · Saved 13 Nov 2026, 09:00" in `--t3`, and its words (`--fs-base`) on `--el`.
@@ -2112,7 +2116,8 @@ link, an invite link or single sign-on. Nothing new is drawn: these are the sign
 
 - **Setup** (`/setup#<token>`, printed by the first `./flux up`). While no company exists every signed-out page opens here. The
   heading is "Set up Flux" and the lead "Create the owner's account. You name the company next."; the form is the sign-up form
-  (Name, Email, Password) with the primary **Create owner account**. Opened without its token: "Open the setup link", "Use the
+  (Name, Email, Password) with the primary **Create owner account**. The owner then lands in Settings › Company with the company's name
+  field open and focused ("You name the company next"), as Home's "Name your company" opens it. Opened without its token: "Open the setup link", "Use the
   whole link that ./flux up printed on the server. Running ./flux up again prints it." and no form. Once the company exists:
   "This Flux is set up" and **Sign in**.
 - **Create an account from an invite.** The sign-up form under "Join {company}"; an invite for one address fills the Email
@@ -2121,7 +2126,7 @@ link, an invite link or single sign-on. Nothing new is drawn: these are the sign
   invite link. Ask an owner or admin of your company for one." and the link line "Sign in" under it. The sign-in page's last line
   is "New here? Open the invite link you were sent." with no link.
 - **Choose a new password** opens from a reset link of any kind (mailed, made in Settings › Company or by `./flux reset-link`),
-  as it is drawn now.
+  as it is drawn now, with its lead naming the account: "Reset the password for ada@…. After this, you’ll be signed out everywhere…".
 
 ### Not drawn yet
 

@@ -146,6 +146,14 @@ export function workspaceRepository(db: DbExecutor) {
       return rows;
     },
 
+    /** The name of the company this person left or was removed from and has not joined again, or null. */
+    async removedFromCompany(userId: string) {
+      const [row] = await db.select({ name: schema.workspaces.name }).from(schema.workspaceRemovedPeople)
+        .innerJoin(schema.workspaces, and(eq(schema.workspaces.id, schema.workspaceRemovedPeople.workspaceId), eq(schema.workspaces.company, true)))
+        .where(eq(schema.workspaceRemovedPeople.userId, userId)).orderBy(desc(schema.workspaceRemovedPeople.removedAt)).limit(1);
+      return row?.name ?? null;
+    },
+
     /** Whether this person is on the removed list. */
     async isRemoved(workspaceId: string, userId: string) {
       const [row] = await db.select({ userId: schema.workspaceRemovedPeople.userId }).from(schema.workspaceRemovedPeople)

@@ -101,7 +101,7 @@ class DetailPanelFinal(unittest.TestCase):
                 expect(panel.get_by_role("heading", name="Activity")).to_have_count(0)
                 expect(panel.get_by_role("region", name="Discussion")).to_be_visible()
                 expect(panel.get_by_role("button", name="Start the discussion")).to_have_count(0)
-                expect(panel.get_by_placeholder("Write about #2 · @ · /")).to_be_visible()
+                expect(panel.get_by_placeholder("Write about this task…")).to_be_visible()
                 # The conversation stays visible beside it.
                 expect(page.locator("#content")).to_be_visible()
                 box = panel.bounding_box()
@@ -151,7 +151,7 @@ class DetailPanelFinal(unittest.TestCase):
         expect(status).to_contain_text("Done")
         self.assertEqual(self.stored(task)["status"], "done")
         # Typing a digit in a field never changes the state.
-        panel.get_by_placeholder(re.compile(r"^Write about #")).fill("5")
+        panel.get_by_placeholder("Write about this task…").fill("5")
         self.assertEqual(self.stored(task)["status"], "done")
 
     def test_03_title_is_edited_in_place(self):

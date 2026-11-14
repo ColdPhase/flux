@@ -307,6 +307,9 @@ class FinalCheck763(unittest.TestCase):
                 fab = page.locator(".phone-fab").bounding_box()
                 rect = last.bounding_box()
                 self.assertLessEqual(rect["y"] + rect["height"], fab["y"], "the last row ends above the + once scrolled")
+                # A-5/D-12: whatever Home ends with (the notification offer is a card, not a row) ends above the + too, never under it.
+                end = page.locator("#content .pane-in.home > *:last-child").bounding_box()
+                self.assertLessEqual(end["y"] + end["height"], fab["y"], "the last card of Home ends above the + once scrolled")
                 hit = last.evaluate("el => { const r = el.getBoundingClientRect(); return el.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)); }")
                 self.assertTrue(hit, "the last row is tappable")
                 # The scroller runs to the dock: content passes under the + instead of stopping at a hard line above it.

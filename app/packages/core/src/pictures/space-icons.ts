@@ -45,7 +45,7 @@ export function createSpaceIconUseCases(db: Database, ports: SpaceIconPorts, sto
       return { emoji };
     },
     async setPicture(principal: Principal, projectId: string, bytes: Uint8Array): Promise<SpaceIcon> {
-      if (bytes.byteLength > PICTURE_LIMITS.spaceIconBytes) throw new PayloadTooLargeError('A space icon is at most 2 MiB', 'SPACE_ICON_TOO_LARGE');
+      if (bytes.byteLength > PICTURE_LIMITS.spaceIconBytes) throw new PayloadTooLargeError('A space icon is at most 2 MB', 'SPACE_ICON_TOO_LARGE');
       if (bytes.byteLength < 1) throw new InvalidInputError('Send the picture\'s bytes', 'UNSUPPORTED_PICTURE');
       enforce(await evaluateProject(principal, 'project.manage', projectId, ports.access(db)), 'project');
       const objects = await storeRenditions(storage, await renderer.render(bytes));

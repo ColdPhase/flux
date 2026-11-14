@@ -935,7 +935,8 @@ cmd_up() {
   say ""
   say "Flux is running:  $(public_origin)"
   say_https_and_calls
-  print_setup_link
+  # `./flux demo` seeds the company itself, so the setup link and the offer of the demo do not apply to its first `up`.
+  [ -n "${UP_FOR_DEMO:-}" ] || print_setup_link
   up_status
 }
 
@@ -1002,7 +1003,7 @@ cmd_demo() {
     esac
   done
   need_docker
-  [ -f "$ENV_FILE" ] || cmd_up
+  [ -f "$ENV_FILE" ] || { UP_FOR_DEMO=1; cmd_up; }
   if [ "$target" = dev ]; then check_owner "$DEV_PROJECT"; else claim_project "$PROJECT"; fi
   if [ "$target" = dev ]; then origin=$(dev_origin); else origin=$(public_origin); fi
   if ! is_loopback_origin "$origin" && [ "$force" != 1 ]; then

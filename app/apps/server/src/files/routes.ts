@@ -33,7 +33,7 @@ export async function fileRoutes(app: FastifyInstance, { db, sessions, storage, 
           if (size > largest) {
             // Over anything a video may be: said in the words of what the name says it is (the use case says the rest).
             const name = (request.query as { name?: unknown }).name;
-            throw new PayloadTooLargeError(typeof name === 'string' && isVideoName(name) ? `A video is at most ${Math.round(videoBytes / (1024 * 1024) * 10) / 10} MiB` : 'A file is at most 5 MiB', 'FILE_TOO_LARGE');
+            throw new PayloadTooLargeError(typeof name === 'string' && isVideoName(name) ? `A video is at most ${Math.round(videoBytes / (1024 * 1024) * 10) / 10} MB` : 'A file is at most 5 MB', 'FILE_TOO_LARGE');
           }
         },
         onSend: async (request, reply, payload) => {

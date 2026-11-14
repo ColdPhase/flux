@@ -172,6 +172,35 @@ class MapLayoutJourney(unittest.TestCase):
         self.assertEqual(len(stored['thoughts']), 3, 'layout changes never publish a private draft')
         shot(page, 'map-layout-private-draft-1440-light')
 
+    def test_03b_new_thoughts_land_in_free_space_in_view_clear_of_each_other_and_of_the_minimap(self):
+        """C-9: a thought with no parent lands where it can be seen, not in the map's corner under the toolbar or over another thought."""
+        page = self.page()
+        self.scene(page)
+        meet = lambda a, b: a['x'] < b['x'] + b['width'] and b['x'] < a['x'] + a['width'] and a['y'] < b['y'] + b['height'] and b['y'] < a['y'] + a['height']  # noqa: E731
+        window = page.viewport_size
+        for index in range(3):
+            page.get_by_role('toolbar', name='Map tools').get_by_role('button', name='Thought', exact=True).click()
+            draft = page.get_by_role('form', name='New thought draft').get_by_label('Thought text')
+            expect(page.locator('.sk-ghost--draft')).to_be_attached()
+            # Where the draft stands on the map: whole in view, clear of the minimap and the zoom, and over no thought.
+            spot = page.locator('.sk-ghost--draft').bounding_box()
+            self.assertGreaterEqual(spot['x'], 0)
+            self.assertGreaterEqual(spot['y'], 0)
+            self.assertLessEqual(spot['x'] + spot['width'], window['width'], 'the draft is whole in view')
+            self.assertLessEqual(spot['y'] + spot['height'], window['height'], 'the draft is whole in view')
+            for selector in ('.sk-minimap', '.sk-zoom'):
+                over = page.locator(selector).first.bounding_box()
+                self.assertFalse(over and meet(spot, over), f'the draft is not under {selector}')
+            for node in page.locator('.sk-node').all():
+                self.assertFalse(meet(spot, node.bounding_box()), 'the draft is over no thought')
+            draft.fill(f'Placed in free space number {index + 1}')
+            draft.press('Enter')
+            expect(page.locator('.sk-node')).to_have_count(3 + index)
+            # The new thought is selected, and a thought added while one is selected is its child; with nothing selected it has no parent.
+            page.keyboard.press('Escape')
+            expect(page.locator('.sk-node[aria-pressed="true"]')).to_have_count(0)
+        shot(page, 'map-layout-new-thoughts-1440-light')
+
     def test_04_very_short_phone_keeps_full_hint_and_draft_reachable_by_scrolling(self):
         page = self.page(320, 430, has_touch=True, is_mobile=True, reduced_motion='reduce')
         self.scene(page)

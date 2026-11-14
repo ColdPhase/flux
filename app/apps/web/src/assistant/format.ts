@@ -46,14 +46,14 @@ export function runtimePayerText(payer: AgentRuntimePayer | null | undefined, cl
   }
 }
 /** "14:00": the reset time of a plan limit in the reader's clock. */
-const clock = (iso: string) => new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+const clock = (iso: string) => new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 /** "at 14:00" today, otherwise "tomorrow at 0:00" or the day: when a paused request starts again. */
 export function resumeWords(iso: string) {
   const at = new Date(iso);
   const now = new Date();
   if (at.toDateString() === now.toDateString()) return `at ${clock(iso)}`;
   const tomorrow = new Date(now); tomorrow.setDate(now.getDate() + 1);
-  return at.toDateString() === tomorrow.toDateString() ? `tomorrow at ${clock(iso)}` : at.toLocaleString(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+  return at.toDateString() === tomorrow.toDateString() ? `tomorrow at ${clock(iso)}` : at.toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' });
 }
 /** #854: "Claude limit reached, resumes at 14:00", or without a time when the plan gave none. */
 export const planLimitLine = (plan: string, resetsAt: string | null | undefined) =>
@@ -164,7 +164,7 @@ export function askState(status: PersonalAssistantStatus | null, outside = false
   const runtime = status.enablement?.engine === 'runtime';
   switch (status.state) {
     case 'ready': return { kind: 'ready', note: `Only you see the answer, until you choose Show everyone · on ${runtime ? runtimePayerText(status.setup.runtime?.payer, status.setup.runtime?.client) : 'your API key'}` };
-    case 'not_enabled': return { kind: 'blocked', note: 'You haven’t set up your assistant. Nobody else’s can be used for you.', action: 'connect', actionLabel: 'Connect your AI' };
+    case 'not_enabled': return { kind: 'blocked', note: 'You haven’t set up your assistant.', action: 'connect', actionLabel: 'Connect your AI' };
     // #854: the API key's one daily budget; a request asked now waits for the key's next day.
     case 'capped': return { kind: 'ready', note: `Not enough left of your API key’s ${dollars(status.today?.budgetCents ?? 0)} daily budget. A request now starts ${status.today ? resumeWords(status.today.resetsAt) : 'tomorrow'}.` };
     default:

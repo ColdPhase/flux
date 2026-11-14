@@ -335,6 +335,8 @@ class InboxFinal(unittest.TestCase):
         # Not now is one button with no menu (S11).
         expect(decision.get_by_role("button", name="Not now")).to_be_visible()
         expect(decision.get_by_role("button", name="Not now")).not_to_have_attribute("aria-haspopup", re.compile("."))
+        # D-4: the key shows on the button, as A does on Accept.
+        expect(decision.get_by_role("button", name="Not now").locator("kbd")).to_have_text("S")
         expect(decision.get_by_role("button", name="Discuss")).to_be_visible()
         self.assertEqual(decision.locator(".ui-btn--primary").count(), 1, "one dark primary in the open item")
         # One person accepts (O-009): the card says who still can, not who "already accepted".
@@ -411,6 +413,7 @@ class InboxFinal(unittest.TestCase):
                 break
             page.keyboard.press("j")
         expect(mention).to_have_attribute("aria-current", "true")
+        expect(self.item(page, MENTIONED).get_by_role("button", name="Done").locator("kbd")).to_have_text("E")
         page.keyboard.press("e")
         toast = page.get_by_role("status").filter(has_text="Marked done")
         expect(toast).to_be_visible()

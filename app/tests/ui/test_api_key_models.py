@@ -405,6 +405,22 @@ class ApiKeyModels(unittest.TestCase):
         self.assertEqual((refused.status, refused.json()["code"]), (422, "AI_MODEL_REQUIRED"), refused.text())
         self.assertEqual(self.connected(waiting), before)
 
+    def test_03bb_the_line_about_a_model_goes_when_the_key_is_refused(self) -> None:
+        """B-6/D-6: "Choose a model first…" was said while the list was read; a refused key has no model field, so the line goes with it."""
+        page = self.page()
+        self.form(page)
+        held: list[Route] = []
+        page.route(re.compile(r".*/api/v1/ai-model-lists$"), lambda route: held.append(route))  # the answer waits until the test lets it through
+        self.type_key(page, REFUSED)
+        expect(page.get_by_role("status").filter(has_text="Reading Anthropic’s models…")).to_be_visible()
+        page.get_by_role("button", name="Connect", exact=True).click()
+        expect(page.get_by_role("alert").filter(has_text="Choose a model first.")).to_be_visible()
+        held[0].fulfill(status=200, content_type="application/json", body=json.dumps({"provider": "anthropic", "status": "key_refused", "models": [], "checkedOn": "2026-11-14"}))
+        expect(page.get_by_role("alert").filter(has_text="This key was refused by Anthropic.")).to_be_visible()
+        expect(page.get_by_text("Choose a model first")).to_have_count(0)
+        expect(page.get_by_role("combobox", name="Model")).to_have_count(0)
+        expect(page.get_by_role("button", name="Connect", exact=True)).to_be_disabled()
+
     def test_03c_a_model_that_cannot_use_tools_is_refused_and_the_key_stays_for_another(self) -> None:
         """RT-1 rule 2 (#1441): the server's one `ping` check refuses the model, not the key, so the key is not cleared."""
         page = self.page()

@@ -434,8 +434,7 @@ class ConnectAiJourney(unittest.TestCase):
             self.assertLess(cancel["x"], primary["x"], "Cancel is left of Connect, as it is left of Continue")
             self.assertGreater(primary["x"] + primary["width"] / 2, frame["x"] + frame["width"] / 2, "the primary sits on the right, as Continue and Try again do")
             self.no_horizontal_scroll(page)
-            window.get_by_role("button", name="Cancel").click()
-            expect(window.locator("[data-choice=api_key]")).to_be_visible()
+            # B-6: Cancel closes the window on this step too, as it does on the first; it does not go back one step.
             window.get_by_role("button", name="Cancel").click()
             expect(window).to_have_count(0)
             page.context.close()

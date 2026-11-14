@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
-import { RESET_PASSWORD_PAGE, type ResetLink } from '@flux/contracts';
+import { RESET_LINK_ACCOUNT_PATH, RESET_PASSWORD_PAGE, type ResetLink, type ResetLinkAccount } from '@flux/contracts';
 import { ConflictError, ForbiddenError, NotFoundError } from '@flux/core';
 import { passwordResetLinks, type Database, type ResetLinkVia } from '@flux/db';
 import { joinRateLimiter } from '../live/rate-limit.js';
@@ -65,5 +65,17 @@ export function registerResetLinkRoutes(app: FastifyInstance, { db, sessions, pu
     securityEvent(log, { event: 'reset_link_created', outcome: 'success', reason: 'settings', userId, byUserId: principal.id, ip: request.ip, reqId: request.id });
     reply.code(201).header('cache-control', 'no-store');
     return made;
+  });
+
+  // The reset page says whose password it is about ("Reset the password for ada@…"). Only the holder of a link that still works is told, and
+  // only the address of the account it is for; a guard per address, as a token is 144 random bits.
+  const lookups = joinRateLimiter({ limit: 30, windowMs: 60_000, maxUsers: 10_000, message: 'Too many attempts; try again shortly', code: 'RESET_LINK_RATE_LIMITED' });
+  app.post<{ Body: { token: string } }>(RESET_LINK_ACCOUNT_PATH, { schema: { body: { type: 'object', required: ['token'], additionalProperties: false,
+    properties: { token: { type: 'string', minLength: 8, maxLength: 128 } } } } }, async (request, reply): Promise<ResetLinkAccount> => {
+    lookups.take(`ip:${request.ip}`);
+    const email = await passwordResetLinks(db).accountOf(resetIdentifier(request.body.token));
+    if (!email) throw new NotFoundError('Reset link', 'RESET_LINK_NOT_FOUND');
+    reply.header('cache-control', 'no-store');
+    return { email };
   });
 }

@@ -26,7 +26,7 @@ function failure(cause: unknown): string {
   return 'That didn’t send. Nothing changed; try again.';
 }
 
-const time = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' });
+const time = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
 
 /**
  * An agent's question with ready-made answers (S14). Under the agent's message it adds one-tap answers for the person asked

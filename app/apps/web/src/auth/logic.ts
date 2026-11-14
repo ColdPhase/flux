@@ -241,9 +241,10 @@ export async function signInAction({ request }: ActionFunctionArgs): Promise<For
 }
 
 export async function signUpAction({ request }: ActionFunctionArgs): Promise<FormResult | Response> {
-  // The owner's account from the setup link (#1471) goes on to Settings › Company, to name the company and invite people.
+  // The owner's account from the setup link (#1471) goes on to Settings › Company with the name field open and focused, as the setup page says:
+  // "You name the company next."
   const owner = new URL(request.url).pathname === '/setup';
-  return await signUpFrom(request) ?? redirect(owner ? '/settings/company' : safeNext(new URL(request.url).searchParams.get('next')));
+  return await signUpFrom(request) ?? redirect(owner ? '/settings/company?name=1' : safeNext(new URL(request.url).searchParams.get('next')));
 }
 
 /**

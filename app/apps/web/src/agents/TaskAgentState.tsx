@@ -17,7 +17,7 @@ const FACE: Record<TaskAgentLine, KreskaExpression> = {
   waiting_for_room: 'waiting', working: 'working', waiting_for_ok: 'asking', paused_by_limit: 'asleep', failed: 'worried', stopped: 'idle', done: 'done', handed_back: 'idle',
 };
 
-const clock = (iso: string) => new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+const clock = (iso: string) => new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 
 export function TaskAgentState({ item, projectId, conversationId, revision, onChanged, elsewhere }: {
   item: Pick<WorkItem, 'id' | 'version'>; projectId: string; conversationId: string | null; revision: unknown; onChanged: () => void;

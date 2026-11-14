@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Form, Link, Outlet, useActionData, useLoaderData, useLocation, useNavigate, useNavigation, useSearchParams } from 'react-router';
 import type { IdentityCapabilities } from '@flux/contracts';
-import { PASSWORD_MIN_LENGTH, claimAddress, getCapabilities, getPendingClaim, startSso } from '../api/auth';
+import { PASSWORD_MIN_LENGTH, claimAddress, getCapabilities, getPendingClaim, getResetLinkAccount, startSso } from '../api/auth';
 import { whenPageLive } from '../api/pageLeaving';
 import { ApiError, NetworkError } from '../api/client';
 import { Button, ErrorState, FluxLogo, Icon, Input, useToast } from '../ui';
@@ -393,6 +393,14 @@ export function ResetPasswordPage() {
   }, []);
   const token = params.get('token') || fromHash || null;
   const linkError = params.get('error');
+  // Whose password it is: the address of the account the link is for, once the server says (a link that no longer works is told on Save, as before).
+  const [account, setAccount] = useState<string | null>(null);
+  useEffect(() => {
+    if (!token || linkError) return;
+    const controller = new AbortController();
+    getResetLinkAccount(token, controller.signal).then(setAccount, () => undefined);
+    return () => controller.abort();
+  }, [token, linkError]);
 
   if (!token || linkError) {
     return (
@@ -405,7 +413,7 @@ export function ResetPasswordPage() {
 
   return (
     <>
-      <Heading title="Choose a new password">After this, you’ll be signed out everywhere and can sign in with the new password.</Heading>
+      <Heading title="Choose a new password">{account ? `Reset the password for ${account}. ` : ''}After this, you’ll be signed out everywhere and can sign in with the new password.</Heading>
       <Form method="post" className="auth__form" noValidate ref={formRef} aria-label="Choose a new password">
         <FormError message={result?.formError}>
           {result?.invalidToken ? <p><Link className="ui-link" to="/forgot-password">Request a new link</Link></p> : null}

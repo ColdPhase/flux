@@ -24,7 +24,7 @@ import './settings.css';
  * something there needs the person (#1250). The order is the person's own and a row's ⋯ moves it (always shown on touch).
  */
 export function ProjectsIndex() {
-  const { me, directMessages, agents, lockedWorkspaces } = useShellData();
+  const { me, directMessages, agents, lockedWorkspaces, removedFrom } = useShellData();
   const projects = useOrderedProjects();
   const { openCreate } = useShellActions();
   const news = useProjectNews(useMemo(() => projects.map((project) => project.id), [projects]));
@@ -93,10 +93,16 @@ export function ProjectsIndex() {
             ))}
           </ul>
         ) : (
-          <div className="proj-index__empty">
-            <p>No spaces yet. Create one, or it appears here when someone adds you to theirs.</p>
-            <Button variant="primary" onClick={() => openCreate({ kind: 'space' })}><Icon name="plus" />Create a space</Button>
-          </div>
+          removedFrom ? (
+            <div className="proj-index__empty">
+              <p>You’re no longer in {removedFrom}. Ask an owner or admin of the company for an invite link to come back.</p>
+            </div>
+          ) : (
+            <div className="proj-index__empty">
+              <p>No spaces yet. Create one, or it appears here when someone adds you to theirs.</p>
+              <Button variant="primary" onClick={() => openCreate({ kind: 'space' })}><Icon name="plus" />Create a space</Button>
+            </div>
+          )
         )}
         <span className="ui-vh" role="status" aria-live="polite">{moves.status}</span>
         {/* Direct messages live in Projects on the phone, below the spaces (F-026 S2). */}

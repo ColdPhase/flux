@@ -100,6 +100,24 @@ class AccountsByLink(unittest.TestCase):
         expect(page.get_by_role("alert")).to_contain_text("This setup link doesn’t work. Open the whole link that ./flux up printed on the server.")
         self.assertEqual([(body.get("setupToken"), body.get("email")) for body in sent], [(SETUP_TOKEN, f"owner.setup+{STAMP}@example.test")])
 
+    def test_01b_the_owner_goes_on_to_name_the_company(self) -> None:
+        """B-2: "You name the company next." is true: the owner's account leads to Settings › Company with the name field open."""
+        page = self.page()
+        # Setup is open until the account is made; the test answers the sign-up, so it closes the setup then and nobody is signed in.
+        setup = {"open": True}
+        page.route("**/api/v1/auth/capabilities", lambda route: route.fulfill(json={**INSTALL, "setup": setup["open"]}))
+        def made(route: Route) -> None:
+            setup["open"] = False
+            route.fulfill(json={"token": None})
+        page.route("**/api/auth/sign-up/email", made)
+        page.goto(f"/setup#{SETUP_TOKEN}")
+        page.get_by_label("Name").fill("Owner Person")
+        page.get_by_label("Email").fill(f"owner.named+{STAMP}@example.test")
+        page.get_by_label("Password").fill(PASSWORD)
+        page.get_by_role("button", name="Create owner account").click()
+        # Nobody is signed in here (the sign-up is answered by the test), so the app asks for sign-in and keeps where it was going.
+        expect(page).to_have_url(re.compile(r"/sign-in\?next=%2Fsettings%2Fcompany%3Fname%3D1$"))
+
     def test_02_setup_once_the_company_exists_has_no_form(self) -> None:
         page = self.page(phone=True)
         page.goto(f"/setup#{SETUP_TOKEN}")
@@ -167,6 +185,8 @@ class AccountsByLink(unittest.TestCase):
         page = self.page(phone=True)
         page.goto(link)
         expect(page.get_by_role("heading", level=1, name="Choose a new password")).to_be_visible()
+        # D-9: the page says whose password it is.
+        expect(page.get_by_text(f"Reset the password for {NEWCOMER[1]}.")).to_be_visible()
         self.assertEqual(page.evaluate("location.hash"), "", "the token leaves the address")
         page.get_by_label("New password", exact=True).fill(NEW_PASSWORD)
         page.get_by_label("Repeat new password").fill(NEW_PASSWORD)
@@ -187,6 +207,35 @@ class AccountsByLink(unittest.TestCase):
         self.capabilities(page)
         page.goto("/forgot-password")
         expect(page.get_by_text("Ask an owner or admin of your company for a reset link: they make one in Settings › Company.")).to_be_visible()
+
+    # ---------------------------------------------------------------- someone who is no longer in the company
+
+    def test_07_someone_removed_while_signed_in_is_told_they_are_no_longer_in_the_company(self) -> None:
+        """D-7: Home and Spaces said "You're not in a company here yet" and "No spaces yet. Create one…" with a Create that could only fail."""
+        owner = self.page(owner=True)
+        company = next(item for item in owner.request.get("/api/v1/workspaces").json() if item.get("company"))
+        context = self.browser.new_context(base_url=ORIGIN, viewport=DESKTOP, locale="en-GB", service_workers="block")
+        self.addCleanup(context.close)
+        signed = context.request.post("/api/auth/sign-in/email", data={"email": NEWCOMER[1], "password": NEW_PASSWORD}, headers={"origin": ORIGIN})
+        self.assertEqual(signed.status, 200, signed.text())
+        page = context.new_page()
+        page.goto("/")
+        expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+        me = context.request.get("/api/v1/me").json()["user"]["id"]
+        removed = owner.request.delete(f"{ORIGIN}/api/v1/workspaces/{company['id']}/members/{me}", headers={"origin": ORIGIN})
+        self.assertEqual(removed.status, 204, removed.text())
+        # The shell hears it at once and reads itself again; a reload says the same.
+        page.reload()
+        expect(page.get_by_role("heading", name=f"You’re no longer in {company['name']}")).to_be_visible()
+        expect(page.get_by_text("Ask an owner or admin of the company for an invite link to come back.")).to_be_visible()
+        expect(page.get_by_text("You’re not in a company here yet")).to_have_count(0)
+        page.goto("/projects")
+        expect(page.get_by_text(f"You’re no longer in {company['name']}.")).to_be_visible()
+        expect(page.get_by_role("button", name="Create a space")).to_have_count(0)
+        shot(page, "removed-from-the-company-desktop-1440")
+        # Restored, the person is told nothing of it.
+        restored = owner.request.post(f"{ORIGIN}/api/v1/workspaces/{company['id']}/removed-people/{me}/restore", headers={"origin": ORIGIN})
+        self.assertEqual(restored.status, 201, restored.text())
 
 
 if __name__ == "__main__":

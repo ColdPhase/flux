@@ -1,7 +1,7 @@
 import type { NamedPrincipal } from '@flux/contracts';
 
 const day = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' });
-const stamp = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+const stamp = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
 export const shortDate = (iso: string) => day.format(new Date(iso));
 export const longDate = (iso: string) => stamp.format(new Date(iso));
 /** "just now", "5 min ago", "2 h ago", "3 d ago", then the date: how recently a page changed. */

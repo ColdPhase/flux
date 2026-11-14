@@ -1,6 +1,6 @@
 import type { PersonRef, Sketch, Thought } from '@flux/contracts';
 
-const time = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' });
+const time = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
 const day = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' });
 
 export function when(iso: string) {

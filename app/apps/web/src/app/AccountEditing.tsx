@@ -212,14 +212,16 @@ function PasswordForm({ onDone }: { onDone: (others: boolean) => void }) {
   );
 }
 
-const when = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+const when = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 const dated = (iso: string) => { const date = new Date(iso); return Number.isNaN(date.getTime()) ? iso : when.format(date); };
 
-/** A plain name for a browser from its user agent: enough to tell devices apart, never the raw string. */
+/** A plain name for a browser from its user agent: enough to tell devices apart, never the raw string; an app that is no browser says its own name. */
 function deviceName(agent: string | null): string {
   if (!agent) return 'A browser';
-  const browser = /Edg\//.test(agent) ? 'Edge' : /Firefox\//.test(agent) ? 'Firefox' : /Chrome\//.test(agent) ? 'Chrome' : /Safari\//.test(agent) ? 'Safari' : 'A browser';
-  const system = /iPhone/.test(agent) ? 'iPhone' : /iPad/.test(agent) ? 'iPad' : /Android/.test(agent) ? 'Android' : /Mac OS X/.test(agent) ? 'Mac'
+  // The browsers that carry another's name in their agent come first: Chrome and Edge on iPhone and Android say Safari or Chrome too.
+  const browser = /Edg(e|A|iOS)?\//.test(agent) ? 'Edge' : /OPR\/|Opera/.test(agent) ? 'Opera' : /SamsungBrowser\//.test(agent) ? 'Samsung Internet' : /Firefox\/|FxiOS\//.test(agent) ? 'Firefox'
+    : /Chrome\/|CriOS\//.test(agent) ? 'Chrome' : /Safari\//.test(agent) ? 'Safari' : /^(?!Mozilla)[A-Za-z][\w.-]*(?=\/)/.exec(agent)?.[0] ?? 'A browser';
+  const system = /iPhone/.test(agent) ? 'iPhone' : /iPad/.test(agent) ? 'iPad' : /Android/.test(agent) ? 'Android' : /CrOS/.test(agent) ? 'ChromeOS' : /Mac OS X/.test(agent) ? 'Mac'
     : /Windows/.test(agent) ? 'Windows' : /Linux/.test(agent) ? 'Linux' : '';
   return system ? `${browser} on ${system}` : browser;
 }

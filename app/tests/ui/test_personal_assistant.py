@@ -200,7 +200,7 @@ class PersonalAssistantJourney(unittest.TestCase):
         expect(page.get_by_role("button", name="Ask my assistant")).to_have_count(0)
         self.composer(page).fill("/ai ")
         bar = page.locator("#project-ask")
-        expect(bar).to_contain_text("You haven’t set up your assistant. Nobody else’s can be used for you.")
+        expect(bar).to_contain_text("You haven’t set up your assistant.")
         self.composer(page).fill("Summarize this for me")
         expect(page.get_by_role("button", name="Send to your assistant")).to_have_attribute("aria-disabled", "true")
         self.composer(page).press("Enter")

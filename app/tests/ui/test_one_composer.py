@@ -20,7 +20,7 @@ STAMP = int(time.time() * 1000)
 PEOPLE = {"ada": ("Ada Kowalska", f"ada.oc+{STAMP}@example.test"), "jonas": ("Jonas Berg", f"jonas.oc+{STAMP}@example.test")}
 PLACEHOLDERS = {
     "conversation": "Message · @ mention · / actions", "thread": "Reply in thread…", "dm": "Message Jonas · / actions",
-    "task": "Write about #1 · @ · /", "dm-thread": "Reply in thread…", "notes": "Write a note…",
+    "task": "Write about this task…", "dm-thread": "Reply in thread…", "notes": "Write a note…",
 }
 # Attaching is a paperclip, because "+" means Create (final design S5): the `clip` path of ui/Icon.tsx.
 PAPERCLIP = "M11.25 7.25l-4.5 4.5a2.12 2.12 0 01-3-3l5.25-5.25a1.41 1.41 0 012 2L5.75 10.75"
