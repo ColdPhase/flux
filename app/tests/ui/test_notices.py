@@ -381,5 +381,46 @@ class NoticeJourney(unittest.TestCase):
         self.assertEqual(page.evaluate("window.__tones"), 0, "no sound while Sounds is off")
 
 
+    # ---------------------------------------------------------------- beside a docked panel
+
+    def test_12_beside_a_docked_panel_it_floats_over_the_work_never_over_the_panel(self) -> None:
+        """UI audit P3 17: at 1024 px the card stood over the bottom of the docked panel, its composer and controls. While a panel is
+        docked the notice stands at the bottom right of the work column, 20 px left of the panel, at 1024 x 768 as at 1440 x 900."""
+        task = self.post("ada", f"/api/v1/projects/{self.project_id}/work", {"title": "Re-seal the junction box in bed 2", "owner": {"kind": "human", "id": self.ids["ada"]}})
+        for viewport in ({"width": 1024, "height": 768}, {"width": 1440, "height": 900}):
+            context = self.browser.new_context(base_url=ORIGIN, viewport=viewport, device_scale_factor=1, locale="en-GB", timezone_id="Europe/Warsaw",
+                                               storage_state=self.states["ada"], service_workers="block")
+            self.addCleanup(context.close)
+            page = context.new_page()
+            frames: list[str] = []
+            page.on("websocket", lambda socket: socket.on("framereceived", lambda payload: frames.append(str(payload))) if "/api/v1/stream" in socket.url else None)
+            page.goto(f"/projects/{self.project_id}/tasks?open=work:{task['id']}")
+            panel = page.locator("#details")
+            expect(panel).to_contain_text("Re-seal the junction box in bed 2")
+            for _ in range(150):
+                if any('"ready"' in frame for frame in frames):
+                    break
+                page.wait_for_timeout(100)
+            self.dm(f"The junction box in bed 2 is open again ({viewport['width']} px).")
+            card = self.card(page)
+            expect(card).to_be_visible(timeout=5000)
+            card.get_by_role("button", name="Close").focus()
+            found = page.evaluate("""async () => {
+                const card = document.querySelector('.ui-notices .ui-notice');
+                await Promise.all(card.getAnimations().map((animation) => animation.finished));
+                const rect = (el) => { const r = el.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom }; };
+                return { card: rect(card), panel: rect(document.querySelector('#details')) };
+            }""")
+            box, docked = found["card"], found["panel"]
+            label = f"{viewport['width']} x {viewport['height']}: {found}"
+            self.assertAlmostEqual(box["right"], docked["left"] - 20, delta=1, msg=f"20 px left of the docked panel, {label}")
+            self.assertGreaterEqual(box["left"], 0, label)
+            self.assertLessEqual(box["bottom"], viewport["height"] - 19, label)
+            page.mouse.move(10, 10)
+            shot(page, f"notices-desktop-{viewport['width']}-beside-docked-panel")
+            card.get_by_role("button", name="Close").click()
+            expect(card).to_have_count(0)
+
+
 if __name__ == "__main__":
     unittest.main()

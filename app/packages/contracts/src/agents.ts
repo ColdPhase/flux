@@ -8,6 +8,12 @@ import type { AssistantModelPick } from './assistant-model.js';
 
 /** The agent colours (final design §2): the muted palette of equal lightness, and ink for a first agent. Kreska's lines take it. */
 export const AGENT_COLOURS = ['ink', 'clay', 'ochre', 'sage', 'teal', 'indigo', 'plum', 'rose'] as const;
+/**
+ * Every agent a read names carries its colour (#1528): a `{kind: 'agent', id}` anywhere in an `/api/v1` answer gets `colour`, filled in one place
+ * on the server (`apps/server/src/http/agent-colours.ts`), so the same agent looks the same to its owner and to everyone else, in every view.
+ * The agent shapes that have no `kind` (a task's agent line, who is in a task) carry it from their own read. An agent without a colour of its
+ * own (a local client's identity) has none and is drawn in ink.
+ */
 export type AgentColour = (typeof AGENT_COLOURS)[number];
 
 export const AGENT_LIMITS = {

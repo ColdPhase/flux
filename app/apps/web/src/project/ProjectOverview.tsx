@@ -99,7 +99,7 @@ export function ProjectOverview({ messageId, selection }: { messageId: string; s
   // An agent is named with Kreska, the "Agent" tag and its owner; a person by name only.
   // A retained agent's owner comes from the row's scoped relation, resolved against this fresh audience only.
   const byline = (who: NamedPrincipal): ReactNode =>
-    who.kind === 'agent' ? <AgentIdentity name={who.name} owner={agentAuthorOwner(who, owners)} icon={14} hue={hue(who.id)} /> : who.name;
+    who.kind === 'agent' ? <AgentIdentity name={who.name} owner={agentAuthorOwner(who, owners)} icon={14} hue={hue(who)} /> : who.name;
   const conversation = open?.conversation ?? null;
   // Older messages loaded by the feed are absent from the route's latest-message window.
   // Keep exactly the selected native message, scoped to its reader/project/conversation,
@@ -152,7 +152,7 @@ export function ProjectOverview({ messageId, selection }: { messageId: string; s
     if (object && (!docRows.has(link.from.id) || link.role === 'source')) docRows.set(link.from.id, { key: link.from.id, icon: 'doc', kind: link.role === 'source' ? 'Wiki page · includes it' : 'Wiki page · mentions it', title: link.fromTitle, sub: `“${object.title}”`, to: docUrl(project.id, link.from.id) });
   }
   const author: ReactNode = message ? (message.authorId === null
-    ? <AgentIdentity name={agentDisplayName(message.author)} owner={agentAuthorOwner(message.author, owners)} icon={14} hue={hue(message.author.id)} />
+    ? <AgentIdentity name={agentDisplayName(message.author)} owner={agentAuthorOwner(message.author, owners)} icon={14} hue={hue(message.author)} />
     : message.authorId === me.user.id ? 'you' : people?.find((person) => person.id === message.authorId)?.name ?? 'a member') : null;
   const title: ReactNode = message ? <>Message from {author}</> : 'Message';
 

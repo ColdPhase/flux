@@ -132,7 +132,7 @@ export function TaskRow({ item, meId, owners, writable, muted, onOpen, onChange 
         <button type="button" className={`ws-item${muted ? ' ws-item--muted' : ''}`} onClick={click}>
           <span className="ws-item__b"><span className="ws-item__t">{item.title}</span><span className="ws-item__s">{meta(item, meId, owners)}</span></span>
           <span className="ws-item__r">
-            {item.owner?.kind === 'agent' ? <Kreska size={20} hue={hue(item.owner.id)} />
+            {item.owner?.kind === 'agent' ? <Kreska size={20} hue={hue(item.owner)} />
               : item.owner ? <span className="ws-av" aria-hidden="true">{initials(item.owner.name)}</span> : null}
           </span>
         </button>

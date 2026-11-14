@@ -183,7 +183,7 @@ export function useTaskActivity({ item, links, project, members, me, revision }:
 
 export type TaskActivityState = ReturnType<typeof useTaskActivity>;
 
-function Face({ actor, mine, hue }: { actor: { kind: 'agent' | 'human'; id?: string | null; name: string }; mine: boolean; hue?: AgentHue }) {
+function Face({ actor, mine, hue }: { actor: { kind: 'agent' | 'human'; id?: string | null; name: string }; mine: boolean; hue?: AgentHue | undefined }) {
   return actor.kind === 'agent' ? <Kreska size={20} className="wd-act__face" {...(hue ? { hue } : {})} /> : <Avatar name={actor.name} id={actor.id} size="sm" tone={mine ? 'me' : 'neutral'} />;
 }
 
@@ -276,15 +276,15 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
             // An agent's answer its asker posted reads as that agent's message, for the asker too (#1232).
             const shown = shownAnswer(message);
             const mine = message.authorId === me.id && !shown;
-            // A shown answer carries its agent's colour; the agent's own line has it when the agent is one of the reader's (the shell knows those).
-            const faceHue = shown?.colour ?? (message.author?.kind === 'agent' ? hueOf(message.author.id) : undefined);
+            // A shown answer carries its agent's colour, and an agent's own message its author's (#1528): the same for every reader.
+            const faceHue = shown?.colour ?? (message.author?.kind === 'agent' ? hueOf(message.author) : undefined);
             return (
               <li key={line.key} className="wd-act__item wd-act__item--message" data-message-id={message.id} {...(shown ? { 'data-shown-answer': '', 'aria-label': shownLabel(shown, name).spoken } : {})}>
                 <Face actor={{ kind: agent || shown ? 'agent' : 'human', id: message.authorId, name }} mine={mine} {...(faceHue ? { hue: faceHue } : {})} />
                 <div className="wd-act__body">
                   <p className="wd-act__who">
-                    {shown ? <><AgentIdentity name={shownLabel(shown, name).label} icon={false} /><span className="ui-vh">, shown by {firstName(name)}</span></>
-                      : agent ? <AgentIdentity name={name} owner={message.author.kind === 'agent' ? agentAuthorOwner(message.author, owners) : undefined} icon={false} /> : <b title={name}>{firstName(name)}</b>}
+                    {shown ? <><AgentIdentity name={shownLabel(shown, name).label} icon={false} hue={shown.colour} /><span className="ui-vh">, shown by {firstName(name)}</span></>
+                      : agent ? <AgentIdentity name={name} owner={message.author.kind === 'agent' ? agentAuthorOwner(message.author, owners) : undefined} icon={false} hue={faceHue} /> : <b title={name}>{firstName(name)}</b>}
                     {message.via && !shown ? <span className="project-convo__via">via {message.via}</span> : null}
                     <time dateTime={message.createdAt} title={when(message.createdAt)}>{stamp(message.createdAt)}</time>
                     {message.editedAt ? <span className="message-edited" title={`Edited ${when(message.editedAt)}`}> · edited</span> : null}
@@ -307,9 +307,9 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
           const text = line.kind === 'change' ? changeText(line.entry) : line.kind === 'reverted' ? 'undid its creation' : line.source ? FROM[line.source] : 'created the task';
           return (
             <li key={line.key} className="wd-act__item" data-activity={line.kind === 'change' ? line.entry.kind : line.kind}>
-              <Face actor={actor} mine={mine} />
+              <Face actor={actor} mine={mine} hue={hueOf(actor.kind === 'agent' ? actor : null)} />
               <p className="wd-act__line">
-                {actor.kind === 'agent' ? <AgentIdentity name={actor.name} owner={owners.get(actor.id)} icon={false} /> : <b title={actor.name}>{firstName(actor.name)}</b>}
+                {actor.kind === 'agent' ? <AgentIdentity name={actor.name} owner={owners.get(actor.id)} icon={false} hue={hueOf(actor)} /> : <b title={actor.name}>{firstName(actor.name)}</b>}
                 {' '}{text}
                 <time dateTime={line.at} title={when(line.at)}> · {stamp(line.at)}</time>
               </p>

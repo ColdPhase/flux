@@ -43,14 +43,14 @@ export function ObjectNoticeItem({ notice, meId, owners, authorOf, inThread = fa
   const card = notice.kind === 'decision.proposed';
   const meta = (
     <p className="convo-notice__meta">
-      {by.kind === 'agent' ? <strong><AgentIdentity name={name} owner={agentAuthorOwner(by, owners)} icon={false} /></strong> : <strong>{name}{mine ? ' · you' : ''}</strong>}
+      {by.kind === 'agent' ? <strong><AgentIdentity name={name} owner={agentAuthorOwner(by, owners)} icon={false} hue={by.colour} /></strong> : <strong>{name}{mine ? ' · you' : ''}</strong>}
       <span className="convo-notice__what">{phrase.lead}{link ? <> {link}</> : null}</span>
       <time dateTime={notice.createdAt} title={when(notice.createdAt)}>{clock(notice.createdAt)}</time>
     </p>
   );
   return (
     <li className={`convo-object${follows ? ' is-follow' : ''}${card ? '' : ' is-line'}`} id={`object-${notice.id}`} data-object-kind={notice.kind} data-object-id={target.id} data-object-state={state.state}>
-      <AuthorFace kind={by.kind} id={by.id} name={name} mine={mine} />
+      <AuthorFace kind={by.kind} id={by.id} name={name} mine={mine} hue={by.colour} />
       {card ? <div className="convo-notice__body convo-notice__card">
         {meta}
         <button type="button" className="convo-notice__task convo-object__card" onClick={() => onOpen(target)} aria-label={`Open decision ${notice.title}, ${state.word.toLowerCase()}`}>

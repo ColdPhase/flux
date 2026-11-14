@@ -15,7 +15,7 @@ export type TaskAgentLine =
 
 export interface TaskAgentState {
   /** The agent that holds the task, or the one that last worked on it for a stopped, done or handed-back line. */
-  agent: { id: string; name: string; owner: { id: string; name: string } } | null;
+  agent: { id: string; name: string; owner: { id: string; name: string }; colour?: import('./agents.js').AgentColour } | null;
   line: TaskAgentLine | null;
   /** The line as the reader sees it: "Working…", "Claude limit reached, resumes at 14:00", "Stopped by Maja · the task is back with Ada". */
   text: string;
@@ -35,5 +35,6 @@ export interface TaskAgentState {
 /** `GET`: who is in a task (TA-1, C-10): its creator, its owner and anyone who wrote in its thread, with their agents that run on the server. */
 export const taskPeoplePath = (workId: string) => `/api/v1/work/${workId}/people`;
 export interface TaskPeople {
-  people: { id: string; name: string; agents: { id: string; name: string }[] }[];
+  /** Each agent with its colour (#1528). */
+  people: { id: string; name: string; agents: { id: string; name: string; colour?: import('./agents.js').AgentColour }[] }[];
 }

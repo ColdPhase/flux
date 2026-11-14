@@ -171,7 +171,7 @@ function ReportLine({ line, agent, newDay, onChanged }: { line: AgentChatMessage
               {line.words ? <div className="assistant-answer__body"><MessageText body={line.words} people={lookups.people} /></div> : null}
               {line.task ? (
                 <Link className="agc__chip" to={`/projects/${line.task.projectId}/tasks?open=work:${line.task.id}`}>
-                  <Icon name="tasks" size={13} />#{line.task.number} {line.task.title} · {line.task.projectName}
+                  <Icon name="tasks" size={13} /><span className="agc__chip-t">#{line.task.number} {line.task.title} · {line.task.projectName}</span>
                 </Link>
               ) : null}
             </div></MessageBubble>

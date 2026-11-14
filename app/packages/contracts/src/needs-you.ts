@@ -34,7 +34,8 @@ export interface NeedsYouAccepter {
 export interface NeedsYouDecision {
   id: string;
   version: number;
-  proposedBy: { kind: 'human' | 'agent'; id: string; name: string };
+  /** An agent carries its colour (`AgentColour`, #1528). */
+  proposedBy: { kind: 'human' | 'agent'; id: string; name: string; colour?: import('./agents.js').AgentColour };
   /** What it is based on: the titles of its sources, in order. */
   basedOn: string[];
   /** Work it affects. */
@@ -99,7 +100,7 @@ export interface NeedsYouItem {
   detail: string;
   project: { id: string; name: string } | null;
   /** Who it comes from: an agent or a person; null for a blocked task of yours. */
-  from: { kind: 'human' | 'agent'; id: string; name: string } | null;
+  from: { kind: 'human' | 'agent'; id: string; name: string; colour?: import('./agents.js').AgentColour } | null;
   at: string;
   /** Where it opens in full (a same-origin path). */
   url: string;

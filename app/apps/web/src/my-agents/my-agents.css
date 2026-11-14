@@ -46,7 +46,7 @@
 .sset-card.agp__card > * + * { border-top: 0; }
 .agp__label { margin: 10px 0 0; font-size: var(--fs-xs); font-weight: 500; color: var(--t2); }
 .agp__hint { font-weight: 400; font-size: var(--fs-xs); color: var(--t3); }
-.agp__input { width: 100%; box-sizing: border-box; min-height: var(--ctl); padding: 8px 12px; border: 1px solid var(--line2, var(--line)); border-radius: 12px; background: var(--bg, transparent); color: var(--t1); font: inherit; font-size: var(--fs-base); }
+.agp__input { width: 100%; box-sizing: border-box; min-height: var(--ctl); padding: 8px 12px; border: 1px solid var(--line2, var(--line)); border-radius: var(--r); background: var(--bg, transparent); color: var(--t1); font: inherit; font-size: var(--fs-base); }
 .agp__input:focus-visible { outline: 2px solid var(--t1); outline-offset: 1px; }
 .agp__text { resize: vertical; line-height: 1.5; }
 .agp__models { display: flex; flex-wrap: wrap; gap: 8px 20px; }
@@ -91,7 +91,9 @@
 .agc__answer > :is(p, .assistant-answer__body) { margin: 0; }
 .agc__state { color: var(--t2); }
 .agc__actions { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; margin-top: 2px; font-size: var(--fs-xs); color: var(--t3); }
-.agc__chip { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; margin-top: 8px; padding: 4px 10px; border-radius: var(--r-pill); background: var(--sub); font-size: var(--fs-xs); color: var(--t2); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agc__chip { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; margin-top: 8px; padding: 4px 10px; border-radius: var(--r-pill); background: var(--sub); font-size: var(--fs-xs); color: var(--t2); text-decoration: none; overflow: hidden; white-space: nowrap; }
+/* The words are their own box, so a long title ends in an ellipsis inside the chip (a flex box's text is not cut with one). */
+.agc__chip-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .agc__chip:hover { background: var(--hov); color: var(--t1); }
 .agc__chip svg { flex: none; }
 /* A task chip in an agent's answer is a 44 px touch target (UI audit, review of #1377). */

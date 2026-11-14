@@ -1,6 +1,6 @@
 import { Fragment, type ReactNode } from 'react';
 import type { SearchKind, SearchPlace, SearchResult, SearchText } from '@flux/contracts';
-import { Icon, StatusGlyph, TASK_STATE_WORD, type IconName } from '../ui';
+import { Icon, Kreska, StatusGlyph, TASK_STATE_WORD, type IconName } from '../ui';
 import { plainSnippet } from './plain';
 import { useRouteLoaderData } from 'react-router';
 import { SpaceFace } from '../ui/SpaceFace';
@@ -57,6 +57,10 @@ function Tile({ result }: { result: SearchResult }) {
   // A file found by what it says (C-63): its own page icon, as the message shows it, over the tile.
   if (result.kind === 'file') return <span className="sr__ic sr__ic--file" aria-hidden="true"><FileIcon name={plainTitle(result)} size={20} /></span>;
   if (result.kind === 'message' || result.kind === 'dm_message') {
+    // An agent's message, or an agent's answer a person showed everyone, is its Kreska in its colour, as the message draws it (#1528).
+    if (result.agentColour || /\s\(agent\)$/.test(result.author ?? '')) {
+      return <span className="sr__ic sr__ic--agent" aria-hidden="true"><Kreska size={28} {...(result.agentColour ? { hue: result.agentColour } : {})} /></span>;
+    }
     const letters = initials(result.author);
     return <span className="sr__ic sr__ic--person" aria-hidden="true">{letters || <Icon name="chat" size={14} />}</span>;
   }

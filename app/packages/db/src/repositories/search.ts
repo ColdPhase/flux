@@ -1,5 +1,5 @@
 import { sql, type SQL } from 'drizzle-orm';
-import { foldSearchWord } from '@flux/contracts';
+import { foldSearchWord, type AgentColour } from '@flux/contracts';
 import * as schema from '../schema.js';
 import { hybridMatched, vectorLiteral, type QueryVectors } from './search-vectors.js';
 import { cleanName } from '../display-name.js';
@@ -109,6 +109,8 @@ export interface SearchRowRecord {
   via?: string | null;
   /** `via` names an agent whose answer its person showed everyone ("Ada's Assistant"), not a local client (#1424). */
   viaAgent?: boolean;
+  /** The agent's colour when the author is an agent, or when the message is an agent's answer its person showed everyone (#1528). */
+  agentColour?: AgentColour | null;
   author: { kind: 'human' | 'agent'; id: string } | null;
   at: Date;
 }
@@ -479,7 +481,7 @@ function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows, ra
     hits AS (SELECT * FROM matched WHERE newest = 1)
     SELECT h.id::text AS id, h.score::text AS score, h.at::text AS at_key, h.at, h.kind, h.workspace_id, w.name AS workspace_name,
       h.object_id, h.parent_id, h.project_id, p.name AS project_name, h.version, h.page, pf.message_id AS file_message_id, pm.current_version, h.status, sk.title AS sketch_title, wi.number AS work_number,
-      h.author_kind, h.author_id, ${cleanName(sql`coalesce(au.name, ag.name)`)} AS author_name, coalesce(pmv.via, dmv.via) AS via, coalesce(pmv.via_colour, dmv.via_colour) IS NOT NULL AS via_agent, coalesce(pmv.sequence, dmv.sequence) AS sequence,
+      h.author_kind, h.author_id, ${cleanName(sql`coalesce(au.name, ag.name)`)} AS author_name, coalesce(pmv.via, dmv.via) AS via, coalesce(pmv.via_colour, dmv.via_colour) IS NOT NULL AS via_agent, coalesce(ags.colour, pmv.via_colour, dmv.via_colour) AS agent_colour, coalesce(pmv.sequence, dmv.sequence) AS sequence,
       length(h.body) > 0 AS has_body,
       ts_headline('simple', ${clean(sql`h.title`)}, ${q}, ${TITLE_OPTIONS}) AS title_headline,
       CASE WHEN length(h.body) = 0 THEN NULL
@@ -494,6 +496,7 @@ function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows, ra
     LEFT JOIN workspaces w ON w.id = h.workspace_id
     LEFT JOIN auth_users au ON h.author_kind = 'human' AND au.id = h.author_id
     LEFT JOIN agents ag ON ag.id = (CASE WHEN h.author_kind = 'agent' THEN h.author_id::uuid END)
+    LEFT JOIN assistant_settings ags ON ags.agent_id = ag.id
     LEFT JOIN project_messages pmv ON pmv.id = (CASE WHEN h.kind = 'message' THEN h.object_id::uuid END)
     LEFT JOIN dm_messages dmv ON dmv.id = (CASE WHEN h.kind = 'dm_message' THEN h.object_id::uuid END)
     LEFT JOIN project_materials pm ON pm.id = (CASE WHEN h.kind IN ('material', 'doc') THEN h.object_id::uuid END)
@@ -508,7 +511,7 @@ interface PageRow {
   id: string; score: string; at_key: string; at: Date | string; kind: SearchKind; workspace_id: string; workspace_name: string | null;
   object_id: string; parent_id: string | null; project_id: string | null; project_name: string | null; version: number | null;
   current_version: number | null; status: string | null; sequence: number | null; page: number | null; file_message_id: string | null; sketch_title: string | null; author_name: string | null; has_body: boolean;
-  author_kind: 'human' | 'agent' | null; author_id: string | null; via: string | null; via_agent: boolean | null;
+  author_kind: 'human' | 'agent' | null; author_id: string | null; via: string | null; via_agent: boolean | null; agent_colour: AgentColour | null;
   title_headline: string | null; body_headline: string | null; dm_name: string | null; work_number: number | null;
 }
 
@@ -537,6 +540,7 @@ function toRecord(row: PageRow): SearchRowRecord {
     authorName: row.author_name,
     via: row.via,
     viaAgent: !!row.via && !!row.via_agent,
+    agentColour: row.agent_colour,
     author: row.author_kind && row.author_id ? { kind: row.author_kind, id: row.author_id } : null,
     at: row.at instanceof Date ? row.at : new Date(row.at),
   };

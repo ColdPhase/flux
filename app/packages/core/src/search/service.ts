@@ -159,6 +159,7 @@ function toResult(row: SearchRow, marks: SearchMarks | null): SearchResult {
     ...(task ? { task } : {}),
     place: searchPlaceOf(row),
     author: row.author?.kind === 'agent' ? `${row.authorName ?? 'Agent'} (agent)` : row.via && row.authorName ? viaName(row.authorName, row.via, row.viaAgent) : row.authorName,
+    ...(row.agentColour && (row.author?.kind === 'agent' || row.viaAgent) ? { agentColour: row.agentColour } : {}),
     at: row.at.toISOString(),
     target: source.target(row),
   };

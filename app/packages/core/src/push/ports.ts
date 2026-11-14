@@ -40,8 +40,8 @@ export interface NotificationRecord {
   reason: NotificationReason | null;
   /** Set when it tells the asker that their question was answered (#1424 decision 1), as the generator recorded it. */
   answer?: boolean;
-  /** Who it comes from, on the one-item read only (#1243): the actor of the event it was made from. */
-  from?: { kind: 'human' | 'agent'; name: string; /** Only on the Inbox's list read (#1424). */ id?: string } | null;
+  /** Who it comes from (#1243, #1424): the actor of the event it was made from, with its id, so an agent gets its colour (#1528). */
+  from?: { kind: 'human' | 'agent'; id: string; name: string } | null;
 }
 
 /** `aiOrigin` (F-029) is required of every writer: whether the notification came from AI work, by its actor or source. */

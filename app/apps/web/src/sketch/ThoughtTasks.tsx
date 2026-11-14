@@ -98,7 +98,7 @@ function ThoughtTaskList({ thought, projectId, list, titleId, onClose, onChoose 
               <span className="sk-task__b">
                 <span className="sk-task__t">{item.title}</span>
                 <span className="sk-task__m"><span className="sk-task__id"><span className="ui-task-number">{taskNumber(item)}</span></span> · {statusPhrase(item)}</span>
-                <span className="sk-task__m sk-task__people">{item.owner ? <>Owner {item.owner.name}{item.owner.kind === 'agent' ? <> <AgentTag /></> : null}</> : 'No owner yet'} · added by {item.createdBy.name}{item.createdBy.kind === 'agent' ? <> <AgentTag /></> : null}</span>
+                <span className="sk-task__m sk-task__people">{item.owner ? <>Owner {item.owner.name}{item.owner.kind === 'agent' ? <> <AgentTag hue={item.owner.colour} /></> : null}</> : 'No owner yet'} · added by {item.createdBy.name}{item.createdBy.kind === 'agent' ? <> <AgentTag hue={item.createdBy.colour} /></> : null}</span>
               </span>
               <Icon name="chevron-right" size={14} />
             </RefLink>

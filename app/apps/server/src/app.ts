@@ -20,6 +20,7 @@ import { pushRoutes } from './push/index.js';
 import { staticHeaders } from './pwa/static-headers.js';
 import { loadDocumentPolicies } from './http/content-security-policy.js';
 import { CSP_REPORT_PATH, cspReportRoutes } from './http/csp-reports.js';
+import { useAgentColours } from './http/agent-colours.js';
 import { streamRoutes } from './stream/index.js';
 import { conversationRoutes } from './conversation/routes.js';
 import { linkPreviewRoutes } from './link-previews/routes.js';
@@ -167,6 +168,8 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   let gateSessions: Awaited<ReturnType<typeof startIdentity>> | null = null;
   registerLockGate(app, { db, keys: encryptionKeys,
     sessions: { resolveSession: (headers) => gateSessions!.resolveSession(headers), requirePrincipal: (request) => gateSessions!.requirePrincipal(request) } });
+  // Every agent an answer names carries its own colour (#1528), registered before any route so every route has it.
+  useAgentColours(app, db);
   const migrationManifest = await readMigrationManifest(migrationsDir, FLUX_SCHEMA_VERSION);
   assertExactMigrationLedger(migrationManifest, await readAppliedMigrationVersions(pool));
   // The API only enqueues. The worker owns scheduling and maintenance, so this instance runs neither of their timers (#862).

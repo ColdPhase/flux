@@ -121,7 +121,7 @@ function Card({ item, agentOwner, meId, writable, hintId, saving, dragged, lifte
         {owner ? (
           // A person is a face and a name; an agent is Kreska and its one label, "Planner · Ada's agent", on one line (#1364).
           owner.kind === 'agent'
-            ? <span className="tb-card__owner tb-card__owner--agent"><AgentIdentity name={owner.name} owner={agentOwner} icon={20} hue={hue(owner.id)} /></span>
+            ? <span className="tb-card__owner tb-card__owner--agent"><AgentIdentity name={owner.name} owner={agentOwner} icon={20} hue={hue(owner)} /></span>
             : <span className="tb-card__owner">
               <span className="tb-av" aria-hidden="true">{initials(owner.name)}</span>
               <span className="tb-card__name">{owner.id === meId ? 'You' : owner.name}</span>

@@ -292,7 +292,7 @@ export function Notices({ identity, meName, placeName, first }: { identity: stri
           }}
           onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setHeld((value) => ({ ...value, focus: false })); }}>
           <span className="ui-notice__face" aria-hidden="true">
-            {newest.from?.kind === 'agent' || (!newest.from && newest.reason === 'approval') ? <Kreska size={32} /> : <Avatar name={newest.from?.name ?? ''} size="lg" />}
+            {newest.from?.kind === 'agent' || (!newest.from && newest.reason === 'approval') ? <Kreska size={32} hue={newest.from?.colour} /> : <Avatar name={newest.from?.name ?? ''} size="lg" />}
           </span>
           <div className="ui-notice__text">
             <p className="ui-notice__title">{words.title}</p>

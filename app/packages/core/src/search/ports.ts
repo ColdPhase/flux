@@ -1,4 +1,4 @@
-import type { SearchKind, SearchText } from '@flux/contracts';
+import type { AgentColour, SearchKind, SearchText } from '@flux/contracts';
 import type { Principal } from '../principal.js';
 
 /**
@@ -74,6 +74,8 @@ export interface SearchRow {
   via?: string | null;
   /** `via` names an agent whose answer its person showed everyone ("Ada's Assistant"), not a local client (#1424). */
   viaAgent?: boolean;
+  /** The agent's colour when the author is an agent, or when the message is an agent's answer its person showed everyone (#1528). */
+  agentColour?: AgentColour | null;
   author: { kind: 'human' | 'agent'; id: string } | null;
   at: Date;
 }

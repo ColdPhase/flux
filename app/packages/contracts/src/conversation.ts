@@ -164,7 +164,7 @@ export type AgentProjectOwner = { kind: 'human'; id: string };
 
 export type MessageIdentity =
   | { authorId: string; author?: never }
-  | { authorId: null; author: { kind: 'agent'; id: string; name?: string; projectOwner?: AgentProjectOwner } };
+  | { authorId: null; author: { kind: 'agent'; id: string; name?: string; projectOwner?: AgentProjectOwner; colour?: AgentColour } };
 /** Existing human JSON is unchanged; agents never occupy a human account field. */
 export type ConversationMessage = ConversationMessageFields & MessageIdentity;
 export type HumanConversationMessage = ConversationMessageFields & { authorId: string; author?: never };
@@ -176,7 +176,7 @@ export type HumanConversationMessage = ConversationMessageFields & { authorId: s
 export type SentConversationMessage = ConversationMessage & { answered?: string[] };
 export type ConversationIdentity =
   | { createdBy: string; createdByActor?: never }
-  | { createdBy: null; createdByActor: { kind: 'agent'; id: string; name?: string } };
+  | { createdBy: null; createdByActor: { kind: 'agent'; id: string; name?: string; colour?: AgentColour } };
 
 export interface ConversationFields {
   id: string;

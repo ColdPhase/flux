@@ -114,7 +114,7 @@ export { AuthorFace } from '../ui';
 
 /** An agent author's name line: its name, the "Agent" tag and "for <owner>" when the reader may know it. */
 export function AgentAuthor({ message, owner }: { message: Extract<ConversationMessage, { authorId: null }>; owner?: string | null }) {
-  return <AgentIdentity name={message.author.name ?? 'Agent'} owner={owner} icon={false} />;
+  return <AgentIdentity name={message.author.name ?? 'Agent'} owner={owner} icon={false} hue={message.author.colour} />;
 }
 
 /**
@@ -181,13 +181,20 @@ export function shownAnswer(message: { via?: string | undefined; viaColour?: Age
 
 const firstWord = (name: string) => name.trim().split(/\s+/)[0] || name;
 /** "Hubert's Assistant" (the asker's first name and the agent's own name), and what a screen reader reads: "Hubert's Assistant, shown by Hubert". */
+/**
+ * The colour of a message's face (#1528): a shown answer's agent's, or an agent author's own, which every read carries; none for a person.
+ */
+export function messageHue(message: { via?: string | undefined; viaColour?: AgentColour | undefined } & ({ authorId: string } | { authorId: null; author: { colour?: AgentColour | undefined } })): AgentColour | undefined {
+  return shownAnswer(message)?.colour ?? (message.authorId === null ? message.author.colour : undefined);
+}
+
 export function shownLabel(shown: { agent: string }, asker: string): { label: string; spoken: string } {
   const first = firstWord(asker);
   return { label: `${first}'s ${shown.agent}`, spoken: `${first}'s ${shown.agent}, shown by ${first}` };
 }
 
 /** The name line of a shown answer: its label and the "Agent" tag, with "shown by" for a screen reader. */
-export function ShownAnswerName({ shown, asker }: { shown: { agent: string }; asker: string }) {
+export function ShownAnswerName({ shown, asker }: { shown: { agent: string; colour?: AgentColour }; asker: string }) {
   const { label } = shownLabel(shown, asker);
-  return <><strong><AgentIdentity name={label} icon={false} /></strong><span className="ui-vh">, shown by {firstWord(asker)}</span></>;
+  return <><strong><AgentIdentity name={label} icon={false} hue={shown.colour} /></strong><span className="ui-vh">, shown by {firstWord(asker)}</span></>;
 }

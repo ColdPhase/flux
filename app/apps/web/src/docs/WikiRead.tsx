@@ -12,7 +12,7 @@ import { shortDate } from './format';
 
 /** A person's name, or an agent as the final design names it: its name, the Agent tag and "for <owner>". */
 function WhoName({ who, owners }: { who: NamedPrincipal; owners: AgentOwners }) {
-  return who.kind === 'agent' ? <AgentIdentity name={who.name} owner={owners.get(who.id)} icon={false} className="wiki-who__agent" /> : <>{who.name}</>;
+  return who.kind === 'agent' ? <AgentIdentity name={who.name} owner={owners.get(who.id)} icon={false} hue={who.colour} className="wiki-who__agent" /> : <>{who.name}</>;
 }
 
 export interface Heading { id: string; text: string; level: number }

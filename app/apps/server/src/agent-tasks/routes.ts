@@ -8,6 +8,7 @@ import { useDomainErrors } from '../http/commands.js';
 import { pgBossPersonalRunQueue, personalRunPorts, type PersonalRunComposition } from '../personal-runs/adapters.js';
 import { policyWorkAccess } from '../work/access.js';
 import { createAgentTaskDrain } from './drain.js';
+import { agentColours } from '../http/agent-colours.js';
 
 // The routes and the listener of people's agents taking tasks (#856, F-036 AG-5). The state line is read and Stop and Try again are
 // written here; the work itself is drained from `agent_task_events` (drain.ts) whenever the database says there is something.
@@ -67,7 +68,9 @@ export async function agentTaskRoutes(app: FastifyInstance, { db, sessions, boss
           stopRequestedAt: run.stopRequestedAt, stopRequestedBy: stopper, planLimitResetsAt: run.planLimitResetsAt },
       });
     });
-    return reply.header('cache-control', 'no-store').send(state);
+    // The agent with its own colour (#1528), the same for every reader.
+    const colour = state.agent ? (await agentColours(db, [state.agent.id])).get(state.agent.id) : undefined;
+    return reply.header('cache-control', 'no-store').send(colour && state.agent ? { ...state, agent: { ...state.agent, colour } } : state);
   });
 
   // Who is in the task and their agents (TA-1): the people of the task, as everyone who can read it sees them. Someone who can no longer
@@ -85,6 +88,9 @@ export async function agentTaskRoutes(app: FastifyInstance, { db, sessions, boss
           if (await access.canRead({ kind: 'agent', id: agent.id }, work.projectId)) agents.push({ id: agent.id, name: agent.name });
         people.push({ id, name: (await rows.personName(id)) ?? 'Former member', agents });
       }
+      // Each agent with its own colour (#1528).
+      const colours = await agentColours(tx, people.flatMap((person) => person.agents.map((agent) => agent.id)));
+      for (const person of people) person.agents = person.agents.map((agent) => (colours.has(agent.id) ? { ...agent, colour: colours.get(agent.id)! } : agent));
       return { people: people.sort((a, b) => a.name.localeCompare(b.name)) };
     });
     return reply.header('cache-control', 'no-store').send(body);

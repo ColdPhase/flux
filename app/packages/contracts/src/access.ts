@@ -185,6 +185,8 @@ export interface ProjectPerson {
   access: ProjectAccess;
   /** Agent owner label: a human only when already in this project's current audience. No workspace roster. */
   agentOwner?: { kind: 'human'; id: string; name: string };
+  /** Agents only: the agent's own colour (final design §2), the same for every reader everywhere; absent for an agent with none (a local client's), which is ink. */
+  colour?: import('./agents.js').AgentColour;
   /** A person's last-active time, rounded by the server (`LastActiveAt`, #1225, C-58). Absent for an agent, for someone who turned it off and for someone not active yet. */
   lastActiveAt?: LastActiveAt;
 }

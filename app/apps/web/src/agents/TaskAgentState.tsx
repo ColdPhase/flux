@@ -59,7 +59,7 @@ export function TaskAgentState({ item, projectId, conversationId, revision, onCh
   return (
     <div className="wd-agent" data-agent-line={state.line}>
       <div className="wd-agent__line" role="status" aria-live="polite">
-        <Kreska size={20} expression={FACE[state.line]} hue={hue(state.agent.id)} />
+        <Kreska size={20} expression={FACE[state.line]} hue={hue(state.agent)} />
         <AgentIdentity name={state.agent.name} owner={state.agent.owner.name} icon={false} />
         <span className="wd-agent__text">{state.text}{state.resumesAt ? `, resumes at ${clock(state.resumesAt)}` : ''}</span>
         <span className="wd-agent__actions">

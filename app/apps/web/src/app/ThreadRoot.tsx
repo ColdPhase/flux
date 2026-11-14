@@ -1,7 +1,7 @@
 import type { ConversationMessage } from '@flux/contracts';
 import { MessageObjects } from '../work/inline';
 import type { MessageWorkPreview } from '../work/message-associations';
-import { AgentAuthor, AuthorFace, DeletedSourceCitation, ShownAnswerName, SourceCitation, MessageTime, ViaTag, shownAnswer, shownLabel } from './messageParts';
+import { AgentAuthor, AuthorFace, DeletedSourceCitation, ShownAnswerName, SourceCitation, MessageTime, ViaTag, messageHue, shownAnswer, shownLabel } from './messageParts';
 import { MessageContent, type PhotoActions } from '../composer/Files';
 import { LinkPreviews, MessageText } from './MessageText';
 import { useProjectShell } from '../project/data';
@@ -26,7 +26,7 @@ export function ThreadRoot({ message, projectId, body, author, agentOwner = null
       <article className={`thread__root${mine ? ' is-mine' : ''}`} id={message ? `thread-root-${message.id}` : undefined} data-message-id={message?.id} {...(shown ? { 'data-shown-answer': '' } : {})} aria-label={shown && author ? shownLabel(shown, author).spoken : author ? `Message from ${mine ? 'you' : author}` : 'Opening message'}>
         {message && author && !mine ? (
           <div className="thread__root-meta">
-            <AuthorFace kind={message.authorId === null || shown ? 'agent' : 'human'} id={message.authorId} name={author} mine={mine} {...(shown ? { hue: shown.colour } : {})} />
+            <AuthorFace kind={message.authorId === null || shown ? 'agent' : 'human'} id={message.authorId} name={author} mine={mine} hue={messageHue(message)} />
             {shown ? <ShownAnswerName shown={shown} asker={author} /> : <>
               <strong>{message.authorId === null ? <AgentAuthor message={message} owner={agentOwner} /> : author}</strong>
               <ViaTag via={message.via} />

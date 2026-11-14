@@ -42,7 +42,7 @@ describe('the notice on an open tab (#1243)', () => {
       const item = expectStatus(await ada.browser.request('GET', `/api/v1/inbox/${notice.id}`), 200) as InboxItem;
       assert.equal(item.reason, 'dm');
       assert.equal(item.source.id, dm.id);
-      assert.deepEqual(item.from, { kind: 'human', name: 'notice-jonas' }, 'the item names its sender');
+      assert.deepEqual(item.from, { kind: 'human', id: jonas.id, name: 'notice-jonas' }, 'the item names its sender');
       assert.match(item.body, /probe readings/);
 
       await generatorCaughtUp();

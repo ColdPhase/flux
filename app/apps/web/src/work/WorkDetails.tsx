@@ -374,7 +374,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
   const shownOwner = ownerDraft ?? ownerValue;
   const ownerView = shownOwner
     ? (shownOwner.startsWith('agent:')
-      ? <AgentIdentity name={(agents.find((agent) => agent.value === shownOwner)?.label ?? item.owner?.name ?? '').replace(/ \(agent\)$/, '')} owner={owners.get(shownOwner.slice('agent:'.length))} icon={16} hue={hue(shownOwner.slice('agent:'.length))} />
+      ? <AgentIdentity name={(agents.find((agent) => agent.value === shownOwner)?.label ?? item.owner?.name ?? '').replace(/ \(agent\)$/, '')} owner={owners.get(shownOwner.slice('agent:'.length))} icon={16} hue={hue(item.owner?.kind === 'agent' && `agent:${item.owner.id}` === shownOwner ? item.owner : shownOwner.slice('agent:'.length))} />
       : <><Avatar name={people.find((person) => person.value === shownOwner)?.name ?? item.owner?.name ?? ''} id={humanId(shownOwner)} size="sm" tone={shownOwner === `human:${me.user.id}` ? 'me' : 'neutral'} /><span>{people.find((person) => person.value === shownOwner)?.label ?? item.owner?.name}</span></>)
     : <><Icon name="person" size={16} /><span className="wd-muted">{ownerDraft === '' ? 'Nobody yet' : 'Assign'}</span></>;
   // What it can wait for (#868): a person, a decision still to make or another task, one thing. The last two are read only while the blocker is edited.
@@ -737,7 +737,7 @@ function DecisionPanel({ decision, context, detail, relations, reload, revision,
         </section>
       ) : null}
       <dl className="wd-rows wd-decision-rows">
-        <div className="wd-row"><dt>Proposed</dt><dd><span>{decision.proposedBy.kind === 'agent' ? <AgentIdentity name={decision.proposedBy.name} owner={owners.get(decision.proposedBy.id)} /> : decision.proposedBy.name} · {shortDate(decision.createdAt)}</span></dd></div>
+        <div className="wd-row"><dt>Proposed</dt><dd><span>{decision.proposedBy.kind === 'agent' ? <AgentIdentity name={decision.proposedBy.name} owner={owners.get(decision.proposedBy.id)} hue={decision.proposedBy.colour} /> : decision.proposedBy.name} · {shortDate(decision.createdAt)}</span></dd></div>
         {decision.decidedBy ? <div className="wd-row"><dt>Decided</dt><dd><span>{decision.decidedBy.name} · {shortDate(decision.decidedAt!)}</span></dd></div> : null}
       </dl>
 

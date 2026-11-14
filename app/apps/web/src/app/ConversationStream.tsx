@@ -16,7 +16,7 @@ import { useShellActions } from './shellContext';
 import { listConversationRoots, listObjectNotices, listTaskNotices, observeProjectMessages, projectReaders, projectReceipts } from '../conversations/api';
 import { QuestionCard, WhenNoQuestion } from '../agents/QuestionCard';
 import { ownRuns, useObservation, useReceiptTick, useReceipts, type Receipt } from './receipts';
-import { AgentAuthor, AuthorFace, ContributionMark, DeletedSourceCitation, OPENING_REVEAL_MS, ShownAnswerName, SourceCitation, SourceTag, MessageDay, MessageTime, ViaTag, sameMessageAuthor, shownAnswer, shownLabel, clock, day, openOnWholeMessages, pendingMessageRow, when } from './messageParts';
+import { AgentAuthor, AuthorFace, ContributionMark, DeletedSourceCitation, OPENING_REVEAL_MS, ShownAnswerName, SourceCitation, SourceTag, MessageDay, messageHue, MessageTime, ViaTag, sameMessageAuthor, shownAnswer, shownLabel, clock, day, openOnWholeMessages, pendingMessageRow, when } from './messageParts';
 import { agentAuthorOwner, useAgentOwners, type AgentOwners } from '../agents/owners';
 import { MessageContent } from '../composer/Files';
 import { LinkPreviews, MessageText } from './MessageText';
@@ -740,10 +740,10 @@ function NoticeItem({ notice, meId, owners, row, authorOf, hasMessage, onOpenTas
       : `#${notice.workNumber} ${notice.kind === 'task.blocked' ? 'blocked' : 'unblocked'}${why ? ` · ${why.length > 80 ? `${why.slice(0, 79).trimEnd()}…` : why}` : ''}`;
     return (
       <li className="convo-notice convo-notice--update" id={`notice-${notice.id}`} data-work-id={notice.workId}>
-        <AuthorFace kind={creator.kind} id={creator.id} name={name} mine={mine} />
+        <AuthorFace kind={creator.kind} id={creator.id} name={name} mine={mine} hue={creator.colour} />
         <div className="convo-notice__body">
           <p className="convo-notice__meta">
-            {creator.kind === 'agent' ? <strong><AgentIdentity name={name} owner={agentAuthorOwner(creator, owners)} icon={false} /></strong> : <strong>{name}{mine ? ' · you' : ''}</strong>}
+            {creator.kind === 'agent' ? <strong><AgentIdentity name={name} owner={agentAuthorOwner(creator, owners)} icon={false} hue={creator.colour} /></strong> : <strong>{name}{mine ? ' · you' : ''}</strong>}
             <button type="button" className="convo-notice__src" data-native-ref={`work:${notice.workId}`} onClick={() => onOpenTask(notice.workId)} aria-label={`Open task #${notice.workNumber} ${title}`}>{words}</button>
             <time dateTime={notice.createdAt} title={when(notice.createdAt)}>{clock(notice.createdAt)}</time>
           </p>
@@ -768,7 +768,7 @@ function NoticeItem({ notice, meId, owners, row, authorOf, hasMessage, onOpenTas
       {/* The immutable announcement number names the task before and after the current row arrives. */}
       <span className="convo-notice__num ui-task-number">#{notice.workNumber}</span>
       <span className="convo-notice__title">{title}</span>
-      {owner ? <span className="convo-notice__owner">{owner.kind === 'agent' ? <Kreska size={20} /> : <Avatar name={owner.name} id={owner.id} size="sm" />}<span className="convo-notice__owner-name">{owner.name}</span></span> : null}
+      {owner ? <span className="convo-notice__owner">{owner.kind === 'agent' ? <Kreska size={20} hue={owner.colour} /> : <Avatar name={owner.name} id={owner.id} size="sm" />}<span className="convo-notice__owner-name">{owner.name}</span></span> : null}
       {/* A word always goes with the glyph, at the card's right edge like a decision's (#763 A8). */}
       <span className="convo-object__state convo-notice__state">{reverted ? 'Undone' : STATUS_LABEL[current?.status ?? 'open']}</span>
       <Icon name="chevron-right" size={14} />
@@ -776,10 +776,10 @@ function NoticeItem({ notice, meId, owners, row, authorOf, hasMessage, onOpenTas
   );
   return (
     <li className={`convo-notice${reverted ? ' convo-notice--undone' : ''}`} id={`notice-${notice.id}`} data-work-id={notice.workId}>
-      <AuthorFace kind={creator.kind} id={creator.id} name={name} mine={mine} />
+      <AuthorFace kind={creator.kind} id={creator.id} name={name} mine={mine} hue={creator.colour} />
       <div className="convo-notice__body convo-notice__card">
         <p className="convo-notice__meta">
-          {creator.kind === 'agent' ? <strong><AgentIdentity name={name} owner={agentAuthorOwner(creator, owners)} icon={false} /></strong> : <strong>{name}{mine ? ' · you' : ''}</strong>}
+          {creator.kind === 'agent' ? <strong><AgentIdentity name={name} owner={agentAuthorOwner(creator, owners)} icon={false} hue={creator.colour} /></strong> : <strong>{name}{mine ? ' · you' : ''}</strong>}
           <span className="convo-notice__what" data-source={source.kind}>{phrase.lead}{phrase.link ? <> {source.kind === 'message' && hasMessage(source.messageId)
             ? <button type="button" className="convo-notice__src" onClick={toMessage}>{phrase.link}</button> : <span className="convo-notice__src">{phrase.link}</span>}</> : null}</span>
           {notice.kind === 'task.creation_reverted' || notice.lifecycle?.state === 'creation_reverted'
@@ -807,7 +807,7 @@ function NoticeFold({ fold, summary, shown, children }: { fold: { key: string; n
   return (
     <li className="convo-fold" id={fold.key}>
       <button type="button" className="convo-fold__b" aria-expanded={open} aria-controls={listId} onClick={() => setOpen((value) => !value)}>
-        <span className="convo-fold__faces" aria-hidden="true">{faces.map((who) => who.kind === 'agent' ? <Kreska key={who.id} size={20} /> : <Avatar key={who.id} name={who.name} id={who.id} size="sm" />)}</span>
+        <span className="convo-fold__faces" aria-hidden="true">{faces.map((who) => who.kind === 'agent' ? <Kreska key={who.id} size={20} hue={who.colour} /> : <Avatar key={who.id} name={who.name} id={who.id} size="sm" />)}</span>
         <span className="convo-fold__t"><b>{fold.notices.length} task updates</b><span className="convo-fold__s"> · {summary}</span></span>
         <Icon name={open ? 'chevron-up' : 'chevron-down'} size={16} />
       </button>
@@ -889,7 +889,7 @@ function RootItem(props: RootItemProps | QueuedRootProps) {
     <li {...touch.props} id={`message-${message.id}`} data-message-id={message.id} {...(stored.observed ? { 'data-observe-id': message.id } : {})} {...(shown ? { 'data-shown-answer': '' } : {})} aria-label={shown ? shownLabel(shown, name).spoken : mine ? 'Your message' : `${name}’s message`} tabIndex={-1} data-conversation-id={root.conversationId}
       className={`project-convo__message${mine ? ' is-mine' : ''}${arrived ? ' is-arrived' : ''}${open ? ' is-open' : ''}${stored.continued ? ' is-continued' : ''} ${touch.props.className}`}>
       <SourceTag messageId={message.id} />
-      {!mine && !stored.continued ? <AuthorFace kind={message.authorId === null || shown ? 'agent' : 'human'} id={message.authorId} name={name} mine={mine} {...(shown ? { hue: shown.colour } : {})} /> : null}
+      {!mine && !stored.continued ? <AuthorFace kind={message.authorId === null || shown ? 'agent' : 'human'} id={message.authorId} name={name} mine={mine} hue={messageHue(message)} /> : null}
       {!mine && !stored.continued ? <div className="project-convo__message-meta">
         {shown ? <ShownAnswerName shown={shown} asker={name} /> : <>
           <strong>{message.authorId === null ? <AgentAuthor message={message} owner={agentAuthorOwner(message.author, owners)} /> : <RefLink className="project-convo__person" to={`/dm/new?workspace=${project.workspaceId}&with=${message.authorId}`} title={`Message ${name} directly`}>{name}</RefLink>}</strong>

@@ -128,6 +128,8 @@ export interface NamedPrincipal {
    * the owner is hidden or the agent is not in the audience; the browser never infers it otherwise.
    */
   projectOwner?: AgentProjectOwner;
+  /** Agents only: the agent's own colour (final design §2), the same for every reader everywhere; absent for an agent with none (a local client's), which is ink. */
+  colour?: import('./agents.js').AgentColour;
 }
 
 interface ProjectObject {

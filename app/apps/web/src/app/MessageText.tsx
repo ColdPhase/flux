@@ -16,7 +16,7 @@ import './message-format.css';
 // an agent's chip carries the Kreska mark.
 
 /** What a mention chip needs of a person: the name to match, and whether it is an agent. A space's people are this, and so are a chat's known names. */
-export type NamedPerson = Pick<ProjectPerson, 'kind' | 'name'>;
+export type NamedPerson = Pick<ProjectPerson, 'kind' | 'name'> & { colour?: ProjectPerson['colour'] };
 
 const URL_TOKEN = LINK_URL_SOURCE;
 const escapeRe = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -53,9 +53,10 @@ export function MessageText({ body, linked = true, people = null, cite }: { body
       else if (groups.url) parts.push(linked ? <a key={`${keyPrefix}${key++}`} className="msg-link" href={groups.url} target="_blank" rel="noopener noreferrer nofollow">{groups.url}</a> : <span key={`${keyPrefix}${key++}`}>{groups.url}</span>);
       else if (groups.known || groups.mention) {
         const name = (groups.known ?? groups.mention!).slice(1);
-        const agent = names.find((person) => person.name === name)?.kind === 'agent' || /['’]s assistant$/.test(name);
+        const named = names.find((person) => person.name === name);
+        const agent = named?.kind === 'agent' || /['’]s assistant$/.test(name);
         parts.push(<span key={`${keyPrefix}${key++}`} className={`ref-chip ref-chip--person${agent ? ' ref-chip--agent' : ''}`} data-ref="person">
-          {agent ? <Kreska size={12} className="ref-chip__k" /> : <span className="ref-chip__face" aria-hidden="true" data-initials={initials(name)} />}
+          {agent ? <Kreska size={12} className="ref-chip__k" {...(named?.colour ? { hue: named.colour } : {})} /> : <span className="ref-chip__face" aria-hidden="true" data-initials={initials(name)} />}
           <span className="ui-vh">@</span>{name}</span>);
       }
       else if (groups.task) parts.push(<span key={`${keyPrefix}${key++}`} className="ref-chip ref-chip--task" data-ref="task"><Icon name="tasks" size={12} />#{groups.task}</span>);

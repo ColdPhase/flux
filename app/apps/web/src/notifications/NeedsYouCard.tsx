@@ -48,7 +48,7 @@ export function NotNowButton({ onClick, variant = 'secondary', className, keyHin
 export function Face({ item }: { item: NeedsYouItem }) {
   const hue = useAgentHue();
   if (item.kind === 'blocked') return <span className="nyc__face nyc__face--glyph"><StatusGlyph status="blocked" size={16} /></span>;
-  if (item.from?.kind === 'agent' || item.assistantChanges) return <span className="nyc__face"><Kreska size={32} hue={hue(item.from?.kind === 'agent' ? item.from.id : null)} /></span>;
+  if (item.from?.kind === 'agent' || item.assistantChanges) return <span className="nyc__face"><Kreska size={32} hue={hue(item.from?.kind === 'agent' ? item.from : null)} /></span>;
   if (item.from) return <span className="nyc__face"><Avatar name={item.from.name} id={item.from.id} size="lg" /></span>;
   if (item.call) return <span className="nyc__face nyc__face--icon"><Icon name="call" size={16} /></span>;
   return <span className="nyc__face nyc__face--icon"><Icon name={NOTE_ICON[item.kind === 'question' ? 'question' : 'mention']} size={16} /></span>;

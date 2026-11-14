@@ -105,6 +105,11 @@ export interface SearchResult {
   place: SearchPlace;
   /** Who wrote or proposed it, when known. */
   author: string | null;
+  /**
+   * Present when that author is an agent, or the result is an agent's answer its person showed everyone (#1232): the agent's colour, so the
+   * result's tile is its Kreska in it (#1528), as the message itself draws it. Absent for a person and for an agent without a colour (ink).
+   */
+  agentColour?: import('./agents.js').AgentColour;
   /** When this text was written or last changed. */
   at: string;
   target: SearchTarget;

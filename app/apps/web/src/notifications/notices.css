@@ -21,6 +21,13 @@
 }
 .ui-notice__close { grid-column: 3; grid-row: 1; align-self: start; }
 .ui-notice__actions { grid-column: 2 / 4; grid-row: 2; display: flex; flex-wrap: wrap; gap: 8px; }
+/* A notice floats over the work, never over a docked panel (audit P3 17): while one is docked (from 1001 px; below it lies over the work,
+   `--float`) the notice stands at the work column's bottom right, 20 px left of the panel and its 10 px margin. */
+@media (min-width: 1001px) {
+  :root:has(.ui-panel--docked:not(.is-leaving, .ui-panel--float)) .ui-notices {
+    right: calc(var(--panel-w) + 30px); width: min(360px, calc(100vw - var(--panel-w) - 50px));
+  }
+}
 /* The phone (MEDIA.phone): at the top, under the safe area, with the page's 16 px gutters.
    The card stands on a band of the page's ground from the screen's top edge, so no part of the header shows at its corners. */
 @media (max-width: 640px) {

@@ -269,7 +269,7 @@ The palette is muted OKLCH with equal lightness: L 0.55 light, 0.80 dark. Each a
 calm Kreska face colour from it, either chosen when the agent is created or assigned automatically
 (Hubert, 2026-11-03), in the order Teal, Indigo, Ochre, Rose, Sage, Plum, Clay, the colours furthest
 apart first, so a person's first agents differ at the size of a sidebar row (#1377). The colour shows everywhere the agent appears: Messages, the Owner picker, a
-task's owner and discussion, Home, the Inbox and Settings › AI. It replaces "agent colours only in
+task's owner and discussion, Home, the Inbox and Settings › AI. It is the same for every reader: the owner's teammates see the agent in the colour its owner sees, because every read that names an agent carries it (#1528). It replaces "agent colours only in
 the Agents section" of the first Prostota canvas. The v0.2 screens draw Assistant in ink (`--inv`)
 and Planner, Reviewer and Jonas's Fieldbot in Teal, Indigo and Ochre. Kreska's lines take the
 colour, and the face fill is the same colour at 12%. Everything else is monochrome.
@@ -972,7 +972,8 @@ Drawn by the agents before it was built; the rules of what triggers a notice are
   is not moved. When the toast goes, nothing moves: the room is given back once the reader scrolls up from the end.
 - **Where.** At the bottom right on the computer and the tablet, 20 px from the edges, 360 px wide;
   it stands 8 px above a composer, a toast or the map's toolbar that reaches its corner, so it never
-  covers the composer or Send. On the phone it is at the top, 8 px under the safe area, 16 px from
+  covers the composer or Send. It floats over the work, never over a docked panel: while a panel is docked (from 1001 px) it stands at the bottom right
+  of the work column, 20 px left of the panel, so the panel's composer and controls stay clear (audit P3 17). On the phone it is at the top, 8 px under the safe area, 16 px from
   each side, on a band of the page's ground (`--bg`) from the screen's top edge to 8 px under the card, so
   nothing of the header shows at its corners. While a dialog or a sheet is open, it waits and shows when that closes.
 - **The card.** `--el`, `--sh-pop` (the dark theme's inset outline comes with it) and `--r-card`.
