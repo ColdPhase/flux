@@ -1147,7 +1147,10 @@ class AppShellJourney(unittest.TestCase):
         owner.unroute("**/api/v1/conversations/*/messages", lose_committed_reply)
         owner.unroute(unanswered, flux_does_not_answer_reads)
         for route in held_reads:
-            route.abort("failed")
+            try:
+                route.abort("failed")
+            except Exception:  # noqa: BLE001 - the page already gave up that read (its own abort)
+                pass
         # The waiting reply and its id survive the reload, and it is sent again as the thread opens.
         owner.reload()
         expect(queued).to_have_count(0)
