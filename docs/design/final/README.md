@@ -573,7 +573,7 @@ The keys show next to their actions in menus. In the Inbox, `R` on a decision op
 - **A window closed to go somewhere** (a Search result, a place) leaves the focus to where it leads, never back to its opener.
 - **A page arrived at with nothing to focus** (Back to Home, a reload) gives the focus to its content, never to the page itself.
 - **Single keys** are never shortcuts while a field has focus, or while a menu is open. **Esc in a composer** leaves it for the
-  newest message or card the reader can see (else the newest message, brought into view) and keeps the draft; the single keys work
+  newest message the reader can see (else the newest message, brought into view) and keeps the draft; the single keys work
   from there. A window that is closing (Create after `/task`) no longer holds Esc. New shows its `C`, and a toast its `Z`, only while the key
   works (no field has focus).
 - **Esc with a panel open** closes the panel wherever focus is, an empty field included, unless a menu or a window is open or the

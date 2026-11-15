@@ -616,12 +616,15 @@ class FocusModel(unittest.TestCase):
         page = self.page("lee")
         page.goto("/inbox")
         rows = page.locator(".nyq__list .nyc")
-        expect(rows).to_have_count(2)
+        # The newest is at the top: with nothing chosen yet, it is the open item.
+        expect(rows.first).to_contain_text("Buy paper cups")
+        before = rows.count()
         is_open = page.locator('.nyq__list .nyc[aria-current="true"]')
         expect(is_open).to_contain_text("Buy paper cups")
         page.wait_for_timeout(600)
         antenna = give("Clean the gateway antenna")
-        expect(rows).to_have_count(3)
+        expect(rows).to_have_count(before + 1)
+        expect(rows.first).to_contain_text("Clean the gateway antenna")
         page.wait_for_timeout(600)
         # Nothing was chosen with J, K or a click: the open item is still the one with the ring, not the arrival at the top.
         expect(is_open).to_contain_text("Buy paper cups")
@@ -646,7 +649,7 @@ class FocusModel(unittest.TestCase):
                 if how == "R":
                     page.keyboard.press("r")
                 else:
-                    row.get_by_role("button", name="Discuss", exact=True).click()
+                    page.locator("#content").get_by_role("button", name="Discuss", exact=True).first.click()
                 expect(page.locator("#decision-composer")).to_be_focused()
                 page.keyboard.press("Escape")
                 expect(page).to_have_url(re.compile(r"/inbox$"))
@@ -663,7 +666,9 @@ class FocusModel(unittest.TestCase):
         expect(reply).to_be_focused()
         page.keyboard.type("/decide Move the oven to the back door")
         page.keyboard.press("Enter")
-        expect(page.get_by_role("dialog", name="New decision")).to_be_visible()
+        title = page.get_by_role("dialog", name="New decision").get_by_role("textbox", name="Decision", exact=True)
+        expect(title).to_be_focused()
+        expect(title).to_have_value("Move the oven to the back door")
         page.keyboard.press("Control+Enter")
         expect(page.get_by_role("dialog")).to_have_count(0)
         card = page.locator("#details [data-decision-card]").filter(has_text="Move the oven to the back door")
@@ -698,8 +703,11 @@ class FocusModel(unittest.TestCase):
         expect(page.locator("#thread-composer")).to_be_focused()
         page.keyboard.type("/task Hang the ladder in the shed")
         page.keyboard.press("Enter")
-        expect(page.get_by_role("dialog", name="New task")).to_be_visible()
+        title = page.get_by_role("dialog", name="New task").get_by_role("textbox", name="Title", exact=True)
+        expect(title).to_be_focused()
+        expect(title).to_have_value("Hang the ladder in the shed")
         page.keyboard.press("Control+Enter")
+        expect(page.get_by_role("dialog")).to_have_count(0)
         panel = page.locator("#details")
         expect(panel.locator('[data-detail-kind="work"]')).to_contain_text("Hang the ladder in the shed")
         expect(page).to_have_url(re.compile(r"/conversations/[0-9a-f-]{36}\?open=work"))
@@ -711,9 +719,11 @@ class FocusModel(unittest.TestCase):
         expect(page.locator("#thread-composer")).to_be_visible()
 
     def test_33_r_with_nothing_to_write_holds_the_keys_only_for_a_moment(self) -> None:
+        work = self.post("piotr", f"/api/v1/projects/{self.ids['shared']}/work", {"title": "Wipe the counters", "owner": {"kind": "human", "id": self.ids["kasia"]}})["id"]
+        self.wait_for_item("kasia", lambda item: item.get("task") and item["task"].get("workId") == work)
         page = self.page()
         page.goto("/inbox")
-        task = page.locator(".nyq__list .nyc").filter(has_text="Count the screws")
+        task = page.locator(".nyq__list .nyc").filter(has_text="Wipe the counters")
         task.locator(".nyc__open").focus()
         expect(task).to_have_attribute("aria-current", "true")
         last = page.evaluate("() => { const rows = [...document.querySelectorAll('.nyq__list .nyc')]; return rows.at(-1)?.getAttribute('aria-current') === 'true'; }")

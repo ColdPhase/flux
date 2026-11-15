@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { isTyping } from '../ui/keys';
 import { useSpaceAi } from '../ai/spaceAi';
 import { useRevalidator } from 'react-router';
 import { waitingPhrase, type ObjectLink, type Project, type ProjectPerson, type WorkspaceMember, type WorkStatus, type WorkDetailObject, type WorkDetailProjection } from '@flux/contracts';
@@ -712,6 +713,20 @@ function DecisionPanel({ decision, context, detail, relations, reload, revision,
   const composer = useComposerDraft(me.user.id, context.project.id, `decision:${decision.id}`);
   const discussion = useDecisionDiscussion(decision.id, `${revision}:${composer.sent.length}`);
 
+  // Accept goes with its row (F-026 §4, persona round 31): the focus goes on to the next control where it was, the same by key or with the
+  // mouse and in every engine, never to the card in the conversation that opened the panel.
+  const accepted = useRef(false);
+  const decideMark = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    if (!accepted.current || decision.status === 'proposed') return;
+    accepted.current = false;
+    const mark = decideMark.current;
+    const panel = mark?.closest('#details');
+    if (!mark || !panel || isTyping(document.activeElement)) return;
+    const next = [...panel.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled])')]
+      .find((element) => element.getClientRects().length > 0 && Boolean(mark.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING));
+    next?.focus({ preventScroll: true });
+  }, [decision.status]);
   async function accept(event?: FormEvent) {
     event?.preventDefault();
     if (busy) return;
@@ -720,7 +735,7 @@ function DecisionPanel({ decision, context, detail, relations, reload, revision,
       await acceptDecision(decision, attempt);
       // The Inbox and Home read their queue again, so the decision leaves them too.
       announceInboxChange();
-      if (isCurrent()) reload();
+      if (isCurrent()) { accepted.current = true; reload(); }
     } catch (cause) {
       if (!isCurrent()) return;
       setError(readable(cause));
@@ -745,13 +760,12 @@ function DecisionPanel({ decision, context, detail, relations, reload, revision,
           <Sources links={relations.links} id={decision.id} project={context.project} />
         </section>
       ) : null}
+      <span ref={decideMark} hidden />
       {decision.status === 'proposed' ? (
         <section className="wd-decide" aria-label="Your answer">
           <div className="nyc__foot wd-decide__foot">
             <div className="nyc__actions">
-              {/* Pressed with the mouse it has the focus too (WebKit gives a pressed button none), so the focus goes on from it as from the
-                  key: to the next control where it was (F-026 §4, persona round 31). */}
-              <Button variant="primary" busy={busy} onClick={(event) => { event.currentTarget.focus({ preventScroll: true }); void accept(); }}>Accept</Button>
+              <Button variant="primary" busy={busy} onClick={() => void accept()}>Accept</Button>
               {need ? <NotNowButton onClick={() => handlers.snooze(need, 'tomorrow')} /> : null}
               <Button variant="quiet" onClick={() => void discuss(context.project.id, decision.id)}>Discuss</Button>
             </div>

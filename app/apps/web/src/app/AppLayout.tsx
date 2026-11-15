@@ -67,16 +67,16 @@ function lastMapPath(userId: string, projectId: string, sketches: { items: { id:
  */
 function leaveComposer(field: HTMLElement) {
   const place = field.closest('.convo-split__stream, .dm, .agc, #content') ?? document.getElementById('content');
-  // The newest message or card the reader can see (a message above the decision cards is off screen, persona round 31), else the newest,
-  // brought into view.
-  const items = place ? [...place.querySelectorAll<HTMLElement>('[id^="message-"][tabindex], .agc__turn[tabindex], [data-native-ref^="work:"], [data-decision-card]')] : [];
+  // The newest message the reader can see (one above the decision cards is off screen, persona round 31), else the newest, brought into view.
+  const items = place ? [...place.querySelectorAll<HTMLElement>('[id^="message-"][tabindex], .agc__turn[tabindex]')] : [];
   let feed: HTMLElement | null = items[0]?.parentElement ?? null;
   while (feed && feed !== document.body && !(/(auto|scroll)/.test(getComputedStyle(feed).overflowY) && feed.scrollHeight > feed.clientHeight)) feed = feed.parentElement;
   const box = (feed && feed !== document.body ? feed : document.getElementById('content'))?.getBoundingClientRect();
   const seen = box ? items.filter((item) => { const r = item.getBoundingClientRect(); return r.height > 0 && r.bottom > box.top && r.top < box.bottom; }) : [];
-  const newest = seen.at(-1) ?? items.filter((item) => item.matches('[id^="message-"], .agc__turn')).at(-1);
+  const newest = seen.at(-1) ?? items.at(-1);
   field.blur();
   newest?.focus({ preventScroll: seen.length > 0 });
+  if (newest && !seen.length) newest.scrollIntoView({ block: 'nearest' });
   // A stream still opening (hidden until its first reads) cannot take it: the page's content does.
   if (!newest || document.activeElement !== newest) document.getElementById('content')?.focus({ preventScroll: true });
 }
