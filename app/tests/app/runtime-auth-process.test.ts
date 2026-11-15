@@ -258,8 +258,16 @@ test('well-shaped console result for another status client is refused without pe
       const signup=await browser.request('POST','/api/auth/sign-up/email',{body:{email:`client-frame-${randomUUID()}@example.test`,password:'correct horse battery staple',name:'Client frame owner'}});
       assert.equal(signup.status,200);const owner=(signup.json as{user:{id:string}}).user.id;owners.push(owner);
       const binding=randomUUID(),bootId=randomUUID();
-      await pool.query(`INSERT INTO agent_runtime_slots(slot,state,boot_id) VALUES($1,'ready',$2)`,[names[index],bootId]);
-      await pool.query(`INSERT INTO agent_runtime_bindings(id,owner_user_id,slot,state) VALUES($1,$2,$3,'active')`,[binding,owner,names[index]]);
+      // One transaction: the slot is never visible as ready and free, so the shared stack's binder can't hand it to another test's user.
+      const tx=await pool.connect();
+      try{
+        await tx.query('BEGIN');
+        // The API saves the slots its manager reports (saveSlot upserts), so this may race it: upsert the same way.
+        await tx.query(`INSERT INTO agent_runtime_slots(slot,state,boot_id) VALUES($1,'ready',$2)
+          ON CONFLICT (slot) DO UPDATE SET state='ready',boot_id=excluded.boot_id`,[names[index],bootId]);
+        await tx.query(`INSERT INTO agent_runtime_bindings(id,owner_user_id,slot,state) VALUES($1,$2,$3,'active')`,[binding,owner,names[index]]);
+        await tx.query('COMMIT');
+      }catch(error){await tx.query('ROLLBACK');throw error;}finally{tx.release();}
       const issue=await browser.request('POST',AGENT_RUNTIME_CONSOLE_PATH,{body:{client:'claude_code',method:'sso'}});assert.equal(issue.status,200,JSON.stringify(fixture.diagnostics));
       const view=await socket(browser);sockets.push(view.ws);view.ws.send(JSON.stringify({t:'attach',ticket:(issue.json as{ticket:string}).ticket,cols:60,rows:20}));
       assert.equal(await view.closed,index===0?4503:1000);
@@ -276,6 +284,8 @@ test('well-shaped console result for another status client is refused without pe
   }finally{
     for(const ws of sockets)ws.terminate();if(child)await stop(child);manager.closeAllConnections();rogue.closeAllConnections();
     await Promise.all([new Promise<void>(r=>manager.close(()=>r())),new Promise<void>(r=>rogue.close(()=>r()))]);
-    for(const owner of owners)await pool.query('DELETE FROM auth_users WHERE id=$1',[owner]);await pool.query('DELETE FROM agent_runtime_slots WHERE slot=ANY($1)',[names]);
+    for(const owner of owners)await pool.query('DELETE FROM auth_users WHERE id=$1',[owner]);
+    // The shared stack's binder may have given these ready slots to another test's user meanwhile (#860: no cap), so release every binding first.
+    await pool.query('DELETE FROM agent_runtime_bindings WHERE slot=ANY($1)',[names]);await pool.query('DELETE FROM agent_runtime_slots WHERE slot=ANY($1)',[names]);
   }
 });
