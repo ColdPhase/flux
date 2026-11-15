@@ -581,12 +581,14 @@ class MessageAlignment(unittest.TestCase):
           const rs = getComputedStyle(row), ps = getComputedStyle(row.parentElement);
           return {card: c.width, row: row.getBoundingClientRect().width, column: row.clientWidth - parseFloat(rs.paddingLeft) - parseFloat(rs.paddingRight),
             available: row.parentElement.clientWidth - parseFloat(ps.paddingLeft) - parseFloat(ps.paddingRight), inBubble: !!card.closest('.message-bubble'),
+            lane: row.matches('.msg-touch') ? parseFloat(rs.getPropertyValue('--dots-room')) || 0 : 0,
             stateFits: (() => { const k = card.querySelector('.convo-object__state'); return k.scrollWidth <= k.clientWidth + 1; })(),
             titleShown: title.clientWidth};
         }""")
         self.assertFalse(measured["inBubble"], measured)
-        # The message keeps a readable width (as one with a chip in its bubble did), and the card fills its column.
-        self.assertGreaterEqual(measured["row"], min(300, measured["available"]) - 1, measured)
+        # The message keeps a readable width (as one with a chip in its bubble did), less the ⋯ lane a touch message keeps beside it as one with
+        # any other card does (audit 3274a05 P2-1), and the card fills its column.
+        self.assertGreaterEqual(measured["row"], min(300, measured["available"] - measured["lane"]) - 1, measured)
         self.assertGreaterEqual(measured["card"], measured["column"] - 1, measured)
         self.assertTrue(measured["stateFits"], measured)
         self.assertGreater(measured["titleShown"], 100, measured)
