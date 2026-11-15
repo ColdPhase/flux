@@ -94,9 +94,9 @@ export function taskAgentState(facts: TaskAgentFacts): TaskAgentState {
   }
   if (facts.waitingChanges > 0) return state('waiting_for_ok', mine ? 'Waiting for your OK' : `Waiting for ${agent.owner.name}'s OK`);
   if (run.status === 'completed' || run.status === 'truncated') {
-    // Done is told to its owner, with Undo (README "One state line"); anyone else reads it once, in the task's history ("Planner marked it
-    // done"), not again above it (personas-26: "Marked done" twice).
-    if (task.status === 'done' && holds) return mine ? state('done', 'Marked done · you were told', { canTakeBack: true }) : none();
+    // Done is the same for every reader (#856): the task's history line says it ("Planner marked it done"), and the client draws no second
+    // line for it (personas-26: "Marked done" twice). The agent's owner alone may take it back: that same line carries their Undo.
+    if (task.status === 'done' && holds) return state('done', 'Marked done', { canTakeBack: mine });
     // Back with its owner to check only when the agent handed it back: a person who took the task back says nothing here.
     if (!holds && facts.handedBackByAgent && task.ownerUserId === agent.owner.id && task.status !== 'done')
       return state('handed_back', mine ? 'Back with you to check' : `Back with ${agent.owner.name} to check`, { canMarkDone: mine });

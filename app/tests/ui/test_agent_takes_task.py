@@ -183,15 +183,25 @@ class AgentTakesTask(unittest.TestCase):
         # The task is the agent's, Doing became Done, and Kai is told in the task: the agent's words and one plain line.
         page = self.open_task("kai", task["id"])
         panel = page.get_by_role("complementary", name="Details")
-        expect(panel.locator("[data-agent-line='done']")).to_contain_text("Marked done · you were told")
+        # Done is said once, by the history line, for every reader (personas-26, #856): Kai's carries his Undo.
+        expect(panel.locator("[data-agent-line]")).to_have_count(0)
+        done_line = panel.get_by_role("list", name="Task activity").locator("li").filter(has_text=re.compile(r"marked it done"))
+        expect(done_line).to_have_count(1)
+        expect(panel.get_by_text(re.compile(r"marked (it )?done", re.I))).to_have_count(1)
+        expect(done_line.get_by_role("button", name="Undo")).to_have_count(1)
+        kai_text = re.sub(r"\s*Undo\s*$", "", done_line.inner_text().strip())
         expect(panel.locator(".wd-act__item--message").filter(has_text="Got it, I'm on it.")).to_be_visible()
         expect(panel.locator(".wd-act__item--message").filter(has_text="the wiring is the problem")).to_be_visible()
         expect(panel.get_by_text("Planner").first).to_be_visible()
-        # Ada reads it once, in the task's history: no state line above it says "Marked done" again (personas-26).
+        # Ada reads the same one line, without the Undo, which is the agent's owner's.
         ada_view = self.open_task("ada", task["id"])
         ada_panel = ada_view.get_by_role("complementary", name="Details")
-        expect(ada_panel.get_by_text(re.compile(r"marked it done")).first).to_be_visible()
+        ada_line = ada_panel.get_by_role("list", name="Task activity").locator("li").filter(has_text=re.compile(r"marked it done"))
+        expect(ada_line).to_have_count(1)
+        expect(ada_panel.get_by_text(re.compile(r"marked (it )?done", re.I))).to_have_count(1)
         expect(ada_panel.locator("[data-agent-line]")).to_have_count(0)
+        expect(ada_line.get_by_role("button", name="Undo")).to_have_count(0)
+        self.assertEqual(ada_line.inner_text().strip(), kai_text, "the same words for every reader")
         self.assertEqual(self.api(ada, "GET", f"/api/v1/work/{task['id']}", status=200)["status"], "done")
 
     def test_04a_the_report_waits_in_the_agents_chat_with_an_unread_dot_and_never_in_the_inbox(self) -> None:
@@ -227,8 +237,9 @@ class AgentTakesTask(unittest.TestCase):
     def test_05_undo_takes_it_back_to_kai_and_reopens_it(self) -> None:
         page = self.open_task("kai", self.ids["task"])
         panel = page.get_by_role("complementary", name="Details")
-        panel.locator("[data-agent-line='done']").get_by_role("button", name="Undo").click()
-        expect(panel.locator("[data-agent-line='done']")).to_have_count(0)
+        done_line = panel.get_by_role("list", name="Task activity").locator("li").filter(has_text=re.compile(r"marked it done"))
+        done_line.get_by_role("button", name="Undo").click()
+        expect(panel.get_by_role("list", name="Task activity").get_by_role("button", name="Undo")).to_have_count(0)
         task = self.api(page, "GET", f"/api/v1/work/{self.ids['task']}", status=200)
         self.assertEqual((task["status"], task["owner"]["id"]), ("in_progress", KAI["id"]), "reopened and back with Kai, and not taken again")
         page.wait_for_timeout(1500)

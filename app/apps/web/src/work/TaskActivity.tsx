@@ -13,7 +13,7 @@ import { getTaskDiscussion } from '../composer/api';
 import { agentDisplayName, FORMER_MEMBER } from '../docs/format';
 import { agentAuthorOwner, useAgentOwners } from '../agents/owners';
 import { useAgentHue } from '../agents/hues';
-import { TaskAgentState } from '../agents/TaskAgentState';
+import { TaskAgentState, type AgentDone } from '../agents/TaskAgentState';
 import { ClientChanges } from '../assistant/ClientChanges';
 import { failure, useAssistantChanges } from '../assistant/WaitingChanges';
 import { askError, askState, canHaveAi, connectsFirst } from '../assistant/format';
@@ -246,6 +246,13 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
   }, [posts.byRun]);
   // A line an agent put in this thread is deleted where it stands, whichever page of the activity it is on, and not from the state line.
   const inThread = useCallback((change: AssistantChange) => change.objectType === 'message' && change.operation === 'conversation.reply', []);
+  // An agent's task that is done is said once, by its history line, the same for every reader; the agent's owner has Undo on it (personas-26).
+  const [agentDone, setAgentDone] = useState<AgentDone | null>(null);
+  const doneLine = useMemo(() => {
+    if (!agentDone) return null;
+    const done = state.lines.filter((line): line is Extract<typeof line, { kind: 'change' }> => line.kind === 'change' && line.entry.kind === 'status' && line.entry.status?.to === 'done');
+    return (done.find((line) => line.entry.actor.kind === 'agent' && line.entry.actor.id === agentDone.agentId) ?? done[0])?.key ?? null;
+  }, [agentDone, state.lines]);
   return (
     <section className="details__sec wd-activity" aria-labelledby={headingId}>
       <div className="wd-sechead">
@@ -254,7 +261,7 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
       </div>
       {state.failed === 'all' ? <p className="wd-error" role="alert">The discussion could not be loaded. <button type="button" className="wd-inline" onClick={state.retry}>Retry</button></p>
         : state.loading ? <p className="wd-muted" aria-busy="true">Loading…</p> : null}
-      <TaskAgentState item={item} projectId={project.id} conversationId={discussion?.conversationId ?? null} revision={state.lines.length} onChanged={state.reload} elsewhere={inThread} />
+      <TaskAgentState item={item} projectId={project.id} conversationId={discussion?.conversationId ?? null} revision={state.lines.length} onChanged={state.reload} elsewhere={inThread} onDone={setAgentDone} />
       {/* What a local client changed on this task, with its change line and Undo, as the assistant's changes have (#868, LC-2). */}
       <ClientChanges key={item.id} projectId={project.id} kind="work" id={item.id} refreshKey={state.lines.length} onChanges={setClientChanges} />
       {/* The person's own agent at work and what it answered them: theirs alone (#842). */}
@@ -315,6 +322,7 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
                 {actor.kind === 'agent' ? <AgentIdentity name={actor.name} owner={agentAuthorOwner(actor, owners)} icon={false} hue={hueOf(actor)} /> : <b title={actor.name}>{firstName(actor.name)}</b>}
                 {' '}{text}
                 <time dateTime={line.at} title={when(line.at)}> · {stamp(line.at)}</time>
+                {line.key === doneLine && agentDone?.undo ? <>{' '}<Button variant="quiet" size="sm" className="wd-act__undo" busy={agentDone.busy} onClick={agentDone.undo}>Undo</Button></> : null}
               </p>
             </li>
           );

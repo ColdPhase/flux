@@ -1831,8 +1831,9 @@ standard switch row in Settings › Notifications, and the rest of the page stay
   - "Claude limit reached, resumes at 14:00", with no switch to another provider;
   - "Couldn't finish" with Try again / Take it back;
   - "Stopped by you · the task is back with you";
-  - "Marked done · you were told" with Undo (Ask me first off), or "Back with you to check" with
-    Mark done (Ask me first on).
+  - done (Ask me first off): no state line; the task's history line "Planner marked it done" says it once, the
+    same for every reader, and carries Undo for the agent's owner alone (personas-26, #856); or "Back with
+    you to check" with Mark done (Ask me first on).
 - **Waiting for your OK:**
   - A deletion is a card, "Planner wants to delete the page Old notes", with Delete / Keep.
   - A task for another person is a proposal with Approve / Edit / Skip. Several from one run form
