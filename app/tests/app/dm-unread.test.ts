@@ -48,7 +48,9 @@ describe('a direct message is unread until it is read, on every device (#1424 de
 
   test('a message from someone else is unread for the reader and never for its author, and reading it on one device reads it on the other', async () => {
     const dm = await open(piotr, [marta]);
-    assert.equal(await unread(marta.browser, dm.id), 0, 'a conversation with nothing in it is read');
+    // A conversation nobody has written in is not listed for her at all (persona round 6), so it has nothing to be read.
+    const listed = expectStatus(await marta.browser.request('GET', `/api/v1/workspaces/${ws.id}/dms?limit=100`), 200) as Page<DmSummary>;
+    assert.ok(!listed.items.some((item) => item.id === dm.id), 'a conversation with nothing in it is not in her list');
     const first = await say(piotr, dm.id, 'The new shelf came today');
     const second = await say(piotr, dm.id, 'It is in the back room');
     assert.equal(await unread(marta.browser, dm.id), 2, 'two messages she has not seen');
