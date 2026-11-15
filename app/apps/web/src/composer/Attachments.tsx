@@ -258,6 +258,8 @@ export function PhotoViewer({ photos, start, context, onClose }: { photos: Messa
   const file = photos[index]!;
   const bytes = useFileBytes(file.id, 'image');
   const returnTo = useRef<Element | null>(null);
+  // An action that takes the focus where it leads (Reply, Create task) ends the keeping below before it moves it.
+  const leaving = useRef(false);
   useEffect(() => {
     returnTo.current = document.activeElement;
     const close = root.current?.querySelector<HTMLElement>('.photo-viewer__close');
@@ -267,6 +269,7 @@ export function PhotoViewer({ photos, start, context, onClose }: { photos: Messa
     // A modal keeps focus, as the file preview does: a photo opened by a search result (found by its name, #1424 B) opens while its
     // message is being shown and focused, and that focus must not leave Esc and Tab outside the viewer.
     const keep = (event: FocusEvent) => {
+      if (leaving.current) return;
       if (root.current && event.target instanceof Node && !root.current.contains(event.target)) root.current.querySelector<HTMLElement>('.photo-viewer__close')?.focus();
     };
     document.addEventListener('focusin', keep);
@@ -320,7 +323,7 @@ export function PhotoViewer({ photos, start, context, onClose }: { photos: Messa
       <div className="photo-viewer__actions" role="group" aria-label="Photo actions">
         {actions.filter((item) => item.run).map((item) => <button key={item.key} type="button" className="photo-viewer__act" onClick={() => {
           // The action takes focus where it leads (the composer, the new task), so the opener does not take it back.
-          returnTo.current = null; onClose(); item.run?.();
+          returnTo.current = null; leaving.current = true; onClose(); item.run?.();
         }}><Icon name={item.icon} size={20} />{item.label}</button>)}
         <a href={filePath(file.id)} download={file.name}><Icon name="download" size={20} />Save</a>
         <button type="button" className="photo-viewer__act" onClick={() => void share()} disabled={bytes.status !== 'ready'}><Icon name="share" size={20} />Share</button>
