@@ -199,6 +199,8 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName, inviter
       }
       setChosen([]); setAdding(false);
       changed(`${joinNames(added)} ${added.length === 1 ? 'is' : 'are'} now in ${project.name}.`);
+      // The panel that had focus is gone: Add people takes it back (F-026 §4, round 27).
+      requestAnimationFrame(() => focusOn('.spset__seclead button'));
     } catch (error) {
       keys.current.done();
       if (added.length) changed(`${joinNames(added)} ${added.length === 1 ? 'was' : 'were'} added.`);

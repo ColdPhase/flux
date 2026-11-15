@@ -540,6 +540,23 @@ inside a screen (the Create window), not for the views of a space.
 
 The keys show next to their actions in menus.
 
+**Where focus goes (computer)** (persona rounds 26 and 27, 2026-11-15; one rule per situation, the same in every place):
+
+- **Arriving in a conversation** (a space, a direct message, a thread, an agent's chat), by any means: a click, Enter on a sidebar
+  or direct-message row, New message, Say hello, Create space, Back. The cursor is in its composer, at the end of any kept draft.
+  Tab and the arrow keys still move along the sidebar's rows; only Enter or a click arrives. A view tab chosen with the keyboard
+  keeps its focus ([Underline tabs](#underline-tabs-the-views-switch)).
+- **Arriving to open one thing** (`?open=` a task or a decision, a message link or Copy link, a Search, Inbox or notification
+  target). That thing has the focus: its panel, or the message, marked. A link to a message that has no replies marks it in the
+  conversation and opens no thread panel.
+- **A picker or a form** (New message's Find people, Invite, Add people) opens with its first field focused.
+- **Single keys** are never shortcuts while a field has focus. **Esc in a composer** leaves it for the newest message and keeps the
+  draft; the single keys work from there. New shows its `C` only while `C` works (no field has focus).
+- **Esc with a panel open** closes the panel wherever focus is, unless a menu or a window is open or the focused control used Esc
+  (a title being edited). Then Esc in the composer leaves it, as above.
+- **After an action removes what had focus** (Add people, Undo, `Z`, Esc from a panel opened with the mouse, Propose decision,
+  New map, Invite), focus goes to the next control where it was, else the previous one, never to the page itself.
+
 Settings has one address per section, and no earlier address is kept: nothing is kept
 compatible before the first public release (founder direction, 2026-11-09, #1096). Preserve
 Back and history without restoring the former appearance.

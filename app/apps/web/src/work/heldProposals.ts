@@ -25,6 +25,8 @@ const changed = (next: readonly Held[]) => { held = next; for (const listener of
 export const isHeldDecision = (decisionId: string) => decisionId.startsWith(HELD);
 
 export interface HeldProposal {
+  /** The card's id while it is held (`decision:<id>` on its button). */
+  id: string;
   /** It was made: the card takes the decision's real id. */
   proposed(decisionId: string): void;
   /** Undone or refused: the card leaves. */
@@ -40,6 +42,7 @@ export function holdProposal(proposal: { projectId: string; workspaceId: string;
   // The entry is known by its `send`: its notice changes when the proposal is made.
   const find = () => held.findIndex((item) => item.send === entry.send);
   return {
+    id,
     proposed(decisionId) {
       const at = find();
       if (at < 0) return;

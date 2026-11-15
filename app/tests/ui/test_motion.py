@@ -250,7 +250,8 @@ class MotionJourney(unittest.TestCase):
         page.keyboard.press("Enter")
         expect(page).to_have_url(re.compile(f"/projects/{self.projects[1]}$"))
         self.assert_glide_on(page, 1)
-        expect(self.link(page, 1)).to_be_focused()
+        # Enter on a row arrives in the space as a click does: the cursor is in its composer (F-026 §4, persona round 27 P2 1).
+        expect(page.locator("#project-composer")).to_be_focused()
         tasks = page.get_by_role("navigation", name="Space views").get_by_role("tab", name=re.compile("^Tasks"))
         tasks.focus()
         page.keyboard.press("Enter")

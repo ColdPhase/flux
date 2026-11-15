@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router';
 import { DM_LIMITS, type MyAgent, type WorkspaceMember } from '@flux/contracts';
 import { ApiError } from '../api/client';
@@ -9,7 +9,7 @@ import { useAgentUnread } from '../my-agents/AgentChatDots';
 import { useDmUnread } from './dmUnread';
 import { usePlaceMutes } from '../notifications/mutes';
 import { Avatar, Button, EmptyState, Icon, Kreska, MEDIA, useMediaQuery } from '../ui';
-import { stopAwaitingField, waitForField } from '../ui/keys';
+import { focusField, stopAwaitingField, waitForField } from '../ui/keys';
 import { GUEST_NO_DMS, audienceOf } from './names';
 import { startsConversations } from '../people/api';
 import './dm.css';
@@ -155,6 +155,10 @@ export function NewDm() {
     void start([direct]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [direct, workspaceId]);
+
+  // A picker opens on its first field (F-026 §4, round 27 P2 2): a name typed at once is the search, never a shortcut.
+  const picking = !!workspaceId && !direct;
+  useLayoutEffect(() => (picking && !touch ? focusField('dm-people-search') : undefined), [picking, touch]);
 
   const shown = useMemo(() => {
     const needle = query.trim().toLowerCase();

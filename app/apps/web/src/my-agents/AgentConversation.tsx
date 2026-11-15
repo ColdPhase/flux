@@ -286,7 +286,8 @@ function AgentChatPane({ agent }: { agent: MyAgent }) {
     if (!atEnd) newBelow.add(countBelow(feed.current, keys, elementFor));
   }, { animate: false });
   useLayoutEffect(() => { const el = field.current; if (el) { el.style.height = 'auto'; el.style.height = `${Math.min(el.scrollHeight, 180)}px`; } }, [draft]);
-  useEffect(() => { field.current?.focus({ preventScroll: true }); }, [agent.id]);
+  // Arriving puts the cursor at the end of a kept draft (F-026 §4).
+  useEffect(() => { const el = field.current; if (!el) return; el.focus({ preventScroll: true }); el.setSelectionRange(el.value.length, el.value.length); }, [agent.id]);
 
   async function send() {
     const prompt = draft.trim();

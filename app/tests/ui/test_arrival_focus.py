@@ -189,17 +189,20 @@ class ArrivalFocus(unittest.TestCase):
 
     # ---------------------------------------------------------------- P2 #5: the link's place applies once
 
-    def open_task_panel_from_a_card_in_view(self, page: Page) -> None:
+    def open_task_panel_from_a_card_in_view(self, page: Page) -> str:
+        """Enter on a task card in view; returns the card's name."""
         cards = page.locator(f'{FEED} .convo-notice [data-native-ref^="work:"]')
         for index in range(cards.count()):
             box = cards.nth(index).bounding_box()
             if box and 100 < box["y"] < 760:
+                name = cards.nth(index).get_attribute("aria-label") or ""
                 cards.nth(index).focus()
                 page.keyboard.press("Enter")
                 break
         else:
             self.fail("a task card is in view")
         expect(page.locator("#details").get_by_role("button", name=re.compile("^Status"))).to_be_visible()
+        return name
 
     def test_02_a_link_s_place_is_not_restored_after_the_reader_moved_on(self) -> None:
         page = self.page()
@@ -212,8 +215,7 @@ class ArrivalFocus(unittest.TestCase):
         page.wait_for_timeout(600)
         read = page.evaluate(f"() => document.querySelector('{FEED}').scrollTop")
         self.assertGreater(read, 150, "Tab moved the stream on from the linked message")
-        self.open_task_panel_from_a_card_in_view(page)
-        opener = self.where(page)
+        opener = self.open_task_panel_from_a_card_in_view(page)
         status = page.locator("#details").get_by_role("button", name=re.compile("^Status"))
         status.focus()
         page.keyboard.press("Enter")
@@ -228,7 +230,7 @@ class ArrivalFocus(unittest.TestCase):
         self.assertLess(abs(page.evaluate(f"() => document.querySelector('{FEED}').scrollTop") - read), 4, "Esc keeps the stream where the reader was")
         back = self.where(page)
         self.assertIsNotNone(back, "focus is not on the page body")
-        self.assertEqual(back["name"], opener["name"], "focus is back on the card that opened the panel")
+        self.assertEqual(back["name"], opener, "focus is back on the card that opened the panel")
         self.assertTrue(back["top"] >= 72 and back["bottom"] <= 900, f"the card is in view: {back}")
         shot(page, "arrival-focus-link-place-kept")
 
