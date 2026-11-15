@@ -191,7 +191,7 @@ export function WorkspacePeople({ workspaceId, onBack, page = false }: { workspa
                 // #1471: an owner makes a reset link for anyone else, an admin for members and guests; never with single sign-on.
                 resettable={page && sso === null && member.userId !== me.user.id && (myRole === 'owner' || (myRole === 'admin' && (member.role === 'member' || member.role === 'guest')))}
                 editing={editing === member.userId} onEdit={(open) => { setDone(''); setEditing(open ? member.userId : null); }}
-                onChanged={(message, holderLeft) => changed(message, true, holderLeft)} />
+                onChanged={(message, holderLeft, editorClosed = true) => changed(message, editorClosed, holderLeft)} />
             ))}
           </ul>
         ) : (
@@ -434,7 +434,7 @@ function AddPerson({ workspace, members, myRole, onAdded }: { workspace: Workspa
 
 function MemberRow({ member, self, workspace, myRole, page, editable, resettable, editing, onEdit, onChanged }: {
   member: WorkspaceMember; self: boolean; workspace: EncryptedWorkspace; myRole: WorkspaceRole; page: boolean; editable: boolean; resettable: boolean;
-  editing: boolean; onEdit: (open: boolean) => void; onChanged: (message: string, holderLeft?: boolean) => void;
+  editing: boolean; onEdit: (open: boolean) => void; onChanged: (message: string, holderLeft?: boolean, editorClosed?: boolean) => void;
 }) {
   const editId = useId();
   const changeRef = useRef<HTMLButtonElement>(null);
@@ -463,8 +463,10 @@ function MemberRow({ member, self, workspace, myRole, page, editable, resettable
       await changeRole(workspace.id, member.userId, next, roleKeys.current.for(`${member.userId}:${next}`));
       roleKeys.current.done();
       setDemoteTo(null);
+      // The menu stays where it was, so focus does too; from the confirm (which goes) it returns to the menu.
       onChanged(self ? `You’re now ${article(next)} ${ROLE_LABEL[next].toLowerCase()} of ${workspace.name}.` : `${member.name} is now ${article(next)} ${ROLE_LABEL[next].toLowerCase()}.`,
-        holder && !isManagerRole(next));
+        holder && !isManagerRole(next), false);
+      requestAnimationFrame(() => { const now = document.activeElement; if (!now || now === document.body) roleRef.current?.focus({ preventScroll: true }); });
     } catch (error) {
       setDemoteTo(null);
       setProblem(problemText(error, { workspace: workspace.name, who: self ? 'You' : member.name }));

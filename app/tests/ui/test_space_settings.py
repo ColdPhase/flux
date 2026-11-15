@@ -207,7 +207,7 @@ class SpaceSettings(unittest.TestCase):
               return count; };
             const email = [...who.querySelectorAll('.lastactive-line')][0];
             const address = email ? [...email.childNodes].find((n) => n.nodeType === 3 && n.textContent.includes('@')) : null;
-            const control = el.querySelector('.people__rolebtn, .people__role, .spset__rolecell, .spset__role');
+            const control = el.querySelector('.people__rolecell, .people__role, .spset__rolecell, .spset__role');
             return { name: lines(who.querySelector('b')), address: address ? lines(address) : 1, text: who.innerText,
                      under: control.getBoundingClientRect().top >= who.getBoundingClientRect().bottom - 1 };
         }"""
@@ -235,7 +235,7 @@ class SpaceSettings(unittest.TestCase):
         page = self.page("ada")
         look = "el => { const s = getComputedStyle(el); return [s.borderTopWidth, s.backgroundColor, s.fontSize, s.fontWeight, s.color]; }"
         page.goto("/settings/company")
-        company = page.locator(".people__rolebtn").nth(1).evaluate(look)
+        company = page.locator(".people__rolecell .ui-select").nth(1).evaluate(look)
         page.goto(f"/projects/{pid}/settings")
         space = page.locator(".spset__rolecell .ui-select").first.evaluate(look)
         self.assertEqual(space, company, "the role control is drawn the same in Space settings and in Settings › Company")
