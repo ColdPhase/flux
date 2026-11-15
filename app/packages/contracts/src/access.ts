@@ -189,6 +189,8 @@ export interface ProjectPerson {
   colour?: import('./agents.js').AgentColour;
   /** A person's last-active time, rounded by the server (`LastActiveAt`, #1225, C-58). Absent for an agent, for someone who turned it off and for someone not active yet. */
   lastActiveAt?: LastActiveAt;
+  /** A guest of the company (#1424): every list that names a person's role says "Guest" for them, as Settings › Company does. Absent otherwise. */
+  guest?: true;
 }
 
 /**
@@ -284,6 +286,8 @@ export interface InviteTokenCommand { token: string }
 /** What the link's holder sees before joining, with the address a locked link is for, so the sign-up form fills it in (#1471). */
 export interface InvitePreview {
   workspaceName: string;
+  /** The space the link also adds the person to (made from a space's Add people or New space), or null for a company link (#1424). */
+  spaceName: string | null;
   invitedBy: string;
   role: InviteRole;
   expiresAt: string;

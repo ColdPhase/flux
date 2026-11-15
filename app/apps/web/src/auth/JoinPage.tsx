@@ -187,7 +187,8 @@ export function JoinPage() {
   const head = (
     <div className="auth__head">
       <h1 className="auth__title">{`Join ${preview.workspaceName}`}</h1>
-      <p className="auth__lead">{`${preview.invitedBy} invited you.`}{roleLine ? ` ${roleLine}` : ''}</p>
+      {/* A link made from a space names it (#1424): the person learns where they will land, not only the company. */}
+      <p className="auth__lead">{preview.spaceName ? `${preview.invitedBy} invited you to ${preview.spaceName}.` : `${preview.invitedBy} invited you.`}{roleLine ? ` ${roleLine}` : ''}</p>
     </div>
   );
   const expires = <p className="auth__alt">Expires on {new Date(preview.expiresAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}.</p>;

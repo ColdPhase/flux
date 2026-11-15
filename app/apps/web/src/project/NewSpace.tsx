@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import type { Project } from '@flux/contracts';
 import { PeoplePicker } from '../people/PeoplePicker';
 import { SomeoneNew } from '../people/SomeoneNew';
-import { isManagerRole } from '../people/api';
+import { isManagerRole, revokeInvite } from '../people/api';
 import { useShellData } from '../app/data';
 import { getEncryptionAvailability } from '../encryption/api';
 import { PasswordLength, passwordRefusal } from '../encryption/PasswordLength';
@@ -30,6 +30,17 @@ export function NewSpaceForm({ initialName = '', onCancel, onCreated }: { initia
   // #1424: a company owner or admin also invites someone new here, as in Space settings; the links made wait for Create space.
   const inviter = !!space && isManagerRole(space.role ?? 'guest');
   const [invites, setInvites] = useState<string[]>([]);
+  // A link made here belongs to the space this window makes (#1424): closed without Create (Cancel, ×, Escape), or made encrypted, which takes no
+  // link, the window revokes the links it made, so none is left working for the company alone.
+  const made = useRef<{ workspaceId: string | null; ids: string[]; tied: boolean }>({ workspaceId: null, ids: [], tied: false });
+  useEffect(() => { made.current.workspaceId = space?.id ?? null; made.current.ids = invites; });
+  useEffect(() => {
+    const kept = made.current;
+    return () => {
+      if (!kept.workspaceId || kept.tied) return;
+      for (const id of kept.ids) void revokeInvite(kept.workspaceId, id).catch(() => undefined);
+    };
+  }, []);
   const [name, setName] = useState(initialName);
   // The form says what is missing in its own words, like sign-in and sign-up, not with the browser's bubble (#763 FR-9).
   const [missing, setMissing] = useState(false);
@@ -86,7 +97,7 @@ export function NewSpaceForm({ initialName = '', onCancel, onCreated }: { initia
     const chosen = people.filter((id) => candidates.some((member) => member.userId === id));
     if (!encrypted) {
       const project = await create(name, { ai, people: chosen, invites });
-      if (project) onCreated(project);
+      if (project) { made.current.tied = true; onCreated(project); }
       return;
     }
     if (check.problem) { refuse('password', passwordRefusal(check), passwordRef); return; }
