@@ -583,7 +583,8 @@ class MessageAlignment(unittest.TestCase):
             available: row.parentElement.clientWidth - parseFloat(ps.paddingLeft) - parseFloat(ps.paddingRight), inBubble: !!card.closest('.message-bubble'),
             lane: row.matches('.msg-touch') ? parseFloat(rs.getPropertyValue('--dots-room')) || 0 : 0,
             stateFits: (() => { const k = card.querySelector('.convo-object__state'); return k.scrollWidth <= k.clientWidth + 1; })(),
-            titleShown: title.clientWidth};
+            titleShown: title.clientWidth, titleRoom: (() => { const t = title.parentElement, ts = getComputedStyle(t);
+              return 0.4 * (t.clientWidth - parseFloat(ts.paddingLeft) - parseFloat(ts.paddingRight)); })()};
         }""")
         self.assertFalse(measured["inBubble"], measured)
         # The message keeps a readable width (as one with a chip in its bubble did), less the ⋯ lane a touch message keeps beside it as one with
@@ -591,7 +592,9 @@ class MessageAlignment(unittest.TestCase):
         self.assertGreaterEqual(measured["row"], min(300, measured["available"] - measured["lane"]) - 1, measured)
         self.assertGreaterEqual(measured["card"], measured["column"] - 1, measured)
         self.assertTrue(measured["stateFits"], measured)
-        self.assertGreater(measured["titleShown"], 100, measured)
+        # The title keeps the room the card guarantees it (min(7em, 40%) of its row, conversation-final.css), on up to two lines: over 100 px
+        # wherever the card is 286 px or wider; on a 320 px phone the ⋯ lane leaves a 254 px card, and the title its 40 % of the row.
+        self.assertGreaterEqual(measured["titleShown"], min(100, measured["titleRoom"]) - 1, measured)
 
     # ------------------------------------------------------------------ #591: message toolbars, on a computer
 
