@@ -354,18 +354,14 @@ test('pending contribution cannot be retried from undone read-only history and b
       await settle(page); await page.reload();
       assert.deepEqual(await storedDraft(page, draftKey(f, item)), current, 'reload keeps both private records before reopening history');
       assert.deepEqual(writes, [command.clientMessageId], 'reload never retries the refused command');
-      // The initial ?open address is consumed by the shell. Re-enter through the
-      // genuine retained notice, rather than expecting bare reload to reopen Details.
-      await settle(page); await page.goto(`/projects/${f.place.id}`);
+      // The initial ?open address is consumed by the shell. The conversation shows nothing of the undone task (personas-27 P2 4), so
+      // Details is re-entered through the task's own link, which still opens it as history.
       const reversion = (await notices(f, item)).find((notice) => notice.kind === 'task.creation_reverted');
-      assert.ok(reversion, 'the real reversion notice remains available after reload');
+      assert.ok(reversion, 'the real reversion notice remains in the feed after reload');
       assert.equal(reversion.workId, item.id); assert.equal(reversion.workNumber, item.number);
-      const historyRow = page.locator(`#notice-${reversion.id}`);
-      await historyRow.waitFor();
-      assert.equal(await historyRow.locator('time').getAttribute('datetime'), reversion.createdAt);
-      const historyLink = historyRow.getByRole('button', { name: `Open task #${item.number} ${item.title}`, exact: true });
-      assert.equal(await historyLink.getAttribute('data-native-ref'), `work:${item.id}`);
-      await historyLink.click();
+      await settle(page); await page.goto(`/projects/${f.place.id}?open=work:${item.id}`);
+      await page.locator('#project-composer').waitFor();
+      assert.equal(await page.locator(`#notice-${reversion.id}`).count(), 0, 'the conversation does not show the undone task');
       await reverted(page, item);
       const reloaded = panel(page).locator(`[data-client-message-id="${command.clientMessageId}"]`);
       await reloaded.waitFor(); assert.equal(await reloaded.getByRole('button').count(), 0);
@@ -408,13 +404,14 @@ test('two accounts keep Conversation, Tasks, Map and Agents current after real U
     await settle(pages[0]!); await pages[0]!.reload();
     assert.deepEqual(await storedDraft(pages[0]!, draftKey(f, item)), original, 'reload keeps the private staged draft before reopening history');
     // The feed keeps both notices as history (above), but the conversation shows none of them to anyone (personas-27 P2 4): its link
-    // still opens the task read only.
-    await reverted(pages[0]!, item); await pages[0]!.locator('.project-convo__message-list').waitFor();
+    // still opens the task read only (the shell consumed the first ?open address).
+    await settle(pages[0]!); await pages[0]!.goto(`/projects/${f.place.id}?open=work:${item.id}`);
+    await reverted(pages[0]!, item); await pages[0]!.locator('#project-composer').waitFor();
     for (const notice of history) {
       assert.equal(notice.workNumber, item.number);
       assert.equal(await pages[0]!.locator(`#notice-${notice.id}`).count(), 0, `the conversation does not show ${notice.kind}`);
     }
-    assert.equal(await pages[0]!.locator(`.project-convo__message-list [data-work-id="${item.id}"]`).count(), 0, 'no card of the undone task');
+    assert.equal(await pages[0]!.locator(`.convo-notice[data-work-id="${item.id}"]`).count(), 0, 'no card of the undone task');
     assert.equal(await receipts(item), 1);
     assert.deepEqual(expectStatus(await f.author.browser.request('GET', `/api/v1/sketches/${sketch.id}`), 200), mapBefore,
       'the map is unchanged; it never had a task node to remove');
@@ -529,7 +526,7 @@ test('desktop and phone-width history render readable actor and time, keyboard l
     await withContexts([context], async () => {
       const page = await context.newPage(); watchErrors(page);
       await page.goto(`/projects/${f.place.id}?open=work:${item.id}`); await reverted(page, item);
-      assert.match(await panel(page).innerText(), /Creation undone by Ari Task author on/);
+      assert.match(await panel(page).innerText(), /Creation undone by Ari Task author (on |today)/);
       const activity = panel(page).getByRole('list', { name: 'Task activity', exact: true });
       // The timeline lists newest first (#601): the Undo line leads and the creation is the oldest line.
       assert.equal(await activity.locator('time').first().getAttribute('datetime'), life.revertedAt);
@@ -548,11 +545,10 @@ test('desktop and phone-width history render readable actor and time, keyboard l
       await page.getByRole('button', { name: 'Close details', exact: true }).click();
       await panel(page).waitFor({ state: 'hidden' });
       await settleVisualTransitions(page);
-      const notice = page.locator(`#notice-${result.noticeId}`); await notice.waitFor();
-      assert.equal(await notice.locator('time').getAttribute('datetime'), life.revertedAt);
-      if (evidence) await notice.screenshot({ path: join(evidence, `task-undo-notice-${width}.png`) });
-      const historyLink = notice.getByRole('button', { name: `Open task #${item.number} ${item.title}`, exact: true });
-      await historyLink.focus(); await page.keyboard.press('Enter'); await reverted(page, item);
+      // The conversation shows nothing of the undone task (personas-27 P2 4); its link still opens it as history.
+      await page.locator('#project-composer').waitFor();
+      assert.equal(await page.locator(`#notice-${result.noticeId}`).count(), 0, 'no Undo line in the conversation');
+      await page.goto(`/projects/${f.place.id}?open=work:${item.id}`); await reverted(page, item);
       await settleVisualTransitions(page);
       if (evidence) await page.screenshot({ path: join(evidence, `task-undo-keyboard-history-${width}.png`), fullPage: true });
     });
