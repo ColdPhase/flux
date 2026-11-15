@@ -194,7 +194,7 @@ class DetailPanelFinal(unittest.TestCase):
         task = self.new_task("Mount the rain gauge", owner=True, blocker="Waiting for the bracket from the supplier")
         page = self.page()
         panel = self.open_task(page, task)
-        panel.get_by_role("button", name="Resolve").click()
+        panel.get_by_role("button", name="Unblock").click()
         expect(panel.get_by_role("button", name="Status", exact=True)).to_contain_text("Doing")
         stored = self.stored(task)
         self.assertEqual((stored["status"], stored["blocker"]), ("in_progress", None))

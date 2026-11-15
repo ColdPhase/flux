@@ -227,6 +227,10 @@ body:has(.app) { background: var(--side); }
   .side__rail-middle > .side__rail-scroll { flex: none; overflow: visible; }
   /* The band's end has room to clear its fade (below, #1375). */
   .side__rail-middle[data-scrolls] { padding-bottom: 20px; }
+  /* A tile half under the fade is never next to the account face (persona round 29, 200 %: a press on the Messages tile's faded edge
+     opened the account menu): a clear gap below the band, and a tile reached by Tab or the arrows scrolls clear of the fade. */
+  .side__rail-middle[data-scroll-down] { margin-bottom: 10px; }
+  .side__rail-middle { scroll-padding-block: 24px 28px; }
 }
 /* Where a list can still scroll to, that edge fades softly (#1375): the expanded sidebar's and the drawer's list, the rail's lists. Static,
    set only when the size, the contents or the position change (Sidebar.tsx `useScrollEdges`), so a row cut by the edge reads as "more". */

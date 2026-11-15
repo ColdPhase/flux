@@ -4,6 +4,7 @@ import { flushPlace } from '../place/memory';
 import type { SearchResult } from '@flux/contracts';
 import { useShellData } from '../app/data';
 import { Icon, MEDIA, Mascot, Spinner, useMediaQuery, type IconName } from '../ui';
+import { leaveFocusToDestination } from '../ui/Overlay';
 import { targetHref } from './api';
 import { SEARCH_HINT } from './hint';
 import { placeIdentity, placeOfPath, useRecentPlaces, type RecentPlace } from './recent';
@@ -110,6 +111,7 @@ function SearchBody({ onClose, userId, phone }: { onClose: () => void; userId: s
 
   const choose = (option: Option | undefined) => {
     if (!option) return;
+    leaveFocusToDestination();
     if (option.kind === 'place') { onClose(); navigate(option.place.path); return; }
     if (option.kind === 'command') { onClose(); option.run(); return; }
     onClose();

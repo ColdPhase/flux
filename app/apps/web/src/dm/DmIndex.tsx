@@ -132,13 +132,17 @@ export function NewDm() {
     setBusy(true); setError(''); setNotice('');
     // What is typed while the conversation opens is its first message (P2 #2): kept until its composer takes focus, never a shortcut, with
     // what was typed since the person's name that led here was pressed.
-    if (!touch) waitForField();
+    // Enter in Find people opens it while focus is still in that field, where the next keys would go and be lost with the page (persona
+    // round 29 P2 1: "Kasia, the oven…" was sent as "asia, the oven…"): the field is left at once, so they are kept for the composer.
+    const searching = document.activeElement?.id === 'dm-people-search';
+    if (!touch) { if (searching) (document.activeElement as HTMLElement).blur(); waitForField(); }
     try {
       const dm = await openDm(workspaceId, ids, attempt.current.key, name || undefined);
       // A person's name opens their conversation in place of this page, which keeps the origin it was followed from (#592).
       navigate(`/dm/${dm.id}`, { replace: Boolean(direct), ...(direct ? { state: arrivalState } : {}) });
     } catch (cause) {
       stopAwaitingField();
+      if (searching) document.getElementById('dm-people-search')?.focus();
       if (cause instanceof ApiError && (cause.code === 'DM_RECIPIENT_LEFT' || cause.code === 'DM_RECIPIENT_UNAVAILABLE')) {
         setNotice(cause.message); setBusy(false); return;
       }

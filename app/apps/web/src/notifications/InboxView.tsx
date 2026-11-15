@@ -121,6 +121,27 @@ export function InboxView() {
     // When the open item changes; the list it is read from is the one of that render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openKey]);
+  // An item that comes back (Z or Undo after S, A or E) is the open one again and takes the focus, so the next key acts on the item the person
+  // sees (persona round 29 P2 3): focus stayed on another row, and S snoozed, A accepted, what was not looked at.
+  const keysShown = shown.map((item) => item.key).join('\n');
+  const seenKeys = useRef<Set<string> | null>(null);
+  const goneKeys = useRef(new Set<string>());
+  useEffect(() => {
+    const now = new Set(shown.map((item) => item.key));
+    const before = seenKeys.current;
+    seenKeys.current = now;
+    if (!before || touch) return;
+    for (const key of before) if (!now.has(key)) goneKeys.current.add(key);
+    const back = [...goneKeys.current].find((key) => now.has(key));
+    for (const key of [...goneKeys.current]) if (now.has(key)) goneKeys.current.delete(key);
+    if (!back) return;
+    const active = document.activeElement;
+    if (active && active !== document.body && active.id !== 'content' && !active.closest('.nyq')) return;
+    setSelected(back);
+    requestAnimationFrame(() => rowControl(back)?.focus({ preventScroll: true }));
+    // When the list's items change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [keysShown]);
   // Arriving with focus nowhere (G I, a link that keeps no focus): the open item's row takes it, so the keyboard starts in the list, never on
   // the page's body. A field, a button or a link that has focus keeps it.
   const ready = queue.items !== null;

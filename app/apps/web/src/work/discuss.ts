@@ -32,6 +32,9 @@ export function useDiscussDecision() {
       return;
     }
     const overlay = window.matchMedia(MEDIA.panelOverlay).matches;
-    await follow(overlay ? `/projects/${projectId}` : decisionAppPath(projectId, decisionId), { state: { focusComposer: true } });
+    const to = overlay ? `/projects/${projectId}` : decisionAppPath(projectId, decisionId);
+    // Already there (the decision open beside its conversation): the same entry, never a second one with the same address (persona round 29).
+    const here = new URLSearchParams(window.location.search).get('open') === `decision:${decisionId}` && window.location.pathname === `/projects/${projectId}`;
+    await follow(to, { state: { focusComposer: true }, ...(here ? { replace: true } : {}) });
   }, [follow]);
 }

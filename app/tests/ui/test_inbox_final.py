@@ -808,7 +808,7 @@ class InboxFinal(unittest.TestCase):
         page.goto("/inbox")
         card = self.card(page, "Design a weatherproof enclosure")
         self.item(page, "Design a weatherproof enclosure").get_by_role("button", name="Unblock").click()
-        expect(page.get_by_role("status").filter(has_text="Blocker cleared")).to_be_visible()
+        expect(page.get_by_role("status").filter(has_text="Unblocked")).to_be_visible()
         expect(card).to_have_count(0)
         work = lambda: self.contexts["ada"].request.get(f"/api/v1/work/{self.blocked['id']}").json()  # noqa: E731
         self.wait_for(lambda: work()["status"] == "in_progress", "the task to be unblocked")

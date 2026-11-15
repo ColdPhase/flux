@@ -368,6 +368,17 @@ function AppLayoutContent() {
   useEffect(() => watchConversationLinks(), []);
   // What had focus went away under it: the next control takes it, never the page itself (F-026 §4).
   useEffect(() => watchLostFocus(), []);
+  // A page arrived at with nothing that takes the focus (Back to Home, a reload of the board) gives it to its content, never the page itself
+  // (persona round 29), once the page's own focus (a composer, the Inbox's item, a marked message) has had its turn.
+  const touchScreen = useMediaQuery(MEDIA.touch);
+  useEffect(() => {
+    if (touchScreen) return undefined;
+    const timer = window.setTimeout(() => {
+      const active = document.activeElement;
+      if ((!active || active === document.body) && !document.querySelector('.ui-overlay[data-state="open"]')) document.getElementById('content')?.focus({ preventScroll: true });
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [location.key, touchScreen]);
   // The computer's sidebar collapses to its 64px rail with "[" (F-026 S19), remembered on this device.
   const [railed, setRailed] = useState(() => { try { return localStorage.getItem(SIDEBAR_KEY) === 'rail'; } catch { return false; } });
   const toggleRail = useCallback(() => setRailed((current) => {
@@ -390,11 +401,18 @@ function AppLayoutContent() {
   const [actionSlot, setActionSlot] = useState<HTMLElement | null>(null);
   const [metadataSlot, setMetadataSlot] = useState<HTMLElement | null>(null);
   const panelGuard = useRef<(() => boolean) | null>(null);
+  // A task or decision opened afresh in its space (a card on the board or in the conversation, Create) gets its own address, `?open=`,
+  // as one opened from Search, Home or the Inbox does (founder question B, persona round 29): a reload keeps it, Back closes it first.
+  // The address then opens it (the `?open=` effect below); true when it was given one.
+  const addressFor = useRef<(kind: 'work' | 'decision', id: string, projectId: string | undefined) => boolean>(() => false);
   const shell = useMemo(() => ({
     openDetails(view: DetailsView = 'place', options?: { back?: 'push' | 'keep' }) {
       if (detailsScope.current !== detailsOwner) return;
       const next = typeof view === 'object' && 'id' in view ? { ...view, projectId: view.projectId ?? projectId } : view;
       const current = now.current;
+      const afresh = !options?.back && !(current.detailsOpen && isOwned(current.detailsView) && ownedRef.current);
+      if (afresh && typeof next === 'object' && 'id' in next && (next.kind === 'work' || next.kind === 'decision')
+        && addressFor.current(next.kind, next.id, (next as { projectId?: string }).projectId)) return;
       // Opened from the panel, an object replaces the one shown and keeps the way back; so does anything that takes the place of a
       // thread or an agent a view owns, which has no other way back. Any other opening starts afresh.
       const covers = current.detailsOpen && isOwned(current.detailsView) && ownedRef.current && !isOwned(next);
@@ -474,6 +492,16 @@ function AppLayoutContent() {
   // page's data: that navigation finishes at once, so no load of this page is left running that
   // could land after the person has moved on or signed out.
   const navigate = useNavigate();
+  useLayoutEffect(() => { addressFor.current = (kind, id, objectProject) => {
+    if (!projectId || (objectProject && objectProject !== projectId)) return false;
+    const params = new URLSearchParams(location.search);
+    if (params.get('open') === `${kind}:${id}`) return false;
+    params.set('open', `${kind}:${id}`);
+    const kept = location.state && typeof location.state === 'object' ? location.state : {};
+    // `openPushed`: closing goes Back over this entry instead of leaving a second one with the same address.
+    navigate({ pathname: location.pathname, search: `?${params.toString()}`, hash: location.hash }, { defaultShouldRevalidate: false, state: { ...kept, openPushed: true } });
+    return true;
+  }; });
   const openedAt = useRef<string | null>(null);
   const openShown = useRef<{ kind: string; id: string } | null>(null);
   useEffect(() => { openShown.current = detailsOpen && typeof detailsView === 'object' && 'id' in detailsView ? { kind: detailsView.kind, id: detailsView.id } : null; });
@@ -524,7 +552,8 @@ function AppLayoutContent() {
       if (event.key === '[') { event.preventDefault(); if (tablet) setNavOpen((open) => !open); else toggleRail(); return; }
       const key = event.key.toLowerCase();
       if (key === 'g') { leader = Date.now(); return; }
-      if (key === 'i' && Date.now() - leader < 1200) { event.preventDefault(); leader = 0; navigate('/inbox'); }
+      // G I always lands on the Inbox's open item (persona round 29 P2 2): the sidebar link that kept focus from the last arrival lets it go.
+      if (key === 'i' && Date.now() - leader < 1200) { event.preventDefault(); leader = 0; (document.activeElement as HTMLElement | null)?.blur?.(); navigate('/inbox'); }
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
@@ -652,6 +681,7 @@ function AppLayoutContent() {
     toggleDetails(false);
     // An object the address names (`?open=`) is closed: the flag leaves the address, in the same entry.
     const params = new URLSearchParams(location.search);
+    if (params.has('open') && !ownedShown && (location.state as { openPushed?: boolean } | null)?.openPushed) { navigate(-1); return; }
     if (params.has('open') && !ownedShown) {
       params.delete('open');
       const search = params.toString();
