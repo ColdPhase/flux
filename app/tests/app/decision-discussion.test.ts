@@ -182,7 +182,7 @@ test('an agent\'s proposal is its owner\'s: the owner follows its discussion fro
   const decisionId = randomUUID();
   await pool.query(`INSERT INTO project_decisions (id, workspace_id, project_id, title, proposed_by_kind, proposed_by_id) VALUES ($1, $2, $3, 'Dim the lamp at night', 'agent', $4)`,
     [decisionId, f.ws.id, f.place.id, agentId]);
-  const first = await write(f.writer, decisionId, 'How dim?');
+  const first = await write(f.writer, decisionId, 'Dim it to a fifth.');
   const told = await waitFor(async () => (await notificationsOf(f.owner, first.conversationId)).find((row) => row.url.endsWith(first.id)), 'the agent\'s owner is told');
   assert.equal(told.reason, 'reply');
   const follow = (await pool.query<{ following: boolean }>('SELECT following FROM notification_follows WHERE user_id = $1 AND conversation_id = $2', [f.owner.id, first.conversationId])).rows[0];
