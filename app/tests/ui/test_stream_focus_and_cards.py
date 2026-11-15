@@ -40,6 +40,8 @@ EMPTY_SPACE = "Seed swap shelf"
 LONG_TASK = "Order six capacitive moisture probes for the raised beds and test two of them on the far beds before the frost"
 REPLY_TASK = "Put two probes on the far beds to test the LoRa range through the hedge"
 TABLET = {"width": 820, "height": 1180}
+# A reference read that answered, or none at all while no card is in view.
+SETTLED = re.compile(r"^(ready|idle)$")
 
 # Where the focused element is: its box, the box of the scroller it lives in, and the window.
 FOCUSED = """() => {
@@ -274,7 +276,7 @@ class StreamFocusAndCards(unittest.TestCase):
             for _ in range(40):
                 feed.evaluate("(el, step) => el.scrollBy(0, step)", direction * 250)
                 page.wait_for_timeout(250)
-            expect(feed).to_have_attribute("data-references-phase", "ready")
+            expect(feed).to_have_attribute("data-references-phase", SETTLED)
         self.assertGreaterEqual(cards.count(), 5, "several task cards in the stream")
         for index in range(cards.count()):
             expect(cards.nth(index).locator(".convo-notice__owner")).to_have_count(1)
@@ -311,7 +313,7 @@ class StreamFocusAndCards(unittest.TestCase):
                 for _ in range(24):
                     feed.evaluate("(el, step) => el.scrollBy(0, step)", direction * 160)
                     page.wait_for_timeout(40)
-        expect(feed).to_have_attribute("data-references-phase", "ready")
+        expect(feed).to_have_attribute("data-references-phase", SETTLED)
         page.wait_for_timeout(1000)
         watch = page.evaluate("() => { window.__cards.running = false; return window.__cards; }")
         self.assertIn("loading", watch["phases"], "the cards were read again while the reader scrolled")
