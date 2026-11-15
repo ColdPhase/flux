@@ -116,7 +116,7 @@ describe('search: one query across Flux, only what you may read', () => {
     // The task's number in its project leads its text, so "#n" finds it (#276); the outcome follows.
     assert.equal(text(workHit.snippet), `#${work.number}\nNumbers for the low-light case`);
     assert.equal(byKind('thought')[0]!.label, 'Thought on the map “Lamp shapes”');
-    assert.equal(byKind('decision')[0]!.label, 'Decision · proposed');
+    assert.equal(byKind('decision')[0]!.label, 'Decision · Proposed', 'one word per state, as the card says it (release audit ffcb07c)');
     // The matched word is marked, never as markup.
     const message = answer.items.find((item) => text(item.title).includes('5 lux'))!;
     assert.ok(message.title.some((part) => part.match && /sensor/i.test(part.text)), 'the match is highlighted');
@@ -157,6 +157,9 @@ describe('search: one query across Flux, only what you may read', () => {
     assert.deepEqual(people.items[0]!.target, { type: 'person', userId: nia.id, workspaceId: ws.id });
     assert.deepEqual(people.items[0]!.place, { type: 'workspace', id: ws.id, name: 'Studio' });
     assert.equal((await search(gus, { q: 'Nia', type: 'person' })).items.length, 0, 'a guest cannot read the member list');
+    // A guest is "Guest" in one form everywhere (release audit ffcb07c): never "· guest" or "(guest)".
+    const guest = (await search(olek, { q: 'Gus', type: 'person' })).items.find((item) => item.target.type === 'person' && item.target.userId === gus.id);
+    assert.equal(guest?.label, 'Person · Guest');
     const byNia = await search(ari, { q: 'sensor', author: `human:${nia.id}` });
     assert.ok(byNia.items.length > 0);
     assert.ok(byNia.items.every((item) => item.author === 'Nia Berg'), 'only Nia’s writing');

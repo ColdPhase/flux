@@ -381,10 +381,13 @@ export function SettingsAccount() {
   );
 }
 
-/** The keyboard shortcuts of guide §4, as one list. */
+/** ⌘ on a Mac, Ctrl elsewhere: the key the sidebar's Search names in its title ("Search (Ctrl K)"). */
+const mac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
+
+/** The keyboard shortcuts of guide §4, as one list, in the guide's words ("Search"). */
 export const SHORTCUTS: { keys: string[]; action: string }[] = [
   { keys: ['C'], action: 'New (task by default)' },
-  { keys: ['⌘', 'K'], action: 'Search or run' },
+  { keys: [mac ? '⌘' : 'Ctrl', 'K'], action: 'Search' },
   { keys: ['G', 'I'], action: 'Go to Inbox' },
   { keys: ['J', '/', 'K'], action: 'Move in a list' },
   { keys: ['E'], action: 'Done' },
@@ -402,7 +405,7 @@ export function KeyboardShortcuts() {
   return (
     <div className="pane-scroll">
       <div className="pane-in sset-in">
-        <PageHead title="Shortcuts" lead="On a computer, or a tablet with a keyboard. The keys also show next to their actions in menus. J, K, E, S and A work in the Inbox." />
+        <PageHead title="Shortcuts" lead="On a computer, or a tablet with a keyboard. The keys also show next to their actions in menus. J, K, E, S, A and R work in the Inbox." />
         <table className="sset-card sset-keys">
           <caption className="ui-vh">Shortcuts</caption>
           <thead className="ui-vh"><tr><th scope="col">Keys</th><th scope="col">Action</th></tr></thead>

@@ -171,7 +171,8 @@ function SearchBody({ onClose, userId, phone }: { onClose: () => void; userId: s
           onChange={(event) => setQuery(event.target.value)} onKeyDown={onKeyDown} />
         {state.status === 'loading' ? <Spinner /> : null}
         {/* The name holds the visible "Esc" (WCAG 2.5.3). */}
-        <button type="button" className="jump__close" onClick={onClose} aria-label={phone ? undefined : 'Close, Esc'}>{phone ? 'Cancel' : <kbd aria-hidden="true">Esc</kbd>}</button>
+        {/* Close says its word, with its key beside it as the footer's "↵ open" and the menus do (L539); never a bare keycap as the button's only label. */}
+        <button type="button" className="jump__close" onClick={onClose} aria-keyshortcuts={phone ? undefined : 'Escape'}>{phone ? 'Cancel' : <>Close<kbd aria-hidden="true">Esc</kbd></>}</button>
       </div>
       <p className="ui-vh" id={statusId} role="status">{status}</p>
       <div className="jump__body">

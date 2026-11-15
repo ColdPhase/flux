@@ -50,7 +50,7 @@ export function PeoplePicker({ candidates, value, onChange, disabled = false, co
                   <label className="pick__row">
                     <input type="checkbox" checked={value.includes(member.userId)} disabled={disabled} onChange={(event) => toggle(member.userId, event.target.checked)} />
                     <Avatar name={member.name} id={member.userId} size="md" />
-                    <span className="pick__who"><b>{member.name}{member.role === 'guest' ? ' (guest)' : ''}</b><span>{member.email}</span></span>
+                    <span className="pick__who"><b>{member.name}</b><span>{member.email}{member.role === 'guest' ? ' · Guest' : ''}</span></span>
                   </label>
                 </li>
               ))}

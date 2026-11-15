@@ -58,7 +58,7 @@ export function JumpSkeleton({ places, phone, onClose }: { places: number; phone
       <div className="jump__field">
         <Icon name="search" size={16} className="jump__icon" />
         <span className="jump-skeleton__input"><b /></span>
-        <button type="button" className="jump__close" onClick={onClose}>{phone ? 'Cancel' : <><span className="ui-vh">Close</span><kbd aria-hidden="true">Esc</kbd></>}</button>
+        <button type="button" className="jump__close" onClick={onClose} aria-keyshortcuts={phone ? undefined : 'Escape'}>{phone ? 'Cancel' : <>Close<kbd aria-hidden="true">Esc</kbd></>}</button>
       </div>
       <div className="jump__body" aria-hidden="true">
         {phone && !places ? <p className="jump__hint">{SEARCH_HINT}</p> : null}

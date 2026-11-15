@@ -347,7 +347,7 @@ class OneConversationJourney(unittest.TestCase):
         self.root(page, "r3").get_by_role("button", name="Reply in thread", exact=True).click()
         expect(page).to_have_url(re.compile(rf"/conversations/{self.ids['c3']}$"))
         expect(page.locator("#thread-composer")).to_be_focused()
-        expect(self.thread(page)).to_contain_text("Reply to this message. No new topic needed.")
+        expect(self.thread(page)).not_to_contain_text("No new topic needed")
         page.keyboard.press("Escape")
         expect(self.thread(page)).to_have_count(0)
         expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}$"))
@@ -380,7 +380,7 @@ class OneConversationJourney(unittest.TestCase):
         oldest = self.root(page, "oldest_root")
         expect(oldest).to_be_in_viewport()
         expect(self.thread(page).locator(".thread__root")).to_contain_text("Earlier note 01")
-        expect(self.thread(page)).to_contain_text("Reply to this message. No new topic needed.")
+        expect(self.thread(page)).not_to_contain_text("No new topic needed")
         # A reply's anchor opens its thread on that whole reply, focused; the stream shows its root.
         page.goto(self.project_url(f"/conversations/{self.ids['c1']}#message-{self.ids['first']}"))
         arrived = self.thread(page).locator(".project-convo__message.is-arrived")

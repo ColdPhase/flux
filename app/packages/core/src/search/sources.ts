@@ -16,10 +16,12 @@ export interface SearchSource {
   target(row: SearchRow): SearchTarget;
 }
 
+// One state has one word, the word every other place uses (final design L1061; the task glyph's words To do, Doing, Blocked, Done; a
+// decision is Proposed, Accepted or Replaced): Search never says "in progress" or "accepted" in lower case (release audit ffcb07c).
 const WORK_STATUS: Record<string, string> = {
-  open: 'Task', in_progress: 'Task · in progress', blocked: 'Task · blocked', done: 'Task · done',
+  open: 'Task', in_progress: 'Task · Doing', blocked: 'Task · Blocked', done: 'Task · Done',
 };
-const DECISION_STATUS: Record<string, string> = { accepted: 'Decision · accepted', proposed: 'Decision · proposed', superseded: 'Decision · replaced' };
+const DECISION_STATUS: Record<string, string> = { accepted: 'Decision · Accepted', proposed: 'Decision · Proposed', superseded: 'Decision · Replaced' };
 
 // A saved source is a Wiki page to the person (founder decision, Hubert, 2026-11-13, #1419 item 20): Search says "Wiki page" for it, and the
 // "Material" word is gone. It still opens at the version that matched (the page by its own address).
@@ -83,7 +85,7 @@ export const SEARCH_SOURCES: Record<SearchKind, SearchSource> = {
   },
   person: {
     filter: 'person', audience: 'members', textIsTitle: false,
-    label: (row) => (row.status === 'guest' ? 'Person · guest' : 'Person'),
+    label: (row) => (row.status === 'guest' ? 'Person · Guest' : 'Person'),
     target: (row) => ({ type: 'person', userId: row.objectId, workspaceId: row.workspaceId }),
   },
 };

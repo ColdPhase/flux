@@ -37,7 +37,7 @@ const TYPES = ['all', 'doc', 'decision', 'work', 'sketch', 'message'] as const;
 type ReferenceType = typeof TYPES[number];
 function nativeCandidate(item: NativeWorkRow): Candidate {
   return { type: item.kind, id: item.id, title: item.title,
-    hint: item.kind === 'decision' ? item.status === 'accepted' ? 'Accepted decision' : item.status === 'proposed' ? 'Proposed decision' : 'Replaced decision' : 'Task' };
+    hint: item.kind === 'decision' ? item.status === 'accepted' ? 'Decision · Accepted' : item.status === 'proposed' ? 'Decision · Proposed' : 'Decision · Replaced' : 'Task' };
 }
 
 export function LinkPicker({ projectId, workspaceId, selfId, onPick, onClose }: {

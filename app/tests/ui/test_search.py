@@ -220,7 +220,7 @@ class SearchJourney(unittest.TestCase):
         expect(page).to_have_url(re.compile(rf"/materials/{self.ids['material']}/versions/1$"))
         # A decision is listed as a decision (its own group) and opens as one, over its space's conversation (v0.2.1 personas round).
         dialog, field = self.jump(page, "use the infrared")
-        expect(dialog.locator("[role=option].sr").first).to_contain_text("Decision · accepted")
+        expect(dialog.locator("[role=option].sr").first).to_contain_text("Decision · Accepted")
         expect(dialog.locator(".jump__sh").first).to_have_text("Decisions")
         heading = dialog.locator("[role=option].sr", has_text="Use the infrared sensor at night").first.evaluate(
             "el => { let at = el.closest('li') ?? el; while (at && !at.classList.contains('jump__sh')) at = at.previousElementSibling; return at?.textContent; }")

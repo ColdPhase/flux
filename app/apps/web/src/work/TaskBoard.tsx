@@ -10,7 +10,7 @@ import { STATE_KEYS, useStateChanges } from './taskState';
 import { getProjectWorkView, workViewReadUrl } from './read-api';
 import type { ReadState } from './read-state';
 import { useWorkRead } from './useWorkRead';
-import { useAgentOwners } from '../agents/owners';
+import { agentAuthorOwner, useAgentOwners } from '../agents/owners';
 import { useAgentHue } from '../agents/hues';
 import './board.css';
 
@@ -510,7 +510,7 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
                 {list.length ? (
                   <ol className="tb-col__list">
                     {list.map((item) => (
-                      <Card key={item.id} item={item} agentOwner={item.owner?.kind === 'agent' ? owners.get(item.owner.id) : undefined} meId={meId} writable={writable} hintId={hintId}
+                      <Card key={item.id} item={item} agentOwner={item.owner?.kind === 'agent' ? agentAuthorOwner(item.owner, owners) : undefined} meId={meId} writable={writable} hintId={hintId}
                         saving={item.id in pending} dragged={dragging?.id === item.id} lifted={lifted?.id === item.id}
                         onPointerDown={(event) => startDrag(event, item, column.id)}
                         onClickCapture={(event) => { if (suppressClick.current) { event.preventDefault(); event.stopPropagation(); } }}

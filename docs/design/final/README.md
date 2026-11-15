@@ -1985,7 +1985,7 @@ On the phone the Assistant conversation is a normal conversation. Its header lis
   - Name with Change.
   - People with Add people, an Admin / Member choice and Remove on each row, and under each name a quiet line with when they were last active ([Last active](#last-active)).
     **A guest's row says Guest** (persona round, 2026-11-15, #1424), to everyone who reads the page, the guest too, as Settings › Company
-    and the people picker ("(guest)") say: a guest is never a space's admin, so their row has the word, not a choice of one. The list is
+    and the people picker ("tomasz@… · Guest", one word for a guest everywhere, release audit ffcb07c) say: a guest is never a space's admin, so their row has the word, not a choice of one. The list is
     live: someone who joins with a link made here, or is added or removed elsewhere, appears or goes without a reload. With nobody left
     to add, Add people says the true thing: "Everyone in Nowak Bakery is already in Shop floor." (or, with nobody else in the company,
     "There is nobody else in the company yet.").

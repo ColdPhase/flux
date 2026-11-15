@@ -4,11 +4,11 @@
 .people__list { list-style: none; margin: 0; padding: 0; }
 .people__item + .people__item { border-top: 1px solid var(--line); }
 .people__row { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 8px 0; }
-/* A space's name is a link in its row: on touch its hit area is 44 px tall, centred on the line, without growing the row. */
-@media (pointer: coarse) {
-  .people__who b a { position: relative; }
-  .people__who b a::after { content: ""; position: absolute; left: -8px; right: -8px; top: calc(50% - 22px); height: 44px; }
-}
+/* A space in Settings › Company is a whole row that opens it, as Settings' rows do (L203–204), never an underlined name; 56 px tall, so a touch target. */
+.people__row--link { color: inherit; text-decoration: none; transition: var(--tr); }
+.people__row--link:hover { background: var(--hov); }
+.people__row--link:focus-visible { outline: 2px solid var(--t1); outline-offset: -2px; }
+.people__go { flex: none; color: var(--t3); }
 .people__row .ui-avatar { flex: none; font-size: var(--fs-face-lg); color: var(--t2); }
 .people__who { display: flex; flex: 1; flex-direction: column; min-width: 0; font-size: var(--fs-md); line-height: 1.45; }
 .people__who b { font-weight: 500; color: var(--t1); overflow-wrap: anywhere; }
@@ -135,9 +135,14 @@
 .people__removing, .people__rownote { margin: 0 0 12px; font-size: var(--fs-sm); line-height: 1.45; color: var(--t2); }
 .people--page .people__removing, .people--page .people__rownote { margin-inline: 18px; }
 @media (pointer: coarse) { .people__act.ui-btn, .people__confirmrow .ui-btn { min-height: 44px; } }
-@media (max-width: 640px) {
+/* A row measures the page it is in, not the window (final design L1659–1662, as Settings › AI): under 37.5 rem — a phone, and a portrait
+   tablet's or a 1024 px window's page beside the section list (about 440 px) — the name and address keep the whole first line and the role,
+   Reset link and Remove go under them, so no address or name is ever cut mid-word to make room for the buttons (release audit ffcb07c P2-2). */
+@container sset (max-width: 37.5rem) {
   .people--page .people__item[data-person] > .people__row { flex-wrap: wrap; row-gap: 4px; }
   .people--page .people__item[data-person] .people__who { flex: 1 1 calc(100% - 52px); }
-  .people--page .people__item[data-person] .people__rolebtn, .people--page .people__item[data-person] > .people__row > .people__role { margin-left: 42px; }
+  /* The role's word starts under the name (the button's 10 px padding is taken off). */
+  .people--page .people__item[data-person] .people__rolebtn { margin-left: 26px; }
+  .people--page .people__item[data-person] > .people__row > .people__role { margin-left: 36px; }
   .people--page .people__acts { margin-left: auto; }
 }

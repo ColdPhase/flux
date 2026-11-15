@@ -3,7 +3,7 @@ import { useLoaderData, useRevalidator, useSearchParams, type LoaderFunctionArgs
 import { AI_PROVIDERS, assistantModelName, type BackgroundComputeConnection } from '@flux/contracts';
 import { keyUsageLine } from '../ai/connections';
 import { ApiError } from '../api/client';
-import { refreshAssistantModel } from '../assistant/model';
+import { refreshAssistantModel, useAssistantModel } from '../assistant/model';
 import { SettingsBack } from '../app/SettingsBack';
 import { Button, Input } from '../ui';
 import { listBackgroundConnections, revokeBackgroundConnection, updateBackgroundConnection } from './api';
@@ -28,6 +28,12 @@ export function AiConnectionsSettings() {
 function AiConnectionsPage({ initial }: { initial: { connections: BackgroundComputeConnection[] } }) {
   const [params, setParams] = useSearchParams();
   const revalidator = useRevalidator();
+  // A key's model is named as its provider lists it, as Connect AI and the agent's model picker name it ("Claude Sonnet 5.7"); Flux's short
+  // name only for a model the list does not name (contracts `assistantApiModels`; release audit ffcb07c: this page said "Sonnet 5").
+  const { choice } = useAssistantModel();
+  const modelName = (item: BackgroundComputeConnection) =>
+    choice?.groups.find((group) => group.account === 'api_key' && group.connection === item.id)?.options.find((option) => option.id === item.model)?.name
+      ?? assistantModelName(item.model);
   const [connections, setConnections] = useState(initial.connections);
   // The Connect AI window on its API key step: from "Add a key", or from a link that asks for a key (`?new=1`, #854, #1438 point 9).
   const [adding, setAdding] = useState(params.get('new') === '1');
@@ -120,7 +126,7 @@ function AiConnectionsPage({ initial }: { initial: { connections: BackgroundComp
           <p className="background-settings__usage" data-testid="key-usage">{keyUsageLine(item)}</p>
           <dl className="background-settings__metadata">
             <div><dt>Provider</dt><dd>{AI_PROVIDERS[item.provider].label}</dd></div>
-            <div><dt>Model</dt><dd>{assistantModelName(item.model)}</dd></div>
+            <div><dt>Model</dt><dd>{modelName(item)}</dd></div>
             {item.baseUrl ? <div><dt>Endpoint</dt><dd>{item.baseUrl}</dd></div> : null}
             <div><dt>Price</dt><dd>{item.price
               ? <>{priceText(item.price)} · {priceSourceText(item.price, item.provider)}</>
@@ -133,7 +139,7 @@ function AiConnectionsPage({ initial }: { initial: { connections: BackgroundComp
               aria-describedby={`connection-${item.id}-budget`} />
             <Button type="submit" disabled={busy}>Save budget</Button>
           </form>
-          <p id={`connection-${item.id}-budget`} className="background-settings__help">Everything on this key counts against it: your agents. At the budget they pause until the next day, from midnight in {item.timeZone}. Flux prices each request before sending it; the provider’s invoice may still differ slightly.</p>
+          <p id={`connection-${item.id}-budget`} className="background-settings__help">Everything your agents do on this key counts against this budget. At the budget they pause until midnight in {item.timeZone}. The provider’s invoice may differ slightly from Flux’s count.</p>
           <div className="background-settings__actions">
             {removing === item.id ? (
               <div className="background-settings__confirm" role="group" aria-label={`Remove ${item.name}, key ending ${item.keyLastFour}`}

@@ -26,7 +26,9 @@ from test_app_shell import DESKTOP, ORIGIN, UI_BROWSER, UPSTREAM, shot, start_fo
 MOCK = os.environ.get("FLUX_ANTHROPIC_MOCK_URL", "http://127.0.0.1:8090")
 PASSWORD = "one colour for every reader"
 STAMP = int(time.time() * 1000)
-PEOPLE = {"ada": ("Ada Kowalska", f"ada.colour+{STAMP}@example.test"), "ben": ("Ben Okafor", f"ben.colour+{STAMP}@example.test")}
+PEOPLE = {"ada": ("Ada Kowalska", f"ada.colour+{STAMP}@example.test"), "ben": ("Ben Okafor", f"ben.colour+{STAMP}@example.test"),
+          "gus": ("Gus Lind", f"gus.colour+{STAMP}@example.test")}
+LABEL = "Planner · Ada's agent"
 READING = "The rain gauge on the shed roof reads 4 mm more than the one by the beds."
 TASK = "Compare the two rain gauges"
 BENS_TASK = "Move the shed gauge away from the gutter"
@@ -86,7 +88,10 @@ class AgentColourForEveryone(unittest.TestCase):
             context.close()
         workspace = cls.call("ada", "POST", "/api/v1/workspaces", {"name": "Allotment weather"})["id"]
         cls.call("ada", "POST", f"/api/v1/workspaces/{workspace}/members", {"email": PEOPLE["ben"][1], "role": "member"})
+        cls.call("ada", "POST", f"/api/v1/workspaces/{workspace}/members", {"email": PEOPLE["gus"][1], "role": "guest"})
         project = cls.ids["project"] = cls.call("ada", "POST", f"/api/v1/workspaces/{workspace}/projects", {"name": "Rain gauges", "visibility": "workspace"})["id"]
+        # Gus is a guest of the company, added to this one space.
+        cls.call("ada", "POST", f"/api/v1/projects/{project}/grants", {"principal": {"kind": "human", "id": cls.ids["gus"]}, "role": "contributor"})
         # Ada's two agents: the first is ink, the second takes teal, the first colour after it (#1377).
         pick = cls.call("ada", "GET", "/api/v1/personal-assistant/model")["default"]
         for name in ("Assistant", "Planner"):
@@ -188,6 +193,31 @@ class AgentColourForEveryone(unittest.TestCase):
         expect(card.locator(".nyc__face .kreska")).to_have_class(TEAL)
         shot(page, f"agent-colour-inbox-ben-{UI_BROWSER}")
 
+    def test_05_planner_has_one_label_for_its_owner_a_member_and_a_guest(self) -> None:
+        """Release audit ffcb07c P2-4: for anyone but Ada the board card, the List row, the panel's Owner and "marked it done" said "Planner [Agent]"
+        while the discussion said "Planner · Ada's agent". One label for every reader (final design L1414–1416, L277): the Agent tag only while the
+        owner is unknown."""
+        project = self.ids["project"]
+        for who in ("ada", "ben", "gus"):
+            with self.subTest(who=who):
+                page = self.page(who)
+                page.goto(f"/projects/{project}/tasks?view=list")
+                row = page.locator(f'.ws-task[data-work-id="{self.ids["task"]}"]')
+                expect(row.locator(".ws-item__s .agent-id")).to_have_text(LABEL)
+                expect(row.locator(".agent-tag")).to_have_count(0)
+                page.goto(f"/projects/{project}/tasks?view=board")
+                owner = page.locator(".tb-card", has_text=TASK).locator(".tb-card__owner")
+                expect(owner.locator(".agent-id__label")).to_have_text(LABEL)
+                expect(owner.locator(".agent-tag")).to_have_count(0)
+                page.goto(f"/projects/{project}/tasks?open=work:{self.ids['task']}")
+                panel = page.get_by_role("complementary", name="Details")
+                expect(panel.get_by_role("button", name="Owner").locator(".agent-id__label")).to_have_text(LABEL)
+                done = panel.locator('.wd-act__item[data-activity="status"]').filter(has_text="Planner").first
+                expect(done.locator(".agent-id__label")).to_have_text(LABEL)
+                expect(panel.locator(".wd-act .agent-tag")).to_have_count(0)
+                said = panel.locator(".wd-act__item--message").filter(has_text="the gutter")
+                expect(said.locator(".agent-id__label")).to_have_text(LABEL)
+                shot(page, f"agent-label-task-panel-{who}-{UI_BROWSER}")
 
     def test_04_the_chat_task_chip_ends_in_an_ellipsis_and_the_agent_page_fields_are_14_px_round(self) -> None:
         """Release audit (skipped by #1524): the Planner chat's task chip was cut with no ellipsis; the agent page's fields took 12 px corners."""

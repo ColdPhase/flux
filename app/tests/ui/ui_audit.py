@@ -991,7 +991,7 @@ def phase_keys(pw, engine: str, data: dict) -> None:
 
         def shortcuts_page(page):
             text = page.inner_text("main") if page.locator("main").count() else page.inner_text("body")
-            missing = [action for action in ("New (task by default)", "Search or run", "Go to Inbox", "Collapse the sidebar") if action not in text]
+            missing = [action for action in ("New (task by default)", "Search", "Go to Inbox", "Collapse the sidebar") if action not in text]
             assert not missing, f"missing {missing}"
         check.run("Settings › Keyboard shortcuts lists the keys", open_at("/settings/shortcuts"), shortcuts_page)
     browser.close()
