@@ -117,6 +117,7 @@ describe('runtime tables hold display facts only', () => {
       }
     } finally {
       await pool.query('DELETE FROM agent_runtime_bindings WHERE slot = $1', [slot]);
+      await pool.query('DELETE FROM agent_runtime_bindings WHERE slot = $1', [slot]);
       await pool.query('DELETE FROM agent_runtime_slots WHERE slot = $1', [slot]);
     }
   });
@@ -170,6 +171,7 @@ describe('the PostgreSQL store under the owner use cases', () => {
       assert.equal((await runtime.status(mia.id)).binding?.state, 'active', 'and the other stays');
     } finally {
       await pool.query('DELETE FROM agent_runtime_bindings WHERE slot = ANY($1)', [slots]);
+      await pool.query('DELETE FROM agent_runtime_bindings WHERE slot = ANY($1)', [slots]);
       await pool.query('DELETE FROM agent_runtime_slots WHERE slot = ANY($1)', [slots]);
     }
   });
@@ -222,6 +224,7 @@ describe('the idle policy and a guest (#1090)', () => {
       assert.equal(await idle(), false, 'a later use starts the window again');
     } finally {
       await pool.query('DELETE FROM workspace_members WHERE workspace_id = $1 AND user_id = ANY($2)', [company, [guest.id, member.id]]);
+      await pool.query('DELETE FROM agent_runtime_bindings WHERE slot = $1', [slot]);
       await pool.query('DELETE FROM agent_runtime_bindings WHERE slot = $1', [slot]);
       await pool.query('DELETE FROM agent_runtime_slots WHERE slot = $1', [slot]);
     }

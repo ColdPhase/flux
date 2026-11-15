@@ -38,6 +38,7 @@ test('actual off-server removal refuses before changing a saved binding, connect
     assert.deepEqual(await snapshot(), before, 'no release, connection revocation, auth work or admission change');
   } finally {
     await pool.query('DELETE FROM auth_users WHERE id = $1', [owner.id]);
+    await pool.query('DELETE FROM agent_runtime_bindings WHERE slot = $1', [slot]);
     await pool.query('DELETE FROM agent_runtime_slots WHERE slot = $1', [slot]);
   }
 });

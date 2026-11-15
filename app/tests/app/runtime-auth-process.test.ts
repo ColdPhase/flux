@@ -108,7 +108,7 @@ test('two actual API processes share one-use tickets and operation ownership acr
     assert.equal((await b.request('POST',AGENT_RUNTIME_CONSOLE_PATH,{body:{client:'claude_code',method:'sso'}})).status,409,'disconnect never grants same-binding replacement');
   } finally {
     for(const ws of sockets)ws.terminate();await Promise.all(children.map(stop));manager.closeAllConnections();await new Promise<void>(r=>manager.close(()=>r()));
-    await slot.close();if(ownerId)await pool.query('DELETE FROM auth_users WHERE id=$1',[ownerId]);await pool.query('DELETE FROM agent_runtime_slots WHERE slot=$1',[slot.config.slot]);
+    await slot.close();if(ownerId)await pool.query('DELETE FROM auth_users WHERE id=$1',[ownerId]);await pool.query('DELETE FROM agent_runtime_bindings WHERE slot=$1',[slot.config.slot]);await pool.query('DELETE FROM agent_runtime_slots WHERE slot=$1',[slot.config.slot]);
   }
 });
 
@@ -158,7 +158,7 @@ test('a held real manager response arriving after a second HTTP process requests
   }finally{
     release();await pending?.catch(()=>undefined);for(const ws of sockets)ws.terminate();await Promise.all(children.map(stop));
     manager.closeAllConnections();await new Promise<void>(r=>manager.close(()=>r()));await slot.close();
-    if(ownerId)await pool.query('DELETE FROM auth_users WHERE id=$1',[ownerId]);await pool.query('DELETE FROM agent_runtime_slots WHERE slot=$1',[slot.config.slot]);
+    if(ownerId)await pool.query('DELETE FROM auth_users WHERE id=$1',[ownerId]);await pool.query('DELETE FROM agent_runtime_bindings WHERE slot=$1',[slot.config.slot]);await pool.query('DELETE FROM agent_runtime_slots WHERE slot=$1',[slot.config.slot]);
   }
 });
 
@@ -217,7 +217,7 @@ test('API crash with an undelivered old logout requires full recovery; late logo
     release();await pending?.catch(()=>undefined);for(const ws of sockets)ws.terminate();await Promise.all(children.map(stop));
     manager.closeAllConnections();await new Promise<void>(r=>manager.close(()=>r()));
     await slot.close();
-    if(ownerId)await pool.query('DELETE FROM auth_users WHERE id=$1',[ownerId]);await pool.query('DELETE FROM agent_runtime_slots WHERE slot=$1',[slot.config.slot]);
+    if(ownerId)await pool.query('DELETE FROM auth_users WHERE id=$1',[ownerId]);await pool.query('DELETE FROM agent_runtime_bindings WHERE slot=$1',[slot.config.slot]);await pool.query('DELETE FROM agent_runtime_slots WHERE slot=$1',[slot.config.slot]);
   }
 });
 

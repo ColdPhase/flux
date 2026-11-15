@@ -24,6 +24,7 @@ async function fixture(work: (f: Awaited<ReturnType<typeof setup>>) => Promise<v
   const f = await setup();
   try { await work(f); } finally {
     await pool.query('DELETE FROM auth_users WHERE id=$1', [f.owner.id]);
+    await pool.query('DELETE FROM agent_runtime_bindings WHERE slot=$1', [f.slot]);
     await pool.query('DELETE FROM agent_runtime_slots WHERE slot=$1', [f.slot]);
     await pool.query('UPDATE agent_runtime_auth_admission SET blocked=false,purge_id=NULL WHERE singleton');
     await f.second.pool.end();

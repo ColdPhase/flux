@@ -60,6 +60,7 @@ describe('what a sign-in and the worker\'s reading leave in the database', () =>
   });
   after(async () => {
     await pool.query('DELETE FROM auth_users WHERE id = $1', [owner.id]);
+    await pool.query('DELETE FROM agent_runtime_bindings WHERE slot = $1', [slot]);
     await pool.query('DELETE FROM agent_runtime_slots WHERE slot = $1', [slot]);
   });
 

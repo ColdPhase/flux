@@ -20,6 +20,7 @@ async function fixture(work: (target: RuntimeAuthClaim, operation: ReturnType<ty
     await work({ ownerUserId: owner.id, sessionId, bindingId, client: 'claude_code', kind: 'check', leaseMs: 60_000, lifetimeMs: 120_000 }, runtimeAuthOperations(db));
   } finally {
     await pool.query('DELETE FROM auth_users WHERE id=$1', [owner.id]);
+    await pool.query('DELETE FROM agent_runtime_bindings WHERE slot=$1', [slot]);
     await pool.query('DELETE FROM agent_runtime_slots WHERE slot=$1', [slot]);
     await pool.query('UPDATE agent_runtime_auth_admission SET blocked=false,purge_id=NULL WHERE singleton');
   }
