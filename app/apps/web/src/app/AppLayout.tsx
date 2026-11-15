@@ -685,7 +685,10 @@ function AppLayoutContent() {
     shell.openDetails(view, { back: 'keep' });
     // The object it steps back from had its own entry (`?open=`, a task card in a thread): that entry is left too, so the address and Back
     // are the thread's again (F-026 §4). The panel stays, showing what it stepped back to.
-    if (new URLSearchParams(location.search).has('open') && (location.state as { openPushed?: boolean } | null)?.openPushed) navigate(-1);
+    // Only when what it leaves is the object the address names; a step back inside the panel to that object keeps it.
+    const named = new URLSearchParams(location.search).get('open');
+    const leaving = typeof detailsView === 'object' && 'id' in detailsView ? `${detailsView.kind}:${detailsView.id}` : null;
+    if (named && leaving === named && (location.state as { openPushed?: boolean } | null)?.openPushed) navigate(-1);
   };
   const back = ownedShown?.back ? { label: ownedShown.back.label, onClick: ownedShown.back.run } : trailTop ? { label: trailTop.label, onClick: stepBack }
     : ownedShown?.origin ? { label: ownedShown.origin.label, onClick: ownedShown.origin.run } : undefined;
