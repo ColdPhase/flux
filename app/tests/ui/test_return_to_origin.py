@@ -376,8 +376,9 @@ class ReturnToOrigin(unittest.TestCase):
         self.activate(back, tap)
         expect(page.locator("#thread")).to_be_visible()
         expect(panel.locator(".ui-panel__back")).to_have_count(0)
-        self.assertEqual(page.url, url, "opening and closing a panel keeps the route")
-        self.assertEqual(page.evaluate("history.length"), history, "a panel is not a history entry")
+        self.assertEqual(page.url, url, "stepping back to the thread is the thread's own address again")
+        # The task opened over the thread had its own entry (`?open=`, F-026 §4); stepping back left it, so it is still Forward.
+        self.assertEqual(page.evaluate("history.length"), history + 1, "the task was its own history entry")
         expect(page.locator("#thread")).to_be_visible()
         page.wait_for_timeout(1000)
         expect(page.locator("#thread-composer")).to_have_value("Draft reply: the ToF board first")

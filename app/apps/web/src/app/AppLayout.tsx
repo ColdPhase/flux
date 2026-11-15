@@ -683,6 +683,9 @@ function AppLayoutContent() {
     const view = trailTop.view;
     if (typeof view === 'object' && view.kind === 'owned' && !ownedRef.current) return;
     shell.openDetails(view, { back: 'keep' });
+    // The object it steps back from had its own entry (`?open=`, a task card in a thread): that entry is left too, so the address and Back
+    // are the thread's again (F-026 §4). The panel stays, showing what it stepped back to.
+    if (new URLSearchParams(location.search).has('open') && (location.state as { openPushed?: boolean } | null)?.openPushed) navigate(-1);
   };
   const back = ownedShown?.back ? { label: ownedShown.back.label, onClick: ownedShown.back.run } : trailTop ? { label: trailTop.label, onClick: stepBack }
     : ownedShown?.origin ? { label: ownedShown.origin.label, onClick: ownedShown.origin.run } : undefined;
