@@ -55,7 +55,7 @@ describe('what a sign-in and the worker\'s reading leave in the database', () =>
     owner = await insertedHuman('plan-models-owner');
     sessionId = randomUUID(); bindingId = randomUUID();
     await pool.query(`INSERT INTO auth_sessions(id, user_id, token, expires_at) VALUES ($1, $2, $3, clock_timestamp() + interval '1 hour')`, [sessionId, owner.id, `fixture-${randomUUID()}`]);
-    await pool.query(`INSERT INTO agent_runtime_slots(slot, state, boot_id) VALUES ($1, 'ready', $2) ON CONFLICT (slot) DO UPDATE SET state = 'ready', boot_id = $2`, [slot, bootId]);
+    await pool.query(`INSERT INTO agent_runtime_slots(slot, state, boot_id) VALUES ($1, 'ready', $2) ON CONFLICT (slot) DO UPDATE SET state = 'ready', out_of_pool_reason = NULL, boot_id = $2`, [slot, bootId]);
     await pool.query(`INSERT INTO agent_runtime_bindings(id, owner_user_id, slot, state) VALUES ($1, $2, $3, 'active')`, [bindingId, owner.id, slot]);
   });
   after(async () => {

@@ -65,7 +65,7 @@ for (const client of ['claude_code', 'codex'] as RuntimeClient[]) {
       thread = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/conversations`,
         { body: { body: 'Please turn the notes into a page', clientMessageId: randomUUID() } }), 201) as Conversation;
       bindingId = randomUUID();
-      await pool.query(`INSERT INTO agent_runtime_slots(slot, state) VALUES ($1, 'ready') ON CONFLICT (slot) DO UPDATE SET state = 'ready'`, [slot.config.slot]);
+      await pool.query(`INSERT INTO agent_runtime_slots(slot, state) VALUES ($1, 'ready') ON CONFLICT (slot) DO UPDATE SET state = 'ready', out_of_pool_reason = NULL`, [slot.config.slot]);
       await pool.query(`INSERT INTO agent_runtime_bindings(id, owner_user_id, slot, state) VALUES ($1, $2, $3, 'active')`, [bindingId, owner.id, slot.config.slot]);
       await pool.query(`INSERT INTO agent_runtime_connections(id, owner_user_id, binding_id, client, state, sign_in_method, auth_method, account_label, signed_in_at)
         VALUES ($1, $2, $3, $4, 'signed_in', $5, $6, $7, now())`, [randomUUID(), owner.id, bindingId, client, claude ? 'claude_account' : 'device_code', claude ? 'claude.ai' : 'chatgpt',
