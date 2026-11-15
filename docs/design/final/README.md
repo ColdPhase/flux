@@ -540,7 +540,7 @@ inside a screen (the Create window), not for the views of a space.
 
 The keys show next to their actions in menus.
 
-**Where focus goes (computer)** (persona rounds 26 and 27, 2026-11-15; one rule per situation, the same in every place):
+**Where focus goes (computer)** (persona rounds 26 to 28, 2026-11-15; one rule per situation, the same in every place):
 
 - **Arriving in a conversation** (a space, a direct message, a thread, an agent's chat), by any means: a click, Enter on a sidebar
   or direct-message row, New message, Say hello, Create space, Back. The cursor is in its composer, at the end of any kept draft.
@@ -550,11 +550,19 @@ The keys show next to their actions in menus.
   target). That thing has the focus: its panel, or the message, marked. A link to a message that has no replies marks it in the
   conversation and opens no thread panel; a link followed from inside an open panel (a task's "From: Message") keeps that panel and
   its way back ("‹ Task #4").
-- **A picker or a form** (New message's Find people, Invite, Add people) opens with its first field focused.
-- **Single keys** are never shortcuts while a field has focus. **Esc in a composer** leaves it for the newest message and keeps the
-  draft; the single keys work from there. New shows its `C` only while `C` works (no field has focus).
+- **An object opened by `?open=`** keeps that address while it is open: a reload opens it again, Back leaves with its panel or sheet,
+  and closing it takes `?open=` off the address in the same entry.
+- **A picker or a form** (New message's Find people, Invite, Add people) opens with its first field focused, in view; letters typed
+  while it opens go into it. Esc in a form's field closes the form and gives focus back to what opened it. In New message, Enter or
+  the down arrow picks the one person found.
+- **R in the Inbox writes:** Reply, a decision's Discuss, or a blocked task's discussion. Where there is nothing to write to, the
+  letters typed after R are held, never run as A, E or S.
+- **The sidebar's arrow keys** move between its rows. **G I** to an empty Inbox focuses its heading.
+- **Single keys** are never shortcuts while a field has focus, or while a menu is open. **Esc in a composer** leaves it for the
+  newest message and keeps the draft; the single keys work from there. New shows its `C` only while `C` works (no field has focus).
 - **Esc with a panel open** closes the panel wherever focus is, unless a menu or a window is open or the focused control used Esc
-  (a title being edited). Then Esc in the composer leaves it, as above.
+  (a title being edited). Then Esc in the composer leaves it, as above. Closing a thread while the person writes in the composer, or
+  arrives in it, leaves the cursor there, never on the thread's replies.
 - **After an action removes what had focus** (Add people, Undo, `Z`, Esc from a panel opened with the mouse, Propose decision,
   New map, Invite), focus goes to the next control where it was, else the previous one, never to the page itself.
 
