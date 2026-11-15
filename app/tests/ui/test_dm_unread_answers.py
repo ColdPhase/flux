@@ -185,6 +185,29 @@ class AnswersAndUnreadMessages(unittest.TestCase):
         expect(phone.get_by_label(re.compile(rf"^Reply from Piotr Nowak in Corner shop: {re.escape(answer)}")).first).to_be_visible()
         shot(phone, f"1424-answer-without-name-phone-{UI_BROWSER}")
 
+    # ------------------------------------------------------------------ decision A (2026-11-15)
+    def test_4_a_question_between_two_people_reaches_the_other_without_a_name(self):
+        # personas-30 P2 1: "When do I get my apron?" in Piotr's DM to Marta never reached her Inbox; only a question opening with her name did.
+        piotr, marta = self.people["piotr"], self.people["marta"]
+        question = "When do I get my apron?"
+        asked = self.say(question)
+        self.until(lambda: any(item["url"].endswith(f"#message-{asked['id']}") for item in api(marta, "GET", "/api/v1/needs-you")["items"]), True)
+
+        page = self.open("marta", "/inbox")
+        row = page.locator(".nyc", has_text=question)
+        expect(row).to_have_count(1)
+        expect(row.locator(".nyc__eyebrow--row")).to_have_text("Question · Piotr Nowak")
+        shot(page, f"1424-a-pair-dm-question-inbox-{UI_BROWSER}")
+        # Her answer in the conversation takes it out of her Inbox, and it reaches Piotr as a Reply (decision 1).
+        answer = "On Friday, at the hall."
+        sent = api(marta, "POST", f"/api/v1/dms/{self.dm}/messages", {"body": answer, "clientMessageId": str(uuid.uuid4())}, 201)
+        self.until(lambda: any(item["url"].endswith(f"#message-{asked['id']}") for item in api(marta, "GET", "/api/v1/needs-you")["items"]), False)
+        page.reload()
+        expect(page.locator(".nyc", has_text=question)).to_have_count(0)
+        self.until(lambda: any(item["url"].endswith(f"#message-{sent['id']}") for item in api(piotr, "GET", "/api/v1/needs-you")["items"]), True)
+        inbox = self.open("piotr", "/inbox")
+        expect(inbox.get_by_label(re.compile(rf"^Reply from Marta Lis: {re.escape(answer)}")).first).to_be_visible()
+
 
 if __name__ == "__main__":
     unittest.main()

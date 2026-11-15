@@ -999,7 +999,8 @@ Community garden sensors, Rain barrel monitor and Tool library.
   person's first message after the question answers it, and your own reply in the
   thread takes the item out as any reply does (#1170). An agent's question card is answered with its buttons and tells nobody.
 - **Who a question asks is one rule** (personas-27, 2026-11-15; contract in [needs-you](../../development/needs-you.md#whom-a-question-asks-personas-27-one-rule)).
-  A message that names you and asks is a Question for you. A question in a thread you started that names nobody is a Question for you too:
+  A message that names you and asks is a Question for you. In a direct message between the two of you, every question is a Question for
+  you, with or without your name (founder decision 2026-11-15, #1424 A). A question in a thread you started that names nobody is a Question for you too:
   it is in your Inbox and on Home's Waiting for you, never only in Continue where you left off, so Home and the Inbox give one answer to "is
   something waiting for me?". Nobody else in the thread is asked. Someone who joins a space later gets the newest still-open question there
   that names them, as if they had been there.

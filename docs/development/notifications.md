@@ -16,9 +16,9 @@ A notification exists only for a reason a person can act on (`reason` on every r
 | Reason | Event | Who |
 | --- | --- | --- |
 | `mention` | `project.message_sent.v1` / `project.conversation_created.v1`, and `dm.message_sent.v1` (#1249) | People named with `@Name` (or opened with `Name,`), as the return view (#106) matches them, in a space or in a direct message; and a person whose question the message answers (#1424 decision 1): its author was named and asked in that conversation (or at that level of a direct message) after their own last message there. "Marta answered you in Product". |
-| `question` | same | A mention that asks something (`?`); or, for an agent's question card (`flux_ask_question`, #347), exactly the one person asked, and nobody else because of that message. |
+| `question` | same | A mention that asks something (`?`); in a direct message between two people, any message that asks something, for the other person, named or not (#1424 A); or, for an agent's question card (`flux_ask_question`, #347), exactly the one person asked, and nobody else because of that message. |
 | `reply` | same | The people who **follow** the conversation (a thread), unless the message mentions them: by default its starter and earlier writers, and whoever followed it (see "Follow a thread" under Preferences, #1249). |
-| `dm` | `dm.message_sent.v1` (now carries `messageId`) | The other current participants, except those the message names (they get a `mention` or a `question`, #1249; their reply in that DM answers it: it leaves Needs You as in a space thread, #1170). |
+| `dm` | `dm.message_sent.v1` (now carries `messageId`) | The other current participants, except those the message names (they get a `mention` or a `question`, #1249) and, in a direct message between two people, the other person when it asks something (a `question`, #1424 A); their reply in that DM answers it: it leaves Needs You as in a space thread, #1170. |
 | `assigned` | `project.work_created.v1` / `project.work_updated.v1` with `assignedTo` | A person someone else made the owner. |
 | `review` | `project.decision_proposed.v1` | Owners of work the decision affects, and the owner of the agent that produced it. |
 | `invitation` | `project.live_invited.v1` (`{ sessionId, invitationId, recipientId }`, recorded only when a new invitation row is inserted) | The invited person, while the invitation is still `pending` and its live session `available` ([live sessions](live-sessions.md), #62). |
@@ -124,8 +124,8 @@ The settings page sends its saves one after another, numbered, and shows only th
   `reply` in a thread and a `dm` get no inbox item, push, email or sound. Everything that needs the person still arrives (founder
   decision on #1249): a **mention** of them, a **question** to them, a task given to them (`assigned`), a decision about their work
   (`review`), a live call invitation (`invitation`) and an agent waiting for their OK (`approval`): the reasons of "Only what needs me"
-  except an ordinary direct message (in a DM, a message that names the person is a `mention` or a `question`, not `dm`, so it arrives
-  too). The same rule is applied in every place that
+  except an ordinary direct message (in a DM, a message that names the person is a `mention` or a `question`, and any question between two people is a `question`, not `dm`,
+  so it arrives too). The same rule is applied in every place that
   decides, from one function (`quiet` on the preference repository, `app/packages/core/src/notifications/preferences.ts`): the
   generator before a row is stored, the push job before it sends, and the email job before it sends. Muted is a flag on the place
   (`notification_mutes`), shown as the **Mute** / **Unmute** row of a space's ⋯ menu and of a direct message's header menu, a small

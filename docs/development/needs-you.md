@@ -15,7 +15,7 @@ an item. Access is checked at the moment of reading: an object the person cannot
 | Kind | What it is | Where it comes from |
 | --- | --- | --- |
 | `decision` | A proposed decision the person can accept now | `project_decisions.status = 'proposed'` in projects they can read, kept only when they hold write access (O-009 DA-2) |
-| `question` | A person asked them something (`@name … ?`, or a question in a thread they started that names nobody), or invited them to a call (#62) | their unread `question` and `invitation` notifications, newer than 14 days |
+| `question` | A person asked them something (`@name … ?`, any question in a direct message between the two of them, or a question in a thread they started that names nobody), or invited them to a call (#62) | their unread `question` and `invitation` notifications, newer than 14 days |
 | `blocked` | A task they own that is blocked | `project_work_items` they own with status `blocked` |
 | `mention` | Someone mentioned them, or answered a question they asked (#1424 decision 1: `answer: true`, the kind word "Reply") | their unread `mention` notifications, newer than 14 days |
 | `task` | Someone else or an agent gave them a task they have not opened, started or finished (#1424 C) | their unread `assigned` notification that gave them the task (below) |
@@ -68,6 +68,10 @@ One rule decides who is asked, and Home, Waiting for you, the Inbox, push and em
 (`asksStarter` and `mentions` in `app/packages/core/src/notifications/addressing.ts`):
 
 - A message that names a person (`@Name`, or opening with "Name," / "Name:") and asks something (`isQuestion`) is a `question` for them.
+- **Every question in a direct message between two people is for the other person**, with or without their name (founder decision
+  2026-11-15, #1424 A): "When do I get my apron?" from Jonas to Ola is a `question` notification for Ola, so it is "Question · Jonas Berg"
+  in her Inbox and on Home's Waiting for you, whatever her level for the conversation. Her next message there answers it (#1249) and reaches
+  Jonas as a Reply (#1424 decision 1). In a group message only a question that names someone asks them; the rest are messages.
 - **A question in a thread that names nobody with `@` is for the thread's starter** (the person who wrote its first message), unless
   the starter asked it. "Which size, small or large?" in Piotr's thread is Piotr's question: it is a `question` notification for him, so it is
   in his Inbox and on Home's Waiting for you, and Home's Continue never offers it again (#1424 "Nothing appears twice"). Nobody else in the thread

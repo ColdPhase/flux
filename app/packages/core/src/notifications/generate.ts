@@ -218,13 +218,15 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
         // A message that names the person with "@" (or opens with their name) is a mention, or a question when it asks something, as in a
         // space (#1249): those reasons still arrive from a place the person muted, while every other message of the conversation does not.
         const named = mentions(message.body, names.get(userId) ?? '');
-        const addressed = named || answered.has(userId);
+        // In a conversation of two, every question asks the other person, with or without their name (#1424 decision A).
+        const asked = message.kind === 'pair' && isQuestion(message.body);
+        const addressed = named || asked || answered.has(userId);
         const reason: NotificationReason = addressed ? (isQuestion(message.body) ? 'question' : 'mention') : 'dm';
         const title = reason === 'question' ? `${marked} asked you${place}` : reason === 'mention' ? `${marked} ${named ? 'mentioned' : 'answered'} you${place}`
           : message.kind === 'pair' ? `${marked} sent you a message` : `${marked}${place}`;
         return { userId, reason, source: { type: 'dm' as const, id: message.dmId }, title, body: message.body.trim() ? excerpt(message.body) : 'Sent a file',
           url: `/dm/${message.dmId}#message-${message.id}`, who: author, from: `human:${message.authorId}`, where: message.kind === 'pair' ? '' : message.title ? quote(message.title) : 'a group',
-          ...(message.via ? { aiOrigin: true } : {}), ...(addressed && !named ? { answer: true } : {}) };
+          ...(message.via ? { aiOrigin: true } : {}), ...(answered.has(userId) && !named ? { answer: true } : {}) };
       });
     }
     case 'project.work_created.v1':

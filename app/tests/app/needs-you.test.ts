@@ -272,6 +272,37 @@ describe('the Inbox needs-you queue', () => {
     for (const key of [...keys, ...inDm(await queue(owner), elsewhere).map((item) => item.key)]) json(await resolve(owner, key, { action: 'done' }), 200);
   });
 
+  test('every question in a direct message between two people asks the other person, with no name in it; the answer takes it out and reaches the asker (#1424 decision A, personas-30 P2 1)', async () => {
+    const inbox = async (someone: Person) => json<InboxResponse>(await someone.browser.request('GET', '/api/v1/inbox'), 200).items;
+    const created = await post(outsider, `/api/v1/workspaces/${ws.id}/dms`, { participantIds: [second.id] });
+    assert.ok(created.status === 200 || created.status === 201, created.text);
+    const dm = (created.json as { id: string }).id;
+    const say = (from: Person, body: string) => json<SentDmMessage>(await post(from, `/api/v1/dms/${dm}/messages`, { body, clientMessageId: randomUUID() }), 201);
+    const plain = await say(outsider, 'The van is outside.');
+    const asked = await say(outsider, 'When do I get my apron?');
+    const item = await waitFor(async () => (await queue(second)).items.find((entry) => entry.url === `/dm/${dm}#message-${asked.id}`), 'the unnamed question reaches the other person\'s Inbox');
+    assert.deepEqual([item.kind, item.reason, item.title, item.detail, item.project, item.from?.id, item.from?.name, item.answer], ['question', 'question', 'When do I get my apron?', '', null, outsider.id, 'ny-outsider', undefined],
+      '"Question · ny-outsider", titled by what was asked');
+    assert.equal((await queue(second)).items.some((entry) => entry.url === `/dm/${dm}#message-${plain.id}`), false, 'a message that asks nothing is no need');
+    const note = (await inbox(second)).find((entry) => entry.id === item.key.slice(5));
+    assert.deepEqual([note?.reason, note?.title], ['question', 'ny-outsider asked you']);
+
+    // The other person's next message there answers it: it leaves their Inbox, and it reaches the asker as a Reply (#1424 decision 1).
+    const answer = await say(second, 'On Friday, at the hall.');
+    assert.deepEqual(answer.answered, [item.key], 'the answer names what it took out');
+    assert.equal((await queue(second)).items.some((entry) => entry.key === item.key), false);
+    const reply = await waitFor(async () => (await queue(outsider)).items.find((entry) => entry.url === `/dm/${dm}#message-${answer.id}`), 'the answer reaches the asker');
+    assert.deepEqual([reply.kind, reply.answer, reply.title, reply.from?.id], ['mention', true, 'On Friday, at the hall.', second.id]);
+    json(await resolve(outsider, reply.key, { action: 'done' }), 200);
+
+    // In a group, only a question that names someone asks them.
+    const group = json<{ id: string }>(await post(outsider, `/api/v1/workspaces/${ws.id}/dms`, { participantIds: [second.id, partner.id], title: 'Aprons' }), 201);
+    const open = json<SentDmMessage>(await post(outsider, `/api/v1/dms/${group.id}/messages`, { body: 'Who has the key to the cupboard?', clientMessageId: randomUUID() }), 201);
+    const told = await waitFor(async () => (await inbox(second)).find((entry) => entry.url === `/dm/${group.id}#message-${open.id}`), 'the group message reaches its people');
+    assert.equal(told.reason, 'dm');
+    assert.equal((await queue(second)).items.some((entry) => entry.url.startsWith(`/dm/${group.id}`)), false, 'an unnamed question in a group asks nobody');
+  });
+
   test('a message in a task\'s discussion answers what was asked there, with the same Undo (#1170)', async () => {
     const task = json<WorkItem>(await post(owner, `/api/v1/projects/${lamp.id}/work`, { title: 'Seal the junction boxes' }), 201);
     const asked = json<{ conversationId: string }>(await post(partner, `/api/v1/work/${task.id}/discussion`,
