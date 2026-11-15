@@ -679,7 +679,6 @@ function AppLayoutContent() {
   // A thread's panel that is still opening is a panel shown too (`threadOpening`, below): Esc cancels it as its close control does.
   const panelShownRef = useRef(false);
   const cancelRef = useRef<(() => void) | null>(null);
-  useLayoutEffect(() => { closeRef.current = closePanel; });
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing || event.metaKey || event.ctrlKey || event.altKey) return;
