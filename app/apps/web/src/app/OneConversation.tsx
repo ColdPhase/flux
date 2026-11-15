@@ -196,7 +196,8 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
   // A link that asks to write (Reply, in the stream or the Inbox; Discuss on a decision, #763 D3) focuses the field it lands on, also when that
   // pane was already open, and keeps it: the message the link names is marked, but it does not take the focus from the field (`focusArrival`).
   useLayoutEffect(() => {
-    if (!state?.focusComposer) return;
+    // A thread being closed is not an arrival: its entry still asks to write, but the cursor goes where closing gives it back.
+    if (!state?.focusComposer || (closing !== null && closing === conversation?.id)) return;
     return focusField(thread ? 'thread-composer' : 'project-composer');
     // Only a new arrival (a navigation) asks for it, never a re-render; the thread is the one the address names.
     // eslint-disable-next-line react-hooks/exhaustive-deps

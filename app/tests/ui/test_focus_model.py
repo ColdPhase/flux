@@ -32,6 +32,8 @@ PEOPLE = {
     "kasia": ("Kasia Wrona", f"kasia.fm+{STAMP}@example.test"),
     "lee": ("Lee Moreno", f"lee.fm+{STAMP}@example.test"),
     "ola": ("Ola Nowicka", f"ola.fm+{STAMP}@example.test"),
+    # Not in the bakery: nothing waits in her Inbox.
+    "nia": ("Nia Okafor", f"nia.fm+{STAMP}@example.test"),
 }
 SHARED = "Bakery floor"
 CLOSED = "Oven repairs"
@@ -359,7 +361,7 @@ class FocusModel(unittest.TestCase):
         expect(page.locator("#dm-composer")).to_have_value("")
 
     def test_15_the_arrow_keys_move_between_the_sidebar_s_rows_and_g_i_to_an_empty_inbox_focuses_its_heading(self) -> None:
-        page = self.page("ola")
+        page = self.page("nia")
         page.goto("/")
         home = page.get_by_role("navigation", name="Places").get_by_role("link", name="Home")
         home.focus()

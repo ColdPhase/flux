@@ -569,7 +569,8 @@ class ReturnToOrigin(unittest.TestCase):
                 expect(page).to_have_url(f"{ORIGIN}/projects/{self.project}")
                 page.goto("/inbox")
                 open_item(page.locator(".nyc--decision").first).get_by_role("button", name="Discuss").click()
-                expect(page).to_have_url(f"{ORIGIN}/projects/{self.project}")
+                # The address names the decision it opened (founder question B, persona round 28).
+                expect(page).to_have_url(re.compile(re.escape(f"{ORIGIN}/projects/{self.project}") + r"(\?open=decision(:|%3A)[0-9a-f-]{36})?$"))
                 places["inbox item"] = self.box(self.origin_back(page, "Inbox"))
                 self.assertEqual(len(set(places.values())), 1, f"the control never changes place: {places}")
                 # The sidebar is not a reference: no control, and no origin in the history entry.
