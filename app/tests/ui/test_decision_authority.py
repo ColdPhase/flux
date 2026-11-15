@@ -122,7 +122,7 @@ class DecisionAuthorityJourney(unittest.TestCase):
         card = inbox.locator(".nyc", has_text=TITLE)
         expect(card).to_contain_text("Ada Lind")
         item = open_item(card)
-        expect(item.locator(".nyc__waiting")).to_contain_text("waiting for you")
+        expect(item.locator(".nyc__waiting")).to_contain_text("Waiting for you")
         expect(item.locator(".nyc__waiting")).to_contain_text("Ada Lind can accept too")
         expect(item.get_by_role("button", name=re.compile("^Accept"))).to_be_visible()
         page = self.open_decision("kai")

@@ -384,22 +384,43 @@ describe('the Inbox needs-you queue', () => {
     const back = await waitFor(async () => (await queue(partner)).items.find((entry) => entry.url.endsWith(`#message-${answer.id}`)), 'the answer reaches the asker');
     assert.deepEqual([back.kind, back.answer], ['mention', true]);
 
-    // A question naming someone before they joined the space reaches them when they join, as if they had been there.
+    // A question naming someone before they joined the space reaches them when they join, as if they had been there: from its asker, never
+    // from whoever added them (personas-28 P2 4).
     const late = await person('ny-late');
     await addMember(owner, ws.id, late, 'member');
-    const early = json<Conversation>(await post(owner, `/api/v1/projects/${lamp.id}/conversations`, { body: '@ny-late can you open at 7 on Monday?', clientMessageId: randomUUID() }), 201);
+    const early = json<Conversation>(await post(partner, `/api/v1/projects/${lamp.id}/conversations`, { body: '@ny-late can you open at 7 on Monday?', clientMessageId: randomUUID() }), 201);
     // An answered one does not: someone wrote after it.
     const answered = json<Conversation>(await post(owner, `/api/v1/projects/${lamp.id}/conversations`, { body: '@ny-late do you have the keys?', clientMessageId: randomUUID() }), 201);
     json(await post(partner, `/api/v1/conversations/${answered.id}/messages`, { body: 'I gave them to Ola.', clientMessageId: randomUUID() }), 201);
     await grant(owner, lamp.id, late, 'contributor');
     const joined = await waitFor(async () => (await queue(late)).items.find((entry) => entry.url.includes(early.id)), 'the question asked before they joined reaches them');
-    assert.deepEqual([joined.kind, joined.title, joined.from?.id], ['question', '@ny-late can you open at 7 on Monday?', owner.id]);
+    assert.deepEqual([joined.kind, joined.title, joined.from], ['question', '@ny-late can you open at 7 on Monday?', { kind: 'human', id: partner.id, name: 'ny-partner' }]);
+    const lateNote = (await inbox(late)).find((entry) => entry.id === joined.key.slice(5));
+    assert.equal(lateNote?.title, 'ny-partner asked you in Garden sensors');
     assert.equal((await queue(late)).items.some((entry) => entry.url.includes(answered.id)), false, 'an answered question does not');
     // Joining the company reaches its open spaces the same way.
     const open = await createProject(owner, ws.id, 'Bakery front', 'workspace');
     const newcomer = await person('ny-newcomer');
-    const waiting = json<Conversation>(await post(owner, `/api/v1/projects/${open.id}/conversations`, { body: '@ny-newcomer can you start on Monday?', clientMessageId: randomUUID() }), 201);
+    const waiting = json<Conversation>(await post(second, `/api/v1/projects/${open.id}/conversations`, { body: '@ny-newcomer can you start on Monday?', clientMessageId: randomUUID() }), 201);
     await addMember(owner, ws.id, newcomer, 'member');
-    await waitFor(async () => (await queue(newcomer)).items.find((entry) => entry.url.includes(waiting.id) && entry.kind === 'question'), 'the newcomer is asked what was asked of them');
+    const asked = await waitFor(async () => (await queue(newcomer)).items.find((entry) => entry.url.includes(waiting.id) && entry.kind === 'question'), 'the newcomer is asked what was asked of them');
+    assert.equal(asked.from?.id, second.id, 'it comes from its asker, not from whoever added them');
+  });
+  test('making a task from a question answers it: it leaves the maker\'s Inbox (personas-28)', async () => {
+    const thread = json<Conversation>(await post(owner, `/api/v1/projects/${lamp.id}/conversations`, { body: 'Flour for Saturday', clientMessageId: randomUUID() }), 201);
+    const ask = json<SentConversationMessage>(await post(owner, `/api/v1/conversations/${thread.id}/messages`, { body: '@ny-second can you order the flour?', clientMessageId: randomUUID() }), 201);
+    const other = json<SentConversationMessage>(await post(owner, `/api/v1/conversations/${thread.id}/messages`, { body: '@ny-second and who has the van?', clientMessageId: randomUUID() }), 201);
+    const item = await waitFor(async () => (await queue(second)).items.find((entry) => entry.url.endsWith(`#message-${ask.id}`)), 'the question is in the Inbox');
+    await waitFor(async () => (await queue(second)).items.find((entry) => entry.url.endsWith(`#message-${other.id}`)), 'the second question too');
+    assert.equal(item.kind, 'question');
+    json(await post(second, `/api/v1/projects/${lamp.id}/work`, { title: 'Order the flour', sources: [{ type: 'message', id: ask.id }] }), 201);
+    const after = (await queue(second)).items;
+    assert.equal(after.some((entry) => entry.url.endsWith(`#message-${ask.id}`)), false, 'the question its task was made from is answered');
+    assert.ok(after.some((entry) => entry.url.endsWith(`#message-${other.id}`)), 'another question stays');
+    // Someone else making a task from it answers nothing of the person asked.
+    const third = json<SentConversationMessage>(await post(owner, `/api/v1/conversations/${thread.id}/messages`, { body: '@ny-second can you bring the trays?', clientMessageId: randomUUID() }), 201);
+    await waitFor(async () => (await queue(second)).items.find((entry) => entry.url.endsWith(`#message-${third.id}`)), 'the third question');
+    json(await post(partner, `/api/v1/projects/${lamp.id}/work`, { title: 'Bring the trays', sources: [{ type: 'message', id: third.id }] }), 201);
+    assert.ok((await queue(second)).items.some((entry) => entry.url.endsWith(`#message-${third.id}`)), 'a task someone else made answers nothing for them');
   });
 });

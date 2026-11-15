@@ -168,14 +168,14 @@ class WaitingFor(unittest.TestCase):
         page = self.page("ada"); page.goto(f"/projects/{self.project}/tasks")
         page.get_by_role("radio", name="Board", exact=True).click()
         card = page.locator(f".tb-card[data-card-id='{named['id']}'] .tb-card__blocker")
-        # The card says one thing it waits for (#868): the person, else the reason.
-        expect(card).to_have_text("Waiting for Kai Nowak")
+        # The card says what it waits for (#868) in the words of the panel, the List, Home and the Inbox (personas-28): the person and the reason.
+        expect(card).to_have_text("Waiting for Kai Nowak · Needs the gateway in its new place first.")
         expect(page.locator(f".tb-card[data-card-id='{unnamed['id']}'] .tb-card__blocker")).to_have_text("Needs the heat-shrink delivery.")
         page.get_by_role("radio", name="List", exact=True).click()
         row = page.locator(".ws-task").filter(has_text="Move the LoRa gateway to the fence post").first
-        expect(row).to_contain_text("waiting for Kai Nowak · Needs the gateway in its new place first.")
-        expect(row).not_to_contain_text("waiting for Needs")
-        expect(page.locator(".ws-task").filter(has_text="Seal the probe cables").first).not_to_contain_text("waiting for Needs")
+        expect(row).to_contain_text("Waiting for Kai Nowak · Needs the gateway in its new place first.")
+        expect(row).not_to_contain_text(re.compile("waiting for Needs", re.I))
+        expect(page.locator(".ws-task").filter(has_text="Seal the probe cables").first).not_to_contain_text(re.compile("waiting for Needs", re.I))
 
     def decision(self, title: str):
         return api(self.ada_ctx, "POST", self.root + "/decisions", {"title": title, "rationale": "So the far beds can be reached."}, 201)

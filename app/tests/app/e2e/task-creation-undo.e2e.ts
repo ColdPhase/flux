@@ -526,7 +526,7 @@ test('desktop and phone-width history render readable actor and time, keyboard l
     await withContexts([context], async () => {
       const page = await context.newPage(); watchErrors(page);
       await page.goto(`/projects/${f.place.id}?open=work:${item.id}`); await reverted(page, item);
-      assert.match(await panel(page).innerText(), /Creation undone by Ari Task author (on |today)/);
+      assert.match(await panel(page).innerText(), /Creation undone by Ari Task author \(you\) (on |today)/);
       const activity = panel(page).getByRole('list', { name: 'Task activity', exact: true });
       // The timeline lists newest first (#601): the Undo line leads and the creation is the oldest line.
       assert.equal(await activity.locator('time').first().getAttribute('datetime'), life.revertedAt);

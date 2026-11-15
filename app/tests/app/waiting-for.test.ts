@@ -62,12 +62,14 @@ describe('a blocked task waits for a person', () => {
     const theirs = find(await queue(kai), key);
     assert.ok(theirs, 'the person waited on has an item');
     assert.equal(theirs.kind, 'blocked');
-    assert.equal(theirs.title, `wf-ada is waiting for you: #${task.number} Choose the lens · Which focal length?`);
+    // The task is the title and the reason the line under it, said once (personas-28).
+    assert.deepEqual([theirs.title, theirs.detail], [`wf-ada is waiting for you: #${task.number} Choose the lens`, 'Which focal length?']);
     assert.equal(theirs.blocked?.waitedBy, 'wf-ada');
     assert.equal(theirs.url, `/projects/${place.id}/tasks?open=work:${task.id}`);
     const mine = find(await queue(ada), key);
     assert.ok(mine);
-    assert.equal(mine.title, `#${task.number} is blocked: Which focal length?`);
+    // The owner reads the task, then what it waits for in the board's and the panel's words (personas-28).
+    assert.deepEqual([mine.title, mine.detail], [`#${task.number} Choose the lens`, 'Waiting for wf-kai · Which focal length?']);
     assert.equal(mine.blocked?.waitedBy, undefined);
     assert.equal(find(await queue(viewer), key), undefined, 'nobody else is asked');
     // Done / Not now work as for any item.
@@ -97,7 +99,8 @@ describe('a blocked task waits for a person', () => {
     // Kai gives it to his own agent: nobody gives a task to someone else's (#904).
     const task = expectStatus(await send(kai, 'POST', `/api/v1/projects/${place.id}/work`, { title: 'Calibrate by agent', owner: { kind: 'agent', id: agent.id }, status: 'blocked', blocker: 'Needs the rig' }), 201) as WorkItem;
     const key = `blocked:${task.id}`;
-    assert.equal(find(await queue(kai), key)?.title, `#${task.number} is blocked: Needs the rig`, 'the agent\'s human owner');
+    const item = find(await queue(kai), key);
+    assert.deepEqual([item?.title, item?.detail], [`#${task.number} Calibrate by agent`, 'Needs the rig'], 'the agent\'s human owner');
     assert.equal(find(await queue(ada), key), undefined, 'not another person');
     assert.equal(find(await queue(viewer), key), undefined);
   });

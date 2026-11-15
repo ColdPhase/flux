@@ -340,10 +340,10 @@ class InboxFinal(unittest.TestCase):
         expect(decision.get_by_role("button", name="Discuss")).to_be_visible()
         self.assertEqual(decision.locator(".ui-btn--primary").count(), 1, "one dark primary in the open item")
         # One person accepts (O-009): the card says who still can, not who "already accepted".
-        expect(decision.locator(".nyc__waiting")).to_contain_text("waiting for you")
+        expect(decision.locator(".nyc__waiting")).to_contain_text("Waiting for you")
         expect(decision.locator(".nyc__waiting")).to_contain_text("Jonas Berg can accept too")
         expect(self.card(page, ASKED)).to_contain_text("Question")
-        expect(self.card(page, "is blocked")).to_contain_text("your task")
+        expect(self.card(page, "Design a weatherproof enclosure")).to_contain_text("your task")
         # One shape for every kind (README §7, #1424): a muted line "Kind · who · space", then the title (what the mention or the question says). No bold
         # name before the kind, no time in the row, and the kind is always first.
         eyebrows = [text.strip() for text in cards.locator(".nyc__eyebrow--row").all_inner_texts()]
@@ -363,7 +363,7 @@ class InboxFinal(unittest.TestCase):
         self.assertEqual(cards.locator(".nyc__eyebrow--row b").count(), 0, "no bold name leads a row")
         for text in eyebrows:
             self.assertNotRegex(text, r"\d+ ?(min|h|d)\b|ago|yesterday", f"no time in a row: {text}")
-        expect(self.item(page, "is blocked")).to_contain_text("waiting for the probe dimensions")
+        expect(self.item(page, "Design a weatherproof enclosure")).to_contain_text("Waiting for the probe dimensions")
         expect(self.card(page, MENTIONED)).to_be_visible()
         # The count in the sidebar is the number of things that need you.
         expect(page.get_by_role("navigation", name="Places").get_by_role("link", name="Inbox, 4 new").locator(".side__count")).to_have_text("4")
@@ -388,7 +388,7 @@ class InboxFinal(unittest.TestCase):
         # A decision is open as its card in the right column; Discuss goes to where it is talked about.
         expect(self.item(page, DECISION).get_by_role("heading", level=2, name=DECISION)).to_be_visible()
         # A blocked task opens as the task; a question opens its message.
-        self.item(page, "is blocked").get_by_role("button", name="Open task").click()
+        self.item(page, "Design a weatherproof enclosure").get_by_role("button", name="Open task").click()
         expect(page.locator("#details")).to_contain_text("Design a weatherproof enclosure")
         page.keyboard.press("Escape")
         self.item(page, ASKED).get_by_role("button", name="Reply").click()
@@ -805,14 +805,14 @@ class InboxFinal(unittest.TestCase):
     def test_08_unblock_with_undo(self) -> None:
         page = self.page()
         page.goto("/inbox")
-        card = self.card(page, "is blocked")
-        self.item(page, "is blocked").get_by_role("button", name="Unblock").click()
+        card = self.card(page, "Design a weatherproof enclosure")
+        self.item(page, "Design a weatherproof enclosure").get_by_role("button", name="Unblock").click()
         expect(page.get_by_role("status").filter(has_text="Blocker cleared")).to_be_visible()
         expect(card).to_have_count(0)
         work = lambda: self.contexts["ada"].request.get(f"/api/v1/work/{self.blocked['id']}").json()  # noqa: E731
         self.wait_for(lambda: work()["status"] == "in_progress", "the task to be unblocked")
         page.keyboard.press("z")
-        expect(self.card(page, "is blocked")).to_have_count(1)
+        expect(self.card(page, "Design a weatherproof enclosure")).to_have_count(1)
         self.wait_for(lambda: work()["status"] == "blocked", "Undo to block it again")
         self.assertEqual(work()["blocker"], "waiting for the probe dimensions")
 

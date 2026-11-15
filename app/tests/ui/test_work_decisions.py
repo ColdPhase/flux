@@ -388,7 +388,7 @@ class WorkDecisionsJourney(unittest.TestCase):
         self.assertIn("show=mine", page.url)
         expect(row).to_be_visible()
         expect(page.locator(".ws-task").filter(has_text=theirs)).to_have_count(0)
-        expect(row.locator(".ws-item__s")).to_contain_text("waiting for the sensor delivery")
+        expect(row.locator(".ws-item__s")).to_contain_text("Waiting for the sensor delivery")
         shot(page, "tasks-phone-390-mine-blocked")
 
         # Opening the work and coming back keeps the chosen view.

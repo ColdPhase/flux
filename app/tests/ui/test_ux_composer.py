@@ -161,7 +161,7 @@ class UxSimplicityPartAComposer(unittest.TestCase):
         expect(page.get_by_role("heading", name="Propose a decision")).to_have_count(0)
         expect(window.get_by_role("textbox", name="Decision", exact=True)).to_have_value("Order from the second supplier")
         expect(window.get_by_placeholder("What is being decided?")).to_be_visible()
-        expect(window.get_by_placeholder("Why this is the right call (optional)")).to_be_visible()
+        expect(window.get_by_placeholder("Why (optional)")).to_be_visible()
         expect(window.locator(".create__source")).to_contain_text(OPENING)
         expect(window.get_by_role("button", name="Replace an accepted decision…")).to_be_visible()
         expect(window).not_to_contain_text("write access")
