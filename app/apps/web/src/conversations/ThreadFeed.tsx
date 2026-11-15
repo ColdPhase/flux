@@ -8,11 +8,13 @@ import { WaitingChanges, type useAssistantChanges } from '../assistant/WaitingCh
 import { MessageDay, day, sameMessageAuthor } from '../app/messageParts';
 import type { Receipt } from '../app/receipts';
 import { ObjectNoticeItem } from '../app/ObjectNotices';
+// The task card under a message (MessageTaskCards) is the conversation's own card.
+import '../app/conversation-final.css';
 import { followsProposal } from '../app/objectNotices';
 import type { ShellActions } from '../app/shellContext';
 import type { AgentOwners } from '../agents/owners';
 import { Button, OpeningRows } from '../ui';
-import { ShownObjects, shownObjects, type useCreateWorkFromMessage } from '../work/inline';
+import { ShownObjects, shownObjects, TaskCardsUnderMessages, type useCreateWorkFromMessage } from '../work/inline';
 import type { PaneProps } from '../app/OneConversation';
 import type { FeedEntry } from './feed';
 import type { PaneCore } from './paneCore';
@@ -77,7 +79,8 @@ export function ThreadFeed(props: Props) {
     ? [<MessageDay key={row.key} label={day(row.at)} />, ...row.items] : row.items);
   // A decision made in this thread is its card among the replies (#1424): the message it came from carries no chip of it.
   const shown = useMemo(() => shownObjects(entries.flatMap((entry) => entry.type === 'object' && entry.notice.kind === 'decision.proposed' ? [{ kind: 'decision' as const, id: entry.notice.decisionId, sources: entry.notice.sources }] : [])), [entries]);
-  return <ShownObjects value={shown}><div className="convo-stream">
+  // A task made from one of its messages is the task card under that message (#1424, design L1059): a thread has no task notices.
+  return <ShownObjects value={shown}><TaskCardsUnderMessages value={true}><div className="convo-stream">
   {/* The replies are laid out but hidden until their first reads settle (#155); quiet rows stand in their place from the first frame (#863 rule 6), so the panel never opens empty. */}
   {revealed ? null : <div className="thread__opening"><OpeningRows rows={Math.min(4, Math.max(2, thread.messages.length))} /></div>}
   <div className={`thread__feed${revealed ? '' : ' is-opening'}`} ref={attachFeed} aria-busy={revealed ? undefined : true}>
@@ -97,5 +100,5 @@ export function ThreadFeed(props: Props) {
     </div>
   </div>
   <NewBelow count={props.newBelow.count} onClick={props.newBelow.toEnd} />
-  </div></ShownObjects>;
+  </div></TaskCardsUnderMessages></ShownObjects>;
 }

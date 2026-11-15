@@ -985,7 +985,8 @@ Drawn by the agents before it was built; the rules of what triggers a notice are
   covers the composer or Send. It floats over the work, never over a docked panel: while a panel is docked (from 1001 px) it stands at the bottom right
   of the work column, 20 px left of the panel, so the panel's composer and controls stay clear (audit P3 17). On the phone it is at the top, 8 px under the safe area, 16 px from
   each side, on a band of the page's ground (`--bg`) from the screen's top edge to 8 px under the card, so
-  nothing of the header shows at its corners. While a dialog or a sheet is open, it waits and shows when that closes.
+  nothing of the header shows at its corners. While a dialog, a sheet or a menu is open, it waits and shows when that closes (it never
+  covers a menu, v0.2.1 audit).
 - **The card.** `--el`, `--sh-pop` (the dark theme's inset outline comes with it) and `--r-card`.
   The sender's face on the left: `Avatar` 32 for a person, Kreska 32 for an agent. Then two lines:
   the title in 14 / 20, 500, `--t1` ("Jonas Berg sent you a message"), and the preview in 14 / 20

@@ -4,7 +4,7 @@ import { MessageContent } from '../composer/Files';
 import { LinkPreviews, MessageText } from '../app/MessageText';
 import { AgentAuthor, AuthorFace, ContributionMark, DeletedSourceCitation, MessageTime, ShownAnswerName, SourceCitation, SourceTag, ViaTag, messageHue, pendingMessageRow, shownAnswer, shownLabel } from '../app/messageParts';
 import type { Receipt } from '../app/receipts';
-import { MessageObjects, useCreateWorkFromMessage } from '../work/inline';
+import { MessageObjects, MessageTaskCards, useCreateWorkFromMessage } from '../work/inline';
 import { MessageActions, useTouchActions } from '../work/messageActions';
 import { useOwnMessage } from '../work/ownMessage';
 import { projectMessageEdits } from './messageChanges';
@@ -68,6 +68,7 @@ export function ThreadReply(props: ThreadReplyProps | QueuedReplyProps) {
       <QuestionCard projectId={project.id} messageId={message.id} meId={meId} writable={writable} />
       {message.contribution ? <ContributionMark contribution={message.contribution} /> : null}
       {stored.groupLast !== false ? <MessageTime at={message.createdAt} receipt={stored.receipt} edited={message.editedAt} /> : null}
+      <MessageTaskCards preview={preview} />
       <MessageActions {...actions} />
       {touch.dots}{touch.node}
     </li>

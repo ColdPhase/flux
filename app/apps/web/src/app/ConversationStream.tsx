@@ -1,9 +1,9 @@
 import { Fragment, startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { FORMER_MEMBER } from '../docs/format';
 import type { Conversation, LiveCallLine, ConversationMessage, ConversationRoot, ConversationRootWindow, NativeWorkRow, ObjectNotice, Page, Project, ReturnSummary, TaskCreationNotice } from '@flux/contracts';
-import { AgentIdentity, Avatar, Button, EmptyState, Icon, Kreska, Opening, StatusGlyph, useArrivals, useClearOfToast } from '../ui';
+import { AgentIdentity, Avatar, Button, EmptyState, Icon, Kreska, Opening, useArrivals, useClearOfToast } from '../ui';
 import { useSpareHeight } from '../ui/spareHeight';
-import { MessageObjects, ShownObjects, shownObjects, useCreateWorkFromMessage } from '../work/inline';
+import { MessageObjects, ShownObjects, shownObjects, TaskObjectRow, useCreateWorkFromMessage } from '../work/inline';
 import { MessageActions, useTouchActions } from '../work/messageActions';
 import { useOwnMessage } from '../work/ownMessage';
 import { onMessageChanged, projectMessageEdits } from '../conversations/messageChanges';
@@ -11,7 +11,6 @@ import { useMessageWorkRead, type MessageWorkRead } from '../work/useMessageWork
 import { useReferenceWork } from '../work/useReferenceWork';
 import { useProjectWorkSummary } from '../work/WorkReadContext';
 import { MessageWorkPages } from '../work/MessageWorkPages';
-import { STATUS_LABEL } from '../work/format';
 import { useShellActions } from './shellContext';
 import { listConversationRoots, listObjectNotices, listTaskNotices, observeProjectMessages, projectReaders, projectReceipts } from '../conversations/api';
 import { QuestionCard, WhenNoQuestion } from '../agents/QuestionCard';
@@ -726,8 +725,8 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
           ) : null}
           {/* The person's own agent at work and what it answered them: theirs alone, at the end like a message about to be sent (#842). */}
           {end}
-          {/* Until someone writes, the stream says so, below any task announcements: they are not messages. */}
-          {roots.length || stream.hasOlder || outbox.pending.length ? null
+          {/* Only an empty conversation asks where to start: a task or a decision card is already a start (v0.2.1 audit). */}
+          {entries.length || stream.hasOlder || outbox.pending.length ? null
             : <EmptyState icon="chat" mascot="hello" title="Where do we start?"><p>Write a thought. You don’t need a topic or a ready plan. {audience === 'You' && project.visibility !== 'workspace' ? 'For now you are the only one in this space; the people you add will see it too. ' : ''}Any message can later become a task, a decision or a thought on the map.</p></EmptyState>}
         </section>
       </div>
@@ -775,7 +774,6 @@ function NoticeItem({ notice, meId, owners, row, authorOf, hasMessage, onOpenTas
   }
   const source = noticeSource(notice, authorOf);
   const phrase = sourcePhrase(source, { name, mine });
-  const owner = current?.owner ?? null;
   const toMessage = () => {
     if (source.kind !== 'message') return;
     const message = document.getElementById(`message-${source.messageId}`);
@@ -784,20 +782,7 @@ function NoticeItem({ notice, meId, owners, row, authorOf, hasMessage, onOpenTas
     message.focus({ preventScroll: true });
   };
   const reverted = notice.kind === 'task.creation_reverted' || notice.lifecycle?.state === 'creation_reverted';
-  const task = (
-    <button type="button" className="convo-notice__task" data-native-ref={`work:${notice.workId}`} onClick={() => onOpenTask(notice.workId)} aria-label={`Open task #${notice.workNumber} ${title}`}>
-      <StatusGlyph status={current?.status} size={16} />
-      {/* The immutable announcement number names the task before and after the current row arrives. */}
-      <span className="convo-notice__num ui-task-number">#{notice.workNumber}</span>
-      <span className="convo-notice__title">{title}</span>
-      {owner ? <span className="convo-notice__owner">{owner.kind === 'agent' ? <Kreska size={20} hue={owner.colour} /> : <Avatar name={owner.name} id={owner.id} size="sm" />}<span className="convo-notice__owner-name">{owner.name}</span></span>
-        // Nobody owns it: "No owner", the Board's and the panel's word, with the panel's person glyph where the face would be (F-026 §7).
-        : current ? <span className="convo-notice__owner convo-notice__owner--none"><Icon name="person" size={16} /><span className="convo-notice__owner-name">No owner</span></span> : null}
-      {/* A word always goes with the glyph, at the card's right edge like a decision's (#763 A8). */}
-      <span className="convo-object__state convo-notice__state">{reverted ? 'Undone' : STATUS_LABEL[current?.status ?? 'open']}</span>
-      <Icon name="chevron-right" size={14} />
-    </button>
-  );
+  const task = <TaskObjectRow workId={notice.workId} number={notice.workNumber} title={title} row={current} reverted={reverted} onOpen={() => onOpenTask(notice.workId)} />;
   return (
     <li className={`convo-notice${reverted ? ' convo-notice--undone' : ''}`} id={`notice-${notice.id}`} data-work-id={notice.workId}>
       <AuthorFace kind={creator.kind} id={creator.id} name={name} mine={mine} hue={creator.colour} />

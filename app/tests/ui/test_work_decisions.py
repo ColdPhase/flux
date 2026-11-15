@@ -466,7 +466,7 @@ class WorkDecisionsJourney(unittest.TestCase):
         self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.viewport_size["width"], f"{label}: no sideways scroll")
         # Linked work and decisions stay inside their column and the viewport on both sides.
         for column, pane in ((".project-convo__in", stream), (".thread__in", feed)):
-            # A task made from a message is its card in the stream and a chip in the thread (#1424).
+            # A task made from a message is its card: in the stream, and under its message in the thread (#1424, design L1059).
             chips = page.locator(f"{column} :is(.project-convo__message .ws-chip, .convo-notice__card)")
             self.assertGreater(chips.count(), 0, f"{label}: {column} has linked objects")
             for index in range(chips.count()):

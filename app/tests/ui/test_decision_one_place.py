@@ -17,6 +17,7 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
+from contrast import MEASURE
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, start_forwarder
 
 PASSWORD = "one decision opens in one place"
@@ -183,6 +184,31 @@ class DecisionOnePlace(unittest.TestCase):
         page = self.page()
         page.goto(f"/projects/{self.ids['project']}?open=decision:{self.ids['proposal']}")
         self.assert_the_one_place(page, phone=False, how="notification link")
+
+    # ---------------------------------------------------------------- the open card reads
+
+    def test_07_the_open_cards_words_read_at_4_5_to_1_in_both_themes(self) -> None:
+        """v0.2.1 audit P2-1: the open card's fill (--pick) put its who/when line, its time and "Accepted" at 4.4:1 in light and 4.0:1 in
+        dark. Every word on the open card is at least 4.5:1 (design L69, L2265), the proposal's and an accepted rule's alike."""
+        measured = []
+        for theme in ("light", "dark"):
+            for decision, kind in ((self.ids["proposal"], "proposal"), (self.ids["rule"], "accepted rule")):
+                with self.subTest(theme=theme, decision=kind):
+                    context = self.context()
+                    context.add_init_script(f"localStorage.setItem('flux.theme', '{theme}')")
+                    page = context.new_page()
+                    page.goto(f"/projects/{self.ids['project']}?open=decision:{decision}")
+                    expect(page.locator("html")).to_have_attribute("data-theme", theme)
+                    expect(self.card(page, decision)).to_have_attribute("aria-current", "true")
+                    scope = f'.convo-object[data-object-kind="decision.proposed"][data-object-id="{decision}"] .convo-notice__card.is-open'
+                    # The fill comes in with the card's colour transition: measured once it has run.
+                    page.locator(scope).evaluate("async (el) => { await Promise.all(el.getAnimations().map((a) => a.finished)); }")
+                    for part in (".convo-notice__meta", ".convo-notice__meta strong", "time", ".convo-notice__title", ".convo-object__state"):
+                        value = page.evaluate(MEASURE, {"selector": f"{scope} {part}"})
+                        value.update(theme=theme, decision=kind)
+                        measured.append(value)
+                        self.assertGreaterEqual(value["ratio"], 4.5, value)
+        self.assertEqual(len(measured), 2 * 2 * 5)
 
 
 if __name__ == "__main__":

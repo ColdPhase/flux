@@ -631,7 +631,18 @@ class TasksBoardJourney(unittest.TestCase):
                     measured.append(value)
                     self.assertGreaterEqual(value["ratio"], minimum, value)
                 shot(page, f"tasks-board-1440-{theme.lower()}")
-        self.assertEqual(len(measured), 2 * 14)
+                # The task open in the panel keeps every word at 4.5:1 on its fill (v0.2.1 audit P2-1: --pick put its number and owner
+                # under 4.5:1; design L69).
+                page.goto(f"/projects/{self.ids['project']}/tasks?open=work:{self.ids['mount']}")
+                opened = '.tb-card:has(.tb-card__open[aria-current="true"])'
+                expect(page.locator(opened)).to_have_count(1)
+                page.locator(opened).evaluate("async (el) => { await Promise.all(el.getAnimations().map((a) => a.finished)); }")
+                for part in (".tb-card__id", ".tb-card__title", ".tb-card__due", ".tb-card__name"):
+                    value = page.evaluate(MEASURE, {"selector": f"{opened} {part}"})
+                    value.update(theme=theme, minimum=4.5, open=True)
+                    measured.append(value)
+                    self.assertGreaterEqual(value["ratio"], 4.5, value)
+        self.assertEqual(len(measured), 2 * (14 + 4))
 
     def test_13_delayed_native_columns_say_which_tasks_are_loading(self) -> None:
         for phone in (False, True):  # True: a narrow board whose columns scroll sideways

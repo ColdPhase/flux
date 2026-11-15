@@ -355,12 +355,13 @@ class ReturnToOrigin(unittest.TestCase):
             expect(sheet).to_have_attribute("data-height", "half")
         self.read_at(page, feed, target, 20 if size == "phone" else 120, touch=tap and engine == "webkit")
         page.locator("#thread-composer").fill("Draft reply: the ToF board first")
-        page.locator(f"{target} button.ws-chip").scroll_into_view_if_needed()
+        # The task made from this reply is its card under the reply, the conversation's task card (#1424, design L1059).
+        page.locator(f"{target} .msg-tasks__card .convo-notice__task").scroll_into_view_if_needed()
         page.wait_for_timeout(600)
         before = self.offset(page, feed, target)
         height = page.locator("#details").bounding_box()["height"]
         url, history = page.url, page.evaluate("history.length")
-        chip = page.locator(f"{target} button.ws-chip")
+        chip = page.locator(f"{target} .msg-tasks__card .convo-notice__task")
         expect(chip).to_have_count(1)
         self.press_in_place(page, chip, tap)
         # The task takes the panel's place and leaves the panel's own way back to the thread (one back pattern, not a second control).
