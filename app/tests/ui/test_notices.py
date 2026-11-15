@@ -401,6 +401,18 @@ class NoticeJourney(unittest.TestCase):
                 if any('"ready"' in frame for frame in frames):
                     break
                 page.wait_for_timeout(100)
+            # Every frame from the one the card is first drawn in: it never stands over the panel, not even for a frame before it is placed
+            # (on a busy page that frame came late, and the card's entrance had ended over the panel, in the full suite).
+            page.evaluate("""() => {
+                window.__noticeFrames = [];
+                const rect = (el) => { const r = el.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom }; };
+                const step = () => {
+                    const card = document.querySelector('.ui-notices .ui-notice'), panel = document.querySelector('#details');
+                    if (card && panel) window.__noticeFrames.push({ card: rect(card), panel: rect(panel) });
+                    if (window.__noticeFrames.length < 600) requestAnimationFrame(step);
+                };
+                requestAnimationFrame(step);
+            }""")
             self.dm(f"The junction box in bed 2 is open again ({viewport['width']} px).")
             card = self.card(page)
             expect(card).to_be_visible(timeout=5000)
@@ -408,11 +420,15 @@ class NoticeJourney(unittest.TestCase):
             found = page.evaluate("""async () => {
                 const card = document.querySelector('.ui-notices .ui-notice');
                 await Promise.all(card.getAnimations().map((animation) => animation.finished));
+                await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
                 const rect = (el) => { const r = el.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom }; };
-                return { card: rect(card), panel: rect(document.querySelector('#details')) };
+                return { card: rect(card), panel: rect(document.querySelector('#details')), frames: window.__noticeFrames };
             }""")
-            box, docked = found["card"], found["panel"]
+            box, docked, frames = found["card"], found["panel"], found.pop("frames")
             label = f"{viewport['width']} x {viewport['height']}: {found}"
+            self.assertTrue(frames, f"the card was seen beside the panel frame by frame, {label}")
+            over = [frame for frame in frames if frame["card"]["right"] > frame["panel"]["left"] - 20 + 1]
+            self.assertEqual(over, [], f"the card never stands over the docked panel, from its first frame, {label}")
             self.assertAlmostEqual(box["right"], docked["left"] - 20, delta=1, msg=f"20 px left of the docked panel, {label}")
             self.assertGreaterEqual(box["left"], 0, label)
             self.assertLessEqual(box["bottom"], viewport["height"] - 19, label)
