@@ -78,8 +78,12 @@ class WaitingFor(unittest.TestCase):
                 self.assertEqual(stored["waitingFor"]["id"], self.kai)
                 self.assertEqual(stored["blocker"], "Waiting for the price list")
                 expect(card.get_by_role("button", name="Stop waiting for Kai Nowak")).to_be_visible()
-                card.get_by_role("button", name="Cancel").click()
-                expect(card).to_contain_text("Waiting for Kai Nowak")
+                # The reason written after the pick saves over the pick, never as a conflict with it (personas-30: "Someone changed this…").
+                field.fill("The new price list")
+                card.get_by_role("button", name="Save", exact=True).click()
+                expect(card).to_contain_text("Waiting for Kai Nowak · The new price list")
+                expect(panel.get_by_text(re.compile("Someone changed this"))).to_have_count(0)
+                self.assertEqual(api(self.ada_ctx, "GET", f"/api/v1/work/{task['id']}")["blocker"], "The new price list")
                 shot(page, f"waiting-for-details-{'phone' if phone else 'computer'}")
                 # Resolving ends the wait; the toast's Undo puts the reason and the person back without a second blocker message.
                 panel.get_by_role("button", name="Unblock").click()
@@ -88,7 +92,7 @@ class WaitingFor(unittest.TestCase):
                 page.get_by_role("button", name="Undo").click()
                 expect(card).to_contain_text("Waiting for Kai Nowak")
                 back = api(self.ada_ctx, "GET", f"/api/v1/work/{task['id']}")
-                self.assertEqual((back["status"], back["blocker"], back["waitingFor"]["id"]), ("blocked", "Waiting for the price list", self.kai))
+                self.assertEqual((back["status"], back["blocker"], back["waitingFor"]["id"]), ("blocked", "The new price list", self.kai))
 
     def test_02_the_create_window_has_no_status_and_no_waiting_for_a_new_task_is_to_do(self):
         """#1424: a new task is always To do, so Create offers neither Status nor Waiting for; it is blocked in the panel that opens on it."""

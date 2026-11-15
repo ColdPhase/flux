@@ -118,6 +118,16 @@ class AccountsByLink(unittest.TestCase):
         # Nobody is signed in here (the sign-up is answered by the test), so the app asks for sign-in and keeps where it was going.
         expect(page).to_have_url(re.compile(r"/sign-in\?next=%2Fsettings%2Fcompany%3Fname%3D1$"))
 
+    def test_01c_a_setup_link_pasted_into_an_open_setup_tab_is_read_at_once(self) -> None:
+        """personas-30: the link's fragment changed in a /setup tab already open, which reads no loader, so it needed a reload."""
+        page = self.page()
+        self.capabilities(page, setup=True)
+        page.goto("/setup")
+        expect(page.get_by_role("heading", level=1, name="Open the setup link")).to_be_visible()
+        page.evaluate(f"location.hash = '{SETUP_TOKEN}'")
+        expect(page.get_by_role("heading", level=1, name="Set up Flux")).to_be_visible()
+        self.assertEqual(page.evaluate("location.hash"), "", "the token leaves the address")
+
     def test_02_setup_once_the_company_exists_has_no_form(self) -> None:
         page = self.page(phone=True)
         page.goto(f"/setup#{SETUP_TOKEN}")
@@ -239,6 +249,12 @@ class AccountsByLink(unittest.TestCase):
         page.goto("/projects")
         expect(page.get_by_text(f"You’re no longer in {company['name']}.")).to_be_visible()
         expect(page.get_by_role("button", name="Create a space")).to_have_count(0)
+        # Nothing to make without a company (personas-30): no New, no C, no Messages "+".
+        expect(page.locator(".side__new")).to_have_count(0)
+        expect(page.get_by_role("link", name="New message")).to_have_count(0)
+        page.evaluate("() => (document.activeElement instanceof HTMLElement) && document.activeElement.blur()")
+        page.keyboard.press("c")
+        expect(page.get_by_role("dialog")).to_have_count(0)
         shot(page, "removed-from-the-company-desktop-1440")
         # Restored, the person is told nothing of it.
         restored = owner.request.post(f"{ORIGIN}/api/v1/workspaces/{company['id']}/removed-people/{me}/restore", headers={"origin": ORIGIN})

@@ -177,6 +177,9 @@ class DecisionTrace(unittest.TestCase):
         expect(j_panel.get_by_role("heading", name=title)).to_be_visible()
         j_panel.get_by_role("button", name="Accept", exact=True).click()
         expect(j_panel.locator(".wd-eyebrow")).to_contain_text("Accepted")
+        # The panel says it as the card does (personas-30): "Accepted by …", never a second word ("Decided").
+        expect(j_panel.locator(".wd-decision-rows")).to_contain_text("Accepted by")
+        expect(j_panel.locator(".wd-decision-rows")).not_to_contain_text("Decided")
         self.back_to_thread(jonas, phone)
 
         # Accepting changes the card in place (#1424 D): it says "Accepted" and who accepted it when, and no line is added.

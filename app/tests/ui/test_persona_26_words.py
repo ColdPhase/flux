@@ -201,6 +201,9 @@ class PersonaRound26Words(unittest.TestCase):
         expect(field).to_have_value("Nowak Bakery")
         page.get_by_role("button", name="Save name").click()
         expect(page.get_by_role("region", name="Name")).to_contain_text("Nowak Bakery")
+        # Saved, the address no longer opens the field, and the line keeps its full stop (personas-30).
+        expect(page).to_have_url(re.compile(r"/settings/company$"))
+        expect(page.get_by_role("region", name="Name")).to_contain_text("Shown on the sign-in page and in emails.")
         self.assertEqual(self.api(page, "GET", f"/api/v1/workspaces/{self.ids['company']}", status=200)["name"], "Nowak Bakery")
 
     # ---------------------------------------------------------------- P3: the composer's traps

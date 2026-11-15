@@ -440,6 +440,10 @@ class FirstRunSettingsPeople(unittest.TestCase):
         self.assertEqual(made_admin.status, 200, made_admin.text())
         removed_now = page.request.delete(f"{ORIGIN}/api/v1/workspaces/{space}/members/{self.ids['wera']}", headers={"origin": ORIGIN})
         self.assertEqual(removed_now.status, 204, removed_now.text())
+        # Maria's side of their conversation says where Wera went and offers no reopening (personas-30).
+        page.goto(f"/dm/{dm['id']}")
+        expect(page.get_by_text("Wera is no longer in the company, so this conversation has nobody to send to.")).to_be_visible()
+        expect(page.get_by_text(re.compile("can reopen it"))).to_have_count(0)
         page.goto("/settings/company")
         removed = page.get_by_role("list", name="People who were removed")
         row = removed.get_by_role("listitem").filter(has_text="Wera Removed")
