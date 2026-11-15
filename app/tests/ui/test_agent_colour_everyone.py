@@ -170,8 +170,8 @@ class AgentColourForEveryone(unittest.TestCase):
         page.goto(f"/projects/{project}/tasks?view=board")
         owner = page.locator(".tb-card", has_text=TASK).locator(".tb-card__owner")
         expect(owner.locator(".agent-id > .kreska")).to_have_class(TEAL)
-        # The Agent tag's small face is the same agent's, in the same colour.
-        expect(owner.locator(".agent-tag > .kreska")).to_have_class(TEAL)
+        # Ben reads Planner's owner as Ada does, so there is no Agent tag (only while the owner is unknown, L1414–1416; release audit ffcb07c P2-4).
+        expect(owner.locator(".agent-tag")).to_have_count(0)
         page.goto(f"/projects/{project}/tasks?open=work:{self.ids['task']}")
         panel = page.get_by_role("complementary", name="Details")
         expect(panel.get_by_role("button", name="Owner").locator(".agent-id > .kreska")).to_have_class(TEAL)

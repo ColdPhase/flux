@@ -1,9 +1,9 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import { useLoaderData, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
-import { AI_PROVIDERS, assistantModelName, type BackgroundComputeConnection } from '@flux/contracts';
+import { AI_PROVIDERS, type BackgroundComputeConnection } from '@flux/contracts';
 import { keyUsageLine } from '../ai/connections';
 import { ApiError } from '../api/client';
-import { refreshAssistantModel, useAssistantModel } from '../assistant/model';
+import { refreshAssistantModel } from '../assistant/model';
 import { SettingsBack } from '../app/SettingsBack';
 import { Button, Input } from '../ui';
 import { listBackgroundConnections, revokeBackgroundConnection, updateBackgroundConnection } from './api';
@@ -28,12 +28,6 @@ export function AiConnectionsSettings() {
 function AiConnectionsPage({ initial }: { initial: { connections: BackgroundComputeConnection[] } }) {
   const [params, setParams] = useSearchParams();
   const revalidator = useRevalidator();
-  // A key's model is named as its provider lists it, as Connect AI and the agent's model picker name it ("Claude Sonnet 5.7"); Flux's short
-  // name only for a model the list does not name (contracts `assistantApiModels`; release audit ffcb07c: this page said "Sonnet 5").
-  const { choice } = useAssistantModel();
-  const modelName = (item: BackgroundComputeConnection) =>
-    choice?.groups.find((group) => group.account === 'api_key' && group.connection === item.id)?.options.find((option) => option.id === item.model)?.name
-      ?? assistantModelName(item.model);
   const [connections, setConnections] = useState(initial.connections);
   // The Connect AI window on its API key step: from "Add a key", or from a link that asks for a key (`?new=1`, #854, #1438 point 9).
   const [adding, setAdding] = useState(params.get('new') === '1');
@@ -126,7 +120,8 @@ function AiConnectionsPage({ initial }: { initial: { connections: BackgroundComp
           <p className="background-settings__usage" data-testid="key-usage">{keyUsageLine(item)}</p>
           <dl className="background-settings__metadata">
             <div><dt>Provider</dt><dd>{AI_PROVIDERS[item.provider].label}</dd></div>
-            <div><dt>Model</dt><dd>{modelName(item)}</dd></div>
+            {/* The model's one name, as Connect AI said it (the provider's "Claude Sonnet 5.7"; release audit ffcb07c: this page said "Sonnet 5"). */}
+            <div><dt>Model</dt><dd>{item.modelName}</dd></div>
             {item.baseUrl ? <div><dt>Endpoint</dt><dd>{item.baseUrl}</dd></div> : null}
             <div><dt>Price</dt><dd>{item.price
               ? <>{priceText(item.price)} · {priceSourceText(item.price, item.provider)}</>

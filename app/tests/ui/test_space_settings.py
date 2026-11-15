@@ -198,8 +198,13 @@ class SpaceSettings(unittest.TestCase):
         self.api(owner, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": self.ids["kai"]}, "role": "contributor"}, status=201)
         words = """el => {
             const who = el.querySelector('.people__who, .spset__who');
+            // Lines of a node: its boxes, top to bottom; a box that overlaps the line before (a smaller "· you" on it) is on that line.
             const lines = (node) => { const range = document.createRange(); range.selectNodeContents(node);
-              return new Set([...range.getClientRects()].filter((r) => r.width > 0).map((r) => Math.round(r.top))).size; };
+              let count = 0, bottom = -Infinity;
+              for (const r of [...range.getClientRects()].filter((r) => r.width > 0).sort((a, b) => a.top - b.top)) {
+                if (r.top >= bottom - 2) { count += 1; bottom = r.bottom; } else bottom = Math.max(bottom, r.bottom);
+              }
+              return count; };
             const email = [...who.querySelectorAll('.lastactive-line')][0];
             const address = email ? [...email.childNodes].find((n) => n.nodeType === 3 && n.textContent.includes('@')) : null;
             const control = el.querySelector('.people__rolebtn, .people__role, .spset__rolecell, .spset__role');

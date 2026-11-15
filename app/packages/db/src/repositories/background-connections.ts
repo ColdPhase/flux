@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
-import { currentConnectionPrice, type AiModelList, type AiPrice, type AiPriceLists, type BackgroundComputeConnection } from '@flux/contracts';
+import { assistantModelName, currentConnectionPrice, type AiModelList, type AiPrice, type AiPriceLists, type BackgroundComputeConnection } from '@flux/contracts';
 import { storedPriceLists } from './ai-price-list.js';
 import * as schema from '../schema.js';
 import type { createDatabase } from '../index.js';
@@ -28,7 +28,8 @@ async function metadata(db: Pick<Database, 'execute'>, row: ConnectionRow, lists
   const spend = await apiKeySpendToday(db, row.id);
   return {
     id: row.id, ownerUserId: row.ownerUserId, name: row.name,
-    provider: row.provider, model: row.model, baseUrl: row.baseUrl,
+    provider: row.provider, model: row.model,
+    modelName: row.listedModels?.find((listed) => listed.id === row.model)?.name ?? assistantModelName(row.model), baseUrl: row.baseUrl,
     price: connectionPrice(row, lists),
     keyLastFour: row.keyLastFour, keyFingerprint: row.keyFingerprint,
     dailyBudgetCents: row.dailyBudgetCents, timeZone: row.timeZone,
