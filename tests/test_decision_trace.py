@@ -70,11 +70,26 @@ class DecisionTrace(unittest.TestCase):
 
     def test_a_card_never_decides_or_changes_anything(self) -> None:
         component = source("app/apps/web/src/app/ObjectNotices.tsx")
-        # One button, and it only opens the object in Details; the line has no reply, accept or other action of its own.
-        self.assertEqual(len(re.findall(r"<button", component)), 3, "the source link, the thread link and the card")
+        # Every button only opens or links; the line has no reply, accept or other action of its own (#1424: an acceptance
+        # line names the decision, its title opening it, beside the card's source and thread links and the card itself).
+        handlers = re.findall(r"<button\b[^>]*?onClick=\{([^}]*)\}", component)
+        self.assertEqual(handlers, [
+            "() => open(target)",  # an acceptance line's decision title: opens the decision
+            "toMessage",  # the source link: brings the message it came from into view
+            "() => onOpenThread(notice.conversationId!)",  # the thread link: opens that thread
+            "() => open(target)",  # the card: opens the decision
+        ], "four buttons, each opening or linking")
+        self.assertEqual(len(re.findall(r"<button", component)), len(handlers), "no button without a known handler")
+        # Opening never decides: it opens the decision, and a proposal of the reader's own still held for Undo is first sent
+        # as they made it (as the Undo toast leaving would send it), then opened.
+        opening = component[component.index("const open = "):component.index("const message = ")]
+        self.assertEqual(re.findall(r"\b(onOpen|sendHeldProposal|isHeldDecision)\(", opening), ["isHeldDecision", "onOpen", "sendHeldProposal", "onOpen"])
+        to_message = component[component.index("const toMessage = "):component.index("const link = ")]
+        self.assertEqual(re.findall(r"\.(\w+)\(", to_message), ["getElementById", "scrollIntoView", "focus"])
         code = re.sub(r"/\*.*?\*/", "", component, flags=re.S)
-        self.assertNotRegex(code, r"accept|propose|fetch\(|request\(")
-        self.assertIn("onOpen(target)", component)
+        # It calls no accept or propose and reads or writes nothing itself ('decision.proposed' only names the card's kind).
+        self.assertNotRegex(code, r"(?i)\w*(accept|propose)\w*\(|fetch\(|request\(|from '[^']*/api'")
+        self.assertIn("if (!isHeldDecision(to.id)) { onOpen(to); return; }", opening, "a decision that exists only opens")
 
     def test_the_browser_journey_covers_computer_phone_and_both_engines(self) -> None:
         journey = source("app/tests/ui/test_decision_trace.py")
