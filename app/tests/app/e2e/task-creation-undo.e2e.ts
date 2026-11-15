@@ -415,7 +415,7 @@ test('two accounts keep Conversation, Tasks, Map and Agents current after real U
       assert.equal(await row.getByRole('button', { name: `Open task #${item.number} ${item.title}`, exact: true }).count(), 1);
     }
     const undoNotice = pages[0]!.locator(`#notice-${appended.id}`);
-    assert.equal(await undoNotice.locator('.convo-notice__meta strong').innerText(), 'Ari Task author · you');
+    assert.equal(await undoNotice.locator('.convo-notice__meta strong').innerText(), 'Ari Task author (you)');
     assert.equal(await undoNotice.locator('.convo-notice__kind').textContent(), 'Task creation undone');
     assert.equal(await undoNotice.getByRole('button').getAttribute('data-native-ref'), `work:${item.id}`);
     assert.equal(await receipts(item), 1);

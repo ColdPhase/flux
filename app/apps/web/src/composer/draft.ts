@@ -17,6 +17,11 @@ export interface DraftFile {
   staged?: StagedFile; error?: string;
   /** The upload got no answer (offline): a queued message uploads it again when the connection is back. */
   offline?: boolean;
+  /**
+   * The file itself was refused (a picture that can't be read, a file too large or empty, #1424 persona P3): sending it again can't help, so the
+   * draft offers only to remove it, and the rest of the message goes once it is removed.
+   */
+  refused?: boolean;
   /** Share of the bytes sent so far, 0 to 100, while uploading (#348). Not kept once the upload is confirmed or failed. */
   progress?: number;
 }
@@ -185,6 +190,9 @@ function notSentReason(cause: unknown) {
 const sizeLimit = (name: string) => isVideoName(name) ? fileLimits().videoBytes : FILE_LIMITS.fileBytes;
 const megabytes = (bytes: number) => `${Math.round(bytes / (1024 * 1024))} MB`;
 const tooBig = (name: string) => isVideoName(name) ? `A video can be at most ${megabytes(fileLimits().videoBytes)}.` : 'A file can be at most 5 MB.';
+/** A refusal of the file's own bytes or size: the same file again meets the same answer (400, 413, 415, but never a conflict or an access answer). */
+const refusedFile = (cause: unknown) => cause instanceof ApiError && [400, 413, 415].includes(cause.status) && !['UPLOAD_CONFLICT', 'UPLOAD_TIMEOUT'].includes(cause.code ?? '');
+
 function uploadError(cause: unknown) {
   if (cause instanceof NetworkError) return 'Flux is unreachable. Retry the upload.';
   if (cause instanceof ApiError && [401, 403, 404].includes(cause.status)) return 'Upload unavailable with your current access. Your draft is kept.';
@@ -340,7 +348,7 @@ async function upload(key: string, projectId: string, uploadId: string, file: Fi
     // A message waiting for this file can go on (or fail) now.
     if (wake && snapshots.get(key)!.pending.some((item) => item.files.some((other) => other.uploadId === uploadId))) kick(key);
   };
-  changeFile((item) => ({ ...item, state: 'uploading', error: undefined, offline: undefined, progress: 0 }));
+  changeFile((item) => ({ ...item, state: 'uploading', error: undefined, offline: undefined, refused: undefined, progress: 0 }));
   // A video's poster is drawn while it uploads (C-61), so it is ready when the upload is.
   if (isVideoName(file.name)) void drawPoster(file);
   let lastShown = 0;
@@ -361,7 +369,7 @@ async function upload(key: string, projectId: string, uploadId: string, file: Fi
     changeFile((item) => ({ ...item, state: 'ready', staged, error: undefined, progress: undefined }));
   } catch (cause) {
     if (cause instanceof NetworkError) reportUnreachable();
-    changeFile((item) => ({ ...item, state: 'failed', error: uploadError(cause), offline: cause instanceof NetworkError || undefined, progress: undefined }));
+    changeFile((item) => ({ ...item, state: 'failed', error: uploadError(cause), offline: cause instanceof NetworkError || undefined, refused: refusedFile(cause) || undefined, progress: undefined }));
   }
 }
 
@@ -407,7 +415,7 @@ export function useComposerDraft(accountId: string, projectId: string, context: 
       const error = file.size === 0 ? 'Empty files cannot be attached.' : file.size > sizeLimit(file.name) ? tooBig(file.name)
         : file.name.length > FILE_LIMITS.nameChars || [...file.name].some((character) => character.codePointAt(0)! < 32 || character.codePointAt(0) === 127 || character === '/' || character === '\\')
           || ['.', '..'].includes(file.name) ? 'Choose a file with a shorter name without path characters.' : undefined;
-      return { uploadId, name: file.name, size: file.size, state: error ? 'failed' : 'uploading', ...(error ? { error } : {}) };
+      return { uploadId, name: file.name, size: file.size, state: error ? 'failed' : 'uploading', ...(error ? { error, refused: true } : {}) };
     });
     edit(key, (value) => ({ ...value, files: [...value.files, ...additions] }));
     // Sequential admission keeps quota and ordered selection deterministic.

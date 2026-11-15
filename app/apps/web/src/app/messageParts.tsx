@@ -6,6 +6,8 @@ import { OutboxStatus, PendingFiles } from '../composer/Outbox';
 import { getMaterialVersion } from '../materials/api';
 import { readerActive, watchReaderInput } from '../work/readerIntent';
 import { RefLink } from '../place/origin';
+import { useShellData } from './data';
+import { startsConversations } from '../people/api';
 import { MessageText } from './MessageText';
 import { ReceiptFaces } from './ReceiptFaces';
 import { clock, when } from './timeFormat';
@@ -197,4 +199,14 @@ export function shownLabel(shown: { agent: string }, asker: string): { label: st
 export function ShownAnswerName({ shown, asker }: { shown: { agent: string; colour?: AgentColour }; asker: string }) {
   const { label } = shownLabel(shown, asker);
   return <><strong><AgentIdentity name={label} icon={false} hue={shown.colour} /></strong><span className="ui-vh">, shown by {firstWord(asker)}</span></>;
+}
+
+/**
+ * A person's name over their message: it opens the direct message with them (#592), for whoever can start one. A guest cannot (F-037), so for
+ * them it is the name alone, never a link to a conversation that would refuse them at the end (#1424).
+ */
+export function AuthorName({ workspaceId, authorId, name }: { workspaceId: string; authorId: string; name: string }) {
+  const { workspace } = useShellData();
+  if (!startsConversations(workspace)) return <>{name}</>;
+  return <RefLink className="project-convo__person" to={`/dm/new?workspace=${workspaceId}&with=${authorId}`} title={`Message ${name} directly`}>{name}</RefLink>;
 }

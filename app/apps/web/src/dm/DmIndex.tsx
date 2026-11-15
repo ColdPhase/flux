@@ -10,7 +10,8 @@ import { useDmUnread } from './dmUnread';
 import { usePlaceMutes } from '../notifications/mutes';
 import { Avatar, Button, EmptyState, Icon, Kreska, MEDIA, useMediaQuery } from '../ui';
 import { stopAwaitingField, waitForField } from '../ui/keys';
-import { audienceOf } from './names';
+import { GUEST_NO_DMS, audienceOf } from './names';
+import { startsConversations } from '../people/api';
 import './dm.css';
 import { lastSaid } from '../app/timeFormat';
 
@@ -57,13 +58,16 @@ function AgentRow({ agent, first }: { agent: MyAgent; first: boolean }) {
 
 /** Direct messages (#107): the list of conversations with people, outside any project. */
 export function DmIndex() {
-  const { directMessages, agents } = useShellData();
+  const { directMessages, agents, workspace } = useShellData();
+  // A guest replies in conversations they are added to and starts none (F-037): nothing here offers them New message (#1424).
+  const starts = startsConversations(workspace);
   if (!directMessages.length && !agents.length) {
     return (
       <div className="pane-scroll"><div className="pane-in">
         <div className="view-empty">
-          <EmptyState icon="chat" title="No messages yet" action={<Link className="ui-btn ui-btn--primary" to="/dm/new"><Icon name="plus" size={14} />New message</Link>}>
-            <p>Talk with someone one to one, or with a few people, outside any space. Only the people in a conversation can see it, not the company’s owners or admins.</p>
+          <EmptyState icon="chat" title="No messages yet" action={starts ? <Link className="ui-btn ui-btn--primary" to="/dm/new"><Icon name="plus" size={14} />New message</Link> : undefined}>
+            <p>{starts ? 'Talk with someone one to one, or with a few people, outside any space. Only the people in a conversation can see it, not the company’s owners or admins.'
+              : GUEST_NO_DMS}</p>
           </EmptyState>
         </div>
       </div></div>
@@ -73,7 +77,7 @@ export function DmIndex() {
     <div className="pane-scroll"><div className="pane-in">
       <div className="dm-index__head">
         <div><p>Only the people in each conversation can read it.</p></div>
-        <Link className="ui-btn ui-btn--secondary" to="/dm/new"><Icon name="plus" size={14} />New message</Link>
+        {starts ? <Link className="ui-btn ui-btn--secondary" to="/dm/new"><Icon name="plus" size={14} />New message</Link> : null}
       </div>
       <DmRows />
     </div></div>
@@ -86,6 +90,7 @@ export function DmIndex() {
  */
 export function NewDm() {
   const { me, workspace } = useShellData();
+  const guest = !startsConversations(workspace);
   const navigate = useNavigate();
   const arrivalState = useLocation().state as unknown;
   const [params] = useSearchParams();
@@ -107,18 +112,16 @@ export function NewDm() {
   const autoOpened = useRef(false);
 
   useEffect(() => {
-    if (!workspaceId) return;
+    if (!workspaceId || guest) return;
     const controller = new AbortController();
     listWorkspaceMembers(workspaceId, controller.signal)
       .then((list) => setLoaded({ workspaceId, list: list.filter((member) => member.userId !== me.user.id), note: '' }))
-      .catch((cause: unknown) => {
+      .catch(() => {
         if (controller.signal.aborted) return;
-        setLoaded({ workspaceId, list: [], note: cause instanceof ApiError && cause.status === 403
-          ? 'Guests can reply in conversations they are added to, but cannot start one.'
-          : 'Could not load people. Try again.' });
+        setLoaded({ workspaceId, list: [], note: 'Could not load people. Try again.' });
       });
     return () => controller.abort();
-  }, [workspaceId, me.user.id]);
+  }, [workspaceId, me.user.id, guest]);
 
   async function start(ids = selected) {
     if (!workspaceId || !ids.length || busy) return;
@@ -147,7 +150,7 @@ export function NewDm() {
   }
 
   useEffect(() => {
-    if (!direct || !workspaceId || autoOpened.current) return;
+    if (!direct || !workspaceId || guest || autoOpened.current) return;
     autoOpened.current = true;
     void start([direct]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -166,6 +169,16 @@ export function NewDm() {
   const only = selected.length === 1 ? nameOf(selected[0]!) : '';
   const audience = selected.length ? audienceOf(selected.map(nameOf)) : 'Choose who can read it';
 
+  // Reached by address (nothing in the app leads a guest here): the one rule, and the way back, instead of a form that refuses at its end.
+  if (guest) {
+    return (
+      <div className="pane-scroll"><div className="pane-in dm-gone" role="status">
+        <Icon name="lock" size={16} />
+        <div><h2>Guests don’t start conversations</h2><p>You can reply in conversations you’re added to.</p>
+          <Link className="ui-btn ui-btn--secondary" to="/dm">Back to Messages</Link></div>
+      </div></div>
+    );
+  }
   if (notice) {
     return (
       <div className="pane-scroll"><div className="pane-in dm-gone" role="status">

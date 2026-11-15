@@ -54,7 +54,7 @@ export function ObjectNoticeItem({ notice, meId, owners, authorOf, inThread = fa
   const current = card && shownObject?.kind === 'decision' && shownObject.id === target.id;
   const meta = (
     <p className="convo-notice__meta">
-      {by.kind === 'agent' ? <strong><AgentIdentity name={name} owner={agentAuthorOwner(by, owners)} icon={false} hue={by.colour} /></strong> : <strong>{name}{mine ? ' · you' : ''}</strong>}
+      {by.kind === 'agent' ? <strong><AgentIdentity name={name} owner={agentAuthorOwner(by, owners)} icon={false} hue={by.colour} /></strong> : <strong>{name}{mine ? ' (you)' : ''}</strong>}
       <span className="convo-notice__what">{phrase.lead}{link ? <> {link}</> : null}</span>
       <time dateTime={notice.createdAt} title={when(notice.createdAt)}>{clock(notice.createdAt)}</time>
     </p>

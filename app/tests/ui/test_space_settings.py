@@ -95,8 +95,8 @@ class SpaceSettings(unittest.TestCase):
 
     @staticmethod
     def names(card) -> str:
-        """The people a card lists, by name, whoever reads it (the reader's own row says "· you")."""
-        return "|".join(sorted(text.replace(" · you", "").strip() for text in card.locator(".spset__who b").all_inner_texts()))
+        """The people a card lists, by name, whoever reads it (the reader's own row says "(you)")."""
+        return "|".join(sorted(text.replace(" (you)", "").strip() for text in card.locator(".spset__who b").all_inner_texts()))
 
     def settings(self, page: Page) -> None:
         """⋯ › Settings in the space's header."""
@@ -198,7 +198,7 @@ class SpaceSettings(unittest.TestCase):
         self.api(owner, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": self.ids["kai"]}, "role": "contributor"}, status=201)
         words = """el => {
             const who = el.querySelector('.people__who, .spset__who');
-            // Lines of a node: its boxes, top to bottom; a box that overlaps the line before (a smaller "· you" on it) is on that line.
+            // Lines of a node: its boxes, top to bottom; a box that overlaps the line before (a smaller "(you)" on it) is on that line.
             const lines = (node) => { const range = document.createRange(); range.selectNodeContents(node);
               let count = 0, bottom = -Infinity;
               for (const r of [...range.getClientRects()].filter((r) => r.width > 0).sort((a, b) => a.top - b.top)) {
@@ -207,7 +207,7 @@ class SpaceSettings(unittest.TestCase):
               return count; };
             const email = [...who.querySelectorAll('.lastactive-line')][0];
             const address = email ? [...email.childNodes].find((n) => n.nodeType === 3 && n.textContent.includes('@')) : null;
-            const control = el.querySelector('.people__rolebtn, .people__role, .spset__rolecell, .spset__role');
+            const control = el.querySelector('.people__rolecell, .people__role, .spset__rolecell, .spset__role');
             return { name: lines(who.querySelector('b')), address: address ? lines(address) : 1, text: who.innerText,
                      under: control.getBoundingClientRect().top >= who.getBoundingClientRect().bottom - 1 };
         }"""
@@ -235,7 +235,7 @@ class SpaceSettings(unittest.TestCase):
         page = self.page("ada")
         look = "el => { const s = getComputedStyle(el); return [s.borderTopWidth, s.backgroundColor, s.fontSize, s.fontWeight, s.color]; }"
         page.goto("/settings/company")
-        company = page.locator(".people__rolebtn").nth(1).evaluate(look)
+        company = page.locator(".people__rolecell .ui-select").nth(1).evaluate(look)
         page.goto(f"/projects/{pid}/settings")
         space = page.locator(".spset__rolecell .ui-select").first.evaluate(look)
         self.assertEqual(space, company, "the role control is drawn the same in Space settings and in Settings › Company")
@@ -274,10 +274,10 @@ class SpaceSettings(unittest.TestCase):
         expect(switch).to_have_attribute("aria-checked", "false")
         expect(switch).to_be_focused()
         self.assertEqual(self.api(page, "GET", f"/api/v1/projects/{pid}")["ai"], "blocked")
-        # The people: Ada (you, Admin) and Kai (Member); Add people adds Lee; a role changes; Remove asks first.
+        # The people: Ada (you, the company's Owner) and Kai (Member); Add people adds Lee; a role changes; Remove asks first.
         card = page.get_by_role("list", name="People in Kiln firmware")
         expect(card.get_by_role("listitem")).to_have_count(2)
-        expect(card.get_by_role("listitem").filter(has_text="Ada Kowalska")).to_contain_text("Admin")
+        expect(card.get_by_role("listitem").filter(has_text="Ada Kowalska")).to_contain_text("Owner")
         # One button opens the company's list; no second step. Ada owns the company, so it also has "Someone new?" (#1438): an email and
         # Invite, which make the company's link for that address and this space; no link is there before Invite.
         page.get_by_role("button", name="Add people", exact=True).click()

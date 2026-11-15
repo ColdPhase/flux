@@ -119,8 +119,15 @@
 .people--page .people__confirm { margin: 0 18px 14px; }
 .people--page .people__nameform { padding: 14px 18px 16px; }
 .people--page .people__guests { margin: 10px 4px 0; }
-.people__rolebtn.ui-btn { flex: none; gap: 2px; padding: 0 6px 0 10px; color: var(--t2); }
-.people__rolebtn[aria-expanded="true"] { background: var(--sub); color: var(--t1); }
+/* The role is the menu of roles, drawn as Space settings' (#1424): a quiet "Admin ▾" that opens the roles. */
+.people__rolecell { flex: none; }
+.people__rolecell .ui-select { gap: 2px; min-height: var(--ctl); padding: 0 6px 0 10px; border: 0; border-radius: var(--r-btn); background: transparent;
+  color: var(--t2); font-size: var(--fs-sm); font-weight: 500; line-height: 1.2; transition: var(--tr); }
+.people__rolecell .ui-select:hover:not(:disabled) { background: var(--hov); color: var(--t1); }
+.people__rolecell .ui-select[aria-expanded="true"] { background: var(--sub); color: var(--t1); }
+.people__rolecell .ui-select .ui-select__chev { color: inherit; }
+.people__rolecell button.ui-select:focus-visible { box-shadow: none; outline: 2px solid var(--t1); outline-offset: 1px; }
+@media (pointer: coarse) { .people__rolecell .ui-select { min-height: 44px; font-size: var(--fs-sm); } }
 /* On the narrowest phone a row gives its side padding to the address, so a usual one stays whole beside the role (#1374). */
 @container sset (max-width: 19rem) {
   .people--page .people__row { gap: 8px; padding-inline: 12px; }
@@ -142,7 +149,7 @@
   .people--page .people__item[data-person] > .people__row { flex-wrap: wrap; row-gap: 4px; }
   .people--page .people__item[data-person] .people__who { flex: 1 1 calc(100% - 52px); }
   /* The role's word starts under the name (the button's 10 px padding is taken off). */
-  .people--page .people__item[data-person] .people__rolebtn { margin-left: 26px; }
+  .people--page .people__item[data-person] .people__rolecell { margin-left: 26px; }
   .people--page .people__item[data-person] > .people__row > .people__role { margin-left: 36px; }
   .people--page .people__acts { margin-left: auto; }
 }

@@ -160,16 +160,16 @@ export async function listProjectPeople(principal: Principal, projectId: string,
     return at ? [[row.id, at] as const] : [];
   }) : []);
   const candidates = [
-    ...humans.map((row) => ({ kind: 'human' as const, id: row.id, name: row.name, guest: row.role === 'guest' })),
-    ...agents.map((row) => ({ kind: 'agent' as const, id: row.id, name: row.name, guest: false })),
+    ...humans.map((row) => ({ kind: 'human' as const, id: row.id, name: row.name, guest: row.role === 'guest', owner: row.role === 'owner' })),
+    ...agents.map((row) => ({ kind: 'agent' as const, id: row.id, name: row.name, guest: false, owner: false })),
   ];
   const people: ProjectPerson[] = [];
-  for (const { guest, ...candidate } of candidates) {
+  for (const { guest, owner, ...candidate } of candidates) {
     const decision = await evaluateProject({ kind: candidate.kind, id: candidate.id }, 'project.read', projectId, ports.access(db));
     const access = decision.allowed ? accessName(decision.level) : null;
     if (!access) continue;
     const at = candidate.kind === 'human' ? lastActive.get(candidate.id) : undefined;
-    people.push({ ...candidate, access, ...(at ? { lastActiveAt: at } : {}), ...(guest ? { guest: true as const } : {}) });
+    people.push({ ...candidate, access, ...(at ? { lastActiveAt: at } : {}), ...(guest ? { guest: true as const } : {}), ...(owner ? { owner: true as const } : {}) });
   }
   // Owner names reuse the authorized audience, never the workspace candidate roster.
   const visibleHumans = new Map(people.filter((person) => person.kind === 'human').map((person) => [person.id, person.name]));

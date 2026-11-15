@@ -169,7 +169,7 @@ class DecisionTrace(unittest.TestCase):
         # Ada's own thread shows the same line.
         expect(self.thread(ada)).to_be_visible()
         expect(a_thread.locator('.convo-object[data-object-kind="decision.proposed"]', has_text=title)).to_have_count(1)
-        expect(a_thread.locator(".convo-object .convo-notice__meta").first).to_contain_text("Ada Kowalska · you")
+        expect(a_thread.locator(".convo-object .convo-notice__meta").first).to_contain_text("Ada Kowalska (you)")
 
         # Jonas opens the decision from the line and accepts it.
         proposed.get_by_role("button", name=re.compile("^Open decision")).click()
@@ -185,7 +185,7 @@ class DecisionTrace(unittest.TestCase):
         accepted = j_thread.locator(f'.convo-object[data-object-kind="decision.accepted"][data-object-id="{decision_id}"]')
         expect(accepted).to_have_count(1)
         expect(accepted).to_have_class(re.compile(r"\bis-follow\b"))
-        expect(accepted.locator(".convo-notice__meta")).to_contain_text("Jonas Berg · you")
+        expect(accepted.locator(".convo-notice__meta")).to_contain_text("Jonas Berg (you)")
         expect(accepted.locator(".convo-notice__meta")).to_contain_text("accepted it")
         expect(accepted.locator(".convo-object__card")).to_have_count(0)
         expect(j_thread.locator(f'.convo-object[data-object-id="{decision_id}"] .convo-object__state')).to_have_text(["Accepted"])

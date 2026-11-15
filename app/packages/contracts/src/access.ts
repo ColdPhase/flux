@@ -191,6 +191,8 @@ export interface ProjectPerson {
   lastActiveAt?: LastActiveAt;
   /** A guest of the company (#1424): every list that names a person's role says "Guest" for them, as Settings › Company does. Absent otherwise. */
   guest?: true;
+  /** The company's owner (#1424): every list that names a person's role says "Owner" for them, as Settings › Company does. Absent otherwise. */
+  owner?: true;
 }
 
 /**

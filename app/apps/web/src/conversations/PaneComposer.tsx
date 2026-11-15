@@ -44,7 +44,7 @@ export function PaneComposer({ core, drafts, menu, actions, ask, askBar, typing,
         'aria-activedescendant': menuOpen ? `${composerId}-menu-${options[activeIndex]!.id}` : undefined }}
       attach={asking ? null : publicComposer}
       sendLabel={asking ? 'Send to your assistant' : conversation ? 'Send reply' : 'Send message'}
-      sendDisabled={!drafts.composer.canSend || busy || askBusy || (asking && askBar.state.kind !== 'ready')} onSend={() => void actions.send()}
+      sendDisabled={!drafts.composer.canSend || busy || askBusy} onSend={() => void actions.send()}
       menu={<ComposerMenu open={menuOpen} id={`${composerId}-menu`} options={options} active={activeIndex} trigger={menu.trigger?.char ?? '@'} onPick={menu.pick} onHover={menu.setMenuIndex} />} />
     {conversation ? <TypingNotice {...typing} /> : null}
     <SendAnnouncer pending={publicComposer.pending} />

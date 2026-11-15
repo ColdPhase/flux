@@ -17,9 +17,15 @@ export function firstStepRows(db: DbExecutor) {
         .where(and(eq(m.userId, userId), eq(w.encrypted, false), isNull(w.companyWorkspaceId)))
         .orderBy(desc(w.company), asc(w.createdAt), asc(w.id)).limit(1);
       if (!row) return null;
+      // The space the person's link added them to (#1438), while they are still in it: their first message is said there, where they landed (#1424).
+      const i = schema.workspaceInvites, g = schema.projectGrants;
+      const [landed] = await db.select({ id: g.projectId }).from(i)
+        .innerJoin(g, and(eq(g.workspaceId, i.workspaceId), eq(g.projectId, i.spaceId), eq(g.userId, userId)))
+        .where(and(eq(i.workspaceId, row.id), eq(i.acceptedBy, userId))).orderBy(desc(i.acceptedAt)).limit(1);
+      if (landed) return { id: row.id, name: row.name, role: row.role, joinedAt: row.joinedAt, firstSpaceId: landed.id, hidden: row.hiddenAt !== null };
       const [everyone] = await db.select({ id: p.id }).from(p).where(and(eq(p.workspaceId, row.id), eq(p.visibility, 'workspace')))
         .orderBy(asc(p.createdAt), asc(p.id)).limit(1);
-      return { id: row.id, name: row.name, role: row.role, joinedAt: row.joinedAt, everyoneSpaceId: everyone?.id ?? null, hidden: row.hiddenAt !== null };
+      return { id: row.id, name: row.name, role: row.role, joinedAt: row.joinedAt, firstSpaceId: everyone?.id ?? null, hidden: row.hiddenAt !== null };
     },
     async invitedAnyone(companyId: string) {
       const m = schema.workspaceMembers, i = schema.workspaceInvites;

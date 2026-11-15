@@ -23,7 +23,7 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
-from app_select import choose, expect_value
+from app_select import choose, expect_value, open_select
 from app_select import labels as app_labels
 
 from create_window import create_other
@@ -218,8 +218,9 @@ class PeopleJourney(unittest.TestCase):
         self.assertEqual(labels, ["Member", "Guest"], labels)
         roster = page.get_by_role("list", name="People in Riverside Makers")
         expect(roster.get_by_role("listitem").filter(has_text="Ada Kowalska")).to_contain_text("Owner")
-        expect(page.get_by_role("button", name="Change Ada Kowalska")).to_have_count(0)
-        expect(page.get_by_role("button", name="Change Kai Tanaka")).to_be_visible()
+        expect(page.get_by_role("combobox", name="Role of Ada Kowalska")).to_have_count(0)
+        expect(page.get_by_role("combobox", name="Role of Kai Tanaka")).to_be_visible()
+        self.assertEqual(app_labels(page.get_by_role("combobox", name="Role of Kai Tanaka")), ["Member", "Guest", "Admin"], "no Owner for an admin")
         response = page.request.patch(f"/api/v1/workspaces/{self.riverside}/members/{self.ids['kai']}",
                                       data={"role": "owner"}, headers={"origin": ORIGIN})
         self.assertEqual(response.status, 403, response.text())
@@ -249,20 +250,17 @@ class PeopleJourney(unittest.TestCase):
     def test_03_owner_changes_a_role(self) -> None:
         page = self.page("ada", dark=True)
         self.open_people(page, "Riverside Makers")
-        change = page.get_by_role("button", name="Change Lee Moreno")
-        change.click()
-        editor = page.get_by_role("group", name="Change Lee Moreno")
-        expect(editor.get_by_label("Role")).to_be_focused()
-        expect_value(editor.get_by_label("Role"), "admin")
-        # Esc closes the editor and returns focus to its button.
+        # The role is the menu it looks like (#1424): "Admin ▾" opens the roles, and the one chosen is the role.
+        role = page.get_by_role("combobox", name="Role of Lee Moreno")
+        expect_value(role, "admin")
+        # Esc closes the menu and changes nothing.
+        box = open_select(role)
         page.keyboard.press("Escape")
-        expect(editor).to_have_count(0)
-        expect(change).to_be_focused()
-        change.click()
-        choose(editor.get_by_label("Role"), label="Member")
-        expect(editor).to_contain_text("Is in Everyone, starts spaces and sees the ones they’re added to.")
+        expect(box).to_have_count(0)
+        expect(role).to_be_focused()
+        expect_value(role, "admin")
         shot(page, "people-desktop-1440-dark-change-role")
-        editor.get_by_role("button", name="Save role").click()
+        choose(role, label="Member")
         expect(page.locator(".people__done")).to_have_text("Lee Moreno is now a member.")
         expect(page.get_by_role("list", name="People in Riverside Makers").get_by_role("listitem").filter(has_text="Lee Moreno")).to_contain_text("Member")
         self.assertEqual(self.roles(page, self.riverside)[self.ids["lee"]], "member")
@@ -274,11 +272,11 @@ class PeopleJourney(unittest.TestCase):
         self.open_people(ada, "Riverside Makers")
         expect(ada.get_by_text("You’re the only owner of Riverside Makers. To leave, make someone else an owner first.")).to_be_visible()
         expect(ada.get_by_role("button", name="Leave Riverside Makers")).to_have_count(0)
-        ada.get_by_role("button", name="Change your role").click()
-        mine = ada.get_by_role("group", name="Change your role")
-        choose(mine.get_by_label("Role"), label="Admin")
-        mine.get_by_role("button", name="Save role").click()
-        expect(mine.get_by_role("alert")).to_have_text("Riverside Makers needs at least one owner. Make someone else an owner first.")
+        mine = ada.get_by_role("combobox", name="Your role")
+        choose(mine, label="Admin")
+        row = ada.get_by_role("list", name="People in Riverside Makers").locator(f"[data-person='{self.ids['ada']}']")
+        expect(row.get_by_role("alert")).to_have_text("Riverside Makers needs at least one owner. Make someone else an owner first.")
+        expect_value(mine, "owner")
         self.assertEqual(self.roles(ada, self.riverside)[self.ids["ada"]], "owner")
 
         kai = self.page("kai")
@@ -288,6 +286,7 @@ class PeopleJourney(unittest.TestCase):
         expect(people.get_by_role("listitem").filter(has_text="Ada Kowalska")).to_contain_text("Owner")
         expect(kai.get_by_role("button", name="Invite", exact=True)).to_have_count(0)
         expect(kai.get_by_role("button", name=re.compile("^Change "))).to_have_count(0)
+        expect(kai.get_by_role("combobox", name=re.compile("^(Role of |Your role)"))).to_have_count(0)
         expect(kai.get_by_role("button", name=re.compile("^(Remove|Reset link)"))).to_have_count(0)
         # A member is told once, at the top of the Company page, that only admins change it (release audit P3 20).
         expect(kai.get_by_text(re.compile("Only admins can change this page"))).to_have_count(1)
@@ -328,7 +327,8 @@ class PeopleJourney(unittest.TestCase):
         self.settings_page(page, self.kiln)
         card = self.people_card(page, RESTRICTED)
         expect(card.get_by_role("listitem")).to_have_count(2)
-        expect(card.get_by_role("listitem").filter(has_text="Ada Kowalska")).to_contain_text("Admin")
+        # The company's owner is its Owner here too, one word in every list (#1424).
+        expect(card.get_by_role("listitem").filter(has_text="Ada Kowalska")).to_contain_text("Owner")
         expect(card.get_by_role("listitem").filter(has_text="Kai Tanaka")).to_contain_text("Member")
         # Add people: only people who are not in it yet are offered.
         page.get_by_role("button", name="Add people", exact=True).click()
@@ -419,11 +419,9 @@ class PeopleJourney(unittest.TestCase):
         page = self.page("ada")
         self.open_people(page, "Riverside Makers")
         # Founder decision 2026-11-14 (#1424): Remove is on the person's row, as in Space settings, and asks in place (Remove / Keep);
-        # the role button opens only the role.
+        # the role menu holds only the roles.
         row = page.get_by_role("list", name="People in Riverside Makers").get_by_role("listitem").filter(has_text="Mia Novak")
-        page.get_by_role("button", name="Change Mia Novak").click()
-        expect(page.get_by_role("group", name="Change Mia Novak").get_by_role("button", name=re.compile("^Remove"))).to_have_count(0)
-        page.keyboard.press("Escape")
+        self.assertEqual(app_labels(row.get_by_role("combobox", name="Role of Mia Novak")), ["Member", "Guest", "Admin", "Owner"])
         remove = row.get_by_role("button", name="Remove Mia Novak from Riverside Makers")
         expect(remove).to_be_visible()
         remove.click()
@@ -462,7 +460,7 @@ class PeopleJourney(unittest.TestCase):
             # Settings › Company is a page of its own on the phone too.
             sheet = page
             expect(sheet.get_by_role("list", name="People in Riverside Makers").get_by_role("listitem")).to_have_count(2)
-            change = sheet.get_by_role("button", name="Change Kai Tanaka")
+            change = sheet.get_by_role("combobox", name="Role of Kai Tanaka")
             size = box(page, change)
             self.assertGreaterEqual(size["height"], 44, "touch target")
             # #1424: Reset link and Remove sit on the row on the phone too, as 44 px targets, with nothing running off the screen.
@@ -571,16 +569,14 @@ class PeopleFocus(unittest.TestCase):
         roster = page.get_by_role("list", name="People in Fern Hollow")
         expect(roster.get_by_role("listitem")).to_have_count(5)
 
-    def test_2_changing_a_role_still_moves_focus_to_the_roster(self) -> None:
-        """The member's editor that had focus is gone, so the roster heading takes it (its status line says what changed)."""
+    def test_2_changing_a_role_keeps_focus_on_the_role(self) -> None:
+        """The role menu stays where it was after a change (#1424), so focus does: the status line says what changed."""
         page = self.people_page()
-        page.get_by_role("button", name="Change Noa Berg").click()
-        editor = page.get_by_role("group", name="Change Noa Berg")
-        choose(editor.get_by_label("Role"), label="Guest")
-        editor.get_by_role("button", name="Save role").click()
+        role = page.get_by_role("combobox", name="Role of Noa Berg")
+        choose(role, label="Guest")
         expect(page.locator(".people__done")).to_have_text("Noa Berg is now a guest.")
         self.after_next_frames(page)
-        expect(page.locator("#people-here")).to_be_focused()
+        expect(page.get_by_role("combobox", name="Role of Noa Berg")).to_be_focused()
 
 
 if __name__ == "__main__":

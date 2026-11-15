@@ -35,6 +35,7 @@ import { RefLink } from '../place/origin';
 import { ReadyToClose, TaskPullRequests } from '../github/TaskPullRequests';
 import { DueField, StatusControl, TitleField, useStateKeys } from './TaskParts';
 import { stateWords } from './taskState';
+import { personLabel } from '../people/api';
 
 /** The user id in an owner choice's value (`human:<id>`), for the person's photo (F-039); null for an agent or nobody. */
 const humanId = (value: string | null | undefined) => value?.startsWith('human:') ? value.slice('human:'.length) : null;
@@ -47,7 +48,7 @@ interface Context {
   project: Project;
   members: WorkspaceMember[];
   /** The people in the space (F-037): the Owner and Waiting-for choices offer these and nobody else, so nobody is given a task unannounced. */
-  spacePeople: { userId: string; name: string }[];
+  spacePeople: { userId: string; name: string; guest?: boolean }[];
 }
 
 const forbidden = (error: unknown) => error instanceof ApiError && error.status === 403 ? [] : Promise.reject(error);
@@ -58,7 +59,7 @@ async function loadContext(projectId: string, signal: AbortSignal): Promise<Cont
     listWorkspaceMembers(project.workspaceId, signal).catch(forbidden),
     listProjectPeople(projectId, signal).catch(() => [] as ProjectPerson[]),
   ]);
-  const spacePeople = audience.filter((person) => person.kind === 'human').map((person) => ({ userId: person.id, name: person.name }));
+  const spacePeople = audience.filter((person) => person.kind === 'human').map((person) => ({ userId: person.id, name: person.name, guest: !!person.guest }));
   return { project, members, spacePeople };
 }
 
@@ -356,7 +357,8 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
   useStateKeys(writable, (status) => void setState(status));
   const ownerValue = item.owner ? `${item.owner.kind}:${item.owner.id}` : '';
   // The label says "(you)"; the face is drawn from the name alone, never from that label (#763 H11-9: "M(").
-  const people = context.spacePeople.length ? context.spacePeople.map((member) => ({ value: `human:${member.userId}`, name: member.name, label: member.userId === me.user.id ? `${member.name} (you)` : member.name }))
+  // A guest is marked as in every list of people (#1424): "Gia Mlyn · Guest".
+  const people = context.spacePeople.length ? context.spacePeople.map((member) => ({ value: `human:${member.userId}`, name: member.name, label: personLabel(member, me.user.id) }))
     : [{ value: `human:${me.user.id}`, name: me.user.name, label: `${me.user.name} (you)` }];
   if (item.owner && !people.some((person) => person.value === ownerValue) && item.owner.kind === 'human') people.push({ value: ownerValue, name: item.owner.name, label: item.owner.name });
   const waitingPeople = people.map((person) => ({ ...person, id: person.value.slice('human:'.length) }));

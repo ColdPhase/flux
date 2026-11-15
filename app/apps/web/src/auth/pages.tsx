@@ -4,7 +4,7 @@ import type { IdentityCapabilities } from '@flux/contracts';
 import { PASSWORD_MIN_LENGTH, claimAddress, getCapabilities, getPendingClaim, getResetLinkAccount, startSso } from '../api/auth';
 import { whenPageLive } from '../api/pageLeaving';
 import { ApiError, NetworkError } from '../api/client';
-import { Button, ErrorState, FluxLogo, Icon, Input, useToast } from '../ui';
+import { Button, ErrorState, FluxLogo, Icon, Input } from '../ui';
 import { safeNext, signedOauthQuery, type FormResult, type SignUpMode, type forgotPasswordLoader } from './logic';
 
 /** The plain Flux logo tile and wordmark, large above the page's title (#351, F-026 S-D/S-P sign-in). */
@@ -143,7 +143,6 @@ export function SignInPage() {
   const formRef = useFocusFirstInvalid(result);
   const [params] = useSearchParams();
   const navigate = useNavigate();
-  const toast = useToast();
   const notice = params.get('notice');
   const location = useLocation();
   const next = location.pathname === '/login' ? `${location.pathname}${location.search}` : params.get('next');
@@ -164,15 +163,18 @@ export function SignInPage() {
   // On the MCP authorization step the page is `/login?<signed request>` (#310): the provider button carries it.
   const oauthQuery = location.pathname === '/login' ? signedOauthQuery(location.search) ?? undefined : undefined;
 
-  // One-time notices arrive as a query flag; show them once and drop the flag from the address.
+  // One-time notices arrive as a query flag and drop it from the address. What they say stays on the page until the person signs in (#1424):
+  // "Your password was changed" is the answer to the reset just made, not a toast that may pass unseen.
+  const [said, setSaid] = useState<string | null>(() => (notice && NOTICES[notice]) || null);
   useEffect(() => {
     if (!notice || !NOTICES[notice] || shownRef.current === notice) return;
     shownRef.current = notice;
-    toast({ message: NOTICES[notice], tone: 'success' });
+    setSaid(NOTICES[notice]);
     const rest = new URLSearchParams(params);
     rest.delete('notice');
     navigate({ search: rest.toString() ? `?${rest}` : '' }, { replace: true });
-  }, [notice, params, navigate, toast]);
+  }, [notice, params, navigate]);
+  const saidLine = said ? <p className="auth__notice" role="status"><Icon name="check" size={14} />{said}</p> : null;
 
   const suffix = next ? `?next=${encodeURIComponent(next)}` : '';
   // With the sole provider in SSO-only mode, single sign-on is the only way in: no password form (F-024 S5a/S5b).
@@ -180,6 +182,7 @@ export function SignInPage() {
     return (
       <>
         <Heading title="Sign in" company={capabilities?.company}>One place for your company’s people and their agents.</Heading>
+        {saidLine}
         <div className="auth__card">
           <SsoSignIn sso={sso} next={next} oauthQuery={oauthQuery} />
           <FormError message={ssoFailed ? ssoMessage : undefined} />
@@ -190,6 +193,7 @@ export function SignInPage() {
   return (
     <>
       <Heading title="Sign in" company={capabilities?.company}>One place for your company’s people and their agents.</Heading>
+      {saidLine}
       <div className="auth__card">
         <Form method="post" className="auth__form" noValidate ref={formRef} aria-label="Sign in">
           <FormError message={result?.formError ?? (ssoFailed ? ssoMessage : undefined)} />

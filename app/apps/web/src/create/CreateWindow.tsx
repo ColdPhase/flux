@@ -7,7 +7,7 @@ import { useIntentKeys } from '../api/intent-keys';
 import { getProject } from '../api/sketches';
 import { listProjectPeople } from '../project/data';
 import { useShellData } from '../app/data';
-import { startsSpaces } from '../people/api';
+import { personLabel, startsSpaces } from '../people/api';
 import { readDraft, useDraft, writeDraft } from '../drafts/store';
 import { NewSpaceForm } from '../project/NewSpace';
 import { awaitField } from '../ui/keys';
@@ -64,7 +64,9 @@ export function CreateHost({ request, onClose, onTask }: { request: CreateReques
   const { projects, workspace } = useShellData();
   // A guest cannot start spaces, so with none of their own they open on Task like anyone else, and Space is not one of their tabs (#1424).
   // A thought needs no space (it goes on My map), so a Thought asked for opens as one for someone with no space yet (#866).
-  const opening: Shown = request?.kind === 'thought' ? 'thought' : startsSpaces(workspace) && (request?.kind === 'space' || !projects.length) ? 'space'
+  // A guest with no space yet has only Thought, which goes on My map (#1424): a task, a decision and a page each need a space they cannot make.
+  const opening: Shown = request?.kind === 'thought' || (!startsSpaces(workspace) && !projects.length) ? 'thought'
+    : startsSpaces(workspace) && (request?.kind === 'space' || !projects.length) ? 'space'
     : request?.kind === 'decision' ? 'decision' : request?.kind === 'page' ? 'page' : 'task';
   const [chosen, setChosen] = useState<{ request: CreateRequest | null; kind: Shown; name?: string }>({ request: null, kind: 'task' });
   const kind = chosen.request === request ? chosen.kind : opening;
@@ -93,7 +95,8 @@ interface PanelIds { id: string; tab: string; field: string; active: boolean }
 
 function CreateBody({ request, phone, kind, onKind, onSpace, onClose, onTask }: { request: CreateRequest; phone: boolean; kind: Kind; onKind: (kind: Kind) => void; onSpace: (name: string) => void; onClose: () => void; onTask?: (projectId: string) => void }) {
   const { me, projects, workspace } = useShellData();
-  const kinds = startsSpaces(workspace) ? KINDS : KINDS.filter((item) => item.id !== 'space');
+  // What can be made here and nothing else (#1424): a guest starts no space, and without one a guest's only tab is Thought (My map).
+  const kinds = startsSpaces(workspace) ? KINDS : KINDS.filter((item) => item.id !== 'space' && (projects.length > 0 || item.id === 'thought'));
   const location = useLocation();
   const here = location.pathname.match(/^\/projects\/([^/]+)/)?.[1];
   const known = (id: string | undefined) => (id && projects.some((project) => project.id === id) ? id : undefined);
@@ -293,19 +296,19 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
     void getProject(projectId, controller.signal).then(async (project) => {
       // The Owner choice offers the people in the space and nobody else (F-037), so nobody is given a task unannounced.
       const audience = await listProjectPeople(projectId, controller.signal).catch(() => [] as ProjectPerson[]);
-      const members = audience.filter((person) => person.kind === 'human').map((person) => ({ userId: person.id, name: person.name }));
+      const members = audience.filter((person) => person.kind === 'human').map((person) => ({ userId: person.id, name: person.name, guest: !!person.guest }));
       setContext({ projectId, value: { project, members } });
     }).catch(() => { if (!controller.signal.aborted) setContext({ projectId, value: null }); });
     return () => controller.abort();
   }, [projectId]);
   const loaded = context?.projectId === projectId ? context.value : null;
 
-  const people = useMemo(() => (loaded?.members.length ? loaded.members.map((m) => ({ value: `human:${m.userId}`, label: m.userId === me.user.id ? `${m.name} (you)` : m.name }))
+  const people = useMemo(() => (loaded?.members.length ? loaded.members.map((m) => ({ value: `human:${m.userId}`, label: personLabel(m, me.user.id) }))
     : [{ value: `human:${me.user.id}`, label: `${me.user.name} (you)` }]), [loaded, me.user.id, me.user.name]);
   // F-029 (#614): no agent owners while the workspace's AI is off.
   const aiOff = useSpaceAi(loaded?.project.id).blocked;
   const agents = (aiOff || !loaded ? [] : ownAgents).map((agent) => ({ value: `agent:${agent.id}`, label: `${agent.name} (agent)` }));
-  const ownerLabel = [...people, ...agents].find((o) => o.value === owner)?.label.replace(/ \((you|agent)\)$/, '') ?? 'No owner';
+  const ownerLabel = [...people, ...agents].find((o) => o.value === owner)?.label.replace(/ (\((you|agent)\)|· Guest)$/, '') ?? 'No owner';
 
   const text = oneLine(title);
   const ready = !!text && text.length <= WORK_LIMITS.title && !!projectId;

@@ -15,7 +15,7 @@ import { useShellActions } from './shellContext';
 import { listConversationRoots, listObjectNotices, listTaskNotices, observeProjectMessages, projectReaders, projectReceipts } from '../conversations/api';
 import { QuestionCard, WhenNoQuestion } from '../agents/QuestionCard';
 import { ownRuns, useObservation, useReceiptTick, useReceipts, type Receipt } from './receipts';
-import { AgentAuthor, AuthorFace, ContributionMark, DeletedSourceCitation, OPENING_REVEAL_MS, ShownAnswerName, SourceCitation, SourceTag, MessageDay, messageHue, MessageTime, ViaTag, sameMessageAuthor, shownAnswer, shownLabel, clock, day, openOnWholeMessages, pendingMessageRow, when } from './messageParts';
+import { AgentAuthor, AuthorFace, AuthorName, ContributionMark, DeletedSourceCitation, OPENING_REVEAL_MS, ShownAnswerName, SourceCitation, SourceTag, MessageDay, messageHue, MessageTime, ViaTag, sameMessageAuthor, shownAnswer, shownLabel, clock, day, openOnWholeMessages, pendingMessageRow, when } from './messageParts';
 import { agentAuthorOwner, useAgentOwners, type AgentOwners } from '../agents/owners';
 import { MessageContent } from '../composer/Files';
 import { LinkPreviews, MessageText } from './MessageText';
@@ -29,7 +29,6 @@ import { NewBelow, UnreadDivider, countBelow, openAtUnread, useNewBelow } from '
 import { ObjectNoticeItem } from './ObjectNotices';
 import { followsProposal, objectTarget } from './objectNotices';
 import './conversation-final.css';
-import { RefLink } from '../place/origin';
 import { onFlush, remember } from '../place/memory';
 import { focusArrival } from '../ui/keys';
 
@@ -776,7 +775,7 @@ function NoticeItem({ notice, meId, owners, row, authorOf, hasMessage, onOpenTas
         <AuthorFace kind={creator.kind} id={creator.id} name={name} mine={mine} hue={creator.colour} />
         <div className="convo-notice__body">
           <p className="convo-notice__meta">
-            {creator.kind === 'agent' ? <strong><AgentIdentity name={name} owner={agentAuthorOwner(creator, owners)} icon={false} hue={creator.colour} /></strong> : <strong>{name}{mine ? ' · you' : ''}</strong>}
+            {creator.kind === 'agent' ? <strong><AgentIdentity name={name} owner={agentAuthorOwner(creator, owners)} icon={false} hue={creator.colour} /></strong> : <strong>{name}{mine ? ' (you)' : ''}</strong>}
             <button type="button" className="convo-notice__src" data-native-ref={`work:${notice.workId}`} onClick={() => onOpenTask(notice.workId)} aria-label={`Open task #${notice.workNumber} ${title}`}>{words}</button>
             <time dateTime={notice.createdAt} title={when(notice.createdAt)}>{clock(notice.createdAt)}</time>
           </p>
@@ -800,7 +799,7 @@ function NoticeItem({ notice, meId, owners, row, authorOf, hasMessage, onOpenTas
       <AuthorFace kind={creator.kind} id={creator.id} name={name} mine={mine} hue={creator.colour} />
       <div className="convo-notice__body convo-notice__card">
         <p className="convo-notice__meta">
-          {creator.kind === 'agent' ? <strong><AgentIdentity name={name} owner={agentAuthorOwner(creator, owners)} icon={false} hue={creator.colour} /></strong> : <strong>{name}{mine ? ' · you' : ''}</strong>}
+          {creator.kind === 'agent' ? <strong><AgentIdentity name={name} owner={agentAuthorOwner(creator, owners)} icon={false} hue={creator.colour} /></strong> : <strong>{name}{mine ? ' (you)' : ''}</strong>}
           <span className="convo-notice__what" data-source={source.kind}>{phrase.lead}{phrase.link ? <> {source.kind === 'message' && hasMessage(source.messageId)
             ? <button type="button" className="convo-notice__src" onClick={toMessage}>{phrase.link}</button> : <span className="convo-notice__src">{phrase.link}</span>}</> : null}</span>
           {notice.kind === 'task.creation_reverted' || notice.lifecycle?.state === 'creation_reverted'
@@ -913,7 +912,7 @@ function RootItem(props: RootItemProps | QueuedRootProps) {
       {!mine && !stored.continued ? <AuthorFace kind={message.authorId === null || shown ? 'agent' : 'human'} id={message.authorId} name={name} mine={mine} hue={messageHue(message)} /> : null}
       {!mine && !stored.continued ? <div className="project-convo__message-meta">
         {shown ? <ShownAnswerName shown={shown} asker={name} /> : <>
-          <strong>{message.authorId === null ? <AgentAuthor message={message} owner={agentAuthorOwner(message.author, owners)} /> : <RefLink className="project-convo__person" to={`/dm/new?workspace=${project.workspaceId}&with=${message.authorId}`} title={`Message ${name} directly`}>{name}</RefLink>}</strong>
+          <strong>{message.authorId === null ? <AgentAuthor message={message} owner={agentAuthorOwner(message.author, owners)} /> : <AuthorName workspaceId={project.workspaceId} authorId={message.authorId} name={name} />}</strong>
           <ViaTag via={message.via} />
         </>}
       </div> : null}

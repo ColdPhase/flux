@@ -23,10 +23,10 @@ import './space.css';
 import './people.css';
 
 /**
- * What a person is in a space, in the one word every list of people uses (#1424): a guest of the company is a Guest (as Settings › Company and the
- * people picker say), a space's admin or a company owner or admin is an Admin, anyone else a Member.
+ * What a person is in a space, in the one word every list of people uses (#1424): a guest of the company is a Guest and its owner the Owner (as
+ * Settings › Company and the people picker say), a space's admin or a company admin is an Admin, anyone else a Member.
  */
-const roleWord = (row: Row) => (row.guest ? 'Guest' : row.company || row.role === 'manager' ? 'Admin' : 'Member');
+const roleWord = (row: Row) => (row.guest ? 'Guest' : row.owner ? 'Owner' : row.company || row.role === 'manager' ? 'Admin' : 'Member');
 
 /** The last admin of a space cannot leave, step down or be removed: the words the server's refusal gets (C-16). */
 const lastAdmin = (error: unknown) => (error instanceof ApiError && error.code === 'LAST_SPACE_ADMIN' ? 'Add another admin first: a space always keeps one.' : null);
@@ -42,7 +42,7 @@ const transient = (error: unknown) => error instanceof NetworkError
 /** How long the page waits before it asks again for who is in the space, by attempt; after the last one it says it could not. */
 export const ROSTER_RETRY_MS = [800, 2400];
 
-interface Row { userId: string; name: string; email: string | null; role: 'manager' | 'contributor'; company: boolean; guest: boolean; grantId: string | null; lastActiveAt?: string }
+interface Row { userId: string; name: string; email: string | null; role: 'manager' | 'contributor'; company: boolean; guest: boolean; owner: boolean; grantId: string | null; lastActiveAt?: string }
 
 /**
  * A space's settings (F-037, #874; ⋯ › Settings): its name, its people with their roles, the AI switch, Leave space and, for its admins,
@@ -140,7 +140,7 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName, inviter
     if (manager && roster) {
       const fromMember = (member: WorkspaceMember, grant: ProjectGrant | null): Row => ({
         userId: member.userId, name: member.name, email: member.email, role: grant?.role === 'manager' || isManagerRole(member.role) ? 'manager' : 'contributor',
-        company: isManagerRole(member.role), guest: member.role === 'guest', grantId: grant?.id ?? null, lastActiveAt: member.lastActiveAt,
+        company: isManagerRole(member.role), guest: member.role === 'guest', owner: member.role === 'owner', grantId: grant?.id ?? null, lastActiveAt: member.lastActiveAt,
       });
       const list = everyone
         ? roster.members.filter((member) => member.role !== 'guest' || grantOf(member.userId)).map((member) => fromMember(member, grantOf(member.userId)))
@@ -151,7 +151,7 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName, inviter
       return list.sort((a, b) => (a.userId === meId ? -1 : b.userId === meId ? 1 : a.role === b.role ? a.name.localeCompare(b.name) : a.role === 'manager' ? -1 : 1));
     }
     return (people ?? []).filter((person) => person.kind === 'human')
-      .map((person): Row => ({ userId: person.id, name: person.name, email: null, role: person.access === 'manager' ? 'manager' : 'contributor', company: false, guest: !!person.guest, grantId: null, lastActiveAt: person.lastActiveAt }))
+      .map((person): Row => ({ userId: person.id, name: person.name, email: null, role: person.access === 'manager' ? 'manager' : 'contributor', company: false, guest: !!person.guest, owner: !!person.owner, grantId: null, lastActiveAt: person.lastActiveAt }))
       .sort((a, b) => (a.userId === meId ? -1 : b.userId === meId ? 1 : a.role === b.role ? a.name.localeCompare(b.name) : a.role === 'manager' ? -1 : 1));
   })();
 
@@ -262,7 +262,7 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName, inviter
             {rows.map((row) => (
               <li className="sset-row" key={row.userId} data-person={row.userId}>
                 <Avatar name={row.name} id={row.userId} size="md" tone={row.userId === meId ? 'me' : 'neutral'} />
-                <span className="spset__who"><b>{row.userId === meId ? meName : row.name}{row.userId === meId ? <span className="spset__you"> · you</span> : null}</b><PersonLine email={row.email} lastActiveAt={row.userId === meId ? undefined : row.lastActiveAt} /></span>
+                <span className="spset__who"><b>{row.userId === meId ? meName : row.name}{row.userId === meId ? <span className="spset__you"> (you)</span> : null}</b><PersonLine email={row.email} lastActiveAt={row.userId === meId ? undefined : row.lastActiveAt} /></span>
                 {/* A guest is never a space's admin, so their row has no choice to make: it says Guest, as everywhere (#1424). */}
                 {manager && row.userId !== meId && !row.company && !row.guest ? (
                   <span className="spset__rolecell">
@@ -413,7 +413,7 @@ function AiCard({ project, manager, onChanged }: { project: Project; manager: bo
   return (
     <>
       <div className="sset-card" data-ai-switch={on ? 'on' : 'off'}>
-        <SwitchRow label="AI" detail="Agents can work here. Each person uses their own AI." checked={on} disabled={!manager} onChange={(next) => void change(next)} />
+        <SwitchRow label="AI" detail="Agents can work here, with each person’s own AI" checked={on} disabled={!manager} onChange={(next) => void change(next)} />
       </div>
       {problem ? <p className="people__notice" role="alert"><Icon name="alert" size={13} />{problem}</p> : null}
     </>
