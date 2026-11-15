@@ -187,6 +187,59 @@ class SpaceSettings(unittest.TestCase):
         grants = self.api(page, "GET", f"/api/v1/projects/{pid}/grants")
         self.assertEqual(sorted((g["principal"]["id"], g["role"]) for g in grants), sorted([(self.ids["kai"], "manager"), (self.ids["ada"], "contributor")]))
 
+    def test_01b_people_rows_keep_whole_words_on_portrait_tablets_and_the_role_is_one_control(self) -> None:
+        """Release audit ffcb07c P2-2: on 800 and 820 px portrait tablets the company's page beside the section list is about 440 px wide, and with
+        Reset link and Remove on the row the addresses broke mid-word ("jonas@demo.flux.te / st") and names took two or three lines. A row
+        measures its page (L1659–1662): under 37.5 rem the name and address keep the first line and the role and the buttons go under them.
+        Space settings' rows follow the same rule, and their role is the same quiet "Member ▾" as the company's (P3: one role control)."""
+        self.ensure_world()
+        owner = self.page("ada")
+        pid = self.api(owner, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects", {"name": "Tablet rows", "visibility": "restricted"}, status=201)["id"]
+        self.api(owner, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": self.ids["kai"]}, "role": "contributor"}, status=201)
+        words = """el => {
+            const who = el.querySelector('.people__who, .spset__who');
+            // Lines of a node: its boxes, top to bottom; a box that overlaps the line before (a smaller "· you" on it) is on that line.
+            const lines = (node) => { const range = document.createRange(); range.selectNodeContents(node);
+              let count = 0, bottom = -Infinity;
+              for (const r of [...range.getClientRects()].filter((r) => r.width > 0).sort((a, b) => a.top - b.top)) {
+                if (r.top >= bottom - 2) { count += 1; bottom = r.bottom; } else bottom = Math.max(bottom, r.bottom);
+              }
+              return count; };
+            const email = [...who.querySelectorAll('.lastactive-line')][0];
+            const address = email ? [...email.childNodes].find((n) => n.nodeType === 3 && n.textContent.includes('@')) : null;
+            const control = el.querySelector('.people__rolebtn, .people__role, .spset__rolecell, .spset__role');
+            return { name: lines(who.querySelector('b')), address: address ? lines(address) : 1, text: who.innerText,
+                     under: control.getBoundingClientRect().top >= who.getBoundingClientRect().bottom - 1 };
+        }"""
+        for size in ({"width": 800, "height": 1280}, {"width": 820, "height": 1180}):
+            context = self.browser.new_context(base_url=ORIGIN, locale="en-GB", service_workers="block", viewport=size, device_scale_factor=1,
+                                               has_touch=True, storage_state=self.states["ada"])
+            self.addCleanup(context.close)
+            page = context.new_page()
+            page.goto("/settings/company")
+            rows = page.locator(".people--page .people__item[data-person]")
+            expect(rows).to_have_count(3)
+            for row in rows.all():
+                drawn = row.evaluate(words)
+                self.assertEqual((drawn["name"], drawn["address"]), (1, 1), f"{size['width']} px: the name and the address are whole, each on one line: {drawn}")
+                self.assertTrue(drawn["under"], f"{size['width']} px: the role and the buttons go under the name on a narrow page: {drawn}")
+            shot(page, f"people-rows-tablet-{size['width']}-{UI_BROWSER}")
+            page.goto(f"/projects/{pid}/settings")
+            rows = page.locator(".spset .sset-row[data-person]")
+            expect(rows).to_have_count(2)
+            for row in rows.all():
+                drawn = row.evaluate(words)
+                self.assertEqual((drawn["name"], drawn["address"]), (1, 1), f"{size['width']} px: Space settings keeps names and addresses whole: {drawn}")
+            shot(page, f"space-rows-tablet-{size['width']}-{UI_BROWSER}")
+        # One role control: Space settings' role looks as the company's "Member ▾" does (no field border, the quiet button's type and colour).
+        page = self.page("ada")
+        look = "el => { const s = getComputedStyle(el); return [s.borderTopWidth, s.backgroundColor, s.fontSize, s.fontWeight, s.color]; }"
+        page.goto("/settings/company")
+        company = page.locator(".people__rolebtn").nth(1).evaluate(look)
+        page.goto(f"/projects/{pid}/settings")
+        space = page.locator(".spset__rolecell .ui-select").first.evaluate(look)
+        self.assertEqual(space, company, "the role control is drawn the same in Space settings and in Settings › Company")
+
     def test_02_the_settings_of_an_admin(self) -> None:
         self.ensure_world()
         pid = self.ids["space"]
@@ -477,6 +530,11 @@ class SpaceSettings(unittest.TestCase):
         every = page.get_by_role("list", name="Every space in the company")
         row = every.get_by_role("listitem").filter(has_text="Old experiments")
         expect(row.get_by_role("link", name="Old experiments")).to_be_visible()
+        # The space is a row that opens it, as Settings' rows do, never an underlined name (L203–204; release audit ffcb07c P3 7).
+        drawn = row.get_by_role("link", name="Old experiments").evaluate(
+            "el => ({ line: getComputedStyle(el).textDecorationLine, name: getComputedStyle(el.querySelector('b')).textDecorationLine, width: el.getBoundingClientRect().width, row: el.closest('li').getBoundingClientRect().width })")
+        self.assertEqual((drawn["line"], drawn["name"]), ("none", "none"), drawn)
+        self.assertAlmostEqual(drawn["width"], drawn["row"], delta=1, msg=f"the whole row is the link: {drawn}")
         expect(every.get_by_role("button", name=re.compile("^Delete"))).to_have_count(0)
         expect(page.get_by_role("button", name="Delete…")).to_have_count(0)
         shot(page, "1424-company-spaces-no-delete")

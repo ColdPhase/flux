@@ -88,9 +88,18 @@
 .spset__who b { font-size: var(--fs-base); font-weight: 600; color: var(--t1); overflow-wrap: break-word; }
 .spset__who span { font-size: var(--fs-xs); color: var(--t3); overflow-wrap: anywhere; }
 .spset__you { font-weight: 400; color: var(--t3); }
-.spset__role { flex: none; min-width: 96px; font-size: var(--fs-md); font-weight: 500; color: var(--t1); text-align: right; }
+/* One role control (release audit ffcb07c): a role is the same quiet "Member ▾" as on Settings › Company's rows, and a role that cannot be
+   changed is the same plain word there (.people__role); never an outlined field in one place and a quiet button in the other. */
+.spset__role { flex: none; min-width: 96px; font-size: var(--fs-sm); color: var(--t2); text-align: right; }
 .spset__role.ui-select, .spset__roleselect { flex: none; }
 .spset__rolecell { flex: none; min-width: 96px; text-align: right; }
+.spset__rolecell .ui-select { gap: 2px; min-height: var(--ctl); padding: 0 6px 0 10px; border: 0; border-radius: var(--r-btn); background: transparent;
+  color: var(--t2); font-size: var(--fs-sm); font-weight: 500; line-height: 1.2; transition: var(--tr); }
+.spset__rolecell .ui-select:hover:not(:disabled) { background: var(--hov); color: var(--t1); }
+.spset__rolecell .ui-select[aria-expanded="true"] { background: var(--sub); color: var(--t1); }
+.spset__rolecell .ui-select .ui-select__chev { color: inherit; }
+.spset__rolecell button.ui-select:focus-visible { box-shadow: none; outline: 2px solid var(--t1); outline-offset: 1px; }
+@media (pointer: coarse) { .spset__rolecell .ui-select { min-height: 44px; font-size: var(--fs-sm); } }
 .spset__remove.ui-btn { flex: none; min-width: 72px; color: var(--t2); }
 .spset__remove-gap { flex: none; width: 72px; }
 .spset__add { display: grid; gap: 10px; margin: 0 0 14px; padding: 14px; border-radius: var(--r); background: var(--el); box-shadow: inset 0 0 0 1px var(--line2); }
@@ -124,13 +133,19 @@
   .newspace--pinned .newspace__body { padding: 4px 16px 14px; }
   .newspace--pinned .newspace__foot { padding: 10px 16px 14px; flex-wrap: wrap; }
   .newspace__why { flex: 1 0 100%; }
-  /* A person's row stacks on the phone: the name and address on the first line in full, the role and Remove under them. */
+  .newspace__foot .ui-btn, .delspace .newspace__foot .ui-btn { flex: 1; min-height: 44px; }
+}
+
+/* A person's row stacks when the page is narrow, as Settings › Company's (final design L1659–1662): under 37.5 rem the name and address keep
+   the first line in full, the role and Remove go under them, so an address is never cut mid-word. It measures the page, not the window. */
+@container sset (max-width: 37.5rem) {
   .spset .sset-row[data-person] { flex-wrap: wrap; row-gap: 6px; }
   .spset__who { flex: 1 1 calc(100% - 52px); }
-  .spset__role, .spset__rolecell { min-width: 0; margin-left: 48px; text-align: left; }
+  /* The role's word starts under the name, as on the company's rows (the quiet control's 10 px padding is taken off). */
+  .spset__role, .spset__rolecell { min-width: 0; margin-left: 38px; text-align: left; }
+  .spset__rolecell { margin-left: 28px; }
   .spset__remove.ui-btn, .spset__confirm { margin-left: auto; }
   .spset__remove-gap { display: none; }
-  .newspace__foot .ui-btn, .delspace .newspace__foot .ui-btn { flex: 1; min-height: 44px; }
 }
 
 /* An encrypted space's people and keys open in a panel (F-030, C-24): the row is the whole target. */

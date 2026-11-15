@@ -40,10 +40,10 @@ export function workPieces(item: Pick<WorkItem, 'status' | 'owner' | 'lifecycle'
 }
 
 export function decisionPieces(decision: Pick<Decision, 'status' | 'supersedes' | 'decidedAt' | 'supersededAt'>): StatePiece[] {
-  // One state, one word (#1424): "proposed", as the conversation's card says "Proposed"; the kind is the flag and "Decision".
-  if (decision.status === 'proposed') return [{ text: 'Decision · ', extra: true }, { text: 'proposed' }, ...(decision.supersedes ? [{ text: ' · replaces an earlier decision', extra: true }] : [])];
-  if (decision.status === 'accepted') return [{ text: 'Decision · ', extra: true }, { text: `accepted ${shortDate(decision.decidedAt!)}` }];
-  return [{ text: 'Decision · ', extra: true }, { text: `replaced ${shortDate(decision.supersededAt!)}` }];
+  // One state, one word (#1424, L1061): "Proposed", as the conversation's card and Search say it; the kind is the flag and "Decision".
+  if (decision.status === 'proposed') return [{ text: 'Decision · ', extra: true }, { text: 'Proposed' }, ...(decision.supersedes ? [{ text: ' · replaces an earlier decision', extra: true }] : [])];
+  if (decision.status === 'accepted') return [{ text: 'Decision · ', extra: true }, { text: `Accepted ${shortDate(decision.decidedAt!)}` }];
+  return [{ text: 'Decision · ', extra: true }, { text: `Replaced ${shortDate(decision.supersededAt!)}` }];
 }
 
 export const decisionLine = (decision: Pick<Decision, 'status' | 'supersedes' | 'decidedAt' | 'supersededAt'>) => stateText(decisionPieces(decision));
@@ -53,8 +53,7 @@ export const decisionLine = (decision: Pick<Decision, 'status' | 'supersedes' | 
  * "Replaced 3 Dec", and "· replaces an earlier decision" while a proposal names none below.
  */
 export function decisionState(decision: Pick<Decision, 'status' | 'supersedes' | 'decidedAt' | 'supersededAt'>): string {
-  const text = decisionPieces(decision).filter((piece) => !piece.text.startsWith('Decision')).map((piece) => piece.text).join('');
-  return text.charAt(0).toUpperCase() + text.slice(1);
+  return decisionPieces(decision).filter((piece) => !piece.text.startsWith('Decision')).map((piece) => piece.text).join('');
 }
 
 /**

@@ -42,7 +42,9 @@ export function ThreadRoot({ message, projectId, body, author, agentOwner = null
         <MessageTaskCards preview={preview} />
         {message ? <QuestionCard projectId={projectId} messageId={message.id} meId={meId} writable={writable} /> : null}
       </article>
-      <p className="thread__hint">{replies ? `${replies} ${replies === 1 ? 'reply' : 'replies'}${firstDay ? ` · ${firstDay}` : ''}` : writable ? 'Reply to this message. No new topic needed.' : 'No replies yet.'}</p>
+      {/* A thread nobody answered yet says nothing more: its head already says "0 replies" and the reply field waits under it (release audit
+          ffcb07c: "Reply to this message. No new topic needed." was jargon the design does not draw). */}
+      {replies ? <p className="thread__hint">{`${replies} ${replies === 1 ? 'reply' : 'replies'}${firstDay ? ` · ${firstDay}` : ''}`}</p> : null}
     </>
   );
 }

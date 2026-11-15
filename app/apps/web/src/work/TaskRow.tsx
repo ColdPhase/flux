@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent } from 'react';
 import type { WorkRowProjection, WorkStatus } from '@flux/contracts';
 import { AgentIdentity, Icon, Kreska, Morph, StatusGlyph, initials } from '../ui';
-import type { AgentOwners } from '../agents/owners';
-import { useAgentHue } from '../agents/hues';
+import { agentAuthorOwner, type AgentOwners } from '../agents/owners';
+import { useAgentHue, type ColouredAgent } from '../agents/hues';
+import type { AgentHue } from '../ui';
 import { STATUS_LABEL, blockedParts, isFinished, statusPhrase, taskNumber } from './format';
 import { STATE_KEYS, nextStatus, type StateTarget } from './taskState';
 
@@ -12,13 +13,14 @@ import { STATE_KEYS, nextStatus, type StateTarget } from './taskState';
 const ACTION = 76;
 const LOCK = 8;
 
-function meta(item: WorkRowProjection, meId: string, owners: AgentOwners) {
+function meta(item: WorkRowProjection, meId: string, owners: AgentOwners, hue: (agent: ColouredAgent) => AgentHue | undefined) {
   const waiting = isFinished(item) ? 0 : item.prerequisiteCounts.unmet;
   const owner = item.owner;
-  // An agent keeps its one label, "Planner · Ada's agent", in every state; a person with the same name does not get it.
+  // An agent keeps its one label, "Planner · Ada's agent", in every state and for every reader (L1414–1416, L277): its owner comes from the
+  // row's projected owner when the reader's audience does not list the agent; a person with the same name does not get it.
   const who = !owner ? 'no owner'
     : owner.kind === 'agent'
-      ? <AgentIdentity icon={false} name={owner.name} owner={owners.get(owner.id)} />
+      ? <AgentIdentity icon={false} name={owner.name} owner={agentAuthorOwner(owner, owners)} hue={hue(owner)} />
       : owner.id === meId ? 'you' : owner.name;
   const rest = [
     item.status === 'blocked' && item.waitingFor ? `waiting for ${item.waitingFor.name}` : null,
@@ -130,7 +132,7 @@ export function TaskRow({ item, meId, owners, writable, muted, onOpen, onChange 
           </button>
         ) : <span className="ws-task__glyph ws-task__glyph--still" role="img" aria-label={word}><StatusGlyph status={item.status} changeKey={item.id} /></span>}
         <button type="button" className={`ws-item${muted ? ' ws-item--muted' : ''}`} onClick={click}>
-          <span className="ws-item__b"><span className="ws-item__t">{item.title}</span><span className="ws-item__s">{meta(item, meId, owners)}</span></span>
+          <span className="ws-item__b"><span className="ws-item__t">{item.title}</span><span className="ws-item__s">{meta(item, meId, owners, hue)}</span></span>
           <span className="ws-item__r">
             {item.owner?.kind === 'agent' ? <Kreska size={20} hue={hue(item.owner)} />
               : item.owner ? <span className="ws-av" aria-hidden="true">{initials(item.owner.name)}</span> : null}

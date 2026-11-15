@@ -19,6 +19,11 @@ export interface BackgroundComputeConnection {
   provider: AiProviderKind;
   /** The key's default model: the one Connect AI offers first for a new agent. */
   model: string;
+  /**
+   * The model's one name (release audit ffcb07c): as the provider's list named it when the key was read ("Claude Opus 5.5"), which is what
+   * Connect AI and the agent's picker say (`assistantApiModels`); Flux's short name only for a model the list does not name.
+   */
+  modelName: string;
   /** The owner's endpoint for `openai_compatible`; null for a named provider's fixed URL. */
   baseUrl: string | null;
   /** Null when no price is known: the daily budget cannot hold, so the key cannot be used (PROV-3). */

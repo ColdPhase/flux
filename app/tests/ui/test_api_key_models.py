@@ -139,6 +139,11 @@ class ApiKeyModels(unittest.TestCase):
         expect(page.get_by_role("status").filter(has_text="Key saved with a daily budget of $5.00.")).to_be_visible()
         saved = [item for item in json.loads(page.request.get(f"{ORIGIN}/api/v1/background-compute-connections").text()) if item["name"] == "Ines's Anthropic key"]
         self.assertEqual([(item["provider"], item["model"]) for item in saved], [("anthropic", "claude-opus-5-5")])
+        # Your API keys names the model as Connect AI did, the provider's "Claude Opus 5.5", never Flux's short "Opus 5.5" (release audit ffcb07c);
+        # and its budget line is whole sentences, with no "counts against it: your agents."
+        card = page.get_by_role("listitem", name="Ines's Anthropic key")
+        expect(card.locator("dt", has_text="Model").locator("xpath=following-sibling::dd")).to_have_text("Claude Opus 5.5")
+        expect(card).not_to_contain_text("counts against it:")
         self.no_key_in_page(page)
 
     def test_02a_the_key_step_opens_with_only_the_provider_and_the_key_and_connect_waits_for_a_provider(self) -> None:
@@ -177,7 +182,7 @@ class ApiKeyModels(unittest.TestCase):
         choose(provider, label="Anthropic")
         expect(connect).to_be_enabled()
         expect(page.get_by_label("Model", exact=True)).to_have_count(0)
-        expect(help_line).to_have_text(f"{plain} An Anthropic API key beginning with sk-ant-. A key of your Claude Max, Ultra or Team plan uses its monthly API credits.")
+        expect(help_line).to_have_text(f"{plain} Anthropic API keys begin with sk-ant-. A key of your Claude Max, Ultra or Team plan uses its monthly API credits.")
         choose(provider, label="OpenAI-compatible endpoint")
         expect(page.get_by_role("textbox", name="Model")).to_be_editable()
         # "Choose a provider" is the closed field's placeholder, not an option to tick (v0.2.1 UI audit, P3 4).
@@ -352,7 +357,8 @@ class ApiKeyModels(unittest.TestCase):
         expect(page.get_by_role("button", name="Connect", exact=True)).to_be_disabled()
         # One plain sentence with Anthropic's key shape; the help line under the key, which says the shape too, is hidden meanwhile.
         expect(alert).to_have_text("This doesn’t look like an Anthropic key: those begin with sk-ant-.")
-        hint = "An Anthropic API key beginning with sk-ant-."
+        # A whole sentence, never the fragment "An Anthropic API key beginning with sk-ant-." (release audit ffcb07c).
+        hint = "Anthropic API keys begin with sk-ant-."
         self.assertEqual(page.evaluate("document.body.innerText").count("sk-ant-"), 1, "the key shape is said once")
         self.assertEqual(page.evaluate("document.body.innerText").count(hint), 0, "the help line is hidden while the alert says it")
         expect(page.get_by_label("API key", exact=True)).to_have_attribute("aria-describedby", re.compile(r"^\S+-refused$"))

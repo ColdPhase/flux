@@ -110,7 +110,7 @@ function pieces(result: SearchResult): Array<Line | null> {
     }
     case 'thought': case 'sketch': return place.type === 'private' ? ['My map', 'only you'] : [result.label, where];
     case 'project': return [];
-    case 'person': return result.label.endsWith('guest') ? ['Guest'] : [];
+    case 'person': return result.label.endsWith('Guest') ? ['Guest'] : [];
     default: return [result.label, where];
   }
 }

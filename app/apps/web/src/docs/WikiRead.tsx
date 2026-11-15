@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import type { NamedPrincipal, NativeWorkRow } from '@flux/contracts';
 import { AgentIdentity, Icon, Morph, StatusGlyph, TASK_STATE_WORD } from '../ui';
 import { getWorkReferenceRows, getWorkRelations } from '../work/read-api';
-import type { AgentOwners } from '../agents/owners';
+import { agentAuthorOwner, type AgentOwners } from '../agents/owners';
 import { shortDate } from './format';
 
 // The references a page holds, as the page shows them (F-026, #354; F-034): a task as its glyph, #number and word,
@@ -12,7 +12,7 @@ import { shortDate } from './format';
 
 /** A person's name, or an agent as the final design names it: its name, the Agent tag and "for <owner>". */
 function WhoName({ who, owners }: { who: NamedPrincipal; owners: AgentOwners }) {
-  return who.kind === 'agent' ? <AgentIdentity name={who.name} owner={owners.get(who.id)} icon={false} hue={who.colour} className="wiki-who__agent" /> : <>{who.name}</>;
+  return who.kind === 'agent' ? <AgentIdentity name={who.name} owner={agentAuthorOwner(who, owners)} icon={false} hue={who.colour} className="wiki-who__agent" /> : <>{who.name}</>;
 }
 
 export interface Heading { id: string; text: string; level: number }

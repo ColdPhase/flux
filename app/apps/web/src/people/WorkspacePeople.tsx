@@ -296,13 +296,24 @@ function CompanySpaces({ workspaceId }: { workspaceId: string }) {
       <h4 id="company-spaces">Spaces<span className="people__count"> · {spaces.length + sealed.length}</span></h4>
       <ul className="people__list sset-card" aria-label="Every space in the company">
         {spaces.map((space) => (
-          <li className="people__item" key={space.id}><div className="people__row">
-            {/* A space is its tile wherever it is named (F-040): the letter, emoji or picture of the sidebar's row. */}
-            <span className="side__pj" style={{ width: 20, height: 20 }} aria-hidden="true"><SpaceFace name={space.name} icon={space.icon} size={20} /></span>
-            <span className="people__who"><b>{space.member === false ? space.name : <Link to={`/projects/${space.id}`}>{space.name}</Link>}</b></span>
-            {space.member === false ? <Button variant="quiet" size="sm" className="access__invite" busy={busy === space.id} aria-label={`Add me to ${space.name}`} onClick={() => void join(space.id, space.name)}>Add me</Button> : null}
-            {/* A space is deleted in its own settings, the one way (Space settings › Delete space…, #1424); this list opens it and adds you to it. */}
-          </div></li>
+          <li className="people__item" key={space.id}>
+            {/* A space is its tile wherever it is named (F-040): the letter, emoji or picture of the sidebar's row. A space the reader is in is
+                a row that opens it, as Settings' rows open (L203–204: rows, never underlined links); one they are not in has Add me. A space
+                is deleted in its own settings, the one way (Space settings › Delete space…, #1424). */}
+            {space.member === false ? (
+              <div className="people__row">
+                <span className="side__pj" style={{ width: 20, height: 20 }} aria-hidden="true"><SpaceFace name={space.name} icon={space.icon} size={20} /></span>
+                <span className="people__who"><b>{space.name}</b></span>
+                <Button variant="quiet" size="sm" className="access__invite" busy={busy === space.id} aria-label={`Add me to ${space.name}`} onClick={() => void join(space.id, space.name)}>Add me</Button>
+              </div>
+            ) : (
+              <Link className="people__row people__row--link" to={`/projects/${space.id}`}>
+                <span className="side__pj" style={{ width: 20, height: 20 }} aria-hidden="true"><SpaceFace name={space.name} icon={space.icon} size={20} /></span>
+                <span className="people__who"><b>{space.name}</b></span>
+                <Icon name="chevron-right" size={14} className="people__go" />
+              </Link>
+            )}
+          </li>
         ))}
         {sealed.map((entry) => (
           <li className="people__item" key={entry.id} data-encrypted-space={entry.id}><div className="people__row">

@@ -29,7 +29,7 @@ NAME, EMAIL = "Ada Kowalska", f"ada.settings+{STAMP}@example.test"
 SECTIONS = ["Account", "Appearance", "Notifications", "AI", "Company", "Shortcuts"]
 # Guide §4, in order: every shortcut and its action.
 SHORTCUTS = [
-    ("C", "New (task by default)"), ("⌘K", "Search or run"), ("GI", "Go to Inbox"), ("JorK", "Move in a list"), ("E", "Done"),
+    ("C", "New (task by default)"), ("CtrlK", "Search"), ("GI", "Go to Inbox"), ("JorK", "Move in a list"), ("E", "Done"),
     ("S", "Not now"), ("A", "Accept"), ("Z", "Undo"), ("R", "Reply in thread"), ("T", "Create a task from a message"),
     ("1to4", "Task state"), ("[", "Collapse the sidebar"), ("Esc", "Close a panel or menu"),
 ]
@@ -254,8 +254,9 @@ class SettingsJourney(unittest.TestCase):
         expect(rows).to_have_count(len(SHORTCUTS))
         found = [(re.sub(r"\s+", "", row.locator("td").inner_text()), row.locator("th").inner_text()) for row in rows.all()]
         self.assertEqual(found, SHORTCUTS)
-        # D-4: J and K, E, S and A work in the Inbox, and the page says so.
-        expect(page.get_by_text("J, K, E, S and A work in the Inbox.")).to_be_visible()
+        # D-4: J and K, E, S, A and R work in the Inbox, and the page says so (release audit ffcb07c: R was left out). On Linux the search key is
+        # Ctrl K, as the sidebar's Search says, never ⌘.
+        expect(page.get_by_text("J, K, E, S, A and R work in the Inbox.")).to_be_visible()
         shot(page, "settings-desktop-1440-shortcuts")
 
     def test_05_account_and_earlier_addresses_keep_a_home(self) -> None:

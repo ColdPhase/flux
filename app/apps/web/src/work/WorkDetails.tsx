@@ -19,7 +19,7 @@ import { useDiscussDecision } from './discuss';
 import { acceptDecision, resolveWaiting, undoTaskCreation, updateWork } from './api';
 import { STATUS_LABEL, decisionState, isFinished, linked, shortDate, statusPhrase, taskNumber } from './format';
 import { docsLinking } from '../docs/AddToDoc';
-import { useAgentOwners } from '../agents/owners';
+import { agentAuthorOwner, useAgentOwners } from '../agents/owners';
 import { useAgentHue } from '../agents/hues';
 import { TaskPeople } from '../agents/TaskPeople';
 import { listProjectPeople, useProjectShell } from '../project/data';
@@ -372,9 +372,13 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
     ...agents.map((agent) => ({ ...agent, group: 'Your agents', icon: <Kreska size={16} hue={hue(agent.value.slice('agent:'.length))} /> })),
   ];
   const shownOwner = ownerDraft ?? ownerValue;
+  // The agent shown is the task's own owner (with its projected owner and colour) or one of the reader's agents being chosen: either way it
+  // is "Planner · Ada's agent" for every reader, as on the card, the List row and the discussion (L1414–1416, L277).
+  const shownAgent = shownOwner.startsWith('agent:')
+    ? (item.owner?.kind === 'agent' && `agent:${item.owner.id}` === shownOwner ? item.owner : { id: shownOwner.slice('agent:'.length) }) : null;
   const ownerView = shownOwner
-    ? (shownOwner.startsWith('agent:')
-      ? <AgentIdentity name={(agents.find((agent) => agent.value === shownOwner)?.label ?? item.owner?.name ?? '').replace(/ \(agent\)$/, '')} owner={owners.get(shownOwner.slice('agent:'.length))} icon={16} hue={hue(item.owner?.kind === 'agent' && `agent:${item.owner.id}` === shownOwner ? item.owner : shownOwner.slice('agent:'.length))} />
+    ? (shownAgent
+      ? <AgentIdentity name={(agents.find((agent) => agent.value === shownOwner)?.label ?? item.owner?.name ?? '').replace(/ \(agent\)$/, '')} owner={agentAuthorOwner(shownAgent, owners)} icon={16} hue={hue(shownAgent)} />
       : <><Avatar name={people.find((person) => person.value === shownOwner)?.name ?? item.owner?.name ?? ''} id={humanId(shownOwner)} size="sm" tone={shownOwner === `human:${me.user.id}` ? 'me' : 'neutral'} /><span>{people.find((person) => person.value === shownOwner)?.label ?? item.owner?.name}</span></>)
     : <><Icon name="person" size={16} /><span className="wd-muted">{NO_OWNER}</span></>;
   // What it can wait for (#868): a person, a decision still to make or another task, one thing. The last two are read only while the blocker is edited.
@@ -737,7 +741,7 @@ function DecisionPanel({ decision, context, detail, relations, reload, revision,
         </section>
       ) : null}
       <dl className="wd-rows wd-decision-rows">
-        <div className="wd-row"><dt>Proposed</dt><dd><span>{decision.proposedBy.kind === 'agent' ? <AgentIdentity name={decision.proposedBy.name} owner={owners.get(decision.proposedBy.id)} hue={decision.proposedBy.colour} /> : decision.proposedBy.name} · {shortDate(decision.createdAt)}</span></dd></div>
+        <div className="wd-row"><dt>Proposed</dt><dd><span>{decision.proposedBy.kind === 'agent' ? <AgentIdentity name={decision.proposedBy.name} owner={agentAuthorOwner(decision.proposedBy, owners)} hue={decision.proposedBy.colour} /> : decision.proposedBy.name} · {shortDate(decision.createdAt)}</span></dd></div>
         {decision.decidedBy ? <div className="wd-row"><dt>Decided</dt><dd><span>{decision.decidedBy.name} · {shortDate(decision.decidedAt!)}</span></dd></div> : null}
       </dl>
 

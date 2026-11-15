@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import { useLoaderData, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
-import { AI_PROVIDERS, assistantModelName, type BackgroundComputeConnection } from '@flux/contracts';
+import { AI_PROVIDERS, type BackgroundComputeConnection } from '@flux/contracts';
 import { keyUsageLine } from '../ai/connections';
 import { ApiError } from '../api/client';
 import { refreshAssistantModel } from '../assistant/model';
@@ -120,7 +120,8 @@ function AiConnectionsPage({ initial }: { initial: { connections: BackgroundComp
           <p className="background-settings__usage" data-testid="key-usage">{keyUsageLine(item)}</p>
           <dl className="background-settings__metadata">
             <div><dt>Provider</dt><dd>{AI_PROVIDERS[item.provider].label}</dd></div>
-            <div><dt>Model</dt><dd>{assistantModelName(item.model)}</dd></div>
+            {/* The model's one name, as Connect AI said it (the provider's "Claude Sonnet 5.7"; release audit ffcb07c: this page said "Sonnet 5"). */}
+            <div><dt>Model</dt><dd>{item.modelName}</dd></div>
             {item.baseUrl ? <div><dt>Endpoint</dt><dd>{item.baseUrl}</dd></div> : null}
             <div><dt>Price</dt><dd>{item.price
               ? <>{priceText(item.price)} · {priceSourceText(item.price, item.provider)}</>
@@ -133,7 +134,7 @@ function AiConnectionsPage({ initial }: { initial: { connections: BackgroundComp
               aria-describedby={`connection-${item.id}-budget`} />
             <Button type="submit" disabled={busy}>Save budget</Button>
           </form>
-          <p id={`connection-${item.id}-budget`} className="background-settings__help">Everything on this key counts against it: your agents. At the budget they pause until the next day, from midnight in {item.timeZone}. Flux prices each request before sending it; the provider’s invoice may still differ slightly.</p>
+          <p id={`connection-${item.id}-budget`} className="background-settings__help">Everything your agents do on this key counts against this budget. At the budget they pause until midnight in {item.timeZone}. The provider’s invoice may differ slightly from Flux’s count.</p>
           <div className="background-settings__actions">
             {removing === item.id ? (
               <div className="background-settings__confirm" role="group" aria-label={`Remove ${item.name}, key ending ${item.keyLastFour}`}

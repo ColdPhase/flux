@@ -35,7 +35,8 @@
 .jump__field:has(.jump__input:focus-visible) { outline: 2px solid var(--t1); outline-offset: -4px; border-radius: var(--r); }  /* the ring of README §2 (#1380) */
 .jump__input::placeholder { color: var(--t3); }
 .jump__input::-webkit-search-cancel-button { display: none; }
-.jump__close { display: inline-flex; align-items: center; min-height: var(--ctl); padding: 0 6px; border-radius: var(--r-sm); color: var(--t1); font-size: var(--fs-md); }
+.jump__close { display: inline-flex; align-items: center; gap: 6px; min-height: var(--ctl); padding: 0 6px; border-radius: var(--r-sm); color: var(--t1); font-size: var(--fs-md); }
+.jump__close kbd { font: 500 var(--fs-glyph) var(--mono); color: var(--t2); border: 1px solid var(--line2); border-radius: 5px; padding: 0 5px; }
 .jump__close:hover { background: var(--hov); }
 .jump__body { flex: 1; min-height: 0; overflow-y: auto; padding: 6px 8px 10px; overscroll-behavior: contain; }
 .jump__list { list-style: none; margin: 0; padding: 0; }

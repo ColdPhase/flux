@@ -197,6 +197,9 @@ describe('a key, its models and its agents (#1218)', () => {
       ['claude-haiku-4-5-20251001', 'Haiku', true, 'Input $1, output $5 per 1M tokens'],
     ]);
     assert.equal(group.options.find((option) => option.id === 'claude-sonnet-5-7')!.name, 'Claude Sonnet 5.7', 'the provider\'s own name where Flux has none');
+    // The key names its model as the picker does, the provider's name (release audit ffcb07c: Your API keys said "Sonnet 5.5").
+    assert.equal(key.modelName, 'Claude Sonnet 5.5');
+    assert.equal((expectStatus(await owner.browser.request('GET', path), 200) as BackgroundComputeConnection[]).find((item) => item.id === key.id)?.modelName, 'Claude Sonnet 5.5');
 
     await runs.enable(human(owner), { agentId, connection: key.id, model: 'claude-opus-5-5' });
     await assert.rejects(chooseModel(runs, human(owner), { connection: key.id, model: 'claude-sonnet-5-7' }),

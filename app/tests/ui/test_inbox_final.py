@@ -442,6 +442,9 @@ class InboxFinal(unittest.TestCase):
         first = page.locator(".nyq__list .nyc").first
         expect(first).to_have_attribute("aria-current", "true")
         expect(first.locator(".nyc__open"), "G I puts focus on the open item's row").to_be_focused()
+        # The ring goes round the row, not round the title's words (L931; release audit ffcb07c P3).
+        ring = first.evaluate("el => [getComputedStyle(el.querySelector('.nyc__card')).outlineStyle, getComputedStyle(el.querySelector('.nyc__open')).outlineStyle]")
+        self.assertEqual(ring, ["solid", "none"], "the focused row carries the ring, its title does not")
         # J moves the focus with the selection.
         page.keyboard.press("j")
         second = page.locator(".nyq__list .nyc").nth(1)
@@ -817,6 +820,13 @@ class InboxFinal(unittest.TestCase):
         page = self.page()
         page.goto("/inbox")
         question = self.card(page, ASKED)
+        # The open item shows Not now and Done with their keys at all times, not only under the pointer: S and E work (release audit ffcb07c P3).
+        pane = self.item(page, ASKED)
+        page.mouse.move(2, 2)
+        for name, key in (("Not now", "S"), ("Done", "E")):
+            button = pane.get_by_role("button", name=re.compile(rf"^{name}"))
+            expect(button.locator("kbd")).to_have_text(key)
+            self.assertEqual(button.evaluate("el => getComputedStyle(el.closest('.nyc__quiet')).opacity"), "1", f"{name} shows without a hover")
         self.item(page, ASKED).get_by_role("button", name="Done").click()
         expect(question).to_have_count(0)
         def asked():
