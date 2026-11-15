@@ -1,8 +1,12 @@
 import type { SearchKind, SearchResult } from '@flux/contracts';
 
-/** The kinds a group lists under one name (a decision stands with the tasks, a map with the thoughts, a saved source with the Wiki pages, #1419 item 20). */
+/**
+ * The kinds a group lists under one name (a map with the thoughts, a saved source with the Wiki pages, #1419 item 20). A decision is
+ * listed as a decision, under Decisions, as it is named everywhere else: under Tasks it opened over a Tasks view that could not find it.
+ */
 const GROUPS: { label: string; kinds: SearchKind[] }[] = [
-  { label: 'Tasks', kinds: ['work', 'decision'] },
+  { label: 'Tasks', kinds: ['work'] },
+  { label: 'Decisions', kinds: ['decision'] },
   { label: 'Messages', kinds: ['message', 'dm_message'] },
   { label: 'Wiki', kinds: ['doc', 'material'] },
   { label: 'Files', kinds: ['file'] },

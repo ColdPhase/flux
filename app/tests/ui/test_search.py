@@ -102,7 +102,7 @@ class SearchJourney(unittest.TestCase):
     def groups(self, dialog) -> list[str]:
         return dialog.locator(".jump__sh").all_inner_texts()
 
-    GROUP_OF = {"work": "Tasks", "decision": "Tasks", "message": "Messages", "dm_message": "Messages", "doc": "Wiki", "file": "Files", "material": "Wiki",
+    GROUP_OF = {"work": "Tasks", "decision": "Decisions", "message": "Messages", "dm_message": "Messages", "doc": "Wiki", "file": "Files", "material": "Wiki",
                 "thought": "Thoughts", "sketch": "Thoughts", "project": "Spaces", "person": "People"}
 
     def ranked_groups(self, page: Page, query: str) -> list[str]:
@@ -218,14 +218,17 @@ class SearchJourney(unittest.TestCase):
         expect(option).not_to_contain_text("Material")
         dialog.locator("[role=option].sr").first.click()
         expect(page).to_have_url(re.compile(rf"/materials/{self.ids['material']}/versions/1$"))
-        # A rule opens in Details on its project.
+        # A decision is listed as a decision (its own group) and opens as one, over its space's conversation (v0.2.1 personas round).
         dialog, field = self.jump(page, "use the infrared")
         expect(dialog.locator("[role=option].sr").first).to_contain_text("Decision · accepted")
+        expect(dialog.locator(".jump__sh").first).to_have_text("Decisions")
+        self.assertNotIn("Tasks", self.groups(dialog))
         field.press("ArrowDown")
         field.press("ArrowUp")
         self.assertEqual(dialog.get_by_role("option").first.get_attribute("aria-selected"), "true")
         dialog.locator("[role=option].sr").first.click()
-        expect(page).to_have_url(re.compile(rf"/projects/{self.ids['lamp']}/tasks$"))
+        expect(page).to_have_url(re.compile(rf"/projects/{self.ids['lamp']}(\?open=decision:{self.ids['rule']})?$"))
+        expect(page.get_by_role("navigation", name="Space views").get_by_role("tab", name="Conversation")).to_have_attribute("aria-current", "page")
         expect(page.get_by_role("complementary", name="Details").or_(page.get_by_role("dialog", name="Details"))).to_contain_text("Use the infrared sensor at night")
         # A thought opens its sketch with the thought selected; Esc closes Search without moving.
         dialog, field = self.jump(page, "walnut")
@@ -278,7 +281,7 @@ class SearchJourney(unittest.TestCase):
         self.assertEqual(options.nth(options.count() - 1).get_attribute("aria-selected"), "true")
         # The footer says what the tool finds in one sentence, with none of the old words, and names the keys.
         foot = dialog.locator(".jump__foot")
-        expect(foot).to_contain_text("Finds spaces, people, messages, tasks, Wiki pages, files and thoughts you can see.")
+        expect(foot).to_contain_text("Finds spaces, people, messages, tasks, decisions, Wiki pages, files and thoughts you can see.")
         hint = foot.locator(".jump__hint-line").inner_text().lower()
         for word in ("material", "version", "rule"):
             self.assertNotIn(word, hint)
@@ -328,7 +331,7 @@ class SearchJourney(unittest.TestCase):
         type(self).states["nia"] = page.context.storage_state()
         dialog, field = self.jump(page, "")
         expect(dialog).not_to_contain_text("hallway")
-        expect(dialog.locator(".jump__foot")).to_contain_text("Finds spaces, people, messages, tasks, Wiki pages, files and thoughts you can see.")
+        expect(dialog.locator(".jump__foot")).to_contain_text("Finds spaces, people, messages, tasks, decisions, Wiki pages, files and thoughts you can see.")
 
     def test_07a_there_is_no_search_page(self) -> None:
         page = self.page("nia")
@@ -386,7 +389,7 @@ class SearchJourney(unittest.TestCase):
         fresh.get_by_role("button", name="Search", exact=True).click()
         sheet = fresh.get_by_role("dialog", name="Search", exact=True)
         hint = sheet.locator(".jump__hint")
-        expect(hint).to_have_text("Finds spaces, people, messages, tasks, Wiki pages, files and thoughts you can see.")
+        expect(hint).to_have_text("Finds spaces, people, messages, tasks, decisions, Wiki pages, files and thoughts you can see.")
         self.no_horizontal_scroll(fresh)
         shot(fresh, "search-jump-phone-390-empty")
 
@@ -482,7 +485,7 @@ class SearchJourney(unittest.TestCase):
                     expect(details.get_by_role("navigation", name="Object relationship pages")).to_have_count(0)
                     status = details.get_by_role("button", name="Status", exact=True)
                     expect(status).to_contain_text("To do")
-                    expect(details.get_by_role("button", name="Owner", exact=True)).to_contain_text("Assign")
+                    expect(details.get_by_role("button", name="Owner", exact=True)).to_contain_text("No owner")
                     for name in ("Status", "Owner"):
                         field_box = details.get_by_role("button", name=name, exact=True).bounding_box()
                         label_box = details.locator(".wd-row dt", has_text=name).evaluate(
