@@ -104,13 +104,12 @@ function humanId(actorId: string) {
 
 /**
  * Who a person's message answers (#1424 decision 1): the authors of what others wrote at its level since its author last wrote there
- * (`since`) that named the author and asked them something, which reached the author's Inbox as a question. The answer addresses
- * them as a name does, so it is a mention for them (a question when it asks back): an answer to your question reaches you.
+ * (`since`) that reached the author's Inbox as a question to them, by the one detection that put it there (their name, or an answer to
+ * what they asked, which asks back). The answer addresses them as a name does, so it is a mention for them (a question when it asks
+ * back): an answer to your question reaches you.
  */
-export function askersAnswered(since: readonly { authorId: string; body: string }[] | undefined, authorName: string): Set<string> {
-  const askers = new Set<string>();
-  for (const earlier of since ?? []) if (isQuestion(earlier.body) && mentions(earlier.body, authorName)) askers.add(earlier.authorId);
-  return askers;
+export function askersAnswered(since: readonly { authorId: string; askedAuthor: boolean }[] | undefined): Set<string> {
+  return new Set((since ?? []).filter((earlier) => earlier.askedAuthor).map((earlier) => earlier.authorId));
 }
 
 async function actorName(facts: NotificationFacts, actorId: string): Promise<string> {
@@ -152,7 +151,7 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
       const follows = (userId: string) => chosen.get(userId) ?? involved.has(userId);
       const url = `/projects/${message.projectId}/conversations/${message.conversationId}#message-${message.id}`;
       // A person's message answers what was asked of them here (#1424 decision 1): the asker is told as if named.
-      const answered = authorId ? askersAnswered(message.since, names.get(authorId) ?? '') : new Set<string>();
+      const answered = authorId ? askersAnswered(message.since) : new Set<string>();
       const result: Candidate[] = [];
       for (const userId of people) {
         const name = names.get(userId) ?? '';
@@ -183,7 +182,7 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
       const marked = viaName(author, message.via, message.viaAgent);
       const place = message.kind === 'pair' ? '' : ` in ${message.title ? quote(message.title) : 'a group message'}`;
       // The message answers what was asked of its author at its level (#1424 decision 1): the asker is told as if named.
-      const answered = askersAnswered(message.since, author);
+      const answered = askersAnswered(message.since);
       return people.map((userId) => {
         // A message that names the person with "@" (or opens with their name) is a mention, or a question when it asks something, as in a
         // space (#1249): those reasons still arrive from a place the person muted, while every other message of the conversation does not.

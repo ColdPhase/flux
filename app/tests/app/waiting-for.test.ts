@@ -123,6 +123,36 @@ describe('a blocked task waits for a person', () => {
     expectStatus(await send(outsider, 'GET', `/api/v1/projects/${place.id}/task-notices`), 404);
   });
 
+  test('a blocked task moved straight to Done says it is done, not unblocked (personas-26)', async () => {
+    const task = await create({ title: 'Seal the gateway box', owner: human(ada) });
+    const blocked = await patch(task, { status: 'blocked', blocker: 'The new seals' });
+    await patch(blocked, { status: 'done' });
+    const ended = (await lines()).filter((line) => line.workId === task.id && line.kind === 'task.unblocked');
+    assert.deepEqual(ended.map((line) => line.reason), ['done']);
+    const other = await create({ title: 'Mount the second probe', owner: human(ada) });
+    await patch(await patch(other, { status: 'blocked', blocker: 'No bracket' }), { status: 'in_progress' });
+    assert.deepEqual((await lines()).filter((line) => line.workId === other.id && line.kind === 'task.unblocked').map((line) => line.reason ?? null), [null], 'back to work is unblocked');
+  });
+
+  test('a move taken back with Undo leaves no line: it changed nothing (personas-26)', async () => {
+    const task = await create({ title: 'Paint the bike rack', owner: human(ada) });
+    const doing = await patch(task, { status: 'in_progress' });
+    const blocked = await patch(doing, { status: 'blocked', blocker: 'Rain all week' });
+    // The toast's Undo is a restore of what was there.
+    const back = await patch(blocked, { status: 'in_progress', restore: true });
+    assert.deepEqual((await lines()).filter((line) => line.workId === task.id).map((line) => line.kind), ['task.created'], 'the block and its Undo are no lines');
+    // Unblocked, then the Undo puts the block back: the first block stays, the unblock goes.
+    const again = await patch(back, { status: 'blocked', blocker: 'Rain all week' });
+    const open = await patch(again, { status: 'in_progress' });
+    await patch(open, { status: 'blocked', blocker: 'Rain all week', restore: true });
+    assert.deepEqual((await lines()).filter((line) => line.workId === task.id).map((line) => line.kind).sort(), ['task.blocked', 'task.created']);
+    // An Undo by someone else is a move of its own: the line it would take back is not theirs.
+    const third = await create({ title: 'Oil the hinges', owner: human(ada) });
+    const stuck = await patch(third, { status: 'blocked', blocker: 'No oil' });
+    expectStatus(await kai.browser.request('PATCH', `/api/v1/work/${third.id}`, { body: { clientCommandId: randomUUID(), status: 'open', restore: true }, headers: { 'If-Match': `"${stuck.version}"` } }), 200);
+    assert.deepEqual((await lines()).filter((line) => line.workId === third.id).map((line) => line.kind).sort(), ['task.blocked', 'task.created', 'task.unblocked']);
+  });
+
   test('Undo of an unblock puts the blocker back without saying it again', async () => {
     const task = await create({ title: 'Flash the firmware', owner: human(ada) });
     const blocked = await patch(task, { status: 'blocked', blocker: 'Programmer cable is lost', waitingFor: human(kai) });

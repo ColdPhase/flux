@@ -112,11 +112,10 @@ export function NeedsYouCard({ item, selected = false, compact = false, list = f
   // On a phone Not now and Done wait behind the card (a swipe left); elsewhere they are quiet buttons.
   const touch = useMediaQuery(MEDIA.touch);
   const decision = item.kind === 'decision';
-  // A phone's one-line card has no room for the project: its title keeps the width, and the open card names the project (#763).
-  const phone = useMediaQuery(MEDIA.phone);
+  // Every row says the same on every device (personas-26: the phone dropped the space and the reason): "Kind · who · space", its title and
+  // one line of what it says, each cut short with "…" where the width ends.
   const row = compact || list;
-  const short = row && phone;
-  const project = short ? null : item.project?.name ?? null;
+  const project = item.project?.name ?? null;
   // One agent run's waiting changes (F-036 AG-7): "Assistant · Your agent", then "3 things wait for you · Approve all · Open".
   const run = item.assistantChanges ?? null;
   // A call's notice or an invitation to a call is a Call (F-041), with Join.
@@ -145,6 +144,8 @@ export function NeedsYouCard({ item, selected = false, compact = false, list = f
     <Button key={option} variant="outline" className="nyc__answer" onClick={() => handlers.answer?.(item, index)}>{option}</Button>
   )) : null;
   const notNow = () => handlers.snooze(item, 'tomorrow');
+  // What the item offers on every device: the buttons of the computer, which its keys follow too (#1424).
+  const keys = itemKeys(item, !!handlers.answer);
 
   // A compact card keeps one quiet action on its right; the selected card alone carries the inverted primary.
   const single = compact && !list ? (
@@ -225,7 +226,7 @@ export function NeedsYouCard({ item, selected = false, compact = false, list = f
           </p>
         )}
         <Title className="nyc__title">{titleOf}</Title>
-        {list && item.detail && !short ? <p className="nyc__snippet">{item.detail}</p> : null}
+        {row && item.detail ? <p className="nyc__snippet">{item.detail}</p> : null}
         {full && run ? <ul className="nyc__waits" aria-label="What waits for you">{run.changes.map((change) => (
           <li key={change.id}>{change.waitReason === 'removal' ? <span>{`Delete ${change.objectTitle ? `“${change.objectTitle}”` : `the ${change.phrase.split(' ').pop()}`}`}</span>
             : (change.tells ?? []).length && change.after ? <span className="nyc__waits-words"><ClampedWords text={`${change.verb} ${change.after}`} /></span>
@@ -270,11 +271,12 @@ export function NeedsYouCard({ item, selected = false, compact = false, list = f
       <div className="nyc__scroll">
         {/* A click on a compact card's free space selects it, and it opens up; its title and button keep their own actions. */}
         {body}
-        {/* A swipe left on a phone: the card slides over this tray. Reachable by keyboard and touch alike. */}
-        {touch ? (
+        {/* A swipe left on a phone: the card slides over this tray. Reachable by keyboard and touch alike. It offers what the computer offers
+            (`itemKeys`, one rule on every device): a decision is put off with Not now, never marked Done while it waits (personas-26 P2 #4). */}
+        {touch && (keys.notNow || keys.done) ? (
           <div className="nyc__tray">
-            {!decision ? <NotNowButton className="nyc__tray-b" onClick={notNow} /> : null}
-            <Button variant="primary" className="nyc__tray-b nyc__tray-done" aria-keyshortcuts="E" onClick={() => handlers.done(item)}><Icon name="check" size={16} />Done</Button>
+            {keys.notNow ? <NotNowButton className="nyc__tray-b" onClick={notNow} /> : null}
+            {keys.done ? <Button variant="primary" className="nyc__tray-b nyc__tray-done" aria-keyshortcuts="E" onClick={() => handlers.done(item)}><Icon name="check" size={16} />Done</Button> : null}
           </div>
         ) : null}
       </div>

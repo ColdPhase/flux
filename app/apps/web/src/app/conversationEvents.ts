@@ -55,13 +55,14 @@ export function sourcePhrase(source: NoticeSource, actor?: { name: string; mine:
 
 /** Plain words for the folded line: "Ada created 2 tasks, Claude Code created 1 task from the map". */
 export function foldSummary(notices: TaskCreationNotice[], authorOf: (messageId: string) => string | null, nameOf: (notice: TaskCreationNotice) => string): string {
-  const groups = new Map<string, { name: string; count: number; where: string }>();
+  const groups = new Map<string, { name: string; count: number; where: string; tasks?: Set<string> }>();
   for (const notice of notices) {
-    // A blocked or unblocked line (#550) is an update of a task, not a new one.
+    // A blocked or unblocked line (#550) is an update of a task, not a new one; two updates of one task are one task updated (personas-26).
     if (notice.kind === 'task.blocked' || notice.kind === 'task.unblocked' || notice.kind === 'task.resumed') {
       const key = `${notice.createdBy.kind}:${notice.createdBy.id}:updated`;
-      const group = groups.get(key) ?? { name: nameOf(notice), count: 0, where: '\0updated' };
-      group.count += 1;
+      const group = groups.get(key) ?? { name: nameOf(notice), count: 0, where: '\0updated', tasks: new Set<string>() };
+      group.tasks!.add(notice.workId);
+      group.count = group.tasks!.size;
       groups.set(key, group);
       continue;
     }

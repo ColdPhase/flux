@@ -277,6 +277,11 @@ class UnifiedPanel(unittest.TestCase):
         page.get_by_role("dialog", name="Due date").get_by_role("button", name="Clear", exact=True).click()
         expect(panel.get_by_role("button", name="Due, add a date")).to_be_visible()
         self.assertIsNone(self.stored(task)["dueOn"])
+        # Taking it yourself is "took it", never "Ada assigned it to Ada Kowalska" (personas-26).
+        owner.click()
+        page.get_by_role("menu", name="Owner").get_by_role("menuitemradio", name=re.compile(r"^Ada Kowalska")).click()
+        expect(activity.locator("li").first).to_contain_text("Ada took it from Jonas Berg")
+        expect(activity).not_to_contain_text("to Ada Kowalska")
 
     def test_07_the_blocker_is_a_card_edited_in_place_and_resolve_undoes(self):
         task = self.new_task("Label the cables", blocker="Waiting for the printer")

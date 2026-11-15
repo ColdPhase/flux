@@ -329,4 +329,33 @@ describe('the Inbox needs-you queue', () => {
     assert.deepEqual([inDm.kind, inDm.answer, inDm.title, inDm.project, inDm.from?.id], ['mention', true, 'Yes, it is in the blue folder.', null, owner.id]);
     for (const key of [inDm.key]) json(await resolve(partner, key, { action: 'done' }), 200);
   });
+
+  test('an answer reaches whoever asked it, by the detection that put the question in the answerer\'s Inbox, with no name in it (#1424 decision 1, personas-26 P2 #1)', async () => {
+    const inbox = async (someone: Person) => json<InboxResponse>(await someone.browser.request('GET', '/api/v1/inbox'), 200).items;
+    // The owner asks the partner by name; the partner answers and asks back without naming anyone.
+    const thread = json<Conversation>(await post(owner, `/api/v1/projects/${lamp.id}/conversations`,
+      { body: 'ny-partner, can you start at 6:00 on Monday?', clientMessageId: randomUUID() }), 201);
+    await waitFor(async () => (await queue(partner)).items.find((item) => item.url.includes(thread.id)), 'the question reaches the partner');
+    const ask = json<SentConversationMessage>(await post(partner, `/api/v1/conversations/${thread.id}/messages`,
+      { body: 'Yes, I can be there at 6. Do I need a key?', clientMessageId: randomUUID() }), 201);
+    const asked = await waitFor(async () => (await queue(owner)).items.find((item) => item.url.endsWith(`#message-${ask.id}`)), 'the answer that asks back reaches the owner\'s Inbox');
+    assert.equal(asked.reason, 'question', 'it reached the owner as a question to them');
+    // The owner answers it (Inbox › Reply is a reply in the thread): the partner asked, so the answer reaches the partner's Inbox.
+    const said = json<SentConversationMessage>(await post(owner, `/api/v1/conversations/${thread.id}/messages`,
+      { body: 'No, the back door code is 4512.', clientMessageId: randomUUID() }), 201);
+    const item = await waitFor(async () => (await queue(partner)).items.find((entry) => entry.url.endsWith(`#message-${said.id}`)), 'the answer reaches the asker\'s Inbox');
+    assert.deepEqual([item.kind, item.answer, item.title, item.from?.id], ['mention', true, 'No, the back door code is 4512.', owner.id]);
+    const note = (await inbox(partner)).find((entry) => entry.id === item.key.slice(5));
+    assert.deepEqual([note?.reason, note?.title], ['mention', 'Needs Owner answered you in Garden sensors']);
+
+    // The same in a direct message between two people.
+    const created = await post(owner, `/api/v1/workspaces/${ws.id}/dms`, { participantIds: [second.id] });
+    const dm = (created.json as { id: string }).id;
+    json(await post(owner, `/api/v1/dms/${dm}/messages`, { body: 'ny-second, can you close on Friday?', clientMessageId: randomUUID() }), 201);
+    const back = json<SentDmMessage>(await post(second, `/api/v1/dms/${dm}/messages`, { body: 'Sure. Who has the alarm code?', clientMessageId: randomUUID() }), 201);
+    await waitFor(async () => (await queue(owner)).items.find((entry) => entry.url === `/dm/${dm}#message-${back.id}` && entry.reason === 'question'), 'the DM answer that asks back reaches the owner as a question');
+    const reply = json<SentDmMessage>(await post(owner, `/api/v1/dms/${dm}/messages`, { body: 'I do, I will text it to you.', clientMessageId: randomUUID() }), 201);
+    const inDm = await waitFor(async () => (await queue(second)).items.find((entry) => entry.url === `/dm/${dm}#message-${reply.id}`), 'the DM answer reaches the asker\'s Inbox');
+    assert.deepEqual([inDm.kind, inDm.answer], ['mention', true]);
+  });
 });

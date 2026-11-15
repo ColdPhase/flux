@@ -86,6 +86,8 @@ function changeText(entry: TaskActivityEntry): string {
     // The agent that held it was deleted: say so, rather than a reassignment by the setting (#1003).
     if (entry.automation === 'agent_deleted' && to) return `deleted the agent${from ? ` ${from.name}` : ''}, so it came back to ${to.name}`;
     if (!to) return `removed the owner${from ? ` (${from.name})` : ''}${rule}`;
+    // A person who made themselves the owner took it: "Ana took it", never "Ana assigned it to Ana Souza" (personas-26).
+    if (to.kind === entry.actor.kind && to.id === entry.actor.id) return `took it${from ? ` from ${from.name}` : ''}${rule}`;
     return `${to.kind === 'agent' ? 'handed it off to' : from ? 'reassigned it to' : 'assigned it to'} ${to.name}${rule}`;
   }
   if (entry.kind === 'due' && entry.due) {

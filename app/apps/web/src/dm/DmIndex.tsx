@@ -11,6 +11,7 @@ import { usePlaceMutes } from '../notifications/mutes';
 import { Avatar, Button, EmptyState, Icon, Kreska } from '../ui';
 import { audienceOf } from './names';
 import './dm.css';
+import { lastSaid } from '../app/timeFormat';
 
 /** The rows of conversations with people; Home's Projects shows them on the phone (#341). */
 export function DmRows() {
@@ -31,7 +32,7 @@ export function DmRows() {
             <Avatar name={dm.kind === 'group' ? dm.title : dm.people[0] ?? dm.title} id={dm.kind === 'pair' ? dm.peopleIds[0] : null} size="lg" />
             <span className="dm-index__text"><b>{dm.title}</b><span>{dm.preview ?? 'No messages yet'}</span></span>
             {quiet && fresh ? <span className="dm-index__quiet" aria-hidden="true">{fresh}</span> : null}
-            {dm.lastAt ? <time dateTime={dm.lastAt}>{new Date(dm.lastAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</time> : null}
+            {dm.lastAt ? <time dateTime={dm.lastAt}>{lastSaid(dm.lastAt)}</time> : null}
           </Link>
         </li>
         );

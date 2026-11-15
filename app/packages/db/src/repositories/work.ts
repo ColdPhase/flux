@@ -377,7 +377,19 @@ export function workRows(db: DbExecutor) {
         projectId: work.projectId, workId: work.id, kind: 'task.created', createdByKind: work.createdBy.kind,
         createdById: work.createdBy.id, sources, createdAt: work.createdAt });
     },
-    async insertTaskUpdate(work: ReturnType<typeof toWorkRecord>, update: { kind: 'task.blocked' | 'task.unblocked' | 'task.resumed'; by: Actor; waitingFor: Actor | null; reason: string | null }) {
+    async insertTaskUpdate(work: ReturnType<typeof toWorkRecord>, update: { kind: 'task.blocked' | 'task.unblocked' | 'task.resumed'; by: Actor; waitingFor: Actor | null; reason: string | null; undoes?: boolean }) {
+      // An Undo takes back the task's latest line when it is the move it undoes, by the same hand: the move changed nothing, so the
+      // conversation does not keep it (personas-26: the fold showed moves that were undone).
+      if (update.undoes && update.kind !== 'task.resumed') {
+        const u = schema.projectTaskUpdates;
+        const [latest] = await db.select({ id: u.id, kind: u.kind, byKind: u.createdByKind, byId: u.createdById }).from(u)
+          .where(eq(u.workId, work.id)).orderBy(desc(u.createdAt), desc(u.id)).limit(1);
+        const opposite = update.kind === 'task.blocked' ? 'task.unblocked' : 'task.blocked';
+        if (latest && latest.kind === opposite && latest.byKind === update.by.kind && latest.byId === update.by.id) {
+          await db.delete(u).where(eq(u.id, latest.id));
+          return;
+        }
+      }
       const id = randomUUID();
       await db.insert(schema.projectTaskUpdates).values({ id, workspaceId: work.workspaceId, projectId: work.projectId,
         workId: work.id, kind: update.kind, createdByKind: update.by.kind, createdById: update.by.id,
@@ -416,7 +428,7 @@ export function workRows(db: DbExecutor) {
         workspaceId: row.workspace_id, projectId: row.project_id, workId: row.work_id, workTitle: row.work_title, workNumber: row.work_number, kind: row.kind,
         createdBy: { kind: row.created_by_kind, id: row.created_by_id }, sources: row.sources,
         ...(row.kind === 'task.blocked' ? { waitingFor: row.waiting_for_user_id ? { kind: 'human' as const, id: row.waiting_for_user_id } : null, reason: row.reason } : {}),
-        ...(row.kind === 'task.resumed' ? { reason: row.reason } : {}),
+        ...(row.kind === 'task.resumed' || row.kind === 'task.unblocked' ? { reason: row.reason } : {}),
         // An undone creation (#238), as the task's own row says it.
         reverted: row.creation_reverted_at && row.creation_reverted_by_kind && row.creation_reverted_by_id && row.creation_reversion_notice_id
           ? { at: new Date(row.creation_reverted_at), by: { kind: row.creation_reverted_by_kind, id: row.creation_reverted_by_id }, noticeId: row.creation_reversion_notice_id } : null,

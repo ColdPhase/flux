@@ -49,10 +49,10 @@ export interface ProjectMessageFacts {
   asked?: { userId: string; question: string } | null;
   /**
    * What other people wrote at this message's level after its author last wrote there (a space's conversation; a direct message's roots
-   * or one of its threads), newest first and at most 20: a question among them that named and asked the author is answered by this
-   * message, so its asker is told (#1424 decision 1). Absent when the store does not read it.
+   * or one of its threads), newest first and at most 20, each with whether it reached the author's Inbox as a question to them
+   * (`askedAuthor`): such a question is answered by this message, so its asker is told (#1424 decision 1). Absent when the store does not read it.
    */
-  since?: { authorId: string; body: string }[];
+  since?: { authorId: string; askedAuthor: boolean }[];
   /**
    * For a line a server agent wrote (an assistant run's blocker or result, a task's report): its owner, the only person it may notify
    * (#1089, F-036 AG-4: an agent sends no message to another person by itself). The line still shows in the discussion. Absent for a
@@ -76,10 +76,10 @@ export interface DmMessageFacts {
   participantIds: string[];
   /**
    * What other people wrote at this message's level after its author last wrote there (a space's conversation; a direct message's roots
-   * or one of its threads), newest first and at most 20: a question among them that named and asked the author is answered by this
-   * message, so its asker is told (#1424 decision 1). Absent when the store does not read it.
+   * or one of its threads), newest first and at most 20, each with whether it reached the author's Inbox as a question to them
+   * (`askedAuthor`): such a question is answered by this message, so its asker is told (#1424 decision 1). Absent when the store does not read it.
    */
-  since?: { authorId: string; body: string }[];
+  since?: { authorId: string; askedAuthor: boolean }[];
 }
 
 export interface WorkFacts { id: string; projectId: string; projectName: string; title: string; number: number; ownerUserId: string | null; waitingForUserId: string | null; status: string; blocker: string | null; dropped: boolean }

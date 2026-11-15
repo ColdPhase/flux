@@ -225,9 +225,12 @@ export function dmRows(db: DbExecutor) {
         .where(and(eq(obs.dmId, dmId), eq(obs.viewerId, viewerId), level));
       // "Mark all as read" read the DM through its mark (#1424 decision 10).
       const [mark] = await db.select({ through: reads.readThrough }).from(reads).where(and(eq(reads.dmId, dmId), eq(reads.userId, viewerId)));
+      // What you wrote you have read, and what came before it too: the point `unreadIn` counts from (personas-26: the New line above your own
+      // reply). A message is never new to its author.
+      const [own] = await db.select({ top: sql<number | null>`max(${m.sequence})` }).from(m).where(and(eq(m.dmId, dmId), level, eq(m.authorId, viewerId)));
       // Nothing observed at this level: none of it was read, so it all is new.
       const [next] = await db.select({ id: m.id }).from(m)
-        .where(and(eq(m.dmId, dmId), level, gt(m.sequence, Math.max(seen?.top ?? 0, mark?.through ?? 0)), sql`${m.authorId} <> ${viewerId}`, eq(m.kind, 'text'), isNull(m.removedAt)))
+        .where(and(eq(m.dmId, dmId), level, gt(m.sequence, Math.max(seen?.top ?? 0, own?.top ?? 0, mark?.through ?? 0)), sql`${m.authorId} <> ${viewerId}`, eq(m.kind, 'text'), isNull(m.removedAt)))
         .orderBy(asc(m.sequence)).limit(1);
       return next?.id ?? null;
     },

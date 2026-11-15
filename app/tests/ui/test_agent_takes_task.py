@@ -187,9 +187,11 @@ class AgentTakesTask(unittest.TestCase):
         expect(panel.locator(".wd-act__item--message").filter(has_text="Got it, I'm on it.")).to_be_visible()
         expect(panel.locator(".wd-act__item--message").filter(has_text="the wiring is the problem")).to_be_visible()
         expect(panel.get_by_text("Planner").first).to_be_visible()
-        # What Ada sees is the same line: it is the task's, not Kai's private view.
+        # Ada reads it once, in the task's history: no state line above it says "Marked done" again (personas-26).
         ada_view = self.open_task("ada", task["id"])
-        expect(ada_view.get_by_role("complementary", name="Details").locator("[data-agent-line='done']")).to_contain_text("Marked done")
+        ada_panel = ada_view.get_by_role("complementary", name="Details")
+        expect(ada_panel.get_by_text(re.compile(r"marked it done")).first).to_be_visible()
+        expect(ada_panel.locator("[data-agent-line]")).to_have_count(0)
         self.assertEqual(self.api(ada, "GET", f"/api/v1/work/{task['id']}", status=200)["status"], "done")
 
     def test_04a_the_report_waits_in_the_agents_chat_with_an_unread_dot_and_never_in_the_inbox(self) -> None:

@@ -288,10 +288,12 @@ class FinalCheck763(unittest.TestCase):
                 row = page.locator(".nyc--compact").filter(has=page.locator(".nyc__rowactions")).first
                 expect(row).to_be_visible()
                 title = row.locator(".nyc__open")
-                # Two lines before an ellipsis, and the project stays out of the one-line meta.
+                # Two lines before an ellipsis. The one-line meta says "Kind · who · space" as on the computer (personas-26: the phone dropped
+                # the space), cut short with "…" where the width ends, never pushing the row wider.
                 self.assertNotEqual(title.evaluate("el => getComputedStyle(el).whiteSpace"), "nowrap")
                 self.assertLessEqual(title.evaluate("el => el.scrollHeight - el.clientHeight"), 1, "the title is whole in two lines")
-                self.assertNotIn("Community garden sensors", row.locator(".nyc__eyebrow").inner_text())
+                self.assertIn("Community garden sensors", row.locator(".nyc__eyebrow").inner_text())
+                self.assertLessEqual(page.evaluate("document.scrollingElement.scrollWidth"), viewport["width"], "no sideways scroll")
                 action = row.locator(".nyc__rowactions").bounding_box()
                 self.assertGreaterEqual(action["x"], title.bounding_box()["x"] + title.bounding_box()["width"] - 1, "the action has its own column")
 

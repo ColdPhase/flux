@@ -10,6 +10,8 @@ const NONE: FirstSteps = { steps: [], joined: [], offerPush: false, everyoneSpac
 export const NEW_PERSON_DAYS = 30;
 /** The card's rows at most. */
 export const FIRST_STEP_ROWS = 3;
+/** The people who joined, read at most: those past the card's rows are named on its last row ("Say hello · Ola joined too"), none is dropped. */
+export const FIRST_STEP_JOINED = 20;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
@@ -33,7 +35,7 @@ export async function readFirstSteps(userId: string, rows: FirstStepRows, now = 
     const [invited, connected] = await Promise.all([rows.invitedAnyone(company.id), rows.aiConnected(userId)]);
     if (company.name === COMPANY_NAME) steps.push('name_company');
     if (!invited) steps.push('invite_people');
-    else joined = await rows.joinedPeople(userId, company.id, FIRST_STEP_ROWS);
+    else joined = await rows.joinedPeople(userId, company.id, FIRST_STEP_JOINED);
     if (!connected) steps.push('connect_ai');
   } else {
     const [wrote, photo] = await Promise.all([rows.wroteMessage(userId, company.id), rows.hasPhoto(userId)]);

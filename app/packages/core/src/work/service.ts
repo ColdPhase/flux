@@ -642,8 +642,10 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         if ((current.status === 'blocked') !== (record.status === 'blocked')) {
           // A task that waits for a decision or a task says so in the line, as the card does: "waiting for #7".
           const waitedOn = record.status === 'blocked' && record.waitingOn ? (await ports.work.waitingTargets([record.waitingOn])).get(`${record.waitingOn.kind}:${record.waitingOn.id}`) : undefined;
+          // A blocked task moved straight to Done is done, not "unblocked" (personas-26): the line says how it ended.
           await ports.work.insertTaskUpdate(record, { kind: record.status === 'blocked' ? 'task.blocked' : 'task.unblocked', by,
-            waitingFor: record.waitingFor, reason: record.status === 'blocked' ? (waitedOn ? `waiting for ${waitingPhrase(waitedOn)}` : record.blocker) : null });
+            waitingFor: record.waitingFor, reason: record.status === 'blocked' ? (waitedOn ? `waiting for ${waitingPhrase(waitedOn)}` : record.blocker)
+              : record.status === 'done' ? (record.dropped ? 'dropped' : 'done') : null, ...(command.restore ? { undoes: true } : {}) });
         }
         const messageIds = contribution ? await ports.contributions.append(contribution) : [];
         if (clientCommandId) await ports.work.recordNativeCommand({ workspaceId, projectId }, by,

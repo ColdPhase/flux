@@ -243,7 +243,12 @@ function firstStepRows(read: FirstStepsRead): StepRow[] {
   const steps = read.steps.map((step) => STEP_ROWS[step](read));
   const room = Math.max(0, 3 - steps.length);
   const names = (person: FirstStepJoined) => read.joined.filter((other) => firstName(other.name) === firstName(person.name)).length > 1 ? person.name : firstName(person.name);
-  const joined = read.joined.slice(0, room).map((person): StepRow => ({ key: `joined:${person.userId}`, icon: 'chat', title: `${names(person)} joined`, meta: 'Say hello' }));
+  // Everyone who joined is told: the people past the card's rows are named on the last one ("Say hello · Ola joined too"), and each gets
+  // a row of their own once the one above is greeted (personas-26: the third person who joined was dropped).
+  const fits = read.joined.slice(0, room);
+  const rest = read.joined.slice(room).map(names);
+  const joined = fits.map((person, at): StepRow => ({ key: `joined:${person.userId}`, icon: 'chat', title: `${names(person)} joined`,
+    meta: at === fits.length - 1 && rest.length ? `Say hello · ${nameList(rest)} joined too` : 'Say hello' }));
   const lead = steps.findIndex((row) => row.key !== 'name_company');
   return [...steps.slice(0, lead < 0 ? steps.length : lead), ...joined, ...(lead < 0 ? [] : steps.slice(lead))];
 }
@@ -330,6 +335,8 @@ export function Home() {
   const now = useMemo(() => new Date(), []);
   const firstName = me.user.name.trim().split(/\s+/)[0] || me.user.name;
   const rows = waitingRows(queue.items ?? []);
+  // The items the count holds that no row stands for (Home lists the top three rows).
+  const beyond = (queue.items?.length ?? 0) - rows.reduce((sum, row) => sum + ('decisions' in row ? row.decisions.length : 1), 0);
   const workspaceIds = useMemo(() => workspaces.map((space) => space.id), [workspaces]);
   const reads = useContinue(me.user.id, workspaceIds);
   // A person with no space yet gets one first step, not an empty queue and links to empty pages (#763 FT-1, S21).
@@ -375,8 +382,9 @@ export function Home() {
         <section className="home__need" aria-labelledby="home-need">
           <div className="home__sech">
             <h3 id="home-need">Waiting for you{queue.count ? <span className="home__n">{queue.count}</span> : null}</h3>
-            {/* The same small text button as Hide in the same slot of First steps. */}
-            <Link className="ui-btn ui-btn--quiet ui-btn--sm" to="/inbox" aria-keyshortcuts="G I">Open Inbox</Link>
+            {/* The same small text button as Hide in the same slot of First steps. What the count holds beyond the rows is named on it, so
+                "Waiting for you 4" over three rows adds up (personas-26). */}
+            <Link className="ui-btn ui-btn--quiet ui-btn--sm" to="/inbox" aria-keyshortcuts="G I">Open Inbox{beyond > 0 ? ` · ${beyond} more` : ''}</Link>
           </div>
           {queue.items === null ? <div className="home__card home__quiet" aria-busy="true">Looking at what waits for you…</div>
             : rows.length ? (

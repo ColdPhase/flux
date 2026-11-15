@@ -347,7 +347,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
           ...(before.waitingOn ? { waitingOn: { kind: before.waitingOn.kind, id: before.waitingOn.id } } : {}), restore: true as const }
         : before.status === 'done' && (before.dropped || before.cameOfIt)
           ? { status: before.status, ...(before.dropped ? { dropped: true } : {}), ...(before.cameOfIt ? { cameOfIt: before.cameOfIt } : {}), restore: true as const }
-          : { status: before.status };
+          : { status: before.status, restore: true as const };
       // Closing says it in the words of the wink (#N done); the other states keep their status label, in the board's words.
       // Z takes it back from the panel too, as on the board (#763 C2).
       toast({ message: stateWords(item, next), mascot, action: { label: 'Undo', key: 'Z', onClick: () => { void change(restore, latest.current); } } });

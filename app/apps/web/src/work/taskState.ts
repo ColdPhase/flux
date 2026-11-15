@@ -39,14 +39,13 @@ export const stateWords = (item: Pick<StateTarget, 'number'>, status: WorkStatus
 
 /** What Undo sends to put a task back as it was before a state change: a put-back blocker and person are not said again. */
 export function restoreOf(item: Pick<StateTarget, 'status' | 'blocker'> & Partial<Pick<StateTarget, 'waitingFor' | 'waitingOn' | 'dropped' | 'cameOfIt'>>) {
-  const blockedBack = item.status === 'blocked' && (item.blocker || item.waitingFor || item.waitingOn);
+  // Every Undo is a restore: what it puts back is not said again, and the conversation line of the move it undoes goes (personas-26).
   // Leaving Done clears "dropped" and its line, so they go back with the state (#868).
-  const doneBack = item.status === 'done' && (item.dropped || item.cameOfIt);
   return { status: item.status, ...(item.status === 'blocked' && item.blocker ? { blocker: item.blocker } : {}),
     ...(item.status === 'blocked' && item.waitingFor ? { waitingFor: { kind: 'human' as const, id: item.waitingFor.id } } : {}),
     ...(item.status === 'blocked' && item.waitingOn ? { waitingOn: { kind: item.waitingOn.kind, id: item.waitingOn.id } } : {}),
     ...(item.status === 'done' && item.dropped ? { dropped: true } : {}), ...(item.status === 'done' && item.cameOfIt ? { cameOfIt: item.cameOfIt } : {}),
-    ...(blockedBack || doneBack ? { restore: true as const } : {}) };
+    restore: true as const };
 }
 
 /**

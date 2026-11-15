@@ -757,8 +757,10 @@ function NoticeItem({ notice, meId, owners, row, authorOf, hasMessage, onOpenTas
   if (notice.kind === 'task.blocked' || notice.kind === 'task.unblocked' || notice.kind === 'task.resumed') {
     const why = notice.kind === 'task.blocked' ? (notice.waitingFor ? `waiting for ${notice.waitingFor.name}` : notice.reason?.trim() ?? '') : '';
     // What it waited for is resolved (#868): "#4 can continue: the decision was accepted".
+    // A blocked task moved straight to Done says it is done (or dropped), not "unblocked" (personas-26).
+    const ended = notice.kind === 'task.unblocked' && (notice.reason === 'done' || notice.reason === 'dropped') ? notice.reason : null;
     const words = notice.kind === 'task.resumed' ? `#${notice.workNumber} can continue${notice.reason ? `: ${notice.reason}` : ''}`
-      : `#${notice.workNumber} ${notice.kind === 'task.blocked' ? 'blocked' : 'unblocked'}${why ? ` · ${why.length > 80 ? `${why.slice(0, 79).trimEnd()}…` : why}` : ''}`;
+      : `#${notice.workNumber} ${notice.kind === 'task.blocked' ? 'blocked' : ended ?? 'unblocked'}${why ? ` · ${why.length > 80 ? `${why.slice(0, 79).trimEnd()}…` : why}` : ''}`;
     return (
       <li className="convo-notice convo-notice--update" id={`notice-${notice.id}`} data-work-id={notice.workId}>
         <AuthorFace kind={creator.kind} id={creator.id} name={name} mine={mine} hue={creator.colour} />

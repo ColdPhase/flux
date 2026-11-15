@@ -161,6 +161,30 @@ class AnswersAndUnreadMessages(unittest.TestCase):
         home = self.open("piotr", "/")
         expect(home.get_by_text(re.compile(r"Reply · Marta Lis · Corner shop")).first).to_be_visible()
 
+    def test_3_an_answer_reaches_whoever_asked_even_when_the_question_names_nobody(self):
+        # personas-26 P2 #1: Piotr asks Marta by name; her answer asks back without a name ("Do I need a key?") and reached Piotr's Inbox as
+        # a question. His answer, from the Inbox with R, reached her only as a plain reply, which the Inbox does not show.
+        piotr, marta = self.people["piotr"], self.people["marta"]
+        asked = api(piotr, "POST", f"/api/v1/projects/{self.space}/conversations", {"body": "Marta, can you start at 6:00 on Monday?", "clientMessageId": str(uuid.uuid4())}, 201)
+        self.until(lambda: any(asked["id"] in item["url"] for item in api(marta, "GET", "/api/v1/needs-you")["items"]), True)
+        back = api(marta, "POST", f"/api/v1/conversations/{asked['id']}/messages", {"body": "Yes, I can be there at 6. Do I need a key?", "clientMessageId": str(uuid.uuid4())}, 201)
+        self.until(lambda: any(item["url"].endswith(f"#message-{back['id']}") for item in api(piotr, "GET", "/api/v1/needs-you")["items"]), True)
+
+        page = self.open("piotr", "/inbox")
+        row = page.locator(".nyc", has_text="Do I need a key?")
+        expect(row).to_have_count(1)
+        row.locator(".nyc__open").click()
+        expect(row).to_have_attribute("aria-current", "true")
+        page.keyboard.press("r")
+        answer = "No, the back door code is 4512."
+        page.keyboard.type(answer, delay=20)
+        page.keyboard.press("Enter")
+        self.until(lambda: any(item["title"] == answer for item in api(marta, "GET", "/api/v1/needs-you")["items"]), True)
+
+        phone = self.open("marta", "/inbox", phone=True)
+        expect(phone.get_by_label(re.compile(rf"^Reply from Piotr Nowak in Corner shop: {re.escape(answer)}")).first).to_be_visible()
+        shot(phone, f"1424-answer-without-name-phone-{UI_BROWSER}")
+
 
 if __name__ == "__main__":
     unittest.main()

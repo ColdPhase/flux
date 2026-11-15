@@ -278,7 +278,10 @@ export interface TaskCreationNotice {
   kind: 'task.created' | 'task.creation_reverted' | 'task.blocked' | 'task.unblocked' | 'task.resumed';
   /** For a blocked line (#550): who the task waits for and the reason, as the line said them. */
   waitingFor?: NamedPrincipal | null;
-  /** For a blocked line, the reason; for a resumed line (#868), what was resolved: "the decision was accepted". */
+  /**
+   * For a blocked line, the reason; for a resumed line (#868), what was resolved: "the decision was accepted"; for an unblocked line, how it
+   * ended when it went straight to Done: `done` or `dropped` ("#6 done", never "#6 unblocked"), and null otherwise.
+   */
   reason?: string | null;
   /** Current lifecycle; original notice identity and actor remain unchanged. */
   lifecycle?: TaskLifecycle;

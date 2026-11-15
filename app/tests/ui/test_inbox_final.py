@@ -902,6 +902,15 @@ class InboxFinal(unittest.TestCase):
         for name in (re.compile("^Accept"), "Not now"):
             self.assertGreaterEqual(box(page, decision.get_by_role("button", name=name))["height"], 44)
         expect(decision.get_by_role("button", name="Discuss")).to_be_visible()
+        # Its swipe tray offers what the computer offers (personas-26 P2 #4): Not now, never Done, which would clear a decision still waiting.
+        row = self.card(page, "Mulch the north beds")
+        row.locator(".nyc__scroll").evaluate("element => element.scrollTo({ left: element.scrollWidth, behavior: 'instant' })")
+        expect(row.locator(".nyc__tray").get_by_role("button", name="Not now")).to_have_count(1)
+        expect(row.locator(".nyc__tray").get_by_role("button", name="Done")).to_have_count(0)
+        expect(row.locator("[aria-keyshortcuts='E']")).to_have_count(0)
+        row.locator(".nyc__scroll").evaluate("element => element.scrollTo({ left: 0, behavior: 'instant' })")
+        # A row says "Kind · who · space" on the phone as on the computer (personas-26: the phone dropped the space).
+        expect(self.card(page, GATE).locator(".nyc__eyebrow--row")).to_have_text("Question · Jonas Berg · Community garden sensors")
         # The title opens the item in the detail sheet, so it is a touch target too.
         self.assertGreaterEqual(box(page, decision.locator(".nyc__open"))["height"], 44)
         # #437: the tab labels meet the 12.5px phone meta minimum and the unread dot clears the Inbox icon.

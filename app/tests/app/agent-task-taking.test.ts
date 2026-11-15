@@ -305,6 +305,8 @@ describe('the state line of an agent on a task (#856)', () => {
     assert.deepEqual(line({ run: run({ status: 'unavailable', endReason: 'plan_limit' }), successor: { resumeAt: new Date('2026-11-07T14:00:00Z') } }), ['paused_by_limit', 'Claude limit reached']);
     assert.deepEqual(line({ run: run({ status: 'provider_failed', endReason: 'unknown' }) }), ['failed', 'Couldn\'t finish']);
     assert.deepEqual(line({ run: run({ status: 'completed' }), task: { ownerUserId: null, ownerAgentId: 'a1', status: 'done' } }), ['done', 'Marked done · you were told']);
+    assert.deepEqual(line({ viewerId: 'jonas', run: run({ status: 'completed' }), task: { ownerUserId: null, ownerAgentId: 'a1', status: 'done' } }), [null, ''],
+      'anyone else reads it once, in the task\'s history, not twice (personas-26)');
     assert.deepEqual(line({ run: run({ status: 'completed' }), task: { ownerUserId: 'ada', ownerAgentId: null, status: 'in_progress' }, handedBackByAgent: true }), ['handed_back', 'Back with you to check']);
     assert.deepEqual(line({ run: run({ status: 'completed' }), task: { ownerUserId: 'ada', ownerAgentId: null, status: 'in_progress' }, handedBackByAgent: false }), [null, ''], 'a person who took the task back is not "back with you to check"');
     assert.deepEqual(line({ run: run({ status: 'stopped', endReason: 'ai_off' }), task: { ownerUserId: 'ada', ownerAgentId: null, status: 'in_progress' } }),

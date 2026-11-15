@@ -218,8 +218,11 @@ export interface WorkRepository extends TaskGraphReader {
   listTaskNotices(projectId: string, page: PageWindow, reach?: NoticeReach): Promise<Paged<TaskCreationNoticeRecord>>;
   /** Proposed and accepted decisions of the project as one stream, newest first (#694). */
   listObjectNotices(projectId: string, page: PageWindow, reach?: NoticeReach): Promise<Paged<ObjectNoticeRecord>>;
-  /** One "blocked" or "unblocked" line of the conversation (#550), in the transaction of the change. */
-  insertTaskUpdate(work: WorkRecord, update: { kind: 'task.blocked' | 'task.unblocked' | 'task.resumed'; by: ActorRef; waitingFor: ActorRef | null; reason: string | null }): Promise<void>;
+  /**
+   * One "blocked" or "unblocked" line of the conversation (#550), in the transaction of the change. `undoes`: the change is an Undo, which
+   * takes back the task's latest line instead when that line is the move it undoes, by the same actor.
+   */
+  insertTaskUpdate(work: WorkRecord, update: { kind: 'task.blocked' | 'task.unblocked' | 'task.resumed'; by: ActorRef; waitingFor: ActorRef | null; reason: string | null; undoes?: boolean }): Promise<void>;
   /** The blocked tasks that wait for this decision or task (#868), ascending by id. Read under the project's graph lock. */
   waiters(target: { kind: 'decision' | 'task'; id: string }): Promise<string[]>;
   /** Whether `start` waits, however far round, for the task `target` (#868): the chain of waits, followed to its end or to a loop. */

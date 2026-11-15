@@ -10,3 +10,8 @@ export function day(iso: string) {
   const date = new Date(iso);
   return new Date().toDateString() === date.toDateString() ? 'Today' : dayFormat.format(date);
 }
+/** When a conversation in a list last spoke: the time today ("11:02"), the day before that ("15 Nov"), as the Inbox says it. */
+export function lastSaid(iso: string) {
+  const date = new Date(iso);
+  return new Date().toDateString() === date.toDateString() ? clockFormat.format(date) : dayFormat.format(date);
+}

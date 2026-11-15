@@ -166,6 +166,21 @@ class FirstStepsJourney(unittest.TestCase):
         expect(self.card(page).get_by_role("heading", name="First steps")).to_be_visible()
         self.assertEqual(self.rows(page), ["Connect AI"])
 
+    def test_01c_everyone_who_joined_is_told_when_more_joined_than_the_card_has_rows(self) -> None:
+        """personas-26: three people joined beside one step left; the card has three rows, and the third person was dropped. The last
+        joined row names who else joined, and each gets a row of their own once the one above is greeted."""
+        import json
+        read = {"steps": ["connect_ai"], "offerPush": False, "everyoneSpaceId": None,
+                "joined": [{"userId": str(uuid.uuid4()), "name": name} for name in ("Ana Souza", "Leo Park", "Stefan Nowak")]}
+        page = self.page("fia")
+        page.route("**/api/v1/me/first-steps", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(read)))
+        page.goto("/")
+        card = self.card(page)
+        expect(card.locator(".home__row-t")).to_have_count(3)
+        self.assertEqual(self.rows(page), ["Ana joined", "Leo joined", "Connect AI"])
+        expect(card.get_by_role("link", name=re.compile("^Leo joined"))).to_contain_text("Say hello · Stefan joined too")
+        expect(card.get_by_role("link", name=re.compile("^Ana joined"))).not_to_contain_text("too")
+
     def test_02_a_new_member_writes_in_everyone_and_adds_a_photo(self) -> None:
         self.add_people()
         for phone in (False, True):

@@ -17,6 +17,7 @@ import { useAgentUnread } from '../my-agents/AgentChatDots';
 import { useDmUnread } from '../dm/dmUnread';
 import type { MyAgent } from '@flux/contracts';
 import './settings.css';
+import { lastSaid } from './timeFormat';
 
 /**
  * Projects (#266 PF-1): the list the phone's Projects place opens, like a messenger's list of chats.
@@ -128,7 +129,7 @@ export function ProjectsIndex() {
                       </span>
                       {quiet ? <Icon name="quiet" size={12} className="proj-index__muted" data-muted-mark="" /> : null}
                       {quiet && fresh ? <span className="proj-index__quiet" aria-hidden="true">{fresh}</span> : null}
-                      {dm.lastAt ? <time className="proj-index__time" dateTime={dm.lastAt}>{new Date(dm.lastAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</time> : null}
+                      {dm.lastAt ? <time className="proj-index__time" dateTime={dm.lastAt}>{lastSaid(dm.lastAt)}</time> : null}
                     </Link>
                   </li>
                   );
