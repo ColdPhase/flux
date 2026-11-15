@@ -119,7 +119,9 @@ test('the words a query names are marked in any longer form, with or without acc
   assert.equal(marks('The mock-up and the mockups', ['mockup']), 'The [mock-up] and the [mockups]');
   const split = markSearchWords([{ text: 'The ', match: false }, { text: 'mock', match: true }, { text: '-up is ready', match: false }], { words: ['mockup'], typing: null });
   assert.deepEqual(split, [{ text: 'The ', match: false }, { text: 'mock-up', match: true }, { text: ' is ready', match: false }]);
-  assert.equal(marks('A mock-up', ['mock']), 'A [mock]-up', 'a part of a hyphenated word is still marked by itself');
+  assert.equal(marks('A mock-up', ['mock']), 'A [mock-up]', '"mockup" is a longer form of "mock", as "mockups" is');
+  assert.equal(marks('A well-known shop', ['shop']), 'A well-known [shop]');
+  assert.equal(marks('The mock-up', ['up']), 'The mock-[up]', 'a part of a hyphenated word is still marked by itself');
 });
 
 const reader: Principal = { kind: 'human', id: 'ari' };
