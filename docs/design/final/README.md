@@ -548,7 +548,8 @@ The keys show next to their actions in menus.
   keeps its focus ([Underline tabs](#underline-tabs-the-views-switch)).
 - **Arriving to open one thing** (`?open=` a task or a decision, a message link or Copy link, a Search, Inbox or notification
   target). That thing has the focus: its panel, or the message, marked. A link to a message that has no replies marks it in the
-  conversation and opens no thread panel.
+  conversation and opens no thread panel; a link followed from inside an open panel (a task's "From: Message") keeps that panel and
+  its way back ("‹ Task #4").
 - **A picker or a form** (New message's Find people, Invite, Add people) opens with its first field focused.
 - **Single keys** are never shortcuts while a field has focus. **Esc in a composer** leaves it for the newest message and keeps the
   draft; the single keys work from there. New shows its `C` only while `C` works (no field has focus).

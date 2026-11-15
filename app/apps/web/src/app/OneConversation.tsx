@@ -78,8 +78,9 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
   // empty panel opens (#1424). Decided once per arrival, so a reply that comes later never opens a panel beside the reader.
   // The same for any link to such a message (Copy link, a message link, Search, the Inbox; F-026 §4, persona round 27 P2 6): it is marked in
   // the conversation, and no empty "0 replies" thread opens beside it.
-  // A link that asks to write (Reply) still opens the thread, to reply in it.
-  const alone = !state?.focusComposer && !!conversation && !conversation.task && !!arrived && conversation.messages.length === 1 && conversation.messages[0]!.id === arrived;
+  // A link that asks to write (Reply) still opens the thread, to reply in it, and so does one followed from inside an open panel that asks to
+  // keep it (a task's "From: Message"): the panel stays with its way back to the task (F-026 §4).
+  const alone = !state?.focusComposer && !state?.keepPanel && !!conversation && !conversation.task && !!arrived && conversation.messages.length === 1 && conversation.messages[0]!.id === arrived;
   const [lone, setLone] = useState({ key: location.key, alone });
   if (lone.key !== location.key) setLone({ key: location.key, alone });
   const withheld = lone.key === location.key ? lone.alone : alone;
