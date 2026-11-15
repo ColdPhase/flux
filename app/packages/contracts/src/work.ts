@@ -50,6 +50,11 @@ export const workItemPath = (workId: string) => `/api/v1/work/${workId}`;
 export const projectDecisionsPath = (projectId: string) => `/api/v1/projects/${projectId}/decisions`;
 export const decisionPath = (decisionId: string) => `/api/v1/decisions/${decisionId}`;
 export const decisionAcceptPath = (decisionId: string) => `${decisionPath(decisionId)}/accept`;
+/**
+ * Its proposer takes a proposal back with Undo (founder decision L, #1424, 2026-11-15): a proposal reaches everyone at once, and
+ * withdrawing it removes it for everyone with its notifications and Inbox items. `If-Match` is the proposal's version; 204.
+ */
+export const decisionWithdrawPath = (decisionId: string) => `${decisionPath(decisionId)}/withdraw`;
 export const projectLinksPath = (projectId: string) => `/api/v1/projects/${projectId}/links`;
 /** Work owned by the caller across every project of the workspace they can currently read. */
 export const workspaceAssignedWorkPath = (workspaceId: string) => `/api/v1/workspaces/${workspaceId}/work/assigned`;
@@ -314,14 +319,15 @@ export interface TaskCreationNotice {
 }
 
 /**
- * What the conversation says about a decision (#694, F-026 P5): one line with who and where it came
- * from, and the object as a card that opens in Details. Like a task notice it is information, never a message.
- * A decision has up to two: when it was proposed and when a person accepted it. `title` and the state are the
- * object's current ones; `by` and `createdAt` are who did it and when. The audience is the project's: only
- * people who can read the project read these.
+ * What the conversation says about a decision (#694, F-026 P5): its one card, with one line of who proposed it and where it came
+ * from, that opens in Details. Like a task notice it is information, never a message. A decision has one notice, when it was
+ * proposed: accepting it changes that card in place (`status`, `decided`), with no second line (founder decision D, #1424,
+ * 2026-11-15). `title` and the state are the object's current ones; `by` and `createdAt` are who proposed it and when. A proposal
+ * its proposer withdrew with Undo has no notice (it is gone). The audience is the project's: only people who can read the project
+ * read these.
  */
 interface ObjectNoticeBase {
-  /** Stable per object and moment, `<id>:proposed` or `<id>:accepted`. */
+  /** Stable per object, `<id>:proposed`. */
   id: string;
   workspaceId: string;
   projectId: string;
@@ -333,7 +339,9 @@ interface ObjectNoticeBase {
   conversationId: string | null;
   createdAt: string;
 }
-export type ObjectNotice = ObjectNoticeBase & { kind: 'decision.proposed' | 'decision.accepted'; decisionId: string; status: DecisionStatus };
+export type ObjectNotice = ObjectNoticeBase & { kind: 'decision.proposed'; decisionId: string; status: DecisionStatus;
+  /** Who accepted it and when, shown on the card itself; null while it is proposed. */
+  decided: { by: NamedPrincipal; at: string } | null };
 
 export interface UpdateWorkCommand extends VersionPrecondition {
   /**

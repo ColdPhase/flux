@@ -602,7 +602,7 @@ The IDs come from the first Prostota canvas; rules that no longer apply are left
 | P1 | **Home** has two parts: Waiting for you (the top three, with Open Inbox) and Continue where you left off. Every row is clickable and ends in an arrow. |
 | P3 | Kreska is the agent icon everywhere (section 3). |
 | P4 | **A decision is one card on both devices:** who proposed it, the decision, its reason, then Accept / Not now / Discuss and who can accept it. Plain sentences appear only when they apply: "This replaces the decision **Wi-Fi in every bed** (12 Oct)." and "Shown on the Wiki page **Sensor network**." Accepting only marks the replaced decision "replaced"; Flux never moves or parks tasks. |
-| P5 | **Creating a task is separate from its notice.** The conversation only announces it, as its one card with one quiet line of its source: "Ada created a task", "created a task from Jonas's message", "Planner · Ada's agent is on it" ([A space](#a-space-header-conversation-and-message-actions), #1424: one card, never a chip in the message, a line and a card). A new task is **created** everywhere it is said: the card's line, the toast ("Task #12 created"), the task's activity ("created the task", "created it from a message") and Home's "since you were away" line (#1424). (The Map has no Create task, #867.) Founder report 2026-10-28 ([#694](https://github.com/ColdPhase/flux/issues/694)): a decision is announced the same way, because a decision proposed in a thread left no trace anywhere. The decision is one card with its state now (Proposed, Accepted, Replaced) that opens it in the one panel, and inside it one line, "Ada proposed a decision" (a message has no Propose a decision, #867); an acceptance is one line, never a second card (#1424). The line is in the space's stream by time and in the thread it came from; it updates for every member who can read the space, and it is information, not a message. There is no result card: Done may carry one "What came of it" line in the task's discussion. |
+| P5 | **Creating a task is separate from its notice.** The conversation only announces it, as its one card with one quiet line of its source: "Ada created a task", "created a task from Jonas's message", "Planner · Ada's agent is on it" ([A space](#a-space-header-conversation-and-message-actions), #1424: one card, never a chip in the message, a line and a card). A new task is **created** everywhere it is said: the card's line, the toast ("Task #12 created"), the task's activity ("created the task", "created it from a message") and Home's "since you were away" line (#1424). (The Map has no Create task, #867.) Founder report 2026-10-28 ([#694](https://github.com/ColdPhase/flux/issues/694)): a decision is announced the same way, because a decision proposed in a thread left no trace anywhere. The decision is one card with its state now (Proposed, Accepted, Replaced) that opens it in the one panel, and inside it one line, "Ada proposed a decision" (a message has no Propose a decision, #867); accepting it changes that card in place, with who accepted it and when on the card, and adds no line (founder decision D, #1424). The line is in the space's stream by time and in the thread it came from; it updates for every member who can read the space, and it is information, not a message. There is no result card: Done may carry one "What came of it" line in the task's discussion. |
 | P6 | Attachments sit inside their message (section 6). |
 | P7 | Monochrome with light, dark and system; no accent colour. |
 | P8 | The action is called "Create task", never "Create work". |
@@ -668,7 +668,8 @@ Field (32 px, 44 on touch)          Date picker, a popover under the field      
   stored as `YYYY-MM-DD` and `HH:MM`.
 - **Typed entry** takes what people say. A date: "14 Nov", "14 November 2026", "Nov 14", "14.11", "2026-11-14", "today",
   "tomorrow" (no year means the next time that day comes, so "5 Jan" typed in December is next January). An empty date
-  field shows how a day is written ("14 Nov 2026") in `--t3`. A time: "9:00", "9", "9.30", "0930", "21:15", "9 pm", "9:30am", "noon". Enter, or
+  field reads "Add a date" in `--t3` (founder decision I, Hubert, 2026-11-15, [#1424](https://github.com/ColdPhase/flux/issues/1424): the
+  word of the Due row that opens it, never a made-up date). A time: "9:00", "9", "9.30", "0930", "21:15", "9 pm", "9:30am", "noon". Enter, or
   leaving the field, commits it and shows it in the field's own form; Esc puts the last value back. Enter in a field
   that holds no change is left to the form around it. Text that is not a date or a time keeps what was typed, marks the
   field invalid (the 1.5 px `--t1` inset ring of the other invalid fields) and says why in a live region ("Not a date.
@@ -1005,8 +1006,12 @@ Drawn by the agents before it was built; the rules of what triggers a notice are
   place (the address changes: another space, view, page or thread, Back). The 10 s pause while the pointer is over it or focus is in
   it, as a notice's do, so Undo can always be reached with Tab or a screen reader; they run on when the pointer or focus leaves.
   `Z` undoes only the Undo toast on screen: once it has left, `Z` does nothing, and an action done in another place is never undone
-  from here. A change held for Undo (Accept, an answer, Decision proposed) is sent the moment its toast leaves, for whichever reason
-  (its 10 s, ×, a newer toast, another place, the page closing). A toast without Undo keeps its own short time (about 5 s, 8 s with
+  from here. A change held for Undo (Accept, an answer) is sent the moment its toast leaves, for whichever reason
+  (its 10 s, ×, a newer toast, another place, the page closing): a decision is never un-accepted and an answer is never unsaid, so
+  they wait. **A proposed decision is not held** (founder decision L, Hubert, 2026-11-15, [#1424](https://github.com/ColdPhase/flux/issues/1424)):
+  like a new task, it reaches everyone at once, and its Undo withdraws it, so it disappears for everyone, with its notifications and
+  Inbox items. Its proposer withdraws it while it is still proposed and nothing else names it (a task that waits for it, a link to it);
+  accepted or used by then, it stays, and the toast says so. A toast without Undo keeps its own short time (about 5 s, 8 s with
   Open); an error stays until it is closed.
 - **It never covers the newest thing.** While a toast shows, a conversation (a space's, a thread's, a direct message's) keeps its
   end clear of it: the end of the list moves up by the part of the toast over it, so the new task's card, the last message and an
@@ -1089,9 +1094,12 @@ built. The contract is in [mobile and PWA](../../product/mobile-pwa.md#while-flu
   which opens it in the one panel. "Jonas’s message" is a link that brings
   that message into view, so the way from the message to the task stays on the card. There is no separate event line above the
   card, and the message it came from carries no chip of it. A thread shows a decision made in it as the same card among its
-  replies; a task made from one of its messages (its root or a reply) shows there as the card under that message, its only place in the thread (a thread has no task notices). An
-  acceptance or a task's later step (blocked, can continue) is one line, never a second card: "Ada accepted it" right under its
-  card, else "Ada accepted the decision **Double the cinnamon buns**", where the title opens it. One state has one word: a
+  replies; a task made from one of its messages (its root or a reply) shows there as the card under that message, its only place in the thread (a thread has no task notices).
+  **Accepting a decision changes its card in place** (founder decision D, Hubert, 2026-11-15, [#1424](https://github.com/ColdPhase/flux/issues/1424)):
+  the state word reads **Accepted** and one quiet line inside the card, under its row, says who accepted it and when ("Accepted by
+  Kasia Wrona · 9:12", the day when it was not the day it was proposed). The conversation gets no line of its own for it, neither
+  "Ada accepted it" nor "Ada accepted the decision …"; the decision's panel keeps the record (its Decided row). A task's later step (blocked, can
+  continue) is one line, never a second card. One state has one word: a
   decision is **Proposed**, **Accepted** or **Replaced**, never "Proposed decision"; the panel's head already says "Decision", so its
   eyebrow is the state alone ("Proposed", "Accepted 14 Nov"), and the panel shows no row version ("Version 2" on a decision nobody edited
   said nothing). The card's title always keeps room: a long title wraps instead of being cut, whole on a computer (also at 200 % text) and in
@@ -1379,7 +1387,8 @@ Live strip, someone shares a screen
 ### Create
 
 The phone's "+" and the computer's New (`C`) open Create with the same five types: Task, Thought,
-Decision, Page (a Wiki page) and Space, as tabs of one window that opens on Task. "Message" is not a
+Decision, Page (a Wiki page) and Space, as tabs of one window that opens on Task. Space opens the New space window, its own
+window without the tabs ([Spaces](#spaces), founder decision K, #1424). "Message" is not a
 type, because a message is written in the composer. The phone's "+" opens that window as its bottom
 sheet at once: it has no list of the types before the tabs (founder direction, Hubert, 2026-11-13,
 [#1438](https://github.com/ColdPhase/flux/issues/1438) point 8).
@@ -1396,7 +1405,8 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   `/decide` typed in a thread keeps the thread's opening message as its source, as `/task` does), and a quiet **Replace an accepted
   decision…** that shows a "Replaces" choice of the space's accepted decisions in the same window, with Next and Previous when there
   are more than one page of them. The footer says "Everyone who can accept it sees it in their Inbox" (plain words, persona round 28) and the one primary is **Propose
-  decision**; then the toast "Decision proposed · Undo". There is no second form in the side panel: the words "A person with write
+  decision**; then the toast "Decision proposed · Undo". It reaches everyone at once, and Undo withdraws it for everyone
+  ("Not proposed"; [Notices](#notices), founder decision L, #1424). There is no second form in the side panel: the words "A person with write
   access accepts it" are gone. The composer keeps what was typed until the decision is proposed, as `/task` does.
 - **The space is the one you are in, else the one you used last** (#1438 point 6). Opened inside a space (any of its views), the
   window names that space. Opened from Home, the Inbox, the Spaces list or My tasks, it names the space you last worked in
@@ -1410,6 +1420,10 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   keeps the field a line of words. One of the two makes a blocked task. The field is the app's own input with a listbox under it (the
   composer's `@` list is its model: arrows, Enter, Escape, 44 px rows on touch), no native picker. The task panel's Edit on a
   blocked task opens the same one field.
+- **A task made from your own message is yours** (founder decision M, Hubert, 2026-11-15, [#1424](https://github.com/ColdPhase/flux/issues/1424)).
+  Create task on your own message, `T` on it, the same action in a thread opened from the Inbox, and your own `/task` words open the
+  window with you as its Owner, so the task is in My tasks at once; the Owner chip still changes it, and No owner is kept as chosen. A
+  task made from someone else's message starts with No owner, as before, even when the message names you or someone else in the space.
 - **A guest has no Space tab** (persona round, 2026-11-15, on the founder's "nothing appears that the user cannot use", [#1424](https://github.com/ColdPhase/flux/issues/1424)).
   A guest does not start spaces, so New shows them Task, Thought, Decision and Page only, and nothing in Flux offers them New space
   (Home, the Spaces list, My tasks). With no space yet a guest's New has Thought alone (it goes on My map; a task, a decision and a
@@ -1504,7 +1518,8 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   ([#1424](https://github.com/ColdPhase/flux/issues/1424)); inside a group the server's order stands.
   Each row is 48 px: a tile, the matching text and one line of where it lives. The first result is
   selected, and `↵` opens it. A list that is too long is narrowed by typing more words; there is
-  no second page.
+  no second page. **A match with a typo shows only when nothing matches a searched word exactly** (founder decision H, Hubert,
+  2026-11-15, [#1424](https://github.com/ColdPhase/flux/issues/1424); F-042): "price list" lists the price list, not a person named "Lis".
 - **A file found by what it says** ([C-63](../../product/decisions.md), #1382) is a row of the Files
   group, drawn like a Wiki row with the file's own icon: the page icon with its folded corner and
   its mono label (the one the message shows, 20 px) in the tile, the file's name as the title with
@@ -1990,10 +2005,13 @@ On the phone the Assistant conversation is a normal conversation. Its header lis
 
 - **The title row is the one of every conversation (#1356, v0.2.1):** Back, the agent's Kreska (32 px, in its colour), its name and, under it in `--t3`, "Your agent · only you talk to it", as the drawing has it. Under it come the schedule row, the conversation and the composer. There is no second name row, no lock line and no tab bar.
 - **The computer says the name once too** ([#1419](https://github.com/ColdPhase/flux/issues/1419) item 14): the window's header is the agent's
-  title row, with its Kreska (24 px, in its colour) before the name, and Settings is a row of the header's ⋯, as on the phone. There is no
-  second bar with the name, "Your agent" and Settings above the schedule line; the conversation's first line, "Only you talk to Planner.
-  Reports of its work arrive here.", stays.
-  Back returns to where the person came from (the Spaces list, Home, the Inbox). The agent's Settings are the one row of a ⋯ at the right of the title row, the ⋯ a space has, so the function is the same on the phone as the computer's "Settings" link and the drawing stays as drawn.
+  title row, with its Kreska (24 px, in its colour) before the name, and nothing else: **on the computer an agent's chat has no ⋯**
+  (founder decision J, Hubert, 2026-11-15, [#1424](https://github.com/ColdPhase/flux/issues/1424): the text follows what is built, and
+  "⋯ is there only where it has rows", #1460, [A space](#a-space-header-conversation-and-message-actions)); the agent's settings are its
+  page in Settings › AI. There is no second bar with the name, "Your agent" and Settings above the schedule line; the conversation's
+  first line, "Only you talk to Planner. Reports of its work arrive here.", stays.
+  On the phone, Back returns to where the person came from (the Spaces list, Home, the Inbox), and the agent's Settings are the one row
+  of a ⋯ at the right of the title row, the ⋯ a space has, as drawn.
 
 ### Spaces
 
@@ -2004,7 +2022,8 @@ On the phone the Assistant conversation is a normal conversation. Its header lis
 
 ![Locked space, space admin](screens/desktop-space-locked-admin.webp)
 
-- **New space** (New › Space) is one window. It has a Name, and People as one-line chips with Add
+- **New space** (New › Space) is one window, its own and without Create's tabs: choosing Space in Create opens it in their place, as
+  drawn (founder decision K, Hubert, 2026-11-15, [#1424](https://github.com/ColdPhase/flux/issues/1424)). It has a Name, and People as one-line chips with Add
   people (chosen from the company); "You're in it as its admin." (you have no chip; it says the word every list of people then gives
   you, "You're in it as the owner." for the company's owner, persona round 28). **Someone new? is there too** (founder decision, Hubert,
   2026-11-14, [#1424](https://github.com/ColdPhase/flux/issues/1424)): for a company owner or admin the open Add people ends with the

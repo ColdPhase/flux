@@ -57,6 +57,7 @@ In Details, a person without write access sees **Who decides** in place of the A
 | `GET /api/v1/work/:workId/activity` | The task's history of status, owner, due date and title changes, newest first: `?limit=` 1-50 (30 when omitted) and `?before=` (the `nextBefore` of the page before). Read by exactly those who can read the task ([below](#due-date-and-activity-488)). |
 | `GET/POST /api/v1/projects/:projectId/decisions`, `GET /api/v1/decisions/:id` | Propose with `sources`, `affects`, `supersedes`. |
 | `POST /api/v1/decisions/:id/accept` | Needs `If-Match`; no body (`{ expectedVersion? }` is the same as the header). |
+| `POST /api/v1/decisions/:id/withdraw` | Its proposer's Undo ([below](#a-proposal-reaches-everyone-at-once-and-undo-withdraws-it-1424-l)). Needs `If-Match`; `204`. |
 | `POST /api/v1/projects/:projectId/links` | A `related` link between any two objects of the project. |
 | `GET /api/v1/workspaces/:workspaceId/work/assigned` | The caller's unfinished work in every project the policy's `visibleFilter` lets them read. |
 
@@ -64,6 +65,40 @@ Every POST/PATCH accepts `Idempotency-Key` (the shared runner in `app/apps/serve
 also introduced by #100); a replay re-checks current project read access. Responses with a version
 carry `ETag`. An object in a project the caller cannot see is `404 <TYPE>_NOT_FOUND`, the same as a
 missing one.
+
+## A proposal reaches everyone at once, and Undo withdraws it (#1424 L)
+
+Founder decision L (Hubert, 2026-11-15, #1424): a proposed decision is not held for its Undo toast. The Create window sends it at
+once, so its card, the Inbox items of those who can accept it and the notifications about it arrive at once, as a new task's do. The
+toast's Undo is `POST /api/v1/decisions/:id/withdraw`:
+
+- **Who.** Only the person who proposed it (`403 DECISION_NOT_YOURS` for anyone else, the company's owner included; an agent's
+  proposal goes back only through its run's Undo), with write access to the space now (`404` without it, as for a missing decision).
+- **When.** While it is still proposed and unchanged (`If-Match`: `428` without it, `409 VERSION_CONFLICT` when stale,
+  `409 DECISION_NOT_PROPOSED` once accepted, since a decision is never un-accepted) and while nothing else names it: a link to it
+  (a task related to it, a Wiki page that mentions it), a task that waits for it or a decision that replaces it are `409 DECISION_IN_USE`,
+  and it stays.
+- **What goes.** The decision row, its own `source`/`affects` links, its notifications (their queued emails go with them) and the
+  Inbox choices made on it (`needs_you_states` `decision:<id>`), in one transaction. Its Inbox item is derived from the row, so it is gone
+  too, and so is its card ([`listObjectNotices`](#events)): a reader's next refresh of the newest notices drops a card the server no
+  longer has inside the span it read (`refreshNotices` in `ConversationStream.tsx`). The task and the message it came from stay. The
+  earlier `project.decision_proposed.v1` event stays in the log and finds nothing; one `project.decision_withdrawn.v1` (`{ decisionId }`)
+  tells readers to refetch. A second withdraw is `404`.
+- **Order.** It takes the project's graph lock and then the decision's row, as Accept does, so a withdrawal and an acceptance
+  serialize: the later one finds the decision decided (`409`) or gone (`404`).
+- **Not done.** A notification the generator is writing in the same instant may outlive the decision (its link then opens nothing);
+  the generator writes none for a decision that is already gone.
+
+Accept stays held for its Undo window (the existing rule, design §5 Notices): it cannot be withdrawn, because accepting replaces an
+earlier decision and resumes the tasks that wait for it, so its toast's Undo means it was never sent.
+
+## A task from your own message is yours (#1424 M)
+
+Founder decision M (Hubert, 2026-11-15): `POST /projects/:id/work` with no `owner` field, by a person, with a `source` message of the
+space that this person wrote (and that is not removed), makes the task theirs (`owner` = the creator, so nobody is notified of it). An
+`owner` in the command wins, and `owner: null` keeps it without one; a task made from someone else's message keeps no owner. The
+Create window starts with you as Owner for your own message and your own `/task` words (`CreateRequest.ownerMe`) and always sends
+`owner` (`null` for No owner), so what the window shows is what is made.
 
 ## Contributions to the task conversation (#154)
 
@@ -152,7 +187,11 @@ blocked/unblocked lines (`project_task_updates`, #550), which are unchanged.
 Each committed change records exactly one project event in its transaction (a contribution adds its own
 `project.conversation_created.v1` or `project.message_sent.v1`, all in the one final batch):
 `project.work_created.v1`, `project.work_updated.v1`, `project.decision_proposed.v1`,
-`project.decision_accepted.v1` or `project.link_created.v1`. The
+`project.decision_accepted.v1`, `project.decision_withdrawn.v1` or `project.link_created.v1`.
+
+The conversation reads one notice per decision (`GET /projects/:id/object-notices`, #694): its card, where and when it was proposed,
+with its current state and `decided: { by, at }` once accepted. Accepting changes that card in place and adds no notice (founder
+decision D, #1424, 2026-11-15); there is no `decision.accepted` notice. The
 `object_id` is the project, `data` carries only the object id, so the stream reaches current
 project readers and the client refetches. Idempotent replays and failed changes record none.
 
@@ -179,7 +218,9 @@ revalidation and polling and does not subscribe to the stream yet.
 ## Tests
 
 `app/tests/app/work.test.ts` (API, two people, outsider and an agent principal through the
-use cases), `app/tests/app/decision-authority.test.ts` (#250: the O-009 role matrix, the MCP agent path
+use cases; #1424 M, a task from your own message), `app/tests/app/object-notices.test.ts` (#694; #1424 D, the card changes in place;
+#1424 L, a proposal at once and its withdrawal with its notifications and Inbox items, and who may withdraw it),
+`app/tests/ui/test_undo_one_card.py` (#1424 D, L and M in the browser, both engines), `app/tests/app/decision-authority.test.ts` (#250: the O-009 role matrix, the MCP agent path
 and the database invariant), the "#250 AC-3" case in `app/tests/app/personal-runs.test.ts` (the assistant
 path), `app/tests/ui/test_decision_authority.py` (#250: a contributor accepts; the viewer's "Who decides" note went with the viewer role, #903)
 and `app/tests/ui/test_work_decisions.py` (Playwright: create from a message, keyboard

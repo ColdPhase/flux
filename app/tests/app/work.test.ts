@@ -48,6 +48,32 @@ describe('work, decisions and results in a project', () => {
     agent = json<Agent>(await post(owner, `/api/v1/workspaces/${ws.id}/agents`, { name: 'Lab helper', owner: 'self' }), 201);
   });
 
+  test('a task made from your own message is yours; one made from someone else\'s keeps no owner (#1424 M)', async () => {
+    // Its own space, so the other tests' lists keep their counts.
+    const bench = await createProject(owner, ws.id, 'Own tasks', 'restricted');
+    await grant(owner, bench.id, partner, 'contributor');
+    await grant(owner, bench.id, viewer, 'contributor');
+    const mine = json<Conversation>(await post(partner, `/api/v1/projects/${bench.id}/conversations`,
+      { body: 'I will order the PIR sensor today.', clientMessageId: randomUUID() }), 201).messages[0]!;
+    const fromMine = json<WorkItem>(await post(partner, `/api/v1/projects/${bench.id}/work`, { title: 'Order the PIR sensor', sources: [{ type: 'message', id: mine.id }] }), 201);
+    assert.deepEqual(fromMine.owner, { kind: 'human', id: partner.id, name: 'work-partner' }, 'made from your own message, it is yours');
+    // Nobody is told of a task they gave themselves.
+    const stored = (await pool.query("SELECT data FROM events WHERE kind = 'project.work_created.v1' AND data->>'workId' = $1", [fromMine.id])).rows[0].data as Record<string, unknown>;
+    assert.equal(stored.assignedTo, undefined);
+    // An owner named in the command wins, and so does "No owner" (null).
+    const nobody = json<WorkItem>(await post(partner, `/api/v1/projects/${bench.id}/work`, { title: 'Maybe order two', owner: null, sources: [{ type: 'message', id: mine.id }] }), 201);
+    assert.equal(nobody.owner, null);
+    const given = json<WorkItem>(await post(partner, `/api/v1/projects/${bench.id}/work`, { title: 'Check the order', owner: { kind: 'human', id: viewer.id }, sources: [{ type: 'message', id: mine.id }] }), 201);
+    assert.equal(given.owner?.id, viewer.id);
+    // Someone else's message keeps the plain rule: nobody owns it until someone is chosen, even when it names the maker.
+    const asked = json<Conversation>(await post(owner, `/api/v1/projects/${bench.id}/conversations`,
+      { body: 'work-viewer, can you bake the enclosure tonight?', clientMessageId: randomUUID() }), 201).messages[0]!;
+    const fromTheirs = json<WorkItem>(await post(viewer, `/api/v1/projects/${bench.id}/work`, { title: 'Bake the enclosure', sources: [{ type: 'message', id: asked.id }] }), 201);
+    assert.equal(fromTheirs.owner, null);
+    // A task with no message is as before.
+    assert.equal(json<WorkItem>(await post(partner, `/api/v1/projects/${bench.id}/work`, { title: 'Sweep the bench' }), 201).owner, null);
+  });
+
   test('work is created from a message in one action and the message stays in place', async () => {
     const message = conversation.messages[0]!;
     const work = json<WorkItem>(await post(partner, `/api/v1/projects/${lamp.id}/work`, {

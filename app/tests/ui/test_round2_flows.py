@@ -9,8 +9,8 @@ with chromium and with webkit), on a computer (1440 x 900) and a phone (390 x 84
   one inverted primary; a filter with nothing in it is not offered; the selection is not a ring; a click on a compact
   card opens it.
 * WF-3 / SP-5: a message's Propose a decision opens the Create window on Decision with the message's first clause,
-  selected, and the message quoted; proposing shows "Decision proposed" with Undo, and Undo means it never reaches
-  anyone; without Undo it is proposed with the message as its source.
+  selected, and the message quoted; proposing shows "Decision proposed" with Undo, and Undo withdraws it for everyone (#1424 L), so it is
+  gone; without Undo it stays proposed with the message as its source.
 * WF-2: a task made from your own message says "from your message".
 """
 
@@ -212,8 +212,8 @@ class Round2Flows(unittest.TestCase):
         page.locator(".ui-toast", has_text="Decision proposed").get_by_role("button", name="Undo").click()
         expect(page.locator(".ui-toast", has_text="Not proposed")).to_be_visible()
         time.sleep(7)
-        self.assertNotIn(CLAUSE, [item["title"] for item in self.decisions()], "an undone proposal never reached anyone")
-        # Without Undo it is proposed when the window ends.
+        self.assertNotIn(CLAUSE, [item["title"] for item in self.decisions()], "an undone proposal is withdrawn for everyone")
+        # Without Undo it stays proposed (it was sent at once, #1424 L).
         propose()
         found = None
         for _ in range(60):
@@ -221,7 +221,7 @@ class Round2Flows(unittest.TestCase):
             if found:
                 break
             time.sleep(0.25)
-        self.assertIsNotNone(found, "the proposal was sent when the Undo window ended")
+        self.assertIsNotNone(found, "the proposal was sent")
         self.assertEqual(found["status"], "proposed")
         # Replacing an earlier decision is a choice in the same window, with the words kept (#1419): no second form opens.
         press_shortcut(page, "c")

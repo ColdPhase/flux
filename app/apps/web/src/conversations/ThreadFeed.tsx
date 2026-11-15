@@ -10,7 +10,6 @@ import type { Receipt } from '../app/receipts';
 import { ObjectNoticeItem } from '../app/ObjectNotices';
 // The task card under a message (MessageTaskCards) is the conversation's own card.
 import '../app/conversation-final.css';
-import { followsProposal } from '../app/objectNotices';
 import type { ShellActions } from '../app/shellContext';
 import type { AgentOwners } from '../agents/owners';
 import { Button, OpeningRows } from '../ui';
@@ -53,7 +52,6 @@ export function ThreadFeed(props: Props) {
   entries.forEach((entry, index) => {
     const dayKey = `day-${entry.type === 'message' ? outbox.keyOf(entry.message.id) : entry.key}`;
     if (entry.type === 'object') withDay(entry.at, dayKey, [<ObjectNoticeItem key={entry.key} notice={entry.notice} meId={me.user.id} owners={owners} authorOf={() => null} inThread
-      follows={(() => { const previous = entries[index - 1]; return previous?.type === 'object' && day(previous.at) === day(entry.at) && followsProposal(entry.notice, previous.notice); })()}
       hasMessage={() => false} onOpen={(target) => props.openDetails(target)} />]);
     else {
       const message = entry.message;

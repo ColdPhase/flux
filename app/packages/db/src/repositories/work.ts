@@ -452,47 +452,64 @@ export function workRows(db: DbExecutor) {
         createdAt: new Date(row.created_at) })) };
     },
     /**
-     * The moments the conversation announces (#694): a decision proposed, a decision accepted, newest first.
-     * Derived from the objects themselves, so every decision has its lines and a state change shows at once;
+     * The decisions the conversation announces (#694), newest first: one card each, where and when it was proposed. Accepting it
+     * changes that card in place (#1424 D): its state and who accepted it when are read with it, and there is no second line.
+     * Derived from the objects themselves, so a state change shows at once and a withdrawn proposal (#1424 L) is simply gone;
      * `sources` and the conversation of the first message source come from the object's own `source` links.
      */
     async listObjectNotices(projectId: string, window: Window, reach?: NoticeReach) {
       const since = reach?.since ?? null;
-      const [count] = await db.select({ total: sql<number>`(SELECT count(*) FROM ${d} WHERE ${d.projectId} = ${projectId})
-        + (SELECT count(*) FROM ${d} WHERE ${d.projectId} = ${projectId} AND ${d.decidedAt} IS NOT NULL AND ${d.decidedBy} IS NOT NULL)`,
-        within: since ? sql<number>`(SELECT count(*) FROM ${d} WHERE ${d.projectId} = ${projectId} AND ${d.createdAt} >= ${since})
-          + (SELECT count(*) FROM ${d} WHERE ${d.projectId} = ${projectId} AND ${d.decidedAt} >= ${since} AND ${d.decidedBy} IS NOT NULL)` : sql<number>`0` })
+      const [count] = await db.select({ total: sql<number>`(SELECT count(*) FROM ${d} WHERE ${d.projectId} = ${projectId})`,
+        within: since ? sql<number>`(SELECT count(*) FROM ${d} WHERE ${d.projectId} = ${projectId} AND ${d.createdAt} >= ${since})` : sql<number>`0` })
         .from(sql`(SELECT 1) AS one`);
       window = reached(window, reach, Number(count?.total ?? 0), Number(count?.within ?? 0));
-      const sourcesOf = (type: 'decision', id: string) => sql.raw(`COALESCE((SELECT jsonb_agg(CASE WHEN l.to_type = 'material'
-          THEN jsonb_build_object('type', l.to_type, 'id', l.to_id, 'version', l.to_version) ELSE jsonb_build_object('type', l.to_type, 'id', l.to_id) END
-          ORDER BY l.created_at, l.id) FROM project_object_links l WHERE l.from_type = '${type}' AND l.from_id = ${id} AND l.role = 'source'), '[]'::jsonb)`);
-      const conversationOf = (type: 'decision', id: string) => sql.raw(`(SELECT m.conversation_id FROM project_object_links l
-          JOIN project_messages m ON m.id = l.to_id WHERE l.from_type = '${type}' AND l.from_id = ${id} AND l.role = 'source' AND l.to_type = 'message'
-          ORDER BY l.created_at, l.id LIMIT 1)`);
       const result = await db.execute(sql`
-        SELECT e.* FROM (
-          SELECT d.id::text || ':proposed' AS id, d.workspace_id, d.project_id, 'decision.proposed' AS kind, d.id AS object_id, d.title, d.status,
-            d.proposed_by_kind AS by_kind, d.proposed_by_id AS by_id, ${sourcesOf('decision', 'd.id')} AS sources, ${conversationOf('decision', 'd.id')} AS conversation_id, d.created_at AS at
-            FROM project_decisions d WHERE d.project_id = ${projectId}
-          UNION ALL
-          SELECT d.id::text || ':accepted', d.workspace_id, d.project_id, 'decision.accepted', d.id, d.title, d.status,
-            'human', d.decided_by, ${sourcesOf('decision', 'd.id')}, ${conversationOf('decision', 'd.id')}, d.decided_at
-            FROM project_decisions d WHERE d.project_id = ${projectId} AND d.decided_at IS NOT NULL AND d.decided_by IS NOT NULL
-        ) e ORDER BY e.at DESC, e.id DESC LIMIT ${window.limit} OFFSET ${window.offset}`);
-      const rows = result.rows as { id: string; workspace_id: string; project_id: string; kind: 'decision.proposed' | 'decision.accepted'; object_id: string;
-        title: string; status: 'proposed' | 'accepted' | 'superseded' | null; by_kind: 'human' | 'agent'; by_id: string;
+        SELECT d.id::text || ':proposed' AS id, d.workspace_id, d.project_id, d.id AS object_id, d.title, d.status,
+          d.proposed_by_kind AS by_kind, d.proposed_by_id AS by_id, d.decided_by, d.decided_at,
+          COALESCE((SELECT jsonb_agg(CASE WHEN l.to_type = 'material'
+            THEN jsonb_build_object('type', l.to_type, 'id', l.to_id, 'version', l.to_version) ELSE jsonb_build_object('type', l.to_type, 'id', l.to_id) END
+            ORDER BY l.created_at, l.id) FROM project_object_links l WHERE l.from_type = 'decision' AND l.from_id = d.id AND l.role = 'source'), '[]'::jsonb) AS sources,
+          (SELECT m.conversation_id FROM project_object_links l JOIN project_messages m ON m.id = l.to_id
+            WHERE l.from_type = 'decision' AND l.from_id = d.id AND l.role = 'source' AND l.to_type = 'message' ORDER BY l.created_at, l.id LIMIT 1) AS conversation_id,
+          d.created_at AS at
+        FROM project_decisions d WHERE d.project_id = ${projectId}
+        ORDER BY d.created_at DESC, d.id DESC LIMIT ${window.limit} OFFSET ${window.offset}`);
+      const rows = result.rows as { id: string; workspace_id: string; project_id: string; object_id: string; title: string;
+        status: 'proposed' | 'accepted' | 'superseded'; by_kind: 'human' | 'agent'; by_id: string; decided_by: string | null; decided_at: Date | string | null;
         sources: import('@flux/contracts').ObjectRef[]; conversation_id: string | null; at: Date | string }[];
       // F-030: the titles come through raw SQL; they are opened here, not in SQL (#696).
       const seals = await sealsOf(db, rows.map((row) => row.workspace_id), { write: false });
       for (const row of rows) {
         row.title = openField('project_decisions', 'title', [row.object_id], row.title, seals.get(row.workspace_id)!)!;
       }
-      return { total: Number(count?.total ?? 0), items: rows.map((row) => {
-        const base = { id: row.id, workspaceId: row.workspace_id, projectId: row.project_id, title: row.title, by: { kind: row.by_kind, id: row.by_id },
-          sources: row.sources, conversationId: row.conversation_id, createdAt: new Date(row.at) };
-        return { ...base, kind: row.kind, decisionId: row.object_id, status: row.status! };
-      }) };
+      return { total: Number(count?.total ?? 0), items: rows.map((row) => ({ id: row.id, workspaceId: row.workspace_id, projectId: row.project_id,
+        title: row.title, by: { kind: row.by_kind, id: row.by_id }, sources: row.sources, conversationId: row.conversation_id, createdAt: new Date(row.at),
+        kind: 'decision.proposed' as const, decisionId: row.object_id, status: row.status,
+        decided: row.decided_by && row.decided_at ? { by: { kind: 'human' as const, id: row.decided_by }, at: new Date(row.decided_at) } : null })) };
+    },
+    async withdrawDecision(id: string): Promise<'withdrawn' | 'used'> {
+      const named = await db.execute(sql`SELECT (
+        EXISTS (SELECT 1 FROM project_object_links WHERE to_id = ${id})
+        OR EXISTS (SELECT 1 FROM project_decisions o WHERE o.id <> ${id} AND (o.supersedes_id = ${id} OR o.superseded_by_id = ${id}))
+        OR EXISTS (SELECT 1 FROM project_work_items WHERE waiting_for_decision_id = ${id} AND creation_reverted_at IS NULL)
+      ) AS found`);
+      if ((named.rows[0] as { found: boolean } | undefined)?.found) return 'used';
+      const [row] = await db.select({ projectId: d.projectId }).from(d).where(eq(d.id, id));
+      if (!row) return 'withdrawn';
+      await db.execute(sql`DELETE FROM project_object_links WHERE from_id = ${id}`);
+      // A task whose creation was undone may still name it as history; that name goes (ON DELETE SET NULL).
+      await db.execute(sql`DELETE FROM project_decisions WHERE id = ${id}`);
+      // What told people about it goes with it: its notifications (with their queued emails) and the Inbox choices made on it.
+      await db.execute(sql`DELETE FROM notifications WHERE source_type = 'project' AND source_id = ${row.projectId} AND url LIKE ${`%${id}%`}`);
+      await db.execute(sql`DELETE FROM needs_you_states WHERE item_key = ${`decision:${id}`}`);
+      return 'withdrawn';
+    },
+    async messageWrittenBy(projectId: string, messageIds: readonly string[], userId: string) {
+      if (!messageIds.length) return false;
+      const m = schema.projectMessages;
+      const found = await db.select({ id: m.id }).from(m)
+        .where(and(eq(m.projectId, projectId), inArray(m.id, [...messageIds]), eq(m.authorId, userId), isNull(m.authorAgentId), isNull(m.removedAt))).limit(1);
+      return found.length > 0;
     },
     async updateWork(id: string, changes: { title?: string; outcome?: string; status?: WorkRow['status']; blocker?: string | null; waitingFor?: Actor | null; waitingOn?: { kind: 'decision' | 'task'; id: string } | null; dropped?: boolean; cameOfIt?: string | null; dueOn?: string | null; owner?: Actor | null; criteria?: string[] },
       by: Actor, via?: 'github_rule' | 'agent_rule' | 'agent_unable' | 'agent_deleted' | 'wait_resolved', options: { undoes?: boolean } = {}) {

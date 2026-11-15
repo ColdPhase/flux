@@ -21,12 +21,11 @@ import { putThoughtOnMyMap } from '../sketch/myMap';
 import { Button, Icon, MEDIA, Overlay, Spinner, Tabs, useMediaQuery, useToast, Select, Option, OptionGroup } from '../ui';
 import { createDoc, docUrl } from '../docs/api';
 import { holdTyping } from '../docs/typeAhead';
-import { createWork, proposeDecision } from '../work/api';
+import { createWork, proposeDecision, withdrawDecision } from '../work/api';
 import { holdProposal } from '../work/heldProposals';
 import { useWorkChoices } from '../work/useDetailReads';
 import { WorkPagination } from '../work/WorkPagination';
-import { useCreatedToast } from '../work/taskState';
-import { startProposal } from '../notifications/pendingAccept';
+import { useCreatedToast, WORK_CREATION_UNDONE_EVENT } from '../work/taskState';
 import { SpaceFace } from '../ui/SpaceFace';
 import './create.css';
 
@@ -267,7 +266,8 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
   // An unresolved command (its response was lost) comes back whole: every field it sent, not just the title.
   const [saved] = useState(() => savedForm(unresolvedOf(readDraft(me.user.id, pendingContext)), prefilled ? (request.title || '') : draft.text.trim(), prefilled ? (request.sources ?? []).map((s) => s.ref) : null));
   const [outcome, setOutcome] = useState(saved?.outcome ?? '');
-  const [ownerPick, setOwnerPick] = useState({ projectId, value: saved?.owner ?? '' });
+  // A task from your own message or your own `/task` words starts as yours (#1424 M); any other starts with no owner.
+  const [ownerPick, setOwnerPick] = useState({ projectId, value: saved?.owner ?? (prefilled && request.ownerMe ? `human:${me.user.id}` : '') });
   // An owner belongs to one project's people: another project starts with none.
   const owner = ownerPick.projectId === projectId ? ownerPick.value : '';
   const setOwner = (value: string) => setOwnerPick({ projectId, value });
@@ -321,7 +321,8 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
     const command: CreateWorkCommand = {
       title: text,
       ...(outcome.trim() ? { outcome: outcome.trim() } : {}),
-      ...(owner && !(aiOff && owner.startsWith('agent:')) ? { owner: { kind: owner.startsWith('agent:') ? 'agent' as const : 'human' as const, id: owner.slice(owner.indexOf(':') + 1) } } : {}),
+      // Always said, `null` for No owner: the server makes a task from your own message yours only when no owner is named (#1424 M).
+      owner: owner && !(aiOff && owner.startsWith('agent:')) ? { kind: owner.startsWith('agent:') ? 'agent' as const : 'human' as const, id: owner.slice(owner.indexOf(':') + 1) } : null,
       ...(sources.length ? { sources: sources.map((s) => s.ref) } : {}),
     };
     const payload = JSON.stringify([projectId, command]);
@@ -498,8 +499,8 @@ function PageForm({ ids, phone, carried, projectId, onProject, onClose }: PanelP
 
 /**
  * Decision: a proposal in the chosen project, the one form for New › Decision and for the composer's `/decide` (#1419). One made from a
- * message or a thread starts from its words with the message quoted as its source (#763 WF-3). "Decision proposed · Undo" follows, and the
- * proposal reaches the people who can accept it only when that window ends.
+ * message or a thread starts from its words with the message quoted as its source (#763 WF-3). The proposal is sent at once and reaches
+ * everyone at once; "Decision proposed · Undo" follows, and its Undo withdraws it for everyone (founder decision L, #1424, 2026-11-15).
  */
 function DecisionForm({ ids, phone, carried, projectId, onProject, onClose, request }: PanelProps & { request: CreateRequest }) {
   const { projects, me, workspace } = useShellData();
@@ -510,7 +511,7 @@ function DecisionForm({ ids, phone, carried, projectId, onProject, onClose, requ
   const [replacing, setReplacing] = useState(false);
   const [replaces, setReplaces] = useState<{ projectId: string; id: string; title: string } | null>(null);
   const supersedes = replacing && replaces?.projectId === projectId ? replaces : null;
-  // Nothing is sent while the window is open: proposing is held for Undo, so the form never waits on the server.
+  // The window closes at once on Propose and its card shows while the request is on its way, so the form never waits on the server.
   const busy = false;
   const inFlight = useRef(false);
   const [error, setError] = useState('');
@@ -528,34 +529,47 @@ function DecisionForm({ ids, phone, carried, projectId, onProject, onClose, requ
     const snapshot = carried.begin();
     const command = { title, ...(why.trim() ? { rationale: why.trim() } : {}), ...(supersedes ? { supersedes: supersedes.id } : {}), ...(source ? { sources: [{ type: 'message' as const, id: source.ref.id }] } : {}) };
     const target = project.id;
-    let made: (id: string | null) => void = () => undefined;
-    const decided = new Promise<string | null>((resolve) => { made = resolve; });
-    const handle = startProposal(async (key, keepalive) => {
-      const decision = await proposeDecision(target, command, key, keepalive);
-      card.proposed(decision.id);
-      made(decision.id);
-      return decision;
-    }, (outcome) => {
-      revalidator.revalidate();
-      if (outcome === 'accepted') return;
-      card.drop();
-      made(null);
-      toast({ tone: 'danger', message: `“${title}” wasn’t proposed. Nothing changed; propose it again.` });
-    });
-    // Its card shows in the conversation at once, "Proposed", while the proposal waits out its Undo (#1424); opening it sends it now.
+    // Sent now (#1424 L): it reaches the people who can accept it at once. Its card shows in the conversation while the request is on its way.
+    const sent = proposeDecision(target, command, crypto.randomUUID());
+    const made = sent.then((decision) => decision.id, () => null);
     const card = holdProposal({ projectId: target, workspaceId: project.workspaceId ?? '', title, by: { kind: 'human', id: me.user.id, name: me.user.name },
-      sources: source ? [source.ref] : [], conversationId: source?.conversationId ?? null }, () => { handle.send(); return decided; });
+      sources: source ? [source.ref] : [], conversationId: source?.conversationId ?? null }, made);
+    let undone = false;
+    sent.then((decision) => {
+      card.proposed(decision.id);
+      revalidator.revalidate();
+    }, () => {
+      card.drop();
+      revalidator.revalidate();
+      if (!undone) toast({ tone: 'danger', message: `“${title}” wasn’t proposed. Nothing changed; propose it again.` });
+    });
+    // Undo withdraws it for everyone (#1424 L); pressed before the proposal was made, it is withdrawn as soon as it exists.
+    async function withdraw() {
+      let decision: { id: string; version: number };
+      try { decision = await sent; } catch { return; }
+      try {
+        await withdrawDecision(decision);
+        card.drop();
+        // The panel showing it closes, as an undone task's does.
+        window.dispatchEvent(new CustomEvent(WORK_CREATION_UNDONE_EVENT, { detail: { decisionId: decision.id } }));
+        toast({ message: 'Not proposed' });
+      } catch (cause) {
+        // Gone already is what Undo wanted; anything else keeps it: accepted or used meanwhile, it stays.
+        if (cause instanceof ApiError && cause.status === 404) { card.drop(); toast({ message: 'Not proposed' }); }
+        else toast({ message: cause instanceof ApiError && cause.status === 409 ? 'It was already accepted or used, so it stays.' : 'It could not be taken back. Open it to look again.', tone: 'danger' });
+      } finally { revalidator.revalidate(); }
+    }
     carried.made(snapshot);
-    // A `/decide` keeps its words in the composer until Propose, as `/task` does until Create: closing the window loses nothing, and the
-    // words are not left behind to be sent again while the proposal waits out its Undo.
+    // A `/decide` keeps its words in the composer until Propose, as `/task` does until Create: closing the window loses nothing.
     request.onCreated?.();
-    // Stays set: the window closes, and a second submit in the same tick must not hold a second proposal.
+    // Stays set: the window closes, and a second submit in the same tick must not send a second proposal.
     onClose();
     // Focus goes to the proposal's card where it shows (the conversation of its space), not back to New (F-026 §4, persona round 27).
     requestAnimationFrame(() => requestAnimationFrame(() => document.querySelector<HTMLElement>(`#content [data-decision-card="${CSS.escape(card.id)}"]`)?.focus()));
-    toast({ message: 'Decision proposed', tone: 'neutral', onLeave: handle.send, action: { label: 'Undo', key: 'Z', onClick: () => {
-      if (handle.undo()) { card.drop(); toast({ message: 'Not proposed' }); }
-      else toast({ message: 'It was already proposed; it waits in the Inbox of those who can accept it.' });
+    toast({ message: 'Decision proposed', tone: 'neutral', action: { label: 'Undo', key: 'Z', onClick: () => {
+      if (undone) return;
+      undone = true;
+      void withdraw();
     } } });
   }
   return (

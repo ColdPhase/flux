@@ -102,13 +102,13 @@ class WorkDecisionsJourney(unittest.TestCase):
         return page.locator("#details")
 
     def wait_decision(self, page: Page, title: str) -> dict:
-        """A proposal is held for Undo (10 s, #1424) and sent when its toast leaves: its record, once it exists."""
+        """A proposal is sent at once (#1424 L): its record, once it exists."""
         for _ in range(80):
             found = next((item for item in self.work(page)["decisions"] if item["title"] == title), None)
             if found:
                 return found
             page.wait_for_timeout(250)
-        self.fail(f"the proposal {title!r} was not sent when the Undo window ended")
+        self.fail(f"the proposal {title!r} was not sent")
 
     # ---------------------------------------------------------------- set up two people
 
@@ -202,7 +202,7 @@ class WorkDecisionsJourney(unittest.TestCase):
         expect(window.get_by_role("button", name="Propose decision", exact=True)).to_be_enabled()
         window.get_by_role("button", name="Propose decision", exact=True).focus()
         page.keyboard.press("Enter")
-        # Proposing is held for Undo and reaches the people who can accept it when that window ends.
+        # Proposing reaches the people who can accept it at once (#1424 L).
         expect(page.locator(".ui-toast", has_text="Decision proposed")).to_be_visible()
         proposed = self.wait_decision(page, "Use a camera for gesture control")
         self.assertEqual(proposed["status"], "proposed")

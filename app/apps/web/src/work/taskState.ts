@@ -126,7 +126,7 @@ export function useStateChange(saved: (item: WorkItem) => void, done: () => void
   return useStateChanges(saved, done).change;
 }
 
-/** Said on the window when a task's creation was undone from its toast: a panel showing that task closes (`AppLayout`). */
+/** Said on the window when a task's creation was undone (`{ workId }`) or a proposal withdrawn (`{ decisionId }`, #1424 L) from its toast: a panel showing it closes (`AppLayout`). */
 export const WORK_CREATION_UNDONE_EVENT = 'flux:work-creation-undone';
 
 /**

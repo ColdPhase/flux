@@ -189,7 +189,7 @@ class UxSimplicityPartAComposer(unittest.TestCase):
             if found:
                 break
             page.wait_for_timeout(250)
-        self.assertIsNotNone(found, "the proposal was sent when the Undo window ended")
+        self.assertIsNotNone(found, "the proposal was sent")
         self.assertEqual(found["status"], "proposed")
         expect(reply).to_have_value("")
 

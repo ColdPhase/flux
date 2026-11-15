@@ -661,12 +661,14 @@ function AppLayoutContent() {
     }
   };
   useLayoutEffect(() => { closeRef.current = closePanel; });
-  // A task whose creation was undone from its toast leaves the panel that shows it (audit 3274a05 P3 4).
+  // A task whose creation was undone from its toast, or a proposal withdrawn from its toast (#1424 L), leaves the panel that shows it (audit 3274a05 P3 4).
   useEffect(() => {
     const onUndone = (event: Event) => {
-      const id = (event as CustomEvent<{ workId: string }>).detail?.workId;
+      const detail = (event as CustomEvent<{ workId?: string; decisionId?: string }>).detail ?? {};
+      const kind = detail.decisionId ? 'decision' : 'work';
+      const id = detail.decisionId ?? detail.workId;
       const shown = now.current;
-      if (shown.detailsOpen && typeof shown.detailsView === 'object' && shown.detailsView.kind === 'work' && 'id' in shown.detailsView && shown.detailsView.id === id) closeRef.current();
+      if (shown.detailsOpen && typeof shown.detailsView === 'object' && shown.detailsView.kind === kind && 'id' in shown.detailsView && shown.detailsView.id === id) closeRef.current();
     };
     window.addEventListener(WORK_CREATION_UNDONE_EVENT, onUndone);
     return () => window.removeEventListener(WORK_CREATION_UNDONE_EVENT, onUndone);

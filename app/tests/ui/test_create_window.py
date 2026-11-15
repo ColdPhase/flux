@@ -797,7 +797,7 @@ class CreateWindow(unittest.TestCase):
         decision.get_by_label("Why", exact=True).fill("Resistive probes corrode within a season")
         decision.get_by_role("button", name=re.compile("^Propose decision")).click()
         expect(window(page)).to_have_count(0)
-        # #763 WF-3: "Decision proposed" with Undo; it reaches the people who can accept it when that window ends.
+        # #763 WF-3: "Decision proposed" with Undo; it reaches the people who can accept it at once (#1424 L).
         expect(page.locator(".ui-toast", has_text="Decision proposed").get_by_role("button", name="Undo")).to_be_visible()
         stored: list = []
         for _ in range(60):
@@ -854,7 +854,7 @@ class CreateWindow(unittest.TestCase):
         create_other(page, "Decision")
         page.evaluate(twice)
         expect(window(page)).to_have_count(0)
-        # #763 WF-3, #1424: the proposal is sent when its Undo toast leaves; closing it ends that window at once.
+        # #1424 L: the proposal is sent at once; closing its toast sends nothing more.
         page.locator(".ui-toast").filter(has_text="Decision proposed").get_by_role("button", name="Dismiss notification").click()
         page.wait_for_timeout(1500)
         self.assertEqual(posts, [f"projects/{self.ids['project']}/decisions"])

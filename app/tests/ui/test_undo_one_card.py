@@ -10,7 +10,9 @@ phone (390 x 844, touch):
 * While a toast shows, the conversation keeps its end clear of it: the new task's card and an inline Delete / Keep row in a direct
   message are above the toast, never under it.
 * A task and a decision made from a message show once in the space's conversation: one card with who made it, from which message
-  (a link to it) and when inside it; no chip in the message and no separate event line. An acceptance is a line, not a second card.
+  (a link to it) and when inside it; no chip in the message and no separate event line. Accepting a decision changes its card in
+  place, with who accepted it and when on the card, and adds no line (founder decision D, #1424, 2026-11-15).
+* A proposed decision reaches everyone at once, and its Undo withdraws it for everyone (founder decision L, #1424, 2026-11-15).
   One state has one word ("Proposed", never "Proposed decision"), and the decision panel says "Decision" once.
 * Beside a docked panel at 1024 px a task card keeps its title readable and its state word inside the card.
 """
@@ -103,7 +105,7 @@ class UndoAndOneCard(unittest.TestCase):
         cls.ids["buns"] = buns["messages"][0]["id"]
         decision = cls.call("ada", "POST", f"/api/v1/projects/{project}/decisions", {"title": DECIDED, "sources": [{"type": "message", "id": cls.ids["buns"]}]})
         cls.ids["decided"] = decision["id"]
-        # Something between the proposal and its acceptance: the acceptance is then its own line, still not a second card.
+        # Something between the proposal and its acceptance: the card still changes in place, and no line is added after it.
         cls.root("maja", "I can bring the cash box as a fallback.")
         cls.call("ada", "POST", f"/api/v1/decisions/{decision['id']}/accept", {"expectedVersion": decision["version"]})
         cls.ids["open_rule"] = cls.call("jonas", "POST", f"/api/v1/projects/{project}/decisions", {"title": OPEN_RULE})["id"]
@@ -199,21 +201,22 @@ class UndoAndOneCard(unittest.TestCase):
                 # The decision: one card in the stream, its state in one word, no chip in its message.
                 expect(page.locator(f"#message-{self.ids['buns']} .ws-chip")).to_have_count(0)
                 lines = feed.locator(f'.convo-object[data-object-id="{self.ids["decided"]}"]')
-                expect(lines).to_have_count(2)
+                expect(lines).to_have_count(1)
                 expect(lines.locator(".convo-notice__card")).to_have_count(1)
                 proposed = feed.locator('.convo-object[data-object-kind="decision.proposed"]', has_text=DECIDED)
                 expect(proposed.locator(".convo-object__state")).to_have_text("Accepted")
                 expect(proposed.locator(".convo-notice__card .convo-notice__what")).to_have_text("proposed a decision from Jonas’s message")
-                # The acceptance came after another message: a line naming the decision, never a second card.
-                accepted = feed.locator(f'.convo-object[data-object-kind="decision.accepted"][data-object-id="{self.ids["decided"]}"]')
-                expect(accepted).not_to_have_class(re.compile(r"\bis-follow\b"))
-                expect(accepted.locator(".convo-notice__card")).to_have_count(0)
-                expect(accepted.locator(".convo-notice__what")).to_have_text(f"accepted the decision {DECIDED}")
+                # Accepted after another message: the card changed in place, with who accepted it on the card, and no line was added.
+                expect(proposed.locator(".convo-object__decided")).to_have_text(re.compile(r"^Accepted by Ada Kowalska \(you\) · \S"))
+                expect(feed.locator('.convo-object[data-object-kind="decision.accepted"]')).to_have_count(0)
+                expect(feed).not_to_contain_text("accepted the decision")
+                expect(feed).not_to_contain_text("accepted it")
                 expect(feed.locator(".convo-object", has_text=OPEN_RULE).locator(".convo-object__state")).to_have_text("Proposed")
+                expect(feed.locator(".convo-object", has_text=OPEN_RULE).locator(".convo-object__decided")).to_have_count(0)
                 expect(feed).not_to_contain_text("Proposed decision")
                 shot(page, f"one-card-stream-{'phone' if phone else 'desktop'}-{UI_BROWSER}")
-                # The line's title opens the decision; its panel names the kind once and the state alone.
-                title = accepted.get_by_role("button", name=re.compile(rf"^Open decision {re.escape(DECIDED)}"))
+                # The card opens the decision; its panel names the kind once and the state alone.
+                title = proposed.get_by_role("button", name=re.compile(rf"^Open decision {re.escape(DECIDED)}"))
                 title.scroll_into_view_if_needed()
                 if phone:
                     title.tap()
@@ -225,13 +228,15 @@ class UndoAndOneCard(unittest.TestCase):
                 expect(eyebrow).to_contain_text("Accepted")
                 expect(eyebrow).not_to_contain_text("Decision")
 
-    def test_01b_a_proposed_decision_shows_its_card_at_once(self) -> None:
-        # #1424 persona round P2 #6: after "Decision proposed" the card came ~10 s later (the proposal waits out its Undo before it is
-        # sent), while a task's card came at once. It shows at once as "Proposed"; Undo takes it away; opening it sends it now.
-        page = self.page()
+    def test_01b_a_proposed_decision_reaches_everyone_at_once_and_undo_withdraws_it(self) -> None:
+        # Founder decision L (#1424, 2026-11-15): there is no 10 s hold. The proposal is sent at once, its card shows for the proposer and
+        # for anyone watching the space at once, and the toast's Undo withdraws it for everyone.
+        page, watcher = self.page(), self.page("jonas")
         self.stream(page)
+        self.stream(watcher)
         feed = page.locator(".project-convo__message-list")
         card = feed.locator('.convo-object[data-object-kind="decision.proposed"]', has_text=GAZEBO)
+        theirs = watcher.locator(".project-convo__message-list").locator('.convo-object[data-object-kind="decision.proposed"]', has_text=GAZEBO)
         decisions = lambda: [item["title"] for item in page.request.get(f"/api/v1/projects/{self.ids['project']}/decisions?limit=100").json()["items"]]  # noqa: E731
 
         def propose() -> None:
@@ -247,23 +252,71 @@ class UndoAndOneCard(unittest.TestCase):
         expect(card, "the card is in the conversation at once").to_have_count(1, timeout=2000)
         expect(card.locator(".convo-object__state")).to_have_text("Proposed")
         expect(card.locator(".convo-notice__meta strong")).to_have_text("Ada Kowalska (you)")
-        self.assertNotIn(GAZEBO, decisions(), "held for Undo: nothing was sent yet")
-        shot(page, f"one-card-held-proposal-{UI_BROWSER}")
-        # The window gave focus back to the composer, where Z is a letter: Undo is the toast's button.
+        # Sent at once, with the toast still up: the server has it, and Jonas, watching the space, sees its card well inside the toast's 10 s.
+        expect(page.locator(".ui-toast").filter(has_text="Decision proposed")).to_be_visible()
+        self.assertIn(GAZEBO, decisions(), "sent at once, not held for Undo")
+        expect(theirs, "a watcher sees it at once").to_have_count(1, timeout=5000)
+        expect(theirs.locator(".convo-notice__meta strong")).to_have_text("Ada Kowalska")
+        expect(page.locator(".ui-toast").filter(has_text="Decision proposed")).to_be_visible()
+        shot(page, f"one-card-proposal-at-once-{UI_BROWSER}")
+        # Undo withdraws it for everyone: gone from the server, from Ada's conversation and from Jonas's, without a reload.
         page.locator(".ui-toast").filter(has_text="Decision proposed").get_by_role("button", name=re.compile("^Undo")).click()
-        expect(card, "Undo takes the card away").to_have_count(0)
         expect(page.locator(".ui-toast").filter(has_text="Not proposed")).to_be_visible()
+        expect(card, "Undo takes the card away").to_have_count(0)
         self.assertNotIn(GAZEBO, decisions())
+        expect(theirs, "and from everyone who watched it arrive").to_have_count(0, timeout=10000)
 
-        # Again, and opened from its card: it is sent now and opens in the panel, and stays one card once the read has it.
+        # Again, and opened from its card: it opens in the panel, and stays one card once the read has it.
         propose()
         expect(card).to_have_count(1, timeout=2000)
         card.get_by_role("button", name=re.compile(rf"^Open decision {re.escape(GAZEBO)}")).first.click()
         expect(page.locator("#details").get_by_role("heading", name=GAZEBO)).to_be_visible()
-        self.assertEqual(decisions().count(GAZEBO), 1, "opening the card sent it once")
+        self.assertEqual(decisions().count(GAZEBO), 1, "proposed once")
         page.wait_for_timeout(1500)
         expect(card).to_have_count(1)
         expect(card.locator(".convo-object__state")).to_have_text("Proposed")
+        expect(theirs).to_have_count(1)
+
+    def test_01c_a_task_from_your_own_message_starts_as_yours(self) -> None:
+        # Founder decision M (#1424, 2026-11-15): Create task on your own message, T on it and `/task` start the window with you as
+        # its Owner; on someone else's message it starts with no owner, as before. Nothing is created here: each window is closed.
+        page = self.page()
+        self.stream(page)
+        owner = lambda: dialog(page).locator(".create__chip", has=page.get_by_role("combobox", name="Owner"))  # noqa: E731
+
+        def close() -> None:
+            page.keyboard.press("Escape")
+            expect(dialog(page)).to_have_count(0)
+
+        own = page.locator('[id^="message-"]', has_text="Stall note 9:").first
+        own.scroll_into_view_if_needed()
+        own.hover()
+        own.get_by_role("button", name="Create task", exact=True).click()
+        expect(dialog(page)).to_be_visible()
+        expect(owner()).to_have_text("Ada Kowalska")
+        close()
+        theirs = page.locator(f"#message-{self.ids['buns']}")
+        theirs.scroll_into_view_if_needed()
+        theirs.hover()
+        theirs.get_by_role("button", name="Create task", exact=True).click()
+        expect(dialog(page)).to_be_visible()
+        expect(owner()).to_have_text("No owner")
+        close()
+        # T on your own message, from the keyboard.
+        own.hover()
+        own.focus()
+        page.keyboard.press("t")
+        expect(dialog(page)).to_be_visible()
+        expect(owner()).to_have_text("Ada Kowalska")
+        close()
+        # Your own `/task` words.
+        composer = page.locator("#project-composer")
+        composer.fill("/task Bring the spare float")
+        composer.press("Enter")
+        expect(dialog(page)).to_be_visible()
+        expect(owner()).to_have_text("Ada Kowalska")
+        close()
+        composer.fill("")
 
     def test_02_a_task_card_keeps_its_title_beside_a_docked_panel_at_1024(self) -> None:
         for touch in (False, True):

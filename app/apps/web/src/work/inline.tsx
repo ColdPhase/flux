@@ -132,13 +132,19 @@ export function MessageObjects({ message, projectId, preview, thread = null, thr
   );
 }
 
-/** A message's Task action opens the one Create window with the message as its source; the notice in the conversation is the server's. */
+/**
+ * A message's Task action opens the one Create window with the message as its source; the notice in the conversation is the server's.
+ * A task made from your own message is yours (founder decision M, #1424, 2026-11-15): the window starts with you as its Owner. One made
+ * from someone else's message starts with no owner, as before.
+ */
 export function useCreateWorkFromMessage(project: Pick<Project, 'id'>) {
   const { openCreate } = useShellActions();
+  const { me } = useShellData();
   /** Opens the Create window prefilled with this message as the task's source (F-026 S3, P5). */
   const create = useCallback((message: ConversationMessage) => {
     const preview = firstLine(messagePreview(message.body, message.files?.length));
-    openCreate({ kind: 'task', projectId: project.id, title: firstClause(preview), sources: [{ ref: { type: 'message', id: message.id }, label: preview }] });
-  }, [openCreate, project.id]);
+    openCreate({ kind: 'task', projectId: project.id, title: firstClause(preview), sources: [{ ref: { type: 'message', id: message.id }, label: preview }],
+      ...(message.authorId === me.user.id ? { ownerMe: true } : {}) });
+  }, [openCreate, project.id, me.user.id]);
   return { create };
 }

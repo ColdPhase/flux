@@ -104,7 +104,7 @@ export interface TaskCreationNoticeRecord {
   reverted: { at: Date; by: ActorRef; noticeId: string } | null;
   createdAt: Date;
 }
-/** One moment of a decision the conversation announces (#694); the title and state are current. */
+/** A decision as the conversation announces it (#694): one card, its title and state current, and who accepted it on the card (#1424 D). */
 export type ObjectNoticeRecord = {
   id: string;
   workspaceId: string;
@@ -114,7 +114,7 @@ export type ObjectNoticeRecord = {
   sources: ObjectRef[];
   conversationId: string | null;
   createdAt: Date;
-} & { kind: 'decision.proposed' | 'decision.accepted'; decisionId: string; status: DecisionStatus };
+} & { kind: 'decision.proposed'; decisionId: string; status: DecisionStatus; decided: { by: ActorRef; at: Date } | null };
 /** The native command that keeps a durable retry receipt (#154); creation keeps its own identity on the task row. */
 export type NativeOperation = 'work.update';
 export interface NativeCommandReceipt {
@@ -216,8 +216,16 @@ export interface WorkRepository extends TaskGraphReader {
   /** Called in the same transaction as the work row, links and stream event. */
   insertCreationNotice(work: WorkRecord, sources: ObjectRef[]): Promise<void>;
   listTaskNotices(projectId: string, page: PageWindow, reach?: NoticeReach): Promise<Paged<TaskCreationNoticeRecord>>;
-  /** Proposed and accepted decisions of the project as one stream, newest first (#694). */
+  /** The decisions of the project, one card each, newest first (#694, #1424 D). */
   listObjectNotices(projectId: string, page: PageWindow, reach?: NoticeReach): Promise<Paged<ObjectNoticeRecord>>;
+  /**
+   * Takes a proposal back (#1424 L), under the project's graph lock and the decision's row lock: `used` when something else names it
+   * (a link to it, a task that waits for it, a decision that replaces it); otherwise the row, its own links, the notifications about
+   * it and the Inbox choices made on it are deleted.
+   */
+  withdrawDecision(id: string): Promise<'withdrawn' | 'used'>;
+  /** Whether one of these messages of the project was written by this person (#1424 M: a task made from your own message is yours). */
+  messageWrittenBy(projectId: string, messageIds: readonly string[], userId: string): Promise<boolean>;
   /**
    * One "blocked" or "unblocked" line of the conversation (#550), in the transaction of the change. `undoes`: the change is an Undo, which
    * takes back the task's latest line instead when that line is the move it undoes, by the same actor.
@@ -322,6 +330,8 @@ export type WorkEventKind =
   | 'project.work_updated.v1'
   | 'project.decision_proposed.v1'
   | 'project.decision_accepted.v1'
+  /** Its proposer withdrew a proposal with Undo (#1424 L): readers refetch, and the card is gone. */
+  | 'project.decision_withdrawn.v1'
   | 'project.link_created.v1'
   /** A person's change of Owner ended a local client's hold (#985); the same event as a Stop. */
   | 'project.agent_stopped.v1';

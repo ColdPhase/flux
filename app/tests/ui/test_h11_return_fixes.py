@@ -171,12 +171,12 @@ class ReturnFixes(unittest.TestCase):
         page.goto(f"/projects/{self.ids['project']}")
         stream = page.locator(".project-convo__message-list")
         lines = stream.locator(f".convo-object[data-object-id='{self.ids['decided']}']")
-        expect(lines).to_have_count(2)
+        # Accepted, the card changes in place with who accepted it on it (#1424 D): one card, no line under it.
+        expect(lines).to_have_count(1)
         expect(lines.locator(".convo-object__card")).to_have_count(1)
         expect(lines.locator(".convo-object__state")).to_have_text(["Accepted"])
-        follow = stream.locator(f".convo-object.is-follow[data-object-kind='decision.accepted'][data-object-id='{self.ids['decided']}']")
-        expect(follow.locator(".convo-notice__meta")).to_contain_text("Tomasz Wiśniewski")
-        expect(follow.locator(".convo-notice__meta")).to_contain_text("accepted it")
+        expect(lines.locator(".convo-object__decided")).to_contain_text("Accepted by Tomasz Wiśniewski")
+        expect(stream).not_to_contain_text("accepted it")
         expect(stream.locator(".convo-object__card", has_text=DECIDED)).to_have_count(1)
         # The other proposal, alone, keeps its own card.
         expect(stream.locator(".convo-object__card", has_text=OPEN_RULE)).to_have_count(1)
