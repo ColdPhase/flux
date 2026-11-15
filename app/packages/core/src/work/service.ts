@@ -340,9 +340,10 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
     /** What the conversation says about decisions (#694): the project's audience reads it, no one else. */
     listObjectNotices: (principal: Principal, projectId: string, query?: PageQuery, reach?: NoticeReach): Promise<Page<ObjectNotice>> =>
       list(principal, projectId, query, (ports, project, window) => ports.work.listObjectNotices(project, window, reach), async (ports, items) => {
-        const names = await ports.work.names(items.map((item) => item.by));
-        return items.map((item) => ({ ...item, createdAt: iso(item.createdAt),
-          by: { ...item.by, name: names.get(key(item.by)) ?? (item.by.kind === 'agent' ? 'Agent' : 'Former member') } }));
+        const names = await ports.work.names([...items.map((item) => item.by), ...items.flatMap((item) => item.decided ? [item.decided.by] : [])]);
+        const named = (who: ActorRef) => ({ ...who, name: names.get(key(who)) ?? (who.kind === 'agent' ? 'Agent' : 'Former member') });
+        return items.map((item) => ({ ...item, createdAt: iso(item.createdAt), by: named(item.by),
+          decided: item.decided ? { by: named(item.decided.by), at: iso(item.decided.at) } : null }));
       }),
 
     /** The caller's unfinished work across the projects of a workspace they can currently read. */
@@ -418,7 +419,7 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
       const status = command.status === undefined ? 'open' : valid.status(command.status);
       const blocker = command.blocker === undefined || command.blocker === '' ? null : valid.text(command.blocker, 'blocker', WORK_LIMITS.blocker) || null;
       if (blocker && status !== 'blocked') throw new InvalidInputError('A blocker applies to blocked work only');
-      const owner = command.owner === undefined ? null : valid.owner(command.owner);
+      let owner = command.owner === undefined ? null : valid.owner(command.owner);
       const waitingFor = waitingForOf(command.waitingFor);
       if (waitingFor && status !== 'blocked') throw new InvalidInputError('A person to wait for applies to blocked work only');
       const waitingOn = command.waitingOn === undefined ? null : valid.waitingOn(command.waitingOn);
@@ -458,6 +459,11 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
             return presentWork(ports, earlier.work);
           }
         }
+        // A task a person makes from their own message is theirs (#1424 M) unless the command names an owner (or `null`, nobody).
+        // A task made from someone else's message keeps the plain rule: nobody owns it until someone is chosen.
+        const fromOwnMessage = command.owner === undefined && by.kind === 'human'
+          && await ports.work.messageWrittenBy(project, sources.filter((source) => source.type === 'message').map((source) => source.id), by.id);
+        if (fromOwnMessage) owner = by;
         await requireOwner(ports, project, owner, principal);
         await requireWaitingFor(ports, project, waitingFor);
         await requireTargets(ports, project, [...sources, ...related, ...parent]);
@@ -756,6 +762,32 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         const view = await presentDecision(ports, record);
         await ports.events.record(principal, workspaceId, 'project.decision_accepted.v1', projectId, { decisionId: id });
         return view;
+      });
+    },
+
+    /**
+     * Its proposer withdraws a proposal with Undo (#1424 L): a proposal reaches everyone at once, so Undo takes it back for everyone.
+     * Only the person who proposed it, while it is still proposed, unchanged (`If-Match`) and nothing else names it; an agent's
+     * proposal goes back only through its run's Undo. The decision, its own links, its notifications and the Inbox choices made on
+     * it are gone, and one `project.decision_withdrawn.v1` tells the readers to refetch. Under the project's graph lock, as Accept
+     * takes it, so a withdrawal and an acceptance serialize: the later one finds the decision decided (409) or gone (404).
+     */
+    async withdrawDecision(principal: Principal, decisionId: string, expected: number | undefined): Promise<void> {
+      const by = actor(principal);
+      const version = valid.expectedVersion(expected);
+      return uow.run(async (ports) => {
+        const { id, projectId, workspaceId } = await authorized(ports, principal, 'decision', decisionId, 'write');
+        const located = await ports.work.findDecision(id);
+        if (!located) throw notFound('decision');
+        if (by.kind !== 'human' || located.proposedBy.kind !== 'human' || located.proposedBy.id !== by.id)
+          throw new ForbiddenError('Only the person who proposed it can take it back', 'DECISION_NOT_YOURS');
+        await lockProjectGraphs(ports.work, [projectId]);
+        const current = await ports.work.findDecision(id, { lock: true });
+        if (!current) throw notFound('decision');
+        if (current.version !== version) throw new VersionConflictError(current.version, await presentDecision(ports, current));
+        if (current.status !== 'proposed') throw new ConflictError('This decision is no longer a proposal', 'DECISION_NOT_PROPOSED');
+        if (await ports.work.withdrawDecision(id) === 'used') throw new ConflictError('Something else names this decision now, so it stays', 'DECISION_IN_USE');
+        await ports.events.record(principal, workspaceId, 'project.decision_withdrawn.v1', projectId, { decisionId: id });
       });
     },
 

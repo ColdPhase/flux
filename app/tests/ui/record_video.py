@@ -243,7 +243,7 @@ def journey(take: Take) -> None:
     take.type(window.get_by_role("textbox", name="Decision", exact=True), "Measure soil moisture first; frost warnings later")
     take.type(window.get_by_label("Why", exact=True), "Volunteers overwater the raised beds; frost is a spring problem")
     take.click(window.get_by_role("button", name=re.compile("^Propose decision")))
-    # "Decision proposed" waits a few seconds for Undo; the card appears under the message when that window ends.
+    # "Decision proposed" is sent at once (#1424 L); the card appears under the message.
     take.settle(1.2)
     proposal = moisture.get_by_role("button", name=re.compile("^Decision: Measure soil moisture first"))
     expect(proposal).to_be_visible(timeout=20000)

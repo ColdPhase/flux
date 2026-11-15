@@ -27,7 +27,7 @@ import { CallLineItem } from '../live/callLines';
 import { foldEntries, foldSummary, firstUnread, noticeSource, rootAuthor, sourcePhrase } from './conversationEvents';
 import { NewBelow, UnreadDivider, arrivedBelow, openAtUnread, useNewBelow } from './unreadReading';
 import { ObjectNoticeItem } from './ObjectNotices';
-import { followsProposal, objectTarget } from './objectNotices';
+import { objectTarget } from './objectNotices';
 import './conversation-final.css';
 import { onFlush, remember } from '../place/memory';
 import { focusArrival } from '../ui/keys';
@@ -52,6 +52,19 @@ function mergeNotices<T extends { id: string; createdAt: string }>(current: T[],
 }
 
 /**
+ * A refresh of the newest notices: they are read from the newest on without a gap, so they are the whole truth for their span. A
+ * loaded notice inside that span that the refresh no longer has is gone from the server (a proposal its proposer withdrew, #1424 L)
+ * and leaves for this reader too; the older ones stay as they were. `complete`: the refresh read every notice there is.
+ */
+export function refreshNotices<T extends { id: string; createdAt: string }>(current: T[], incoming: T[], complete: boolean) {
+  const fresh = new Set(incoming.map((notice) => notice.id));
+  const oldest = incoming.reduce<string | null>((at, notice) => (at === null || notice.createdAt < at ? notice.createdAt : at), null);
+  const kept = current.filter((notice) => fresh.has(notice.id) || (!complete && oldest !== null && notice.createdAt < oldest)
+    || (!complete && oldest === null));
+  return mergeNotices(kept, incoming);
+}
+
+/**
  * One entry of the stream, in time order: a root, or one compact task-created announcement (UI116-3)
  * linking its task, or a decision. An announcement is never a root and
  * has no thread; the task's first genuine contribution is the root its discussion grows under.
@@ -62,9 +75,6 @@ export type StreamEntry =
   | { kind: 'object'; key: string; at: string; object: ObjectNotice }
   /** A call of the space as one line (F-041 point 6): an event, not a message. */
   | { kind: 'call'; key: string; at: string; call: LiveCallLine };
-
-/** The decision an entry announces, for the line that follows it. */
-const previousObject = (entry: { kind: string } | undefined) => entry?.kind === 'object' ? (entry as Extract<StreamEntry, { kind: 'object' }>).object : null;
 
 const ORDER: Record<StreamEntry['kind'], number> = { notice: 0, object: 0, call: 0, root: 1 };
 
@@ -135,7 +145,7 @@ function useNoticeFeed<T extends { id: string; createdAt: string }>(read: (proje
         latestTotal = next.total;
       }
       if (cancelled) return;
-      setNotices((current) => mergeNotices(current, incoming));
+      setNotices((current) => refreshNotices(current, incoming, incoming.length >= latestTotal));
       setTotal(latestTotal);
     })().catch((cause: unknown) => deniedRef.current(cause));
     return () => { cancelled = true; };
@@ -720,7 +730,6 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
                 if (entry.kind === 'notice') return [divider, noticeItem(entry.notice)];
                 if (entry.kind === 'call') return [divider, <CallLineItem key={entry.key} line={entry.call} projectId={project.id} nameOf={personName} meId={meId} clock={clock} title={when} />];
                 if (entry.kind === 'object') return [divider, <ObjectNoticeItem key={entry.key} notice={entry.object} meId={meId} owners={owners} authorOf={authorOf} hasMessage={(id) => rootMessageIds.has(id)}
-                  follows={!divider && followsProposal(entry.object, previousObject(display[index - 1]))}
                   onOpen={(target) => openDetails(target)} onOpenThread={(conversationId) => { const root = roots.find((item) => item.conversationId === conversationId); if (root) openRoot(root, false); }} />];
                 if (entry.kind === 'fold') {
                   const folded = entry.notices.map((item) => item.notice);

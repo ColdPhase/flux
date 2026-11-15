@@ -87,6 +87,8 @@ export interface CreateRequest {
   /** What the task comes from (a message or the thoughts of a Map selection): linked, never moved or copied. */
   /** `conversationId`: the conversation a message source is in, so a decision held for Undo shows in that thread at once too. */
   sources?: { ref: ObjectRef; label: string; conversationId?: string }[];
+  /** The task starts with you as its Owner: it is made from your own message or your own `/task` words (founder decision M, #1424). */
+  ownerMe?: boolean;
   /** Called once the task or decision exists, e.g. a `/task` or `/decide` command consumes its composer text only then (closing the window keeps it). */
   onCreated?: () => void;
 }

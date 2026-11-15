@@ -38,7 +38,8 @@ export function useComposerSend({ project, conversation, writable, aiOff, guest,
     const fromThread = conversation && rootMessageId ? { messageId: rootMessageId, text: conversation.firstMessageBody, conversationId: conversation.id } : null;
     // `/task` and `/decide` open the one Create window with the words as its title, the thread's opening message as its source.
     // The composer keeps its words until the task or decision exists: closing the window loses nothing (and a newer draft is never consumed).
-    openCreate({ kind: name === 'decide' ? 'decision' : 'task', projectId: project.id, title: firstLine(text), onCreated: consume,
+    // A task from your own `/task` words is yours (#1424 M).
+    openCreate({ kind: name === 'decide' ? 'decision' : 'task', projectId: project.id, title: firstLine(text), onCreated: consume, ...(name === 'task' ? { ownerMe: true } : {}),
       ...(fromThread ? { sources: [{ ref: { type: 'message' as const, id: fromThread.messageId }, label: firstLine(plainMessageText(fromThread.text)), conversationId: fromThread.conversationId }] } : {}) });
   }
   async function send() {

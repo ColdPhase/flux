@@ -135,14 +135,14 @@ class NativeDetailsJourney(unittest.TestCase):
         nav.get_by_role("button",name="Previous",exact=True).click();self.choices_ready(window,"Decisions it can replace")
         expect_value(select, chosen["id"]);expect(why).to_have_value("Retain the complete earlier measurements before changing the cable")
         window.get_by_role("button",name=re.compile("^Propose decision")).click()
-        # The proposal is held for Undo and reaches the people who can accept it when that window ends.
+        # The proposal reaches the people who can accept it at once (#1424 L).
         expect(page.locator(".ui-toast",has_text="Decision proposed")).to_be_visible()
         proposal=None
         for _ in range(80):
             proposal=next((item for item in api(self.ctx,"GET",self.root+"/decisions?limit=100")["items"] if item["title"]=="Keep a manual off switch after measuring both shields"),None)
             if proposal:break
             page.wait_for_timeout(250)
-        self.assertIsNotNone(proposal,"the proposal was sent when the Undo window ended")
+        self.assertIsNotNone(proposal,"the proposal was sent")
         self.assertEqual(proposal["supersedes"],chosen["id"]);self.assertEqual(proposal["rationale"],"Retain the complete earlier measurements before changing the cable")
         self.__class__.pivot=proposal
 

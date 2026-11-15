@@ -3,7 +3,8 @@ import { whenPageLive, pageLeaving } from '../api/pageLeaving.js';
 import { acceptDecision } from '../work/api.js';
 
 /**
- * Accept and answer with Undo (#342, F-026 S9/S11/S14). A decision cannot be un-accepted (O-009 DA-3: a change of
+ * Accept and answer with Undo (#342, F-026 S9/S11/S14). A proposal is not held: it reaches everyone at once and its Undo withdraws it
+ * (founder decision L, #1424, 2026-11-15). A decision cannot be un-accepted (O-009 DA-3: a change of
  * direction is a new proposal), and an agent's question is answered once (its reply is the person's message), so
  * "Accepted · Undo" and "Answered · Undo" are delayed commands: the card leaves at once, the command is sent when the
  * Undo window ends, and Undo within it simply never sends it. The window is the Undo toast's (#1424): the command is sent
@@ -39,7 +40,7 @@ const changes = new Set<() => void>();
 export function onAcceptingChange(listener: () => void) { changes.add(listener); return () => { changes.delete(listener); }; }
 const changed = () => { for (const listener of [...changes]) listener(); };
 
-/** The set a waiting command is listed in; a held proposal (`proposal:<key>`) is in none. */
+/** The set a waiting command is listed in. */
 const listOf = (kind: string) => (kind === 'decision' ? accepting : kind === 'question' ? answering : null);
 const release = (id: string) => {
   const [kind, value] = id.split(':') as [string, string];
@@ -109,14 +110,6 @@ export function startAccept(decision: { id: string; version: number }, settle: (
  */
 export function startAnswer(questionId: string, answer: (key: string, keepalive: boolean) => Promise<unknown>, settle: (outcome: AcceptOutcome) => void, delay: number | null = null) {
   return start(`question:${questionId}`, answer, settle, delay);
-}
-
-/**
- * Starts a held proposal of a decision (#763 WF-3): "Decision proposed · Undo" for the same window, and it reaches the
- * people who can accept it (their Inbox) only when the window ends. `undo()` cancels it while it waits.
- */
-export function startProposal(propose: (key: string, keepalive: boolean) => Promise<unknown>, settle: (outcome: AcceptOutcome) => void, delay: number | null = null) {
-  return start(`proposal:${crypto.randomUUID()}`, propose, settle, delay);
 }
 
 /** Sends every waiting command now. Called when the person leaves the place that showed them. */

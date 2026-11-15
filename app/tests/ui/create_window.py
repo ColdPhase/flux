@@ -104,7 +104,7 @@ def open_decision(page: Page) -> Locator:
 
 def propose_decision(page: Page, title: str, *, why: str | None = None, replaces: str | None = None) -> None:
     """Proposes a decision through the one form (#1419): the words, why, what it replaces (an accepted decision's title), then Propose decision.
-    The proposal is held for Undo and reaches the people who can accept it when that window ends, so callers wait for it by its record."""
+    The proposal is sent at once (#1424 L) and callers wait for it by its record."""
     decision = open_decision(page)
     decision.get_by_role("textbox", name="Decision", exact=True).fill(title)
     if why:

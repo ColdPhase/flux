@@ -1,5 +1,5 @@
 import {
-  decisionAcceptPath, workspaceAgentsPath, taskActivityPath, projectDecisionsPath, projectLinksPath, projectWorkPath, workItemPath, workspaceAssignedWorkPath, taskCreationUndoPath, taskWaitingDonePath,
+  decisionAcceptPath, decisionWithdrawPath, workspaceAgentsPath, taskActivityPath, projectDecisionsPath, projectLinksPath, projectWorkPath, workItemPath, workspaceAssignedWorkPath, taskCreationUndoPath, taskWaitingDonePath,
   type CreateObjectLinkCommand, type CreateWorkCommand, type Decision, type ObjectLink, type Page,
   type ProposeDecisionCommand, type TaskActivityPage, type TaskActivityQuery, type UndoTaskCreationResult, type UpdateWorkCommand, type WorkItem, type Agent,
 } from '@flux/contracts';
@@ -28,6 +28,9 @@ export const proposeDecision = (projectId: string, command: ProposeDecisionComma
   request<Decision>(projectDecisionsPath(projectId), { method: 'POST', body: command, headers: key(idempotencyKey), keepalive });
 export const acceptDecision = (decision: Pick<Decision, 'id' | 'version'>, idempotencyKey: string, keepalive = false) =>
   request<Decision>(decisionAcceptPath(decision.id), { method: 'POST', body: {}, headers: { ...ifMatch(decision.version), ...key(idempotencyKey) }, keepalive });
+/** Its proposer takes a proposal back (#1424 L): it is gone for everyone, with its notifications and Inbox items. */
+export const withdrawDecision = (decision: Pick<Decision, 'id' | 'version'>) =>
+  request<void>(decisionWithdrawPath(decision.id), { method: 'POST', body: {}, headers: ifMatch(decision.version) });
 /** Connects a task to another object of its project (#289: a task made first in Tasks, linked to a map thought). */
 export const linkObjects = (projectId: string, command: CreateObjectLinkCommand, idempotencyKey: string) =>
   request<ObjectLink>(projectLinksPath(projectId), { method: 'POST', body: command, headers: key(idempotencyKey) });
