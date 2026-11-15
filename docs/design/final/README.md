@@ -551,7 +551,7 @@ The keys show next to their actions in menus. In the Inbox, `R` on a decision op
   conversation and opens no thread panel; a link followed from inside an open panel (a task's "From: Message") keeps that panel and
   its way back ("‹ Task #4").
 - **A task or a decision in the panel or sheet has its own address, `?open=`,** however it was opened: a card on the board or in the
-  conversation, Create, Search, Home, the Inbox, a link. A reload opens it again. Opened in its space, it is its own history entry:
+  conversation or a thread, Create, Search, Home, the Inbox (Open or Enter), a link. A reload opens it again. Opened in its space, it is its own history entry:
   Back closes it first, and closing it goes Back. Followed from a link, it takes the link's entry: Back leaves with it, and closing it
   takes `?open=` off the address. Discuss on the decision already open adds no entry.
 - **A picker or a form** (New message's Find people, Invite, Add people with its filter) opens with its first field focused, in view;
@@ -560,11 +560,14 @@ The keys show next to their actions in menus. In the Inbox, `R` on a decision op
 - **R in the Inbox writes:** Reply, a decision's Discuss, or a blocked task's discussion. Where there is nothing to write to, the
   letters typed after R are held, never run as A, E or S.
 - **The sidebar's arrow keys** move between its rows. **G I** lands on the Inbox's open item, or its heading when it is empty,
-  whatever had focus. After **Z** or Undo in the Inbox, the item that came back has the focus.
+  whatever had focus, also from inside the Inbox. Every arrival at the Inbox (G I, Back or Esc from an item opened from it) puts the
+  focus on its open item. After **Z** or Undo in the Inbox, the item that came back has the focus.
+- **After Propose:** a `/decide` from the composer leaves the cursor in the composer, as `/task` does; Propose through New focuses the
+  new decision's card once it is in the conversation.
 - **A window closed to go somewhere** (a Search result, a place) leaves the focus to where it leads, never back to its opener.
 - **A page arrived at with nothing to focus** (Back to Home, a reload) gives the focus to its content, never to the page itself.
 - **Single keys** are never shortcuts while a field has focus, or while a menu is open. **Esc in a composer** leaves it for the
-  newest message and keeps the draft; the single keys work from there. New shows its `C` only while `C` works (no field has focus).
+  newest message and keeps the draft; the single keys work from there. New shows its `C`, and a toast its `Z`, only while the key works (no field has focus).
 - **Esc with a panel open** closes the panel wherever focus is, an empty field included, unless a menu or a window is open or the
   focused control used Esc (a title being edited, a search holding words, a page being written). Then Esc in the composer leaves it, as above. Closing a thread while the person writes in the composer, or
   arrives in it, leaves the cursor there, never on the thread's replies.
