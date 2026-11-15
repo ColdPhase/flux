@@ -95,3 +95,16 @@ test('the weight of a word is that of its own audience: documents of another aud
   for (let i = 0; i < 50; i += 1) index.put(doc('', `lamp sunlight ${i}`, 'project:hidden'));
   assert.deepEqual(find(index, 'lamp sunlight'), before, 'same hits in the same order');
 });
+
+// v0.2.1 personas round: a hyphenated word is one word ("mockup" finds "mock-up"), and a typo is only a way to find what a word did not:
+// "price list" no longer lists "Kasia Lis" (one edit from "list") beside the price list, while "liss" alone still finds her.
+test('a hyphenated word is one word, and a typo finds only what no word found whole', () => {
+  const index = new SealedSearchIndex('w');
+  index.put(doc('', 'The mock-up of the shop window is ready.'));
+  index.put(doc('', 'The price list for Christmas.'));
+  index.put(doc('Kasia Lis', '', 'project:p', 'person'));
+  assert.deepEqual(find(index, 'mockup'), ['The mock-up of the shop window is ready.']);
+  assert.deepEqual(find(index, 'mockup', { prefix: null }), ['The mock-up of the shop window is ready.']);
+  assert.deepEqual(find(index, 'price list'), ['The price list for Christmas.']);
+  assert.deepEqual(find(index, 'liss'), ['Kasia Lis'], 'with nothing found whole, the typo still finds the name');
+});

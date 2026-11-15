@@ -183,9 +183,13 @@ export function visibleKeys(audiences: SearchAudienceRows[]): SQL {
  */
 export type SearchRanking = 'prefix' | 'bm25' | 'latest';
 
-/** The BM25 index's text fields (migration 0065): title and body, each with a Polish and an English stemmer. */
-const BM25_TITLES = [sql`sd.title::pdb.alias('title_pl')`, sql`sd.title::pdb.alias('title_en')`];
-const BM25_BODIES = [sql`sd.body::pdb.alias('body_pl')`, sql`sd.body::pdb.alias('body_en')`];
+/**
+ * The BM25 index's text fields: title and body, each with a Polish and an English stemmer (migration 0065), and each with its hyphenated
+ * words joined (migration 0085: "mock-up" is also "mockup", so "mockup" finds it; the query joins its own, `joinHyphenatedWords`). A field
+ * is named by the expression the index holds, so the joined ones repeat `flux_joined_words`.
+ */
+const BM25_TITLES = [sql`sd.title::pdb.alias('title_pl')`, sql`sd.title::pdb.alias('title_en')`, sql`flux_joined_words(sd.title)::pdb.alias('title_joined')`];
+const BM25_BODIES = [sql`sd.body::pdb.alias('body_pl')`, sql`sd.body::pdb.alias('body_en')`, sql`flux_joined_words(sd.body)::pdb.alias('body_joined')`];
 /**
  * What a word counts in a hit (BM25F, F-042, #1387): each time it occurs in the title counts twice each time in the body, as in the exact
  * search. A hit that holds none of the query's whole words but matched only as the word being typed (a prefix of one) or as a title with one
@@ -300,10 +304,11 @@ function lookedUpWords(plan: SearchPlanRows): { words: string[]; typed: string |
  * typed (a prefix) or as a title with a typo, which is not tied to one word.
  */
 interface RankedField { shift: number; bits: number }
-/** A clause of a scan: the query for a constant, and the field of the score that constant belongs to (null: the document-level partial match of the chunk). */
-interface RankedClause { query: (constant: SQL) => SQL; at: RankedField | null }
+/** A clause of a scan: the query for a constant, and the field of the score that constant belongs to. */
+interface RankedClause { query: (constant: SQL) => SQL; at: RankedField }
 interface RankedWord { w: number; word: string; title: RankedField; body: RankedField }
-interface RankedChunk { words: RankedWord[]; clauses: RankedClause[]; part: RankedField | null }
+/** `part`: matched as the word being typed (a prefix); `typo`: a title with a typo. Neither is tied to one word. */
+interface RankedChunk { words: RankedWord[]; clauses: RankedClause[]; part: RankedField | null; typo: RankedField | null }
 
 const bitsFor = (count: number) => Math.ceil(Math.log2(count + 1));
 /** The bits of a decoded score (see the evidence above): code bit `k` is the constant 2^(k − 12), so the largest is 2^10. */
@@ -311,19 +316,22 @@ const SCORE_BITS = 23;
 const FRACTION_BITS = 12;
 const constantOf = (bit: number) => 2 ** (bit - FRACTION_BITS);
 
-/** The clauses that match a word only partly: the word being typed as a prefix of what is indexed, and a title with one typo. */
-function partialClauses(plan: SearchPlanRows): RankedClause[] {
+type Clause = (constant: SQL) => SQL;
+
+/** The clauses that match a word only partly: the word being typed as a prefix of what is indexed (`prefix`), and a title with one typo (`typo`). */
+function partialClauses(plan: SearchPlanRows): { prefix: Clause[]; typo: Clause[] } {
   const { words, typed } = lookedUpWords(plan);
-  const prefix = typingWord(plan);
-  const clauses: RankedClause[] = [];
+  const word = typingWord(plan);
+  const prefix: Clause[] = [];
+  const typo: Clause[] = [];
   // "sens" finds "sensors": the index holds stems, so a prefix is looked up in them.
-  if (prefix && typed && words.includes(typed))
-    for (const field of [...BM25_TITLES, ...BM25_BODIES]) clauses.push({ at: null, query: (constant) => sql`${field} @@@ (pdb.regex(${`${prefix}.*`}::text)::pdb.const(${constant}))` });
+  if (word && typed && words.includes(typed))
+    for (const field of [...BM25_TITLES, ...BM25_BODIES]) prefix.push((constant) => sql`${field} @@@ (pdb.regex(${`${word}.*`}::text)::pdb.const(${constant}))`);
   // A person's search (`fuzzy`) also tolerates a typo in a title, in any of its longer words; a task number names one task.
-  const typos = plan.fuzzy && plan.number === null ? words.filter((word) => [...word].length >= TYPO_MIN_LETTERS).slice(0, TYPO_MAX_WORDS) : [];
+  const typos = plan.fuzzy && plan.number === null ? words.filter((one) => [...one].length >= TYPO_MIN_LETTERS).slice(0, TYPO_MAX_WORDS) : [];
   if (typos.length)
-    for (const field of BM25_TITLES) clauses.push({ at: null, query: (constant) => sql`${field} ||| ${typos.join(' ')}::text::pdb.fuzzy(1)::pdb.const(${constant})` });
-  return clauses;
+    for (const field of BM25_TITLES) typo.push((constant) => sql`${field} ||| ${typos.join(' ')}::text::pdb.fuzzy(1)::pdb.const(${constant})`);
+  return { prefix, typo };
 }
 
 const num = (value: number) => sql.raw(String(value));
@@ -331,10 +339,13 @@ const num = (value: number) => sql.raw(String(value));
 function rankedChunks(plan: SearchPlanRows): RankedChunk[] {
   const { words } = lookedUpWords(plan);
   const partial = partialClauses(plan);
-  const chunks: RankedChunk[] = [{ words: [], clauses: [...partial], part: partial.length ? { shift: 0, bits: bitsFor(partial.length) } : null }];
-  let used = chunks[0]!.part ? chunks[0]!.part.bits : 0;
+  const part = partial.prefix.length ? { shift: 0, bits: bitsFor(partial.prefix.length) } : null;
+  const typo = partial.typo.length ? { shift: part?.bits ?? 0, bits: bitsFor(partial.typo.length) } : null;
+  const clauses = [...partial.prefix.map((query) => ({ query, at: part! })), ...partial.typo.map((query) => ({ query, at: typo! }))];
+  const chunks: RankedChunk[] = [{ words: [], clauses, part, typo }];
+  let used = (part?.bits ?? 0) + (typo?.bits ?? 0);
   words.forEach((word, w) => {
-    if (used + 4 > SCORE_BITS) { chunks.push({ words: [], clauses: [], part: null }); used = 0; }
+    if (used + 4 > SCORE_BITS) { chunks.push({ words: [], clauses: [], part: null, typo: null }); used = 0; }
     const chunk = chunks[chunks.length - 1]!;
     const title = { shift: used, bits: 2 };
     const body = { shift: used + 2, bits: 2 };
@@ -348,7 +359,7 @@ function rankedChunks(plan: SearchPlanRows): RankedChunk[] {
 
 /** The scan of one chunk: each visible hit, read once, with the sum of the constants of the clauses it matched (decoded in `cand`), and its own tsvector. */
 function rankedScan(chunk: RankedChunk, plan: SearchPlanRows): SQL {
-  const clauses = chunk.clauses.map((clause) => clause.query(sql.raw(String(constantOf((clause.at ?? chunk.part!).shift)))));
+  const clauses = chunk.clauses.map((clause) => clause.query(sql.raw(String(constantOf(clause.at.shift)))));
   const numbered = plan.number === null ? sql`false` : sql`(sd.kind = 'work' AND split_part(sd.body, E'\n', 1) = ${`#${plan.number}`})`;
   // Only the audiences filter the scan; the caller's filters read these columns after it, in `cand` (see the evidence above `RankedField`).
   return sql`SELECT sd.id, sd.kind, sd.object_id, sd.version, sd.at, sd.tsv, ${numbered} AS numbered,
@@ -406,6 +417,12 @@ function rankedStatement(plan: SearchPlanRows, vector: string | null = null): SQ
   const whole = sql.join(words.map((entry) => sql`${idf(entry)} * ${tf(entry)} * ${num(BM25_K1 + 1)} / (${tf(entry)} + ${norm})`), sql` + `);
   const partial = sql`${num(WEIGHT.part)} * (${sql.join(words.map((entry) => idf(entry)), sql` + `)}) / ${num(words.length)} * ${num(BM25_K1 + 1)} / (1 + ${norm})`;
   const any = sql.join(words.map((entry) => sql`${tf(entry)} > 0`), sql` OR `);
+  // A typo is a way to find what a word did not (v0.2.1 personas round: "price list" listed "Kasia Lis", one edit from "list", beside
+  // the price list itself). A hit found only by a typo in its title is shown only when no visible hit holds one of the words whole.
+  const first = chunks[0]!;
+  const code0 = sql.raw('coalesce(h.c0, 0)');
+  const prefixed = first.part ? field(code0, first.part) : sql`false`;
+  const typoed = first.typo ? field(code0, first.typo) : sql`false`;
   // With a query vector (the optional embeddings, #1294) the visible BM25 order above is one list of the fusion (see `hybridMatched`).
   const matched = vector
     ? hybridMatched({ vector, visible: sql`NOT sd.sealed AND ${AUDIENCE_ANY} AND ${keep}`, number: plan.number })
@@ -420,13 +437,16 @@ function rankedStatement(plan: SearchPlanRows, vector: string | null = null): SQ
     `)}
     q AS MATERIALIZED (SELECT ${sql.join(queries, sql`, `)}),
     cand AS MATERIALIZED (
-      SELECT h.id, h.kind, h.object_id, h.version, h.at, h.numbered, length(h.tsv)::float8 AS dl, ${sql.join(own, sql`, `)}
+      SELECT h.id, h.kind, h.object_id, h.version, h.at, h.numbered, length(h.tsv)::float8 AS dl, ${sql.join(own, sql`, `)},
+        ${prefixed} AS prefixed, ${typoed} AS typoed
       FROM (${hits}) h CROSS JOIN q),
-    stats AS (SELECT count(*)::float8 AS n, greatest(avg(c.dl)::float8, 1) AS avgdl, ${sql.join(counts, sql`, `)} FROM cand c),
+    stats AS (SELECT count(*)::float8 AS n, greatest(avg(c.dl)::float8, 1) AS avgdl, ${sql.join(counts, sql`, `)},
+      count(*) FILTER (WHERE ${any}) AS whole FROM cand c),
     scored AS (
       SELECT c.id, c.kind, c.object_id, c.version, c.at, c.numbered,
         CASE WHEN ${any} THEN ${whole} ELSE ${partial} END AS rank
-      FROM cand c CROSS JOIN stats st),
+      FROM cand c CROSS JOIN stats st
+      WHERE NOT (c.typoed AND NOT c.prefixed AND NOT (${any}) AND st.whole > 0)),
     -- A file is several rows, one for each part of its text (C-63): it counts once, by its best part, before the hybrid's lists take their first 50.
     ranked AS (
       SELECT s.id, s.kind, s.object_id, s.version, s.at, s.numbered, s.rank FROM scored s WHERE s.kind <> 'file'
