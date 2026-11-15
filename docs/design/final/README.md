@@ -560,11 +560,12 @@ The keys show next to their actions in menus.
 - **The sidebar's arrow keys** move between its rows. **G I** to an empty Inbox focuses its heading.
 - **Single keys** are never shortcuts while a field has focus, or while a menu is open. **Esc in a composer** leaves it for the
   newest message and keeps the draft; the single keys work from there. New shows its `C` only while `C` works (no field has focus).
-- **Esc with a panel open** closes the panel wherever focus is, unless a menu or a window is open or the focused control used Esc
-  (a title being edited). Then Esc in the composer leaves it, as above. Closing a thread while the person writes in the composer, or
+- **Esc with a panel open** closes the panel wherever focus is, an empty field included, unless a menu or a window is open or the
+  focused control used Esc (a title being edited, a search holding words, a page being written). Then Esc in the composer leaves it, as above. Closing a thread while the person writes in the composer, or
   arrives in it, leaves the cursor there, never on the thread's replies.
 - **After an action removes what had focus** (Add people, Undo, `Z`, Esc from a panel opened with the mouse, Propose decision,
-  New map, Invite), focus goes to the next control where it was, else the previous one, never to the page itself.
+  New map, Invite), focus goes to the next control where it was, else the previous one, never to the page itself. Undo in a toast,
+  by key or with the mouse, gives focus back to the control that made the change; undoing a new task closes its panel.
 
 Settings has one address per section, and no earlier address is kept: nothing is kept
 compatible before the first public release (founder direction, 2026-11-09, #1096). Preserve
