@@ -20,6 +20,7 @@ import { Button, Icon, MEDIA, Overlay, Spinner, Tabs, useMediaQuery, useToast, S
 import { createDoc, docUrl } from '../docs/api';
 import { holdTyping } from '../docs/typeAhead';
 import { createWork, proposeDecision } from '../work/api';
+import { holdProposal } from '../work/heldProposals';
 import { useWorkChoices } from '../work/useDetailReads';
 import { WorkPagination } from '../work/WorkPagination';
 import { useCreatedToast } from '../work/taskState';
@@ -489,7 +490,7 @@ function PageForm({ ids, phone, carried, projectId, onProject, onClose }: PanelP
  * proposal reaches the people who can accept it only when that window ends.
  */
 function DecisionForm({ ids, phone, carried, projectId, onProject, onClose, request }: PanelProps & { request: CreateRequest }) {
-  const { projects } = useShellData();
+  const { projects, me } = useShellData();
   const revalidator = useRevalidator();
   const toast = useToast();
   const [why, setWhy] = useState('');
@@ -515,10 +516,23 @@ function DecisionForm({ ids, phone, carried, projectId, onProject, onClose, requ
     const snapshot = carried.begin();
     const command = { title, ...(why.trim() ? { rationale: why.trim() } : {}), ...(supersedes ? { supersedes: supersedes.id } : {}), ...(source ? { sources: [{ type: 'message' as const, id: source.ref.id }] } : {}) };
     const target = project.id;
-    const handle = startProposal((key, keepalive) => proposeDecision(target, command, key, keepalive), (outcome) => {
+    let made: (id: string | null) => void = () => undefined;
+    const decided = new Promise<string | null>((resolve) => { made = resolve; });
+    const handle = startProposal(async (key, keepalive) => {
+      const decision = await proposeDecision(target, command, key, keepalive);
+      card.proposed(decision.id);
+      made(decision.id);
+      return decision;
+    }, (outcome) => {
       revalidator.revalidate();
-      if (outcome !== 'accepted') toast({ tone: 'danger', message: `“${title}” wasn’t proposed. Nothing changed; propose it again.` });
+      if (outcome === 'accepted') return;
+      card.drop();
+      made(null);
+      toast({ tone: 'danger', message: `“${title}” wasn’t proposed. Nothing changed; propose it again.` });
     });
+    // Its card shows in the conversation at once, "Proposed", while the proposal waits out its Undo (#1424); opening it sends it now.
+    const card = holdProposal({ projectId: target, workspaceId: project.workspaceId ?? '', title, by: { kind: 'human', id: me.user.id, name: me.user.name },
+      sources: source ? [source.ref] : [], conversationId: source?.conversationId ?? null }, () => { handle.send(); return decided; });
     carried.made(snapshot);
     // A `/decide` keeps its words in the composer until Propose, as `/task` does until Create: closing the window loses nothing, and the
     // words are not left behind to be sent again while the proposal waits out its Undo.
@@ -526,7 +540,7 @@ function DecisionForm({ ids, phone, carried, projectId, onProject, onClose, requ
     // Stays set: the window closes, and a second submit in the same tick must not hold a second proposal.
     onClose();
     toast({ message: 'Decision proposed', tone: 'neutral', onLeave: handle.send, action: { label: 'Undo', key: 'Z', onClick: () => {
-      if (handle.undo()) toast({ message: 'Not proposed' });
+      if (handle.undo()) { card.drop(); toast({ message: 'Not proposed' }); }
       else toast({ message: 'It was already proposed; it waits in the Inbox of those who can accept it.' });
     } } });
   }

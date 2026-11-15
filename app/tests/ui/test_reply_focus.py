@@ -32,6 +32,8 @@ PEOPLE = {
 IN_ROOT = "can you take the stall on Saturday morning?"
 IN_THREAD = "could you bring the folding table too?"
 PHONE_ASKS = ["is the gazebo still at your brother's?", "do we have enough price tags?", "who keeps the cash box?"]
+# Two more for R in the Inbox (#1424 persona round, P2 #4): R replies to the open one, and the other stays untouched.
+R_ASKS = ["can you lock the shed after the market?", "could you print the price list?"]
 THREAD_ROOT = "The stall needs a table, a gazebo and a price board."
 STREAM_ROOT = "Electricity at the stall: the town decides on Monday."
 STREAM_REPLY = "I asked them on Friday, no answer yet."
@@ -50,6 +52,7 @@ class ReplyFocus(unittest.TestCase):
     states: dict[str, dict] = {}
     ids: dict[str, str] = {}
     phone: dict[str, str] = {}
+    r_asks: dict[str, str] = {}
 
     @classmethod
     def post(cls, who: str, path: str, body: dict) -> dict:
@@ -88,6 +91,7 @@ class ReplyFocus(unittest.TestCase):
         reply("jonas", thread["id"], f"@Ada Kowalska {IN_THREAD}")
         root = start("jonas", f"@Ada Kowalska {IN_ROOT}")
         phone = {ask: start("jonas", f"@Ada Kowalska {ask}")["id"] for ask in PHONE_ASKS}
+        cls.r_asks = {ask: start("jonas", f"@Ada Kowalska {ask}")["id"] for ask in R_ASKS}
         cls.ids.update(project=project, stream=stream["id"], stream_root=stream["messages"][0]["id"], thread=thread["id"], root=root["id"])
         cls.phone = phone
         for key, context in cls.contexts.items():
@@ -95,7 +99,7 @@ class ReplyFocus(unittest.TestCase):
         # The worker writes the notifications shortly after the messages.
         for _ in range(120):
             titles = " ".join(item["title"] for item in cls.get("/api/v1/needs-you")["items"])
-            if all(ask in titles for ask in [IN_ROOT, IN_THREAD, *PHONE_ASKS]):
+            if all(ask in titles for ask in [IN_ROOT, IN_THREAD, *PHONE_ASKS, *R_ASKS]):
                 break
             time.sleep(0.25)
         else:
@@ -224,6 +228,39 @@ class ReplyFocus(unittest.TestCase):
         page.locator("header.phead").get_by_role("button", name=re.compile(r"^Back")).click()
         expect(page).to_have_url(re.compile(r"/projects$"))
         expect(self.thread(page)).to_have_count(0)
+
+    # ---------------------------------------------------------------- R in the Inbox (#1424 persona round, P2 #4)
+
+    def test_05_r_in_the_inbox_replies_and_what_follows_is_the_reply(self) -> None:
+        # Shortcuts says "R · Reply in thread". In the Inbox R did nothing, and the reply typed next ran the Inbox's keys: "Sure" put the open
+        # item off (S) and marked the next one done (E), and both silently left the Inbox.
+        page = self.page()
+        asked, other = R_ASKS
+        page.goto("/inbox")
+        row = page.locator(".nyc", has_text=asked)
+        expect(row).to_have_count(1)
+        row.locator(".nyc__open").click()
+        expect(row).to_have_attribute("aria-current", "true")
+        reply = page.locator(".nyc--open").get_by_role("button", name="Reply", exact=True)
+        expect(reply).to_have_attribute("aria-keyshortcuts", "R")
+        expect(reply.locator("kbd")).to_have_text("R")
+        shot(page, f"reply-focus-inbox-r-key-1440-{UI_BROWSER}")
+        # R, then the sentence at once: the reply field opens with every key of it.
+        page.keyboard.press("r")
+        page.keyboard.type(SENTENCES["root"], delay=35)
+        expect(page).to_have_url(re.compile(rf"/conversations/{self.r_asks[asked]}"))
+        field = self.thread(page).get_by_label("Reply", exact=True)
+        expect(field, "every key after R went into the reply field").to_have_value(SENTENCES["root"])
+        page.keyboard.press("Enter")
+        for _ in range(80):
+            if SENTENCES["root"] in self.bodies(self.r_asks[asked]):
+                break
+            time.sleep(0.25)
+        self.assertEqual(self.bodies(self.r_asks[asked])[-1], SENTENCES["root"], "the reply is exactly what was typed")
+        # Nothing was put off or marked done by the typing: the other question still waits, and nothing is "for later".
+        queue = self.get("/api/v1/needs-you")
+        self.assertTrue(any(other in item["title"] for item in queue["items"]), "the other question is still in the Inbox")
+        self.assertEqual(queue["later"], 0, "nothing was put off by the typing")
 
 
 if __name__ == "__main__":

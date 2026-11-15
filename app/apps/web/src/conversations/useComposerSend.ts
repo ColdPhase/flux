@@ -34,11 +34,11 @@ export function useComposerSend({ project, conversation, writable, aiOff, guest,
     const submitted = publicComposer.draft;
     const consume = () => publicComposer.consumeBody(submitted);
     // Typed in a thread, the words are about that thread (#694): its opening message is the source, so the thread shows what came of it.
-    const fromThread = conversation && rootMessageId ? { messageId: rootMessageId, text: conversation.firstMessageBody } : null;
+    const fromThread = conversation && rootMessageId ? { messageId: rootMessageId, text: conversation.firstMessageBody, conversationId: conversation.id } : null;
     // `/task` and `/decide` open the one Create window with the words as its title, the thread's opening message as its source.
     // The composer keeps its words until the task or decision exists: closing the window loses nothing (and a newer draft is never consumed).
     openCreate({ kind: name === 'decide' ? 'decision' : 'task', projectId: project.id, title: firstLine(text), onCreated: consume,
-      ...(fromThread ? { sources: [{ ref: { type: 'message' as const, id: fromThread.messageId }, label: firstLine(plainMessageText(fromThread.text)) }] } : {}) });
+      ...(fromThread ? { sources: [{ ref: { type: 'message' as const, id: fromThread.messageId }, label: firstLine(plainMessageText(fromThread.text)), conversationId: fromThread.conversationId }] } : {}) });
   }
   async function send() {
     typing.stop();

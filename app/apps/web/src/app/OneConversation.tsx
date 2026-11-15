@@ -14,6 +14,7 @@ import { useShellData } from './data';
 import { agentAuthorLabel, FORMER_MEMBER } from '../docs/format';
 import { ConversationStream, streamPlace, useConversationRoots, useObjectNotices, useTaskNotices } from './ConversationStream';
 import { WORK_EVENT, useStreamEvents } from '../api/stream';
+import { useWithHeldProposals } from '../work/heldProposals';
 import { ThreadRoot } from './ThreadRoot';
 import { SourceOfContext } from './messageParts';
 import { OwnedPanelContent, useOwnedPanel } from './ownedPanel';
@@ -96,7 +97,8 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
   const reveal = conversation && !conversation.task && !state?.fromStream && !restore ? { conversationId: conversation.id, key: `${conversation.id}:${location.key}` } : null;
   const roots = useConversationRoots(project.id, data.roots, reveal?.conversationId ?? restore?.conv ?? null, onDenied);
   const notices = useTaskNotices(project.id, data.notices, roots.roots, roots.hasOlder, onDenied);
-  const objects = useObjectNotices(project.id, data.objectNotices, roots.roots, roots.hasOlder, onDenied);
+  // A decision this person just proposed is among them at once, as its card "Proposed", while it waits out its Undo (#1424).
+  const objects = useWithHeldProposals(project.id, useObjectNotices(project.id, data.objectNotices, roots.roots, roots.hasOlder, onDenied));
   // A change to the space's work, decisions or results, or a link between a message and a task (#694, #862): the stream's task lines and
   // announcements, its chips and an open thread read it now (no timer reads them while the live stream is open). The events carry ids only;
   // what is shown is read through the API.

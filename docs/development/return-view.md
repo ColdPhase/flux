@@ -45,14 +45,15 @@ conversation points are deleted with their place.
   since stays read. It never touches
   the Inbox. The unread dot of a space is not this state: it is the Inbox's items of that space.
 - **Places interact.** "I have the context" in a project removes that project's items from Home,
-  because Home uses the maximum of the points below. Acknowledging Home moves the start of every
-  project never opened, since such a project starts from Home's point.
+  because Home uses the maximum of the points below. Acknowledging Home (a first visit, or following
+  its Continue) moves no project's start: a project never opened starts from its beginning, so its
+  name stays bold in the sidebar until it is opened (persona round, #1424, 2026-11-15).
 - **Nested places.** A change that has already been seen in a narrower place does not come back
   in a wider one. Home uses the maximum of the Home, project and conversation points. A project
-  uses the maximum of the project and conversation points. A place that was never viewed starts
-  from the enclosing place's point (a project from Home). On Home with no point, the summary is
-  empty and viewing creates the point. A project or conversation with neither its own nor the
-  enclosing point starts from its beginning (`since: null`, #133).
+  uses the maximum of the project and conversation points. A conversation that was never viewed
+  starts from its project's point; a project never viewed starts from its beginning, never from
+  Home's. On Home with no point, the summary is empty and viewing creates the point. A project, or a
+  conversation with neither its own nor its project's point, starts from its beginning (`since: null`, #133).
 
 ## Since you left in the project conversation (S7, #763 A3, 2026-10-30)
 

@@ -24,7 +24,7 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
-from create_window import dialog, submit_button, title_field
+from create_window import dialog, submit_button, title_field, window
 from inbox_items import open_item
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, shot, start_forwarder
 
@@ -42,6 +42,7 @@ DECIDED = "Double the cinnamon buns for the market"
 OPEN_RULE = "Print a price board for the stall"
 LONG_TASK = "Calibrate the soil moisture probes in the far east bed"
 TOAST_MS = 10_000
+GAZEBO = "Bring a second gazebo in case of rain"
 
 
 def box(page: Page, selector_or_locator) -> dict:
@@ -223,6 +224,45 @@ class UndoAndOneCard(unittest.TestCase):
                 eyebrow = panel.locator(".wd-eyebrow")
                 expect(eyebrow).to_contain_text("Accepted")
                 expect(eyebrow).not_to_contain_text("Decision")
+
+    def test_01b_a_proposed_decision_shows_its_card_at_once(self) -> None:
+        # #1424 persona round P2 #6: after "Decision proposed" the card came ~10 s later (the proposal waits out its Undo before it is
+        # sent), while a task's card came at once. It shows at once as "Proposed"; Undo takes it away; opening it sends it now.
+        page = self.page()
+        self.stream(page)
+        feed = page.locator(".project-convo__message-list")
+        card = feed.locator('.convo-object[data-object-kind="decision.proposed"]', has_text=GAZEBO)
+        decisions = lambda: [item["title"] for item in page.request.get(f"/api/v1/projects/{self.ids['project']}/decisions?limit=100").json()["items"]]  # noqa: E731
+
+        def propose() -> None:
+            composer = page.locator("#project-composer")
+            composer.fill(f"/decide {GAZEBO}")
+            composer.press("Enter")
+            expect(window(page)).to_be_visible()
+            window(page).get_by_role("button", name=re.compile("^Propose decision")).click()
+            expect(window(page)).to_have_count(0)
+            expect(page.locator(".ui-toast").filter(has_text="Decision proposed")).to_be_visible()
+
+        propose()
+        expect(card, "the card is in the conversation at once").to_have_count(1, timeout=2000)
+        expect(card.locator(".convo-object__state")).to_have_text("Proposed")
+        expect(card.locator(".convo-notice__meta strong")).to_have_text("Ada Kowalska · you")
+        self.assertNotIn(GAZEBO, decisions(), "held for Undo: nothing was sent yet")
+        shot(page, f"one-card-held-proposal-{UI_BROWSER}")
+        page.keyboard.press("z")
+        expect(card, "Undo takes the card away").to_have_count(0)
+        expect(page.locator(".ui-toast").filter(has_text="Not proposed")).to_be_visible()
+        self.assertNotIn(GAZEBO, decisions())
+
+        # Again, and opened from its card: it is sent now and opens in the panel, and stays one card once the read has it.
+        propose()
+        expect(card).to_have_count(1, timeout=2000)
+        card.get_by_role("button", name=re.compile(rf"^Open decision {re.escape(GAZEBO)}")).first.click()
+        expect(page.locator("#details").get_by_role("heading", name=GAZEBO)).to_be_visible()
+        self.assertEqual(decisions().count(GAZEBO), 1, "opening the card sent it once")
+        page.wait_for_timeout(1500)
+        expect(card).to_have_count(1)
+        expect(card.locator(".convo-object__state")).to_have_text("Proposed")
 
     def test_02_a_task_card_keeps_its_title_beside_a_docked_panel_at_1024(self) -> None:
         for touch in (False, True):

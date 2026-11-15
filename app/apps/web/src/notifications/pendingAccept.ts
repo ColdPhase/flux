@@ -34,11 +34,16 @@ const answering = new Set<string>();
 export const acceptingIds = (): ReadonlySet<string> => accepting;
 export const answeringIds = (): ReadonlySet<string> => answering;
 
+/** Told when a decision or question starts or stops being accepted or answered here: the Inbox count leaves it out at once. */
+const changes = new Set<() => void>();
+export function onAcceptingChange(listener: () => void) { changes.add(listener); return () => { changes.delete(listener); }; }
+const changed = () => { for (const listener of [...changes]) listener(); };
+
 /** The set a waiting command is listed in; a held proposal (`proposal:<key>`) is in none. */
 const listOf = (kind: string) => (kind === 'decision' ? accepting : kind === 'question' ? answering : null);
 const release = (id: string) => {
   const [kind, value] = id.split(':') as [string, string];
-  listOf(kind)?.delete(value);
+  if (listOf(kind)?.delete(value)) changed();
 };
 
 /**
@@ -72,7 +77,8 @@ function start(id: string, run: Waiting['run'], settle: (outcome: AcceptOutcome)
   if (delay !== null) entry.timer = setTimeout(() => dispatch(entry), delay);
   waiting.set(id, entry);
   const [kind, value] = id.split(':') as [string, string];
-  listOf(kind)?.add(value);
+  const list = listOf(kind);
+  if (list) { list.add(value); changed(); }
   return {
     /** True when the command had not been sent yet and now never will be. */
     undo(): boolean {

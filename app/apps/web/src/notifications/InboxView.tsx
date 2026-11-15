@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router';
 import type { NeedsYouItem } from '@flux/contracts';
-import { Button, ErrorState, Kreska, Spinner, useMediaQuery, useRowMotion } from '../ui';
+import { Button, ErrorState, Kreska, MEDIA, Spinner, useMediaQuery, useRowMotion } from '../ui';
 import { useSmallMoments } from '../app/smallMoments';
 import { NotAvailable } from '../app/NotAvailable';
 import { useShellData } from '../app/data';
 import { usePlaceState, useArrival } from '../place/memory';
 import { announceInboxChange, getInboxItem, markInboxRead } from './api';
-import { NeedsYouCard, type CardHandlers } from './NeedsYouCard';
+import { NeedsYouCard, itemKeys, type CardHandlers } from './NeedsYouCard';
 import { useNeedsYou } from './needsYou';
 import { SecurityNotices } from '../encryption/SecurityNotices';
 import { useNeedsYouActions } from './useNeedsYouActions';
@@ -19,7 +19,11 @@ import './needs-you.css';
 /** From this width the detail panel is no longer an overlay, and the Inbox shows the list and the open item side by side (README §7 Inbox). */
 const TWO_COLUMNS = '(min-width: 1001px)';
 
-/** Keys of the queue (F-026 §4): outside fields and dialogs, J and K move, A accepts, E marks done, S is Not now. */
+/**
+ * Keys of the queue (F-026 §4): outside fields and dialogs, J and K move, A accepts, R replies, E marks done, S is Not now, each only where
+ * the open item shows that button (`itemKeys`). R moves focus to the reply field, and every key typed from R until that field has it is the
+ * reply (`awaitField` in `open`): "Sure" typed at once never becomes S and E on the items here (#1424).
+ */
 function useQueueKeys(items: NeedsYouItem[], selected: string | null, select: (key: string) => void, handlers: CardHandlers) {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -29,13 +33,15 @@ function useQueueKeys(items: NeedsYouItem[], selected: string | null, select: (k
       const key = event.key.toLowerCase();
       const at = items.findIndex((item) => item.key === selected);
       const current = items[at] ?? null;
+      const offers = current ? itemKeys(current, !!handlers.answer) : null;
       if (key === 'j' || key === 'k') {
         event.preventDefault();
         const next = items[key === 'j' ? Math.min(items.length - 1, at + 1) : Math.max(0, at < 0 ? 0 : at - 1)];
         if (next) select(next.key);
       } else if (key === 'a' && current?.kind === 'decision') { event.preventDefault(); handlers.accept(current); }
-      else if (key === 'e' && current) { event.preventDefault(); handlers.done(current); }
-      else if (key === 's' && current) { event.preventDefault(); handlers.snooze(current, 'tomorrow'); }
+      else if (key === 'r' && current && offers?.reply) { event.preventDefault(); handlers.open(current, true); }
+      else if (key === 'e' && current && offers?.done) { event.preventDefault(); handlers.done(current); }
+      else if (key === 's' && current && offers?.notNow) { event.preventDefault(); handlers.snooze(current, 'tomorrow'); }
       // Enter on the page itself opens the item; on a button or link it does what that control does.
       else if (event.key === 'Enter' && current && (!target || target === document.body || target.id === 'content')) { event.preventDefault(); handlers.open(current); }
     };
@@ -43,6 +49,9 @@ function useQueueKeys(items: NeedsYouItem[], selected: string | null, select: (k
     return () => document.removeEventListener('keydown', onKey);
   }, [items, selected, select, handlers]);
 }
+
+/** The row of an item in the list: its title is the control that selects or opens it. */
+const rowControl = (key: string) => document.querySelector<HTMLElement>(`.nyq__list .nyc[data-key="${CSS.escape(key)}"] .nyc__open`);
 
 /**
  * The Inbox (#342, F-026 S1): "Needs you" is the one queue. Decisions you can accept, questions to you, your blocked tasks,
@@ -54,6 +63,7 @@ export function InboxView() {
   const { me } = useShellData();
   const moments = useSmallMoments();
   const two = useMediaQuery(TWO_COLUMNS);
+  const touch = useMediaQuery(MEDIA.touch);
   // A return to the Inbox shows the list it had at once, while it is read again (#592).
   const arrival = useArrival();
   const queue = useNeedsYou(me.user.id, !!arrival);
@@ -76,23 +86,39 @@ export function InboxView() {
   const select = useCallback((key: string) => {
     setSelected(key);
     document.querySelector<HTMLElement>(`.nyc[data-key="${CSS.escape(key)}"]`)?.scrollIntoView({ block: 'nearest' });
+    // Focus in the list goes with the selection, so a keyboard or screen reader user is on the item J or K chose.
+    if (document.activeElement?.closest('.nyq__list')) rowControl(key)?.focus({ preventScroll: true });
   }, [setSelected]);
   useQueueKeys(shown, current?.key ?? null, select, handlers);
   // The open column: when what had focus in it leaves with its item (Accept, Not now, Done), focus goes to the next open item, not to the start
   // of the page, so a keyboard or screen reader user goes on from there.
   const paneRef = useRef<HTMLElement>(null);
   const paneFocused = useRef(false);
+  // The same in the list: when the focused row leaves with its item, the row of the item that is open now takes focus.
+  const listFocused = useRef(false);
   const openKey = current?.key ?? null;
   useEffect(() => {
-    if (!paneFocused.current) return;
     const active = document.activeElement;
-    if (!active || active === document.body) paneRef.current?.focus({ preventScroll: true });
+    if (active && active !== document.body) return;
+    if (paneFocused.current) paneRef.current?.focus({ preventScroll: true });
+    else if (listFocused.current && openKey) rowControl(openKey)?.focus({ preventScroll: true });
   }, [openKey]);
+  // Arriving with focus nowhere (G I, a link that keeps no focus): the open item's row takes it, so the keyboard starts in the list, never on
+  // the page's body. A field, a button or a link that has focus keeps it.
+  const ready = queue.items !== null;
+  useEffect(() => {
+    if (!ready || touch || !openKey) return;
+    const active = document.activeElement;
+    if (!active || active === document.body || active.id === 'content') rowControl(openKey)?.focus({ preventScroll: true });
+    // Once per arrival: later changes of the list leave focus where the person put it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready]);
 
   // Put off for later: what Not now took out of the list, said under it (it returns tomorrow morning).
   const later = queue.later ? <p className="nyq__later">{queue.later} for later</p> : null;
   const list = (
-    <ul className="nyq__list" aria-label="Needs you">
+    <ul className="nyq__list" aria-label="Needs you" onFocus={() => { listFocused.current = true; }}
+      onBlur={(event) => { if (event.relatedTarget) listFocused.current = event.currentTarget.contains(event.relatedTarget as Node); }}>
       {shown.map((item) => (
         <NeedsYouCard key={item.key} item={item} selected={item.key === current?.key} handlers={handlers}
           compact={two || item.key !== current?.key} list={two} onSelect={() => setSelected(item.key)} />

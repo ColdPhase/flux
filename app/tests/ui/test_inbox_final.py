@@ -430,6 +430,34 @@ class InboxFinal(unittest.TestCase):
         expect(cards).to_have_count(4)
         self.wait_for(lambda: self.kinds() == sorted(["decision", "question", "blocked", "mention"]), "the restored queue")
 
+    def test_03b_keys_are_the_buttons_shown_and_g_i_lands_in_the_list(self) -> None:
+        # #1424 persona round: E on a decision said "Marked done" though the decision shows no Done (Accept · Not now · Discuss), and after
+        # G I the focus was on the page's body.
+        page = self.page()
+        page.goto("/")
+        expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+        page.keyboard.press("g")
+        page.keyboard.press("i")
+        expect(page).to_have_url(re.compile(r"/inbox$"))
+        first = page.locator(".nyq__list .nyc").first
+        expect(first).to_have_attribute("aria-current", "true")
+        expect(first.locator(".nyc__open"), "G I puts focus on the open item's row").to_be_focused()
+        # J moves the focus with the selection.
+        page.keyboard.press("j")
+        second = page.locator(".nyq__list .nyc").nth(1)
+        expect(second).to_have_attribute("aria-current", "true")
+        expect(second.locator(".nyc__open")).to_be_focused()
+        page.keyboard.press("k")
+        expect(first.locator(".nyc__open")).to_be_focused()
+        # A decision has no Done: E does nothing to it.
+        pane = self.item(page, DECISION)
+        expect(pane.get_by_role("button", name=re.compile(r"^Done"))).to_have_count(0)
+        page.keyboard.press("e")
+        page.wait_for_timeout(700)
+        expect(page.get_by_role("status").filter(has_text="Marked done")).to_have_count(0)
+        expect(self.card(page, DECISION)).to_have_count(1)
+        self.assertIn("decision", self.kinds(), "the decision still waits")
+
     def test_04_not_now_is_one_button_until_tomorrow_morning(self) -> None:
         page = self.page()
         page.goto("/inbox")
@@ -622,13 +650,19 @@ class InboxFinal(unittest.TestCase):
         page = self.page()
         page.goto("/inbox")
         decision = self.card(page, DECISION)
+        count = page.get_by_role("navigation", name="Places").locator("a[href='/inbox'] .side__count").first
+        waiting = len(self.queue(None)["items"])
+        expect(count).to_have_text(str(waiting))
         self.item(page, DECISION).get_by_role("button", name=re.compile("^Accept")).click()
         toast = page.get_by_role("status").filter(has_text="Accepted")
         expect(toast).to_be_visible()
         expect(decision).to_have_count(0)
+        # The count leaves the accepted decision out at once, not when the accept is sent ~10 s later (#1424 persona round).
+        expect(count).to_have_text(str(waiting - 1), timeout=2000)
         self.assertEqual(self.decision_status(), "proposed", "nothing was sent while Undo is offered")
         page.keyboard.press("z")
         expect(decision).to_have_count(1)
+        expect(count).to_have_text(str(waiting), timeout=2000)
         time.sleep(7)
         self.assertEqual(self.decision_status(), "proposed", "an undone accept is never sent")
 
@@ -925,8 +959,9 @@ class InboxFinal(unittest.TestCase):
         card = self.card(page, title)
         self.item(page, title)
         expect(card).to_have_attribute("aria-current", "true")
-        page.keyboard.press("e")
-        expect(page.get_by_role("status").filter(has_text="Marked done")).to_be_visible()
+        # A decision has Not now (S), never Done (#1424).
+        page.keyboard.press("s")
+        expect(page.get_by_role("status").filter(has_text="Back tomorrow morning")).to_be_visible()
         self.wait_for(lambda: not has_decision("ada"), "Ada's decision choice to be stored")
         self.assertTrue(has_decision("jonas"), "Ada’s decision must remain in Jonas’s queue")
 
@@ -951,10 +986,10 @@ class InboxFinal(unittest.TestCase):
 
         # B makes and dismisses their own Done toast. If A's callback survived, Z now picks it
         # and sends its DELETE with B's cookie, incorrectly putting B's decision back in the queue.
-        page.keyboard.press("e")
-        expect(page.get_by_role("status").filter(has_text="Marked done")).to_be_visible()
+        page.keyboard.press("s")
+        expect(page.get_by_role("status").filter(has_text="Back tomorrow morning")).to_be_visible()
         self.wait_for(lambda: not current_tab_has_decision(), "Jonas's decision choice to be stored")
-        own_toast = page.locator(".ui-toast").filter(has_text="Marked done").last
+        own_toast = page.locator(".ui-toast").filter(has_text="Back tomorrow morning").last
         own_toast.get_by_role("button", name="Dismiss notification").click()
         expect(page.locator(".ui-toast")).to_have_count(0)
         page.keyboard.press("z")

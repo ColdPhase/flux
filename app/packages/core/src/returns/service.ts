@@ -111,14 +111,15 @@ export function createReturnUseCases(ports: ReturnPorts) {
     const recipient = `human:${userId}`;
     const place = parseReturnPlace(placeInput);
     const resolved = await resolve(principal, place);
-    const baseKeys = resolved.type === 'home' ? ['home']
-      : resolved.type === 'project' ? [resolved.key, 'home'] : [resolved.key, key('project', resolved.projectId!)];
+    // A conversation never viewed starts from its space's point: the space's stream showed its roots. A space never opened starts from its
+    // beginning, never from Home's point: Home shows a few rows of every space, and visiting it, or following its Continue, must not mark
+    // the spaces not opened as read (their names stay bold, #1424).
+    const enclosing = resolved.type === 'conversation' ? key('project', resolved.projectId!) : null;
+    const baseKeys = resolved.type === 'home' ? ['home'] : enclosing ? [resolved.key, enclosing] : [resolved.key];
     const stored = await returns.points(userId, baseKeys);
     const own = stored.get(resolved.key);
-    // A place never viewed starts from the enclosing place's point (a project from Home); a
-    // project or conversation seen nowhere yet starts from its beginning (#133, first visit).
-    const base: { seq: number } | undefined = own ?? (resolved.type === 'home' ? undefined : stored.get(baseKeys[1]!) ?? { seq: 0 });
-    const since = own?.savedAt ?? (resolved.type === 'home' ? null : stored.get(baseKeys[1]!)?.savedAt ?? null);
+    const base: { seq: number } | undefined = own ?? (resolved.type === 'home' ? undefined : (enclosing ? stored.get(enclosing) : undefined) ?? { seq: 0 });
+    const since = own?.savedAt ?? (enclosing ? stored.get(enclosing)?.savedAt ?? null : null);
     // The mark is read before the events, so a change that lands in between shows again next time.
     const last = await returns.lastEvent(recipient);
     const untilSeq = last?.seq ?? 0;

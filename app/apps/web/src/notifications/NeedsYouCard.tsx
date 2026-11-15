@@ -40,6 +40,24 @@ const NOTE_ICON: Record<'question' | 'mention', IconName> = { question: 'chat', 
 const waitReasons = (changes: readonly { line: string | null }[]) =>
   [...new Set(changes.map((change) => change.line).filter((line): line is string => !!line))].join(' ') || 'Deleting and other people\'s things always wait for your OK.';
 
+/**
+ * The keys an open item answers to are the buttons it shows (F-026 §4, #1424): R where it shows Reply, E where it shows Done, S where it
+ * shows Not now. A decision shows Accept and Not now, never Done; an agent's suggestion shows Got it and Decline. The Inbox asks this
+ * before a key acts, so a key never does what no button on screen offers.
+ */
+export function itemKeys(item: NeedsYouItem, canAnswer: boolean): { reply: boolean; done: boolean; notNow: boolean } {
+  const decision = item.kind === 'decision';
+  const quiet = !decision && !item.proposal;
+  const reply = !decision && item.kind !== 'blocked' && !(item.agentQuestion && canAnswer) && !item.proposal && !item.assistantChanges && !item.call
+    && item.reason !== 'invitation';
+  return { reply, done: quiet, notNow: quiet || decision };
+}
+
+/** Reply: opens the item's source with the reply field focused (C-1); `R` on the open item does the same. */
+function ReplyButton({ onClick, keyHint = false }: { onClick: () => void; keyHint?: boolean }) {
+  return <Button variant="secondary" aria-keyshortcuts="R" onClick={onClick}>Reply{keyHint ? <kbd aria-hidden="true">R</kbd> : null}</Button>;
+}
+
 /** Not now (S11): one button, no menu. It puts the item off until tomorrow morning and offers Undo. */
 export function NotNowButton({ onClick, variant = 'secondary', className, keyHint = false }: { onClick: () => void; variant?: 'secondary' | 'quiet'; className?: string; keyHint?: boolean }) {
   return <Button variant={variant} className={className} aria-keyshortcuts="S" onClick={onClick}>Not now{keyHint ? <kbd aria-hidden="true">S</kbd> : null}</Button>;
@@ -172,8 +190,10 @@ export function NeedsYouCard({ item, selected = false, compact = false, list = f
           <JoinCall call={item.call} variant="primary" />
           <Button variant="secondary" onClick={() => handlers.open(item)}>Open</Button>
         </>
+      ) : item.reason === 'invitation' ? (
+        <Button variant="secondary" onClick={() => handlers.open(item)}>Open</Button>
       ) : (
-        <Button variant="secondary" onClick={() => handlers.open(item, item.reason !== 'invitation')}>{item.reason === 'invitation' ? 'Open' : 'Reply'}</Button>
+        <ReplyButton onClick={() => handlers.open(item, true)} keyHint />
       )}
       {!decision && !item.proposal && !touch ? <span className="nyc__quiet"><NotNowButton variant="quiet" onClick={notNow} keyHint /><Button variant="quiet" aria-keyshortcuts="E" onClick={() => handlers.done(item)}>Done<kbd aria-hidden="true">E</kbd></Button></span> : null}
     </div>

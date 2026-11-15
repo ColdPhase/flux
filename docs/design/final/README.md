@@ -920,8 +920,10 @@ Community garden sensors, Rain barrel monitor and Tool library.
   box around it: the face, who and where and when, the title (`--fs-xl`), its words, its actions, then who can accept it. Nothing in
   the list moves when another item opens. **In one column** (a tablet in portrait, the phone) the open item is the card that is
   expanded inside the list, and the others stay one row with their one quiet action, as the phone is drawn.
-  `J` and `K` move between items, and `A`, `E` and `S` act on the open one. The keys are shown in menus and on their buttons
-  (Accept's `A`), never as a legend under the list ([#1419](https://github.com/ColdPhase/flux/issues/1419) item 13).
+  `J` and `K` move between items, and `A`, `R`, `E` and `S` act on the open one, each only where it shows that button (Accept, Reply,
+  Done, Not now; a decision has no Done, #1424). `R` puts focus in the reply field, and what is typed from then on is the reply, never
+  Inbox keys. Arriving at the Inbox with focus nowhere (`G` `I`), the open item's row takes it. The keys are shown in menus and on their buttons
+  (Accept's `A`, Reply's `R`), never as a legend under the list ([#1419](https://github.com/ColdPhase/flux/issues/1419) item 13).
 - **Not now is one button, with no menu** (S11, #1367). It puts the item off until tomorrow at 08:00 and offers Undo ("Not now.
   Back tomorrow morning"); the item returns then. There is no "Ask me again" menu, no "Next week", no "When #N is done" and no
   "Decline for good" on a decision: a decision waits until someone accepts it. A line under the list says how many are put off

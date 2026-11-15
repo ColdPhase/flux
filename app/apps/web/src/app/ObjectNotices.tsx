@@ -4,6 +4,7 @@ import { AgentIdentity, Icon } from '../ui';
 import { agentAuthorOwner, type AgentOwners } from '../agents/owners';
 import { AuthorFace, clock, when } from './messageParts';
 import { objectPhrase, objectState, objectTarget } from './objectNotices';
+import { isHeldDecision, sendHeldProposal } from '../work/heldProposals';
 import './object-notices.css';
 
 /**
@@ -24,7 +25,12 @@ export function ObjectNoticeItem({ notice, meId, owners, authorOf, inThread = fa
   const mine = by.kind === 'human' && by.id === meId;
   const phrase = objectPhrase(notice, authorOf, inThread, { name, mine }, follows);
   const state = objectState(notice);
+  // A proposal still held for Undo opens by being sent: the decision opens once it exists.
   const target = objectTarget(notice);
+  const open = (to: ReturnType<typeof objectTarget>) => {
+    if (!isHeldDecision(to.id)) { onOpen(to); return; }
+    void sendHeldProposal(to.id).then((id) => { if (id) onOpen({ kind: 'decision', id }); });
+  };
   const message = notice.sources.find((source) => source.type === 'message');
   const toMessage = () => {
     if (!message) return;
@@ -34,7 +40,7 @@ export function ObjectNoticeItem({ notice, meId, owners, authorOf, inThread = fa
     element.focus({ preventScroll: true });
   };
   const link = phrase.link ? phrase.linkTo === 'object'
-    ? <button type="button" className="convo-notice__src" onClick={() => onOpen(target)} aria-label={`Open decision ${notice.title}, ${state.word.toLowerCase()}`}>{phrase.link}</button>
+    ? <button type="button" className="convo-notice__src" onClick={() => open(target)} aria-label={`Open decision ${notice.title}, ${state.word.toLowerCase()}`}>{phrase.link}</button>
     : phrase.linkTo === 'message' && message && hasMessage(message.id)
     ? <button type="button" className="convo-notice__src" onClick={toMessage}>{phrase.link}</button>
     : phrase.linkTo === 'thread' && notice.conversationId && onOpenThread
@@ -53,7 +59,7 @@ export function ObjectNoticeItem({ notice, meId, owners, authorOf, inThread = fa
       <AuthorFace kind={by.kind} id={by.id} name={name} mine={mine} hue={by.colour} />
       {card ? <div className="convo-notice__body convo-notice__card">
         {meta}
-        <button type="button" className="convo-notice__task convo-object__card" onClick={() => onOpen(target)} aria-label={`Open decision ${notice.title}, ${state.word.toLowerCase()}`}>
+        <button type="button" className="convo-notice__task convo-object__card" onClick={() => open(target)} aria-label={`Open decision ${notice.title}, ${state.word.toLowerCase()}`}>
           <Icon name="flag" size={16} />
           <span className="convo-notice__title">{notice.title}</span>
           <span className="convo-object__state" data-state={state.state}>{state.word}</span>
