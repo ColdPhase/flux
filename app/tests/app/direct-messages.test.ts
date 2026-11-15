@@ -7,6 +7,7 @@ import { accessPorts, accessReader } from '@flux/db';
 import { db, pool } from './support/db.js';
 import { addMember, expectStatus, person, removeMember, workspace, type Person } from './support/people.js';
 import { StreamClient } from './support/stream.js';
+import { waitFor } from './support/wait.js';
 
 // Direct messages over HTTP (issue #107, AC-1..AC-4 and AC-6): the audience is exactly the
 // participants (owners and admins outside a DM get 404), one idempotent 1:1 DM per pair, group
@@ -31,6 +32,17 @@ async function read(actor: Person, dmId: string, query = '') {
 
 async function list(actor: Person, workspaceId: string) {
   return expectStatus(await actor.browser.request('GET', `${dmsOf(workspaceId)}?limit=100`), 200, 'list DMs') as Page<DmSummary>;
+}
+
+/**
+ * Waits until the notification generator has passed every event of this DM so far. Its notice of a message (`dm.notice.v1`, for that
+ * person alone) is written in its own transaction, which checked the person's access when it read the message and commits at the end of
+ * its batch: after a later leave, possibly, though about a message sent before it.
+ */
+async function noticesSettled(dmId: string) {
+  const { seq } = (await pool.query<{ seq: string }>('SELECT max(seq) AS seq FROM events WHERE object_id = $1', [dmId])).rows[0]!;
+  await waitFor(async () => Number((await pool.query("SELECT seq FROM notification_cursor WHERE id = 'generator'")).rows[0]?.seq ?? 0) >= Number(seq),
+    'the notification generator to pass the DM\'s events');
 }
 
 async function audience(dmId: string) {
@@ -246,6 +258,8 @@ describe('direct messages', () => {
     const leeView = expectStatus(await read(lee, pair.id), 200) as Dm;
     assert.deepEqual(leeView.audience.participantIds, [lee.id], 'only Lee is left');
     assert.deepEqual(leeView.counterpart, { id: max.id, name: 'dm-max' }, 'the pair still names the other person');
+    // The notice of Lee's message for Max is about a message sent while he took part, and may land after his leave: count after it.
+    await noticesSettled(pair.id);
     const eventsBefore = (await pool.query('SELECT count(*)::int AS n FROM events WHERE object_id = $1', [pair.id])).rows[0].n;
 
     // Lee's "Message Max" does not return a thread or re-add Max.

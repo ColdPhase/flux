@@ -13,7 +13,7 @@ import { callSupervisor, createRuntimeManagerClient, runtimeManagerPort, CONSOLE
 import WebSocket from 'ws';
 import { Browser } from './support/http.js';
 import { pool,db,connectionString } from './support/db.js';
-import { startTestSlot, portOf, slotSecret } from './support/runtime-slot.js';
+import { claimRuntimeSlot, startTestSlot, portOf, slotSecret } from './support/runtime-slot.js';
 import { pastedLine } from './support/runtime-login.js';
 
 const origin='http://127.0.0.1:18279';
@@ -54,7 +54,7 @@ async function socket(browser:Browser) {
 }
 
 test('two actual API processes share one-use tickets and operation ownership across restart and real PTY disconnect', { timeout:40_000 },async()=>{
-  const slot=await startTestSlot({ slot:'runtime-998',enabled:['claude_code'] }),managerSecret=slotSecret();
+  const slot=await startTestSlot({ slot:await claimRuntimeSlot(pool,{ state:'unknown' }),enabled:['claude_code'] }),managerSecret=slotSecret();
   const manager=createManagerServer({ secret:managerSecret,log:()=>undefined,slots:new Map([[slot.config.slot,{ host:'127.0.0.1',port:portOf(slot.url),secret:slot.config.secret }]]) });
   await new Promise<void>(r=>manager.listen(0,'127.0.0.1',r));
   const managerUrl=`http://127.0.0.1:${(manager.address() as {port:number}).port}`;
@@ -113,7 +113,7 @@ test('two actual API processes share one-use tickets and operation ownership acr
 });
 
 test('a held real manager response arriving after a second HTTP process requests sign-out is explicitly superseded', { timeout:30_000 },async()=>{
-  const slot=await startTestSlot({ slot:'runtime-998',enabled:['claude_code'] }),managerSecret=slotSecret();
+  const slot=await startTestSlot({ slot:await claimRuntimeSlot(pool,{ state:'unknown' }),enabled:['claude_code'] }),managerSecret=slotSecret();
   const manager=createManagerServer({ secret:managerSecret,log:()=>undefined,slots:new Map([[slot.config.slot,{ host:'127.0.0.1',port:portOf(slot.url),secret:slot.config.secret }]]) });
   // Controlled network barrier around the actual manager result, after real CLI status finished.
   // No fake DB result/clock and no product test hook. Admission tx must already be released.
@@ -164,7 +164,7 @@ test('a held real manager response arriving after a second HTTP process requests
 
 
 test('API crash with an undelivered old logout requires full recovery; late logout cannot delete the fresh login', { timeout:30_000 },async()=>{
-  const slot=await startTestSlot({slot:'runtime-998',enabled:['claude_code']}),managerSecret=slotSecret();
+  const slot=await startTestSlot({ slot:await claimRuntimeSlot(pool,{ state:'unknown' }),enabled:['claude_code'] }),managerSecret=slotSecret();
   const target={host:'127.0.0.1',port:portOf(slot.url),secret:slot.config.secret};
   let holdLogout=false,enter!:()=>void,release!:()=>void,lateCode:string|undefined;
   const reached=new Promise<void>(r=>{enter=r;}),held=new Promise<void>(r=>{release=r;});
@@ -247,7 +247,7 @@ test('well-shaped console result for another status client is refused without pe
   });
   await new Promise<void>(r=>rogue.listen(0,'127.0.0.1',r));
   const managerSecret=slotSecret(),target={host:'127.0.0.1',port:(rogue.address()as{port:number}).port,secret:slotSecret()};
-  const names=['runtime-997','runtime-998'],manager=createManagerServer({secret:managerSecret,log:()=>undefined,slots:new Map(names.map(name=>[name,target]))});
+  const names=[await claimRuntimeSlot(pool,{ state:'unknown' }),await claimRuntimeSlot(pool,{ state:'unknown' })],manager=createManagerServer({secret:managerSecret,log:()=>undefined,slots:new Map(names.map(name=>[name,target]))});
   await new Promise<void>(r=>manager.listen(0,'127.0.0.1',r));
   let child:ChildProcess|undefined;
   const owners:string[]=[],sockets:WebSocket[]=[];

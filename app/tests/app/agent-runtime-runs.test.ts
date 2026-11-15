@@ -31,7 +31,7 @@ import { apiUrl } from './support/http.js';
 import { addMember, expectStatus, person, project as createProject, workspace as createWorkspace, type Person } from './support/people.js';
 import { chooseModel, FakeCompute, FakeQueue } from './support/personal-runs.js';
 import { seedPlanModels } from './support/plan-models.js';
-import { portOf, slotSecret, startTestSlot, type TestSlot } from './support/runtime-slot.js';
+import { claimRuntimeSlot, portOf, slotSecret, startTestSlot, type TestSlot } from './support/runtime-slot.js';
 import { waitFor } from './support/wait.js';
 
 // F-022 T5 (#280): the first owner-invoked run of the agent in Flux on Claude Code, end to end with fakes.
@@ -81,7 +81,7 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
   }
 
   before(async () => {
-    slot = await startTestSlot({ slot: `runtime-${800 + Math.floor(Math.random() * 99)}`, enabled: ['claude_code'], mcpUrl: `${apiUrl}/mcp` });
+    slot = await startTestSlot({ slot: await claimRuntimeSlot(pool, { state: 'unknown' }), enabled: ['claude_code'], mcpUrl: `${apiUrl}/mcp` });
     slotName = slot.config.slot;
     manager = createManagerServer({ secret: SECRET, slots: new Map([[slotName, { host: '127.0.0.1', port: portOf(slot.url), secret: slot.config.secret }]]), log: () => undefined });
     await new Promise<void>((done) => manager.listen(0, '127.0.0.1', done));

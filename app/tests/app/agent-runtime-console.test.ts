@@ -26,7 +26,7 @@ import { personalRuntimeAvailability } from '../../apps/server/src/personal-runs
 import { connectionString } from './support/db.js';
 import { Browser } from './support/http.js';
 import { expectStatus, password, person, workspace, type Person } from './support/people.js';
-import { slotSecret, startTestSlot, type TestSlot } from './support/runtime-slot.js';
+import { claimRuntimeSlot, slotSecret, startTestSlot, type TestSlot } from './support/runtime-slot.js';
 import { pastedLine } from './support/runtime-login.js';
 
 // F-022 T4 (#279): the Claude Code sign-in console end to end in process: the API's routes and
@@ -37,10 +37,8 @@ import { pastedLine } from './support/runtime-login.js';
 const { db, pool } = createDatabase(connectionString);
 const origin = 'http://127.0.0.1:18279';
 const authSecret = process.env.FLUX_AUTH_SECRET ?? `runtime-console-${'x'.repeat(40)}`;
-// Two slots: each describe's owner keeps theirs (a released test supervisor does not restart).
-// 300-497: the files that draw a slot by chance in 500-999 and the pi harness's rows (#1474) are elsewhere, and 100-299 is `insertedRuntimeSlot`'s.
-const base = 300 + Math.floor(Math.random() * 198);
-const slotNames = [`runtime-${base}`, `runtime-${base + 1}`];
+// Two slots: each describe's owner keeps theirs (a released test supervisor does not restart). Their names are claimed in `before`.
+const slotNames: string[] = [];
 const managerSecret = slotSecret();
 const logs: string[] = [];
 const afterSignIns: string[] = [];
@@ -52,6 +50,7 @@ let appUrl: string;
 let config: AgentRuntimeConfig;
 
 before(async () => {
+  for (let index = 0; index < 2; index++) slotNames.push(await claimRuntimeSlot(pool, { state: 'unknown' }));
   for (const name of slotNames) slots.set(name, await startTestSlot({ slot: name, enabled: ['claude_code'] }));
   manager = createManagerServer({ secret: managerSecret, log: (event) => managerLogs.push(event),
     slots: new Map([...slots].map(([name, slot]) => [name, { host: '127.0.0.1', port: Number(new URL(slot.url).port), secret: slot.config.secret }])) });
@@ -83,7 +82,6 @@ after(async () => {
   manager?.closeAllConnections();
   await new Promise((done) => manager?.close(done));
   for (const slot of slots.values()) await slot.close();
-  await pool.query(`DELETE FROM agent_runtime_bindings WHERE slot = ANY($1)`, [slotNames]).catch(() => undefined);
   await pool.query(`DELETE FROM agent_runtime_bindings WHERE slot = ANY($1)`, [slotNames]);
   await pool.query(`DELETE FROM agent_runtime_slots WHERE slot = ANY($1)`, [slotNames]).catch(() => undefined);
   await pool.end();

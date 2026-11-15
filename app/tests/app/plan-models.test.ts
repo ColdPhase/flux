@@ -10,6 +10,7 @@ import { db, insertedHuman, pool } from './support/db.js';
 import { expectStatus, person, project as createProject, workspace as createWorkspace, type Person } from './support/people.js';
 import { FakeQueue } from './support/personal-runs.js';
 import { FAKE_PLAN_MODELS } from './support/plan-models.js';
+import { claimRuntimeSlot } from './support/runtime-slot.js';
 
 // #1332 (F-022 amended, CA-2): a plan's models come from the signed-in CLI. Part one: what a sign-in and the worker's reading leave in
 // PostgreSQL (the real store and use cases, a scripted manager). Part two: what the owner may choose and what pauses an agent, from that list
@@ -23,7 +24,7 @@ describe('what a sign-in and the worker\'s reading leave in the database', () =>
   const config: AgentRuntimeConfig = { clients: ['claude_code', 'codex'], commercialTermsAgreedOn: '2026-10-05', idleDays: null, manager: { url: 'http://unused:1', secret: 'x'.repeat(40) } };
   const signed = (label = 'a***@example.org') => ({ signedIn: true as const, facts: { authMethod: 'claude.ai', plan: 'max', accountLabel: label, accountDigest: null } });
   const store = agentRuntimeStore(db);
-  const slot = `runtime-${600 + Math.floor(Math.random() * 99)}`;
+  let slot = '';
   const bootId = randomUUID();
   let owner: { id: string }; let bindingId: string; let sessionId: string;
   let reading: PlanModelEntry[] | null = [OPUS, SONNET, HAIKU];
@@ -55,7 +56,7 @@ describe('what a sign-in and the worker\'s reading leave in the database', () =>
     owner = await insertedHuman('plan-models-owner');
     sessionId = randomUUID(); bindingId = randomUUID();
     await pool.query(`INSERT INTO auth_sessions(id, user_id, token, expires_at) VALUES ($1, $2, $3, clock_timestamp() + interval '1 hour')`, [sessionId, owner.id, `fixture-${randomUUID()}`]);
-    await pool.query(`INSERT INTO agent_runtime_slots(slot, state, boot_id) VALUES ($1, 'ready', $2) ON CONFLICT (slot) DO UPDATE SET state = 'ready', out_of_pool_reason = NULL, boot_id = $2`, [slot, bootId]);
+    slot = await claimRuntimeSlot(pool, { bootId });
     await pool.query(`INSERT INTO agent_runtime_bindings(id, owner_user_id, slot, state) VALUES ($1, $2, $3, 'active')`, [bindingId, owner.id, slot]);
   });
   after(async () => {

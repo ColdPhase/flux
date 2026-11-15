@@ -10,6 +10,7 @@ import { db, pool } from './support/db.js';
 import { expectStatus, person, workspace as createWorkspace, type Person } from './support/people.js';
 import { FakeQueue } from './support/personal-runs.js';
 import { seedPlanModels } from './support/plan-models.js';
+import { claimRuntimeSlot } from './support/runtime-slot.js';
 
 // F-027 A8 (#408), AST-2.1, on an agent's schedules (#858): the first background item on a subscription account shows the note once for that account, before
 // activation, and records the owner's Turn on with the note's version; later items on the same account show only the meta
@@ -30,9 +31,7 @@ describe('the note about background use of a subscription (F-027 A8, AST-2.1)', 
     owner = await person('note-ada');
     ws = await createWorkspace(owner, 'Notes');
     agentId = (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'My assistant', owner: 'self' } }), 201) as { id: string }).id;
-    // Its own range of slots (500–599, used by no other file): a slot another file left out of the pool cannot be made ready here.
-    const slot = `runtime-${500 + Math.floor(Math.random() * 99)}`; const bindingId = randomUUID();
-    await pool.query(`INSERT INTO agent_runtime_slots(slot, state) VALUES ($1, 'ready') ON CONFLICT (slot) DO UPDATE SET state = 'ready', out_of_pool_reason = NULL`, [slot]);
+    const slot = await claimRuntimeSlot(pool); const bindingId = randomUUID();
     await pool.query(`INSERT INTO agent_runtime_bindings(id, owner_user_id, slot, state) VALUES ($1, $2, $3, 'active')`, [bindingId, owner.id, slot]);
     await pool.query(`INSERT INTO agent_runtime_connections(id, owner_user_id, binding_id, client, state, sign_in_method, auth_method, account_label, signed_in_at)
       VALUES ($1, $2, $3, 'claude_code', 'signed_in', 'claude_account', 'claude.ai', 'o***@example.org', now())`, [randomUUID(), owner.id, bindingId]);

@@ -11,7 +11,7 @@ import { db, pool } from './db.js';
 import { startFakeGateway, type FakeGateway } from './fake-gateway.js';
 import { apiUrl as stackApiUrl } from './http.js';
 import { FakeCompute } from './personal-runs.js';
-import { portOf, slotSecret, startTestSlot, type TestSlot } from './runtime-slot.js';
+import { claimRuntimeSlot, portOf, slotSecret, startTestSlot, type TestSlot } from './runtime-slot.js';
 
 // TEST SUPPORT ONLY (#1441, RT-1): every agent on an API key runs in pi in the agent runtime, so the tests of API-key runs start one. An
 // in-process runtime-manager and slot (a real supervisor; the sandbox is the harness's pass-through stand-in, Landlock itself is proved in
@@ -46,10 +46,9 @@ export async function startPiRuntime(options: { apiUrl?: string; ownTools?: bool
   const managerUrl = `http://127.0.0.1:${(manager.address() as AddressInfo).port}`;
   const api = options.apiUrl ?? stackApiUrl;
   let last: { stderr: string; mcpLog: string; events: string[] } | null = null;
-  // A slot name is `runtime-<1..999>` (SLOT_NAME); 800–999 are this harness's, so a file's own slot is rarely another file's.
   let started: TestSlot | null = null;
   try {
-    started = await startTestSlot({ slot: `runtime-${800 + Math.floor(Math.random() * 200)}`, enabled: [], mcpUrl: `${api}/mcp`, ownTools: options.ownTools ?? true,
+    started = await startTestSlot({ slot: await claimRuntimeSlot(pool, { state: 'unknown' }), enabled: [], mcpUrl: `${api}/mcp`, ownTools: options.ownTools ?? true,
       pi: { modelOrigin: gateway.url, diagnostics: (what) => { last = what; } } });
     await pool.query(`INSERT INTO agent_runtime_slots(slot, state, capacity) VALUES ($1, 'ready', 16) ON CONFLICT (slot) DO UPDATE SET state = 'ready', capacity = 16,
       out_of_pool_reason = NULL`, [started.config.slot]);
