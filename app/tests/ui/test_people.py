@@ -288,7 +288,10 @@ class PeopleJourney(unittest.TestCase):
         expect(people.get_by_role("listitem").filter(has_text="Ada Kowalska")).to_contain_text("Owner")
         expect(kai.get_by_role("button", name="Invite", exact=True)).to_have_count(0)
         expect(kai.get_by_role("button", name=re.compile("^Change "))).to_have_count(0)
-        expect(kai.get_by_text("Only owners and admins add people or change roles in Riverside Makers.")).to_be_visible()
+        expect(kai.get_by_role("button", name=re.compile("^(Remove|Reset link)"))).to_have_count(0)
+        # A member is told once, at the top of the Company page, that only admins change it (release audit P3 20).
+        expect(kai.get_by_text(re.compile("Only admins can change this page"))).to_have_count(1)
+        expect(kai.get_by_text("Only owners and admins add people or change roles in Riverside Makers.")).to_have_count(0)
         expect(kai.get_by_role("button", name="Leave Riverside Makers")).to_be_visible()
         shot(kai, "people-desktop-1440-member-read-only")
 

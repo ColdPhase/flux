@@ -175,7 +175,9 @@ export function Notices({ identity, meName, placeName, first }: { identity: stri
     // A call stays until it ends or is closed; only another call takes its place (the rest is in the Inbox).
     if (showing?.family === 'call' && family !== 'call') return;
     const next = showing && family !== 'call' && showing.family === family && showing.place === place && !showing.items.some((known) => known.id === item.id)
-      ? { ...showing, items: [...showing.items, item].slice(-99) }
+      // Each item is fetched on its own, so a burst's answers can come back out of order: the group is kept in the order the items were
+      // made, and its preview is the newest one, not the last answer to arrive.
+      ? { ...showing, items: [...showing.items, item].sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt)).slice(-99) }
       : { serial: ++serial.current, place, family, items: [item] };
     shown.current = next;
     setNotice(next);

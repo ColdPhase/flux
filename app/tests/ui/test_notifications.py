@@ -702,19 +702,19 @@ class NotificationJourney(unittest.TestCase):
         self.assertNotIn(item["key"], waiting(), "the answered question left the Inbox")
         self.assertEqual(len(waiting()), before - 1, "and its count")
         self.assertTrue(read(), "answering read its notification")
-        thread.get_by_role("button", name="Inbox", exact=True).tap()
-        expect(page).to_have_url(re.compile(r"/inbox$"))
-        expect(page.locator(".nyc").first).to_be_visible()
-        expect(card).to_have_count(0)
-        # Undo, as for Done: the question is back, unread.
+        # Undo, as for Done, where the answer was given: an Undo toast stays with its place and leaves on another (#1424 decision 3).
+        # The question is back, unread, and the Inbox shows it again.
         toast.get_by_role("button", name="Undo").tap()
-        expect(card).to_have_count(1)
+        expect(toast).to_have_count(0)
         for _ in range(40):
             if read() is None:
                 break
             time.sleep(0.25)
         self.assertIsNone(read())
         self.assertEqual(len(waiting()), before)
+        thread.get_by_role("button", name="Inbox", exact=True).tap()
+        expect(page).to_have_url(re.compile(r"/inbox$"))
+        expect(card).to_have_count(1)
         self.api(page, "POST", f"/api/v1/needs-you/{urllib.parse.quote(item['key'], safe='')}", {"action": "done"})
 
     def test_13_hide_previews_is_one_switch_in_where_that_persists_after_a_reload(self) -> None:

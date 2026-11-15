@@ -549,21 +549,22 @@ class SpaceOrder(unittest.TestCase):
         expect(page.get_by_role("list", name="Needs you").get_by_text(re.compile("Cover the barrel in winter"))).to_be_visible()
         self.assertGreaterEqual(api(self.ada, "GET", "/api/v1/needs-you")["count"], 1, "the decision still needs Ada")
 
-    def test_undo_does_not_make_a_space_unread_that_was_opened_after_mark_all_as_read(self):
+    def test_undo_does_not_make_the_space_being_read_unread(self):
+        # An Undo toast stays with its place and leaves on another (#1424 decision 3), so the space read while it is up is the one
+        # the person is in: Mark all as read from Garden, and Undo there, puts Library back and leaves Garden read.
         self.say("Garden", "The sensors arrived.")
         self.say("Library", "Shelves are up.")
-        page = self.open(self.context())
-        expect(page.locator(f"{LIST} a.is-unread")).to_have_count(2)
+        page = self.open(self.context(), f"/projects/{self.spaces['Garden']}")
+        expect(self.row(page, "Library").locator("a.is-unread")).to_have_count(1)
+        page.wait_for_timeout(400)
         page.get_by_role("button", name="More for Spaces", exact=True).click()
         page.get_by_role("menuitem", name="Mark all as read", exact=True).click()
         toast = page.locator(".ui-toast").filter(has_text="Marked all as read")
         expect(toast).to_be_visible()
         expect(page.locator(f"{LIST} a.is-unread")).to_have_count(0)
-        # Garden is opened while the toast is up; no new activity arrives there.
-        self.row(page, "Garden").locator("a").click()
-        expect(page).to_have_url(re.compile(f"/projects/{self.spaces['Garden']}"))
-        page.wait_for_timeout(400)
         toast.get_by_role("button", name="Undo").click()
+        expect(toast).to_have_count(0)
+        expect(self.row(page, "Library").locator("a.is-unread")).to_have_count(1)
         page.get_by_role("navigation", name="Places").get_by_role("link", name="Home").click()
         expect(self.row(page, "Library").locator("a.is-unread")).to_have_count(1)
         expect(self.row(page, "Garden").locator("a:not(.is-unread)")).to_have_count(1)

@@ -333,7 +333,9 @@ class AiConnectionSettings(unittest.TestCase):
         expect(guide).to_contain_text("Add Flux to the app you already use.")
         expect(guide).to_contain_text("This address works only on this computer.")
         expect(guide).not_to_contain_text("Use your self-hosted Flux HTTPS address")
-        expect(guide).to_contain_text("with Ask me first on, every change waits for your OK")
+        # What waits for your OK is said once, at the top of the page, not again in the guide (persona P3 B-7).
+        expect(guide).not_to_contain_text("waits for your OK")
+        expect(page.locator(".connection")).to_contain_text("with Ask me first on every change waits for your OK")
         tabs.get_by_role("tab", name="Claude Code", exact=True).click()
         shot(page, "ai-connection-1440-connect-guide")
         tabs.get_by_role("tab", name="Codex", exact=True).click()

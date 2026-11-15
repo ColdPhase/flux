@@ -184,7 +184,8 @@ class DecisionFlows(unittest.TestCase):
         expect(panel).not_to_contain_text("No source linked")
         page.goto(f"/projects/{pid}/tasks?open=decision:{self.ids['rule']}")
         panel = self.panel(page)
-        expect(panel.locator(".details__eyebrow")).to_contain_text("accepted")
+        # The panel's head says "Decision" once; the eyebrow is the state alone, "Accepted 14 Nov" (#1424 P3 17).
+        expect(panel.locator(".details__eyebrow")).to_have_text(re.compile(r"^Accepted \d{1,2} [A-Z][a-z]{2}"))
         # On no page, so no sentence about the Wiki (#871).
         expect(panel.get_by_text(re.compile(r"^Shown on the Wiki page"))).to_have_count(0)
         expect(panel.get_by_role("heading", name="At this pivot")).to_have_count(0)
