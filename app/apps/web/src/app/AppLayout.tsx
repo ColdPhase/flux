@@ -67,9 +67,11 @@ function lastMapPath(userId: string, projectId: string, sketches: { items: { id:
 function leaveComposer(field: HTMLElement) {
   const place = field.closest('.convo-split__stream, .dm, .agc, #content') ?? document.getElementById('content');
   const messages = place ? [...place.querySelectorAll<HTMLElement>('[id^="message-"][tabindex]')] : [];
-  const newest = messages.at(-1) ?? document.getElementById('content');
+  const newest = messages.at(-1);
   field.blur();
   newest?.focus({ preventScroll: true });
+  // A stream still opening (hidden until its first reads) cannot take it: the page's content does.
+  if (!newest || document.activeElement !== newest) document.getElementById('content')?.focus({ preventScroll: true });
 }
 
 /** The control that stands for an object outside the panel: a task's or a decision's card in the conversation, else its row or card in Tasks. */

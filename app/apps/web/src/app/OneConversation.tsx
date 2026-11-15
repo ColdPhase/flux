@@ -4,7 +4,7 @@ import type { Conversation, ConversationMessage, ConversationRoot, NativeWorkRow
 import type { MessageWorkPreview } from '../work/message-associations';
 import { ApiError } from '../api/client';
 import { MEDIA, PanelMeta, useMediaQuery } from '../ui';
-import { awaitField, focusComposerOnArrival, focusField } from '../ui/keys';
+import { awaitField, focusComposerOnArrival, focusField, stopAwaitingField } from '../ui/keys';
 import { ThreadFollow } from '../notifications/ThreadFollow';
 import { agentAuthorOwner, useAgentOwners } from '../agents/owners';
 import { useRegisterLiveHere } from '../live/LiveProvider';
@@ -212,8 +212,12 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
     seen.project = project.id;
     // Arriving to open something (`?open=task:…/decision:…`, which leaves the address as `opened`; a message link; a task or decision its
     // panel shows again on a return) puts focus on that object, never in the composer, so Esc closes it.
-    if (touch || state?.focusComposer || state?.fromStream || state?.keepPanel || state?.opened || shownObject || arrived || location.search
-      || (inside && navigationType === 'POP')) return undefined;
+    if (touch || state?.focusComposer || state?.fromStream || state?.keepPanel || (inside && navigationType === 'POP')) return undefined;
+    if (state?.opened || (shownObject && navigationType === 'POP') || arrived || location.search) {
+      // A press on a link that expected the composer (`watchConversationLinks`) gives the keys back: the object has the focus.
+      stopAwaitingField();
+      return undefined;
+    }
     return focusComposerOnArrival(thread ? 'thread-composer' : 'project-composer');
     // Once per arrival (a navigation), never a re-render.
     // eslint-disable-next-line react-hooks/exhaustive-deps

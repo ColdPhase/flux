@@ -194,6 +194,7 @@ class FocusModel(unittest.TestCase):
         page.goto(f"/projects/{self.ids['shared']}")
         composer = page.locator("#project-composer")
         expect(composer).to_be_focused()
+        expect(page.locator(FEED)).not_to_have_class(re.compile("is-opening"))
         hint = page.locator(".side__new kbd")
         expect(hint).to_be_hidden()
         composer.fill("Half a thought")
