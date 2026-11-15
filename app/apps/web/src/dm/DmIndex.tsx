@@ -113,7 +113,7 @@ export function NewDm() {
     const controller = new AbortController();
     listWorkspaceMembers(workspaceId, controller.signal)
       .then((list) => setLoaded({ workspaceId, list: list.filter((member) => member.userId !== me.user.id), note: '' }))
-      .catch((cause: unknown) => {
+      .catch(() => {
         if (controller.signal.aborted) return;
         setLoaded({ workspaceId, list: [], note: 'Could not load people. Try again.' });
       });

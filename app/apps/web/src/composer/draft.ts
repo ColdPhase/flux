@@ -191,7 +191,7 @@ const sizeLimit = (name: string) => isVideoName(name) ? fileLimits().videoBytes 
 const megabytes = (bytes: number) => `${Math.round(bytes / (1024 * 1024))} MB`;
 const tooBig = (name: string) => isVideoName(name) ? `A video can be at most ${megabytes(fileLimits().videoBytes)}.` : 'A file can be at most 5 MB.';
 /** A refusal of the file's own bytes or size: the same file again meets the same answer (400, 413, 415, but never a conflict or an access answer). */
-const refusedFile = (cause: unknown) => cause instanceof ApiError && [400, 413, 415].includes(cause.status) && !['UPLOAD_CONFLICT', 'UPLOAD_TIMEOUT'].includes(cause.code);
+const refusedFile = (cause: unknown) => cause instanceof ApiError && [400, 413, 415].includes(cause.status) && !['UPLOAD_CONFLICT', 'UPLOAD_TIMEOUT'].includes(cause.code ?? '');
 
 function uploadError(cause: unknown) {
   if (cause instanceof NetworkError) return 'Flux is unreachable. Retry the upload.';
