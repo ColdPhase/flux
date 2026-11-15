@@ -117,6 +117,9 @@ export function useToast() {
 }
 
 /** A captured action/result remains current only within this provider's original session epoch. */
+/** A pointer that hovers (a mouse or a trackpad); a touch screen's has none (`(hover: none)`, as elsewhere in the app). */
+const hovers = () => !window.matchMedia('(hover: none)').matches;
+
 export function useToastScope() {
   return useContext(ToastScopeContext);
 }
@@ -155,7 +158,9 @@ function ToastItem({ toast, onDone, onLeaving, registerAction, movedAt }: { toas
     registerAction(toast.id, () => act());
     return () => registerAction(toast.id, null);
   }, [toast.action, toast.id, leaving, toast.leaving, act, registerAction]);
-  // The time left: hovering or focusing the toast pauses it, and leaving it runs on from there (#1424, as a notice's do).
+  // The time left: hovering or focusing the toast pauses it, and leaving it runs on from there (#1424, as a notice's do). Only a pointer that
+  // hovers pauses it: on a touch screen the tap on Undo leaves the browser's pointer where the next toast ("#4 back to To do") appears, and
+  // no finger would ever leave it, so that toast stayed until the next tap elsewhere.
   const left = useRef(toast.timeout);
   const armedAt = useRef(0);
   const held = useRef({ pointer: false, focus: false });
@@ -196,7 +201,7 @@ function ToastItem({ toast, onDone, onLeaving, registerAction, movedAt }: { toas
   }, [leaving, toast, onDone, onLeaving]);
 
   return (
-    <div ref={ref} data-leaving={leaving || toast.leaving ? '' : undefined} className={`ui-toast ui-toast--${toast.tone}${toast.also ? ' ui-toast--also' : ''}${scrollable ? ' ui-toast--scrollable' : ''}`} onMouseEnter={() => { held.current.pointer = true; disarm(); }} onMouseLeave={() => { held.current.pointer = false; if (!held.current.focus) arm(); }}
+    <div ref={ref} data-leaving={leaving || toast.leaving ? '' : undefined} className={`ui-toast ui-toast--${toast.tone}${toast.also ? ' ui-toast--also' : ''}${scrollable ? ' ui-toast--scrollable' : ''}`} onMouseEnter={() => { if (!hovers()) return; held.current.pointer = true; disarm(); }} onMouseLeave={() => { held.current.pointer = false; if (!held.current.focus) arm(); }}
       onFocus={() => { held.current.focus = true; disarm(); }} onBlur={(event) => { if (event.currentTarget.contains(event.relatedTarget as Node | null)) return; held.current.focus = false; if (!held.current.pointer) arm(); }}>
       {toast.mascot && moments ? <Kreska expression={toast.mascot} size={24} /> : toast.tone === 'success' ? <Icon name="check" /> : toast.tone === 'danger' ? <Icon name="alert" /> : null}
       <span ref={message} className="ui-toast__msg" tabIndex={scrollable ? 0 : undefined}

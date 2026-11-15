@@ -118,6 +118,15 @@ export function Select({ value, onChange, children, placeholder, name, required,
   const optionId = (index: number) => `${base}-o${index}`;
   const listId = `${base}-list`;
 
+  // Disabled while what it chose is saved, the select loses the focus in Chromium (a disabled control cannot hold it); once it is usable
+  // again it takes the focus back, unless the person has moved it meanwhile (F-026 §4: the menu stays where it was, so focus does).
+  const holding = useRef(false);
+  useLayoutEffect(() => {
+    if (disabled || !holding.current) return;
+    const now = document.activeElement;
+    if (!now || now === document.body) button.current?.focus({ preventScroll: true });
+  }, [disabled]);
+
   const setRefs = (node: HTMLButtonElement | null) => {
     button.current = node;
     if (typeof ref === 'function') ref(node); else if (ref) ref.current = node;
@@ -332,7 +341,11 @@ export function Select({ value, onChange, children, placeholder, name, required,
           if (open) close(); else openAt();
         }}
         onKeyDown={onKey} onKeyUp={onKeyUp}
-        onBlur={(event) => { if (open && !sheet && !list.current?.contains(event.relatedTarget as Node | null)) setOpen(false); }}>
+        onFocus={() => { holding.current = true; }}
+        onBlur={(event) => {
+          if (!(event.currentTarget.disabled && !event.relatedTarget)) holding.current = false;
+          if (open && !sheet && !list.current?.contains(event.relatedTarget as Node | null)) setOpen(false);
+        }}>
         <span className="ui-select__value" data-widest={widest || undefined}>{selected >= 0 ? choices[selected]!.label : placeholder ?? ''}</span>
         <Icon name="chevron-down" size={14} className="ui-select__chev" />
       </button>

@@ -1135,12 +1135,22 @@ class AppShellJourney(unittest.TestCase):
             self.assertEqual(response.status, 201)
             route.abort("failed")
         owner.route("**/api/v1/conversations/*/messages", lose_committed_reply)
+        # As above, Flux does not answer the reads either until the reload: the refresh the lost answer starts would otherwise bring the
+        # committed copy and replace the waiting reply before "Waiting to send" is read (the race this step lost on train 28).
+        held_reads.clear()
+        owner.route(unanswered, flux_does_not_answer_reads)
         owner.get_by_label("Reply", exact=True).fill("Reload after lost reply")
         owner.get_by_role("button", name="Send reply").click()
         queued = thread_of(owner).locator("[data-client-message-id]").filter(has_text="Reload after lost reply")
         expect(queued).to_contain_text("Waiting to send")
         expect(owner.get_by_label("Reply", exact=True)).to_have_value("")
         owner.unroute("**/api/v1/conversations/*/messages", lose_committed_reply)
+        owner.unroute(unanswered, flux_does_not_answer_reads)
+        for route in held_reads:
+            try:
+                route.abort("failed")
+            except Exception:  # noqa: BLE001 - the page already gave up that read (its own abort)
+                pass
         # The waiting reply and its id survive the reload, and it is sent again as the thread opens.
         owner.reload()
         expect(queued).to_have_count(0)

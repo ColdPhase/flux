@@ -994,7 +994,13 @@ class FilesReferencesPhotos(unittest.TestCase):
         choose([{**text, "name": f"more-{index}.txt"} for index in range(5)])
         expect(draft.get_by_role("listitem")).to_have_count(8)
         expect(limits).to_have_text(re.compile(r"^Private until sent · 5 MB each, videos \d+ MB · 10 files / 20 MB per message$"))
+        # Each press waits for the draft to settle, as a person's eye does: a row's line changes from "Uploading" to "Ready, private" (the
+        # rows wrap again), and at 7 files the limits line goes and the composer, anchored at the bottom, moves the rows down. A press
+        # aimed before either landed beside the × (WebKit, trains 28 and 29).
+        expect(draft.get_by_text("Ready, private", exact=False)).to_have_count(8)
         draft.get_by_role("button", name="Remove more-0.txt").click()
+        expect(draft.get_by_role("listitem")).to_have_count(7)
+        expect(limits).to_have_count(0)
         draft.get_by_role("button", name="Remove more-1.txt").click()
         expect(draft.get_by_role("listitem")).to_have_count(6)
         expect(limits).to_have_count(0)
