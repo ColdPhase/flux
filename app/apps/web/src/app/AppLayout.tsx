@@ -465,8 +465,17 @@ function AppLayoutContent() {
   // Closing an object that had its own entry goes Back over it: the entry it returns to shows no panel, whatever was kept for it.
   const [closingBack, setClosingBack] = useState(false);
   const [shownKey, setShownKey] = useState(location.key);
+  const [shownSearch, setShownSearch] = useState(location.search);
   if (shownKey !== location.key) {
     setShownKey(location.key);
+    setShownSearch(location.search);
+    // Back (or Forward) off the entry of the object the panel shows (`?open=`): it steps back to what it covered (a thread), or closes.
+    const leftOpen = new URLSearchParams(shownSearch).get('open');
+    const shownId = typeof detailsView === 'object' && 'id' in detailsView ? `${detailsView.kind}:${detailsView.id}` : null;
+    if (navType === 'POP' && leftOpen && leftOpen !== new URLSearchParams(location.search).get('open') && shownId === leftOpen && detailsOpen) {
+      const top = trail.at(-1);
+      if (top) { setTrail(trail.slice(0, -1)); setDetailsView(top.view); } else setDetailsOpen(false);
+    }
     const arrival = arrivalEntry(location, navType);
     const kept = arrival ? recall<unknown>('details', arrival) : undefined;
     if (arrival && isDetailsPlace(kept) && !kept.owned) {
