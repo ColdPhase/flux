@@ -166,6 +166,40 @@ export function NewDm() {
   const picking = !!workspaceId && !direct;
   useLayoutEffect(() => (picking && !touch ? focusField('dm-people-search') : undefined), [picking, touch]);
 
+  // Enter typed while the people still load ("Mar", Enter, Enter and a sentence at once, persona round 31): it is kept with the words it
+  // followed and acted on when they are here, as it would have been. Meanwhile the keys after it wait for the field they lead to.
+  const queued = useRef<{ text: string; enters: number; stop: () => void } | null>(null);
+  const startNow = useRef(start);
+  useEffect(() => { startNow.current = start; });
+  function holdEnter(search: HTMLInputElement) {
+    if (queued.current) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Enter' || !queued.current || event.metaKey || event.ctrlKey || event.altKey) return;
+      event.preventDefault();
+      queued.current.enters += 1;
+    };
+    window.addEventListener('keydown', onKey, true);
+    queued.current = { text: search.value, enters: 1, stop: () => window.removeEventListener('keydown', onKey, true) };
+    search.blur();
+    waitForField();
+  }
+  useEffect(() => () => queued.current?.stop(), []);
+  useEffect(() => {
+    const waiting = queued.current;
+    if (!waiting || members === null) return;
+    queued.current = null;
+    waiting.stop();
+    const needle = waiting.text.trim().toLowerCase();
+    const found = members.filter((member) => !needle || member.name.toLowerCase().includes(needle) || member.email.toLowerCase().includes(needle));
+    const one = found.length === 1 ? found[0]! : null;
+    if (one) {
+      chosenNow.current = [...chosenNow.current.filter((id) => id !== one.userId), one.userId];
+      setSelected(chosenNow.current);
+      if (waiting.enters >= 2 && chosenNow.current.length === 1) { void startNow.current([one.userId]); return; }
+    }
+    // Back in Find people: what was typed after the Enter goes into it, as it would have.
+    document.getElementById('dm-people-search')?.focus();
+  }, [members]);
   const shown = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return (members ?? []).filter((member) => !needle || member.name.toLowerCase().includes(needle) || member.email.toLowerCase().includes(needle));
@@ -216,6 +250,7 @@ export function NewDm() {
             // the sentence after them in Find people (persona round 31).
             onKeyDown={(event) => {
               if (event.key !== 'Enter' && event.key !== 'ArrowDown') return;
+              if (event.key === 'Enter' && members === null) { event.preventDefault(); holdEnter(event.currentTarget); return; }
               const one = shown.length === 1 ? shown[0]! : null;
               const now = chosenNow.current;
               if (event.key === 'Enter' && one && now.includes(one.userId) && now.length === 1) { event.preventDefault(); void start([one.userId]); return; }
