@@ -11,6 +11,8 @@ some without), a thread with a task made from a reply, and a second space with a
 - In a thread, a task made from a reply is the conversation's task card under that reply (state glyph, number, whole title, owner, state
   word), never a chip in the bubble with its title cut.
 - With no panel at 1440 a long title keeps its room: the owner's name gives way before the title wraps.
+- Scrolling the stream reads its visible cards again; meanwhile each card keeps the owner (or "No owner") the server last gave it and its
+  height: no card drops its row and gets it back.
 - The card's link to its message is a 44 px touch target; a space with a task card and no message does not ask where to start; the task
   panel says its number and space without a stray comma.
 """
@@ -258,6 +260,64 @@ class StreamFocusAndCards(unittest.TestCase):
           return walk(el).replace(/\\s+/g, ' ').trim();
         }""")
         self.assertRegex(spoken, rf"^#\d+ in {SPACE}$")
+
+    # ---------------------------------------------------------------- cards hold while they are read again
+
+    def test_07_scrolling_a_stream_never_takes_a_cards_owner_away_or_changes_its_height(self) -> None:
+        page = self.page()
+        page.goto(f"/projects/{self.ids['project']}")
+        feed = page.locator(".project-convo__feed.is-stream")
+        expect(feed).to_have_attribute("data-references-phase", "ready")
+        cards = feed.locator(".convo-notice[data-work-id]:has(.convo-notice__task)")
+        # First every card is read once: the reader goes up the whole stream and back, slowly, so each card's row arrives.
+        for direction in (-1, 1):
+            for _ in range(40):
+                feed.evaluate("(el, step) => el.scrollBy(0, step)", direction * 250)
+                page.wait_for_timeout(250)
+            expect(feed).to_have_attribute("data-references-phase", "ready")
+        self.assertGreaterEqual(cards.count(), 5, "several task cards in the stream")
+        for index in range(cards.count()):
+            expect(cards.nth(index).locator(".convo-notice__owner")).to_have_count(1)
+        # Then every frame and every DOM change is watched while the reader scrolls up and down: the visible window changes, so the
+        # cards are read again (the read goes back to loading), and no card may lose its owner or change its height meanwhile.
+        page.evaluate("""() => {
+          const feed = document.querySelector('.project-convo__feed.is-stream');
+          const cards = () => [...feed.querySelectorAll('.convo-notice[data-work-id]')].filter((card) => card.querySelector('.convo-notice__task'));
+          const base = new Map(cards().map((card) => [card, card.getBoundingClientRect().height]));
+          const watch = window.__cards = { phases: [], lost: [], heights: [], frames: 0, running: true };
+          new MutationObserver((records) => {
+            for (const record of records) {
+              if (record.type === 'attributes') { watch.phases.push(feed.dataset.referencesPhase); continue; }
+              for (const node of record.removedNodes) {
+                if (node.nodeType === 1 && (node.matches('.convo-notice__owner') || node.querySelector('.convo-notice__owner')))
+                  watch.lost.push(record.target.closest('.convo-notice')?.dataset.workId ?? '?');
+              }
+            }
+          }).observe(feed, { subtree: true, childList: true, attributes: true, attributeFilter: ['data-references-phase'] });
+          const frame = () => {
+            watch.frames += 1;
+            for (const card of cards()) {
+              const height = card.getBoundingClientRect().height;
+              if (!base.has(card)) { base.set(card, height); continue; }
+              if (Math.abs(height - base.get(card)) > 0.5) watch.heights.push([card.dataset.workId, base.get(card), height]);
+              if (!card.querySelector('.convo-notice__owner')) watch.lost.push(card.dataset.workId);
+            }
+            if (watch.running) requestAnimationFrame(frame);
+          };
+          requestAnimationFrame(frame);
+        }""")
+        for _ in range(3):
+            for direction in (-1, 1):
+                for _ in range(24):
+                    feed.evaluate("(el, step) => el.scrollBy(0, step)", direction * 160)
+                    page.wait_for_timeout(40)
+        expect(feed).to_have_attribute("data-references-phase", "ready")
+        page.wait_for_timeout(1000)
+        watch = page.evaluate("() => { window.__cards.running = false; return window.__cards; }")
+        self.assertIn("loading", watch["phases"], "the cards were read again while the reader scrolled")
+        self.assertGreater(watch["frames"], 30, "frames were watched")
+        self.assertEqual(watch["lost"], [], "no card lost its owner while it was read again")
+        self.assertEqual(watch["heights"], [], "no card changed its height while it was read again")
 
 
 if __name__ == "__main__":
