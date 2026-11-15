@@ -247,7 +247,11 @@ function DmContent({ initial }: { initial: Dm }) {
   useMessageReadingPosition(feedRef, returned.pending ? null : feedNode, !returned.pending, '', returned.restore, 'dm-stream');
   // A reader who comes back is on a screen they have seen, whatever their viewing receipts say (leaving a moment after a screen settles loses them):
   // a "New" divider that would stand inside that screen is not drawn, it would push down what they were reading (S23, nothing moves under you, #1335).
-  // Above the screen or below it the divider moves nothing they look at, so it stays. This runs after the place is restored, in the same frame.
+  // Above the screen or below it the divider moves nothing they look at, so it stays. The divider also gives the first new message its head again
+  // (the author's name, after a run of one person's messages), so a first new message that is partly on that screen would grow under the reader:
+  // the divider is judged from its own top to the end of that message. This runs after the place is restored, in the same frame.
+  // Taking it away shortens what stands above the screen, so the screen's first message (the reading place's own rule) keeps its top where it is.
+  const keepPlace = useRef<{ id: string; offset: number } | null>(null);
   useLayoutEffect(() => {
     if (!returned.restore || !unreadFrom) return;
     const feed = feedRef.current;
@@ -255,10 +259,23 @@ function DmContent({ initial }: { initial: Dm }) {
     if (!feed || !mark) return;
     const box = feed.getBoundingClientRect();
     const top = mark.getBoundingClientRect().top;
-    if (top >= box.top && top < box.bottom) setUnreadFrom(null);
+    const bottom = document.getElementById(`message-${unreadFrom}`)?.getBoundingClientRect().bottom ?? mark.getBoundingClientRect().bottom;
+    if (top < box.bottom && bottom > box.top) {
+      const first = [...feed.querySelectorAll<HTMLElement>('[id^="message-"]')].find((row) => row.getBoundingClientRect().bottom > box.top);
+      keepPlace.current = first ? { id: first.id, offset: first.getBoundingClientRect().top - box.top } : null;
+      setUnreadFrom(null);
+    }
     // Once, when the place is restored: the divider is judged against the screen the reader comes back to.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [returned.restore]);
+  useLayoutEffect(() => {
+    const keep = keepPlace.current;
+    keepPlace.current = null;
+    const feed = feedRef.current;
+    const row = keep ? document.getElementById(keep.id) : null;
+    if (!feed || !keep || !row) return;
+    feed.scrollTop += row.getBoundingClientRect().top - feed.getBoundingClientRect().top - keep.offset;
+  }, [unreadFrom]);
   // Older than the loaded window: page back until the message is loaded, then show it. A link names a message; with none, the first new one does (#1246).
   const unreadWanted = !arrived && !wanted && !!unreadFrom;
   const seek = arrived ?? (unreadWanted ? unreadFrom : null);
