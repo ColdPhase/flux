@@ -569,16 +569,27 @@ class LightMotionJourney(unittest.TestCase):
 
     PANEL_FRAMES = """(ms) => {
       window.__panel = []; window.__panelDone = false;
-      const top = (sel, base) => { const el = document.querySelector(sel); return el ? Math.round((el.getBoundingClientRect().top - base.getBoundingClientRect().top) * 10) / 10 : null; };
+      // Each part's place in the panel, against the panel's top read in the same instant. On a phone the sheet slides up as it opens, and
+      // WebKit moves it on between two reads in one frame (16 px in 4 ms at the start): a part read a moment before the panel's top looked
+      // 4 px lower for that frame, though nothing in the panel had moved. A frame counts only when the panel's top is the same before and
+      // after its parts are read; otherwise it is read again.
+      const read = (base) => {
+        const at = base.getBoundingClientRect().top;
+        const top = (sel) => { const el = document.querySelector(sel); return el ? Math.round((el.getBoundingClientRect().top - at) * 10) / 10 : null; };
+        const title = document.querySelector('#details .wd-skeleton__name, #details h3.wd-title');
+        const frame = { skeleton: !!document.querySelector('#details .wd-skeleton'),
+          title: top('#details .wd-skeleton__name, #details h3.wd-title'), titleHeight: title ? Math.round(title.getBoundingClientRect().height * 10) / 10 : null,
+          rows: top('#details .wd-skeleton__rows, #details dl.wd-rows'), actions: top('#details .wd-skeleton__actions, #details .wd-acts'),
+          section: top('#details .wd-skeleton__sec, #details section.details__sec') };
+        return base.getBoundingClientRect().top === at ? frame : null;
+      };
       const start = performance.now();
       const step = () => {
         const base = document.querySelector('#details .wd__scroll');
         if (base) {
-          const title = document.querySelector('#details .wd-skeleton__name, #details h3.wd-title');
-          window.__panel.push({ t: Math.round(performance.now() - start), skeleton: !!document.querySelector('#details .wd-skeleton'),
-            title: top('#details .wd-skeleton__name, #details h3.wd-title', base), titleHeight: title ? Math.round(title.getBoundingClientRect().height * 10) / 10 : null,
-            rows: top('#details .wd-skeleton__rows, #details dl.wd-rows', base), actions: top('#details .wd-skeleton__actions, #details .wd-acts', base),
-            section: top('#details .wd-skeleton__sec, #details section.details__sec', base) });
+          let frame = null;
+          for (let attempt = 0; attempt < 20 && !frame; attempt++) frame = read(base);
+          if (frame) window.__panel.push({ t: Math.round(performance.now() - start), ...frame });
         }
         if (performance.now() - start < ms) requestAnimationFrame(step); else window.__panelDone = true; };
       requestAnimationFrame(step); }"""
