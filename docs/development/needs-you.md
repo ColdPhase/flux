@@ -40,8 +40,8 @@ as a `task` item, keyed `note:<notification id>` like a mention, while all of th
 
 Its `from` is who gave it (the notification's sender), its `project` the space, its title the task ("#12 Seal the lids"), its `detail`
 empty, its `url` the task (`/projects/:id/tasks?open=work:<id>`) and `task: { workId, number }`. It leaves when the person **opens**
-the task (the web client marks the notification read when the task panel shows a task of theirs that is a `task` item, wherever it was
-opened from; `/inbox/:id` from a notice, push or email reads it too), **starts or finishes** it (status), or when it is **given to
+the task (the web client marks the notification read when the task panel shows a task of theirs that is a `task` item, put off for
+later or not, wherever it was opened from; `/inbox/:id` from a notice, push or email reads it too), **starts or finishes** it (status), or when it is **given to
 someone else** (owner). Done reads the notification and Not now snoozes it, as for a mention; Undo of either brings it back. A blocked
 task given to you is its one `blocked` item. Push and email follow the person's level for `assigned`, unchanged.
 

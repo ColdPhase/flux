@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { markInboxRead } from './api';
-import { getNeedsYou, leaveQueues } from './needsYou';
+import type { NeedsYouItem } from '@flux/contracts';
+import { getNeedsYou, getNeedsYouAside, leaveQueues } from './needsYou';
 
 /**
  * Opening a task someone gave you takes its Task item out of the Inbox (founder decision, Hubert, 2026-11-15, #1424 C): wherever the task
@@ -14,10 +15,12 @@ export function useGivenTaskOpened(userId: string, task: { id: string; status: s
     if (!candidate) return;
     // The queue's read is shared with the sidebar's count: it is not aborted here, only ignored once the panel moved on.
     let gone = false;
-    void getNeedsYou().then((response) => {
-      if (gone) return;
-      const keys = response.items.filter((item) => item.kind === 'task' && item.task?.workId === id).map((item) => item.key);
-      if (!keys.length) return;
+    const given = (items: readonly NeedsYouItem[]) => items.filter((item) => item.kind === 'task' && item.task?.workId === id).map((item) => item.key);
+    void getNeedsYou().then(async (response) => {
+      let keys = given(response.items);
+      // Put off for later, it would come back tomorrow although opened: it is read all the same.
+      if (!keys.length && response.later) keys = given((await getNeedsYouAside().catch(() => ({ later: [] }))).later.map((entry) => entry.item));
+      if (gone || !keys.length) return;
       void Promise.allSettled(keys.map((key) => markInboxRead(key.slice('note:'.length)))).then(() => leaveQueues(userId, keys));
     }, () => undefined);
     return () => { gone = true; };
