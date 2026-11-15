@@ -111,7 +111,7 @@ class PersonaAiAndGuests(unittest.TestCase):
         composer = page.locator("#project-composer")
         expect(composer).to_be_visible()
         composer.fill("/")
-        option = page.get_by_role("option", name=re.compile(r"^/ai"))
+        option = page.get_by_role("option", name=re.compile(r"^\/ai"))
         expect(option).to_have_count(1)
         option.click()
         # The same window as Settings › AI's Connect AI: its title, its choices and Cancel; no side panel of MCP words.
@@ -137,7 +137,7 @@ class PersonaAiAndGuests(unittest.TestCase):
         dm = page.locator("#dm-composer")
         expect(dm).to_be_visible()
         dm.fill("/")
-        page.get_by_role("option", name=re.compile(r"^/ai")).click()
+        page.get_by_role("option", name=re.compile(r"^\/ai")).click()
         expect(self.connect_window(page)).to_be_visible()
         self.assertEqual(self.api(page, "GET", "/api/v1/personal-assistant", status=200)["state"], "not_enabled", "nothing was connected")
 
@@ -156,8 +156,8 @@ class PersonaAiAndGuests(unittest.TestCase):
         page.goto(f"/projects/{self.ids['space']}")
         composer = page.locator("#project-composer")
         composer.fill("/")
-        expect(page.get_by_role("option", name=re.compile(r"^/task"))).to_have_count(1)
-        expect(page.get_by_role("option", name=re.compile(r"^/ai"))).to_have_count(0)
+        expect(page.get_by_role("option", name=re.compile(r"^\/task"))).to_have_count(1)
+        expect(page.get_by_role("option", name=re.compile(r"^\/ai"))).to_have_count(0)
         # Typed anyway, it says what Settings › AI says and offers nothing to connect.
         composer.fill("/ai ")
         bar = page.locator("#project-ask")
