@@ -19,6 +19,9 @@ import './needs-you.css';
 /** From this width the detail panel is no longer an overlay, and the Inbox shows the list and the open item side by side (README §7 Inbox). */
 const TWO_COLUMNS = '(min-width: 1001px)';
 
+/** The row of an item in the list: its title is the control that selects or opens it. */
+const rowControl = (key: string) => document.querySelector<HTMLElement>(`.nyq__list .nyc[data-key="${CSS.escape(key)}"] .nyc__open`);
+
 /**
  * Keys of the queue (F-026 §4): outside fields and dialogs, J and K move, A accepts, R replies, E marks done, S is Not now, each only where
  * the open item shows that button (`itemKeys`). R moves focus to the reply field, and every key typed from R until that field has it is the
@@ -42,16 +45,14 @@ function useQueueKeys(items: NeedsYouItem[], selected: string | null, select: (k
       else if (key === 'r' && current && offers?.reply) { event.preventDefault(); handlers.open(current, true); }
       else if (key === 'e' && current && offers?.done) { event.preventDefault(); handlers.done(current); }
       else if (key === 's' && current && offers?.notNow) { event.preventDefault(); handlers.snooze(current, 'tomorrow'); }
-      // Enter on the page itself opens the item; on a button or link it does what that control does.
-      else if (event.key === 'Enter' && current && (!target || target === document.body || target.id === 'content')) { event.preventDefault(); handlers.open(current); }
+      // Enter on the page itself, or on the open item's row (where G I puts focus), opens the item; on another button or link it does what
+      // that control does.
+      else if (event.key === 'Enter' && current && (!target || target === document.body || target.id === 'content' || target === rowControl(current.key))) { event.preventDefault(); handlers.open(current); }
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [items, selected, select, handlers]);
 }
-
-/** The row of an item in the list: its title is the control that selects or opens it. */
-const rowControl = (key: string) => document.querySelector<HTMLElement>(`.nyq__list .nyc[data-key="${CSS.escape(key)}"] .nyc__open`);
 
 /**
  * The Inbox (#342, F-026 S1): "Needs you" is the one queue. Decisions you can accept, questions to you, your blocked tasks,

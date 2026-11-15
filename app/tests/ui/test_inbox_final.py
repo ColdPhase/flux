@@ -457,6 +457,10 @@ class InboxFinal(unittest.TestCase):
         expect(page.get_by_role("status").filter(has_text="Marked done")).to_have_count(0)
         expect(self.card(page, DECISION)).to_have_count(1)
         self.assertIn("decision", self.kinds(), "the decision still waits")
+        # Enter on the open item's row (where G I puts focus) opens it, as Enter on the page did.
+        self.card(page, DECISION).locator(".nyc__open").focus()
+        page.keyboard.press("Enter")
+        expect(page.locator("#details")).to_contain_text(DECISION)
 
     def test_04_not_now_is_one_button_until_tomorrow_morning(self) -> None:
         page = self.page()
