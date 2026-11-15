@@ -244,7 +244,9 @@ class VideoPlayback(unittest.TestCase):
         draft = page.get_by_role("list", name="Files in your draft")
         expect(draft.get_by_role("listitem")).to_have_count(2)
         too_long = draft.get_by_role("listitem").filter(has_text="Too long.mp4")
-        expect(too_long.get_by_role("alert")).to_have_text("A video can be at most 12 MB.")
+        # A refused file says so on its row, why and how to send the rest under the draft (persona round 26).
+        expect(too_long).to_contain_text("Can’t be sent")
+        expect(page.locator("[data-refused-file]")).to_have_text("A video can be at most 12 MB. Remove Too long.mp4 to send the rest.")
         long = draft.get_by_role("listitem").filter(has_text="Long walk.webm")
         expect(long).to_contain_text("Ready, private")
         expect(long).to_contain_text("Video · ")

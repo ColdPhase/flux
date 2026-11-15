@@ -1114,7 +1114,7 @@ class CreateWindow(unittest.TestCase):
         expect(page.get_by_role("dialog", name="New task")).to_have_count(0)
 
     def test_20_a_guest_is_not_offered_the_space_tab(self) -> None:
-        """#555, #867; persona round (#1424): a guest does not start spaces, so New has no Space tab and its Task tab does not point to New space."""
+        """#555, #867; persona round (#1424): a guest does not start spaces, so New has no Space tab; with no space yet it has Thought alone."""
         self.ensure_account()
         guest_email = f"guest.create+{int(time.time() * 1000)}@example.test"
         guest_context = self.browser.new_context(base_url=ORIGIN, color_scheme="light", locale="en-GB", timezone_id="Europe/Warsaw",
@@ -1135,7 +1135,10 @@ class CreateWindow(unittest.TestCase):
         expect(guest.get_by_role("heading", level=1, name="Home")).to_be_visible()
         guest.get_by_role("complementary", name="Sidebar").get_by_role("button", name=re.compile("^New")).click()
         expect(window(guest)).to_be_visible()
-        expect(kind_tab(guest, "Task")).to_be_visible()
+        # With no space yet a guest's New has Thought alone (persona round 26): a task, a decision and a page each need a space.
+        expect(guest.get_by_role("dialog", name="New thought")).to_be_visible()
+        expect(window(guest).get_by_role("tablist", name="Create").get_by_role("tab")).to_have_count(1)
+        expect(kind_tab(guest, "Thought")).to_be_visible()
         expect(kind_tab(guest, "Space")).to_have_count(0)
         expect(window(guest)).not_to_contain_text("New space")
         shot(guest, "555-create-space-guest-1440-light")

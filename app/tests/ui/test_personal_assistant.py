@@ -26,7 +26,7 @@ import uuid
 from playwright.sync_api import Browser, BrowserContext, Page, Route, TimeoutError as PlaywrightTimeout, expect, sync_playwright
 
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, press_shortcut, shot, start_forwarder
 
 MOCK = os.environ.get("FLUX_ANTHROPIC_MOCK_URL", "http://127.0.0.1:8090")
 UI_BROWSER = os.environ.get("FLUX_UI_BROWSER", "chromium")  # chromium (default) or webkit, as in the other journeys (#68 AC-8)
@@ -202,8 +202,13 @@ class PersonalAssistantJourney(unittest.TestCase):
         bar = page.locator("#project-ask")
         expect(bar).to_contain_text("You haven’t set up your assistant.")
         self.composer(page).fill("Summarize this for me")
-        expect(page.get_by_role("button", name="Send to your assistant")).to_have_attribute("aria-disabled", "true")
+        # Send is not silently dead (persona round 26): it opens the one Connect AI window, and the words wait in the box.
+        expect(page.get_by_role("button", name="Send to your assistant")).to_have_attribute("aria-disabled", "false")
         self.composer(page).press("Enter")
+        sent = page.get_by_role("dialog", name="Connect your AI")
+        expect(sent).to_be_visible()
+        sent.get_by_role("button", name="Cancel").click()
+        expect(sent).to_have_count(0)
         expect(self.composer(page)).to_have_value("Summarize this for me")
         shot(page, "assistant-1440-not-set-up")
         bar.get_by_role("button", name="Connect your AI").click()
@@ -475,14 +480,15 @@ class PersonalAssistantJourney(unittest.TestCase):
             expect(card.get_by_role("button", name="Stop your assistant")).to_be_visible()
             expect(card.locator(".kreska")).to_have_count(0)
             self.assertEqual(jo.evaluate(animated), 0)
-            # The folded rail keeps a visible target (the mark) with the same label and Stop, and no face.
-            jo.keyboard.press("[")
+            # The folded rail keeps a visible target (the mark) with the same label and Stop, and no face. "[" is a shortcut, pressed outside
+            # the reply box the arrival may have focused.
+            press_shortcut(jo, "[")
             rail_card = jo.locator(".side--rail .agentlive")
             expect(rail_card.get_by_role("link")).to_be_visible()
             expect(rail_card.get_by_role("button", name="Stop your assistant")).to_be_visible()
             expect(rail_card.locator(".kreska")).to_have_count(0)
             self.assertEqual(jo.evaluate(animated), 0)
-            jo.keyboard.press("[")
+            press_shortcut(jo, "[")
             expect(jo.locator(".side--rail")).to_have_count(0)
             # Turning the moments back on brings the live thinking face back, in the conversation and the sidebar.
             settings = jo.context.new_page()  # the same storage as the conversation

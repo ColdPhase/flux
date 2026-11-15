@@ -149,8 +149,10 @@ class ReturnToOrigin(unittest.TestCase):
         return {"id": project, "grant": grant}
 
     @classmethod
-    def make_dm(cls, tag, count, replies=0):
-        """A direct message between Ada and a new colleague (`tag`) with `count` roots and `replies` replies under the first; returns its id and the ids."""
+    def make_dm(cls, tag, count, replies=0, partner_only=False):
+        """A direct message between Ada and a new colleague (`tag`) with `count` roots and `replies` replies under the first; returns its id and the ids.
+        The two take turns, Ada first; `partner_only` has the colleague write every root, so nothing in it is Ada's (her own message reads what came
+        before it, personas-26)."""
         ada = cls.contexts["ada"]
         context = cls.browsers["chromium"].new_context(service_workers="block", base_url=ORIGIN)
         email = f"{tag}.origin+{STAMP}@example.test"
@@ -164,7 +166,7 @@ class ReturnToOrigin(unittest.TestCase):
         dm = response.json()["id"]
         ids = []
         for index in range(1, count + 1):
-            who = ada if index % 2 else context
+            who = ada if index % 2 and not partner_only else context
             ids.append(api(who, "POST", f"/api/v1/dms/{dm}/messages", {"body": f"Note {index:02}: the shade, the base and the sensor.\n" + lines(2, "Detail"), "clientMessageId": str(uuid.uuid4())}, 201)["id"])
         answers = [api(ada if index % 2 else context, "POST", f"/api/v1/dms/{dm}/threads/{ids[0]}/replies",
                        {"body": f"Reply {index:02}: the range, the angle and the dark.\n" + lines(2, "Thought"), "clientMessageId": str(uuid.uuid4())}, 201)["id"] for index in range(1, replies + 1)]
@@ -653,7 +655,8 @@ class ReturnToOrigin(unittest.TestCase):
         for engine in self.browsers:
             for case in cases:
                 with self.subTest(engine=engine, case=case):
-                    dm = self.make_dm(f"roots{re.sub(r'[^a-z]', '', case)}{engine}", 60)
+                    # Never read: Ada wrote nothing in it either, as her own message would read what came before it (personas-26).
+                    dm = self.make_dm(f"roots{re.sub(r'[^a-z]', '', case)}{engine}", 60, partner_only=case == "never read")
                     page = self.page(engine)
                     page.goto(f"/dm/{dm['id']}")
                     feed, target = ".dm__feed", f"#message-{dm['roots'][7]}"

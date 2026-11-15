@@ -40,7 +40,7 @@ from playwright.sync_api import Browser, BrowserContext, Page, Route, expect, sy
 
 from app_select import choose
 from light_motion_fixture import settled
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, open_details, shot as save_shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, open_details, press_shortcut, shot as save_shot, start_forwarder
 
 UI_BROWSER = os.environ.get("FLUX_UI_BROWSER", "chromium")
 if UI_BROWSER not in ("chromium", "webkit"):
@@ -945,12 +945,12 @@ class EncryptedWorkspaces(Base):
         heading, mark = self.on_page(title.get_by_role("heading", level=1)), self.on_page(title.locator("[data-encrypted-mark]"))
         self.assertGreaterEqual(mark["x"], heading["x"] + heading["width"] - 0.5, "the header's lock is after the name")
         shot(page, "lock-sidebar-computer")
-        # The rail: icons only, and the tile's name says it.
-        page.keyboard.press("[")
+        # The rail: icons only, and the tile's name says it. "[" is a shortcut, pressed outside the composer the arrival may have focused.
+        press_shortcut(page, "[")
         rail = page.locator(".side--rail").get_by_role("navigation", name="Spaces")
         expect(rail.get_by_role("link", name=f"{A_PROJECT}, encrypted", exact=True)).to_be_visible()
         expect(rail.get_by_role("link", name=B_PROJECT, exact=True)).to_be_visible()
-        page.keyboard.press("[")
+        press_shortcut(page, "[")
         page.goto(f"/projects/{world.b_project}")
         expect(page.get_by_text(B_ROOT).first).to_be_visible()
         expect(page.locator("[data-encrypted-mark]")).to_have_count(0)

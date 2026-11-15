@@ -419,8 +419,15 @@ class ThoughtDraftJourney(unittest.TestCase):
                 expect(page.get_by_role("button", name="Save thought", exact=True)).to_be_enabled()
                 expect(page.get_by_role("button", name="Cancel", exact=True)).to_be_visible()
                 self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), viewport["width"])
-                # Save is the primary and Cancel the secondary button since the one button system (#1261).
-                for selector in ('.sk-draft__context', '.sk-draft textarea', '.sk-draft__actions span', '.sk-draft .ui-btn--primary', '.sk-draft .ui-btn--secondary'):
+                # Save is the primary and Cancel the secondary button since the one button system (#1261). The keys line is for a keyboard
+                # (persona round 26, #1424): a touch screen has no Escape, so it is not drawn there.
+                keys = page.locator('.sk-draft__actions > span')
+                touch = page.evaluate("matchMedia('(hover: none)').matches")
+                if touch:
+                    expect(keys).to_have_count(0)
+                else:
+                    expect(keys).to_contain_text("Escape cancels")
+                for selector in ('.sk-draft__context', '.sk-draft textarea', *(() if touch else ('.sk-draft__actions span',)), '.sk-draft .ui-btn--primary', '.sk-draft .ui-btn--secondary'):
                     page.wait_for_function("selector => { const node = document.querySelector(selector); if (!node) return false; for (let el = node; el; el = el.parentElement) if (Number(getComputedStyle(el).opacity) !== 1) return false; return true; }", arg=selector)
                     page.wait_for_function("selector => document.querySelector(selector).getAnimations().every(animation => animation.playState === 'finished' || animation.playState === 'idle')", arg=selector)
                     measured = page.evaluate(MEASURE, {'selector': selector})

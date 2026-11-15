@@ -384,8 +384,9 @@ class TypingJourney(unittest.TestCase):
         self.assertEqual(sum(frame.get("active") is True for frame in alice.typing_sent), pulses)
         expect(bob.locator(".typing-notice")).not_to_contain_text("Alice Rivera")
         self.composer(alice).press("Escape")
-        # Since #195 the private prompt keeps its own draft: leaving ask mode restores the public reply draft.
-        expect(alice.get_by_label("Reply", exact=True)).to_have_value("PRIVATE-DRAFT ordinary reply before asking")
+        # Since #195 the private prompt keeps its own draft; leaving ask mode (× or Esc) keeps its words in the box, after the reply draft that was
+        # there (persona round 26, #1424), so nothing typed is thrown away.
+        expect(alice.get_by_label("Reply", exact=True)).to_have_value("PRIVATE-DRAFT ordinary reply before asking\nPRIVATE-DRAFT private assistant instructions")
         alice.wait_for_timeout(1800)
         self.assertEqual(sum(frame.get("active") is True for frame in alice.typing_sent), pulses, "leaving ask mode does not advertise its restored text")
         self.composer(alice).fill("/ai PRIVATE-DRAFT command-mode prompt")

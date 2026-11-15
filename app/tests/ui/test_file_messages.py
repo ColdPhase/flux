@@ -998,11 +998,15 @@ class FilesReferencesPhotos(unittest.TestCase):
         draft.get_by_role("button", name="Remove more-1.txt").click()
         expect(draft.get_by_role("listitem")).to_have_count(6)
         expect(limits).to_have_count(0)
-        # A refused file says why on its row and brings the limits with it.
+        # A refused file says so on its row, why and how to send the rest under the draft (persona round 26), and brings the limits.
         choose([{"name": "too-big.bin", "mimeType": "application/octet-stream", "buffer": b"\x00" * (5 * 1024 * 1024 + 1)}])
-        expect(draft.get_by_role("listitem").filter(has_text="too-big.bin").get_by_role("alert")).to_have_text("A file can be at most 5 MB.")
+        expect(draft.get_by_role("listitem").filter(has_text="too-big.bin")).to_contain_text("Can’t be sent")
+        refused = page.locator("[data-refused-file]")
+        expect(refused).to_have_text("A file can be at most 5 MB. Remove too-big.bin to send the rest.")
+        expect(refused).to_have_attribute("role", "alert")
         expect(limits).to_have_count(1)
         draft.get_by_role("button", name="Remove too-big.bin").click()
+        expect(refused).to_have_count(0)
         expect(limits).to_have_count(0)
 
     def test_photo_waits_offline_on_the_photo(self) -> None:

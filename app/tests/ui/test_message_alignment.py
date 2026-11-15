@@ -735,14 +735,18 @@ class MessageAlignment(unittest.TestCase):
                     for index in range(messages.count()):
                         message = messages.nth(index)
                         message.scroll_into_view_if_needed()
+                        # The pane holds still before the pointer goes over the bubble, so the toolbar and its bubble are read in one place.
+                        page.wait_for_function("""(pane) => new Promise((done) => { const el = document.querySelector(pane), top = el.scrollTop;
+                          requestAnimationFrame(() => requestAnimationFrame(() => done(el.scrollTop === top))); })""", arg=pane)
                         message.locator(".message-bubble").first.hover()
                         page.wait_for_timeout(200)
                         bars = showing(page, pane)
+                        bubble = rect(message.locator(".message-bubble"))
                         self.assertEqual(len(bars), 1, f"{name} {index}: exactly one toolbar")
                         self.assertEqual(covered_text(page, pane, bars[0]), [], f"{name} {index}: the toolbar covers no text")
-                        bubble = rect(message.locator(".message-bubble"))
                         if narrow:
-                            self.assertTrue(bubble["top"] - 30 <= bars[0]["top"] and bars[0]["bottom"] <= bubble["top"] + 14, f"{name} {index}: in the bubble's top corner")
+                            self.assertTrue(bubble["top"] - 30 <= bars[0]["top"] and bars[0]["bottom"] <= bubble["top"] + 14,
+                                            f"{name} {index}: in the bubble's top corner (bubble {bubble}, toolbar {bars[0]})")
                         else:
                             self.assertEqual(covered_parts(page, pane, bars[0]), [], f"{name} {index}: the toolbar covers nothing")
                             self.assertTrue(bars[0]["right"] <= bubble["left"] + 0.5 or bars[0]["left"] >= bubble["right"] - 0.5, f"{name} {index}: beside its bubble")

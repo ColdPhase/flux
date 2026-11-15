@@ -1,5 +1,5 @@
 """Each agent's colour is the same for everyone (final design §2, principle 5; #1528): a teammate sees another person's agent in the colour its
-owner sees it in, in the space's conversation, in Tasks (the list, the board, the panel's Owner, the agent's line and its messages) and in the
+owner sees it in, in the space's conversation, in Tasks (the list, the board, the panel's Owner and the agent's messages) and in the
 Inbox.
 
 Runs through scripts/check_ui.sh against the running Compose application, on the engine FLUX_UI_BROWSER names (chromium and webkit). Its stack
@@ -175,8 +175,10 @@ class AgentColourForEveryone(unittest.TestCase):
         page.goto(f"/projects/{project}/tasks?open=work:{self.ids['task']}")
         panel = page.get_by_role("complementary", name="Details")
         expect(panel.get_by_role("button", name="Owner").locator(".agent-id > .kreska")).to_have_class(TEAL)
-        # The agent's line and its own messages in the task's discussion: the same face.
-        expect(panel.locator("[data-agent-line] .wd-agent__line > .kreska")).to_have_class(TEAL)
+        # The task is done, so no agent's line is drawn: its history line says it for every reader (personas-26, #856). The agent's own
+        # messages in the task's discussion: the same face.
+        expect(panel.locator("[data-agent-line]")).to_have_count(0)
+        expect(panel.get_by_role("list", name="Task activity").locator("li").filter(has_text="marked it done")).to_have_count(1)
         said = panel.locator(".wd-act__item--message").filter(has_text="the gutter")
         expect(said.locator(".wd-act__face")).to_have_class(TEAL)
         # "In this task": Ada's two agents, Assistant in ink and Planner in teal, as Ada sees them.
