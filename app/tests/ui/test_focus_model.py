@@ -734,6 +734,27 @@ class FocusModel(unittest.TestCase):
         expect(accept).to_have_count(0)
         expect(panel.get_by_role("button", name=re.compile("Add to a Wiki page"))).to_be_focused()
 
+    def test_35_enter_enter_and_a_sentence_typed_while_new_message_still_loads_its_people_sends_it_whole(self) -> None:
+        page = self.page()
+        held: list = []
+        page.route(re.compile(r"/api/v1/workspaces/[0-9a-f-]{36}/members(\?|$)"), lambda route: held.append(route))
+        page.goto("/dm/new")
+        expect(page.locator("#dm-people-search")).to_be_focused()
+        expect(page.get_by_text("Loading people…")).to_be_visible()
+        sentence = "Ola, the flour came early."
+        page.keyboard.type("Ola")
+        page.keyboard.press("Enter")
+        page.keyboard.press("Enter")
+        page.keyboard.type(sentence)
+        page.unroute(re.compile(r"/api/v1/workspaces/[0-9a-f-]{36}/members(\?|$)"))
+        for route in held:
+            route.continue_()
+        composer = page.locator("#dm-composer")
+        expect(composer).to_be_focused()
+        expect(composer).to_have_value(sentence)
+        expect(page.locator("#dm-people-search")).to_have_count(0)
+        composer.fill("")
+
 
 if __name__ == "__main__":
     unittest.main()
