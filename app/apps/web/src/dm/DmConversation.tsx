@@ -158,6 +158,14 @@ function DmContent({ initial }: { initial: Dm }) {
 
   const atBottom = () => { const el = feedRef.current; return !el || el.scrollHeight - el.scrollTop - el.clientHeight < 80; };
   const toBottom = () => requestAnimationFrame(() => { const el = feedRef.current; if (el) el.scrollTop = el.scrollHeight; });
+  /**
+   * A read that found the reader at the end keeps them there once what it brought is drawn, unless they scrolled up meanwhile: the
+   * frame comes after the decision, and a reader who has just left the end is not pulled back to it (the "↓ N new" line counts for them).
+   */
+  const followEnd = () => {
+    const top = feedRef.current?.scrollTop ?? 0;
+    requestAnimationFrame(() => { const el = feedRef.current; if (el && el.scrollTop >= top - 1) el.scrollTop = el.scrollHeight; });
+  };
 
   /** Fetches the newest window and any replies between it and what is on screen. */
   const refresh = useCallback(async () => {
@@ -183,7 +191,7 @@ function DmContent({ initial }: { initial: Dm }) {
           setDm(latest);
           learn(latest.people);
           setMessages((current) => merge(current, incoming));
-          if (follow) toBottom();
+          if (follow) followEnd();
         } catch (cause) { denied(cause); }
       } while (refreshAgain.current);
     } finally { refreshing.current = false; }
