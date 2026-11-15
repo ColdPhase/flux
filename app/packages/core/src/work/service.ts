@@ -328,7 +328,7 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
           const { waitingFor, reason, reverted, ...notice } = item;
           return { ...notice, createdAt: iso(item.createdAt),
             ...(item.kind === 'task.blocked' ? { reason: reason ?? null, waitingFor: waitingFor ? { ...waitingFor, name: names.get(key(waitingFor)) ?? 'Former member' } : null }
-              : item.kind === 'task.resumed' ? { reason: reason ?? null } : {}),
+              : item.kind === 'task.resumed' || item.kind === 'task.unblocked' ? { reason: reason ?? null } : {}),
             lifecycle: reverted
               ? { state: 'creation_reverted' as const, noticeId: reverted.noticeId, revertedAt: iso(reverted.at),
                 revertedBy: { ...reverted.by, name: names.get(key(reverted.by)) ?? 'Former member' } }

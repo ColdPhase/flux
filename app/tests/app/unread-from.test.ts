@@ -59,9 +59,10 @@ describe('where the person left off (#1246)', () => {
       await observe(ada, dm.id, [third.id]);
       assert.equal((await readDm(ada, dm.id)).unreadFrom, null, 'caught up');
       // Ada's own message is nobody's to read; the read is each person's own, and a conversation of one's own words has nothing new.
-      await say(ada, dm.id, 'Mine');
+      const mine = await say(ada, dm.id, 'Mine');
       assert.equal((await readDm(ada, dm.id)).unreadFrom, null);
-      assert.equal((await readDm(carol, dm.id)).unreadFrom, first.id, 'Carol has observed nothing');
+      // Carol observed nothing, but her own "Third" read what came before it: what is new to her is what came after (personas-26).
+      assert.equal((await readDm(carol, dm.id)).unreadFrom, mine.id, 'Carol\'s own message read what came before it');
       assert.equal((await readDm(bob, dm.id)).unreadFrom, third.id, 'Bob\'s first message by someone else is Carol\'s');
       const lonely = await dmOf(ada, [bob, carol], 'Notes to self');
       await say(ada, lonely.id, 'Only mine');
