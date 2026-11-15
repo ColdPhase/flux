@@ -72,6 +72,8 @@ describe('work, decisions and results in a project', () => {
     assert.equal(fromTheirs.owner, null);
     // A task with no message is as before.
     assert.equal(json<WorkItem>(await post(partner, `/api/v1/projects/${bench.id}/work`, { title: 'Sweep the bench' }), 201).owner, null);
+    // Done, so the partner's assigned work below is only what the other tests give them.
+    json<WorkItem>(await patch(partner, `/api/v1/work/${fromMine.id}`, { status: 'done' }, { 'if-match': `"${fromMine.version}"` }), 200);
   });
 
   test('work is created from a message in one action and the message stays in place', async () => {
