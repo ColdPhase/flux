@@ -1,7 +1,7 @@
 import { useTyping } from '../typing/useTyping';
 import { TypingNotice } from '../typing/TypingNotice';
 import { useSpareHeight } from '../ui/spareHeight';
-import { NewBelow, UNREAD_READ_BACK, UnreadDivider, countBelow, openAtUnread, useNewBelow } from '../app/unreadReading';
+import { NewBelow, UNREAD_READ_BACK, UnreadDivider, arrivedBelow, openAtUnread, useNewBelow } from '../app/unreadReading';
 import { MessageDay } from '../app/messageParts';
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { useLoaderData, useLocation, useNavigate, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
@@ -408,7 +408,7 @@ function DmContent({ initial }: { initial: Dm }) {
   const newBelow = useNewBelow(feedNode);
   const entryIds = [...shown.map((message) => `message-${message.id}`), ...outbox.pending.map((item) => `pending-${item.id}`)];
   useArrivals(feedRef, entryIds, (id) => document.getElementById(id), (arrivedIds, following) => {
-    if (!following) newBelow.add(countBelow(feedRef.current, arrivedIds, (id) => document.getElementById(id)));
+    if (!following) newBelow.add(arrivedBelow(feedRef.current, arrivedIds, (id) => document.getElementById(id)));
   }, { animate: false });
   // #534: what this person observed, and who observed every message of their own whole runs.
   const feedBox = feedRef;

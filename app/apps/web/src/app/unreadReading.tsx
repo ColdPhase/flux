@@ -46,10 +46,10 @@ export function NewBelow({ count, onClick }: { count: number; onClick: () => voi
 const atEnd = (feed: HTMLElement) => feed.scrollHeight - feed.scrollTop - feed.clientHeight < END_SLACK;
 
 /** The entries among `ids` that begin below the visible part of the feed: the ones a reader above its end has not seen. */
-export function countBelow(feed: HTMLElement | null, ids: readonly string[], elementFor: (id: string) => HTMLElement | null): number {
-  if (!feed) return 0;
+export function arrivedBelow(feed: HTMLElement | null, ids: readonly string[], elementFor: (id: string) => HTMLElement | null): string[] {
+  if (!feed) return [];
   const bottom = feed.getBoundingClientRect().bottom;
-  return ids.filter((id) => (elementFor(id)?.getBoundingClientRect().top ?? 0) >= bottom - 1).length;
+  return ids.filter((id) => (elementFor(id)?.getBoundingClientRect().top ?? 0) >= bottom - 1);
 }
 
 /** The newest message of a feed, or the feed itself when its entries cannot take focus (an agent's chat). */
@@ -101,18 +101,22 @@ export function openAtUnread(feed: HTMLElement, column: HTMLElement | null): (()
 }
 
 /**
- * What arrives below a reader who is above the end of `feed`, and the way to the end (the "↓ N new" line). `add` is told how many
- * entries arrived below the visible part; reaching the end clears the count, whoever got the reader there.
+ * What arrives below a reader who is above the end of `feed`, and the way to the end (the "↓ N new" line). `add` is told which
+ * entries arrived below the visible part; reaching the end clears them, whoever got the reader there. With `present` (the feed's entries
+ * now), one that left the feed again, such as a task whose creation was undone, is no longer counted (personas-28).
  */
-export function useNewBelow(feed: HTMLElement | null, onToEnd?: () => void) {
-  const [count, setCount] = useState(0);
+export function useNewBelow(feed: HTMLElement | null, onToEnd?: () => void, present?: readonly string[]) {
+  const [below, setBelow] = useState<readonly string[]>([]);
+  const count = present ? below.filter((id) => present.includes(id)).length : below.length;
   const node = useRef(feed);
   const told = useRef(onToEnd);
   useEffect(() => { node.current = feed; told.current = onToEnd; });
-  const add = useCallback((more: number) => { if (more > 0) setCount((current) => current + more); }, []);
+  const add = useCallback((ids: readonly string[]) => {
+    if (ids.length) setBelow((current) => [...current, ...ids.filter((id) => !current.includes(id))]);
+  }, []);
   useEffect(() => {
     if (!feed) return;
-    const reached = () => { if (atEnd(feed)) setCount(0); };
+    const reached = () => { if (atEnd(feed)) setBelow([]); };
     feed.addEventListener('scroll', reached, { passive: true });
     return () => feed.removeEventListener('scroll', reached);
   }, [feed]);
@@ -125,7 +129,7 @@ export function useNewBelow(feed: HTMLElement | null, onToEnd?: () => void) {
     // The line goes with the press: a person who used it from the keyboard keeps their place in the page, on the newest message.
     const fromLine = !!document.activeElement?.closest('.convo-newbelow');
     el.scrollTop = el.scrollHeight;
-    setCount(0);
+    setBelow([]);
     if (fromLine) newest(el)?.focus({ preventScroll: true });
   }, []);
   useEndKey(feed, count > 0, toEnd);

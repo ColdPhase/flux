@@ -121,7 +121,8 @@ export function NewSpaceForm({ initialName = '', onCancel, onCreated }: { initia
       <Input ref={nameRef} label="Name" aria-label="Space name" placeholder="e.g. Volunteer sign-up app" value={name} onChange={(event) => { setName(event.target.value); setMissing(false); }}
         maxLength={200} error={missing ? 'Give the space a name.' : undefined} />
       <div className="newspace__field">
-        <div className="newspace__label">People<span>You’re the admin of this space</span></div>
+        {/* You are in it without a chip: said in the one word every list of people then gives you (personas-28), Owner for the company's owner. */}
+        <div className="newspace__label">People<span>{space?.role === 'owner' ? 'You’re in it as the owner.' : 'You’re in it as its admin.'}</span></div>
         {loading ? <p className="pick__none" role="status">Loading people…</p>
           : <PeoplePicker candidates={candidates} value={people} onChange={setPeople} disabled={busy} companyName={companyName}>
             {/* An encrypted space takes only people of the company (C-24): no link joins it. */}

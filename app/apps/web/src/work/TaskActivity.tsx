@@ -391,7 +391,9 @@ export function TaskComposer({ state, composer, meId, writable, readOnly, id }: 
     if (sendsOnEnter(event, touch) || (event.key === 'Enter' && (event.metaKey || event.ctrlKey) && !event.nativeEvent.isComposing)) { event.preventDefault(); void send(); }
   };
   if (!writable) {
-    return <><p className="wd-muted wd-foot__note">{readOnly ? 'Creation was undone. This history is read-only; your unsent draft is kept.' : 'You can read this task but not write to it.'}</p>{typingNotice}</>;
+    // The unsent draft is mentioned only when there is one (personas-28): it stays on this device.
+    const drafted = !!composer.draft.body.trim() || composer.draft.files.length > 0;
+    return <><p className="wd-muted wd-foot__note">{readOnly ? `Creation was undone. This history is read-only${drafted ? '; your unsent draft is kept' : ''}.` : 'You can read this task but not write to it.'}</p>{typingNotice}</>;
   }
   return (
     <form className="wd-composer" onSubmit={(event) => void send(event)}>

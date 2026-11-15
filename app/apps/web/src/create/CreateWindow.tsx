@@ -557,12 +557,12 @@ function DecisionForm({ ids, phone, carried, projectId, onProject, onClose, requ
   }
   return (
     <Panel ids={ids} where={<ProjectWhere ids={ids} projectId={projectId} onProject={onProject} phone={phone} />} onSubmit={submit}
-      foot={<><p className="create__note">{project ? 'Goes to the Inbox of those who can accept it' : 'A decision belongs to a space'}</p><Go label="Propose decision" busy={busy} ready={ready} phone={phone} /></>}>
+      foot={<><p className="create__note">{project ? 'Everyone who can accept it sees it in their Inbox' : 'A decision belongs to a space'}</p><Go label="Propose decision" busy={busy} ready={ready} phone={phone} /></>}>
       {project ? <>
         <input ref={titleRef} id={ids.field} className="create__name" aria-label="Decision" value={flat(carried.text)} maxLength={WORK_LIMITS.title} disabled={busy} placeholder="What is being decided?"
           onChange={(event) => { carried.set(event.target.value); setError(''); }} />
         {source ? <blockquote className="create__source"><span>From the message</span>{source.label}</blockquote> : null}
-        <textarea className="create__details" aria-label="Why" rows={2} value={why} maxLength={WORK_LIMITS.rationale} disabled={busy} placeholder="Why this is the right call (optional)"
+        <textarea className="create__details" aria-label="Why" rows={2} value={why} maxLength={WORK_LIMITS.rationale} disabled={busy} placeholder="Why (optional)"
           onChange={(event) => { setWhy(event.target.value); setError(''); }} />
         <TooLong text={title} limit={WORK_LIMITS.title} />
         {error ? <p className="create__error" role="alert">{error}</p> : null}

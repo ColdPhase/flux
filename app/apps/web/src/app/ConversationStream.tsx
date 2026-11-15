@@ -25,7 +25,7 @@ import { useProjectShell } from '../project/data';
 import { useAddToMap } from '../project/addToMap';
 import { CallLineItem } from '../live/callLines';
 import { foldEntries, foldSummary, firstUnread, noticeSource, rootAuthor, sourcePhrase } from './conversationEvents';
-import { NewBelow, UnreadDivider, countBelow, openAtUnread, useNewBelow } from './unreadReading';
+import { NewBelow, UnreadDivider, arrivedBelow, openAtUnread, useNewBelow } from './unreadReading';
 import { ObjectNoticeItem } from './ObjectNotices';
 import { followsProposal, objectTarget } from './objectNotices';
 import './conversation-final.css';
@@ -548,13 +548,14 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
 
   // Genuine arrivals (#155, UI116-5): a short rise for new entries the reader sees arrive. A reader who is
   // with earlier content is never moved; a quiet line says what is new below until they reach the end.
-  const newBelow = useNewBelow(feedNode);
   const entryIds = [...entries.flatMap((entry) => entry.kind === 'root' ? [domId(entry.root)] : entry.kind === 'notice' ? [`notice-${entry.notice.id}`] : entry.kind === 'object' ? [`object-${entry.object.id}`] : []), ...outbox.pending.map((item) => `pending-${item.id}`)];
+  // What left the stream again (a task whose creation was undone) is no longer counted (personas-28).
+  const newBelow = useNewBelow(feedNode, undefined, entryIds);
   useArrivals(feedRef, entryIds, (id) => document.getElementById(id), (arrived) => {
     const feed = feedRef.current;
     if (!feed || stickRef.current) return;
     // A decision line is neither a message nor a task update: it comes in quietly, uncounted.
-    newBelow.add(countBelow(feed, arrived.filter((id) => !id.startsWith('object-')), (id) => document.getElementById(id)));
+    newBelow.add(arrivedBelow(feed, arrived.filter((id) => !id.startsWith('object-')), (id) => document.getElementById(id)));
   });
   const toEnd = () => { stickRef.current = true; newBelow.toEnd(); };
 

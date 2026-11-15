@@ -218,6 +218,8 @@ export interface GeneratedNotification {
   aiOrigin: boolean;
   /** The notice tells the asker that their question was answered (#1424 decision 1): the Inbox names it a Reply. */
   answer?: boolean;
+  /** Who it comes from, the one its title names (`human:<id>`, `agent:<id>`): the Inbox's face and name for it. */
+  from: string;
 }
 
 export interface EmailJob { emailId: string }

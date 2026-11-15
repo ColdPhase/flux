@@ -631,6 +631,8 @@ export const notifications = pgTable('notifications', {
   aiOrigin: boolean('ai_origin').notNull(),
   // Migration 0084 (#1424 decision 1): the asker's notice of an answer to their question, set by the generator from the answer it found.
   answer: boolean('answer').notNull().default(false),
+  // Migration 0087 (personas-28): who it comes from, the one its title names (`human:<id>`, `agent:<id>`), set by the generator.
+  fromActor: text('from_actor'),
 }, (table) => [
   check('notifications_answer_reason', sql`NOT ${table.answer} OR ${table.reason} IN ('mention', 'question')`),
   index('notifications_user_created_idx').on(table.userId, table.createdAt.desc()),

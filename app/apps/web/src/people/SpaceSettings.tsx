@@ -180,7 +180,7 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName, inviter
     try {
       await revokeGrant(project.id, row.grantId);
       setRemoving(null);
-      changed(`${firstName(row.name)} was removed from ${project.name}.`);
+      changed(`${firstName(row.name)} is no longer in ${project.name}.`);
       focusOn('.spset__seclead button, .spset__leave', true);
     } catch (error) {
       if (error instanceof ApiError && error.code === 'GRANT_NOT_FOUND') { setRemoving(null); load(); }
