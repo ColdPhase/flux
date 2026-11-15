@@ -397,7 +397,7 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
       VALUES (gen_random_uuid(), $1, $2, 'project', $3, 'review', $4, '', $5, false) RETURNING id`, [ben.id, A, ids.A.project, sealedNotificationTitle('review', 'Ada', 'Garden club'), link]);
     const accepted = await insert(decisionAppPath(ids.A.project, decision));
     assert.equal(accepted.rows.length, 1, 'the decision\'s one address is stored');
-    await assert.rejects(insert(`/projects/${ids.A.project}?open=decision:${decision}`), { hint: 'NOTIFICATION_CONTENT_REFUSED' }, 'no decision opens over Tasks');
+    await assert.rejects(insert(`/projects/${ids.A.project}/tasks?open=decision:${decision}`), { hint: 'NOTIFICATION_CONTENT_REFUSED' }, 'no decision opens over Tasks');
     await assert.rejects(insert(`${decisionAppPath(ids.A.project, decision)}&topic=secret`), { hint: 'NOTIFICATION_CONTENT_REFUSED' }, 'a link with words');
     await pool.query('DELETE FROM notifications WHERE id = $1', [accepted.rows[0].id]);
   });
