@@ -346,7 +346,7 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
       }
       request.onCreated?.();
       revalidator.revalidate();
-      // Every way of creating a task says so and offers Undo (Z), with the panel still opening on it (#763 B1). "Add another" opens
+      // Every way of creating a task says so and offers Undo (Z), with the panel still opening on it (#763 B1). "Another task" opens
       // this window again on the same space (#1235); there is no switch that keeps it open.
       onTask?.(projectId);
       created(item, () => openCreate({ kind: 'task', projectId }));
@@ -366,7 +366,7 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
   );
   return (
     <Panel ids={ids} where={where} onSubmit={() => void submit()} foot={<>
-      <p className="create__note">Goes to Tasks and shows as a card in the conversation</p>
+      <p className="create__note">It goes to Tasks and the conversation</p>
       <Go label="Create task" busy={busy} ready={ready} phone={phone} />
     </>}>
       <label className="ui-vh" htmlFor={ids.field}>Title</label>
@@ -391,7 +391,7 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
                 <button type="button" className="create__chip-x" aria-label={`Remove link to ${source.label}`} onClick={() => setSources(sources.filter((s) => s !== source))}><Icon name="x" size={12} /></button>
               </span>
             ))}
-            <button type="button" className="create__chip create__chip--add" aria-expanded={linking} onClick={() => setLinking(!linking)}>+ Link a message or thought</button>
+            <button type="button" className="create__chip create__chip--add" aria-expanded={linking} onClick={() => setLinking(!linking)}>+ Link to a message or thought</button>
           </div>
         </div>
       </div>
@@ -440,9 +440,9 @@ function ThoughtForm({ ids, phone, carried, onClose }: PanelProps) {
   // A window that opens on Thought (a guest with no space, the map's "+") puts the cursor in it, as Task does (F-026 §4, persona round 28).
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { if (ids.active) document.getElementById(ids.field)?.focus(); }, []);
-  const where = <span className="create__private"><Icon name="lock" size={13} />Only you</span>;
+  const where = <span className="create__private"><Icon name="lock" size={13} />Only you see it</span>;
   return (
-    <Panel ids={ids} where={where} onSubmit={() => void submit()} foot={<><p className="create__note">Added to My map</p><Go label="Save thought" busy={busy} ready={ready} phone={phone} /></>}>
+    <Panel ids={ids} where={where} onSubmit={() => void submit()} foot={<><p className="create__note">It goes on My map</p><Go label="Save thought" busy={busy} ready={ready} phone={phone} /></>}>
       <textarea id={ids.field} className="create__text" aria-label="Thought" rows={3} value={carried.text} disabled={busy} placeholder="What’s on your mind?"
         onChange={(event) => { carried.set(event.target.value); setError(''); }} />
       <TooLong text={body} limit={SKETCH_LIMITS.text} />
@@ -506,7 +506,7 @@ function DecisionForm({ ids, phone, carried, projectId, onProject, onClose, requ
   const revalidator = useRevalidator();
   const toast = useToast();
   const [why, setWhy] = useState('');
-  // "Replace an accepted decision…" shows its choice here, in the same window; the choice is of the space it was made in.
+  // "Replace an earlier decision…" shows its choice here, in the same window; the choice is of the space it was made in.
   const [replacing, setReplacing] = useState(false);
   const [replaces, setReplaces] = useState<{ projectId: string; id: string; title: string } | null>(null);
   const supersedes = replacing && replaces?.projectId === projectId ? replaces : null;
@@ -560,7 +560,7 @@ function DecisionForm({ ids, phone, carried, projectId, onProject, onClose, requ
   }
   return (
     <Panel ids={ids} where={<ProjectWhere ids={ids} projectId={projectId} onProject={onProject} phone={phone} />} onSubmit={submit}
-      foot={<><p className="create__note">{project ? 'Everyone who can accept it sees it in their Inbox' : 'A decision belongs to a space'}</p><Go label="Propose decision" busy={busy} ready={ready} phone={phone} /></>}>
+      foot={<><p className="create__note">{project ? 'Everyone else in the space sees it in their Inbox' : 'A decision belongs to a space'}</p><Go label="Propose decision" busy={busy} ready={ready} phone={phone} /></>}>
       {project ? <>
         <input ref={titleRef} id={ids.field} className="create__name" aria-label="Decision" value={flat(carried.text)} maxLength={WORK_LIMITS.title} disabled={busy} placeholder="What is being decided?"
           onChange={(event) => { carried.set(event.target.value); setError(''); }} />
@@ -570,7 +570,7 @@ function DecisionForm({ ids, phone, carried, projectId, onProject, onClose, requ
         <TooLong text={title} limit={WORK_LIMITS.title} />
         {error ? <p className="create__error" role="alert">{error}</p> : null}
         {replacing ? <ReplaceChoice key={project.id} projectId={project.id} value={supersedes?.id ?? ''} onChange={(next) => setReplaces(next ? { projectId: project.id, ...next } : null)} />
-          : <button type="button" className="create__more" onClick={() => setReplacing(true)}>Replace an accepted decision…</button>}
+          : <button type="button" className="create__more" onClick={() => setReplacing(true)}>Replace an earlier decision…</button>}
       </> : <p className="create__note">{startsSpaces(workspace) ? 'There is no space yet. Make one with New space, then propose its decisions here.' : 'You’re not in a space yet. When someone adds you to one, you can propose its decisions here.'}</p>}
     </Panel>
   );
@@ -585,7 +585,7 @@ function ReplaceChoice({ projectId, value, onChange }: { projectId: string; valu
   const page = choices.page;
   const paged = !!page && (!!page.previousCursor || !!page.nextCursor || page.before > 0);
   const [kept, setKept] = useState<{ id: string; title: string } | null>(null);
-  // "Replace an accepted decision…" gave way to this choice: the keyboard goes on to it once its decisions are read.
+  // "Replace an earlier decision…" gave way to this choice: the keyboard goes on to it once its decisions are read.
   const field = useRef<HTMLButtonElement>(null);
   const ready = !!page;
   useEffect(() => { if (ready) field.current?.focus(); }, [ready]);

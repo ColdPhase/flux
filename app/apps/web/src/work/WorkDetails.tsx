@@ -432,7 +432,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
         <dl className="wd-rows">
           <div className="wd-row">
             <dt>Status</dt>
-            <dd>{writable ? <StatusControl status={item.status} dropped={item.dropped} disabled={busy} onChoose={(status) => void setState(status)} /> : <span className="wd-value"><StatusGlyph status={item.status} size={16} /><span>{reverted ? 'Creation undone · read-only history' : statusPhrase(item)}</span></span>}</dd>
+            <dd>{writable ? <StatusControl status={item.status} dropped={item.dropped} disabled={busy} onChoose={(status) => void setState(status)} /> : <span className="wd-value"><StatusGlyph status={item.status} size={16} /><span>{reverted ? 'Undone · read-only history' : statusPhrase(item)}</span></span>}</dd>
           </div>
           <div className="wd-row">
             <dt>Owner</dt>
@@ -454,7 +454,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
             <dd><DueField value={item.dueOn} editable={writable} finished={finished} disabled={busy} onSave={(day) => change({ dueOn: day })} /></dd>
           </div> : null}
         </dl>
-        {reverted ? <p className="wd-muted wd-history" data-task-lifecycle="creation_reverted">Creation undone by {reverted.revertedBy.name}{reverted.revertedBy.kind === 'human' && reverted.revertedBy.id === me.user.id ? ' (you)' : ''} {shortDate(reverted.revertedAt) === 'today' ? 'today' : `on ${shortDate(reverted.revertedAt)}`}. This task stays here as history.</p> : null}
+        {reverted ? <p className="wd-muted wd-history" data-task-lifecycle="creation_reverted">Undone by {reverted.revertedBy.name}{reverted.revertedBy.kind === 'human' && reverted.revertedBy.id === me.user.id ? ' (you)' : ''} {shortDate(reverted.revertedAt) === 'today' ? 'today' : `on ${shortDate(reverted.revertedAt)}`}. This task stays here as history.</p> : null}
 
         {item.status === 'blocked' ? (
           <section className="wd-blocker" aria-label="Blocker">
@@ -771,7 +771,7 @@ function DecisionPanel({ decision, context, detail, relations, reload, revision,
       ) : null}
 
       <OtherRelationships object={decision} relations={relations} project={context.project} />
-      <InDocs object={decision} kind="decision" project={context.project} relations={relations} notYet={decision.status === 'proposed' ? 'Accept it first to add it to the Wiki.' : undefined} />
+      <InDocs object={decision} kind="decision" project={context.project} relations={relations} notYet={decision.status === 'proposed' ? 'You can add it once it is accepted.' : undefined} />
     </div>
   );
 }

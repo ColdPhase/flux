@@ -261,11 +261,11 @@ export function SignUpPage() {
         <Input label="Name" name="name" autoComplete="name" defaultValue={result?.values?.name} error={result?.fieldErrors?.name}
           hint="Shown to people you work with." autoFocus />
         <Input label="Email" name="email" type="email" autoComplete="email" inputMode="email" autoCapitalize="none" spellCheck={false}
-          readOnly={locked !== null} hint={locked !== null ? 'This invite is for this address.' : undefined}
+          readOnly={locked !== null} hint={locked !== null ? 'You join with this email.' : undefined}
           defaultValue={locked ?? result?.values?.email ?? params.get('email') ?? undefined} error={result?.fieldErrors?.email} />
         <Input label="Password" name="password" type="password" autoComplete="new-password" error={passwordError}
           onChange={(event) => { setPasswordLength(event.target.value.length); setEditedAfter(result); }}
-          hint={passwordLength >= PASSWORD_MIN_LENGTH ? undefined : `At least ${PASSWORD_MIN_LENGTH} characters. A short sentence works well.`} />
+          hint={passwordLength >= PASSWORD_MIN_LENGTH ? undefined : `At least ${PASSWORD_MIN_LENGTH} characters. You can use a few words.`} />
         <Button type="submit" variant="primary" size="lg" block busy={submitting}>{submitting ? 'Creating account…' : setup ? 'Create owner account' : 'Create account'}</Button>
       </Form>
       {setup ? null : <p className="auth__alt">Already have an account? <Link className="ui-link" to={`/sign-in${suffix}`}>Sign in</Link></p>}

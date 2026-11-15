@@ -244,7 +244,9 @@ class InviteLinksJourney(unittest.TestCase):
         email = cleo.get_by_label("Email")
         expect(email).to_have_value(PEOPLE["ben"][1])
         expect(email).to_have_attribute("readonly", "")
-        expect(cleo.get_by_text("This invite is for this address.")).to_be_visible()
+        expect(cleo.get_by_text("You join with this email.")).to_be_visible()
+        # The address is said once (persona round 6): in the field, with no note above it repeating it.
+        expect(cleo.get_by_role("note")).to_have_count(0)
         expect(cleo.get_by_role("button", name="Create account and join")).to_be_enabled()
         shot(cleo, "invite-locked-address-desktop-1440")
         self.assertNotIn(PEOPLE["cleo"][1], self.roles(self.riverside))

@@ -53,32 +53,32 @@ export function sourcePhrase(source: NoticeSource, actor?: { name: string; mine:
   }
 }
 
-/** Plain words for the folded line: "Ada created 2 tasks, Claude Code created 1 task from the map". */
+/**
+ * Plain words for the folded line, each person named once (persona round 6): "Ada created 2 tasks, Claude Code created a task from the map",
+ * "Stefan Nowak created 2 tasks and updated a task". Where every task of a person came from one place it is said ("from a message", "from the
+ * map"); tasks from several places are only counted.
+ */
 export function foldSummary(notices: TaskCreationNotice[], authorOf: (messageId: string) => string | null, nameOf: (notice: TaskCreationNotice) => string): string {
-  const groups = new Map<string, { name: string; count: number; where: string; tasks?: Set<string>; messages?: Set<string> }>();
+  const people = new Map<string, { name: string; created: number; wheres: Set<string>; messages: Set<string>; updated: Set<string> }>();
   for (const notice of notices) {
+    const key = `${notice.createdBy.kind}:${notice.createdBy.id}`;
+    const person = people.get(key) ?? { name: nameOf(notice), created: 0, wheres: new Set<string>(), messages: new Set<string>(), updated: new Set<string>() };
+    people.set(key, person);
     // A blocked or unblocked line (#550) is an update of a task, not a new one; two updates of one task are one task updated (personas-26).
-    if (notice.kind === 'task.blocked' || notice.kind === 'task.unblocked' || notice.kind === 'task.resumed') {
-      const key = `${notice.createdBy.kind}:${notice.createdBy.id}:updated`;
-      const group = groups.get(key) ?? { name: nameOf(notice), count: 0, where: '\0updated', tasks: new Set<string>() };
-      group.tasks!.add(notice.workId);
-      group.count = group.tasks!.size;
-      groups.set(key, group);
-      continue;
-    }
+    if (notice.kind === 'task.blocked' || notice.kind === 'task.unblocked' || notice.kind === 'task.resumed') { person.updated.add(notice.workId); continue; }
     const source = noticeSource(notice, authorOf);
-    const where = source.kind === 'map' ? ' from the map' : source.kind === 'none' ? '' : source.kind === 'message' ? '\0message' : source.kind === 'material' ? ' from a source' : '';
-    const name = nameOf(notice);
-    const key = `${notice.createdBy.kind}:${notice.createdBy.id}:${where}`;
-    const group = groups.get(key) ?? { name, count: 0, where, ...(source.kind === 'message' ? { messages: new Set<string>() } : {}) };
-    group.count += 1;
-    if (source.kind === 'message') group.messages!.add(source.messageId);
-    groups.set(key, group);
+    person.created += 1;
+    person.wheres.add(source.kind === 'map' ? ' from the map' : source.kind === 'message' ? '\0message' : source.kind === 'material' ? ' from a source' : '');
+    if (source.kind === 'message') person.messages.add(source.messageId);
   }
-  // From one message it is "from a message", from several "from messages" (personas-27: never "from messages" for one).
-  const from = (group: { where: string; messages?: Set<string> }) => group.where === '\0message' ? (group.messages!.size === 1 ? ' from a message' : ' from messages') : group.where;
-  return [...groups.values()].map((group) => group.where === '\0updated' ? `${group.name} updated ${group.count === 1 ? 'a task' : `${group.count} tasks`}`
-    : `${group.name} created ${group.count === 1 ? 'a task' : `${group.count} tasks`}${from(group)}`).join(', ');
+  const count = (n: number) => (n === 1 ? 'a task' : `${n} tasks`);
+  return [...people.values()].map((person) => {
+    const only = person.wheres.size === 1 ? [...person.wheres][0]! : '';
+    // From one message it is "from a message", from several "from messages" (personas-27: never "from messages" for one).
+    const from = only === '\0message' ? (person.messages.size === 1 ? ' from a message' : ' from messages') : only;
+    const did = [person.created ? `created ${count(person.created)}${from}` : null, person.updated.size ? `updated ${count(person.updated.size)}` : null].filter(Boolean);
+    return `${person.name} ${did.join(' and ')}`;
+  }).join(', ');
 }
 
 /** The stream as drawn: roots, single announcements and folded runs of announcements. */

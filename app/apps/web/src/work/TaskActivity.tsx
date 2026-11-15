@@ -10,7 +10,7 @@ import { ContributionMark, clock, day, shownAnswer, shownLabel, when } from '../
 import { useShellData } from '../app/data';
 import { useProjectShell } from '../project/data';
 import { getTaskDiscussion } from '../composer/api';
-import { agentDisplayName, FORMER_MEMBER } from '../docs/format';
+import { agentDisplayName, personName } from '../docs/format';
 import { agentAuthorOwner, useAgentOwners } from '../agents/owners';
 import { useAgentHue } from '../agents/hues';
 import { TaskAgentState, type AgentDone } from '../agents/TaskAgentState';
@@ -150,9 +150,7 @@ export function useTaskActivity({ item, links, project, members, me, revision }:
 
   const author = useCallback((message: ConversationMessage) => {
     if (message.authorId === null) return agentDisplayName(message.author);
-    if (message.authorId === me.id) return me.name;
-    return members.find((member) => member.userId === message.authorId)?.name
-      ?? people?.find((person) => person.kind === 'human' && person.id === message.authorId)?.name ?? FORMER_MEMBER;
+    return personName(message.authorId, { id: me.id, name: me.name }, members, people);
   }, [me.id, me.name, members, people]);
 
   const lines = useMemo<Line[]>(() => {

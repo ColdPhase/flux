@@ -800,7 +800,7 @@ class ScenarioJourney:
         section = card.get_by_role("region", name="Linked thoughts")
         # Nothing is linked, so there is no Linked thoughts section yet: the action is in the one row of actions.
         expect(section).to_have_count(0)
-        control = card.get_by_role("button", name="Link thought")
+        control = card.get_by_role("button", name="Link to a thought")
         picker = card.get_by_role("group", name=re.compile("^Thoughts to link to "))
         if self.phone:
             self.tap(control)

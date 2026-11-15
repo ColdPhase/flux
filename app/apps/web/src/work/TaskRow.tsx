@@ -18,7 +18,7 @@ function meta(item: WorkRowProjection, meId: string, owners: AgentOwners, hue: (
   const owner = item.owner;
   // An agent keeps its one label, "Planner · Ada's agent", in every state and for every reader (L1414–1416, L277): its owner comes from the
   // row's projected owner when the reader's audience does not list the agent; a person with the same name does not get it.
-  const who = !owner ? 'no owner'
+  const who = !owner ? 'No owner'
     : owner.kind === 'agent'
       ? <AgentIdentity icon={false} name={owner.name} owner={agentAuthorOwner(owner, owners)} hue={hue(owner)} />
       : owner.id === meId ? 'you' : owner.name;

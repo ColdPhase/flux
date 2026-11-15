@@ -532,13 +532,13 @@ inside a screen (the Create window), not for the views of a space.
 | `S` | Not now |
 | `A` | Accept |
 | `Z` | Undo |
-| `R` | Reply in thread |
+| `R` | Reply, or write about an Inbox item |
 | `T` | Create a task from a message |
 | `1`–`4` | Task state |
 | `[` | Collapse the sidebar |
 | `Esc` | Close a panel or menu |
 
-The keys show next to their actions in menus.
+The keys show next to their actions in menus. In the Inbox, `R` on a decision opens Discuss and on a blocked task its "Write to this task" (persona round 6: Shortcuts says so).
 
 **Where focus goes (computer)** (persona rounds 26 to 28, 2026-11-15; one rule per situation, the same in every place):
 
@@ -583,7 +583,7 @@ The IDs come from the first Prostota canvas; rules that no longer apply are left
 | S4 | One detail panel on the computer and one sheet on the phone, for tasks, decisions and threads. At most two content columns. |
 | S5 | The composer has `@` to mention and `/` for actions (`/task`, `/decide`, `/ai`, `/file`: these four, no more), with no separate buttons. Attaching is a paperclip, because "+" means Create. The hint reads "Message · @ mention · / actions", and the `/` menu is its list of commands with nothing under it (no "Type @ to mention people" line: the hint says it; #1424). **`@` mentions people only** (founder decision, Hubert, 2026-11-13, [#1419](https://github.com/ColdPhase/flux/issues/1419)): the assistant is not in it (asking it is `/ai`) and agents are not members of a space, so they are not listed (giving work to an agent is the task's Owner, S12). The assistant's suggestions are in the `/` menu, under `/ai`, and nowhere else (see [Agents and AI](#agents-and-ai)). |
 | S6 | **Message actions.** On the computer, hovering a message shows Reply in thread, Create task and ⋯. The ⋯ menu has one level, in the same order everywhere: Add to map, Copy link, Copy text, then Edit and Delete on your own messages. **Copy text** (founder direction by Hubert, 2026-11-08) is on every message a person can read, not only their own: it copies the message's plain words, with no markup (a mention as `@name`, a Wiki page as its title, a quote without its `>` marks). A deleted message has none. On the phone, long press opens the same list and swipe right replies in thread (#343). |
-| S8 | Several task updates in a row fold into one expandable line. It names people as the cards inside it do: the full name, and "(you)" for the reader ("Ada Kowalska (you) created 3 tasks", audit 3274a05). |
+| S8 | Several task updates in a row fold into one expandable line. It names people as the cards inside it do: the full name, and "(you)" for the reader ("Ada Kowalska (you) created 3 tasks", audit 3274a05), each person once ("Stefan Nowak created 2 tasks and updated a task", persona round 6). |
 | S9 | One tap on the state glyph (or `1`–`4`) changes the state. Swipe left, then Done, then a toast with **Undo**. |
 | S10 | Title and properties are edited in place. |
 | S11 | A decision shows who can accept it and who is still waiting. Not now is one button, with no menu: it puts the item off until tomorrow morning, with Undo ([Inbox](#inbox)). |
@@ -895,7 +895,8 @@ Community garden sensors, Rain barrel monitor and Tool library.
 
 - The date, "Good morning, Ada", then two cards. **Waiting for you** (the count, and "Open Inbox"
   on the right) holds the top three Inbox items. Decisions are one row, "2 decisions waiting",
-  without Accept; an agent run is one row, "Planner · Ada's agent · 3 things wait for you".
+  without Accept; an agent run is one row, "Planner · Ada's agent · 3 things wait for you". A blocked task's row keeps
+  what it waits for under its title, as the Inbox does ("Waiting for Basia Wrona · the new seals", persona round 6).
 - **Continue where you left off** holds what you last worked on, such as a task with its state
   ("Doing · #1 · Community garden sensors") or a Wiki page you edited. **Nothing appears twice** (#1424): what "Waiting for you"
   already shows (the decision, the task or the question of one of its rows, a decision inside "2 decisions waiting") is not offered
@@ -1385,17 +1386,17 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
 [#1438](https://github.com/ColdPhase/flux/issues/1438) point 8).
 
 - **Create task closes the window, and the toast offers the next one** (founder decision, Hubert,
-  2026-11-12, #1235). The footer has the hint line, which says what happens ("Goes to Tasks and shows as a card in the conversation",
+  2026-11-12, #1235). The footer has the hint line, which says what happens ("It goes to Tasks and the conversation", plain words since persona round 6,
   the one card of P5), and the one primary button, "Create task", and
   nothing else: there is no "Create another" switch, on the computer or on the phone, and nothing is
   remembered between openings. After Create the window closes and the task opens in the panel as
-  before. The toast reads "Task #12 created · Undo · Add another" (Undo first, as everywhere).
+  before. The toast reads "Task #12 created · Undo · Another task" (Undo first, as everywhere; plain words, persona round 6).
 - **A decision is one form** (founder decision, Hubert, 2026-11-13, [#1419](https://github.com/ColdPhase/flux/issues/1419)). New ›
   Decision and `/decide …` in a conversation open the same Create window on Decision, in the same words: "What is being decided?" with
   what was typed after `/decide`, "Why (optional)", the message it came from quoted as "From the message" (a
-  `/decide` typed in a thread keeps the thread's opening message as its source, as `/task` does), and a quiet **Replace an accepted
-  decision…** that shows a "Replaces" choice of the space's accepted decisions in the same window, with Next and Previous when there
-  are more than one page of them. The footer says "Everyone who can accept it sees it in their Inbox" (plain words, persona round 28) and the one primary is **Propose
+  `/decide` typed in a thread keeps the thread's opening message as its source, as `/task` does), and a quiet **Replace an earlier
+  decision…** (plain words, persona round 6) that shows a "Replaces" choice of the space's accepted decisions in the same window, with Next and Previous when there
+  are more than one page of them. The footer says "Everyone else in the space sees it in their Inbox" (plain words, persona rounds 28 and 6) and the one primary is **Propose
   decision**; then the toast "Decision proposed · Undo". There is no second form in the side panel: the words "A person with write
   access accepts it" are gone. The composer keeps what was typed until the decision is proposed, as `/task` does.
 - **The space is the one you are in, else the one you used last** (#1438 point 6). Opened inside a space (any of its views), the
@@ -1416,10 +1417,10 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   page each need a space, persona round 26); Home's line is only "When someone adds you to a space, it appears under Spaces at once."
   (the sidebar's heading and the phone's tab alike). Nor does a guest start a conversation: no New message (the Messages "+", the
   Messages page, the phone's Spaces), and a person's name over a message is only their name for a guest, not a way to `/dm/new`.
-  With no conversation and no agent, a guest's sidebar has no Messages heading over nothing (it comes with the first conversation
-  someone starts with them), and an empty Messages says one line under "No messages yet": "When someone writes to you, it appears here."
+  With no conversation and no agent, a guest's sidebar and phone Spaces tab have no Messages heading over nothing (it comes with the first
+  conversation someone starts with them; persona round 6), and the Messages page, when opened, says one line under "No messages yet": "When someone writes to you, it appears here."
   (audit 3274a05).
-- **Batch entry is one step, and the space is kept.** **Add another** in the toast, or `C` pressed
+- **Batch entry is one step, and the space is kept.** **Another task** in the toast, or `C` pressed
   next, opens the window again on Task with the same space chosen, an empty title and no owner. `C` keeps the space the last task was created in until the person goes to another
   place.
 
@@ -1442,7 +1443,7 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
 - **Four columns**, the four states: To do, Doing, Blocked and Done, each with its glyph and count.
   A card holds its title, its number, a due date when it has one, and its owner's face, an agent
   tag ("Planner · Ada's agent") or "No owner". **"No owner" is the one word for a task nobody owns** (v0.2.1 personas round): Create's
-  Owner, the Board's card, the List row ("no owner" inside its line), the conversation's card and the task panel's Owner row and menu
+  Owner, the Board's card, the List row (the same "No owner" inside its line), the conversation's card and the task panel's Owner row and menu
   all say it; the control's label stays "Owner", and nothing says "Assign" or "Nobody yet". Cards have no ⋯, and columns have no "+". A column is one card wide and at most 420 px,
   whatever the window: extra width is margin on the right, never cards flowing sideways inside a state ([#1379](https://github.com/ColdPhase/flux/issues/1379)).
 - **Blocked** cards carry one line saying what they wait for: "Waiting for the decision Use LoRa
@@ -1466,7 +1467,7 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   Done button in the Inbox and in the panel, and the stream says "#4 can continue: the decision was
   accepted" when it resumes.
 - **The link buttons stay** (founder decision, Hubert, 2026-11-13, [#1438](https://github.com/ColdPhase/flux/issues/1438) point 13): the panel's
-  **Link thought** and Create's **+ Link a message or thought** are the only way to make those links from a task, so they are not
+  **Link to a thought** and Create's **+ Link to a message or thought** are the only way to make those links from a task, so they are not
   removed or merged into another control, and no other place offers them.
 
 ### Wiki
@@ -1504,7 +1505,8 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   ([#1424](https://github.com/ColdPhase/flux/issues/1424)); inside a group the server's order stands.
   Each row is 48 px: a tile, the matching text and one line of where it lives. The first result is
   selected, and `↵` opens it. A list that is too long is narrowed by typing more words; there is
-  no second page.
+  no second page. A result that holds only the common words of a longer search ("the", "by" in "barrel by the shed") is not
+  listed (persona round 6; the rule is in [search](../../development/search.md)).
 - **A file found by what it says** ([C-63](../../product/decisions.md), #1382) is a row of the Files
   group, drawn like a Wiki row with the file's own icon: the page icon with its folded corner and
   its mono label (the one the message shows, 20 px) in the tile, the file's name as the title with
@@ -2164,9 +2166,10 @@ Founder decision, Hubert, 2026-11-13 ([#1438](https://github.com/ColdPhase/flux/
   encrypted space who has no unlock password yet: one page says so, with Open <space>, as before.
 - **No jargon:** no role explanation (a member is the ordinary case; only Guest and Admin get one plain line), no "work and
   handoffs", no "invite link has nothing more to do". A link already used by this account opens Flux.
-- **A link for one address** ([#1424](https://github.com/ColdPhase/flux/issues/1424)) says "This link works only for ben@…" and fills the
-  Email field in with that address, read-only (a fixed field in the surface's quieter fill, not one that looks editable and ignores typing),
-  with the hint "This invite is for this address.": a different address cannot be sent. Signed in as another account, the page does not
+- **A link for one address** ([#1424](https://github.com/ColdPhase/flux/issues/1424)) fills the Email field in with that address,
+  read-only (a fixed field in the surface's quieter fill, not one that looks editable and ignores typing), with the hint "You join with
+  this email.": a different address cannot be sent. The address is said once, in that field (persona round 6); only a page with no form
+  (signed in as another account) says "This link works only for ben@…" above it. Signed in as another account, the page does not
   offer Join, which could only be refused: it says who the person is signed in as and gives one **Sign out to use this link**
   (`primary`), which signs out and opens this page again, signed out, with the form and the address in place (for someone who has an
   account, "Already have an account? Sign in to join" is under it). The Join button of the right account always joins.
@@ -2207,7 +2210,7 @@ link, an invite link or single sign-on. Nothing new is drawn: these are the sign
   whole link that ./flux up printed on the server. Running ./flux up again prints it." and no form. Once the company exists:
   "This Flux is set up" and **Sign in**.
 - **Create an account from an invite.** The sign-up form under "Join {company}"; an invite for one address fills the Email
-  field in and makes it read-only, with the hint "This invite is for this address."
+  field in and makes it read-only, with the hint "You join with this email."
 - **Sign-up without a link** is no form: the heading "Ask for an invite link", the line "Accounts on this Flux are made from an
   invite link. Ask an owner or admin of your company for one." and the link line "Sign in" under it. The sign-in page's last line
   is "New here? Open the invite link you were sent." with no link.

@@ -151,13 +151,15 @@ class AccountsByLink(unittest.TestCase):
         page = self.page(phone=True)
         page.goto(made.json()["link"])
         expect(page.get_by_role("heading", level=1, name=f"Join {company['name']}")).to_be_visible()
-        expect(page.get_by_role("note")).to_contain_text(f"This link works only for {NEWCOMER[1]}.")
+        # The address is said once (persona round 6): the form's Email field, not also a note above it.
+        expect(page.get_by_role("note")).to_have_count(0)
+        expect(page.get_by_text(NEWCOMER[1], exact=True)).to_have_count(0)
         # #1438: the join page is the create-account form; #1471: the link's address is filled in, read-only.
         form = page.get_by_role("form", name="Create account and join")
         email = form.get_by_label("Email")
         expect(email).to_have_value(NEWCOMER[1])
         expect(email).not_to_be_editable()
-        expect(form.get_by_text("This invite is for this address.")).to_be_visible()
+        expect(form.get_by_text("You join with this email.")).to_be_visible()
         shot(page, "join-locked-address-phone-390")
         form.get_by_label("Name").fill(NEWCOMER[0])
         form.get_by_label("Password").fill(PASSWORD)

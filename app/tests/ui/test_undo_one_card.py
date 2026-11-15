@@ -321,7 +321,7 @@ class UndoAndOneCard(unittest.TestCase):
         page.wait_for_timeout(TOAST_MS + 1500)
         expect(toast).to_be_visible()
         toast.get_by_role("button", name="Undo").press("Enter")
-        expect(page.locator(".ui-toast").filter(has_text="creation undone")).to_be_visible()
+        expect(page.locator(".ui-toast").filter(has_text=re.compile(r"Task #\d+ undone"))).to_be_visible()
 
     def test_04_another_place_ends_undo_so_z_never_undoes_from_there(self) -> None:
         for phone in (False, True):

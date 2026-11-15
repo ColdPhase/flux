@@ -753,7 +753,7 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
           {end}
           {/* Only an empty conversation asks where to start: a task or a decision card is already a start (v0.2.1 audit). */}
           {entries.length || stream.hasOlder || outbox.pending.length ? null
-            : <EmptyState icon="chat" mascot="hello" title="Where do we start?"><p>Write a thought. You don’t need a topic or a ready plan. {audience === 'You' && project.visibility !== 'workspace' ? 'The people you add to this space will see it too. ' : ''}Any message can later become a task, a decision or a thought on the map.</p></EmptyState>}
+            : <EmptyState icon="chat" mascot="hello" title="Where do we start?"><p>Write anything to start. {audience === 'You' && project.visibility !== 'workspace' ? 'The people you add to this space will see it too. ' : ''}Any message can later become a task, a decision or a thought on the map.</p></EmptyState>}
         </section>
       </div>
     </div>
@@ -820,7 +820,7 @@ function NoticeItem({ notice, meId, owners, row, authorOf, hasMessage, onOpenTas
           <span className="convo-notice__what" data-source={source.kind}>{phrase.lead}{phrase.link ? <> {source.kind === 'message' && hasMessage(source.messageId)
             ? <button type="button" className="convo-notice__src" onClick={toMessage}>{phrase.link}</button> : <span className="convo-notice__src">{phrase.link}</span>}</> : null}</span>
           {notice.kind === 'task.creation_reverted' || notice.lifecycle?.state === 'creation_reverted'
-            ? <span className="convo-notice__kind">Task creation undone</span> : null}
+            ? <span className="convo-notice__kind">Task undone</span> : null}
           <time dateTime={notice.createdAt} title={when(notice.createdAt)}>{clock(notice.createdAt)}</time>
         </p>
         {task}

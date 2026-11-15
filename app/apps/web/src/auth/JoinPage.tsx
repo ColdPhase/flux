@@ -174,16 +174,18 @@ export function JoinPage() {
 
   const { preview, me, ssoOnly } = state;
   const roleLine = ROLE_SENTENCE[preview.role];
-  const notes = preview.emailLocked || preview.encrypted ? (
+  // The address a link is for is said once (persona round 6): on the create-account form it is the Email field itself, so the note leaves it out.
+  const notesFor = (address: boolean) => (address && preview.emailLocked) || preview.encrypted ? (
     <div className="auth__notice" role="note">
       <Icon name={preview.encrypted ? 'lock' : 'mail'} />
       <div>
-        {preview.emailLocked ? <p>This link works only for {preview.email ? <strong>{preview.email}</strong> : 'the email address it was sent to'}.</p> : null}
+        {address && preview.emailLocked ? <p>This link works only for {preview.email ? <strong>{preview.email}</strong> : 'the email address it was sent to'}.</p> : null}
         {preview.encrypted ? <p>{preview.workspaceName} is encrypted. After a restart it stays locked until an owner or admin unlocks it.
           {preview.role === 'admin' ? ' As an admin you get your own unlock password only when someone who has one lets you set it.' : ''}</p> : null}
       </div>
     </div>
   ) : null;
+  const notes = notesFor(true);
   const head = (
     <div className="auth__head">
       <h1 className="auth__title">{`Join ${preview.workspaceName}`}</h1>
@@ -242,7 +244,7 @@ export function JoinPage() {
   return (
     <>
       {head}
-      {notes}
+      {notesFor(preview.email === null)}
       <JoinSignUp result={created} token={readToken()} lockedEmail={preview.email} />
       {/* The form's "An account with this email already exists" offers Sign in to join itself: the way is said once. */}
       {created?.accountExists ? null : <p className="auth__alt">Already have an account? <Link className="ui-link" to="/sign-in?next=%2Fjoin">Sign in to join</Link></p>}
@@ -273,10 +275,10 @@ function JoinSignUp({ result, token, lockedEmail }: { result: FormResult | undef
       <input type="hidden" name="inviteToken" value={token} />
       <Input label="Email" name="email" type="email" autoComplete="email" inputMode="email" autoCapitalize="none" spellCheck={false}
         readOnly={lockedEmail !== null} defaultValue={lockedEmail ?? result?.values?.email} error={result?.fieldErrors?.email}
-        hint={lockedEmail !== null ? 'This invite is for this address.' : undefined} />
+        hint={lockedEmail !== null ? 'You join with this email.' : undefined} />
       <Input label="Password" name="password" type="password" autoComplete="new-password" error={passwordError}
         onChange={(event) => { setPasswordLength(event.target.value.length); setEditedAfter(result); }}
-        hint={passwordLength >= PASSWORD_MIN_LENGTH ? undefined : `At least ${PASSWORD_MIN_LENGTH} characters. A short sentence works well.`} />
+        hint={passwordLength >= PASSWORD_MIN_LENGTH ? undefined : `At least ${PASSWORD_MIN_LENGTH} characters. You can use a few words.`} />
       <Button type="submit" variant="primary" size="lg" block busy={submitting}>{submitting ? 'Joining…' : 'Create account and join'}</Button>
     </Form>
   );

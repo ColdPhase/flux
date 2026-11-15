@@ -394,7 +394,7 @@ export const SHORTCUTS: { keys: string[]; action: string }[] = [
   { keys: ['S'], action: 'Not now' },
   { keys: ['A'], action: 'Accept' },
   { keys: ['Z'], action: 'Undo' },
-  { keys: ['R'], action: 'Reply in thread' },
+  { keys: ['R'], action: 'Reply, or write about an Inbox item' },
   { keys: ['T'], action: 'Create a task from a message' },
   { keys: ['1', '–', '4'], action: 'Task state' },
   { keys: ['['], action: 'Collapse the sidebar' },

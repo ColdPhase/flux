@@ -521,7 +521,7 @@ function MemberRow({ member, self, workspace, myRole, page, column = false, edit
     <li className={`people__item${editing || open ? ' is-editing' : ''}`} data-row-key={member.userId} data-person={member.userId}>
       <div className="people__row">
         <Avatar name={member.name} id={member.userId} size="md" tone={self ? 'me' : 'neutral'} />
-        <span className="people__who"><b>{member.name}{self ? ' (you)' : ''}</b><PersonLine email={member.email} lastActiveAt={self ? undefined : member.lastActiveAt} /></span>
+        <span className="people__who"><b>{member.name}{self ? <span className="people__you"> (you)</span> : null}</b><PersonLine email={member.email} lastActiveAt={self ? undefined : member.lastActiveAt} /></span>
         {/* On the company's page the role is the control: "Admin ▾" is the menu of roles, and choosing one changes it (#1424). */}
         {page && editable ? (
           <span className="people__rolecell">
@@ -924,7 +924,7 @@ function WaitingLinks({ workspace, myRole, links }: { workspace: Workspace; myRo
   /** The link just made, to read and select: shown once, in its own row, whose Copy is the only one (#1424). */
   const newLink = (invite: WorkspaceInvite) => (
     <div className="people__link" role="group" aria-label="New invite link">
-      <Input ref={linkRef} id="people-invite-link" label={`Link for ${invite.email ?? 'anyone'} · ${ROLE_LABEL[invite.role].toLowerCase()}`} readOnly value={invite.link}
+      <Input ref={linkRef} id="people-invite-link" label={`Link for ${invite.email ?? 'anyone'}`} readOnly value={invite.link}
         onFocus={(event) => event.currentTarget.select()} />
     </div>
   );

@@ -53,6 +53,14 @@ The service (`createSearchUseCases`) picks by `usesSearchSyntax(text)`; the curs
   query joins its own words the same way (`joinHyphenatedWords`), so "mockup", "mock-up" and "mockups" find each other;
   `markSearchWords` marks a hyphenated word whole when its joined form is what was asked. The word fields of a scan are three
   clauses each (Polish, English, joined), which still fit their two bits.
+- **People's search leaves out hits of little words alone** (persona round 6: "barrel by the shed" listed 20 messages that held only
+  "the" or "by"). In ⌘K (`plan.cutWeak`, plain words only), when a search has both little words (`isSearchStopWord`: the English and
+  Polish words that only join a sentence, "the", "by", "w", "na", one list in `@flux/contracts`) and other words, a hit that holds
+  words whole must hold one of the other words (or a longer form of the word being typed); a hit with only "the" and "by" is not
+  listed. A search of little words alone ("the") still finds them. A hit found only as the word being typed or by a typo keeps the
+  rules above, and a task number is never cut. The order is unchanged (BM25 already puts the hit with the rare words, and the one with
+  most of them, first), and an agent's `flux_search` keeps every hit. The in-memory index of encrypted workspaces reads the same list
+  and cuts the same hits.
 - **At most twelve words are looked up** (the first twelve and the word being typed), each a title and a body clause in each language;
   a search of up to five words is one scan and runs in a few milliseconds, a longer one a scan for each further five words. More
   words, or the longest words first, found nothing more on the research bench (#1387).

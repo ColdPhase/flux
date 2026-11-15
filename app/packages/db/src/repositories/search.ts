@@ -1,5 +1,5 @@
 import { sql, type SQL } from 'drizzle-orm';
-import { foldSearchWord, type AgentColour } from '@flux/contracts';
+import { foldSearchWord, isSearchStopWord, type AgentColour } from '@flux/contracts';
 import * as schema from '../schema.js';
 import { hybridMatched, vectorLiteral, type QueryVectors } from './search-vectors.js';
 import { cleanName } from '../display-name.js';
@@ -77,6 +77,8 @@ export interface SearchPlanRows {
   until?: Date | null;
   /** Plain words (F-042, #1293): any of them matches. Read by the in-memory search of encrypted workspaces; the BM25 statement is picked by the caller. */
   anyWord?: boolean;
+  /** People's search (⌘K): a hit that holds only the little words of a longer search is cut (`isSearchStopWord`). An agent's search keeps every hit. */
+  cutWeak?: boolean;
 }
 
 export interface SearchRowRecord {
@@ -431,6 +433,12 @@ function rankedStatement(plan: SearchPlanRows, vector: string | null = null): SQ
   const whole = sql.join(words.map((entry) => sql`${idf(entry)} * ${tf(entry)} * ${num(BM25_K1 + 1)} / (${tf(entry)} + ${norm})`), sql` + `);
   const partial = sql`${num(WEIGHT.part)} * (${sql.join(words.map((entry) => idf(entry)), sql` + `)}) / ${num(words.length)} * ${num(BM25_K1 + 1)} / (1 + ${norm})`;
   const any = sql.join(words.map((entry) => sql`${tf(entry)} > 0`), sql` OR `);
+  // People's search cuts a hit that holds only the little words of the query ("the", "by" of "barrel by the shed", persona round 6) while the
+  // query has other words: it holds none of them whole, nor a longer form of the one being typed (`isSearchStopWord`).
+  const typing = typingWord(plan);
+  const content = words.filter((entry) => !isSearchStopWord(entry.word.word));
+  const cut = !!plan.cutWeak && content.length > 0 && content.length < words.length;
+  const contentHit = sql.join(content.map((entry) => foldSearchWord(entry.word.word) === typing ? sql`${tf(entry)} > 0 OR c.prefixed` : sql`${tf(entry)} > 0`), sql` OR `);
   // A typo is a way to find what a word did not (v0.2.1 personas round: "price list" listed "Kasia Lis", one edit from "list", beside
   // the price list itself). A hit found only by a typo in its title is shown only when no visible hit holds one of the words whole.
   const first = chunks[0]!;
@@ -461,7 +469,8 @@ function rankedStatement(plan: SearchPlanRows, vector: string | null = null): SQ
         CASE WHEN ${any} THEN ${whole} ELSE ${partial} END AS rank
       FROM cand c CROSS JOIN stats st
       -- A hit holds a whole word, the word being typed or a typo; a task whose number line alone matched holds none of them and is not shown.
-      WHERE NOT (c.typoed AND NOT c.prefixed AND NOT (${any}) AND st.whole > 0) AND (${any} OR c.prefixed OR c.typoed OR c.numbered)),
+      WHERE NOT (c.typoed AND NOT c.prefixed AND NOT (${any}) AND st.whole > 0) AND (${any} OR c.prefixed OR c.typoed OR c.numbered)
+        ${cut ? sql`AND (NOT (${any}) OR c.numbered OR ${contentHit})` : sql``}),
     -- A file is several rows, one for each part of its text (C-63): it counts once, by its best part, before the hybrid's lists take their first 50.
     ranked AS (
       SELECT s.id, s.kind, s.object_id, s.version, s.at, s.numbered, s.rank FROM scored s WHERE s.kind <> 'file'

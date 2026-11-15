@@ -14,7 +14,7 @@ import { useConversationAssistant } from '../assistant/useConversationAssistant'
 import { PrivateAiLines } from '../assistant/PrivateAiLines';
 import { useFollowEnd } from '../assistant/useFollowEnd';
 import { useAssistantChanges } from '../assistant/WaitingChanges';
-import { agentAuthorLabel, FORMER_MEMBER } from '../docs/format';
+import { agentAuthorLabel, personName } from '../docs/format';
 import { useTyping } from '../typing/useTyping';
 import { useCreateWorkFromMessage } from '../work/inline';
 import { MessageWorkPages } from '../work/MessageWorkPages';
@@ -81,7 +81,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   // Files dropped anywhere on the conversation join its draft (#348).
   const drop = useFileDrop(publicComposer, writable && !asking);
   const makeWork = useCreateWorkFromMessage(project);
-  const author = (id: string) => id === me.user.id ? me.user.name : data.members.find((member) => member.userId === id)?.name ?? FORMER_MEMBER;
+  const author = (id: string) => personName(id, { id: me.user.id, name: me.user.name }, data.members, core.people);
   const messageAuthor = (item: ConversationMessage) => item.authorId !== null ? author(item.authorId) : agentAuthorLabel(item.author);
   const owners = useAgentOwners(project);
   // The owner's waiting changes (F-027 A3): refreshed when their run moves.

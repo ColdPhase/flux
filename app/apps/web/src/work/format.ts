@@ -39,7 +39,7 @@ export type StatePiece = { text: string; extra?: boolean };
 export const stateText = (pieces: StatePiece[]) => pieces.map((piece) => piece.text).join('');
 
 export function workPieces(item: Pick<WorkItem, 'status' | 'owner' | 'lifecycle'> & { dropped?: boolean }): StatePiece[] {
-  if (item.lifecycle?.state === 'creation_reverted') return [{ text: 'creation undone' }];
+  if (item.lifecycle?.state === 'creation_reverted') return [{ text: 'undone' }];
   return [{ text: statusPhrase(item) }, ...(item.owner?.name ? [{ text: ` · ${item.owner.name}`, extra: true }] : [])];
 }
 

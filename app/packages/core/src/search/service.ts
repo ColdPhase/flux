@@ -219,6 +219,7 @@ export function createSearchUseCases<C>(ports: SearchPorts<C>) {
       limit: search.limit,
       reader: me,
       anyWord: !usesSearchSyntax(search.text),
+      cutWeak: !usesSearchSyntax(search.text),
     };
     // Access is decided now, on every request: a revocation applies to the very next search.
     const audiences = await ports.access.audiences(principal);

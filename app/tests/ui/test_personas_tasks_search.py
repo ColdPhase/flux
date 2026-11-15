@@ -161,7 +161,7 @@ class PersonasTasksSearch(unittest.TestCase):
         open_from_tasks(page)
         window = create_dialog(page)
         expect(window).to_contain_text("No owner")
-        expect(window).to_contain_text("Goes to Tasks and shows as a card in the conversation")
+        expect(window).to_contain_text("It goes to Tasks and the conversation")
         expect(window).not_to_contain_text("one-line note")
         page.keyboard.press("Escape")
 

@@ -26,6 +26,17 @@ export const agentDisplayName = (agent: { name?: string }) => agent.name ?? 'Age
 export const agentAuthorLabel = (agent: { name?: string }) => `${agentDisplayName(agent)}${AGENT_SUFFIX}`;
 /** A person who wrote here and is no longer a member (#763 XC-2): named the same way everywhere, never the bare role "Member". */
 export const FORMER_MEMBER = 'Former member';
+/**
+ * The one name of a person who wrote in a space, for every reader and every surface: the stream, a thread, a task's discussion and its
+ * call lines (persona round 6 P2 4). The reader themself; then the company's members (a member's read of them); then the space's people,
+ * which is all a guest can read (the company's list is not theirs, so it is empty for them); else "Former member".
+ */
+export function personName(userId: string, me: { id: string; name: string }, members: readonly { userId: string; name: string }[],
+  people: readonly { kind: string; id: string; name: string }[] | null): string {
+  if (userId === me.id) return me.name;
+  return members.find((member) => member.userId === userId)?.name
+    ?? people?.find((person) => person.kind === 'human' && person.id === userId)?.name ?? FORMER_MEMBER;
+}
 /** Who made a version: an agent writing under its owner's standing grant (#152) is named "name · agent", as in the conversation. */
 export const authorLabel = (who: NamedPrincipal) => (who.kind === 'agent' ? agentAuthorLabel(who) : who.name);
 
