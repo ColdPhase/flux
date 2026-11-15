@@ -147,7 +147,8 @@ class DecisionFlows(unittest.TestCase):
         # "Based on" draws after the panel does: wait for it, or the order is read before it exists (#1133).
         expect(panel.get_by_role("heading", name="Based on")).to_be_visible()
         # The answer comes right after the reason and what it rests on, before the record rows.
-        order = panel.evaluate("""(root) => [...root.children].map((el) => el.matches('.wd-decide') ? 'answer' : el.matches('.wd-rows') ? 'rows'
+        # The panel scrolls above its one discussion's field (#1424), as a task's does: the order is read in that scrolling column.
+        order = panel.evaluate("""(root) => [...(root.querySelector(':scope > .wd__scroll') ?? root).children].map((el) => el.matches('.wd-decide') ? 'answer' : el.matches('.wd-rows') ? 'rows'
           : el.matches('.details__lead') ? 'lead' : el.querySelector('#wd-based') ? 'based' : null).filter(Boolean)""")
         self.assertEqual(order, ["lead", "based", "answer", "rows"])
         expect(panel.get_by_text("Agents can propose decisions; only people accept them.")).to_have_count(0)

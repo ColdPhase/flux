@@ -551,8 +551,11 @@ export function conversationStore(db: Database, options: ConversationStoreOption
           await tx.insert(d).values({ decisionId: decision.id, workspaceId: decision.workspaceId, projectId: decision.projectId,
             conversationId: conversation.id, rootMessageId: sent.message.id });
           // Whoever proposed it follows its discussion from the start (#1424), unless they chose otherwise; an agent's proposal makes no one follow.
+          // The generator applies a choice to the messages written at or after it, comparing with the message's time in milliseconds, so the
+          // follow is stamped at this transaction's millisecond: it applies to the first message too.
           if (decision.proposedByKind === 'human')
-            await tx.insert(schema.notificationFollows).values({ userId: decision.proposedById, conversationId: conversation.id, following: true }).onConflictDoNothing();
+            await tx.insert(schema.notificationFollows).values({ userId: decision.proposedById, conversationId: conversation.id, following: true,
+              createdAt: sql`date_trunc('milliseconds', now())`, updatedAt: sql`date_trunc('milliseconds', now())` }).onConflictDoNothing();
         }
         await eventLog(tx).record(principal, decision.workspaceId, binding ? 'project.message_sent.v1' : 'project.conversation_created.v1', decision.projectId,
           { conversationId: conversation.id, messageId: sent.message.id });

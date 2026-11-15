@@ -59,7 +59,7 @@ MEASURE = """(root) => {
   root.querySelectorAll('.details__sec > p, .wd-accept-finish > p').forEach((el) => note('text ' + el.textContent.trim().slice(0, 24), el));
   root.querySelectorAll('.wd-actions button, .wd-decide__foot .nyc__actions > button:first-child').forEach((el) => note('button ' + el.textContent.trim(), el));
   root.querySelectorAll('.wd-link > span:first-child').forEach((el) => note('link ' + el.textContent.trim().slice(0, 24), el));
-  const sections = [...root.children].filter((el) => el.matches('.details__sec'));
+  const sections = [...(root.querySelector(':scope > .wd__scroll') ?? root).children].filter((el) => el.matches('.details__sec'));
   return {
     surface: surface && surface.css, paints, lefts,
     identity: box(q('.wd-decision-identity')), accept: box(q('.wd-accept')), finish: box(q('.wd-accept-finish')),
