@@ -163,7 +163,7 @@ describe('the PostgreSQL store under the owner use cases', () => {
       const emails = await pool.query<{ id: string; email: string }>('SELECT id, email FROM auth_users WHERE id = ANY($1)', [[jonas.id, mia.id]]);
       // The shared test database's binder may also place another test's person in this ready runtime (#860: no cap), so read our owners only.
       const ours = new Set(emails.rows.map((row) => row.email));
-      const listed = (await agentRuntimeOperations(db).list()).filter((row) => slots.includes(row.slot) && ours.has(row.email));
+      const listed = (await agentRuntimeOperations(db).list()).filter((row) => slots.includes(row.slot) && row.email !== null && ours.has(row.email));
       assert.deepEqual(listed.map((row) => row.email).sort(), emails.rows.map((row) => row.email).sort());
       assert.equal(listed[0]!.capacity, 2);
       assert.ok(await agentRuntimeOperations(db).release(emails.rows.find((row) => row.id === jonas.id)!.email));
