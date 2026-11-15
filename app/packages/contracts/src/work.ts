@@ -172,6 +172,25 @@ export type WaitingOn =
 /** What a task waits for, as a phrase after "waiting for": "the decision Use LoRa for the far beds" or "#7" (#868). */
 export const waitingPhrase = (on: WaitingOn): string => on.kind === 'decision' ? `the decision ${on.title}` : `#${on.number}`;
 
+/** A blocked task with nothing written about why, said one way everywhere (personas-27; return-view.md). */
+export const NO_BLOCK_REASON = 'No reason was recorded.';
+
+/**
+ * What a blocked task waits for, said one way on the board, the panel, the List, Home's My tasks and the Inbox (personas-28): "Waiting for
+ * Jonas", "Waiting for the decision Use LoRa for the far beds", "Waiting for #7", each with the reason after " · " when one was written too.
+ * A reason alone reads as written when it is a sentence ("Needs the gateway first.") and after "Waiting for" when it is the thing waited for
+ * ("the sensor delivery"); never "Waiting for Needs …". Nothing written is {@link NO_BLOCK_REASON}.
+ */
+export function blockedWords(item: { blocker: string | null; waitingFor?: { name: string } | null; waitingOn?: WaitingOn | null }): string {
+  const reason = item.blocker?.trim() || null;
+  const what = item.waitingFor?.name ?? (item.waitingOn ? waitingPhrase(item.waitingOn) : null);
+  if (what) return `Waiting for ${what}${reason ? ` · ${reason}` : ''}`;
+  if (!reason) return NO_BLOCK_REASON;
+  // A reason that already says "waiting for …" is not said twice.
+  if (/^waiting for\b/i.test(reason)) return `W${reason.slice(1)}`;
+  return /^\p{Ll}/u.test(reason) ? `Waiting for ${reason}` : reason;
+}
+
 export interface WorkItem extends ProjectObject {
   lifecycle?: TaskLifecycle;
   creationUndo?: TaskCreationUndoEligibility;

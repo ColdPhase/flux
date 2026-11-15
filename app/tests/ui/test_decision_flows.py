@@ -142,7 +142,7 @@ class DecisionFlows(unittest.TestCase):
         expect(answer.get_by_role("button", name="Accept", exact=True)).to_be_visible()
         expect(answer.get_by_role("button", name="Not now")).to_be_visible()
         expect(answer.get_by_role("button", name="Discuss", exact=True)).to_be_visible()
-        expect(answer).to_contain_text("waiting for you")
+        expect(answer).to_contain_text("Waiting for you")
         # "Based on" draws after the panel does: wait for it, or the order is read before it exists (#1133).
         expect(panel.get_by_role("heading", name="Based on")).to_be_visible()
         # The answer comes right after the reason and what it rests on, before the record rows.

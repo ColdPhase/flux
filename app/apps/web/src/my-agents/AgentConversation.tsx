@@ -5,7 +5,7 @@ import type { AgentChatMessage, AssistantRun, MyAgent } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
 import { useShellData } from '../app/data';
 import { MessageDay, clock, day } from '../app/messageParts';
-import { END_SLACK, NewBelow, UnreadDivider, countBelow, openAtUnread, useNewBelow } from '../app/unreadReading';
+import { END_SLACK, NewBelow, UnreadDivider, arrivedBelow, openAtUnread, useNewBelow } from '../app/unreadReading';
 import { AnswerBody, AnswerTools, WritingWords } from '../assistant/ConversationParts';
 import { shownWords, stepWords, useForgetLiveRun, useLiveRun, useReducedMotion } from '../assistant/liveRun';
 import { MessageText } from '../app/MessageText';
@@ -283,7 +283,7 @@ function AgentChatPane({ agent }: { agent: MyAgent }) {
   const newBelow = useNewBelow(feedNode, () => { following.current = true; });
   const elementFor = (key: string) => feed.current?.querySelector<HTMLElement>(key.startsWith('run-') ? `[data-run-id="${key.slice(4)}"][data-chat-agent]` : `[data-line-id="${key.slice(5)}"]`) ?? null;
   useArrivals(feed, entries.map((entry) => entry.key), elementFor, (keys, atEnd) => {
-    if (!atEnd) newBelow.add(countBelow(feed.current, keys, elementFor));
+    if (!atEnd) newBelow.add(arrivedBelow(feed.current, keys, elementFor));
   }, { animate: false });
   useLayoutEffect(() => { const el = field.current; if (el) { el.style.height = 'auto'; el.style.height = `${Math.min(el.scrollHeight, 180)}px`; } }, [draft]);
   // Arriving puts the cursor at the end of a kept draft (F-026 §4).

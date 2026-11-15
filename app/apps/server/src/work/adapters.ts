@@ -1,4 +1,4 @@
-import { agentStopRows, artifactUseRows, githubRows, workRows, type DbExecutor, visibleFilter, type Database, type Transaction } from '@flux/db';
+import { agentStopRows, artifactUseRows, githubRows, needsYouRows, workRows, type DbExecutor, visibleFilter, type Database, type Transaction } from '@flux/db';
 import {
   createWorkContributions,
   createWorkUseCases,
@@ -60,6 +60,7 @@ function workPorts(tx: Transaction, events: TransactionEventSession): WorkPorts 
     work: workRepository(tx),
     events,
     contributions: createWorkContributions(taskDiscussionPorts(tx, events)),
+    inbox: { answerWithTask: (userId, projectId, messageIds) => needsYouRows(tx as unknown as DbExecutor).answerWithTask(userId, projectId, messageIds) },
   };
 }
 

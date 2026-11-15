@@ -258,7 +258,8 @@ export interface WorkRepository extends TaskGraphReader {
    * keeps one activity entry (#488) per field of status, owner, due date and title that really changed, made by `by`
    * (`via`: on behalf of that person by a task rule). A change that leaves them as they were keeps none.
    */
-  updateWork(id: string, changes: WorkChanges, by: ActorRef, via?: TaskChangeVia): Promise<WorkRecord>;
+  /** `undoes`: the change is an Undo, which takes back the history's latest line of each kind it changes when that line is the change it undoes. */
+  updateWork(id: string, changes: WorkChanges, by: ActorRef, via?: TaskChangeVia, options?: { undoes?: boolean }): Promise<WorkRecord>;
   /**
    * Optional for pure domain compositions; the production adapter supplies both (#985). A person taking a task from an agent also ends
    * a local client's hold on it. `lockAgentSlots` takes the agent's co-work connection slots, before any graph or task lock, as claims and
@@ -372,6 +373,8 @@ export interface WorkPorts {
   work: WorkRepository;
   events: WorkEventLog;
   contributions: WorkContributions;
+  /** A task a person makes from messages answers what those messages asked of them (personas-28): their Inbox items of them are done. */
+  inbox?: { answerWithTask(userId: string, projectId: string, messageIds: string[]): Promise<string[]> };
 }
 
 /**

@@ -17,7 +17,7 @@ import { NotNowButton, WaitingLine } from '../notifications/NeedsYouCard';
 import '../notifications/needs-you.css';
 import { useDiscussDecision } from './discuss';
 import { acceptDecision, resolveWaiting, undoTaskCreation, updateWork } from './api';
-import { NO_REASON, STATUS_LABEL, decisionState, isFinished, linked, shortDate, statusPhrase, taskNumber } from './format';
+import { STATUS_LABEL, blockedLine, decisionState, isFinished, linked, shortDate, statusPhrase, taskNumber } from './format';
 import { docsLinking } from '../docs/AddToDoc';
 import { agentAuthorOwner, useAgentOwners } from '../agents/owners';
 import { useAgentHue } from '../agents/hues';
@@ -454,7 +454,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
             <dd><DueField value={item.dueOn} editable={writable} finished={finished} disabled={busy} onSave={(day) => change({ dueOn: day })} /></dd>
           </div> : null}
         </dl>
-        {reverted ? <p className="wd-muted wd-history" data-task-lifecycle="creation_reverted">Creation undone by {reverted.revertedBy.name} {shortDate(reverted.revertedAt) === 'today' ? 'today' : `on ${shortDate(reverted.revertedAt)}`}. This task stays here as history.</p> : null}
+        {reverted ? <p className="wd-muted wd-history" data-task-lifecycle="creation_reverted">Creation undone by {reverted.revertedBy.name}{reverted.revertedBy.kind === 'human' && reverted.revertedBy.id === me.user.id ? ' (you)' : ''} {shortDate(reverted.revertedAt) === 'today' ? 'today' : `on ${shortDate(reverted.revertedAt)}`}. This task stays here as history.</p> : null}
 
         {item.status === 'blocked' ? (
           <section className="wd-blocker" aria-label="Blocker">
@@ -463,7 +463,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
               <p className="wd-blocker__text">
                 {item.waitingFor ? <>Waiting for <b>{item.waitingFor.name}</b>{item.blocker ? ` · ${item.blocker}` : ''}</>
                   : item.waitingOn ? <>Waiting for <button type="button" className="wd-inline" onClick={() => openDetails({ kind: item.waitingOn!.kind === 'decision' ? 'decision' : 'work', id: item.waitingOn!.id, projectId: item.projectId }, { back: 'push' })}><b>{item.waitingOn.kind === 'task' ? `${taskNumber(item.waitingOn)} ${item.waitingOn.title}` : waitingPhrase(item.waitingOn)}</b></button>{item.blocker ? ` · ${item.blocker}` : ''}</>
-                    : item.blocker || NO_REASON}
+                    : blockedLine(item)}
               </p>
               {(writable || waitedOnMe) && !editingBlocker ? <div className="wd-blocker__acts">
                 {writable ? <Button ref={editButton} variant="quiet" size="sm" disabled={busy} onClick={() => { blockerBase.current ??= item.version; setEditingBlocker(true); }}>Edit</Button> : null}
@@ -692,6 +692,8 @@ function DecisionPanel({ decision, context, detail, relations, reload, revision,
   // The panel is the Inbox's decision card first (F-026 P4, S11; #763 D1): the reason, what it rests on,
   // Accept / Not now / Discuss and who else can accept. Not now and the waiting line are the Inbox item's, when it has one.
   const queue = useNeedsYou(me.user.id);
+  // A person is named as every list of people names them (personas-28): "Ada Kowalska (you)" for the reader.
+  const youOr = (who: { kind: string; id: string; name: string }) => (who.kind === 'human' && who.id === me.user.id ? `${who.name} (you)` : who.name);
   const handlers = useNeedsYouActions(queue);
   const need = decision.status === 'proposed' ? queue.items?.find((entry) => entry.key === `decision:${decision.id}`) ?? null : null;
   const discuss = useDiscussDecision();
@@ -743,8 +745,8 @@ function DecisionPanel({ decision, context, detail, relations, reload, revision,
         </section>
       ) : null}
       <dl className="wd-rows wd-decision-rows">
-        <div className="wd-row"><dt>Proposed</dt><dd><span>{decision.proposedBy.kind === 'agent' ? <AgentIdentity name={decision.proposedBy.name} owner={agentAuthorOwner(decision.proposedBy, owners)} hue={decision.proposedBy.colour} /> : decision.proposedBy.name} · {shortDate(decision.createdAt)}</span></dd></div>
-        {decision.decidedBy ? <div className="wd-row"><dt>Decided</dt><dd><span>{decision.decidedBy.name} · {shortDate(decision.decidedAt!)}</span></dd></div> : null}
+        <div className="wd-row"><dt>Proposed</dt><dd><span>{decision.proposedBy.kind === 'agent' ? <AgentIdentity name={decision.proposedBy.name} owner={agentAuthorOwner(decision.proposedBy, owners)} hue={decision.proposedBy.colour} /> : youOr(decision.proposedBy)} · {shortDate(decision.createdAt)}</span></dd></div>
+        {decision.decidedBy ? <div className="wd-row"><dt>Decided</dt><dd><span>{youOr(decision.decidedBy)} · {shortDate(decision.decidedAt!)}</span></dd></div> : null}
       </dl>
 
       {earlier ? (

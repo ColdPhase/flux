@@ -105,6 +105,8 @@ export interface SearchRowRecord {
   snippet: SearchText | null;
   hasBody: boolean;
   authorName: string | null;
+  /** An agent author's owner, for its one label "Planner · Ada's agent". */
+  agentOwnerName?: string | null;
   /** The client or assistant a message was posted through, for the author's line ("Ada · via Claude Code"). */
   via?: string | null;
   /** `via` names an agent whose answer its person showed everyone ("Ada's Assistant"), not a local client (#1424). */
@@ -139,12 +141,20 @@ export function highlightParts(value: string): SearchText {
     rest = stop < 0 ? '' : rest.slice(stop + 1);
   }
   // Adjacent parts of the same kind read as one.
-  return parts.reduce<SearchText>((out, part) => {
+  const joined = parts.reduce<SearchText>((out, part) => {
     const last = out[out.length - 1];
     if (last && last.match === part.match) last.text += part.text;
     else out.push({ ...part });
     return out;
   }, []);
+  // Text left out of what is searched (a citation, a link's address) leaves no space before the punctuation after it: "5 lux. Interpretation",
+  // never "5 lux . Interpretation" (audit 3274a05).
+  joined.forEach((part, at) => {
+    part.text = part.text.replace(/\s+(?=[.,;:!?)])/g, '');
+    const next = joined[at + 1];
+    if (next && /^[.,;:!?)]/.test(next.text)) part.text = part.text.replace(/\s+$/, '');
+  });
+  return joined;
 }
 
 function tsquery(plan: SearchPlanRows): SQL {
@@ -506,7 +516,7 @@ function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows, ra
     hits AS (SELECT * FROM matched WHERE newest = 1)
     SELECT h.id::text AS id, h.score::text AS score, h.at::text AS at_key, h.at, h.kind, h.workspace_id, w.name AS workspace_name,
       h.object_id, h.parent_id, h.project_id, p.name AS project_name, h.version, h.page, pf.message_id AS file_message_id, pm.current_version, h.status, sk.title AS sketch_title, wi.number AS work_number,
-      h.author_kind, h.author_id, ${cleanName(sql`coalesce(au.name, ag.name)`)} AS author_name, coalesce(pmv.via, dmv.via) AS via, coalesce(pmv.via_colour, dmv.via_colour) IS NOT NULL AS via_agent, coalesce(ags.colour, pmv.via_colour, dmv.via_colour) AS agent_colour, coalesce(pmv.sequence, dmv.sequence) AS sequence,
+      h.author_kind, h.author_id, ${cleanName(sql`coalesce(au.name, ag.name)`)} AS author_name, ${cleanName(sql`agu.name`)} AS agent_owner_name, coalesce(pmv.via, dmv.via) AS via, coalesce(pmv.via_colour, dmv.via_colour) IS NOT NULL AS via_agent, coalesce(ags.colour, pmv.via_colour, dmv.via_colour) AS agent_colour, coalesce(pmv.sequence, dmv.sequence) AS sequence,
       length(h.body) > 0 AS has_body,
       ts_headline('simple', ${clean(sql`h.title`)}, ${q}, ${TITLE_OPTIONS}) AS title_headline,
       CASE WHEN length(h.body) = 0 THEN NULL
@@ -522,6 +532,7 @@ function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows, ra
     LEFT JOIN auth_users au ON h.author_kind = 'human' AND au.id = h.author_id
     LEFT JOIN agents ag ON ag.id = (CASE WHEN h.author_kind = 'agent' THEN h.author_id::uuid END)
     LEFT JOIN assistant_settings ags ON ags.agent_id = ag.id
+    LEFT JOIN auth_users agu ON agu.id = ag.owner_user_id
     LEFT JOIN project_messages pmv ON pmv.id = (CASE WHEN h.kind = 'message' THEN h.object_id::uuid END)
     LEFT JOIN dm_messages dmv ON dmv.id = (CASE WHEN h.kind = 'dm_message' THEN h.object_id::uuid END)
     LEFT JOIN project_materials pm ON pm.id = (CASE WHEN h.kind IN ('material', 'doc') THEN h.object_id::uuid END)
@@ -535,7 +546,7 @@ function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows, ra
 interface PageRow {
   id: string; score: string; at_key: string; at: Date | string; kind: SearchKind; workspace_id: string; workspace_name: string | null;
   object_id: string; parent_id: string | null; project_id: string | null; project_name: string | null; version: number | null;
-  current_version: number | null; status: string | null; sequence: number | null; page: number | null; file_message_id: string | null; sketch_title: string | null; author_name: string | null; has_body: boolean;
+  current_version: number | null; status: string | null; sequence: number | null; page: number | null; file_message_id: string | null; sketch_title: string | null; author_name: string | null; agent_owner_name: string | null; has_body: boolean;
   author_kind: 'human' | 'agent' | null; author_id: string | null; via: string | null; via_agent: boolean | null; agent_colour: AgentColour | null;
   title_headline: string | null; body_headline: string | null; dm_name: string | null; work_number: number | null;
 }
@@ -563,6 +574,7 @@ function toRecord(row: PageRow): SearchRowRecord {
     snippet: row.body_headline ? highlightParts(row.body_headline) : null,
     hasBody: row.has_body,
     authorName: row.author_name,
+    agentOwnerName: row.agent_owner_name,
     via: row.via,
     viaAgent: !!row.via && !!row.via_agent,
     agentColour: row.agent_colour,

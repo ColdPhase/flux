@@ -14,7 +14,7 @@ import { isEncryptionEvent, type EncryptedWorkspace } from '../encryption/api';
 import { EncryptionSection } from '../encryption/EncryptionSection';
 import { listCompanyEncryptedSpaces } from '../encryption/api';
 import { ROLE_HINT, ROLE_LABEL, addMember, attemptKeys, changeRole, createInvite, firstName, getWorkspace, grantPerson, isManagerRole, listRemovedPeople, restorePerson, listInvites, listMembers, makeResetLink, problemText, removeMember, renameCompany,
-  revokeInvite } from './api';
+  peopleOrder, revokeInvite } from './api';
 import { DeleteSpaceDialog, type DeletableSpace } from './DeleteSpace';
 import { PersonLine } from './LastActive';
 import './people.css';
@@ -157,7 +157,7 @@ export function WorkspacePeople({ workspaceId, onBack, page = false }: { workspa
   const myRole = workspace.role ?? 'guest';
   const manager = isManagerRole(myRole);
   const owners = members?.filter((member) => member.role === 'owner').length ?? 0;
-  const ordered = members ? [...members.filter((member) => member.userId === me.user.id), ...members.filter((member) => member.userId !== me.user.id)] : null;
+  const ordered = members ? [...members].sort(peopleOrder(me.user.id, (member: WorkspaceMember) => ROLE_LABEL[member.role])) : null;
 
   const guests = ordered?.filter((member) => member.role === 'guest') ?? [];
   // On the company's page the people come first, as drawn: one Invite above them, or with single sign-on one line saying who
@@ -231,7 +231,7 @@ export function WorkspacePeople({ workspaceId, onBack, page = false }: { workspa
       </section>
 
       {page && canAdd ? <WaitingLinks workspace={workspace} myRole={myRole} links={links} /> : null}
-      {page && manager ? <RemovedPeople workspaceId={workspace.id} reload={reload} onRestored={(name, userId, more) => changed(`${name} is back in ${workspace.name}`, !more, false, userId)} /> : null}
+      {page && manager ? <RemovedPeople workspaceId={workspace.id} reload={reload} onRestored={(name, userId, more) => changed(`${name} is back in ${workspace.name}.`, !more, false, userId)} /> : null}
       {page && manager ? <CompanySpaces workspaceId={workspace.id} /> : null}
 
       {/* Encrypted spaces (F-030, #655): Encryption comes before AI and keeps its place in every state; AI is off for good and has no switch. */}
@@ -775,9 +775,15 @@ function useInviteLinks(workspaceId: string, enabled: boolean, seen: number, onJ
   return { invites, setInvites, fresh, setFresh, status, setStatus, linkRef };
 }
 
-/** The sentence under a new link: what happened and what to do, said once (#1424, persona B-4). */
-const madeSentence = (copied: boolean) => (copied ? 'Invite link created and copied. It works once: paste it into your message to them.'
-  : 'Invite link created. Copy it and paste it into your message to them. It works once.');
+/**
+ * The sentence under a new link: what happened and what to do, said once (#1424, persona B-4), in the same words as Add people's "Someone new?"
+ * with how long it works (personas-28): "It works once, for 7 days".
+ */
+const madeSentence = (copied: boolean, days: number) => {
+  const lasts = `${days} ${days === 1 ? 'day' : 'days'}`;
+  return copied ? `Invite link created and copied. It works once, for ${lasts}: paste it into your message to them.`
+    : `Invite link created. Copy it and paste it into your message to them. It works once, for ${lasts}.`;
+};
 
 /**
  * One invite form (F-035, #763 PE-2; founder decision 2026-11-13, #1438): an optional email and "Create invite link"; the role and how long
@@ -813,7 +819,7 @@ function InviteForm({ workspace, members, myRole, links, onAdded, onClose }: { w
     links.setFresh(invite);
     links.setInvites((list) => [invite, ...(list ?? []).filter((item) => item.id !== invite.id)]);
     setEmail('');
-    links.setStatus(madeSentence(await copyText(invite.link)));
+    links.setStatus(madeSentence(await copyText(invite.link), days));
     // The link is in its row of the list under the people: bring it into view.
     requestAnimationFrame(() => { links.linkRef.current?.scrollIntoView({ block: 'nearest' }); links.linkRef.current?.select(); });
   }

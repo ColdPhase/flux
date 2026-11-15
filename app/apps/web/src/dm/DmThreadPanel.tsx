@@ -22,7 +22,7 @@ import { pageBackTo } from '../app/seekMessage';
 import { useMessageReadingPosition } from '../work/readingPosition';
 import { useLeftPlace, useReturnPlace } from './returnPlace';
 import { MessageDay } from '../app/messageParts';
-import { NewBelow, UnreadDivider, countBelow, openAtUnread, useNewBelow } from '../app/unreadReading';
+import { NewBelow, UnreadDivider, arrivedBelow, openAtUnread, useNewBelow } from '../app/unreadReading';
 import { focusArrival } from '../ui/keys';
 
 function merge(current: DmMessage[], incoming: DmMessage[]) {
@@ -243,7 +243,7 @@ export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, others, writ
   // What arrives while the person reads above the end is counted in "↓ N new" (#1246).
   const newBelow = useNewBelow(feedNode);
   useArrivals(feed, [...shown.map((message) => `thread-message-${message.id}`), ...outbox.pending.map((item) => `pending-${item.id}`)], (id) => document.getElementById(id), (ids, atEnd) => {
-    if (!atEnd) newBelow.add(countBelow(feed.current, ids, (id) => document.getElementById(id)));
+    if (!atEnd) newBelow.add(arrivedBelow(feed.current, ids, (id) => document.getElementById(id)));
   }, { animate: false });
   const runs = ownRuns(shown.map((m) => ({ id: m.id, authorId: m.authorId, createdAt: m.createdAt })).concat(outbox.pending.map((item) => ({ id: null as unknown as string, authorId: meId, createdAt: item.at }))), meId, !!older);
   const seen = useReceipts({ scope: `${dmId}/${rootId}`, fetchReceipts: (list, signal) => dmReceipts(dmId, list, signal), fetchReaders: (list, run, after, signal) => dmReaders(dmId, list, run, after, signal), runs, tick: receiptTick });

@@ -19,6 +19,14 @@ an item. Access is checked at the moment of reading: an object the person cannot
 | `blocked` | A task they own that is blocked | `project_work_items` they own with status `blocked` |
 | `mention` | Someone mentioned them, or answered a question they asked (#1424 decision 1: `answer: true`, the kind word "Reply") | their unread `mention` notifications, newer than 14 days |
 
+An item's `from` is who it comes from as its title names them: the notification's `from_actor` (migration 0087), which the generator
+sets to the message's author for a question, a mention, a reply or a direct message, and to the inviter or the caller for a call. A
+question asked before someone joined comes from its asker, never from the joiner or whoever added them (persona round 28). A blocked
+task's title is the task ("#6 Seal the lids") and its line is what it waits for, in the words the board, the panel, the List and Home use
+(contracts `blockedWords`: "Waiting for Basia · the new seals", "No reason was recorded."); the person waited on reads "Ada is waiting for
+you: #6 Seal the lids" with the reason alone under it. A task made from a message answers what that message asked or mentioned of its
+maker: their question and mention items of it are done, as a reply in the conversation takes them (persona round 28).
+
 Replies, direct messages, assigned work and decisions to review stay notifications: they reach people where they
 happen (a conversation, the Messages list, Tasks) and by push and email, and still open from their
 `/inbox/:id` links. An agent waiting for your OK (`approval`, #1186) is also only a notification: the item is the run's own
@@ -55,7 +63,8 @@ The starter's reply in the thread answers it (#1170), and the asker hears the an
 Acceptance is **single-person** ([decision-authority.md](../product/decision-authority.md), DA-2): the first
 person with write access who accepts decides, and there is no un-accept (DA-3). The card therefore does not
 show "who has accepted". It shows `decision.accepters`: the people who can still accept it now, you first
-(at most six), as "waiting for you" and "Jonas can accept too". Accepting takes the decision out of everyone's
+(at most six), as "Waiting for you · Jonas can accept too": whose turn it is in words, you first, with no face of your own (persona
+round 28: your face beside "waiting for you" read as that person waiting for you). Accepting takes the decision out of everyone's
 queue.
 
 ## Who and where on every item (#1424)

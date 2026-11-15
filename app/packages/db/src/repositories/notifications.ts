@@ -88,12 +88,12 @@ export function notificationGeneratorRows(db: DbExecutor) {
     },
     async insertNotification(row: {
       id: string; userId: string; source: { workspaceId: string; type: SourceType; id: string }; reason: Reason; eventId: string;
-      title: string; body: string; url: string; inInbox: boolean; aiOrigin: boolean; answer?: boolean;
+      title: string; body: string; url: string; inInbox: boolean; aiOrigin: boolean; answer?: boolean; from: string;
     }) {
       const inserted = await db.insert(n).values({
         id: row.id, userId: row.userId, workspaceId: row.source.workspaceId, sourceType: row.source.type, sourceId: row.source.id,
         reason: row.reason, eventId: row.eventId, title: row.title, body: row.body, url: row.url, inInbox: row.inInbox, aiOrigin: row.aiOrigin,
-        answer: row.answer === true,
+        answer: row.answer === true, fromActor: row.from,
       }).onConflictDoNothing({ target: [n.userId, n.eventId], where: sql`${n.eventId} IS NOT NULL` }).returning({ id: n.id });
       return inserted.length > 0;
     },
@@ -262,7 +262,7 @@ export function notificationFactRows(db: DbExecutor) {
         id: message.id, workspaceId: message.workspaceId, projectId: message.projectId, projectName: await projectName(message.projectId),
         conversationId: message.conversationId, opening: messagePreview(opening?.body ?? message.body, opening?.attachmentCount ?? message.attachmentCount), conversationCreatedBy: row.createdBy !== null ? { kind: 'human' as const, id: row.createdBy } : { kind: 'agent' as const, id: row.createdByAgentId! },
         author: message.authorId !== null ? { kind: 'human' as const, id: message.authorId } : { kind: 'agent' as const, id: message.authorAgentId! },
-        authorName: agent?.name ?? null, via: message.via ?? null, viaAgent: !!message.via && !!message.viaColour, body: message.body, attachmentCount: message.attachmentCount, sequence: message.sequence, earlierAuthors: earlier.map((item) => item.authorId!), threadFollows: chosen,
+        authorName: agent?.name ?? null, ...(agent ? { authorOwnerId: agent.ownerUserId } : {}), via: message.via ?? null, viaAgent: !!message.via && !!message.viaColour, body: message.body, attachmentCount: message.attachmentCount, sequence: message.sequence, earlierAuthors: earlier.map((item) => item.authorId!), threadFollows: chosen,
         since,
         ...(message.authorAgentId && (server || !client) ? { onlyNotifies: agent?.ownerUserId ?? '' } : {}),
       };

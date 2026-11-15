@@ -1,5 +1,6 @@
 import {
   assistantChangeSummary,
+  blockedWords,
   decisionAppPath,
   type AssistantChange,
   MAX_SNOOZE_DAYS,
@@ -9,6 +10,7 @@ import {
   type NeedsYouResponse,
   type NeedsYouTaskRef,
   type ResolveNeedsYouCommand,
+  type WaitingOn,
 } from '@flux/contracts';
 import { ForbiddenError, InvalidInputError, NotFoundError } from '../access/errors.js';
 import type { Principal } from '../principal.js';
@@ -125,6 +127,7 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
     // The person's blocked tasks.
     const plans = blocked.length ? await ports.work.taskPlans(blocked.map((task) => task.id)) : new Map();
     const askers = await ports.work.names(blocked.flatMap((task) => (task.waitingFor?.id === userId ? [task.owner ?? task.createdBy] : [])));
+    const waitedFor = await ports.work.names(blocked.flatMap((task) => (task.waitingFor ? [task.waitingFor] : [])));
     for (const task of blocked) {
       const waiting = task.waitingOn?.kind === 'task' ? { id: task.waitingOn.id }
         : plans.get(task.id)?.prerequisites.find((item: { status: string; id: string }) => !OVER.has(item.status));
@@ -134,11 +137,15 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
       const waitedOn = task.waitingFor?.id === userId && !(task.owner?.kind === 'human' && task.owner.id === userId);
       const asker = waitedOn ? askers.get(`${(task.owner ?? task.createdBy).kind}:${(task.owner ?? task.createdBy).id}`) ?? 'Someone' : null;
       const reason = task.blocker?.trim() ? excerpt(task.blocker, 120) : null;
+      // The task is the title, and what it waits for is the line under it, in the words the board, the panel and Home use (personas-28):
+      // "#6 Seal the lids", "Waiting for Basia Wrona · the new seals". The person waited on reads who waits, and the reason alone.
+      const on: WaitingOn | null = waitingDecision ? { kind: 'decision', id: waitingDecision.id, title: waitingDecision.title }
+        : task.waitingOn?.kind === 'task' && waitingTask ? { kind: 'task', id: waitingTask.id, number: waitingTask.number, title: waitingTask.title } : null;
+      const person = task.waitingFor ? { name: waitedFor.get(`${task.waitingFor.kind}:${task.waitingFor.id}`) ?? 'Someone' } : null;
       items.push({
         key: `blocked:${task.id}`, kind: 'blocked',
-        title: waitedOn ? `${asker} is waiting for you: #${task.number} ${excerpt(task.title, 80)}${reason ? ` · ${reason}` : ''}`
-          : reason ? `#${task.number} is blocked: ${reason}` : `#${task.number} ${task.title} is blocked`,
-        detail: waitedOn ? (reason ?? task.title) : task.title, project: { id: task.projectId, name: projectNames.get(task.projectId) ?? 'Space' },
+        title: waitedOn ? `${asker} is waiting for you: #${task.number} ${excerpt(task.title, 80)}` : `#${task.number} ${excerpt(task.title, 120)}`,
+        detail: waitedOn ? reason ?? '' : excerpt(blockedWords({ blocker: task.blocker, waitingFor: person, waitingOn: on }), 160), project: { id: task.projectId, name: projectNames.get(task.projectId) ?? 'Space' },
         from: null, at: iso(task.updatedAt), url: `/projects/${task.projectId}/tasks?open=work:${task.id}`,
         decision: null, reason: null,
         blocked: { workId: task.id, number: task.number, version: task.version, blocker: task.blocker, since: iso(task.updatedAt), waitingForUserId: task.waitingFor?.id ?? null, waitingFor: waitingTask ? ref(waitingTask) : null,

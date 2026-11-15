@@ -5,7 +5,7 @@ import type { Project, ProjectWorkView, WorkGroup, WorkItem, WorkRowProjection, 
 import { ApiError, NetworkError } from '../api/client';
 import { AgentIdentity, Button, Icon, StatusGlyph, initials, useRowMotion } from '../ui';
 import { updateWork } from './api';
-import { DROPPED, NO_REASON, STATUS_LABEL, blockedLine, dueShort, taskNumber } from './format';
+import { DROPPED, STATUS_LABEL, blockedLine, dueShort, taskNumber } from './format';
 import { STATE_KEYS, useStateChanges } from './taskState';
 import { getProjectWorkView, workViewReadUrl } from './read-api';
 import type { ReadState } from './read-state';
@@ -116,7 +116,7 @@ function Card({ item, agentOwner, meId, writable, hintId, saving, dragged, lifte
         <button type="button" className="tb-card__open" onClick={onOpen} onKeyDown={onKeyDown} onKeyUp={onKeyUp} onBlur={onBlur}
           aria-describedby={writable ? hintId : undefined} aria-current={open ? 'true' : undefined}><span className="tb-card__title">{item.title}</span></button>
       </h3>
-      {blocked ? <p className="tb-card__blocker">{blockedLine(item) ?? NO_REASON}</p> : null}
+      {blocked ? <p className="tb-card__blocker">{blockedLine(item)}</p> : null}
       <div className="tb-card__foot">
         <span className="tb-card__id" title={`Task ${taskNumber(item)} · ${item.id}`}><span className="ui-vh">Task </span><span className="ui-task-number">{taskNumber(item)}</span></span>
         {item.dueOn ? <span className="tb-card__due">{dueShort(item.dueOn)}</span> : null}

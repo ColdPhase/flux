@@ -137,7 +137,7 @@ class NewProject(unittest.TestCase):
             expect(card.get_by_role("heading", name="New space")).to_be_visible()
             expect(card.get_by_text("Name", exact=True)).to_be_visible()
             expect(window.get_by_role("tablist")).to_have_count(0)
-            expect(card).to_contain_text("You’re the admin of this space")
+            expect(card).to_contain_text("You’re in it as the owner.")
             expect(card.get_by_role("button", name="Add people")).to_be_visible()
             # AI starts on; one dark button, Create space, beside Cancel of the same height.
             expect(card.get_by_role("switch", name="AI")).to_have_attribute("aria-checked", "true")

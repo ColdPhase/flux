@@ -4,7 +4,7 @@ import { AgentIdentity, Icon, Kreska, Morph, StatusGlyph, initials } from '../ui
 import { agentAuthorOwner, type AgentOwners } from '../agents/owners';
 import { useAgentHue, type ColouredAgent } from '../agents/hues';
 import type { AgentHue } from '../ui';
-import { STATUS_LABEL, blockedParts, isFinished, statusPhrase, taskNumber } from './format';
+import { STATUS_LABEL, blockedLine, isFinished, statusPhrase, taskNumber } from './format';
 import { STATE_KEYS, nextStatus, type StateTarget } from './taskState';
 
 // A task row as drawn (F-026 S-P-Tasks): the state glyph (one tap changes the state), the title, "#number" and
@@ -23,8 +23,8 @@ function meta(item: WorkRowProjection, meId: string, owners: AgentOwners, hue: (
       ? <AgentIdentity icon={false} name={owner.name} owner={agentAuthorOwner(owner, owners)} hue={hue(owner)} />
       : owner.id === meId ? 'you' : owner.name;
   const rest = [
-    item.status === 'blocked' && item.waitingFor ? `waiting for ${item.waitingFor.name}` : null,
-    item.status === 'blocked' ? (({ person, on, reason, thing }) => on ? `waiting for ${on}` : reason && thing && !person ? `waiting for ${reason}` : reason)(blockedParts(item)) : null,
+    // What it waits for, in the words the board, the panel, Home and the Inbox use (personas-28).
+    item.status === 'blocked' ? blockedLine(item) : null,
     waiting ? `waits for ${waiting} ${waiting === 1 ? 'task' : 'tasks'}` : null,
     // The rule a task follows is in its panel or sheet, not on the row (#763 LD-2).
     item.relations.sourceMessages > 0 ? 'from a message' : null,

@@ -87,43 +87,32 @@ export function pushSubscriptionRepository(db: DbExecutor) {
   };
 }
 
-/**
- * Who a notification comes from (#1243): the actor of the event it was made from, as a person's or an agent's name, for the notice's
- * face. Null for a notification made directly, or when the actor is gone.
- */
-async function sender(db: DbExecutor, eventId: string | null): Promise<{ kind: 'human' | 'agent'; id: string; name: string } | null> {
-  if (!eventId) return null;
-  const [event] = await db.select({ actorId: schema.events.actorId }).from(schema.events).where(eq(schema.events.id, eventId));
-  const [kind, actor] = event ? [event.actorId.slice(0, event.actorId.indexOf(':')), event.actorId.slice(event.actorId.indexOf(':') + 1)] : [];
-  if (kind === 'human' && actor) {
-    const [user] = await db.select({ name: schema.authUsers.name }).from(schema.authUsers).where(eq(schema.authUsers.id, actor));
-    return user ? { kind: 'human', id: actor, name: user.name } : null;
-  }
-  // An agent with its id, so the answer gives it its colour (#1528).
-  if (kind === 'agent' && actor && /^[0-9a-f-]{36}$/i.test(actor)) {
-    const [agent] = await db.select({ name: schema.agents.name }).from(schema.agents).where(eq(schema.agents.id, actor));
-    return agent ? { kind: 'agent', id: actor, name: agent.name } : null;
-  }
-  return null;
-}
+type Sender = { kind: 'human' | 'agent'; id: string; name: string };
 
 /**
- * Who each of a page of notifications comes from, read together (#1424): the actor of the event a notification was made from, with the id the
- * Inbox draws a face from. Two reads however long the page; a notification made directly, or whose actor is gone, has none.
+ * Who each of a page of notifications comes from, read together (#1243, #1424): the one its title names, as the generator recorded it
+ * (`from_actor`, personas-28: a question reaching someone who joined later comes from its asker, not from the joiner), else the actor of the
+ * event it was made from; with the id the Inbox draws a face from. Three reads however long the page; a notification made directly, or whose
+ * sender is gone, has none.
  */
-async function sendersOf(db: DbExecutor, eventIds: (string | null)[]): Promise<Map<string, { kind: 'human' | 'agent'; id: string; name: string }>> {
-  const ids = [...new Set(eventIds.filter((id): id is string => !!id))];
-  const found = new Map<string, { kind: 'human' | 'agent'; id: string; name: string }>();
-  if (!ids.length) return found;
-  const events = await db.select({ id: schema.events.id, actorId: schema.events.actorId }).from(schema.events).where(inArray(schema.events.id, ids));
-  const actors = events.map((event) => ({ event: event.id, kind: event.actorId.slice(0, event.actorId.indexOf(':')), id: event.actorId.slice(event.actorId.indexOf(':') + 1) }));
+async function sendersOf(db: DbExecutor, rows: readonly Pick<NotificationRow, 'id' | 'eventId' | 'fromActor'>[]): Promise<Map<string, Sender>> {
+  const found = new Map<string, Sender>();
+  const eventIds = [...new Set(rows.flatMap((row) => !row.fromActor && row.eventId ? [row.eventId] : []))];
+  const actorOf = new Map(eventIds.length ? (await db.select({ id: schema.events.id, actorId: schema.events.actorId }).from(schema.events)
+    .where(inArray(schema.events.id, eventIds))).map((event) => [event.id, event.actorId]) : []);
+  const actors = rows.flatMap((row) => {
+    const principal = row.fromActor ?? (row.eventId ? actorOf.get(row.eventId) : undefined);
+    return principal ? [{ row: row.id, kind: principal.slice(0, principal.indexOf(':')), id: principal.slice(principal.indexOf(':') + 1) }] : [];
+  });
+  if (!actors.length) return found;
   const humans = [...new Set(actors.filter((actor) => actor.kind === 'human' && actor.id).map((actor) => actor.id))];
+  // An agent with its id, so the answer gives it its colour (#1528).
   const agents = [...new Set(actors.filter((actor) => actor.kind === 'agent' && /^[0-9a-f-]{36}$/i.test(actor.id)).map((actor) => actor.id))];
   const userNames = new Map(humans.length ? (await db.select({ id: schema.authUsers.id, name: schema.authUsers.name }).from(schema.authUsers).where(inArray(schema.authUsers.id, humans))).map((row) => [row.id, row.name]) : []);
   const agentNames = new Map(agents.length ? (await db.select({ id: schema.agents.id, name: schema.agents.name }).from(schema.agents).where(inArray(schema.agents.id, agents))).map((row) => [row.id, row.name]) : []);
   for (const actor of actors) {
     const name = actor.kind === 'human' ? userNames.get(actor.id) : actor.kind === 'agent' ? agentNames.get(actor.id) : undefined;
-    if (name && (actor.kind === 'human' || actor.kind === 'agent')) found.set(actor.event, { kind: actor.kind, id: actor.id, name });
+    if (name && (actor.kind === 'human' || actor.kind === 'agent')) found.set(actor.row, { kind: actor.kind, id: actor.id, name });
   }
   return found;
 }
@@ -149,7 +138,7 @@ export function notificationRows(db: DbExecutor) {
       const [row] = await db.select({ notification: n }).from(n)
         .where(and(eq(n.id, id), eq(n.userId, userId), sql`NOT ${hiddenNotice(n)}`));
       if (!row) return null;
-      return { ...(await withHistories([row]))[0]!, from: await sender(db, row.notification.eventId) };
+      return { ...(await withHistories([row]))[0]!, from: (await sendersOf(db, [row.notification])).get(row.notification.id) ?? null };
     },
     async workspaceIdsForRecipient(userId: string) {
       return (await db.selectDistinct({ id: n.workspaceId }).from(n).where(eq(n.userId, userId))).map((row) => row.id);
@@ -162,9 +151,9 @@ export function notificationRows(db: DbExecutor) {
         .orderBy(desc(n.createdAt), desc(n.id)).limit(limit);
       const records = await withHistories(rows);
       if (!options.from) return records;
-      const senders = await sendersOf(db, rows.map((row) => row.notification.eventId));
+      const senders = await sendersOf(db, rows.map((row) => row.notification));
       return records.map((record, at) => {
-        const from = senders.get(rows[at]!.notification.eventId ?? '');
+        const from = senders.get(rows[at]!.notification.id);
         return from ? { ...record, from } : record;
       });
     },

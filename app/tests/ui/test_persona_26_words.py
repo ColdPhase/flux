@@ -128,10 +128,15 @@ class PersonaRound26Words(unittest.TestCase):
         page = self.page("gia")
         page.goto("/")
         sidebar = page.get_by_role("complementary", name="Sidebar")
-        expect(sidebar.get_by_role("link", name="Messages", exact=True)).to_be_visible()
+        # With no conversation and no agent, a guest has no Messages heading over nothing (audit P3 5, personas-28).
+        expect(page.get_by_role("main")).to_be_visible()
+        expect(sidebar.get_by_role("link", name="Messages", exact=True)).to_have_count(0)
         expect(sidebar.get_by_role("link", name="New message")).to_have_count(0)
-        sidebar.get_by_role("link", name="Messages", exact=True).click()
-        expect(page.get_by_text("No conversations yet. When someone writes to you, it appears here.")).to_be_visible()
+        page.goto("/dm")
+        # One line under the title, never "No messages yet" and "No conversations yet" together.
+        expect(page.get_by_role("heading", name="No messages yet")).to_be_visible()
+        expect(page.get_by_text("When someone writes to you, it appears here.", exact=True)).to_be_visible()
+        expect(page.get_by_text("No conversations yet")).to_have_count(0)
         expect(page.get_by_role("link", name="New message")).to_have_count(0)
         # The owner's name over her message is her name, not a way into a conversation the guest cannot start.
         page.goto(f"/projects/{self.ids['space']}")
@@ -160,7 +165,7 @@ class PersonaRound26Words(unittest.TestCase):
         page.goto("/projects")
         messages = page.locator("section.proj-index__dms")
         expect(messages.get_by_role("heading", name="Messages")).to_be_visible()
-        expect(messages).to_contain_text("No conversations yet. When someone writes to you, it appears here.")
+        expect(messages).to_contain_text("No messages yet. When someone writes to you, it appears here.")
         expect(messages.get_by_role("link", name="New message")).to_have_count(0)
         shot(page, "persona26-guest-phone-spaces")
         mia = self.page("mia", phone=True)

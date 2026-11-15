@@ -1,4 +1,4 @@
-import { waitingPhrase, type Decision, type ObjectLink, type WaitingOn, type WorkItem, type WorkStatus } from '@flux/contracts';
+import { blockedWords, type Decision, type ObjectLink, type WorkItem, type WorkStatus } from '@flux/contracts';
 
 /**
  * A task has four states (#868): To do, Doing, Blocked and Done. A task that was dropped is Done with a "dropped" note
@@ -60,30 +60,8 @@ export function decisionState(decision: Pick<Decision, 'status' | 'supersedes' |
   return decisionPieces(decision).filter((piece) => !piece.text.startsWith('Decision')).map((piece) => piece.text).join('');
 }
 
-/**
- * What a blocked task waits for, composed the same way on the board, the list and the panel (#763 C1): "Waiting for
- * <person> · <reason>". A reason alone reads as written when it is a sentence ("Needs the gateway first."), and after
- * "Waiting for" when it is the thing waited for ("the sensor delivery"); never "Waiting for Needs …".
- */
-export function blockedParts(item: { blocker: string | null; waitingFor?: { name: string } | null; waitingOn?: WaitingOn | null }) {
-  const reason = item.blocker?.trim() || null;
-  const thing = !!reason && /^\p{Ll}/u.test(reason);
-  return { person: item.waitingFor?.name ?? null, on: item.waitingOn ? waitingPhrase(item.waitingOn) : null, reason, thing };
-}
-
-/** A blocked task with nothing written about why, said one way on the board, the panel and Home (personas-27; return-view.md). */
-export const NO_REASON = 'No reason was recorded.';
-
-/**
- * What a blocked task waits for, as the one line of its card (#868): "Waiting for Jonas", "Waiting for the decision Use LoRa for the far
- * beds" or "Waiting for #7" (what it waits for, one thing), else its reason.
- */
-export function blockedLine(item: { blocker: string | null; waitingFor?: { name: string } | null; waitingOn?: WaitingOn | null }) {
-  const { person, on, reason, thing } = blockedParts(item);
-  if (person) return `Waiting for ${person}`;
-  if (on) return `Waiting for ${on}`;
-  return reason && thing ? `Waiting for ${reason}` : reason;
-}
+/** What a blocked task waits for, said one way on the board, the panel, the List, Home and the Inbox (personas-28): see `blockedWords`. */
+export const blockedLine = blockedWords;
 
 const weekday = new Intl.DateTimeFormat(undefined, { weekday: 'short' });
 const monthDay = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' });

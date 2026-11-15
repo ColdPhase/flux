@@ -103,6 +103,25 @@ export function needsYouRows(db: DbExecutor) {
     },
 
     /**
+     * A task the person makes from a message answers what that message asked or mentioned of them (personas-28): their unread question and
+     * mention notifications of exactly those messages are read and marked done, as a reply in the conversation takes them. An agent's
+     * question card is answered with its own answers and stays. Returns the Inbox keys it took out.
+     */
+    async answerWithTask(userId: string, projectId: string, messageIds: string[]): Promise<string[]> {
+      const ids = [...new Set(messageIds.map((id) => id.toLowerCase()).filter((id) => UUID.test(id)))];
+      if (!ids.length) return [];
+      const q = schema.agentQuestions;
+      const cards = new Set((await db.select({ messageId: q.messageId }).from(q).where(and(eq(q.askedUserId, userId), inArray(q.messageId, ids))))
+        .map((row) => row.messageId.toLowerCase()));
+      const open = ids.filter((id) => !cards.has(id));
+      if (!open.length) return [];
+      const rows = await db.select({ id: n.id }).from(n).where(and(eq(n.userId, userId), isNull(n.readAt), inArray(n.reason, ['question', 'mention']),
+        eq(n.sourceType, 'project'), eq(n.sourceId, projectId), sql`starts_with(lower(${n.url}), ${`/projects/${projectId.toLowerCase()}/conversations/`})`,
+        inArray(sql`lower(split_part(${n.url}, '#message-', 2))`, open)));
+      return takeOut(userId, rows.map((row) => row.id));
+    },
+
+    /**
      * The same for a direct message (#1249): a message that names someone is a mention or a question there, as in a space thread, so the
      * person's reply in that conversation answers their unread ones, read and done as Done takes them. A DM has no agent question cards.
      */

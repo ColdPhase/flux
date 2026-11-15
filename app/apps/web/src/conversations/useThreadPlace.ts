@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router';
 import type { outboxView } from '../composer/draft';
 import { pageBackTo } from '../app/seekMessage';
-import { UNREAD_READ_BACK, countBelow, openAtUnread, useNewBelow } from '../app/unreadReading';
+import { UNREAD_READ_BACK, arrivedBelow, openAtUnread, useNewBelow } from '../app/unreadReading';
 import { ownRuns, useObservation, useReceiptTick, useReceipts } from '../app/receipts';
 import { useArrivals } from '../ui';
 import { observeProjectMessages, olderMessages, projectReaders, projectReceipts } from './api';
@@ -85,7 +85,7 @@ export function useThreadPlace({ me, project, conversation }: PaneCore, { thread
   // What arrives below a reader who is above the end is counted in "↓ N new" (#1246); a reader at the end follows it.
   const newBelow = useNewBelow(feedNode);
   useArrivals(scrollRef, threadIds, (id) => document.getElementById(id), (arrivedIds, following) => {
-    if (!following) newBelow.add(countBelow(scrollRef.current, arrivedIds, (id) => document.getElementById(id)));
+    if (!following) newBelow.add(arrivedBelow(scrollRef.current, arrivedIds, (id) => document.getElementById(id)));
   });
   // #534: a thread's replies are watched like the stream's roots, and "Seen by" needs every reply of the person's own run.
   const receiptLines = [...replyEntries.map((entry) => entry.type === 'message'

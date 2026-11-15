@@ -25,8 +25,8 @@ export function dmTitle(dm: Pick<DmSummary, 'participants' | 'title' | 'counterp
   return joinNames(others.map((p) => firstName(p.name)));
 }
 
-/** What a guest's empty Messages says (#1424): they reply in conversations they are added to and start none. */
-export const GUEST_NO_DMS = 'No conversations yet. When someone writes to you, it appears here.';
+/** What a guest's empty Messages says under "No messages yet" (#1424): they reply in conversations they are added to and start none. */
+export const GUEST_NO_DMS = 'When someone writes to you, it appears here.';
 
 /** "Only you and Kai", "Only you, Kai and Lee" from the other people's names; a name not known yet is left out, never an empty "and". */
 export function audienceOf(names: string[]): string {

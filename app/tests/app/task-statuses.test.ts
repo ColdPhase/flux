@@ -121,6 +121,25 @@ describe('four task states, dropped, what came of it, and what a blocked task wa
       assert.equal((await cameOfItMessages(task)).length, 1, 'restore writes nothing');
     });
 
+    test('Z and Undo leave no line in the history: an undone change changed nothing (personas-28)', async () => {
+      const task = await create({ title: 'Sweep the yard', owner: human(ada) });
+      const done = await patch(task, { status: 'done' });
+      const undone = await patch(done, { status: 'open', restore: true });
+      assert.equal(undone.status, 'open');
+      assert.deepEqual((await activity(task)).map((entry) => entry.status), [], 'neither "marked it done" nor "marked it to do"');
+      // Only the change it undoes, by the same hand: an earlier move stays, and someone else's Undo-shaped change is a change.
+      const doing = await patch(undone, { status: 'in_progress' });
+      const finished = await patch(doing, { status: 'done' }, kai);
+      const back = await patch(finished, { status: 'in_progress', restore: true });
+      assert.deepEqual((await activity(task)).map((entry) => [entry.actor.id, entry.status?.from, entry.status?.to]), [
+        [ada.id, 'done', 'in_progress'], [kai.id, 'in_progress', 'done'], [ada.id, 'open', 'in_progress'],
+      ]);
+      // The owner's Undo of their own change of owner takes that line back too.
+      const given = await patch(back, { owner: human(kai) });
+      await patch(given, { owner: human(ada), restore: true });
+      assert.equal((await activity(task)).filter((entry) => entry.kind === 'owner').length, 0);
+    });
+
     test('there is no fifth state: not_pursued is refused', async () => {
       const task = await create({ title: 'Old word', owner: human(ada) });
       await refused(task, { status: 'not_pursued' }, 400);

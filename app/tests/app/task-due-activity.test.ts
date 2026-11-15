@@ -175,12 +175,11 @@ describe('a task has a due date and a history of who changed it', () => {
       const done = await patch(back, { status: 'done' });
       assert.equal(done.status, 'done');
       const entries = (await activity(task)).items.map((entry) => entry.status);
+      // The Undo took back the move it undid and kept no line of its own (personas-28): the history reads as if the move never happened.
       assert.deepEqual(entries, [
         { from: 'blocked', to: 'done', blocker: null, waitingFor: null, waitingOn: null, dropped: false },
-        { from: 'in_progress', to: 'blocked', blocker: 'Which focal length, and which mount?', waitingFor: { kind: 'human', id: kai.id, name: 'da-kai' }, waitingOn: null, dropped: false },
-        { from: 'blocked', to: 'in_progress', blocker: null, waitingFor: null, waitingOn: null, dropped: false },
         { from: 'open', to: 'blocked', blocker: 'Which focal length?', waitingFor: { kind: 'human', id: kai.id, name: 'da-kai' }, waitingOn: null, dropped: false },
-      ], 'a restore is a status change like any other');
+      ], 'an undone change leaves no line');
       // Blocked with no one to wait for.
       const lone = await create({ title: 'No one in particular' });
       await patch(lone, { status: 'blocked', blocker: 'Waiting on the weather' });

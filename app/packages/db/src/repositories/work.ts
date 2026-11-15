@@ -87,7 +87,7 @@ type ActivityRow = typeof schema.projectTaskActivity.$inferSelect;
 const sameActor = (a: Actor | null, b: Actor | null) => a?.kind === b?.kind && a?.id === b?.id;
 
 /** One entry for each of status, owner, due date and title that differs between the task before and after a change (#488). */
-async function recordTaskActivity(db: DbExecutor, before: ReturnType<typeof toWorkRecord> | null, after: ReturnType<typeof toWorkRecord>, by: Actor, via?: 'github_rule' | 'agent_rule' | 'agent_unable' | 'agent_deleted' | 'wait_resolved') {
+async function recordTaskActivity(db: DbExecutor, before: ReturnType<typeof toWorkRecord> | null, after: ReturnType<typeof toWorkRecord>, by: Actor, via?: 'github_rule' | 'agent_rule' | 'agent_unable' | 'agent_deleted' | 'wait_resolved', undoes = false) {
   if (!before) return;
   const entries: { kind: ActivityRow['kind']; detail: Record<string, unknown> }[] = [];
   if (before.status !== after.status) {
@@ -101,6 +101,9 @@ async function recordTaskActivity(db: DbExecutor, before: ReturnType<typeof toWo
   if (before.title !== after.title) entries.push({ kind: 'title', detail: { from: before.title, to: after.title } });
   const seal = entries.length ? await sealOf(db, after.workspaceId, { write: true }) : null;
   for (const entry of entries) {
+    // An Undo takes back the task's latest line of that kind when it is the change it undoes, by the same hand, as the conversation does with
+    // its moves (personas-28): the change came to nothing, so the history keeps no "marked it done" and "marked it to do" for it.
+    if (undoes && await tookBack(db, after.id, entry, by)) continue;
     const id = randomUUID();
     const detail = sealRow('project_task_activity', { id, detail: via ? { ...entry.detail, automation: via } : entry.detail }, seal!).detail;
     // clock_timestamp() (not the transaction's now()) keeps entries of one change in order and entries of changes that wait
@@ -108,6 +111,20 @@ async function recordTaskActivity(db: DbExecutor, before: ReturnType<typeof toWo
     await db.insert(schema.projectTaskActivity).values({ id, workspaceId: after.workspaceId, projectId: after.projectId, workId: after.id,
       kind: entry.kind, actorKind: by.kind, actorId: by.id, detail, createdAt: sql`clock_timestamp()` });
   }
+}
+
+/** Removes the task's latest activity line of `entry`'s kind when it is by `by` and went from what `entry` goes to, to what it comes from. */
+async function tookBack(db: DbExecutor, workId: string, entry: { kind: ActivityRow['kind']; detail: Record<string, unknown> }, by: Actor): Promise<boolean> {
+  const a = schema.projectTaskActivity;
+  const [latest] = await openRows(db, 'project_task_activity', await db.select().from(a).where(and(eq(a.workId, workId), eq(a.kind, entry.kind)))
+    .orderBy(desc(a.createdAt), desc(a.id)).limit(1));
+  if (!latest || latest.actorKind !== by.kind || latest.actorId !== by.id) return false;
+  const was = latest.detail as { from?: unknown; to?: unknown };
+  const same = (one: unknown, other: unknown) => JSON.stringify(one ?? null) === JSON.stringify(other ?? null);
+  const key = (value: unknown) => value && typeof value === 'object' && 'kind' in value && 'id' in value ? { kind: value.kind, id: value.id } : value;
+  if (!same(key(was.from), key(entry.detail.to)) || !same(key(was.to), key(entry.detail.from))) return false;
+  await db.delete(a).where(eq(a.id, latest.id));
+  return true;
 }
 
 /** What a blocked task waits for besides a person, as the activity line says it: "the decision Use LoRa" or "#7" (#868). */
@@ -478,7 +495,7 @@ export function workRows(db: DbExecutor) {
       }) };
     },
     async updateWork(id: string, changes: { title?: string; outcome?: string; status?: WorkRow['status']; blocker?: string | null; waitingFor?: Actor | null; waitingOn?: { kind: 'decision' | 'task'; id: string } | null; dropped?: boolean; cameOfIt?: string | null; dueOn?: string | null; owner?: Actor | null; criteria?: string[] },
-      by: Actor, via?: 'github_rule' | 'agent_rule' | 'agent_unable' | 'agent_deleted' | 'wait_resolved') {
+      by: Actor, via?: 'github_rule' | 'agent_rule' | 'agent_unable' | 'agent_deleted' | 'wait_resolved', options: { undoes?: boolean } = {}) {
       // Every path that changes a task ends here, so this is the one place its activity (#488) is kept: the row as it was,
       // then the change, then one entry per field that really differs, all in the caller's transaction. The caller holds the row.
       const [stored] = await db.select().from(w).where(eq(w.id, id)).for('update');
@@ -509,7 +526,7 @@ export function workRows(db: DbExecutor) {
         version: sql`${w.version} + 1`, updatedAt: new Date(),
       }).where(eq(w.id, id)).returning();
       const next = toWorkRecord(openRow('project_work_items', row!, seal));
-      await recordTaskActivity(db, previous ? toWorkRecord(previous) : null, next, by, via);
+      await recordTaskActivity(db, previous ? toWorkRecord(previous) : null, next, by, via, options.undoes === true);
       if (previous && !sameActor(toWorkRecord(previous).owner, next.owner)) {
         // Taken away from an agent that is working on it by someone else (not by one of its own rules): the run has to stop (#856).
         const was = toWorkRecord(previous).owner;

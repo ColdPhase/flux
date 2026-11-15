@@ -137,6 +137,9 @@ the rule's author and is marked `automation: 'github_rule'`), at the time of the
 of the same `clientCommandId` or `Idempotency-Key`, a refused change and a change that leaves the fields as they were
 (its version still moves) keep nothing. Creation is not an entry (readers derive it from `createdBy`/`createdAt`), and
 neither are an outcome, criteria, prerequisites, a blocker edit alone or parking; tasks from before 0112 have no entries.
+An Undo (`restore: true`) takes back the task's latest entry of each kind it changes when that entry is the change it undoes, by the
+same principal, and keeps none of its own, as the conversation does with its moves (persona round 28): Z after "marked it done" leaves
+neither "marked it done" nor "marked it to do".
 `GET /api/v1/work/:workId/activity` returns `TaskActivityPage` (`{ workId, items, nextBefore }`), newest first with a
 stable keyset on (time, id). `status` entries say the reason and the person waited for when the task became blocked (an
 Undo that restores them is a status change too); `owner` entries name both owners, agents with the owner they show to

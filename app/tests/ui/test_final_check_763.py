@@ -272,7 +272,7 @@ class FinalCheck763(unittest.TestCase):
                 card = self.open_proposed(page)
                 line = card.locator(".nyc__waiting")
                 expect(line).to_contain_text("can accept too")
-                expect(line).to_contain_text("waiting for you")
+                expect(line).to_contain_text("Waiting for you")
                 text = line.inner_text()
                 self.assertEqual(text.count("Basia Wrona"), 1, text)
                 self.assertEqual(line.locator(".ui-avatar:not(.ui-avatar--me)").evaluate_all("els => els.map((el) => el.textContent)").count("BW"), 1)

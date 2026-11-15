@@ -90,6 +90,8 @@ function objectControl(view: DetailsView): HTMLElement | null {
 }
 
 const SIDEBAR_KEY = 'flux.sidebar';
+/** The lists that show a conversation's newest line: Messages and the phone's Spaces. */
+const DM_PREVIEW_LISTS = new Set(['/dm', '/projects']);
 /** The views of a space, drawn inactive in a locked space's header (F-026 §7 Spaces). */
 const LOCKED_VIEWS = [{ id: 'conversation', label: 'Conversation' }, { id: 'tasks', label: 'Tasks' }, { id: 'map', label: 'Map' }, { id: 'docs', label: 'Wiki' }];
 /** The width the sidebar settles at when it is full and when it is the rail (tokens.css). */
@@ -315,6 +317,9 @@ function AppLayoutContent() {
       document.removeEventListener('visibilitychange', back);
     };
   }, [revalidate]);
+  // A message in a known conversation is read into the lists that show its newest line when one of them is open, else when one opens next
+  // (personas-28: the phone's Spaces showed the line before the one just sent until a reload).
+  const dmPreviewsStale = useRef(false);
   useStreamEvents(me.user.id, (event) => {
     // The person moved a space in another tab or on another device (#1250): the shell reads their order again. It is shown without
     // animation: rows only move in answer to the person's own input here.
@@ -344,8 +349,14 @@ function AppLayoutContent() {
     // Someone saw a message (#534): only the open conversation shows it, and it asks for itself.
     if (event.objectType !== 'dm' || event.kind === 'dm.observed.v1') return;
     const known = directMessages.some((dm) => dm.id === event.objectId);
-    if (!known || event.kind !== 'dm.message_sent.v1' || location.pathname === '/dm') revalidator.revalidate();
+    if (!known || event.kind !== 'dm.message_sent.v1' || DM_PREVIEW_LISTS.has(location.pathname)) revalidator.revalidate();
+    else dmPreviewsStale.current = true;
   }, () => revalidator.revalidate());
+  useEffect(() => {
+    if (!dmPreviewsStale.current || !DM_PREVIEW_LISTS.has(location.pathname)) return;
+    dmPreviewsStale.current = false;
+    revalidator.revalidate();
+  }, [location.pathname, revalidator]);
 
   const inboxSignals = useInboxDot(me.user.id, location.pathname);
   const inboxUnread = inboxSignals.count;

@@ -107,3 +107,12 @@ export function nextAgentColour(inUse: readonly string[]): AgentColour {
   const used = (colour: string) => inUse.filter((item) => item === colour).length;
   return palette.reduce((best, colour) => (used(colour) < used(best) ? colour : best), palette[0]!);
 }
+
+/**
+ * An agent's one label in words (principle 5, #1364), as `AgentIdentity` draws it: "Planner · Ada's agent", its owner by first name. An
+ * agent whose owner is gone is "Planner · a former member's agent". Used where the label is text (Search, a notice, a push, Home's lines).
+ */
+export function agentWords(name: string, ownerName: string | null | undefined): string {
+  const owner = ownerName?.trim();
+  return `${name} · ${owner ? `${owner.split(/\s+/)[0]}'s agent` : 'a former member\'s agent'}`;
+}

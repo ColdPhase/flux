@@ -488,6 +488,9 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         const from = { type: 'work' as const, id: record.id };
         await ports.work.insertLinks([...linkRows(scope, from, 'source', sources, by), ...linkRows(scope, from, 'related', related, by), ...linkRows(scope, from, 'part_of', parent, by)]);
         await ports.work.insertCreationNotice(record, sources);
+        // Making a task from a question answers it (personas-28): it leaves the maker's Inbox, as a reply in its conversation would.
+        const fromMessages = sources.filter((source) => source.type === 'message').map((source) => source.id);
+        if (by.kind === 'human' && fromMessages.length && ports.inbox) await ports.inbox.answerWithTask(by.id, project, fromMessages);
         await useFence.mark();
         await ports.work.recordCreationBaseline(record);
         const fresh = (await ports.work.findWork(record.id))!;
@@ -613,7 +616,7 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         if (changes.waitingOn && !(current.waitingOn?.kind === changes.waitingOn.kind && current.waitingOn.id === changes.waitingOn.id))
           await requireWaitingOn(ports, projectId, id, changes.waitingOn);
         if (dependencyIds !== undefined) await assertNoDependencyCycle(ports.work, workspaceId, id, dependencyIds);
-        const record = await ports.work.updateWork(id, changes, by, via);
+        const record = await ports.work.updateWork(id, changes, by, via, command.restore ? { undoes: true } : {});
         if (heldBy && current.owner?.kind === 'agent' && current.owner.id === heldBy) {
           const ended = await ports.work.endAgentHold?.({ workspaceId, projectId, taskId: id, agentId: heldBy, stoppedBy: principal.id });
           // As for Stop: the project's readers and the agent's owner are told who stopped it (AG-5).

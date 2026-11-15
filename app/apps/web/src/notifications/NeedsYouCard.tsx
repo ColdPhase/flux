@@ -84,12 +84,14 @@ export function WaitingLine({ item }: { item: NeedsYouItem }) {
   const rest = others.length - named.length;
   const list = named.map((person) => person.name);
   const names = rest > 0 ? `${list.join(', ')} and ${rest} more` : list.length <= 1 ? list.join('') : `${list.slice(0, -1).join(', ')} and ${list.at(-1)}`;
+  // Whose turn it is in words, you first (personas-28): "Waiting for you · Jonas can accept too", never your own face beside "waiting for you",
+  // which read as that person waiting for you.
   return (
     <span className="nyc__waiting">
-      {named.map((person) => <Avatar key={person.id} name={person.name} id={person.id} size="sm" />)}
       {/* The separator ends the first part, so a wrap never starts the next line with a lone "·". */}
-      {others.length ? <span>{names} can accept too{you ? <span aria-hidden="true"> ·</span> : null}</span> : null}
-      {you ? <span className="nyc__waiting-you"><Avatar name={you.name} id={you.id} size="sm" tone="me" /><b>waiting for you</b></span> : null}
+      {you ? <span className="nyc__waiting-you"><b>Waiting for you</b>{others.length ? <span aria-hidden="true"> ·</span> : null}</span> : null}
+      {named.map((person) => <Avatar key={person.id} name={person.name} id={person.id} size="sm" />)}
+      {others.length ? <span>{names} can accept too</span> : null}
     </span>
   );
 }
@@ -242,7 +244,7 @@ export function NeedsYouCard({ item, selected = false, compact = false, list = f
             {(change.tells ?? []).length ? <span className="nyc__waits-for">tells {peopleNamed(change.tells)}</span> : null}</li>))}</ul> : null}
         {/* Why they wait, in each change's own words (#1089: "It would notify Jonas…" is not "Deleting and other people's things…"). */}
         {full && run ? <p className="nyc__reason">{waitReasons(run.changes)}</p> : null}
-        {full && item.detail && item.kind !== 'blocked' && !item.proposal && !run ? <p className="nyc__reason">{item.detail}</p> : null}
+        {full && item.detail && !item.proposal && !run ? <p className="nyc__reason">{item.detail}</p> : null}
         {full && item.proposal ? (
           <dl className="nyc__reason nyc__proposal" data-testid="agent-suggestion">
             <dt>Seen</dt><dd>{item.proposal.fact}</dd>
@@ -251,8 +253,8 @@ export function NeedsYouCard({ item, selected = false, compact = false, list = f
             <dt>Based on</dt><dd>{item.proposal.source.title} (version {item.proposal.source.version})</dd>
           </dl>
         ) : null}
-        {full && item.blocked?.waitingFor ? <p className="nyc__reason">Waiting for #{item.blocked.waitingFor.number} {item.blocked.waitingFor.title}</p> : null}
-        {full && item.blocked?.waitingDecision ? <p className="nyc__reason">Waiting for the decision {item.blocked.waitingDecision.title}</p> : null}
+        {/* What it waits for is its line above (personas-28); a task it needs first that it does not wait for by name is said here. */}
+        {full && item.blocked?.waitingFor && !item.blocked.waitingOn ? <p className="nyc__reason">Waiting for #{item.blocked.waitingFor.number} {item.blocked.waitingFor.title}</p> : null}
         {full && !touch && decision && item.decision?.basedOn.length ? <p className="nyc__based"><span>Based on</span> {item.decision.basedOn.join(' · ')}</p> : null}
         {full && decision && item.decision?.supersedes ? <p className="nyc__based">This replaces the decision <b>{item.decision.supersedes}</b>.</p> : null}
         {full && decision ? (

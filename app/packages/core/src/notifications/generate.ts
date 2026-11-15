@@ -1,5 +1,5 @@
 import { redactedError } from '../encryption/redact.js';
-import { decisionAppPath, messagePreview, viaName } from '@flux/contracts';
+import { agentWords, decisionAppPath, messagePreview, viaName } from '@flux/contracts';
 import { randomUUID } from 'node:crypto';
 import type { NotificationReason } from '@flux/contracts';
 import type { JobRetryPolicy } from '../push/config.js';
@@ -53,6 +53,11 @@ export interface Candidate {
   aiOrigin?: boolean;
   /** Who acted, as the title names them: an account name, `Someone` or `An agent` (F-030 content-free titles). */
   who: string;
+  /**
+   * Who it comes from as a principal (`human:<id>`, `agent:<id>`): the one `who` names, whose face and name the Inbox shows (personas-28 P2 4).
+   * Absent when that is the event's actor.
+   */
+  from?: string;
   /** The conversation this notice is about, for a mention or a question in it: the person follows that thread from now on (#1249). */
   thread?: string;
   /** It tells the asker their question was answered (#1424 decision 1): recorded on the notification, so the Inbox names it a Reply everywhere. */
@@ -142,10 +147,11 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
       // A server agent's line tells nobody but its owner, whatever it names (#1089, AG-4); a person's and a local client's lines are as before.
       const people = [...audience].filter((userId) => userId !== authorId && reachable(userId)
         && (typeof message.onlyNotifies !== 'string' || userId === message.onlyNotifies));
-      const names = await facts.names([...(authorId ? [authorId] : []), ...people]);
+      const ownerId = message.author.kind === 'agent' ? message.authorOwnerId ?? null : null;
+      const names = await facts.names([...(authorId ? [authorId] : []), ...(ownerId ? [ownerId] : []), ...people]);
       // A person's message posted through a client or an assistant is marked in every notice, like on the message: "Ada · via Claude Code", and an
-      // agent's answer they showed everyone is "Ada's Assistant", its one name (#1424).
-      const author = authorId ? viaName(names.get(authorId) ?? 'Someone', message.via, message.viaAgent) : `${message.authorName ?? 'Agent'} (agent)`;
+      // agent's answer they showed everyone is "Ada's Assistant", its one name (#1424). An agent's own line is its one label, "Planner · Ada's agent".
+      const author = authorId ? viaName(names.get(authorId) ?? 'Someone', message.via, message.viaAgent) : agentWords(message.authorName ?? 'Agent', ownerId ? names.get(ownerId) : null);
       const involved = new Set([...(message.conversationCreatedBy.kind === 'human' ? [message.conversationCreatedBy.id] : []), ...message.earlierAuthors]);
       // Who gets the replies of a thread (#1249): the people who follow it. A person's own choice (Follow, Unfollow) wins over the default,
       // which is that its starter and earlier writers follow it.
@@ -173,6 +179,7 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
         result.push({ userId, reason, source: { type: 'project', id: message.projectId }, title,
           body: askedThis ? excerpt(message.asked!.question) : excerpt(messagePreview(message.body, message.attachmentCount)), url,
           aiOrigin: message.author.kind === 'agent' || !!message.via, who: authorId ? names.get(authorId) ?? 'Someone' : 'An agent', where: message.projectName,
+          from: `${message.author.kind}:${message.author.id}`,
           ...(reason === 'question' || reason === 'mention' ? { thread: message.conversationId } : {}), ...(addressed && !named && !askedThis ? { answer: true } : {}) });
       }
       return result;
@@ -180,7 +187,8 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
     case 'project.grant_set.v1':
     case 'workspace.member_added.v1': {
       // Someone joins a space, or the company and its open spaces (personas-27): the newest still-open question of the last 14 days that names
-      // them reaches them, as if they had been there when it was asked. It is asked of them by the one rule a new message follows.
+      // them reaches them, as if they had been there when it was asked. It is asked of them by the one rule a new message follows, and it
+      // comes from its asker, never from the event's actor, who is the joiner or whoever added them (personas-28 P2 4).
       const principal = event.data.principal as { kind?: unknown; id?: unknown } | undefined;
       const joined = event.kind === 'project.grant_set.v1' ? (principal?.kind === 'human' && typeof principal.id === 'string' ? principal.id : null)
         : typeof event.data.userId === 'string' ? event.data.userId : null;
@@ -193,7 +201,7 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
       const author = viaName(authorName, asked.via, asked.viaAgent);
       return [{ userId: joined, reason: 'question', source: { type: 'project', id: asked.projectId }, title: `${author} asked you in ${asked.projectName}`,
         body: excerpt(messagePreview(asked.body, asked.attachmentCount)), url: `/projects/${asked.projectId}/conversations/${asked.conversationId}#message-${asked.id}`,
-        aiOrigin: !!asked.via, who: authorName, where: asked.projectName, thread: asked.conversationId }];
+        aiOrigin: !!asked.via, who: authorName, from: `human:${asked.authorId}`, where: asked.projectName, thread: asked.conversationId }];
     }
     case 'dm.message_sent.v1': {
       const messageId = id(event.data.messageId);
@@ -215,7 +223,7 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
         const title = reason === 'question' ? `${marked} asked you${place}` : reason === 'mention' ? `${marked} ${named ? 'mentioned' : 'answered'} you${place}`
           : message.kind === 'pair' ? `${marked} sent you a message` : `${marked}${place}`;
         return { userId, reason, source: { type: 'dm' as const, id: message.dmId }, title, body: message.body.trim() ? excerpt(message.body) : 'Sent a file',
-          url: `/dm/${message.dmId}#message-${message.id}`, who: author, where: message.kind === 'pair' ? '' : message.title ? quote(message.title) : 'a group',
+          url: `/dm/${message.dmId}#message-${message.id}`, who: author, from: `human:${message.authorId}`, where: message.kind === 'pair' ? '' : message.title ? quote(message.title) : 'a group',
           ...(message.via ? { aiOrigin: true } : {}), ...(addressed && !named ? { answer: true } : {}) };
       });
     }
@@ -304,7 +312,7 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
         userId: recipientId, reason: 'invitation', source: { type: 'project', id: invitation.projectId },
         title: `${inviter} invited you to a call`,
         body: invitation.anchor.type === 'space' ? `Call in ${invitation.projectName}` : `On ${quote(excerpt(invitation.anchor.label, 80))} in ${invitation.projectName}`,
-        url: `/projects/${invitation.projectId}/live/${invitation.sessionId}?invitation=${invitation.id}`, who: inviter,
+        url: `/projects/${invitation.projectId}/live/${invitation.sessionId}?invitation=${invitation.id}`, who: inviter, from: `human:${invitation.inviterId}`,
         where: invitation.projectName,
       }];
     }
@@ -319,7 +327,7 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
         userId, reason: 'call' as const, source: { type: 'project' as const, id: session.projectId },
         title: `${starter} started a call in ${session.projectName}`,
         body: session.anchor.type === 'space' ? `Call in ${session.projectName}` : `At ${quote(excerpt(session.anchor.label, 80))}`,
-        url: liveCallUrl(session.projectId, session.id), who: starter, where: session.projectName,
+        url: liveCallUrl(session.projectId, session.id), who: starter, from: `human:${session.startedBy}`, where: session.projectName,
       }));
     }
     default:
@@ -361,7 +369,7 @@ async function deliver(ports: GeneratorPorts, event: GeneratorEvent, candidate: 
     url: candidate.url, inInbox: channels.inApp,
     // AI origin is persisted at write time (F-029): an agent actor or an agent-authored source.
     aiOrigin: candidate.aiOrigin === true || isAgentActor(event.actorId),
-    ...(candidate.answer ? { answer: true } : {}),
+    ...(candidate.answer ? { answer: true } : {}), from: candidate.from ?? event.actorId,
   });
   if (!inserted) return false;
 
@@ -369,7 +377,7 @@ async function deliver(ports: GeneratorPorts, event: GeneratorEvent, candidate: 
   // Quiet hours (C-31): no push and no email while they last, and nothing is sent when they end; the inbox row is stored above.
   if (inQuietHours(preferences, now)) return true;
   // The open tab's notice follows the same rule as push: the level and quiet hours, after the mute rule above (#1243, #1249).
-  if (channels.push) notices.push({ notificationId, userId: candidate.userId, workspaceId: event.workspaceId, source: candidate.source, actorId: event.actorId });
+  if (channels.push) notices.push({ notificationId, userId: candidate.userId, workspaceId: event.workspaceId, source: candidate.source, actorId: candidate.from ?? event.actorId });
   if (channels.push) {
     for (const subscriptionId of await ports.deliverableSubscriptions(candidate.userId)) {
       await ports.enqueuePush({ notificationId, subscriptionId, userId: candidate.userId, hiddenTitle });
