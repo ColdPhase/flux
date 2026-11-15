@@ -1,0 +1,140 @@
+import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+import { test } from 'node:test';
+import {
+  NOTIFICATION_FOLLOWS_PATH, NOTIFICATION_PREFERENCES_PATH, decisionDiscussionPath,
+  type Conversation, type ConversationRootWindow, type Decision, type DecisionDiscussion, type ObjectNotice, type Page, type Project, type SentConversationMessage,
+} from '@flux/contracts';
+import { pool } from './support/db.js';
+import { createSealed, passphrase } from './support/encryption.js';
+import { addMember, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
+import { waitFor } from './support/wait.js';
+
+// A decision's one discussion (founder decision, Hubert, 2026-11-15, #1424): Discuss starts a thread on the decision's card in the space's
+// conversation, and the decision's panel shows the same thread with a field to write. Writing in the panel posts to that thread; a reply in
+// the thread shows in the panel; the card counts it; the thread's notification rules apply, and whoever proposed the decision follows it.
+
+async function scene() {
+  const [owner, proposer, writer, guest, outsider] = await Promise.all(['dd-owner', 'dd-proposer', 'dd-writer', 'dd-guest', 'dd-outsider'].map(person));
+  const ws = await workspace(owner, 'Decision talk checks');
+  for (const member of [proposer, writer, outsider]) await addMember(owner, ws.id, member, 'member');
+  await addMember(owner, ws.id, guest, 'guest');
+  const place = await project(owner, ws.id, 'Night lamp', 'restricted');
+  for (const member of [proposer, writer, guest]) await grant(owner, place.id, member, 'contributor');
+  // Replies reach their followers at every level; Everything makes a reply a notification of its own for each of them.
+  for (const someone of [owner, proposer, writer, guest])
+    expectStatus(await someone.browser.request('PATCH', NOTIFICATION_PREFERENCES_PATH, { body: { level: 'everything' } }), 200);
+  const decision = expectStatus(await proposer.browser.request('POST', `/api/v1/projects/${place.id}/decisions`,
+    { body: { title: 'Use a ToF sensor', rationale: 'It works in the dark' } }), 201) as Decision;
+  return { owner, proposer, writer, guest, outsider, ws, place, decision };
+}
+
+const discussion = async (who: Person, decisionId: string) => expectStatus(await who.browser.request('GET', decisionDiscussionPath(decisionId)), 200) as DecisionDiscussion;
+const write = async (who: Person, decisionId: string, body: string, clientMessageId = randomUUID()) =>
+  expectStatus(await who.browser.request('POST', decisionDiscussionPath(decisionId), { body: { body, clientMessageId } }), 201) as SentConversationMessage;
+const reply = async (who: Person, conversationId: string, body: string) =>
+  expectStatus(await who.browser.request('POST', `/api/v1/conversations/${conversationId}/messages`, { body: { body, clientMessageId: randomUUID() } }), 201) as SentConversationMessage;
+const card = async (who: Person, projectId: string, decisionId: string) =>
+  (expectStatus(await who.browser.request('GET', `/api/v1/projects/${projectId}/object-notices?limit=100`), 200) as Page<ObjectNotice>).items.find((item) => item.decisionId === decisionId)!;
+const setFollow = async (who: Person, conversationId: string, following: boolean) =>
+  expectStatus(await who.browser.request('PUT', NOTIFICATION_FOLLOWS_PATH, { body: { conversationId, following } }), 200);
+const notificationsOf = async (who: Person, conversationId: string) =>
+  (await pool.query<{ reason: string; url: string }>('SELECT reason, url FROM notifications WHERE user_id = $1 AND url LIKE $2 ORDER BY created_at', [who.id, `%/conversations/${conversationId}#%`])).rows;
+
+test('writing in the panel starts the thread on the decision\'s card, and a reply in that thread shows in the panel', async () => {
+  const f = await scene();
+  const empty = await discussion(f.writer, f.decision.id);
+  assert.equal(empty.conversationId, null, 'no thread before anyone writes');
+  assert.deepEqual(empty.messages, []);
+  assert.equal((await card(f.writer, f.place.id, f.decision.id)).discussion, null, 'the card has no count yet');
+
+  const first = await write(f.writer, f.decision.id, 'Does it see through the lamp shade?');
+  const started = await discussion(f.owner, f.decision.id);
+  assert.ok(started.conversationId);
+  assert.equal(first.conversationId, started.conversationId, 'the panel wrote in the decision\'s thread');
+  assert.deepEqual(started.messages.map((message) => message.body), ['Does it see through the lamp shade?']);
+
+  // The same thread opens from the card: it names its decision, and it is a conversation of the space, not a root of the stream.
+  const thread = expectStatus(await f.owner.browser.request('GET', `/api/v1/conversations/${started.conversationId}`), 200) as Conversation;
+  assert.deepEqual(thread.decision, { decisionId: f.decision.id, title: 'Use a ToF sensor' });
+  const roots = expectStatus(await f.owner.browser.request('GET', `/api/v1/projects/${f.place.id}/conversation-roots`), 200) as ConversationRootWindow;
+  assert.equal(roots.roots.some((root) => root.conversationId === started.conversationId), false, 'its place is the card, not the stream');
+
+  // A reply in the thread (its own composer, or anything that replies to a conversation) is in the panel.
+  const answer = await reply(f.owner, started.conversationId!, 'Yes, through 3 mm of opal acrylic.');
+  const both = await discussion(f.writer, f.decision.id);
+  assert.deepEqual(both.messages.map((message) => message.id), [first.id, answer.id], 'oldest first, the newest at the bottom');
+
+  // The card counts every message of the thread and says when the newest came.
+  const counted = (await card(f.writer, f.place.id, f.decision.id)).discussion;
+  assert.deepEqual(counted, { conversationId: started.conversationId, replyCount: 2, lastReplyAt: answer.createdAt });
+
+  // The panel writes into the same thread from then on.
+  const again = await write(f.proposer, f.decision.id, 'Then the shade stays.');
+  assert.equal(again.conversationId, started.conversationId);
+  assert.equal((await discussion(f.writer, f.decision.id)).messages.length, 3);
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM project_decision_discussions WHERE decision_id = $1', [f.decision.id])).rows[0].n, 1, 'one discussion per decision');
+});
+
+test('two first messages at once make one thread, a retry stores nothing twice, and the same id for other words conflicts', async () => {
+  const f = await scene();
+  const [a, b] = await Promise.all([write(f.writer, f.decision.id, 'First from the writer'), write(f.owner, f.decision.id, 'First from the owner')]);
+  assert.equal(a.conversationId, b.conversationId, 'one thread');
+  assert.deepEqual([a.sequence, b.sequence].sort(), [1, 2]);
+  const id = randomUUID();
+  const sent = await write(f.writer, f.decision.id, 'Said once', id);
+  const retried = await write(f.writer, f.decision.id, 'Said once', id);
+  assert.equal(retried.id, sent.id);
+  assert.equal((await discussion(f.owner, f.decision.id)).messages.length, 3);
+  expectStatus(await f.writer.browser.request('POST', decisionDiscussionPath(f.decision.id), { body: { body: 'Other words', clientMessageId: id } }), 409);
+});
+
+test('who reads and writes it: the space\'s people and its guest; nobody outside the space; a decision written about stays', async () => {
+  const f = await scene();
+  const guestSays = await write(f.guest, f.decision.id, 'A guest of the space can say this.');
+  assert.equal((await discussion(f.guest, f.decision.id)).messages[0]!.id, guestSays.id);
+  expectStatus(await f.outsider.browser.request('GET', decisionDiscussionPath(f.decision.id)), 404, 'outside the space it is not there');
+  expectStatus(await f.outsider.browser.request('POST', decisionDiscussionPath(f.decision.id), { body: { body: 'Let me in', clientMessageId: randomUUID() } }), 404);
+  expectStatus(await f.writer.browser.request('GET', decisionDiscussionPath(randomUUID())), 404);
+  // Its proposer's Undo no longer withdraws it: what was written about it stays.
+  const withdrawn = await f.proposer.browser.request('POST', `/api/v1/decisions/${f.decision.id}/withdraw`, { body: {}, headers: { 'if-match': `"${f.decision.version}"` } });
+  assert.equal(withdrawn.status, 409);
+  assert.equal((withdrawn.json as { code?: string }).code, 'DECISION_IN_USE');
+});
+
+test('notifications follow the thread\'s rules, and whoever proposed the decision follows it from its first message', async () => {
+  const f = await scene();
+  const first = await write(f.writer, f.decision.id, 'Is a ToF sensor bright enough at night?');
+  const conversationId = first.conversationId;
+  // The proposer did not write, yet follows: the first message reaches them as a reply in the thread.
+  const toProposer = await waitFor(async () => (await notificationsOf(f.proposer, conversationId)).find((row) => row.url.endsWith(first.id)), 'the proposer is told');
+  assert.equal(toProposer.reason, 'reply');
+  // A reply in the thread reaches its starter (the writer) and the proposer, never its author; the owner, who has not written, is not told.
+  const answer = await reply(f.guest, conversationId, 'It has its own infrared light.');
+  await waitFor(async () => (await notificationsOf(f.writer, conversationId)).find((row) => row.url.endsWith(answer.id)), 'the starter is told');
+  await waitFor(async () => (await notificationsOf(f.proposer, conversationId)).find((row) => row.url.endsWith(answer.id)), 'the proposer is told of the reply');
+  // A mention of someone in the panel reaches them as a mention, as in any thread.
+  const named = await write(f.proposer, f.decision.id, '@dd-owner can you accept it?');
+  const toOwner = await waitFor(async () => (await notificationsOf(f.owner, conversationId)).find((row) => row.url.endsWith(named.id)), 'the named owner is told');
+  assert.equal(toOwner.reason, 'question');
+  assert.equal((await notificationsOf(f.guest, conversationId)).some((row) => row.url.endsWith(answer.id)), false, 'the author is never told of their own message');
+  assert.equal((await notificationsOf(f.owner, conversationId)).some((row) => row.url.endsWith(answer.id)), false, 'someone outside the thread is not told of a reply');
+  // The proposer's choice wins: after Unfollow the thread's replies stop reaching them.
+  await setFollow(f.proposer, conversationId, false);
+  const later = await reply(f.writer, conversationId, 'Agreed, then.');
+  await waitFor(async () => (await notificationsOf(f.guest, conversationId)).find((row) => row.url.endsWith(later.id)), 'the guest who wrote is told');
+  assert.equal((await notificationsOf(f.proposer, conversationId)).some((row) => row.url.endsWith(later.id)), false, 'Unfollow wins');
+});
+
+test('an encrypted space seals the decision\'s discussion as any thread\'s', async () => {
+  const ada = await person('dd-sealed-ada');
+  const ws = (await createSealed(ada, 'Sealed lamp club', passphrase())).workspace.id;
+  const place = expectStatus(await ada.browser.request('POST', `/api/v1/workspaces/${ws}/projects`, { body: { name: 'Shade', visibility: 'workspace' } }), 201) as Project;
+  const decision = expectStatus(await ada.browser.request('POST', `/api/v1/projects/${place.id}/decisions`, { body: { title: 'Opal acrylic shade' } }), 201) as Decision;
+  const sent = await write(ada, decision.id, 'The opal shade diffuses the sensor light well.');
+  assert.deepEqual((await discussion(ada, decision.id)).messages.map((message) => message.body), ['The opal shade diffuses the sensor light well.']);
+  const stored = (await pool.query<{ body: string }>('SELECT body FROM project_messages WHERE id = $1', [sent.id])).rows[0]!;
+  assert.ok(!stored.body.includes('opal shade'), 'the words are sealed at rest');
+  const thread = expectStatus(await ada.browser.request('GET', `/api/v1/conversations/${sent.conversationId}`), 200) as Conversation;
+  assert.equal(thread.decision?.title, 'Opal acrylic shade', 'the decision\'s title is opened for its reader');
+});

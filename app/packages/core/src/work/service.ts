@@ -343,7 +343,8 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         const names = await ports.work.names([...items.map((item) => item.by), ...items.flatMap((item) => item.decided ? [item.decided.by] : [])]);
         const named = (who: ActorRef) => ({ ...who, name: names.get(key(who)) ?? (who.kind === 'agent' ? 'Agent' : 'Former member') });
         return items.map((item) => ({ ...item, createdAt: iso(item.createdAt), by: named(item.by),
-          decided: item.decided ? { by: named(item.decided.by), at: iso(item.decided.at) } : null }));
+          decided: item.decided ? { by: named(item.decided.by), at: iso(item.decided.at) } : null,
+          discussion: item.discussion ? { ...item.discussion, lastReplyAt: iso(item.discussion.lastReplyAt) } : null }));
       }),
 
     /** The caller's unfinished work across the projects of a workspace they can currently read. */

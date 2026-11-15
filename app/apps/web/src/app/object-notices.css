@@ -25,3 +25,8 @@
    gave 4.4:1 in light and 4.0:1 in dark. Hovering the open card keeps it marked. High contrast keeps it as an outline. */
 .convo-notice__card.is-open, .convo-notice__card.is-open:has(> .convo-notice__task:hover) { background: var(--hov); }
 @media (forced-colors: active) { .convo-notice__card.is-open { outline: 2px solid Highlight; outline-offset: 2px; } }
+/* A decision's one discussion (#1424): "N replies" under its row, inside the card, as a root's replies sit under the root; it opens the
+   thread on the card. It starts under the title, past the flag, as the accepted line does. */
+.convo-replies.convo-object__replies { margin: -4px 0 0; padding: 0 12px 6px 31px; }
+/* The head of a decision's discussion in its thread: the decision's row, as its card draws it. */
+.thread__root--decision > .convo-notice__task { text-align: left; }

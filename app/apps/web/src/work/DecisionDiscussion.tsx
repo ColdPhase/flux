@@ -1,0 +1,141 @@
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import type { ConversationMessage, DecisionDiscussion as Discussion, Project, WorkspaceMember } from '@flux/contracts';
+import { AgentIdentity, Avatar, Kreska, MEDIA, sendsOnEnter, useMediaQuery, type AgentHue } from '../ui';
+import { useComposerDraft, useComposerScope } from '../composer/draft';
+import { ComposerFiles, MessageContent, hasPhotos } from '../composer/Files';
+import { ComposerBox } from '../composer/ComposerBox';
+import { LinkPreviews, MessageText } from '../app/MessageText';
+import { ConnectionLine, OutboxStatus, PendingFiles, SendAnnouncer } from '../composer/Outbox';
+import { clock, day, when } from '../app/messageParts';
+import { getDecisionDiscussion } from '../composer/api';
+import { agentDisplayName, personName } from '../docs/format';
+import { agentAuthorOwner, useAgentOwners } from '../agents/owners';
+import { useAgentHue } from '../agents/hues';
+import { useProjectShell } from '../project/data';
+import { useTyping } from '../typing/useTyping';
+import { TypingNotice } from '../typing/TypingNotice';
+import { DECISION_COMPOSER } from './discuss';
+
+
+const MESSAGES = 50;
+
+/**
+ * A decision's one discussion (founder decision, Hubert, 2026-11-15, #1424): the thread on its card in the space's conversation, shown
+ * in its panel too, oldest first with the newest at the bottom above the field. Read again when the decision's discussion changes for
+ * anyone (`revision`, from `project.decision_discussed.v1`) and when this person's own message is stored.
+ */
+export function useDecisionDiscussion(decisionId: string, revision: number | string) {
+  const [discussion, setDiscussion] = useState<Discussion | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    const controller = new AbortController();
+    getDecisionDiscussion(decisionId, { limit: MESSAGES, signal: controller.signal })
+      .then((value) => { if (!controller.signal.aborted) { setDiscussion(value); setFailed(false); } })
+      .catch(() => { if (!controller.signal.aborted) setFailed(true); });
+    return () => controller.abort();
+  }, [decisionId, revision, attempt]);
+  const reload = useCallback(() => setAttempt((value) => value + 1), []);
+  return { discussion, failed, reload };
+}
+export type DecisionDiscussionState = ReturnType<typeof useDecisionDiscussion>;
+
+function Face({ message, name, mine, hue }: { message: ConversationMessage; name: string; mine: boolean; hue?: AgentHue | undefined }) {
+  return message.authorId === null ? <Kreska size={20} className="wd-act__face" {...(hue ? { hue } : {})} /> : <Avatar name={name} id={message.authorId} size="sm" tone={mine ? 'me' : 'neutral'} />;
+}
+
+/** What was written about the decision, oldest first, then what this person is sending. */
+export function DecisionMessages({ state, composer, project, members, me }: {
+  state: DecisionDiscussionState; composer: ReturnType<typeof useComposerDraft>; project: Project; members: WorkspaceMember[]; me: { id: string; name: string };
+}) {
+  const people = useProjectShell()?.people ?? null;
+  const owners = useAgentOwners(project);
+  const hueOf = useAgentHue();
+  const { discussion } = state;
+  // What this person sent stays in its place until the read that has it comes back, so nothing blinks out (#1424).
+  const stored = discussion?.messages ?? [];
+  const messages = [...stored, ...composer.sent.map((item) => item.message)
+    .filter((message) => !stored.some((other) => other.id === message.id) && (!discussion?.conversationId || message.conversationId === discussion.conversationId))]
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const author = (message: ConversationMessage) => message.authorId === null ? agentDisplayName(message.author) : personName(message.authorId, me, members, people);
+  const list = useRef<HTMLOListElement>(null);
+  // The newest stays in view at the bottom, above the field, as a message arrives or is sent.
+  const last = `${messages.at(-1)?.id ?? ''}:${composer.pending.length}`;
+  useLayoutEffect(() => { list.current?.lastElementChild?.scrollIntoView({ block: 'nearest' }); }, [last]);
+  if (!messages.length && !composer.pending.length && !state.failed) return null;
+  return (
+    <section className="details__sec wd-discussion" aria-labelledby="wd-discussion-head" data-decision-discussion={discussion?.conversationId ?? ''}>
+      <h4 id="wd-discussion-head">Discussion</h4>
+      {state.failed ? <p className="wd-error" role="alert">The discussion could not be loaded. <button type="button" className="wd-inline" onClick={state.reload}>Retry</button></p> : null}
+      <ol className="wd-act wd-discussion__list" aria-label="Messages about this decision" ref={list}>
+        {messages.map((message) => {
+          const name = author(message);
+          const mine = message.authorId === me.id;
+          const hue = message.author?.kind === 'agent' ? hueOf(message.author) : undefined;
+          return (
+            <li key={message.id} className="wd-act__item wd-act__item--message" data-message-id={message.id}>
+              <Face message={message} name={name} mine={mine} hue={hue} />
+              <div className="wd-act__body">
+                <p className="wd-act__who">
+                  {message.authorId === null ? <AgentIdentity name={name} owner={message.author.kind === 'agent' ? agentAuthorOwner(message.author, owners) : undefined} icon={false} hue={hue} />
+                    : <b title={name}>{mine ? `${name.trim().split(/\s+/)[0] || name} (you)` : name.trim().split(/\s+/)[0] || name}</b>}
+                  <time dateTime={message.createdAt} title={when(message.createdAt)}>{day(message.createdAt)}, {clock(message.createdAt)}</time>
+                  {message.editedAt ? <span className="message-edited" title={`Edited ${when(message.editedAt)}`}> · edited</span> : null}
+                </p>
+                <div className={`wd-act__bubble${hasPhotos(message.files) ? ' has-photos' : ''}`}>
+                  <MessageContent files={message.files} context={{ author: name, at: message.createdAt, caption: message.body, place: project.name }}
+                    body={message.body ? <div className={`message-body${message.removedAt ? ' message-body--removed' : ''}`}><MessageText body={message.body} /></div> : null}>
+                    <LinkPreviews body={message.body} projectId={project.id} messageId={message.id} />
+                  </MessageContent>
+                </div>
+              </div>
+            </li>
+          );
+        })}
+        {composer.pending.map((pending) => (
+          <li key={`pending-${pending.id}`} id={`pending-${pending.id}`} data-client-message-id={pending.id} data-send-state={pending.state}
+            className={`wd-pending__item is-pending${pending.state === 'failed' ? ' is-failed-send' : ''}`}>
+            <PendingFiles body={pending.body ? <div className="wd-pending__body"><MessageText body={pending.body} linked={false} /></div> : null} files={pending.files}
+              send={{ state: pending.state, onRetry: () => composer.retry(pending.id) }} />
+            <OutboxStatus item={pending} onRetry={() => composer.retry(pending.id)} onRemove={() => composer.remove(pending.id)} />
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+/**
+ * The field at the decision panel's foot, "Write about this decision…" (#1424). It writes in the decision's one discussion through the
+ * same draft (`decision:<id>`) as the thread on the decision's card, so the words are never the space's own composer's.
+ */
+export function DecisionComposer({ state, composer, meId }: { state: DecisionDiscussionState; composer: ReturnType<typeof useComposerDraft>; meId: string }) {
+  const touch = useMediaQuery(MEDIA.touch);
+  const captureScope = useComposerScope(composer.key);
+  const conversationId = state.discussion?.conversationId ?? null;
+  // Typing is the thread's (#155): the same as in the thread on the card. Before the first message there is no thread to type in.
+  const typing = useTyping(meId, conversationId ? { kind: 'conversation', id: conversationId } : null, true);
+  async function send(event?: FormEvent) {
+    event?.preventDefault();
+    typing.stop();
+    const outcome = composer.submit();
+    if (!outcome) return;
+    const active = captureScope();
+    const result = await outcome;
+    if (result.status === 'delivered' && active()) state.reload();
+  }
+  const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (sendsOnEnter(event, touch) || (event.key === 'Enter' && (event.metaKey || event.ctrlKey) && !event.nativeEvent.isComposing)) { event.preventDefault(); void send(); }
+  };
+  return (
+    <form className="wd-composer" onSubmit={(event) => void send(event)}>
+      <ConnectionLine />
+      <ComposerFiles state={composer} attach="none" />
+      <ComposerBox id={DECISION_COMPOSER} label="Write about this decision" value={composer.draft.body} maxLength={20000}
+        placeholder={['Write about this decision…', 'Write']} onChange={(value) => { composer.setBody(value); typing.input(Boolean(value.trim())); }} onBlur={typing.stop} onKeyDown={onKeyDown}
+        attach={composer} sendLabel="Send" sendDisabled={!composer.canSend} onSend={() => void send()} />
+      <div className="wd-foot__line">{conversationId ? <TypingNotice {...typing} /> : <p className="typing-notice" aria-hidden="true">{' '}</p>}</div>
+      <SendAnnouncer pending={composer.pending} />
+    </form>
+  );
+}

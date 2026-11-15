@@ -79,6 +79,8 @@ export function projectReceipts(db: Database) {
             .where(and(eq(m.projectId, projectId), eq(c.projectId, projectId), eq(m.sequence, 1),
               // A task's discussion is not a root of the stream (#868), so it does not break a run.
               sql`NOT EXISTS (SELECT 1 FROM project_task_discussions d WHERE d.conversation_id = ${c.id})`,
+              // Nor is a decision's discussion (#1424): it is the thread on the decision's card.
+              sql`NOT EXISTS (SELECT 1 FROM project_decision_discussions d WHERE d.conversation_id = ${c.id})`,
               // Compared in SQL so the ends keep PostgreSQL's microsecond precision.
               sql`(${c.createdAt}, ${c.id}) >= (SELECT f.created_at, f.id FROM project_conversations f WHERE f.id = ${first.conversationId})`,
               sql`(${c.createdAt}, ${c.id}) <= (SELECT l.created_at, l.id FROM project_conversations l WHERE l.id = ${last.conversationId})`));

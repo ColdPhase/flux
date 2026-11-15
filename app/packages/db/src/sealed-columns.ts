@@ -60,7 +60,7 @@ const content = [
   'workspaces', 'workspace_members', 'project_ai_policies', 'projects', 'project_grants', 'project_conversations',
   'project_messages', 'message_references', 'project_message_observations', 'dm_message_observations', 'dm_reads', 'return_points', 'space_order', 'dms', 'dm_participants', 'dm_messages',
   'project_materials', 'project_material_versions', 'project_work_items', 'project_task_activity', 'project_task_updates', 'project_task_notices',
-  'project_task_plan_intents', 'project_task_dependencies', 'project_task_discussions', 'task_creation_undo_receipts', 'native_command_receipts',
+  'project_task_plan_intents', 'project_task_dependencies', 'project_task_discussions', 'project_decision_discussions', 'task_creation_undo_receipts', 'native_command_receipts',
   'project_decisions', 'project_object_links', 'sketches', 'sketch_thoughts',
   'sketch_links', 'project_files', 'doc_live_heads', 'doc_live_archives', 'doc_live_updates', 'doc_live_snapshots', 'doc_live_presence',
   'doc_live_replicas', 'map_live_presence', 'map_live_gestures', 'map_live_heads', 'map_live_journal', 'map_live_object_versions', 'map_live_undone',

@@ -51,7 +51,7 @@ export function ProjectConversation() {
  * (`useComposerDrafts`, `useComposerMenu`, `useComposerSend`), the assistant (`useAssistantAsk`, `useAskBar`)
  * and the views (`ThreadFeed`, `PaneComposer`).
  */
-function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessageId = null, objects = [], onPosted, onSending, newestRootAt, onThreadSize }: PaneProps) {
+function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessageId = null, objects = [], onPosted, onSending, newestRootAt, onThreadSize, onOpenDiscussion }: PaneProps) {
   // Touch devices add a line with Enter and send with the button (#189).
   const touch = useMediaQuery(MEDIA.touch);
   const core = usePaneCore(data, variant);
@@ -91,7 +91,8 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   // The root sits at the thread's top (and in the stream); the list holds its replies.
   // What came of this thread (#694): the decisions made from it stand among its replies, in time order.
   const made = conversation ? threadObjects(conversation.id, new Set(messages.map((message) => message.id)), objects) : [];
-  const entries = feedEntries(messages.filter((message) => message.sequence > 1), !!thread.olderCursor, made);
+  // A decision's discussion has no root message (#1424): its head is the decision, and its first message is a reply like the others.
+  const entries = feedEntries(messages.filter((message) => message.sequence > 1 || !!conversation?.decision), !!thread.olderCursor, made);
   const { messageWork, referenceWork } = reading;
   const others = (core.people ?? []).filter((person) => person.kind === 'human' && person.id !== me.user.id).map((person) => person.name.trim().split(/\s+/)[0] || person.name);
   const privateAi = { assistant, changes, others, lookups: { projectId: project.id, messages, work: referenceWork.rows, author, people: core.people } };
@@ -100,7 +101,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
     data-references-observed-at={conversation ? referenceWork.observation?.observedAt : undefined} data-references-phase={conversation ? referenceWork.state.phase : undefined}>
     {!conversation ? feed?.(<PrivateAiLines assistant={assistant} meId={me.user.id} meName={me.user.name} others={others} composerId={composerId} lookups={privateAi.lookups} own />) : <ThreadFeed core={core} thread={thread} reading={reading} entries={entries} outbox={outbox} publicComposer={publicComposer} privateAi={privateAi} owners={owners}
       people={core.people} makeWork={makeWork} arrived={arrived} seen={seen} messageAuthor={messageAuthor} openDetails={openDetails} hideIfDenied={hideIfDenied}
-      waitingHere={ask.waitingHere} rootHeader={rootHeader} rootMessageId={rootMessageId} unreadFrom={unreadFrom} newBelow={newBelow} />}
+      waitingHere={ask.waitingHere} rootHeader={rootHeader} rootMessageId={rootMessageId} unreadFrom={unreadFrom} newBelow={newBelow} onOpenDiscussion={onOpenDiscussion} />}
     {conversation ? <MessageWorkPages read={messageWork} /> : null}
     {conversation && referenceWork.state.phase === 'unavailable' ? <div className="ws-message-pages" role="alert">Referenced tasks could not be checked. Your reply is kept. <Button variant="link" size="sm" onClick={referenceWork.refresh}>Refresh task references</Button></div> : null}
     <PaneComposer core={core} drafts={drafts} menu={menu} actions={actions} ask={ask} askBar={askBar} assistant={assistant} typing={typing}

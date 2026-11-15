@@ -27,7 +27,7 @@ export function useThreadReading({ me, project, conversation }: PaneCore, { mess
   const columnRef = useRef<HTMLDivElement>(null);
   // The thread shows its root whole at the top (with what was made from it), then the replies: one bounded
   // association read covers the root and the replies around the viewport (#155).
-  const sourceIds = useMemo(() => [...(rootMessageId ? [rootMessageId] : []), ...messages.filter((message) => message.sequence > 1 && message.id !== rootMessageId).map((message) => message.id)], [messages, rootMessageId]);
+  const sourceIds = useMemo(() => [...(rootMessageId ? [rootMessageId] : []), ...messages.filter((message) => (message.sequence > 1 || !rootMessageId) && message.id !== rootMessageId).map((message) => message.id)], [messages, rootMessageId]);
   // Bounded native reads (#155): the visible replies' chips, and the discussed task. Neither is the project's work collection.
   const discussedTask = conversation?.task?.workId ?? null;
   const referenceIds = useMemo(() => (discussedTask ? [`work:${discussedTask}`] : []), [discussedTask]);

@@ -1,4 +1,4 @@
-import { agentChatFilesPath, dmFilesPath, projectFilesPath, taskDiscussionPath, type SentConversationMessage, type StagedFile, type TaskContributionCommand, type TaskDiscussion } from '@flux/contracts';
+import { agentChatFilesPath, decisionDiscussionPath, dmFilesPath, projectFilesPath, taskDiscussionPath, type DecisionDiscussion, type SendMessageCommand, type SentConversationMessage, type StagedFile, type TaskContributionCommand, type TaskDiscussion } from '@flux/contracts';
 import { ApiError, NetworkError, request } from '../api/client';
 
 /** Every view sends the same task command through this operation, including conversation replies. */
@@ -11,6 +11,13 @@ export const getTaskDiscussion = (workId: string, options: { limit?: number; bef
 /** A message in a task's discussion; `answered` names what it answered in the person's Inbox (#1170). */
 export const contributeToTask = (workId: string, command: TaskContributionCommand) =>
   request<SentConversationMessage>(taskDiscussionPath(workId), { method: 'POST', body: command });
+
+/** A decision's one discussion (#1424): the thread on its card, which its panel shows too. */
+export const getDecisionDiscussion = (decisionId: string, options: { limit?: number; signal?: AbortSignal } = {}) =>
+  request<DecisionDiscussion>(`${decisionDiscussionPath(decisionId)}${options.limit ? `?limit=${options.limit}` : ''}`, { signal: options.signal });
+/** A message about a decision (#1424), from its panel or from the thread on its card: the first one starts that thread. */
+export const discussDecision = (decisionId: string, command: SendMessageCommand) =>
+  request<SentConversationMessage>(decisionDiscussionPath(decisionId), { method: 'POST', body: command });
 
 /**
  * Raw authenticated bytes; upload UUID is retained after a lost response. It goes by XMLHttpRequest, the

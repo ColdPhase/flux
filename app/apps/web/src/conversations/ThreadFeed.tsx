@@ -39,6 +39,8 @@ interface Props {
   waitingHere: { clientRunId: string }[]; rootHeader: PaneProps['rootHeader']; rootMessageId: string | null;
   /** The reply the "New" divider stands above, and the "↓ N new" line for a reader above the end (#1246). */
   unreadFrom: string | null; newBelow: { count: number; toEnd: () => void };
+  /** A decision made in this thread opens its own discussion from its card's "N replies" (#1424). */
+  onOpenDiscussion?: (conversationId: string) => void;
 }
 
 /** The open thread (UI116-1): its root whole at the top, then replies and what came of them, in time order, and the person's own private answers at the end. */
@@ -52,7 +54,7 @@ export function ThreadFeed(props: Props) {
   entries.forEach((entry, index) => {
     const dayKey = `day-${entry.type === 'message' ? outbox.keyOf(entry.message.id) : entry.key}`;
     if (entry.type === 'object') withDay(entry.at, dayKey, [<ObjectNoticeItem key={entry.key} notice={entry.notice} meId={me.user.id} owners={owners} authorOf={() => null} inThread
-      hasMessage={() => false} onOpen={(target) => props.openDetails(target)} />]);
+      hasMessage={() => false} onOpen={(target) => props.openDetails(target)} onOpenDiscussion={props.onOpenDiscussion} />]);
     else {
       const message = entry.message;
       const previous = entries[index - 1], next = entries[index + 1];

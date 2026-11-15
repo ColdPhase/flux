@@ -8,8 +8,9 @@ what a person sees and can do, on a computer (1440 x 900) and a phone (390 x 844
 * D1: a proposed decision's panel is its Inbox card first: Accept / Not now / Discuss and who is still waiting, with no "Needs you"
   pill (#1367); on a phone the answer is inside the half sheet; Not now is one button with no menu: back tomorrow morning.
 * D2: no empty "Based on", "Evidence" or "Reports on" sections; "Shown on the Wiki page …" is a sentence drawn only when it applies (#871).
-* D3: Discuss opens the decision's thread with its reply field focused, or the conversation with the
-  composer focused and the decision beside it, from the panel and from the Inbox.
+* D3: Discuss opens the decision's panel with the cursor in its one discussion's field, "Write about this decision…", from the panel
+  and from the Inbox, whether or not it came from a message (founder decision, Hubert, 2026-11-15, #1424: before, it opened the
+  message's thread or the space's own composer, where the words had no link to the decision).
 * D4/D6: "Add to a Wiki page" closes the form back to the decision, says "Shown on the Wiki page …"
   and says where it went with one toast and Open.
 * B2: (gone with #867: a message has no "Hand off to an agent")
@@ -194,28 +195,28 @@ class DecisionFlows(unittest.TestCase):
 
     # ---------------------------------------------------------------- D3
 
-    def test_04_discuss_opens_the_decisions_thread_ready_to_write(self) -> None:
+    def test_04_discuss_puts_the_cursor_in_the_decisions_own_field(self) -> None:
         page = self.page()
         pid = self.ids["project"]
         page.goto(f"/projects/{pid}?open=decision:{self.ids['sourced']}")
         self.panel(page).get_by_role("button", name="Discuss", exact=True).click()
-        expect(page).to_have_url(re.compile(f"/projects/{pid}/conversations/{self.ids['conversation']}"))
-        expect(page.locator("#thread-composer")).to_be_focused()
-        # The thread shows the decision that came of its message.
-        expect(page.locator("#thread")).to_contain_text(FROM_MESSAGE)
-        shot(page, "decision-flows-d3-thread")
+        # The decision's one discussion (#1424): its panel stays, with the cursor in its field, never the message's thread.
+        expect(page).to_have_url(re.compile(f"/projects/{pid}\\?open=decision:{self.ids['sourced']}$"))
+        expect(page.locator("#decision-composer")).to_be_focused()
+        expect(page.locator("#details")).to_contain_text(FROM_MESSAGE)
+        shot(page, "decision-flows-d3-field")
 
-    def test_05_discuss_without_a_source_opens_the_conversation_with_the_decision_beside_it(self) -> None:
+    def test_05_discuss_without_a_source_is_the_same_field(self) -> None:
         page = self.page()
         pid = self.ids["project"]
         page.goto(f"/projects/{pid}?open=decision:{self.ids['bare']}")
         self.panel(page).get_by_role("button", name="Discuss", exact=True).click()
-        # The address keeps naming the decision beside the conversation (F-026 §4, founder question B), in the same entry.
         expect(page).to_have_url(re.compile(f"/projects/{pid}/?(\\?open=decision(:|%3A)[0-9a-f-]{{36}})?$"))
-        expect(page.locator("#project-composer")).to_be_focused()
+        expect(page.locator("#decision-composer")).to_be_focused()
+        expect(page.locator("#project-composer")).not_to_be_focused()
         expect(page.locator("#details").get_by_role("heading", level=3, name=NO_SOURCE)).to_be_visible()
 
-    def test_06_discuss_from_the_inbox_opens_the_same_thread(self) -> None:
+    def test_06_discuss_from_the_inbox_opens_the_decisions_field(self) -> None:
         page = self.page()
         page.goto("/inbox")
         card = page.locator(".nyc", has_text=FROM_MESSAGE)
@@ -224,8 +225,8 @@ class DecisionFlows(unittest.TestCase):
         card.locator(".nyc__open").click()
         expect(card).to_have_attribute("aria-current", "true")
         page.locator(".nyc--open").get_by_role("button", name="Discuss", exact=True).click()
-        expect(page).to_have_url(re.compile(f"/conversations/{self.ids['conversation']}"))
-        expect(page.locator("#thread-composer")).to_be_focused()
+        expect(page).to_have_url(re.compile(f"\\?open=decision:{self.ids['sourced']}$"))
+        expect(page.locator("#decision-composer")).to_be_focused()
 
     # ---------------------------------------------------------------- D4, D6
 

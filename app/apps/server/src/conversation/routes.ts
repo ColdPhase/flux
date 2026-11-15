@@ -63,6 +63,14 @@ export async function conversationRoutes(app: FastifyInstance, { db, sessions, s
     { preValidation: plainText, schema: { body: send } }, async (request, reply) => reply.code(201).send(
       await store.sendMessage(await principal(request), request.params.conversationId, request.body)));
 
+  // A decision's one discussion (#1424): the thread on its card, which its panel shows too. The first message starts it.
+  app.get<{ Params: { decisionId: string }; Querystring: ConversationWindowQuery }>('/api/v1/decisions/:decisionId/discussion',
+    { schema: { querystring: conversationWindow } },
+    async (request) => store.decisionDiscussion(await principal(request), request.params.decisionId, request.query));
+  app.post<{ Params: { decisionId: string }; Body: SendMessageCommand }>('/api/v1/decisions/:decisionId/discussion',
+    { preValidation: plainText, schema: { body: send } }, async (request, reply) => reply.code(201).send(
+      await store.discussDecision(await principal(request), request.params.decisionId, request.body)));
+
   // The author changes or deletes their own message (#1006). No Idempotency-Key: saving the same words and deleting a deleted message
   // answer the current message again, so a retry is safe, and no replayable answer keeps the words.
   const edit = { type: 'object', required: ['body'], additionalProperties: false, properties: { body: { type: 'string', maxLength: 100_000 } } } as const;

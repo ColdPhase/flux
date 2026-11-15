@@ -331,11 +331,13 @@ export interface StreamProps {
   /** A return to this entry: the stream comes back to where it was left, not to a link's root or to its latest. */
   restore?: StreamPlace | null;
   onOpen: (root: ConversationRoot, reply: boolean) => void;
+  /** A decision's card's "N replies" (#1424): its one discussion opens as a thread beside the stream. */
+  onOpenDiscussion?: (conversationId: string) => void;
   onDenied: (cause: unknown) => void;
 }
 
 /** The project's stream of roots, oldest first, with day dividers, each root's thread size and reply action. */
-export function ConversationStream({ project, meId, meName, roots: stream, notices, objects = [], calls = [], personName = () => 'Someone', author, audience, openId, reveal, arrived, endToken, restore = null, onOpen, onDenied, end = null }: StreamProps) {
+export function ConversationStream({ project, meId, meName, roots: stream, notices, objects = [], calls = [], personName = () => 'Someone', author, audience, openId, reveal, arrived, endToken, restore = null, onOpen, onOpenDiscussion, onDenied, end = null }: StreamProps) {
   const owners = useAgentOwners(project);
   // Roots the person sent from the stream's composer (#264): queued ones at the end, and confirmed ones
   // shown at once in their place until the stream's own read includes them.
@@ -730,7 +732,8 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
                 if (entry.kind === 'notice') return [divider, noticeItem(entry.notice)];
                 if (entry.kind === 'call') return [divider, <CallLineItem key={entry.key} line={entry.call} projectId={project.id} nameOf={personName} meId={meId} clock={clock} title={when} />];
                 if (entry.kind === 'object') return [divider, <ObjectNoticeItem key={entry.key} notice={entry.object} meId={meId} owners={owners} authorOf={authorOf} hasMessage={(id) => rootMessageIds.has(id)}
-                  onOpen={(target) => openDetails(target)} onOpenThread={(conversationId) => { const root = roots.find((item) => item.conversationId === conversationId); if (root) openRoot(root, false); }} />];
+                  onOpen={(target) => openDetails(target)} onOpenThread={(conversationId) => { const root = roots.find((item) => item.conversationId === conversationId); if (root) openRoot(root, false); }}
+                  onOpenDiscussion={onOpenDiscussion} openThread={openId} />];
                 if (entry.kind === 'fold') {
                   const folded = entry.notices.map((item) => item.notice);
                   return [divider, <NoticeFold key={entry.key} fold={{ key: entry.key, notices: folded }} shown={revealed} summary={foldSummary(folded, authorOf, foldName)}>{folded.map(noticeItem)}</NoticeFold>];

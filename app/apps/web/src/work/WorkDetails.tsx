@@ -16,6 +16,7 @@ import { useNeedsYouActions } from '../notifications/useNeedsYouActions';
 import { NotNowButton, WaitingLine } from '../notifications/NeedsYouCard';
 import '../notifications/needs-you.css';
 import { useDiscussDecision } from './discuss';
+import { DecisionComposer, DecisionMessages, useDecisionDiscussion } from './DecisionDiscussion';
 import { acceptDecision, resolveWaiting, undoTaskCreation, updateWork } from './api';
 import { STATUS_LABEL, blockedLine, decisionState, isFinished, linked, shortDate, statusPhrase, taskNumber } from './format';
 import { docsLinking } from '../docs/AddToDoc';
@@ -701,6 +702,9 @@ function DecisionPanel({ decision, context, detail, relations, reload, revision,
   const need = decision.status === 'proposed' ? queue.items?.find((entry) => entry.key === `decision:${decision.id}`) ?? null : null;
   const discuss = useDiscussDecision();
   const sources = relations.links.filter((link) => link.from.id === decision.id && link.role === 'source');
+  // Its one discussion (#1424): the thread on its card, shown here under the decision with the field at the panel's foot.
+  const composer = useComposerDraft(me.user.id, context.project.id, `decision:${decision.id}`);
+  const discussion = useDecisionDiscussion(decision.id, `${revision}:${composer.sent.length}`);
 
   async function accept(event?: FormEvent) {
     event?.preventDefault();
@@ -722,7 +726,8 @@ function DecisionPanel({ decision, context, detail, relations, reload, revision,
   const earlierDay = earlierObject ? ` (${shortDate(earlierObject.decidedAt ?? earlierObject.createdAt)})` : '';
 
   return (
-    <div className="details wd" data-detail-kind="decision" data-detail-id={decision.id}>
+    <div className="details wd wd--decision" data-detail-kind="decision" data-detail-id={decision.id}>
+      <div className="wd__scroll">
       <div className="wd-decision-identity">
         <p className={`details__eyebrow wd-eyebrow${decision.status === 'proposed' ? ' wd-need' : ''}`}><Icon name="flag" size={13} /><Morph value={decision.status}>{earlier ? decisionState({ ...decision, supersedes: null }) : decisionState(decision)}</Morph></p>
         <h3 className={`details__title${decision.status === 'superseded' ? ' wd-was' : ''}`}>{decision.title}</h3>
@@ -740,7 +745,7 @@ function DecisionPanel({ decision, context, detail, relations, reload, revision,
             <div className="nyc__actions">
               <Button variant="primary" busy={busy} onClick={() => void accept()}>Accept</Button>
               {need ? <NotNowButton onClick={() => handlers.snooze(need, 'tomorrow')} /> : null}
-              <Button variant="quiet" onClick={() => void discuss(context.project.id, decision.id, relations.complete ? relations.links : undefined)}>Discuss</Button>
+              <Button variant="quiet" onClick={() => void discuss(context.project.id, decision.id)}>Discuss</Button>
             </div>
             {need ? <WaitingLine item={need} /> : null}
           </div>
@@ -775,6 +780,11 @@ function DecisionPanel({ decision, context, detail, relations, reload, revision,
 
       <OtherRelationships object={decision} relations={relations} project={context.project} />
       <InDocs object={decision} kind="decision" project={context.project} relations={relations} notYet={decision.status === 'proposed' ? 'You can add it once it is accepted.' : undefined} />
+      <DecisionMessages state={discussion} composer={composer} project={context.project} members={context.members} me={{ id: me.user.id, name: me.user.name }} />
+      </div>
+      <div className="wd__foot">
+        <DecisionComposer state={discussion} composer={composer} meId={me.user.id} />
+      </div>
     </div>
   );
 }

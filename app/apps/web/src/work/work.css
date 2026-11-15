@@ -286,8 +286,9 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
 }
 
 /* ---------- The task panel as drawn (P10, Spokój A05): rows, a blocker card, small actions, Activity, the composer at the bottom ---------- */
-.ui-panel__body:has(> .wd--task) { display: flex; padding: 0; overflow: hidden; }
-.wd--task { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; }
+.ui-panel__body:has(> .wd--task, > .wd--decision) { display: flex; padding: 0; overflow: hidden; }
+/* A decision's panel keeps its one discussion's field at its foot, as a task's does (#1424). */
+.wd--task, .wd--decision { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; }
 .wd__scroll { flex: 1; min-height: 0; padding: 18px 22px 20px; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
 .wd__foot { flex: none; padding: 6px 16px 10px; padding-bottom: max(10px, env(safe-area-inset-bottom)); }
 .wd__foot .composer__audience > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -383,3 +384,6 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
 .wd-checks { margin: 0 0 6px; padding: 0; list-style: none; font-size: var(--fs-md); line-height: 1.5; }
 .wd-checks li { display: flex; gap: 8px; align-items: flex-start; padding: 2px 0; overflow-wrap: anywhere; }
 .wd-check { flex: none; width: 14px; height: 14px; margin-top: 4px; border: 1.5px solid var(--t3); border-radius: 4px; }
+
+/* A decision's one discussion (#1424): its messages oldest first, the newest at the bottom above the panel's field. */
+.wd-discussion__list { margin-top: 8px; }
