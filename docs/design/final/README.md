@@ -540,7 +540,7 @@ inside a screen (the Create window), not for the views of a space.
 
 The keys show next to their actions in menus. In the Inbox, `R` on a decision opens Discuss and on a blocked task its "Write to this task" (persona round 6: Shortcuts says so).
 
-**Where focus goes (computer)** (persona rounds 26 to 28, 2026-11-15; one rule per situation, the same in every place):
+**Where focus goes (computer)** (persona rounds 26 to 30, 2026-11-15; one rule per situation, the same in every place):
 
 - **Arriving in a conversation** (a space, a direct message, a thread, an agent's chat), by any means: a click, Enter on a sidebar
   or direct-message row, New message, Say hello, Create space, Back. The cursor is in its composer, at the end of any kept draft.
@@ -567,7 +567,8 @@ The keys show next to their actions in menus. In the Inbox, `R` on a decision op
 - **A window closed to go somewhere** (a Search result, a place) leaves the focus to where it leads, never back to its opener.
 - **A page arrived at with nothing to focus** (Back to Home, a reload) gives the focus to its content, never to the page itself.
 - **Single keys** are never shortcuts while a field has focus, or while a menu is open. **Esc in a composer** leaves it for the
-  newest message and keeps the draft; the single keys work from there. New shows its `C`, and a toast its `Z`, only while the key works (no field has focus).
+  newest message and keeps the draft; the single keys work from there. New shows its `C`, and a toast its `Z`, only while the key
+  works (no field has focus).
 - **Esc with a panel open** closes the panel wherever focus is, an empty field included, unless a menu or a window is open or the
   focused control used Esc (a title being edited, a search holding words, a page being written). Then Esc in the composer leaves it, as above. Closing a thread while the person writes in the composer, or
   arrives in it, leaves the cursor there, never on the thread's replies.
