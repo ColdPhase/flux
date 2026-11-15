@@ -1145,7 +1145,8 @@ built. The contract is in [mobile and PWA](../../product/mobile-pwa.md#while-flu
   same thread in the panel: the decision's row at its top (it opens the decision), then every message about it, then the thread's
   composer. A message written in either place is the same message and shows in both at once, for everyone reading. The thread follows a
   thread's rules for notifications: the people who wrote in it and the people who follow it get its replies, and whoever proposed the
-  decision follows it from its first message (their Unfollow still wins). It is not a root of the stream (its place is the card), it is
+  decision follows it from its first message, an agent's owner for an agent's proposal (their Unfollow still wins). Its first message is a
+  reply like the others, so the **New** divider (S23) can stand above it, and an edit or a delete shows in the panel as in the thread. It is not a root of the stream (its place is the card), it is
   read and written by everyone who reads and writes the space, a guest included, and an encrypted space seals its messages as it seals
   any thread's. Before anyone writes there is no thread and the card has no count. Words typed after Discuss never go to the space's
   own composer: that sent them as a plain message with no link to the decision (persona round 7, founder question 4).

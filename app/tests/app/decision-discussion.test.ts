@@ -138,3 +138,51 @@ test('an encrypted space seals the decision\'s discussion as any thread\'s', asy
   const thread = expectStatus(await ada.browser.request('GET', `/api/v1/conversations/${sent.conversationId}`), 200) as Conversation;
   assert.equal(thread.decision?.title, 'Opal acrylic shade', 'the decision\'s title is opened for its reader');
 });
+
+test('an edit or a delete of a message in the discussion tells its panel to read again, and the panel shows it', async () => {
+  const f = await scene();
+  const said = await write(f.writer, f.decision.id, 'The shade is 2 mm thick.');
+  const decided = async () => Number((await pool.query<{ n: number }>("SELECT count(*)::int AS n FROM events WHERE kind = 'project.decision_discussed.v1' AND data->>'decisionId' = $1",
+    [f.decision.id])).rows[0]!.n);
+  assert.equal(await decided(), 1, 'the message told the panel');
+  expectStatus(await f.writer.browser.request('PATCH', `/api/v1/conversations/${said.conversationId}/messages/${said.id}`, { body: { body: 'The shade is 3 mm thick.' } }), 200);
+  assert.equal(await decided(), 2, 'the edit tells it too');
+  const edited = (await discussion(f.owner, f.decision.id)).messages[0]!;
+  assert.equal(edited.body, 'The shade is 3 mm thick.');
+  assert.ok(edited.editedAt);
+  expectStatus(await f.writer.browser.request('DELETE', `/api/v1/conversations/${said.conversationId}/messages/${said.id}`), 200);
+  assert.equal(await decided(), 3, 'and so does the delete');
+  assert.ok((await discussion(f.owner, f.decision.id)).messages[0]!.removedAt, 'the panel shows the deleted marker in its place');
+  // A message of an ordinary thread tells no decision anything.
+  const other = expectStatus(await f.writer.browser.request('POST', `/api/v1/projects/${f.place.id}/conversations`, { body: { body: 'Unrelated', clientMessageId: randomUUID() } }), 201) as Conversation;
+  expectStatus(await f.writer.browser.request('PATCH', `/api/v1/conversations/${other.id}/messages/${other.messages[0]!.id}`, { body: { body: 'Still unrelated' } }), 200);
+  assert.equal(await decided(), 3);
+});
+
+test('where you left off: the New divider can stand above the discussion\'s first message, as above any reply', async () => {
+  const f = await scene();
+  const first = await write(f.writer, f.decision.id, 'Is the shade 3 mm?');
+  const read = async (who: Person) => expectStatus(await who.browser.request('GET', `/api/v1/conversations/${first.conversationId}`), 200) as Conversation;
+  assert.equal((await read(f.owner)).unreadFrom, first.id, 'never opened: everything is new, from its first message');
+  assert.equal((await read(f.writer)).unreadFrom, null, 'your own message is not new to you');
+  const second = await write(f.proposer, f.decision.id, 'Yes, 3 mm.');
+  expectStatus(await f.owner.browser.request('POST', `/api/v1/projects/${f.place.id}/observations`, { body: { messageIds: [first.id] } }), 200);
+  assert.equal((await read(f.owner)).unreadFrom, second.id, 'after the first was seen, the next one by someone else');
+  // An ordinary thread's opening message is its header, never the divider's place.
+  const root = expectStatus(await f.writer.browser.request('POST', `/api/v1/projects/${f.place.id}/conversations`, { body: { body: 'A thread', clientMessageId: randomUUID() } }), 201) as Conversation;
+  assert.equal((expectStatus(await f.owner.browser.request('GET', `/api/v1/conversations/${root.id}`), 200) as Conversation).unreadFrom, null);
+});
+
+test('an agent\'s proposal is its owner\'s: the owner follows its discussion from the first message', async () => {
+  const f = await scene();
+  const agentId = randomUUID();
+  await pool.query('INSERT INTO agents (id, workspace_id, name, owner_user_id, created_by) VALUES ($1, $2, $3, $4, $4)', [agentId, f.ws.id, 'Planner', f.owner.id]);
+  const decisionId = randomUUID();
+  await pool.query(`INSERT INTO project_decisions (id, workspace_id, project_id, title, proposed_by_kind, proposed_by_id) VALUES ($1, $2, $3, 'Dim the lamp at night', 'agent', $4)`,
+    [decisionId, f.ws.id, f.place.id, agentId]);
+  const first = await write(f.writer, decisionId, 'How dim?');
+  const told = await waitFor(async () => (await notificationsOf(f.owner, first.conversationId)).find((row) => row.url.endsWith(first.id)), 'the agent\'s owner is told');
+  assert.equal(told.reason, 'reply');
+  const follow = (await pool.query<{ following: boolean }>('SELECT following FROM notification_follows WHERE user_id = $1 AND conversation_id = $2', [f.owner.id, first.conversationId])).rows[0];
+  assert.equal(follow?.following, true);
+});

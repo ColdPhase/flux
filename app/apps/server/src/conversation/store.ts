@@ -107,7 +107,7 @@ async function requireProject(principal: Principal, projectId: string, db: Execu
  * here (#534), or the first reply of all when they observed none. The opening message is the thread's header, never the divider's place.
  * Only a person has a read of their own.
  */
-async function unreadFrom(db: Executor, principal: Principal, projectId: string, conversationId: string): Promise<{ unreadFrom?: string | null }> {
+async function unreadFrom(db: Executor, principal: Principal, projectId: string, conversationId: string, opening = true): Promise<{ unreadFrom?: string | null }> {
   if (principal.kind !== 'human') return {};
   const o = schema.projectMessageObservations;
   const m = schema.projectMessages;
@@ -115,7 +115,7 @@ async function unreadFrom(db: Executor, principal: Principal, projectId: string,
   const [seen] = await db.select({ top: sql<number | null>`max(${m.sequence})` }).from(o).innerJoin(m, eq(m.id, o.messageId))
     .where(and(eq(o.projectId, projectId), eq(o.viewerId, principal.id), eq(m.conversationId, conversationId)));
   const [next] = await db.select({ id: m.id }).from(m)
-    .where(and(eq(m.conversationId, conversationId), gt(m.sequence, Math.max(seen?.top ?? 0, 1)), sql`${m.authorId} IS DISTINCT FROM ${principal.id}`, isNull(m.removedAt)))
+    .where(and(eq(m.conversationId, conversationId), gt(m.sequence, Math.max(seen?.top ?? 0, opening ? 1 : 0)), sql`${m.authorId} IS DISTINCT FROM ${principal.id}`, isNull(m.removedAt)))
     .orderBy(asc(m.sequence)).limit(1);
   return { unreadFrom: next?.id ?? null };
 }
@@ -305,6 +305,9 @@ export function conversationStore(db: Database, options: ConversationStoreOption
       const result = message({ ...row!, files: files.get(found.id), references: cards.get(found.id) });
       // Last: recording an event takes the stream's sequence lock. The ids, and in its kind what was done, never the words (an encrypted space allows no more).
       if (op) await eventLog(tx).record(principal, conversation.workspaceId, op === 'edited' ? 'project.message_edited.v1' : 'project.message_removed.v1', conversation.projectId, { conversationId: conversation.id, messageId: found.id });
+      // In a decision's discussion, its panel reads again too (#1424), as for a new message there.
+      const decisionId = op ? await decisionOf(tx, conversation.id) : null;
+      if (decisionId) await eventLog(tx).record(principal, conversation.workspaceId, 'project.decision_discussed.v1', conversation.projectId, { decisionId });
       return result;
     });
   }
@@ -348,7 +351,8 @@ export function conversationStore(db: Database, options: ConversationStoreOption
       ...(task ? { task } : {}), ...(decision ? { decision } : {}),
       createdAt: row.createdAt.toISOString(), firstMessageBody: messageOpening(openingInWindow?.body ?? opening?.body ?? '', openingInWindow?.files?.length ?? opening?.attachmentCount ?? 0), messages,
       messagePage: { hasMoreBefore, nextBeforeSequence: hasMoreBefore ? messages[0]!.sequence : null, limit: window.limit },
-      ...(await unreadFrom(db, principal, row.projectId, row.id)) };
+      // A decision's discussion has no opening message (#1424): its head is the decision, so its first message is new like any reply.
+      ...(await unreadFrom(db, principal, row.projectId, row.id, !decision)) };
   }
   return {
     async listConversations(principal: Principal, projectId: string, query: PageQuery = {}): Promise<Page<ConversationSummary>> {
@@ -550,11 +554,14 @@ export function conversationStore(db: Database, options: ConversationStoreOption
         if (!binding) {
           await tx.insert(d).values({ decisionId: decision.id, workspaceId: decision.workspaceId, projectId: decision.projectId,
             conversationId: conversation.id, rootMessageId: sent.message.id });
-          // Whoever proposed it follows its discussion from the start (#1424), unless they chose otherwise; an agent's proposal makes no one follow.
+          // Whoever proposed it follows its discussion from the start (#1424), unless they chose otherwise.
+          // An agent's proposal is its owner's: the owner follows it (#1424), as a person follows their own.
+          const follower = decision.proposedByKind === 'human' ? decision.proposedById
+            : (await tx.select({ owner: schema.agents.ownerUserId }).from(schema.agents).where(eq(schema.agents.id, decision.proposedById)))[0]?.owner ?? null;
           // The generator applies a choice to the messages written at or after it, comparing with the message's time in milliseconds, so the
           // follow is stamped at this transaction's millisecond: it applies to the first message too.
-          if (decision.proposedByKind === 'human')
-            await tx.insert(schema.notificationFollows).values({ userId: decision.proposedById, conversationId: conversation.id, following: true,
+          if (follower)
+            await tx.insert(schema.notificationFollows).values({ userId: follower, conversationId: conversation.id, following: true,
               createdAt: sql`date_trunc('milliseconds', now())`, updatedAt: sql`date_trunc('milliseconds', now())` }).onConflictDoNothing();
         }
         await eventLog(tx).record(principal, decision.workspaceId, binding ? 'project.message_sent.v1' : 'project.conversation_created.v1', decision.projectId,

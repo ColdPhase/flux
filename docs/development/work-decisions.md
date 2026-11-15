@@ -123,14 +123,17 @@ it is not a root of the stream (`conversation-roots` and the receipts' runs of r
   with one draft, `decision:<id>`.
 - **Events.** The first message records `project.conversation_created.v1`, later ones `project.message_sent.v1` (`{ conversationId,
   messageId }`), as any thread's, and every message in a decision's discussion, however it was written, also records one
-  `project.decision_discussed.v1` (`{ decisionId }`): the stream's readers refetch the decision's card (its count) and an open panel its
-  messages, and no words travel on the stream.
+  `project.decision_discussed.v1` (`{ decisionId }`), and so does an Edit or a Delete of a message there (beside
+  `project.message_edited.v1` / `project.message_removed.v1`): the stream's readers refetch the decision's card (its count) and an open
+  panel its messages, and no words travel on the stream.
+- **Where you left off.** The thread has no opening message (its head is the decision), so its `unreadFrom` may be its first message:
+  the New divider stands above the first message by someone else that the reader has not seen, from sequence 1, as above any reply.
 - **The card's count.** The decision's object notice carries `discussion: { conversationId, replyCount, lastReplyAt } | null`: how many
   messages the thread has (every one is a reply to the card) and when the newest was written.
 - **Notifications** follow a thread's rules (#1249): its starter and earlier writers follow it, Follow and Unfollow win, and a name or a
   question in it reaches whom it names. Whoever proposed the decision follows it from its first message: binding the thread writes their
   follow (`notification_follows`, only when they have made no choice), so they get its replies as its starter does. An agent's proposal
-  makes no one follow.
+  is its owner's: the agent's owner follows it the same way.
 - **Withdraw.** A proposal that has a discussion is in use (`409 DECISION_IN_USE`), as one that something names: what was written about
   it stays.
 

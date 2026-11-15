@@ -29,6 +29,10 @@ FIRST = "Do capacitive probes need a heater in winter?"
 IN_THREAD = "Only below minus ten, the datasheet says."
 LIVE = "I ordered two to try in bed 5."
 ON_PHONE = "Then we replace them on Saturday."
+EDITED = "I ordered three to try in bed 5."
+BEN = {"name": "Ben Ortiz", "email": f"ben.discuss+{STAMP}@example.test"}
+SECOND = "Move the lamp sensor to the north wall"
+TO_BEN = "Ben, the north wall gets less sun. Does that work for you?"
 
 
 class DecisionDiscussion(unittest.TestCase):
@@ -103,7 +107,7 @@ class DecisionDiscussion(unittest.TestCase):
         self.api(page, "POST", f"/api/v1/projects/{pid}/conversations", {"body": MESSAGE, "clientMessageId": str(uuid.uuid4())}, status=201)
         # Nobody else here can accept it, so it waits in Ada's own Inbox.
         proposal = self.api(page, "POST", f"/api/v1/projects/{pid}/decisions", {"title": PROPOSAL, "rationale": "Capacitive probes do not corrode"}, status=201)
-        type(self).ids = {"project": pid, "proposal": proposal["id"]}
+        type(self).ids = {"project": pid, "proposal": proposal["id"], "workspace": ws["id"]}
 
     # ---------------------------------------------------------------- R in the Inbox, on a computer
 
@@ -197,6 +201,54 @@ class DecisionDiscussion(unittest.TestCase):
         talk = self.api(page, "GET", f"/api/v1/conversations/{conversation}", status=200)
         self.assertIn(ON_PHONE, [message["body"] for message in talk["messages"]])
         self.assertEqual(talk["decision"]["decisionId"], self.ids["proposal"])
+
+
+    # ---------------------------------------------------------------- an edit or a delete elsewhere
+
+    def test_05_an_edit_and_a_delete_elsewhere_show_in_the_open_panel(self) -> None:
+        page = self.page()
+        page.goto(f"/projects/{self.ids['project']}?open=decision:{self.ids['proposal']}")
+        talk = self.api(page, "GET", f"/api/v1/decisions/{self.ids['proposal']}/discussion", status=200)
+        live = next(message for message in talk["messages"] if message["body"] == LIVE)
+        item = self.panel(page).locator(f'.wd-discussion__list [data-message-id="{live["id"]}"]')
+        expect(item).to_contain_text(LIVE)
+        # Another tab of the same person edits it, then deletes it: the open panel follows without a reload, as the thread does.
+        self.api(page, "PATCH", f"/api/v1/conversations/{talk['conversationId']}/messages/{live['id']}", {"body": EDITED}, status=200)
+        expect(item).to_contain_text(EDITED, timeout=15000)
+        expect(item).to_contain_text("edited")
+        self.api(page, "DELETE", f"/api/v1/conversations/{talk['conversationId']}/messages/{live['id']}", status=200)
+        expect(item.locator(".message-body--removed")).to_be_visible(timeout=15000)
+        expect(item).not_to_contain_text(EDITED)
+
+    # ---------------------------------------------------------------- where you left off
+
+    def test_06_the_new_divider_stands_above_a_first_message_someone_else_wrote(self) -> None:
+        owner = self.page()
+        owner.goto("/")
+        ben_context = self.browser.new_context(base_url=ORIGIN, locale="en-GB", timezone_id="Europe/Warsaw", viewport=DESKTOP, service_workers="block")
+        self.addCleanup(ben_context.close)
+        signed = ben_context.request.post("/api/auth/sign-up/email", data={"email": BEN["email"], "password": PASSWORD, "name": BEN["name"]}, headers={"origin": ORIGIN})
+        self.assertEqual(signed.status, 200, signed.text())
+        ben_id = ben_context.request.get("/api/v1/me").json()["user"]["id"]
+        self.api(owner, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/members", {"email": BEN["email"], "role": "member"})
+        place = self.api(owner, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects", {"name": "Lamp", "visibility": "restricted", "people": [ben_id]}, status=201)
+        decision = self.api(owner, "POST", f"/api/v1/projects/{place['id']}/decisions", {"title": SECOND, "rationale": "Less sun on the sensor"}, status=201)
+        first = self.api(owner, "POST", f"/api/v1/decisions/{decision['id']}/discussion", {"body": TO_BEN, "clientMessageId": str(uuid.uuid4())}, status=201)
+        page = ben_context.new_page()
+        errors: list[str] = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        self.addCleanup(lambda: self.assertEqual(errors, [], "no uncaught page errors"))
+        page.goto(f"/projects/{place['id']}")
+        replies = page.locator(f'[data-decision-replies="{decision["id"]}"]').first
+        expect(replies).to_contain_text("1 reply")
+        replies.click()
+        thread = page.locator("#thread")
+        expect(thread.locator(f'[data-discussed-decision="{decision["id"]}"]')).to_contain_text(SECOND)
+        # Never opened: everything in it is new, so the divider stands above its first message, which is a reply to the decision.
+        divider = thread.locator("[data-unread-start]")
+        expect(divider).to_have_count(1)
+        expect(thread.locator("[data-unread-start] + li")).to_contain_text(TO_BEN)
+        expect(thread.locator("[data-unread-start] + li"), "the divider stands right above that first message").to_have_attribute("data-message-id", first["id"])
 
 
 if __name__ == "__main__":
