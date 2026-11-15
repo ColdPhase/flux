@@ -360,7 +360,10 @@ class DateAndTimePickers(unittest.TestCase):
         # The field takes the caret as it appears and the month is open under it, with nothing chosen yet.
         expect(field).to_be_focused()
         expect(field).to_have_value("")
-        expect(field).to_have_attribute("placeholder", re.compile(r"\d"))  # an empty field shows how a day is written
+        # An empty field says what it is for, in the Due row's words, never a made-up date (v0.2.1 personas round: "Nov 14, 2026" read as a
+        # date already set); how a day is typed is its accessible hint.
+        expect(field).to_have_attribute("placeholder", "Add a date")
+        expect(field).to_have_accessible_description(re.compile("Type a date"))
         dialog = page.get_by_role("dialog", name="Due date")
         expect(dialog).to_be_visible()
         expect(self.day(dialog, self.today(page))).to_have_attribute("data-today", "")

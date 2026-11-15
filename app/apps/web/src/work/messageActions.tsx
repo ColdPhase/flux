@@ -112,8 +112,13 @@ function MessageMenu({ items, anchor, onClose, label, popProps }: { items: MenuI
     const box = anchor.getBoundingClientRect();
     const left = Math.max(12, Math.min(box.right - width, window.innerWidth - width - 12));
     const below = box.bottom + 8;
-    const top = below + height > window.innerHeight - 12 ? Math.max(12, box.top - height - 8) : below;
-    setPlace({ top, left });
+    // Under the button, else over it; never past the window: taller than the room on its side, it scrolls (a large text size).
+    const room = { below: window.innerHeight - 12 - below, above: box.top - 8 - 12 };
+    const side = height <= room.below || room.below >= room.above ? 'below' : 'above';
+    const maxHeight = Math.max(120, side === 'below' ? room.below : room.above);
+    const shown = Math.min(height, maxHeight);
+    const top = side === 'below' ? below : Math.max(12, box.top - shown - 8);
+    setPlace({ top, left, ...(height > maxHeight ? { maxHeight, overflowY: 'auto' as const } : {}) });
   }, [anchor, items.length]);
   useEffect(() => { menu.current?.querySelector<HTMLElement>('[role="menuitem"]:not(:disabled)')?.focus({ preventScroll: true }); }, []);
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {

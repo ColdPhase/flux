@@ -116,7 +116,7 @@ class HomeTasksJourney(unittest.TestCase):
         return json.loads(response.text()) if response.text() else {}
 
     def tasks(self, page: Page):
-        return page.get_by_role("region", name="Your tasks")
+        return page.get_by_role("region", name="My tasks")
 
     def group(self, page: Page, name: str):
         return self.tasks(page).locator(".home-tasks__place").filter(has=page.get_by_role("heading", level=3, name=name, exact=True))

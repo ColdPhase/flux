@@ -2,6 +2,7 @@ import { Fragment, useEffect, useId, useRef, useState, type KeyboardEvent, type 
 import type { ProjectPerson } from '@flux/contracts';
 import { Avatar, IconButton, Kreska, usePop } from '../ui';
 import { activeFirst } from '../people/lastActive';
+import { useFitInWindow } from '../ui/pickerPlace';
 import { useAgentWorkingIn } from './WorkingAgent';
 
 /**
@@ -53,6 +54,7 @@ export function MoreMenu({ items, label = 'More', icon = 'more', className, size
   const buttonId = useId();
   const cueId = useId();
   const pop = usePop(open);
+  useFitInWindow(open, menu, button);
   useEffect(() => {
     if (!open) return undefined;
     shownRows(menu.current)[0]?.focus();

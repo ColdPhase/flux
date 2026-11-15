@@ -768,7 +768,9 @@ function NoticeItem({ notice, meId, owners, row, authorOf, hasMessage, onOpenTas
       {/* The immutable announcement number names the task before and after the current row arrives. */}
       <span className="convo-notice__num ui-task-number">#{notice.workNumber}</span>
       <span className="convo-notice__title">{title}</span>
-      {owner ? <span className="convo-notice__owner">{owner.kind === 'agent' ? <Kreska size={20} hue={owner.colour} /> : <Avatar name={owner.name} id={owner.id} size="sm" />}<span className="convo-notice__owner-name">{owner.name}</span></span> : null}
+      {owner ? <span className="convo-notice__owner">{owner.kind === 'agent' ? <Kreska size={20} hue={owner.colour} /> : <Avatar name={owner.name} id={owner.id} size="sm" />}<span className="convo-notice__owner-name">{owner.name}</span></span>
+        // Nobody owns it: "No owner", the Board's and the panel's word, with the panel's person glyph where the face would be (F-026 §7).
+        : current ? <span className="convo-notice__owner convo-notice__owner--none"><Icon name="person" size={16} /><span className="convo-notice__owner-name">No owner</span></span> : null}
       {/* A word always goes with the glyph, at the card's right edge like a decision's (#763 A8). */}
       <span className="convo-object__state convo-notice__state">{reverted ? 'Undone' : STATUS_LABEL[current?.status ?? 'open']}</span>
       <Icon name="chevron-right" size={14} />

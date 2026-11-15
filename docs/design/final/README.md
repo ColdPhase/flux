@@ -225,6 +225,11 @@ labels. A time is Geist with tabular figures, as the line under a message alread
 - Body: 14 / 20 on the computer, 15–16 on the phone.
 - Meta: 12, and at least 12.5 on the phone.
 - Every device follows the system's text size: the type tokens are rem, so the root size the browser or the phone sets scales every size, and Settings has no text-size control ([#1419](https://github.com/ColdPhase/flux/issues/1419) item 17, founder decision, Hubert, 2026-11-13).
+- **A menu always fits the window, at any text size** (v0.2.1 personas round: at 200 % text the task panel's Status menu showed To do and
+  Doing only, cut under the panel's composer). A menu or list opens under its control, or over it when there is no room below, never
+  past the window's edge, and scrolls inside itself when it is taller than the room. The task panel's Status and Owner
+  menus are a layer over the page, as a Select's list is, so the panel around them never cuts them; on a phone they are the bottom sheet.
+  An empty date field's hint is "Add a date", the word of the Due row that opens it, never a made-up date.
 - Every size is a `--fs-*` token. The initials of a 16 px face (the `Avatar` `xs`, the faces under a message, the face in a
   mention chip) are `--fs-face` (px, #1370) scaled by .72 with a transform, so the type stays a token and two letters never run wider than the circle.
   The initials of the 32 px face are `--fs-face-lg`: 12 px, and 12.5 px on the phone like Meta (px as well, #1424).
@@ -379,7 +384,8 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
 - **Sidebar (248 px)**, the same on every screen:
   - the logo, and a button to collapse the sidebar (`[`);
   - **New** (`C`) and Search (`⌘K`);
-  - Home, Inbox (with its count), My tasks, My map;
+  - Home, Inbox (with its count), My tasks, My map (one name each wherever the place is named: My tasks is "My tasks" in its header,
+    in the way back to it, "‹ My tasks", and in Search, never "Tasks" or "Your tasks");
   - **Spaces**: one flat list with no group headers. Everyone, the space that holds the whole
     company, comes first and never moves; you order the rest yourself
     ([Ordering spaces](#ordering-spaces-unread-and-mark-all-as-read)). A space with unread messages
@@ -1042,7 +1048,7 @@ built. The contract is in [mobile and PWA](../../product/mobile-pwa.md#while-flu
   **one card** where and when it was made (founder decision, Hubert, 2026-11-14, [#1424](https://github.com/ColdPhase/flux/issues/1424)),
   in the author column with its maker's face. Its first line, quiet and beside the face, says who
   made it, from what and when ("Ada Kowalska created a task from Jonas’s message · 8:05"); under it, in the same card, the row is the
-  object (the task's state glyph, `#1`, its title, its owner and its state word; a decision's flag, its title and its state word),
+  object (the task's state glyph, `#1`, its title, its owner or "No owner", and its state word; a decision's flag, its title and its state word),
   which opens it in the one panel. "Jonas’s message" is a link that brings
   that message into view, so the way from the message to the task stays on the card. There is no separate event line above the
   card, and the message it came from carries no chip of it. A thread shows a decision made in it as the same card among its
@@ -1050,9 +1056,10 @@ built. The contract is in [mobile and PWA](../../product/mobile-pwa.md#while-flu
   acceptance or a task's later step (blocked, can continue) is one line, never a second card: "Ada accepted it" right under its
   card, else "Ada accepted the decision **Double the cinnamon buns**", where the title opens it. One state has one word: a
   decision is **Proposed**, **Accepted** or **Replaced**, never "Proposed decision"; the panel's head already says "Decision", so its
-  eyebrow is the state alone ("Proposed", "Accepted 14 Nov"). The card's title always keeps room: where the card is narrow (beside a
-  docked panel at 1024 px, a phone) the owner's name gives way first (ellipsis, then the face alone), and the state word stays whole
-  inside the card.
+  eyebrow is the state alone ("Proposed", "Accepted 14 Nov"), and the panel shows no row version ("Version 2" on a decision nobody edited
+  said nothing). The card's title always keeps room: a long title wraps to two lines on every device, where the card is narrow for its
+  text (beside a docked panel at 1024 px, a phone, 200 % text) the owner's name gives way first (the face alone), and the state word
+  stays whole inside the card.
 - The message toolbar sits at the bubble's top corner, as
   [Spokój](../spokoj/README.md#message-toolbar-and-selection) places it. A line in the ⋯ menu
   divides Add to map, Copy link and Copy text from Edit and Delete.
@@ -1340,7 +1347,8 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
 [#1438](https://github.com/ColdPhase/flux/issues/1438) point 8).
 
 - **Create task closes the window, and the toast offers the next one** (founder decision, Hubert,
-  2026-11-12, #1235). The footer has the hint line and the one primary button, "Create task", and
+  2026-11-12, #1235). The footer has the hint line, which says what happens ("Goes to Tasks and shows as a card in the conversation",
+  the one card of P5), and the one primary button, "Create task", and
   nothing else: there is no "Create another" switch, on the computer or on the phone, and nothing is
   remembered between openings. After Create the window closes and the task opens in the panel as
   before. The toast reads "Task #12 created · Undo · Add another" (Undo first, as everywhere).
@@ -1386,7 +1394,9 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   are only Previous and Next when there is another page ([#1419](https://github.com/ColdPhase/flux/issues/1419) item 13).
 - **Four columns**, the four states: To do, Doing, Blocked and Done, each with its glyph and count.
   A card holds its title, its number, a due date when it has one, and its owner's face, an agent
-  tag ("Planner · Ada's agent") or "No owner". Cards have no ⋯, and columns have no "+". A column is one card wide and at most 420 px,
+  tag ("Planner · Ada's agent") or "No owner". **"No owner" is the one word for a task nobody owns** (v0.2.1 personas round): Create's
+  Owner, the Board's card, the List row ("no owner" inside its line), the conversation's card and the task panel's Owner row and menu
+  all say it; the control's label stays "Owner", and nothing says "Assign" or "Nobody yet". Cards have no ⋯, and columns have no "+". A column is one card wide and at most 420 px,
   whatever the window: extra width is margin on the right, never cards flowing sideways inside a state ([#1379](https://github.com/ColdPhase/flux/issues/1379)).
 - **Blocked** cards carry one line saying what they wait for: "Waiting for the decision Use LoRa
   for the far beds", "Waiting for Jonas" or "Waiting for #7". When that resolves, the task returns
@@ -1433,8 +1443,10 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
 ![One search](screens/desktop-search.webp)
 
 - One dialog over the screen, opened by ⌘K, the sidebar's Search or the phone's Search.
-- Results are grouped by kind (Tasks, Messages, Wiki, Files, Thoughts, Spaces, People), with the
-  match marked; decisions are listed with Tasks, and maps and drafts with Thoughts. **A saved source is a Wiki page**
+- Results are grouped by kind (Tasks, Decisions, Messages, Wiki, Files, Thoughts, Spaces, People), with the
+  match marked; maps and drafts are listed with Thoughts. **A decision is listed as a decision** (v0.2.1 personas round, the founder's
+  bar that one object looks and is named the same everywhere): its own Decisions group with its flag, and `↵` opens it as a decision, in
+  the one panel over its space's conversation, where its card is (P4), never over a Tasks view that does not list it. **A saved source is a Wiki page**
   (founder decision, Hubert, 2026-11-13, [#1419](https://github.com/ColdPhase/flux/issues/1419) item 20): what was once a
   "material" is listed in Wiki as a page (the Wiki page's tile, "Wiki page" for its kind, and it opens at the version that
   matched), and Search has no "Material" kind or word. The server ranks the
@@ -1462,7 +1474,7 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   panel. A result carries no "‹ where I came from" control: the header's name and tabs never move for it, and the phone's
   round back stays the plain chevron. The browser's Back (and the phone's gesture) returns to where Search was opened,
   as it restores any entry.
-- The hint is one plain sentence: "Finds spaces, people, messages, tasks, Wiki pages, files and
+- The hint is one plain sentence that names what is searched: "Finds spaces, people, messages, tasks, decisions, Wiki pages, files and
   thoughts you can see." A list of more than 20 ends with one quiet line, "Showing 20 · type more words
   to narrow". There are no filter chips and no Create group.
 - With the field empty it lists the places last opened (named as the sidebar names them: "My tasks", never "Home · Tasks"), **one row per place**: a space is one

@@ -123,8 +123,9 @@ button.ws-task__glyph:active { background: var(--hov); }
 .wd-state { display: inline-flex; align-items: center; gap: 8px; min-height: 32px; margin-left: -8px; padding: 0 8px; border-radius: var(--r-sm); font: inherit; color: var(--t1); }
 .wd-state:hover, .wd-state[aria-expanded="true"] { background: var(--hov); }
 .wd-state__go { color: var(--t3); }
+/* A layer over the page (a portal, placed by PropertyMenu): it is never cut by the panel it opens from. */
 .wd-menu__list {
-  position: absolute; z-index: 5; left: -8px; top: calc(100% + 4px); min-width: 220px; padding: 6px; border-radius: var(--r-card);
+  position: fixed; z-index: var(--z-menu); min-width: 220px; max-width: min(360px, calc(100vw - 16px)); padding: 6px; border-radius: var(--r-card);
   background: var(--el); box-shadow: var(--sh-pop);
 }
 .wd-menu__item { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 38px; padding: 0 10px; border-radius: var(--r-sm); font-size: var(--fs-md); text-align: left; }
@@ -185,7 +186,6 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
 @media (max-width: 680px) { .wd-pick .wd-links .wd-link { font-size: var(--fs-base); } }
 .wd-pick__keys { margin: 0; }
 .wd-error { margin-top: 10px; font-size: var(--fs-sm); color: var(--t1); }
-.wd-ids { margin-top: 28px; padding-top: 12px; border-top: 1px solid var(--line); font-size: var(--fs-xs); color: var(--t3); }
 .wd-form { display: grid; gap: 8px; min-width: 0; margin: 0; padding: 0; border: 0; }
 .wd-form > label { margin-top: 6px; font-size: var(--fs-sm); font-weight: 500; color: var(--t2); }
 .wd-form textarea { width: 100%; padding: 9px 12px; border: 0; border-radius: var(--r); background: var(--el); color: var(--t1); font-size: var(--fs-base); line-height: 1.5; resize: vertical; box-shadow: inset 0 0 0 1px var(--line2); }
@@ -296,13 +296,13 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
 .wd-came__field { width: 100%; min-height: 34px; padding: 0 8px; margin-left: -8px; border: 0; border-radius: var(--r-sm); background: var(--sub); color: var(--t1); font: inherit; box-shadow: inset 0 0 0 1.5px var(--t1); }
 .wd-came__dropped { display: inline-flex; align-items: center; gap: 8px; min-height: 28px; font-size: var(--fs-sm); color: var(--t2); cursor: pointer; }
 .wd-menu__group { margin: 6px 10px 2px; font-size: var(--fs-xs); font-weight: 500; color: var(--t3); }
-.wd-menu__list { max-height: min(320px, 50dvh); overflow-y: auto; overscroll-behavior: contain; }
+.wd-menu__list { overflow-y: auto; overscroll-behavior: contain; }
 .wd-menu__item .ui-avatar { flex: none; }
 .wd-menu__item .ui-glyph { flex: none; }
 .wd-menu__item span { min-width: 0; overflow-wrap: anywhere; }
 @media (hover: none) { .wd-menu__item kbd { display: none; } }
 /* On a phone the choices are the Select's bottom sheet (ui/select.css): its rows, with the property's glyphs and faces (#1359). */
-.wd-menu__list.wd-menu__list--sheet { position: static; flex: 1; min-width: 0; max-height: none; padding: 4px; border-radius: 0; background: none; box-shadow: none; }
+.wd-menu__list.wd-menu__list--sheet { position: static; flex: 1; min-width: 0; max-width: none; max-height: none; padding: 4px; border-radius: 0; background: none; box-shadow: none; }
 .ui-select-sheet .wd-menu__item { min-height: 48px; padding: 8px 12px; font-size: var(--fs-lg); border-radius: var(--r); }
 .ui-select-sheet .wd-menu__group { margin: 12px 12px 4px; font-size: var(--fs-md); }
 @media (pointer: coarse) { .wd-state { min-height: 44px; } .wd-menu__item { min-height: 44px; } .wd-came__field { min-height: 44px; } .wd-came__dropped { min-height: 44px; } }

@@ -14,6 +14,7 @@ import { landOn } from './WikiRead';
 import { holdTyping } from './typeAhead';
 import { ClientChanges } from '../assistant/ClientChanges';
 import { useWiki } from './wiki-context';
+import { useFitInWindow } from '../ui/pickerPlace';
 
 // The Wiki page as drawn (#869, design guide "Wiki"): two columns only, the sidebar and the page. Above the title one
 // quiet row: "Saved · just now · Jonas is here too", the faces of the people writing, Contents (≡) and ⋯. The title is the
@@ -148,6 +149,7 @@ function PageSwitcher({ docId, title, titleId }: { docId: string; title: string;
   const id = useId();
   const close = useCallback((restore = true) => { setOpen(false); setQuery(''); setFresh(null); if (restore) button.current?.focus(); }, []);
   useAway(open, () => close(false), surface, button);
+  useFitInWindow(open, surface, button);
   // The list as it is now: someone may have added a page since this one opened. A newer read replaces one still on its way.
   const reading = useRef<AbortController | null>(null);
   const read = useCallback(() => {
@@ -299,6 +301,7 @@ function Contents({ headings, onHeading }: { headings: ContentsHeading[]; onHead
   const id = useId();
   const close = useCallback((restore = true) => { setOpen(false); if (restore) button.current?.focus(); }, []);
   useAway(open, () => close(false), surface, button);
+  useFitInWindow(open, surface, button);
   useEffect(() => { if (open) (surface.current?.querySelector<HTMLElement>('[role="menuitem"]') ?? surface.current)?.focus(); }, [open]);
   const base = headings.length ? Math.min(...headings.map((heading) => heading.level)) : 1;
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => menuKeys(event, surface.current, close);
@@ -350,6 +353,7 @@ function PageMenu({ buttonRef, historyTo, shown, linkPath, onRename, onDelete, o
   const pop = usePop(open);
   const id = useId();
   const close = useCallback((restore = true) => { setOpen(false); setExporting(false); if (restore) buttonRef.current?.focus(); }, [buttonRef]);
+  useFitInWindow(open, surface, buttonRef);
   useAway(open, () => close(false), surface, buttonRef);
   useEffect(() => { if (open) surface.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus(); }, [open, exporting]);
   const fileName = pageFileName(shown.title, shown.current ? undefined : shown.version);

@@ -471,6 +471,8 @@ input::placeholder, textarea::placeholder { color: var(--t3); opacity: 1; }
   display: grid; place-items: center; flex: none; border-radius: 50%;
   background: var(--el); color: var(--t1); font-weight: 600; letter-spacing: 0;
   box-shadow: inset 0 0 0 1px var(--line), var(--sh-1);
+  /* Initials are one word: a row that breaks long names anywhere (the task panel's Owner) never splits "MW" into "M / W". */
+  white-space: nowrap; overflow-wrap: normal; word-break: normal;
 }
 .ui-avatar--xs { width: 16px; height: 16px; font-size: var(--fs-face); }  /* the face under a message (#1231) */
 /* The initials of a 16 px face are --fs-face scaled to the circle (transform, so the type stays a token and "MW" stays inside it, #1373). */

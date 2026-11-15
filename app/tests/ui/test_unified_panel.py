@@ -240,7 +240,7 @@ class UnifiedPanel(unittest.TestCase):
         owner = panel.get_by_role("button", name="Owner", exact=True)
         owner.click()
         menu = page.get_by_role("menu", name="Owner")
-        expect(menu.get_by_role("menuitemradio")).to_have_count(3)  # Nobody yet, Ada, Jonas
+        expect(menu.get_by_role("menuitemradio")).to_have_count(3)  # No owner, Ada, Jonas
         menu.get_by_role("menuitemradio", name="Jonas Berg").click()
         expect(owner).to_contain_text("Jonas Berg")
         expect(panel.get_by_role("list", name="Task activity")).to_contain_text("reassigned it to Jonas Berg")

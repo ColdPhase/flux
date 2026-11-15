@@ -285,7 +285,7 @@ export function DateField({ value, onChange, clearable, min = '1970-01-01', max 
       data-disabled={disabled ? '' : undefined} onBlur={onFocusOut}>
       <input {...rest} ref={setRefs} type="text" aria-invalid={invalid || undefined} aria-describedby={[rest['aria-describedby'], hintId].filter(Boolean).join(' ')}
         autoComplete="off" autoCapitalize="off" autoCorrect="off" spellCheck={false} disabled={disabled} className="ui-pick__input"
-        value={text} placeholder={rest.placeholder ?? formatDay('2026-11-14')} onChange={onType} onKeyDown={onKey} onBlur={onLeave} />
+        value={text} placeholder={rest.placeholder ?? 'Add a date'} onChange={onType} onKeyDown={onKey} onBlur={onLeave} />
       <button ref={chevron} type="button" className="ui-pick__btn" aria-label="Choose a date" aria-haspopup="dialog" aria-expanded={open}
         aria-controls={open ? popId : undefined} disabled={disabled}
         onClick={() => { if (open) close({ dismissed: true }); else openPicker(chevron.current); }}>

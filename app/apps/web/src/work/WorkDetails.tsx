@@ -233,9 +233,8 @@ function InDocs({ object, kind, project, relations, notYet }: { object: { id: st
   );
 }
 
-function IdsLine({ children }: { children: ReactNode }) {
-  return <p className="wd-ids">{children}</p>;
-}
+/** The one word for a task nobody owns (F-026 §7 Tasks): Create, the Board, the conversation's card and the panel say it alike. */
+const NO_OWNER = 'No owner';
 
 function WorkPanel({ item, context, detail, relations, reload, commands }: { item: OwnWork; context: Context; detail: WorkDetailProjection; relations: DetailRelations; reload: () => void; commands: PanelCommands }) {
   const { openDetails, labelPanel } = useShellActions();
@@ -367,7 +366,8 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
   const aiOff = useSpaceAi(context.project.id).blocked;
   const agents = aiOff ? [] : ownAgents.map((agent) => ({ value: `agent:${agent.id}`, label: `${agent.name} (agent)` }));
   const ownerOptions = [
-    { value: '', label: 'Nobody yet', icon: <Icon name="person" size={16} /> },
+    // An empty owner is "No owner" everywhere (Create, the Board, the card, this row and its menu): one word for one state.
+    { value: '', label: NO_OWNER, icon: <Icon name="person" size={16} /> },
     ...people.map(({ name, ...person }) => ({ ...person, group: 'People', icon: <Avatar name={name} id={humanId(person.value)} size="sm" /> })),
     ...agents.map((agent) => ({ ...agent, group: 'Your agents', icon: <Kreska size={16} hue={hue(agent.value.slice('agent:'.length))} /> })),
   ];
@@ -376,7 +376,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
     ? (shownOwner.startsWith('agent:')
       ? <AgentIdentity name={(agents.find((agent) => agent.value === shownOwner)?.label ?? item.owner?.name ?? '').replace(/ \(agent\)$/, '')} owner={owners.get(shownOwner.slice('agent:'.length))} icon={16} hue={hue(item.owner?.kind === 'agent' && `agent:${item.owner.id}` === shownOwner ? item.owner : shownOwner.slice('agent:'.length))} />
       : <><Avatar name={people.find((person) => person.value === shownOwner)?.name ?? item.owner?.name ?? ''} id={humanId(shownOwner)} size="sm" tone={shownOwner === `human:${me.user.id}` ? 'me' : 'neutral'} /><span>{people.find((person) => person.value === shownOwner)?.label ?? item.owner?.name}</span></>)
-    : <><Icon name="person" size={16} /><span className="wd-muted">{ownerDraft === '' ? 'Nobody yet' : 'Assign'}</span></>;
+    : <><Icon name="person" size={16} /><span className="wd-muted">{NO_OWNER}</span></>;
   // What it can wait for (#868): a person, a decision still to make or another task, one thing. The last two are read only while the blocker is edited.
   const choosingWait = editingBlocker && writable;
   const decisionChoices = useWorkChoices(me.user.id, context.project.id, choosingWait ? { purpose: 'choices', choice: 'doc_refs', kind: 'decision' } : null, choosingWait);
@@ -434,9 +434,9 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
               ? <>
                 <PropertyMenu label="Owner" value={shownOwner} options={ownerOptions} disabled={busy} onOpen={() => { ownerBase.current ??= item.version; }}
                   onClose={() => { if (ownerDraft === null) ownerBase.current = null; }} onChoose={(value) => { setOwnerDraft(value); void saveOwner(value); }}>{ownerView}</PropertyMenu>
-                {ownerDraft !== null && !busy ? <><span className="wd-muted">Now: {item.owner?.name ?? 'Nobody yet'}</span><Button variant="quiet" size="sm" onClick={() => void saveOwner(ownerDraft)}>Retry owner change</Button></> : null}
+                {ownerDraft !== null && !busy ? <><span className="wd-muted">Now: {item.owner?.name ?? NO_OWNER}</span><Button variant="quiet" size="sm" onClick={() => void saveOwner(ownerDraft)}>Retry owner change</Button></> : null}
               </>
-              : <span className="wd-value">{item.owner ? ownerView : 'Nobody yet'}</span>}</dd>
+              : <span className="wd-value">{item.owner ? ownerView : <span className="wd-muted">{NO_OWNER}</span>}</span>}</dd>
           </div>
           <TaskPeople workId={item.id} revision={`${detail.observedAt}:${activity.lines.length}`} />
           {cameFrom ? <div className="wd-row">
@@ -764,7 +764,6 @@ function DecisionPanel({ decision, context, detail, relations, reload, revision,
 
       <OtherRelationships object={decision} relations={relations} project={context.project} />
       <InDocs object={decision} kind="decision" project={context.project} relations={relations} notYet={decision.status === 'proposed' ? 'Accept it first to add it to the Wiki.' : undefined} />
-      <IdsLine>Version {decision.version}</IdsLine>
     </div>
   );
 }
