@@ -256,7 +256,9 @@ class FileSearch(unittest.TestCase):
         expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}/conversations/{self.ids['conversation:photo']}\?file={self.ids['file:photo']}#message-{self.ids['photo']}"))
         viewer = page.locator(".photo-viewer")
         expect(viewer).to_be_visible()
-        expect(viewer.get_by_role("img", name="IMG_2041.jpg")).to_be_visible()
+        # The photo itself, read again on open; its alt is the message's caption, and the line under it names the file.
+        expect(viewer.get_by_role("img", name="From the site visit")).to_be_visible()
+        expect(viewer.locator(".photo-viewer__caption small")).to_contain_text("IMG_2041.jpg")
         expect(viewer.get_by_role("button", name="Close photo")).to_be_focused()
         viewer.get_by_role("button", name="Close photo").click()
         expect(viewer).to_have_count(0)
