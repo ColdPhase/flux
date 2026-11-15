@@ -19,31 +19,22 @@ export function markSearchWords(parts: SearchText, marks: SearchMarks): SearchTe
     const folded = foldSearchWord(token);
     return named.some(({ word, stem }) => folded === word || (stem !== word && folded.startsWith(stem))) || (typed !== null && folded.startsWith(typed));
   };
+  // The text as one string with a mark for each character: the statement's marks, then the words this marks. A hyphenated word is
+  // judged whole, across the statement's parts ("mock" of "mock-up" marked by the statement's `mock:*`, the rest here).
+  const text = parts.map((part) => part.text).join('');
+  const marked: boolean[] = [];
+  for (const part of parts) for (let i = 0; i < part.text.length; i++) marked.push(part.match);
+  const mark = (from: number, length: number) => { for (let i = from; i < from + length; i++) marked[i] = true; };
+  for (const compound of text.matchAll(COMPOUND)) {
+    const joined = joinHyphenatedWords(compound[0]);
+    if (joined !== compound[0] && matches(joined)) { mark(compound.index, compound[0].length); continue; }
+    for (const token of compound[0].matchAll(TOKEN)) if (matches(token[0])) mark(compound.index + token.index, token[0].length);
+  }
   const out: SearchText = [];
-  const push = (text: string, match: boolean) => {
-    if (!text) return;
+  for (let i = 0; i < text.length; i++) {
     const last = out[out.length - 1];
-    if (last && last.match === match) last.text += text;
-    else out.push({ text, match });
-  };
-  for (const part of parts) {
-    if (part.match) { push(part.text, true); continue; }
-    let from = 0;
-    for (const compound of part.text.matchAll(COMPOUND)) {
-      const at = compound.index;
-      push(part.text.slice(from, at), false);
-      from = at + compound[0].length;
-      const joined = joinHyphenatedWords(compound[0]);
-      if (joined !== compound[0] && matches(joined)) { push(compound[0], true); continue; }
-      let inner = 0;
-      for (const token of compound[0].matchAll(TOKEN)) {
-        push(compound[0].slice(inner, token.index), false);
-        push(token[0], matches(token[0]));
-        inner = token.index + token[0].length;
-      }
-      push(compound[0].slice(inner), false);
-    }
-    push(part.text.slice(from), false);
+    if (last && last.match === marked[i]) last.text += text[i];
+    else out.push({ text: text[i]!, match: marked[i]! });
   }
   return out;
 }
