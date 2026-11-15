@@ -118,15 +118,19 @@ export function focusField(id: string): () => void {
  * The one rule for arriving in a conversation on a computer (persona round 26, P2 #2): a space, a direct message or a thread opened from
  * anywhere (the sidebar, New message, a person's name, Home) puts the cursor in its composer, as joining does. Focus left on the link that
  * was followed, or on the page body, made a sentence typed at once into shortcuts: "can I swap my Friday shift…" in a new direct message
- * opened Create with C and Enter made a task in a shared space. A view tab chosen from the keyboard keeps its focus (Left and Right move along
- * them, F-026 §4).
+ * opened Create with C and Enter made a task in a shared space. A view tab or a sidebar row chosen from the keyboard keeps its focus (the
+ * keyboard goes on along them, F-026 §4); clicked, it arrives in the composer like any other link.
  */
 export function focusComposerOnArrival(id: string): () => void {
   const active = typeof document === 'undefined' ? null : document.activeElement;
-  // A view tab chosen from the keyboard keeps the focus; one clicked is a press on a link to the conversation (`watchConversationLinks`).
-  if (active instanceof Element && active.closest('[role="tab"]') && !fieldOnItsWay()) return () => undefined;
+  // A view tab or a sidebar row chosen from the keyboard keeps the focus, so Left, Right, Tab and Enter go on along them (F-026 §4, motion
+  // rule: a keyboard choice keeps its focus); one clicked is a press on a link to the conversation (`watchConversationLinks`).
+  if (active instanceof Element && active.closest(KEYBOARD_ROWS) && !fieldOnItsWay()) return () => undefined;
   return focusField(id);
 }
+
+/** Where a keyboard choice keeps its focus: the view tabs and the sidebar's rows. */
+const KEYBOARD_ROWS = '[role="tab"], .side a';
 
 /** The address of a conversation as a link names it: a space (its conversation), a thread, a direct message or an agent's chat. */
 const CONVERSATION_PATH = /^\/(?:projects\/[^/]+(?:\/conversations\/[^/]+)?|dm\/(?!new$)[^/]+|agents\/[^/]+)\/?$/;
@@ -148,8 +152,8 @@ export function watchConversationLinks(): () => void {
     const direct = link.pathname === '/dm/new' && new URLSearchParams(link.search).has('with');
     if (!direct && (link.hash || link.search || !CONVERSATION_PATH.test(link.pathname))) return;
     if (!link.pathname.startsWith('/projects/') && link.pathname === window.location.pathname) return;
-    // Enter on a view tab (no pointer) keeps the focus on the tabs (F-026 §4 underline tabs).
-    if (event.detail === 0 && link.closest('[role="tab"]')) return;
+    // Enter on a view tab or a sidebar row (no pointer) keeps the focus there (F-026 §4 underline tabs).
+    if (event.detail === 0 && link.closest(KEYBOARD_ROWS)) return;
     awaitField();
   };
   document.addEventListener('click', onClick, true);
