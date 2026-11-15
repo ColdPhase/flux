@@ -274,10 +274,10 @@ class SpaceSettings(unittest.TestCase):
         expect(switch).to_have_attribute("aria-checked", "false")
         expect(switch).to_be_focused()
         self.assertEqual(self.api(page, "GET", f"/api/v1/projects/{pid}")["ai"], "blocked")
-        # The people: Ada (you, Admin) and Kai (Member); Add people adds Lee; a role changes; Remove asks first.
+        # The people: Ada (you, the company's Owner) and Kai (Member); Add people adds Lee; a role changes; Remove asks first.
         card = page.get_by_role("list", name="People in Kiln firmware")
         expect(card.get_by_role("listitem")).to_have_count(2)
-        expect(card.get_by_role("listitem").filter(has_text="Ada Kowalska")).to_contain_text("Admin")
+        expect(card.get_by_role("listitem").filter(has_text="Ada Kowalska")).to_contain_text("Owner")
         # One button opens the company's list; no second step. Ada owns the company, so it also has "Someone new?" (#1438): an email and
         # Invite, which make the company's link for that address and this space; no link is there before Invite.
         page.get_by_role("button", name="Add people", exact=True).click()

@@ -6,7 +6,7 @@ chromium (default) or webkit. Ola owns Nowak Bakery; Mia is a member with no AI;
 - P2 #1, E-3: `/ai` chosen without an assistant opens the one Connect AI window (as Settings › AI and Home do), in a space and in a direct
   message; the ask bar's Connect your AI opens the same window; there is no side panel with an MCP explainer. On a server that runs no AI
   `/ai` is not offered. A guest is told who can give them AI.
-- P2 #2: a guest's Home does not say they can start a space, New has no Space tab, and its Task tab does not point to New space.
+- P2 #2: a guest's Home does not say they can start a space, and New has no Space tab (with no space yet, only Thought).
 - P2 #3: Space settings says "Guest" for a guest, to the owner, a member and the guest herself, and a guest has no AI row.
 - P3: the people list refreshes when someone is added elsewhere; "Everyone … is already in …" when nobody is left to add; the company's
   invite form has Close; Invite then Cancel in New space leaves no working link.
@@ -174,12 +174,12 @@ class PersonaAiAndGuests(unittest.TestCase):
         expect(first).not_to_contain_text("start your own")
         expect(first.get_by_role("button", name="Start a space")).to_have_count(0)
         page.get_by_role("complementary", name="Sidebar").get_by_role("button", name=re.compile("^New")).click()
-        window = page.get_by_role("dialog", name="New task")
+        # With no space yet a guest's New has Thought alone (persona round 26): a task, a decision and a page each need a space.
+        window = page.get_by_role("dialog", name="New thought")
         expect(window).to_be_visible()
-        expect(window.get_by_role("tab", name="Task")).to_be_visible()
+        expect(window.get_by_role("tab")).to_have_count(1)
         expect(window.get_by_role("tab", name="Space")).to_have_count(0)
         expect(window).not_to_contain_text("New space")
-        expect(window).to_contain_text("When someone adds you to one, you can add its tasks here.")
         shot(page, f"persona-guest-new-{UI_BROWSER}")
 
     # ---------------------------------------------------------------- P2 #3: one role word, and no AI row for a guest

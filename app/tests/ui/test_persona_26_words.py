@@ -153,7 +153,7 @@ class PersonaRound26Words(unittest.TestCase):
         mia.goto(f"/projects/{self.ids['space']}")
         expect(mia.locator(".project-convo__message").filter(has_text=OPENING).get_by_role("link", name="Ola Nowak")).to_be_visible()
         mia.goto("/dm")
-        expect(mia.get_by_role("link", name="New message")).to_be_visible()
+        expect(mia.get_by_role("main").get_by_role("link", name="New message")).to_be_visible()
 
     def test_02_a_guest_is_offered_no_new_message_on_the_phone(self) -> None:
         page = self.page("gia", phone=True)
@@ -313,14 +313,15 @@ class PersonaRound26Words(unittest.TestCase):
 
     def test_11_a_phone_shows_no_escape_hint(self) -> None:
         page = self.page("mia", phone=True)
-        page.goto(f"/projects/{self.ids['space']}/map")
+        sketch = self.api(page, "POST", f"/api/v1/workspaces/{self.ids['company']}/sketches", {"title": "Shift ideas", "scope": "project", "projectId": self.ids["space"]}, 201)["id"]
+        page.goto(f"/projects/{self.ids['space']}/map/{sketch}")
         page.get_by_role("toolbar", name="Map tools").get_by_role("button", name="Thought", exact=True).tap()
         draft = page.get_by_role("form", name="New thought draft")
         expect(draft).to_be_visible()
         expect(draft).not_to_contain_text("Escape")
         expect(draft.get_by_role("button", name="Cancel")).to_be_visible()
         computer = self.page("mia")
-        computer.goto(f"/projects/{self.ids['space']}/map")
+        computer.goto(f"/projects/{self.ids['space']}/map/{sketch}")
         computer.get_by_role("toolbar", name="Map tools").get_by_role("button", name="Thought", exact=True).click()
         expect(computer.get_by_role("form", name="New thought draft")).to_contain_text("Escape cancels")
 

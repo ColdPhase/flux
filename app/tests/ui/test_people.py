@@ -327,7 +327,8 @@ class PeopleJourney(unittest.TestCase):
         self.settings_page(page, self.kiln)
         card = self.people_card(page, RESTRICTED)
         expect(card.get_by_role("listitem")).to_have_count(2)
-        expect(card.get_by_role("listitem").filter(has_text="Ada Kowalska")).to_contain_text("Admin")
+        # The company's owner is its Owner here too, one word in every list (#1424).
+        expect(card.get_by_role("listitem").filter(has_text="Ada Kowalska")).to_contain_text("Owner")
         expect(card.get_by_role("listitem").filter(has_text="Kai Tanaka")).to_contain_text("Member")
         # Add people: only people who are not in it yet are offered.
         page.get_by_role("button", name="Add people", exact=True).click()
