@@ -5,6 +5,7 @@ import { agentAuthorOwner, type AgentOwners } from '../agents/owners';
 import { AuthorFace, clock, when } from './messageParts';
 import { objectPhrase, objectState, objectTarget } from './objectNotices';
 import { isHeldDecision, sendHeldProposal } from '../work/heldProposals';
+import { useShellActions } from './shellContext';
 import './object-notices.css';
 
 /**
@@ -47,6 +48,10 @@ export function ObjectNoticeItem({ notice, meId, owners, authorOf, inThread = fa
       ? <button type="button" className="convo-notice__src" onClick={() => onOpenThread(notice.conversationId!)}>{phrase.link}</button>
       : <span className="convo-notice__src">{phrase.link}</span> : null;
   const card = notice.kind === 'decision.proposed';
+  // The card of the decision the panel shows is the open one (as an open thread's root keeps its fill), from whatever opened it: the card
+  // itself, Search, the Inbox or a notification all open a decision here.
+  const { shownObject } = useShellActions();
+  const current = card && shownObject?.kind === 'decision' && shownObject.id === target.id;
   const meta = (
     <p className="convo-notice__meta">
       {by.kind === 'agent' ? <strong><AgentIdentity name={name} owner={agentAuthorOwner(by, owners)} icon={false} hue={by.colour} /></strong> : <strong>{name}{mine ? ' · you' : ''}</strong>}
@@ -59,7 +64,8 @@ export function ObjectNoticeItem({ notice, meId, owners, authorOf, inThread = fa
       <AuthorFace kind={by.kind} id={by.id} name={name} mine={mine} hue={by.colour} />
       {card ? <div className="convo-notice__body convo-notice__card">
         {meta}
-        <button type="button" className="convo-notice__task convo-object__card" onClick={() => open(target)} aria-label={`Open decision ${notice.title}, ${state.word.toLowerCase()}`}>
+        <button type="button" className="convo-notice__task convo-object__card" onClick={() => open(target)} aria-label={`Open decision ${notice.title}, ${state.word.toLowerCase()}`}
+          aria-current={current ? 'true' : undefined}>
           <Icon name="flag" size={16} />
           <span className="convo-notice__title">{notice.title}</span>
           <span className="convo-object__state" data-state={state.state}>{state.word}</span>

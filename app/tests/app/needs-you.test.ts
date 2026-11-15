@@ -63,6 +63,8 @@ describe('the Inbox needs-you queue', () => {
     assert.ok(mine, 'a manager can accept it');
     assert.equal(mine.kind, 'decision');
     assert.equal(mine.title, 'Measure soil moisture first');
+    // The same place as Search, a notification and its card: over the space's conversation (contracts `decisionAppPath`).
+    assert.equal(mine.url, `/projects/${lamp.id}?open=decision:${proposed.id}`);
     assert.deepEqual(mine.project, { id: lamp.id, name: 'Garden sensors' });
     assert.equal(mine.decision?.canAccept, true);
     assert.deepEqual(mine.decision?.proposedBy, { kind: 'human', id: partner.id, name: 'ny-partner' });

@@ -834,7 +834,7 @@ class InboxFinal(unittest.TestCase):
         page.goto("/inbox")
         expect(page.locator(".nyc", has_text="Keep the old rule")).to_be_visible()
         # A decision's own link still opens the decision, with its history in its details.
-        page.goto(f"/projects/{self.project_id}/tasks?open=decision:{proposed['id']}")
+        page.goto(f"/projects/{self.project_id}?open=decision:{proposed['id']}")
         expect(page.locator("#details")).to_contain_text("Keep the old rule for the shed")
         # The Tasks tab has no Decisions view or archive, and no pointer here either (#865).
         page.goto(f"/projects/{self.project_id}/tasks")

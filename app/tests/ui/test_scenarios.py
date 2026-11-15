@@ -964,7 +964,7 @@ class ScenarioJourney:
         self.no_sideways_scroll(page)
         self.shot(page, "4-home-return")
         # The changed decision opens in the one panel, without AI.
-        page.goto(f"/projects/{lamp}/tasks?open=decision:{s['d2']}")
+        page.goto(f"/projects/{lamp}?open=decision:{s['d2']}")
         panel = self.details(page)
         expect(panel.get_by_role("heading", name=D2)).to_be_visible()
         expect(panel.get_by_text(f"This replaces the decision {D1}")).to_be_visible()
@@ -976,7 +976,7 @@ class ScenarioJourney:
         expect(page.get_by_text(CAMERA_TASK).first).to_be_visible()
         expect(page.get_by_role("region", name=re.compile("^To do"))).to_contain_text(ORDER_TASK)
         expect(page.get_by_role("region", name=re.compile("^(Decisions|Results)"))).to_have_count(0)
-        page.goto(f"/projects/{lamp}/tasks?open=decision:{s['d1']}")
+        page.goto(f"/projects/{lamp}?open=decision:{s['d1']}")
         expect(self.details(page)).to_contain_text("Replaced")
         expect(self.details(page)).to_contain_text(D1)
         self.close_details(page)

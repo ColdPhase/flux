@@ -251,6 +251,8 @@ describe('notifications from committed events', () => {
     const review = await waitForItem(ben, (item) => item.url?.endsWith(`decision:${decision.id}`) === true, 'Ben\'s decision review');
     assert.equal(review.reason, 'review');
     assert.equal(review.title, 'Decision proposed: Print on recycled paper');
+    // It opens where a decision opens from everywhere: over its space's conversation, never over Tasks (the founder's bar, #342).
+    assert.equal(review.url, `/projects/${projectId}?open=decision:${decision.id}`);
     await generatorCaughtUp();
     assert.equal((await inbox(ada)).items.filter((item) => item.url?.includes(own.id)).length, 0, 'assigning yourself notifies nobody');
   });

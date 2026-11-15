@@ -1,5 +1,5 @@
 import { redactedError } from '../encryption/redact.js';
-import { messagePreview, viaName } from '@flux/contracts';
+import { decisionAppPath, messagePreview, viaName } from '@flux/contracts';
 import { randomUUID } from 'node:crypto';
 import type { NotificationReason } from '@flux/contracts';
 import type { JobRetryPolicy } from '../push/config.js';
@@ -249,7 +249,7 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
         userId, reason: 'review' as const, source: { type: 'project' as const, id: item.projectId },
         title: `Decision proposed: ${excerpt(item.title, 90)}`,
         body: `${why} · ${by} proposed it in ${item.projectName}`,
-        url: `/projects/${item.projectId}/tasks?open=decision:${item.id}`,
+        url: decisionAppPath(item.projectId, item.id),
         // An agent produced the item, whoever the event's actor is on its behalf.
         aiOrigin: item.by.kind === 'agent', who: by, where: item.projectName,
       }));

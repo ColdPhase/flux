@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import type { ObjectLink } from '@flux/contracts';
+import { decisionAppPath, type ObjectLink } from '@flux/contracts';
 import { useFollow } from '../place/origin';
 import { awaitField } from '../ui/keys';
 import { MEDIA } from '../ui';
@@ -32,6 +32,6 @@ export function useDiscussDecision() {
       return;
     }
     const overlay = window.matchMedia(MEDIA.panelOverlay).matches;
-    await follow(`/projects/${projectId}${overlay ? '' : `?open=decision:${decisionId}`}`, { state: { focusComposer: true } });
+    await follow(overlay ? `/projects/${projectId}` : decisionAppPath(projectId, decisionId), { state: { focusComposer: true } });
   }, [follow]);
 }

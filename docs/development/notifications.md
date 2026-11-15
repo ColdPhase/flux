@@ -50,7 +50,8 @@ Rows are unique per `(user_id, event_id)`, so reprocessing the log never duplica
 source is the project or DM (`source_type` gains `dm`), so the #41 inbox, push preview and
 tap-time rechecks apply unchanged. The URL opens the exact message
 (`/projects/:p/conversations/:c#message-:m`, `/dm/:d#message-:m`) or the object in Details
-(`/projects/:p/tasks?open=work:<id>`). An invitation reads "<inviter> invited you to work
+(`/projects/:p/tasks?open=work:<id>`; a decision over its space's conversation, `/projects/:p?open=decision:<id>`, where it opens from
+everywhere; migration `0086_decision_link.sql` makes that the decision's form in the content-free check). An invitation reads "<inviter> invited you to work
 together", body `On “<anchor label>” in <project>` (the conversation's opening message or the
 work item, project sketch or doc title, excerpted to 80 characters) and opens
 `/projects/:p/live/:session?invitation=:invitation`. Repeated invites of the same person to

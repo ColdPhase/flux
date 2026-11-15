@@ -6,7 +6,7 @@
  * cursor come only from objects the caller may read at the moment of the request: the server
  * applies the access policy inside the SQL before ranking, limiting and highlighting.
  */
-import type { WorkStatus } from './work.js';
+import { decisionAppPath, type WorkStatus } from './work.js';
 
 import type { LockedWorkspaceRef } from './encryption.js';
 
@@ -53,9 +53,9 @@ export function searchTargetPath(target: SearchTarget): string {
     case 'sketch': return `/map/${target.sketchId}`;
     case 'thought': return `/map/${target.sketchId}#thought-${target.thoughtId}`;
     case 'person': return `/dm/new?workspace=${encodeURIComponent(target.workspaceId)}&with=${encodeURIComponent(target.userId)}`;
-    // A decision opens as a decision: in the one panel over its space's conversation, where its card is (P4), as Discuss and the
-    // conversation's card open it, never over a Tasks view that does not list it.
-    case 'decision': return `/projects/${target.projectId}?open=decision:${target.id}`;
+    // A decision opens as a decision: in the one panel over its space's conversation, where its card is (P4), as the Inbox, a
+    // notification, Discuss and the conversation's card open it, never over a Tasks view that does not list it.
+    case 'decision': return decisionAppPath(target.projectId, target.id);
     // A task opens in Details on the space's Tasks view (#101, #117).
     default: return `/projects/${target.projectId}/tasks?open=${target.type}:${target.id}`;
   }

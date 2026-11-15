@@ -489,7 +489,7 @@ test('native agent owners retry failed reads, fence stale permission answers and
     await capture('scoped-owner-task-details', '.wd-activity .agent-for');
     await page.keyboard.press('Escape');
     await page.locator('#details').waitFor({ state: 'detached' });
-    await page.goto(`/projects/${place.id}/tasks?open=decision:${proposal.id}`);
+    await page.goto(`/projects/${place.id}?open=decision:${proposal.id}`);
     await page.locator('.details .agent-for').waitFor();
     assert.equal((await page.locator('.details .agent-for').innerText()).trim(), "· Scoped's agent");
     await capture('scoped-owner-decision-details', '.details .agent-for');

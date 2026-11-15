@@ -83,7 +83,7 @@ class DecisionAuthorityJourney(unittest.TestCase):
     def open_decision(self, who: str, **kwargs) -> Page:
         """Opens the decision itself in the detail panel: there is no Decisions view to find it in (#342)."""
         page = self.page(who, **kwargs)
-        page.goto(f"/projects/{self.project_id}/tasks?open=decision:{self.decision_id}")
+        page.goto(f"/projects/{self.project_id}?open=decision:{self.decision_id}")
         return page
 
     def details(self, page: Page, phone: bool = False):
@@ -137,7 +137,7 @@ class DecisionAuthorityJourney(unittest.TestCase):
 
         # The proposer now reads a current rule, with no pending note.
         proposer = self.page("ada")
-        proposer.goto(f"/projects/{self.project_id}/tasks?open=decision:{self.decision_id}")
+        proposer.goto(f"/projects/{self.project_id}?open=decision:{self.decision_id}")
         sheet = self.details(proposer)
         expect(sheet.locator(".wd-eyebrow")).to_contain_text("Accepted")
         expect(sheet).to_contain_text("Kai Berg")

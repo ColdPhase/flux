@@ -128,9 +128,11 @@ export interface ShellActions {
   panelSlot: HTMLElement | null;
   /** The key of the view-owned panel the panel shows now, or null. */
   panelKey: string | null;
+  /** The task or decision the open panel shows now, or null: its card in the conversation is marked as the open one. */
+  shownObject: { kind: 'work' | 'decision'; id: string } | null;
 }
 
-export const ShellContext = createContext<ShellActions>({ openDetails: () => undefined, labelPanel: () => undefined, openCreate: () => undefined, openSearch: () => undefined, openConnectAi: () => undefined, openNavigation: () => undefined, actionSlot: null, metadataSlot: null, showPanel: () => undefined, hidePanel: () => undefined, reopenPanel: () => undefined, closePanel: () => undefined, guardPanel: () => undefined, panelSlot: null, panelKey: null });
+export const ShellContext = createContext<ShellActions>({ openDetails: () => undefined, labelPanel: () => undefined, openCreate: () => undefined, openSearch: () => undefined, openConnectAi: () => undefined, openNavigation: () => undefined, actionSlot: null, metadataSlot: null, showPanel: () => undefined, hidePanel: () => undefined, reopenPanel: () => undefined, closePanel: () => undefined, guardPanel: () => undefined, panelSlot: null, panelKey: null, shownObject: null });
 
 export function useShellActions(): ShellActions {
   return useContext(ShellContext);

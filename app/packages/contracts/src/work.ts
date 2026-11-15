@@ -214,6 +214,13 @@ export interface WorkItem extends ProjectObject {
   updatedAt: string;
 }
 
+/**
+ * Where a decision opens, from everywhere (Search, the Inbox, a notification, its push and email, a Wiki reference, Discuss): in the one
+ * panel over its space's Conversation, where its one card is (F-026 P4, #1424). Tasks lists no decisions (#342), so a decision never
+ * opens over Tasks; an old `/projects/<id>/tasks?open=decision:<id>` address is sent here by the web (its Tasks loader).
+ */
+export const decisionAppPath = (projectId: string, decisionId: string) => `/projects/${projectId}?open=decision:${decisionId}`;
+
 export interface Decision extends ProjectObject {
   title: string;
   rationale: string;

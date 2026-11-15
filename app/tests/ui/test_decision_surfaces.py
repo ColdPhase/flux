@@ -166,7 +166,7 @@ class DecisionSurfaces(unittest.TestCase):
         for label, view, phone in VIEWS:
             for scheme in SCHEMES:
                 with self.subTest(proposal=kind, view=label, scheme=scheme):
-                    page, panel = self.opened(f"/projects/{self.project_id}/tasks?open=decision:{decision_id}", phone=phone, scheme=scheme, view=view)
+                    page, panel = self.opened(f"/projects/{self.project_id}?open=decision:{decision_id}", phone=phone, scheme=scheme, view=view)
                     expect(panel.get_by_role("heading", level=3)).to_be_visible()
                     expect(panel.get_by_role("button", name="Accept", exact=True)).to_be_visible()
                     m = self.measure(panel)

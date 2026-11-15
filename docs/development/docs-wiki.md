@@ -97,7 +97,8 @@ Backlinks are the incoming links: other docs that mention a doc, and work object
 (`POST /api/v1/projects/:id/links` now accepts `{ type: 'doc' }` and `{ type: 'sketch' }`
 targets). Work items and decisions show "In docs" in their Details. Rendered references
 open in the app: docs, messages and sketches by route, work objects in the Details panel
-(`/projects/:id/tasks?open=decision:<id>` opens it from a new tab).
+(`/projects/:id/tasks?open=work:<id>` opens a task from a new tab; a decision opens where it opens from everywhere, over its space's
+conversation: `/projects/:id?open=decision:<id>`, contracts `decisionAppPath`).
 
 ## Add to docs
 

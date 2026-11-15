@@ -101,7 +101,7 @@ class UnifiedPanel(unittest.TestCase):
         page = self.page()
         for label, url, ready in (
             ("task", f"/projects/{self.project}/tasks?open=work:{self.task['id']}", ".wd[data-detail-kind='work']"),
-            ("decision", f"/projects/{self.project}/tasks?open=decision:{self.decision['id']}", ".wd[data-detail-kind='decision']"),
+            ("decision", f"/projects/{self.project}?open=decision:{self.decision['id']}", ".wd[data-detail-kind='decision']"),
             ("thread", f"/projects/{self.project}/conversations/{self.thread['id']}", ".thread"),
         ):
             with self.subTest(object=label):
@@ -474,7 +474,7 @@ class UnifiedPanel(unittest.TestCase):
                         panel.get_by_role("link", name=re.compile("Message: Should the first sensors")).click()
                         expect(panel.locator(".thread")).to_be_visible()
                         shot(page, f"unified-panel-thread-{device}-{scheme}")
-                    page.goto(f"/projects/{self.project}/tasks?open=decision:{self.decision['id']}")
+                    page.goto(f"/projects/{self.project}?open=decision:{self.decision['id']}")
                     expect(page.locator("#details .wd[data-detail-kind='decision']")).to_be_visible()
                     page.wait_for_function(SETTLED)
                     shot(page, f"unified-panel-decision-{device}-{scheme}")

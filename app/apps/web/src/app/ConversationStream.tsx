@@ -400,7 +400,7 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
   const pendingRestore = useRef<StreamPlace | null>(restore);
   const [failure, setFailure] = useState('');
   const makeWork = useCreateWorkFromMessage(project);
-  const { openDetails } = useShellActions();
+  const { openDetails, shownObject } = useShellActions();
 
   // Open on whole messages at the latest, unless a link names a root or the person is coming back to a place.
   const closeOpening = useRef<(() => void) | null>(null);
@@ -485,6 +485,28 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
     // Once per link: later refreshes of the same root never move the reader.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reveal?.key, !!revealRoot, revealed]);
+
+  // The decision the panel shows is opened here from everywhere (Search, the Inbox, a notification, a link): its card comes into view once it
+  // is loaded, unless some of it is on screen already (a person who opened it from the card stays where they were). A return to this entry
+  // keeps the place it left, with the same decision open.
+  const shownDecision = shownObject?.kind === 'decision' ? shownObject.id : null;
+  const shownCard = shownDecision ? objects.find((object) => object.kind === 'decision.proposed' && object.decisionId === shownDecision) ?? null : null;
+  const broughtRef = useRef<string | null>(restore ? shownDecision : null);
+  useEffect(() => {
+    const feed = feedRef.current;
+    if (!revealed || !shownDecision || !shownCard || !feed || broughtRef.current === shownDecision) return;
+    const element = document.getElementById(`object-${shownCard.id}`);
+    if (!element) return;
+    broughtRef.current = shownDecision;
+    const box = element.getBoundingClientRect();
+    const view = feed.getBoundingClientRect();
+    if (box.bottom > view.top && box.top < view.bottom) return;
+    closeOpening.current?.();
+    stopUnread.current?.();
+    stickRef.current = false;
+    element.scrollIntoView({ block: 'center' });
+    anchorRef.current = { id: element.id, offset: element.getBoundingClientRect().top - feed.getBoundingClientRect().top };
+  }, [revealed, shownDecision, shownCard]);
 
   // New entries follow the reader only while they are at the end. Anything else that joins the stream
   // (earlier roots from "Load earlier" or a link, or announcements that arrive on their own between roots

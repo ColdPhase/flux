@@ -284,7 +284,7 @@ class WorkDecisionsJourney(unittest.TestCase):
         expect(page.get_by_role("region", name=re.compile("^Parked"))).to_have_count(0)
         expect(page.get_by_text("parked by a pivot")).to_have_count(0)
         # The earlier decision and its reason stay in the decision's own details (S1: no archive).
-        page.goto(f"/projects/{self.project_id}/tasks?open=decision:{rules['Use a camera for gesture control']['id']}")
+        page.goto(f"/projects/{self.project_id}?open=decision:{rules['Use a camera for gesture control']['id']}")
         expect(self.details(page)).to_contain_text("Replaced")
         expect(self.details(page).get_by_text("This was replaced by the decision Switch to a ToF distance sensor")).to_be_visible()
         page.keyboard.press("Escape")

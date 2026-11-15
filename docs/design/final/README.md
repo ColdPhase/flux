@@ -950,7 +950,9 @@ Community garden sensors, Rain barrel monitor and Tool library.
   you", what they are (Delete the page “Old notes” · a task for Jonas · a task for Maja), then
   Approve all and Open. The phone lists the three things and the line "Deleting and other
   people's things always wait for your OK." The same requests also show in the task's discussion.
-- A decision opens as its card (P4). An empty Inbox is a small moment.
+- A decision opens as its card (P4). Opened from there, it opens where it opens from everywhere (Search, a notification, a link, its
+  card): in the one panel over its space's conversation, with its card there marked as the open one (the founder's bar that the same
+  object opens in the same place). An empty Inbox is a small moment.
 
 ### Notices
 

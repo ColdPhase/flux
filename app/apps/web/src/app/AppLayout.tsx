@@ -365,6 +365,7 @@ function AppLayoutContent() {
     /** The open object's name for "‹ back" from the next one ("Task #2"). */
     labelPanel(label: string | null) { panelLabel.current = label; },
     showPanel, hidePanel, reopenPanel, closePanel: () => closeRef.current(), guardPanel(guard: (() => boolean) | null) { panelGuard.current = guard; }, panelSlot, panelKey: detailsOpen && isOwned(detailsView) ? owned?.key ?? null : null,
+    shownObject: detailsOpen && typeof detailsView === 'object' && (detailsView.kind === 'work' || detailsView.kind === 'decision') ? { kind: detailsView.kind, id: detailsView.id } : null,
     openCreate(request: CreateRequest = {}) {
       setNavOpen(false); setJumpOpen(false);
       const kept = keptSpace.current;

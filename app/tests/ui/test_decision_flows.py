@@ -135,7 +135,7 @@ class DecisionFlows(unittest.TestCase):
 
     def test_01_a_proposed_decision_is_its_inbox_card_first(self) -> None:
         page = self.page()
-        page.goto(f"/projects/{self.ids['project']}/tasks?open=decision:{self.ids['sourced']}")
+        page.goto(f"/projects/{self.ids['project']}?open=decision:{self.ids['sourced']}")
         panel = self.panel(page)
         expect(panel.locator(".wd-decision-identity")).not_to_contain_text("Needs you")
         answer = panel.get_by_role("region", name="Your answer")
@@ -176,13 +176,13 @@ class DecisionFlows(unittest.TestCase):
     def test_03_no_empty_sections(self) -> None:
         page = self.page()
         pid = self.ids["project"]
-        page.goto(f"/projects/{pid}/tasks?open=decision:{self.ids['bare']}")
+        page.goto(f"/projects/{pid}?open=decision:{self.ids['bare']}")
         panel = self.panel(page)
         expect(panel.get_by_text(re.compile(r"^Shown on the Wiki page Watering"))).to_be_visible()
         expect(panel.get_by_role("link", name=re.compile("Watering"))).to_be_visible()
         expect(panel.get_by_role("heading", name="Based on")).to_have_count(0)
         expect(panel).not_to_contain_text("No source linked")
-        page.goto(f"/projects/{pid}/tasks?open=decision:{self.ids['rule']}")
+        page.goto(f"/projects/{pid}?open=decision:{self.ids['rule']}")
         panel = self.panel(page)
         # The panel's head says "Decision" once; the eyebrow is the state alone, "Accepted 14 Nov" (#1424 P3 17).
         expect(panel.locator(".details__eyebrow")).to_have_text(re.compile(r"^Accepted \d{1,2} [A-Z][a-z]{2}"))
@@ -196,7 +196,7 @@ class DecisionFlows(unittest.TestCase):
     def test_04_discuss_opens_the_decisions_thread_ready_to_write(self) -> None:
         page = self.page()
         pid = self.ids["project"]
-        page.goto(f"/projects/{pid}/tasks?open=decision:{self.ids['sourced']}")
+        page.goto(f"/projects/{pid}?open=decision:{self.ids['sourced']}")
         self.panel(page).get_by_role("button", name="Discuss", exact=True).click()
         expect(page).to_have_url(re.compile(f"/projects/{pid}/conversations/{self.ids['conversation']}"))
         expect(page.locator("#thread-composer")).to_be_focused()
@@ -207,7 +207,7 @@ class DecisionFlows(unittest.TestCase):
     def test_05_discuss_without_a_source_opens_the_conversation_with_the_decision_beside_it(self) -> None:
         page = self.page()
         pid = self.ids["project"]
-        page.goto(f"/projects/{pid}/tasks?open=decision:{self.ids['bare']}")
+        page.goto(f"/projects/{pid}?open=decision:{self.ids['bare']}")
         self.panel(page).get_by_role("button", name="Discuss", exact=True).click()
         expect(page).to_have_url(re.compile(f"/projects/{pid}/?$"))
         expect(page.locator("#project-composer")).to_be_focused()

@@ -1,5 +1,6 @@
 import {
   assistantChangeSummary,
+  decisionAppPath,
   type AssistantChange,
   MAX_SNOOZE_DAYS,
   type NeedsYouItem,
@@ -111,7 +112,7 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
         key: `decision:${decision.id}`, kind: 'decision', title: decision.title, detail: excerpt(decision.rationale),
         project: { id: decision.projectId, name: projectNames.get(decision.projectId) ?? 'Space' },
         from: { kind: by.kind, id: by.id, name }, at: iso(decision.createdAt),
-        url: `/projects/${decision.projectId}/tasks?open=decision:${decision.id}`,
+        url: decisionAppPath(decision.projectId, decision.id),
         decision: {
           id: decision.id, version: decision.version, proposedBy: { kind: by.kind, id: by.id, name }, basedOn, affects,
           accepters: accepters.get(decision.projectId) ?? [], canAccept: true, supersedes,

@@ -338,7 +338,7 @@ class DocsJourney(unittest.TestCase):
     def test_05_add_a_decision_to_the_doc(self) -> None:
         page = self.page("partner")
         before = self.doc(page)["version"]
-        page.goto(f"/projects/{self.project_id}/tasks?open=decision:{self.finding_id}")
+        page.goto(f"/projects/{self.project_id}?open=decision:{self.finding_id}")
         panel = page.locator("#details")
         expect(panel).not_to_contain_text("Shown on the Wiki page")  # a decision on no page says nothing about the Wiki (#871)
         panel.get_by_role("button", name="Add to a Wiki page").click()
@@ -356,7 +356,7 @@ class DocsJourney(unittest.TestCase):
         decision = self.api(page, "GET", f"/api/v1/decisions/{self.finding_id}", status=200)
         self.assertTrue(any(link["from"]["type"] == "doc" and link["from"]["id"] == self.doc_id for link in decision["links"]))
         # The decision now shows the doc it is in.
-        page.goto(f"/projects/{self.project_id}/tasks?open=decision:{self.finding_id}")
+        page.goto(f"/projects/{self.project_id}?open=decision:{self.finding_id}")
         expect(page.locator("#details").get_by_role("link", name=re.compile(TITLE))).to_be_visible()
 
     # ---------------------------------------------------------------- phone

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { useLoaderData, useLocation, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
-import type { Project, ProjectWorkViewQuery, WorkItem, WorkObjectType, WorkRowProjection } from '@flux/contracts';
+import { redirect, useLoaderData, useLocation, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
+import { decisionAppPath, type Project, type ProjectWorkViewQuery, type WorkItem, type WorkObjectType, type WorkRowProjection } from '@flux/contracts';
 import { Button, EmptyState, ErrorState, Icon, MEDIA, useMediaQuery, useRowMotion } from '../ui';
 import { getProject } from '../project/api';
 import { WORK_EVENT, streamLive, useStreamEvents } from '../api/stream';
@@ -24,6 +24,10 @@ interface TasksData { project: Project }
 
 /** Object rows use their separate bounded page; this loader supplies the project contract. */
 export async function projectTasksLoader({ params, request }: LoaderFunctionArgs): Promise<TasksData> {
+  // Tasks lists no decisions (#342): an older `?open=decision:<id>` link (a bookmark, a notification written before) opens where every
+  // decision opens, over its space's conversation, so it is never a dead link.
+  const decision = /^decision:([0-9a-f-]{36})$/i.exec(new URL(request.url).searchParams.get('open') ?? '');
+  if (decision) throw redirect(decisionAppPath(params.projectId!, decision[1]!.toLowerCase()));
   return { project: await getProject(params.projectId!, request.signal) };
 }
 

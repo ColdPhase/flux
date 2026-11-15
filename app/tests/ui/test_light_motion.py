@@ -852,7 +852,7 @@ class LightMotionJourney(unittest.TestCase):
                 except Exception:
                     pass
         self.addCleanup(release)
-        page.goto(f"/projects/{self.fx.project}/tasks?view=list&open=decision:{self.fx.decision['id']}")
+        page.goto(f"/projects/{self.fx.project}?open=decision:{self.fx.decision['id']}")
         skeleton = page.locator("#details .wd-skeleton")
         expect(skeleton).to_be_visible()
         self.assertEqual(skeleton.locator(".wd-skeleton__rows, .wd-skeleton__row, .wd-skeleton__actions").count(), 0, "no rows or actions at guessed places")

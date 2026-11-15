@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { searchTargetPath, type SearchKind, type SearchResult } from '@flux/contracts';
+import { decisionAppPath, searchTargetPath, type SearchKind, type SearchResult } from '@flux/contracts';
 import { groupResults } from '../../apps/web/src/search/groups.js';
 import { SEARCH_HINT } from '../../apps/web/src/search/hint.js';
 
@@ -23,6 +23,8 @@ test('a decision is listed under Decisions, opens over its conversation, and the
   const groups = groupResults([hit('x1', 'decision'), hit('t1', 'work')]);
   assert.deepEqual(groups.map((group) => [group.label, group.items.map((item) => item.id)]), [['Decisions', ['x1']], ['Tasks', ['t1']]]);
   assert.equal(searchTargetPath({ type: 'decision', projectId: 'p-1', id: 'd-1' }), '/projects/p-1?open=decision:d-1');
+  // One address for a decision everywhere: Search, the Inbox, notifications, Wiki references and Discuss share `decisionAppPath`.
+  assert.equal(decisionAppPath('p-1', 'd-1'), searchTargetPath({ type: 'decision', projectId: 'p-1', id: 'd-1' }));
   assert.equal(searchTargetPath({ type: 'work', projectId: 'p-1', id: 'w-1' }), '/projects/p-1/tasks?open=work:w-1');
   assert.match(SEARCH_HINT, /\bdecisions\b/);
 });

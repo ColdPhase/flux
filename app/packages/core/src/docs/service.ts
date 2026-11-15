@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import {
   DOC_LIMITS,
+  decisionAppPath,
   type AddDocSectionCommand,
   type CreateDocCommand,
   type Doc,
@@ -57,6 +58,7 @@ function pathOf(projectId: string, type: DocMention['type'], id: string, found: 
     // CW-14: a thought opens its project map with that thought selected, as a task's "Came from" does.
     case 'thought': return found.sketchId ? `/projects/${projectId}/map/${found.sketchId}#thought-${id}` : null;
     case 'sketch': return `/projects/${projectId}/map/${id}`;
+    case 'decision': return decisionAppPath(projectId, id);
     default: return `/projects/${projectId}/tasks?open=${type}:${id}`;
   }
 }

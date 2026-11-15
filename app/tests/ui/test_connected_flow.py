@@ -202,7 +202,7 @@ class ConnectedFlow(unittest.TestCase):
 
     def test_07_a_decision_opens_with_its_kind_and_state(self) -> None:
         page = self.page()
-        page.goto(f"/projects/{self.ids['project']}/tasks?open=decision:{self.ids['d_sms']}")
+        page.goto(f"/projects/{self.ids['project']}?open=decision:{self.ids['d_sms']}")
         panel = page.locator("#details")
         expect(panel.locator(".wd-eyebrow")).to_contain_text("Accepted")
         expect(panel).not_to_contain_text("Current rule")
@@ -216,7 +216,7 @@ class ConnectedFlow(unittest.TestCase):
 
     def test_08_add_the_card_under_a_heading_and_the_toast_stays_clear_of_the_sheet(self) -> None:
         page = self.page(phone=True)
-        page.goto(f"/projects/{self.ids['project']}/tasks?open=decision:{self.ids['d_sat']}")
+        page.goto(f"/projects/{self.ids['project']}?open=decision:{self.ids['d_sat']}")
         sheet = page.locator("#details")  # its heading follows what opened it: "Add to a Wiki page" after this tap (#1058)
         expect(sheet).to_be_visible()
         sheet.get_by_role("button", name="Add to a Wiki page").tap()

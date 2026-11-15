@@ -210,6 +210,8 @@ describe('project docs with immutable versions, links and backlinks', () => {
     const mentions = doc.links.filter((link) => link.role === 'mentions').map((link) => `${link.to.type}:${link.toTitle}`).sort();
     assert.deepEqual(mentions, ['decision:Use ToF for gestures', 'doc:Sensor comparison', `message:${message.body}`, 'sketch:Sensor options', 'work:Test the ToF sensor']);
     assert.equal(doc.mentions.filter((item) => item.path === null).length, 3);
+    // A decision's reference opens it where it opens from everywhere: over its space's conversation (contracts `decisionAppPath`).
+    assert.equal(doc.mentions.find((item) => item.type === 'decision')?.path, `/projects/${lamp.id}?open=decision:${decision.id}`);
     assert.ok(!doc.html.includes('Secret plan') && !doc.html.includes('Hidden elsewhere'), 'nothing of other audiences is shown');
     assert.ok(doc.html.includes(`href="/projects/${lamp.id}/conversations/${conversation.id}#message-${message.id}"`));
     assert.ok(doc.html.includes(`href="/projects/${lamp.id}/docs/${target.id}" class="doc-ref" data-ref-type="doc"`));

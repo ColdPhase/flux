@@ -115,4 +115,7 @@ leaves decisions out of the "All" selection and its total. API readers without `
 the whole mixed view. A decision's history stays in its own details, as plain sentences that appear only when they apply ("This replaces the decision …",
 "This was replaced by the decision …", "Earlier reason", "Shown on the Wiki page …"). Old links to the Decisions view
 (`/projects/:id/tasks?status=needs|rules`) open the Inbox; a
-decision's own link (`?open=decision:<id>`) opens the decision.
+decision's own link (`/projects/:id?open=decision:<id>`, contracts `decisionAppPath`) opens the decision in the one panel over its space's
+conversation, with its card there marked as the open one. That is the one place a decision opens from everywhere: the Inbox (its item's
+`url` and its Open), Search, a notification with its push and email, a Wiki reference and Discuss. An older
+`/projects/:id/tasks?open=decision:<id>` link (a bookmark) is sent there by the Tasks loader, so it is never a dead link.

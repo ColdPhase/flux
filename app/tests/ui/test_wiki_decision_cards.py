@@ -153,7 +153,7 @@ class WikiDecisionCards(unittest.TestCase):
 
     def test_03_add_to_docs_inserts_the_card_and_it_follows_the_decision(self) -> None:
         page = self.context(DESKTOP)
-        page.goto(f"/projects/{self.project_id}/tasks?open=decision:{self.gateway['id']}")
+        page.goto(f"/projects/{self.project_id}?open=decision:{self.gateway['id']}")
         panel = page.locator("#details")
         panel.get_by_role("button", name="Add to a Wiki page").click()
         expect(panel).to_contain_text("one card with its reason")
@@ -181,7 +181,7 @@ class WikiDecisionCards(unittest.TestCase):
 
     def test_04_a_proposed_decision_cannot_be_added(self) -> None:
         page = self.context(DESKTOP)
-        page.goto(f"/projects/{self.project_id}/tasks?open=decision:{self.proposal['id']}")
+        page.goto(f"/projects/{self.project_id}?open=decision:{self.proposal['id']}")
         panel = page.locator("#details")
         button = panel.get_by_role("button", name="Add to a Wiki page")
         expect(button).to_be_disabled()
