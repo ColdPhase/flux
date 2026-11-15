@@ -12,6 +12,7 @@ import type { ReadState } from './read-state';
 import { useWorkRead } from './useWorkRead';
 import { useAgentOwners } from '../agents/owners';
 import { useAgentHue } from '../agents/hues';
+import { useShellActions } from '../app/shellContext';
 import './board.css';
 
 // The Tasks board (#136, UI116-4, #868): four columns, the four states, and no
@@ -85,6 +86,8 @@ interface CardProps {
   agentOwner?: string;
   item: BoardTask; meId: string; writable: boolean; hintId: string;
   saving: boolean; dragged: boolean; lifted: boolean;
+  /** The task the one panel shows: its card is the open one (#763 IN-3), a soft fill (board.css). */
+  open: boolean;
   onPointerDown: (event: ReactPointerEvent<HTMLLIElement>) => void;
   onClickCapture: (event: ReactMouseEvent) => void;
   onKeyDown: (event: ReactKeyboardEvent<HTMLButtonElement>) => void;
@@ -98,7 +101,7 @@ interface CardProps {
  * A blocked card says what it waits for in one line. There is no ⋯: a card opens its task, whose panel holds the actions; a
  * mouse or pen drags it, and the keyboard moves it (Space, arrows, Space) or sets its state (1–4).
  */
-function Card({ item, agentOwner, meId, writable, hintId, saving, dragged, lifted, onPointerDown, onClickCapture, onKeyDown, onKeyUp, onBlur, onOpen }: CardProps) {
+function Card({ item, agentOwner, meId, writable, hintId, saving, dragged, lifted, open, onPointerDown, onClickCapture, onKeyDown, onKeyUp, onBlur, onOpen }: CardProps) {
   const hue = useAgentHue();
   const blocked = item.status === 'blocked';
   const owner = item.owner;
@@ -111,7 +114,7 @@ function Card({ item, agentOwner, meId, writable, hintId, saving, dragged, lifte
       onPointerDown={onPointerDown} onClickCapture={onClickCapture} onDragStart={(event) => event.preventDefault()}>
       <h3 className="tb-card__t">
         <button type="button" className="tb-card__open" onClick={onOpen} onKeyDown={onKeyDown} onKeyUp={onKeyUp} onBlur={onBlur}
-          aria-describedby={writable ? hintId : undefined}><span className="tb-card__title">{item.title}</span></button>
+          aria-describedby={writable ? hintId : undefined} aria-current={open ? 'true' : undefined}><span className="tb-card__title">{item.title}</span></button>
       </h3>
       {blocked ? <p className="tb-card__blocker">{blockedLine(item) ?? 'Waiting for something not written down yet'}</p> : null}
       <div className="tb-card__foot">
@@ -174,6 +177,8 @@ const withStoredState = (row: BoardTask, saved: WorkItem): BoardTask => ({
 
 export function TaskBoard({ project, openRead, meId, mine, query, writable, revision, openWork, refresh, showInList, clearFilters }: TaskBoardProps) {
   const owners = useAgentOwners(project);
+  const { shownObject } = useShellActions();
+  const shownWork = shownObject?.kind === 'work' ? shownObject.id : null;
   const hintId = useId();
   const boardRef = useRef<HTMLDivElement>(null);
   const ghostRef = useRef<HTMLDivElement>(null);
@@ -511,7 +516,7 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
                   <ol className="tb-col__list">
                     {list.map((item) => (
                       <Card key={item.id} item={item} agentOwner={item.owner?.kind === 'agent' ? owners.get(item.owner.id) : undefined} meId={meId} writable={writable} hintId={hintId}
-                        saving={item.id in pending} dragged={dragging?.id === item.id} lifted={lifted?.id === item.id}
+                        saving={item.id in pending} dragged={dragging?.id === item.id} lifted={lifted?.id === item.id} open={shownWork === item.id}
                         onPointerDown={(event) => startDrag(event, item, column.id)}
                         onClickCapture={(event) => { if (suppressClick.current) { event.preventDefault(); event.stopPropagation(); } }}
                         onKeyDown={(event) => onCardKey(event, item, column.id)} onKeyUp={onCardKeyUp}

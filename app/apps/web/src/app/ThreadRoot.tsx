@@ -1,5 +1,5 @@
 import type { ConversationMessage } from '@flux/contracts';
-import { MessageObjects } from '../work/inline';
+import { MessageObjects, MessageTaskCards } from '../work/inline';
 import type { MessageWorkPreview } from '../work/message-associations';
 import { AgentAuthor, AuthorFace, DeletedSourceCitation, ShownAnswerName, SourceCitation, MessageTime, ViaTag, messageHue, shownAnswer, shownLabel } from './messageParts';
 import { MessageContent, type PhotoActions } from '../composer/Files';
@@ -39,6 +39,7 @@ export function ThreadRoot({ message, projectId, body, author, agentOwner = null
           {message?.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={onDenied} /> : message?.sourceDeleted ? <DeletedSourceCitation /> : null}
         </MessageContent>
         {message ? <MessageTime at={message.createdAt} /> : null}
+        <MessageTaskCards preview={preview} />
         {message ? <QuestionCard projectId={projectId} messageId={message.id} meId={meId} writable={writable} /> : null}
       </article>
       <p className="thread__hint">{replies ? `${replies} ${replies === 1 ? 'reply' : 'replies'}${firstDay ? ` · ${firstDay}` : ''}` : writable ? 'Reply to this message. No new topic needed.' : 'No replies yet.'}</p>

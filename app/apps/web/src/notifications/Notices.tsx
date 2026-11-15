@@ -120,14 +120,14 @@ function useLift(active: boolean, card: React.RefObject<HTMLElement | null>, pho
   return active && !phone ? place : { lift: 0, right: null };
 }
 
-/** Whether a dialog or a sheet is open: a notice waits for it to close. */
+/** Whether a dialog, a sheet or a menu (any open pop surface, ui/pop.ts) is open: a notice waits for it to close, never covering it. */
 function useModalOpen(active: boolean): boolean {
   const [open, setOpen] = useState(false);
   useEffect(() => {
     if (!active) return undefined;
-    const check = () => setOpen(!!document.querySelector('[aria-modal="true"]'));
+    const check = () => setOpen(!!document.querySelector('[aria-modal="true"], [data-pop="open"]'));
     const observer = new MutationObserver(check);
-    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['aria-modal'] });
+    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['aria-modal', 'data-pop'] });
     check();
     return () => observer.disconnect();
   }, [active]);

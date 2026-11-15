@@ -348,6 +348,13 @@ class FilesReferencesPhotos(unittest.TestCase):
         contained = child.evaluate("e => { const b = e.closest('.message-bubble'); if (!b) return false; const a = b.getBoundingClientRect(), r = e.getBoundingClientRect(); return r.left >= a.left && r.top >= a.top && r.right <= a.right + .001 && r.bottom <= a.bottom + .001; }")
         self.assertTrue(contained, "the complete file/reference card sits inside the message's single bubble")
 
+    def assert_under_bubble(self, scope, card) -> None:
+        """A task card in a thread stands under its message's bubble, outside it (#1424, design L1059)."""
+        expect(scope.locator(":scope > .message-bubble")).to_be_visible()
+        expect(card).to_be_visible()
+        under = card.evaluate("e => { if (e.closest('.message-bubble')) return false; const b = e.closest('[data-message-id]').querySelector(':scope > .message-bubble').getBoundingClientRect(); return e.getBoundingClientRect().top >= b.bottom - .5; }")
+        self.assertTrue(under, "the task card stands under the message's bubble, not inside it")
+
     def check_files_and_references(self, page: Page, phone: bool) -> None:
         files = self.message(page, "files")
         files.scroll_into_view_if_needed()
@@ -630,31 +637,24 @@ class FilesReferencesPhotos(unittest.TestCase):
                     conversation = self.ids[f"conversation:{self.ids['files']}"]
                     page.goto(f"/projects/{self.ids['project']}/conversations/{conversation}")
                     thread_root = page.locator(".thread__root")
-                    # The thread has no task cards: there the task is the chip in its message, its one place in the thread.
-                    reference = thread_root.locator(f'.ws-chip[data-work-id="{self.ids["files-task"]}"]')
-                    self.assert_inside_bubble(thread_root, reference)
+                    # A task made from a thread's message is the conversation's task card under that message, its one place in the thread
+                    # (#1424, design L1059; v0.2.1 audit P2-5): never a chip in the bubble.
+                    reference = thread_root.locator(f'.msg-tasks__card[data-work-id="{self.ids["files-task"]}"]')
                     expect(reference).to_have_count(1)
-                    if not phone and not dark:
-                        # Negative control reproduces the exact prior defect without mocking the API.
-                        reference.evaluate("e => { const card = e.parentElement; card.before(Object.assign(document.createElement('span'), {id: 'reference-slot'})); card.closest('[data-message-id]').append(card); }")
-                        try:
-                            with self.assertRaises(AssertionError):
-                                self.assert_inside_bubble(thread_root, reference)
-                        finally:
-                            reference.evaluate("e => { const slot = document.getElementById('reference-slot'); slot.replaceWith(e.parentElement); }")
-                        self.assert_inside_bubble(thread_root, reference)
+                    self.assert_under_bubble(thread_root, reference)
+                    expect(thread_root.locator(f'.ws-chip[data-work-id="{self.ids["files-task"]}"]')).to_have_count(0)
                     # The thread's root shows the same inline chip and link preview as the stream (no raw text).
                     expect(thread_root.locator(".ref-chip[data-ref=task]")).to_have_text("#8")
                     expect(thread_root.get_by_role("list", name="Link preview")).to_be_visible()
                     reply = page.locator(f'#message-{self.ids["photo-reply"]}')
-                    self.assert_inside_bubble(reply, reply.locator(f'.ws-chip[data-work-id="{self.ids["reply-task"]}"]'))
+                    self.assert_under_bubble(reply, reply.locator(f'.msg-tasks__card[data-work-id="{self.ids["reply-task"]}"]'))
                     self.assert_caption_below(reply)
-                    # The task card under a photo fills the photo's width, not the caption's fit-content width.
+                    # The task card under a photo is as wide as the photo, not the caption's fit-content width.
                     bubble = reply.locator(":scope > .message-bubble").bounding_box()
                     grid = reply.locator(":scope > .photo-grid").bounding_box()
-                    card = reply.locator(f'.ws-chip[data-work-id="{self.ids["reply-task"]}"]').bounding_box()
+                    card = reply.locator(f'.msg-tasks__card[data-work-id="{self.ids["reply-task"]}"]').bounding_box()
                     self.assertGreaterEqual(bubble["width"], grid["width"] - 1, "the caption bubble is as wide as the photo")
-                    self.assertGreaterEqual(card["width"], bubble["width"] - 26 - 1, "the task card fills its bubble")
+                    self.assertGreaterEqual(card["width"], grid["width"] - 1, "the task card is as wide as the photo")
 
     def test_spokoj_own_file_link_and_thread_root_contrast(self) -> None:
         for dark in (False, True):

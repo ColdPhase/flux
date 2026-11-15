@@ -18,7 +18,8 @@
 .convo-object + .convo-object.is-follow { margin-top: 6px; }
 /* In a thread the line sits among the replies at the replies' own column. */
 .thread__list > .convo-object { margin: 14px 0; }
-/* The card of the decision open in the panel is the open one, with the open card's fill (the board's open card, --pick), from whatever
-   opened it: the card, Search, the Inbox or a notification. High contrast keeps it as an outline. */
-.convo-notice__card.is-open { background: var(--pick); }
+/* The card of the decision open in the panel is the open one, with the open card's fill (the board's open card, --hov), from whatever
+   opened it: the card, Search, the Inbox or a notification. Its meta words (--t3) stay at least 4.5:1 on it (design L69, L2265): --pick
+   gave 4.4:1 in light and 4.0:1 in dark. Hovering the open card keeps it marked. High contrast keeps it as an outline. */
+.convo-notice__card.is-open, .convo-notice__card.is-open:has(> .convo-notice__task:hover) { background: var(--hov); }
 @media (forced-colors: active) { .convo-notice__card.is-open { outline: 2px solid Highlight; outline-offset: 2px; } }

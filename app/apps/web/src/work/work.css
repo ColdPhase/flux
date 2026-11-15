@@ -19,6 +19,9 @@
 .ws-chip__k { flex: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-xs); color: var(--t3); }
 .ws-chip--need .ws-chip__k { color: var(--t1); font-weight: 500; }
 @media (pointer: coarse) { .ws-chip { min-height: 44px; box-shadow: none; background: var(--sub); } }
+/* In a thread a task made from a message is the conversation's task card under that message (#1424, design L1059), as wide as the
+   message's column allows, its title whole on a computer. */
+.msg-tasks { display: flex; flex-direction: column; gap: 8px; align-self: stretch; min-width: min(100%, 300px); margin-top: 8px; }
 .project-convo__message:target { background: var(--sub); border-radius: var(--r); box-shadow: -8px 0 0 var(--sub), 8px 0 0 var(--sub); }
 
 /* ---------- Tasks tab ---------- */

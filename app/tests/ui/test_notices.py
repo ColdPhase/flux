@@ -421,6 +421,28 @@ class NoticeJourney(unittest.TestCase):
             card.get_by_role("button", name="Close").click()
             expect(card).to_have_count(0)
 
+    # ---------------------------------------------------------------- never over a menu
+
+    def test_13_it_waits_while_a_menu_is_open_and_shows_when_it_closes(self) -> None:
+        """v0.2.1 audit: a notice stood over an open menu. While a menu is open it waits, as it does for a dialog or a sheet, and shows
+        when the menu closes (docs/design/final/README.md "Notices", Where)."""
+        page = self.home()
+        page.get_by_role("button", name="More for Spaces").click()
+        menu = page.get_by_role("menu", name="More for Spaces")
+        expect(menu).to_be_visible()
+        self.dm("Are the seed jars labelled yet?")
+        # The notice comes within 2 s when nothing holds it (test_01); here it waits for the menu, never standing over it.
+        for _ in range(25):
+            self.assertEqual(self.card(page).count(), 0, "no notice over the open menu")
+            page.wait_for_timeout(200)
+        expect(menu).to_be_visible()
+        page.keyboard.press("Escape")
+        expect(menu).to_have_count(0)
+        expect(self.card(page)).to_be_visible(timeout=5000)
+        expect(self.card(page)).to_contain_text("Are the seed jars labelled yet?")
+        self.card(page).get_by_role("button", name="Close").click()
+        expect(self.card(page)).to_have_count(0)
+
 
 if __name__ == "__main__":
     unittest.main()

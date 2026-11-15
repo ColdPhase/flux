@@ -376,7 +376,8 @@ class MessageAlignment(unittest.TestCase):
                     page.set_viewport_size({"width": width, "height": 844})
                     page.goto(f"/projects/{self.project}")
                     root = page.locator(f"#message-{self.short['messages'][0]['id']}")
-                    # In the stream the task is its card, not a chip in the message (#1424); the thread shows the chips.
+                    # In the stream the task is its card, not a chip in the message (#1424); the thread shows it as the same card under its
+                    # message (design L1059, v0.2.1 audit P2-5).
                     expect(root.locator(".ws-chip")).to_have_count(0)
                     root.get_by_role("button", name=re.compile(r"^1 reply")).click()
                     thread = page.get_by_role("complementary", name="Replies").or_(page.get_by_role("dialog", name="Replies"))
@@ -384,23 +385,6 @@ class MessageAlignment(unittest.TestCase):
                     self.assert_reference_width(page, thread.locator(f"#message-{self.short_reply['id']}"))
                     shot(page, f"spokoj-one-word-{width}-{'dark' if dark else 'light'}-{UI_BROWSER}")
                     page.context.close()
-
-    # What a reference card shows of itself, read from the layout: the characters of the title that lie inside its box (what is
-    # read before the ellipsis), the visible state, whether the state's box holds its text, and the boxes of card, title and state.
-    CARD_PROBE = """card => {
-      const box = (el) => { const r = el.getBoundingClientRect(); return {left: r.left, right: r.right, top: r.top, bottom: r.bottom}; };
-      const title = card.querySelector('.ws-chip__t'), state = card.querySelector('.ws-chip__k');
-      const text = title.firstChild, range = document.createRange(), edge = title.getBoundingClientRect().right;
-      let shown = 0;
-      for (let at = 0; at < text.length; at++) {
-        range.setStart(text, at); range.setEnd(text, at + 1);
-        if (range.getBoundingClientRect().right > edge + 0.5) break;
-        shown = at + 1;
-      }
-      return {kind: card.dataset.workKind, title: title.textContent, shown, state: state.innerText, stateFits: state.scrollWidth <= state.clientWidth + 1,
-        label: getComputedStyle(card, '::before').display, titleBox: box(title), stateBox: box(state), cardBox: box(card)};
-    }"""
-    STATE_WORD = {"work": "Doing", "decision": "accepted"}
 
     def assert_event_cards(self, page, titles, where, name):
         """In the space's stream a task and a decision made from a message show once (#1424): each is its one card, never also a chip
@@ -429,40 +413,6 @@ class MessageAlignment(unittest.TestCase):
                 self.assertGreaterEqual(measured[part]["left"], measured["card"]["left"] - 0.5, f"{label}: {part} inside the card")
                 self.assertLessEqual(measured[part]["right"], measured["card"]["right"] + 0.5, f"{label}: {part} inside the card")
 
-    def assert_cards(self, page, scope, titles, narrow, where, name, kinds=("work", "decision")):
-        """The chips (a task, a decision) in `scope`: the title keeps its start, the state is whole and at the right
-        edge, and the form is the one-row card of the narrow places (A08, A09) or the drawn card of the wide column."""
-        cards = page.locator(f"{scope} .message-bubble .ws-chip")
-        expect(cards).to_have_count(len(kinds))
-        seen = set()
-        for index in range(len(kinds)):
-            card = cards.nth(index)
-            card.scroll_into_view_if_needed()
-            measured = card.evaluate(self.CARD_PROBE)
-            kind = measured["kind"]
-            seen.add(kind)
-            shot(page, f"card-{name}-{kind}-{UI_BROWSER}")
-            label = f"{where} {kind}: {measured}"
-            self.assertEqual(measured["title"], titles[kind], label)
-            self.assertGreaterEqual(measured["shown"], 16, f"{label}: the title shows at least its first words")
-            # The state is whole: its box holds its text, and the word that names it is there.
-            self.assertTrue(measured["stateFits"], f"{label}: the state is cut")
-            self.assertIn(self.STATE_WORD[kind], measured["state"], label)
-            for part in ("titleBox", "stateBox"):
-                self.assertGreaterEqual(measured[part]["left"], measured["cardBox"]["left"] - 0.5, f"{label}: {part} inside the card")
-                self.assertLessEqual(measured[part]["right"], measured["cardBox"]["right"] + 0.5, f"{label}: {part} inside the card")
-            self.assertFalse(intersects(measured["titleBox"], measured["stateBox"]), f"{label}: the state never covers the title")
-            # The state is at the right edge of the card (its padding is 10 to 12 px).
-            self.assertLessEqual(measured["cardBox"]["right"] - measured["stateBox"]["right"], 14, f"{label}: the state is at the right edge")
-            if narrow:
-                self.assertEqual(measured["label"], "none", f"{label}: the one-row card has no kind line above the title")
-                self.assertNotIn("·", measured["state"].replace(" · parked", ""), f"{label}: the one-row state keeps the status, not the names")
-            else:
-                self.assertNotEqual(measured["label"], "none", f"{label}: the wide column keeps the kind over the title")
-                above, below = measured["stateBox"]["top"] - measured["cardBox"]["top"], measured["cardBox"]["bottom"] - measured["stateBox"]["bottom"]
-                self.assertAlmostEqual(above, below, delta=3, msg=f"{label}: the state is centred across the two lines")
-        self.assertEqual(seen, set(kinds))
-
     def test_03b_task_and_decision_cards_keep_their_title_and_their_whole_state(self):
         # #665: a card's title shows more than its first characters and its state stays whole (#501), in the thread panel
         # (1440 px) and sheet (390 px) as in the conversation column.
@@ -476,9 +426,10 @@ class MessageAlignment(unittest.TestCase):
                     page.set_viewport_size({"width": width, "height": height})
                     page.goto(path)
                     if surface == "thread":
-                        # The thread has no task cards, so the task is the chip in its root; the decision made from a reply is its card
-                        # among the replies, and that reply carries no chip of it (#1424).
-                        self.assert_cards(page, "#thread", self.card_titles, True, f"{width}px {surface}", f"{surface}-{width}", kinds=("work",))
+                        # A task made from a thread's message is the conversation's task card under that message, and a decision made from
+                        # a reply is its card among the replies; the messages carry no chip of them (#1424, design L1059).
+                        expect(page.locator("#thread .message-bubble .ws-chip")).to_have_count(0)
+                        self.assert_thread_task_card(page, self.card_titles["work"], "Doing", f"{width}px {surface}")
                         decision = page.locator('#thread .convo-object[data-object-kind="decision.proposed"]').filter(has_text=self.card_titles["decision"])
                         expect(decision.locator(".convo-notice__card")).to_have_count(1)
                         expect(decision.locator(".convo-object__state")).to_have_text("Accepted")
@@ -493,7 +444,7 @@ class MessageAlignment(unittest.TestCase):
         # 1184, 1440 with the panel 754, 1920 with the panel 1174 (the column is the 760 px cap in both), tablet 820 748, 1024 768.
         # The panel decides the first three, so no width can; the width is the rest, with the threshold at 760, the column's cap.
         # Since #1424 the stream draws a task and a decision made from a message as their one card, never a chip in the message, so these
-        # widths now check that card; the chip's forms are checked where chips still show (the thread, test_03b).
+        # widths now check that card; a thread draws its tasks as the same card under their message (test_03b).
         stream = f"/projects/{self.cards_project}"
         beside = f"/projects/{self.cards_project}/conversations/{self.cards['id']}"
         for name, width, height, path, narrow in (
@@ -592,26 +543,53 @@ class MessageAlignment(unittest.TestCase):
             else:
                 self.assertTrue(toolbar["x"] + toolbar["width"] <= b["x"] or b["x"] + b["width"] <= toolbar["x"], "hover controls stay beside the bubble")
 
+    def assert_thread_task_card(self, page, title, state, where):
+        """A task in a thread is the conversation's task card under its message: the whole title on a computer (at most two lines on a
+        phone), the state word whole and inside the card, at its right edge."""
+        card = page.locator("#thread .msg-tasks__card").filter(has_text=title)
+        expect(card).to_have_count(1)
+        card.scroll_into_view_if_needed()
+        measured = card.evaluate("""card => {
+          const box = (el) => { const r = el.getBoundingClientRect(); return {left: r.left, right: r.right, top: r.top, bottom: r.bottom}; };
+          const title = card.querySelector('.convo-notice__title'), state = card.querySelector('.convo-object__state');
+          return {title: title.textContent, state: state.innerText, stateFits: state.scrollWidth <= state.clientWidth + 1, inBubble: !!card.closest('.message-bubble'),
+            lines: Math.round(title.getBoundingClientRect().height / parseFloat(getComputedStyle(title).lineHeight)), cut: title.scrollHeight > title.clientHeight + 1,
+            phone: matchMedia('(max-width: 680px)').matches, card: box(card), titleBox: box(title), stateBox: box(state)};
+        }""")
+        label = f"{where}: {measured}"
+        self.assertEqual(measured["title"], title, label)
+        self.assertFalse(measured["inBubble"], f"{label}: the card is under the message, not in its bubble")
+        if measured["phone"]:
+            self.assertLessEqual(measured["lines"], 2, f"{label}: at most two lines on a phone")
+        else:
+            self.assertFalse(measured["cut"], f"{label}: the whole title on a computer")
+        self.assertTrue(measured["stateFits"], f"{label}: the state is cut")
+        self.assertIn(state, measured["state"], label)
+        for part in ("titleBox", "stateBox"):
+            self.assertGreaterEqual(measured[part]["left"], measured["card"]["left"] - 0.5, f"{label}: {part} inside the card")
+            self.assertLessEqual(measured[part]["right"], measured["card"]["right"] + 0.5, f"{label}: {part} inside the card")
+        self.assertFalse(intersects(measured["titleBox"], measured["stateBox"]), f"{label}: the state never covers the title")
+
     def assert_reference_width(self, page, row):
-        card = row.locator(".message-bubble .ws-chip").first
+        """A one-word message keeps a readable width for what was made from it: in a thread the task is its card under the message
+        (#1424, design L1059), as wide as a readable card, not the one word's width."""
+        card = row.locator(".msg-tasks__card").first
         expect(card).to_be_visible()
         row.scroll_into_view_if_needed()
         measured = card.evaluate("""card => {
-          const bubble = card.closest('.message-bubble'), b = bubble.getBoundingClientRect(), c = card.getBoundingClientRect();
-          const style = getComputedStyle(bubble), title = card.querySelector('.ws-chip__t'), state = card.querySelector('.ws-chip__k');
-          return {bubble:b.width, card:c.width, available:bubble.parentElement.clientWidth,
-            padding:parseFloat(style.paddingLeft)+parseFloat(style.paddingRight),
-            titleLines:getComputedStyle(title).whiteSpace, ellipsis:getComputedStyle(title).textOverflow,
-            stateWidth:state.getBoundingClientRect().width, right:b.right, left:b.left};
+          const c = card.getBoundingClientRect(), row = card.closest('[data-message-id]'), title = card.querySelector('.convo-notice__title');
+          const rs = getComputedStyle(row), ps = getComputedStyle(row.parentElement);
+          return {card: c.width, row: row.getBoundingClientRect().width, column: row.clientWidth - parseFloat(rs.paddingLeft) - parseFloat(rs.paddingRight),
+            available: row.parentElement.clientWidth - parseFloat(ps.paddingLeft) - parseFloat(ps.paddingRight), inBubble: !!card.closest('.message-bubble'),
+            stateFits: (() => { const k = card.querySelector('.convo-object__state'); return k.scrollWidth <= k.clientWidth + 1; })(),
+            titleShown: title.clientWidth};
         }""")
-        self.assertGreaterEqual(measured["bubble"], min(300, measured["available"]) - 1, measured)
-        self.assertAlmostEqual(measured["card"], measured["bubble"] - measured["padding"], delta=1, msg=str(measured))
-        self.assertEqual(measured["titleLines"], "nowrap")
-        self.assertEqual(measured["ellipsis"], "ellipsis")
-        self.assertGreater(measured["stateWidth"], 12)
-        self.assertGreaterEqual(measured["left"], 0)
-        self.assertLessEqual(measured["right"], page.viewport_size["width"])
-        self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.viewport_size["width"])
+        self.assertFalse(measured["inBubble"], measured)
+        # The message keeps a readable width (as one with a chip in its bubble did), and the card fills its column.
+        self.assertGreaterEqual(measured["row"], min(300, measured["available"]) - 1, measured)
+        self.assertGreaterEqual(measured["card"], measured["column"] - 1, measured)
+        self.assertTrue(measured["stateFits"], measured)
+        self.assertGreater(measured["titleShown"], 100, measured)
 
     # ------------------------------------------------------------------ #591: message toolbars, on a computer
 

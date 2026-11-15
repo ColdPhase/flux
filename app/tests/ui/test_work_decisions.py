@@ -310,7 +310,7 @@ class WorkDecisionsJourney(unittest.TestCase):
         shot(page, "work-phone-390-details")
         # The task took the thread's place in the one sheet; the way back leads to the reply it was made from.
         sheet.get_by_role("button", name="Thread", exact=True).tap()
-        expect(message.get_by_role("button", name=re.compile(r"^Task #\d+: " + re.escape(FINDING_TASK) + "$"))).to_be_visible()
+        expect(message.get_by_role("button", name=re.compile(r"^Open task #\d+ " + re.escape(FINDING_TASK) + "$"))).to_be_visible()
         view_tab(page, "Tasks", tap=True)
         expect(page.get_by_role("region", name=re.compile("^To do"))).to_contain_text(FINDING_TASK)
         shot(page, "tasks-phone-390")
@@ -466,7 +466,7 @@ class WorkDecisionsJourney(unittest.TestCase):
         self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.viewport_size["width"], f"{label}: no sideways scroll")
         # Linked work and decisions stay inside their column and the viewport on both sides.
         for column, pane in ((".project-convo__in", stream), (".thread__in", feed)):
-            # A task made from a message is its card in the stream and a chip in the thread (#1424).
+            # A task made from a message is its card: in the stream, and under its message in the thread (#1424, design L1059).
             chips = page.locator(f"{column} :is(.project-convo__message .ws-chip, .convo-notice__card)")
             self.assertGreater(chips.count(), 0, f"{label}: {column} has linked objects")
             for index in range(chips.count()):
@@ -503,7 +503,7 @@ class WorkDecisionsJourney(unittest.TestCase):
                 self.assertLessEqual(acts["y"] + acts["height"], bubble["y"] + 14, f"{key}: in the bubble's top corner")
         shot(page, "conversation-author-column-1440")
         # Details take the thread's place in the one panel, with the way back to the thread (#488).
-        page.locator(f"#message-{self.messages['finding']}").get_by_role("button", name=re.compile(r"^Task #\d+: ")).first.click()
+        page.locator(f"#message-{self.messages['finding']}").get_by_role("button", name=re.compile(r"^Open task #\d+ ")).first.click()
         expect(page.locator("#details").locator(".wd[data-detail-kind='work']")).to_be_visible()
         page.locator("#details").get_by_role("button", name="Thread", exact=True).click()
         expect(page.locator("#details .thread__in")).to_be_visible()
