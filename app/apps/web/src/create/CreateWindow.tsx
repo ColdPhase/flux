@@ -69,37 +69,12 @@ export function CreateHost({ request, onClose, onTask }: { request: CreateReques
   const [chosen, setChosen] = useState<{ request: CreateRequest | null; kind: Shown; name?: string }>({ request: null, kind: 'task' });
   const kind = chosen.request === request ? chosen.kind : opening;
   const navigate = useNavigate();
-  const kinds = startsSpaces(workspace) ? KINDS : KINDS.filter((item) => item.id !== 'space');
-  const prefix = useId();
-  // The text the window carries (CreateBody's), read when Space is chosen: it becomes the new space's name.
-  const carriedTextRef = useRef('');
-  // A pointer on a tab goes on to its text, so typing continues there; the arrow keys keep focus on the tabs. New space puts it in its Name.
-  const pointerOnTab = (event: MouseEvent) => {
-    const tab = event.detail > 0 ? (event.target as HTMLElement).closest<HTMLElement>('[role="tab"]')?.dataset.tab : undefined;
-    if (tab && tab !== 'space') requestAnimationFrame(() => document.getElementById(`${prefix}-${tab}-field`)?.focus());
-  };
-  const choose = (id: string) => {
-    if (!request) return;
-    if (id === 'space') setChosen({ request, kind: 'space', name: oneLine(carriedTextRef.current).slice(0, WORK_LIMITS.title) });
-    else setChosen({ request, kind: id as Kind });
-  };
   return (
     <Overlay open={request !== null} onClose={onClose} placement={phone ? 'bottom' : 'center'} label={KINDS.find((item) => item.id === kind)!.name}
       className={kind === 'space' ? 'newspace-win' : 'create'}>
-      {/* One head for every tab, Space included (persona round 26): the tabs stay where they are when New space shows, so the person can go
-          back to Task (or on from the keyboard) without the window changing under them, and focus stays on the tab they moved to. */}
-      {request ? (
-        <div className="create__in">
-          <div className="create__head ui-panel__head">
-            <div className="create__kinds" onClick={pointerOnTab}>
-              <Tabs variant="segmented" className="create__tabs" label="Create" items={kinds} value={kind} panelIdPrefix={kind === 'space' ? undefined : prefix} onChange={choose} />
-            </div>
-            <button type="button" className="create__x" aria-label="Close" onClick={onClose}><Icon name="x" size={18} /></button>
-          </div>
-          {kind === 'space'
-            ? <NewSpaceForm titled={false} initialName={chosen.request === request && chosen.name !== undefined ? chosen.name : oneLine(request.title ?? '').slice(0, WORK_LIMITS.title)} onCancel={onClose} onCreated={(project) => { if (!touch) awaitField(); onClose(); void navigate(`/projects/${project.id}`); }} />
-            : <CreateBody request={request} phone={phone} kind={kind} prefix={prefix} carriedTextRef={carriedTextRef} onClose={onClose} onTask={onTask} />}
-        </div>) : null}
+      {request ? (kind === 'space'
+        ? <NewSpaceForm initialName={chosen.request === request && chosen.name !== undefined ? chosen.name : oneLine(request.title ?? '').slice(0, WORK_LIMITS.title)} onCancel={onClose} onCreated={(project) => { if (!touch) awaitField(); onClose(); void navigate(`/projects/${project.id}`); }} />
+        : <CreateBody request={request} phone={phone} kind={kind} onKind={(next) => setChosen({ request, kind: next })} onSpace={(name) => setChosen({ request, kind: 'space', name })} onClose={onClose} onTask={onTask} />) : null}
     </Overlay>
   );
 }
@@ -116,13 +91,15 @@ interface Carried {
 /** A panel's ids and whether its tab is the selected one. */
 interface PanelIds { id: string; tab: string; field: string; active: boolean }
 
-function CreateBody({ request, phone, kind, prefix, carriedTextRef, onClose, onTask }: { request: CreateRequest; phone: boolean; kind: Kind; prefix: string; carriedTextRef: { current: string }; onClose: () => void; onTask?: (projectId: string) => void }) {
-  const { me, projects } = useShellData();
+function CreateBody({ request, phone, kind, onKind, onSpace, onClose, onTask }: { request: CreateRequest; phone: boolean; kind: Kind; onKind: (kind: Kind) => void; onSpace: (name: string) => void; onClose: () => void; onTask?: (projectId: string) => void }) {
+  const { me, projects, workspace } = useShellData();
+  const kinds = startsSpaces(workspace) ? KINDS : KINDS.filter((item) => item.id !== 'space');
   const location = useLocation();
   const here = location.pathname.match(/^\/projects\/([^/]+)/)?.[1];
   const known = (id: string | undefined) => (id && projects.some((project) => project.id === id) ? id : undefined);
   // The space asked for, the one you are in, else the one you last worked in, else the first of the list (#1438 point 6).
   const [projectId, setProjectId] = useState(() => known(request.projectId) ?? known(here) ?? known(lastSpace(me.user.id) ?? undefined) ?? projects[0]?.id ?? '');
+  const prefix = useId();
   // One text for every tab: a task's title, a thought, a message, a decision, a project's name (#521). A blank window keeps
   // it as this project's draft on this device, so closing the window or switching tabs never loses it; a window opened
   // with text (a message, ⌘K) holds it for this opening.
@@ -145,15 +122,26 @@ function CreateBody({ request, phone, kind, prefix, carriedTextRef, onClose, onT
     setProjectId(id);
   };
   const ids = (id: Kind): PanelIds => ({ id: `${prefix}-${id}`, tab: `${prefix}-tab-${id}`, field: `${prefix}-${id}-field`, active: kind === id });
-  useEffect(() => { carriedTextRef.current = carried.text; });
+  // A pointer on a tab goes on to its text, so typing continues there; the arrow keys keep focus on the tabs.
+  const pointerOnTab = (event: MouseEvent) => {
+    const tab = event.detail > 0 ? (event.target as HTMLElement).closest<HTMLElement>('[role="tab"]')?.dataset.tab : undefined;
+    if (tab) requestAnimationFrame(() => document.getElementById(`${prefix}-${tab}-field`)?.focus());
+  };
   const shared = { phone, carried, projectId, onProject: changeProject, onClose };
   return (
-    <>
+    <div className="create__in">
+      <div className="create__head ui-panel__head">
+        <div className="create__kinds" onClick={pointerOnTab}>
+          <Tabs variant="segmented" className="create__tabs" label="Create" items={kinds} value={kind} panelIdPrefix={prefix}
+            onChange={(id) => { if (id === 'space') onSpace(oneLine(carried.text).slice(0, WORK_LIMITS.title)); else onKind(id as Kind); }} />
+        </div>
+        <button type="button" className="create__x" aria-label="Close" onClick={onClose}><Icon name="x" size={18} /></button>
+      </div>
       <TaskForm {...shared} ids={ids('task')} request={request} prefilled={prefilled} onTask={onTask} />
       <ThoughtForm {...shared} ids={ids('thought')} />
       <DecisionForm {...shared} ids={ids('decision')} request={request} />
       <PageForm {...shared} ids={ids('page')} />
-    </>
+    </div>
   );
 }
 
@@ -295,10 +283,9 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
   const attempt = useRef<{ payload: string; key: string } | null>(null);
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  // A title made from a message is its first clause, selected, so typing replaces it (#763 B5). Once, on open; not when the arrow keys came
-  // back from Space along the tabs, which keep the focus.
+  // A title made from a message is its first clause, selected, so typing replaces it (#763 B5). Once, on open.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { if (document.activeElement?.closest('[role="tab"]')) return; titleRef.current?.focus(); if (request.sources?.some((source) => source.ref.type === 'message')) titleRef.current?.select(); }, []);
+  useEffect(() => { titleRef.current?.focus(); if (request.sources?.some((source) => source.ref.type === 'message')) titleRef.current?.select(); }, []);
 
   useEffect(() => {
     if (!projectId) return undefined;

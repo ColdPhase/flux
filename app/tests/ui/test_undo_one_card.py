@@ -26,7 +26,7 @@ from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_play
 
 from create_window import dialog, submit_button, title_field, window
 from inbox_items import open_item
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, press_shortcut, shot, start_forwarder
 
 PASSWORD = "one card and a calm undo"
 STAMP = int(time.time() * 1000)
@@ -340,7 +340,7 @@ class UndoAndOneCard(unittest.TestCase):
                 page.get_by_role("navigation", name="Space views").get_by_role("tab", name=re.compile(r"^Tasks")).click()
                 expect(page).to_have_url(re.compile(r"/tasks$"))
                 expect(page.locator(".ui-toast").filter(has_text="created")).to_have_count(0, timeout=3000)
-                page.locator("body").press("z")
+                press_shortcut(page, "z")
                 page.wait_for_timeout(1500)
                 state = (self.work(page, made["id"]).get("lifecycle") or {}).get("state")
                 self.assertNotEqual(state, "creation_reverted", "Z in another place undid nothing")

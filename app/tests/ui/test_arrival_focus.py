@@ -10,7 +10,7 @@ linked message (scrollTop 828 → 0) and focus on the body. The link's place app
 P2 #6: the task panel's Status (and Owner) picked from the keyboard dropped focus to the body while the change saved, and Esc then left the
 panel open. Focus stays on the value, and Esc closes the panel.
 
-P3: Create space keeps Create's tabs and lands in the new space's composer; Copy link gives focus back to ⋯; Esc from a new task's panel
+P3: Create space lands in the new space's composer; Copy link gives focus back to ⋯; Esc from a new task's panel
 goes to its card; A on the Inbox's last decision leaves focus on the empty Inbox's heading; Esc from a thread marks its message plainly.
 
 The engine is FLUX_UI_BROWSER (chromium or webkit). Screenshots (arrival-focus-*.png) go to FLUX_UI_SCREENSHOTS when set.
@@ -25,7 +25,7 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, UPSTREAM, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, UPSTREAM, press_shortcut, start_forwarder
 from test_settings import UI_BROWSER, shot
 
 PASSWORD = "the cursor goes where you write"
@@ -261,27 +261,16 @@ class ArrivalFocus(unittest.TestCase):
 
     # ---------------------------------------------------------------- P3: focus after Create space, Copy link, a new task, A, a thread
 
-    def test_04_create_space_keeps_the_tabs_and_lands_in_the_new_space_s_composer(self) -> None:
+    def test_04_create_space_lands_in_the_new_space_s_composer(self) -> None:
         page = self.page()
         page.goto(f"/projects/{self.ids['shared']}")
         expect(page.locator("#project-composer")).to_be_focused()
-        page.locator("#project-composer").blur()
-        page.locator("body").press("c")
+        press_shortcut(page, "c")
         dialog = page.get_by_role("dialog", name="New task")
         expect(dialog).to_be_visible()
         dialog.get_by_role("tab", name="Space").click()
         space = page.get_by_role("dialog", name="New space")
-        expect(space.get_by_role("tablist", name="Create").get_by_role("tab")).to_have_text(["Task", "Thought", "Decision", "Page", "Space"])
-        expect(space.get_by_role("tab", name="Space")).to_have_attribute("aria-selected", "true")
         expect(space.get_by_role("textbox", name="Space name")).to_be_focused()
-        shot(page, "arrival-focus-new-space-tabs")
-        # The arrow keys go back along the same tabs, and focus stays on them.
-        space.get_by_role("tab", name="Space").focus()
-        page.keyboard.press("ArrowLeft")
-        expect(page.get_by_role("dialog", name="New page").get_by_role("tab", name="Page")).to_be_focused()
-        page.keyboard.press("ArrowRight")
-        page.keyboard.press("Enter")
-        space = page.get_by_role("dialog", name="New space")
         name = f"Bread rota {uuid.uuid4().hex[:4]}"
         space.get_by_role("textbox", name="Space name").fill(name)
         space.get_by_role("button", name="Create space").click()
@@ -291,6 +280,7 @@ class ArrivalFocus(unittest.TestCase):
         expect(page.locator("#project-composer")).to_be_focused()
         expect(page.locator("#project-composer")).to_have_value(SENTENCE)
         expect(page.get_by_role("dialog")).to_have_count(0)
+        shot(page, "arrival-focus-new-space")
 
     def test_05_copy_link_gives_focus_back_to_more_actions(self) -> None:
         page = self.page()
@@ -307,8 +297,7 @@ class ArrivalFocus(unittest.TestCase):
         page = self.page()
         page.goto(f"/projects/{self.ids['long']}")
         expect(page.locator("#project-composer")).to_be_focused()
-        page.locator("#project-composer").blur()
-        page.locator("body").press("c")
+        press_shortcut(page, "c")
         title = f"Order a spare gateway {uuid.uuid4().hex[:4]}"
         page.get_by_role("dialog", name="New task").get_by_role("textbox", name="Title").fill(title)
         page.keyboard.press("Enter")

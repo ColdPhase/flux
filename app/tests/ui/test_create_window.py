@@ -22,7 +22,7 @@ from message_gestures import open_message_menu
 from create_window import create_other, dialog, kind_tab, linked_labels, open_create as open_new, open_from_tasks, submit_button, title_field, window
 from native_work_performance import TASKS_READY, close_create, draft_value, open_create
 from touch_targets import has_minimum_touch_size
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, press_shortcut, shot, start_forwarder
 
 PASSWORD = "one way to create"
 EMAIL = f"ada.create+{int(time.time() * 1000)}@example.test"
@@ -195,7 +195,8 @@ class CreateWindow(unittest.TestCase):
                     expect(page).not_to_have_url(re.compile(r"/tasks"))
                     expect(page.get_by_role("heading", level=1, name="Community garden sensors")).to_be_visible()
                     page.wait_for_timeout(300)  # the shortcut is bound again for the new place once it is shown
-                    page.keyboard.press("c")
+                    # The space's composer has the cursor (persona round 26): the person leaves it for the shortcut.
+                    press_shortcut(page, "c")
                     expect(dialog(page)).to_be_visible()
                     expect_value(dialog(page).get_by_role("combobox", name="Space"), self.ids["project"])
                     page.keyboard.press("Escape")
@@ -651,7 +652,7 @@ class CreateWindow(unittest.TestCase):
         """C on a project's conversation (or `path`): the window opens on Task with its title focused."""
         page.goto(path or f"/projects/{self.ids['project']}")
         expect(page.get_by_role("heading", level=1, name="Community garden sensors")).to_be_visible()
-        page.locator("body").press("c")
+        press_shortcut(page, "c")
         expect(title_field(page)).to_be_focused()
 
     def test_17_the_kinds_are_tabs_in_one_window_and_the_title_goes_with_the_person(self) -> None:
@@ -725,7 +726,7 @@ class CreateWindow(unittest.TestCase):
         # A blank window keeps the text as this project's draft: closing never loses it.
         page.keyboard.press("Escape")
         expect(window(page)).to_have_count(0)
-        page.locator("body").press("c")
+        press_shortcut(page, "c")
         expect(title_field(page)).to_have_value(f"{text} today")
         expect(kind_tab(page, "Task")).to_have_attribute("aria-selected", "true")
 
@@ -748,7 +749,7 @@ class CreateWindow(unittest.TestCase):
         self.assertEqual([item["title"] for item in maps], ["My map"])
         first = self.api(page, "GET", f"/api/v1/sketches/{maps[0]['id']}", status=200)
         self.assertEqual([(item["text"]) for item in first["thoughts"] if item["text"] == text], [text])
-        page.locator("body").press("c")
+        press_shortcut(page, "c")
         create_other(page, "Thought")
         second = f"A second thought for My map {uuid.uuid4().hex[:6]}"
         page.get_by_role("dialog", name="New thought").get_by_role("textbox", name="Thought", exact=True).fill(second)
@@ -760,7 +761,7 @@ class CreateWindow(unittest.TestCase):
         self.assertNotEqual(placed[text], placed[second], "each thought has its own place")
         self.assertEqual(len(self.api(page, "GET", f"/api/v1/workspaces/{self.ids['workspace']}/sketches?scope=private&limit=100", status=200)["items"]), 1, "still one map")
         # What it was made from is done with: the next window starts blank.
-        page.locator("body").press("c")
+        press_shortcut(page, "c")
         expect(title_field(page)).to_have_value("")
         page.keyboard.press("Escape")
 
@@ -848,7 +849,7 @@ class CreateWindow(unittest.TestCase):
         self.assertEqual(len([item for item in self.work(page) if item["title"] == title]), 1)
         # The same guard holds in another tab.
         posts.clear()
-        page.locator("body").press("c")
+        press_shortcut(page, "c")
         title_field(page).fill(f"Proposed once {uuid.uuid4().hex[:6]}")
         create_other(page, "Decision")
         page.evaluate(twice)
@@ -996,7 +997,7 @@ class CreateWindow(unittest.TestCase):
                         page.get_by_role("button", name="Create", exact=True).tap()
                     else:
                         expect(page.get_by_role("heading", level=1, name="Community garden sensors")).to_be_visible()
-                        page.locator("body").press("c")
+                        press_shortcut(page, "c")
                     expect(title_field(page)).to_be_visible()
                     title_field(page).fill("Order two spare capacitive probes")
                     shot(page, f"521-create-task-{size}-{scheme}-{engine}")
@@ -1030,7 +1031,7 @@ class CreateWindow(unittest.TestCase):
                     page.get_by_role("button", name="Create", exact=True).tap()
                 else:
                     expect(page.get_by_role("heading", level=1, name="Community garden sensors")).to_be_visible()
-                    page.locator("body").press("c")
+                    press_shortcut(page, "c")
                 expect(title_field(page)).to_be_visible()
                 title_field(page).fill("Order two spare capacitive probes")
                 boxes: dict[str, dict] = {}

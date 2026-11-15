@@ -15,7 +15,7 @@ from playwright.sync_api import Browser, Page, expect, sync_playwright
 
 from app_select import expect_value
 
-from test_app_shell import DESKTOP, ORIGIN, UPSTREAM, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, UPSTREAM, press_shortcut, shot, start_forwarder
 
 PASSWORD = "one calm sidebar"
 EMAIL = f"ada.shell+{int(time.time() * 1000)}@example.test"
@@ -137,7 +137,7 @@ class ComputerShell(unittest.TestCase):
         page = self.page()
         page.goto("/")
         expect(self.sidebar(page).get_by_role("button", name=re.compile("^New"))).to_be_visible()
-        page.locator("body").press("c")
+        press_shortcut(page, "c")
         window = page.get_by_role("dialog", name="New task")
         expect(window).to_be_visible()
         # New opens the one Create window (#345) on Task; Thought, Decision, Page and Space are its other tabs, the same five as the phone's "+" (F-026 S3, #867).
@@ -149,7 +149,7 @@ class ComputerShell(unittest.TestCase):
         expect(window).to_have_count(0)
         page.goto(f"/projects/{self.ids['projects'][0]}")
         expect(page.get_by_role("heading", level=1, name="Community garden sensors")).to_be_visible()
-        page.locator("body").press("c")
+        press_shortcut(page, "c")
         expect(window).to_be_visible()
         expect_value(window.get_by_role("combobox", name="Space"), self.ids["projects"][0])
 
@@ -158,8 +158,8 @@ class ComputerShell(unittest.TestCase):
         page = self.page()
         page.goto("/")
         expect(self.sidebar(page).get_by_role("button", name=re.compile("^New"))).to_be_visible()
-        page.locator("body").press("g")
-        page.locator("body").press("i")
+        press_shortcut(page, "g")
+        press_shortcut(page, "i")
         expect(page).to_have_url(re.compile(r"/inbox$"))
         expect(self.sidebar(page).get_by_role("navigation", name="Places").get_by_role("link", name=re.compile("^Inbox"))).to_have_attribute("aria-current", "page")
 
@@ -207,7 +207,7 @@ class ComputerShell(unittest.TestCase):
         row = page.get_by_role("button", name=re.compile("Order the soil probes")).first
         expect(row).to_be_visible()
         # Without an Undo toast Z does nothing.
-        page.locator("body").press("z")
+        press_shortcut(page, "z")
         expect(page.locator(".ui-toast")).to_have_count(0)
         expect(row).to_be_visible()
         row.focus()

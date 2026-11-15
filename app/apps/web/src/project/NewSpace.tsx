@@ -23,8 +23,7 @@ import { useCompanyCandidates, useNewProject } from './newProject';
  * password (twice) and for the recovery code to be downloaded before Create: the browser makes the code, the person keeps the file, and
  * the server sees it once to wrap the key with it. Nothing typed or made here is kept in the browser.
  */
-/** `titled={false}`: the window's head (Create's tabs and Close) stands above the form, so its own head is only the name for assistive tech. */
-export function NewSpaceForm({ initialName = '', titled = true, onCancel, onCreated }: { initialName?: string; titled?: boolean; onCancel: () => void; onCreated: (project: Project) => void }) {
+export function NewSpaceForm({ initialName = '', onCancel, onCreated }: { initialName?: string; onCancel: () => void; onCreated: (project: Project) => void }) {
   const { space, allowed, busy, error, create, createEncrypted } = useNewProject();
   const { candidates, members, loading, companyName } = useCompanyCandidates();
   const { me } = useShellData();
@@ -114,12 +113,10 @@ export function NewSpaceForm({ initialName = '', titled = true, onCancel, onCrea
   const needsCode = encrypted && !downloaded;
   return (
     <form className="newspace newspace--pinned" aria-labelledby="newspace-title" noValidate onSubmit={(event) => void submit(event)}>
-      {titled ? (
-        <div className="newspace__head">
-          <h2 id="newspace-title">New space</h2>
-          <button type="button" className="newspace__x" aria-label="Close" onClick={onCancel}><Icon name="x" size={18} /></button>
-        </div>
-      ) : <h2 id="newspace-title" className="ui-vh">New space</h2>}
+      <div className="newspace__head">
+        <h2 id="newspace-title">New space</h2>
+        <button type="button" className="newspace__x" aria-label="Close" onClick={onCancel}><Icon name="x" size={18} /></button>
+      </div>
       <div className="newspace__body">
       <Input ref={nameRef} label="Name" aria-label="Space name" placeholder="e.g. Volunteer sign-up app" value={name} onChange={(event) => { setName(event.target.value); setMissing(false); }}
         maxLength={200} error={missing ? 'Give the space a name.' : undefined} />

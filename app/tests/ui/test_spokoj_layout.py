@@ -23,7 +23,7 @@ from playwright.sync_api import Page, expect, sync_playwright
 from urllib.parse import urlsplit
 
 from phone_audit import TEXT_SIZE_SCRIPT
-from test_app_shell import ORIGIN, UPSTREAM, panel_task, shot, start_forwarder
+from test_app_shell import ORIGIN, UPSTREAM, panel_task, press_shortcut, shot, start_forwarder
 
 PASSWORD = "a calm one row header"
 UI_BROWSER = os.environ.get("FLUX_UI_BROWSER", "chromium")
@@ -351,7 +351,7 @@ class SpokojLayout(unittest.TestCase):
         page = self.page(COMPUTER)
         page.goto(f"/projects/{self.project_id}")
         collapse = self.box(page.get_by_role("button", name="Collapse sidebar"))
-        page.locator("body").press("[")
+        press_shortcut(page, "[")
         rail = page.locator(".side--rail")
         expect(rail).to_be_visible()
         names = rail.locator("a, button").evaluate_all("els => els.map(el => el.getAttribute('aria-label') || el.getAttribute('title'))")
@@ -361,7 +361,7 @@ class SpokojLayout(unittest.TestCase):
         self.assertEqual(positions, sorted(positions), f"the sidebar's order, the account (the one way to Settings, #1419) last: {names}")
         expand = self.box(rail.get_by_role("button", name="Expand sidebar"))
         self.assertAlmostEqual(expand["y"], collapse["y"], delta=1, msg="the toggle stays in the top row")
-        page.locator("body").press("[")
+        press_shortcut(page, "[")
         expect(page.locator(".side--rail")).to_have_count(0)
         self.assert_same_place({"toggle": collapse}, {"toggle": self.box(page.get_by_role("button", name="Collapse sidebar"))}, "1440 expanded again")
         # A tablet: the rail's toggle opens the sidebar as a drawer whose close control is in the same top row.
