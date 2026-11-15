@@ -141,11 +141,12 @@ class ArrivalFocus(unittest.TestCase):
     def test_01_a_sentence_typed_at_once_after_each_arrival_lands_in_the_composer(self) -> None:
         page = self.page()
         page.goto("/")
-        places = page.get_by_role("navigation", name="Places")
-        expect(places.get_by_role("link", name=SHARED)).to_be_visible()
+        spaces = page.get_by_role("navigation", name="Spaces")
+        messages = page.get_by_role("navigation", name="Messages")
+        expect(spaces.get_by_role("link", name=re.compile(SHARED))).to_be_visible()
 
         # The sidebar's space.
-        places.get_by_role("link", name=SHARED).click()
+        spaces.get_by_role("link", name=re.compile(SHARED)).click()
         page.keyboard.type(SENTENCE)
         self.assert_typed_into(page, "project-composer", "the sidebar's space")
 
@@ -159,14 +160,14 @@ class ArrivalFocus(unittest.TestCase):
         shot(page, "arrival-focus-new-message")
 
         # The sidebar's direct message, from another place.
-        places.get_by_role("link", name=SHARED).click()
+        spaces.get_by_role("link", name=re.compile(SHARED)).click()
         expect(page.locator("#project-composer")).to_be_focused()
-        places.get_by_role("link", name="Piotr Nowak").click()
+        messages.get_by_role("link", name=re.compile("Piotr Nowak")).click()
         page.keyboard.type(SENTENCE)
         self.assert_typed_into(page, "dm-composer", "the sidebar's direct message")
 
         # A person's name in a message of the space.
-        places.get_by_role("link", name=SHARED).click()
+        spaces.get_by_role("link", name=re.compile(SHARED)).click()
         name = page.locator(FEED).get_by_role("link", name="Piotr Nowak").first
         expect(name).to_be_visible()
         name.click()
@@ -285,7 +286,7 @@ class ArrivalFocus(unittest.TestCase):
         space.get_by_role("textbox", name="Space name").fill(name)
         space.get_by_role("button", name="Create space").click()
         expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}$"))
-        expect(page.get_by_role("navigation", name="Places").get_by_role("link", name=name)).to_be_visible()
+        expect(page.get_by_role("navigation", name="Spaces").get_by_role("link", name=re.compile(name))).to_be_visible()
         page.keyboard.type(SENTENCE)
         expect(page.locator("#project-composer")).to_be_focused()
         expect(page.locator("#project-composer")).to_have_value(SENTENCE)
