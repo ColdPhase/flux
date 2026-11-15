@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ComponentType, type ReactNode } from 'react';
-import { useLocation, useNavigate, useRevalidator } from 'react-router';
+import { useLocation, useNavigate, useNavigationType, useRevalidator } from 'react-router';
 import type { Conversation, ConversationMessage, ConversationRoot, NativeWorkRow, ObjectNotice } from '@flux/contracts';
 import type { MessageWorkPreview } from '../work/message-associations';
 import { ApiError } from '../api/client';
 import { MEDIA, PanelMeta, useMediaQuery } from '../ui';
-import { awaitField, focusField } from '../ui/keys';
+import { awaitField, focusComposerOnArrival, focusField } from '../ui/keys';
 import { ThreadFollow } from '../notifications/ThreadFollow';
 import { agentAuthorOwner, useAgentOwners } from '../agents/owners';
 import { useRegisterLiveHere } from '../live/LiveProvider';
@@ -152,11 +152,14 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
     if (backToStream && !options?.keepPanel) navigate(-1);
     else navigate(`/projects/${project.id}`, { replace: true, state: { fromStream: true, ...(options?.keepPanel ? { keepPanel: true } : {}), ...(origin ? { origin } : {}) } satisfies NavState });
   }, [navigate, project.id, root?.message.id, backToStream, origin, thread]);
-  // Closing gives focus back to the root's replies, where the person opened the thread.
+  // Closing gives focus back to the root's replies, where the person opened the thread. Not when the panel showed something else by then
+  // (a task opened from its card): the panel has given focus back to that card, and the root may be far from where the reader is (P2 #5).
   useEffect(() => {
     if (thread || !opener.current) return;
     const target = document.getElementById(`message-${opener.current}`);
     opener.current = null;
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && active !== document.body && active.isConnected && !active.closest('#details') && active.closest('.convo-notice, .convo-object')) return;
     (target?.querySelector<HTMLElement>('.convo-replies button') ?? target)?.focus({ preventScroll: true });
   }, [thread]);
 
@@ -191,6 +194,24 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
     // Only a new arrival (a navigation) asks for it, never a re-render; the thread is the one the address names.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.key, thread?.id]);
+  // Arriving here from anywhere else on a computer (the sidebar, Home, a search result for the space, Create space) puts the cursor in the
+  // composer (`focusComposerOnArrival`), never on the page body where a typed sentence would be shortcuts. Not what happens inside the
+  // conversation (a thread opened or closed here, Back to the stream: focus goes back to what opened it), a link that names a message (it is
+  // marked and takes the focus) or opens an object in the panel, and not on a touch screen, where a focused field raises the keyboard.
+  const navigationType = useNavigationType();
+  const openedAt = useRef({ key: location.key, project: project.id, moved: false });
+  useLayoutEffect(() => {
+    // Back or Forward within this space (closing a thread is one) is a move inside it; one that comes from another space, or opens this
+    // screen, is an arrival.
+    const seen = openedAt.current;
+    if (location.key !== seen.key) seen.moved = true;
+    const inside = seen.moved && project.id === seen.project;
+    seen.project = project.id;
+    if (touch || state?.focusComposer || state?.fromStream || state?.keepPanel || arrived || location.search || (inside && navigationType === 'POP')) return undefined;
+    return focusComposerOnArrival(thread ? 'thread-composer' : 'project-composer');
+    // Once per arrival (a navigation), never a re-render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.key]);
   // A link from a task's "Came from" names the task: the message it arrived at is tagged "Source of #1" for two seconds.
   const sourceOf = arrived && state?.sourceOf ? { messageId: arrived, label: `Source of ${state.sourceOf}` } : null;
   return (

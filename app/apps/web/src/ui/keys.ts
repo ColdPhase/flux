@@ -48,8 +48,17 @@ export function awaitField() {
   waitForField();
 }
 
-/** The wait itself; what was typed so far is kept (the field that a press asked for is focused by the page it opens, `focusField`). */
-function waitForField() {
+/** A field that was asked for will not come (opening the conversation failed): keys are shortcuts again, and what was kept is dropped. */
+export function stopAwaitingField() {
+  fieldDue = 0;
+  typed = '';
+}
+
+/**
+ * The wait itself; what was typed so far is kept (the field that a press asked for is focused by the page it opens, `focusField`). A page
+ * that a press led to and that opens the conversation itself (New message › a person's name) continues the press's wait with it.
+ */
+export function waitForField() {
   const now = performance.now();
   // Kept only within the wait it was typed in: a wait that ran out never hands its letters to a later field.
   if (now > keptUntil) typed = '';
@@ -92,7 +101,9 @@ export function focusField(id: string): () => void {
   const attempt = () => {
     const field = document.getElementById(id);
     if (field && document.activeElement !== field) field.focus({ preventScroll: true });
-    if ((field && document.activeElement === field) || !fieldOnItsWay()) { frame = 0; return; }
+    // The field has focus (perhaps it had it already, and no focus came to end the wait): keys are its own from now on.
+    if (field && document.activeElement === field) { frame = 0; fieldDue = 0; return; }
+    if (!fieldOnItsWay()) { frame = 0; return; }
     frame = requestAnimationFrame(attempt);
   };
   attempt();
@@ -101,6 +112,44 @@ export function focusField(id: string): () => void {
     cancelAnimationFrame(frame);
     fieldDue = 0;
   };
+}
+
+/**
+ * The one rule for arriving in a conversation on a computer (persona round 26, P2 #2): a space, a direct message or a thread opened from
+ * anywhere (the sidebar, New message, a person's name, Home) puts the cursor in its composer, as joining does. Focus left on the link that
+ * was followed, or on the page body, made a sentence typed at once into shortcuts: "can I swap my Friday shift…" in a new direct message
+ * opened Create with C and Enter made a task in a shared space. The view tabs keep their focus (Left and Right move along them, F-026 §4).
+ */
+export function focusComposerOnArrival(id: string): () => void {
+  const active = typeof document === 'undefined' ? null : document.activeElement;
+  if (active instanceof Element && active.closest('[role="tab"]')) return () => undefined;
+  return focusField(id);
+}
+
+/** The address of a conversation as a link names it: a space (its conversation), a thread, a direct message or an agent's chat. */
+const CONVERSATION_PATH = /^\/(?:projects\/[^/]+(?:\/conversations\/[^/]+)?|dm\/(?!new$)[^/]+|agents\/[^/]+)\/?$/;
+
+/**
+ * A press on a link to a conversation on a computer is a field on its way (`awaitField`): the conversation puts the cursor in its composer
+ * once it is drawn (`focusComposerOnArrival`), and what is typed in between (WebKit leaves focus on the page as the link is followed) is
+ * kept for it, never a shortcut. A link that names a message or opens an object (`#message-…`, `?open=…`) is not one: the message takes the
+ * focus. Neither is the direct message already open, which does not open again. A person's name (the direct message with them) is one.
+ * Returns the cleanup.
+ */
+export function watchConversationLinks(): () => void {
+  const onClick = (event: MouseEvent) => {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    if (window.matchMedia('(hover: none)').matches) return;
+    const link = event.target instanceof Element ? event.target.closest('a[href]') : null;
+    if (!(link instanceof HTMLAnchorElement) || (link.target && link.target !== '_self') || link.origin !== window.location.origin) return;
+    // A person's name opens the direct message with them (`/dm/new?with=…`), made at once when there is none.
+    const direct = link.pathname === '/dm/new' && new URLSearchParams(link.search).has('with');
+    if (!direct && (link.hash || link.search || !CONVERSATION_PATH.test(link.pathname))) return;
+    if (!link.pathname.startsWith('/projects/') && link.pathname === window.location.pathname) return;
+    awaitField();
+  };
+  document.addEventListener('click', onClick, true);
+  return () => document.removeEventListener('click', onClick, true);
 }
 
 /**

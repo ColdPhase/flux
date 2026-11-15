@@ -61,7 +61,8 @@ export interface MessageActionOptions {
 }
 
 /** `secondary` items sit below a line, apart from the rest (Edit and Delete, on a person's own messages). */
-export interface MenuItem { id: string; label: string; icon: IconName; run: () => void; disabled?: boolean; secondary?: boolean }
+/** `stays`: choosing it leaves the person where they were (a copy), so focus goes back to ⋯, never to the page's body. */
+export interface MenuItem { id: string; label: string; icon: IconName; run: () => void; disabled?: boolean; secondary?: boolean; stays?: boolean }
 
 /** The words Copy text puts on the clipboard: the message's body as plain text. */
 const wordsOf = (options: MessageActionOptions | DmActionOptions) => plainWords(options.kind === 'dm' ? options.body : options.message.body);
@@ -92,9 +93,9 @@ function useMenuItems(options: MessageActionOptions | DmActionOptions | null, to
     ...(touch && writable && !removed ? [{ id: 'task', label: 'Create task', icon: 'tasks' as const, run: onCreateWork }] : []),
     // A private message goes on My map, which does not depend on the conversation taking new messages (a 1:1 whose other person left).
     ...((writable || options.kind === 'dm') && onAddToMap && !removed ? [{ id: 'map', label: 'Add to map', icon: 'map' as const, run: onAddToMap }] : []),
-    { id: 'link', label: 'Copy link', icon: 'link' as const, run: () => copyToClipboard('link', linkOf(options)) },
+    { id: 'link', label: 'Copy link', icon: 'link' as const, run: () => copyToClipboard('link', linkOf(options)), stays: true },
     // Every message a person can read, not only their own; a deleted one has no words, and a message of files alone has none to copy.
-    ...(words && !removed ? [{ id: 'text', label: 'Copy text', icon: 'copy' as const, run: () => copyToClipboard('text', words) }] : []),
+    ...(words && !removed ? [{ id: 'text', label: 'Copy text', icon: 'copy' as const, run: () => copyToClipboard('text', words), stays: true }] : []),
     // Below a line, after Copy link, on the person's own messages only (#1006).
     ...(onEdit && !removed ? [{ id: 'edit', label: 'Edit', icon: 'edit' as const, run: onEdit, secondary: true }] : []),
     ...(onDelete && !removed ? [{ id: 'delete', label: 'Delete', icon: 'trash' as const, run: onDelete, secondary: true }] : []),
@@ -135,7 +136,7 @@ function MessageMenu({ items, anchor, onClose, label, popProps }: { items: MenuI
   const primary = items.filter((item) => !item.secondary);
   const secondary = items.filter((item) => item.secondary);
   const render = (item: MenuItem) => (
-    <button key={item.id} type="button" role="menuitem" className="msg-menu__item" data-action={item.id} disabled={item.disabled} onClick={() => { onClose(false); item.run(); }}>
+    <button key={item.id} type="button" role="menuitem" className="msg-menu__item" data-action={item.id} disabled={item.disabled} onClick={() => { onClose(item.stays === true); item.run(); }}>
       <Icon name={item.icon} size={18} />{item.label}
     </button>
   );

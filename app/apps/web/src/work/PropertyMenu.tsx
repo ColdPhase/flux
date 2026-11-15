@@ -125,11 +125,13 @@ export function PropertyMenu({ label, value, options, disabled, onChoose, onOpen
 
   return (
     <div className="wd-menu" ref={root}>
-      <button ref={button} type="button" className="wd-state" aria-label={label} aria-haspopup="menu" aria-expanded={open} aria-controls={open ? menuId : undefined} disabled={disabled}
-        onClick={() => (open ? setOpen(false) : openMenu())}
+      {/* While a choice saves the value is unavailable but keeps its focus (`aria-disabled`): a disabled button drops focus to the page,
+          where the next key is no longer the panel's and Esc did not close it (persona round 26, P2 #6). */}
+      <button ref={button} type="button" className="wd-state" aria-label={label} aria-haspopup="menu" aria-expanded={open} aria-controls={open ? menuId : undefined} aria-disabled={disabled || undefined}
+        onClick={() => { if (open) setOpen(false); else if (!disabled) openMenu(); }}
         // While the menu is open its keys work from the value too: a key pressed as the menu arrives, before focus is in it, still
         // closes it (Esc) or picks a state, and never reaches the panel.
-        onKeyDown={(event) => { if (open) { onMenuKey(event); return; } if (event.key === 'ArrowDown') { event.preventDefault(); openMenu(); } }}>
+        onKeyDown={(event) => { if (open) { onMenuKey(event); return; } if (event.key === 'ArrowDown' && !disabled) { event.preventDefault(); openMenu(); } }}>
         {children}<Icon name="chevron-down" size={14} className="wd-state__go" />
       </button>
       {sheet ? (
