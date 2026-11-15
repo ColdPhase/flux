@@ -187,7 +187,7 @@ export const VISIBLE_COLUMNS: Readonly<Record<string, Readonly<Record<string, st
   map_live_object_versions: { kind: 'an enum' },
   live_editing_intents: { actor_id: 'a principal id', kind: 'an enum', operation: 'an operation name' },
   notifications: { user_id: 'a user id', source_type: 'an enum', title: 'content-free for a sealed workspace (backstopped)',
-    body: 'empty for a sealed workspace (backstopped)', url: 'ids', reason: 'an enum' },
+    body: 'empty for a sealed workspace (backstopped)', url: 'ids', reason: 'an enum', from_actor: 'an actor kind and id (who the title names), no content' },
   notification_generation_failures: { last_error: 'an error class and code only for a sealed workspace (error paths, S2a-2)' },
   notification_emails: { user_id: 'a user id', address_kind: 'an enum', address: 'an account e-mail address', status: 'an enum',
     skip_reason: 'a code only for a sealed workspace (error paths, S2a-2)', unsubscribe_hash: 'a token hash', last_error: 'an error class and code only for a sealed workspace (error paths, S2a-2)' },
