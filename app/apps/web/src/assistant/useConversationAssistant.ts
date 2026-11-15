@@ -6,6 +6,7 @@ import {
   type AskPlace,
 } from './api';
 import { isWorking } from './format';
+import { AI_CONNECTED_EVENT } from '../ai/connected';
 import { readRunChanges } from './WaitingChanges';
 
 // The person's own agent asked from one place (#68, #842): a conversation of a space, the space's main conversation, a direct message or the
@@ -73,6 +74,11 @@ export function useConversationAssistant({ meId, place, onShown, enabled = true 
   const see = useCallback((ids: string[]) => { if (ids.length) setSeen((known) => (ids.every((id) => known.has(id)) ? known : new Set([...known, ...ids]))); }, []);
 
   const refreshStatus = useCallback(() => { if (enabled) getAssistantStatus().then(setStatus).catch(() => { /* the ask bar keeps saying it is checking */ }); }, [enabled]);
+  // AI connected in the window opened from here (#1424): the ask bar says the new state without a reload.
+  useEffect(() => {
+    window.addEventListener(AI_CONNECTED_EVENT, refreshStatus);
+    return () => window.removeEventListener(AI_CONNECTED_EVENT, refreshStatus);
+  }, [refreshStatus]);
   /** The asker's own runs here, newest first; an error keeps what is shown. */
   const refreshRuns = useCallback(async () => {
     const here = placeRef.current;

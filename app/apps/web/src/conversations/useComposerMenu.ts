@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { assistantSuggestions } from '../assistant/MeetAssistant';
+import { askState, canHaveAi, connectsFirst } from '../assistant/format';
+import { useShellActions } from '../app/shellContext';
 import type { useConversationAssistant } from '../assistant/useConversationAssistant';
 import { composerOptions, composerTrigger, type ComposerOption } from '../app/ComposerMenu';
 import type { useTyping } from '../typing/useTyping';
@@ -12,7 +14,8 @@ interface Options {
 }
 
 /** "@" and "/" in the composer (F-026 S5): the caret decides which menu shows, if any, and a pick edits the draft. */
-export function useComposerMenu({ me, people, writable, aiOff, composerId, conversation }: PaneCore, { drafts, assistant, ask, typing }: Options) {
+export function useComposerMenu({ me, people, writable, aiOff, outside, guest, composerId, conversation }: PaneCore, { drafts, assistant, ask, typing }: Options) {
+  const { openConnectAi } = useShellActions();
   const { asking, setAsking, publicComposer, helperComposer, composer, draft } = drafts;
   const [caret, setCaret] = useState(0);
   const [menuIndex, setMenuIndex] = useState(0);
@@ -21,7 +24,8 @@ export function useComposerMenu({ me, people, writable, aiOff, composerId, conve
   const trigger = writable && !asking ? composerTrigger(draft, caret) : null;
   // Under `/ai`, the suggestions of this place (#1224): a thread's or the space conversation's, while the assistant is ready. `@` is for people only.
   const suggestions = assistantSuggestions(conversation ? 'thread' : 'space', me.user.id, !aiOff && assistant.status?.state === 'ready');
-  const options = trigger ? composerOptions(trigger, { people, meId: me.user.id, aiOff, suggestions }) : [];
+  // `/ai` is offered when it can do something (#1424): ask the assistant, or connect one; a server that runs no AI has nothing behind it.
+  const options = trigger ? composerOptions(trigger, { people, meId: me.user.id, aiOff: aiOff || !canHaveAi(assistant.status), suggestions }) : [];
   const menuOpen = !!trigger && options.length > 0 && menuClosedAt !== draft;
   const activeIndex = Math.min(menuIndex, Math.max(0, options.length - 1));
   function changeDraft(input: string, position = input.length) {
@@ -57,6 +61,8 @@ export function useComposerMenu({ me, people, writable, aiOff, composerId, conve
     }
     changeDraft(before + option.insert + after, before.length + option.insert.length);
     placeCaret(before.length + option.insert.length, before + option.insert + after);
+    // `/ai` chosen without an assistant leads straight to the one Connect AI window (#1424, E-3); the ask bar keeps its Connect your AI.
+    if (option.slash === 'ai' && connectsFirst(askState(assistant.status, outside, guest))) openConnectAi();
   }
   /** Arrow keys, Enter, Tab and Escape while the menu is open; true when the key was the menu's. */
   function menuKey(event: { key: string; shiftKey: boolean; nativeEvent: { isComposing: boolean }; preventDefault: () => void; stopPropagation: () => void }) {

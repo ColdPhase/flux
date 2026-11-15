@@ -6,7 +6,7 @@ import { composerOptions, composerTrigger, type ComposerOption, type SlashId } f
  * message's `/file` and `/ai` (#1424), the two that apply there. The caret decides whether it shows; Enter or Tab picks, the arrows move, Escape closes
  * it, and the field keeps focus throughout.
  */
-export function useAskMenu({ fieldId, draft, enabled, suggestions, commands = ['ai'], onAsk, onDraft }: {
+export function useAskMenu({ fieldId, draft, enabled, suggestions, commands = ['ai'], onAsk, onDraft, onCommand }: {
   fieldId: string; draft: string; enabled: boolean; suggestions: readonly string[];
   /** The commands this place has, in the menu's order. */
   commands?: readonly SlashId[];
@@ -14,6 +14,8 @@ export function useAskMenu({ fieldId, draft, enabled, suggestions, commands = ['
   onAsk: (text: string) => void;
   /** The draft as it is now: the "/" that was typed is replaced by `/ai ` or taken out, the words around it stay. */
   onDraft: (value: string) => void;
+  /** A command was chosen and is in the draft now (`/ai` without an assistant opens Connect AI, #1424). */
+  onCommand?: (command: SlashId) => void;
 }) {
   const [caret, setCaret] = useState(0);
   const [index, setIndex] = useState(0);
@@ -43,7 +45,7 @@ export function useAskMenu({ fieldId, draft, enabled, suggestions, commands = ['
     requestAnimationFrame(() => {
       const field = document.getElementById(fieldId);
       if (field instanceof HTMLTextAreaElement) { field.focus(); if (field.value === next) field.setSelectionRange(position, position); }
-    });
+    });    if (option.slash) onCommand?.(option.slash);
   }
   /** Arrow keys, Enter, Tab and Escape while the menu is open; true when the key was the menu's. */
   function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {

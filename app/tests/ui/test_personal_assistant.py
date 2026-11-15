@@ -207,12 +207,14 @@ class PersonalAssistantJourney(unittest.TestCase):
         expect(self.composer(page)).to_have_value("Summarize this for me")
         shot(page, "assistant-1440-not-set-up")
         bar.get_by_role("button", name="Connect your AI").click()
-        panel = page.get_by_role("complementary", name="Connect your AI")  # headed by the button that opened it (#1058)
-        expect(panel.get_by_role("link", name="Ways to connect, in Settings → AI")).to_have_attribute("href", "/settings/agents")
-        # Details take the thread's one panel; "back" returns to the reply being written.
-        panel.get_by_role("button", name="Thread").click()
+        # Persona round (#1424): the one Connect AI window, as Settings › AI and Home open it; no side panel of its own.
+        window = page.get_by_role("dialog", name="Connect your AI")
+        expect(window.get_by_role("radiogroup", name="What to connect")).to_be_visible()
+        expect(page.get_by_role("complementary", name="Connect your AI")).to_have_count(0)
+        window.get_by_role("button", name="Cancel").click()
+        expect(window).to_have_count(0)
+        # The reply being written is still there; Esc returns to a plain reply and the person's own message is sent as usual.
         expect(page.get_by_role("complementary", name="Replies")).to_be_visible()
-        # Esc returns to a plain reply; the person's own message is sent as usual.
         self.composer(page).fill("/ai ")
         expect(page.locator("#project-ask")).to_be_visible()
         self.composer(page).focus()

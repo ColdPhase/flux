@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ProjectPerson } from '@flux/contracts';
 import { NavigationType, Outlet, useLocation, useMatches, useNavigate, useNavigation, useNavigationType, useParams, useRevalidator } from 'react-router';
 import { useStreamEvents } from '../api/stream';
@@ -10,6 +10,9 @@ import { useShellData } from './data';
 import { registerServiceWorker, syncPushSubscription } from '../pwa';
 import { DeferredCreateHost, DeferredDetails, DeferredJumpTo, DeferredLiveBar, DeferredLiveStage, DeferredNotices } from './DeferredSurfaces';
 import { BusyNotice } from './BusyNotice';
+
+/** The Connect AI window's code (with its steps and sign-in) comes only when it is opened in place. */
+const ConnectAiDialog = lazy(() => import('../ai/ConnectAiDialog'));
 import { RouteProgress } from './RouteProgress';
 import { PendingView, ThreadOpening, useQuietViewKeys, useSwitching } from './PendingView';
 import './pending-view.css';
@@ -77,7 +80,6 @@ const panelHeading = (view: DetailsView): { title: string; close: string } => {
   const named = (title: string) => ({ title, close: `Close ${title.charAt(0).toLowerCase()}${title.slice(1)}` });
   const asked = (title: string) => ({ title, close: 'Close' });
   if (view === 'place') return named('People and privacy');
-  if (view === 'connect-ai') return asked('Connect your AI');
   switch (view.kind) {
     case 'add-to-doc': return asked('Add to a Wiki page');
     case 'people': return named('People and encryption');
@@ -102,7 +104,7 @@ const panelScrollNow = () => document.querySelector<HTMLElement>('#details .ui-p
  */
 const KEPT_VIEWS = new Set(['work', 'decision', 'overview', 'people', 'owned']);
 const persistable = (view: DetailsView): DetailsView | null => {
-  if (view === 'place' || view === 'connect-ai') return view;
+  if (view === 'place') return view;
   if (typeof view !== 'object' || !KEPT_VIEWS.has(view.kind)) return null;
   return view.kind === 'overview' ? { kind: 'overview', messageId: view.messageId } : view;
 };
@@ -113,7 +115,7 @@ const placeOfDetails = (open: boolean, view: DetailsView, trail: { label: string
   return { open, view: shown, scroll: panelScrollNow(), owned,
     trail: trail.flatMap((entry) => { const kept = persistable(entry.view); return kept ? [{ label: entry.label, view: kept }] : []; }) };
 };
-const isPanelView = (value: unknown): value is DetailsView => value === 'place' || value === 'connect-ai' || (!!value && typeof value === 'object' && typeof (value as { kind?: unknown }).kind === 'string');
+const isPanelView = (value: unknown): value is DetailsView => value === 'place' || (!!value && typeof value === 'object' && typeof (value as { kind?: unknown }).kind === 'string');
 function isDetailsPlace(value: unknown): value is DetailsPlace {
   if (!value || typeof value !== 'object') return false;
   const kept = value as Partial<DetailsPlace>;
@@ -169,6 +171,8 @@ function AppLayoutContent() {
   const [detailsAccount, setDetailsAccount] = useState(me.user.id);
   if (detailsAccount !== me.user.id) { setDetailsAccount(me.user.id); setDetailsView('place'); setDetailsOpen(false); }
   const [jumpOpen, setJumpOpen] = useState(false);
+  // The one Connect AI window, opened in place by the composer's Connect your AI (#1424).
+  const [connectAi, setConnectAi] = useState(false);
   // The one Create window (#345): the computer's New and the phone's "+" open it, on Task (#1438 point 8).
   const [create, setCreate] = useState<CreateRequest | null>(null);
   // After a task is created, `C` and New open on the space it went to until the person goes to another place (#1235): adding several is one key each.
@@ -367,6 +371,7 @@ function AppLayoutContent() {
       setCreate(!request.kind && kept && kept.path === pathNow.current ? { ...request, projectId: kept.projectId } : request);
     },
     openSearch() { setNavOpen(false); setJumpOpen(true); },
+    openConnectAi() { setNavOpen(false); setJumpOpen(false); setConnectAi(true); },
     openNavigation() { setDetailsOpen(false); setNavOpen(true); },
     actionSlot,
     metadataSlot,
@@ -917,6 +922,7 @@ function AppLayoutContent() {
       </div>
 
       {/* + Create is the one action of every view: its code comes when idle and on the first press, so it is here before a click ends (#1428). */}
+      {connectAi ? <Suspense fallback={null}><ConnectAiDialog onClose={() => setConnectAi(false)} /></Suspense> : null}
       <DeferredCreateHost request={create} onClose={() => setCreate(null)} onTask={(projectId) => { keptSpace.current = { projectId, path: pathNow.current }; rememberSpace(me.user.id, projectId); }} />
       {/* Someone wrote, mentioned, assigned or called while you are elsewhere: one card, apart from the Undo toasts (#1243). */}
       <DeferredNotices identity={me.user.id} meName={me.user.name} placeName={(id) => projects.find((project) => project.id === id)?.name ?? null} />
