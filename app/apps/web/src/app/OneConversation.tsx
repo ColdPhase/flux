@@ -52,7 +52,7 @@ export interface PaneProps {
 }
 
 /** `found`: a search result brought the person to this message (#1424). */
-interface NavState { fromStream?: boolean; backToStream?: boolean; focusComposer?: boolean; keepPanel?: boolean; sourceOf?: string; found?: boolean; origin?: unknown; opened?: boolean }
+interface NavState { fromStream?: boolean; backToStream?: boolean; focusComposer?: boolean; keepPanel?: boolean; sourceOf?: string; found?: boolean; origin?: unknown; opened?: boolean; openPushed?: boolean }
 
 /**
  * One project conversation (UI116-1, 2026-10-02): the stream of roots with its composer, and the open
@@ -98,7 +98,13 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
   const [restore] = useState(() => arrival ? streamPlace(recall('stream', arrival)) : null);
   // A link names a root (or a reply in it): the stream reads back to it and shows it. A return to an entry keeps its own place instead.
   // A task's discussion is no root of the stream (#868): its thread opens by itself and the stream reads nothing back looking for it.
-  const reveal = conversation && !conversation.task && !state?.fromStream && !restore ? { conversationId: conversation.id, key: `${conversation.id}:${location.key}` } : null;
+  // Opening or closing a task or decision here (its `?open=` entry, F-026 §4) is no new arrival at the link: the stream never goes back to it.
+  const navigationKind = useNavigationType();
+  const sameLink = `${location.pathname}${location.hash}`;
+  const [linkAt, setLinkAt] = useState({ at: sameLink, key: location.key });
+  const objectStep = navigationKind === 'POP' || !!state?.openPushed || !!state?.opened || new URLSearchParams(location.search).has('open');
+  if (linkAt.key !== location.key && (linkAt.at !== sameLink || !objectStep)) setLinkAt({ at: sameLink, key: location.key });
+  const reveal = conversation && !conversation.task && !state?.fromStream && !restore ? { conversationId: conversation.id, key: `${conversation.id}:${linkAt.key}` } : null;
   const roots = useConversationRoots(project.id, data.roots, reveal?.conversationId ?? restore?.conv ?? null, onDenied);
   const notices = useTaskNotices(project.id, data.notices, roots.roots, roots.hasOlder, onDenied);
   // A decision this person just proposed is among them at once, as its card "Proposed", while it waits out its Undo (#1424).

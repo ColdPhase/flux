@@ -3,6 +3,7 @@ import { Link, useNavigate, useRevalidator } from 'react-router';
 import type { Project, ProjectGrant, ProjectPerson, WorkspaceMember } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
 import { whenPageLive } from '../api/pageLeaving';
+import { awaitField } from '../ui/keys';
 import { useStreamEvents } from '../api/stream';
 import { useGithubSetUp } from '../github/useGithubSetUp';
 import { useShellData } from '../app/data';
@@ -237,7 +238,7 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName, inviter
 
         <div className="spset__seclead">
           <h3 className="sset-sec" id="space-people">People{!everyone && !listFailed ? <> <span className="spset__count">{rows.length}</span></> : null}</h3>
-          {manager && !everyone ? <Button variant="secondary" size="sm" icon="plus" aria-expanded={adding} disabled={!roster} onClick={() => { setAdding((open) => !open); setChosen([]); }}>Add people</Button> : null}
+          {manager && !everyone ? <Button variant="secondary" size="sm" icon="plus" aria-expanded={adding} disabled={!roster} onClick={() => { if (!adding && !window.matchMedia('(hover: none)').matches) awaitField(); setAdding((open) => !open); setChosen([]); }}>Add people</Button> : null}
         </div>
         {manager && adding && roster ? (
           <div className="spset__add" role="group" aria-label="Add people" onKeyDown={onEscape(() => { setAdding(false); setChosen([]); focusOn('.spset__seclead button'); })}>

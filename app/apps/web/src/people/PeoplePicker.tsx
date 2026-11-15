@@ -2,6 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'rea
 import type { WorkspaceMember } from '@flux/contracts';
 import { Avatar, Button, Icon } from '../ui';
 import './space.css';
+import { awaitField } from '../ui/keys';
 
 /**
  * People chosen from the company (F-037, #874): the chosen ones are one-line chips in a field, and "Add people" opens the company's
@@ -44,11 +45,11 @@ export function PeoplePicker({ candidates, value, onChange, disabled = false, co
             ))}
           </ul>
         ) : null}
-        <Button variant="quiet" size="sm" icon="plus" aria-expanded={open} aria-controls={open ? listId : undefined} disabled={disabled} onClick={() => setOpen((on) => !on)}>Add people</Button>
+        <Button variant="quiet" size="sm" icon="plus" aria-expanded={open} aria-controls={open ? listId : undefined} disabled={disabled} onClick={() => { if (!expanded && !window.matchMedia('(hover: none)').matches) awaitField(); setOpen((on) => !on); }}>Add people</Button>
       </div>}
       {open ? (
         <div className="pick__list" id={listId} role="group" aria-label={`People in ${companyName}`}>
-          {candidates.length > 6 ? <input className="ui-input pick__filter" type="search" aria-label="Search people" placeholder="Search by name or address" value={filter} onChange={(event) => setFilter(event.target.value)} /> : null}
+          {candidates.length ? <input className="ui-input pick__filter" type="search" aria-label="Search people" placeholder="Search by name or address" value={filter} onChange={(event) => setFilter(event.target.value)} /> : null}
           {candidates.length ? (
             <ul>
               {shown.map((member) => (

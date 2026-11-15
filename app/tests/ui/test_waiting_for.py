@@ -82,7 +82,7 @@ class WaitingFor(unittest.TestCase):
                 expect(card).to_contain_text("Waiting for Kai Nowak")
                 shot(page, f"waiting-for-details-{'phone' if phone else 'computer'}")
                 # Resolving ends the wait; the toast's Undo puts the reason and the person back without a second blocker message.
-                panel.get_by_role("button", name="Resolve").click()
+                panel.get_by_role("button", name="Unblock").click()
                 expect(card).to_have_count(0)
                 self.assertIsNone(api(self.ada_ctx, "GET", f"/api/v1/work/{task['id']}")["waitingFor"])
                 page.get_by_role("button", name="Undo").click()

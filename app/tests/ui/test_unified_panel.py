@@ -296,7 +296,7 @@ class UnifiedPanel(unittest.TestCase):
         expect(card.get_by_role("combobox", name="Waiting for", exact=True)).to_have_count(0)
         expect(card).to_contain_text("Waiting for the label printer to arrive")
         self.assertEqual(self.stored(task)["blocker"], "Waiting for the label printer to arrive")
-        card.get_by_role("button", name="Resolve").click()
+        card.get_by_role("button", name="Unblock").click()
         expect(panel.get_by_role("button", name="Status", exact=True)).to_contain_text("Doing")
         page.get_by_role("status").get_by_role("button", name="Undo").click()
         expect(panel.get_by_role("button", name="Status", exact=True)).to_contain_text("Blocked")

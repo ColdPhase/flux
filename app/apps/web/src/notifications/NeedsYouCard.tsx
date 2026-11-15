@@ -177,7 +177,7 @@ export function NeedsYouCard({ item, selected = false, compact = false, list = f
         <>
           <Button variant="primary" className="nyc__accept" aria-keyshortcuts="A" onClick={() => handlers.accept(item)}>Accept<kbd aria-hidden="true">A</kbd></Button>
           <NotNowButton onClick={notNow} keyHint />
-          <Button variant="quiet" onClick={() => handlers.discuss(item)}>Discuss</Button>
+          <Button variant="quiet" aria-keyshortcuts="R" onClick={() => handlers.discuss(item)}>Discuss<kbd aria-hidden="true">R</kbd></Button>
         </>
       ) : item.kind === 'blocked' ? (
         <>

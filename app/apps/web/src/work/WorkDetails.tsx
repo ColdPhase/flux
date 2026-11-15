@@ -471,7 +471,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
               {(writable || waitedOnMe) && !editingBlocker ? <div className="wd-blocker__acts">
                 {writable ? <Button ref={editButton} variant="quiet" size="sm" disabled={busy} onClick={() => { blockerBase.current ??= item.version; setEditingBlocker(true); }}>Edit</Button> : null}
                 {waitedOnMe ? <Button variant="secondary" size="sm" className="wd-blocker__resolve" disabled={busy} onClick={() => void waitingDone()}>Done</Button>
-                  : <Button variant="quiet" size="sm" className="wd-blocker__resolve" disabled={busy} onClick={() => void setState('in_progress')}>Resolve</Button>}
+                  : <Button variant="quiet" size="sm" className="wd-blocker__resolve" disabled={busy} onClick={() => void setState('in_progress')}>Unblock</Button>}
               </div> : null}
             </div>
             {writable && editingBlocker ? (

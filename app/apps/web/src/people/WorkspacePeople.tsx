@@ -58,7 +58,7 @@ export function WorkspacePeople({ workspaceId, onBack, page = false }: { workspa
   const [reload, setReload] = useState(0);
   const revalidator = useRevalidator();
   // Home's first steps lead here with `?invite=1` (Invite people) or `?name=1` (Name your company), #1438.
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
   const [inviting, setInviting] = useState(() => params.get('invite') === '1');
   const inviteRef = useRef<HTMLButtonElement>(null);
   // With single sign-on as the way in, people join on their first sign-in and nobody is invited (F-037). While the provider
@@ -129,7 +129,11 @@ export function WorkspacePeople({ workspaceId, onBack, page = false }: { workspa
     if (!wanted || !roster) return;
     focusAfter.current = null;
     requestAnimationFrame(() => {
-      const control = (id: string) => document.querySelector<HTMLElement>(`.people__list [data-person="${CSS.escape(id)}"] .people__change`);
+      // A person still listed whose row has the focus (a role changed in place) keeps it there.
+      if (document.activeElement?.closest(`.people__list [data-person="${CSS.escape(wanted.userId)}"]`)) return;
+      // The row's first control (its role, or Change, Reset link, Remove), in view (persona round 29: Company rows have no Change any more).
+      const control = (id: string) => [...document.querySelectorAll<HTMLElement>(`.people__list [data-person="${CSS.escape(id)}"] :is(select, button, [role="combobox"])`)]
+        .find((element) => !(element as HTMLButtonElement).disabled && element.getClientRects().length > 0) ?? null;
       const at = wanted.order.indexOf(wanted.userId);
       const next = [wanted.userId, ...wanted.order.slice(at + 1), ...wanted.order.slice(0, Math.max(0, at)).reverse()].map(control).find(Boolean);
       if (next) next.focus(); else rosterRef.current?.focus();
@@ -164,7 +168,11 @@ export function WorkspacePeople({ workspaceId, onBack, page = false }: { workspa
   // joins. An encrypted space's panel keeps its form open above its people.
   const canAdd = !(page && sso) && sso !== undefined && manager && !!members;
   // Close puts the form away with what it said: the new link stays listed under Waiting to be used, without its sentence (#1424).
-  const closeInvite = () => { setInviting(false); links.setFresh(null); links.setStatus(''); requestAnimationFrame(() => inviteRef.current?.focus()); };
+  const closeInvite = () => {
+    setInviting(false); links.setFresh(null); links.setStatus(''); requestAnimationFrame(() => inviteRef.current?.focus());
+    // Home's "Invite people" (`?invite=1`) is done with once the form closes: the address no longer opens it (persona round 29).
+    if (params.has('invite')) setParams((current) => { const next = new URLSearchParams(current); next.delete('invite'); return next; }, { replace: true });
+  };
   const onAdded = (member: WorkspaceMember) => changed(`${member.name} joined ${workspace.name} as ${ROLE_LABEL[member.role].toLowerCase()}.`, false);
   // #1438: the company's page has one invite form; an encrypted space's panel adds people of the company by email, never by a link (C-24).
   const addPerson = canAdd && members ? (page
@@ -208,7 +216,7 @@ export function WorkspacePeople({ workspaceId, onBack, page = false }: { workspa
                 // #1471: an owner makes a reset link for anyone else, an admin for members and guests; never with single sign-on.
                 resettable={page && sso === null && member.userId !== me.user.id && (myRole === 'owner' || (myRole === 'admin' && (member.role === 'member' || member.role === 'guest')))}
                 editing={editing === member.userId} onEdit={(open) => { setDone(''); setEditing(open ? member.userId : null); }}
-                onChanged={(message, holderLeft, editorClosed = true) => changed(message, editorClosed, holderLeft)} />
+                onChanged={(message, holderLeft, editorClosed = true) => changed(message, editorClosed, holderLeft, member.userId)} />
             ))}
           </ul>
         ) : (

@@ -346,14 +346,15 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
         pending.setText(rest.length ? JSON.stringify(rest) : '');
       }
       request.onCreated?.();
-      revalidator.revalidate();
       // Every way of creating a task says so and offers Undo (Z), with the panel still opening on it (#763 B1). "Another task" opens
       // this window again on the same space (#1235); there is no switch that keeps it open.
       onTask?.(projectId);
       created(item, () => openCreate({ kind: 'task', projectId }));
-      if (!mounted.current) return;
+      if (!mounted.current) { revalidator.revalidate(); return; }
       onClose();
       openDetails({ kind: 'work', id: item.id, projectId });
+      // After the panel's own step (its `?open=` address), so that step does not drop the read that brings the new task's card.
+      revalidator.revalidate();
     } catch (cause) {
       if (mounted.current) setError(cause instanceof ApiError && cause.status === 403 ? 'You can read this space but not add tasks.' : cause instanceof Error ? cause.message : 'Could not create the task.');
     } finally { inFlight.current = false; if (mounted.current) setBusy(false); }

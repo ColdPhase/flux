@@ -287,6 +287,10 @@ class FocusModel(unittest.TestCase):
         expect(invite).to_be_focused()
         page.goto("/settings/company?invite=1")
         expect(page.locator("#people-invite-email")).to_be_focused()
+        # Closed, the form leaves the address too (persona round 29).
+        page.keyboard.press("Escape")
+        expect(invite).to_be_focused()
+        expect(page).not_to_have_url(re.compile(r"invite="))
 
     def test_11_with_a_thread_open_esc_in_the_composer_or_the_space_s_own_row_keeps_the_cursor_there(self) -> None:
         thread = self.post("piotr", f"/api/v1/projects/{self.ids['shared']}/conversations", {"body": "Who has the key to the store room?", "clientMessageId": str(uuid.uuid4())})
@@ -423,6 +427,84 @@ class FocusModel(unittest.TestCase):
         undo.click()
         expect(panel).to_be_hidden()
         self.assert_not_body(page, "undone task")
+
+
+    # ---------------------------------------------------------------- persona round 29
+
+    def test_19_enter_enter_and_a_sentence_typed_at_once_in_new_message_sends_it_whole(self) -> None:
+        page = self.page()
+        page.goto("/dm/new")
+        expect(page.locator("#dm-people-search")).to_be_focused()
+        page.keyboard.type("Ola")
+        expect(page.locator(".dm-new__people li")).to_have_count(1)
+        page.keyboard.press("Enter")
+        expect(page.get_by_role("button", name="Message Ola")).to_be_visible()
+        sentence = "Ola, the oven timer is broken again."
+        page.keyboard.press("Enter")
+        page.keyboard.type(sentence)
+        page.keyboard.press("Enter")
+        expect(page).to_have_url(re.compile(r"/dm/[0-9a-f-]{36}$"))
+        expect(page.locator(".dm-msg").filter(has_text=sentence)).to_have_count(1)
+        expect(page.locator("#dm-composer")).to_have_value("")
+
+    def test_20_g_i_after_a_sidebar_click_focuses_the_inbox_s_open_item(self) -> None:
+        page = self.page()
+        page.goto("/")
+        page.get_by_role("navigation", name="Places").get_by_role("link", name="My tasks").click()
+        expect(page).to_have_url(re.compile(r"/tasks$"))
+        page.wait_for_timeout(500)
+        page.keyboard.press("g")
+        page.keyboard.press("i")
+        expect(page).to_have_url(re.compile(r"/inbox$"))
+        expect(page.locator(".nyq__list .nyc--open .nyc__open, .nyq__list .nyc .nyc__open").first).to_be_visible()
+        page.wait_for_timeout(600)
+        self.assertTrue(page.evaluate("() => !!document.activeElement.closest('.nyq')"), "the Inbox's open item has the focus, not the sidebar link")
+
+    def test_21_z_after_s_gives_focus_to_the_item_that_came_back(self) -> None:
+        page = self.page()
+        page.goto("/inbox")
+        rows = page.locator(".nyq__list .nyc__open")
+        expect(rows.first).to_be_visible()
+        page.wait_for_timeout(600)
+        first = page.evaluate("() => document.activeElement.textContent")
+        page.keyboard.press("s")
+        expect(page.get_by_role("status").filter(has_text="Back tomorrow morning")).to_be_visible()
+        page.keyboard.press("z")
+        page.wait_for_timeout(800)
+        self.assertEqual(page.evaluate("() => document.activeElement.textContent"), first, "the item that came back has the focus")
+        self.assertTrue(page.evaluate("() => !!document.activeElement.closest('.nyc--open, .nyc')"))
+
+    def test_22_a_search_result_opened_from_inside_a_space_takes_the_focus(self) -> None:
+        body = f"Three sacks of rye on Monday {uuid.uuid4().hex[:4]}"
+        root = self.post("piotr", f"/api/v1/projects/{self.ids['shared']}/conversations", {"body": body, "clientMessageId": str(uuid.uuid4())})
+        page = self.page()
+        page.goto(f"/projects/{self.ids['shared']}")
+        expect(page.locator("#project-composer")).to_be_focused()
+        page.keyboard.press("Control+k")
+        search = page.get_by_role("dialog", name="Search", exact=True)
+        search.get_by_role("combobox", name="Search", exact=True).fill(body)
+        expect(search.get_by_role("option", name=re.compile("Three sacks of rye"))).to_be_visible(timeout=20000)
+        page.keyboard.press("Enter")
+        message = page.locator(f"#message-{root['messages'][0]['id']}")
+        expect(message).to_be_focused()
+        expect(page.locator("#project-composer")).not_to_be_focused()
+
+    def test_23_a_card_opened_on_the_board_gets_its_address_and_back_closes_it(self) -> None:
+        page = self.page()
+        page.goto(f"/projects/{self.ids['shared']}/tasks")
+        board = page.get_by_role("radio", name="Board", exact=True)
+        if board.count():
+            board.click()
+        card = page.locator(f'[data-card-id="{self.ids["task"]}"] .tb-card__open')
+        card.click()
+        panel = page.locator("#details")
+        expect(panel).to_contain_text("Clean the proofing cabinet")
+        expect(page).to_have_url(re.compile(r"open=work"))
+        page.reload()
+        expect(panel).to_contain_text("Clean the proofing cabinet")
+        page.go_back()
+        expect(page).not_to_have_url(re.compile(r"open="))
+        expect(panel).to_be_hidden()
 
 
 if __name__ == "__main__":
