@@ -84,6 +84,7 @@ after(async () => {
   await new Promise((done) => manager?.close(done));
   for (const slot of slots.values()) await slot.close();
   await pool.query(`DELETE FROM agent_runtime_bindings WHERE slot = ANY($1)`, [slotNames]).catch(() => undefined);
+  await pool.query(`DELETE FROM agent_runtime_bindings WHERE slot = ANY($1)`, [slotNames]);
   await pool.query(`DELETE FROM agent_runtime_slots WHERE slot = ANY($1)`, [slotNames]).catch(() => undefined);
   await pool.end();
 });

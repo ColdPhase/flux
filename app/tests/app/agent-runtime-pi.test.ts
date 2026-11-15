@@ -68,7 +68,7 @@ describe('API-key agents run in pi in the runtime (#1441)', () => {
       pi: { modelOrigin: gateway.url, diagnostics: (what) => { lastPi = what; } } });
     slots.set(slot.config.slot, { host: '127.0.0.1', port: portOf(slot.url), secret: slot.config.secret });
     config = { clients: [], keys: true, commercialTermsAgreedOn: null, idleDays: null, manager: { url: managerUrl, secret: SECRET } };
-    await pool.query(`INSERT INTO agent_runtime_slots(slot, state) VALUES ($1, 'ready') ON CONFLICT (slot) DO UPDATE SET state = 'ready'`, [slot.config.slot]);
+    await pool.query(`INSERT INTO agent_runtime_slots(slot, state) VALUES ($1, 'ready') ON CONFLICT (slot) DO UPDATE SET state = 'ready', out_of_pool_reason = NULL`, [slot.config.slot]);
     // Other files leave runtimes of their own in this database: the owner's place is made on this one (pi needs no sign-in, only the place).
     owner = await person('rt-pi');
     ws = await createWorkspace(owner, 'Pi runs');

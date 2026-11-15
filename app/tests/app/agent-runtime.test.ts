@@ -117,6 +117,7 @@ describe('runtime tables hold display facts only', () => {
       }
     } finally {
       await pool.query('DELETE FROM agent_runtime_bindings WHERE slot = $1', [slot]);
+      await pool.query('DELETE FROM agent_runtime_bindings WHERE slot = $1', [slot]);
       await pool.query('DELETE FROM agent_runtime_slots WHERE slot = $1', [slot]);
     }
   });
@@ -147,7 +148,7 @@ describe('the PostgreSQL store under the owner use cases', () => {
       assert.equal(others.rows[0].n, 0);
       const outcomes = await Promise.allSettled([runtime.bind(ada.id), runtime.bind(jonas.id), runtime.bind(mia.id)]);
       assert.deepEqual(outcomes.map((outcome) => outcome.status), ['fulfilled', 'fulfilled', 'fulfilled']);
-      const bound = await pool.query(`SELECT slot, owner_user_id FROM agent_runtime_bindings WHERE slot = ANY($1) AND state = 'active' ORDER BY slot`, [slots]);
+      const bound = await pool.query(`SELECT slot, owner_user_id FROM agent_runtime_bindings WHERE slot = ANY($1) AND owner_user_id = ANY($2) AND state = 'active' ORDER BY slot`, [slots, [ada.id, jonas.id, mia.id]]);
       assert.equal(bound.rows.length, 3, 'three owners in one runtime');
       assert.equal(new Set(bound.rows.map((row) => row.slot)).size, 1);
       const capacity = await pool.query(`SELECT capacity FROM agent_runtime_slots WHERE slot = ANY($1)`, [slots]);
@@ -160,7 +161,9 @@ describe('the PostgreSQL store under the owner use cases', () => {
       assert.deepEqual([status.lastRelease?.reason, status.lastRelease?.signOutFailed], ['owner', true]);
       // The operator's view and release by a person's e-mail.
       const emails = await pool.query<{ id: string; email: string }>('SELECT id, email FROM auth_users WHERE id = ANY($1)', [[jonas.id, mia.id]]);
-      const listed = (await agentRuntimeOperations(db).list()).filter((row) => slots.includes(row.slot));
+      // The shared test database's binder may also place another test's person in this ready runtime (#860: no cap), so read our owners only.
+      const ours = new Set(emails.rows.map((row) => row.email));
+      const listed = (await agentRuntimeOperations(db).list()).filter((row) => slots.includes(row.slot) && row.email !== null && ours.has(row.email));
       assert.deepEqual(listed.map((row) => row.email).sort(), emails.rows.map((row) => row.email).sort());
       assert.equal(listed[0]!.capacity, 2);
       assert.ok(await agentRuntimeOperations(db).release(emails.rows.find((row) => row.id === jonas.id)!.email));
@@ -222,6 +225,7 @@ describe('the idle policy and a guest (#1090)', () => {
       assert.equal(await idle(), false, 'a later use starts the window again');
     } finally {
       await pool.query('DELETE FROM workspace_members WHERE workspace_id = $1 AND user_id = ANY($2)', [company, [guest.id, member.id]]);
+      await pool.query('DELETE FROM agent_runtime_bindings WHERE slot = $1', [slot]);
       await pool.query('DELETE FROM agent_runtime_bindings WHERE slot = $1', [slot]);
       await pool.query('DELETE FROM agent_runtime_slots WHERE slot = $1', [slot]);
     }

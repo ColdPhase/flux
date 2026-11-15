@@ -25,6 +25,7 @@ async function owned(work: (c: { ownerUserId: string; sessionId: string; binding
     await work({ ownerUserId: owner.id, sessionId, bindingId, slot, boot });
   } finally {
     await pool.query('DELETE FROM auth_users WHERE id=$1', [owner.id]);
+    await pool.query('DELETE FROM agent_runtime_bindings WHERE slot=$1', [slot]);
     await pool.query('DELETE FROM agent_runtime_slots WHERE slot=$1', [slot]);
   }
 }
