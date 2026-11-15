@@ -120,12 +120,19 @@ export function needsYouRows(db: DbExecutor) {
       return rows.length > 0;
     },
 
-    /** Members of the project's workspace, by name: candidates only; the policy decides who may act. */
+    /**
+     * The people in the space, by name: candidates only; the policy decides who may act. They are the ones its decisions are asked of (their
+     * Inbox lists the spaces they are in, `memberFilter`): everyone but a guest in a space for the whole company, else the people added to it.
+     * A company admin outside a closed space is not asked, so "… can accept too" never names them (personas-27).
+     */
     async workspaceMembersOfProject(projectId: string, limit: number) {
+      const m = schema.workspaceMembers;
       const rows = await db.select({ id: schema.authUsers.id, name: schema.authUsers.name }).from(schema.projects)
-        .innerJoin(schema.workspaceMembers, eq(schema.workspaceMembers.workspaceId, schema.projects.workspaceId))
-        .innerJoin(schema.authUsers, eq(schema.authUsers.id, schema.workspaceMembers.userId))
-        .where(eq(schema.projects.id, projectId)).orderBy(schema.authUsers.name).limit(limit);
+        .innerJoin(m, eq(m.workspaceId, schema.projects.workspaceId))
+        .innerJoin(schema.authUsers, eq(schema.authUsers.id, m.userId))
+        .where(and(eq(schema.projects.id, projectId), or(and(eq(schema.projects.visibility, 'workspace'), sql`${m.role} <> 'guest'`),
+          sql`EXISTS (SELECT 1 FROM project_grants g WHERE g.project_id = ${schema.projects.id} AND g.user_id = ${m.userId})`)))
+        .orderBy(schema.authUsers.name).limit(limit);
       return rows;
     },
 

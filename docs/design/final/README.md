@@ -942,6 +942,11 @@ Community garden sensors, Rain barrel monitor and Tool library.
   addresses the person who asked, as a name does. It is a Reply in an encrypted space too, where the notice says only who and where. Only the
   person's first message after the question answers it, and your own reply in the
   thread takes the item out as any reply does (#1170). An agent's question card is answered with its buttons and tells nobody.
+- **Who a question asks is one rule** (personas-27, 2026-11-15; contract in [needs-you](../../development/needs-you.md#whom-a-question-asks-personas-27-one-rule)).
+  A message that names you and asks is a Question for you. A question in a thread you started that names nobody is a Question for you too:
+  it is in your Inbox and on Home's Waiting for you, never only in Continue where you left off, so Home and the Inbox give one answer to "is
+  something waiting for me?". Nobody else in the thread is asked. Someone who joins a space later gets the newest still-open question there
+  that names them, as if they had been there.
 - **A call is a Call, never a Question** (F-041, #1368). An invitation to a call or a call started in your space is one item,
   "Call · Nia · Gesture lamp", with **Join** as its primary and Open as its second action; it is on Home and in the Inbox only while
   someone is in the call and you are not. It leaves when you join (from here, from the notice, from the space's Join or from the

@@ -61,6 +61,19 @@ export interface ProjectMessageFacts {
   onlyNotifies?: string | null;
 }
 
+/** A person's message in a space that may still ask someone who joins later (personas-27): newest first, see `joinQuestions`. */
+export interface JoinQuestionFacts {
+  id: string;
+  projectId: string;
+  projectName: string;
+  conversationId: string;
+  authorId: string;
+  via?: string | null;
+  viaAgent?: boolean;
+  body: string;
+  attachmentCount?: number;
+}
+
 export interface DmMessageFacts {
   id: string;
   workspaceId: string;
@@ -150,6 +163,12 @@ export interface NotificationFacts {
   names(userIds: string[]): Promise<Map<string, string>>;
   /** F-030: the workspace's visible name when it is encrypted, else null. */
   sealedWorkspace?(workspaceId: string): Promise<{ name: string } | null>;
+  /**
+   * For someone who joined a space (`projectId`) or the company (its open spaces, `workspaceId`) (personas-27): people's messages there of the last
+   * `days` days, newest first (at most 200), that are still open (nobody but their author wrote in their thread after them), not removed, not
+   * the joiner's own, and of which the joiner was not told yet (no notification of theirs opens them). The generator picks a question naming them.
+   */
+  joinQuestions?(userId: string, place: { projectId: string } | { workspaceId: string }, days: number): Promise<JoinQuestionFacts[]>;
 }
 
 export type EmailAddressKind = 'account' | 'extra';

@@ -13,7 +13,7 @@ import { useShellActions } from '../app/shellContext';
 import { useWorkspaceEncryption } from '../encryption/state';
 import { Avatar, Button, Icon, Input, Option, Select, useFocusBack, useToast } from '../ui';
 import { SwitchRow } from '../ui/SwitchRow';
-import { attemptKeys, firstName, grantPerson, isManagerRole, listGrants, listMembers, problemText, revokeGrant } from './api';
+import { attemptKeys, firstName, grantPerson, isManagerRole, joinNames, listGrants, listMembers, problemText, revokeGrant } from './api';
 import { DeleteSpaceDialog } from './DeleteSpace';
 import { PersonLine } from './LastActive';
 import { PeoplePicker } from './PeoplePicker';
@@ -198,10 +198,10 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName, inviter
         added.push(firstName(memberOf(id)?.name ?? 'Someone'));
       }
       setChosen([]); setAdding(false);
-      changed(`${added.join(', ')} ${added.length === 1 ? 'is' : 'are'} now in ${project.name}.`);
+      changed(`${joinNames(added)} ${added.length === 1 ? 'is' : 'are'} now in ${project.name}.`);
     } catch (error) {
       keys.current.done();
-      if (added.length) changed(`${added.join(', ')} ${added.length === 1 ? 'was' : 'were'} added.`);
+      if (added.length) changed(`${joinNames(added)} ${added.length === 1 ? 'was' : 'were'} added.`);
       setProblem(problemText(error, { workspace: companyName }));
     } finally { setBusy(null); }
   }
@@ -233,7 +233,7 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName, inviter
         <NameCard project={project} manager={manager} companyName={companyName} onRenamed={(name) => changed(`Renamed to ${name}.`)} onIconChanged={changed} />
 
         <div className="spset__seclead">
-          <h3 className="sset-sec" id="space-people">People{!everyone && !listFailed ? <span className="spset__count">{rows.length}</span> : null}</h3>
+          <h3 className="sset-sec" id="space-people">People{!everyone && !listFailed ? <> <span className="spset__count">{rows.length}</span></> : null}</h3>
           {manager && !everyone ? <Button variant="secondary" size="sm" icon="plus" aria-expanded={adding} disabled={!roster} onClick={() => { setAdding((open) => !open); setChosen([]); }}>Add people</Button> : null}
         </div>
         {manager && adding && roster ? (

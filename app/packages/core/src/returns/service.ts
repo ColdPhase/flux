@@ -3,7 +3,7 @@ import type {
   ReturnItem, ReturnNextStep, ReturnPlace, ReturnPoint, ReturnSource, ReturnSummary, ReturnSummaryQuery, SaveReturnPointCommand,
 } from '@flux/contracts';
 import { InvalidInputError } from '../access/errors.js';
-import { isQuestion, mentions, mentionsSomeone } from '../notifications/addressing.js';
+import { asksStarter, mentions } from '../notifications/addressing.js';
 import type { Principal } from '../principal.js';
 import type { AudienceEvent, ResolvedPlace, ReturnMessage, ReturnPorts, ReturnSketch, StoredReturnPoint } from './ports.js';
 import { GITHUB_RULE_AUTOMATION } from '../github/rules.js';
@@ -396,19 +396,21 @@ export function createReturnUseCases(ports: ReturnPorts) {
       const lastPost = lastPosts.get(conversation.id);
       const answered = !!lastPost && lastPost > message.createdAt;
       const addressed = mentions(message.body, myName);
-      const involved = (conversation.createdBy.kind === 'human' && conversation.createdBy.id === userId) || !!lastPost;
-      // A question addressed to someone else by name is theirs, even in a conversation you are part of (#763 A2).
-      if (!answered && (addressed || (involved && isQuestion(message.body) && !mentionsSomeone(message.body)))) {
+      // One rule with the Inbox (personas-27): a question that names nobody asks the thread's starter, and nobody else; a question
+      // addressed to someone else by name is theirs (#763 A2).
+      const toStarter = asksStarter(message.body, message.author.kind === 'human' ? message.author.id : null,
+        conversation.createdBy.kind === 'human' ? conversation.createdBy.id : null) && conversation.createdBy.id === userId;
+      if (!answered && (addressed || toStarter)) {
         const name = nameOf(`${message.author.kind}:${message.author.id}`)!;
         const author = marked(name, message);
         items.push({ ...base, kind: 'question', actor: author,
-          text: addressed ? `${author} asked you: ${quote(excerpt(message.body))}` : `${author} asked: ${quote(excerpt(message.body))}`,
+          // Asked by name or as the thread's starter, it is asked of you, as the Inbox says it.
+          text: `${author} asked you: ${quote(excerpt(message.body))}`,
           detail: `In ${quote(excerpt(conversation.opening, 60))}`, needsYou: true,
           source: { type: 'message', projectId: message.projectId, conversationId: conversation.id, messageId: message.id },
           step: { priority: addressed ? 1 : 2, text: message.via && message.viaAgent ? `Answer ${author}'s question` : `Answer ${name}'s question${message.via ? `, posted via ${message.via}` : ''}`,
             // The request itself comes first and is not cut short; where it was asked follows briefly.
-            reason: addressed ? `${quote(excerpt(message.body, 200))} ${author} asked you in ${quote(excerpt(conversation.opening, 40))}.`
-              : `${quote(excerpt(message.body, 200))} ${author} asked in ${quote(excerpt(conversation.opening, 40))}, a conversation you are part of.` } });
+            reason: `${quote(excerpt(message.body, 200))} ${author} asked you in ${quote(excerpt(conversation.opening, 40))}.` } });
         continue;
       }
       const grouped = conversationGroups.get(conversation.id) ?? [];

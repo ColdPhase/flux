@@ -55,7 +55,7 @@ export function sourcePhrase(source: NoticeSource, actor?: { name: string; mine:
 
 /** Plain words for the folded line: "Ada created 2 tasks, Claude Code created 1 task from the map". */
 export function foldSummary(notices: TaskCreationNotice[], authorOf: (messageId: string) => string | null, nameOf: (notice: TaskCreationNotice) => string): string {
-  const groups = new Map<string, { name: string; count: number; where: string; tasks?: Set<string> }>();
+  const groups = new Map<string, { name: string; count: number; where: string; tasks?: Set<string>; messages?: Set<string> }>();
   for (const notice of notices) {
     // A blocked or unblocked line (#550) is an update of a task, not a new one; two updates of one task are one task updated (personas-26).
     if (notice.kind === 'task.blocked' || notice.kind === 'task.unblocked' || notice.kind === 'task.resumed') {
@@ -67,15 +67,18 @@ export function foldSummary(notices: TaskCreationNotice[], authorOf: (messageId:
       continue;
     }
     const source = noticeSource(notice, authorOf);
-    const where = source.kind === 'map' ? ' from the map' : source.kind === 'none' ? '' : source.kind === 'message' ? ' from messages' : source.kind === 'material' ? ' from a source' : '';
+    const where = source.kind === 'map' ? ' from the map' : source.kind === 'none' ? '' : source.kind === 'message' ? '\0message' : source.kind === 'material' ? ' from a source' : '';
     const name = nameOf(notice);
     const key = `${notice.createdBy.kind}:${notice.createdBy.id}:${where}`;
-    const group = groups.get(key) ?? { name, count: 0, where };
+    const group = groups.get(key) ?? { name, count: 0, where, ...(source.kind === 'message' ? { messages: new Set<string>() } : {}) };
     group.count += 1;
+    if (source.kind === 'message') group.messages!.add(source.messageId);
     groups.set(key, group);
   }
+  // From one message it is "from a message", from several "from messages" (personas-27: never "from messages" for one).
+  const from = (group: { where: string; messages?: Set<string> }) => group.where === '\0message' ? (group.messages!.size === 1 ? ' from a message' : ' from messages') : group.where;
   return [...groups.values()].map((group) => group.where === '\0updated' ? `${group.name} updated ${group.count === 1 ? 'a task' : `${group.count} tasks`}`
-    : `${group.name} created ${group.count === 1 ? 'a task' : `${group.count} tasks`}${group.where}`).join(', ');
+    : `${group.name} created ${group.count === 1 ? 'a task' : `${group.count} tasks`}${from(group)}`).join(', ');
 }
 
 /** The stream as drawn: roots, single announcements and folded runs of announcements. */

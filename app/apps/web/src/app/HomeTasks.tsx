@@ -3,7 +3,7 @@ import type { WorkItem } from '@flux/contracts';
 import { useStreamEvents } from '../api/stream';
 import { Button, EmptyState, ErrorState, Icon, MEDIA, PullToRefresh, Spinner, useMediaQuery } from '../ui';
 import { listAssignedWork } from '../work/api';
-import { STATUS_LABEL } from '../work/format';
+import { NO_REASON, STATUS_LABEL } from '../work/format';
 import { getProject } from '../project/api';
 import { useShellData } from './data';
 import { startsSpaces } from '../people/api';
@@ -114,7 +114,7 @@ export function HomeTasks() {
                   <span className={`home-tasks__status is-${item.status}`}>{STATUS_LABEL[item.status]}</span>
                   <span className="home-tasks__body">
                     <span className="home-tasks__title">{item.title}</span>
-                    {item.status === 'blocked' ? <span className="home-tasks__why">{item.blocker || 'No reason was recorded.'}</span> : null}
+                    {item.status === 'blocked' ? <span className="home-tasks__why">{item.blocker || NO_REASON}</span> : null}
                   </span>
                   <Icon name="chevron-right" size={14} className="home-tasks__go" />
                 </RefLink>

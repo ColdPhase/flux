@@ -15,7 +15,7 @@ an item. Access is checked at the moment of reading: an object the person cannot
 | Kind | What it is | Where it comes from |
 | --- | --- | --- |
 | `decision` | A proposed decision the person can accept now | `project_decisions.status = 'proposed'` in projects they can read, kept only when they hold write access (O-009 DA-2) |
-| `question` | A person asked them something (`@name … ?`), or invited them to a call (#62) | their unread `question` and `invitation` notifications, newer than 14 days |
+| `question` | A person asked them something (`@name … ?`, or a question in a thread they started that names nobody), or invited them to a call (#62) | their unread `question` and `invitation` notifications, newer than 14 days |
 | `blocked` | A task they own that is blocked | `project_work_items` they own with status `blocked` |
 | `mention` | Someone mentioned them, or answered a question they asked (#1424 decision 1: `answer: true`, the kind word "Reply") | their unread `mention` notifications, newer than 14 days |
 
@@ -32,6 +32,23 @@ the tab and the badge, and by push is one table, by reason and level, in
 
 Order: newest first, one list for every kind (founder decision, 2026-11-13, #1367; an item's time is when it was proposed, asked, blocked or noticed). At most 300 items, of which
 at most 200 are decisions.
+
+## Whom a question asks (personas-27, one rule)
+
+One rule decides who is asked, and Home, Waiting for you, the Inbox, push and email all read it
+(`asksStarter` and `mentions` in `app/packages/core/src/notifications/addressing.ts`):
+
+- A message that names a person (`@Name`, or opening with "Name," / "Name:") and asks something (`isQuestion`) is a `question` for them.
+- **A question in a thread that names nobody with `@` is for the thread's starter** (the person who wrote its first message), unless
+  the starter asked it. "Which size, small or large?" in Piotr's thread is Piotr's question: it is a `question` notification for him, so it is
+  in his Inbox and on Home's Waiting for you, and Home's Continue never offers it again (#1424 "Nothing appears twice"). Nobody else in the thread
+  is asked; they get the thread's reply as before (#1249). Home no longer treats such a question as asked of everyone who wrote there.
+- **A person who joins later is asked too.** When someone joins a space (added to it, or by an invite link) or the company (its open spaces),
+  the newest still-open question of the last 14 days that names them reaches them as one `question` notification, as if they had been there.
+  Still open means nobody other than its author wrote in its thread after it, and they were not told of it already. An agent's line is never
+  replayed (an agent tells only its owner, AG-4).
+
+The starter's reply in the thread answers it (#1170), and the asker hears the answer (#1424 decision 1), as for any question that named them.
 
 ## One person accepts
 
@@ -94,9 +111,10 @@ person's own choice (204; idempotent).
 - `needs_you_states` rows cascade with the account.
 
 **Undo of Accept is the client's** (`app/apps/web/src/notifications/pendingAccept.ts`): the card shows accepted
-at once and sends the accept (`POST /api/v1/decisions/:id/accept` with `If-Match`) when the 6 second Undo
-window ends or when the person leaves the place: any navigation away from the Inbox or Home, hiding the tab
-or closing it (with `keepalive`). Undo inside the window never sends it. After it was sent, Undo says the
+at once and sends the accept (`POST /api/v1/decisions/:id/accept` with `If-Match`) the moment its Undo toast leaves
+(the design's one toast rule, #1424: its 10 s, ×, a newer toast, another place) or when the person leaves the page: hiding
+the tab or closing it (with `keepalive`). Everyone else, the proposer first, sees it accepted as soon as it is sent: the accept
+records `project.decision_accepted.v1` and every open view of the decision re-reads on that event. Undo inside the window never sends it. After it was sent, Undo says the
 decision is accepted and that a change of direction is a new proposal. Done, Not now, Decline and Unblock are
 real reversals through the calls above.
 

@@ -231,7 +231,7 @@ class SmallMomentsJourney(unittest.TestCase):
             tasks[key] = self.api(self.page(), "POST", f"/api/v1/projects/{project}/work", {"title": title, "owner": owner})
 
         def assert_one_wink(page: Page, task: dict) -> None:
-            toast = page.locator(".ui-toast").filter(has_text=re.compile(r"#\d+ done"))
+            toast = page.locator(".ui-toast").filter(has_text=re.compile(r"#\d+ moved to Done"))
             expect(toast).to_have_count(1)
             expect(toast.locator(".kreska")).to_have_attribute("data-expression", "wink")
             expect(toast.get_by_role("button", name="Undo")).to_be_visible()
@@ -242,7 +242,7 @@ class SmallMomentsJourney(unittest.TestCase):
         page.goto(f"/projects/{project}/tasks?open=work:{self.ids['task']}")
         page.get_by_role("button", name="Status", exact=True).click()
         page.get_by_role("menu", name="Status").get_by_role("menuitemradio", name="Done").click()
-        toast = page.locator(".ui-toast").filter(has_text=re.compile(r"#\d+ done"))
+        toast = page.locator(".ui-toast").filter(has_text=re.compile(r"#\d+ moved to Done"))
         expect(toast).to_have_count(1)
         expect(toast.locator(".kreska")).to_have_attribute("data-expression", "wink")
         shot(page, "352-toast-wink")

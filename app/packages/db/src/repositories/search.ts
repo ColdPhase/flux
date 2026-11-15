@@ -362,8 +362,9 @@ function rankedScan(chunk: RankedChunk, plan: SearchPlanRows): SQL {
   const clauses = chunk.clauses.map((clause) => clause.query(sql.raw(String(constantOf(clause.at.shift)))));
   const numbered = plan.number === null ? sql`false` : sql`(sd.kind = 'work' AND split_part(sd.body, E'\n', 1) = ${`#${plan.number}`})`;
   // Only the audiences filter the scan; the caller's filters read these columns after it, in `cand` (see the evidence above `RankedField`).
+  // A task's number line ("#6", the first line of its body): a word of a longer query is not the task's number (personas-27, `numberLine`).
   return sql`SELECT sd.id, sd.kind, sd.object_id, sd.version, sd.at, sd.tsv, ${numbered} AS numbered,
-        sd.audience_key, sd.project_id, sd.parent_id, sd.author_kind, sd.author_id,
+        CASE WHEN sd.kind = 'work' THEN split_part(sd.body, E'\n', 1) END AS head, sd.audience_key, sd.project_id, sd.parent_id, sd.author_kind, sd.author_id,
         (pdb.score(sd.id)::float8 * ${num(2 ** FRACTION_BITS)})::bigint AS raw
       FROM search_documents sd WHERE NOT sd.sealed AND ${AUDIENCE_ANY} AND (${sql.join(clauses, sql` OR `)})`;
 }
@@ -388,10 +389,10 @@ function rankedStatement(plan: SearchPlanRows, vector: string | null = null): SQ
   // The caller's filters and the work lifecycle, on each scan's rows (a MATERIALIZED scan keeps them out of pg_search's query and score).
   const keep = sql.join([WORK_LIFECYCLE, ...scopeConditions(plan)], sql` AND `);
   const hits = chunks.length === 1
-    ? sql`SELECT sd.id, sd.kind, sd.object_id, sd.version, sd.at, sd.tsv, sd.numbered, ${decoded(sql`sd.raw`)} AS c0 FROM chunk0 sd WHERE ${keep}`
+    ? sql`SELECT sd.id, sd.kind, sd.object_id, sd.version, sd.at, sd.tsv, sd.numbered, sd.head, ${decoded(sql`sd.raw`)} AS c0 FROM chunk0 sd WHERE ${keep}`
     : sql`SELECT id, min(kind) AS kind, min(object_id) AS object_id, min(version) AS version, min(at) AS at, (array_agg(tsv))[1] AS tsv,
-        bool_or(numbered) AS numbered, ${sql.join(chunks.map((_, index) => sql`max(code) FILTER (WHERE k = ${num(index)}) AS c${num(index)}`), sql`, `)}
-      FROM (${sql.join(chunks.map((_, index) => sql`SELECT ${num(index)} AS k, sd.id, sd.kind, sd.object_id, sd.version, sd.at, sd.tsv, sd.numbered,
+        bool_or(numbered) AS numbered, min(head) AS head, ${sql.join(chunks.map((_, index) => sql`max(code) FILTER (WHERE k = ${num(index)}) AS c${num(index)}`), sql`, `)}
+      FROM (${sql.join(chunks.map((_, index) => sql`SELECT ${num(index)} AS k, sd.id, sd.kind, sd.object_id, sd.version, sd.at, sd.tsv, sd.numbered, sd.head,
         ${decoded(sql`sd.raw`)} AS code FROM chunk${num(index)} sd WHERE ${keep}`), sql` UNION ALL `)}) u GROUP BY id`;
   const words = chunks.flatMap((chunk, index) => chunk.words.map((word) => ({ word, code: sql.raw(`coalesce(h.c${index}, 0)`) })));
   const field = (code: SQL, f: RankedField) => sql`((${code} >> ${num(f.shift)}) & ${num(2 ** f.bits - 1)}) > 0`;
@@ -401,8 +402,11 @@ function rankedStatement(plan: SearchPlanRows, vector: string | null = null): SQ
   const own = words.map(({ word, code }) => {
     const title = sql`ts_rank_cd('{0,0,0,1}', h.tsv, q.q${num(word.w)}, 0)`;
     const body = sql`ts_rank_cd('{0,0,1,0}', h.tsv, q.q${num(word.w)}, 0)`;
+    // A number names a task only when it is the whole query ("#6", "6": `plan.number`). As one word of more ("6:30", "6 trays") a task's own
+    // number line ("#6") is not a match of it, so "6:30" never finds task #6 (personas-27); the number elsewhere in its words still counts.
+    const numberLine = plan.number === null && /^\d+$/.test(word.word) ? sql` - CASE WHEN h.head = ${`#${word.word}`} THEN 1 ELSE 0 END` : sql``;
     return sql`(CASE WHEN ${field(code, word.title)} THEN ${num(WEIGHT.title)} * greatest(${title}, 1) ELSE 0 END
-        + CASE WHEN ${field(code, word.body)} THEN ${num(WEIGHT.body)} * greatest(${body}, 1) ELSE 0 END)::float8 AS tf${num(word.w)}`;
+        + CASE WHEN ${field(code, word.body)} THEN ${num(WEIGHT.body)} * (greatest(${body}, 1)${numberLine}) ELSE 0 END)::float8 AS tf${num(word.w)}`;
   });
   const queries = words.map(({ word }) => {
     const typed = word.word.toLowerCase();
@@ -446,7 +450,8 @@ function rankedStatement(plan: SearchPlanRows, vector: string | null = null): SQ
       SELECT c.id, c.kind, c.object_id, c.version, c.at, c.numbered,
         CASE WHEN ${any} THEN ${whole} ELSE ${partial} END AS rank
       FROM cand c CROSS JOIN stats st
-      WHERE NOT (c.typoed AND NOT c.prefixed AND NOT (${any}) AND st.whole > 0)),
+      -- A hit holds a whole word, the word being typed or a typo; a task whose number line alone matched holds none of them and is not shown.
+      WHERE NOT (c.typoed AND NOT c.prefixed AND NOT (${any}) AND st.whole > 0) AND (${any} OR c.prefixed OR c.typoed OR c.numbered)),
     -- A file is several rows, one for each part of its text (C-63): it counts once, by its best part, before the hybrid's lists take their first 50.
     ranked AS (
       SELECT s.id, s.kind, s.object_id, s.version, s.at, s.numbered, s.rank FROM scored s WHERE s.kind <> 'file'

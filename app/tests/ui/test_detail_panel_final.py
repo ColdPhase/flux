@@ -85,6 +85,8 @@ class DetailPanelFinal(unittest.TestCase):
                 expect(page.get_by_role("complementary", name="Details")).to_be_visible()
                 expect(panel.locator(".ui-panel__kind")).to_have_text("Task")
                 expect(panel.locator(".wd__ref")).to_have_text(re.compile(r"^#2\s·\s.+"))
+                # Its words have no double space ("#2 ·  in …", personas-27).
+                self.assertNotIn("  ", panel.locator(".wd__ref").text_content())
                 # Rows of label and value; the blocker is a card; the one discussion and its composer follow. Empty Results are not shown.
                 rows = panel.locator(".wd-rows .wd-row")
                 expect(rows).to_have_count(4)

@@ -70,12 +70,13 @@ export const TaskCardsUnderMessages = CardsHere.Provider;
 export function MessageTaskCards({ preview }: { preview: MessageWorkPreview | null }) {
   const { openDetails } = useShellActions();
   const cards = useContext(CardsHere);
-  const tasks = cards ? (preview?.items ?? []).filter((item): item is WorkRowProjection => item.kind === 'work') : [];
+  // A task whose creation was undone is shown nowhere in the conversation (personas-27 P2 4).
+  const tasks = cards ? (preview?.items ?? []).filter((item): item is WorkRowProjection => item.kind === 'work' && item.lifecycle?.state !== 'creation_reverted') : [];
   if (!tasks.length) return null;
   return (
     <div className="msg-tasks">
       {tasks.map((task) => <div key={task.id} className="convo-notice__body convo-notice__card msg-tasks__card" data-work-id={task.id}>
-        <TaskObjectRow workId={task.id} number={task.number} title={task.title} row={task} reverted={task.lifecycle?.state === 'creation_reverted'} onOpen={() => openDetails({ kind: 'work', id: task.id })} />
+        <TaskObjectRow workId={task.id} number={task.number} title={task.title} row={task} onOpen={() => openDetails({ kind: 'work', id: task.id })} />
       </div>)}
     </div>
   );
@@ -114,7 +115,9 @@ export function MessageObjects({ message, projectId, preview, thread = null, thr
   const discussed = thread && !read.some((item) => item.kind === 'work' && item.id === thread.workId) ? thread : null;
   // What the conversation shows as its own card is not repeated here (#1424).
   // A thread draws the tasks as cards under the message (MessageTaskCards), so the bubble carries no chip of them.
-  const items = read.filter((item) => !(shown?.has(shownKey(message.id, item.kind, item.id))) && !(cards && item.kind === 'work'));
+  // A task whose creation was undone is shown nowhere (personas-27 P2 4).
+  const items = read.filter((item) => !(shown?.has(shownKey(message.id, item.kind, item.id))) && !(cards && item.kind === 'work')
+    && !(item.kind === 'work' && item.lifecycle?.state === 'creation_reverted'));
   const more = read.length < total;
   if (!discussed && !items.length && !more && !thoughts.length) return null;
   return (

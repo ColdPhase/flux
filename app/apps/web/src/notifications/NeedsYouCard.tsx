@@ -77,10 +77,13 @@ export function WaitingLine({ item }: { item: NeedsYouItem }) {
   if (!decision) return null;
   const you = decision.accepters.find((person) => person.you);
   const others = [...new Map(decision.accepters.filter((person) => !person.you).map((person) => [person.id, person])).values()];
-  // Two people may share a name: the line names two different names and counts everyone else, never "Basia, Basia" (#763).
-  const named = [...new Map(others.map((person) => [person.name, person])).values()].slice(0, 2);
+  // Two people may share a name: the line names different names and counts everyone else, never "Basia, Basia" (#763). Up to three
+  // are all named; "and 1 more" would hide a name the line has room for, so a count is only ever two or more (personas-27).
+  const distinct = [...new Map(others.map((person) => [person.name, person])).values()];
+  const named = distinct.length <= 3 ? distinct : distinct.slice(0, 2);
   const rest = others.length - named.length;
-  const names = rest > 0 ? `${named.map((person) => person.name).join(', ')} and ${rest} more` : named.map((person) => person.name).join(' and ');
+  const list = named.map((person) => person.name);
+  const names = rest > 0 ? `${list.join(', ')} and ${rest} more` : list.length <= 1 ? list.join('') : `${list.slice(0, -1).join(', ')} and ${list.at(-1)}`;
   return (
     <span className="nyc__waiting">
       {named.map((person) => <Avatar key={person.id} name={person.name} id={person.id} size="sm" />)}

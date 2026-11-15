@@ -115,7 +115,8 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
         url: decisionAppPath(decision.projectId, decision.id),
         decision: {
           id: decision.id, version: decision.version, proposedBy: { kind: by.kind, id: by.id, name }, basedOn, affects,
-          accepters: accepters.get(decision.projectId) ?? [], canAccept: true, supersedes,
+          // Only the people it is asked of (personas-27): the one who proposed it is not asked, unless that is you and nobody else can.
+          accepters: (accepters.get(decision.projectId) ?? []).filter((person) => person.you || !(by.kind === 'human' && person.id === by.id)), canAccept: true, supersedes,
         },
         blocked: null, reason: null, snoozeTask: affects[0] ?? null,
       });

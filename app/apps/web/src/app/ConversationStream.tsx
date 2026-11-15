@@ -93,7 +93,18 @@ export function streamEntries(roots: ConversationRoot[], notices: TaskCreationNo
  * forward until it meets them, so no announcement between is missed.
  */
 export function useTaskNotices(projectId: string, page: Page<TaskCreationNotice>, roots: ConversationRoot[], hasOlderRoots: boolean, onDenied: (cause: unknown) => void) {
-  return useNoticeFeed(listTaskNotices, projectId, page, roots, hasOlderRoots, onDenied);
+  const notices = useNoticeFeed(listTaskNotices, projectId, page, roots, hasOlderRoots, onDenied);
+  return useMemo(() => shownTaskNotices(notices), [notices]);
+}
+
+/**
+ * The announcements a reader is shown (personas-27 P2 4, founder bar "nothing shown that was undone"): a task whose creation was undone is
+ * gone from the conversation for everyone, with every line about it (its creation, the Undo, any blocked line), so no fold lists or counts
+ * it. The feed keeps them as history with the task's lifecycle; the newest page carries the Undo, which names the task.
+ */
+export function shownTaskNotices(notices: TaskCreationNotice[]) {
+  const undone = new Set(notices.filter((notice) => notice.kind === 'task.creation_reverted' || notice.lifecycle?.state === 'creation_reverted').map((notice) => notice.workId));
+  return undone.size ? notices.filter((notice) => !undone.has(notice.workId)) : notices;
 }
 /** The decisions the conversation announces (#694), kept and paged the same way as the task announcements. */
 export function useObjectNotices(projectId: string, page: Page<ObjectNotice>, roots: ConversationRoot[], hasOlderRoots: boolean, onDenied: (cause: unknown) => void) {
@@ -736,7 +747,7 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
           {end}
           {/* Only an empty conversation asks where to start: a task or a decision card is already a start (v0.2.1 audit). */}
           {entries.length || stream.hasOlder || outbox.pending.length ? null
-            : <EmptyState icon="chat" mascot="hello" title="Where do we start?"><p>Write a thought. You don’t need a topic or a ready plan. {audience === 'You' && project.visibility !== 'workspace' ? 'For now you are the only one in this space; the people you add will see it too. ' : ''}Any message can later become a task, a decision or a thought on the map.</p></EmptyState>}
+            : <EmptyState icon="chat" mascot="hello" title="Where do we start?"><p>Write a thought. You don’t need a topic or a ready plan. {audience === 'You' && project.visibility !== 'workspace' ? 'The people you add to this space will see it too. ' : ''}Any message can later become a task, a decision or a thought on the map.</p></EmptyState>}
         </section>
       </div>
     </div>

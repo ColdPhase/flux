@@ -584,7 +584,9 @@ class OneConversationJourney(unittest.TestCase):
         owner.goto(f"/projects/{project['id']}")
         stream = self.stream(owner)
         expect(stream.get_by_role("heading", name="Where do we start?")).to_be_visible()
-        expect(stream).to_contain_text("For now you are the only one in this space; the people you add will see it too.")
+        # True while invites are still waiting too: never "For now you are the only one in this space" (personas-27).
+        expect(stream).to_contain_text("The people you add to this space will see it too.")
+        expect(stream).not_to_contain_text("the only one in this space")
         self.assertEqual(self.api(owner, "GET", path, status=200)["roots"], [])
         member = self.page("jonas")
         self.api(member, "GET", path, status=404)

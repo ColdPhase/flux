@@ -42,7 +42,9 @@ The service (`createSearchUseCases`) picks by `usesSearchSyntax(text)`; the curs
   the body fields (folded by `foldSearchWord`), and "sens" finds "sensors" and "kalibr" finds "kalibracja".
 - **A title tolerates a typo:** each plain word of four letters or more (at most six) also matches the title with one edit
   (`pdb.fuzzy(1)`), as the trigram match did ("ensor", "omparison", "comparisn" find "Sensor comparison"). A task number
-  names one task, so it gets no typo. A typo is a way to find what the words did not (v0.2.1 personas round: "price list" listed the person "Kasia Lis", one
+  names one task, so it gets no typo. A number names a task only when it is the whole query ("#6" or "6"): as one word of a longer
+  query ("6:30", "6 trays") a task's own number line ("#6", the first line of its indexed body) is not a match of it, so "6:30" never
+  finds task #6 (personas round 4); the number elsewhere in a task's words still counts. A typo is a way to find what the words did not (v0.2.1 personas round: "price list" listed the person "Kasia Lis", one
   edit from "list", beside the price list itself): a hit found only by a typo in its title (no word whole, not the word being typed)
   is shown only when no visible hit holds one of the words whole (`stats.whole` in the statement; the in-memory index of an encrypted
   workspace keeps the same rule). "liss" alone still finds "Kasia Lis".

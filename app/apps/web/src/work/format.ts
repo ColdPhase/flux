@@ -20,7 +20,11 @@ export const dueLabel = (day: string) => dueFormat.format(new Date(Number(day.sl
 export const taskNumber = (item: { number: number }) => `#${item.number}`;
 
 const day = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' });
-export const shortDate = (iso: string) => day.format(new Date(iso));
+/** A day as a task or a decision says it: "today" for today (never today's date, personas-27), else "14 Nov". */
+export const shortDate = (iso: string) => {
+  const date = new Date(iso);
+  return date.toDateString() === new Date().toDateString() ? 'today' : day.format(date);
+};
 
 export function isFinished(item: Pick<WorkItem, 'status'>) {
   return item.status === 'done';
@@ -66,6 +70,9 @@ export function blockedParts(item: { blocker: string | null; waitingFor?: { name
   const thing = !!reason && /^\p{Ll}/u.test(reason);
   return { person: item.waitingFor?.name ?? null, on: item.waitingOn ? waitingPhrase(item.waitingOn) : null, reason, thing };
 }
+
+/** A blocked task with nothing written about why, said one way on the board, the panel and Home (personas-27; return-view.md). */
+export const NO_REASON = 'No reason was recorded.';
 
 /**
  * What a blocked task waits for, as the one line of its card (#868): "Waiting for Jonas", "Waiting for the decision Use LoRa for the far

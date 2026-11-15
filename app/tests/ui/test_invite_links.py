@@ -143,7 +143,7 @@ class InviteLinksJourney(unittest.TestCase):
         self.more(region)
         expect(region.get_by_label("Works for")).to_contain_text("7 days")
         # Ada is an owner: Admin is offered; never Owner.
-        self.assertEqual(app_labels(region.get_by_label("Joins as")), ["Member", "Guest", "Admin"])
+        self.assertEqual(app_labels(region.get_by_label("Joins as")), ["Admin", "Member", "Guest"])
         link = self.make_link(page, "Member")
         pending = page.get_by_role("list", name=re.compile("^Waiting to be used"))
         expect(pending.get_by_role("listitem")).to_have_count(1)
@@ -161,7 +161,7 @@ class InviteLinksJourney(unittest.TestCase):
         page.get_by_role("button", name="Invite", exact=True).click()
         expect(region).to_have_count(0)
         expect(pending.get_by_role("listitem")).to_have_count(1)
-        expect(page.get_by_role("heading", name=re.compile(r"^Waiting to be used · 1$"))).to_be_visible()
+        expect(page.get_by_role("heading", name=re.compile(r"^Waiting to be used 1$"))).to_be_visible()
         listed = self.pending(self.riverside)
         self.assertEqual([(item["role"], item["email"], item["link"]) for item in listed], [("member", None, link)])
         type(self).member_link = link

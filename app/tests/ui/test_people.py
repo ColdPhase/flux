@@ -202,7 +202,7 @@ class PeopleJourney(unittest.TestCase):
         self.add(page, PEOPLE["mia"][1], "Guest")
         expect(page.locator(".people__done")).to_have_text("Mia Novak joined Riverside Makers as guest.")
         expect(people.get_by_role("listitem")).to_have_count(4)
-        expect(page.get_by_role("heading", name="People · 4")).to_be_visible()
+        expect(page.get_by_role("heading", name="People 4")).to_be_visible()
         self.assertEqual(self.roles(page, self.riverside), {self.ids["ada"]: "owner", self.ids["kai"]: "member", self.ids["lee"]: "admin", self.ids["mia"]: "guest"})
         self.no_horizontal_scroll(page, DESKTOP["width"])
         shot(page, "people-desktop-1440-light")
@@ -220,7 +220,7 @@ class PeopleJourney(unittest.TestCase):
         expect(roster.get_by_role("listitem").filter(has_text="Ada Kowalska")).to_contain_text("Owner")
         expect(page.get_by_role("combobox", name="Role of Ada Kowalska")).to_have_count(0)
         expect(page.get_by_role("combobox", name="Role of Kai Tanaka")).to_be_visible()
-        self.assertEqual(app_labels(page.get_by_role("combobox", name="Role of Kai Tanaka")), ["Member", "Guest", "Admin"], "no Owner for an admin")
+        self.assertEqual(app_labels(page.get_by_role("combobox", name="Role of Kai Tanaka")), ["Admin", "Member", "Guest"], "no Owner for an admin")
         response = page.request.patch(f"/api/v1/workspaces/{self.riverside}/members/{self.ids['kai']}",
                                       data={"role": "owner"}, headers={"origin": ORIGIN})
         self.assertEqual(response.status, 403, response.text())
@@ -421,7 +421,7 @@ class PeopleJourney(unittest.TestCase):
         # Founder decision 2026-11-14 (#1424): Remove is on the person's row, as in Space settings, and asks in place (Remove / Keep);
         # the role menu holds only the roles.
         row = page.get_by_role("list", name="People in Riverside Makers").get_by_role("listitem").filter(has_text="Mia Novak")
-        self.assertEqual(app_labels(row.get_by_role("combobox", name="Role of Mia Novak")), ["Member", "Guest", "Admin", "Owner"])
+        self.assertEqual(app_labels(row.get_by_role("combobox", name="Role of Mia Novak")), ["Owner", "Admin", "Member", "Guest"])
         remove = row.get_by_role("button", name="Remove Mia Novak from Riverside Makers")
         expect(remove).to_be_visible()
         remove.click()

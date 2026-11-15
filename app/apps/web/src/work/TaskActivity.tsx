@@ -319,7 +319,7 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
             <li key={line.key} className="wd-act__item" data-activity={line.kind === 'change' ? line.entry.kind : line.kind}>
               <Face actor={actor} mine={mine} hue={hueOf(actor.kind === 'agent' ? actor : null)} />
               <p className="wd-act__line">
-                {actor.kind === 'agent' ? <AgentIdentity name={actor.name} owner={agentAuthorOwner(actor, owners)} icon={false} hue={hueOf(actor)} /> : <b title={actor.name}>{firstName(actor.name)}</b>}
+                {actor.kind === 'agent' ? <AgentIdentity name={actor.name} owner={agentAuthorOwner(actor, owners)} icon={false} hue={hueOf(actor)} /> : <b>{actor.name}{mine ? ' (you)' : ''}</b>}
                 {' '}{text}
                 <time dateTime={line.at} title={when(line.at)}> · {stamp(line.at)}</time>
                 {line.key === doneLine && agentDone?.undo ? <>{' '}<Button variant="quiet" size="sm" className="wd-act__undo" busy={agentDone.busy} onClick={agentDone.undo}>Undo</Button></> : null}

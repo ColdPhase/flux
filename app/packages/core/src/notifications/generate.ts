@@ -5,7 +5,7 @@ import type { NotificationReason } from '@flux/contracts';
 import type { JobRetryPolicy } from '../push/config.js';
 import { readsSource } from '../push/notifications.js';
 import type { SourceLookup } from '../push/ports.js';
-import { isQuestion, mentions } from './addressing.js';
+import { asksStarter, isQuestion, mentions } from './addressing.js';
 import type { GeneratorEvent, GeneratorPorts, GeneratorUnitOfWork, NoticeAnnouncement, NotificationFacts } from './ports.js';
 import { channelsOf, inQuietHours } from './preferences.js';
 
@@ -28,6 +28,8 @@ export const NOTIFICATION_EMAIL_QUEUE: JobRetryPolicy = {
 };
 
 export const GENERATOR_BATCH = 100;
+/** How far back a person who joins is asked what was asked of them before (personas-27): the Inbox's own reach for a question. */
+export const JOIN_QUESTION_DAYS = 14;
 /** At most one email per person and place in this window; the inbox holds the rest. */
 export const EMAIL_CALM_WINDOW_MS = 10 * 60_000;
 
@@ -152,13 +154,16 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
       const url = `/projects/${message.projectId}/conversations/${message.conversationId}#message-${message.id}`;
       // A person's message answers what was asked of them here (#1424 decision 1): the asker is told as if named.
       const answered = authorId ? askersAnswered(message.since) : new Set<string>();
+      // One rule with Home (personas-27): a question in a thread that names nobody asks the thread's starter.
+      const starter = message.conversationCreatedBy.kind === 'human' ? message.conversationCreatedBy.id : null;
+      const toStarter = asksStarter(message.body, authorId, starter) ? starter : null;
       const result: Candidate[] = [];
       for (const userId of people) {
         const name = names.get(userId) ?? '';
         // An agent's question card asks exactly one person, whatever the text says (#347 S14).
         const askedThis = message.asked?.userId === userId;
         if (message.asked && !askedThis) continue;
-        const named = mentions(message.body, name);
+        const named = mentions(message.body, name) || toStarter === userId;
         const addressed = named || answered.has(userId);
         const reason: NotificationReason | null = askedThis ? 'question' : addressed ? (isQuestion(message.body) ? 'question' : 'mention') : follows(userId) ? 'reply' : null;
         if (!reason) continue;
@@ -171,6 +176,24 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
           ...(reason === 'question' || reason === 'mention' ? { thread: message.conversationId } : {}), ...(addressed && !named && !askedThis ? { answer: true } : {}) });
       }
       return result;
+    }
+    case 'project.grant_set.v1':
+    case 'workspace.member_added.v1': {
+      // Someone joins a space, or the company and its open spaces (personas-27): the newest still-open question of the last 14 days that names
+      // them reaches them, as if they had been there when it was asked. It is asked of them by the one rule a new message follows.
+      const principal = event.data.principal as { kind?: unknown; id?: unknown } | undefined;
+      const joined = event.kind === 'project.grant_set.v1' ? (principal?.kind === 'human' && typeof principal.id === 'string' ? principal.id : null)
+        : typeof event.data.userId === 'string' ? event.data.userId : null;
+      if (!joined || !audience.has(joined) || !facts.joinQuestions) return [];
+      const name = (await facts.names([joined])).get(joined) ?? '';
+      const place = event.kind === 'project.grant_set.v1' ? { projectId: event.objectId } : { workspaceId: event.objectId };
+      const asked = (await facts.joinQuestions(joined, place, JOIN_QUESTION_DAYS)).find((message) => isQuestion(message.body) && mentions(message.body, name));
+      if (!asked) return [];
+      const authorName = (await facts.names([asked.authorId])).get(asked.authorId) ?? 'Someone';
+      const author = viaName(authorName, asked.via, asked.viaAgent);
+      return [{ userId: joined, reason: 'question', source: { type: 'project', id: asked.projectId }, title: `${author} asked you in ${asked.projectName}`,
+        body: excerpt(messagePreview(asked.body, asked.attachmentCount)), url: `/projects/${asked.projectId}/conversations/${asked.conversationId}#message-${asked.id}`,
+        aiOrigin: !!asked.via, who: authorName, where: asked.projectName, thread: asked.conversationId }];
     }
     case 'dm.message_sent.v1': {
       const messageId = id(event.data.messageId);

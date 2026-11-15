@@ -83,7 +83,8 @@
 .spset__emoji-b:focus-visible { outline: 2px solid var(--t1); outline-offset: -2px; }
 .spset__seclead { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 26px 0 10px; }
 .spset__seclead .sset-sec { margin: 0; }
-.spset__count { margin-left: 6px; font-family: var(--mono, ui-monospace, monospace); font-size: var(--fs-xs); font-weight: 400; color: var(--t3); }
+/* The same quiet count as Company › People, "People 6", and read as "People 6" (personas-27). */
+.spset__count { margin-left: 2px; font-family: var(--mono, ui-monospace, monospace); font-size: var(--fs-xs); font-weight: 400; color: var(--t3); }
 .spset__who { display: flex; flex: 1; flex-direction: column; min-width: 0; line-height: 1.35; }
 .spset__who b { font-size: var(--fs-base); font-weight: 600; color: var(--t1); overflow-wrap: break-word; }
 .spset__who span { font-size: var(--fs-xs); color: var(--t3); overflow-wrap: anywhere; }

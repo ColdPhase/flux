@@ -267,6 +267,25 @@ export function notificationFactRows(db: DbExecutor) {
         ...(message.authorAgentId && (server || !client) ? { onlyNotifies: agent?.ownerUserId ?? '' } : {}),
       };
     },
+    async joinQuestions(userId: string, place: { projectId: string } | { workspaceId: string }, days: number) {
+      const pm = schema.projectMessages;
+      const pr = schema.projects;
+      const scope = 'projectId' in place ? eq(pm.projectId, place.projectId) : and(eq(pr.workspaceId, place.workspaceId), eq(pr.visibility, 'workspace'));
+      const rows = await db.select({ message: pm }).from(pm).innerJoin(pr, eq(pr.id, pm.projectId))
+        .where(and(scope, isNull(pm.removedAt), isNotNull(pm.authorId), ne(pm.authorId, userId), gte(pm.createdAt, sql`now() - make_interval(days => ${days})`),
+          sql`NOT EXISTS (SELECT 1 FROM project_messages later WHERE later.conversation_id = ${pm.conversationId} AND later.sequence > ${pm.sequence}
+            AND later.removed_at IS NULL AND later.author_id IS DISTINCT FROM ${pm.authorId})`,
+          sql`NOT EXISTS (SELECT 1 FROM notifications told WHERE told.user_id = ${userId}
+            AND told.url = '/projects/' || ${pm.projectId}::text || '/conversations/' || ${pm.conversationId}::text || '#message-' || ${pm.id}::text)`))
+        .orderBy(desc(pm.createdAt), desc(pm.id)).limit(200);
+      const messages = await openRows(db, 'project_messages', rows.map((row) => row.message));
+      const out = [];
+      for (const message of messages) {
+        out.push({ id: message.id, projectId: message.projectId, projectName: await projectName(message.projectId), conversationId: message.conversationId,
+          authorId: message.authorId!, via: message.via ?? null, viaAgent: !!message.via && !!message.viaColour, body: message.body, attachmentCount: message.attachmentCount });
+      }
+      return out;
+    },
     async dmMessage(dmId: string, messageId: string) {
       const [row] = await db.select({ message: schema.dmMessages, dm: schema.dms }).from(schema.dmMessages)
         .innerJoin(schema.dms, eq(schema.dms.id, schema.dmMessages.dmId))

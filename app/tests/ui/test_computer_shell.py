@@ -212,7 +212,7 @@ class ComputerShell(unittest.TestCase):
         expect(row).to_be_visible()
         row.focus()
         page.keyboard.press("4")
-        toast = page.locator(".ui-toast").filter(has_text="done")
+        toast = page.locator(".ui-toast").filter(has_text="moved to Done")
         expect(toast).to_be_visible()
         undo = toast.get_by_role("button", name=re.compile("^Undo"))
         expect(undo).to_have_attribute("aria-keyshortcuts", re.compile("^[zZ]$"))

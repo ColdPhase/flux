@@ -110,7 +110,8 @@
 .people--page .details__sec > h4, .people--page .access__head h4 { margin: 26px 0 10px; font-size: var(--fs-lg); font-weight: 600; color: var(--t1); letter-spacing: -.005em; }
 .people--page .access__head { align-items: baseline; margin-bottom: 0; }
 .people--page .access__invite.ui-btn { margin-right: 0; }
-.people__count { font-family: var(--mono, ui-monospace, monospace); font-size: var(--fs-sm); font-weight: 400; color: var(--t3); }
+/* A count is a quiet mono number after its title, "People 6", as in Space settings and "Inbox 5" (personas-27). */
+.people__count { margin-left: 2px; font-family: var(--mono, ui-monospace, monospace); font-size: var(--fs-sm); font-weight: 400; color: var(--t3); }
 .people--page .people__row { min-height: 56px; padding: 8px 18px; }
 .people--page .people__card > .people__list { margin: 0; }
 .people--page .people__sso { margin: 0; padding: 14px 18px; border-radius: 0; background: transparent; border-bottom: 1px solid var(--line); }
@@ -121,7 +122,7 @@
 .people--page .people__guests { margin: 10px 4px 0; }
 /* The role is the menu of roles, drawn as Space settings' (#1424): a quiet "Admin ▾" that opens the roles. */
 .people__rolecell { flex: none; }
-.people__rolecell .ui-select { gap: 2px; min-height: var(--ctl); padding: 0 6px 0 10px; border: 0; border-radius: var(--r-btn); background: transparent;
+.people__rolecell .ui-select { gap: 2px; min-width: 6.5rem; min-height: var(--ctl); padding: 0 6px 0 10px; border: 0; border-radius: var(--r-btn); background: transparent;
   color: var(--t2); font-size: var(--fs-sm); font-weight: 500; line-height: 1.2; transition: var(--tr); }
 .people__rolecell .ui-select:hover:not(:disabled) { background: var(--hov); color: var(--t1); }
 .people__rolecell .ui-select[aria-expanded="true"] { background: var(--sub); color: var(--t1); }
@@ -135,7 +136,9 @@
 
 /* Reset link and Remove on a person's row of the company's page (founder decision 2026-11-14, #1424): quiet buttons after the role, the same
    look as Space settings' Remove; Remove asks in place (Remove / Keep) with what it ends under the row. On a phone the row stacks as there. */
-.people__acts { display: inline-flex; flex: none; align-items: center; gap: 2px; }
+.people__acts { display: inline-flex; flex: none; align-items: center; justify-content: flex-end; gap: 2px; }
+/* Every row's actions take one column, as wide as Reset link and Remove, so each role's word and chevron sit at the same place (personas-27). */
+.people--page .people__acts { min-width: 10rem; }
 .people__act.ui-btn { flex: none; color: var(--t2); }
 .people__act[aria-expanded="true"] { background: var(--sub); color: var(--t1); }
 .people__confirmrow { display: inline-flex; gap: 6px; }
@@ -151,5 +154,5 @@
   /* The role's word starts under the name (the button's 10 px padding is taken off). */
   .people--page .people__item[data-person] .people__rolecell { margin-left: 26px; }
   .people--page .people__item[data-person] > .people__row > .people__role { margin-left: 36px; }
-  .people--page .people__acts { margin-left: auto; }
+  .people--page .people__acts { margin-left: auto; min-width: 0; }
 }

@@ -19,7 +19,8 @@ import { DeleteSpaceDialog, type DeletableSpace } from './DeleteSpace';
 import { PersonLine } from './LastActive';
 import './people.css';
 
-const ROLES: WorkspaceRole[] = ['member', 'guest', 'admin', 'owner'];
+// Roles from the most to the least (personas-27): Owner, Admin, Member, Guest, in every menu of roles.
+const ROLES: WorkspaceRole[] = ['owner', 'admin', 'member', 'guest'];
 /** Roles the caller may hand out: only an owner grants or changes the owner role (#29). */
 const assignable = (mine: WorkspaceRole) => ROLES.filter((role) => role !== 'owner' || mine === 'owner');
 const article = (value: WorkspaceRole) => (value === 'admin' || value === 'owner' ? 'an' : 'a');
@@ -172,7 +173,7 @@ export function WorkspacePeople({ workspaceId, onBack, page = false }: { workspa
 
       <section className="details__sec" aria-labelledby="people-here">
         <div className="access__head">
-          <h4 id="people-here" ref={rosterRef} tabIndex={-1}>{ordered ? (page ? <>People<span className="people__count"> · {ordered.length}</span></> : `In ${workspace.name} · ${ordered.length}`) : `You in ${workspace.name}`}</h4>
+          <h4 id="people-here" ref={rosterRef} tabIndex={-1}>{ordered ? (page ? <>People <span className="people__count">{ordered.length}</span></> : `In ${workspace.name} · ${ordered.length}`) : `You in ${workspace.name}`}</h4>
           {page && canAdd ? <Button ref={inviteRef} variant="quiet" icon="plus" className="access__invite" aria-expanded={inviting} onClick={() => (inviting ? closeInvite() : setInviting(true))}>Invite</Button> : null}
         </div>
         {page && inviting ? addPerson : null}
@@ -186,7 +187,7 @@ export function WorkspacePeople({ workspaceId, onBack, page = false }: { workspa
         {ordered ? (
           <ul className="people__list" ref={listRef} aria-label={`People in ${workspace.name}`}>
             {ordered.map((member) => (
-              <MemberRow key={member.userId} member={member} self={member.userId === me.user.id} workspace={workspace} myRole={myRole} page={page}
+              <MemberRow key={member.userId} member={member} self={member.userId === me.user.id} workspace={workspace} myRole={myRole} page={page} column={ordered.length > 1}
                 editable={manager && (member.role !== 'owner' || myRole === 'owner')}
                 // #1471: an owner makes a reset link for anyone else, an admin for members and guests; never with single sign-on.
                 resettable={page && sso === null && member.userId !== me.user.id && (myRole === 'owner' || (myRole === 'admin' && (member.role === 'member' || member.role === 'guest')))}
@@ -250,7 +251,7 @@ function RemovedPeople({ workspaceId, reload, onRestored }: { workspaceId: strin
   };
   return (
     <section className="details__sec" aria-labelledby="people-removed">
-      <h4 id="people-removed">Removed<span className="people__count"> · {people.length}</span></h4>
+      <h4 id="people-removed">Removed <span className="people__count">{people.length}</span></h4>
       <ul className="people__list sset-card" aria-label="People who were removed">
         {people.map((person) => (
           <li className="people__item" key={person.userId}><div className="people__row">
@@ -294,7 +295,7 @@ function CompanySpaces({ workspaceId }: { workspaceId: string }) {
   };
   return (
     <section className="details__sec" aria-labelledby="company-spaces">
-      <h4 id="company-spaces">Spaces<span className="people__count"> · {spaces.length + sealed.length}</span></h4>
+      <h4 id="company-spaces">Spaces <span className="people__count">{spaces.length + sealed.length}</span></h4>
       <ul className="people__list sset-card" aria-label="Every space in the company">
         {spaces.map((space) => (
           <li className="people__item" key={space.id}>
@@ -432,8 +433,10 @@ function AddPerson({ workspace, members, myRole, onAdded }: { workspace: Workspa
   );
 }
 
-function MemberRow({ member, self, workspace, myRole, page, editable, resettable, editing, onEdit, onChanged }: {
+function MemberRow({ member, self, workspace, myRole, page, column = false, editable, resettable, editing, onEdit, onChanged }: {
   member: WorkspaceMember; self: boolean; workspace: EncryptedWorkspace; myRole: WorkspaceRole; page: boolean; editable: boolean; resettable: boolean;
+  /** Other rows carry Reset link and Remove: a row without them keeps their column, so every role's chevron is at one place (personas-27). */
+  column?: boolean;
   editing: boolean; onEdit: (open: boolean) => void; onChanged: (message: string, holderLeft?: boolean, editorClosed?: boolean) => void;
 }) {
   const editId = useId();
@@ -525,7 +528,7 @@ function MemberRow({ member, self, workspace, myRole, page, editable, resettable
             ) : <Button ref={removeRef} variant="quiet" size="sm" className="people__act" aria-expanded={open === 'remove'} aria-label={`Remove ${member.name} from ${workspace.name}`}
               onClick={() => toggle('remove')}>Remove</Button>) : null}
           </span>
-        ) : null}
+        ) : page && column ? <span className="people__acts" aria-hidden="true" /> : null}
       </div>
       {/* F-030 (#655): an owner or admin of an encrypted company who stops being one changes its key, which is said before it happens. */}
       {demoteTo ? (
@@ -711,7 +714,7 @@ function ResetLinkGroup({ id, member, workspace, onClose }: { id: string; member
 const expiryLabel: Record<InviteExpiryDays, string> = { 1: '1 day', 7: '7 days', 30: '30 days' };
 const until = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' });
 const madeOn = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-const inviteRoles = (mine: WorkspaceRole): InviteRole[] => (mine === 'owner' ? ['member', 'guest', 'admin'] : ['member', 'guest']);
+const inviteRoles = (mine: WorkspaceRole): InviteRole[] => (mine === 'owner' ? ['admin', 'member', 'guest'] : ['member', 'guest']);
 
 async function copyText(text: string): Promise<boolean> {
   try { await navigator.clipboard.writeText(text); return true; } catch { return false; }
@@ -893,7 +896,7 @@ function WaitingLinks({ workspace, myRole, links }: { workspace: Workspace; myRo
   if (!invites?.length) return <div className="people__waiting-none">{statusLine}{problem ? <p className="people__notice" role="alert"><Icon name="alert" size={13} />{problem}</p> : null}</div>;
   return (
     <section className="details__sec" aria-labelledby="people-invites-pending">
-      <h4 id="people-invites-pending">Waiting to be used<span className="people__count"> · {invites.length}</span></h4>
+      <h4 id="people-invites-pending">Waiting to be used <span className="people__count">{invites.length}</span></h4>
       <ul className="people__list sset-card people__waiting" aria-label={`Waiting to be used · ${invites.length}`}>
         {invites.map((invite) => (
           <li className="people__item" key={invite.id}>

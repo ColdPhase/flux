@@ -407,23 +407,17 @@ test('two accounts keep Conversation, Tasks, Map and Agents current after real U
     assert.equal(history.find((notice) => notice.kind === 'task.created')!.createdBy.kind, 'agent', 'the original creator stays the genuine agent');
     await settle(pages[0]!); await pages[0]!.reload();
     assert.deepEqual(await storedDraft(pages[0]!, draftKey(f, item)), original, 'reload keeps the private staged draft before reopening history');
+    // The feed keeps both notices as history (above), but the conversation shows none of them to anyone (personas-27 P2 4): its link
+    // still opens the task read only.
+    await reverted(pages[0]!, item); await pages[0]!.locator('.project-convo__message-list').waitFor();
     for (const notice of history) {
-      const row = pages[0]!.locator(`#notice-${notice.id}`); await row.waitFor();
-      assert.equal(await row.locator('time').getAttribute('datetime'), notice.createdAt);
       assert.equal(notice.workNumber, item.number);
-      assert.equal(await row.locator('.convo-notice__num').innerText(), `#${item.number}`);
-      assert.equal(await row.getByRole('button', { name: `Open task #${item.number} ${item.title}`, exact: true }).count(), 1);
+      assert.equal(await pages[0]!.locator(`#notice-${notice.id}`).count(), 0, `the conversation does not show ${notice.kind}`);
     }
-    const undoNotice = pages[0]!.locator(`#notice-${appended.id}`);
-    assert.equal(await undoNotice.locator('.convo-notice__meta strong').innerText(), 'Ari Task author (you)');
-    assert.equal(await undoNotice.locator('.convo-notice__kind').textContent(), 'Task creation undone');
-    assert.equal(await undoNotice.getByRole('button').getAttribute('data-native-ref'), `work:${item.id}`);
+    assert.equal(await pages[0]!.locator(`.project-convo__message-list [data-work-id="${item.id}"]`).count(), 0, 'no card of the undone task');
     assert.equal(await receipts(item), 1);
     assert.deepEqual(expectStatus(await f.author.browser.request('GET', `/api/v1/sketches/${sketch.id}`), 200), mapBefore,
       'the map is unchanged; it never had a task node to remove');
-    await undoNotice.getByRole('button').click(); await reverted(pages[0]!, item);
-    await pages[0]!.getByRole('button', { name: 'Close details', exact: true }).click();
-    await pages[0]!.locator(`#notice-${appended.id}`).getByRole('button').click(); await reverted(pages[0]!, item);
   });
 });
 

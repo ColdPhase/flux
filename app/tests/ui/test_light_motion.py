@@ -1116,7 +1116,7 @@ class LightMotionJourney(unittest.TestCase):
         at_drop = len(recorded(page))
         self.assertTrue([entry for entry in recorded(page) if "tb-card" in entry["target"]], f"the card moves at the drop: {recorded(page)}")
         held.pop().continue_()
-        expect(page.locator(".ui-toast").filter(has_text=re.compile(r"done"))).to_be_visible()
+        expect(page.locator(".ui-toast").filter(has_text=re.compile(r"moved to Done"))).to_be_visible()
         page.wait_for_timeout(900)
         later = recorded(page)[at_drop:]
         self.assertEqual([entry for entry in later if "tb-" in entry["target"] or "arrive" in entry.get("name", "")], [], f"the answer adds no motion to the board: {later}")

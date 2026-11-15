@@ -33,9 +33,11 @@ export function changeError(error: unknown, item: Pick<StateTarget, 'number' | '
   return `${name} could not be changed. Its current state is shown; try again.`;
 }
 
-/** The one phrasing of a state change, on the board, the list and the panel (#763 C2): "#6 done", "#6 is now in progress". */
-export const stateWords = (item: Pick<StateTarget, 'number'>, status: WorkStatus) =>
-  status === 'done' ? `${taskNumber(item)} done` : `${taskNumber(item)} moved to ${word(status)}`;
+/**
+ * The one phrasing of a state change, on the board, the list and the panel (#763 C2), the same for every state (personas-27): "#4 moved to
+ * Blocked", "#7 moved to Done".
+ */
+export const stateWords = (item: Pick<StateTarget, 'number'>, status: WorkStatus) => `${taskNumber(item)} moved to ${word(status)}`;
 
 /** What Undo sends to put a task back as it was before a state change: a put-back blocker and person are not said again. */
 export function restoreOf(item: Pick<StateTarget, 'status' | 'blocker'> & Partial<Pick<StateTarget, 'waitingFor' | 'waitingOn' | 'dropped' | 'cameOfIt'>>) {

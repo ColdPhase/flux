@@ -17,7 +17,7 @@ import { NotNowButton, WaitingLine } from '../notifications/NeedsYouCard';
 import '../notifications/needs-you.css';
 import { useDiscussDecision } from './discuss';
 import { acceptDecision, resolveWaiting, undoTaskCreation, updateWork } from './api';
-import { STATUS_LABEL, decisionState, isFinished, linked, shortDate, statusPhrase, taskNumber } from './format';
+import { NO_REASON, STATUS_LABEL, decisionState, isFinished, linked, shortDate, statusPhrase, taskNumber } from './format';
 import { docsLinking } from '../docs/AddToDoc';
 import { agentAuthorOwner, useAgentOwners } from '../agents/owners';
 import { useAgentHue } from '../agents/hues';
@@ -424,7 +424,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
       <PanelGlyph><StatusGlyph status={item.status} size={14} /></PanelGlyph>
       <div className="wd__scroll">
         {/* "#4 · Rain barrel monitor" above the title, as drawn (§7 Tasks): the task's number and the space it belongs to (#1364). */}
-        <p className="wd__ref"><span className="ui-task-number">{taskNumber(item)}</span><span aria-hidden="true"> · </span><span className="ui-vh"> in </span>{context.project.name}</p>
+        <p className="wd__ref"><span className="ui-task-number">{taskNumber(item)}</span><span aria-hidden="true"> ·</span><span className="ui-vh"> in</span>{' '}{context.project.name}</p>
         <TitleField title={item.title} editable={writable} onEdit={() => { titleBase.current = item.version; }}
           onDraftChange={() => { fieldEdits.current.title++; }} onSave={(title) => saveField('title', title)} />
         {item.outcome ? <p className="details__lead">{item.outcome}</p> : null}
@@ -454,7 +454,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
             <dd><DueField value={item.dueOn} editable={writable} finished={finished} disabled={busy} onSave={(day) => change({ dueOn: day })} /></dd>
           </div> : null}
         </dl>
-        {reverted ? <p className="wd-muted wd-history" data-task-lifecycle="creation_reverted">Creation undone by {reverted.revertedBy.name} on {shortDate(reverted.revertedAt)}. This task stays here as history.</p> : null}
+        {reverted ? <p className="wd-muted wd-history" data-task-lifecycle="creation_reverted">Creation undone by {reverted.revertedBy.name} {shortDate(reverted.revertedAt) === 'today' ? 'today' : `on ${shortDate(reverted.revertedAt)}`}. This task stays here as history.</p> : null}
 
         {item.status === 'blocked' ? (
           <section className="wd-blocker" aria-label="Blocker">
@@ -463,7 +463,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
               <p className="wd-blocker__text">
                 {item.waitingFor ? <>Waiting for <b>{item.waitingFor.name}</b>{item.blocker ? ` · ${item.blocker}` : ''}</>
                   : item.waitingOn ? <>Waiting for <button type="button" className="wd-inline" onClick={() => openDetails({ kind: item.waitingOn!.kind === 'decision' ? 'decision' : 'work', id: item.waitingOn!.id, projectId: item.projectId }, { back: 'push' })}><b>{item.waitingOn.kind === 'task' ? `${taskNumber(item.waitingOn)} ${item.waitingOn.title}` : waitingPhrase(item.waitingOn)}</b></button>{item.blocker ? ` · ${item.blocker}` : ''}</>
-                    : item.blocker || 'Waiting for something; no reason written.'}
+                    : item.blocker || NO_REASON}
               </p>
               {(writable || waitedOnMe) && !editingBlocker ? <div className="wd-blocker__acts">
                 {writable ? <Button ref={editButton} variant="quiet" size="sm" disabled={busy} onClick={() => { blockerBase.current ??= item.version; setEditingBlocker(true); }}>Edit</Button> : null}

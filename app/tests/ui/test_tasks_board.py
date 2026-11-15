@@ -566,7 +566,7 @@ class TasksBoardJourney(unittest.TestCase):
         order.locator(".ws-task__glyph").tap()
         toast = page.locator(".ui-toast")
         forward = {"open": "in_progress", "in_progress": "done", "done": "open", "blocked": "in_progress"}[before["status"]]
-        expect(toast).to_contain_text(f"#{self.numbers['order']} " + {"in_progress": "moved to Doing", "done": "done", "open": "moved to To do"}[forward])
+        expect(toast).to_contain_text(f"#{self.numbers['order']} " + {"in_progress": "moved to Doing", "done": "moved to Done", "open": "moved to To do"}[forward])
         self.assertEqual(self.task(page, "order")["status"], forward)
         toast.get_by_role("button", name="Undo").tap()
         expect(toast).to_have_count(0)
