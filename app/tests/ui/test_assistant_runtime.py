@@ -26,7 +26,7 @@ ADA = {"name": "Ada Brandt", "email": f"ada.brandt+{STAMP}@example.test"}
 # The plan-limit reset the stubbed runs report: an hour from now, in the context's UTC clock.
 RESET = (datetime.now(timezone.utc) + timedelta(hours=1)).replace(second=0, microsecond=0)
 RESET_ISO = RESET.isoformat().replace("+00:00", ".000Z")
-RESUMES = f"at {RESET:%H:%M}" if RESET.date() == datetime.now(timezone.utc).date() else f"tomorrow at {RESET:%H:%M}"
+RESUMES = f"at {RESET.hour}:{RESET:%M}" if RESET.date() == datetime.now(timezone.utc).date() else f"tomorrow at {RESET.hour}:{RESET:%M}"  # the hour is not zero-padded (#1526)
 CLAUDE_GROUP = {"connection": "claude_plan", "account": "claude_plan", "label": "Claude plan", "company": "Claude", "options": [
     {"id": "sonnet", "name": "Sonnet", "note": "Everyday work"},
     {"id": "opus", "name": "Opus", "note": "Harder requests"},
