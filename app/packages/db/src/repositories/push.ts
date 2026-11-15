@@ -117,6 +117,25 @@ async function sendersOf(db: DbExecutor, rows: readonly Pick<NotificationRow, 'i
   return found;
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * The task each of a page of `assigned` notifications gave its recipient (#1424 C), by notification id: the event it was made from named
+ * the recipient as `assignedTo`. One read however long the page; "waiting for you" and "can continue" notifications are absent.
+ */
+async function givenTasks(db: DbExecutor, rows: readonly Pick<NotificationRow, 'id' | 'userId' | 'reason' | 'eventId'>[]): Promise<Map<string, string>> {
+  const found = new Map<string, string>();
+  const eventIds = [...new Set(rows.flatMap((row) => row.reason === 'assigned' && row.eventId ? [row.eventId] : []))];
+  if (!eventIds.length) return found;
+  const data = new Map((await db.select({ id: schema.events.id, data: schema.events.data }).from(schema.events).where(inArray(schema.events.id, eventIds)))
+    .map((event) => [event.id, event.data as { workId?: unknown; assignedTo?: unknown } | null]));
+  for (const row of rows) {
+    const event = row.reason === 'assigned' && row.eventId ? data.get(row.eventId) : undefined;
+    if (event && event.assignedTo === row.userId && typeof event.workId === 'string' && UUID.test(event.workId)) found.set(row.id, event.workId.toLowerCase());
+  }
+  return found;
+}
+
 /** Notification rows; `audience` is an access-policy condition over `notifications` supplied by the caller. */
 export function notificationRows(db: DbExecutor) {
   const withHistory = (reverted: ReadonlySet<string>) => (row: { notification: NotificationRow }) => {
@@ -152,9 +171,12 @@ export function notificationRows(db: DbExecutor) {
       const records = await withHistories(rows);
       if (!options.from) return records;
       const senders = await sendersOf(db, rows.map((row) => row.notification));
+      const given = await givenTasks(db, rows.map((row) => row.notification));
       return records.map((record, at) => {
-        const from = senders.get(rows[at]!.notification.id);
-        return from ? { ...record, from } : record;
+        const id = rows[at]!.notification.id;
+        const from = senders.get(id);
+        const task = given.get(id);
+        return { ...record, ...(from ? { from } : {}), ...(task ? { given: task } : {}) };
       });
     },
     async countUnread(userId: string, audience: SQL) {

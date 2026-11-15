@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  NEEDS_YOU_ASIDE_PATH,
   NEEDS_YOU_PATH,
   needsYouItemPath,
+  type NeedsYouAsideResponse,
   type NeedsYouItem,
   type NeedsYouResolved,
   type NeedsYouResponse,
@@ -20,7 +22,9 @@ import { useProjectAiBlocked } from '../ai/spaceAi';
 export const getNeedsYou = (signal?: AbortSignal, fresh = false) => request<NeedsYouResponse>(NEEDS_YOU_PATH, { signal, share: true, keep: KEEP_MS, onePage: true, fresh }).then(noteLockedWorkspaces);
 export const resolveNeedsYou = (key: string, command: ResolveNeedsYouCommand) =>
   request<NeedsYouResolved>(needsYouItemPath(key), { method: 'POST', body: command });
-/** Undo of `resolveNeedsYou`: the item is back as it was. */
+/** The lists behind "2 for later" and "4 done today" (#1424 E). */
+export const getNeedsYouAside = (signal?: AbortSignal) => request<NeedsYouAsideResponse>(NEEDS_YOU_ASIDE_PATH, { signal });
+/** Undo of `resolveNeedsYou`: the item is back as it was. Also Bring back now and Put back (#1424 E). */
 export const restoreNeedsYou = (key: string) => request<void>(needsYouItemPath(key), { method: 'DELETE' });
 
 export interface LocalQueueChange { isCurrent: () => boolean }

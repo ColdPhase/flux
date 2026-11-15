@@ -4,6 +4,8 @@ import {
   decisionAppPath,
   type AssistantChange,
   MAX_SNOOZE_DAYS,
+  type NeedsYouAsideEntry,
+  type NeedsYouAsideResponse,
   type NeedsYouItem,
   type NeedsYouKind,
   type NeedsYouResolved,
@@ -30,6 +32,8 @@ const MAX_ITEMS = 300;
 const MAX_DECISIONS = 200;
 const MAX_ACCEPTERS = 6;
 const OVER = new Set(['done']);
+
+const DAY_MS = 86_400_000;
 
 const iso = (date: Date) => date.toISOString();
 const excerpt = (text: string, max = 200) => {
@@ -65,7 +69,11 @@ function holds(state: StoredNeedsYou, now: Date, statuses: Map<string, string>) 
 export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new Date()) {
   /** Unread notifications that would notify the person, counted by the read of `candidates` that made the list (#1243). */
   const notifyingOf = new WeakMap<NeedsYouItem[], number>();
-  async function candidates(principal: Principal): Promise<NeedsYouItem[]> {
+  /**
+   * Everything that needs the person now. `keep`: `note:` keys listed even though their notification is read, so the "done today" list
+   * can show a mention, a question or a task the person marked done (Done reads it, #1424 E).
+   */
+  async function candidates(principal: Principal, keep: ReadonlySet<string> = new Set()): Promise<NeedsYouItem[]> {
     const userId = human(principal);
     const items: NeedsYouItem[] = [];
     const workspaceIds = await ports.access.workspaceIds(principal);
@@ -198,8 +206,9 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
     // The space of a notification made in a space, read together (#1424): the Inbox says "Kind · who · space" for every row.
     const noteProjects = [...new Set(inbox.items.filter((note) => note.source.type === 'project' && !note.readAt).map((note) => note.source.id))].filter((id) => !projectNames.has(id));
     if (noteProjects.length) for (const [id, name] of await ports.access.projectNames(noteProjects)) projectNames.set(id, name);
+    const unread = (note: (typeof inbox.items)[number]) => !note.readAt || keep.has(`note:${note.id}`);
     for (const note of inbox.items) {
-      if ((note.reason !== 'mention' && note.reason !== 'question' && note.reason !== 'invitation') || note.readAt || note.createdAt.getTime() < since) continue;
+      if ((note.reason !== 'mention' && note.reason !== 'question' && note.reason !== 'invitation') || !unread(note) || note.createdAt.getTime() < since) continue;
       const call = note.reason === 'invitation' ? callOf(note.url) : null;
       if (note.reason === 'invitation' && call && ports.runningCalls && !running.has(call.sessionId)) continue;
       // The question card above stands for it while open; once answered, nothing is left to do.
@@ -220,6 +229,24 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
         key: `note:${note.id}`, kind, title: plain ? words : note.title, detail: plain ? '' : excerpt(note.body), project, from,
         at: iso(note.createdAt), url: note.url ?? `/inbox/${note.id}`, decision: null, blocked: null, reason: note.reason, snoozeTask: null,
         ...(call ? { call } : {}), ...(answer ? { answer: true } : {}),
+      });
+    }
+    // A task someone else or an agent gave you (#1424 C), from the newest notification that gave it, while it is unread (opening the task
+    // reads it) and the task is still yours, not started, not finished and not undone. A blocked one is its Blocked item.
+    const givenSeen = new Set<string>();
+    for (const note of inbox.items) {
+      if (note.reason !== 'assigned' || !note.given || givenSeen.has(note.given)) continue;
+      givenSeen.add(note.given);
+      if (!unread(note)) continue;
+      const task = await work(note.given);
+      if (!task || !projects.has(task.projectId) || task.owner?.kind !== 'human' || task.owner.id !== userId || task.status !== 'open' || task.creationRevertedAt) continue;
+      if (!projectNames.has(task.projectId)) for (const [id, name] of await ports.access.projectNames([task.projectId])) projectNames.set(id, name);
+      items.push({
+        key: `note:${note.id}`, kind: 'task', title: `#${task.number} ${excerpt(task.title, 120)}`, detail: '',
+        project: { id: task.projectId, name: projectNames.get(task.projectId) ?? 'Space' },
+        from: note.from?.id ? { kind: note.from.kind, id: note.from.id, name: note.from.name } : null,
+        at: iso(note.createdAt), url: `/projects/${task.projectId}/tasks?open=work:${task.id}`, decision: null, blocked: null, reason: null, snoozeTask: null,
+        task: { workId: task.id, number: task.number },
       });
     }
     // Suggestions agents you connected made through MCP (#661), one question each.
@@ -258,36 +285,57 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
     return sorted;
   }
 
-  /** The queue after the person's own choices; also forgets choices that no longer mean anything. */
+  /**
+   * The queue after the person's own choices; also forgets choices that no longer mean anything. What is put off (`later`) and what was
+   * done in the last 24 hours (`done`) are the items that would come back if brought back: the two counts and their lists (#1424 E).
+   */
   async function queue(principal: Principal) {
     const userId = human(principal);
-    const all = await candidates(principal);
-    const notifying = notifyingOf.get(all) ?? 0;
     const stored = await ports.repository.states(userId);
-    const statuses = await ports.repository.workStatuses(stored.flatMap((entry) => (entry.untilWorkId ? [entry.untilWorkId] : [])));
     const at = now();
+    const dayAgo = at.getTime() - DAY_MS;
+    const doneLately = (entry: StoredNeedsYou) => entry.state !== 'snoozed' && entry.updatedAt.getTime() >= dayAgo;
+    const all = await candidates(principal, new Set(stored.filter((entry) => doneLately(entry) && entry.key.startsWith('note:')).map((entry) => entry.key)));
+    const notifying = notifyingOf.get(all) ?? 0;
+    const statuses = await ports.repository.workStatuses(stored.flatMap((entry) => (entry.untilWorkId ? [entry.untilWorkId] : [])));
     const byKey = new Map(stored.map((entry) => [entry.key, entry]));
     const shown: NeedsYouItem[] = [];
-    let later = 0;
+    const later: { item: NeedsYouItem; entry: StoredNeedsYou }[] = [];
+    const done: { item: NeedsYouItem; entry: StoredNeedsYou }[] = [];
     for (const item of all) {
       const entry = byKey.get(item.key);
       if (!entry || !holds(entry, at, statuses)) { shown.push(item); continue; }
-      if (entry.state === 'snoozed') later += 1;
+      if (entry.state === 'snoozed') later.push({ item, entry });
+      else if (doneLately(entry)) done.push({ item, entry });
     }
     // A snooze that ended, and a choice about a decision or task that is no longer a need, are forgotten.
     const keys = new Set(all.map((item) => item.key));
     const stale = stored.filter((entry) => (entry.state === 'snoozed' && !holds(entry, at, statuses))
       || (!entry.key.startsWith('note:') && !keys.has(entry.key))).map((entry) => entry.key);
     await ports.repository.deleteStates(userId, stale);
-    const dayAgo = at.getTime() - 86_400_000;
-    const doneToday = stored.filter((entry) => entry.state !== 'snoozed' && entry.updatedAt.getTime() >= dayAgo && (entry.key.startsWith('note:') || keys.has(entry.key))).length;
-    return { items: shown.slice(0, MAX_ITEMS), all, later, doneToday, notifying };
+    return { items: shown.slice(0, MAX_ITEMS), all, later, done, notifying };
   }
+
+  const asideEntry = ({ item, entry }: { item: NeedsYouItem; entry: StoredNeedsYou }): NeedsYouAsideEntry => ({
+    item, state: entry.state, until: entry.until ? iso(entry.until) : null,
+    untilTask: entry.untilWorkId ? (item.snoozeTask?.id === entry.untilWorkId ? item.snoozeTask : null) : null, at: iso(entry.updatedAt),
+  });
+  /** Soonest back first; one that waits for a task comes after every one that waits for a time. */
+  const backAt = (entry: StoredNeedsYou) => entry.until?.getTime() ?? Number.MAX_SAFE_INTEGER;
 
   return {
     async list(principal: Principal): Promise<NeedsYouResponse> {
-      const { items, later, doneToday, notifying } = await queue(principal);
-      return { items, count: items.length, later, doneToday, notifying };
+      const { items, later, done, notifying } = await queue(principal);
+      return { items, count: items.length, later: later.length, doneToday: done.length, notifying };
+    },
+
+    /** The lists behind "2 for later" and "4 done today" (#1424 E): exactly what those counts count. */
+    async aside(principal: Principal): Promise<NeedsYouAsideResponse> {
+      const { later, done } = await queue(principal);
+      return {
+        later: [...later].sort((a, b) => backAt(a.entry) - backAt(b.entry) || a.item.key.localeCompare(b.item.key)).map(asideEntry),
+        done: [...done].sort((a, b) => b.entry.updatedAt.getTime() - a.entry.updatedAt.getTime() || a.item.key.localeCompare(b.item.key)).map(asideEntry),
+      };
     },
 
     async resolve(principal: Principal, key: string, command: ResolveNeedsYouCommand): Promise<NeedsYouResolved> {

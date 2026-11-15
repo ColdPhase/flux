@@ -6,8 +6,9 @@ it and Home, then while she was away Tomasz gave her a task with a due day, prop
 proposed and accepted another at once. It checks what Marta sees, on a computer (1440 x 900) and a
 phone (390 x 844, touch):
 
-* H11-5: Home's "Continue where you left off" leads to the task that became hers, with its due day; it
-  comes before the rule waiting for her.
+* H11-5, with #1424 C (founder decision 2026-11-15): the task that became hers is a Task in her Inbox and so in
+  Home's "Waiting for you", never also in "Continue where you left off"; once she opened it, it leaves the Inbox
+  and Continue leads to it, with its due day, before the rule waiting for her.
 * H11-8: a Details panel shows its object across the views of one project and closes when she goes to
   another page (Inbox); Back brings it back.
 * H11-9: a decision proposed and accepted together is one card with a line under it, not two
@@ -137,9 +138,23 @@ class ReturnFixes(unittest.TestCase):
     def test_01_home_continues_with_the_given_task_and_its_panel_stays_within_the_project(self) -> None:
         page = self.page()
         page.goto("/")
+        # Given to her and not opened yet: one row of Waiting for you, and nothing of it in Continue (#1424 C, one rule with questions).
+        waiting = page.get_by_role("list", name="Top of your Inbox").get_by_role("link", name=re.compile(TASK))
+        expect(waiting).to_contain_text("Task · Tomasz Wiśniewski · Volunteer sign-up")
+        continue_region = page.get_by_role("region", name="Continue where you left off")
+        expect(continue_region).not_to_contain_text(TASK)
+        shot(page, "h11-home-task-waiting")
+        # Opened from the Inbox, it leaves the Inbox, and Continue leads to it with its due day.
+        waiting.click()
+        expect(page).to_have_url(re.compile(r"/inbox$"))
+        page.locator(".nyq__col--open").get_by_role("button", name="Open", exact=True).click()
+        expect(page.locator("#details .wd[data-detail-kind='work']")).to_be_visible()
+        expect(page.locator(".nyq__list .nyc--task")).to_have_count(0)
+        page.locator(".side__item[href='/']").first.click()
         card = page.get_by_role("region", name="Continue where you left off").get_by_role("link")
         expect(card).to_contain_text(f"Pick up “{TASK}”")
         expect(card).to_contain_text(f"Due {DUE}")
+        expect(page.get_by_role("list", name="Top of your Inbox")).not_to_contain_text(TASK)
         shot(page, "h11-home-continue-due")
         card.click()
         expect(page).to_have_url(re.compile(f"/projects/{self.ids['project']}"))

@@ -897,9 +897,12 @@ Community garden sensors, Rain barrel monitor and Tool library.
   on the right) holds the top three Inbox items. Decisions are one row, "2 decisions waiting",
   without Accept; an agent run is one row, "Planner · Ada's agent · 3 things wait for you".
 - **Continue where you left off** holds what you last worked on, such as a task with its state
-  ("Doing · #1 · Community garden sensors") or a Wiki page you edited. **Nothing appears twice** (#1424): what "Waiting for you"
-  already shows (the decision, the task or the question of one of its rows, a decision inside "2 decisions waiting") is not offered
-  again here; the row is the next thing that is not there, and the section is gone when there is none.
+  ("Doing · #1 · Community garden sensors") or a Wiki page you edited. **Nothing appears twice** (#1424): what waits in your Inbox
+  (the count of "Waiting for you", its three rows and the items beyond them: a decision, a task, a question) is not offered again
+  here; the row is the next thing that is not there, and the section is gone when there is none. One rule for questions and tasks
+  (founder decision, Hubert, 2026-11-15, [#1424](https://github.com/ColdPhase/flux/issues/1424) C): a task someone gave you that you
+  have not opened is a **Task** in the Inbox and so in "Waiting for you", never "Pick up “…” · Jonas added it for you" here; once you
+  open it, start it or finish it, it leaves the Inbox, and Continue may offer it then.
 - On the phone, "My tasks (4)" is a row under the waiting items, with "My map" next to it. The
   render draws "My tasks" only; the "My map" row follows this text. Home has nothing else: no
   spaces card, footer links, keyboard hints or assistant banner, except the first-steps card below.
@@ -938,7 +941,7 @@ Community garden sensors, Rain barrel monitor and Tool library.
 
 - The list on the left, the open item on the right, with no filters. Each item names its kind,
   who it is from and its space: "Decision · Maja · Community garden sensors", "Question · Jonas",
-  "Blocked · waits for you".
+  "Task · Jonas · Rain barrel monitor", "Blocked · waits for you".
 - **No filters, and no pill** (founder decision, Hubert, 2026-11-13, #1367). The Inbox is one list of what needs you (S1), **newest first**,
   so there is no "All · Decisions · Questions" row and no "6 need you · all spaces" line, and nothing is grouped by kind: the count is the quiet mono number
   after the title ("Inbox 5", never a pill) and the sidebar's. How much reaches a person is the notification level, which is set in Settings and not
@@ -959,8 +962,27 @@ Community garden sensors, Rain barrel monitor and Tool library.
   (Accept's `A`, Reply's `R`), never as a legend under the list ([#1419](https://github.com/ColdPhase/flux/issues/1419) item 13).
 - **Not now is one button, with no menu** (S11, #1367). It puts the item off until tomorrow at 08:00 and offers Undo ("Not now.
   Back tomorrow morning"); the item returns then. There is no "Ask me again" menu, no "Next week", no "When #N is done" and no
-  "Decline for good" on a decision: a decision waits until someone accepts it. A line under the list says how many are put off
-  ("2 for later"). The one dark primary of the open item is its first action (Accept, Approve all, Join).
+  "Decline for good" on a decision: a decision waits until someone accepts it. The one dark primary of the open item is its first
+  action (Accept, Approve all, Join).
+- **"2 for later" and "4 done today" open their lists** (founder decision, Hubert, 2026-11-15,
+  [#1424](https://github.com/ColdPhase/flux/issues/1424) E). One quiet line under the list, the same in a full and an empty Inbox,
+  says how many are put off and how many were marked done in the last 24 hours ("2 for later · 4 done today", each part only when it
+  is not 0). Each part is a quiet text button that opens a small window (a sheet on the phone) with its list, newest first, every
+  row as an Inbox row (kind · who · space, the title) with one quiet button:
+  - **For later**: when it comes back ("Back tomorrow at 08:00", "Back when #4 is done") and **Bring back now**, which puts it in
+    the Inbox at once.
+  - **Done today**: when it was done ("Done at 14:20") and **Put back**, which returns it to the Inbox as it was, as Undo does.
+  Keyboard (§4): the window opens with its first row's button focused; Tab and the arrow keys move between the rows' buttons; when a
+  row leaves, focus goes to the next row's button, else the previous one; Esc closes the window and gives focus back to the line's
+  button. When the last row leaves, the window closes. Whenever the window closes after something was put back, what came back is in
+  the list at its place and the last of it has focus there. Inbox keys (J, K, A, E, S, R) do nothing while the window is open.
+- **A task given to you** (founder decision, Hubert, 2026-11-15, [#1424](https://github.com/ColdPhase/flux/issues/1424) C). When
+  someone else or an agent makes a task with you as its Owner, or changes its Owner to you, it is an item of your Inbox:
+  **"Task · Jonas · Rain barrel monitor"**, titled by the task ("#12 Seal the lids"), with **Open** (it opens the task in the one
+  panel), Not now and Done like the other items. It leaves the Inbox when you open the task (from here, from Tasks, from Search, a
+  notice or a push), when you start it or finish it, and when it is given to someone else. Giving a task to yourself tells nobody and
+  is no item. It reaches you by notice, push and email at your notification level, as a task always did; a task given to you that
+  is blocked is the one Blocked item, not a Task too.
 - **An answer to your question reaches you** (founder decision, Hubert, 2026-11-14, [#1424](https://github.com/ColdPhase/flux/issues/1424)
   decision 1). When you ask someone something (a message that names them and asks, which reached their Inbox as a Question) and they
   answer in that thread (Inbox › Reply, or in the thread itself) or, in a direct message, in that conversation, the answer is an item of

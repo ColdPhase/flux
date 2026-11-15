@@ -42,6 +42,11 @@ export interface NotificationRecord {
   answer?: boolean;
   /** Who it comes from (#1243, #1424): the actor of the event it was made from, with its id, so an agent gets its colour (#1528). */
   from?: { kind: 'human' | 'agent'; id: string; name: string } | null;
+  /**
+   * The task this `assigned` notification gave its recipient (#1424 C): its event named them as `assignedTo`. Absent on every other
+   * notification, a "waiting for you" or "can continue" one included. Read with `from` only.
+   */
+  given?: string;
 }
 
 /** `aiOrigin` (F-029) is required of every writer: whether the notification came from AI work, by its actor or source. */

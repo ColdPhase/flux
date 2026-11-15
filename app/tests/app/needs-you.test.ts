@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
-import type { Conversation, Decision, InboxResponse, Material, NeedsYouItem, NeedsYouResponse, Project, SentConversationMessage, SentDmMessage, Workspace, WorkItem } from '@flux/contracts';
+import type { Conversation, Decision, InboxResponse, Material, NeedsYouAsideResponse, NeedsYouItem, NeedsYouResponse, Project, SentConversationMessage, SentDmMessage, Workspace, WorkItem } from '@flux/contracts';
 import type { ClientResponse } from './support/http.js';
 import { register } from './support/http.js';
 import { addMember, expectStatus, grant, password, person, project as createProject, workspace, type Person } from './support/people.js';
@@ -18,6 +18,9 @@ const queue = async (someone: Person) => json<NeedsYouResponse>(await someone.br
 const resolve = (someone: Person, key: string, body: unknown) => post(someone, `/api/v1/needs-you/${encodeURIComponent(key)}`, body);
 const restore = (someone: Person, key: string) => someone.browser.request('DELETE', `/api/v1/needs-you/${encodeURIComponent(key)}`);
 const find = (response: NeedsYouResponse, key: string): NeedsYouItem | undefined => response.items.find((item) => item.key === key);
+const aside = async (someone: Person) => json<NeedsYouAsideResponse>(await someone.browser.request('GET', '/api/v1/needs-you/aside'), 200);
+/** The Task item of a task given to someone (#1424 C). */
+const taskItem = async (someone: Person, workId: string) => (await queue(someone)).items.find((item) => item.kind === 'task' && item.task?.workId === workId);
 const inHours = (hours: number) => new Date(Date.now() + hours * 3_600_000).toISOString();
 
 async function named(name: string): Promise<Person> {
@@ -422,5 +425,113 @@ describe('the Inbox needs-you queue', () => {
     await waitFor(async () => (await queue(second)).items.find((entry) => entry.url.endsWith(`#message-${third.id}`)), 'the third question');
     json(await post(partner, `/api/v1/projects/${lamp.id}/work`, { title: 'Bring the trays', sources: [{ type: 'message', id: third.id }] }), 201);
     assert.ok((await queue(second)).items.some((entry) => entry.url.endsWith(`#message-${third.id}`)), 'a task someone else made answers nothing for them');
+  });
+
+  test('a task given to you reaches your Inbox, and leaves when you open, start or finish it, or it is given to someone else (#1424 C)', async () => {
+    const give = async (title: string, to: Person, by: Person = partner) =>
+      json<WorkItem>(await post(by, `/api/v1/projects/${lamp.id}/work`, { title, owner: { kind: 'human', id: to.id } }), 201);
+    const arrived = (someone: Person, task: WorkItem) => waitFor(() => taskItem(someone, task.id), `“${task.title}” reaches the Inbox`);
+
+    // Given by someone else: "Task · ny-partner · Garden sensors", titled by the task, opening it in the panel.
+    const lids = await give('Seal the lids', second);
+    const item = await arrived(second, lids);
+    assert.equal(item.kind, 'task');
+    assert.match(item.key, /^note:/);
+    assert.equal(item.title, `#${lids.number} Seal the lids`);
+    assert.deepEqual(item.from, { kind: 'human', id: partner.id, name: 'ny-partner' });
+    assert.deepEqual(item.project, { id: lamp.id, name: 'Garden sensors' });
+    assert.equal(item.url, `/projects/${lamp.id}/tasks?open=work:${lids.id}`);
+    assert.deepEqual(item.task, { workId: lids.id, number: lids.number });
+    assert.equal(item.reason, null);
+    assert.equal(await taskItem(partner, lids.id), undefined, 'the giver is not asked');
+
+    // Opening it reads the notification that gave it: it leaves.
+    json(await post(second, `/api/v1/inbox/${item.key.slice(5)}/read`, {}), 200);
+    assert.equal(await taskItem(second, lids.id), undefined, 'opened, it leaves the Inbox');
+
+    // Starting it, or finishing it.
+    const started = await give('Order the seals', second);
+    await arrived(second, started);
+    json(await patch(second, `/api/v1/work/${started.id}`, { status: 'in_progress', expectedVersion: started.version }), 200);
+    assert.equal(await taskItem(second, started.id), undefined, 'started, it leaves');
+    const finished = await give('Count the jars', second);
+    await arrived(second, finished);
+    json(await patch(second, `/api/v1/work/${finished.id}`, { status: 'done', expectedVersion: finished.version }), 200);
+    assert.equal(await taskItem(second, finished.id), undefined, 'finished, it leaves');
+
+    // Given to someone else: it leaves the first person's Inbox and reaches the new owner's.
+    const moved = await give('Label the shelf', second);
+    await arrived(second, moved);
+    json(await patch(partner, `/api/v1/work/${moved.id}`, { owner: { kind: 'human', id: owner.id }, expectedVersion: moved.version }), 200);
+    assert.equal(await taskItem(second, moved.id), undefined, 'given to someone else, it leaves');
+    const now = await arrived(owner, moved);
+    assert.equal(now.from?.id, partner.id);
+
+    // Giving a task to yourself tells nobody and is no item; a blocked task given to you is its one Blocked item.
+    const own = json<WorkItem>(await post(second, `/api/v1/projects/${lamp.id}/work`, { title: 'Sweep the bakery', owner: { kind: 'human', id: second.id } }), 201);
+    const blocked = json<WorkItem>(await post(partner, `/api/v1/projects/${lamp.id}/work`, {
+      title: 'Fit the hinges', owner: { kind: 'human', id: second.id }, status: 'blocked', blocker: 'The hinges are not here yet',
+    }), 201);
+    const marker = await give('Marker after the others', second);
+    await arrived(second, marker);
+    const after = await queue(second);
+    assert.equal(after.items.some((entry) => entry.kind === 'task' && entry.task?.workId === own.id), false, 'a task given to yourself is no item');
+    assert.equal(after.items.some((entry) => entry.kind === 'task' && entry.task?.workId === blocked.id), false, 'a blocked task is not a Task too');
+    assert.ok(find(after, `blocked:${blocked.id}`), 'it is the Blocked item');
+    const notes = json<InboxResponse>(await second.browser.request('GET', '/api/v1/inbox'), 200).items;
+    assert.equal(notes.some((note) => note.url?.endsWith(own.id)), false, 'and nobody is told');
+
+    // Done, Not now and Undo, as for every item.
+    const key = (await taskItem(second, marker.id))!.key;
+    json(await resolve(second, key, { action: 'done' }), 200);
+    assert.equal(await taskItem(second, marker.id), undefined);
+    assert.equal((await restore(second, key)).status, 204);
+    assert.ok(await taskItem(second, marker.id), 'Undo brings it back');
+  });
+
+  test('"for later" and "done today" open their lists, and each item comes back from there (#1424 E)', async () => {
+    const someone = await person('ny-aside');
+    await addMember(owner, ws.id, someone, 'member');
+    await grant(owner, lamp.id, someone, 'contributor');
+    const first = json<WorkItem>(await post(partner, `/api/v1/projects/${lamp.id}/work`, { title: 'Wash the trays', owner: { kind: 'human', id: someone.id } }), 201);
+    const second2 = json<WorkItem>(await post(partner, `/api/v1/projects/${lamp.id}/work`, { title: 'Dry the trays', owner: { kind: 'human', id: someone.id } }), 201);
+    const thread = json<Conversation>(await post(partner, `/api/v1/projects/${lamp.id}/conversations`, { body: '@ny-aside can you check the oven?', clientMessageId: randomUUID() }), 201);
+    const washing = await waitFor(() => taskItem(someone, first.id), 'the first task');
+    const drying = await waitFor(() => taskItem(someone, second2.id), 'the second task');
+    const asked = await waitFor(async () => (await queue(someone)).items.find((item) => item.url.includes(thread.id)), 'the question');
+    assert.deepEqual(await aside(someone), { later: [], done: [] }, 'nothing is put aside yet');
+
+    const until = inHours(20);
+    json(await resolve(someone, washing.key, { action: 'snooze', until }), 200);
+    json(await resolve(someone, drying.key, { action: 'done' }), 200);
+    json(await resolve(someone, asked.key, { action: 'done' }), 200);
+
+    const counted = await queue(someone);
+    const lists = await aside(someone);
+    assert.equal(counted.later, 1);
+    assert.equal(counted.doneToday, 2);
+    assert.deepEqual(lists.later.map((entry) => [entry.item.key, entry.state, entry.until]), [[washing.key, 'snoozed', new Date(until).toISOString()]],
+      'for later: the item, with when it comes back');
+    assert.deepEqual(lists.later[0]!.item.title, washing.title);
+    assert.deepEqual(new Set(lists.done.map((entry) => entry.item.key)), new Set([drying.key, asked.key]), 'done today: a task and a question, though read');
+    assert.ok(lists.done.every((entry) => entry.state === 'done' && entry.until === null && Date.now() - Date.parse(entry.at) < 600_000));
+    assert.equal(lists.done.find((entry) => entry.item.key === asked.key)?.item.title, '@ny-aside can you check the oven?');
+
+    // Bring back now, and Put back: the same Undo; each is in the Inbox again and out of its list.
+    assert.equal((await restore(someone, washing.key)).status, 204);
+    assert.equal((await restore(someone, asked.key)).status, 204);
+    const back = await queue(someone);
+    assert.ok(find(back, washing.key), 'brought back now');
+    assert.ok(find(back, asked.key), 'put back');
+    assert.equal(back.later, 0);
+    assert.equal(back.doneToday, 1);
+    const rest = await aside(someone);
+    assert.deepEqual(rest.later, []);
+    assert.deepEqual(rest.done.map((entry) => entry.item.key), [drying.key]);
+
+    // Done on an item that is no longer a need is not counted: the task started since would not come back.
+    json(await patch(someone, `/api/v1/work/${second2.id}`, { status: 'in_progress', expectedVersion: second2.version }), 200);
+    assert.equal((await queue(someone)).doneToday, 0);
+    assert.deepEqual((await aside(someone)).done, []);
   });
 });

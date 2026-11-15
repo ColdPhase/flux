@@ -31,7 +31,7 @@ function JoinCall({ call, variant }: { call: { projectId: string; sessionId: str
   return <Button variant={variant} busy={busy} onClick={() => { setBusy(true); void join(call).finally(() => setBusy(false)); }}>Join</Button>;
 }
 
-export const KIND_WORD = { decision: 'Decision', question: 'Question', blocked: 'Blocked', mention: 'Mention' } as const;
+export const KIND_WORD = { decision: 'Decision', question: 'Question', blocked: 'Blocked', mention: 'Mention', task: 'Task' } as const;
 /** The word that names an item wherever it is listed: a call's notice or an invitation to a call is a Call (F-041), never a Question (#1368). */
 /** A call is "Call" and an answer to your question is "Reply" (#1424 decision 1): each is its kind otherwise (a question, a mention). */
 export const kindWord = (item: NeedsYouItem) => (item.call ? 'Call' : item.answer ? 'Reply' : KIND_WORD[item.kind]);
@@ -48,7 +48,8 @@ const waitReasons = (changes: readonly { line: string | null }[]) =>
 export function itemKeys(item: NeedsYouItem, canAnswer: boolean): { reply: boolean; done: boolean; notNow: boolean } {
   const decision = item.kind === 'decision';
   const quiet = !decision && !item.proposal;
-  const reply = !decision && item.kind !== 'blocked' && !(item.agentQuestion && canAnswer) && !item.proposal && !item.assistantChanges && !item.call
+  // A task given to you (#1424 C) shows Open, Not now and Done: it has no Reply.
+  const reply = !decision && item.kind !== 'blocked' && item.kind !== 'task' && !(item.agentQuestion && canAnswer) && !item.proposal && !item.assistantChanges && !item.call
     && item.reason !== 'invitation';
   return { reply, done: quiet, notNow: quiet || decision };
 }
@@ -66,6 +67,7 @@ export function NotNowButton({ onClick, variant = 'secondary', className, keyHin
 export function Face({ item }: { item: NeedsYouItem }) {
   const hue = useAgentHue();
   if (item.kind === 'blocked') return <span className="nyc__face nyc__face--glyph"><StatusGlyph status="blocked" size={16} /></span>;
+  if (item.kind === 'task' && !item.from) return <span className="nyc__face nyc__face--glyph"><StatusGlyph status="open" size={16} /></span>;
   if (item.from?.kind === 'agent' || item.assistantChanges) return <span className="nyc__face"><Kreska size={32} hue={hue(item.from?.kind === 'agent' ? item.from : null)} /></span>;
   if (item.from) return <span className="nyc__face"><Avatar name={item.from.name} id={item.from.id} size="lg" /></span>;
   if (item.call) return <span className="nyc__face nyc__face--icon"><Icon name="call" size={16} /></span>;
@@ -157,6 +159,7 @@ export function NeedsYouCard({ item, selected = false, compact = false, list = f
     <div className="nyc__rowactions">
       {decision ? <Button variant="secondary" onClick={() => handlers.accept(item)}>Accept</Button>
         : item.kind === 'blocked' ? <Button variant="secondary" onClick={() => handlers.open(item)}>Open task</Button>
+        : item.kind === 'task' ? <Button variant="secondary" onClick={() => handlers.open(item)}>Open</Button>
         : answers ? <Button variant="secondary" onClick={() => onSelect?.()}>Answer</Button>
         : item.proposal ? <Button variant="secondary" onClick={() => handlers.open(item)}>Review</Button>
         : run ? <Button variant="secondary" onClick={() => handlers.applyChanges(item)}>Approve all</Button>
@@ -181,6 +184,8 @@ export function NeedsYouCard({ item, selected = false, compact = false, list = f
           <Button variant="secondary" onClick={() => handlers.open(item)}>Open task</Button>
           {item.blocked?.waitedBy ? null : <Button variant="quiet" onClick={() => handlers.unblock(item)}>Unblock</Button>}
         </>
+      ) : item.kind === 'task' ? (
+        <Button variant="secondary" onClick={() => handlers.open(item)}>Open</Button>
       ) : answers ? (
         <>{answers}</>
       ) : item.proposal ? (
@@ -210,7 +215,7 @@ export function NeedsYouCard({ item, selected = false, compact = false, list = f
   // The title of a row selects it (a row of the list), of a card in one column opens it, and in the open column it is only the heading.
   const Title = pane ? 'h2' : 'h3';
   const titleOf = pane ? item.title
-    : <button type="button" className="nyc__open" onClick={() => (list ? onSelect?.() : handlers.open(item))} aria-haspopup={!list && item.kind === 'blocked' ? 'dialog' : undefined}>{item.title}</button>;
+    : <button type="button" className="nyc__open" onClick={() => (list ? onSelect?.() : handlers.open(item))} aria-haspopup={!list && (item.kind === 'blocked' || item.kind === 'task') ? 'dialog' : undefined}>{item.title}</button>;
   const body = (
     <div className={`nyc__card${pane ? ' nyc__card--pane' : ''}`} onClick={row && onSelect ? (event) => { if (!(event.target as HTMLElement).closest('button, a')) onSelect(); } : undefined}>
       <Face item={item} />

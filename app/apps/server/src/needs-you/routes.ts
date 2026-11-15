@@ -1,6 +1,6 @@
 import type { Database } from '@flux/db';
 import type { FastifyInstance } from 'fastify';
-import { NEEDS_YOU_PATH, type ResolveNeedsYouCommand } from '@flux/contracts';
+import { NEEDS_YOU_ASIDE_PATH, NEEDS_YOU_PATH, type ResolveNeedsYouCommand } from '@flux/contracts';
 import { aiAllowedInProject } from '../access/ai-gate.js';
 import type { SessionResolver } from '../identity/index.js';
 import { useDomainErrors } from '../http/commands.js';
@@ -35,6 +35,9 @@ export async function needsYouRoutes(app: FastifyInstance, { db, sessions, githu
   const principal = async (request: Parameters<SessionResolver['requirePrincipal']>[0]) => (await sessions.requirePrincipal(request)).principal;
 
   app.get(NEEDS_YOU_PATH, async (request, reply) => reply.header('cache-control', 'no-store').send(await use.list(await principal(request))));
+
+  // What "2 for later" and "4 done today" open (#1424 E); bringing one back is the DELETE below.
+  app.get(NEEDS_YOU_ASIDE_PATH, async (request, reply) => reply.header('cache-control', 'no-store').send(await use.aside(await principal(request))));
 
   app.post<{ Params: { key: string }; Body: ResolveNeedsYouCommand }>(`${NEEDS_YOU_PATH}/:key`, { schema: { body: command } },
     async (request) => use.resolve(await principal(request), request.params.key, request.body));

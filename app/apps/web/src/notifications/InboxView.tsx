@@ -11,6 +11,7 @@ import { NeedsYouCard, itemKeys, type CardHandlers } from './NeedsYouCard';
 import { useNeedsYou } from './needsYou';
 import { SecurityNotices } from '../encryption/SecurityNotices';
 import { useNeedsYouActions } from './useNeedsYouActions';
+import { InboxAside } from './InboxAside';
 import { ApiError } from '../api/client';
 import { awaitField, focusFieldMatching, isTyping } from '../ui/keys';
 import './notifications.css';
@@ -133,8 +134,8 @@ export function InboxView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready]);
 
-  // Put off for later: what Not now took out of the list, said under it (it returns tomorrow morning).
-  const later = queue.later ? <p className="nyq__later">{queue.later} for later</p> : null;
+  // Put off for later and done today, said under the list; each opens its list (#1424 E).
+  const later = <InboxAside queue={queue} />;
   const list = (
     <ul className="nyq__list" aria-label="Needs you" onFocus={() => { listFocused.current = true; }}
       onBlur={(event) => { if (event.relatedTarget) listFocused.current = event.currentTarget.contains(event.relatedTarget as Node); }}>
@@ -151,7 +152,6 @@ export function InboxView() {
       <h2 ref={clearRef} tabIndex={-1}>Nothing needs you right now</h2>
       <p>Enjoy the quiet. Flux will ping you when a decision or question comes in.</p>
       <div className="nyq__clear-actions">
-        {queue.doneToday ? <span className="nyq__done">{queue.doneToday} done today</span> : null}
         <Link className="ui-btn ui-btn--quiet" to="/settings/notifications">Notification settings</Link>
       </div>
       {later}

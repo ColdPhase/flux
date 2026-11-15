@@ -36,6 +36,7 @@ import { ReadyToClose, TaskPullRequests } from '../github/TaskPullRequests';
 import { DueField, StatusControl, TitleField, useStateKeys } from './TaskParts';
 import { stateWords } from './taskState';
 import { personLabel } from '../people/api';
+import { useGivenTaskOpened } from '../notifications/givenTask';
 
 /** The user id in an owner choice's value (`human:<id>`), for the person's photo (F-039); null for an agent or nobody. */
 const humanId = (value: string | null | undefined) => value?.startsWith('human:') ? value.slice('human:'.length) : null;
@@ -245,6 +246,8 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
   // Your own agents (the shell's list, #904): the only agents the Owner field offers.
   const { me, agents: ownAgents } = useShellData();
   const hue = useAgentHue();
+  // A task someone gave you leaves your Inbox once you open it (#1424 C).
+  useGivenTaskOpened(me.user.id, item);
   // A task whose creation was undone (#238) stays as read-only history: no change, live or new-target control.
   const reverted = item.lifecycle?.state === 'creation_reverted' ? item.lifecycle : null;
   const writable = !reverted;

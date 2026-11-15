@@ -5,13 +5,15 @@ import type { LockedWorkspaceRef } from './encryption.js';
 import type { AssistantWaitReason } from './assistant.js';
 
 export const NEEDS_YOU_PATH = '/api/v1/needs-you';
+/** `GET`: the items put off for later and those done today, the two lists the Inbox's "2 for later · 4 done today" open (#1424 E). */
+export const NEEDS_YOU_ASIDE_PATH = `${NEEDS_YOU_PATH}/aside`;
 export const needsYouItemPath = (key: string) => `${NEEDS_YOU_PATH}/${encodeURIComponent(key)}`;
 
 /**
  * What kind of need an item is. `question` is a notification asking the person to respond, and an agent's open question with ready-made answers
  * (`question:<id>`, F-026 S14): it is read from the question itself, so it leaves the queue once it is answered anywhere.
  */
-export const NEEDS_YOU_KINDS = ['decision', 'question', 'blocked', 'mention'] as const;
+export const NEEDS_YOU_KINDS = ['decision', 'question', 'blocked', 'mention', 'task'] as const;
 export type NeedsYouKind = typeof NEEDS_YOU_KINDS[number];
 
 /** A task a "when it is done" snooze can wait for. */
@@ -118,6 +120,11 @@ export interface NeedsYouItem {
    * flag, which the generator sets from the answer it found, never from the words.
    */
   answer?: boolean;
+  /**
+   * Set for a `task` item (#1424 C): a task someone else or an agent gave you, which you have not opened, started or finished yet. Its key is
+   * the `note:<id>` of the notification that gave it to you; opening the task reads that notification.
+   */
+  task?: { workId: string; number: number } | null;
   /** Set for a call started in your space or an invitation to one (F-041): the call to Join. Listed only while someone is in it. */
   call?: { projectId: string; sessionId: string } | null;
   /** The task "Not now: when #N is done" waits for; null when the item has none. */
@@ -159,6 +166,26 @@ export interface NeedsYouResponse {
    * title "(N)", its favicon dot and the installed app's badge show it.
    */
   notifying: number;
+}
+
+/** One row of the lists behind "2 for later" and "4 done today" (#1424 E). `DELETE /api/v1/needs-you/:key` brings it back. */
+export interface NeedsYouAsideEntry {
+  item: NeedsYouItem;
+  state: 'done' | 'declined' | 'snoozed';
+  /** When a snoozed item comes back by itself; null when it waits for a task (`untilTask`) or is done. */
+  until: string | null;
+  /** The task a snoozed item waits for, when it waits for one. */
+  untilTask: NeedsYouTaskRef | null;
+  /** When the person put it off or marked it done. */
+  at: string;
+}
+
+/** `GET /api/v1/needs-you/aside`: exactly what `later` and `doneToday` count. */
+export interface NeedsYouAsideResponse {
+  /** Snoozed, soonest back first. */
+  later: NeedsYouAsideEntry[];
+  /** Marked done or declined in the last 24 hours, newest first. */
+  done: NeedsYouAsideEntry[];
 }
 
 /**

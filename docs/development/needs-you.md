@@ -18,6 +18,7 @@ an item. Access is checked at the moment of reading: an object the person cannot
 | `question` | A person asked them something (`@name … ?`, or a question in a thread they started that names nobody), or invited them to a call (#62) | their unread `question` and `invitation` notifications, newer than 14 days |
 | `blocked` | A task they own that is blocked | `project_work_items` they own with status `blocked` |
 | `mention` | Someone mentioned them, or answered a question they asked (#1424 decision 1: `answer: true`, the kind word "Reply") | their unread `mention` notifications, newer than 14 days |
+| `task` | Someone else or an agent gave them a task they have not opened, started or finished (#1424 C) | their unread `assigned` notification that gave them the task (below) |
 
 An item's `from` is who it comes from as its title names them: the notification's `from_actor` (migration 0087), which the generator
 sets to the message's author for a question, a mention, a reply or a direct message, and to the inviter or the caller for a call. A
@@ -27,7 +28,27 @@ task's title is the task ("#6 Seal the lids") and its line is what it waits for,
 you: #6 Seal the lids" with the reason alone under it. A task made from a message answers what that message asked or mentioned of its
 maker: their question and mention items of it are done, as a reply in the conversation takes them (persona round 28).
 
-Replies, direct messages, assigned work and decisions to review stay notifications: they reach people where they
+**A task given to you** (founder decision 2026-11-15, #1424 C). The generator already tells a person when a task is made with them
+as its Owner or its Owner becomes them (`assigned`, event data `assignedTo`), and never when they give it to themselves (the actor is
+never told, and `assignedTo` is only set for someone other than the actor). The queue lists the newest such notification of each task
+as a `task` item, keyed `note:<notification id>` like a mention, while all of these hold at the moment of reading:
+
+- the notification is unread, and its event named this person as `assignedTo` (the notification read gives it as `given: <task id>`,
+  read from the event it was made from; "waiting for you" and "can continue" notifications have no `given`);
+- the task is still theirs (a person Owner, them), still `open` (not started, blocked, done or dropped) and its creation was not undone;
+- they can read its space.
+
+Its `from` is who gave it (the notification's sender), its `project` the space, its title the task ("#12 Seal the lids"), its `detail`
+empty, its `url` the task (`/projects/:id/tasks?open=work:<id>`) and `task: { workId, number }`. It leaves when the person **opens**
+the task (the web client marks the notification read when the task panel shows a task of theirs that is a `task` item, wherever it was
+opened from; `/inbox/:id` from a notice, push or email reads it too), **starts or finishes** it (status), or when it is **given to
+someone else** (owner). Done reads the notification and Not now snoozes it, as for a mention; Undo of either brings it back. A blocked
+task given to you is its one `blocked` item. Push and email follow the person's level for `assigned`, unchanged.
+
+Home (README §7): Continue never offers what the Inbox holds, so a task given to you is "Waiting for you" until you open it, and
+"Pick up “…” · Jonas added it for you" only after that.
+
+Replies, direct messages, the other assigned notices (a blocked task waiting for you is the `blocked` item; "can continue") and decisions to review stay notifications: they reach people where they
 happen (a conversation, the Messages list, Tasks) and by push and email, and still open from their
 `/inbox/:id` links. An agent waiting for your OK (`approval`, #1186) is also only a notification: the item is the run's own
 (`assistant:<run>`), which its link opens (`/inbox?item=assistant:<run>`), and the notification is read once nothing of the run
@@ -131,7 +152,15 @@ real reversals through the calls above.
 
 `GET /api/v1/needs-you` returns `{ items, count, later, doneToday, notifying }`: `count` is what the sidebar, the phone's
 tab bar and Home's "Needs you" badge show; `later` counts snoozed items, `doneToday` what was marked done or
-declined in the last 24 hours ("4 done today"). `notifying` (#1243) counts the unread notifications among the person's
+declined in the last 24 hours and would come back if put back ("4 done today"): an item that is no longer a need (a task started
+since, a notification older than 14 days) is not counted.
+
+**The two lists** (founder decision 2026-11-15, #1424 E). `GET /api/v1/needs-you/aside` returns `{ later, done }`, each a list of
+`{ item, state, until, untilTask, at }` with exactly the items the two counts count: `later` the snoozed ones, soonest back first, with
+`until` (a time) or `untilTask` (the task it waits for); `done` the ones marked done or declined in the last 24 hours, newest first,
+with `at` the time it was done. A done mention, question or task is listed although its notification is read. **Bring back now** and
+**Put back** are `DELETE /api/v1/needs-you/:key`, the same Undo as above: the item is back in the queue at once (a done mention is
+unread again). `notifying` (#1243) counts the unread notifications among the person's
 newest 100 Inbox items that would notify them under their level; the tab title's "(N)", its favicon dot and the app
 badge show it ([mobile and PWA](../product/mobile-pwa.md#while-flux-is-open-1243)).
 
