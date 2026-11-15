@@ -1112,8 +1112,8 @@ class CreateWindow(unittest.TestCase):
         expect(page.get_by_role("dialog", name="New space")).to_be_visible()
         expect(page.get_by_role("dialog", name="New task")).to_have_count(0)
 
-    def test_20_a_guest_sees_why_the_space_tab_cannot_make_a_space(self) -> None:
-        """#555, #867: a guest does not start spaces, so the Space tab says so and cannot create one."""
+    def test_20_a_guest_is_not_offered_the_space_tab(self) -> None:
+        """#555, #867; persona round (#1424): a guest does not start spaces, so New has no Space tab and its Task tab does not point to New space."""
         self.ensure_account()
         guest_email = f"guest.create+{int(time.time() * 1000)}@example.test"
         guest_context = self.browser.new_context(base_url=ORIGIN, color_scheme="light", locale="en-GB", timezone_id="Europe/Warsaw",
@@ -1134,10 +1134,9 @@ class CreateWindow(unittest.TestCase):
         expect(guest.get_by_role("heading", level=1, name="Home")).to_be_visible()
         guest.get_by_role("complementary", name="Sidebar").get_by_role("button", name=re.compile("^New")).click()
         expect(window(guest)).to_be_visible()
-        kind_tab(guest, "Space").click()
-        made = guest.get_by_role("dialog", name="New space")
-        expect(made.get_by_role("alert")).to_contain_text("Guests can’t start spaces")
-        expect(made.get_by_role("button", name="Create space")).to_be_disabled()
+        expect(kind_tab(guest, "Task")).to_be_visible()
+        expect(kind_tab(guest, "Space")).to_have_count(0)
+        expect(window(guest)).not_to_contain_text("New space")
         shot(guest, "555-create-space-guest-1440-light")
     def test_27_a_new_task_offers_undo_and_z_takes_it_back(self) -> None:
         """#763 B1, principle 6: "Task #N created" with Undo (Z) after creating, the panel still opening on the task."""

@@ -71,8 +71,11 @@ export async function previewInvite(principal: Principal | null, token: unknown,
   const { invite } = found;
   const joined = Boolean(invite.acceptedAt);
   const member = !joined && self ? (await ports.invites(db).memberRole(invite.workspaceId, self)) !== null : false;
+  // The space the link adds the person to (#1424): named on the join page, as joining would add them to it (`addToSpace`'s same conditions).
+  const space = invite.spaceId ? await ports.projects(db).get(invite.spaceId) : null;
+  const spaceName = space && space.workspaceId === invite.workspaceId && space.visibility !== 'workspace' ? space.name : null;
   return {
-    workspaceName: found.workspaceName, invitedBy: found.creatorName, role: invite.role, expiresAt: invite.expiresAt.toISOString(),
+    workspaceName: found.workspaceName, spaceName, invitedBy: found.creatorName, role: invite.role, expiresAt: invite.expiresAt.toISOString(),
     emailLocked: invite.email !== null, email: invite.email, encrypted: found.encrypted, state: joined ? 'joined' : member ? 'member' : 'pending',
   };
 }

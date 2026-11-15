@@ -1,6 +1,7 @@
 import type { KeyboardEvent } from 'react';
 import { plainMessageText, type Conversation } from '@flux/contracts';
 import { ApiError } from '../api/client';
+import { GUEST_AI_LINE } from '../assistant/format';
 import { useShellActions } from '../app/shellContext';
 import { getProject } from '../project/api';
 import type { useTyping } from '../typing/useTyping';
@@ -44,7 +45,7 @@ export function useComposerSend({ project, conversation, writable, aiOff, guest,
     typing.stop();
     if (asking) { await ask.sendToAssistant(); return; }
     // AG-10: `/ai` in a space whose AI is off is not a message for the people here: the words stay in the field.
-    if (aiOff && writable && /^\/ai(\s|$)/.test(draft.trim())) { menu.setCommandHint(`${guest ? 'Guests don’t have AI.' : 'AI is off in this space.'} Remove the command to send these words as a message.`); return; }
+    if (aiOff && writable && /^\/ai(\s|$)/.test(draft.trim())) { menu.setCommandHint(`${guest ? GUEST_AI_LINE : 'AI is off in this space.'} Remove the command to send these words as a message.`); return; }
     const command = writable ? /^\/(task|decide)(?:\s+([\s\S]*))?$/.exec(draft.trim()) : null;
     if (command) { await runCommand(command[1] as keyof typeof COMMAND_EXAMPLE, (command[2] ?? '').trim()); return; }
     // A private helper prompt is never published as a root (UI116-3); it stays in the private draft.

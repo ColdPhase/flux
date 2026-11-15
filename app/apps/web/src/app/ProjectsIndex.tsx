@@ -10,6 +10,7 @@ import { useLiveSpaces } from '../live/spaces';
 import { lockedLine, useEncryptedWorkspaceIds } from '../encryption/state';
 import { usePlaceMutes } from '../notifications/mutes';
 import { useShellData } from './data';
+import { startsSpaces } from '../people/api';
 import { useShellActions } from './shellContext';
 import { SpaceFace } from '../ui/SpaceFace';
 import { useAgentUnread } from '../my-agents/AgentChatDots';
@@ -24,7 +25,7 @@ import './settings.css';
  * something there needs the person (#1250). The order is the person's own and a row's ⋯ moves it (always shown on touch).
  */
 export function ProjectsIndex() {
-  const { me, directMessages, agents, lockedWorkspaces, removedFrom } = useShellData();
+  const { me, directMessages, agents, lockedWorkspaces, removedFrom, workspace } = useShellData();
   const projects = useOrderedProjects();
   const { openCreate } = useShellActions();
   const news = useProjectNews(useMemo(() => projects.map((project) => project.id), [projects]));
@@ -99,8 +100,9 @@ export function ProjectsIndex() {
             </div>
           ) : (
             <div className="proj-index__empty">
-              <p>No spaces yet. Create one, or it appears here when someone adds you to theirs.</p>
-              <Button variant="primary" onClick={() => openCreate({ kind: 'space' })}><Icon name="plus" />Create a space</Button>
+              {/* A guest does not start spaces (#1424): their line says only how one reaches them. */}
+              <p>{startsSpaces(workspace) ? 'No spaces yet. Create one, or it appears here when someone adds you to theirs.' : 'No spaces yet. A space appears here when someone adds you to it.'}</p>
+              {startsSpaces(workspace) ? <Button variant="primary" onClick={() => openCreate({ kind: 'space' })}><Icon name="plus" />Create a space</Button> : null}
             </div>
           )
         )}

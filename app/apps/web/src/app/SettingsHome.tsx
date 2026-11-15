@@ -7,7 +7,7 @@ import { getAssistantStatus } from '../assistant/api';
 import { listBackgroundConnections } from '../ai/api';
 import { getPreferences } from '../notifications/api';
 import { notificationSummary } from '../notifications/levels';
-import { SERVER_AI_OFF_LINE } from '../assistant/format';
+import { GUEST_AI_LINE, SERVER_AI_OFF_LINE } from '../assistant/format';
 import { AgentsList } from '../my-agents/AgentsList';
 import { Avatar, Button, Icon, Kreska, MEDIA, Spinner, useMediaQuery } from '../ui';
 import { ConnectAi } from '../ai/ConnectAi';
@@ -255,7 +255,7 @@ export function SettingsAgents() {
       <div className="pane-scroll">
         <div className="pane-in sset-in">
           <PageHead title="AI" />
-          <p className="sset-note" data-ai-settings="guest">Guests don’t have AI. An admin can make you a member.</p>
+          <p className="sset-note" data-ai-settings="guest">{GUEST_AI_LINE}</p>
         </div>
       </div>
     );

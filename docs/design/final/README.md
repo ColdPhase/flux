@@ -1366,6 +1366,11 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   keeps the field a line of words. One of the two makes a blocked task. The field is the app's own input with a listbox under it (the
   composer's `@` list is its model: arrows, Enter, Escape, 44 px rows on touch), no native picker. The task panel's Edit on a
   blocked task opens the same one field.
+- **A guest has no Space tab** (persona round, 2026-11-15, on the founder's "nothing appears that the user cannot use", [#1424](https://github.com/ColdPhase/flux/issues/1424)).
+  A guest does not start spaces, so New shows them Task, Thought, Decision and Page only, and nothing in Flux offers them New space
+  (Home, the Spaces list, My tasks). With no space yet, the Task and Decision tabs say "You're not in a space yet. When someone adds you
+  to one, you can add its tasks here." (or "propose its decisions"), never "Make one with New space"; Home's line is only "When someone
+  adds you to a space, it appears here at once."
 - **Batch entry is one step, and the space is kept.** **Add another** in the toast, or `C` pressed
   next, opens the window again on Task with the same space chosen, an empty title and no owner. `C` keeps the space the last task was created in until the person goes to another
   place.
@@ -1567,7 +1572,7 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
     ([Muting and following](#muting-a-place-and-following-a-thread)).
 - **Company:** only admins can change it.
   - The company name, shown on the sign-in page and in emails.
-  - The people, with their role (Owner, Admin, Member), when each was last active ([Last active](#last-active)) and a line about guests: they see only the
+  - The people, with their role (Owner, Admin, Member, Guest), when each was last active ([Last active](#last-active)) and a line about guests: they see only the
     spaces they are added to and never have AI.
   - With SSO, "Everyone who signs in with Riverside SSO joins automatically", and there is no
     Invite. Without SSO, Invite makes a one-time link that the admin sends (F-035); Flux sends no
@@ -1579,17 +1584,19 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
     "Only for", "Add someone" and the second role picker go. **Links waiting to be used are always listed** (#1424, persona B-5), under
     the people as "Waiting to be used · N", each with Copy and Revoke, whether or not Invite is open. **A new link is shown once** (#1424): in its own row of that list, with the link in a read-only field to read or select and
     the hint "It works once…", not in a card of its own above a row that says the same; the row's Copy is the only Copy, and where the
-    browser refuses to copy, the link is shown in the row it belongs to.
+    browser refuses to copy, the link is shown in the row it belongs to. The form ends with **Create invite link** and **Close**
+    (`secondary`), as Invite toggles it (persona round, 2026-11-15, #1424); closing it takes the new link's sentence with it, and a link
+    that was used leaves the list with its sentence, so no line is left about a link that is no longer listed.
   - **Reset link and Remove are on the person's row** (founder decision, Hubert, 2026-11-14, [#1424](https://github.com/ColdPhase/flux/issues/1424)):
     after the role button, as quiet buttons, the same way Space settings shows Remove. Remove asks in place, **Remove** (danger) and
     **Keep**, with the line of what it ends under the row; the role button "Member ▾" opens only the role.
   - **A reset link next to a person** (founder decision, Hubert, 2026-11-13, [#1471](https://github.com/ColdPhase/flux/issues/1471)).
     Without SSO, the row's quiet **Reset link** opens one group under the row:
     "Password" in the group's label style, the line "Make a one-time link that lets {first name} choose a new password." and a
-    `secondary` **Make reset link** (icon link). The link then shows exactly as a new invite link does, a read-only
-    field "Reset link for {name}" with the hint "It works once. Flux doesn't send it: paste it into your message to them." and
-    **Copy link** under it; the status line says "Reset link made and copied. It stops working when it is used or in 1 hour." (the
-    server's link lifetime).
+    `secondary` **Make reset link** (icon link) with a quiet **Cancel**. The link then shows exactly as a new invite link does, a read-only
+    field "Reset link for {name}" with **Copy link** and a quiet **Close** under it, and what happened is said once, in the status line:
+    "Reset link made and copied: paste it into your message to Rosa. It works once, for 1 hour." (the server's link lifetime; persona
+    round, 2026-11-15, #1424: the field has no second hint saying it again).
     An owner sees it for everyone but themselves, an admin for members and guests. Nothing else on the page changes.
   - There is no AI switch here; AI is per space.
   - **Spaces** (owners and admins; the list under People): each space opens, and one the admin is not in has
@@ -1823,6 +1830,13 @@ standard switch row in Settings › Notifications, and the rest of the page stay
   as an ordinary photo of the message. Under Ask me first it waits in the card like any change,
   with Approve / Skip, and the picture appears once approved. In the agent's private chat a picture it
   attached sits above its answer the same way. No new control.
+  **`/ai` without an assistant opens Connect AI** (persona round, 2026-11-15, on the founder's "the same name does the same thing",
+  [#1424](https://github.com/ColdPhase/flux/issues/1424)). Choosing `/ai` in the `/` menu (in a space, a thread, a task or a direct
+  message) while the person has connected no AI opens the one **Connect AI** window in place, the same window as Settings › AI and
+  Home's Connect AI; the ask bar keeps "You haven't set up your assistant. **Connect your AI**", which opens the same window. There is no
+  side panel of its own (the MCP explainer panel is gone). `/ai` is listed whenever it can do something, to ask or to connect: a server that
+  runs no AI (Settings › AI's "Off on this Flux server") does not offer it, and typed anyway the bar says "Off on this Flux server." with nothing
+  to press. A guest is never offered it; typed, it says who can change that: "Guests don't have AI. An admin can make you a member."
   In a space with AI off, `/ai` shows one line, "AI is off in this space",
   and "Your agents" disappear from the task Owner picker, which lists people only. In a DM both people see one line, "Ada used AI here (Claude)".
 - **The assistant's suggestions are in the `/` menu, under `/ai`** (founder decision, Hubert,
@@ -1935,8 +1949,9 @@ On the phone the Assistant conversation is a normal conversation. Its header lis
   people (chosen from the company); "You're the admin of this space". **Someone new? is there too** (founder decision, Hubert,
   2026-11-14, [#1424](https://github.com/ColdPhase/flux/issues/1424)): for a company owner or admin the open Add people ends with the
   same Someone new? row as Space settings, the same component and flow (the link is made, copied and shown in place), and Create space
-  ties each link made in the window to the new space. A window closed without Create leaves them as company links, listed in
-  Settings › Company. AI is a switch, on by
+  ties each link made in the window to the new space. **A window closed without Create revokes the links it made** (Cancel, ×,
+  Escape; and an encrypted space, which takes no link): a link made for a space that was never made would otherwise go on working as a
+  company link nobody asked for (persona round, 2026-11-15, #1424). AI is a switch, on by
   default, and Encrypted a switch, off by default ("Can't be turned off later"). Cancel and
   Create space have the same height.
 - **With Encrypted on,** the AI row is dimmed ("No AI in encrypted spaces"). The window adds the
@@ -1954,6 +1969,11 @@ On the phone the Assistant conversation is a normal conversation. Its header lis
   - "Only people added here, and the company's owners and admins, can open this space." (The drawn line said only the first part, which the rules contradict: owners and admins reach every space but an encrypted one, #1116.)
   - Name with Change.
   - People with Add people, an Admin / Member choice and Remove on each row, and under each name a quiet line with when they were last active ([Last active](#last-active)).
+    **A guest's row says Guest** (persona round, 2026-11-15, #1424), to everyone who reads the page, the guest too, as Settings › Company
+    and the people picker ("(guest)") say: a guest is never a space's admin, so their row has the word, not a choice of one. The list is
+    live: someone who joins with a link made here, or is added or removed elsewhere, appears or goes without a reload. With nobody left
+    to add, Add people says the true thing: "Everyone in Nowak Bakery is already in Shop floor." (or, with nobody else in the company,
+    "There is nobody else in the company yet.").
   - **Add people also takes a new person's email** (founder decision, 2026-11-13, #1438). Under the company's people, the open
     Add people has one more row for a company owner or admin: **Someone new?** an Email field and **Invite** (`secondary`). It
     makes the company's invite link (Member, 7 days, locked to that address) that also adds the person to this space when they
@@ -1962,7 +1982,7 @@ On the phone the Assistant conversation is a normal conversation. Its header lis
     and Cancel while someone is ticked, otherwise one **Close**. An address that already has an account in the company is
     simply ticked in the list instead. The inviter gets "<name> joined <company>" naming the space when they join. A space admin
     who is not a company admin has no such row. About 6 clicks instead of 13.
-  - The AI switch.
+  - The AI switch. A guest, who has no AI, has no AI row (#1424).
   - **GitHub**, for the space's admins: one row, **GitHub repositories**, that leads to the GitHub page (where repositories are connected and
     managed), which leads back with "‹ Space settings". A server without GitHub has no such row, as it has no greyed one. It was the only content of the Space details panel besides a link to these
     settings, so the panel is gone and GitHub is a setting of the space like the others (founder decision, Hubert, 2026-11-13,
@@ -2072,7 +2092,8 @@ the toast with Undo, the tokens and the existing icons. No new setting, mode or 
 
 Founder decision, Hubert, 2026-11-13 ([#1438](https://github.com/ColdPhase/flux/issues/1438)); composed from the sign-in pages.
 
-- An invite link opens **the create-account form first**: "Join Riverside Makers", one line "Ada Kowalska invited you.", then
+- An invite link opens **the create-account form first**: "Join Riverside Makers", one line "Ada Kowalska invited you." (a link made
+  from a space's Add people or New space names it: "Ada Kowalska invited you to Tool library.", persona round 2026-11-15, #1424), then
   Name, Email and Password and **Create account and join** (`primary`, large). Under the card, "Already have an account? **Sign in
   to join**". With sign-up closed or single sign-on only, the page says how to get in instead, as before.
 - **No "You joined" step.** Creating the account (or Join, when signed in already) lands **in the space the link was made from, with

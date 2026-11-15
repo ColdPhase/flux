@@ -15,7 +15,7 @@ import type { PaneCore } from './paneCore';
  */
 export function useAskBar({ project, me, outside, guest, revalidateRef }: PaneCore, assistant: ReturnType<typeof useConversationAssistant>, ask: AssistantAsk) {
   const navigate = useNavigate();
-  const { openDetails } = useShellActions();
+  const { openConnectAi } = useShellActions();
   const { setAskFailure } = ask;
   const state = askState(assistant.status, outside, guest);
   // A refused ask of someone who belongs here: the owner can no longer read here, so neither can their assistant. (Someone outside is told by the state.)
@@ -32,7 +32,7 @@ export function useAskBar({ project, me, outside, guest, revalidateRef }: PaneCo
   }
   function onAction(action: string) {
     if (action === 'join') join();
-    else if (action === 'connect') openDetails('connect-ai');
+    else if (action === 'connect') openConnectAi();
     else if (action === 'tell') void tellOperator(project.workspaceId, assistant.status?.setup.runtime.client).then(() => setAskFailure('Told whoever runs Flux.'), () => setAskFailure('Couldn’t tell them. Try again.'));
     else if (action === 'key') navigate('/settings/ai-connections?new=1');
     else navigate('/settings/agents');

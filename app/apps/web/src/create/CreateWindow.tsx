@@ -7,6 +7,7 @@ import { useIntentKeys } from '../api/intent-keys';
 import { getProject } from '../api/sketches';
 import { listProjectPeople } from '../project/data';
 import { useShellData } from '../app/data';
+import { startsSpaces } from '../people/api';
 import { readDraft, useDraft, writeDraft } from '../drafts/store';
 import { NewSpaceForm } from '../project/NewSpace';
 import '../app/settings.css';
@@ -58,9 +59,9 @@ export function CreateHost({ request, onClose, onTask }: { request: CreateReques
   // Each opening starts on Task (F-026 S3), or on Space while the person has none, since a task needs one (#763 FR-2);
   // the window is named after the tab it shows, so no heading repeats the tab.
   const { projects, workspace } = useShellData();
-  // A guest cannot start spaces, so with none of their own they open on Task like anyone else.
+  // A guest cannot start spaces, so with none of their own they open on Task like anyone else, and Space is not one of their tabs (#1424).
   // A thought needs no space (it goes on My map), so a Thought asked for opens as one for someone with no space yet (#866).
-  const opening: Shown = request?.kind === 'thought' ? 'thought' : request?.kind === 'space' || (!projects.length && workspace?.role !== 'guest') ? 'space'
+  const opening: Shown = request?.kind === 'thought' ? 'thought' : startsSpaces(workspace) && (request?.kind === 'space' || !projects.length) ? 'space'
     : request?.kind === 'decision' ? 'decision' : request?.kind === 'page' ? 'page' : 'task';
   const [chosen, setChosen] = useState<{ request: CreateRequest | null; kind: Shown; name?: string }>({ request: null, kind: 'task' });
   const kind = chosen.request === request ? chosen.kind : opening;
@@ -88,7 +89,8 @@ interface Carried {
 interface PanelIds { id: string; tab: string; field: string; active: boolean }
 
 function CreateBody({ request, phone, kind, onKind, onSpace, onClose, onTask }: { request: CreateRequest; phone: boolean; kind: Kind; onKind: (kind: Kind) => void; onSpace: (name: string) => void; onClose: () => void; onTask?: (projectId: string) => void }) {
-  const { me, projects } = useShellData();
+  const { me, projects, workspace } = useShellData();
+  const kinds = startsSpaces(workspace) ? KINDS : KINDS.filter((item) => item.id !== 'space');
   const location = useLocation();
   const here = location.pathname.match(/^\/projects\/([^/]+)/)?.[1];
   const known = (id: string | undefined) => (id && projects.some((project) => project.id === id) ? id : undefined);
@@ -127,7 +129,7 @@ function CreateBody({ request, phone, kind, onKind, onSpace, onClose, onTask }: 
     <div className="create__in">
       <div className="create__head ui-panel__head">
         <div className="create__kinds" onClick={pointerOnTab}>
-          <Tabs variant="segmented" className="create__tabs" label="Create" items={KINDS} value={kind} panelIdPrefix={prefix}
+          <Tabs variant="segmented" className="create__tabs" label="Create" items={kinds} value={kind} panelIdPrefix={prefix}
             onChange={(id) => { if (id === 'space') onSpace(oneLine(carried.text).slice(0, WORK_LIMITS.title)); else onKind(id as Kind); }} />
         </div>
         <button type="button" className="create__x" aria-label="Close" onClick={onClose}><Icon name="x" size={18} /></button>
@@ -241,7 +243,7 @@ interface Context { project: Project; members: { userId: string; name: string }[
 
 function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProject, onClose, onTask }: PanelProps & { request: CreateRequest; prefilled: boolean; onTask?: (projectId: string) => void }) {
   // The Owner choice offers your own agents and nobody else's (#904, AG-5): another person's agent is reached through that person.
-  const { me, projects, agents: ownAgents } = useShellData();
+  const { me, projects, workspace, agents: ownAgents } = useShellData();
   const { openDetails, openCreate } = useShellActions();
   const revalidator = useRevalidator();
   const created = useCreatedToast(() => revalidator.revalidate());
@@ -352,7 +354,7 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
 
   if (noPlace) return (
     <Panel ids={ids} where={where} onSubmit={() => undefined} foot={<><p className="create__note">A task belongs to a space</p><Go label="Create task" busy={false} ready={false} phone={phone} /></>}>
-      <p className="create__note">There is no space yet. Make one with New space, then add its tasks here.</p>
+      <p className="create__note">{startsSpaces(workspace) ? 'There is no space yet. Make one with New space, then add its tasks here.' : 'You’re not in a space yet. When someone adds you to one, you can add its tasks here.'}</p>
     </Panel>
   );
   return (
@@ -490,7 +492,7 @@ function PageForm({ ids, phone, carried, projectId, onProject, onClose }: PanelP
  * proposal reaches the people who can accept it only when that window ends.
  */
 function DecisionForm({ ids, phone, carried, projectId, onProject, onClose, request }: PanelProps & { request: CreateRequest }) {
-  const { projects, me } = useShellData();
+  const { projects, me, workspace } = useShellData();
   const revalidator = useRevalidator();
   const toast = useToast();
   const [why, setWhy] = useState('');
@@ -557,7 +559,7 @@ function DecisionForm({ ids, phone, carried, projectId, onProject, onClose, requ
         {error ? <p className="create__error" role="alert">{error}</p> : null}
         {replacing ? <ReplaceChoice key={project.id} projectId={project.id} value={supersedes?.id ?? ''} onChange={(next) => setReplaces(next ? { projectId: project.id, ...next } : null)} />
           : <button type="button" className="create__more" onClick={() => setReplacing(true)}>Replace an accepted decision…</button>}
-      </> : <p className="create__note">There is no space yet. Make one with New space, then propose its decisions here.</p>}
+      </> : <p className="create__note">{startsSpaces(workspace) ? 'There is no space yet. Make one with New space, then propose its decisions here.' : 'You’re not in a space yet. When someone adds you to one, you can propose its decisions here.'}</p>}
     </Panel>
   );
 }

@@ -16,7 +16,8 @@ import { useAgentHue } from '../agents/hues';
 import { TaskAgentState } from '../agents/TaskAgentState';
 import { ClientChanges } from '../assistant/ClientChanges';
 import { failure, useAssistantChanges } from '../assistant/WaitingChanges';
-import { askError, askState } from '../assistant/format';
+import { askError, askState, canHaveAi, connectsFirst } from '../assistant/format';
+import { useShellActions } from '../app/shellContext';
 import { assistantSuggestions, noteAssistantUse } from '../assistant/MeetAssistant';
 import { useAskMenu } from '../assistant/useAskMenu';
 import { ComposerMenu } from '../app/ComposerMenu';
@@ -328,6 +329,7 @@ export function TaskComposer({ state, composer, meId, writable, readOnly, id }: 
   state: TaskActivityState; composer: TaskComposerDraft; meId: string; writable: boolean; readOnly: boolean; id: string;
 }) {
   const touch = useMediaQuery(MEDIA.touch);
+  const { openConnectAi } = useShellActions();
   const captureScope = useComposerScope(composer.key);
   const { discussion } = state;
   // Typing (#155 AC-2) is the task thread's: the same canonical conversation as the task's thread in Conversation
@@ -345,15 +347,17 @@ export function TaskComposer({ state, composer, meId, writable, readOnly, id }: 
   const asking = !state.aiOff && /^\/ai(\s|$)/.test(composer.draft.body);
   const [askFailure, setAskFailure] = useState('');
   // `/` in the box lists `/ai` and, under it, this task's suggestions (#1224), once the task has a discussion to ask in.
-  const menu = useAskMenu({ fieldId: id, draft: composer.draft.body, enabled: writable && !state.aiOff && !!conversationId,
+  // `/ai` is offered when it can do something (#1424): not on a server that runs no AI; chosen without an assistant, it opens Connect AI.
+  const menu = useAskMenu({ fieldId: id, draft: composer.draft.body, enabled: writable && !state.aiOff && !!conversationId && canHaveAi(state.assistant.status),
     suggestions: assistantSuggestions('task', meId, state.assistant.status?.state === 'ready'),
-    onDraft: (value) => composer.setBody(value), onAsk: (text) => void askAgent(text) });
+    onDraft: (value) => composer.setBody(value), onAsk: (text) => void askAgent(text),
+    onCommand: (command) => { if (command === 'ai' && connectsFirst(askState(state.assistant.status))) openConnectAi(); } });
   async function askAgent(words?: string) {
     const prompt = words ?? composer.draft.body.replace(/^\/ai\s*/, '').trim();
     const ready = askState(state.assistant.status);
     if (!conversationId) { setAskFailure('Start the discussion with a first message, then ask your agent with /ai.'); return; }
     if (!prompt) { setAskFailure('Say what to ask after /ai, for example /ai what is left on this task?'); return; }
-    if (ready.kind !== 'ready') { setAskFailure(ready.note); return; }
+    if (ready.kind !== 'ready') { setAskFailure(ready.note); if (ready.action === 'connect') openConnectAi(); return; }
     const active = captureScope();
     setAskFailure('');
     try { noteAssistantUse(meId); await state.assistant.ask(prompt); if (active() && words === undefined) composer.setBody(''); } catch (cause) { if (active()) setAskFailure(askError(cause)); }

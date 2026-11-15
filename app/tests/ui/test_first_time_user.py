@@ -184,6 +184,8 @@ class FirstTimeUser(unittest.TestCase):
         self.assertLessEqual(clicks + 2, 6, "Settings is ⋯ › Settings: about 6 clicks in all (#1438)")
         basia = self.page(None)
         basia.goto(f"/join#{link.input_value().split('#', 1)[1]}")
+        # Persona round (#1424): the join page names the space the link is for, not only the company.
+        expect(basia.get_by_text(re.compile(r"invited you to Volunteer sign-up app\.$"))).to_be_visible()
         # The invite page is the create-account form first.
         basia.get_by_label("Name").fill("Basia Wrona")
         # #1471: the link is for her address, so the form has it filled in and locked.

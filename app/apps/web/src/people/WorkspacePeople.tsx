@@ -57,6 +57,7 @@ export function WorkspacePeople({ workspaceId, onBack, page = false }: { workspa
   // Home's first steps lead here with `?invite=1` (Invite people) or `?name=1` (Name your company), #1438.
   const [params] = useSearchParams();
   const [inviting, setInviting] = useState(() => params.get('invite') === '1');
+  const inviteRef = useRef<HTMLButtonElement>(null);
   // With single sign-on as the way in, people join on their first sign-in and nobody is invited (F-037). While the provider
   // is only being prepared, password accounts still need an invite, so it counts as no provider. Undefined until it is known;
   // a failed read counts as no provider, so an admin can still add people (the server decides who may join).
@@ -144,10 +145,12 @@ export function WorkspacePeople({ workspaceId, onBack, page = false }: { workspa
   // On the company's page the people come first, as drawn: one Invite above them, or with single sign-on one line saying who
   // joins. An encrypted space's panel keeps its form open above its people.
   const canAdd = !(page && sso) && sso !== undefined && manager && !!members;
+  // Close puts the form away with what it said: the new link stays listed under Waiting to be used, without its sentence (#1424).
+  const closeInvite = () => { setInviting(false); links.setFresh(null); links.setStatus(''); requestAnimationFrame(() => inviteRef.current?.focus()); };
   const onAdded = (member: WorkspaceMember) => changed(`${member.name} joined ${workspace.name} as ${ROLE_LABEL[member.role].toLowerCase()}.`, false);
   // #1438: the company's page has one invite form; an encrypted space's panel adds people of the company by email, never by a link (C-24).
   const addPerson = canAdd && members ? (page
-    ? <InviteForm workspace={workspace} members={members} myRole={myRole} links={links} onAdded={onAdded} />
+    ? <InviteForm workspace={workspace} members={members} myRole={myRole} links={links} onAdded={onAdded} onClose={closeInvite} />
     : <AddPerson workspace={workspace} members={members} myRole={myRole} onAdded={onAdded} />) : null;
   return (
     <div className={`details people${page ? ' people--page' : ''}`}>
@@ -169,7 +172,7 @@ export function WorkspacePeople({ workspaceId, onBack, page = false }: { workspa
       <section className="details__sec" aria-labelledby="people-here">
         <div className="access__head">
           <h4 id="people-here" ref={rosterRef} tabIndex={-1}>{ordered ? (page ? <>People<span className="people__count"> · {ordered.length}</span></> : `In ${workspace.name} · ${ordered.length}`) : `You in ${workspace.name}`}</h4>
-          {page && canAdd ? <Button variant="quiet" icon="plus" className="access__invite" aria-expanded={inviting} onClick={() => setInviting((open) => !open)}>Invite</Button> : null}
+          {page && canAdd ? <Button ref={inviteRef} variant="quiet" icon="plus" className="access__invite" aria-expanded={inviting} onClick={() => (inviting ? closeInvite() : setInviting(true))}>Invite</Button> : null}
         </div>
         {page && inviting ? addPerson : null}
         {/* On the company's page the people are one card, as Settings draws its cards: the single sign-on line first, then each person. */}
@@ -492,7 +495,7 @@ function MemberRow({ member, self, workspace, myRole, page, editable, resettable
       {problem ? <p className="people__notice people__rownote" role="alert"><Icon name="alert" size={13} />{problem}</p> : null}
       {open === 'reset' ? (
         <div className="people__edit" onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); shut(resetRef); } }}>
-          <ResetLinkGroup id={editId} member={member} workspace={workspace} />
+          <ResetLinkGroup id={editId} member={member} workspace={workspace} onClose={() => shut(resetRef)} />
         </div>
       ) : null}
       {editing ? <MemberEditor id={editId} member={member} self={self} workspace={workspace} myRole={myRole} withRemove={!page} onClose={close} onChanged={onChanged} /> : null}
@@ -599,9 +602,9 @@ function MemberEditor({ id, member, self, workspace, myRole, withRemove, onClose
 
 /**
  * A one-time password reset link for this person (#1471), made and copied as a new invite link is: Flux sends it nowhere. It is shown
- * only here, once; making another stops the earlier one.
+ * only here, once; making another stops the earlier one. What happened is said once, in the line under it, and Close puts it away (#1424).
  */
-function ResetLinkGroup({ id, member, workspace }: { id: string; member: WorkspaceMember; workspace: EncryptedWorkspace }) {
+function ResetLinkGroup({ id, member, workspace, onClose }: { id: string; member: WorkspaceMember; workspace: EncryptedWorkspace; onClose: () => void }) {
   const [busy, setBusy] = useState(false);
   const [link, setLink] = useState<string | null>(null);
   const [status, setStatus] = useState('');
@@ -616,8 +619,8 @@ function ResetLinkGroup({ id, member, workspace }: { id: string; member: Workspa
       setLink(made.link);
       const minutes = Math.max(1, Math.round((new Date(made.expiresAt).getTime() - Date.now()) / 60_000));
       const lasts = minutes >= 60 ? `${Math.round(minutes / 60)} hour${Math.round(minutes / 60) === 1 ? '' : 's'}` : `${minutes} minutes`;
-      setStatus(await copyText(made.link) ? `Reset link made and copied. It stops working when it is used or in ${lasts}.`
-        : `Reset link made. Copy it and send it to ${first} yourself. It stops working when it is used or in ${lasts}.`);
+      setStatus(await copyText(made.link) ? `Reset link made and copied: paste it into your message to ${first}. It works once, for ${lasts}.`
+        : `Reset link made. Copy it and paste it into your message to ${first}. It works once, for ${lasts}.`);
       requestAnimationFrame(() => linkRef.current?.select());
     } catch (error) {
       setProblem(problemText(error, { workspace: workspace.name, who: member.name }));
@@ -630,10 +633,16 @@ function ResetLinkGroup({ id, member, workspace }: { id: string; member: Workspa
       {link ? (
         <div className="people__link">
           <Input ref={linkRef} id={`${id}-reset-link`} label={`Reset link for ${member.name}`} readOnly value={link}
-            onFocus={(event) => event.currentTarget.select()} hint="It works once. Flux doesn’t send it: paste it into your message to them." />
-          <div className="details__actions"><Button variant="secondary" onClick={() => void copyText(link).then((copied) => setStatus(copied ? 'Link copied.' : 'Copying isn’t allowed here. Select the link and copy it.'))}><Icon name="copy" size={14} />Copy link</Button></div>
+            onFocus={(event) => event.currentTarget.select()} />
+          <div className="details__actions">
+            <Button variant="secondary" onClick={() => void copyText(link).then((copied) => setStatus(copied ? 'Link copied.' : 'Copying isn’t allowed here. Select the link and copy it.'))}><Icon name="copy" size={14} />Copy link</Button>
+            <Button variant="quiet" onClick={onClose}>Close</Button>
+          </div>
         </div>
-      ) : <div className="details__actions"><Button variant="secondary" busy={busy} onClick={() => void make()}><Icon name="link" size={14} />Make reset link</Button></div>}
+      ) : <div className="details__actions">
+        <Button variant="secondary" busy={busy} onClick={() => void make()}><Icon name="link" size={14} />Make reset link</Button>
+        <Button variant="quiet" onClick={onClose}>Cancel</Button>
+      </div>}
       {problem ? <p className="people__notice" role="alert"><Icon name="alert" size={13} />{problem}</p> : null}
       <p className="people__invite-status" role="status">{status ? <><Icon name="check" size={13} />{status}</> : null}</p>
     </div>
@@ -662,10 +671,17 @@ function useInviteLinks(workspaceId: string, enabled: boolean, seen: number, onJ
   const [fresh, setFresh] = useState<WorkspaceInvite | null>(null);
   const [status, setStatus] = useState('');
   const linkRef = useRef<HTMLInputElement>(null);
+  const freshRef = useRef(fresh);
+  useEffect(() => { freshRef.current = fresh; });
   useEffect(() => {
     if (!enabled) return undefined;
     const controller = new AbortController();
-    listInvites(workspaceId, controller.signal).then(setInvites, (error: unknown) => {
+    listInvites(workspaceId, controller.signal).then((list) => {
+      setInvites(list);
+      // The link just made was used (or revoked elsewhere): its row and its sentence go with it, so no sentence is left about a link no longer listed.
+      const made = freshRef.current;
+      if (made && !list.some((invite) => invite.id === made.id)) { setFresh(null); setStatus(''); }
+    }, (error: unknown) => {
       if (error instanceof DOMException && error.name === 'AbortError') return;
       setInvites([]);
     });
@@ -686,8 +702,8 @@ const madeSentence = (copied: boolean) => (copied ? 'Invite link created and cop
  * address, or none, makes a one-time link, copied at once, that the owner or admin sends themselves (Flux sends no email). The new link shows
  * once, in its own row of the list of links waiting to be used (`WaitingLinks`), which keeps Copy and Revoke for every link (#1424).
  */
-function InviteForm({ workspace, members, myRole, links, onAdded }: { workspace: Workspace; members: WorkspaceMember[]; myRole: WorkspaceRole;
-  links: InviteLinks; onAdded: (member: WorkspaceMember) => void }) {
+function InviteForm({ workspace, members, myRole, links, onAdded, onClose }: { workspace: Workspace; members: WorkspaceMember[]; myRole: WorkspaceRole;
+  links: InviteLinks; onAdded: (member: WorkspaceMember) => void; onClose: () => void }) {
   const [role, setRole] = useState<InviteRole>('member');
   const [email, setEmail] = useState('');
   const [days, setDays] = useState<InviteExpiryDays>(INVITE_DEFAULT_EXPIRY_DAYS);
@@ -767,7 +783,10 @@ function InviteForm({ workspace, members, myRole, links, onAdded }: { workspace:
           </div>
         ) : null}
         {problem ? <p className="people__notice" role="alert"><Icon name="alert" size={13} />{problem}</p> : null}
-        <div className="details__actions"><Button type="submit" variant="primary" busy={busy}><Icon name="link" size={14} />Create invite link</Button></div>
+        <div className="details__actions">
+          <Button type="submit" variant="primary" busy={busy}><Icon name="link" size={14} />Create invite link</Button>
+          <Button variant="secondary" onClick={onClose}>Close</Button>
+        </div>
       </form>
     </section>
   );

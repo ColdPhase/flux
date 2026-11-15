@@ -9,8 +9,10 @@ import './space.css';
  * page one "Add people" button already opened it, so `listOnly` shows the list itself, with its search, and nothing else. `children` follow the
  * open list: "Someone new?" for a company owner or admin, the same in both places (#1424).
  */
-export function PeoplePicker({ candidates, value, onChange, disabled = false, companyName, listOnly = false, children }: {
-  candidates: WorkspaceMember[]; value: string[]; onChange: (ids: string[]) => void; disabled?: boolean; companyName: string; listOnly?: boolean; children?: ReactNode;
+export function PeoplePicker({ candidates, value, onChange, disabled = false, companyName, listOnly = false, none = 'There is nobody else in the company yet.', children }: {
+  candidates: WorkspaceMember[]; value: string[]; onChange: (ids: string[]) => void; disabled?: boolean; companyName: string; listOnly?: boolean;
+  /** What the list says when nobody can be chosen: by default that the company has nobody else yet. */
+  none?: string; children?: ReactNode;
 }) {
   const [expanded, setOpen] = useState(false);
   const open = listOnly || expanded;
@@ -53,7 +55,7 @@ export function PeoplePicker({ candidates, value, onChange, disabled = false, co
                 </li>
               ))}
             </ul>
-          ) : <p className="pick__none">There is nobody else in the company yet.</p>}
+          ) : <p className="pick__none">{none}</p>}
           {candidates.length && !shown.length ? <p className="pick__none">Nobody matches.</p> : null}
         </div>
       ) : null}

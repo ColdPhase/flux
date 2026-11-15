@@ -178,9 +178,14 @@ class AccountsByLink(unittest.TestCase):
         group.get_by_role("button", name="Make reset link").click()
         field = group.get_by_label(f"Reset link for {NEWCOMER[0]}")
         expect(field).to_have_value(re.compile(f"^{re.escape(ORIGIN)}/reset-password#[A-Za-z0-9_-]{{24}}$"))
-        expect(group.get_by_role("status")).to_contain_text("It stops working when it is used or in 1 hour.")
+        # Persona round (#1424): what happened is said once, in the status line; the field has no second hint, and Close puts it away.
+        expect(group.get_by_role("status")).to_contain_text("It works once, for 1 hour.")
+        expect(group.get_by_text(re.compile("works once"))).to_have_count(1)
         shot(owner, "reset-link-company-desktop-1440")
         link = field.input_value()
+        group.get_by_role("button", name="Close").click()
+        expect(owner.get_by_role("group", name="Password")).to_have_count(0)
+        expect(owner.get_by_role("button", name=f"Reset link for {NEWCOMER[0]}")).to_be_focused()
 
         page = self.page(phone=True)
         page.goto(link)

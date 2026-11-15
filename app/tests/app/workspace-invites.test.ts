@@ -50,7 +50,7 @@ describe('F-035 invite links', () => {
     // A visitor with the link, not signed in, sees what it is for; a link for anyone names no address.
     const anonymous = new Browser();
     const seen = expectStatus(await preview(anonymous, token), 200) as InvitePreview;
-    assert.deepEqual({ ...seen, expiresAt: undefined }, { workspaceName: 'Riverside Makers', invitedBy: 'Ada Invites', role: 'member', expiresAt: undefined,
+    assert.deepEqual({ ...seen, expiresAt: undefined }, { workspaceName: 'Riverside Makers', spaceName: null, invitedBy: 'Ada Invites', role: 'member', expiresAt: undefined,
       emailLocked: false, email: null, encrypted: false, state: 'pending' });
     assert.equal((await anonymous.request('POST', '/api/v1/invites/accept', { body: { token } })).status, 401, 'accept needs a session');
 
@@ -102,6 +102,8 @@ describe('F-035 invite links', () => {
     const listed = expectStatus(await ada.browser.request('GET', `/api/v1/workspaces/${space}/invites`), 200) as WorkspaceInvite[];
     assert.deepEqual(listed.find((item) => item.id === invite.id)?.space, { id: tool, name: 'Tool library' });
 
+    // Persona round (#1424): the join page names the space the link is for, not only the company; a company link names none.
+    assert.equal((expectStatus(await preview(new Browser(), tokenOf(invite)), 200) as InvitePreview).spaceName, 'Tool library');
     const { browser } = await register(email, password, 'Maja Invites');
     const majaId = ((await browser.request('GET', '/api/v1/me')).json as { user: { id: string } }).user.id;
     const joined = expectStatus(await accept({ browser }, tokenOf(invite)), 200) as AcceptInviteResult;
@@ -119,6 +121,7 @@ describe('F-035 invite links', () => {
     assert.equal((expectStatus(await accept({ browser }, tokenOf(invite)), 200) as AcceptInviteResult).landingSpaceId, tool);
     // A link made for the company (no space) lands a member in the space everyone reads.
     const companyLink = await create(ada, space, { role: 'member' });
+    assert.equal((expectStatus(await preview(new Browser(), tokenOf(companyLink)), 200) as InvitePreview).spaceName, null);
     const kai = await register(uniqueEmail('kai-invites'), password, 'Kai Invites');
     assert.equal((expectStatus(await accept(kai, tokenOf(companyLink)), 200) as AcceptInviteResult).landingSpaceId, landing);
 
@@ -133,6 +136,7 @@ describe('F-035 invite links', () => {
     const gone = (expectStatus(await project('Old shed', 'restricted'), 201) as { id: string }).id;
     const goneInvite = await create(ada, space, { role: 'guest', spaceId: gone });
     assert.ok([200, 204].includes((await ada.browser.request('DELETE', `/api/v1/projects/${gone}`)).status), 'the space is deleted');
+    assert.equal((expectStatus(await preview(new Browser(), tokenOf(goneInvite)), 200) as InvitePreview).spaceName, null, 'a deleted space is not named');
     const late = await register(uniqueEmail('pia-invites'), password, 'Pia Invites');
     const lateJoined = expectStatus(await accept(late, tokenOf(goneInvite)), 200) as AcceptInviteResult;
     assert.deepEqual([lateJoined.status, lateJoined.landingSpaceId], ['joined', null]);

@@ -87,6 +87,9 @@ export const ROLE_HINT: Record<WorkspaceRole, string> = {
 };
 export const isManagerRole = (role: WorkspaceRole | null | undefined) => role === 'owner' || role === 'admin';
 
+/** A guest does not start spaces (AG-2, #555): nothing offers them New space, and no empty state points to it (#1424). */
+export const startsSpaces = (workspace: { role?: WorkspaceRole | null } | null | undefined) => workspace?.role !== 'guest';
+
 export function firstName(name: string) {
   return name.trim().split(/\s+/)[0] || name;
 }

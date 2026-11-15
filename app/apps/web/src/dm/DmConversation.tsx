@@ -14,7 +14,8 @@ import { ComposerBox } from '../composer/ComposerBox';
 import { ComposerFiles, useFileDrop } from '../composer/Files';
 import { outboxView, useComposerDraft, useComposerScope } from '../composer/draft';
 import { ConnectionLine, SendAnnouncer } from '../composer/Outbox';
-import { askError, askState } from '../assistant/format';
+import { askError, askState, canHaveAi, connectsFirst } from '../assistant/format';
+import { useShellActions } from '../app/shellContext';
 import { PrivateAiLines, firstNames } from '../assistant/PrivateAiLines';
 import { useConversationAssistant } from '../assistant/useConversationAssistant';
 import { useFollowEnd } from '../assistant/useFollowEnd';
@@ -197,6 +198,7 @@ function DmContent({ initial }: { initial: Dm }) {
     } finally { refreshing.current = false; }
   }, [denied, initial.id, learn]);
 
+  const { openConnectAi } = useShellActions();
   const assistant = useConversationAssistant({ meId: me.user.id, place: { kind: 'dm', dmId: initial.id, threadRootId: null }, onShown: () => { void refresh(); toBottom(); } });
   // A new answer, or the agent at work, comes into view at the end, also when the working line becomes the taller answer (#842).
   const privateItems = [...assistant.privateAnswers.map((item) => item.id), assistant.run?.id ?? ''].join(',');
@@ -309,7 +311,7 @@ function DmContent({ initial }: { initial: Dm }) {
     const prompt = draft.replace(/^\/ai\s*/, '').trim();
     const state = askState(assistant.status, false, workspace?.role === 'guest');
     if (!prompt) { setAskFailure('Say what to ask after /ai, for example /ai summarise this conversation.'); return; }
-    if (state.kind !== 'ready') { setAskFailure(state.note); return; }
+    if (state.kind !== 'ready') { setAskFailure(state.note); if (state.action === 'connect') openConnectAi(); return; }
     const active = captureScope();
     setAskFailure('');
     noteAssistantUse(me.user.id);
@@ -437,8 +439,10 @@ function DmContent({ initial }: { initial: Dm }) {
   const recipientGone = Boolean(counterpart && !dm.participants.some((p) => p.id === counterpart.id));
   // `/` lists the commands that apply here, in a space's words (#1419 item 11, #1424): `/file`, and `/ai` unless the person is a guest. A direct
   // message has no tasks or decisions to make from a draft, no suggestions (#1224) and no `@`, so the one composer behaves the same everywhere.
-  const menu = useAskMenu({ fieldId: 'dm-composer', draft, enabled: !recipientGone, suggestions: [], commands: workspace?.role === 'guest' ? ['file'] : ['file', 'ai'],
-    onDraft: (value) => change(value), onAsk: () => undefined });
+  // `/ai` is offered when it can do something (#1424): not to a guest, nor on a server that runs no AI; chosen without an assistant, it opens Connect AI.
+  const menu = useAskMenu({ fieldId: 'dm-composer', draft, enabled: !recipientGone, suggestions: [], commands: workspace?.role === 'guest' || !canHaveAi(assistant.status) ? ['file'] : ['file', 'ai'],
+    onDraft: (value) => change(value), onAsk: () => undefined,
+    onCommand: (command) => { if (command === 'ai' && connectsFirst(askState(assistant.status))) openConnectAi(); } });
   const goneNotice = recipientGone
     ? leftNotice || `${counterpart!.name.split(/\s+/)[0]} left this conversation. They can reopen it by messaging you.`
     : '';
