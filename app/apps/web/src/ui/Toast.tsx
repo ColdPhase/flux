@@ -1,3 +1,4 @@
+import { useKeysLive } from './useKeysLive';
 import { createContext, type CSSProperties, type RefObject, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation } from 'react-router';
@@ -143,6 +144,8 @@ function ToastItem({ toast, onDone, onLeaving, registerAction, movedAt }: { toas
   const ran = useRef(false);
   const moments = useSmallMoments();
   const dismiss = useCallback(() => setLeaving(true), []);
+  // Its key (Z) is shown only while it works: in the composer Z is typing (F-026 §4, persona round 30).
+  const keysLive = useKeysLive();
   const pressedFrom = useRef<HTMLElement | null>(null);
   const notePress = () => { const active = document.activeElement; pressedFrom.current = active instanceof HTMLElement && active !== document.body && !ref.current?.contains(active) ? active : null; };
   const act = useCallback((event?: { detail: number }, second = false) => {
@@ -220,7 +223,7 @@ function ToastItem({ toast, onDone, onLeaving, registerAction, movedAt }: { toas
         <>
           <span className="ui-toast__sep" aria-hidden="true" />
           <button type="button" className="ui-toast__action" onPointerDown={notePress} onClick={(event) => act(event)} aria-keyshortcuts={toast.action.key} title={toast.action.key ? `${toast.action.label} (${toast.action.key})` : undefined}>
-            {toast.action.label}{toast.action.key ? <kbd aria-hidden="true">{toast.action.key}</kbd> : null}
+            {toast.action.label}{toast.action.key ? <kbd aria-hidden="true" style={keysLive ? undefined : { visibility: 'hidden' }}>{toast.action.key}</kbd> : null}
           </button>
         </>
       ) : null}

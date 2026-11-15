@@ -414,7 +414,8 @@ function AppLayoutContent() {
       if (detailsScope.current !== detailsOwner) return;
       const next = typeof view === 'object' && 'id' in view ? { ...view, projectId: view.projectId ?? projectId } : view;
       const current = now.current;
-      const afresh = !options?.back && !(current.detailsOpen && isOwned(current.detailsView) && ownedRef.current);
+      // Also over a thread (a task card in it, a task made from a reply): the task has its address there too (persona round 30 P2 2).
+      const afresh = !options?.back;
       if (afresh && typeof next === 'object' && 'id' in next && (next.kind === 'work' || next.kind === 'decision')
         && addressFor.current(next.kind, next.id, (next as { projectId?: string }).projectId)) return;
       // Opened from the panel, an object replaces the one shown and keeps the way back; so does anything that takes the place of a
@@ -464,8 +465,17 @@ function AppLayoutContent() {
   // Closing an object that had its own entry goes Back over it: the entry it returns to shows no panel, whatever was kept for it.
   const [closingBack, setClosingBack] = useState(false);
   const [shownKey, setShownKey] = useState(location.key);
+  const [shownSearch, setShownSearch] = useState(location.search);
   if (shownKey !== location.key) {
     setShownKey(location.key);
+    setShownSearch(location.search);
+    // Back (or Forward) off the entry of the object the panel shows (`?open=`): it steps back to what it covered (a thread), or closes.
+    const leftOpen = new URLSearchParams(shownSearch).get('open');
+    const shownId = typeof detailsView === 'object' && 'id' in detailsView ? `${detailsView.kind}:${detailsView.id}` : null;
+    if (navType === 'POP' && leftOpen && leftOpen !== new URLSearchParams(location.search).get('open') && shownId === leftOpen && detailsOpen) {
+      const top = trail.at(-1);
+      if (top) { setTrail(trail.slice(0, -1)); setDetailsView(top.view); } else setDetailsOpen(false);
+    }
     const arrival = arrivalEntry(location, navType);
     const kept = arrival ? recall<unknown>('details', arrival) : undefined;
     if (arrival && isDetailsPlace(kept) && !kept.owned) {
@@ -505,7 +515,9 @@ function AppLayoutContent() {
     if (params.get('open') === `${kind}:${id}`) return false;
     params.delete('open');
     const rest = params.toString();
-    const kept = location.state && typeof location.state === 'object' ? location.state : {};
+    // The entry's own asks (write in the composer, keep a panel, a found message) are not the object's: they would act again on its entry.
+    const kept: Record<string, unknown> = { ...(location.state && typeof location.state === 'object' ? location.state : {}) };
+    for (const ask of ['focusComposer', 'keepPanel', 'found', 'sourceOf']) delete kept[ask];
     // `openPushed`: closing goes Back over this entry instead of leaving a second one with the same address. The flag reads as the links
     // write it (`open=work:<id>`), not encoded.
     navigate({ pathname: location.pathname, search: `?${rest ? `${rest}&` : ''}open=${kind}:${id}`, hash: location.hash }, { defaultShouldRevalidate: false, state: { ...kept, openPushed: true } });
@@ -556,7 +568,7 @@ function AppLayoutContent() {
     let leader = 0;
     const onKey = (event: KeyboardEvent) => {
       if (event.metaKey || event.ctrlKey || event.altKey || event.defaultPrevented || isTyping(event.target)) return;
-      if (document.getElementById('root')?.hasAttribute('data-modal') || document.querySelector('[role="menu"]')) return;
+      if (document.getElementById('root')?.hasAttribute('data-modal') || document.querySelector('[role="menu"]:not([inert])')) return;
       // On a tablet the sidebar is always the rail (Spokój); "[" opens it as the drawer instead.
       if (event.key === '[') { event.preventDefault(); if (tablet) setNavOpen((open) => !open); else toggleRail(); return; }
       const key = event.key.toLowerCase();
@@ -670,6 +682,12 @@ function AppLayoutContent() {
   const goToOrigin = useGoToOrigin(routeOrigin ?? NO_ORIGIN);
   const stepBack = () => {
     if (!trailTop) return;
+    // The object it steps back from had its own entry (`?open=`, a task card in a thread): Back leaves that entry, and the panel steps back
+    // on the entry it returns to (the Back above), so the thread comes back where it was read (F-026 §4). Only when what it leaves is the
+    // object the address names; a step back inside the panel to that object keeps the entry.
+    const named = new URLSearchParams(location.search).get('open');
+    const leaving = typeof detailsView === 'object' && 'id' in detailsView ? `${detailsView.kind}:${detailsView.id}` : null;
+    if (named && leaving === named && (location.state as { openPushed?: boolean } | null)?.openPushed) { navigate(-1); return; }
     // A panel kept over the page that a link inside it led to (a task's source message) steps back to the page it was followed
     // from, where that panel returns as it was, not to the conversation that link opened: a sheet or an overlay covers the
     // header's control, and this is the one visible back (#592).
@@ -735,7 +753,7 @@ function AppLayoutContent() {
       const target = event.target instanceof Element ? event.target : null;
       if (target?.closest('[role="dialog"], [role="menu"], [role="listbox"], #details')) return;
       // A window, a calendar or a menu that is open takes Esc first, wherever focus is while it opens.
-      if (document.querySelector('.ui-overlay[data-state="open"], [role="menu"], [role="dialog"]:not(#details)')) return;
+      if (document.querySelector('.ui-overlay[data-state="open"], [role="menu"]:not([inert]), [role="dialog"]:not(#details)')) return;
       // A field other than a composer keeps its Escape while it holds something (a search being typed) or writes a page; an empty one
       // ("Search tasks" with nothing in it) does not stop Esc from closing the panel (audit 3274a05 P3 1).
       const field = target instanceof HTMLTextAreaElement && target.closest('.composer, .composer__box') ? target : null;

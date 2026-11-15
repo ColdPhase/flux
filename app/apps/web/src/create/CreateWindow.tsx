@@ -10,7 +10,7 @@ import { useShellData } from '../app/data';
 import { personLabel, startsSpaces } from '../people/api';
 import { readDraft, useDraft, writeDraft } from '../drafts/store';
 import { NewSpaceForm } from '../project/NewSpace';
-import { awaitField } from '../ui/keys';
+import { awaitField, isTyping } from '../ui/keys';
 import '../app/settings.css';
 import '../people/space.css';
 import { AccountChangedError, assertSignedInAs } from '../app/personalSpace';
@@ -565,8 +565,24 @@ function DecisionForm({ ids, phone, carried, projectId, onProject, onClose, requ
     request.onCreated?.();
     // Stays set: the window closes, and a second submit in the same tick must not send a second proposal.
     onClose();
-    // Focus goes to the proposal's card where it shows (the conversation of its space), not back to New (F-026 §4, persona round 27).
-    requestAnimationFrame(() => requestAnimationFrame(() => document.querySelector<HTMLElement>(`#content [data-decision-card="${CSS.escape(card.id)}"]`)?.focus()));
+    // F-026 §4 (persona round 30 P2 5): a `/decide` from the composer leaves the cursor in the composer, as `/task` does, so the next words
+    // are written there. Proposed through New, focus goes to the proposal's card once it is in the conversation (it is drawn a moment later;
+    // focusing too early took the card before it), unless the person has moved on meanwhile.
+    if (!request.onCreated) {
+      const until = performance.now() + 5000;
+      // The card that stays: the decision's own, once the proposal is made (the held one is replaced then, and a focus on it would be lost).
+      let madeId: string | null = null;
+      void made.then((id) => { madeId = id; });
+      const toCard = () => {
+        const active = document.activeElement;
+        // Moved on: typing somewhere, or in a panel.
+        if (active && (isTyping(active) || active.closest('#details'))) return;
+        const element = madeId ? document.querySelector<HTMLElement>(`#content [data-decision-card="${CSS.escape(madeId)}"]`) : null;
+        if (element) { element.focus(); return; }
+        if (performance.now() < until) requestAnimationFrame(toCard);
+      };
+      requestAnimationFrame(toCard);
+    }
     toast({ message: 'Decision proposed', tone: 'neutral', action: { label: 'Undo', key: 'Z', onClick: () => {
       if (undone) return;
       undone = true;

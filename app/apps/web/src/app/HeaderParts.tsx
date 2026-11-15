@@ -87,7 +87,19 @@ export function MoreMenu({ items, label = 'More', icon = 'more', className, size
           onClick={(event) => { if ((event.target as Element).closest('[data-more-row]:not([aria-disabled="true"])')) close(); }}>
           {items.map((item) => 'node' in item ? <Fragment key={item.label}>{item.node}</Fragment> : (
             <button key={item.label} type="button" role={item.checked === undefined ? 'menuitem' : 'menuitemcheckbox'} aria-checked={item.checked}
-              className={`newmenu__item${item.narrow ? ' top__more-narrow' : ''}${item.narrow === 'people' ? ' top__more-people' : ''}`} aria-keyshortcuts={item.keys} onClick={() => { button.current?.focus(); setOpen(false); item.run(); }}>
+              className={`newmenu__item${item.narrow ? ' top__more-narrow' : ''}${item.narrow === 'people' ? ' top__more-people' : ''}`} aria-keyshortcuts={item.keys} onClick={() => {
+                button.current?.focus(); setOpen(false);
+                // An item that leads to another page (Settings) leaves the focus to that page, never on this ⋯ (F-026 §4, persona round 30).
+                const from = window.location.pathname;
+                item.run();
+                const trigger = button.current;
+                let frames = 60;
+                const leave = () => {
+                  if (window.location.pathname !== from) { if (document.activeElement === trigger || document.activeElement === button.current) (document.activeElement as HTMLElement).blur(); return; }
+                  if (frames-- > 0) requestAnimationFrame(leave);
+                };
+                requestAnimationFrame(leave);
+              }}>
               {item.hint ? <span className="top__more-text"><span>{item.label}</span><small>{item.hint}</small></span> : <span>{item.label}</span>}
               {item.keys ? <kbd aria-hidden="true">{item.keys}</kbd> : null}
             </button>

@@ -475,7 +475,10 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
               {(writable || waitedOnMe) && !editingBlocker ? <div className="wd-blocker__acts">
                 {writable ? <Button ref={editButton} variant="quiet" size="sm" disabled={busy} onClick={() => { blockerBase.current ??= item.version; setEditingBlocker(true); }}>Edit</Button> : null}
                 {waitedOnMe ? <Button variant="secondary" size="sm" className="wd-blocker__resolve" disabled={busy} onClick={() => void waitingDone()}>Done</Button>
-                  : <Button variant="quiet" size="sm" className="wd-blocker__resolve" disabled={busy} onClick={() => void setState('in_progress')}>Unblock</Button>}
+                  : <Button variant="quiet" size="sm" className="wd-blocker__resolve" disabled={busy} onClick={() => {
+                    // The button goes with the blocker: focus goes to Status, which says what changed and where Z puts it back (F-026 §4).
+                    void setState('in_progress').then(() => requestAnimationFrame(() => document.querySelector<HTMLElement>('#details .wd-state[aria-label="Status"]')?.focus({ preventScroll: true })));
+                  }}>Unblock</Button>}
               </div> : null}
             </div>
             {writable && editingBlocker ? (

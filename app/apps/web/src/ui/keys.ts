@@ -30,12 +30,19 @@ const fieldOnItsWay = () => fieldDue > performance.now();
 /** Puts what was typed before the field arrived at the end of the field, as typing would (React hears it as input). */
 function typeInto(field: EventTarget | null, text: string) {
   if (field instanceof HTMLTextAreaElement || field instanceof HTMLInputElement) {
-    const end = field.value.length;
-    field.setSelectionRange(end, end);
-    if (!document.execCommand('insertText', false, text)) {
+    // An email or number field has no selection to place (setSelectionRange throws there, persona round 30): the letters go at its end.
+    const selectable = field instanceof HTMLTextAreaElement || /^(text|search|url|tel|password)$/.test(field.type);
+    if (selectable) { const end = field.value.length; field.setSelectionRange(end, end); }
+    if (document.execCommand('insertText', false, text)) return;
+    if (selectable) {
+      const end = field.value.length;
       field.setRangeText(text, end, end, 'end');
-      field.dispatchEvent(new Event('input', { bubbles: true }));
+    } else {
+      // The value's own setter, so React hears the change as typing.
+      const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(field), 'value')?.set;
+      setter?.call(field, `${field.value}${text}`);
     }
+    field.dispatchEvent(new Event('input', { bubbles: true }));
   } else if (field instanceof HTMLElement && field.isContentEditable) document.execCommand('insertText', false, text);
 }
 
@@ -247,7 +254,7 @@ export function watchLostFocus(): () => void {
     if (!last || (active && active !== document.body) || usable(last.element)) return;
     if (last.place !== place()) { last = null; return; }
     // A window, a calendar or a menu that is open owns the focus while it is there; asked again when it goes.
-    if (document.querySelector('.ui-overlay[data-state="open"], [role="menu"], [role="dialog"]:not(#details)')) return;
+    if (document.querySelector('.ui-overlay[data-state="open"], [role="menu"]:not([inert]), [role="dialog"]:not(#details)')) return;
     const kept = last;
     last = null;
     const ancestor = kept.ancestors.find((element) => element.isConnected && element !== document.getElementById('root'));

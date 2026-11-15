@@ -149,11 +149,16 @@ export function InboxView() {
   useEffect(() => {
     if (!ready || touch) return;
     const active = document.activeElement;
-    // An empty Inbox (G I with nothing waiting): its heading takes the focus, never the page body (F-026 §4).
-    if (!active || active === document.body || active.id === 'content') (openKey ? rowControl(openKey) : clearRef.current)?.focus({ preventScroll: true });
+    // An empty Inbox (G I with nothing waiting): its heading takes the focus, never the page body (F-026 §4). On every arrival, G I in the
+    // Inbox and a return from an item opened from it (Esc, Back) included, the open item has the focus: a sidebar link or a row that
+    // kept it from before would let E act on another item than the one open (persona round 30 P2 3). A field keeps it.
+    const onOpenItem = !!openKey && !!active && (!!active.closest(`.nyc[data-key="${CSS.escape(openKey)}"]`) || !!active.closest('.nyq__col--open'));
+    if (!active || active === document.body || active.id === 'content' || (!isTyping(active) && !onOpenItem)) {
+      (openKey ? rowControl(openKey) : clearRef.current)?.focus({ preventScroll: true });
+    }
     // Once per arrival: later changes of the list leave focus where the person put it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready]);
+  }, [ready, location.key]);
 
   // Put off for later and done today, said under the list; each opens its list (#1424 E).
   const later = <InboxAside queue={queue} />;

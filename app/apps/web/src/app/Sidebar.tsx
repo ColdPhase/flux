@@ -191,7 +191,7 @@ export function Sidebar({ directMessages, agents = [], user, onClose, titleId, i
       if (!company || event.key.toLowerCase() !== 'c' || event.metaKey || event.ctrlKey || event.altKey || event.defaultPrevented) return;
       const target = event.target as HTMLElement | null;
       // A menu that is open (Status, a message's ⋯) has the keys: C never opens New over it.
-      if (isTyping(target) || target?.closest('[role="dialog"], [role="menu"]') || document.querySelector('[role="menu"]')) return;
+      if (isTyping(target) || target?.closest('[role="dialog"], [role="menu"]') || document.querySelector('[role="menu"]:not([inert])')) return;
       event.preventDefault();
       openCreate(projectId ? { projectId } : {});
     };
