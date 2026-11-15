@@ -47,7 +47,7 @@ import { DmUnreadProvider } from '../dm/dmUnread';
 import { PlaceMutesProvider, notificationsChanged, useMuteRow } from '../notifications/mutes';
 import { PhotosContext } from '../people/photos';
 import { PhoneAvatar, PhoneBack, PhoneDock, PhoneHomeLead, phoneHidesDock, phoneOffersCreate, phonePlaces } from './PhoneChrome';
-import { isTyping, watchConversationLinks, watchLostFocus } from '../ui/keys';
+import { isTyping, stopAwaitingField, watchConversationLinks, watchLostFocus } from '../ui/keys';
 
 const lastConversationPath = (userId: string, projectId: string) => remembered('conversation', userId, projectId) ?? `/projects/${projectId}`;
 /** The Tasks view last chosen in this project (#136), e.g. `?status=blocked&show=mine`. */
@@ -676,9 +676,10 @@ function AppLayoutContent() {
   // Esc (F-026 §4 "Where focus goes"): with a panel open it closes the panel wherever focus is, unless a window or a menu is open or the focused
   // control used Esc first (a title being edited, the `@` list); with none, Esc in a composer leaves it for the newest message, keeping the
   // draft, so the single keys work from there (persona round 27, P2 6 and 7). Esc inside the panel is the panel's own.
-  const panelShown = detailsOpen && panelMode !== 'sheet';
-  const panelShownRef = useRef(panelShown);
-  useEffect(() => { panelShownRef.current = panelShown; });
+  // A thread's panel that is still opening is a panel shown too (`threadOpening`, below): Esc cancels it as its close control does.
+  const panelShownRef = useRef(false);
+  const cancelRef = useRef<(() => void) | null>(null);
+  useLayoutEffect(() => { closeRef.current = closePanel; });
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing || event.metaKey || event.ctrlKey || event.altKey) return;
@@ -692,7 +693,7 @@ function AppLayoutContent() {
       const other = field ? null : target?.closest<HTMLElement>('input, textarea, select, [contenteditable]:not([contenteditable="false"])');
       if (other && (other.isContentEditable || other instanceof HTMLSelectElement || ((other instanceof HTMLInputElement || other instanceof HTMLTextAreaElement) && other.value !== ''))) return;
       if (other && !panelShownRef.current) return;
-      if (panelShownRef.current) { event.preventDefault(); closeRef.current(); return; }
+      if (panelShownRef.current) { event.preventDefault(); (cancelRef.current ?? closeRef.current)(); return; }
       if (!field) return;
       event.preventDefault();
       leaveComposer(field);
@@ -715,7 +716,13 @@ function AppLayoutContent() {
   // The phone's sheet opens at the height its entry was left at when the thread is one that is returned to (#592), as the thread's own panel will:
   // from the pending navigation's entry while it is out, from the arrival's once it has committed (`sheetStart`).
   const threadSheet = threadOpening && navigation.location ? recall<unknown>('sheet', arrivalEntry(navigation.location, NavigationType.Push) ?? entryOf(navigation.location)) : undefined;
-  const cancelThread = () => void navigate(`${location.pathname}${location.search}${location.hash}`, { replace: true, defaultShouldRevalidate: false, state: location.state });
+  // The thread's composer that the press was arriving at will not come: keys are shortcuts again (`stopAwaitingField`).
+  const cancelThread = () => { stopAwaitingField(); void navigate(`${location.pathname}${location.search}${location.hash}`, { replace: true, defaultShouldRevalidate: false, state: location.state }); };
+  // Esc with a panel open closes it wherever focus is (F-026 §4), the thread's loading panel included: since a press arriving at the thread's
+  // composer leaves the focus outside the panel (round 28), its own Esc no longer saw the key, and the opening could not be cancelled.
+  const panelShown = (detailsOpen || !!threadOpening) && panelMode !== 'sheet';
+  useEffect(() => { panelShownRef.current = panelShown; });
+  useLayoutEffect(() => { cancelRef.current = threadOpening ? cancelThread : null; });
   const dmId = location.pathname.match(/^\/dm\/([^/]+)/)?.[1];
   const activeAgent = agents.find((agent) => agent.id === location.pathname.match(/^\/agents\/([^/]+)/)?.[1]);
   const activeDm = directMessages.find((dm) => dm.id === dmId);

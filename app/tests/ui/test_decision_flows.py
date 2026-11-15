@@ -210,7 +210,8 @@ class DecisionFlows(unittest.TestCase):
         pid = self.ids["project"]
         page.goto(f"/projects/{pid}?open=decision:{self.ids['bare']}")
         self.panel(page).get_by_role("button", name="Discuss", exact=True).click()
-        expect(page).to_have_url(re.compile(f"/projects/{pid}/?$"))
+        # F-026 §4: the decision stays open beside the conversation, so the address keeps naming it (`?open=decision:`).
+        expect(page).to_have_url(re.compile(f"/projects/{pid}/?\\?open=decision(:|%3A){self.ids['bare']}$"))
         expect(page.locator("#project-composer")).to_be_focused()
         expect(page.locator("#details").get_by_role("heading", level=3, name=NO_SOURCE)).to_be_visible()
 

@@ -383,7 +383,8 @@ class SearchJourney(unittest.TestCase):
             self.assertGreaterEqual(option_box["height"], 44)
         shot(page, "search-jump-phone-390")
         options.filter(has_text="Mount the infrared sensor").first.click()
-        expect(page).to_have_url(re.compile(rf"/projects/{self.ids['lamp']}/tasks$"))
+        # F-026 §4: a task opened from Search has its own address while it is open (`?open=work:`).
+        expect(page).to_have_url(re.compile(rf"/projects/{self.ids['lamp']}/tasks\?open=work(:|%3A)[0-9a-f-]+$"))
         expect(page.get_by_role("dialog", name="Details")).to_contain_text("Mount the infrared sensor in the lamp base")
         # With no recent places yet, the sentence that says what it finds is above the list, with none of the old words.
         fresh = self.page("olek", phone=True)

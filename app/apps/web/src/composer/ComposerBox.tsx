@@ -59,7 +59,15 @@ export function ComposerBox({ id, label, placeholder, value, onChange, onKeyDown
         onBlur={() => { pressed.current = false; onBlur?.(); }} onPointerDown={() => { pressed.current = true; }}
         // Tab into a kept draft puts the cursor at its end (F-026 §4): WebKit put it at the start, so typing went in front of the draft. A press
         // places the cursor where it lands, as always.
-        onFocus={(event) => { const field = event.currentTarget; if (!pressed.current && field.value && field.selectionStart === 0 && field.selectionEnd === 0) field.setSelectionRange(field.value.length, field.value.length); }}
+        // Read once the browser has placed it, never during the focus event: WebKit reports 0 there even when a selection is about to be
+        // restored (a field selected and then focused, to be written over), and a move then would put the new words after the old ones.
+        onFocus={(event) => {
+          const field = event.currentTarget;
+          if (pressed.current || !field.value) return;
+          const toEnd = () => { if (document.activeElement === field && !pressed.current && field.selectionStart === 0 && field.selectionEnd === 0) field.setSelectionRange(field.value.length, field.value.length); };
+          queueMicrotask(toEnd);
+          window.setTimeout(toEnd, 0);
+        }}
         onKeyDown={(event) => { if (!formatKey(event)) onKeyDown?.(event); }} onPaste={onPaste} {...fieldProps} />
       <button type="button" className="composer__send" aria-label={sendLabel} aria-disabled={sendDisabled} onClick={onSend}><Icon name="send" /></button>
       {menu}

@@ -228,7 +228,7 @@ class TasksFinalJourney(unittest.TestCase):
             expect(row.locator(".ws-item__s")).to_contain_text(WORD[status])  # the word accompanies the glyph
         # The line already says Blocked: the row has no second, dark "Blocked" pill, and shows its owner like every other row (release audit P3 9).
         expect(self.row(page, ENCLOSURE).locator(".ui-pill--inv")).to_have_count(0)
-        expect(self.row(page, ENCLOSURE).locator(".ws-item__s")).to_contain_text(f"waiting for {BLOCKER}")
+        expect(self.row(page, ENCLOSURE).locator(".ws-item__s")).to_contain_text(f"Waiting for {BLOCKER}")  # one blocked line in the same words everywhere (F-026, persona round 28)
         expect(self.row(page, SUPPLIER).locator(".ws-av")).to_have_text("AK")
         expect(self.row(page, CALIBRATE).locator(".ws-item__r .kreska")).to_have_count(1)
         for owner in (self.row(page, SUPPLIER).locator('.ws-av'), self.row(page, CALIBRATE).locator('.ws-item__r .kreska')):
@@ -479,7 +479,7 @@ class TasksFinalJourney(unittest.TestCase):
                 enclosure = self.row(page, ENCLOSURE)
                 expect(enclosure.locator(".ui-pill--inv")).to_have_count(0)
                 expect(enclosure.locator(".ws-item__r .ws-av")).to_have_count(1)
-                expect(enclosure.locator(".ws-item__s")).to_have_text(f"#{self.numbers['enclosure']} · you · Blocked · waiting for {BLOCKER}", use_inner_text=True)  # the owner stays named and the word accompanies the glyph
+                expect(enclosure.locator(".ws-item__s")).to_have_text(f"#{self.numbers['enclosure']} · you · Blocked · Waiting for {BLOCKER}", use_inner_text=True)  # the owner stays named and the word accompanies the glyph
                 expect(enclosure.locator(".ws-task__glyph .ui-glyph--blocked")).to_have_count(1)
                 expect(self.row(page, CALIBRATE).locator(".ws-item__s")).to_contain_text("Claude Code")
                 expect(self.row(page, CALIBRATE).locator(".ws-item__s .agent-id")).to_have_count(1)

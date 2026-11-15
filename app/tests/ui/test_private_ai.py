@@ -555,6 +555,10 @@ class PrivateAiJourney(unittest.TestCase):
         jo.goto(f"/projects/{self.ids['project']}/tasks?open=work:{self.ids['work']}")
         box = jo.locator("#details .wd-composer textarea")
         expect(box).to_be_visible()
+        # Send asks only once the assistant's status is read (before that it says "Checking your assistant…"): the suggestions join `/ai`
+        # in the `/` menu when it is, so the question is written then, as a person who sees them would.
+        box.fill("/")
+        expect(jo.get_by_role("listbox", name="Actions").locator(".cmenu__o--ask")).to_have_count(2)
         box.fill("/ai where is this task?")
         expect(jo.locator("#details .wd-foot__line")).to_contain_text("Only you see the answer")
         jo.get_by_role("button", name="Send to task").click()

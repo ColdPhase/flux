@@ -145,7 +145,8 @@ class FinalCheck763(unittest.TestCase):
         page.goto(f"/projects/{self.project_id}/tasks?open=work:{self.task['id']}")
         expect(page.locator(".ui-overlay[data-state='open']")).to_have_count(1)
         expect(page.locator(".ui-overlay").get_by_text(TASK).first).to_be_visible()
-        page.wait_for_function("() => !new URLSearchParams(location.search).has('open')")
+        # F-026 §4: an object opened by `?open=` keeps that address while it is open.
+        self.assertEqual(page.evaluate("new URLSearchParams(location.search).get('open')"), f"work:{self.task['id']}")
 
     # ------------------------------------------------------------------ P2-1
 
