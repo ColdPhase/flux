@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router';
 import type { NeedsYouItem } from '@flux/contracts';
 import { Button, ErrorState, Kreska, MEDIA, Spinner, useMediaQuery, useRowMotion } from '../ui';
@@ -29,8 +29,13 @@ const rowControl = (key: string) => document.querySelector<HTMLElement>(`.nyq__l
  * reply (`awaitField` in `open`): "Sure" typed at once never becomes S and E on the items here (#1424).
  */
 function useQueueKeys(items: NeedsYouItem[], selected: string | null, select: (key: string) => void, handlers: CardHandlers) {
+  // The keys act on the item shown open now: read when the page is drawn, never from the listener of an earlier draw (an item that came back
+  // with Z is open on screen while S still acted on its neighbour, persona round 31).
+  const latest = useRef({ items, selected, select, handlers });
+  useLayoutEffect(() => { latest.current = { items, selected, select, handlers }; });
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
+      const { items, selected, select, handlers } = latest.current;
       if (event.metaKey || event.ctrlKey || event.altKey || event.defaultPrevented) return;
       const target = event.target as HTMLElement | null;
       if (isTyping(target) || target?.closest('[role="dialog"], [role="menu"], #details')) return;
@@ -61,7 +66,7 @@ function useQueueKeys(items: NeedsYouItem[], selected: string | null, select: (k
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [items, selected, select, handlers]);
+  }, []);
 }
 
 /**
