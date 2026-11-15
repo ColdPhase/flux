@@ -115,14 +115,15 @@ const withoutOpen = (url: URL) => { const params = new URLSearchParams(url.searc
 
 /**
  * `?open=` names the task or decision a place shows in its panel and stays in the address while it is open (F-026 §4), so it is no data of
- * the shell or the space: leaving a page that has it, or Back to where it was followed from, reads them again only for another reason (train
- * 28 took the flag off at once and read nothing; keeping it made every way out of an opened object read the whole shell again, and Settings
- * waited on that read). `key` is the route's own param; a submission, an explicit revalidate and any other change of the query still read.
+ * the shell or the space: a navigation whose query differs only by it (leaving an opened object for Settings, Back to where it was followed
+ * from) does not read them again. Train 28 took the flag off at once and read nothing; keeping it made every way out of an opened object
+ * read the whole shell again, and Settings waited on that read. Anything else that asks for a read still reads: a submission, a revalidation
+ * on its way (a space just created), another query, or the route's own param (`key`).
  */
 const ignoringOpen = (key?: string) => ({ currentUrl, nextUrl, currentParams, nextParams, formMethod, actionStatus, defaultShouldRevalidate }: ShouldRevalidateFunctionArgs) => {
-  if (!defaultShouldRevalidate || formMethod || actionStatus !== undefined || currentUrl.href === nextUrl.href) return defaultShouldRevalidate;
-  if (key && currentParams[key] !== nextParams[key]) return true;
-  return withoutOpen(currentUrl) !== withoutOpen(nextUrl);
+  if (!defaultShouldRevalidate || formMethod || actionStatus !== undefined || currentUrl.search === nextUrl.search) return defaultShouldRevalidate;
+  if (withoutOpen(currentUrl) !== withoutOpen(nextUrl) || (key && currentParams[key] !== nextParams[key])) return true;
+  return router.state.revalidation !== 'idle';
 };
 
 export const router = createBrowserRouter([
