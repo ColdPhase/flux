@@ -31,6 +31,7 @@ export function ComposerBox({ id, label, placeholder, value, onChange, onKeyDown
 }) {
   const toast = useToast();
   const own = useRef<HTMLTextAreaElement>(null);
+  const pressed = useRef(false);
   useImperativeHandle(fieldRef, () => own.current as HTMLTextAreaElement);
   const hint = useFittingHint(own, typeof placeholder === 'string' ? [placeholder] : placeholder);
   // A toast stands above the highest composer on the screen, never on its hint (#1424).
@@ -55,7 +56,11 @@ export function ComposerBox({ id, label, placeholder, value, onChange, onKeyDown
       <label className="ui-vh" htmlFor={id}>{label}</label>
       <textarea id={id} ref={own} rows={1} value={value} maxLength={maxLength} placeholder={hint} disabled={disabled}
         onChange={(event) => onChange(event.target.value, event.target.selectionStart)} onSelect={onSelect ? (event) => onSelect(event.currentTarget.selectionStart) : undefined}
-        onBlur={onBlur} onKeyDown={(event) => { if (!formatKey(event)) onKeyDown?.(event); }} onPaste={onPaste} {...fieldProps} />
+        onBlur={() => { pressed.current = false; onBlur?.(); }} onPointerDown={() => { pressed.current = true; }}
+        // Tab into a kept draft puts the cursor at its end (F-026 §4): WebKit put it at the start, so typing went in front of the draft. A press
+        // places the cursor where it lands, as always.
+        onFocus={(event) => { const field = event.currentTarget; if (!pressed.current && field.value && field.selectionStart === 0 && field.selectionEnd === 0) field.setSelectionRange(field.value.length, field.value.length); }}
+        onKeyDown={(event) => { if (!formatKey(event)) onKeyDown?.(event); }} onPaste={onPaste} {...fieldProps} />
       <button type="button" className="composer__send" aria-label={sendLabel} aria-disabled={sendDisabled} onClick={onSend}><Icon name="send" /></button>
       {menu}
     </div>

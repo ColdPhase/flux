@@ -12,7 +12,7 @@ import { useNeedsYou } from './needsYou';
 import { SecurityNotices } from '../encryption/SecurityNotices';
 import { useNeedsYouActions } from './useNeedsYouActions';
 import { ApiError } from '../api/client';
-import { isTyping } from '../ui/keys';
+import { awaitField, focusFieldMatching, isTyping } from '../ui/keys';
 import './notifications.css';
 import './needs-you.css';
 
@@ -42,7 +42,15 @@ function useQueueKeys(items: NeedsYouItem[], selected: string | null, select: (k
         const next = items[key === 'j' ? Math.min(items.length - 1, at + 1) : Math.max(0, at < 0 ? 0 : at - 1)];
         if (next) select(next.key);
       } else if (key === 'a' && current?.kind === 'decision') { event.preventDefault(); handlers.accept(current); }
-      else if (key === 'r' && current && offers?.reply) { event.preventDefault(); handlers.open(current, true); }
+      // R writes (F-026 §4, persona round 28 P2 3): a Reply, a decision's Discuss, a task's own discussion. Where there is nothing to write
+      // to, what is typed next is held and dropped, never run as Accept, Done or Not now.
+      else if (key === 'r' && current) {
+        event.preventDefault();
+        if (offers?.reply) handlers.open(current, true);
+        else if (current.kind === 'decision') { awaitField(); handlers.discuss(current); }
+        else if (current.kind === 'blocked') { handlers.open(current); focusFieldMatching('#details .composer textarea, #details .composer__box textarea'); }
+        else awaitField();
+      }
       else if (key === 'e' && current && offers?.done) { event.preventDefault(); handlers.done(current); }
       else if (key === 's' && current && offers?.notNow) { event.preventDefault(); handlers.snooze(current, 'tomorrow'); }
       // Enter on the page itself, or on the open item's row (where G I puts focus), opens the item; on another button or link it does what
@@ -117,9 +125,10 @@ export function InboxView() {
   // the page's body. A field, a button or a link that has focus keeps it.
   const ready = queue.items !== null;
   useEffect(() => {
-    if (!ready || touch || !openKey) return;
+    if (!ready || touch) return;
     const active = document.activeElement;
-    if (!active || active === document.body || active.id === 'content') rowControl(openKey)?.focus({ preventScroll: true });
+    // An empty Inbox (G I with nothing waiting): its heading takes the focus, never the page body (F-026 §4).
+    if (!active || active === document.body || active.id === 'content') (openKey ? rowControl(openKey) : clearRef.current)?.focus({ preventScroll: true });
     // Once per arrival: later changes of the list leave focus where the person put it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready]);

@@ -437,6 +437,9 @@ function ThoughtForm({ ids, phone, carried, onClose }: PanelProps) {
       setError(cause instanceof AccountChangedError ? cause.message : 'Could not save the thought. Your text is still here; try again.');
     } finally { inFlight.current = false; setBusy(false); }
   }
+  // A window that opens on Thought (a guest with no space, the map's "+") puts the cursor in it, as Task does (F-026 §4, persona round 28).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (ids.active) document.getElementById(ids.field)?.focus(); }, []);
   const where = <span className="create__private"><Icon name="lock" size={13} />Only you</span>;
   return (
     <Panel ids={ids} where={where} onSubmit={() => void submit()} foot={<><p className="create__note">Added to My map</p><Go label="Save thought" busy={busy} ready={ready} phone={phone} /></>}>

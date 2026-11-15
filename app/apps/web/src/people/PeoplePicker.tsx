@@ -1,4 +1,4 @@
-import { useId, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { WorkspaceMember } from '@flux/contracts';
 import { Avatar, Button, Icon } from '../ui';
 import './space.css';
@@ -24,8 +24,14 @@ export function PeoplePicker({ candidates, value, onChange, disabled = false, co
     return candidates.filter((member) => !text || member.name.toLowerCase().includes(text) || member.email.toLowerCase().includes(text));
   }, [candidates, filter]);
   const toggle = (id: string, on: boolean) => onChange(on ? [...value, id] : value.filter((item) => item !== id));
+  // Add people opens on its first field (F-026 §4): the search or the first person, else "Someone new?" when nobody else is in the company.
+  const root = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!expanded) return;
+    root.current?.querySelector<HTMLElement>('.pick__list input:not([disabled]), .pick__list ~ * input:not([disabled])')?.focus();
+  }, [expanded]);
   return (
-    <div className="pick" data-people-picker="">
+    <div className="pick" data-people-picker="" ref={root}>
       {listOnly ? null : <div className="pick__field">
         {chosen.length ? (
           <ul className="pick__chips" aria-label="Chosen people">

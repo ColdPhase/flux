@@ -22,6 +22,8 @@ let watching = false;
 let typed = '';
 /** The end of the wait the kept letters belong to; a cancelled wait (`focusField`'s cleanup) keeps them for the wait that follows at once. */
 let keptUntil = 0;
+/** An Enter typed after the kept letters, pressed in the field once they are in it. */
+let enterKept = false;
 
 const fieldOnItsWay = () => fieldDue > performance.now();
 
@@ -45,6 +47,7 @@ function typeInto(field: EventTarget | null, text: string) {
  */
 export function awaitField() {
   typed = '';
+  enterKept = false;
   waitForField();
 }
 
@@ -52,6 +55,7 @@ export function awaitField() {
 export function stopAwaitingField() {
   fieldDue = 0;
   typed = '';
+  enterKept = false;
 }
 
 /**
@@ -61,25 +65,36 @@ export function stopAwaitingField() {
 export function waitForField() {
   const now = performance.now();
   // Kept only within the wait it was typed in: a wait that ran out never hands its letters to a later field.
-  if (now > keptUntil) typed = '';
+  if (now > keptUntil) { typed = ''; enterKept = false; }
   fieldDue = now + FIELD_WAIT_MS;
   keptUntil = fieldDue;
   if (watching || typeof document === 'undefined') return;
   watching = true;
   // On the window, as the quiet keys of a view switch are (`useQuietViewKeys`, which stops them there): a key typed while the page changes is kept.
   window.addEventListener('keydown', (event) => {
-    if (!fieldOnItsWay() || inField(event.target) || event.metaKey || event.ctrlKey || event.altKey || event.key.length !== 1) return;
+    if (!fieldOnItsWay() || inField(event.target) || event.metaKey || event.ctrlKey || event.altKey) return;
+    // Enter after a sentence typed on the way sends it once it is in the field ("Message Piotr", then "can I swap…" and Enter, persona round
+    // 28): it is kept too, never a press on the button that still has focus.
+    if (event.key === 'Enter' && !event.shiftKey && typed) { event.preventDefault(); enterKept = true; return; }
+    if (event.key.length !== 1) return;
     event.preventDefault();
     typed += event.key;
   }, true);
   document.addEventListener('focusin', (event) => {
     if (!inField(event.target)) return;
     const text = fieldOnItsWay() ? typed : '';
+    const enter = text && enterKept;
     fieldDue = 0;
     typed = '';
+    enterKept = false;
     if (text) typeInto(event.target, text);
+    const field = event.target;
+    // Once the field holds the words (the next frames), the Enter that followed them is pressed in it.
+    if (enter && field instanceof HTMLElement) requestAnimationFrame(() => requestAnimationFrame(() => {
+      if (document.activeElement === field) field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true, cancelable: true }));
+    }));
   }, true);
-  document.addEventListener('pointerdown', () => { fieldDue = 0; typed = ''; }, true);
+  document.addEventListener('pointerdown', () => { fieldDue = 0; typed = ''; enterKept = false; }, true);
 }
 
 /**
@@ -96,10 +111,19 @@ export function isTyping(target: EventTarget | null): boolean {
  * as long as the wait of `awaitField` lasts. Returns a cancel, which also ends the wait.
  */
 export function focusField(id: string): () => void {
+  return focusFieldBy(() => document.getElementById(id));
+}
+
+/** `focusField` for a field known by where it is (a panel's composer, whose id is its own): the first match of `selector`. */
+export function focusFieldMatching(selector: string): () => void {
+  return focusFieldBy(() => document.querySelector<HTMLElement>(selector));
+}
+
+function focusFieldBy(find: () => HTMLElement | null): () => void {
   waitForField();
   let frame = 0;
   const attempt = () => {
-    const field = document.getElementById(id);
+    const field = find();
     if (field && document.activeElement !== field) {
       field.focus({ preventScroll: true });
       // At the end of what it holds (a kept draft): typing goes on from there, never in front of it (persona round 27, P2 3).
@@ -140,7 +164,7 @@ export function focusComposerOnArrival(id: string): () => void {
 const KEYBOARD_ROWS = '[role="tab"]';
 
 /** The address of a conversation as a link names it: a space (its conversation), a thread, a direct message or an agent's chat. */
-const CONVERSATION_PATH = /^\/(?:projects\/[^/]+(?:\/conversations\/[^/]+)?|dm\/(?!new$)[^/]+|agents\/[^/]+)\/?$/;
+const CONVERSATION_PATH = /^\/(?:projects\/[^/]+(?:\/conversations\/[^/]+)?|dm\/[^/]+|agents\/[^/]+)\/?$/;
 
 /**
  * A press on a link to a conversation on a computer is a field on its way (`awaitField`): the conversation puts the cursor in its composer

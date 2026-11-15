@@ -4,7 +4,7 @@ import type { Conversation, ConversationMessage, ConversationRoot, NativeWorkRow
 import type { MessageWorkPreview } from '../work/message-associations';
 import { ApiError } from '../api/client';
 import { MEDIA, PanelMeta, useMediaQuery } from '../ui';
-import { awaitField, focusComposerOnArrival, focusField, stopAwaitingField } from '../ui/keys';
+import { awaitField, focusComposerOnArrival, focusField, isTyping, stopAwaitingField } from '../ui/keys';
 import { ThreadFollow } from '../notifications/ThreadFollow';
 import { agentAuthorOwner, useAgentOwners } from '../agents/owners';
 import { useRegisterLiveHere } from '../live/LiveProvider';
@@ -164,6 +164,9 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
     opener.current = null;
     const active = document.activeElement;
     if (active instanceof HTMLElement && active !== document.body && active.isConnected && !active.closest('#details') && active.closest('.convo-notice, .convo-object')) return;
+    // Nor when the person is in the composer, or arriving there (Esc in it, the space's own sidebar row): the cursor stays where they write,
+    // never on the "2 replies" chip that the next space would press (F-026 §4, persona round 28 P2 2).
+    if ((active instanceof HTMLElement && !active.closest('#details') && isTyping(active)) || isTyping(null)) return;
     (target?.querySelector<HTMLElement>('.convo-replies button') ?? target)?.focus({ preventScroll: true });
   }, [thread]);
 

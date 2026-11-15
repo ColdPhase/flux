@@ -98,7 +98,8 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName, inviter
   const onEscape = (close: () => void) => (event: KeyboardEvent) => { if (event.key === 'Escape') { event.stopPropagation(); close(); } };
   useEffect(() => { if (removing) focusOn(`[data-person="${removing}"] .spset__confirm button:last-child`); }, [removing]);
   useEffect(() => { if (leaving) focusOn('.spset__leaving button:last-child'); }, [leaving]);
-  useEffect(() => { if (adding) focusOn('.spset__add input[type="checkbox"], .spset__add input[type="search"]'); }, [adding]);
+  // The search or the first person, else "Someone new?" when nobody else is in the company (F-026 §4).
+  useEffect(() => { if (adding) focusOn('.spset__add input:not([disabled])'); }, [adding]);
   const changed = (message: string) => { setStatus(message); setProblem(''); load(); void revalidator.revalidate(); };
   // Someone joined with a link made here, was added or removed elsewhere, or their role changed: the people listed are read again at once (#1424).
   useStreamEvents(meId, (event) => {

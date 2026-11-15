@@ -31,6 +31,7 @@ PEOPLE = {
     "piotr": ("Piotr Nowak", f"piotr.fm+{STAMP}@example.test"),
     "kasia": ("Kasia Wrona", f"kasia.fm+{STAMP}@example.test"),
     "lee": ("Lee Moreno", f"lee.fm+{STAMP}@example.test"),
+    "ola": ("Ola Nowicka", f"ola.fm+{STAMP}@example.test"),
 }
 SHARED = "Bakery floor"
 CLOSED = "Oven repairs"
@@ -64,7 +65,7 @@ class FocusModel(unittest.TestCase):
             cls.contexts[key] = context
             cls.states[key] = context.storage_state()
         workspace = cls.post("piotr", "/api/v1/workspaces", {"name": "Riverside Bakery"})["id"]
-        for who in ("kasia", "lee"):
+        for who in ("kasia", "lee", "ola"):
             cls.post("piotr", f"/api/v1/workspaces/{workspace}/members", {"email": PEOPLE[who][1], "role": "member"})
         shared = cls.post("piotr", f"/api/v1/workspaces/{workspace}/projects", {"name": SHARED, "visibility": "workspace"})["id"]
         cls.ids["shared"] = shared
@@ -265,6 +266,112 @@ class FocusModel(unittest.TestCase):
         expect(page.locator("#details")).to_be_hidden()
         expect(card).to_be_focused()
         shot(page, "focus-model-board-esc")
+
+
+    # ---------------------------------------------------------------- persona round 28: the model's holes
+
+    def test_10_invite_opens_on_its_email_field_and_esc_closes_it(self) -> None:
+        page = self.page("piotr")
+        page.goto("/settings/company")
+        invite = page.get_by_role("button", name="Invite", exact=True)
+        invite.click()
+        page.keyboard.type("gosia@school.test")
+        email = page.locator("#people-invite-email")
+        expect(email).to_be_focused()
+        expect(email).to_have_value("gosia@school.test")
+        expect(page.get_by_role("dialog")).to_have_count(0)
+        page.keyboard.press("Escape")
+        expect(page.get_by_role("region", name="Invite people")).to_have_count(0)
+        expect(invite).to_be_focused()
+        page.goto("/settings/company?invite=1")
+        expect(page.locator("#people-invite-email")).to_be_focused()
+
+    def test_11_with_a_thread_open_esc_in_the_composer_or_the_space_s_own_row_keeps_the_cursor_there(self) -> None:
+        thread = self.post("piotr", f"/api/v1/projects/{self.ids['shared']}/conversations", {"body": "Who has the key to the store room?", "clientMessageId": str(uuid.uuid4())})
+        self.post("kasia", f"/api/v1/conversations/{thread['id']}/messages", {"body": "Marta had it last.", "clientMessageId": str(uuid.uuid4())})
+        page = self.page()
+        page.goto(f"/projects/{self.ids['shared']}")
+        composer = page.locator("#project-composer")
+        expect(composer).to_be_focused()
+        replies = page.locator(f"#message-{thread['messages'][0]['id']}").get_by_role("button", name=re.compile("1 reply"))
+        for how in ("Esc in the composer", "the space's own row"):
+            with self.subTest(how=how):
+                replies.click()
+                expect(page.locator("#thread-composer")).to_be_focused()
+                if how == "Esc in the composer":
+                    composer.click()
+                    composer.fill("Keys are in the drawer")
+                    page.keyboard.press("Escape")
+                else:
+                    page.get_by_role("navigation", name="Spaces").get_by_role("link", name=re.compile(SHARED)).click()
+                expect(page.locator("#details")).to_have_count(0)
+                page.keyboard.type(" I swap")
+                expect(composer).to_be_focused()
+                expect(composer).to_have_value(re.compile(r" I swap$"))
+                composer.fill("")
+
+    def test_12_r_on_an_inbox_decision_discusses_it_and_never_runs_the_letters(self) -> None:
+        decision = self.post("piotr", f"/api/v1/projects/{self.ids['shared']}/decisions", {"title": "Water the starter at seven", "rationale": "Before the first bake."})
+        for _ in range(80):
+            if any(item["key"] == f"decision:{decision['id']}" for item in self.contexts["kasia"].request.get("/api/v1/needs-you").json()["items"]):
+                break
+            time.sleep(0.25)
+        page = self.page()
+        page.goto("/inbox")
+        row = page.locator(f'.nyq__list .nyc[data-key="decision:{decision["id"]}"] .nyc__open')
+        row.focus()
+        page.keyboard.press("r")
+        page.keyboard.type("maybe eight is better")
+        composer = page.locator("#project-composer")
+        expect(composer).to_be_focused()
+        expect(composer).to_have_value("maybe eight is better")
+        page.wait_for_timeout(500)
+        self.assertEqual(self.contexts["piotr"].request.get(f"/api/v1/decisions/{decision['id']}").json()["status"], "proposed", "A did not accept it")
+        composer.fill("")
+
+    def test_13_an_open_link_keeps_its_address_a_reload_keeps_it_and_closing_takes_it_off(self) -> None:
+        page = self.page()
+        page.goto(f"/projects/{self.ids['shared']}/tasks?open=work:{self.ids['task2']}")
+        panel = page.locator("#details")
+        expect(panel).to_contain_text("Order a second mixer bowl")
+        expect(page).to_have_url(re.compile(r"open=work"))
+        page.reload()
+        expect(panel).to_contain_text("Order a second mixer bowl")
+        page.wait_for_timeout(800)
+        page.keyboard.press("Escape")
+        expect(panel).to_be_hidden()
+        expect(page).not_to_have_url(re.compile(r"open="))
+
+    def test_14_new_message_picks_one_match_with_enter_and_a_sentence_and_enter_sends(self) -> None:
+        page = self.page()
+        page.goto("/dm/new")
+        expect(page.locator("#dm-people-search")).to_be_focused()
+        page.keyboard.type("Lee")
+        expect(page.locator(".dm-new__people li")).to_have_count(1)
+        page.keyboard.press("Enter")
+        message = page.get_by_role("button", name="Message Lee")
+        expect(message).to_be_visible()
+        message.click()
+        page.keyboard.type("are you in on Friday?")
+        page.keyboard.press("Enter")
+        expect(page).to_have_url(re.compile(r"/dm/[0-9a-f-]{36}$"))
+        expect(page.locator(".dm-msg").filter(has_text="are you in on Friday?")).to_have_count(1)
+        expect(page.locator("#dm-composer")).to_have_value("")
+
+    def test_15_the_arrow_keys_move_between_the_sidebar_s_rows_and_g_i_to_an_empty_inbox_focuses_its_heading(self) -> None:
+        page = self.page("ola")
+        page.goto("/")
+        home = page.get_by_role("navigation", name="Places").get_by_role("link", name="Home")
+        home.focus()
+        page.keyboard.press("ArrowDown")
+        expect(page.get_by_role("navigation", name="Places").get_by_role("link", name=re.compile("^Inbox"))).to_be_focused()
+        page.keyboard.press("ArrowUp")
+        expect(home).to_be_focused()
+        page.locator("#content").focus()
+        page.keyboard.press("g")
+        page.keyboard.press("i")
+        expect(page).to_have_url(re.compile(r"/inbox$"))
+        expect(page.get_by_role("heading", name="Nothing needs you right now")).to_be_focused()
 
 
 if __name__ == "__main__":

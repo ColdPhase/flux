@@ -18,6 +18,7 @@ import { ROLE_HINT, ROLE_LABEL, addMember, attemptKeys, changeRole, createInvite
 import { DeleteSpaceDialog, type DeletableSpace } from './DeleteSpace';
 import { PersonLine } from './LastActive';
 import './people.css';
+import { awaitField, focusField } from '../ui/keys';
 
 // Roles from the most to the least (personas-27): Owner, Admin, Member, Guest, in every menu of roles.
 const ROLES: WorkspaceRole[] = ['owner', 'admin', 'member', 'guest'];
@@ -107,18 +108,33 @@ export function WorkspacePeople({ workspaceId, onBack, page = false }: { workspa
   // F-030 (#655): after an owner removes or demotes an owner or admin of an encrypted space, the old recovery code has stopped
   // working, and the group that makes a new one opens in the Encryption section, where focus goes.
   const [offerCode, setOfferCode] = useState(0);
-  const changed = (message: string, editorClosed: boolean, holderLeft = false) => {
+  // Where focus goes once the roster is read again after a change (F-026 §4): the changed person's row, or the row after the one that went.
+  const focusAfter = useRef<{ userId: string; order: string[] } | null>(null);
+  const changed = (message: string, editorClosed: boolean, holderLeft = false, userId: string | null = editing) => {
     setDone(message); setEditing(null);
     load();
     const offering = holderLeft && roster?.workspace.encryption?.state === 'unlocked' && roster.workspace.role === 'owner';
     if (offering) setOfferCode((count) => count + 1);
-    // A member's editor that had focus is gone: focus the roster, whose status line says what changed.
-    // Adding someone leaves focus where it is, in the form the person may fill again at once: a focus
-    // move one frame later took the keystrokes of the next address (#491).
-    if (editorClosed && !offering) requestAnimationFrame(() => rosterRef.current?.focus({ preventScroll: true }));
+    // A member's editor that had focus is gone: focus goes to that person's row, or, when they left the list, to the next row's control,
+    // in view (persona round 28: the roster's heading was off screen after Restore). Adding someone leaves focus where it is, in the form the
+    // person may fill again at once: a focus move one frame later took the keystrokes of the next address (#491).
+    if (editorClosed && !offering && userId) focusAfter.current = { userId, order: [...document.querySelectorAll<HTMLElement>('.people__list [data-person]')].map((row) => row.dataset.person!) };
+    else if (editorClosed && !offering) requestAnimationFrame(() => rosterRef.current?.focus({ preventScroll: true }));
     // Roles change what the sidebar may list for the caller.
     revalidator.revalidate();
   };
+
+  useEffect(() => {
+    const wanted = focusAfter.current;
+    if (!wanted || !roster) return;
+    focusAfter.current = null;
+    requestAnimationFrame(() => {
+      const control = (id: string) => document.querySelector<HTMLElement>(`.people__list [data-person="${CSS.escape(id)}"] .people__change`);
+      const at = wanted.order.indexOf(wanted.userId);
+      const next = [wanted.userId, ...wanted.order.slice(at + 1), ...wanted.order.slice(0, Math.max(0, at)).reverse()].map(control).find(Boolean);
+      if (next) next.focus(); else rosterRef.current?.focus();
+    });
+  }, [roster]);
 
   // People who join or leave grow in and collapse where they stood (#593 AC-4).
   const listRef = useRef<HTMLUListElement>(null);
@@ -174,7 +190,7 @@ export function WorkspacePeople({ workspaceId, onBack, page = false }: { workspa
       <section className="details__sec" aria-labelledby="people-here">
         <div className="access__head">
           <h4 id="people-here" ref={rosterRef} tabIndex={-1}>{ordered ? (page ? <>People <span className="people__count">{ordered.length}</span></> : `In ${workspace.name} · ${ordered.length}`) : `You in ${workspace.name}`}</h4>
-          {page && canAdd ? <Button ref={inviteRef} variant="quiet" icon="plus" className="access__invite" aria-expanded={inviting} onClick={() => (inviting ? closeInvite() : setInviting(true))}>Invite</Button> : null}
+          {page && canAdd ? <Button ref={inviteRef} variant="quiet" icon="plus" className="access__invite" aria-expanded={inviting} onClick={() => { if (inviting) { closeInvite(); return; } if (!window.matchMedia('(hover: none)').matches) awaitField(); setInviting(true); }}>Invite</Button> : null}
         </div>
         {page && inviting ? addPerson : null}
         {/* On the company's page the people are one card, as Settings draws its cards: the single sign-on line first, then each person. */}
@@ -215,7 +231,7 @@ export function WorkspacePeople({ workspaceId, onBack, page = false }: { workspa
       </section>
 
       {page && canAdd ? <WaitingLinks workspace={workspace} myRole={myRole} links={links} /> : null}
-      {page && manager ? <RemovedPeople workspaceId={workspace.id} reload={reload} onRestored={(name) => changed(`${name} is back in ${workspace.name}`, true)} /> : null}
+      {page && manager ? <RemovedPeople workspaceId={workspace.id} reload={reload} onRestored={(name, userId, more) => changed(`${name} is back in ${workspace.name}`, !more, false, userId)} /> : null}
       {page && manager ? <CompanySpaces workspaceId={workspace.id} /> : null}
 
       {/* Encrypted spaces (F-030, #655): Encryption comes before AI and keeps its place in every state; AI is off for good and has no switch. */}
@@ -230,7 +246,8 @@ export function WorkspacePeople({ workspaceId, onBack, page = false }: { workspa
 }
 
 /** Who left or was removed: Restore brings them back as a member, in Everyone; other spaces are added by hand (Hubert, 2026-11-05). */
-function RemovedPeople({ workspaceId, reload, onRestored }: { workspaceId: string; reload: number; onRestored: (name: string) => void }) {
+/** `more`: another Restore took the focus (the next one in the list), so the restored person's row does not. */
+function RemovedPeople({ workspaceId, reload, onRestored }: { workspaceId: string; reload: number; onRestored: (name: string, userId: string, more: boolean) => void }) {
   const [people, setPeople] = useState<RemovedPerson[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const toast = useToast();
@@ -244,8 +261,12 @@ function RemovedPeople({ workspaceId, reload, onRestored }: { workspaceId: strin
     setBusy(person.userId);
     try {
       await restorePerson(workspaceId, person.userId);
+      // Focus goes to the next Restore in the list (else the one before), in view; with none left, to the restored person's row.
+      const at = people.findIndex((entry) => entry.userId === person.userId);
+      const after = people[at + 1] ?? people[at - 1] ?? null;
       setPeople((current) => current.filter((entry) => entry.userId !== person.userId));
-      onRestored(person.name);
+      if (after) requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-removed="${CSS.escape(after.userId)}"] button`)?.focus());
+      onRestored(person.name, person.userId, !!after);
     } catch { toast({ message: `${person.name} couldn’t be restored. Try again.` }); }
     setBusy(null);
   };
@@ -254,7 +275,7 @@ function RemovedPeople({ workspaceId, reload, onRestored }: { workspaceId: strin
       <h4 id="people-removed">Removed <span className="people__count">{people.length}</span></h4>
       <ul className="people__list sset-card" aria-label="People who were removed">
         {people.map((person) => (
-          <li className="people__item" key={person.userId}><div className="people__row">
+          <li className="people__item" key={person.userId} data-removed={person.userId}><div className="people__row">
             <Avatar name={person.name} id={person.userId} size="md" /><span className="people__who"><b>{person.name}</b><span>{person.email}</span></span>
             <Button variant="quiet" size="sm" className="access__invite" busy={busy === person.userId} onClick={() => void restore(person)}>Restore</Button>
           </div></li>
@@ -777,6 +798,14 @@ function InviteForm({ workspace, members, myRole, links, onAdded, onClose }: { w
   const daysId = useId();
   const moreId = useId();
   const emailRef = useRef<HTMLInputElement>(null);
+  // A form opens on its first field (F-026 §4, persona round 28 P2 1): an address typed at once is the address, never G I or C. At 200 % the
+  // form comes into view with it.
+  useLayoutEffect(() => {
+    if (window.matchMedia('(hover: none)').matches) return undefined;
+    const stop = focusField('people-invite-email');
+    const frame = requestAnimationFrame(() => emailRef.current?.scrollIntoView({ block: 'nearest' }));
+    return () => { stop(); cancelAnimationFrame(frame); };
+  }, []);
 
   async function makeLink(address: string) {
     const invite = await createInvite(workspace.id, { role, email: address || null, expiresInDays: days }, keys.current.for(`${role}:${address}:${days}`));
@@ -820,7 +849,9 @@ function InviteForm({ workspace, members, myRole, links, onAdded, onClose }: { w
   return (
     <section className="details__sec" aria-labelledby="people-invite">
       <h4 id="people-invite">Invite people</h4>
-      <form className="people__add" onSubmit={(event) => void submit(event)} noValidate aria-label="Invite people">
+      {/* Esc in its fields closes the form and gives focus back to Invite (F-026 §4). */}
+      <form className="people__add" onSubmit={(event) => void submit(event)} noValidate aria-label="Invite people"
+        onKeyDown={(event) => { if (event.key === 'Escape' && !event.defaultPrevented && !event.nativeEvent.isComposing) { event.preventDefault(); event.stopPropagation(); onClose(); } }}>
         <Input ref={emailRef} id="people-invite-email" label="Email (optional)" type="email" inputMode="email" autoComplete="off" spellCheck={false} placeholder="name@example.com" value={email}
           onChange={(event) => { setEmail(event.target.value); if (problem) setProblem(''); }}
           hint="Empty: anyone who opens the link first can join." />

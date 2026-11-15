@@ -203,7 +203,16 @@ export function NewDm() {
       {workspaceId ? (
         <>
           <label className="ui-vh" htmlFor="dm-people-search">Find people</label>
-          <input id="dm-people-search" className="dm-new__search" type="search" placeholder="Find people by name or email" value={query} onChange={(event) => setQuery(event.target.value)} autoComplete="off" />
+          <input id="dm-people-search" className="dm-new__search" type="search" placeholder="Find people by name or email" value={query} onChange={(event) => setQuery(event.target.value)} autoComplete="off"
+            // One person found is picked by Enter or the down arrow (persona round 28); Enter again opens the conversation. The down arrow
+            // otherwise moves into the list.
+            onKeyDown={(event) => {
+              if (event.key !== 'Enter' && event.key !== 'ArrowDown') return;
+              const one = shown.length === 1 ? shown[0]! : null;
+              if (event.key === 'Enter' && one && selected.includes(one.userId) && selected.length === 1) { event.preventDefault(); void start(); return; }
+              if (one && !selected.includes(one.userId)) { event.preventDefault(); toggle(one.userId); return; }
+              if (event.key === 'ArrowDown') { event.preventDefault(); event.currentTarget.closest('.dm-new')?.querySelector<HTMLInputElement>('.dm-new__people input')?.focus(); }
+            }} />
           {members === null ? <p className="dm-new__note" role="status">Loading people…</p> : null}
           {membersNote ? <p className="dm-new__note">{membersNote}</p> : null}
           {members && !members.length && !membersNote ? <p className="dm-new__note">Nobody else is in the company yet.</p> : null}

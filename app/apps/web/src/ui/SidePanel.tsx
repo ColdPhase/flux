@@ -5,6 +5,7 @@ import { Icon } from './Icon';
 import { MEDIA, duration, motionAllowed, settle, token, useMediaQuery } from './motion';
 import { DetentSheet } from './DetentSheet';
 import { Overlay, Sheet, usePresence } from './Overlay';
+import { isTyping } from './keys';
 
 export type SidePanelMode = 'docked' | 'overlay' | 'sheet';
 
@@ -146,7 +147,9 @@ function DockedPanel({ open, onClose, title, closeLabel, back, chip, context, id
     // Opening while it is leaving continues from where the exit had got to; opening at first paint does not move.
     const shift = token('--shift-panel') || '16px';
     void settle(panel, { opacity: 1, transform: 'none' }, duration('--dur-in'), '--ease-out', { from: { opacity: 0, transform: `translateX(${shift})` } });
-    bodyRef.current?.focus({ preventScroll: true });
+    // A composer beside it that has the cursor, or is getting it (Discuss: "ready to write", F-026 §4), keeps it; the panel is beside it.
+    const active = document.activeElement;
+    if (!(active instanceof HTMLElement && !panel?.contains(active) && active.closest('.composer, .composer__box')) && !isTyping(null)) bodyRef.current?.focus({ preventScroll: true });
     return () => {
       const target = returnRef.current;
       returnRef.current = null;

@@ -524,7 +524,8 @@ class ReturnToOrigin(unittest.TestCase):
         self.assertGreater(page.locator("#content .pane-scroll").evaluate("el => el.scrollTop"), 100)
         history = page.evaluate("history.length")
         self.activate(open_item(card).get_by_role("button", name="Discuss"), tap)
-        expect(page).to_have_url(f"{ORIGIN}/projects/{self.project}")
+        # The address names the decision it opened beside the conversation (founder question B, persona round 28), in the same one entry.
+        expect(page).to_have_url(re.compile(re.escape(f"{ORIGIN}/projects/{self.project}") + r"(\?open=decision(:|%3A)[0-9a-f-]{36})?$"))
         self.assertEqual(page.evaluate("history.length"), history + 1)
         back = self.origin_back(page, "Inbox")
         expect(back).to_have_count(1)

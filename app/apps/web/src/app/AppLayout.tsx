@@ -463,21 +463,22 @@ function AppLayoutContent() {
   // could land after the person has moved on or signed out.
   const navigate = useNavigate();
   const openedAt = useRef<string | null>(null);
+  const openShown = useRef<{ kind: string; id: string } | null>(null);
+  useEffect(() => { openShown.current = detailsOpen && typeof detailsView === 'object' && 'id' in detailsView ? { kind: detailsView.kind, id: detailsView.id } : null; });
   useEffect(() => {
     if (openedAt.current === location.key) return;
-    const params = new URLSearchParams(location.search);
-    const open = params.get('open') ?? '';
+    openedAt.current = location.key;
+    const open = new URLSearchParams(location.search).get('open') ?? '';
     const match = /^(work|decision):([0-9a-f-]{36})$/i.exec(open);
     if (!match) return;
-    openedAt.current = location.key;
-    params.delete('open');
-    const search = params.toString();
-    // The entry keeps its state, so the origin it was followed from survives the flag leaving the address (#592).
-    // `opened` tells the place it was arrived at to open this object: focus goes to the object's panel, never to the composer (Esc closes it).
-    const kept = location.state && typeof location.state === 'object' ? location.state : {};
-    navigate({ pathname: location.pathname, search: search ? `?${search}` : '', hash: location.hash }, { replace: true, defaultShouldRevalidate: false, state: { ...kept, opened: true } });
-    shell.openDetails({ kind: match[1]!.toLowerCase() as 'work' | 'decision', id: match[2]!.toLowerCase() });
-  }, [location.key, location.search, location.pathname, location.hash, location.state, navigate, shell]);
+    // The address names what it opened and keeps it (founder question B, persona round 28): a reload opens it again, Back leaves for where
+    // the link was followed from and takes the sheet or panel with it, and closing it takes the flag off the address (`closePanel`). The
+    // entry is the link's own, as a thread opened by a link is (A-1). The place it lands on gives the focus to the object, never the composer.
+    const kind = match[1]!.toLowerCase() as 'work' | 'decision';
+    const id = match[2]!.toLowerCase();
+    if (openShown.current?.kind === kind && openShown.current.id === id) return;
+    shell.openDetails({ kind, id });
+  }, [location.key, location.search, shell]);
   // A return to a place that is gone lands on its nearest parent with one line saying so (#592); the line is said once.
   const notedAt = useRef<string | null>(null);
   useEffect(() => {
@@ -506,7 +507,7 @@ function AppLayoutContent() {
     let leader = 0;
     const onKey = (event: KeyboardEvent) => {
       if (event.metaKey || event.ctrlKey || event.altKey || event.defaultPrevented || isTyping(event.target)) return;
-      if (document.getElementById('root')?.hasAttribute('data-modal')) return;
+      if (document.getElementById('root')?.hasAttribute('data-modal') || document.querySelector('[role="menu"]')) return;
       // On a tablet the sidebar is always the rail (Spokój); "[" opens it as the drawer instead.
       if (event.key === '[') { event.preventDefault(); if (tablet) setNavOpen((open) => !open); else toggleRail(); return; }
       const key = event.key.toLowerCase();
@@ -637,6 +638,15 @@ function AppLayoutContent() {
     if (panelGuard.current?.()) return;
     ownedShown?.onClose();
     toggleDetails(false);
+    // An object the address names (`?open=`) is closed: the flag leaves the address, in the same entry.
+    const params = new URLSearchParams(location.search);
+    if (params.has('open') && !ownedShown) {
+      params.delete('open');
+      const search = params.toString();
+      // `opened`: the place keeps the focus where closing gave it (the object's card), and does not take this for an arrival.
+      const kept = location.state && typeof location.state === 'object' ? location.state : {};
+      navigate({ pathname: location.pathname, search: search ? `?${search}` : '', hash: location.hash }, { replace: true, defaultShouldRevalidate: false, state: { ...kept, opened: true } });
+    }
   };
   useLayoutEffect(() => { closeRef.current = closePanel; });
   // Esc (F-026 §4 "Where focus goes"): with a panel open it closes the panel wherever focus is, unless a window or a menu is open or the focused

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, type RefObject } from 'react';
+import { useEffect, useMemo, useRef, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from 'react';
 import { Link, NavLink, useLocation, useNavigation } from 'react-router';
 import { useProjectNews } from './projectNews';
 import { Avatar, FluxLogo, Icon, IconButton, Kreska, choosesInPlace, useTravelingHighlight } from '../ui';
@@ -187,7 +187,8 @@ export function Sidebar({ directMessages, agents = [], user, onClose, titleId, i
     const onKey = (event: KeyboardEvent) => {
       if (event.key.toLowerCase() !== 'c' || event.metaKey || event.ctrlKey || event.altKey || event.defaultPrevented) return;
       const target = event.target as HTMLElement | null;
-      if (isTyping(target) || target?.closest('[role="dialog"]')) return;
+      // A menu that is open (Status, a message's ⋯) has the keys: C never opens New over it.
+      if (isTyping(target) || target?.closest('[role="dialog"], [role="menu"]') || document.querySelector('[role="menu"]')) return;
       event.preventDefault();
       openCreate(projectId ? { projectId } : {});
     };
@@ -195,10 +196,22 @@ export function Sidebar({ directMessages, agents = [], user, onClose, titleId, i
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose, openCreate, projectId]);
   const onNew = () => openCreate(projectId ? { projectId } : {});
+  // The arrow keys move between the sidebar's rows (F-026 §4); Enter or a click arrives in the place.
+  const onRowKeys = (event: ReactKeyboardEvent<HTMLElement>) => {
+    if ((event.key !== 'ArrowDown' && event.key !== 'ArrowUp') || event.metaKey || event.ctrlKey || event.altKey) return;
+    const from = (event.target as HTMLElement).closest('a[href]');
+    if (!from) return;
+    const rows = [...event.currentTarget.querySelectorAll<HTMLElement>('a[href]')].filter((row) => row.getClientRects().length > 0 && !row.closest('[inert]'));
+    const at = rows.indexOf(from as HTMLElement);
+    const next = rows[at + (event.key === 'ArrowDown' ? 1 : -1)];
+    if (at < 0 || !next) return;
+    event.preventDefault();
+    next.focus();
+  };
 
   if (collapsed && !onClose) {
     return (
-      <div className="side side--rail">
+      <div className="side side--rail" onKeyDown={onRowKeys}>
         {/* The toggle is in the top row, where the expanded sidebar's collapse control is (S1, Spokój anchors). */}
         <IconButton icon="sidebar" label="Expand sidebar" aria-keyshortcuts="[" className="side__toggle" onClick={onToggleCollapsed} />
         <NewMenu compact onNew={onNew} />
@@ -252,7 +265,7 @@ export function Sidebar({ directMessages, agents = [], user, onClose, titleId, i
   }
 
   return (
-    <div className="side">
+    <div className="side" onKeyDown={onRowKeys}>
       <div className="side__brand">
         {/* The wordmark names the drawer; Home is the first place below, so the mark is not a second link. */}
         <span className="side__logo">
