@@ -313,7 +313,7 @@ test('real agent history reaches bounded helper context, search, export, notific
     FROM events WHERE data->>'messageId'=$1`, [next.id])).rows[0] as GeneratorEvent;
   const told = await candidatesFor(nextEvent, facts);
   assert.deepEqual(told.map((row) => row.userId), [f.owner.id]);
-  assert.match(told[0]!.title, /Trial analyst \(agent\)/);
+  assert.match(told[0]!.title, /Trial analyst · root-owner's agent/);
 });
 
 test('agent first-send rollback is atomic; revoking the agent blocks retries while genuine history stays readable', async () => {
