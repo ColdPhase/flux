@@ -682,6 +682,12 @@ function AppLayoutContent() {
   const goToOrigin = useGoToOrigin(routeOrigin ?? NO_ORIGIN);
   const stepBack = () => {
     if (!trailTop) return;
+    // The object it steps back from had its own entry (`?open=`, a task card in a thread): Back leaves that entry, and the panel steps back
+    // on the entry it returns to (the Back above), so the thread comes back where it was read (F-026 §4). Only when what it leaves is the
+    // object the address names; a step back inside the panel to that object keeps the entry.
+    const named = new URLSearchParams(location.search).get('open');
+    const leaving = typeof detailsView === 'object' && 'id' in detailsView ? `${detailsView.kind}:${detailsView.id}` : null;
+    if (named && leaving === named && (location.state as { openPushed?: boolean } | null)?.openPushed) { navigate(-1); return; }
     // A panel kept over the page that a link inside it led to (a task's source message) steps back to the page it was followed
     // from, where that panel returns as it was, not to the conversation that link opened: a sheet or an overlay covers the
     // header's control, and this is the one visible back (#592).
@@ -692,12 +698,6 @@ function AppLayoutContent() {
     const view = trailTop.view;
     if (typeof view === 'object' && view.kind === 'owned' && !ownedRef.current) return;
     shell.openDetails(view, { back: 'keep' });
-    // The object it steps back from had its own entry (`?open=`, a task card in a thread): that entry is left too, so the address and Back
-    // are the thread's again (F-026 §4). The panel stays, showing what it stepped back to.
-    // Only when what it leaves is the object the address names; a step back inside the panel to that object keeps it.
-    const named = new URLSearchParams(location.search).get('open');
-    const leaving = typeof detailsView === 'object' && 'id' in detailsView ? `${detailsView.kind}:${detailsView.id}` : null;
-    if (named && leaving === named && (location.state as { openPushed?: boolean } | null)?.openPushed) navigate(-1);
   };
   const back = ownedShown?.back ? { label: ownedShown.back.label, onClick: ownedShown.back.run } : trailTop ? { label: trailTop.label, onClick: stepBack }
     : ownedShown?.origin ? { label: ownedShown.origin.label, onClick: ownedShown.origin.run } : undefined;
