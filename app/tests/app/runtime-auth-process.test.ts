@@ -262,7 +262,9 @@ test('well-shaped console result for another status client is refused without pe
       const tx=await pool.connect();
       try{
         await tx.query('BEGIN');
-        await tx.query(`INSERT INTO agent_runtime_slots(slot,state,boot_id) VALUES($1,'ready',$2)`,[names[index],bootId]);
+        // The API saves the slots its manager reports (saveSlot upserts), so this may race it: upsert the same way.
+        await tx.query(`INSERT INTO agent_runtime_slots(slot,state,boot_id) VALUES($1,'ready',$2)
+          ON CONFLICT (slot) DO UPDATE SET state='ready',boot_id=excluded.boot_id`,[names[index],bootId]);
         await tx.query(`INSERT INTO agent_runtime_bindings(id,owner_user_id,slot,state) VALUES($1,$2,$3,'active')`,[binding,owner,names[index]]);
         await tx.query('COMMIT');
       }catch(error){await tx.query('ROLLBACK');throw error;}finally{tx.release();}
