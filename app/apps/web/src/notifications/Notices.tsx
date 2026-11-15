@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
-import { createPortal } from 'react-dom';
+import { createPortal, flushSync } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router';
 import type { InboxItem, StreamEvent } from '@flux/contracts';
 import { useStreamEvents } from '../api/stream';
@@ -76,11 +76,39 @@ const DOCKED_PANEL = '.ui-panel--docked:not(.is-leaving):not(.ui-panel--float)';
 /**
  * Where the card stands on a computer: 8 px above whatever reaches its corner (a composer, a toast, the map's dock), and over the work, never
  * over a docked panel: its right edge 20 px left of the panel (`right`, null when no panel is docked).
+ *
+ * The card is never drawn anywhere else, whatever comes first: when it appears it is placed before it is first painted (in the layout
+ * effect), and when the page changes under it (a panel that docks, floats or leaves, a composer, a resize) it is placed again in the next
+ * frame, before that frame is painted (`flushSync`). A placement left to React's own schedule could be painted a frame late, and a card
+ * that came in on a busy page stood over the panel until its entrance had ended (test_notices test_12, Chromium, full suite).
  */
 function useLift(active: boolean, card: React.RefObject<HTMLElement | null>, phone: boolean): { lift: number; right: number | null } {
   const [place, setPlace] = useState<{ lift: number; right: number | null }>({ lift: 0, right: null });
   useLayoutEffect(() => {
     if (!active || phone) return undefined;
+    const where = (): { lift: number; right: number | null } | null => {
+      const box = card.current?.getBoundingClientRect();
+      if (!box) return null;
+      const width = document.documentElement.clientWidth;
+      const docked = [...document.querySelectorAll<HTMLElement>(DOCKED_PANEL)].find((element) => element.getBoundingClientRect().width > 0);
+      const panel = docked?.getBoundingClientRect();
+      // Where the panel stands once it has come in: its entrance slides it, which the box would include.
+      const transform = docked ? getComputedStyle(docked).transform : 'none';
+      const shift = transform === 'none' ? 0 : Number(/^matrix\((?:[^,]+,){4}\s*([-\d.e]+)/.exec(transform)?.[1] ?? 0);
+      const right = panel && panel.width ? Math.round(width - (panel.left - shift) + 20) : null;
+      // Where the card is about to stand, so what it avoids is what is under it there.
+      const cardRight = width - (right ?? 20);
+      const cardLeft = cardRight - box.width;
+      let lift = 0;
+      for (const node of document.querySelectorAll<HTMLElement>('.composer__box, .ui-toast, [data-notice-avoid]')) {
+        if (node.closest(DOCKED_PANEL)) continue;
+        const rect = node.getBoundingClientRect();
+        if (!rect.height || rect.right <= cardLeft || rect.left >= cardRight || rect.top < window.innerHeight / 2) continue;
+        lift = Math.max(lift, Math.round(window.innerHeight - rect.top + 8));
+      }
+      return { lift, right };
+    };
+    const keep = (next: { lift: number; right: number | null }) => setPlace((now) => (now.lift === next.lift && now.right === next.right ? now : next));
     let frame = 0;
     // One measure in the next frame for all that changed before it: a page that changes every frame (a panel coming in, a live line)
     // must not put the measure off frame after frame, which left the card where it stood before the panel was there (WebKit).
@@ -88,33 +116,17 @@ function useLift(active: boolean, card: React.RefObject<HTMLElement | null>, pho
       if (frame) return;
       frame = requestAnimationFrame(() => {
         frame = 0;
-        const box = card.current?.getBoundingClientRect();
-        if (!box) return;
-        const width = document.documentElement.clientWidth;
-        const docked = [...document.querySelectorAll<HTMLElement>(DOCKED_PANEL)].find((element) => element.getBoundingClientRect().width > 0);
-        const panel = docked?.getBoundingClientRect();
-        // Where the panel stands once it has come in: its entrance slides it, which the box would include.
-        const transform = docked ? getComputedStyle(docked).transform : 'none';
-        const shift = transform === 'none' ? 0 : Number(/^matrix\((?:[^,]+,){4}\s*([-\d.e]+)/.exec(transform)?.[1] ?? 0);
-        const right = panel && panel.width ? Math.round(width - (panel.left - shift) + 20) : null;
-        // Where the card is about to stand, so what it avoids is what is under it there.
-        const cardRight = width - (right ?? 20);
-        const cardLeft = cardRight - box.width;
-        let bottom = 0;
-        for (const node of document.querySelectorAll<HTMLElement>('.composer__box, .ui-toast, [data-notice-avoid]')) {
-          if (node.closest(DOCKED_PANEL)) continue;
-          const rect = node.getBoundingClientRect();
-          if (!rect.height || rect.right <= cardLeft || rect.left >= cardRight || rect.top < window.innerHeight / 2) continue;
-          bottom = Math.max(bottom, Math.round(window.innerHeight - rect.top + 8));
-        }
-        setPlace((now) => (now.lift === bottom && now.right === right ? now : { lift: bottom, right }));
+        const next = where();
+        if (next) flushSync(() => keep(next));
       });
     };
+    // The card has just appeared: placed now, before it is painted.
+    const first = where();
+    if (first) keep(first);
     const observer = new MutationObserver(measure);
     // A panel that docks, floats or leaves changes its class, not the page's children.
     observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
     window.addEventListener('resize', measure);
-    measure();
     return () => { cancelAnimationFrame(frame); frame = 0; observer.disconnect(); window.removeEventListener('resize', measure); };
   }, [active, phone, card]);
   return active && !phone ? place : { lift: 0, right: null };

@@ -206,9 +206,11 @@ class ProjectSurfaceJourney(unittest.TestCase):
             box = bubble.bounding_box()
             assert box
             self.assertLessEqual(box["width"], 700, "readable measure per message")
-        # Calm chips under a message open their object.
-        chip = page.locator(f"#message-{self.ids['m0']}").get_by_role("button", name=re.compile(r"^Task #\d+: " + re.escape("Test the camera in low light") + "$"))
-        expect(chip).to_contain_text("Doing")
+        # A task made from a reply is the conversation's task card under that reply, never a chip in the bubble (#1424, design L1059;
+        # v0.2.1 audit P2-5): its whole title and its state word, opening the task.
+        card = page.locator(f"#message-{self.ids['m0']} .msg-tasks__card").get_by_role("button", name=re.compile(r"^Open task #\d+ " + re.escape("Test the camera in low light") + "$"))
+        expect(card).to_contain_text("Doing")
+        expect(page.locator(f"#message-{self.ids['m0']} .ws-chip[data-work-kind='work']")).to_have_count(0)
         self.assert_whole_messages(page)
         shot(page, "project-conversation-desktop-1440")
         small = self.page("ada", viewport={"width": 1280, "height": 800})
