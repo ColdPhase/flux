@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon, MEDIA, Overlay, useMediaQuery, usePop } from '../ui';
 import { containPointer, useAnchoredLayer } from '../ui/pickerPlace';
@@ -60,7 +60,19 @@ export function PropertyMenu({ label, value, options, disabled, onChoose, onOpen
   }, [open, sheet]);
   // A computer's menu takes focus once it is in place (it is hidden until then); the sheet takes it through the overlay.
   const placed = sheet || place !== null;
-  useEffect(() => { if (open && placed) items.current[active]?.focus({ preventScroll: false }); }, [open, active, placed]);
+  // In the same commit as the layer is shown (as the DateField's popover does): a later focus left WebKit's focus on the value's button.
+  // The menu scrolls itself to the row; the page never scrolls for it.
+  useLayoutEffect(() => {
+    const item = open && placed ? items.current[active] : null;
+    if (!item) return;
+    item.focus({ preventScroll: true });
+    const list = item.closest<HTMLElement>('[role="menu"]');
+    if (!list) return;
+    const row = item.getBoundingClientRect();
+    const box = list.getBoundingClientRect();
+    if (row.top < box.top) list.scrollTop -= box.top - row.top;
+    else if (row.bottom > box.bottom) list.scrollTop += row.bottom - box.bottom;
+  }, [open, active, placed]);
   const was = useRef(false);
   useEffect(() => {
     if (open && !was.current) onOpen?.();

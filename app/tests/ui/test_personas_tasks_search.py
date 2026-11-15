@@ -70,10 +70,13 @@ class PersonasTasksSearch(unittest.TestCase):
         expect(panel.locator("[data-detail-relations-phase]")).to_have_attribute("data-detail-relations-phase", "ready")
         return panel
 
-    def assert_reachable(self, items, label: str) -> None:
+    def assert_reachable(self, items, label: str, scroll: bool = True) -> None:
+        # `scroll`: the menu may scroll itself to a row; without it, every row must be on screen as the menu opens (a script can scroll the
+        # panel under a menu that a person cannot).
         for index in range(items.count()):
             item = items.nth(index)
-            item.scroll_into_view_if_needed()
+            if scroll:
+                item.scroll_into_view_if_needed()
             where = item.evaluate(ON_TOP)
             self.assertTrue(where["inside"] and where["onTop"], f"{label}: {item.inner_text()!r} can be seen and clicked: {where}")
 
@@ -92,7 +95,7 @@ class PersonasTasksSearch(unittest.TestCase):
         page.wait_for_function(SETTLED)
         box = menu.bounding_box()
         self.assertLessEqual(box["y"] + box["height"], 900 + 0.5, f"the menu stays inside the window: {box}")
-        self.assert_reachable(items, "Status at 200 %")
+        self.assert_reachable(items, "Status at 200 %", scroll=False)
         shot(page, f"personas-status-menu-200-{UI_BROWSER}")
         items.filter(has_text="Done").click()
         expect(menu).to_have_count(0)
