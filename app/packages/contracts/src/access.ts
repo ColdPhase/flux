@@ -129,12 +129,17 @@ export const SPACE_AI_POLICY_CHANGED_EVENT = 'project.ai_policy_changed.v1';
 export const SPACE_AI_SWEEP_JOB = 'space-ai.sweep.v1';
 export interface SpaceAiSweepJob { projectId: string; epoch: number }
 
-/** Someone who left the company or was removed; an owner or admin can restore them (Settings › Company). */
+/**
+ * Someone who left the company or was removed; an owner or admin can restore them (Settings › Company), and Restore brings them back as
+ * they were (#1424 F): `role` is the role they had, `spaces` how many spaces besides Everyone they come back to (their direct messages too).
+ */
 export interface RemovedPerson {
   userId: string;
   email: string;
   name: string;
   removedAt: string;
+  role: WorkspaceRole;
+  spaces: number;
 }
 
 export interface WorkspaceMember {

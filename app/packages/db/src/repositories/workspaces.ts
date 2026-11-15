@@ -131,19 +131,72 @@ export function workspaceRepository(db: DbExecutor) {
       return !!row;
     },
 
-    /** Remembers someone who left or was removed, for Restore. */
+    /**
+     * Remembers someone who is leaving or being removed, for Restore (#1424 F): their role, their space grants and their direct messages,
+     * read from the membership that is still there. Call it before `deleteMember`, whose cascade takes the grants and DM places.
+     */
     async recordRemoved(workspaceId: string, userId: string, removedBy: string) {
-      await db.insert(schema.workspaceRemovedPeople).values({ workspaceId, userId, removedBy })
-        .onConflictDoUpdate({ target: [schema.workspaceRemovedPeople.workspaceId, schema.workspaceRemovedPeople.userId], set: { removedBy, removedAt: new Date() } });
+      await db.execute(sql`INSERT INTO workspace_removed_people (workspace_id, user_id, removed_by, removed_at, role, kept)
+        SELECT m.workspace_id, m.user_id, ${removedBy}, now(), m.role, jsonb_build_object(
+          'spaces', coalesce((SELECT jsonb_agg(jsonb_build_object('id', g.project_id, 'role', g.role) ORDER BY g.created_at, g.project_id)
+            FROM project_grants g WHERE g.workspace_id = m.workspace_id AND g.user_id = m.user_id), '[]'::jsonb),
+          'dms', coalesce((SELECT jsonb_agg(jsonb_build_object('id', p.dm_id, 'joinedAt', p.joined_at) ORDER BY p.joined_at, p.dm_id)
+            FROM dm_participants p WHERE p.workspace_id = m.workspace_id AND p.user_id = m.user_id), '[]'::jsonb))
+        FROM workspace_members m WHERE m.workspace_id = ${workspaceId}::uuid AND m.user_id = ${userId}
+        ON CONFLICT (workspace_id, user_id) DO UPDATE SET removed_by = EXCLUDED.removed_by, removed_at = EXCLUDED.removed_at,
+          role = EXCLUDED.role, kept = EXCLUDED.kept`);
     },
 
-    /** Everyone who left or was removed and has not joined again, newest first. */
+    /**
+     * Everyone who left or was removed and has not joined again, newest first, with the role they had and how many of the spaces they
+     * were in still exist besides Everyone (what Restore brings back).
+     */
     async removedPeople(workspaceId: string) {
-      const rows = await db.select({ userId: schema.workspaceRemovedPeople.userId, removedAt: schema.workspaceRemovedPeople.removedAt,
-        email: schema.authUsers.email, name: schema.authUsers.name })
-        .from(schema.workspaceRemovedPeople).innerJoin(schema.authUsers, eq(schema.authUsers.id, schema.workspaceRemovedPeople.userId))
-        .where(eq(schema.workspaceRemovedPeople.workspaceId, workspaceId)).orderBy(desc(schema.workspaceRemovedPeople.removedAt));
-      return rows;
+      const rows = (await db.execute(sql`SELECT r.user_id, r.removed_at, u.email, u.name, r.role, r.kept,
+          (SELECT count(*)::int FROM jsonb_array_elements(r.kept -> 'spaces') k JOIN projects p ON p.id = (k ->> 'id')::uuid
+            WHERE p.workspace_id = r.workspace_id AND p.visibility <> 'workspace') AS spaces
+        FROM workspace_removed_people r JOIN auth_users u ON u.id = r.user_id
+        WHERE r.workspace_id = ${workspaceId}::uuid ORDER BY r.removed_at DESC`)).rows as
+        { user_id: string; removed_at: Date | string; email: string; name: string; role: WorkspaceRole; kept: schema.RemovedPersonKept; spaces: number }[];
+      return rows.map((row) => ({ userId: row.user_id, removedAt: row.removed_at instanceof Date ? row.removed_at : new Date(row.removed_at),
+        email: row.email, name: row.name, role: row.role, kept: row.kept, spaces: row.spaces }));
+    },
+
+    /**
+     * Puts back what a removal kept (#1424 F), for a person who is a member again in this transaction: each kept space that still exists in
+     * this workspace gets its grant back, and each kept direct message its place (with the time they first joined it). Rows that vanished
+     * meanwhile are skipped (held `FOR KEY SHARE` first, so a delete racing this waits or wins cleanly). Returns what was put back.
+     */
+    async restoreKept(workspaceId: string, userId: string, kept: schema.RemovedPersonKept, restoredBy: string) {
+      const spaceIds = kept.spaces.map((space) => space.id).filter(isUuid);
+      const dmIds = kept.dms.map((dm) => dm.id).filter(isUuid);
+      const spaces: { projectId: string; grantId: string; role: 'manager' | 'contributor' }[] = [];
+      if (spaceIds.length) {
+        const live = new Set(((await db.execute(sql`SELECT id::text AS id FROM projects WHERE id = ANY(${sql.param(spaceIds)}::uuid[]) AND workspace_id = ${workspaceId}::uuid
+          FOR KEY SHARE`)).rows as { id: string }[]).map((row) => row.id));
+        for (const space of kept.spaces) {
+          if (!live.has(space.id)) continue;
+          const role = space.role === 'manager' ? 'manager' : 'contributor';
+          const [row] = (await db.execute(sql`INSERT INTO project_grants (id, workspace_id, project_id, user_id, role, created_by)
+            VALUES (gen_random_uuid(), ${workspaceId}::uuid, ${space.id}::uuid, ${userId}, ${role}, ${restoredBy})
+            ON CONFLICT DO NOTHING RETURNING id::text AS id`)).rows as { id: string }[];
+          if (row) spaces.push({ projectId: space.id, grantId: row.id, role });
+        }
+      }
+      const dms: string[] = [];
+      if (dmIds.length) {
+        const live = new Set(((await db.execute(sql`SELECT id::text AS id FROM dms WHERE id = ANY(${sql.param(dmIds)}::uuid[]) AND workspace_id = ${workspaceId}::uuid
+          FOR KEY SHARE`)).rows as { id: string }[]).map((row) => row.id));
+        for (const dm of kept.dms) {
+          if (!live.has(dm.id)) continue;
+          const inserted = (await db.execute(sql`INSERT INTO dm_participants (workspace_id, dm_id, user_id, joined_at)
+            VALUES (${workspaceId}::uuid, ${dm.id}::uuid, ${userId}, ${dm.joinedAt}::timestamptz) ON CONFLICT DO NOTHING RETURNING dm_id`)).rows.length > 0;
+          if (!inserted) continue;
+          await db.execute(sql`UPDATE dms SET version = version + 1 WHERE id = ${dm.id}::uuid`);
+          dms.push(dm.id);
+        }
+      }
+      return { spaces, dms };
     },
 
     /** The name of the company this person left or was removed from and has not joined again, or null. */

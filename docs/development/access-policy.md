@@ -152,8 +152,12 @@ admin who removes one from the space's people only takes them off its list (an i
 and `OWNER_REQUIRED` refusals guarded the deny, which is gone). Joining with a provider runs
 on every provider sign-in, so an account that linked it later joins too. Someone who leaves or is
 removed goes on `workspace_removed_people` and stays out, also on a provider sign-in, until an
-owner or admin restores them from Settings › Company. Restore brings them back as a `member`, in
-Everyone; leaving ended their grants, so other spaces are added by hand. With
+owner or admin restores them from Settings › Company. Removal keeps what the person had on that row
+(migration 0089, `role` and `kept`: their space grants and their direct messages, ids and roles only), read before the
+membership goes. Restore brings them back as they were (founder decision, #1424 F, 2026-11-15): the same role, each kept
+space that still exists with the same grant (`project.grant_set.v1`), and each kept direct message (`dm.changed.v1`,
+`rejoined`), in one transaction. Only an owner restores a former owner (`OWNER_REQUIRED`), as only an owner gives the role.
+Joining again any other way (a link, adding) clears the row and what it kept. With
 single sign-on as the only way in, nobody makes an invite link (`INVITES_OFF_WITH_SSO`).
 Owners and admins rename the company (`PATCH /api/v1/workspaces/:id`, `workspace.rename`).
 

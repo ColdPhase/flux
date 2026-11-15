@@ -276,7 +276,7 @@ async function readFile(ctx: FluxAgentReadContext, claims: FluxMcpClaims, input:
   claims.dispatch?.project(file.projectId, 'project.read');
   const where = { fileId: file.fileId, name: file.name, projectId: file.projectId, conversationId: file.conversationId, messageId: file.messageId, ...(file.pages !== null ? { pages: file.pages } : {}) };
   if (!parts) return { ...where, totalLength: 0, body: '', nextOffset: null,
-    note: file.pending ? 'Its text has not been read yet; try again in a minute.' : 'No text could be read from this file (a scan or an unreadable file).' };
+    note: file.pending ? 'Its text has not been read yet; try again in a minute.' : 'No text could be read from this file (a scan, a picture or a file whose kind is not read).' };
   const offset = Math.min(input.offset, text.length);
   const end = textPageEnd(text, offset, claims.run !== undefined);
   return { ...where, offset, totalLength: text.length, body: text.slice(offset, end), nextOffset: end < text.length ? end : null };

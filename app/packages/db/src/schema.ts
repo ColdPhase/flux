@@ -510,7 +510,13 @@ export const workspaceRemovedPeople = pgTable('workspace_removed_people', {
   userId: text('user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
   removedBy: text('removed_by').notNull(),
   removedAt: timestamp('removed_at', { withTimezone: true }).notNull().defaultNow(),
+  /** What Restore brings back (migration 0089, #1424 F): the role they had, and the spaces and direct messages they were in. */
+  role: text('role', { enum: ['owner', 'admin', 'member', 'guest'] }).notNull(),
+  kept: jsonb('kept').$type<RemovedPersonKept>().notNull(),
 }, (table) => [primaryKey({ columns: [table.workspaceId, table.userId] })]);
+
+/** `workspace_removed_people.kept`: ids, roles and times only. */
+export interface RemovedPersonKept { spaces: { id: string; role: 'manager' | 'contributor' }[]; dms: { id: string; joinedAt: string }[] }
 
 /** F-035 (#763 PE-2): a one-time invite link to a workspace. Only the SHA-256 of the token is stored (migration 0137). */
 export const workspaceInvites = pgTable('workspace_invites', {

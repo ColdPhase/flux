@@ -432,15 +432,34 @@ class FirstRunSettingsPeople(unittest.TestCase):
         page.goto(f"/projects/{hers['id']}")
         expect(page.get_by_role("heading", level=1, name="Wera’s corner")).to_be_visible()
         expect(page.get_by_role("navigation", name="Spaces").get_by_role("link", name=re.compile("Wera’s corner"))).to_have_count(0)
-        # Removed, then restored: back in the company's list, and the space stays out until it is added by hand.
+        # Removed, then restored as she was (founder decision #1424 F): an Admin comes back an Admin, in the space she was in, with her messages.
+        dm = self.api(wera, "POST", f"/api/v1/workspaces/{space}/dms", {"participantIds": [self.ids["maria"]]})
+        self.api(wera, "POST", f"/api/v1/dms/{dm['id']}/messages", {"body": "Notes from the corner before I go", "clientMessageId": str(uuid.uuid4())}, status=201)
+        made_admin = page.request.patch(f"{ORIGIN}/api/v1/workspaces/{space}/members/{self.ids['wera']}", data={"role": "admin"},
+                                        headers={"origin": ORIGIN, "idempotency-key": str(uuid.uuid4())})
+        self.assertEqual(made_admin.status, 200, made_admin.text())
         removed_now = page.request.delete(f"{ORIGIN}/api/v1/workspaces/{space}/members/{self.ids['wera']}", headers={"origin": ORIGIN})
         self.assertEqual(removed_now.status, 204, removed_now.text())
         page.goto("/settings/company")
         removed = page.get_by_role("list", name="People who were removed")
-        expect(removed).to_contain_text("Wera Removed")
-        removed.get_by_role("button", name="Restore").click()
-        expect(page.get_by_role("list", name=re.compile("^People in "))).to_contain_text("Wera Removed")
+        row = removed.get_by_role("listitem").filter(has_text="Wera Removed")
+        expect(row).to_contain_text(re.compile(r" · Admin · 1 space"))
+        expect(page.get_by_text("Restore brings someone back with the role, spaces and direct messages they had.", exact=True)).to_be_visible()
+        shot(page, f"1424-restore-as-before-1440-{UI_BROWSER}")
+        row.get_by_role("button", name="Restore").click()
+        expect(page.get_by_text(re.compile(r"^Wera Removed is back in .+ as Admin, in 1 space\.$"))).to_be_visible()
+        people = page.get_by_role("list", name=re.compile("^People in "))
+        expect(people).to_contain_text("Wera Removed")
+        expect(people.locator(f"[data-person='{self.ids['wera']}']")).to_contain_text("Admin")
         expect(page.get_by_role("list", name="People who were removed")).to_have_count(0)
+        back = [grant["role"] for grant in self.api(page, "GET", f"/api/v1/projects/{hers['id']}/grants", status=200) if grant["principal"]["id"] == self.ids["wera"]]
+        self.assertEqual(back, ["manager"], "her space is hers again, as its admin")
+        # Her direct message is back for both sides: she reads it, and Maria's side does not say she left.
+        wera.goto(f"/dm/{dm['id']}")
+        expect(wera.get_by_text("Notes from the corner before I go")).to_be_visible()
+        page.goto(f"/dm/{dm['id']}")
+        expect(page.get_by_text("Notes from the corner before I go")).to_be_visible()
+        expect(page.get_by_text(re.compile("left this conversation"))).to_have_count(0)
         shot(page, f"874-company-every-space-1440-{UI_BROWSER}")
 
     def test_11d_new_space_invites_someone_new_who_lands_in_it(self) -> None:

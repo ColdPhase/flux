@@ -222,7 +222,12 @@ function PhotoTile({ file, index, count, more, onOpen }: { file: MessageFile; in
 
 /** Photos without a file frame: radius 16, caption below; 2–4 form a grid with "+N" on the last one. */
 export function PhotoGrid({ photos, context }: { photos: MessageFile[]; context?: PhotoContext }) {
-  const [open, setOpen] = useState<number | null>(null);
+  const [clicked, setClicked] = useState<number | null>(null);
+  // A search result for one of these photos (found by its name, #1424 B) opens the viewer at it, as a file row opens its preview.
+  const link = useFileLink(photos.map((photo) => photo.id));
+  const linked = link ? photos.findIndex((photo) => photo.id === link.fileId) : -1;
+  const open = clicked ?? (linked >= 0 ? linked : null);
+  const setOpen = (index: number | null) => { setClicked(index); if (index === null) link?.close(); };
   const shown = photos.slice(0, 4);
   const more = photos.length - shown.length;
   return (
@@ -253,13 +258,22 @@ export function PhotoViewer({ photos, start, context, onClose }: { photos: Messa
   const file = photos[index]!;
   const bytes = useFileBytes(file.id, 'image');
   const returnTo = useRef<Element | null>(null);
+  // An action that takes the focus where it leads (Reply, Create task) ends the keeping below before it moves it.
+  const leaving = useRef(false);
   useEffect(() => {
     returnTo.current = document.activeElement;
     const close = root.current?.querySelector<HTMLElement>('.photo-viewer__close');
     close?.focus();
     const previous = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = previous; (returnTo.current as HTMLElement | null)?.focus?.(); };
+    // A modal keeps focus, as the file preview does: a photo opened by a search result (found by its name, #1424 B) opens while its
+    // message is being shown and focused, and that focus must not leave Esc and Tab outside the viewer.
+    const keep = (event: FocusEvent) => {
+      if (leaving.current) return;
+      if (root.current && event.target instanceof Node && !root.current.contains(event.target)) root.current.querySelector<HTMLElement>('.photo-viewer__close')?.focus();
+    };
+    document.addEventListener('focusin', keep);
+    return () => { document.removeEventListener('focusin', keep); document.body.style.overflow = previous; (returnTo.current as HTMLElement | null)?.focus?.(); };
   }, []);
   const step = useCallback((by: number) => { setNote(''); setIndex((value) => Math.min(photos.length - 1, Math.max(0, value + by))); }, [photos.length]);
   const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
@@ -309,7 +323,7 @@ export function PhotoViewer({ photos, start, context, onClose }: { photos: Messa
       <div className="photo-viewer__actions" role="group" aria-label="Photo actions">
         {actions.filter((item) => item.run).map((item) => <button key={item.key} type="button" className="photo-viewer__act" onClick={() => {
           // The action takes focus where it leads (the composer, the new task), so the opener does not take it back.
-          returnTo.current = null; onClose(); item.run?.();
+          returnTo.current = null; leaving.current = true; onClose(); item.run?.();
         }}><Icon name={item.icon} size={20} />{item.label}</button>)}
         <a href={filePath(file.id)} download={file.name}><Icon name="download" size={20} />Save</a>
         <button type="button" className="photo-viewer__act" onClick={() => void share()} disabled={bytes.status !== 'ready'}><Icon name="share" size={20} />Share</button>

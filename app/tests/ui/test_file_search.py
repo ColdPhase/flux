@@ -1,4 +1,5 @@
-"""Browser tests for search inside files (C-63, #1382): Ctrl+K finds what a PDF, a Word document and a Markdown file say, shows the file's row with a
+"""Browser tests for search inside files (C-63, #1382): Ctrl+K finds what a PDF, a Word document and a Markdown file say, and a photo by its name
+(#1424 B), shows the file's row with a
 snippet, opens its message with its preview open (a PDF at the page that matched), and finds nothing for someone who may not read the space or once the
 message is removed. The API half (rows, access, the sandbox, agents) is tests/app/file-text.test.ts. Runs through scripts/check_ui.sh test_file_search.
 FLUX_UI_BROWSER selects chromium (default) or webkit.
@@ -6,6 +7,7 @@ FLUX_UI_BROWSER selects chromium (default) or webkit.
 
 from __future__ import annotations
 
+import base64
 import io
 import os
 import re
@@ -28,6 +30,8 @@ PEOPLE = {"ada": ("Ada Kowalska", f"ada.files+{STAMP}@example.test"), "jonas": (
           "wera": ("Wera Lis", f"wera.files+{STAMP}@example.test")}
 # Words nobody else writes, so each finds its file alone.
 PDF_WORD, DOCX_WORD, MD_WORD = "zorbalux", "quindrelle", "plimsoleth"
+# A real, decodable baseline JPEG of 16x8 (tests/app/support/pictures.ts holds the same bytes), with its JFIF header.
+JPEG = b"\xff\xd8" + b"\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00" + base64.b64decode("/9j/2wBDAAUDBAQEAwUEBAQFBQUGBwwIBwcHBw8LCwkMEQ8SEhEPERETFhwXExQaFRERGCEYGh0dHx8fExciJCIeJBweHx7/2wBDAQUFBQcGBw4ICA4eFBEUHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh7/wAARCAAIABADAREAAhEBAxEB/8QAFAABAAAAAAAAAAAAAAAAAAAABf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/xAAWAQEBAQAAAAAAAAAAAAAAAAAGBAf/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwAccFCydqD/2Q==")[2:]
 
 
 def pdf_bytes(pages: list[str]) -> bytes:
@@ -108,6 +112,8 @@ class FileSearch(unittest.TestCase):
              pdf_bytes(["Cover page of the supplier contract", f"Clause nine says the {PDF_WORD} must be calibrated every spring.", "Signatures"]))
         root("docx", "Minutes of Tuesday", "board-minutes.docx", docx_bytes(["Board minutes", f"Agreed: the {DOCX_WORD} budget is approved."]))
         root("md", "Notes for the lab", "lab-notes.md", f"# Lab notes\n\nThe {MD_WORD} section is finished.\n".encode())
+        # A photo is found by its name alone (#1424 B): nothing inside it is read.
+        root("photo", "From the site visit", "IMG_2041.jpg", JPEG)
         # The worker reads each file a moment after its message is sent: wait until all three are found, as Ada.
         deadline = time.time() + 90
         pending = {PDF_WORD, DOCX_WORD, MD_WORD}
@@ -234,6 +240,32 @@ class FileSearch(unittest.TestCase):
         self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("window.innerWidth"), "no horizontal scroll")
         self.assertGreaterEqual(row.bounding_box()["height"], 44)
         self.shot(page, "file-search-phone")
+
+    def test_05_a_photo_is_found_by_its_name_and_opens_in_the_photo_viewer(self) -> None:
+        """Founder decision #1424 B (2026-11-15): search finds every file by its name, a photo too."""
+        page = self.page("jonas")
+        page.goto("/")
+        dialog, field = self.jump(page, "IMG_2041")
+        row = dialog.get_by_role("option", name=re.compile("IMG_2041.jpg"))
+        expect(row).to_have_count(1)
+        expect(dialog.locator(".jump__sh", has_text="Files")).to_be_visible()
+        expect(row.locator(".file-icon")).to_be_visible()
+        expect(row).to_have_attribute("aria-selected", "true")
+        self.shot(page, "file-search-photo-name")
+        field.press("Enter")
+        expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}/conversations/{self.ids['conversation:photo']}\?file={self.ids['file:photo']}#message-{self.ids['photo']}"))
+        viewer = page.locator(".photo-viewer")
+        expect(viewer).to_be_visible()
+        # The photo itself, read again on open; its alt is the message's caption, and the line under it names the file.
+        expect(viewer.get_by_role("img", name="From the site visit")).to_be_visible()
+        expect(viewer.locator(".photo-viewer__caption small")).to_contain_text("IMG_2041.jpg")
+        expect(viewer.get_by_role("button", name="Close photo")).to_be_focused()
+        viewer.get_by_role("button", name="Close photo").click()
+        expect(viewer).to_have_count(0)
+        expect(page).to_have_url(re.compile(r"^(?!.*[?&]file=)"))
+        expect(page.locator(f"#message-{self.ids['photo']}")).to_be_visible()
+        # Someone who may not read the space does not find it by its name either.
+        self.assertEqual([item for item in self.contexts["wera"].request.get("/api/v1/search?q=IMG_2041").json()["items"] if item["kind"] == "file"], [])
 
     def test_99_a_removed_message_takes_its_file_out_of_search_at_once(self) -> None:
         response = self.contexts["ada"].request.delete(f"/api/v1/conversations/{self.ids['conversation:md']}/messages/{self.ids['md']}", headers={"origin": ORIGIN})

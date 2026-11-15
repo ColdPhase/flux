@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import type { Conversation, SearchResponse, SearchResult, StagedFile } from '@flux/contracts';
 import { startFileText } from '../../apps/worker/src/file-text/index.js';
@@ -8,6 +10,7 @@ import { mcp, toolValue } from './support/mcp.js';
 import { connectionString, db, pool } from './support/db.js';
 import { createSealed, passphrase, unlock } from './support/encryption.js';
 import { docxBytes, pdfBytes } from './support/file-text.js';
+import { jpeg } from './support/pictures.js';
 import { addMember, expectStatus, grant, person, project, removeFromSpace, workspace, type Person } from './support/people.js';
 import { ensureSpaceAiAllowed } from './support/space-ai.js';
 
@@ -137,7 +140,28 @@ describe('the text inside files, found by people and agents (C-63)', () => {
     assert.equal(files(await search(reader, lost)).length, 1, 'and again once the grant is back');
   });
 
-  test('a file nobody can read is finished without text and is still found by its name; a file of a kind that is not read gets no row', async () => {
+  test('every file is found by its name (#1424 B): a photo, a video and a spreadsheet, with no job; only who may read the space finds them', async () => {
+    const tag = word('trip');
+    const sent = await send(owner, spaceId, [
+      { name: `IMG_2041 ${tag}.jpg`, bytes: jpeg() },
+      { name: `Site walk ${tag}.mp4`, bytes: readFileSync(join(import.meta.dirname, '../ui/fixtures/video/clip.mp4')) },
+      { name: `Budget ${tag}.xlsx`, bytes: Buffer.from([0x50, 0x4b, 3, 4, 0, 0, 0, 0]) },
+    ]);
+    // The rows are there the moment the message is sent, and nothing waits for the worker: their insides are never read.
+    assert.equal(await jobs(sent.fileIds), 0, 'no job for a photo, a video or a spreadsheet');
+    for (const fileId of sent.fileIds) assert.deepEqual((await rowsOf(fileId)).map((row) => row.version), [0], 'the name row alone');
+    assert.deepEqual(files(await search(reader, 'IMG_2041')).map(titleOf), [`IMG_2041 ${tag}.jpg`], 'the photo by its name');
+    assert.deepEqual(files(await search(reader, 'site walk')).map(titleOf).filter((name) => name.includes(tag)), [`Site walk ${tag}.mp4`], 'the video by its name');
+    const all = files(await search(owner, tag));
+    assert.deepEqual(all.map(titleOf).sort(), [`Budget ${tag}.xlsx`, `IMG_2041 ${tag}.jpg`, `Site walk ${tag}.mp4`]);
+    const photo = all.find((hit) => titleOf(hit).startsWith('IMG_2041'))!;
+    assert.deepEqual({ ...photo.target }, { type: 'file', projectId: spaceId, conversationId: sent.conversation.id, messageId: sent.messageId, fileId: sent.fileIds[0]! },
+      'a hit opens the message with the file');
+    assert.equal(photo.label, 'File');
+    assert.deepEqual((await search(outsider, tag)).items, [], 'a member outside the restricted space finds none of them');
+  });
+
+  test('a file nobody can read is finished without text and is still found by its name; a file of a kind that is not read has its name row only', async () => {
     const sent = await send(owner, spaceId, [
       { name: 'scanned-contract.pdf', bytes: pdfBytes(['']) },
       { name: 'broken-binary.txt', bytes: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 1, 2, 3, 0, 0]) },
@@ -146,19 +170,28 @@ describe('the text inside files, found by people and agents (C-63)', () => {
     await settled(sent.fileIds);
     assert.deepEqual((await rowsOf(sent.fileIds[0]!)).map((row) => row.version), [0], 'the name row alone');
     assert.deepEqual((await rowsOf(sent.fileIds[1]!)).map((row) => row.version), [0]);
-    assert.deepEqual(await rowsOf(sent.fileIds[2]!), [], 'a spreadsheet is not read and has no row');
+    assert.deepEqual((await rowsOf(sent.fileIds[2]!)).map((row) => row.version), [0], 'a spreadsheet is not read: its name row alone');
     assert.deepEqual(files(await search(reader, 'scanned contract')).map(titleOf), ['scanned-contract.pdf']);
   });
 
-  test('an encrypted space is not indexed: no row and no job, not even for a name', async () => {
+  test('an encrypted space: no job and no text, and a file is found by its name only in the unlocked space, never from a visible column', async () => {
     const secret = passphrase();
     const sealed = (await createSealed(owner, 'File text garden', secret)).workspace;
     assert.equal((await unlock(owner.browser, sealed.id, { password: secret })).status, 200);
     const space = await project(owner, sealed.id, 'Beds', 'workspace');
-    const sent = await send(owner, space.id, [{ name: 'garden-notes.pdf', bytes: pdfBytes([`Hidden ${word('garden')}`]) }]);
-    assert.deepEqual(await rowsOf(sent.fileIds[0]!), []);
-    assert.equal(await jobs(sent.fileIds), 0);
-    assert.equal((await pool.query('SELECT count(*)::int AS n FROM search_documents WHERE workspace_id = $1 AND kind = \'file\'', [sealed.id])).rows[0].n, 0);
+    const name = word('gardennotes');
+    const sent = await send(owner, space.id, [{ name: `${name}.pdf`, bytes: pdfBytes([`Hidden ${word('garden')}`]) }, { name: `${name} beds.jpg`, bytes: jpeg() }]);
+    assert.equal(await jobs(sent.fileIds), 0, 'nothing is queued to be read');
+    const rows = (await pool.query('SELECT version, sealed, title, body FROM search_documents WHERE kind = \'file\' AND object_id = ANY($1::text[]) ORDER BY object_id', [sent.fileIds])).rows;
+    assert.deepEqual(rows, sent.fileIds.map(() => ({ version: 0, sealed: true, title: '', body: '' })), 'a placeholder name row each, with nothing in it');
+    const plain = await pool.query('SELECT 1 FROM search_documents WHERE workspace_id = $1 AND (title LIKE $2 OR body LIKE $2)', [sealed.id, `%${name}%`]);
+    assert.equal(plain.rowCount, 0, 'the name is in no visible column');
+    // The in-memory index of the unlocked space finds both by their names, and opens their message.
+    const found = files(await search(owner, name));
+    assert.deepEqual(found.map(titleOf).sort(), [`${name} beds.jpg`, `${name}.pdf`]);
+    const hit = found.find((item) => titleOf(item) === `${name}.pdf`)!;
+    assert.deepEqual({ ...hit.target }, { type: 'file', projectId: space.id, conversationId: sent.conversation.id, messageId: sent.messageId, fileId: sent.fileIds[0]! });
+    assert.deepEqual((await search(outsider, name)).items, [], 'and nobody outside the space finds them');
   });
 });
 

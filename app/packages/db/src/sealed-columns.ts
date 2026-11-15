@@ -143,7 +143,8 @@ export const SEALED_COLUMNS: Readonly<Record<string, SealedTable>> = Object.free
 export const VISIBLE_COLUMNS: Readonly<Record<string, Readonly<Record<string, string>>>> = Object.freeze({
   workspaces: { name: 'shown to members while locked ("Garden club is waiting to be unlocked")', created_by: 'a user id' },
   workspace_members: { user_id: 'a user id', role: 'an enum', created_by: 'a user id' },
-  workspace_removed_people: { user_id: 'a user id', removed_by: 'a user id' },
+  workspace_removed_people: { user_id: 'a user id', removed_by: 'a user id', role: 'an enum (the role they had)',
+    kept: 'the ids of the spaces and direct messages they were in, with an enum role and a time each (#1424 F), no content' },
   project_ai_policies: { state: 'an enum', changed_by: 'a user id' },
   workspace_invites: { role: 'an enum', email: 'the invited address, as visible as a member\'s account address (people are metadata)',
     token_hash: 'a SHA-256 of the link token, no content', created_by: 'a user id', revoked_by: 'a user id', accepted_by: 'a user id' },
@@ -200,7 +201,7 @@ export const VISIBLE_COLUMNS: Readonly<Record<string, Readonly<Record<string, st
     response_etag: 'a version tag' },
   search_documents: { doc_key: 'object ids', kind: 'an enum', audience_key: 'ids', object_id: 'an id', status: 'an enum',
     title: 'empty in a placeholder row of a sealed workspace', body: 'empty in a placeholder row of a sealed workspace', author_kind: 'an enum',
-    author_id: 'a principal id', page: 'a number (a PDF page of a file row; a file of an encrypted space has no row)', tsv: 'empty in a placeholder row of a sealed workspace',
+    author_id: 'a principal id', page: 'a number (a PDF page of a file row; a file of an encrypted space has only its placeholder name row, without one)', tsv: 'empty in a placeholder row of a sealed workspace',
     keys: 'hashed search keys, generated from title and body: empty in a placeholder row' },
   search_changes: { doc_key: 'object ids' },
   live_sessions: { created_by: 'a user id', state: 'an enum', room_id: 'a room id', joined_by: 'user ids' },
