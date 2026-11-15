@@ -650,7 +650,8 @@ function AppLayoutContent() {
       if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing || event.metaKey || event.ctrlKey || event.altKey) return;
       const target = event.target instanceof Element ? event.target : null;
       if (target?.closest('[role="dialog"], [role="menu"], [role="listbox"], #details')) return;
-      if (document.querySelector('.ui-overlay[data-state="open"], [role="menu"]')) return;
+      // A window, a calendar or a menu that is open takes Esc first, wherever focus is while it opens.
+      if (document.querySelector('.ui-overlay[data-state="open"], [role="menu"], [role="dialog"]:not(#details)')) return;
       // A field other than a composer keeps its Escape (a Wiki page being written, a search being typed).
       const field = target instanceof HTMLTextAreaElement && target.closest('.composer, .composer__box') ? target : null;
       if (!field && target?.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return;
