@@ -46,7 +46,7 @@ import { DmUnreadProvider } from '../dm/dmUnread';
 import { PlaceMutesProvider, notificationsChanged, useMuteRow } from '../notifications/mutes';
 import { PhotosContext } from '../people/photos';
 import { PhoneAvatar, PhoneBack, PhoneDock, PhoneHomeLead, phoneHidesDock, phoneOffersCreate, phonePlaces } from './PhoneChrome';
-import { isTyping, watchConversationLinks } from '../ui/keys';
+import { isTyping, watchConversationLinks, watchLostFocus } from '../ui/keys';
 
 const lastConversationPath = (userId: string, projectId: string) => remembered('conversation', userId, projectId) ?? `/projects/${projectId}`;
 /** The Tasks view last chosen in this project (#136), e.g. `?status=blocked&show=mine`. */
@@ -60,7 +60,19 @@ function lastMapPath(userId: string, projectId: string, sketches: { items: { id:
   return remembered('map', userId, projectId) ?? (only ? `/projects/${projectId}/map/${only.id}` : `/projects/${projectId}/map`);
 }
 
-/** The control that stands for an object outside the panel: a task's or a decision's card in the conversation, else its row in Tasks. */
+/**
+ * Esc in a composer (F-026 §4): focus goes to the newest message of the conversation the composer writes to, the draft stays, and the single
+ * keys work from there. A conversation with no message yet gives it to the page's content.
+ */
+function leaveComposer(field: HTMLElement) {
+  const place = field.closest('.convo-split__stream, .dm, .agc, #content') ?? document.getElementById('content');
+  const messages = place ? [...place.querySelectorAll<HTMLElement>('[id^="message-"][tabindex]')] : [];
+  const newest = messages.at(-1) ?? document.getElementById('content');
+  field.blur();
+  newest?.focus({ preventScroll: true });
+}
+
+/** The control that stands for an object outside the panel: a task's or a decision's card in the conversation, else its row or card in Tasks. */
 function objectControl(view: DetailsView): HTMLElement | null {
   if (typeof view !== 'object' || !('id' in view) || (view.kind !== 'work' && view.kind !== 'decision')) return null;
   // A card folded into "8 task updates" (S8) is hidden: the fold's own button stands for it.
@@ -70,8 +82,8 @@ function objectControl(view: DetailsView): HTMLElement | null {
     return fold ?? element;
   };
   const id = CSS.escape(view.id);
-  return [...document.querySelectorAll<HTMLElement>(`[data-native-ref="${view.kind}:${id}"]`)].map(outside).find(Boolean)
-    ?? outside(document.querySelector<HTMLElement>(`[data-work-id="${id}"] .ws-item`));
+  return [...document.querySelectorAll<HTMLElement>(`[data-native-ref="${view.kind}:${id}"], [data-decision-card="${id}"]`)].map(outside).find(Boolean)
+    ?? outside(document.querySelector<HTMLElement>(`[data-work-id="${id}"] .ws-item, [data-card-id="${id}"] .tb-card__open`));
 }
 
 const SIDEBAR_KEY = 'flux.sidebar';
@@ -340,6 +352,8 @@ function AppLayoutContent() {
   useAnsweredInbox(me.user.id);
   // Following a link to a conversation keeps what is typed meanwhile for its composer (P2 #2).
   useEffect(() => watchConversationLinks(), []);
+  // What had focus went away under it: the next control takes it, never the page itself (F-026 §4).
+  useEffect(() => watchLostFocus(), []);
   // The computer's sidebar collapses to its 64px rail with "[" (F-026 S19), remembered on this device.
   const [railed, setRailed] = useState(() => { try { return localStorage.getItem(SIDEBAR_KEY) === 'rail'; } catch { return false; } });
   const toggleRail = useCallback(() => setRailed((current) => {
@@ -457,7 +471,9 @@ function AppLayoutContent() {
     params.delete('open');
     const search = params.toString();
     // The entry keeps its state, so the origin it was followed from survives the flag leaving the address (#592).
-    navigate({ pathname: location.pathname, search: search ? `?${search}` : '', hash: location.hash }, { replace: true, defaultShouldRevalidate: false, state: location.state });
+    // `opened` tells the place it was arrived at to open this object: focus goes to the object's panel, never to the composer (Esc closes it).
+    const kept = location.state && typeof location.state === 'object' ? location.state : {};
+    navigate({ pathname: location.pathname, search: search ? `?${search}` : '', hash: location.hash }, { replace: true, defaultShouldRevalidate: false, state: { ...kept, opened: true } });
     shell.openDetails({ kind: match[1]!.toLowerCase() as 'work' | 'decision', id: match[2]!.toLowerCase() });
   }, [location.key, location.search, location.pathname, location.hash, location.state, navigate, shell]);
   // A return to a place that is gone lands on its nearest parent with one line saying so (#592); the line is said once.
@@ -621,6 +637,29 @@ function AppLayoutContent() {
     toggleDetails(false);
   };
   useLayoutEffect(() => { closeRef.current = closePanel; });
+  // Esc (F-026 §4 "Where focus goes"): with a panel open it closes the panel wherever focus is, unless a window or a menu is open or the focused
+  // control used Esc first (a title being edited, the `@` list); with none, Esc in a composer leaves it for the newest message, keeping the
+  // draft, so the single keys work from there (persona round 27, P2 6 and 7). Esc inside the panel is the panel's own.
+  const panelShown = detailsOpen && panelMode !== 'sheet';
+  const panelShownRef = useRef(panelShown);
+  useEffect(() => { panelShownRef.current = panelShown; });
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing || event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest('[role="dialog"], [role="menu"], [role="listbox"], #details')) return;
+      if (document.querySelector('.ui-overlay[data-state="open"], [role="menu"]')) return;
+      // A field other than a composer keeps its Escape (a Wiki page being written, a search being typed).
+      const field = target instanceof HTMLTextAreaElement && target.closest('.composer, .composer__box') ? target : null;
+      if (!field && target?.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return;
+      if (panelShownRef.current) { event.preventDefault(); closeRef.current(); return; }
+      if (!field) return;
+      event.preventDefault();
+      leaveComposer(field);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
   // A thread that a press opens beside the conversation (#863 rule 2): the route's reads take a moment, and the panel is its own screen, so it is up
   // from the frame of the press with the thread's loading rows, and takes the thread in its place when the view's own panel arrives. The loading
   // state outlasts the navigation until that panel is showing (or a moment after it has ended without it), so the panel never closes between.

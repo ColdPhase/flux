@@ -128,7 +128,8 @@ function CreateBody({ request, phone, kind, onKind, onSpace, onClose, onTask }: 
   // A pointer on a tab goes on to its text, so typing continues there; the arrow keys keep focus on the tabs.
   const pointerOnTab = (event: MouseEvent) => {
     const tab = event.detail > 0 ? (event.target as HTMLElement).closest<HTMLElement>('[role="tab"]')?.dataset.tab : undefined;
-    if (tab) requestAnimationFrame(() => document.getElementById(`${prefix}-${tab}-field`)?.focus());
+    // What is typed on the way is kept for the field (F-026 §4): "Paint the shed" typed at once lost "Paint " on the tab.
+    if (tab) { awaitField(); requestAnimationFrame(() => document.getElementById(`${prefix}-${tab}-field`)?.focus()); }
   };
   const shared = { phone, carried, projectId, onProject: changeProject, onClose };
   return (
@@ -547,6 +548,8 @@ function DecisionForm({ ids, phone, carried, projectId, onProject, onClose, requ
     request.onCreated?.();
     // Stays set: the window closes, and a second submit in the same tick must not hold a second proposal.
     onClose();
+    // Focus goes to the proposal's card where it shows (the conversation of its space), not back to New (F-026 §4, persona round 27).
+    requestAnimationFrame(() => requestAnimationFrame(() => document.querySelector<HTMLElement>(`#content [data-decision-card="${CSS.escape(card.id)}"]`)?.focus()));
     toast({ message: 'Decision proposed', tone: 'neutral', onLeave: handle.send, action: { label: 'Undo', key: 'Z', onClick: () => {
       if (handle.undo()) { card.drop(); toast({ message: 'Not proposed' }); }
       else toast({ message: 'It was already proposed; it waits in the Inbox of those who can accept it.' });

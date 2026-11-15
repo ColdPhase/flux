@@ -52,7 +52,7 @@ export interface PaneProps {
 }
 
 /** `found`: a search result brought the person to this message (#1424). */
-interface NavState { fromStream?: boolean; backToStream?: boolean; focusComposer?: boolean; keepPanel?: boolean; sourceOf?: string; found?: boolean; origin?: unknown }
+interface NavState { fromStream?: boolean; backToStream?: boolean; focusComposer?: boolean; keepPanel?: boolean; sourceOf?: string; found?: boolean; origin?: unknown; opened?: boolean }
 
 /**
  * One project conversation (UI116-1, 2026-10-02): the stream of roots with its composer, and the open
@@ -76,14 +76,17 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
   if ((conversation?.id ?? null) !== shownId) { setShownId(conversation?.id ?? null); setClosing(null); }
   // A search result that names a root nobody has replied to shows it in the conversation, marked: a thread of one message has nothing to show, so no
   // empty panel opens (#1424). Decided once per arrival, so a reply that comes later never opens a panel beside the reader.
-  const alone = state?.found === true && !!conversation && !conversation.task && !!arrived && conversation.messages.length === 1 && conversation.messages[0]!.id === arrived;
+  // The same for any link to such a message (Copy link, a message link, Search, the Inbox; F-026 §4, persona round 27 P2 6): it is marked in
+  // the conversation, and no empty "0 replies" thread opens beside it.
+  // A link that asks to write (Reply) still opens the thread, to reply in it.
+  const alone = !state?.focusComposer && !!conversation && !conversation.task && !!arrived && conversation.messages.length === 1 && conversation.messages[0]!.id === arrived;
   const [lone, setLone] = useState({ key: location.key, alone });
   if (lone.key !== location.key) setLone({ key: location.key, alone });
   const withheld = lone.key === location.key ? lone.alone : alone;
   const thread = conversation && conversation.id !== closing && !withheld ? conversation : null;
   const makeWork = useCreateWorkFromMessage(project);
   const owners = useAgentOwners(project);
-  const { reopenPanel } = useShellActions();
+  const { reopenPanel, shownObject } = useShellActions();
 
   const onDenied = useCallback((cause: unknown) => {
     // A lost project or session reloads the route, which shows why instead of stale content.
@@ -207,7 +210,10 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
     if (location.key !== seen.key) seen.moved = true;
     const inside = seen.moved && project.id === seen.project;
     seen.project = project.id;
-    if (touch || state?.focusComposer || state?.fromStream || state?.keepPanel || arrived || location.search || (inside && navigationType === 'POP')) return undefined;
+    // Arriving to open something (`?open=task:…/decision:…`, which leaves the address as `opened`; a message link; a task or decision its
+    // panel shows again on a return) puts focus on that object, never in the composer, so Esc closes it.
+    if (touch || state?.focusComposer || state?.fromStream || state?.keepPanel || state?.opened || shownObject || arrived || location.search
+      || (inside && navigationType === 'POP')) return undefined;
     return focusComposerOnArrival(thread ? 'thread-composer' : 'project-composer');
     // Once per arrival (a navigation), never a re-render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
