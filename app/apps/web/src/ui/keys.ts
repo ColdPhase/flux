@@ -57,7 +57,8 @@ function waitForField() {
   keptUntil = fieldDue;
   if (watching || typeof document === 'undefined') return;
   watching = true;
-  document.addEventListener('keydown', (event) => {
+  // On the window, as the quiet keys of a view switch are (`useQuietViewKeys`, which stops them there): a key typed while the page changes is kept.
+  window.addEventListener('keydown', (event) => {
     if (!fieldOnItsWay() || inField(event.target) || event.metaKey || event.ctrlKey || event.altKey || event.key.length !== 1) return;
     event.preventDefault();
     typed += event.key;
