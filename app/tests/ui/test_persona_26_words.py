@@ -27,7 +27,7 @@ import zlib
 from playwright.sync_api import Browser, Page, expect, sync_playwright
 
 from app_select import choose, open_select
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, show_map_as, start_forwarder
 from test_settings import UI_BROWSER, shot
 
 PASSWORD = "persona round twenty six words"
@@ -315,6 +315,8 @@ class PersonaRound26Words(unittest.TestCase):
         page = self.page("mia", phone=True)
         sketch = self.api(page, "POST", f"/api/v1/workspaces/{self.ids['company']}/sketches", {"title": "Shift ideas", "scope": "project", "projectId": self.ids["space"]}, 201)["id"]
         page.goto(f"/projects/{self.ids['space']}/map/{sketch}")
+        expect(page.locator(".sk-page .sk")).to_be_visible()
+        show_map_as(page, "List", touch=True)
         page.get_by_role("toolbar", name="Map tools").get_by_role("button", name="Thought", exact=True).tap()
         draft = page.get_by_role("form", name="New thought draft")
         expect(draft).to_be_visible()
@@ -322,6 +324,8 @@ class PersonaRound26Words(unittest.TestCase):
         expect(draft.get_by_role("button", name="Cancel")).to_be_visible()
         computer = self.page("mia")
         computer.goto(f"/projects/{self.ids['space']}/map/{sketch}")
+        expect(computer.locator(".sk-page .sk")).to_be_visible()
+        show_map_as(computer, "List")
         computer.get_by_role("toolbar", name="Map tools").get_by_role("button", name="Thought", exact=True).click()
         expect(computer.get_by_role("form", name="New thought draft")).to_contain_text("Escape cancels")
 
