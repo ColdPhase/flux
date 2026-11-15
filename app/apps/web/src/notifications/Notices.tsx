@@ -82,9 +82,12 @@ function useLift(active: boolean, card: React.RefObject<HTMLElement | null>, pho
   useLayoutEffect(() => {
     if (!active || phone) return undefined;
     let frame = 0;
+    // One measure in the next frame for all that changed before it: a page that changes every frame (a panel coming in, a live line)
+    // must not put the measure off frame after frame, which left the card where it stood before the panel was there (WebKit).
     const measure = () => {
-      cancelAnimationFrame(frame);
+      if (frame) return;
       frame = requestAnimationFrame(() => {
+        frame = 0;
         const box = card.current?.getBoundingClientRect();
         if (!box) return;
         const width = document.documentElement.clientWidth;
@@ -108,10 +111,11 @@ function useLift(active: boolean, card: React.RefObject<HTMLElement | null>, pho
       });
     };
     const observer = new MutationObserver(measure);
-    observer.observe(document.body, { childList: true, subtree: true });
+    // A panel that docks, floats or leaves changes its class, not the page's children.
+    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
     window.addEventListener('resize', measure);
     measure();
-    return () => { cancelAnimationFrame(frame); observer.disconnect(); window.removeEventListener('resize', measure); };
+    return () => { cancelAnimationFrame(frame); frame = 0; observer.disconnect(); window.removeEventListener('resize', measure); };
   }, [active, phone, card]);
   return active && !phone ? place : { lift: 0, right: null };
 }
