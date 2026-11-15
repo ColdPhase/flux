@@ -80,7 +80,7 @@ export function InboxAside({ queue }: { queue: Queue }) {
           {parts.map((part, at) => (
             <Fragment key={part.which}>
               {at ? <span aria-hidden="true"> · </span> : null}
-              <button type="button" className="nyq-aside__open" aria-haspopup="dialog" onClick={() => setOpenList(part.which)}>{part.label}</button>
+              <Button variant="link" size="sm" className="nyq-aside__open" aria-haspopup="dialog" onClick={() => setOpenList(part.which)}>{part.label}</Button>
             </Fragment>
           ))}
         </p>

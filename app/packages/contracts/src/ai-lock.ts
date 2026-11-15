@@ -148,6 +148,7 @@ export const AI_ADJACENT_ROUTES: Readonly<Record<string, AiRouteRule>> = {
   'POST /api/v1/projects/:projectId/grants': exempt('A standing grant for an agent is configuration; the agent is denied while AI is off and works again afterwards'),
   'DELETE /api/v1/projects/:projectId/grants/:grantId': exempt(REDUCES),
   'GET /api/v1/needs-you': useCase('Assistant changes and notes of a space with AI off are left out, and so are AI-origin notifications'),
+  'GET /api/v1/needs-you/aside': useCase('The lists of what was put aside or done today hold only items the queue showed, so a space with AI off is left out the same way'),
   'POST /api/v1/needs-you/:key': useCase('An item of a space with AI off is not in the queue, so resolving it answers 404'),
   'DELETE /api/v1/needs-you/:key': exempt('Restores an item the person put aside; shows nothing the list does not'),
   'GET /api/v1/notification-preferences': exempt(SETTINGS),
