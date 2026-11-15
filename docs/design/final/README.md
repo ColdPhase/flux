@@ -1464,7 +1464,7 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   `/decide` typed in a thread keeps the thread's opening message as its source, as `/task` does), and a quiet **This replaces an older
   decision…** (plain words, persona rounds 6 and 30) that shows a "Replaces" choice of the space's accepted decisions in the same window, with Next and Previous when there
   are more than one page of them. The footer says "Everyone else in the space sees it in their Inbox" (plain words, persona rounds 28 and 6), and, when you are the
-  space's only member, the true thing: "Only you are in this space, so it waits in your Inbox" (persona round 8) and the one primary is **Propose
+  space's only member, the true thing: "Only you are in this space: it stays on its card until you accept it" (persona round 8) and the one primary is **Propose
   decision**; then the toast "Decision proposed · Undo". It reaches everyone at once, and Undo withdraws it for everyone
   ("Not proposed"; [Notices](#notices), founder decision L, #1424). There is no second form in the side panel: the words "A person with write
   access accepts it" are gone. The composer keeps what was typed until the decision is proposed, as `/task` does.

@@ -23,6 +23,8 @@ from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, start_f
 PASSWORD = "one discussion in both places"
 STAMP = int(time.time() * 1000)
 ADA = {"name": "Ada Lind", "email": f"ada.discuss+{STAMP}@example.test"}
+# Your own proposal never waits in your Inbox (#763 FT-8): Cy proposes, so it waits in Ada's.
+CY = {"name": "Cy Moreau", "email": f"cy.discuss+{STAMP}@example.test"}
 MESSAGE = "Should the probes in bed 5 be replaced before the frost?"
 PROPOSAL = "Replace the bed 5 probes with capacitive ones"
 DRAFT = "An unrelated note for the space"
@@ -107,11 +109,18 @@ class DecisionDiscussion(unittest.TestCase):
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
         type(self).state = page.context.storage_state()
         ws = self.api(page, "POST", "/api/v1/workspaces", {"name": "Riverside garden"}, status=201)
-        project = self.api(page, "POST", f"/api/v1/workspaces/{ws['id']}/projects", {"name": "Garden sensors", "visibility": "restricted"}, status=201)
+        cy = self.browser.new_context(base_url=ORIGIN, service_workers="block")
+        self.addCleanup(cy.close)
+        signed = cy.request.post("/api/auth/sign-up/email", data={"email": CY["email"], "password": PASSWORD, "name": CY["name"]}, headers={"origin": ORIGIN})
+        self.assertEqual(signed.status, 200, signed.text())
+        cy_id = cy.request.get("/api/v1/me").json()["user"]["id"]
+        self.api(page, "POST", f"/api/v1/workspaces/{ws['id']}/members", {"email": CY["email"], "role": "member"})
+        project = self.api(page, "POST", f"/api/v1/workspaces/{ws['id']}/projects", {"name": "Garden sensors", "visibility": "restricted", "people": [cy_id]}, status=201)
         pid = project["id"]
         self.api(page, "POST", f"/api/v1/projects/{pid}/conversations", {"body": MESSAGE, "clientMessageId": str(uuid.uuid4())}, status=201)
-        # Nobody else here can accept it, so it waits in Ada's own Inbox.
-        proposal = self.api(page, "POST", f"/api/v1/projects/{pid}/decisions", {"title": PROPOSAL, "rationale": "Capacitive probes do not corrode"}, status=201)
+        response = cy.request.post(f"/api/v1/projects/{pid}/decisions", data={"title": PROPOSAL, "rationale": "Capacitive probes do not corrode"}, headers={"origin": ORIGIN})
+        self.assertEqual(response.status, 201, response.text())
+        proposal = response.json()
         type(self).ids = {"project": pid, "proposal": proposal["id"], "workspace": ws["id"]}
 
     # ---------------------------------------------------------------- R in the Inbox, on a computer
@@ -315,7 +324,10 @@ class DecisionDiscussion(unittest.TestCase):
         expect(line).to_have_text(f"About “{SECOND}”")
 
     def test_10_the_decision_window_says_the_true_thing_to_a_spaces_only_member(self) -> None:
-        for project, words in ((self.ids["project"], "Only you are in this space, so it waits in your Inbox"), (self.ids["lamp"], "Everyone else in the space sees it in their Inbox")):
+        owner = self.page()
+        owner.goto("/")
+        solo = self.api(owner, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects", {"name": "Solo bench", "visibility": "restricted"}, status=201)
+        for project, words in ((solo["id"], "Only you are in this space: it stays on its card until you accept it"), (self.ids["lamp"], "Everyone else in the space sees it in their Inbox")):
             with self.subTest(project=project):
                 page = self.page()
                 page.goto(f"/projects/{project}")
@@ -324,7 +336,7 @@ class DecisionDiscussion(unittest.TestCase):
                 composer.fill("/decide Try a new probe")
                 composer.press("Enter")
                 expect(window(page)).to_be_visible()
-                expect(window(page).locator(".create__note")).to_have_text(words)
+                expect(window(page).get_by_text(words, exact=True)).to_be_visible()
                 page.keyboard.press("Escape")
 
 

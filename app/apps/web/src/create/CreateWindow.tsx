@@ -602,7 +602,7 @@ function DecisionForm({ ids, phone, carried, projectId, onProject, onClose, requ
   }
   return (
     <Panel ids={ids} where={<ProjectWhere ids={ids} projectId={projectId} onProject={onProject} phone={phone} />} onSubmit={submit}
-      foot={<><p className="create__note">{!project ? 'A decision belongs to a space' : onlyMe ? 'Only you are in this space, so it waits in your Inbox' : 'Everyone else in the space sees it in their Inbox'}</p><Go label="Propose decision" busy={busy} ready={ready} phone={phone} /></>}>
+      foot={<><p className="create__note">{!project ? 'A decision belongs to a space' : onlyMe ? 'Only you are in this space: it stays on its card until you accept it' : 'Everyone else in the space sees it in their Inbox'}</p><Go label="Propose decision" busy={busy} ready={ready} phone={phone} /></>}>
       {project ? <>
         <input ref={titleRef} id={ids.field} className="create__name" aria-label="Decision" value={flat(carried.text)} maxLength={WORK_LIMITS.title} disabled={busy} placeholder="What is being decided?"
           onChange={(event) => { carried.set(event.target.value); setError(''); }} />
