@@ -282,7 +282,7 @@ class UndoAndOneCard(unittest.TestCase):
         # its Owner; on someone else's message it starts with no owner, as before. Nothing is created here: each window is closed.
         page = self.page()
         self.stream(page)
-        owner = lambda: dialog(page).locator(".create__chip", has=page.get_by_role("combobox", name="Owner"))  # noqa: E731
+        owner = lambda: dialog(page).get_by_role("combobox", name="Owner")  # noqa: E731
 
         def close() -> None:
             page.keyboard.press("Escape")
@@ -293,7 +293,7 @@ class UndoAndOneCard(unittest.TestCase):
         own.hover()
         own.get_by_role("button", name="Create task", exact=True).click()
         expect(dialog(page)).to_be_visible()
-        expect(owner()).to_have_text("Ada Kowalska")
+        expect(owner()).to_have_text("Ada Kowalska (you)")
         close()
         theirs = page.locator(f"#message-{self.ids['buns']}")
         theirs.scroll_into_view_if_needed()
@@ -307,14 +307,14 @@ class UndoAndOneCard(unittest.TestCase):
         own.focus()
         page.keyboard.press("t")
         expect(dialog(page)).to_be_visible()
-        expect(owner()).to_have_text("Ada Kowalska")
+        expect(owner()).to_have_text("Ada Kowalska (you)")
         close()
         # Your own `/task` words.
         composer = page.locator("#project-composer")
         composer.fill("/task Bring the spare float")
         composer.press("Enter")
         expect(dialog(page)).to_be_visible()
-        expect(owner()).to_have_text("Ada Kowalska")
+        expect(owner()).to_have_text("Ada Kowalska (you)")
         close()
         composer.fill("")
 
