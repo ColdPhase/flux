@@ -255,8 +255,12 @@ class InboxLists(unittest.TestCase):
         put = window.get_by_role("button", name=re.compile("^Put back")).first
         expect(put).to_be_visible()
         self.assertGreaterEqual(put.bounding_box()["height"], 44, "a touch target")
+        # A sheet: the whole width, from the bottom edge (its rounded top above the rows).
+        page.wait_for_function("() => document.querySelector('.nyq-aside-win').getAnimations().length === 0")
         box = window.bounding_box()
-        self.assertLessEqual(abs(box["y"] + box["height"] - PHONE["height"]), 2, "a sheet from the bottom edge")
+        self.assertLessEqual(abs(box["x"]), 1)
+        self.assertLessEqual(abs(box["width"] - PHONE["width"]), 1)
+        self.assertGreaterEqual(box["y"] + box["height"], page.evaluate("innerHeight") - 12, "it reaches the bottom edge")
         shot(page, "inbox-lists-phone-sheet")
         window.get_by_role("button", name="Close done today").tap()
         expect(window).to_have_count(0)

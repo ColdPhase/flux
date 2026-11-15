@@ -141,8 +141,8 @@ class ReturnFixes(unittest.TestCase):
         # Given to her and not opened yet: one row of Waiting for you, and nothing of it in Continue (#1424 C, one rule with questions).
         waiting = page.get_by_role("list", name="Top of your Inbox").get_by_role("link", name=re.compile(TASK))
         expect(waiting).to_contain_text("Task · Tomasz Wiśniewski · Volunteer sign-up")
-        continue_region = page.get_by_role("region", name="Continue where you left off")
-        expect(continue_region).not_to_contain_text(TASK)
+        # Continue has nothing else to offer here, so it is not shown at all; it never says "Pick up" for the task.
+        expect(page.get_by_text(f"Pick up “{TASK}”")).to_have_count(0)
         shot(page, "h11-home-task-waiting")
         # Opened from the Inbox, it leaves the Inbox, and Continue leads to it with its due day.
         waiting.click()
