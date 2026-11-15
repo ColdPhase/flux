@@ -414,7 +414,8 @@ function AppLayoutContent() {
       if (detailsScope.current !== detailsOwner) return;
       const next = typeof view === 'object' && 'id' in view ? { ...view, projectId: view.projectId ?? projectId } : view;
       const current = now.current;
-      const afresh = !options?.back && !(current.detailsOpen && isOwned(current.detailsView) && ownedRef.current);
+      // Also over a thread (a task card in it, a task made from a reply): the task has its address there too (persona round 30 P2 2).
+      const afresh = !options?.back;
       if (afresh && typeof next === 'object' && 'id' in next && (next.kind === 'work' || next.kind === 'decision')
         && addressFor.current(next.kind, next.id, (next as { projectId?: string }).projectId)) return;
       // Opened from the panel, an object replaces the one shown and keeps the way back; so does anything that takes the place of a
@@ -505,7 +506,9 @@ function AppLayoutContent() {
     if (params.get('open') === `${kind}:${id}`) return false;
     params.delete('open');
     const rest = params.toString();
-    const kept = location.state && typeof location.state === 'object' ? location.state : {};
+    // The entry's own asks (write in the composer, keep a panel, a found message) are not the object's: they would act again on its entry.
+    const kept: Record<string, unknown> = { ...(location.state && typeof location.state === 'object' ? location.state : {}) };
+    for (const ask of ['focusComposer', 'keepPanel', 'found', 'sourceOf']) delete kept[ask];
     // `openPushed`: closing goes Back over this entry instead of leaving a second one with the same address. The flag reads as the links
     // write it (`open=work:<id>`), not encoded.
     navigate({ pathname: location.pathname, search: `?${rest ? `${rest}&` : ''}open=${kind}:${id}`, hash: location.hash }, { defaultShouldRevalidate: false, state: { ...kept, openPushed: true } });
@@ -556,7 +559,7 @@ function AppLayoutContent() {
     let leader = 0;
     const onKey = (event: KeyboardEvent) => {
       if (event.metaKey || event.ctrlKey || event.altKey || event.defaultPrevented || isTyping(event.target)) return;
-      if (document.getElementById('root')?.hasAttribute('data-modal') || document.querySelector('[role="menu"]')) return;
+      if (document.getElementById('root')?.hasAttribute('data-modal') || document.querySelector('[role="menu"]:not([inert])')) return;
       // On a tablet the sidebar is always the rail (Spokój); "[" opens it as the drawer instead.
       if (event.key === '[') { event.preventDefault(); if (tablet) setNavOpen((open) => !open); else toggleRail(); return; }
       const key = event.key.toLowerCase();
@@ -735,7 +738,7 @@ function AppLayoutContent() {
       const target = event.target instanceof Element ? event.target : null;
       if (target?.closest('[role="dialog"], [role="menu"], [role="listbox"], #details')) return;
       // A window, a calendar or a menu that is open takes Esc first, wherever focus is while it opens.
-      if (document.querySelector('.ui-overlay[data-state="open"], [role="menu"], [role="dialog"]:not(#details)')) return;
+      if (document.querySelector('.ui-overlay[data-state="open"], [role="menu"]:not([inert]), [role="dialog"]:not(#details)')) return;
       // A field other than a composer keeps its Escape while it holds something (a search being typed) or writes a page; an empty one
       // ("Search tasks" with nothing in it) does not stop Esc from closing the panel (audit 3274a05 P3 1).
       const field = target instanceof HTMLTextAreaElement && target.closest('.composer, .composer__box') ? target : null;

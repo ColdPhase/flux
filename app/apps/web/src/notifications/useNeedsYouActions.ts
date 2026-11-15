@@ -3,7 +3,6 @@ import { useFollow } from '../place/origin';
 import { awaitField } from '../ui/keys';
 import { decisionAppPath, type NeedsYouItem, type ResolveNeedsYouCommand } from '@flux/contracts';
 import { ApiError } from '../api/client';
-import { useShellActions } from '../app/shellContext';
 import { useToast } from '../ui';
 import { resolveWaiting, updateWork } from '../work/api';
 import { useDiscussDecision } from '../work/discuss';
@@ -28,7 +27,6 @@ export function useNeedsYouActions(queue: Queue): CardHandlers {
   const toast = useToast();
   // An item opens its source as a reference: the Inbox is where Back returns to (#592).
   const navigate = useFollow();
-  const { openDetails } = useShellActions();
   const discussDecision = useDiscussDecision();
   // The latest queue without re-creating the handlers (and the keys that use them) on every answer.
   const latest = useRef(queue);
@@ -132,10 +130,12 @@ export function useNeedsYouActions(queue: Queue): CardHandlers {
 
     open(item: NeedsYouItem, reply = false) {
       // A decision opens where it opens from everywhere (Search, a notification, its card): over its space's conversation (`decisionAppPath`).
-      if (item.kind === 'decision' && item.decision && item.project) void navigate(decisionAppPath(item.project.id, item.decision.id));
-      else if (item.kind === 'blocked' && item.blocked && item.project) openDetails({ kind: 'work', id: item.blocked.workId, projectId: item.project.id });
-      // A task given to you opens in the one panel; opening it takes it out of the Inbox (#1424 C, `useGivenTaskOpened`).
-      else if (item.kind === 'task' && item.task && item.project) openDetails({ kind: 'work', id: item.task.workId, projectId: item.project.id });
+      // A task or a decision opens in its space with its own address and history entry (F-026 §4, persona round 30 P2 2): a reload keeps it,
+      // and closing it (Esc, ×) or Back returns to the Inbox with its open item. `openPushed`: closing goes Back over that entry.
+      if (item.kind === 'decision' && item.decision && item.project) void navigate(decisionAppPath(item.project.id, item.decision.id), { state: { openPushed: true } });
+      else if (item.kind === 'blocked' && item.blocked && item.project) void navigate(`/projects/${item.project.id}/tasks?open=work:${item.blocked.workId}`, { state: { openPushed: true } });
+      // A task given to you: opening it takes it out of the Inbox (#1424 C, `useGivenTaskOpened`).
+      else if (item.kind === 'task' && item.task && item.project) void navigate(`/projects/${item.project.id}/tasks?open=work:${item.task.workId}`, { state: { openPushed: true } });
       else if (reply) { awaitField(); void navigate(item.url, { state: { focusComposer: true } }); }
       else void navigate(item.url);
     },
@@ -187,5 +187,5 @@ export function useNeedsYouActions(queue: Queue): CardHandlers {
         });
       } } });
     },
-  }), [resolve, finishWait, toast, navigate, openDetails, discussDecision]);
+  }), [resolve, finishWait, toast, navigate, discussDecision]);
 }

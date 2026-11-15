@@ -72,6 +72,11 @@ class FocusModel(unittest.TestCase):
         shared = cls.post("piotr", f"/api/v1/workspaces/{workspace}/projects", {"name": SHARED, "visibility": "workspace"})["id"]
         cls.ids["shared"] = shared
         cls.ids["closed"] = cls.post("piotr", f"/api/v1/workspaces/{workspace}/projects", {"name": CLOSED, "visibility": "restricted", "people": [cls.ids["kasia"]]})["id"]
+        # Everyone of the company is in it: its Add people has only "Someone new?".
+        cls.ids["full"] = cls.post("piotr", f"/api/v1/workspaces/{workspace}/projects", {"name": "Night shift", "visibility": "restricted",
+                                                                                      "people": [cls.ids["kasia"], cls.ids["lee"], cls.ids["ola"]]})["id"]
+        # A task given to Kasia: "Task · Piotr Nowak" in her Inbox.
+        cls.ids["given"] = cls.post("piotr", f"/api/v1/projects/{shared}/work", {"title": "Count the screws", "owner": {"kind": "human", "id": cls.ids["kasia"]}})["id"]
         start = lambda who, body: cls.post(who, f"/api/v1/projects/{shared}/conversations", {"body": body, "clientMessageId": str(uuid.uuid4())})  # noqa: E731
         start("piotr", "Saturday's rota is on the Wiki. Tell me if a shift does not work.")
         cls.ids["lone"] = start("piotr", "The flour delivery moved to Thursday.")["messages"][0]["id"]
@@ -505,6 +510,91 @@ class FocusModel(unittest.TestCase):
         page.go_back()
         expect(page).not_to_have_url(re.compile(r"open="))
         expect(panel).to_be_hidden()
+
+
+    # ---------------------------------------------------------------- persona round 30
+
+    def test_24_a_task_opened_from_the_inbox_has_its_address_and_esc_returns_to_its_open_item(self) -> None:
+        for _ in range(80):
+            if any(item.get("task") and item["task"].get("workId") == self.ids["given"] for item in self.contexts["kasia"].request.get("/api/v1/needs-you").json()["items"]):
+                break
+            time.sleep(0.25)
+        page = self.page()
+        page.goto("/inbox")
+        row = page.locator(".nyq__list .nyc").filter(has_text="Count the screws").locator(".nyc__open")
+        expect(row).to_be_visible()
+        row.focus()
+        page.keyboard.press("Enter")
+        page.keyboard.press("Enter")
+        panel = page.locator("#details")
+        expect(panel).to_contain_text("Count the screws")
+        expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}/tasks\?open=work(:|%3A)"))
+        page.reload()
+        expect(panel).to_contain_text("Count the screws")
+        page.wait_for_timeout(800)
+        page.keyboard.press("Escape")
+        expect(page).to_have_url(re.compile(r"/inbox$"))
+        page.wait_for_timeout(800)
+        # Whatever is open now has the ring, so E acts on what is seen.
+        self.assertTrue(page.evaluate("() => { const a = document.activeElement; const open = document.querySelector('.nyq__list .nyc[aria-current=\"true\"]'); return !!open && open.contains(a); }"),
+                        "focus is on the Inbox's open item")
+
+    def test_25_someone_new_keeps_an_address_typed_at_once(self) -> None:
+        page = self.page("piotr")
+        page.goto(f"/projects/{self.ids['full']}/settings")
+        add = page.get_by_role("button", name="Add people", exact=True)
+        add.click()
+        page.keyboard.type("marek@bakery.test")
+        field = page.get_by_role("group", name="Add people").get_by_label("Someone new?")
+        expect(field).to_be_focused()
+        expect(field).to_have_value("marek@bakery.test")
+
+    def test_26_after_decide_the_cursor_stays_in_the_composer(self) -> None:
+        page = self.page()
+        page.goto(f"/projects/{self.ids['shared']}")
+        composer = page.locator("#project-composer")
+        expect(composer).to_be_focused()
+        page.keyboard.type("/decide")
+        page.keyboard.press("Enter")
+        page.keyboard.type("Paper cups only")
+        page.keyboard.press("Enter")
+        expect(page.get_by_role("dialog", name="New decision")).to_be_visible()
+        page.keyboard.press("Control+Enter")
+        expect(page.get_by_role("dialog")).to_have_count(0)
+        page.keyboard.type("ok then")
+        expect(composer).to_be_focused()
+        expect(composer).to_have_value("ok then")
+        composer.fill("")
+
+    def test_27_g_i_in_the_inbox_menus_that_lead_away_and_the_toast_s_key(self) -> None:
+        page = self.page()
+        page.goto("/inbox")
+        expect(page.locator(".nyq__list .nyc__open").first).to_be_visible()
+        page.locator("#content").focus()
+        page.keyboard.press("g")
+        page.keyboard.press("i")
+        page.wait_for_timeout(600)
+        self.assertTrue(page.evaluate("() => { const open = document.querySelector('.nyq__list .nyc[aria-current=\"true\"]'); return !!open && open.contains(document.activeElement); }"),
+                        "G I in the Inbox focuses its open item")
+        # Space ⋯ › Settings with the mouse: focus is not left on ⋯.
+        page.goto(f"/projects/{self.ids['closed']}")
+        more = page.locator("header.top").get_by_role("button", name="More", exact=True)
+        more.click()
+        page.get_by_role("menu", name="More").get_by_role("menuitem", name="Settings", exact=True).click()
+        expect(page.get_by_role("heading", name="Space settings")).to_be_visible()
+        page.wait_for_timeout(600)
+        expect(more).not_to_be_focused()
+        # A toast's Z shows only while Z works: not while the composer has the cursor.
+        page.goto(f"/projects/{self.ids['shared']}/tasks?open=work:{self.ids['task2']}")
+        status = page.locator("#details").get_by_role("button", name=re.compile("^Status"))
+        status.focus()
+        page.keyboard.press("Enter")
+        page.keyboard.press("ArrowDown")
+        page.keyboard.press("Enter")
+        key = page.locator(".ui-toast .ui-toast__action kbd").first
+        expect(key).to_be_visible()
+        page.locator("#details .composer__box textarea").first.focus()
+        expect(key).to_be_hidden()
 
 
 if __name__ == "__main__":
