@@ -18,21 +18,48 @@ function inField(target: EventTarget | null): boolean {
 const FIELD_WAIT_MS = 4000;
 let fieldDue = 0;
 let watching = false;
+/** What was typed while the field was on its way: it goes into the field when the field takes focus. */
+let typed = '';
+
+const fieldOnItsWay = () => fieldDue > performance.now();
+
+/** Puts what was typed before the field arrived at the end of the field, as typing would (React hears it as input). */
+function typeInto(field: EventTarget | null, text: string) {
+  if (field instanceof HTMLTextAreaElement || field instanceof HTMLInputElement) {
+    const end = field.value.length;
+    field.setSelectionRange(end, end);
+    if (!document.execCommand('insertText', false, text)) {
+      field.setRangeText(text, end, end, 'end');
+      field.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  } else if (field instanceof HTMLElement && field.isContentEditable) document.execCommand('insertText', false, text);
+}
 
 /**
- * A press that asks for a field (Reply, opening a thread to reply) moves focus there, often after a route read. From the press until that
- * field has focus, keys are typing, never shortcuts: "Sure…" typed at once must not become R on the message the link arrived at. The wait ends
- * when a field takes focus, when the person presses somewhere, or after a few seconds.
+ * A press that asks for a field (Reply, R, opening a thread to reply) moves focus there, often after a route read. From the press until that
+ * field has focus, keys are typing, never shortcuts: "Sure…" typed at once must not become R on the message the link arrived at, or S and E
+ * in the Inbox (#1424). What is typed meanwhile is kept and goes into the field when it has focus, so no letter is lost. The wait ends when a
+ * field takes focus, when the person presses somewhere (what was kept is dropped), or after a few seconds.
  */
 export function awaitField() {
   fieldDue = performance.now() + FIELD_WAIT_MS;
+  typed = '';
   if (watching || typeof document === 'undefined') return;
   watching = true;
-  document.addEventListener('focusin', (event) => { if (inField(event.target)) fieldDue = 0; }, true);
-  document.addEventListener('pointerdown', () => { fieldDue = 0; }, true);
+  document.addEventListener('keydown', (event) => {
+    if (!fieldOnItsWay() || inField(event.target) || event.metaKey || event.ctrlKey || event.altKey || event.key.length !== 1) return;
+    event.preventDefault();
+    typed += event.key;
+  }, true);
+  document.addEventListener('focusin', (event) => {
+    if (!inField(event.target)) return;
+    const text = fieldOnItsWay() ? typed : '';
+    fieldDue = 0;
+    typed = '';
+    if (text) typeInto(event.target, text);
+  }, true);
+  document.addEventListener('pointerdown', () => { fieldDue = 0; typed = ''; }, true);
 }
-
-const fieldOnItsWay = () => fieldDue > performance.now();
 
 /**
  * The one rule for single-key shortcuts (F-026 §4 keyboard: C, G then I, [, J, K, E, S, A, Z, R, T, 1–4, End): a key is typing, never a

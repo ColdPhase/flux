@@ -631,7 +631,8 @@ class InboxFinal(unittest.TestCase):
         seen(page, "writeHeld")
         page.keyboard.press("z")
         expect(original).to_have_attribute("aria-current", "true")
-        page.keyboard.press("e")
+        # A decision has Not now (S), never Done (#1424): the newer choice is a second Not now.
+        page.keyboard.press("s")
         seen(page, "writeHeld", 2)
         expect(original).to_have_count(0)
         older = held.pop(0)
@@ -640,13 +641,13 @@ class InboxFinal(unittest.TestCase):
         page.evaluate("() => window.dispatchEvent(new Event('focus'))")
         settled(page)
         expect(original).to_have_count(0)
-        expect(page.get_by_role("status").filter(has_text="Marked done")).to_be_visible()
+        expect(page.get_by_role("status").filter(has_text="Back tomorrow morning")).to_be_visible()
         with page.expect_response(lambda response: response.ok and response.request.method == "POST" and "/api/v1/needs-you/" in response.url):
             held.pop().continue_()
         self.assertNotIn(f"decision:{self.decision['id']}", [item["key"] for item in self.queue(None)["items"]])
         page.keyboard.press("z")
         expect(original).to_have_count(1)
-        self.wait_for(lambda: any(item["key"] == f"decision:{self.decision['id']}" for item in self.queue(None)["items"]), "the latest Done to be undone")
+        self.wait_for(lambda: any(item["key"] == f"decision:{self.decision['id']}" for item in self.queue(None)["items"]), "the latest Not now to be undone")
 
     # ---------------------------------------------------------------- Accept with Undo (AC-2, DA-3)
 

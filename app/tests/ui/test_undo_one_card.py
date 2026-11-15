@@ -249,7 +249,8 @@ class UndoAndOneCard(unittest.TestCase):
         expect(card.locator(".convo-notice__meta strong")).to_have_text("Ada Kowalska · you")
         self.assertNotIn(GAZEBO, decisions(), "held for Undo: nothing was sent yet")
         shot(page, f"one-card-held-proposal-{UI_BROWSER}")
-        page.keyboard.press("z")
+        # The window gave focus back to the composer, where Z is a letter: Undo is the toast's button.
+        page.locator(".ui-toast").filter(has_text="Decision proposed").get_by_role("button", name=re.compile("^Undo")).click()
         expect(card, "Undo takes the card away").to_have_count(0)
         expect(page.locator(".ui-toast").filter(has_text="Not proposed")).to_be_visible()
         self.assertNotIn(GAZEBO, decisions())
