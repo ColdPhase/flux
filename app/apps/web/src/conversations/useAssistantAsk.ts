@@ -6,6 +6,7 @@ import type { useConversationAssistant } from '../assistant/useConversationAssis
 import type { ComposerDrafts } from './useComposerDrafts';
 import { placeKey } from '../assistant/useConversationAssistant';
 import type { PaneCore } from './paneCore';
+import { useShellActions } from '../app/shellContext';
 
 /** A request made offline, held under its own id until it can go out (AST-10.15). */
 interface WaitingAsk { place: string; prompt: string; clientRunId: string }
@@ -21,6 +22,7 @@ interface Options {
  */
 export function useAssistantAsk({ me, place, writable, outside, guest, composerId }: PaneCore, { drafts, assistant, scrollRef, scrollToEnd }: Options) {
   const { helperComposer, setAsking, captureHelperScope } = drafts;
+  const { openConnectAi } = useShellActions();
   const [askFailure, setAskFailure] = useState('');
   const [askFailureCode, setAskFailureCode] = useState<string | null>(null);
   const fail = (cause: unknown) => { setAskFailure(askErrorText(cause)); setAskFailureCode(cause instanceof ApiError ? cause.code : null); };
@@ -71,7 +73,7 @@ export function useAssistantAsk({ me, place, writable, outside, guest, composerI
     return () => { stopped = true; window.removeEventListener('online', flush); window.clearInterval(timer); };
   }, [heldHere, here]);
   async function sendToAssistant() {
-    if (!writable || drafts.askBusy || askState(assistant.status, outside, guest).kind !== 'ready') return;
+    if (!writable || drafts.askBusy || blockedSend()) return;
     const command = helperComposer.begin();
     if (!command) return;
     const active = captureHelperScope();
@@ -114,7 +116,27 @@ export function useAssistantAsk({ me, place, writable, outside, guest, composerI
     void assistant.ask(text, { clientRunId }).then(() => requestAnimationFrame(() => { const feed = scrollRef.current; if (feed) feed.scrollTop = feed.scrollHeight; }))
       .catch((cause) => { if (cause instanceof NetworkError) holdAsk({ place: here, prompt: text, clientRunId }); else { fail(cause); setAsking(true); } });
   }
-  function exitAsk() { setAsking(false); setAskFailure(''); document.getElementById(composerId)?.focus(); }
+  /**
+   * × on "Your assistant" (and Esc) leaves ask mode with the words still in the box (#1424 persona P3): what was typed for the assistant becomes
+   * the message draft, after anything already written there, so nothing typed is thrown away.
+   */
+  function exitAsk() {
+    const typed = helperComposer.draft.body;
+    if (typed.trim() && !drafts.askBusy) {
+      const kept = drafts.publicComposer.draft.body;
+      drafts.publicComposer.setBody(kept.trim() ? `${kept.replace(/\s+$/, '')}\n${typed}` : typed);
+      helperComposer.setBody('');
+    }
+    setAsking(false); setAskFailure(''); document.getElementById(composerId)?.focus();
+  }
+  /** Send while the assistant can't answer: Connect AI opens when that is the way (as `/ai` does in a direct message); otherwise the bar says nothing went. */
+  function blockedSend() {
+    const state = askState(assistant.status, outside, guest);
+    if (state.kind === 'ready') return false;
+    if (state.action === 'connect') openConnectAi();
+    else setAskFailure('Nothing was sent.');
+    return true;
+  }
   return { askFailure, setAskFailure, askFailureCode, setAskFailureCode, waitingHere, sendToAssistant, askSuggestion, exitAsk };
 }
 export type AssistantAsk = ReturnType<typeof useAssistantAsk>;

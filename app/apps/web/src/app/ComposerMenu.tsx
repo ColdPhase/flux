@@ -59,7 +59,7 @@ export function composerOptions(trigger: ComposerTrigger, { people, meId, aiOff 
   return (people ?? []).filter((person) => person.kind === 'human' && person.id !== meId && person.name.toLowerCase().includes(query))
     .sort((a, b) => Number(b.name.toLowerCase().startsWith(query)) - Number(a.name.toLowerCase().startsWith(query)) || a.name.localeCompare(b.name))
     .slice(0, 8)
-    .map((person) => ({ id: `mention-human-${person.id}`, kind: 'person' as const, personId: person.id, label: person.name, hint: 'Person', insert: `@${person.name} ` }));
+    .map((person) => ({ id: `mention-human-${person.id}`, kind: 'person' as const, personId: person.id, label: person.name, hint: person.guest ? 'Guest' : 'Person', insert: `@${person.name} ` }));
 }
 
 /** The menu above the composer's box. `active` is the option the keys act on. */

@@ -87,8 +87,11 @@ export interface FirstSteps {
   joined: FirstStepJoined[];
   /** A member whose card has a step left: the browser may add "Get notifications on this device" while it is not subscribed. Never alone: with no step left there is no card. */
   offerPush: boolean;
-  /** Everyone, for "Write your first message" (opens it with the composer ready); null when there is none. */
-  everyoneSpaceId: string | null;
+  /**
+   * Where "Write your first message" opens, with the composer ready (#1424): the space the person's invite link added them to while they are still
+   * in it, else Everyone; null when there is neither.
+   */
+  firstSpaceId: string | null;
 }
 /**
  * Better Auth's own endpoints the web client calls, below AUTH_BASE_PATH. A sign-up also carries the link it comes from (#1471):

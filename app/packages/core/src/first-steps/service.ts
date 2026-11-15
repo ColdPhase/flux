@@ -4,7 +4,7 @@ import type { FirstStepRows } from './ports.js';
 
 export * from './ports.js';
 
-const NONE: FirstSteps = { steps: [], joined: [], offerPush: false, everyoneSpaceId: null };
+const NONE: FirstSteps = { steps: [], joined: [], offerPush: false, firstSpaceId: null };
 
 /** How long after joining the company a person is still a new person (founder direction, 2026-11-13, #1438): days from the membership's start. */
 export const NEW_PERSON_DAYS = 30;
@@ -37,13 +37,13 @@ export async function readFirstSteps(userId: string, rows: FirstStepRows, now = 
     if (!connected) steps.push('connect_ai');
   } else {
     const [wrote, photo] = await Promise.all([rows.wroteMessage(userId, company.id), rows.hasPhoto(userId)]);
-    if (!wrote && company.everyoneSpaceId) steps.push('first_message');
+    if (!wrote && company.firstSpaceId) steps.push('first_message');
     if (!photo) steps.push('photo');
   }
   // Nothing left: the card is done, for good. Push on this device alone never keeps or brings it back (it stays offered in Settings and by the one-time offer).
-  if (!steps.length) { await rows.hide(userId, now); return { ...NONE, everyoneSpaceId: company.everyoneSpaceId }; }
+  if (!steps.length) { await rows.hide(userId, now); return { ...NONE, firstSpaceId: company.firstSpaceId }; }
   // The people who joined are a row beside a step that is left, never a reason for the card to stay or to come back.
-  return { steps, joined, offerPush: !admin, everyoneSpaceId: company.everyoneSpaceId };
+  return { steps, joined, offerPush: !admin, firstSpaceId: company.firstSpaceId };
 }
 
 /** Hide: the card never shows again for this person, on any device. */

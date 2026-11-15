@@ -89,6 +89,18 @@ export const isManagerRole = (role: WorkspaceRole | null | undefined) => role ==
 
 /** A guest does not start spaces (AG-2, #555): nothing offers them New space, and no empty state points to it (#1424). */
 export const startsSpaces = (workspace: { role?: WorkspaceRole | null } | null | undefined) => workspace?.role !== 'guest';
+/**
+ * A guest does not start conversations (F-037 policy `dm.create`): they reply in the ones they are added to. The same rule as New space (#1424):
+ * nothing offers them New message, and a person's name does not lead to a conversation they could not start.
+ */
+export const startsConversations = startsSpaces;
+
+/**
+ * A person in a list to choose from (an owner, someone to wait for): the name, "(you)" for the reader (the one way a list marks you, #1424),
+ * and "· Guest" for a guest of the company, as every list of people says.
+ */
+export const personLabel = (person: { userId: string; name: string; guest?: boolean }, meId: string) =>
+  person.userId === meId ? `${person.name} (you)` : person.guest ? `${person.name} · Guest` : person.name;
 
 export function firstName(name: string) {
   return name.trim().split(/\s+/)[0] || name;

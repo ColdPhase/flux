@@ -95,8 +95,8 @@ class SpaceSettings(unittest.TestCase):
 
     @staticmethod
     def names(card) -> str:
-        """The people a card lists, by name, whoever reads it (the reader's own row says "· you")."""
-        return "|".join(sorted(text.replace(" · you", "").strip() for text in card.locator(".spset__who b").all_inner_texts()))
+        """The people a card lists, by name, whoever reads it (the reader's own row says "(you)")."""
+        return "|".join(sorted(text.replace(" (you)", "").strip() for text in card.locator(".spset__who b").all_inner_texts()))
 
     def settings(self, page: Page) -> None:
         """⋯ › Settings in the space's header."""
@@ -198,7 +198,7 @@ class SpaceSettings(unittest.TestCase):
         self.api(owner, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": self.ids["kai"]}, "role": "contributor"}, status=201)
         words = """el => {
             const who = el.querySelector('.people__who, .spset__who');
-            // Lines of a node: its boxes, top to bottom; a box that overlaps the line before (a smaller "· you" on it) is on that line.
+            // Lines of a node: its boxes, top to bottom; a box that overlaps the line before (a smaller "(you)" on it) is on that line.
             const lines = (node) => { const range = document.createRange(); range.selectNodeContents(node);
               let count = 0, bottom = -Infinity;
               for (const r of [...range.getClientRects()].filter((r) => r.width > 0).sort((a, b) => a.top - b.top)) {

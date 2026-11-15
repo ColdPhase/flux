@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, type KeyboardEvent } from 'react';
 import { SKETCH_LIMITS } from '@flux/contracts';
-import { Icon } from '../ui';
+import { Icon, MEDIA, useMediaQuery } from '../ui';
 import type { DraftLine, ThoughtDraft } from './createdDraft';
 import { linkOf } from './paste';
 import { ThoughtImage } from './ThoughtImage';
@@ -24,6 +24,8 @@ export function DraftCapture({ draft, parent, saving, canWrite, focusReady = tru
 }) {
   const form = useRef<HTMLFormElement>(null);
   const focusedDraft = useRef<string | null>(null);
+  // The keys line is for a keyboard (#1424): a touch screen has no Escape, and Save and Cancel are its buttons.
+  const touch = useMediaQuery(MEDIA.touch);
   // A new draft takes focus once; later row edits or removals keep it where the person put it.
   useLayoutEffect(() => {
     if (!focusReady || saving || focusedDraft.current === draft.id) return;
@@ -67,7 +69,7 @@ export function DraftCapture({ draft, parent, saving, canWrite, focusReady = tru
       </ol>
       <div className="sk-draft__actions"><button type="submit" className="ui-btn ui-btn--primary" disabled={!ready}>{saving ? 'Saving…' : `${confirmPrevious ? 'Confirm and save' : 'Save'} ${count} ${count === 1 ? 'thought' : 'thoughts'}`}</button>
         <button type="button" className="ui-btn ui-btn--secondary" disabled={saving} onClick={onCancel}>Cancel</button>
-        <span>Enter saves all · Escape cancels</span></div>
+        {touch ? null : <span>Enter saves all · Escape cancels</span>}</div>
     </form>;
   }
   return <form ref={form} className="sk-draft" aria-label="New thought draft" onSubmit={(event) => { event.preventDefault(); if (ready) onSave(); }}>
@@ -80,6 +82,6 @@ export function DraftCapture({ draft, parent, saving, canWrite, focusReady = tru
       <button type="button" className="ui-btn ui-btn--secondary" disabled={saving} onClick={onCancel}>Cancel</button>
       {onPaste && !draft.file && !draft.text.trim() && !draft.attempt && !draft.unknown ? <button type="button" className="ui-btn ui-btn--quiet sk-draft__paste" disabled={saving} onClick={onPaste}>
         <Icon name="paste" size={14} />Paste lines, a link or an image</button> : null}
-      <span>Enter saves · Shift+Enter adds a line · Escape cancels</span></div>
+      {touch ? null : <span>Enter saves · Shift+Enter adds a line · Escape cancels</span>}</div>
   </form>;
 }

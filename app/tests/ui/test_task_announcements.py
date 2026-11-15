@@ -196,7 +196,7 @@ class TaskAnnouncements(unittest.TestCase):
         assert_author_column(self, made, DESKTOP["width"], "task event author")
         expect(made.get_by_role("button", name=opens_task(FROM_MESSAGE))).to_be_visible()
         expect(made.locator(".convo-notice__num")).to_have_text(f"#{self.ids['from_message_number']}")
-        expect(self.notice(page, self.ids["measure"]).locator(".convo-notice__meta strong")).to_have_text("Ada Kowalska · you")
+        expect(self.notice(page, self.ids["measure"]).locator(".convo-notice__meta strong")).to_have_text("Ada Kowalska (you)")
         # Authored events share the creator's column, while retaining no message actions or replies.
         for work_id in (self.ids["from_message"], self.ids["measure"]):
             item = self.notice(page, work_id)
@@ -297,7 +297,7 @@ class TaskAnnouncements(unittest.TestCase):
         work = self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/work?limit=100", status=200)
         made = next(item for item in work["items"] if item["title"] == LATER)
         expect(self.notice(page, made["id"])).to_have_count(1)
-        expect(self.notice(page, made["id"]).locator(".convo-notice__meta strong")).to_have_text("Ada Kowalska · you")
+        expect(self.notice(page, made["id"]).locator(".convo-notice__meta strong")).to_have_text("Ada Kowalska (you)")
         self.assertEqual(self.counts(page), (before[0] + 1, before[1] + 1, before[2]), "one task and one announcement; no root")
 
     def test_07_another_member_sees_announcements_and_opens_the_task(self) -> None:

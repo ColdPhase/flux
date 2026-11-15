@@ -185,7 +185,7 @@ class UndoAndOneCard(unittest.TestCase):
                 expect(made.locator(".convo-notice__card .convo-notice__task")).to_have_count(1)
                 expect(made.locator(".convo-notice__card .convo-notice__meta")).to_have_count(1)
                 expect(made.locator(".convo-notice__meta")).to_have_count(1)
-                expect(made.locator(".convo-notice__meta strong")).to_have_text("Ada Kowalska · you")
+                expect(made.locator(".convo-notice__meta strong")).to_have_text("Ada Kowalska (you)")
                 expect(made.locator(".convo-notice__what")).to_have_text("created a task from Jonas’s message")
                 expect(made.locator(".convo-notice__title")).to_have_text(TASK)
                 # The way from the card to the message it came from is on the card.
@@ -246,7 +246,7 @@ class UndoAndOneCard(unittest.TestCase):
         propose()
         expect(card, "the card is in the conversation at once").to_have_count(1, timeout=2000)
         expect(card.locator(".convo-object__state")).to_have_text("Proposed")
-        expect(card.locator(".convo-notice__meta strong")).to_have_text("Ada Kowalska · you")
+        expect(card.locator(".convo-notice__meta strong")).to_have_text("Ada Kowalska (you)")
         self.assertNotIn(GAZEBO, decisions(), "held for Undo: nothing was sent yet")
         shot(page, f"one-card-held-proposal-{UI_BROWSER}")
         # The window gave focus back to the composer, where Z is a letter: Undo is the toast's button.

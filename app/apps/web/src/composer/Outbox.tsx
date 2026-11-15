@@ -63,7 +63,7 @@ export function PendingFiles({ files, send, body }: { files: readonly DraftFile[
     </div> : null}
     <MessageBubble>{body}
       {others.length ? <ol className="message-files is-pending" aria-label={others.length === 1 ? '1 attached file' : `${others.length} attached files`}>{others.map((file) => <li key={file.uploadId}>
-        <span className="file-row"><FileIcon name={file.name} /><span className="file-row__text"><span className="file-row__name">{file.name}</span><small>{typeLine(file, detailLine(file.staged))}{file.state === 'uploading' ? ` · ${uploadLabel(file)}` : null}</small></span></span>
+        <span className="file-row"><FileIcon name={file.name} /><span className="file-row__text"><span className="file-row__name">{file.name}</span><small>{typeLine(file.staged ?? file, detailLine(file.staged))}{file.state === 'uploading' ? ` · ${uploadLabel(file)}` : null}</small></span></span>
       </li>)}</ol> : null}
     </MessageBubble>
   </>;

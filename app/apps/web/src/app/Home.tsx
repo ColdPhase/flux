@@ -227,11 +227,12 @@ function WaitingItem({ row }: { row: WaitingRow }) {
 
 type StepRow = { key: FirstStep | 'push' | `joined:${string}`; icon: 'edit' | 'people' | 'spark' | 'chat' | 'person' | 'bell'; title: string; meta: string; to?: string; state?: unknown };
 
-const STEP_ROWS: Record<FirstStep, (read: FirstStepsRead) => StepRow> = {
+const STEP_ROWS: Record<FirstStep, (read: FirstStepsRead, spaceName: (id: string | null) => string) => StepRow> = {
   name_company: () => ({ key: 'name_company', icon: 'edit', title: 'Name your company', meta: 'Shown on the sign-in page and in emails', to: '/settings/company?name=1' }),
   invite_people: () => ({ key: 'invite_people', icon: 'people', title: 'Invite people', meta: 'Make a link and send it to them', to: '/settings/company?invite=1' }),
   connect_ai: () => ({ key: 'connect_ai', icon: 'spark', title: 'Connect AI', meta: 'A Claude or ChatGPT plan, or an API key', to: '/settings/agents?connect=1' }),
-  first_message: (read) => ({ key: 'first_message', icon: 'chat', title: 'Write your first message', meta: 'Say hello in Everyone', to: `/projects/${read.everyoneSpaceId}`, state: { focusComposer: true } }),
+  // Said in the space the person landed in (their link's space, else Everyone), by its name (#1424).
+  first_message: (read, spaceName) => ({ key: 'first_message', icon: 'chat', title: 'Write your first message', meta: `Say hello in ${spaceName(read.firstSpaceId)}`, to: `/projects/${read.firstSpaceId}`, state: { focusComposer: true } }),
   photo: () => ({ key: 'photo', icon: 'person', title: 'Add your photo', meta: 'So people know it’s you', to: '/settings/account' }),
 };
 
@@ -239,8 +240,8 @@ const STEP_ROWS: Record<FirstStep, (read: FirstStepsRead) => StepRow> = {
  * The card's rows, at most three: the steps left, with the people who joined with the person's links ("Nia joined · Say hello", #1424) in the place of
  * "Invite people", which is done once a link was made. The steps come first, so a person who joined never pushes one out.
  */
-function firstStepRows(read: FirstStepsRead): StepRow[] {
-  const steps = read.steps.map((step) => STEP_ROWS[step](read));
+function firstStepRows(read: FirstStepsRead, spaceName: (id: string | null) => string): StepRow[] {
+  const steps = read.steps.map((step) => STEP_ROWS[step](read, spaceName));
   const room = Math.max(0, 3 - steps.length);
   const names = (person: FirstStepJoined) => read.joined.filter((other) => firstName(other.name) === firstName(person.name)).length > 1 ? person.name : firstName(person.name);
   const joined = read.joined.slice(0, room).map((person): StepRow => ({ key: `joined:${person.userId}`, icon: 'chat', title: `${names(person)} joined`, meta: 'Say hello' }));
@@ -273,7 +274,9 @@ function FirstStepsCard({ phone, workspaceId, onPushRow }: { phone: boolean; wor
     }, () => undefined);
     return () => controller.abort();
   }, []);
-  const rows: StepRow[] = read && !hidden ? firstStepRows(read) : [];
+  const { projects } = useShellData();
+  const spaceName = (id: string | null) => projects.find((project) => project.id === id)?.name ?? 'your space';
+  const rows: StepRow[] = read && !hidden ? firstStepRows(read, spaceName) : [];
   if (read && !hidden && pushKey) rows.push({ key: 'push', icon: 'bell', title: `Get notifications on this ${phone ? 'phone' : 'computer'}`, meta: 'When someone writes to you or calls' });
   const shown = rows.slice(0, 3);
   const pushShown = shown.some((row) => row.key === 'push');
@@ -355,8 +358,9 @@ export function Home() {
           {joinedSpace ? <>
             {/* #763 FT-3, F-037: someone in the company with only Everyone is told how other spaces reach them. */}
             <h3 id="home-first">You’re in {joinedSpace.name}</h3>
-            {/* A guest does not start spaces, so they are not told they can (#1424). */}
-            <p>When someone adds you to a space, it appears here at once.{startsSpaces(joinedSpace) ? ' You can also start your own.' : ''}</p>
+            {/* A guest does not start spaces, so they are not told they can (#1424). A new space is listed under Spaces, the sidebar's heading
+                and the phone's tab alike, not on Home (#1424). */}
+            <p>When someone adds you to a space, it appears under Spaces at once.{startsSpaces(joinedSpace) ? ' You can also start your own.' : ''}</p>
             {startsSpaces(joinedSpace) ? <Button variant="secondary" size="lg" onClick={() => openCreate({ kind: 'space' })}>Start a space</Button> : null}
           </> : <>
           {/* F-037: an account nobody has invited yet joins through a link from the company's admin. */}

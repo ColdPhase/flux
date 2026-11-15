@@ -266,6 +266,32 @@ describe('F-035 invite links', () => {
     assert.equal((await create(ada, space, { role: 'member', email: 'not an address' }, 400)).code, 'INVALID_INPUT');
   });
 
+  test('#1424: a link for an address that joined another way waits for nobody: it is neither listed nor counted', async () => {
+    const gil = await person('Gil Invites');
+    const first = await create(ada, space, { role: 'member', email: gil.email });
+    const second = await create(ada, space, { role: 'member', email: gil.email });
+    const anyone = await create(ada, space, { role: 'member' });
+    const waiting = async () => (expectStatus(await ada.browser.request('GET', `/api/v1/workspaces/${space}/invites`), 200) as WorkspaceInvite[]).map((item) => item.id);
+    for (const id of [first.id, second.id, anyone.id]) assert.ok((await waiting()).includes(id), 'all three wait before anyone joins');
+    assert.equal((expectStatus(await accept(gil, tokenOf(first)), 200) as AcceptInviteResult).status, 'joined');
+    const after = await waiting();
+    assert.ok(!after.includes(first.id), 'the link used is gone');
+    assert.ok(!after.includes(second.id), 'the second link for the same address no longer says it waits');
+    assert.ok(after.includes(anyone.id), 'a link for anyone still waits');
+    // Someone who leaves can be invited again by that address: the link waits again.
+    expectStatus(await ada.browser.request('DELETE', `/api/v1/workspaces/${space}/members/${gil.id}`), 204);
+    assert.ok((await waiting()).includes(second.id));
+    for (const id of [second.id, anyone.id]) expectStatus(await ada.browser.request('DELETE', `/api/v1/workspaces/${space}/invites/${id}`), 204);
+  });
+
+  test('#1424: the company\'s owner is named as such in a space\'s people, to everyone who reads them', async () => {
+    const shop = (expectStatus(await ada.browser.request('POST', `/api/v1/workspaces/${space}/projects`, { body: { name: 'Owner word', visibility: 'restricted' }, headers: key() }), 201) as { id: string }).id;
+    expectStatus(await ada.browser.request('POST', `/api/v1/projects/${shop}/grants`, { body: { principal: { kind: 'human', id: ben.id }, role: 'contributor' }, headers: key() }), 201);
+    const people = expectStatus(await ben.browser.request('GET', `/api/v1/projects/${shop}/people`), 200) as { id: string; owner?: true }[];
+    assert.equal(people.find((item) => item.id === ada.id)?.owner, true);
+    assert.equal(people.find((item) => item.id === ben.id)?.owner, undefined, 'an admin is not the owner');
+  });
+
   test('role limits: never owner, admin only from an owner, expiry only 1, 7 or 30 days', async () => {
     await create(ada, space, { role: 'owner' }, 400);
     assert.equal((await create(ben, space, { role: 'admin' }, 403)).code, 'OWNER_REQUIRED');

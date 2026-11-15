@@ -399,12 +399,14 @@ class SharedComposerJourney(unittest.TestCase):
         expect(pane.get_by_label("Ask your assistant", exact=True)).to_have_value("")
         pane.get_by_label("Ask your assistant", exact=True).fill("Private prompt never becomes the task root")
         pane.get_by_role("button", name="Stop asking your assistant").click()
-        expect(pane.get_by_label("Reply", exact=True)).to_have_value("Public task draft stays public only on send")
+        # × keeps what was typed (#1424 persona P3): the prompt's words stay in the box, after the draft's, and go nowhere until Send.
+        kept = "Public task draft stays public only on send\nPrivate prompt never becomes the task root"
+        expect(pane.get_by_label("Reply", exact=True)).to_have_value(kept)
         self.open_agents(page, other, other_a)
         expect(self.box(page)).to_have_value("")
         self.box(page).fill("Other project draft")
         self.open_agents(page, project, a)
-        expect(self.box(page)).to_have_value("Public task draft stays public only on send")
+        expect(self.box(page)).to_have_value(kept)
         page.context.clear_cookies()
         page.context.add_cookies(self.states["writer"]["cookies"])
         self.open_agents(page, project, a)

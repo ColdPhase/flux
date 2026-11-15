@@ -170,7 +170,7 @@ class PersonaAiAndGuests(unittest.TestCase):
         page = self.page("gia")
         page.goto("/")
         first = page.locator(".home__first")
-        expect(first).to_contain_text("When someone adds you to a space, it appears here at once.")
+        expect(first).to_contain_text("When someone adds you to a space, it appears under Spaces at once.")
         expect(first).not_to_contain_text("start your own")
         expect(first.get_by_role("button", name="Start a space")).to_have_count(0)
         page.get_by_role("complementary", name="Sidebar").get_by_role("button", name=re.compile("^New")).click()

@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type FormEvent, type RefObject } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type FormEvent, type RefObject } from 'react';
 import type { EncryptedSpaceRef, IdentityCapabilities, RemovedPerson } from '@flux/contracts';
 import { getCapabilities } from '../api/auth';
 import { Link, useNavigate, useRevalidator, useSearchParams } from 'react-router';
@@ -22,6 +22,7 @@ import './people.css';
 const ROLES: WorkspaceRole[] = ['member', 'guest', 'admin', 'owner'];
 /** Roles the caller may hand out: only an owner grants or changes the owner role (#29). */
 const assignable = (mine: WorkspaceRole) => ROLES.filter((role) => role !== 'owner' || mine === 'owner');
+const article = (value: WorkspaceRole) => (value === 'admin' || value === 'owner' ? 'an' : 'a');
 
 type Roster = { workspace: EncryptedWorkspace; members: WorkspaceMember[] | null };
 /** An owner or admin who reads the company's people (and so may make and list its links). */
@@ -336,8 +337,11 @@ function CompanyName({ workspace, manager, startEditing = false, onChanged }: { 
   const [problem, setProblem] = useState('');
   const keys = useRef(attemptKeys());
   const changeRef = useRef<HTMLButtonElement>(null);
+  const fieldRef = useRef<HTMLInputElement>(null);
   const close = () => { setEditing(false); setProblem(''); };
   useFocusBack(changeRef, editing);
+  // The name opens selected (#1424 persona P2): typing replaces it, so a first run's "Company" never becomes "CompanyNowak Bakery".
+  useLayoutEffect(() => { if (editing) fieldRef.current?.select(); }, [editing]);
   async function save(event: FormEvent) {
     event.preventDefault();
     const next = value.trim();
@@ -360,7 +364,7 @@ function CompanyName({ workspace, manager, startEditing = false, onChanged }: { 
       {editing ? (
         <form className="people__add sset-card people__nameform" onSubmit={(event) => void save(event)} noValidate aria-label="Change the company name"
           onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); close(); } }}>
-          <Input id="company-name-input" label="Company name" value={value} maxLength={200} autoFocus onChange={(event) => { setValue(event.target.value); setProblem(''); }}
+          <Input ref={fieldRef} id="company-name-input" label="Company name" value={value} maxLength={200} autoFocus onChange={(event) => { setValue(event.target.value); setProblem(''); }}
             error={problem || undefined} hint="Shown on the sign-in page and in emails." />
           <div className="details__actions">
             <Button type="submit" variant="primary" busy={busy}>Save name</Button>
@@ -446,9 +450,36 @@ function MemberRow({ member, self, workspace, myRole, page, editable, resettable
   const removable = page && editable && !self;
   const holder = !!workspace.encryption && isManagerRole(member.role);
   const first = firstName(member.name);
+  // On the company's page the role is a menu, as in Space settings (#1424: the look matches what it does): a role chosen is saved at once, and
+  // only an owner or admin of an encrypted company who stops being one is asked first (F-030), in the line under the row.
+  const roleRef = useRef<HTMLButtonElement>(null);
+  const roleKeys = useRef(attemptKeys());
+  const [demoteTo, setDemoteTo] = useState<WorkspaceRole | null>(null);
+  const roles = assignable(myRole).includes(member.role) ? assignable(myRole) : [member.role, ...assignable(myRole)];
+  async function applyRole(next: WorkspaceRole) {
+    if (busy || next === member.role) return;
+    setBusy(true); setProblem(''); setOpen(null);
+    try {
+      await changeRole(workspace.id, member.userId, next, roleKeys.current.for(`${member.userId}:${next}`));
+      roleKeys.current.done();
+      setDemoteTo(null);
+      onChanged(self ? `You’re now ${article(next)} ${ROLE_LABEL[next].toLowerCase()} of ${workspace.name}.` : `${member.name} is now ${article(next)} ${ROLE_LABEL[next].toLowerCase()}.`,
+        holder && !isManagerRole(next));
+    } catch (error) {
+      setDemoteTo(null);
+      setProblem(problemText(error, { workspace: workspace.name, who: self ? 'You' : member.name }));
+      requestAnimationFrame(() => roleRef.current?.focus());
+    } finally { setBusy(false); }
+  }
+  const pickRole = (next: WorkspaceRole) => {
+    if (next === member.role) { setDemoteTo(null); return; }
+    if (holder && !isManagerRole(next)) { setOpen(null); setProblem(''); setDemoteTo(next); return; }
+    void applyRole(next);
+  };
+  const keepRole = () => { setDemoteTo(null); requestAnimationFrame(() => roleRef.current?.focus()); };
   useEffect(() => { if (open === 'remove') confirmRef.current?.querySelector<HTMLButtonElement>('button:last-child')?.focus(); }, [open]);
   const shut = (back: RefObject<HTMLButtonElement | null>) => { setOpen(null); setProblem(''); requestAnimationFrame(() => back.current?.focus()); };
-  const toggle = (what: 'reset' | 'remove') => { setProblem(''); onEdit(false); setOpen((current) => (current === what ? null : what)); };
+  const toggle = (what: 'reset' | 'remove') => { setProblem(''); onEdit(false); setDemoteTo(null); setOpen((current) => (current === what ? null : what)); };
   async function remove() {
     if (busy) return;
     setBusy(true); setProblem('');
@@ -465,10 +496,14 @@ function MemberRow({ member, self, workspace, myRole, page, editable, resettable
       <div className="people__row">
         <Avatar name={member.name} id={member.userId} size="md" tone={self ? 'me' : 'neutral'} />
         <span className="people__who"><b>{member.name}{self ? ' (you)' : ''}</b><PersonLine email={member.email} lastActiveAt={self ? undefined : member.lastActiveAt} /></span>
-        {/* On the company's page the role is the control: "Admin ▾" opens the role under the row. */}
+        {/* On the company's page the role is the control: "Admin ▾" is the menu of roles, and choosing one changes it (#1424). */}
         {page && editable ? (
-          <Button ref={changeRef} variant="quiet" size="sm" className="people__rolebtn" aria-expanded={editing} aria-controls={editing ? editId : undefined} aria-label={`Change ${self ? 'your role' : member.name}, ${ROLE_LABEL[member.role]}`}
-            onClick={() => { setOpen(null); onEdit(!editing); }}>{ROLE_LABEL[member.role]}<Icon name="chevron-down" size={14} /></Button>
+          <span className="people__rolecell">
+            <Select ref={roleRef} className="people__rolesel" aria-label={self ? 'Your role' : `Role of ${member.name}`} value={demoteTo ?? member.role} disabled={busy}
+              onChange={(next) => pickRole(next as WorkspaceRole)}>
+              {roles.map((option) => <Option key={option} value={option}>{ROLE_LABEL[option]}</Option>)}
+            </Select>
+          </span>
         ) : <span className="people__role">{ROLE_LABEL[member.role]}</span>}
         {!page && editable ? (
           <Button ref={changeRef} variant="quiet" size="sm" className="people__change" aria-expanded={editing} aria-controls={editing ? editId : undefined} onClick={() => onEdit(!editing)}>
@@ -490,6 +525,18 @@ function MemberRow({ member, self, workspace, myRole, page, editable, resettable
           </span>
         ) : null}
       </div>
+      {/* F-030 (#655): an owner or admin of an encrypted company who stops being one changes its key, which is said before it happens. */}
+      {demoteTo ? (
+        <div className="details__confirm people__confirm" role="group" aria-label={`Make ${first} ${article(demoteTo)} ${ROLE_LABEL[demoteTo].toLowerCase()}`} data-rotation-confirm="demote"
+          onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); keepRole(); } }}>
+          <p><b>Make {first} {article(demoteTo)} {ROLE_LABEL[demoteTo].toLowerCase()}?</b></p>
+          <p>{rotationText(workspace, first)}</p>
+          <div className="details__actions">
+            <Button variant="primary" busy={busy} onClick={() => void applyRole(demoteTo)}>Make {first} {article(demoteTo)} {ROLE_LABEL[demoteTo].toLowerCase()}</Button>
+            <Button variant="quiet" onClick={keepRole}>Keep {first} {article(member.role)} {ROLE_LABEL[member.role].toLowerCase()}</Button>
+          </div>
+        </div>
+      ) : null}
       {open === 'remove' && !holder ? <p className="people__removing" role="status">{first} loses access to {workspace.name} at once: its spaces, and anything given to them there.</p> : null}
       {/* F-030 (#655): removing an owner or admin of an encrypted workspace changes its key, which is said before it happens. */}
       {open === 'remove' && holder ? (
@@ -509,7 +556,7 @@ function MemberRow({ member, self, workspace, myRole, page, editable, resettable
           <ResetLinkGroup id={editId} member={member} workspace={workspace} onClose={() => shut(resetRef)} />
         </div>
       ) : null}
-      {editing ? <MemberEditor id={editId} member={member} self={self} workspace={workspace} myRole={myRole} withRemove={!page} onClose={close} onChanged={onChanged} /> : null}
+      {editing && !page ? <MemberEditor id={editId} member={member} self={self} workspace={workspace} myRole={myRole} withRemove={!page} onClose={close} onChanged={onChanged} /> : null}
     </li>
   );
 }
@@ -529,7 +576,6 @@ function MemberEditor({ id, member, self, workspace, myRole, withRemove, onClose
   const keys = useRef(attemptKeys());
   const selectRef = useRef<HTMLButtonElement>(null);
   useEffect(() => { selectRef.current?.focus(); }, []);
-  const article = (value: WorkspaceRole) => (value === 'admin' || value === 'owner' ? 'an' : 'a');
   // F-030 (#655): an owner or admin who stops being one (removed, demoted, leaving) changes the key of an encrypted space: its content
   // is encrypted again in the background, and what that person may have kept (a backup) still opens with their old password.
   const holder = !!workspace.encryption && isManagerRole(member.role);

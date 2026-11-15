@@ -276,7 +276,7 @@ test('agent root renders without a human DM link, real human reply persists, and
     await row.locator('.agent-for').filter({ hasText: "Casey's agent" }).waitFor();
     const notice = page.locator(`.convo-notice[data-work-id="${task.id}"]`);
     await assertAuthorColumn(notice, 1280);
-    assert.equal(await notice.locator('.convo-notice__meta strong').innerText(), 'Casey Human · you');
+    assert.equal(await notice.locator('.convo-notice__meta strong').innerText(), 'Casey Human (you)');
     const evidence = process.env.FLUX_E2E_EVIDENCE_DIR;
     if (evidence) { mkdirSync(evidence, { recursive: true }); await page.screenshot({ path: join(evidence, 'agent-root-desktop.png'), fullPage: true }); }
     expectStatus(await owner.browser.request('DELETE', `/api/v1/agents/${agent.id}`), 200);

@@ -22,6 +22,7 @@ import { useLiveSpaces } from '../live/spaces';
 import { lockedLine, useEncryptedWorkspaceIds, useLockedWorkspaces } from '../encryption/state';
 import { usePlaceMutes } from '../notifications/mutes';
 import { isTyping } from '../ui/keys';
+import { startsConversations } from '../people/api';
 
 export interface SidebarProps {
   workspace: WorkspaceSummary | null;
@@ -119,7 +120,8 @@ export function Sidebar({ directMessages, agents = [], user, onClose, titleId, i
   // What the person has not read in each direct message (#1424 decision 10), kept fresh from the server.
   const dmUnread = useDmUnread();
   // The dot is for what needs the person: a space that holds an Inbox item (a question to them, a decision, a blocked task).
-  const needing = useNeedsYouSpaces(useShellData().me.user.id);
+  const shell = useShellData();
+  const needing = useNeedsYouSpaces(shell.me.user.id);
   // A call is on in the space (F-041): the call glyph after its name, before the muted mark and the unread mark.
   const calls = useLiveSpaces();
   const navigate = onClose ? () => onClose() : undefined;
@@ -341,8 +343,9 @@ export function Sidebar({ directMessages, agents = [], user, onClose, titleId, i
         <nav className="side__sec" aria-labelledby="side-dms">
           <div className="side__head">
             <h2 className="side__h" id="side-dms"><Link to="/dm" className="side__h-link" aria-current={location.pathname === '/dm' ? 'page' : undefined} onClick={navigate}>Messages</Link></h2>
-            {/* New (C) creates, in the drawer too (#1375); only a Messages heading over nothing offers its "+" (New message), on the computer and in the drawer alike (#1424). */}
-            {!(directMessages.length || agents.length) ? <Link to="/dm/new" className="side__add" aria-label="New message" onClick={navigate}><Icon name="plus" size={14} /></Link> : null}
+            {/* New (C) creates, in the drawer too (#1375); only a Messages heading over nothing offers its "+" (New message), on the computer and in the drawer alike (#1424).
+                A guest does not start conversations, so they are not offered one (#1424, as New space). */}
+            {!(directMessages.length || agents.length) && startsConversations(shell.workspace) ? <Link to="/dm/new" className="side__add" aria-label="New message" onClick={navigate}><Icon name="plus" size={14} /></Link> : null}
           </div>
           {directMessages.length || agents.length ? (
             <ul className="side__list">

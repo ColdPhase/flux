@@ -12,6 +12,7 @@ export { MessageFiles, MessageContent, hasPhotos, fileSize } from './Attachments
 export type { PhotoActions, PhotoContext } from './Attachments';
 
 const fileStatus = (file: DraftFile, unconfirmed: boolean) => file.state === 'uploading' ? uploadLabel(file)
+  : file.state === 'failed' && file.refused ? (looksLikePhoto(file.name) ? 'Can’t be read' : 'Can’t be sent')
   : file.state === 'failed' ? 'Upload not confirmed'
     : unconfirmed ? 'Send unconfirmed; retry checks availability'
       : Date.parse(file.staged!.expiresAt) <= Date.now() ? 'Staging expired; select this file again' : 'Ready, private';
@@ -79,10 +80,20 @@ export function ComposerFiles({ state, disabled = false, attach = 'row' }: { sta
         onRemove={() => state.removeFile(file.uploadId)} />)}</ol>
       {limitsMatter(state, limits) ? <span className="composer-files__privacy" data-file-limits>{limitsLine(limits)}</span> : null}
     </> : null}
+    {/* A refused file (a picture that can't be read) says why in full, under the draft where the line has room, and how to send the rest (#1424). */}
+    {state.draft.files.filter((file) => file.state === 'failed' && file.refused).map((file) => (
+      <p key={file.uploadId} className="composer-files__error" role="alert" data-refused-file={file.uploadId}>{refusedLine(file)}</p>
+    ))}
     {state.storage === 'visit' ? <p className="composer-files__privacy">This browser refused draft storage. Your text and files stay during this visit; keep this tab open to recover them.</p> : null}
     {state.draft.unconfirmed && !state.sending && !state.error ? <p className="composer-files__privacy">This send is unconfirmed. Retry sends the same command once.</p> : null}
     {state.error ? <p className="composer-files__error" role="alert">{state.error}</p> : null}
   </div>;
+}
+
+/** "This picture cannot be read: it is damaged, … Remove IMG_2041.jpg to send the rest." The same bytes meet the same answer, so it says what helps. */
+function refusedLine(file: DraftFile) {
+  const why = (file.error ?? '').trim().replace(/\.$/, '') || `${file.name} can’t be sent`;
+  return `${why}. Remove ${file.name} to send the rest.`;
 }
 
 const megabytes = (bytes: number) => Math.round(bytes / (1024 * 1024));
@@ -120,10 +131,11 @@ function DraftThumb({ file, order, status, blocked, onRetry, onRemove }: { file:
   return <li className={`composer-thumb${photo ? ' is-photo' : ''}`} data-file-state={file.state}>
     <span className="composer-thumb__face">{photo ? <img src={shown} alt="" onError={() => setBroken(true)} /> : <FileIcon name={file.name} size={30} />}
       {order ? <span className="composer-thumb__order"><span className="ui-vh">Sends </span>{order}<span className="ui-vh">.</span></span> : null}</span>
-    <span className="composer-files__name">{file.name}<small>{typeLine(file, detailLine(file.staged))} · {status}</small></span>
-    {file.state === 'failed' ? <Button variant="outline" size="sm" className="composer-thumb__retry" disabled={blocked} onClick={onRetry}>Retry upload</Button> : null}
+    {/* One size for one file (#1424): the stored copy's once it is staged (a picture is cleaned, so smaller), the same the sent message shows. */}
+    <span className="composer-files__name">{file.name}<small>{typeLine(file.staged ?? file, detailLine(file.staged))} · {status}</small></span>
+    {file.state === 'failed' && !file.refused ? <Button variant="outline" size="sm" className="composer-thumb__retry" disabled={blocked} onClick={onRetry}>Retry upload</Button> : null}
     <button type="button" className="composer-thumb__x" disabled={blocked} onClick={onRemove} aria-label={`Remove ${file.name}`}><span className="composer-thumb__xface"><Icon name="x" size={12} /></span></button>
-    {file.error ? <p className="composer-files__error" role="alert">{file.error}</p> : null}
+    {file.error && !file.refused ? <p className="composer-files__error" role="alert">{file.error}</p> : null}
   </li>;
 }
 

@@ -10,7 +10,8 @@ import { useLiveSpaces } from '../live/spaces';
 import { lockedLine, useEncryptedWorkspaceIds } from '../encryption/state';
 import { usePlaceMutes } from '../notifications/mutes';
 import { useShellData } from './data';
-import { startsSpaces } from '../people/api';
+import { startsConversations, startsSpaces } from '../people/api';
+import { GUEST_NO_DMS } from '../dm/names';
 import { useShellActions } from './shellContext';
 import { SpaceFace } from '../ui/SpaceFace';
 import { useAgentUnread } from '../my-agents/AgentChatDots';
@@ -134,8 +135,9 @@ export function ProjectsIndex() {
                   );
                 })}
               </ul>
-            ) : <p className="proj-index__lead">No conversations yet. Only the people in each one can read it.</p>}
-            <Link to="/dm/new" className="ui-btn ui-btn--secondary"><Icon name="plus" />New message</Link>
+            ) : <p className="proj-index__lead">{startsConversations(workspace) ? 'No conversations yet. Only the people in each one can read it.' : GUEST_NO_DMS}</p>}
+            {/* A guest replies in conversations they are added to and starts none (#1424): no New message for them. */}
+            {startsConversations(workspace) ? <Link to="/dm/new" className="ui-btn ui-btn--secondary"><Icon name="plus" />New message</Link> : null}
           </section>
         ) : null}
       </div>
