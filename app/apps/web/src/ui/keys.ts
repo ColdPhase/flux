@@ -20,6 +20,8 @@ let fieldDue = 0;
 let watching = false;
 /** What was typed while the field was on its way: it goes into the field when the field takes focus. */
 let typed = '';
+/** The end of the wait the kept letters belong to; a cancelled wait (`focusField`'s cleanup) keeps them for the wait that follows at once. */
+let keptUntil = 0;
 
 const fieldOnItsWay = () => fieldDue > performance.now();
 
@@ -42,8 +44,17 @@ function typeInto(field: EventTarget | null, text: string) {
  * field takes focus, when the person presses somewhere (what was kept is dropped), or after a few seconds.
  */
 export function awaitField() {
-  fieldDue = performance.now() + FIELD_WAIT_MS;
   typed = '';
+  waitForField();
+}
+
+/** The wait itself; what was typed so far is kept (the field that a press asked for is focused by the page it opens, `focusField`). */
+function waitForField() {
+  const now = performance.now();
+  // Kept only within the wait it was typed in: a wait that ran out never hands its letters to a later field.
+  if (now > keptUntil) typed = '';
+  fieldDue = now + FIELD_WAIT_MS;
+  keptUntil = fieldDue;
   if (watching || typeof document === 'undefined') return;
   watching = true;
   document.addEventListener('keydown', (event) => {
@@ -75,7 +86,7 @@ export function isTyping(target: EventTarget | null): boolean {
  * as long as the wait of `awaitField` lasts. Returns a cancel, which also ends the wait.
  */
 export function focusField(id: string): () => void {
-  awaitField();
+  waitForField();
   let frame = 0;
   const attempt = () => {
     const field = document.getElementById(id);
