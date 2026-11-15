@@ -264,7 +264,13 @@ export function PhotoViewer({ photos, start, context, onClose }: { photos: Messa
     close?.focus();
     const previous = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = previous; (returnTo.current as HTMLElement | null)?.focus?.(); };
+    // A modal keeps focus, as the file preview does: a photo opened by a search result (found by its name, #1424 B) opens while its
+    // message is being shown and focused, and that focus must not leave Esc and Tab outside the viewer.
+    const keep = (event: FocusEvent) => {
+      if (root.current && event.target instanceof Node && !root.current.contains(event.target)) root.current.querySelector<HTMLElement>('.photo-viewer__close')?.focus();
+    };
+    document.addEventListener('focusin', keep);
+    return () => { document.removeEventListener('focusin', keep); document.body.style.overflow = previous; (returnTo.current as HTMLElement | null)?.focus?.(); };
   }, []);
   const step = useCallback((by: number) => { setNote(''); setIndex((value) => Math.min(photos.length - 1, Math.max(0, value + by))); }, [photos.length]);
   const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
