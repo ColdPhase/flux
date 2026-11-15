@@ -184,7 +184,7 @@ class TasksReviewJourney(unittest.TestCase):
                 self.row(page, PRIVATE).locator(".ws-item").focus()
                 page.keyboard.press("4")
                 toast = page.locator(".ui-toast")
-                expect(toast).to_contain_text("done")
+                expect(toast).to_contain_text("moved to Done")
                 changed = self.task(page, "private")
                 self.assertEqual(changed["status"], "done")
                 patches: list[str] = []
@@ -363,7 +363,7 @@ class TasksReviewJourney(unittest.TestCase):
                 self.open_private_task(page)
                 self.row(page, PRIVATE).locator(".ws-item").focus()
                 page.keyboard.press("4")
-                expect(page.locator(".ui-toast")).to_contain_text("done")
+                expect(page.locator(".ui-toast")).to_contain_text("moved to Done")
                 changed = self.task(page, "private")
                 patches: list[str] = []
                 page.on("request", lambda request: patches.append(request.url) if request.method == "PATCH" else None)
