@@ -221,7 +221,9 @@ export function watchLostFocus(): () => void {
     const active = document.activeElement;
     // Still there (a toast fading out): asked again when it goes.
     if (!last || (active && active !== document.body) || usable(last.element)) return;
-    if (last.place !== place() || document.querySelector('.ui-overlay[data-state="open"]')) { last = null; return; }
+    if (last.place !== place()) { last = null; return; }
+    // A window, a calendar or a menu that is open owns the focus while it is there; asked again when it goes.
+    if (document.querySelector('.ui-overlay[data-state="open"], [role="menu"], [role="dialog"]:not(#details)')) return;
     const kept = last;
     last = null;
     const ancestor = kept.ancestors.find((element) => element.isConnected && element !== document.getElementById('root'));
@@ -231,7 +233,7 @@ export function watchLostFocus(): () => void {
     target?.focus({ preventScroll: true });
   };
   // After the others have had their turn (a window or a panel hands focus back at once, a field asked for takes it within frames).
-  const soon = () => { if (!timer && last) timer = window.setTimeout(() => requestAnimationFrame(check), 60); };
+  const soon = () => { if (!timer && last) timer = window.setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(check)), 150); };
   const observer = new MutationObserver(soon);
   observer.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['disabled', 'hidden', 'inert'] });
   document.addEventListener('focusin', onFocusIn, true);
