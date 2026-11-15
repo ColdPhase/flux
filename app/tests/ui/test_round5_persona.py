@@ -158,8 +158,8 @@ class RoundFive(unittest.TestCase):
         expect(history).to_contain_text("Creation undone by Piotr Nowak (you) today.")
         # The history line beside it has the same form.
         expect(page.locator(".wd-act__item[data-activity='reverted']")).to_contain_text("Piotr Nowak (you)")
-        # No draft was written: none is mentioned.
-        expect(page.locator(".wd-foot__note")).to_have_text("Creation was undone. This history is read-only.")
+        # No draft was written: none is mentioned, and the panel does not say "undone" again at its foot (audit 3274a05).
+        expect(page.locator(".wd-foot__note")).to_have_count(0)
 
     def test_04_an_undone_change_leaves_no_line_in_the_history(self) -> None:
         made = self.task("piotr", "Sweep the bakery yard")
@@ -270,6 +270,90 @@ class RoundFive(unittest.TestCase):
         page.wait_for_timeout(1200)
         card_box, toast_box = card.bounding_box(), toast.bounding_box()
         self.assertLessEqual(card_box["y"] + card_box["height"], toast_box["y"] + 1, f"the card {card_box} stands clear of the toast {toast_box}")
+
+    def test_11b_decision_proposed_never_covers_the_new_card_while_it_settles(self) -> None:
+        """From the moment the new card has focus, sampled every 100 ms while the toast comes in and settles (J55)."""
+        page = self.page("piotr")
+        page.goto(f"/projects/{self.ids['feed']}")
+        expect(page.locator(".project-convo__message-list li").filter(has_text="Shift note 36")).to_be_visible()
+        decision = open_decision(page)
+        decision.get_by_role("textbox", name="Decision", exact=True).fill("Open the market stall at eight")
+        decision.get_by_role("textbox", name="Decision", exact=True).press("Control+Enter")
+        card = page.locator("#content [data-decision-card]").filter(has_text="Open the market stall at eight")
+        expect(card).to_be_focused()
+        samples = page.evaluate("""async () => {
+          const card = document.activeElement; const out = [];
+          for (let i = 0; i < 16; i += 1) {
+            const toast = [...document.querySelectorAll('.ui-toast')].find((el) => el.textContent.includes('Decision proposed'));
+            if (toast) out.push(Math.round(card.getBoundingClientRect().bottom - toast.getBoundingClientRect().top));
+            await new Promise((resolve) => setTimeout(resolve, 100));
+          }
+          return out;
+        }""")
+        self.assertTrue(samples, "the toast showed")
+        self.assertLessEqual(max(samples), 1, f"the card's bottom over the toast's top, px, every 100 ms: {samples}")
+
+    # ---------------------------------------------------------------- the full screen audit at 3274a05
+
+    def test_12_a_thread_with_a_task_card_never_scrolls_sideways_on_touch(self) -> None:
+        shift = self.ids["shift"]
+        root = self.call("piotr", "POST", f"/api/v1/projects/{shift}/conversations", {"body": "Sensors for the cold room", "clientMessageId": str(uuid.uuid4())})
+        reply = self.call("jonas", "POST", f"/api/v1/conversations/{root['id']}/messages",
+                          {"body": "Then let us order six of the small probes and keep two spare for the walk-in fridge.", "clientMessageId": str(uuid.uuid4())})
+        self.call("jonas", "POST", f"/api/v1/projects/{shift}/work", {"title": "Order six small probes", "sources": [{"type": "message", "id": reply["id"]}],
+                                                                      "clientCommandId": str(uuid.uuid4())})
+        for size in (PHONE, {"width": 1180, "height": 820}):
+            with self.subTest(width=size["width"]):
+                context = self.browser.new_context(service_workers="block", base_url=ORIGIN, locale="en-GB", storage_state=self.states["piotr"], viewport=size,
+                                                   device_scale_factor=1, has_touch=True, is_mobile=True)
+                self.addCleanup(context.close)
+                page = context.new_page()
+                page.goto(f"/projects/{shift}/messages/{reply['id']}")
+                feed = page.locator(".thread__feed")
+                message = page.locator(f"#message-{reply['id']}")
+                expect(message.locator(".msg-tasks")).to_be_visible()
+                page.wait_for_timeout(300)
+                widths = feed.evaluate("(el) => [el.scrollWidth, el.clientWidth]")
+                self.assertLessEqual(widths[0], widths[1], f"{size['width']}: the thread does not scroll sideways {widths}")
+                dots, edge = message.locator("button.msg-touch__sr").bounding_box(), feed.bounding_box()
+                self.assertLessEqual(dots["x"] + dots["width"], edge["x"] + edge["width"] + 0.5, f"{size['width']}: the ⋯ stays inside the thread {dots} {edge}")
+
+    def test_13_one_form_of_a_name_in_the_stream_and_the_decision_panel(self) -> None:
+        space = self.call("piotr", "POST", f"/api/v1/workspaces/{self.ids['ws']}/projects", {"name": "Names", "visibility": "workspace"})["id"]
+        self.call("piotr", "POST", f"/api/v1/projects/{space}/conversations", {"body": "Saturday prep starts at six.", "clientMessageId": str(uuid.uuid4())})
+        for title in ("Order flour", "Clean the trays", "Book the van"):
+            self.call("piotr", "POST", f"/api/v1/projects/{space}/work", {"title": title, "clientCommandId": str(uuid.uuid4())})
+        decision = self.call("piotr", "POST", f"/api/v1/projects/{space}/decisions", {"title": "Bake on Friday nights"})
+        page = self.page("piotr")
+        page.goto(f"/projects/{space}")
+        expect(page.locator(".convo-fold .convo-fold__s")).to_have_text(" · Piotr Nowak (you) created 3 tasks")
+        page.goto(f"/projects/{space}?open=decision:{decision['id']}")
+        expect(page.locator(".wd-decision-rows")).to_contain_text("Piotr Nowak (you)")
+        # Jonas accepts: the line under the card is in the card line's type.
+        context = self.browser.new_context(base_url=ORIGIN, storage_state=self.states["jonas"], service_workers="block")
+        accepted = context.request.post(f"/api/v1/decisions/{decision['id']}/accept", data={}, headers={"origin": ORIGIN, "If-Match": f"\"{decision['version']}\""})
+        context.close()
+        self.assertEqual(accepted.status, 200, accepted.text)
+        jonas = self.page("jonas")
+        jonas.goto(f"/projects/{space}")
+        line = jonas.locator(".convo-object.is-follow .convo-notice__meta strong")
+        expect(line).to_contain_text("Jonas Berg (you)")
+        card = jonas.locator(".convo-notice__card > .convo-notice__meta strong").first
+        look = "(el) => { const s = getComputedStyle(el); return [s.fontSize, s.fontWeight, s.color]; }"
+        self.assertEqual(line.evaluate(look), card.evaluate(look), "the acceptance line and the card's line share their type")
+
+    def test_14_people_are_listed_in_one_order(self) -> None:
+        page = self.page("piotr")
+        page.goto("/settings/company")
+        company = page.locator(".people--page .people__item[data-person]")
+        expect(company.first).to_contain_text("Piotr Nowak")
+        names = lambda rows: [row.locator("b").first.inner_text().replace(" (you)", "") for row in rows.all()]  # noqa: E731
+        listed = names(company)
+        page.goto(f"/projects/{self.ids['shift']}/settings")
+        space = page.locator(".spset .sset-row[data-person]")
+        expect(space.first).to_contain_text("Piotr Nowak")
+        in_space = names(space)
+        self.assertEqual([name for name in listed if name in in_space], in_space, f"one order: {listed} and {in_space}")
 
 
 if __name__ == "__main__":

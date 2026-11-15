@@ -710,6 +710,11 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
                 const dayLine = index === 0 || dayOf[index - 1] !== label ? <MessageDay key={`day-${key}`} label={label} /> : null;
                 const starts = startsUnread(entry);
                 const divider = starts ? <Fragment key={`unread-${key}`}>{dayLine}<UnreadDivider /></Fragment> : dayLine;
+                // The fold names people as the cards inside it do (personas-28): the full name, and "(you)" for the reader.
+                const foldName = (notice: TaskCreationNotice) => {
+                  const name = notice.createdBy.name ?? (notice.createdBy.kind === 'agent' ? 'Agent' : FORMER_MEMBER);
+                  return notice.createdBy.kind === 'human' && notice.createdBy.id === meId ? `${name} (you)` : name;
+                };
                 const noticeItem = (notice: TaskCreationNotice) => <NoticeItem key={`notice-${notice.id}`} notice={notice} meId={meId} owners={owners} row={referenceWork.rows.get(`work:${notice.workId}`) ?? null}
                   authorOf={authorOf} hasMessage={(id) => rootMessageIds.has(id)} onOpenTask={(id) => openDetails({ kind: 'work', id })} />;
                 if (entry.kind === 'notice') return [divider, noticeItem(entry.notice)];
@@ -719,7 +724,7 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
                   onOpen={(target) => openDetails(target)} onOpenThread={(conversationId) => { const root = roots.find((item) => item.conversationId === conversationId); if (root) openRoot(root, false); }} />];
                 if (entry.kind === 'fold') {
                   const folded = entry.notices.map((item) => item.notice);
-                  return [divider, <NoticeFold key={entry.key} fold={{ key: entry.key, notices: folded }} shown={revealed} summary={foldSummary(folded, authorOf, (notice) => notice.createdBy.name?.split(/\s+/)[0] ?? 'Someone')}>{folded.map(noticeItem)}</NoticeFold>];
+                  return [divider, <NoticeFold key={entry.key} fold={{ key: entry.key, notices: folded }} shown={revealed} summary={foldSummary(folded, authorOf, foldName)}>{folded.map(noticeItem)}</NoticeFold>];
                 }
                 const { root } = entry;
                 const previous = display[index - 1], next = display[index + 1];

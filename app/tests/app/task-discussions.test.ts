@@ -286,7 +286,7 @@ test('real agent history reaches bounded helper context, search, export, notific
   const query = new URLSearchParams({ q: 'spectrometer', type: 'message', place: `project:${f.place.id}`, author: `agent:${agent.id}` });
   const found = expectStatus(await f.reader.browser.request('GET', `/api/v1/search?${query}`), 200) as SearchResponse;
   assert.equal(found.items.length, 1);
-  assert.equal(found.items[0]!.author, 'Trial analyst (agent)');
+  assert.equal(found.items[0]!.author, "Trial analyst · root-owner's agent");
   assert.deepEqual(found.items[0]!.target, { type: 'message', projectId: f.place.id, conversationId: root.conversationId, messageId: reply.id });
   const exported = await projectExportRows(db).conversations(f.place.id);
   assert.deepEqual(exported[0]!.messages.map((row) => row.author), [{ kind: 'human', id: f.writer.id }, principal]);

@@ -210,7 +210,8 @@ class ConversationFinal(unittest.TestCase):
         expect(fold).to_have_count(1)
         toggle = fold.get_by_role("button", name=re.compile(r"^4 task updates"))
         expect(toggle).to_have_attribute("aria-expanded", "false")
-        expect(toggle).to_contain_text("Ada created 4 tasks")
+        # The fold names people as its cards do (personas-28): the full name, "(you)" for the reader.
+        expect(toggle).to_contain_text("Ada Kowalska (you) created 4 tasks")
         ids = json.loads(self.ids["folded"])
         for work_id in ids:
             expect(self.notice(page, work_id)).to_be_hidden()

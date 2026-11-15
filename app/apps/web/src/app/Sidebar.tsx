@@ -232,7 +232,8 @@ export function Sidebar({ directMessages, agents = [], user, onClose, titleId, i
           ))}
         </nav>
         <nav className="side__rail-dms" aria-label="Private conversations">
-          <Link to="/dm" className="side__ib" aria-label="Messages" aria-current={location.pathname === '/dm' ? 'page' : undefined}><Icon name="chat" size={18} /></Link>
+          {directMessages.length || agents.length || startsConversations(shell.workspace)
+            ? <Link to="/dm" className="side__ib" aria-label="Messages" aria-current={location.pathname === '/dm' ? 'page' : undefined}><Icon name="chat" size={18} /></Link> : null}
           {agents.map((agent) => <RailAgent key={agent.id} agent={agent} />)}
           {directMessages.map((dm) => (
             <NavLink key={dm.id} to={`/dm/${dm.id}`} end={false} className="side__rail-dm"
@@ -340,7 +341,9 @@ export function Sidebar({ directMessages, agents = [], user, onClose, titleId, i
           <span className="ui-vh" role="status" aria-live="polite">{moves.status}</span>
         </nav> : null}
 
-        <nav className="side__sec" aria-labelledby="side-dms">
+        {/* A guest with no conversation and no agent has no Messages heading over nothing (audit P3 5): they start none, and the
+            first one someone starts with them brings the heading with it. */}
+        {directMessages.length || agents.length || startsConversations(shell.workspace) ? <nav className="side__sec" aria-labelledby="side-dms">
           <div className="side__head">
             <h2 className="side__h" id="side-dms"><Link to="/dm" className="side__h-link" aria-current={location.pathname === '/dm' ? 'page' : undefined} onClick={navigate}>Messages</Link></h2>
             {/* New (C) creates, in the drawer too (#1375); only a Messages heading over nothing offers its "+" (New message), on the computer and in the drawer alike (#1424).
@@ -367,7 +370,7 @@ export function Sidebar({ directMessages, agents = [], user, onClose, titleId, i
               })}
             </ul>
           ) : null /* Its heading leads to Messages; an empty list says nothing (#763 FR-4). */}
-        </nav>
+        </nav> : null}
       </div>
       <WorkingAgent />
       <UserMenu id={user.id} name={user.name} onNavigate={onClose} />

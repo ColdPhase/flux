@@ -136,7 +136,7 @@ export function ProjectsIndex() {
                   );
                 })}
               </ul>
-            ) : <p className="proj-index__lead">{startsConversations(workspace) ? 'No conversations yet. Only the people in each one can read it.' : GUEST_NO_DMS}</p>}
+            ) : <p className="proj-index__lead">{`No messages yet. ${startsConversations(workspace) ? 'Only the people in each conversation can read it.' : GUEST_NO_DMS}`}</p>}
             {/* A guest replies in conversations they are added to and starts none (#1424): no New message for them. */}
             {startsConversations(workspace) ? <Link to="/dm/new" className="ui-btn ui-btn--secondary"><Icon name="plus" />New message</Link> : null}
           </section>

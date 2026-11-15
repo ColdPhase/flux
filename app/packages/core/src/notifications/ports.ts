@@ -32,6 +32,8 @@ export interface ProjectMessageFacts {
   conversationCreatedBy: { kind: 'human' | 'agent'; id: string };
   author: { kind: 'human' | 'agent'; id: string };
   authorName: string | null;
+  /** An agent author's owner, for its one label "Planner · Ada's agent" (#1364). */
+  authorOwnerId?: string | null;
   /** The name of the local client or assistant that posted for its author (LC-2, AG-4 Show everyone): the author stays the person, and the notice says so. */
   via?: string | null;
   /** `via` names an agent whose answer the author showed everyone (the message has its colour), not a local client (#1424). */

@@ -123,7 +123,8 @@ class DecisionAuthorityJourney(unittest.TestCase):
         expect(card).to_contain_text("Ada Lind")
         item = open_item(card)
         expect(item.locator(".nyc__waiting")).to_contain_text("Waiting for you")
-        expect(item.locator(".nyc__waiting")).to_contain_text("Ada Lind can accept too")
+        # Ada proposed it, so she is not among those who can accept it (personas-27).
+        expect(item.locator(".nyc__waiting")).not_to_contain_text("Ada Lind")
         expect(item.get_by_role("button", name=re.compile("^Accept"))).to_be_visible()
         page = self.open_decision("kai")
         panel = self.details(page)

@@ -692,6 +692,8 @@ function DecisionPanel({ decision, context, detail, relations, reload, revision,
   // The panel is the Inbox's decision card first (F-026 P4, S11; #763 D1): the reason, what it rests on,
   // Accept / Not now / Discuss and who else can accept. Not now and the waiting line are the Inbox item's, when it has one.
   const queue = useNeedsYou(me.user.id);
+  // A person is named as every list of people names them (personas-28): "Ada Kowalska (you)" for the reader.
+  const youOr = (who: { kind: string; id: string; name: string }) => (who.kind === 'human' && who.id === me.user.id ? `${who.name} (you)` : who.name);
   const handlers = useNeedsYouActions(queue);
   const need = decision.status === 'proposed' ? queue.items?.find((entry) => entry.key === `decision:${decision.id}`) ?? null : null;
   const discuss = useDiscussDecision();
@@ -743,8 +745,8 @@ function DecisionPanel({ decision, context, detail, relations, reload, revision,
         </section>
       ) : null}
       <dl className="wd-rows wd-decision-rows">
-        <div className="wd-row"><dt>Proposed</dt><dd><span>{decision.proposedBy.kind === 'agent' ? <AgentIdentity name={decision.proposedBy.name} owner={agentAuthorOwner(decision.proposedBy, owners)} hue={decision.proposedBy.colour} /> : decision.proposedBy.name} · {shortDate(decision.createdAt)}</span></dd></div>
-        {decision.decidedBy ? <div className="wd-row"><dt>Decided</dt><dd><span>{decision.decidedBy.name} · {shortDate(decision.decidedAt!)}</span></dd></div> : null}
+        <div className="wd-row"><dt>Proposed</dt><dd><span>{decision.proposedBy.kind === 'agent' ? <AgentIdentity name={decision.proposedBy.name} owner={agentAuthorOwner(decision.proposedBy, owners)} hue={decision.proposedBy.colour} /> : youOr(decision.proposedBy)} · {shortDate(decision.createdAt)}</span></dd></div>
+        {decision.decidedBy ? <div className="wd-row"><dt>Decided</dt><dd><span>{youOr(decision.decidedBy)} · {shortDate(decision.decidedAt!)}</span></dd></div> : null}
       </dl>
 
       {earlier ? (

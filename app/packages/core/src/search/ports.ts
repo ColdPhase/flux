@@ -70,6 +70,8 @@ export interface SearchRow {
   snippet: SearchText | null;
   hasBody: boolean;
   authorName: string | null;
+  /** An agent author's owner, for its one label "Planner · Ada's agent". */
+  agentOwnerName?: string | null;
   /** The client or assistant a message was posted through, for the author's line ("Ada · via Claude Code"). */
   via?: string | null;
   /** `via` names an agent whose answer its person showed everyone ("Ada's Assistant"), not a local client (#1424). */

@@ -13,7 +13,7 @@ import { useShellActions } from '../app/shellContext';
 import { useWorkspaceEncryption } from '../encryption/state';
 import { Avatar, Button, Icon, Input, Option, Select, useFocusBack, useToast } from '../ui';
 import { SwitchRow } from '../ui/SwitchRow';
-import { attemptKeys, firstName, grantPerson, isManagerRole, joinNames, listGrants, listMembers, problemText, revokeGrant } from './api';
+import { attemptKeys, firstName, grantPerson, isManagerRole, joinNames, listGrants, listMembers, peopleOrder, problemText, revokeGrant } from './api';
 import { DeleteSpaceDialog } from './DeleteSpace';
 import { PersonLine } from './LastActive';
 import { PeoplePicker } from './PeoplePicker';
@@ -148,11 +148,11 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName, inviter
           const member = grant.principal.kind === 'human' ? memberOf(grant.principal.id) : null;
           return member ? [fromMember(member, grant)] : [];
         });
-      return list.sort((a, b) => (a.userId === meId ? -1 : b.userId === meId ? 1 : a.role === b.role ? a.name.localeCompare(b.name) : a.role === 'manager' ? -1 : 1));
+      return list.sort(peopleOrder(meId, roleWord));
     }
     return (people ?? []).filter((person) => person.kind === 'human')
       .map((person): Row => ({ userId: person.id, name: person.name, email: null, role: person.access === 'manager' ? 'manager' : 'contributor', company: false, guest: !!person.guest, owner: !!person.owner, grantId: null, lastActiveAt: person.lastActiveAt }))
-      .sort((a, b) => (a.userId === meId ? -1 : b.userId === meId ? 1 : a.role === b.role ? a.name.localeCompare(b.name) : a.role === 'manager' ? -1 : 1));
+      .sort(peopleOrder(meId, roleWord));
   })();
 
   // Any company person, the owner too (F-037 "chosen from the company"; the same list New space offers, #905).

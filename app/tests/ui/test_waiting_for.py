@@ -110,9 +110,11 @@ class WaitingFor(unittest.TestCase):
                 title = f"Choose the diffuser {'phone' if phone else 'computer'}"
                 task = self.block(self.task(title), blocker="Which finish?", waitingFor={"kind": "human", "id": self.kai})
                 page = self.page("kai", phone); page.goto("/inbox")
-                heading = f"Ada Kowalska is waiting for you: #{task['number']} {title} · Which finish?"
+                # The task is the title, and the reason the line under it, said once (personas-28).
+                heading = f"Ada Kowalska is waiting for you: #{task['number']} {title}"
                 item = page.get_by_role("listitem").filter(has=page.get_by_role("button", name=heading))
                 expect(item.first).to_be_visible()
+                expect(item.first).to_contain_text("Which finish?")
                 expect(item.first.get_by_role("button", name="Unblock")).to_have_count(0)
                 if not phone: expect(open_item(item.first).get_by_role("button", name="Done", exact=True)).to_be_visible()
                 shot(page, f"waiting-for-inbox-{'phone' if phone else 'computer'}")
@@ -244,9 +246,9 @@ class WaitingFor(unittest.TestCase):
                 # The board's card and the list's row say it in one line, as drawn.
                 page.goto(f"/projects/{self.project}/tasks")
                 if not phone: page.get_by_role("radio", name="Board", exact=True).click()
-                expect(page.locator(f".tb-card[data-card-id='{task['id']}'] .tb-card__blocker")).to_have_text(f"Waiting for #{other['number']}")
+                expect(page.locator(f".tb-card[data-card-id='{task['id']}'] .tb-card__blocker")).to_have_text(f"Waiting for #{other['number']} · Needs a go-ahead")
                 page.get_by_role("radio", name="List", exact=True).click()
-                expect(page.locator(".ws-task").filter(has_text=f"Mount the far sensor {tag}").first).to_contain_text(f"waiting for #{other['number']}")
+                expect(page.locator(".ws-task").filter(has_text=f"Mount the far sensor {tag}").first).to_contain_text(f"Waiting for #{other['number']} · Needs a go-ahead")
 
     def test_09_an_accepted_decision_sends_the_task_back_to_doing_and_the_stream_says_so(self):
         for phone in (False, True):

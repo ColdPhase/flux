@@ -574,7 +574,7 @@ The IDs come from the first Prostota canvas; rules that no longer apply are left
 | S4 | One detail panel on the computer and one sheet on the phone, for tasks, decisions and threads. At most two content columns. |
 | S5 | The composer has `@` to mention and `/` for actions (`/task`, `/decide`, `/ai`, `/file`: these four, no more), with no separate buttons. Attaching is a paperclip, because "+" means Create. The hint reads "Message · @ mention · / actions", and the `/` menu is its list of commands with nothing under it (no "Type @ to mention people" line: the hint says it; #1424). **`@` mentions people only** (founder decision, Hubert, 2026-11-13, [#1419](https://github.com/ColdPhase/flux/issues/1419)): the assistant is not in it (asking it is `/ai`) and agents are not members of a space, so they are not listed (giving work to an agent is the task's Owner, S12). The assistant's suggestions are in the `/` menu, under `/ai`, and nowhere else (see [Agents and AI](#agents-and-ai)). |
 | S6 | **Message actions.** On the computer, hovering a message shows Reply in thread, Create task and ⋯. The ⋯ menu has one level, in the same order everywhere: Add to map, Copy link, Copy text, then Edit and Delete on your own messages. **Copy text** (founder direction by Hubert, 2026-11-08) is on every message a person can read, not only their own: it copies the message's plain words, with no markup (a mention as `@name`, a Wiki page as its title, a quote without its `>` marks). A deleted message has none. On the phone, long press opens the same list and swipe right replies in thread (#343). |
-| S8 | Several task updates in a row fold into one expandable line. |
+| S8 | Several task updates in a row fold into one expandable line. It names people as the cards inside it do: the full name, and "(you)" for the reader ("Ada Kowalska (you) created 3 tasks", audit 3274a05). |
 | S9 | One tap on the state glyph (or `1`–`4`) changes the state. Swipe left, then Done, then a toast with **Undo**. |
 | S10 | Title and properties are edited in place. |
 | S11 | A decision shows who can accept it and who is still waiting. Not now is one button, with no menu: it puts the item off until tomorrow morning, with Undo ([Inbox](#inbox)). |
@@ -1407,6 +1407,9 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   page each need a space, persona round 26); Home's line is only "When someone adds you to a space, it appears under Spaces at once."
   (the sidebar's heading and the phone's tab alike). Nor does a guest start a conversation: no New message (the Messages "+", the
   Messages page, the phone's Spaces), and a person's name over a message is only their name for a guest, not a way to `/dm/new`.
+  With no conversation and no agent, a guest's sidebar has no Messages heading over nothing (it comes with the first conversation
+  someone starts with them), and an empty Messages says one line under "No messages yet": "When someone writes to you, it appears here."
+  (audit 3274a05).
 - **Batch entry is one step, and the space is kept.** **Add another** in the toast, or `C` pressed
   next, opens the window again on Task with the same space chosen, an empty title and no owner. `C` keeps the space the last task was created in until the person goes to another
   place.
@@ -1616,6 +1619,7 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   - The company name, shown on the sign-in page and in emails.
   - The people, with their role (Owner, Admin, Member, Guest), when each was last active ([Last active](#last-active)) and a line about guests: they see only the
     spaces they are added to and never have AI.
+    Every list of people (here and Space settings) has one order: you first, then Owner, Admin, Member, Guest, then by name (audit 3274a05).
   - With SSO, "Everyone who signs in with Riverside SSO joins automatically", and there is no
     Invite. Without SSO, Invite makes a one-time link that the admin sends (F-035); Flux sends no
     invitation email.

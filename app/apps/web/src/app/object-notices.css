@@ -16,6 +16,11 @@
 }
 /* An acceptance is one line, never a second card (#1424); right under its proposal (#763 H11-9) it sits close beneath that card. */
 .convo-object + .convo-object.is-follow { margin-top: 6px; }
+/* It is in the type of the card's own line above it (audit 3274a05): the same size, weight and colours, never larger or bolder. */
+.convo-object.is-follow .convo-notice__meta, .convo-object.is-follow .convo-notice__meta strong { font-size: var(--fs-sm); line-height: 1.4; }
+.convo-object.is-follow .convo-notice__meta { color: var(--t3); }
+.convo-object.is-follow .convo-notice__meta strong { font-weight: 500; color: var(--t2); }
+.convo-object.is-follow .convo-notice__meta .convo-notice__src { color: var(--t2); }
 /* In a thread the line sits among the replies at the replies' own column. */
 .thread__list > .convo-object { margin: 14px 0; }
 /* The card of the decision open in the panel is the open one, with the open card's fill (the board's open card, --hov), from whatever

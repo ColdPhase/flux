@@ -1,5 +1,5 @@
 import { redactedError } from '../encryption/redact.js';
-import { decisionAppPath, messagePreview, viaName } from '@flux/contracts';
+import { agentWords, decisionAppPath, messagePreview, viaName } from '@flux/contracts';
 import { randomUUID } from 'node:crypto';
 import type { NotificationReason } from '@flux/contracts';
 import type { JobRetryPolicy } from '../push/config.js';
@@ -147,10 +147,11 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
       // A server agent's line tells nobody but its owner, whatever it names (#1089, AG-4); a person's and a local client's lines are as before.
       const people = [...audience].filter((userId) => userId !== authorId && reachable(userId)
         && (typeof message.onlyNotifies !== 'string' || userId === message.onlyNotifies));
-      const names = await facts.names([...(authorId ? [authorId] : []), ...people]);
+      const ownerId = message.author.kind === 'agent' ? message.authorOwnerId ?? null : null;
+      const names = await facts.names([...(authorId ? [authorId] : []), ...(ownerId ? [ownerId] : []), ...people]);
       // A person's message posted through a client or an assistant is marked in every notice, like on the message: "Ada · via Claude Code", and an
-      // agent's answer they showed everyone is "Ada's Assistant", its one name (#1424).
-      const author = authorId ? viaName(names.get(authorId) ?? 'Someone', message.via, message.viaAgent) : `${message.authorName ?? 'Agent'} (agent)`;
+      // agent's answer they showed everyone is "Ada's Assistant", its one name (#1424). An agent's own line is its one label, "Planner · Ada's agent".
+      const author = authorId ? viaName(names.get(authorId) ?? 'Someone', message.via, message.viaAgent) : agentWords(message.authorName ?? 'Agent', ownerId ? names.get(ownerId) : null);
       const involved = new Set([...(message.conversationCreatedBy.kind === 'human' ? [message.conversationCreatedBy.id] : []), ...message.earlierAuthors]);
       // Who gets the replies of a thread (#1249): the people who follow it. A person's own choice (Follow, Unfollow) wins over the default,
       // which is that its starter and earlier writers follow it.

@@ -106,7 +106,7 @@ class FeedAndQuestions(unittest.TestCase):
         undone = f'.convo-notice[data-work-id="{self.ids["task1"]}"]'
         # Live, in the open stream of another reader: neither listed nor counted, and no "Undone" card.
         expect(self.fold(jonas).locator(".convo-fold__t b")).to_have_text("3 task updates")
-        expect(self.fold(jonas).locator(".convo-fold__s")).to_have_text(" · Ada created 3 tasks")
+        expect(self.fold(jonas).locator(".convo-fold__s")).to_have_text(" · Ada Kowalska created 3 tasks")
         expect(jonas.locator(undone)).to_have_count(0)
         for who in ("jonas", "ada"):
             with self.subTest(reader=who):

@@ -14,7 +14,7 @@ import { isEncryptionEvent, type EncryptedWorkspace } from '../encryption/api';
 import { EncryptionSection } from '../encryption/EncryptionSection';
 import { listCompanyEncryptedSpaces } from '../encryption/api';
 import { ROLE_HINT, ROLE_LABEL, addMember, attemptKeys, changeRole, createInvite, firstName, getWorkspace, grantPerson, isManagerRole, listRemovedPeople, restorePerson, listInvites, listMembers, makeResetLink, problemText, removeMember, renameCompany,
-  revokeInvite } from './api';
+  peopleOrder, revokeInvite } from './api';
 import { DeleteSpaceDialog, type DeletableSpace } from './DeleteSpace';
 import { PersonLine } from './LastActive';
 import './people.css';
@@ -141,7 +141,7 @@ export function WorkspacePeople({ workspaceId, onBack, page = false }: { workspa
   const myRole = workspace.role ?? 'guest';
   const manager = isManagerRole(myRole);
   const owners = members?.filter((member) => member.role === 'owner').length ?? 0;
-  const ordered = members ? [...members.filter((member) => member.userId === me.user.id), ...members.filter((member) => member.userId !== me.user.id)] : null;
+  const ordered = members ? [...members].sort(peopleOrder(me.user.id, (member: WorkspaceMember) => ROLE_LABEL[member.role])) : null;
 
   const guests = ordered?.filter((member) => member.role === 'guest') ?? [];
   // On the company's page the people come first, as drawn: one Invite above them, or with single sign-on one line saying who

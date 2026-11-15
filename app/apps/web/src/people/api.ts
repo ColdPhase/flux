@@ -85,6 +85,15 @@ export const ROLE_HINT: Record<WorkspaceRole, string> = {
   member: 'Is in Everyone, starts spaces and sees the ones they’re added to.',
   guest: 'Sees only the spaces they’re added to, and never has AI.',
 };
+/**
+ * The one order of a list of people (audit 3274a05: Company and Space settings listed them differently): you first, then by the word the
+ * list gives each person, Owner, Admin, Member, Guest, then by name.
+ */
+export function peopleOrder<T extends { userId: string; name: string }>(meId: string, word: (person: T) => string) {
+  const rank = (person: T) => { const at = ['Owner', 'Admin', 'Member', 'Guest'].indexOf(word(person)); return at < 0 ? 4 : at; };
+  return (a: T, b: T) => (a.userId === meId ? -1 : b.userId === meId ? 1 : rank(a) - rank(b) || a.name.localeCompare(b.name));
+}
+
 export const isManagerRole = (role: WorkspaceRole | null | undefined) => role === 'owner' || role === 'admin';
 
 /** A guest does not start spaces (AG-2, #555): nothing offers them New space, and no empty state points to it (#1424). */

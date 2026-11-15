@@ -341,7 +341,8 @@ class InboxFinal(unittest.TestCase):
         self.assertEqual(decision.locator(".ui-btn--primary").count(), 1, "one dark primary in the open item")
         # One person accepts (O-009): the card says who still can, not who "already accepted".
         expect(decision.locator(".nyc__waiting")).to_contain_text("Waiting for you")
-        expect(decision.locator(".nyc__waiting")).to_contain_text("Jonas Berg can accept too")
+        # Jonas proposed it, so he is not among those who can accept it (personas-27).
+        expect(decision.locator(".nyc__waiting")).not_to_contain_text("Jonas Berg")
         expect(self.card(page, ASKED)).to_contain_text("Question")
         expect(self.card(page, "Design a weatherproof enclosure")).to_contain_text("your task")
         # One shape for every kind (README §7, #1424): a muted line "Kind · who · space", then the title (what the mention or the question says). No bold

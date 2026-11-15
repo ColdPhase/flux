@@ -248,12 +248,12 @@ export function createReturnUseCases(ports: ReturnPorts) {
     for (const item of decisions.values()) actorKeys.add(item.proposedByKey);
     for (const message of messages.values()) actorKeys.add(`${message.author.kind}:${message.author.id}`);
     const names = await returns.names([...actorKeys]);
-    // People by first name, as in conversation ("Nia's task"); agents by their full name.
+    // People by first name, as in conversation ("Nia's task"); agents by their one label, "Planner · Ada's agent".
     const nameOf = (actorKey: string | null) => {
       if (!actorKey) return null;
       const name = names.get(actorKey)?.trim();
       if (!name) return actorKey.startsWith('agent:') ? 'An agent' : 'A former member';
-      return actorKey.startsWith('human:') ? name.split(/\s+/)[0]! : `${name} (agent)`;
+      return actorKey.startsWith('human:') ? name.split(/\s+/)[0]! : name;
     };
     const myName = names.get(me) ?? '';
     const canWrite = new Map<string, boolean>();
