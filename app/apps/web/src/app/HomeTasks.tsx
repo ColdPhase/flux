@@ -6,6 +6,7 @@ import { listAssignedWork } from '../work/api';
 import { STATUS_LABEL } from '../work/format';
 import { getProject } from '../project/api';
 import { useShellData } from './data';
+import { startsSpaces } from '../people/api';
 import { useShellActions } from './shellContext';
 import { RefLink } from '../place/origin';
 
@@ -23,7 +24,7 @@ interface Loaded { userId: string; items: WorkItem[]; total: number; failed: boo
  * visible and on project events, without polling.
  */
 export function HomeTasks() {
-  const { me, workspaces, projects } = useShellData();
+  const { me, workspace, workspaces, projects } = useShellData();
   const { openNavigation, openCreate } = useShellActions();
   const narrow = useMediaQuery(MEDIA.navDrawer);
   const [loaded, setLoaded] = useState<Loaded | null>(null);
@@ -87,7 +88,7 @@ export function HomeTasks() {
       );
     }
     const action = !projects.length
-      ? <Button variant="primary" icon="plus" onClick={() => openCreate({ kind: 'space' })}>Create a space</Button>
+      ? startsSpaces(workspace) ? <Button variant="primary" icon="plus" onClick={() => openCreate({ kind: 'space' })}>Create a space</Button> : null
       : narrow ? <Button onClick={openNavigation}>Open your spaces</Button> : null;
     return pulling(
       <div className="view-empty">

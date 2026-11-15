@@ -20,7 +20,7 @@ import { PushOffer } from '../notifications/PushOffer';
 import { enablePushNotifications, getPushState } from '../pwa/push';
 import type { FirstStep, FirstStepJoined, FirstSteps as FirstStepsRead } from '@flux/contracts';
 import { openDm } from '../api/direct-messages';
-import { attemptKeys, firstName } from '../people/api';
+import { attemptKeys, firstName, startsSpaces } from '../people/api';
 import { getFirstSteps, hideFirstSteps } from './firstSteps';
 
 const dateFormat = new Intl.DateTimeFormat(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
@@ -355,8 +355,9 @@ export function Home() {
           {joinedSpace ? <>
             {/* #763 FT-3, F-037: someone in the company with only Everyone is told how other spaces reach them. */}
             <h3 id="home-first">You’re in {joinedSpace.name}</h3>
-            <p>When someone adds you to a space, it appears here at once. You can also start your own.</p>
-            {joinedSpace.role === 'guest' ? null : <Button variant="secondary" size="lg" onClick={() => openCreate({ kind: 'space' })}>Start a space</Button>}
+            {/* A guest does not start spaces, so they are not told they can (#1424). */}
+            <p>When someone adds you to a space, it appears here at once.{startsSpaces(joinedSpace) ? ' You can also start your own.' : ''}</p>
+            {startsSpaces(joinedSpace) ? <Button variant="secondary" size="lg" onClick={() => openCreate({ kind: 'space' })}>Start a space</Button> : null}
           </> : <>
           {/* F-037: an account nobody has invited yet joins through a link from the company's admin. */}
           {removedFrom ? <>
