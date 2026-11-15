@@ -73,6 +73,21 @@ export function PropertyMenu({ label, value, options, disabled, onChoose, onOpen
     if (row.top < box.top) list.scrollTop -= box.top - row.top;
     else if (row.bottom > box.bottom) list.scrollTop += row.bottom - box.bottom;
   }, [open, active, placed]);
+  // WebKit can drop focus to the page a moment after the layer took it (the panel beside it is still being read in): while the menu is
+  // open, focus that falls to the page goes back to its row, and a key that reaches the page still acts on the menu, never on the panel.
+  const keys = useRef<(event: globalThis.KeyboardEvent) => void>(() => undefined);
+  useEffect(() => {
+    if (!open || sheet) return undefined;
+    const lost = () => !document.activeElement || document.activeElement === document.body;
+    const back = () => { if (lost()) items.current[active]?.focus({ preventScroll: true }); };
+    const onFocusOut = (event: FocusEvent) => { if (!event.relatedTarget) requestAnimationFrame(back); };
+    const onKey = (event: globalThis.KeyboardEvent) => { if (lost()) keys.current(event); };
+    const node = layer.current;
+    node?.addEventListener('focusout', onFocusOut);
+    window.addEventListener('keydown', onKey, true);
+    const frame = requestAnimationFrame(back);
+    return () => { cancelAnimationFrame(frame); node?.removeEventListener('focusout', onFocusOut); window.removeEventListener('keydown', onKey, true); };
+  }, [open, sheet, active, placed]);
   const was = useRef(false);
   useEffect(() => {
     if (open && !was.current) onOpen?.();
@@ -86,7 +101,7 @@ export function PropertyMenu({ label, value, options, disabled, onChoose, onOpen
     if (next !== value) onChoose(next);
   };
   const openMenu = () => { setActive(Math.max(0, options.findIndex((option) => option.value === value))); setOpen(true); };
-  const onMenuKey = (event: KeyboardEvent<HTMLElement>) => {
+  const onMenuKey = (event: Pick<KeyboardEvent<HTMLElement>, 'key' | 'preventDefault' | 'stopPropagation'>) => {
     if (event.key === 'Escape') { event.stopPropagation(); event.preventDefault(); setOpen(false); button.current?.focus({ preventScroll: true }); return; }
     if (event.key === 'ArrowDown') { event.preventDefault(); setActive((at) => (at + 1) % options.length); return; }
     if (event.key === 'ArrowUp') { event.preventDefault(); setActive((at) => (at + options.length - 1) % options.length); return; }
@@ -95,6 +110,7 @@ export function PropertyMenu({ label, value, options, disabled, onChoose, onOpen
     const picked = options.find((option) => option.key !== undefined && option.key === event.key);
     if (picked) { event.preventDefault(); event.stopPropagation(); choose(picked.value); }
   };
+  useEffect(() => { keys.current = onMenuKey; });
 
   const rows = options.map((option, index) => (
     <div key={option.value} role="none">

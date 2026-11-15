@@ -6,8 +6,12 @@ export interface Place { top: number; left: number; minWidth: number; maxHeight:
 function measure(field: HTMLElement, layer: HTMLElement, cap: number): Place {
   const box = field.getBoundingClientRect();
   const margin = 12;
+  // Its whole height is read without the cap, and the cap is put back: a measure that changes nothing (a scroll of the page) leaves the
+  // layer as React drew it, never uncapped.
+  const cap0 = layer.style.maxHeight;
   layer.style.maxHeight = 'none';
   const natural = layer.scrollHeight;
+  layer.style.maxHeight = cap0;
   const below = window.innerHeight - box.bottom - margin;
   const above = box.top - margin;
   const side = natural > below && above > below ? 'above' : 'below';
