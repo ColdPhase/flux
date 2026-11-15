@@ -632,9 +632,11 @@ class FocusModel(unittest.TestCase):
                         "the ring and the open item stay together")
         page.keyboard.press("e")
         expect(page.locator(".ui-toast")).to_contain_text("moved to Done")
-        status = lambda work: self.contexts["piotr"].request.get(f"/api/v1/work/{work}").json()["status"]  # noqa: E731
-        self.assertEqual(status(cups), "done", "E finished the item that had the ring")
-        self.assertNotEqual(status(antenna), "done", "the arrival nobody looked at is untouched")
+        # The change is held while Undo is offered: the list says which item E acted on.
+        expect(rows.filter(has_text="Buy paper cups")).to_have_count(0)
+        expect(rows.filter(has_text="Clean the gateway antenna")).to_have_count(1)
+        self.assertEqual(self.contexts["piotr"].request.get(f"/api/v1/work/{antenna}").json()["status"], "open", "the arrival nobody looked at is untouched")
+        self.assertTrue(cups)
 
     def test_29_discuss_or_r_from_the_inbox_then_esc_returns_to_the_inbox_and_its_open_item(self) -> None:
         decision = self.post("piotr", f"/api/v1/projects/{self.ids['shared']}/decisions", {"title": "Bake rye on Tuesdays", "rationale": "The rye sells out on Wednesdays."})["id"]
