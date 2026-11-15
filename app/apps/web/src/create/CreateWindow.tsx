@@ -10,6 +10,7 @@ import { useShellData } from '../app/data';
 import { startsSpaces } from '../people/api';
 import { readDraft, useDraft, writeDraft } from '../drafts/store';
 import { NewSpaceForm } from '../project/NewSpace';
+import { awaitField } from '../ui/keys';
 import '../app/settings.css';
 import '../people/space.css';
 import { AccountChangedError, assertSignedInAs } from '../app/personalSpace';
@@ -56,6 +57,8 @@ const KINDS: { id: Shown; label: string; name: string; manual?: boolean }[] = [
 /** Mounted once by the shell; `request` is what the person asked to create, or null while closed. */
 export function CreateHost({ request, onClose, onTask }: { request: CreateRequest | null; onClose: () => void; onTask?: (projectId: string) => void }) {
   const phone = useMediaQuery(MEDIA.phone);
+  // The new space opens with the cursor in its composer on a computer (`focusComposerOnArrival`); what is typed on the way is kept for it.
+  const touch = useMediaQuery(MEDIA.touch);
   // Each opening starts on Task (F-026 S3), or on Space while the person has none, since a task needs one (#763 FR-2);
   // the window is named after the tab it shows, so no heading repeats the tab.
   const { projects, workspace } = useShellData();
@@ -70,7 +73,7 @@ export function CreateHost({ request, onClose, onTask }: { request: CreateReques
     <Overlay open={request !== null} onClose={onClose} placement={phone ? 'bottom' : 'center'} label={KINDS.find((item) => item.id === kind)!.name}
       className={kind === 'space' ? 'newspace-win' : 'create'}>
       {request ? (kind === 'space'
-        ? <NewSpaceForm initialName={chosen.request === request && chosen.name !== undefined ? chosen.name : oneLine(request.title ?? '').slice(0, WORK_LIMITS.title)} onCancel={onClose} onCreated={(project) => { onClose(); void navigate(`/projects/${project.id}`); }} />
+        ? <NewSpaceForm initialName={chosen.request === request && chosen.name !== undefined ? chosen.name : oneLine(request.title ?? '').slice(0, WORK_LIMITS.title)} onCancel={onClose} onCreated={(project) => { if (!touch) awaitField(); onClose(); void navigate(`/projects/${project.id}`); }} />
         : <CreateBody request={request} phone={phone} kind={kind} onKind={(next) => setChosen({ request, kind: next })} onSpace={(name) => setChosen({ request, kind: 'space', name })} onClose={onClose} onTask={onTask} />) : null}
     </Overlay>
   );

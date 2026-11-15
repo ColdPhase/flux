@@ -20,6 +20,7 @@ import { PushOffer } from '../notifications/PushOffer';
 import { enablePushNotifications, getPushState } from '../pwa/push';
 import type { FirstStep, FirstStepJoined, FirstSteps as FirstStepsRead } from '@flux/contracts';
 import { openDm } from '../api/direct-messages';
+import { awaitField, stopAwaitingField } from '../ui/keys';
 import { attemptKeys, firstName, startsSpaces } from '../people/api';
 import { getFirstSteps, hideFirstSteps } from './firstSteps';
 
@@ -262,6 +263,7 @@ function FirstStepsCard({ phone, workspaceId, onPushRow }: { phone: boolean; wor
   const navigate = useNavigate();
   const toast = useToast();
   const keys = useRef(attemptKeys());
+  const touch = useMediaQuery(MEDIA.touch);
   const [greeting, setGreeting] = useState<string | null>(null);
   const [read, setRead] = useState<FirstStepsRead | null>(null);
   const [pushKey, setPushKey] = useState<string | null>(null);
@@ -289,11 +291,13 @@ function FirstStepsCard({ phone, workspaceId, onPushRow }: { phone: boolean; wor
   const sayHello = (userId: string) => {
     if (greeting) return;
     setGreeting(userId);
+    // What is typed while the conversation opens is the greeting (P2 #2): kept until its composer takes focus, never a shortcut.
+    if (!touch) awaitField();
     openDm(workspaceId, [userId], keys.current.for(userId)).then((dm) => {
       keys.current.done();
       setRead((current) => current && { ...current, joined: current.joined.filter((person) => person.userId !== userId) });
       navigate(`/dm/${dm.id}`);
-    }, () => { setGreeting(null); toast({ message: 'Couldn’t open the conversation. Try again.' }); });
+    }, () => { stopAwaitingField(); setGreeting(null); toast({ message: 'Couldn’t open the conversation. Try again.' }); });
   };
   const turnOn = (publicKey: string) => {
     // Called in the tap itself: the browser asks only after a gesture.

@@ -30,6 +30,11 @@ export interface SidePanelProps {
   contentKey?: string;
   /** Told the height whenever the phone's sheet changes it, so a return to the screen can open it as it was (#592). */
   onHeight?: (full: boolean) => void;
+  /**
+   * Where focus goes back when what opened the panel is gone or was nothing (a task made in the Create window opens here, and the window has
+   * left): the shown object's own card or row, so closing never leaves focus on the page's body.
+   */
+  focusBack?: () => HTMLElement | null;
   children: ReactNode;
 }
 
@@ -110,8 +115,10 @@ function PanelContent({ title, titleId, closeLabel, back, chip, context, onClose
 }
 
 /** Non-modal panel at the right edge of the app frame, under the header. Esc inside it closes it. `float` lays it over the work instead of beside it. */
-function DockedPanel({ open, onClose, title, closeLabel, back, chip, context, id, contentKey, float, children }: SidePanelProps & { float?: boolean }) {
+function DockedPanel({ open, onClose, title, closeLabel, back, chip, context, id, contentKey, float, focusBack, children }: SidePanelProps & { float?: boolean }) {
   const { mounted, unmount } = usePresence(open);
+  const focusBackRef = useRef(focusBack);
+  useEffect(() => { focusBackRef.current = focusBack; });
   const ref = useRef<HTMLElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const returnRef = useRef<HTMLElement | null>(null);
@@ -119,6 +126,16 @@ function DockedPanel({ open, onClose, title, closeLabel, back, chip, context, id
   const titleId = useId();
   useEffect(() => { openRef.current = open; });
   usePanelSwap(bodyRef, true, open && mounted, contentKey ?? `${chip ?? ''}|${title}`);
+  // Something opened into the open panel from outside it (a task card in the stream while a thread is shown): closing gives focus back to
+  // that control, not to what opened the panel first (a message the link arrived at, far above, or nothing).
+  const shownKey = contentKey ?? `${chip ?? ''}|${title}`;
+  useLayoutEffect(() => {
+    if (!open || !mounted) return;
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && active !== document.body && !ref.current?.contains(active)) returnRef.current = active;
+    // Only a change of what the panel shows; opening is the effect below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shownKey]);
 
   useLayoutEffect(() => {
     if (!open || !mounted) return;
@@ -140,7 +157,15 @@ function DockedPanel({ open, onClose, title, closeLabel, back, chip, context, id
       const handBack = () => {
         const active = document.activeElement;
         const lost = !active || active === document.body || !active.isConnected;
-        if ((panel?.contains(active) || lost) && target?.isConnected) target.focus({ preventScroll: true });
+        if (!panel?.contains(active) && !lost) return;
+        // A control that is still there takes it back; one that is gone, hidden or inert (the Create window's field, after Create task) cannot.
+        if (target && target !== document.body && target.isConnected) {
+          target.focus({ preventScroll: true });
+          if (document.activeElement === target) return;
+        }
+        // The object's own card may be out of view (a new task's card at the end of the stream): it comes into view with the focus.
+        const card = focusBackRef.current?.();
+        card?.focus();
       };
       handBack();
       // WebKit can take focus off the control again as the panel is made inert, a moment after it was given: if the page has no focus once

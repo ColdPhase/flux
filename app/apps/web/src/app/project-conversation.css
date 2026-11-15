@@ -1,6 +1,10 @@
 /* The project page: the return line (#106) above the conversation. */
 .project-page { display: flex; flex: 1; min-height: 0; flex-direction: column; }
 .project-convo__message:focus { outline: none; }
+/* A message that has focus from the keyboard (closing its thread gives it back, J and K move to it) shows it as plainly as a button does:
+   the 2 px ring around its bubble, or around the message when it has none (files alone). Its actions showing was too weak a mark. */
+.project-convo__message:focus-visible > .message-bubble { outline: 2px solid var(--t1); outline-offset: 2px; }
+.project-convo__message:focus-visible:not(:has(> .message-bubble)) { outline: 2px solid var(--t1); outline-offset: 2px; border-radius: var(--r); }
 .project-convo { display: flex; flex: 1; min-height: 0; flex-direction: column; }
 .project-convo__feed { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; }
 /* Laid out (positions settle) but not shown until its first bounded reads arrive (#155). */

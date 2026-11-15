@@ -40,7 +40,7 @@ import { useOriginPanelBack } from '../place/origin';
 import { useReturning } from '../place/memory';
 import { useMessageReadingPosition } from '../work/readingPosition';
 import { useLeftPlace, useReturnPlace } from './returnPlace';
-import { awaitField, focusArrival, focusField } from '../ui/keys';
+import { awaitField, focusArrival, focusComposerOnArrival, focusField } from '../ui/keys';
 
 /**
  * One direct message (#107): a private conversation with its audience always in view. Messages
@@ -138,6 +138,17 @@ function DmContent({ initial }: { initial: Dm }) {
     return focusField('dm-composer');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.key]);
+  // Opening this conversation from anywhere (New message › "Message Piotr", a person's name, Home's "Say hello", the sidebar) on a computer
+  // puts the cursor in its composer (`focusComposerOnArrival`, persona round 26 P2 #2): a sentence typed at once is the message, never
+  // shortcuts. Not when a link names a message (it is marked and takes the focus), a thread is open, or the other person has left.
+  useLayoutEffect(() => {
+    if (touch || location.hash.startsWith('#message-') || threadId || (location.state as { focusComposer?: boolean } | null)?.focusComposer) return undefined;
+    const left = initial.kind === 'pair' ? initial.counterpart : null;
+    if (left && !initial.participants.some((person) => person.id === left.id)) return undefined;
+    return focusComposerOnArrival('dm-composer');
+    // Once, as the conversation opens (each conversation is its own screen).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // #537: the task copy being previewed. Nothing is written until it is confirmed there.
   const [copy, setCopy] = useState<{ message: DmMessage; excerpt: string | undefined } | null>(null);
 

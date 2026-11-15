@@ -79,7 +79,7 @@ export function DueField({ value, editable, finished, disabled, onSave }: { valu
   if (!editable) return <span className="wd-value">{value ? <>{text}{late ? <span className="wd-muted"> · overdue</span> : null}</> : <span className="wd-muted">No date</span>}</span>;
   if (!editing) {
     return (
-      <button ref={opener} type="button" className="wd-state wd-due" aria-label={value ? `Due ${text}` : 'Due, add a date'} disabled={disabled} onClick={() => setEditing(true)}>
+      <button ref={opener} type="button" className="wd-state wd-due" aria-label={value ? `Due ${text}` : 'Due, add a date'} aria-disabled={disabled || undefined} onClick={() => { if (!disabled) setEditing(true); }}>
         <span className={value ? undefined : 'wd-muted'}>{text}</span>{late ? <span className="wd-muted"> · overdue</span> : null}
       </button>
     );

@@ -194,6 +194,13 @@ def open_details_in_app(page: Page) -> None:
                   [urllib.parse.urlsplit(page.url).path, panel_task(page, project.group(1))])
 
 
+def press_shortcut(page: Page, key: str) -> None:
+    """A single-key shortcut pressed on the page itself. Arriving in a conversation on a computer puts the cursor in its composer (persona
+    round 26, P2 #2), where a key is typing: a person who wants the shortcut leaves the field first, as this does."""
+    page.evaluate("() => { const a = document.activeElement; if (a && a.matches('input, textarea, [contenteditable=\"true\"]')) a.blur(); }")
+    page.locator("body").press(key)
+
+
 def shot(page: Page, name: str) -> None:
     if not SHOTS:
         return

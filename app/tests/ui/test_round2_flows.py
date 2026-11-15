@@ -23,7 +23,7 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, press_shortcut, shot, start_forwarder
 from inbox_items import open_item
 
 PASSWORD = "round two keeps the first minutes calm"
@@ -198,7 +198,7 @@ class Round2Flows(unittest.TestCase):
 
         def propose() -> None:
             # A message has no Propose a decision (#867): the Create window's Decision tab is the short form.
-            page.locator("body").press("c")
+            press_shortcut(page, "c")
             page.get_by_role("dialog", name="New task").get_by_role("tab", name="Decision", exact=True).click()
             dialog = page.get_by_role("dialog", name="New decision")
             field = dialog.get_by_role("textbox", name="Decision", exact=True)
@@ -224,7 +224,7 @@ class Round2Flows(unittest.TestCase):
         self.assertIsNotNone(found, "the proposal was sent when the Undo window ended")
         self.assertEqual(found["status"], "proposed")
         # Replacing an earlier decision is a choice in the same window, with the words kept (#1419): no second form opens.
-        page.locator("body").press("c")
+        press_shortcut(page, "c")
         page.get_by_role("dialog", name="New task").get_by_role("tab", name="Decision", exact=True).click()
         dialog = page.get_by_role("dialog", name="New decision")
         dialog.get_by_role("textbox", name="Decision", exact=True).fill(CLAUSE)

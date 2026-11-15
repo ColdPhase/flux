@@ -4,6 +4,8 @@
 .nyq__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
 .nyq__clear { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 72px 16px 48px; text-align: center; color: var(--t1); }
 .nyq__clear h2 { margin: 18px 0 0; font-size: var(--fs-xl); letter-spacing: -.02em; }
+.nyq__clear h2:focus { outline: none; }
+.nyq__clear h2:focus-visible { outline: 2px solid var(--t1); outline-offset: 4px; border-radius: var(--r-sm); }
 .nyq__clear p { margin: 0; max-width: 420px; font-size: var(--fs-base); color: var(--t2); }
 .nyq__clear-actions { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px; margin-top: 12px; }
 .nyq__done { display: inline-flex; align-items: center; min-height: 34px; padding: 0 6px; font-size: var(--fs-md); font-weight: 500; color: var(--t2); }

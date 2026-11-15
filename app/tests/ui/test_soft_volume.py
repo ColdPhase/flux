@@ -14,7 +14,7 @@ import uuid
 from playwright.sync_api import Browser, Page, expect, sync_playwright
 
 from contrast import MEASURE
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, open_details, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, open_details, press_shortcut, shot, start_forwarder
 
 PASSWORD = "soft volume everywhere"
 # The final design's tokens (docs/design/final/README.md §2).
@@ -212,7 +212,7 @@ class SoftVolume(unittest.TestCase):
         page.goto(f"/projects/{self.ids['project']}/tasks")
         # The header's "+ Task" is the raised default now (#789 SP-5); a primary is the Create window's own button.
         expect(page.get_by_role("heading", level=1)).to_be_visible()
-        page.locator("body").press("c")
+        press_shortcut(page, "c")
         window = page.get_by_role("dialog", name="New task")
         window.get_by_label("Title", exact=True).fill("Calibrate the probes")
         primary = window.locator(".ui-btn--primary").first

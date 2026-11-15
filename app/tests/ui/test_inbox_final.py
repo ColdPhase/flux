@@ -17,7 +17,7 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, box, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, box, press_shortcut, shot, start_forwarder
 
 PASSWORD = "a calm inbox for the garden"
 STAMP = int(time.time() * 1000)
@@ -693,7 +693,7 @@ class InboxFinal(unittest.TestCase):
         page.get_by_role("navigation", name="Places").get_by_role("link", name="Home").click()
         self.wait_for(lambda: self.contexts["ada"].request.get(f"/api/v1/decisions/{proposed['id']}").json()["status"] == "accepted", "the accept sent on leaving")
         expect(page.locator(".ui-toast").filter(has_text="Accepted")).to_have_count(0)
-        page.locator("body").press("z")
+        press_shortcut(page, "z")
         page.wait_for_timeout(1000)
         expect(page.locator(".ui-toast")).to_have_count(0)
         self.assertEqual(self.contexts["ada"].request.get(f"/api/v1/decisions/{proposed['id']}").json()["status"], "accepted")

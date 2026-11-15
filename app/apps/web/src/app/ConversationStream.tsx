@@ -567,6 +567,12 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
     const key = (event: KeyboardEvent) => {
       if (scrollKeys.has(event.key) && !(event.target as Element | null)?.closest?.('button, a, input, textarea, select, [contenteditable]')) person();
     };
+    // Tab is the keyboard reader's way through the stream: the browser scrolls each control it reaches into view, and that is the reader
+    // moving, as a wheel is. Without it the place a message link arrived at stayed pinned, and a panel leaving (Esc from a task opened
+    // from a card further down) put the stream back at the linked message (persona round 26, P2 #5).
+    let tabAt = -Infinity;
+    const tab = (event: KeyboardEvent) => { if (event.key === 'Tab') tabAt = performance.now(); };
+    const tabbedIn = () => { if (performance.now() - tabAt < 250) person(); };
     const column = columnRef.current;
     let height = column?.offsetHeight ?? 0;
     let settleUntil = 0;
@@ -639,6 +645,8 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
     for (const name of ['wheel', 'touchmove'] as const) feed.addEventListener(name, person, { passive: true });
     feed.addEventListener('pointerdown', press, { passive: true });
     feed.addEventListener('keydown', key);
+    window.addEventListener('keydown', tab, true);
+    feed.addEventListener('focusin', tabbedIn);
     observer.observe(feed);
     if (column) observer.observe(column);
     return () => {
@@ -647,6 +655,8 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
       for (const name of ['wheel', 'touchmove'] as const) feed.removeEventListener(name, person);
       feed.removeEventListener('pointerdown', press);
       feed.removeEventListener('keydown', key);
+      window.removeEventListener('keydown', tab, true);
+      feed.removeEventListener('focusin', tabbedIn);
       observer.disconnect();
       if (frame) cancelAnimationFrame(frame);
       if (settleFrame) cancelAnimationFrame(settleFrame);

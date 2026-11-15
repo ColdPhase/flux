@@ -19,7 +19,7 @@ import unittest
 from playwright.sync_api import Browser, Page, expect, sync_playwright
 
 from layers import foreign_at_centre, foreign_points, layers_above, settle
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, press_shortcut, shot, start_forwarder
 
 UI_BROWSER = os.environ.get("FLUX_UI_BROWSER", "chromium")
 PASSWORD = "an empty page stays behind"
@@ -132,7 +132,7 @@ class WindowOverEmptyPages(unittest.TestCase):
         for behind in PAGES:
             with self.subTest(behind=behind):
                 self.open_page(page, behind)
-                page.locator("body").press("c")
+                press_shortcut(page, "c")
                 window = page.get_by_role("dialog", name=re.compile(r"^New (task|thought|decision|page|space)$"))
                 expect(window).to_be_visible()
                 tabs = window.get_by_role("tablist", name="Create")

@@ -8,7 +8,8 @@ import { useShellData } from '../app/data';
 import { useAgentUnread } from '../my-agents/AgentChatDots';
 import { useDmUnread } from './dmUnread';
 import { usePlaceMutes } from '../notifications/mutes';
-import { Avatar, Button, EmptyState, Icon, Kreska } from '../ui';
+import { Avatar, Button, EmptyState, Icon, Kreska, MEDIA, useMediaQuery } from '../ui';
+import { stopAwaitingField, waitForField } from '../ui/keys';
 import { audienceOf } from './names';
 import './dm.css';
 import { lastSaid } from '../app/timeFormat';
@@ -94,6 +95,7 @@ export function NewDm() {
   const [loaded, setLoaded] = useState<{ workspaceId: string; list: WorkspaceMember[]; note: string } | null>(null);
   const members = loaded?.workspaceId === workspaceId ? loaded.list : null;
   const membersNote = loaded?.workspaceId === workspaceId ? loaded.note : '';
+  const touch = useMediaQuery(MEDIA.touch);
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<string[]>(direct ? [direct] : []);
   const [title, setTitle] = useState('');
@@ -125,11 +127,15 @@ export function NewDm() {
     // The same attempt reuses its Idempotency-Key, so a retry after a lost response opens one group.
     if (attempt.current?.signature !== signature) attempt.current = { signature, key: crypto.randomUUID() };
     setBusy(true); setError(''); setNotice('');
+    // What is typed while the conversation opens is its first message (P2 #2): kept until its composer takes focus, never a shortcut, with
+    // what was typed since the person's name that led here was pressed.
+    if (!touch) waitForField();
     try {
       const dm = await openDm(workspaceId, ids, attempt.current.key, name || undefined);
       // A person's name opens their conversation in place of this page, which keeps the origin it was followed from (#592).
       navigate(`/dm/${dm.id}`, { replace: Boolean(direct), ...(direct ? { state: arrivalState } : {}) });
     } catch (cause) {
+      stopAwaitingField();
       if (cause instanceof ApiError && (cause.code === 'DM_RECIPIENT_LEFT' || cause.code === 'DM_RECIPIENT_UNAVAILABLE')) {
         setNotice(cause.message); setBusy(false); return;
       }

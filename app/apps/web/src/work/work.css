@@ -126,6 +126,8 @@ button.ws-task__glyph:active { background: var(--hov); }
 .wd-state { display: inline-flex; align-items: center; gap: 8px; min-height: 32px; margin-left: -8px; padding: 0 8px; border-radius: var(--r-sm); font: inherit; color: var(--t1); }
 .wd-state:hover, .wd-state[aria-expanded="true"] { background: var(--hov); }
 .wd-state__go { color: var(--t3); }
+/* Saving: the value keeps its focus (aria-disabled, never disabled) and only says it is busy. */
+.wd-state[aria-disabled="true"] { cursor: progress; }
 /* A layer over the page (a portal, placed by PropertyMenu): it is never cut by the panel it opens from. */
 .wd-menu__list {
   position: fixed; z-index: var(--z-menu); min-width: 220px; max-width: min(360px, calc(100vw - 16px)); padding: 6px; border-radius: var(--r-card);

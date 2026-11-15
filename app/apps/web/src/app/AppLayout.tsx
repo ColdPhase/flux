@@ -46,7 +46,7 @@ import { DmUnreadProvider } from '../dm/dmUnread';
 import { PlaceMutesProvider, notificationsChanged, useMuteRow } from '../notifications/mutes';
 import { PhotosContext } from '../people/photos';
 import { PhoneAvatar, PhoneBack, PhoneDock, PhoneHomeLead, phoneHidesDock, phoneOffersCreate, phonePlaces } from './PhoneChrome';
-import { isTyping } from '../ui/keys';
+import { isTyping, watchConversationLinks } from '../ui/keys';
 
 const lastConversationPath = (userId: string, projectId: string) => remembered('conversation', userId, projectId) ?? `/projects/${projectId}`;
 /** The Tasks view last chosen in this project (#136), e.g. `?status=blocked&show=mine`. */
@@ -58,6 +58,20 @@ const lastTasksSearch = (userId: string, projectId: string) => remembered('tasks
 function lastMapPath(userId: string, projectId: string, sketches: { items: { id: string }[]; total: number } | null | undefined) {
   const only = sketches?.total === 1 ? sketches.items[0] : undefined;
   return remembered('map', userId, projectId) ?? (only ? `/projects/${projectId}/map/${only.id}` : `/projects/${projectId}/map`);
+}
+
+/** The control that stands for an object outside the panel: a task's or a decision's card in the conversation, else its row in Tasks. */
+function objectControl(view: DetailsView): HTMLElement | null {
+  if (typeof view !== 'object' || !('id' in view) || (view.kind !== 'work' && view.kind !== 'decision')) return null;
+  // A card folded into "8 task updates" (S8) is hidden: the fold's own button stands for it.
+  const outside = (element: HTMLElement | null) => {
+    if (!element || element.closest('#details')) return null;
+    const fold = element.closest('.convo-fold')?.querySelector<HTMLElement>('.convo-fold__b[aria-expanded="false"]');
+    return fold ?? element;
+  };
+  const id = CSS.escape(view.id);
+  return [...document.querySelectorAll<HTMLElement>(`[data-native-ref="${view.kind}:${id}"]`)].map(outside).find(Boolean)
+    ?? outside(document.querySelector<HTMLElement>(`[data-work-id="${id}"] .ws-item`));
 }
 
 const SIDEBAR_KEY = 'flux.sidebar';
@@ -324,6 +338,8 @@ function AppLayoutContent() {
   useTabSignals(inboxSignals.notifying);
   // A reply that answered a question or mention waiting in the Inbox takes it out, with Undo (#1170).
   useAnsweredInbox(me.user.id);
+  // Following a link to a conversation keeps what is typed meanwhile for its composer (P2 #2).
+  useEffect(() => watchConversationLinks(), []);
   // The computer's sidebar collapses to its 64px rail with "[" (F-026 S19), remembered on this device.
   const [railed, setRailed] = useState(() => { try { return localStorage.getItem(SIDEBAR_KEY) === 'rail'; } catch { return false; } });
   const toggleRail = useCallback(() => setRailed((current) => {
@@ -911,7 +927,8 @@ function AppLayoutContent() {
           </main>
           <SidePanel open={detailsOpen || !!threadOpening} onClose={opening ? cancelThread : closePanel} title={opening ? 'Replies' : ownedShown ? ownedShown.label : heading.title} closeLabel={opening ? 'Cancel opening the thread' : ownedShown ? ownedShown.closeLabel : heading.close} chip={opening ? 'Thread' : objectChip} id="details" back={opening ? undefined : back} startFull={opening ? typeof threadSheet === 'boolean' ? threadSheet : sheetStart ?? false : sheetStart ?? ownedShown?.startFull} onHeight={(full) => keepPlace('sheet', full)}
             contentKey={opening ? `owned:thread:${opening}` : ownedShown ? `owned:${ownedShown.key}` : typeof detailsView === 'object' ? JSON.stringify(detailsView) : detailsView}
-            context={opening ? undefined : phone && typeof detailsView === 'object' && detailsView.kind === 'overview' ? <OverviewContext /> : undefined}>
+            context={opening ? undefined : phone && typeof detailsView === 'object' && detailsView.kind === 'overview' ? <OverviewContext /> : undefined}
+            focusBack={() => objectControl(now.current.detailsView)}>
             {opening ? <ThreadOpening /> : null}
             {opening && !detailsOpen ? null : isOwned(detailsView) ? <div className="ui-panel__slot" ref={setPanelSlot} /> : <DeferredDetails view={detailsView} dm={activeDm ? { id: activeDm.id, kind: activeDm.kind, title: activeDm.title, me: me.user.name, meId: me.user.id, people: activeDm.people, peopleIds: activeDm.peopleIds, audience: activeDm.audience } : null} onBack={() => { if (activeDm) setDetailsView('place'); else closePanel(); }} />}
           </SidePanel>

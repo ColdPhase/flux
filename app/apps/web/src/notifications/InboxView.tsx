@@ -98,11 +98,20 @@ export function InboxView() {
   // The same in the list: when the focused row leaves with its item, the row of the item that is open now takes focus.
   const listFocused = useRef(false);
   const openKey = current?.key ?? null;
+  // An item a key or a button took out (A, E, S, Accept) leaves focus nowhere: the next open item's row takes it, and with nothing left the
+  // empty Inbox's heading does, so focus is never on the page's body (persona round 26: A on the last decision left it there).
+  const clearRef = useRef<HTMLHeadingElement>(null);
+  const lastOpen = useRef(openKey);
   useEffect(() => {
+    const left = lastOpen.current !== null && !shown.some((item) => item.key === lastOpen.current);
+    lastOpen.current = openKey;
     const active = document.activeElement;
     if (active && active !== document.body) return;
-    if (paneFocused.current) paneRef.current?.focus({ preventScroll: true });
-    else if (listFocused.current && openKey) rowControl(openKey)?.focus({ preventScroll: true });
+    if (paneFocused.current && paneRef.current) paneRef.current.focus({ preventScroll: true });
+    else if ((listFocused.current || left) && openKey) rowControl(openKey)?.focus({ preventScroll: true });
+    else if (left && !openKey) clearRef.current?.focus({ preventScroll: true });
+    // When the open item changes; the list it is read from is the one of that render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openKey]);
   // Arriving with focus nowhere (G I, a link that keeps no focus): the open item's row takes it, so the keyboard starts in the list, never on
   // the page's body. A field, a button or a link that has focus keeps it.
@@ -130,7 +139,7 @@ export function InboxView() {
   const clear = (
     <div className="nyq__clear">
       {moments ? <Kreska size={96} expression="done" /> : null}
-      <h2>Nothing needs you right now</h2>
+      <h2 ref={clearRef} tabIndex={-1}>Nothing needs you right now</h2>
       <p>Enjoy the quiet. Flux will ping you when a decision or question comes in.</p>
       <div className="nyq__clear-actions">
         {queue.doneToday ? <span className="nyq__done">{queue.doneToday} done today</span> : null}
