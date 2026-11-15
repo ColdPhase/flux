@@ -50,7 +50,8 @@ function useQueueKeys(items: NeedsYouItem[], selected: string | null, select: (k
         if (offers?.reply) handlers.open(current, true);
         else if (current.kind === 'decision') { awaitField(); handlers.discuss(current); }
         else if (current.kind === 'blocked') { handlers.open(current); focusFieldMatching('#details .composer textarea, #details .composer__box textarea'); }
-        else awaitField();
+        // Nothing to write to: only the letters typed with R are held, for a moment, then the keys are the Inbox's again (persona round 31).
+        else awaitField(500);
       }
       else if (key === 'e' && current && offers?.done) { event.preventDefault(); handlers.done(current); }
       else if (key === 's' && current && offers?.notNow) { event.preventDefault(); handlers.snooze(current, 'tomorrow'); }
@@ -90,9 +91,20 @@ export function InboxView() {
   const shown = useMemo(() => queue.items ?? [], [queue.items]);
   // The selection stays on its item, and moves to the neighbour at its place when that item leaves.
   const at = shown.findIndex((item) => item.key === selected);
-  const [place, setPlace] = useState({ key: selected, index: 0 });
+  // Where the open item stood, kept with the entry too: an item opened from here that left the Inbox (a given task) gives its place to
+  // its neighbour when the person comes back, never to the top (persona round 31).
+  const [keptIndex, setKeptIndex] = usePlaceState<number>('inbox.index', () => 0, arrival, (value): value is number => typeof value === 'number');
+  const [place, setPlace] = useState({ key: selected, index: keptIndex });
   if (at >= 0 && (place.key !== selected || place.index !== at)) setPlace({ key: selected, index: at });
+  useEffect(() => { setKeptIndex(place.index); }, [place.index, setKeptIndex]);
   const current = at >= 0 ? shown[at]! : shown[Math.min(place.index, shown.length - 1)] ?? null;
+  // The open item is chosen, never implied (persona round 31 P2 1): from the first moment the one shown open is the selected one, so an
+  // item that arrives live at the top never takes its place under the ring, and E never acts on what was not seen. When the chosen item
+  // leaves, its neighbour at its place is chosen in its turn.
+  const currentKey = current?.key ?? null;
+  useEffect(() => {
+    if (currentKey && currentKey !== selected) setSelected(currentKey);
+  }, [currentKey, selected, setSelected]);
   const select = useCallback((key: string) => {
     setSelected(key);
     document.querySelector<HTMLElement>(`.nyc[data-key="${CSS.escape(key)}"]`)?.scrollIntoView({ block: 'nearest' });

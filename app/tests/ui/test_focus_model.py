@@ -599,6 +599,141 @@ class FocusModel(unittest.TestCase):
         page.locator("#details .composer__box textarea").first.focus()
         expect(key).to_be_hidden()
 
+    # ---------------------------------------------------------------- persona round 31
+
+    def wait_for_item(self, who: str, match) -> None:
+        for _ in range(80):
+            if any(match(item) for item in self.contexts[who].request.get("/api/v1/needs-you").json()["items"]):
+                return
+            time.sleep(0.25)
+        self.fail("the item reached the Inbox")
+
+    def test_28_an_item_arriving_live_never_takes_the_open_item_and_e_acts_on_what_has_the_ring(self) -> None:
+        give = lambda title: self.post("piotr", f"/api/v1/projects/{self.ids['shared']}/work", {"title": title, "owner": {"kind": "human", "id": self.ids["lee"]}})["id"]  # noqa: E731
+        give("Sweep the shop floor")
+        cups = give("Buy paper cups")
+        self.wait_for_item("lee", lambda item: item.get("task") and item["task"].get("workId") == cups)
+        page = self.page("lee")
+        page.goto("/inbox")
+        rows = page.locator(".nyq__list .nyc")
+        expect(rows).to_have_count(2)
+        is_open = page.locator('.nyq__list .nyc[aria-current="true"]')
+        expect(is_open).to_contain_text("Buy paper cups")
+        page.wait_for_timeout(600)
+        antenna = give("Clean the gateway antenna")
+        expect(rows).to_have_count(3)
+        page.wait_for_timeout(600)
+        # Nothing was chosen with J, K or a click: the open item is still the one with the ring, not the arrival at the top.
+        expect(is_open).to_contain_text("Buy paper cups")
+        self.assertTrue(page.evaluate("() => { const open = document.querySelector('.nyq__list .nyc[aria-current=\"true\"]'); return !!open && open.contains(document.activeElement); }"),
+                        "the ring and the open item stay together")
+        page.keyboard.press("e")
+        expect(page.locator(".ui-toast")).to_contain_text("Buy paper cups")
+        status = lambda work: self.contexts["piotr"].request.get(f"/api/v1/work/{work}").json()["status"]  # noqa: E731
+        self.assertEqual(status(cups), "done", "E finished the item that had the ring")
+        self.assertNotEqual(status(antenna), "done", "the arrival nobody looked at is untouched")
+
+    def test_29_discuss_or_r_from_the_inbox_then_esc_returns_to_the_inbox_and_its_open_item(self) -> None:
+        decision = self.post("piotr", f"/api/v1/projects/{self.ids['shared']}/decisions", {"title": "Bake rye on Tuesdays", "rationale": "The rye sells out on Wednesdays."})["id"]
+        self.wait_for_item("kasia", lambda item: item["key"] == f"decision:{decision}")
+        page = self.page()
+        page.goto("/inbox")
+        row = page.locator(f'.nyq__list .nyc[data-key="decision:{decision}"]')
+        for how in ("Discuss", "R"):
+            with self.subTest(how=how):
+                row.locator(".nyc__open").focus()
+                expect(row).to_have_attribute("aria-current", "true")
+                if how == "R":
+                    page.keyboard.press("r")
+                else:
+                    row.get_by_role("button", name="Discuss", exact=True).click()
+                expect(page.locator("#decision-composer")).to_be_focused()
+                page.keyboard.press("Escape")
+                expect(page).to_have_url(re.compile(r"/inbox$"))
+                page.wait_for_timeout(600)
+                self.assertTrue(page.evaluate("(key) => document.querySelector(`.nyq__list .nyc[data-key=\"${key}\"]`)?.contains(document.activeElement)", f"decision:{decision}"),
+                                "focus is back on the decision in the Inbox")
+
+    def test_30_discuss_on_a_decision_opened_inside_a_thread_puts_the_cursor_in_its_field(self) -> None:
+        thread = self.post("piotr", f"/api/v1/projects/{self.ids['shared']}/conversations", {"body": "Where should the second oven go?", "clientMessageId": str(uuid.uuid4())})
+        self.post("kasia", f"/api/v1/conversations/{thread['id']}/messages", {"body": "By the back door, it has power.", "clientMessageId": str(uuid.uuid4())})
+        page = self.page()
+        page.goto(f"/projects/{self.ids['shared']}/conversations/{thread['id']}")
+        reply = page.locator("#thread-composer")
+        expect(reply).to_be_focused()
+        page.keyboard.type("/decide Move the oven to the back door")
+        page.keyboard.press("Enter")
+        expect(page.get_by_role("dialog", name="New decision")).to_be_visible()
+        page.keyboard.press("Control+Enter")
+        expect(page.get_by_role("dialog")).to_have_count(0)
+        card = page.locator("#details [data-decision-card]").filter(has_text="Move the oven to the back door")
+        card.click()
+        expect(page).to_have_url(re.compile(r"open=decision"))
+        page.locator("#details").get_by_role("button", name="Discuss", exact=True).click()
+        page.keyboard.type("The wall needs a socket.")
+        field = page.locator("#decision-composer")
+        expect(field).to_be_focused()
+        expect(field).to_have_value("The wall needs a socket.")
+        page.wait_for_timeout(500)
+        expect(page.get_by_role("dialog")).to_have_count(0)
+        field.fill("")
+
+    def test_31_enter_in_add_people_s_filter_picks_the_one_person_found(self) -> None:
+        page = self.page("piotr")
+        page.goto(f"/projects/{self.ids['closed']}/settings")
+        page.get_by_role("button", name="Add people", exact=True).click()
+        page.keyboard.type("Ola")
+        group = page.get_by_role("group", name="Add people")
+        expect(group.get_by_role("searchbox", name="Search people")).to_be_focused()
+        page.keyboard.press("Enter")
+        expect(group.locator("input[type=checkbox]:checked")).to_have_count(1)
+        expect(group.get_by_role("checkbox", name=re.compile("Ola Nowicka"))).to_be_checked()
+        expect(page.locator(".spset__status")).not_to_contain_text("is now in")
+
+    def test_32_a_reload_then_back_from_a_task_opened_in_a_thread_shows_the_thread(self) -> None:
+        thread = self.post("piotr", f"/api/v1/projects/{self.ids['shared']}/conversations", {"body": "The ladder is in the yard again.", "clientMessageId": str(uuid.uuid4())})
+        self.post("kasia", f"/api/v1/conversations/{thread['id']}/messages", {"body": "I will bring it in.", "clientMessageId": str(uuid.uuid4())})
+        page = self.page()
+        page.goto(f"/projects/{self.ids['shared']}/conversations/{thread['id']}")
+        expect(page.locator("#thread-composer")).to_be_focused()
+        page.keyboard.type("/task Hang the ladder in the shed")
+        page.keyboard.press("Enter")
+        expect(page.get_by_role("dialog", name="New task")).to_be_visible()
+        page.keyboard.press("Control+Enter")
+        panel = page.locator("#details")
+        expect(panel.locator('[data-detail-kind="work"]')).to_contain_text("Hang the ladder in the shed")
+        expect(page).to_have_url(re.compile(r"/conversations/[0-9a-f-]{36}\?open=work"))
+        page.reload()
+        expect(panel.locator('[data-detail-kind="work"]')).to_contain_text("Hang the ladder in the shed")
+        page.wait_for_timeout(800)
+        page.go_back()
+        expect(page).to_have_url(re.compile(r"/conversations/[0-9a-f-]{36}$"))
+        expect(page.locator("#thread-composer")).to_be_visible()
+
+    def test_33_r_with_nothing_to_write_holds_the_keys_only_for_a_moment(self) -> None:
+        page = self.page()
+        page.goto("/inbox")
+        task = page.locator(".nyq__list .nyc").filter(has_text="Count the screws")
+        task.locator(".nyc__open").focus()
+        expect(task).to_have_attribute("aria-current", "true")
+        last = page.evaluate("() => { const rows = [...document.querySelectorAll('.nyq__list .nyc')]; return rows.at(-1)?.getAttribute('aria-current') === 'true'; }")
+        page.keyboard.press("r")
+        page.wait_for_timeout(900)
+        page.keyboard.press("k" if last else "j")
+        expect(task).not_to_have_attribute("aria-current", "true")
+
+    def test_34_accept_with_the_mouse_gives_focus_to_the_next_control_in_every_engine(self) -> None:
+        decision = self.post("piotr", f"/api/v1/projects/{self.ids['shared']}/decisions", {"title": "Sell day-old bread at half price", "rationale": "Less goes to waste."})["id"]
+        page = self.page("lee")
+        page.goto(f"/projects/{self.ids['shared']}")
+        page.locator(f'[data-decision-card="{decision}"]').click()
+        panel = page.locator("#details")
+        accept = panel.get_by_role("button", name="Accept", exact=True)
+        expect(accept).to_be_visible()
+        accept.click()
+        expect(accept).to_have_count(0)
+        expect(panel.get_by_role("button", name=re.compile("Add to a Wiki page"))).to_be_focused()
+
 
 if __name__ == "__main__":
     unittest.main()

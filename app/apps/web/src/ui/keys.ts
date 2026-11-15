@@ -52,10 +52,10 @@ function typeInto(field: EventTarget | null, text: string) {
  * in the Inbox (#1424). What is typed meanwhile is kept and goes into the field when it has focus, so no letter is lost. The wait ends when a
  * field takes focus, when the person presses somewhere (what was kept is dropped), or after a few seconds.
  */
-export function awaitField() {
+export function awaitField(ms = FIELD_WAIT_MS) {
   typed = '';
   enterKept = false;
-  waitForField();
+  waitForField(ms);
 }
 
 /** A field that was asked for will not come (opening the conversation failed): keys are shortcuts again, and what was kept is dropped. */
@@ -69,11 +69,11 @@ export function stopAwaitingField() {
  * The wait itself; what was typed so far is kept (the field that a press asked for is focused by the page it opens, `focusField`). A page
  * that a press led to and that opens the conversation itself (New message › a person's name) continues the press's wait with it.
  */
-export function waitForField() {
+export function waitForField(ms = FIELD_WAIT_MS) {
   const now = performance.now();
   // Kept only within the wait it was typed in: a wait that ran out never hands its letters to a later field.
   if (now > keptUntil) { typed = ''; enterKept = false; }
-  fieldDue = now + FIELD_WAIT_MS;
+  fieldDue = now + ms;
   keptUntil = fieldDue;
   if (watching || typeof document === 'undefined') return;
   watching = true;
@@ -233,6 +233,12 @@ function neighbours(from: Element, forward: boolean, count: number): HTMLElement
  * Undo gives it back to the control that made the change), else the nearest place still there. A press elsewhere, a new page, or a window
  * that is open is left alone. Returns the cleanup.
  */
+/** A window, a calendar or a menu is open and owns the focus and Esc; one that is closing (the Create window after `/task`) no longer does. */
+export function windowOrMenuOpen(): boolean {
+  if (document.querySelector('.ui-overlay[data-state="open"], [role="menu"]:not([inert])')) return true;
+  return [...document.querySelectorAll('[role="dialog"]')].some((dialog) => dialog.id !== 'details' && !dialog.closest('[inert], .ui-overlay[data-state="closing"]'));
+}
+
 export function watchLostFocus(): () => void {
   let last: { element: Element; place: string; next: HTMLElement[]; previous: HTMLElement[]; ancestors: Element[] } | null = null;
   let before: Element[] = [];
@@ -254,7 +260,7 @@ export function watchLostFocus(): () => void {
     if (!last || (active && active !== document.body) || usable(last.element)) return;
     if (last.place !== place()) { last = null; return; }
     // A window, a calendar or a menu that is open owns the focus while it is there; asked again when it goes.
-    if (document.querySelector('.ui-overlay[data-state="open"], [role="menu"]:not([inert]), [role="dialog"]:not(#details)')) return;
+    if (windowOrMenuOpen()) return;
     const kept = last;
     last = null;
     const ancestor = kept.ancestors.find((element) => element.isConnected && element !== document.getElementById('root'));

@@ -16,9 +16,13 @@ export function useDiscussDecision() {
   const follow = useFollow();
   return useCallback(async (projectId: string, decisionId: string) => {
     awaitField();
-    const here = new URLSearchParams(window.location.search).get('open') === `decision:${decisionId}` && window.location.pathname === `/projects/${projectId}`;
-    if (here && document.querySelector(`[data-detail-kind="decision"][data-detail-id="${decisionId}"]`)) { focusField(DECISION_COMPOSER); return; }
-    await follow(decisionAppPath(projectId, decisionId), { state: { writeDecision: true }, ...(here ? { replace: true } : {}) });
+    // Already open in the panel, wherever its address is (the space, or a thread it was opened over, persona round 31 P2 4): only the
+    // cursor moves; leaving that address would close the thread, whose focus return took the cursor.
+    const open = new URLSearchParams(window.location.search).get('open') === `decision:${decisionId}`;
+    const here = open && window.location.pathname.startsWith(`/projects/${projectId}`);
+    if (document.querySelector(`#details [data-detail-kind="decision"][data-detail-id="${decisionId}"]`)) { focusField(DECISION_COMPOSER); return; }
+    // Its own entry, as Open is (persona round 31 P2 2): Esc or × goes Back to where Discuss was pressed (the Inbox with its open item).
+    await follow(decisionAppPath(projectId, decisionId), { state: { writeDecision: true, ...(here ? {} : { openPushed: true }) }, ...(here ? { replace: true } : {}) });
     focusField(DECISION_COMPOSER);
   }, [follow]);
 }

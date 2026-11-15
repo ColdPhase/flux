@@ -749,7 +749,9 @@ function DecisionPanel({ decision, context, detail, relations, reload, revision,
         <section className="wd-decide" aria-label="Your answer">
           <div className="nyc__foot wd-decide__foot">
             <div className="nyc__actions">
-              <Button variant="primary" busy={busy} onClick={() => void accept()}>Accept</Button>
+              {/* Pressed with the mouse it has the focus too (WebKit gives a pressed button none), so the focus goes on from it as from the
+                  key: to the next control where it was (F-026 §4, persona round 31). */}
+              <Button variant="primary" busy={busy} onClick={(event) => { event.currentTarget.focus({ preventScroll: true }); void accept(); }}>Accept</Button>
               {need ? <NotNowButton onClick={() => handlers.snooze(need, 'tomorrow')} /> : null}
               <Button variant="quiet" onClick={() => void discuss(context.project.id, decision.id)}>Discuss</Button>
             </div>

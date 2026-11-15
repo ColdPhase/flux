@@ -49,7 +49,14 @@ export function PeoplePicker({ candidates, value, onChange, disabled = false, co
       </div>}
       {open ? (
         <div className="pick__list" id={listId} role="group" aria-label={`People in ${companyName}`}>
-          {candidates.length ? <input className="ui-input pick__filter" type="search" aria-label="Search people" placeholder="Search by name or address" value={filter} onChange={(event) => setFilter(event.target.value)} /> : null}
+          {candidates.length ? <input className="ui-input pick__filter" type="search" aria-label="Search people" placeholder="Search by name or address" value={filter} onChange={(event) => setFilter(event.target.value)}
+            // Enter picks the one person the search found, as New message's Find people does (persona round 31); it never sends the form.
+            onKeyDown={(event) => {
+              if (event.key !== 'Enter' || event.nativeEvent.isComposing) return;
+              event.preventDefault();
+              const one = shown.length === 1 ? shown[0]! : null;
+              if (one && !disabled && !value.includes(one.userId)) { toggle(one.userId, true); setFilter(''); }
+            }} /> : null}
           {candidates.length ? (
             <ul>
               {shown.map((member) => (

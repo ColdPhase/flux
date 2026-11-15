@@ -540,7 +540,7 @@ inside a screen (the Create window), not for the views of a space.
 
 The keys show next to their actions in menus. In the Inbox, `R` on a decision opens Discuss (the decision's panel with the cursor in its "Write about this decision…", [A decision's discussion](#a-space-header-conversation-and-message-actions)) and on a blocked task its "Write to this task" (persona round 6: Shortcuts says so).
 
-**Where focus goes (computer)** (persona rounds 26 to 30, 2026-11-15; one rule per situation, the same in every place):
+**Where focus goes (computer)** (persona rounds 26 to 31, 2026-11-15; one rule per situation, the same in every place):
 
 - **Arriving in a conversation** (a space, a direct message, a thread, an agent's chat), by any means: a click, Enter on a sidebar
   or direct-message row, New message, Say hello, Create space, Back. The cursor is in its composer, at the end of any kept draft.
@@ -551,14 +551,20 @@ The keys show next to their actions in menus. In the Inbox, `R` on a decision op
   conversation and opens no thread panel; a link followed from inside an open panel (a task's "From: Message") keeps that panel and
   its way back ("‹ Task #4").
 - **A task or a decision in the panel or sheet has its own address, `?open=`,** however it was opened: a card on the board or in the
-  conversation or a thread, Create, Search, Home, the Inbox (Open or Enter), a link. A reload opens it again. Opened in its space, it is its own history entry:
+  conversation or a thread, Create, Search, Home, the Inbox (Open, Enter, Discuss or R), a link. A reload opens it again, over the thread
+  it was opened from, which stays its way back. Opened in its space, it is its own history entry:
   Back closes it first, and closing it goes Back. Followed from a link, it takes the link's entry: Back leaves with it, and closing it
-  takes `?open=` off the address. Discuss on the decision already open adds no entry.
+  takes `?open=` off the address. Discuss on the decision already open (in its space or over a thread) adds no entry and only puts the
+  cursor in "Write about this decision…".
 - **A picker or a form** (New message's Find people, Invite, Add people with its filter) opens with its first field focused, in view;
-  letters typed while it opens go into it, and so do the keys typed while a picker's Enter opens what it picked. Esc in a form's field closes the form and gives focus back to what opened it. In New message, Enter or
-  the down arrow picks the one person found.
+  letters typed while it opens go into it, and so do the keys typed while a picker's Enter opens what it picked. Esc in a form's field closes the form and gives focus back to what opened it. Enter picks
+  the one person found, in New message (also the down arrow) and in Add people's filter; in New message a second Enter opens the
+  conversation, however fast it is typed.
+- **The Inbox's open item is chosen, never implied:** from the moment the Inbox opens, the item with the ring is the open one (the top
+  one at first), on the phone the expanded card too. An item that arrives live never takes its place, so E acts only on what has the
+  ring. When the open item leaves (done, given away), its neighbour at its place is chosen, also on coming back to the Inbox.
 - **R in the Inbox writes:** Reply, a decision's Discuss, or a blocked task's discussion. Where there is nothing to write to, the
-  letters typed after R are held, never run as A, E or S.
+  letters typed with R are held for half a second, never run as A, E or S, and then the keys are the Inbox's again.
 - **The sidebar's arrow keys** move between its rows. **G I** lands on the Inbox's open item, or its heading when it is empty,
   whatever had focus, also from inside the Inbox. Every arrival at the Inbox (G I, Back or Esc from an item opened from it) puts the
   focus on its open item. After **Z** or Undo in the Inbox, the item that came back has the focus.
@@ -567,13 +573,15 @@ The keys show next to their actions in menus. In the Inbox, `R` on a decision op
 - **A window closed to go somewhere** (a Search result, a place) leaves the focus to where it leads, never back to its opener.
 - **A page arrived at with nothing to focus** (Back to Home, a reload) gives the focus to its content, never to the page itself.
 - **Single keys** are never shortcuts while a field has focus, or while a menu is open. **Esc in a composer** leaves it for the
-  newest message and keeps the draft; the single keys work from there. New shows its `C`, and a toast its `Z`, only while the key
+  newest message or card the reader can see (else the newest message, brought into view) and keeps the draft; the single keys work
+  from there. A window that is closing (Create after `/task`) no longer holds Esc. New shows its `C`, and a toast its `Z`, only while the key
   works (no field has focus).
 - **Esc with a panel open** closes the panel wherever focus is, an empty field included, unless a menu or a window is open or the
   focused control used Esc (a title being edited, a search holding words, a page being written). Then Esc in the composer leaves it, as above. Closing a thread while the person writes in the composer, or
   arrives in it, leaves the cursor there, never on the thread's replies.
 - **After an action removes what had focus** (Add people, Undo, `Z`, Esc from a panel opened with the mouse, Propose decision,
-  New map, Invite), focus goes to the next control where it was, else the previous one, never to the page itself. Undo in a toast,
+  New map, Invite, Accept in the panel, by key or with the mouse), focus goes to the next control where it was, else the previous one,
+  never to the page itself. Unblock gives the focus to Status, which says what changed; Z leaves it there. Undo in a toast,
   by key or with the mouse, gives focus back to the control that made the change; undoing a new task closes its panel.
 
 Settings has one address per section, and no earlier address is kept: nothing is kept
@@ -590,7 +598,7 @@ The IDs come from the first Prostota canvas; rules that no longer apply are left
 | S2 | The phone tab bar is Home · Spaces · Inbox plus Search. There is none in a conversation. My map is a row on Home, not a tab. |
 | S3 | **One Create.** New, `C` and "+" open the same window or sheet everywhere, with Task, Thought, Decision, Page and Space. In context there are only "+ Task" in Tasks, `/task` in the composer and Create task on a message. |
 | S4 | One detail panel on the computer and one sheet on the phone, for tasks, decisions and threads. At most two content columns. |
-| S5 | The composer has `@` to mention and `/` for actions (`/task`, `/decide`, `/ai`, `/file`: these four, no more), with no separate buttons. Attaching is a paperclip, because "+" means Create. The hint reads "Message · @ mention · / actions", and the `/` menu is its list of commands with nothing under it (no "Type @ to mention people" line: the hint says it; #1424). **`@` mentions people only** (founder decision, Hubert, 2026-11-13, [#1419](https://github.com/ColdPhase/flux/issues/1419)): the assistant is not in it (asking it is `/ai`) and agents are not members of a space, so they are not listed (giving work to an agent is the task's Owner, S12). The assistant's suggestions are in the `/` menu, under `/ai`, and nowhere else (see [Agents and AI](#agents-and-ai)). |
+| S5 | The composer has `@` to mention and `/` for actions (`/task`, `/decide`, `/ai`, `/file`: these four, no more), with no separate buttons. A command is the draft's start: `/` after other words is text, and the `/` menu opens only there. Attaching is a paperclip, because "+" means Create. The hint reads "Message · @ mention · / actions", and the `/` menu is its list of commands with nothing under it (no "Type @ to mention people" line: the hint says it; #1424). **`@` mentions people only** (founder decision, Hubert, 2026-11-13, [#1419](https://github.com/ColdPhase/flux/issues/1419)): the assistant is not in it (asking it is `/ai`) and agents are not members of a space, so they are not listed (giving work to an agent is the task's Owner, S12). The assistant's suggestions are in the `/` menu, under `/ai`, and nowhere else (see [Agents and AI](#agents-and-ai)). |
 | S6 | **Message actions.** On the computer, hovering a message shows Reply in thread, Create task and ⋯. The ⋯ menu has one level, in the same order everywhere: Add to map, Copy link, Copy text, then Edit and Delete on your own messages. **Copy text** (founder direction by Hubert, 2026-11-08) is on every message a person can read, not only their own: it copies the message's plain words, with no markup (a mention as `@name`, a Wiki page as its title, a quote without its `>` marks). A deleted message has none. On the phone, long press opens the same list and swipe right replies in thread (#343). |
 | S8 | Several task updates in a row fold into one expandable line. It names people as the cards inside it do: the full name, and "(you)" for the reader ("Ada Kowalska (you) created 3 tasks", audit 3274a05), each person once ("Stefan Nowak created 2 tasks and updated a task", persona round 6). |
 | S9 | One tap on the state glyph (or `1`–`4`) changes the state. Swipe left, then Done, then a toast with **Undo**. |

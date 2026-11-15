@@ -47,7 +47,7 @@ import { DmUnreadProvider } from '../dm/dmUnread';
 import { PlaceMutesProvider, notificationsChanged, useMuteRow } from '../notifications/mutes';
 import { PhotosContext } from '../people/photos';
 import { PhoneAvatar, PhoneBack, PhoneDock, PhoneHomeLead, phoneHidesDock, phoneOffersCreate, phonePlaces } from './PhoneChrome';
-import { isTyping, stopAwaitingField, watchConversationLinks, watchLostFocus } from '../ui/keys';
+import { isTyping, stopAwaitingField, watchConversationLinks, watchLostFocus, windowOrMenuOpen } from '../ui/keys';
 
 const lastConversationPath = (userId: string, projectId: string) => remembered('conversation', userId, projectId) ?? `/projects/${projectId}`;
 /** The Tasks view last chosen in this project (#136), e.g. `?status=blocked&show=mine`. */
@@ -67,10 +67,16 @@ function lastMapPath(userId: string, projectId: string, sketches: { items: { id:
  */
 function leaveComposer(field: HTMLElement) {
   const place = field.closest('.convo-split__stream, .dm, .agc, #content') ?? document.getElementById('content');
-  const messages = place ? [...place.querySelectorAll<HTMLElement>('[id^="message-"][tabindex], .agc__turn[tabindex]')] : [];
-  const newest = messages.at(-1);
+  // The newest message or card the reader can see (a message above the decision cards is off screen, persona round 31), else the newest,
+  // brought into view.
+  const items = place ? [...place.querySelectorAll<HTMLElement>('[id^="message-"][tabindex], .agc__turn[tabindex], [data-native-ref^="work:"], [data-decision-card]')] : [];
+  let feed: HTMLElement | null = items[0]?.parentElement ?? null;
+  while (feed && feed !== document.body && !(/(auto|scroll)/.test(getComputedStyle(feed).overflowY) && feed.scrollHeight > feed.clientHeight)) feed = feed.parentElement;
+  const box = (feed && feed !== document.body ? feed : document.getElementById('content'))?.getBoundingClientRect();
+  const seen = box ? items.filter((item) => { const r = item.getBoundingClientRect(); return r.height > 0 && r.bottom > box.top && r.top < box.bottom; }) : [];
+  const newest = seen.at(-1) ?? items.filter((item) => item.matches('[id^="message-"], .agc__turn')).at(-1);
   field.blur();
-  newest?.focus({ preventScroll: true });
+  newest?.focus({ preventScroll: seen.length > 0 });
   // A stream still opening (hidden until its first reads) cannot take it: the page's content does.
   if (!newest || document.activeElement !== newest) document.getElementById('content')?.focus({ preventScroll: true });
 }
@@ -248,7 +254,7 @@ function AppLayoutContent() {
     ownedRef.current = panel;
     setOwned(panel);
     setDetailsView({ kind: 'owned' });
-    now.current = { ...current, detailsView: { kind: 'owned' } };
+    now.current = { ...current, detailsView: { kind: 'owned' }, detailsOpen: true };
     if (!current.detailsOpen) current.toggleDetails(true);
   }, [labelOf]);
   const reopenPanel = useCallback((key: string) => {
@@ -258,7 +264,7 @@ function AppLayoutContent() {
     // It takes the place of a task or decision that covers it, which keeps the way back.
     if (current.detailsOpen && replaces(current.detailsView)) setTrail((list) => [...list, { label: labelOf(current.detailsView), view: current.detailsView }]);
     setDetailsView({ kind: 'owned' });
-    now.current = { ...current, detailsView: { kind: 'owned' } };
+    now.current = { ...current, detailsView: { kind: 'owned' }, detailsOpen: true };
     if (!current.detailsOpen) current.toggleDetails(true);
   }, [labelOf]);
   const hidePanel = useCallback((key: string) => {
@@ -426,7 +432,9 @@ function AppLayoutContent() {
       } else if (options?.back !== 'keep') setTrail([]);
       panelLabel.current = null;
       setDetailsView(next);
-      now.current = { ...current, detailsView: next };
+      // Open from now on, before the next render: a thread that registers in the same commit as a reload's `?open=` object is covered by it
+      // and is its way back ("‹ Thread"; persona round 31).
+      now.current = { ...current, detailsView: next, detailsOpen: true };
       toggleDetails(true);
     },
     /** The open object's name for "‹ back" from the next one ("Task #2"). */
@@ -474,7 +482,8 @@ function AppLayoutContent() {
     const shownId = typeof detailsView === 'object' && 'id' in detailsView ? `${detailsView.kind}:${detailsView.id}` : null;
     if (navType === 'POP' && leftOpen && leftOpen !== new URLSearchParams(location.search).get('open') && shownId === leftOpen && detailsOpen) {
       const top = trail.at(-1);
-      if (top) { setTrail(trail.slice(0, -1)); setDetailsView(top.view); } else setDetailsOpen(false);
+      // With no way back kept (a reload on the object's address), a thread the route still shows comes back in its place.
+      if (top) { setTrail(trail.slice(0, -1)); setDetailsView(top.view); } else if (owned) setDetailsView({ kind: 'owned' }); else setDetailsOpen(false);
     }
     const arrival = arrivalEntry(location, navType);
     const kept = arrival ? recall<unknown>('details', arrival) : undefined;
@@ -753,7 +762,7 @@ function AppLayoutContent() {
       const target = event.target instanceof Element ? event.target : null;
       if (target?.closest('[role="dialog"], [role="menu"], [role="listbox"], #details')) return;
       // A window, a calendar or a menu that is open takes Esc first, wherever focus is while it opens.
-      if (document.querySelector('.ui-overlay[data-state="open"], [role="menu"]:not([inert]), [role="dialog"]:not(#details)')) return;
+      if (windowOrMenuOpen()) return;
       // A field other than a composer keeps its Escape while it holds something (a search being typed) or writes a page; an empty one
       // ("Search tasks" with nothing in it) does not stop Esc from closing the panel (audit 3274a05 P3 1).
       const field = target instanceof HTMLTextAreaElement && target.closest('.composer, .composer__box') ? target : null;
