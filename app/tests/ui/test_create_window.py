@@ -295,7 +295,7 @@ class CreateWindow(unittest.TestCase):
         expect(row.first).to_be_visible()
         expect(palette.get_by_role("option", name=re.compile("^New task"))).to_have_count(0)
         field.press("Enter")
-        expect(page).to_have_url(re.compile(r"/tasks\?open=work:|/tasks$"))
+        expect(page).to_have_url(re.compile(r"/tasks\?open=work(:|%3A)|/tasks$"))
         # The footer says what Search finds in one sentence; there are no scopes to name.
         palette, field = self.jump(page, "")
         expect(palette.locator(".jump__foot")).to_contain_text("Finds spaces, people, messages, tasks, decisions, Wiki pages, files and thoughts you can see.")

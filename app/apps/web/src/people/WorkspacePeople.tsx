@@ -129,6 +129,8 @@ export function WorkspacePeople({ workspaceId, onBack, page = false }: { workspa
     if (!wanted || !roster) return;
     focusAfter.current = null;
     requestAnimationFrame(() => {
+      // A person still listed whose row has the focus (a role changed in place) keeps it there.
+      if (document.activeElement?.closest(`.people__list [data-person="${CSS.escape(wanted.userId)}"]`)) return;
       // The row's first control (its role, or Change, Reset link, Remove), in view (persona round 29: Company rows have no Change any more).
       const control = (id: string) => [...document.querySelectorAll<HTMLElement>(`.people__list [data-person="${CSS.escape(id)}"] :is(select, button, [role="combobox"])`)]
         .find((element) => !(element as HTMLButtonElement).disabled && element.getClientRects().length > 0) ?? null;

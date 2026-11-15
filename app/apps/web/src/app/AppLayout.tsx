@@ -373,11 +373,15 @@ function AppLayoutContent() {
   const touchScreen = useMediaQuery(MEDIA.touch);
   useEffect(() => {
     if (touchScreen) return undefined;
+    // Anything that took the focus since (the page's own, or the person) ends it: this is only for a page that gave it to nothing.
+    let taken = false;
+    const onFocus = () => { taken = true; };
+    document.addEventListener('focusin', onFocus, true);
     const timer = window.setTimeout(() => {
       const active = document.activeElement;
-      if ((!active || active === document.body) && !document.querySelector('.ui-overlay[data-state="open"]')) document.getElementById('content')?.focus({ preventScroll: true });
+      if (!taken && (!active || active === document.body) && !document.querySelector('.ui-overlay[data-state="open"]')) document.getElementById('content')?.focus({ preventScroll: true });
     }, 400);
-    return () => window.clearTimeout(timer);
+    return () => { window.clearTimeout(timer); document.removeEventListener('focusin', onFocus, true); };
   }, [location.key, touchScreen]);
   // The computer's sidebar collapses to its 64px rail with "[" (F-026 S19), remembered on this device.
   const [railed, setRailed] = useState(() => { try { return localStorage.getItem(SIDEBAR_KEY) === 'rail'; } catch { return false; } });
@@ -496,10 +500,12 @@ function AppLayoutContent() {
     if (!projectId || (objectProject && objectProject !== projectId)) return false;
     const params = new URLSearchParams(location.search);
     if (params.get('open') === `${kind}:${id}`) return false;
-    params.set('open', `${kind}:${id}`);
+    params.delete('open');
+    const rest = params.toString();
     const kept = location.state && typeof location.state === 'object' ? location.state : {};
-    // `openPushed`: closing goes Back over this entry instead of leaving a second one with the same address.
-    navigate({ pathname: location.pathname, search: `?${params.toString()}`, hash: location.hash }, { defaultShouldRevalidate: false, state: { ...kept, openPushed: true } });
+    // `openPushed`: closing goes Back over this entry instead of leaving a second one with the same address. The flag reads as the links
+    // write it (`open=work:<id>`), not encoded.
+    navigate({ pathname: location.pathname, search: `?${rest ? `${rest}&` : ''}open=${kind}:${id}`, hash: location.hash }, { defaultShouldRevalidate: false, state: { ...kept, openPushed: true } });
     return true;
   }; });
   const openedAt = useRef<string | null>(null);
