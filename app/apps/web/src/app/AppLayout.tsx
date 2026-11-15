@@ -461,6 +461,8 @@ function AppLayoutContent() {
   }
   // Back, Forward or the way back to an entry restores the object its panel showed, the way back it left, whether it was open
   // and how far it was scrolled (#592). A thread or an agent a view owns is kept by its own route, so it is not restored here.
+  // Closing an object that had its own entry goes Back over it: the entry it returns to shows no panel, whatever was kept for it.
+  const [closingBack, setClosingBack] = useState(false);
   const [shownKey, setShownKey] = useState(location.key);
   if (shownKey !== location.key) {
     setShownKey(location.key);
@@ -471,6 +473,7 @@ function AppLayoutContent() {
       if (kept.open && kept.scroll > 0) setPanelScrollTo({ top: kept.scroll });
     }
     if (arrival) { const height = recall<unknown>('sheet', arrival); setSheetStart(typeof height === 'boolean' ? height : null); }
+    if (closingBack) { setClosingBack(false); setDetailsOpen(false); }
   }
   const trailNow = useRef(trail);
   useEffect(() => { trailNow.current = trail; });
@@ -687,7 +690,18 @@ function AppLayoutContent() {
     toggleDetails(false);
     // An object the address names (`?open=`) is closed: the flag leaves the address, in the same entry.
     const params = new URLSearchParams(location.search);
-    if (params.has('open') && !ownedShown && (location.state as { openPushed?: boolean } | null)?.openPushed) { navigate(-1); return; }
+    if (params.has('open') && !ownedShown && (location.state as { openPushed?: boolean } | null)?.openPushed) {
+      // Back once the panel has closed and handed the focus back, so the step does not land while focus is still inside it.
+      // A Back to an address with a #message- fragment lets the browser put focus on that message: the control closing gave it to keeps it.
+      setClosingBack(true);
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        const kept = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
+        const after = () => requestAnimationFrame(() => { if (kept?.isConnected && document.activeElement !== kept) kept.focus({ preventScroll: true }); });
+        window.addEventListener('popstate', after, { once: true });
+        navigate(-1);
+      }));
+      return;
+    }
     if (params.has('open') && !ownedShown) {
       params.delete('open');
       const search = params.toString();
