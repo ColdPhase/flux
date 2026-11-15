@@ -85,8 +85,8 @@ describe('the Inbox needs-you queue', () => {
     assert.equal(find(await queue(outsider), key), undefined);
     // Never in your own Inbox, also as the only person of a space who can accept it (personas-30): it stays on its card.
     const alone = await createProject(outsider, ws.id, 'Only me here', 'restricted');
-    const mine = json<Decision>(await post(outsider, `/api/v1/projects/${alone.id}/decisions`, { title: 'Use the blue crates' }), 201);
-    assert.equal(find(await queue(outsider), `decision:${mine.id}`), undefined, 'the only member is not asked about their own proposal');
+    const ownProposal = json<Decision>(await post(outsider, `/api/v1/projects/${alone.id}/decisions`, { title: 'Use the blue crates' }), 201);
+    assert.equal(find(await queue(outsider), `decision:${ownProposal.id}`), undefined, 'the only member is not asked about their own proposal');
 
     // Accepting leaves everyone's queue.
     json(await post(owner, `/api/v1/decisions/${proposed.id}/accept`, {}, { 'if-match': '"1"' }), 200);
