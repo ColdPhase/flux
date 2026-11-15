@@ -86,7 +86,7 @@ export function PropertyMenu({ label, value, options, disabled, onChoose, onOpen
     if (next !== value) onChoose(next);
   };
   const openMenu = () => { setActive(Math.max(0, options.findIndex((option) => option.value === value))); setOpen(true); };
-  const onMenuKey = (event: KeyboardEvent<HTMLDivElement>) => {
+  const onMenuKey = (event: KeyboardEvent<HTMLElement>) => {
     if (event.key === 'Escape') { event.stopPropagation(); event.preventDefault(); setOpen(false); button.current?.focus({ preventScroll: true }); return; }
     if (event.key === 'ArrowDown') { event.preventDefault(); setActive((at) => (at + 1) % options.length); return; }
     if (event.key === 'ArrowUp') { event.preventDefault(); setActive((at) => (at + options.length - 1) % options.length); return; }
@@ -111,7 +111,9 @@ export function PropertyMenu({ label, value, options, disabled, onChoose, onOpen
     <div className="wd-menu" ref={root}>
       <button ref={button} type="button" className="wd-state" aria-label={label} aria-haspopup="menu" aria-expanded={open} aria-controls={open ? menuId : undefined} disabled={disabled}
         onClick={() => (open ? setOpen(false) : openMenu())}
-        onKeyDown={(event) => { if (event.key === 'ArrowDown') { event.preventDefault(); openMenu(); } }}>
+        // While the menu is open its keys work from the value too: a key pressed as the menu arrives, before focus is in it, still
+        // closes it (Esc) or picks a state, and never reaches the panel.
+        onKeyDown={(event) => { if (open) { onMenuKey(event); return; } if (event.key === 'ArrowDown') { event.preventDefault(); openMenu(); } }}>
         {children}<Icon name="chevron-down" size={14} className="wd-state__go" />
       </button>
       {sheet ? (
