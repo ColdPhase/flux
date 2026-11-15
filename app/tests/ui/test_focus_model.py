@@ -328,7 +328,8 @@ class FocusModel(unittest.TestCase):
         row.focus()
         page.keyboard.press("r")
         page.keyboard.type("maybe eight is better")
-        composer = page.locator("#project-composer")
+        # The decision's own field in its panel (its one discussion, founder decision, Hubert, 2026-11-15, #1424), never the space's composer.
+        composer = page.locator("#decision-composer")
         expect(composer).to_be_focused()
         expect(composer).to_have_value("maybe eight is better")
         page.wait_for_timeout(500)

@@ -1,40 +1,24 @@
 import { useCallback } from 'react';
-import { decisionAppPath, type ObjectLink } from '@flux/contracts';
+import { decisionAppPath } from '@flux/contracts';
 import { useFollow } from '../place/origin';
-import { awaitField } from '../ui/keys';
-import { MEDIA } from '../ui';
-import { getWorkRelations } from './read-api';
+import { awaitField, focusField } from '../ui/keys';
 
-/** What a link-less read leaves when relations cannot be read: the project's conversation is still the place to talk. */
-const noLinks: ObjectLink[] = [];
-
-/** The thread a decision was proposed from: its first message source with a conversation, if any. */
-export function decisionThread(links: readonly ObjectLink[], decisionId: string) {
-  const source = links.find((link) => link.from.id === decisionId && link.role === 'source' && link.to.type === 'message' && !!link.conversationId);
-  return source ? { conversationId: source.conversationId!, messageId: source.to.id } : null;
-}
+/** The decision panel's one field (#1424): Discuss and `R` in the Inbox put the cursor here. One decision panel is open at a time. */
+export const DECISION_COMPOSER = 'decision-composer';
 
 /**
- * "Discuss" on a decision (F-026 P4, #763 D3): it opens where the decision is talked about, ready to write. A decision
- * made from a message opens that message's thread, where the decision stands among the replies, with its reply field
- * focused. One without a message source opens the project's conversation with the decision beside it (on a computer)
- * and the composer focused. Where the panel is an overlay (a tablet, a phone) it would cover that composer and the way
- * back, so there the conversation opens alone. `links` are the decision's relations when the caller already holds them.
+ * "Discuss" on a decision (F-026 P4; founder decision, Hubert, 2026-11-15, #1424): it writes in the decision's one discussion, the thread
+ * on its card, which its panel shows too. It opens the decision in the one panel (the sheet on the phone) with the cursor in the panel's
+ * "Write about this decision…", on every device: the words are never the space's own composer's, where they joined an unrelated draft or
+ * went out with no link to the decision. On the decision already open it only puts the cursor there, and adds no entry (persona round 29).
  */
 export function useDiscussDecision() {
   const follow = useFollow();
-  return useCallback(async (projectId: string, decisionId: string, links?: readonly ObjectLink[]) => {
+  return useCallback(async (projectId: string, decisionId: string) => {
     awaitField();
-    const known = links ?? await getWorkRelations(projectId, { objects: `decision:${decisionId}`, limit: 50 }).then((page) => page.items, () => noLinks);
-    const thread = decisionThread(known, decisionId);
-    if (thread) {
-      await follow(`/projects/${projectId}/conversations/${thread.conversationId}`, { state: { focusComposer: true, keepPanel: true } });
-      return;
-    }
-    const overlay = window.matchMedia(MEDIA.panelOverlay).matches;
-    const to = overlay ? `/projects/${projectId}` : decisionAppPath(projectId, decisionId);
-    // Already there (the decision open beside its conversation): the same entry, never a second one with the same address (persona round 29).
     const here = new URLSearchParams(window.location.search).get('open') === `decision:${decisionId}` && window.location.pathname === `/projects/${projectId}`;
-    await follow(to, { state: { focusComposer: true }, ...(here ? { replace: true } : {}) });
+    if (here && document.querySelector(`[data-detail-kind="decision"][data-detail-id="${decisionId}"]`)) { focusField(DECISION_COMPOSER); return; }
+    await follow(decisionAppPath(projectId, decisionId), { state: { writeDecision: true }, ...(here ? { replace: true } : {}) });
+    focusField(DECISION_COMPOSER);
   }, [follow]);
 }

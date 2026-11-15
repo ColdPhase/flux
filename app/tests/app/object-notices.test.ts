@@ -48,7 +48,7 @@ test('a decision proposed from a reply in a thread shows as one line with its th
   const line = page.items[0]!;
   assert.equal(line.kind, 'decision.proposed');
   assert.deepEqual({ ...line, id: undefined }, { id: undefined, kind: 'decision.proposed', decisionId: decision.id, status: 'proposed', workspaceId: f.ws.id, projectId: f.place.id,
-    title: 'Use a ToF sensor', by: decision.proposedBy, sources: [{ type: 'message', id: f.replyOne.id }], conversationId: f.root.id, createdAt: decision.createdAt, decided: null });
+    title: 'Use a ToF sensor', by: decision.proposedBy, sources: [{ type: 'message', id: f.replyOne.id }], conversationId: f.root.id, createdAt: decision.createdAt, decided: null, discussion: null });
   assert.equal(line.by.id, f.writer.id);
   assert.ok(line.by.name, 'the line names who proposed it');
   assert.equal(line.id, `${decision.id}:proposed`, 'a stable identity per object');

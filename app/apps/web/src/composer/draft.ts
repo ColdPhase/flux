@@ -4,7 +4,7 @@ import { ApiError, NetworkError } from '../api/client';
 import { reply, startConversation } from '../conversations/api';
 import { announceAnswered } from '../notifications/api';
 import { sendDmMessage, sendDmReply } from '../api/direct-messages';
-import { contributeToTask, stageFile, type FilePlace } from './api';
+import { contributeToTask, discussDecision, stageFile, type FilePlace } from './api';
 import { fileLimits, fileLimitsKnown, loadFileLimits, uploadPoster } from '../api/files';
 import { drawPoster } from './videoPoster';
 import { assumeReachable, connectionState, onConnectionChange, reportReachable, reportUnreachable } from './connection';
@@ -212,6 +212,11 @@ async function deliver(projectId: string, context: string, command: SendMessageC
   }
   if (context.startsWith('task:')) {
     const { answered, ...message } = await contributeToTask(context.slice('task:'.length), { ...command, kind: 'text' });
+    return { id: command.clientMessageId, message: message as ConversationMessage, ...(answered?.length ? { answered } : {}) };
+  }
+  if (context.startsWith('decision:')) {
+    // A decision's one discussion (#1424): its panel and the thread on its card share this draft and this operation.
+    const { answered, ...message } = await discussDecision(context.slice('decision:'.length), command);
     return { id: command.clientMessageId, message: message as ConversationMessage, ...(answered?.length ? { answered } : {}) };
   }
   if (context.startsWith('dm:')) {

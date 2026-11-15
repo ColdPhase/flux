@@ -58,6 +58,7 @@ In Details, a person without write access sees **Who decides** in place of the A
 | `GET/POST /api/v1/projects/:projectId/decisions`, `GET /api/v1/decisions/:id` | Propose with `sources`, `affects`, `supersedes`. |
 | `POST /api/v1/decisions/:id/accept` | Needs `If-Match`; no body (`{ expectedVersion? }` is the same as the header). |
 | `POST /api/v1/decisions/:id/withdraw` | Its proposer's Undo ([below](#a-proposal-reaches-everyone-at-once-and-undo-withdraws-it-1424-l)). Needs `If-Match`; `204`. |
+| `GET/POST /api/v1/decisions/:id/discussion` | The decision's one discussion ([below](#a-decisions-discussion-1424)): its messages, or a message written in it. |
 | `POST /api/v1/projects/:projectId/links` | A `related` link between any two objects of the project. |
 | `GET /api/v1/workspaces/:workspaceId/work/assigned` | The caller's unfinished work in every project the policy's `visibleFilter` lets them read. |
 
@@ -77,7 +78,7 @@ toast's Undo is `POST /api/v1/decisions/:id/withdraw`:
 - **When.** While it is still proposed and unchanged (`If-Match`: `428` without it, `409 VERSION_CONFLICT` when stale,
   `409 DECISION_NOT_PROPOSED` once accepted, since a decision is never un-accepted) and while nothing else names it: a link to it
   (a task related to it, a Wiki page that mentions it), a task that waits for it or a decision that replaces it are `409 DECISION_IN_USE`,
-  and it stays.
+  and it stays. So is a decision someone has written about ([its discussion](#a-decisions-discussion-1424)).
 - **What goes.** The decision row, its own `source`/`affects` links, its notifications (their queued emails go with them) and the
   Inbox choices made on it (`needs_you_states` `decision:<id>`), in one transaction. Its Inbox item is derived from the row, so it is gone
   too, and so is its card ([`listObjectNotices`](#events)): a reader's next refresh of the newest notices drops a card the server no
@@ -91,6 +92,50 @@ toast's Undo is `POST /api/v1/decisions/:id/withdraw`:
 
 Accept stays held for its Undo window (the existing rule, design §5 Notices): it cannot be withdrawn, because accepting replaces an
 earlier decision and resumes the tasks that wait for it, so its toast's Undo means it was never sent.
+
+## A decision's discussion (#1424)
+
+Founder decision (Hubert, 2026-11-15, recorded on #1424): Discuss starts a thread in the space's conversation on the decision's card, and
+the decision's panel shows the same thread's messages with a field to write: one discussion in both places, as a task's discussion is.
+Before it, Discuss put the cursor in the space's main composer, so the words joined an unrelated draft or went out as a plain message
+with no link to the decision.
+
+**Model: the task's.** A decision's discussion is modelled exactly as [a task's discussion](task-discussions.md) is, because a decision's
+card is a notice derived from the decision, not a message, so it cannot be a thread's root message. The first message written about a
+decision creates one ordinary conversation of the space and binds it to the decision in the same transaction
+(`project_decision_discussions`, migration 0090: `decision_id` the key, `conversation_id` and its sequence-1 `root_message_id` unique,
+with composite foreign keys to the decision, the conversation and the root, all `ON DELETE CASCADE`). Every later message is a reply in
+that conversation. So all the thread machinery applies unchanged: the thread panel (`GET /conversations/:id`, which names the decision as
+`decision: { decisionId, title }`), replies through `POST /conversations/:id/messages` (from the thread's own composer, an agent's
+`flux_reply_in_conversation` or anything else), edits and deletes, reading positions and "Seen by", typing, files, references, Search and
+the encryption of an encrypted space (the binding row holds ids only; the messages are sealed as any thread's). Like a task's discussion
+it is not a root of the stream (`conversation-roots` and the receipts' runs of roots leave it out): its place is the decision's card.
+
+- **`GET /api/v1/decisions/:id/discussion`** (`DecisionDiscussion`): `{ decisionId, workspaceId, projectId, conversationId, messages,
+  messagePage }`, the newest 50 messages oldest first (`?limit=`, `?beforeSequence=` as for a conversation); `conversationId: null` and
+  no messages before anyone has written. Reading the space is enough; a decision in a space the caller cannot read is `404
+  DECISION_NOT_FOUND`, like a missing one.
+- **`POST /api/v1/decisions/:id/discussion`** (a `SendMessageCommand`: `body`, `clientMessageId`, optional `attachmentIds`,
+  `references`): `201` with the stored message (`SentConversationMessage`). Writing in the space is needed (a guest of the space writes
+  as any member does). Under the space's access rows and the send's identity lock it locks the decision's row, so two first messages at
+  once make one thread: the first creates it, the second is its first reply. A retry with the same `clientMessageId` returns the stored
+  message; one used for other words is `409 IDEMPOTENCY_CONFLICT`. Both composers of the web (the panel's and the thread's) send here,
+  with one draft, `decision:<id>`.
+- **Events.** The first message records `project.conversation_created.v1`, later ones `project.message_sent.v1` (`{ conversationId,
+  messageId }`), as any thread's, and every message in a decision's discussion, however it was written, also records one
+  `project.decision_discussed.v1` (`{ decisionId }`), and so does an Edit or a Delete of a message there (beside
+  `project.message_edited.v1` / `project.message_removed.v1`): the stream's readers refetch the decision's card (its count) and an open
+  panel its messages, and no words travel on the stream.
+- **Where you left off.** The thread has no opening message (its head is the decision), so its `unreadFrom` may be its first message:
+  the New divider stands above the first message by someone else that the reader has not seen, from sequence 1, as above any reply.
+- **The card's count.** The decision's object notice carries `discussion: { conversationId, replyCount, lastReplyAt } | null`: how many
+  messages the thread has (every one is a reply to the card) and when the newest was written.
+- **Notifications** follow a thread's rules (#1249): its starter and earlier writers follow it, Follow and Unfollow win, and a name or a
+  question in it reaches whom it names. Whoever proposed the decision follows it from its first message: binding the thread writes their
+  follow (`notification_follows`, only when they have made no choice), so they get its replies as its starter does. An agent's proposal
+  is its owner's: the agent's owner follows it the same way.
+- **Withdraw.** A proposal that has a discussion is in use (`409 DECISION_IN_USE`), as one that something names: what was written about
+  it stays.
 
 ## A task from your own message is yours (#1424 M)
 
@@ -187,7 +232,8 @@ blocked/unblocked lines (`project_task_updates`, #550), which are unchanged.
 Each committed change records exactly one project event in its transaction (a contribution adds its own
 `project.conversation_created.v1` or `project.message_sent.v1`, all in the one final batch):
 `project.work_created.v1`, `project.work_updated.v1`, `project.decision_proposed.v1`,
-`project.decision_accepted.v1`, `project.decision_withdrawn.v1` or `project.link_created.v1`.
+`project.decision_accepted.v1`, `project.decision_withdrawn.v1` or `project.link_created.v1`. A message in a decision's discussion
+adds `project.decision_discussed.v1` beside its message event ([above](#a-decisions-discussion-1424)).
 
 The conversation reads one notice per decision (`GET /projects/:id/object-notices`, #694): its card, where and when it was proposed,
 with its current state and `decided: { by, at }` once accepted. Accepting changes that card in place and adds no notice (founder
@@ -220,7 +266,8 @@ revalidation and polling and does not subscribe to the stream yet.
 `app/tests/app/work.test.ts` (API, two people, outsider and an agent principal through the
 use cases; #1424 M, a task from your own message), `app/tests/app/object-notices.test.ts` (#694; #1424 D, the card changes in place;
 #1424 L, a proposal at once and its withdrawal with its notifications and Inbox items, and who may withdraw it),
-`app/tests/ui/test_undo_one_card.py` (#1424 D, L and M in the browser, both engines), `app/tests/app/decision-authority.test.ts` (#250: the O-009 role matrix, the MCP agent path
+`app/tests/ui/test_undo_one_card.py` (#1424 D, L and M in the browser, both engines), `app/tests/app/decision-discussion.test.ts` and
+`app/tests/ui/test_decision_discussion.py` (a decision's one discussion, in the panel and on the card, both engines and the phone), `app/tests/app/decision-authority.test.ts` (#250: the O-009 role matrix, the MCP agent path
 and the database invariant), the "#250 AC-3" case in `app/tests/app/personal-runs.test.ts` (the assistant
 path), `app/tests/ui/test_decision_authority.py` (#250: a contributor accepts; the viewer's "Who decides" note went with the viewer role, #903)
 and `app/tests/ui/test_work_decisions.py` (Playwright: create from a message, keyboard

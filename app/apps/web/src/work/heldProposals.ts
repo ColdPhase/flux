@@ -38,7 +38,7 @@ export interface PendingProposal {
 export function holdProposal(proposal: { projectId: string; workspaceId: string; title: string; by: NamedPrincipal; sources: ObjectRef[]; conversationId: string | null },
   made: Promise<string | null>): PendingProposal {
   const id = `${PENDING}${crypto.randomUUID()}`;
-  const entry: Pending = { notice: { ...proposal, id, kind: 'decision.proposed', decisionId: id, status: 'proposed', decided: null, createdAt: new Date().toISOString() }, made };
+  const entry: Pending = { notice: { ...proposal, id, kind: 'decision.proposed', decisionId: id, status: 'proposed', decided: null, discussion: null, createdAt: new Date().toISOString() }, made };
   changed([...pending, entry]);
   // The entry is known by its `made`: its notice changes when the proposal is made.
   const find = () => pending.findIndex((item) => item.made === entry.made);

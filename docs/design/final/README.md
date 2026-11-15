@@ -538,7 +538,7 @@ inside a screen (the Create window), not for the views of a space.
 | `[` | Collapse the sidebar |
 | `Esc` | Close a panel or menu |
 
-The keys show next to their actions in menus. In the Inbox, `R` on a decision opens Discuss and on a blocked task its "Write to this task" (persona round 6: Shortcuts says so).
+The keys show next to their actions in menus. In the Inbox, `R` on a decision opens Discuss (the decision's panel with the cursor in its "Write about this decision…", [A decision's discussion](#a-space-header-conversation-and-message-actions)) and on a blocked task its "Write to this task" (persona round 6: Shortcuts says so).
 
 **Where focus goes (computer)** (persona rounds 26 to 28, 2026-11-15; one rule per situation, the same in every place):
 
@@ -606,7 +606,7 @@ The IDs come from the first Prostota canvas; rules that no longer apply are left
 | S23 | **Open where you left off** (founder pick by Hubert, 2026-11-10, [#1246](https://github.com/ColdPhase/flux/issues/1246)). One behaviour in every conversation: a space's, a direct message, a thread, a task's discussion and an agent's chat. It opens on its first new message, with a quiet **New** divider above it (one rule with the word, like a day line, in the same place in each), or at its end when nothing is new. The first new message starts its own group, as after a day line: its author is named again, whoever wrote the message above the divider. While you read above the end, what arrives is counted in one line over the foot of the conversation, **↓ 3 new** (what left again, such as a task whose creation was undone, is no longer counted) (a soft pill, the `--own` fill with the pop shadow and the down arrow, 32 px with a mouse and 44 px on touch): a click or tap goes to the end, so does **End** (outside a text field), and the line goes when you reach the end; used from the keyboard it leaves focus on the newest message. Nothing moves under you: a message that arrives while you read above stays below. There is no setting and no screen. What is new is what you had not seen: in a space, what changed since you left it (S7's return point); in a direct message, a thread and a task's discussion, the messages by others after the last one you viewed (the same viewing as "Seen by"); in an agent's chat, what the agent said after you last had the chat open. Everything in a conversation you have never opened is new (founder decision, 2026-11-12, [#1246](https://github.com/ColdPhase/flux/issues/1246)): a direct message, a thread, a task's discussion or an agent's chat opens at its **first** message with the divider above it, from the very top (who is in the conversation, a thread's root shown whole), and **↓ N new** leads to the end. A long one is read back a page or two at most (200 messages beyond the newest 50); past that the divider stands above the oldest message read, with Show earlier above it. A space has no such first message to open on: one you have never visited has no return point and opens at its end. Coming back to a place you left (Back, the way back) is coming back to a screen you have seen: a New divider that would stand inside that screen is not drawn, because it would push down what you were reading ([#1335](https://github.com/ColdPhase/flux/issues/1335)); above the screen or below it, it stays. |
 | P1 | **Home** has two parts: Waiting for you (the top three, with Open Inbox) and Continue where you left off. Every row is clickable and ends in an arrow. |
 | P3 | Kreska is the agent icon everywhere (section 3). |
-| P4 | **A decision is one card on both devices:** who proposed it, the decision, its reason, then Accept / Not now / Discuss and who can accept it. Plain sentences appear only when they apply: "This replaces the decision **Wi-Fi in every bed** (12 Oct)." and "Shown on the Wiki page **Sensor network**." Accepting only marks the replaced decision "replaced"; Flux never moves or parks tasks. |
+| P4 | **A decision is one card on both devices:** who proposed it, the decision, its reason, then Accept / Not now / Discuss and who can accept it. Discuss writes in the decision's one discussion, a thread on its card that its panel also shows (founder decision, Hubert, 2026-11-15, [#1424](https://github.com/ColdPhase/flux/issues/1424)). Plain sentences appear only when they apply: "This replaces the decision **Wi-Fi in every bed** (12 Oct)." and "Shown on the Wiki page **Sensor network**." Accepting only marks the replaced decision "replaced"; Flux never moves or parks tasks. |
 | P5 | **Creating a task is separate from its notice.** The conversation only announces it, as its one card with one quiet line of its source: "Ada created a task", "created a task from Jonas's message", "Planner · Ada's agent is on it" ([A space](#a-space-header-conversation-and-message-actions), #1424: one card, never a chip in the message, a line and a card). A new task is **created** everywhere it is said: the card's line, the toast ("Task #12 created"), the task's activity ("created the task", "created it from a message") and Home's "since you were away" line (#1424). (The Map has no Create task, #867.) Founder report 2026-10-28 ([#694](https://github.com/ColdPhase/flux/issues/694)): a decision is announced the same way, because a decision proposed in a thread left no trace anywhere. The decision is one card with its state now (Proposed, Accepted, Replaced) that opens it in the one panel, and inside it one line, "Ada proposed a decision" (a message has no Propose a decision, #867); accepting it changes that card in place, with who accepted it and when on the card, and adds no line (founder decision D, #1424). The line is in the space's stream by time and in the thread it came from; it updates for every member who can read the space, and it is information, not a message. There is no result card: Done may carry one "What came of it" line in the task's discussion. |
 | P6 | Attachments sit inside their message (section 6). |
 | P7 | Monochrome with light, dark and system; no accent colour. |
@@ -1013,7 +1013,8 @@ Community garden sensors, Rain barrel monitor and Tool library.
   you", what they are (Delete the page “Old notes” · a task for Jonas · a task for Maja), then
   Approve all and Open. The phone lists the three things and the line "Deleting and other
   people's things always wait for your OK." The same requests also show in the task's discussion.
-- A decision opens as its card (P4). Opened from there, it opens where it opens from everywhere (Search, a notification, a link, its
+- A decision opens as its card (P4). Its Discuss and `R` open the decision's panel with the cursor in "Write about this decision…" (its
+  one discussion, [A space](#a-space-header-conversation-and-message-actions)). Opened from there, it opens where it opens from everywhere (Search, a notification, a link, its
   card): in the one panel over its space's conversation, with its card there marked as the open one (the founder's bar that the same
   object opens in the same place). An empty Inbox is a small moment.
 
@@ -1136,6 +1137,21 @@ built. The contract is in [mobile and PWA](../../product/mobile-pwa.md#while-flu
   at most two lines on a phone (whole when the text is large); where the card is narrow for its
   text (beside a docked panel at 1024 px, a phone, 200 % text) the owner's name gives way first (the face alone), and the state word
   stays whole inside the card.
+- **A decision's discussion** (founder decision, Hubert, 2026-11-15, recorded on [#1424](https://github.com/ColdPhase/flux/issues/1424)):
+  a decision has **one** discussion, a thread on its card, and its panel shows the same thread, so nobody looks for it (as a task's
+  discussion is one, P10). **Discuss** (in the decision's panel, on its Inbox card, and `R` in the Inbox) opens the decision in the one
+  panel (the sheet on the phone) with the cursor in the field at the panel's foot, **"Write about this decision…"**; Discuss on the
+  decision already open only puts the cursor there. Under the decision, the panel lists what was written about it, oldest first, the
+  newest at the bottom just above the field. The first message starts the thread: from then on the decision's card in the conversation
+  (in the stream and in the thread it came from) carries **"2 replies · last 9:40"** under its row, as a root does, and that opens the
+  same thread in the panel: the decision's row at its top (it opens the decision), then every message about it, then the thread's
+  composer. A message written in either place is the same message and shows in both at once, for everyone reading. The thread follows a
+  thread's rules for notifications: the people who wrote in it and the people who follow it get its replies, and whoever proposed the
+  decision follows it from its first message, an agent's owner for an agent's proposal (their Unfollow still wins). Its first message is a
+  reply like the others, so the **New** divider (S23) can stand above it, and an edit or a delete shows in the panel as in the thread. It is not a root of the stream (its place is the card), it is
+  read and written by everyone who reads and writes the space, a guest included, and an encrypted space seals its messages as it seals
+  any thread's. Before anyone writes there is no thread and the card has no count. Words typed after Discuss never go to the space's
+  own composer: that sent them as a plain message with no link to the decision (persona round 7, founder question 4).
 - The message toolbar sits at the bubble's top corner, as
   [Spokój](../spokoj/README.md#message-toolbar-and-selection) places it. A line in the ⋯ menu
   divides Add to map, Copy link and Copy text from Edit and Delete.

@@ -114,7 +114,9 @@ export type ObjectNoticeRecord = {
   sources: ObjectRef[];
   conversationId: string | null;
   createdAt: Date;
-} & { kind: 'decision.proposed'; decisionId: string; status: DecisionStatus; decided: { by: ActorRef; at: Date } | null };
+} & { kind: 'decision.proposed'; decisionId: string; status: DecisionStatus; decided: { by: ActorRef; at: Date } | null;
+  /** Its one discussion (#1424): the thread on its card, its size and its newest message's time. */
+  discussion: { conversationId: string; replyCount: number; lastReplyAt: Date } | null };
 /** The native command that keeps a durable retry receipt (#154); creation keeps its own identity on the task row. */
 export type NativeOperation = 'work.update';
 export interface NativeCommandReceipt {

@@ -1295,6 +1295,24 @@ export const projectTaskDiscussions = pgTable('project_task_discussions', {
 ]);
 
 /**
+ * A decision's one discussion (#1424, migration 0090): as a task's, its first message creates one conversation of the space and binds it
+ * here, to its sequence-1 root; later messages are replies in it. The card in the stream and the decision's panel show the same thread.
+ */
+export const projectDecisionDiscussions = pgTable('project_decision_discussions', {
+  decisionId: uuid('decision_id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull(),
+  projectId: uuid('project_id').notNull(),
+  conversationId: uuid('conversation_id').notNull().unique(),
+  rootMessageId: uuid('root_message_id').notNull().unique(),
+  rootSequence: integer('root_sequence').notNull().default(1),
+}, (table) => [
+  check('project_decision_discussions_root_sequence_check', sql`${table.rootSequence} = 1`),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.decisionId], foreignColumns: [projectDecisions.workspaceId, projectDecisions.projectId, projectDecisions.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.conversationId], foreignColumns: [projectConversations.workspaceId, projectConversations.projectId, projectConversations.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.conversationId, table.rootMessageId, table.rootSequence], foreignColumns: [projectMessages.conversationId, projectMessages.id, projectMessages.sequence] }).onDelete('cascade'),
+]);
+
+/**
  * One receipt per real actor, project, operation and client command UUID (#154, migration 0040). It keeps the
  * produced object, the produced task version and the contribution messages for an exact replay; it is not the
  * #152 connection-command ledger and never debits a grant.

@@ -19,9 +19,11 @@ const decidedWhen = (at: string, proposedAt: string) => (new Date(at).toDateStri
  * Details (one panel on the computer, one sheet on the phone). The same card sits in the project's stream and, when it came from a
  * thread, in that thread.
  */
-export function ObjectNoticeItem({ notice, meId, owners, authorOf, inThread = false, hasMessage, onOpen, onOpenThread }: {
+export function ObjectNoticeItem({ notice, meId, owners, authorOf, inThread = false, hasMessage, onOpen, onOpenThread, onOpenDiscussion, openThread = null }: {
   notice: ObjectNotice; meId: string; owners: AgentOwners; authorOf: (messageId: string) => string | null; inThread?: boolean;
   hasMessage: (messageId: string) => boolean; onOpen: (target: ReturnType<typeof objectTarget>) => void; onOpenThread?: (conversationId: string) => void;
+  /** Its one discussion (#1424): "N replies" under the card opens that thread. `openThread`: the thread open beside the stream. */
+  onOpenDiscussion?: (conversationId: string) => void; openThread?: string | null;
 }) {
   const by = notice.by;
   const name = by.name ?? (by.kind === 'agent' ? 'Agent' : FORMER_MEMBER);
@@ -72,6 +74,14 @@ export function ObjectNoticeItem({ notice, meId, owners, authorOf, inThread = fa
         </button>
         {decided ? <p className="convo-object__decided">Accepted by {decider}{decided.by.kind === 'human' && decided.by.id === meId ? ' (you)' : ''}
           {' · '}<time dateTime={decided.at} title={when(decided.at)}>{decidedWhen(decided.at, notice.createdAt)}</time></p> : null}
+        {/* The decision's one discussion (founder decision, Hubert, 2026-11-15, #1424): the thread on this card, as a root's replies are. */}
+        {notice.discussion && notice.discussion.replyCount && onOpenDiscussion ? <div className="convo-replies convo-object__replies">
+          <button type="button" className="convo-replies__open" data-decision-replies={target.id} aria-expanded={openThread === notice.discussion.conversationId}
+            aria-controls={openThread === notice.discussion.conversationId ? 'thread' : undefined} onClick={() => onOpenDiscussion(notice.discussion!.conversationId)}>
+            <Icon name="chat" size={13} />{notice.discussion.replyCount} {notice.discussion.replyCount === 1 ? 'reply' : 'replies'}
+            <span className="convo-replies__when">· last {day(notice.discussion.lastReplyAt) === 'Today' ? clock(notice.discussion.lastReplyAt) : day(notice.discussion.lastReplyAt)}</span>
+          </button>
+        </div> : null}
       </div>
     </li>
   );

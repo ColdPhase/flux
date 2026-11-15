@@ -16,6 +16,8 @@ import { ConversationStream, streamPlace, useConversationRoots, useObjectNotices
 import { WORK_EVENT, useStreamEvents } from '../api/stream';
 import { useWithHeldProposals } from '../work/heldProposals';
 import { ThreadRoot } from './ThreadRoot';
+import { DiscussedDecision } from './DiscussedDecision';
+import { DECISION_COMPOSER } from '../work/discuss';
 import { SourceOfContext } from './messageParts';
 import { OwnedPanelContent, useOwnedPanel } from './ownedPanel';
 import { useShellActions } from './shellContext';
@@ -49,10 +51,13 @@ export interface PaneProps {
   newestRootAt?: string;
   /** thread: its latest size, so the stream's reply count matches it. */
   onThreadSize?: (conversationId: string, replyCount: number, lastReplyAt: string | null) => void;
+  /** thread: a decision's card in it opens that decision's own discussion (#1424). */
+  onOpenDiscussion?: (conversationId: string) => void;
 }
 
 /** `found`: a search result brought the person to this message (#1424). */
-interface NavState { fromStream?: boolean; backToStream?: boolean; focusComposer?: boolean; keepPanel?: boolean; sourceOf?: string; found?: boolean; origin?: unknown; opened?: boolean; openPushed?: boolean }
+/** `writeDecision`: Discuss on a decision (#1424), the cursor goes to the decision panel's field, never to this conversation's composer. */
+interface NavState { writeDecision?: boolean; fromStream?: boolean; backToStream?: boolean; focusComposer?: boolean; keepPanel?: boolean; sourceOf?: string; found?: boolean; origin?: unknown; opened?: boolean; openPushed?: boolean }
 
 /**
  * One project conversation (UI116-1, 2026-10-02): the stream of roots with its composer, and the open
@@ -80,7 +85,7 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
   // the conversation, and no empty "0 replies" thread opens beside it.
   // A link that asks to write (Reply) still opens the thread, to reply in it, and so does one followed from inside an open panel that asks to
   // keep it (a task's "From: Message"): the panel stays with its way back to the task (F-026 §4).
-  const alone = !state?.focusComposer && !state?.keepPanel && !!conversation && !conversation.task && !!arrived && conversation.messages.length === 1 && conversation.messages[0]!.id === arrived;
+  const alone = !state?.focusComposer && !state?.keepPanel && !!conversation && !conversation.task && !conversation.decision && !!arrived && conversation.messages.length === 1 && conversation.messages[0]!.id === arrived;
   const [lone, setLone] = useState({ key: location.key, alone });
   if (lone.key !== location.key) setLone({ key: location.key, alone });
   const withheld = lone.key === location.key ? lone.alone : alone;
@@ -104,7 +109,7 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
   const [linkAt, setLinkAt] = useState({ at: sameLink, key: location.key });
   const objectStep = navigationKind === 'POP' || !!state?.openPushed || !!state?.opened || new URLSearchParams(location.search).has('open');
   if (linkAt.key !== location.key && (linkAt.at !== sameLink || !objectStep)) setLinkAt({ at: sameLink, key: location.key });
-  const reveal = conversation && !conversation.task && !state?.fromStream && !restore ? { conversationId: conversation.id, key: `${conversation.id}:${linkAt.key}` } : null;
+  const reveal = conversation && !conversation.task && !conversation.decision && !state?.fromStream && !restore ? { conversationId: conversation.id, key: `${conversation.id}:${linkAt.key}` } : null;
   const roots = useConversationRoots(project.id, data.roots, reveal?.conversationId ?? restore?.conv ?? null, onDenied);
   const notices = useTaskNotices(project.id, data.notices, roots.roots, roots.hasOlder, onDenied);
   // A decision this person just proposed is among them at once, as its card "Proposed", while it waits out its Undo (#1424).
@@ -148,6 +153,14 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
     navigate(`/projects/${project.id}/conversations/${item.conversationId}`,
       { state: { fromStream: true, backToStream, focusComposer: write } satisfies NavState, replace: !!thread && backToStream });
   }, [navigate, project.id, reopenPanel, state?.backToStream, thread, touch]);
+  // A decision's card's "N replies" (#1424): its one discussion opens as a thread beside the stream, as a root's replies open theirs.
+  const openDiscussion = useCallback((conversationId: string) => {
+    if (thread && conversationId === thread.id) { reopenPanel(`thread:${thread.id}`); document.getElementById(touch ? 'details' : 'thread-composer')?.focus(); return; }
+    if (!touch) awaitField();
+    const backToStream = thread ? state?.backToStream === true : true;
+    navigate(`/projects/${project.id}/conversations/${conversationId}`,
+      { state: { fromStream: true, backToStream, focusComposer: !touch } satisfies NavState, replace: !!thread && backToStream });
+  }, [navigate, project.id, reopenPanel, state?.backToStream, thread, touch]);
   // Closing never adds an entry (A-1): a thread opened from the stream is one step back; one a link opened (the Inbox's Reply, a search
   // result, a notice) gives its entry to the conversation, with the origin it was followed from. Back, and the header's "‹", then leave the
   // conversation for that origin instead of opening the thread again.
@@ -180,10 +193,12 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
   const nameOf = useCallback((userId: string) => personName(userId, { id: me.user.id, name: me.user.name }, members, people), [me.user.id, me.user.name, members, people]);
   const stream = (end: ReactNode) => (
     <ConversationStream project={project} meId={me.user.id} meName={me.user.name} roots={roots} notices={notices} objects={objects} calls={calls} personName={nameOf} author={author}
-      audience={audience} openId={thread?.id ?? null} reveal={reveal} arrived={arrived} endToken={endToken} restore={restore} onOpen={open} onDenied={onDenied} end={end} />
+      audience={audience} openId={thread?.id ?? null} reveal={reveal} arrived={arrived} endToken={endToken} restore={restore} onOpen={open} onOpenDiscussion={openDiscussion} onDenied={onDenied} end={end} />
   );
-  // Until the stream has the root (a link to an old one), the thread's newest sequence gives its size.
-  const replies = root?.replyCount ?? Math.max(0, (thread?.messages.at(-1)?.sequence ?? 1) - 1);
+  // Until the stream has the root (a link to an old one), the thread's newest sequence gives its size. A decision's discussion has no root
+  // message: it is the thread on the decision's card, so every message in it is a reply, as the card counts them (#1424).
+  const discussed = thread?.decision ?? null;
+  const replies = discussed ? thread?.messages.at(-1)?.sequence ?? 0 : root?.replyCount ?? Math.max(0, (thread?.messages.at(-1)?.sequence ?? 1) - 1);
   const rootMessage = root?.message ?? thread?.messages.find((message) => message.sequence === 1) ?? null;
   // A thread a reference led to, in a sheet or an overlay over the header, carries the way back to where it was followed from (#592).
   const originBack = useOriginPanelBack();
@@ -199,6 +214,9 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
   // pane was already open, and keeps it: the message the link names is marked, but it does not take the focus from the field (`focusArrival`).
   useLayoutEffect(() => {
     // A thread being closed is not an arrival: its entry still asks to write, but the cursor goes where closing gives it back.
+    // Discuss on a decision (#1424): while the address opens that decision, the cursor goes to its panel's field.
+    const writing = !!state?.writeDecision && !!new URLSearchParams(location.search).get('open')?.startsWith('decision:');
+    if (writing) return focusField(DECISION_COMPOSER);
     if (!state?.focusComposer || (closing !== null && closing === conversation?.id)) return;
     return focusField(thread ? 'thread-composer' : 'project-composer');
     // Only a new arrival (a navigation) asks for it, never a re-render; the thread is the one the address names.
@@ -219,7 +237,7 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
     seen.project = project.id;
     // Arriving to open something (`?open=task:…/decision:…`, which leaves the address as `opened`; a message link; a task or decision its
     // panel shows again on a return) puts focus on that object, never in the composer, so Esc closes it.
-    if (touch || state?.focusComposer || state?.fromStream || state?.keepPanel || (inside && navigationType === 'POP')) return undefined;
+    if (touch || (state?.writeDecision && new URLSearchParams(location.search).has('open')) || state?.focusComposer || state?.fromStream || state?.keepPanel || (inside && navigationType === 'POP')) return undefined;
     if (state?.opened || (shownObject && navigationType === 'POP') || arrived || location.search) {
       // A press on a link that expected the composer (`watchConversationLinks`) gives the keys back: the object has the focus.
       stopAwaitingField();
@@ -242,9 +260,9 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
         <OwnedPanelContent slot={slot} className="thread" id="thread">
           <PanelMeta>{replies} {replies === 1 ? 'reply' : 'replies'}</PanelMeta>
           <ThreadFollow conversationId={thread.id} projectId={project.id} />
-          <Pane key={thread.id} data={data} variant="thread" rootMessageId={rootMessage?.id ?? null} objects={objects}
-            onThreadSize={roots.threadSize}
-            rootHeader={({ preview, firstDay }) => <ThreadRoot firstDay={firstDay} message={rootMessage} projectId={project.id} body={rootMessage?.body ?? thread.firstMessageBody} author={rootMessage ? author(rootMessage) : null}
+          <Pane key={thread.id} data={data} variant="thread" rootMessageId={discussed ? null : rootMessage?.id ?? null} objects={objects}
+            onThreadSize={roots.threadSize} onOpenDiscussion={openDiscussion}
+            rootHeader={({ preview, firstDay }) => discussed ? <DiscussedDecision decision={discussed} notice={objects.find((item) => item.decisionId === discussed.decisionId) ?? null} replies={replies} firstDay={firstDay} /> : <ThreadRoot firstDay={firstDay} message={rootMessage} projectId={project.id} body={rootMessage?.body ?? thread.firstMessageBody} author={rootMessage ? author(rootMessage) : null}
               agentOwner={rootMessage?.authorId === null ? agentAuthorOwner(rootMessage.author, owners) ?? null : null} meId={me.user.id} writable replies={replies} preview={preview} onDenied={onDenied}
               photo={{ place: project.name, onReply: () => document.getElementById('thread-composer')?.focus(), onCreateTask: rootMessage ? () => void makeWork.create(rootMessage) : undefined }} />} />
         </OwnedPanelContent>) : null}

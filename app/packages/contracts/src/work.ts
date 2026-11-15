@@ -55,6 +55,20 @@ export const decisionAcceptPath = (decisionId: string) => `${decisionPath(decisi
  * withdrawing it removes it for everyone with its notifications and Inbox items. `If-Match` is the proposal's version; 204.
  */
 export const decisionWithdrawPath = (decisionId: string) => `${decisionPath(decisionId)}/withdraw`;
+/**
+ * A decision's one discussion (founder decision, Hubert, 2026-11-15, #1424): a thread on its card in the space's conversation, which its
+ * panel shows too. `GET` reads its messages, `POST` (a `SendMessageCommand`) writes one; the first creates the thread.
+ */
+export const decisionDiscussionPath = (decisionId: string) => `${decisionPath(decisionId)}/discussion`;
+/** `GET /decisions/:id/discussion`: the newest messages oldest first; `conversationId` is null until someone has written. */
+export interface DecisionDiscussion {
+  decisionId: string;
+  workspaceId: string;
+  projectId: string;
+  conversationId: string | null;
+  messages: import('./conversation.js').ConversationMessage[];
+  messagePage: import('./conversation.js').Conversation['messagePage'];
+}
 export const projectLinksPath = (projectId: string) => `/api/v1/projects/${projectId}/links`;
 /** Work owned by the caller across every project of the workspace they can currently read. */
 export const workspaceAssignedWorkPath = (workspaceId: string) => `/api/v1/workspaces/${workspaceId}/work/assigned`;
@@ -341,7 +355,9 @@ interface ObjectNoticeBase {
 }
 export type ObjectNotice = ObjectNoticeBase & { kind: 'decision.proposed'; decisionId: string; status: DecisionStatus;
   /** Who accepted it and when, shown on the card itself; null while it is proposed. */
-  decided: { by: NamedPrincipal; at: string } | null };
+  decided: { by: NamedPrincipal; at: string } | null;
+  /** Its one discussion (#1424): the thread on the card, how many messages it has and when the newest came; null before anyone wrote. */
+  discussion: { conversationId: string; replyCount: number; lastReplyAt: string } | null };
 
 export interface UpdateWorkCommand extends VersionPrecondition {
   /**

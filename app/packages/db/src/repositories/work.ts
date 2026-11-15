@@ -471,12 +471,15 @@ export function workRows(db: DbExecutor) {
             ORDER BY l.created_at, l.id) FROM project_object_links l WHERE l.from_type = 'decision' AND l.from_id = d.id AND l.role = 'source'), '[]'::jsonb) AS sources,
           (SELECT m.conversation_id FROM project_object_links l JOIN project_messages m ON m.id = l.to_id
             WHERE l.from_type = 'decision' AND l.from_id = d.id AND l.role = 'source' AND l.to_type = 'message' ORDER BY l.created_at, l.id LIMIT 1) AS conversation_id,
-          d.created_at AS at
-        FROM project_decisions d WHERE d.project_id = ${projectId}
+          d.created_at AS at, dd.conversation_id AS discussion_id,
+          (SELECT count(*)::int FROM project_messages m WHERE m.conversation_id = dd.conversation_id) AS discussion_count,
+          (SELECT max(m.created_at) FROM project_messages m WHERE m.conversation_id = dd.conversation_id) AS discussion_at
+        FROM project_decisions d LEFT JOIN project_decision_discussions dd ON dd.decision_id = d.id WHERE d.project_id = ${projectId}
         ORDER BY d.created_at DESC, d.id DESC LIMIT ${window.limit} OFFSET ${window.offset}`);
       const rows = result.rows as { id: string; workspace_id: string; project_id: string; object_id: string; title: string;
         status: 'proposed' | 'accepted' | 'superseded'; by_kind: 'human' | 'agent'; by_id: string; decided_by: string | null; decided_at: Date | string | null;
-        sources: import('@flux/contracts').ObjectRef[]; conversation_id: string | null; at: Date | string }[];
+        sources: import('@flux/contracts').ObjectRef[]; conversation_id: string | null; at: Date | string;
+        discussion_id: string | null; discussion_count: number | null; discussion_at: Date | string | null }[];
       // F-030: the titles come through raw SQL; they are opened here, not in SQL (#696).
       const seals = await sealsOf(db, rows.map((row) => row.workspace_id), { write: false });
       for (const row of rows) {
@@ -485,13 +488,17 @@ export function workRows(db: DbExecutor) {
       return { total: Number(count?.total ?? 0), items: rows.map((row) => ({ id: row.id, workspaceId: row.workspace_id, projectId: row.project_id,
         title: row.title, by: { kind: row.by_kind, id: row.by_id }, sources: row.sources, conversationId: row.conversation_id, createdAt: new Date(row.at),
         kind: 'decision.proposed' as const, decisionId: row.object_id, status: row.status,
-        decided: row.decided_by && row.decided_at ? { by: { kind: 'human' as const, id: row.decided_by }, at: new Date(row.decided_at) } : null })) };
+        decided: row.decided_by && row.decided_at ? { by: { kind: 'human' as const, id: row.decided_by }, at: new Date(row.decided_at) } : null,
+        // Its one discussion (#1424): every message of the thread answers the card.
+        discussion: row.discussion_id && row.discussion_at ? { conversationId: row.discussion_id, replyCount: Number(row.discussion_count ?? 0), lastReplyAt: new Date(row.discussion_at) } : null })) };
     },
     async withdrawDecision(id: string): Promise<'withdrawn' | 'used'> {
       const named = await db.execute(sql`SELECT (
         EXISTS (SELECT 1 FROM project_object_links WHERE to_id = ${id})
         OR EXISTS (SELECT 1 FROM project_decisions o WHERE o.id <> ${id} AND (o.supersedes_id = ${id} OR o.superseded_by_id = ${id}))
         OR EXISTS (SELECT 1 FROM project_work_items WHERE waiting_for_decision_id = ${id} AND creation_reverted_at IS NULL)
+        -- Someone wrote about it (#1424): what was said stays, so does the decision.
+        OR EXISTS (SELECT 1 FROM project_decision_discussions WHERE decision_id = ${id})
       ) AS found`);
       if ((named.rows[0] as { found: boolean } | undefined)?.found) return 'used';
       const [row] = await db.select({ projectId: d.projectId }).from(d).where(eq(d.id, id));

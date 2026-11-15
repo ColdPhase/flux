@@ -38,8 +38,11 @@ MEASURE = """(root) => {
   const solid = (node) => { for (let n = node; n; n = n.parentElement) { const c = rgba(getComputedStyle(n).backgroundColor); if (c && c.a > 0) return c; } return null; };
   const surface = solid(root.parentElement);
   const structural = new Set(['DIV', 'SECTION', 'FORM', 'P', 'H3', 'H4', 'DL', 'DT', 'DD', 'FIELDSET', 'NAV', 'UL', 'LI', 'HEADER', 'ARTICLE']);
+  // The decision's content scrolls above its one discussion's field (#1424), as a task's does: the column is measured; the field at the
+  // panel's foot is the composer's own surface, as everywhere.
+  const col = root.querySelector(':scope > .wd__scroll') ?? root;
   const paints = [];
-  for (const el of [root, ...root.querySelectorAll('*')]) {
+  for (const el of [root, ...col.querySelectorAll('*')]) {
     if (!structural.has(el.tagName)) continue;
     const c = rgba(getComputedStyle(el).backgroundColor);
     if (!c || c.a === 0) continue;
@@ -49,7 +52,8 @@ MEASURE = """(root) => {
   }
   const box = (el) => { if (!el) return null; const r = el.getBoundingClientRect(); return { left: r.left, top: r.top, right: r.right, bottom: r.bottom }; };
   const q = (sel) => root.querySelector(sel);
-  const edge = root.getBoundingClientRect().left, end = root.getBoundingClientRect().right;
+  const pad = getComputedStyle(col);
+  const edge = col.getBoundingClientRect().left + parseFloat(pad.paddingLeft), end = col.getBoundingClientRect().right - parseFloat(pad.paddingRight);
   // The left edge of every kind of content the panel shows: eyebrow, title, rows, headings, text, buttons.
   const lefts = [];
   const note = (name, el) => { if (el) lefts.push({ name, left: el.getBoundingClientRect().left - edge, right: end - el.getBoundingClientRect().right, submit: !!el.closest('.wd-submit') }); };
@@ -59,7 +63,7 @@ MEASURE = """(root) => {
   root.querySelectorAll('.details__sec > p, .wd-accept-finish > p').forEach((el) => note('text ' + el.textContent.trim().slice(0, 24), el));
   root.querySelectorAll('.wd-actions button, .wd-decide__foot .nyc__actions > button:first-child').forEach((el) => note('button ' + el.textContent.trim(), el));
   root.querySelectorAll('.wd-link > span:first-child').forEach((el) => note('link ' + el.textContent.trim().slice(0, 24), el));
-  const sections = [...root.children].filter((el) => el.matches('.details__sec'));
+  const sections = [...(root.querySelector(':scope > .wd__scroll') ?? root).children].filter((el) => el.matches('.details__sec'));
   return {
     surface: surface && surface.css, paints, lefts,
     identity: box(q('.wd-decision-identity')), accept: box(q('.wd-accept')), finish: box(q('.wd-accept-finish')),

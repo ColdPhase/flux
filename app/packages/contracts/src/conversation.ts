@@ -188,6 +188,8 @@ export interface ConversationFields {
   firstMessageBody: string;
   /** The current canonical task binding, including windows that do not contain its root (#154). */
   task?: { workId: string; title: string };
+  /** The decision this conversation is the one discussion of (#1424): the thread on its card. */
+  decision?: { decisionId: string; title: string };
   messages: ConversationMessage[];
   messagePage: {
     /** True when messages with a lower sequence can be fetched. */
