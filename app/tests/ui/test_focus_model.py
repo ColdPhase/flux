@@ -631,7 +631,7 @@ class FocusModel(unittest.TestCase):
         self.assertTrue(page.evaluate("() => { const open = document.querySelector('.nyq__list .nyc[aria-current=\"true\"]'); return !!open && open.contains(document.activeElement); }"),
                         "the ring and the open item stay together")
         page.keyboard.press("e")
-        expect(page.locator(".ui-toast")).to_contain_text("Buy paper cups")
+        expect(page.locator(".ui-toast")).to_contain_text("moved to Done")
         status = lambda work: self.contexts["piotr"].request.get(f"/api/v1/work/{work}").json()["status"]  # noqa: E731
         self.assertEqual(status(cups), "done", "E finished the item that had the ring")
         self.assertNotEqual(status(antenna), "done", "the arrival nobody looked at is untouched")
@@ -747,7 +747,8 @@ class FocusModel(unittest.TestCase):
     def test_35_enter_enter_and_a_sentence_typed_while_new_message_still_loads_its_people_sends_it_whole(self) -> None:
         page = self.page()
         held: list = []
-        page.route(re.compile(r"/api/v1/workspaces/[0-9a-f-]{36}/members(\?|$)"), lambda route: held.append(route))
+        holding = [True]
+        page.route(re.compile(r"/api/v1/workspaces/[0-9a-f-]{36}/members(\?|$)"), lambda route: held.append(route) if holding[0] else route.continue_())
         page.goto("/dm/new")
         expect(page.locator("#dm-people-search")).to_be_focused()
         expect(page.get_by_text("Loading people…")).to_be_visible()
@@ -756,7 +757,7 @@ class FocusModel(unittest.TestCase):
         page.keyboard.press("Enter")
         page.keyboard.press("Enter")
         page.keyboard.type(sentence)
-        page.unroute(re.compile(r"/api/v1/workspaces/[0-9a-f-]{36}/members(\?|$)"))
+        holding[0] = False
         for route in held:
             route.continue_()
         composer = page.locator("#dm-composer")
