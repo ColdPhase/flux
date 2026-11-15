@@ -160,6 +160,8 @@ export function NeedsYouCard({ item, selected = false, compact = false, list = f
     </div>
   ) : null;
   const full = !row;
+  // The tray holds what the card does not show itself: an open decision has Not now among its buttons already.
+  const trayNotNow = keys.notNow && !(decision && full);
 
   const actions = (
     <div className="nyc__actions">
@@ -273,9 +275,9 @@ export function NeedsYouCard({ item, selected = false, compact = false, list = f
         {body}
         {/* A swipe left on a phone: the card slides over this tray. Reachable by keyboard and touch alike. It offers what the computer offers
             (`itemKeys`, one rule on every device): a decision is put off with Not now, never marked Done while it waits (personas-26 P2 #4). */}
-        {touch && (keys.notNow || keys.done) ? (
+        {touch && (trayNotNow || keys.done) ? (
           <div className="nyc__tray">
-            {keys.notNow ? <NotNowButton className="nyc__tray-b" onClick={notNow} /> : null}
+            {trayNotNow ? <NotNowButton className="nyc__tray-b" onClick={notNow} /> : null}
             {keys.done ? <Button variant="primary" className="nyc__tray-b nyc__tray-done" aria-keyshortcuts="E" onClick={() => handlers.done(item)}><Icon name="check" size={16} />Done</Button> : null}
           </div>
         ) : null}
