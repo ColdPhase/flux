@@ -636,7 +636,11 @@ class TasksBoardJourney(unittest.TestCase):
                 page.goto(f"/projects/{self.ids['project']}/tasks?open=work:{self.ids['mount']}")
                 opened = '.tb-card:has(.tb-card__open[aria-current="true"])'
                 expect(page.locator(opened)).to_have_count(1)
-                page.locator(opened).evaluate("async (el) => { await Promise.all(el.getAnimations().map((a) => a.finished)); }")
+                page.wait_for_function("""(sel) => {
+                    const el = document.querySelector(sel), shut = document.querySelector('.tb-card:not(:has(.tb-card__open[aria-current="true"]))');
+                    return !!el && !!shut && !el.getAnimations().some((a) => a.playState === 'running')
+                      && getComputedStyle(el).backgroundColor !== getComputedStyle(shut).backgroundColor;
+                }""", arg=opened, timeout=5000)
                 for part in (".tb-card__id", ".tb-card__title", ".tb-card__due", ".tb-card__name"):
                     value = page.evaluate(MEASURE, {"selector": f"{opened} {part}"})
                     value.update(theme=theme, minimum=4.5, open=True)

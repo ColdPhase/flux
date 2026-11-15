@@ -185,13 +185,13 @@ button.project-convo__contribution { cursor: pointer; }
 .thread__root.is-mine { align-items: flex-end; }
 .thread__root > .message-bubble { max-width: 100%; }
 
-.project-convo__message:has(.message-bubble :is(.ws-chip, .wiki-card, .message-files, .link-preview), > .photo-grid),
-.thread__root:has(.message-bubble :is(.ws-chip, .wiki-card, .message-files, .link-preview), > .photo-grid) { min-width: min(344px, 100%); }
-.project-convo__message.is-mine:has(.message-bubble :is(.ws-chip, .wiki-card, .message-files, .link-preview), > .photo-grid),
-.thread__root.is-mine:has(.message-bubble :is(.ws-chip, .wiki-card, .message-files, .link-preview), > .photo-grid) { min-width: min(300px, 100%); }
+.project-convo__message:has(.message-bubble :is(.ws-chip, .wiki-card, .message-files, .link-preview), > .photo-grid, > .msg-tasks),
+.thread__root:has(.message-bubble :is(.ws-chip, .wiki-card, .message-files, .link-preview), > .photo-grid, > .msg-tasks) { min-width: min(344px, 100%); }
+.project-convo__message.is-mine:has(.message-bubble :is(.ws-chip, .wiki-card, .message-files, .link-preview), > .photo-grid, > .msg-tasks),
+.thread__root.is-mine:has(.message-bubble :is(.ws-chip, .wiki-card, .message-files, .link-preview), > .photo-grid, > .msg-tasks) { min-width: min(300px, 100%); }
 @media (max-width: 680px) {
-  .project-convo__message:not(.is-mine):has(.message-bubble :is(.ws-chip, .wiki-card, .message-files, .link-preview), > .photo-grid),
-  .thread__root:not(.is-mine):has(.message-bubble :is(.ws-chip, .wiki-card, .message-files, .link-preview), > .photo-grid) { min-width: min(342px, 100%); }
+  .project-convo__message:not(.is-mine):has(.message-bubble :is(.ws-chip, .wiki-card, .message-files, .link-preview), > .photo-grid, > .msg-tasks),
+  .thread__root:not(.is-mine):has(.message-bubble :is(.ws-chip, .wiki-card, .message-files, .link-preview), > .photo-grid, > .msg-tasks) { min-width: min(342px, 100%); }
 }
 
 /* "Ada · via Assistant" (#842): the person posted an agent's answer with Show everyone. */

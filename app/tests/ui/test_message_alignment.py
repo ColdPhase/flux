@@ -578,12 +578,16 @@ class MessageAlignment(unittest.TestCase):
         row.scroll_into_view_if_needed()
         measured = card.evaluate("""card => {
           const c = card.getBoundingClientRect(), row = card.closest('[data-message-id]'), title = card.querySelector('.convo-notice__title');
-          return {card: c.width, available: row.parentElement.clientWidth, inBubble: !!card.closest('.message-bubble'),
+          const rs = getComputedStyle(row), ps = getComputedStyle(row.parentElement);
+          return {card: c.width, row: row.getBoundingClientRect().width, column: row.clientWidth - parseFloat(rs.paddingLeft) - parseFloat(rs.paddingRight),
+            available: row.parentElement.clientWidth - parseFloat(ps.paddingLeft) - parseFloat(ps.paddingRight), inBubble: !!card.closest('.message-bubble'),
             stateFits: (() => { const k = card.querySelector('.convo-object__state'); return k.scrollWidth <= k.clientWidth + 1; })(),
             titleShown: title.clientWidth};
         }""")
         self.assertFalse(measured["inBubble"], measured)
-        self.assertGreaterEqual(measured["card"], min(300, measured["available"]) - 1, measured)
+        # The message keeps a readable width (as one with a chip in its bubble did), and the card fills its column.
+        self.assertGreaterEqual(measured["row"], min(300, measured["available"]) - 1, measured)
+        self.assertGreaterEqual(measured["card"], measured["column"] - 1, measured)
         self.assertTrue(measured["stateFits"], measured)
         self.assertGreater(measured["titleShown"], 100, measured)
 

@@ -202,7 +202,13 @@ class DecisionOnePlace(unittest.TestCase):
                     expect(self.card(page, decision)).to_have_attribute("aria-current", "true")
                     scope = f'.convo-object[data-object-kind="decision.proposed"][data-object-id="{decision}"] .convo-notice__card.is-open'
                     # The fill comes in with the card's colour transition: measured once it has run.
-                    page.locator(scope).evaluate("async (el) => { await Promise.all(el.getAnimations().map((a) => a.finished)); }")
+                    other = self.ids["rule"] if decision == self.ids["proposal"] else self.ids["proposal"]
+                    closed = f'.convo-object[data-object-kind="decision.proposed"][data-object-id="{other}"] .convo-notice__card'
+                    page.wait_for_function("""([open, closed]) => {
+                        const el = document.querySelector(open), shut = document.querySelector(closed);
+                        return !!el && !!shut && !el.getAnimations().some((a) => a.playState === 'running')
+                          && getComputedStyle(el).backgroundColor !== getComputedStyle(shut).backgroundColor;
+                    }""", arg=[scope, closed], timeout=5000)
                     for part in (".convo-notice__meta", ".convo-notice__meta strong", "time", ".convo-notice__title", ".convo-object__state"):
                         value = page.evaluate(MEASURE, {"selector": f"{scope} {part}"})
                         value.update(theme=theme, decision=kind)

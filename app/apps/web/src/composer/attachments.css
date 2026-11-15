@@ -246,6 +246,8 @@ a.ref-chip--thought:focus-visible { outline: 2px solid var(--t1); outline-offset
 .message-bubble .photo-grid { margin: 0; max-width: 100%; }
 /* Photo captions with references keep the media width after the generic minimum-width rule (§6/#482). */
 .photo-grid + .message-bubble:has(.ws-chip, .ws-attach, .wiki-card) { width: min(100%, 340px); }
+/* So do captions whose task card stands under the message in a thread (#1424, work.css .msg-tasks). */
+:is(.project-convo__message, .thread__root):has(> .msg-tasks) > .photo-grid + .message-bubble { width: min(100%, 340px); }
 .is-mine > .message-bubble .ref-chip, .is-mine > .message-bubble .wiki-card { background: var(--sub); color: var(--t1); }
 .is-mine > .message-bubble .ref-chip__face, .is-mine > .message-bubble .wiki-card__glyph { background: var(--el); color: var(--t1); }
 .is-mine > .message-bubble .wiki-card:hover { background: var(--hov); }
