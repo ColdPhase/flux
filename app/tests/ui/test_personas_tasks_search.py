@@ -184,9 +184,8 @@ class PersonasTasksSearch(unittest.TestCase):
         title = card.locator(".convo-notice__title")
         expect(title).to_have_text(LONG)
         geometry = title.evaluate("""el => ({ cut: el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1,
-          lines: Math.round(el.getBoundingClientRect().height / parseFloat(getComputedStyle(el).lineHeight)) })""")
-        self.assertFalse(geometry["cut"], f"the title is whole: {geometry}")
-        self.assertLessEqual(geometry["lines"], 2, geometry)
+          clamp: getComputedStyle(el).webkitLineClamp, wrap: getComputedStyle(el).whiteSpace })""")
+        self.assertFalse(geometry["cut"], f"the title is whole, wrapped on a computer: {geometry}")
         state = card.locator(".convo-notice__state")
         self.assertLessEqual(state.evaluate("el => el.scrollWidth - el.clientWidth"), 1, "the state word stays whole")
         shot(page, f"personas-task-card-200-{UI_BROWSER}")

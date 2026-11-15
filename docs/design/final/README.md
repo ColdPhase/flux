@@ -1057,7 +1057,8 @@ built. The contract is in [mobile and PWA](../../product/mobile-pwa.md#while-flu
   card, else "Ada accepted the decision **Double the cinnamon buns**", where the title opens it. One state has one word: a
   decision is **Proposed**, **Accepted** or **Replaced**, never "Proposed decision"; the panel's head already says "Decision", so its
   eyebrow is the state alone ("Proposed", "Accepted 14 Nov"), and the panel shows no row version ("Version 2" on a decision nobody edited
-  said nothing). The card's title always keeps room: a long title wraps to two lines on every device, where the card is narrow for its
+  said nothing). The card's title always keeps room: a long title wraps instead of being cut, whole on a computer (also at 200 % text) and in
+  at most two lines on a phone (whole when the text is large); where the card is narrow for its
   text (beside a docked panel at 1024 px, a phone, 200 % text) the owner's name gives way first (the face alone), and the state word
   stays whole inside the card.
 - The message toolbar sits at the bubble's top corner, as

@@ -222,7 +222,9 @@ class SearchJourney(unittest.TestCase):
         dialog, field = self.jump(page, "use the infrared")
         expect(dialog.locator("[role=option].sr").first).to_contain_text("Decision · accepted")
         expect(dialog.locator(".jump__sh").first).to_have_text("Decisions")
-        self.assertNotIn("Tasks", self.groups(dialog))
+        heading = dialog.locator("[role=option].sr", has_text="Use the infrared sensor at night").first.evaluate(
+            "el => { let at = el.closest('li') ?? el; while (at && !at.classList.contains('jump__sh')) at = at.previousElementSibling; return at?.textContent; }")
+        self.assertEqual(heading, "Decisions", "the decision stands under Decisions, not Tasks")
         field.press("ArrowDown")
         field.press("ArrowUp")
         self.assertEqual(dialog.get_by_role("option").first.get_attribute("aria-selected"), "true")

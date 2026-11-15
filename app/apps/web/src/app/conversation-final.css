@@ -27,10 +27,9 @@ button.convo-notice__src:focus-visible { outline: 2px solid var(--t1); outline-o
 .convo-notice__task:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }
 .convo-notice__task > svg { flex: none; color: var(--t2); }
 .convo-notice__num { flex: none; color: var(--t3); }
-/* A long title wraps to two lines instead of being cut to one, on every device (#266 PF-6 on the phone; at 200 % text on a computer
-   one line cut it to its first words). */
-.convo-notice__title { flex: 1 1 0; min-width: min(7em, 40%); overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
-  white-space: normal; overflow-wrap: anywhere; }
+/* A long title wraps instead of being cut to one line: whole on a computer (at 200 % text one line cut it to its first words), at most
+   two lines on a phone (#266 PF-6, below). */
+.convo-notice__title { flex: 1 1 0; min-width: min(7em, 40%); overflow: hidden; white-space: normal; overflow-wrap: anywhere; }
 .convo-notice--undone .convo-notice__title { display: block; overflow: visible; text-overflow: clip; white-space: normal; }
 /* The title keeps its room (#1424, audit P2-4: beside a docked panel at 1024 px the whole owner name squeezed it to nothing): the
    owner's name gives way first, with an ellipsis, and a narrow card shows the owner's face alone. */
@@ -38,7 +37,7 @@ button.convo-notice__src:focus-visible { outline: 2px solid var(--t1); outline-o
 .convo-notice__owner > :not(.convo-notice__owner-name) { flex: none; }
 .convo-notice__owner-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Narrow for its text (beside a docked panel, at a large text size: em follows the text), the owner is the face alone. */
-@container task-notice (max-width: 40em) { .convo-notice__owner-name { display: none; } }
+@container task-notice (max-width: 30em) { .convo-notice__owner-name { display: none; } }
 @media (pointer: coarse) { .convo-notice__task { min-height: 44px; } }
 .convo-notice + .convo-notice { margin-top: 14px; }
 
@@ -74,7 +73,11 @@ button.convo-notice__src:focus-visible { outline: 2px solid var(--t1); outline-o
 @media (pointer: coarse) { .convo-fold__b { min-height: 44px; } }
 
 
-/* A long title shows whole when the column is narrow for the reader's text size: container em units scale with it. */
+/* A long title wraps to two lines on a phone instead of being cut to one (#266 PF-6), and shows whole when the
+   column is narrow for the reader's text size: container em units scale with it. */
+@media (max-width: 680px) {
+  .convo-notice__title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+}
 @container task-notice (max-width: 14em) {
   .convo-notice__task { align-items: flex-start; }
   .convo-notice__title { display: block; -webkit-line-clamp: unset; }
