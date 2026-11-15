@@ -222,7 +222,12 @@ function PhotoTile({ file, index, count, more, onOpen }: { file: MessageFile; in
 
 /** Photos without a file frame: radius 16, caption below; 2–4 form a grid with "+N" on the last one. */
 export function PhotoGrid({ photos, context }: { photos: MessageFile[]; context?: PhotoContext }) {
-  const [open, setOpen] = useState<number | null>(null);
+  const [clicked, setClicked] = useState<number | null>(null);
+  // A search result for one of these photos (found by its name, #1424 B) opens the viewer at it, as a file row opens its preview.
+  const link = useFileLink(photos.map((photo) => photo.id));
+  const linked = link ? photos.findIndex((photo) => photo.id === link.fileId) : -1;
+  const open = clicked ?? (linked >= 0 ? linked : null);
+  const setOpen = (index: number | null) => { setClicked(index); if (index === null) link?.close(); };
   const shown = photos.slice(0, 4);
   const more = photos.length - shown.length;
   return (

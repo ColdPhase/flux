@@ -9,18 +9,21 @@ import { useLocation, useNavigate } from 'react-router';
  * A message can be drawn twice (the first message of a conversation is its thread's root as well), so the rows of one file settle which of them opens it:
  * the first to claim the link, and another if that one goes.
  */
-export interface FileLink { page: number | null; close(): void }
+export interface FileLink { fileId: string; page: number | null; close(): void }
 
 const claims = new Map<string, symbol>();
 const listeners = new Set<() => void>();
 const subscribe = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
 const changed = () => listeners.forEach((listener) => listener());
 
-export function useFileLink(fileId: string): FileLink | null {
+/** `fileIds`: the file of a row, or the photos of a grid (a photo found by its name opens in the photo viewer, #1424 B). */
+export function useFileLink(fileIds: string | readonly string[]): FileLink | null {
   const { pathname, search, hash, state } = useLocation();
   const navigate = useNavigate();
   const params = new URLSearchParams(search);
-  const linked = params.get('file')?.toLowerCase() === fileId.toLowerCase();
+  const wanted = params.get('file')?.toLowerCase();
+  const fileId = wanted ? (typeof fileIds === 'string' ? [fileIds] : fileIds).find((id) => id.toLowerCase() === wanted) ?? null : null;
+  const linked = fileId !== null;
   const key = linked ? `${fileId}${search}` : null;
   const [token] = useState(() => Symbol('file row'));
   // Closing shuts the viewer at once; the address follows when the router has moved.
@@ -35,6 +38,7 @@ export function useFileLink(fileId: string): FileLink | null {
   if (!linked || owner !== token || dismissed === key) return null;
   const page = Number(params.get('page'));
   return {
+    fileId,
     page: Number.isInteger(page) && page > 0 ? page : null,
     close() {
       setDismissed(key);

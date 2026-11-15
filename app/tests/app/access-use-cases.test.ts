@@ -270,12 +270,12 @@ describe('workspace and membership use cases over in-memory repositories', () =>
   test('removeMember: a person leaving needs only workspace.read; the same locks; the event last', async () => {
     const s = scene({ role: 'guest', targetRole: 'guest' });
     await removeMember(human(TARGET), WS, TARGET, s.db, s.ports);
-    assert.deepEqual(s.calls, ['begin', 'encryption.sealed', 'workspaces.lock', 'access.loadActor(lock)', 'workspaces.lockMember', 'workspaces.deleteMember', 'workspaces.recordRemoved', ...AND_ACCESS_ENDED, 'commit']);
+    assert.deepEqual(s.calls, ['begin', 'encryption.sealed', 'workspaces.lock', 'access.loadActor(lock)', 'workspaces.lockMember', 'workspaces.recordRemoved', 'workspaces.deleteMember', ...AND_ACCESS_ENDED, 'commit']);
     // S2c: an owner or admin removed from a sealed workspace: the key row first, the password dropped, the removal pinned.
     const sealed = scene({ sealed: true, targetRole: 'admin' });
     await removeMember(human(OWNER), WS, TARGET, sealed.db, sealed.ports);
     assert.deepEqual(sealed.calls, ['begin', 'encryption.sealed', 'encryption.memberRole', 'encryption.keys(update)', 'workspaces.lock',
-      'access.loadActor(lock)', 'workspaces.lockMember', 'encryption.dropUnlockPassword', 'workspaces.deleteMember', 'workspaces.recordRemoved', 'encryption.recordRemovals', ...AND_ACCESS_ENDED, 'commit']);
+      'access.loadActor(lock)', 'workspaces.lockMember', 'encryption.dropUnlockPassword', 'workspaces.recordRemoved', 'workspaces.deleteMember', 'encryption.recordRemovals', ...AND_ACCESS_ENDED, 'commit']);
     const other = scene({ role: 'guest', targetRole: 'member' });
     await assert.rejects(removeMember(human(OWNER), WS, TARGET, other.db, other.ports), ForbiddenError, 'a guest cannot remove someone else');
   });

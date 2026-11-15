@@ -13,6 +13,8 @@
 .people__who { display: flex; flex: 1; flex-direction: column; min-width: 0; font-size: var(--fs-md); line-height: 1.45; }
 .people__who b { font-weight: 500; color: var(--t1); overflow-wrap: anywhere; }
 .people__who span { font-size: var(--fs-sm); color: var(--t3); overflow-wrap: anywhere; }
+/* A removed owner's row for an admin: no Restore (only an owner gives the owner role), one quiet line in its place (#1424 F). */
+.people__removed-note { flex: none; max-width: 40%; font-size: var(--fs-sm); color: var(--t3); text-align: right; }
 .people__name { min-height: 44px; padding: 0; }
 .people__sso { display: flex; align-items: flex-start; gap: 10px; margin: 12px 0 0; padding: 12px; border-radius: var(--r); background: var(--sub); font-size: var(--fs-md); line-height: 1.45; }
 .people__sso svg { flex: none; margin-top: 3px; color: var(--t3); }

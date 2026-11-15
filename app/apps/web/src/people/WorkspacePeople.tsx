@@ -231,7 +231,8 @@ export function WorkspacePeople({ workspaceId, onBack, page = false }: { workspa
       </section>
 
       {page && canAdd ? <WaitingLinks workspace={workspace} myRole={myRole} links={links} /> : null}
-      {page && manager ? <RemovedPeople workspaceId={workspace.id} reload={reload} onRestored={(name, userId, more) => changed(`${name} is back in ${workspace.name}.`, !more, false, userId)} /> : null}
+      {page && manager ? <RemovedPeople workspaceId={workspace.id} myRole={myRole} reload={reload}
+        onRestored={(person, more) => changed(`${person.name} is back in ${workspace.name} as ${ROLE_LABEL[person.role]}${person.spaces ? `, in ${spacesWord(person.spaces)}` : ''}.`, !more, false, person.userId)} /> : null}
       {page && manager ? <CompanySpaces workspaceId={workspace.id} /> : null}
 
       {/* Encrypted spaces (F-030, #655): Encryption comes before AI and keeps its place in every state; AI is off for good and has no switch. */}
@@ -245,9 +246,14 @@ export function WorkspacePeople({ workspaceId, onBack, page = false }: { workspa
   );
 }
 
-/** Who left or was removed: Restore brings them back as a member, in Everyone; other spaces are added by hand (Hubert, 2026-11-05). */
-/** `more`: another Restore took the focus (the next one in the list), so the restored person's row does not. */
-function RemovedPeople({ workspaceId, reload, onRestored }: { workspaceId: string; reload: number; onRestored: (name: string, userId: string, more: boolean) => void }) {
+const spacesWord = (count: number) => (count === 1 ? '1 space' : `${count} spaces`);
+
+/**
+ * Who left or was removed: Restore brings them back as they were (founder decision, #1424 F, 2026-11-15): the role they had, the spaces they
+ * were in and their direct messages. Each row says the role and how many spaces besides Everyone. Only an owner gives back the owner role.
+ * `more`: another Restore took the focus (the next one in the list), so the restored person's row does not.
+ */
+function RemovedPeople({ workspaceId, myRole, reload, onRestored }: { workspaceId: string; myRole: WorkspaceRole; reload: number; onRestored: (person: RemovedPerson, more: boolean) => void }) {
   const [people, setPeople] = useState<RemovedPerson[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const toast = useToast();
@@ -266,7 +272,7 @@ function RemovedPeople({ workspaceId, reload, onRestored }: { workspaceId: strin
       const after = people[at + 1] ?? people[at - 1] ?? null;
       setPeople((current) => current.filter((entry) => entry.userId !== person.userId));
       if (after) requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-removed="${CSS.escape(after.userId)}"] button`)?.focus());
-      onRestored(person.name, person.userId, !!after);
+      onRestored(person, !!after);
     } catch { toast({ message: `${person.name} couldn’t be restored. Try again.` }); }
     setBusy(null);
   };
@@ -276,12 +282,15 @@ function RemovedPeople({ workspaceId, reload, onRestored }: { workspaceId: strin
       <ul className="people__list sset-card" aria-label="People who were removed">
         {people.map((person) => (
           <li className="people__item" key={person.userId} data-removed={person.userId}><div className="people__row">
-            <Avatar name={person.name} id={person.userId} size="md" /><span className="people__who"><b>{person.name}</b><span>{person.email}</span></span>
-            <Button variant="quiet" size="sm" className="access__invite" busy={busy === person.userId} onClick={() => void restore(person)}>Restore</Button>
+            <Avatar name={person.name} id={person.userId} size="md" />
+            <span className="people__who"><b>{person.name}</b><span>{[person.email, ROLE_LABEL[person.role], person.spaces ? spacesWord(person.spaces) : null].filter(Boolean).join(' · ')}</span></span>
+            {person.role === 'owner' && myRole !== 'owner'
+              ? <span className="people__removed-note">An owner can restore them</span>
+              : <Button variant="quiet" size="sm" className="access__invite" busy={busy === person.userId} onClick={() => void restore(person)}>Restore</Button>}
           </div></li>
         ))}
       </ul>
-      <p className="ov-note">Restored people sign in as usual and are in Everyone again. Add them to other spaces by hand.</p>
+      <p className="ov-note">Restore brings someone back with the role, spaces and direct messages they had.</p>
     </section>
   );
 }

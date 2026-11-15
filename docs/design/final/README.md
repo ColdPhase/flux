@@ -1512,9 +1512,11 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   quotes with the match marked, led by "Page 3" for a PDF. A file found only by its name says
   where it lives, who sent it and when, as a message row does. `↵` opens the file's message in its
   conversation with the file's preview open (the photo viewer's frame, F-026 §6), at the page that
-  matched for a PDF; closing it leaves the message in place and takes the preview out of the
-  address. The text of a PDF, a Word document, Markdown, plain text and CSV/TSV is found; images,
-  audio, video and anything in an encrypted space are not. A file counts once however many of its
+  matched for a PDF (a photo opens in the photo viewer, a video in its player); closing it leaves the message in place and takes
+  the preview out of the address. **Every file is found by its name** (founder decision, Hubert, 2026-11-15,
+  [#1424](https://github.com/ColdPhase/flux/issues/1424) B): a photo, a video, a recording, a spreadsheet, any kind, so "IMG_2041"
+  finds IMG_2041.jpg under Files. What a file **says** is found only for the text of a PDF, a Word document, Markdown, plain text and
+  CSV/TSV; an encrypted space's files are found by their names only, never by what they say. A file counts once however many of its
   parts match.
 - **Opening a result** puts the person at the thing itself and adds nothing to the screen
   ([#1424](https://github.com/ColdPhase/flux/issues/1424)). A message opens in its conversation, scrolled to the middle and
@@ -1657,6 +1659,15 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
     round, 2026-11-15, #1424: the field has no second hint saying it again).
     An owner sees it for everyone but themselves, an admin for members and guests. Nothing else on the page changes.
   - There is no AI switch here; AI is per space.
+  - **Removed · N** (owners and admins; under the links waiting to be used): the people who left or were removed, each row a face, the
+    name and one line, "maja@example.org · Admin · 3 spaces" (the role they had and the spaces besides Everyone they were in, left
+    out at none), with a quiet **Restore**. **Restore brings a person back as they were** (founder decision, Hubert, 2026-11-15,
+    [#1424](https://github.com/ColdPhase/flux/issues/1424) F): the same role (an Admin comes back an Admin), the same spaces with the
+    same role in each (a space deleted since is skipped), and their direct messages, so neither side reads "Maja left this
+    conversation". The status line says so, as Remove says its own: "Maja Wiśniewska is back in Riverside as Admin, in 3 spaces." The note under the list is one line,
+    "Restore brings someone back with the role, spaces and direct messages they had." An encrypted space's people stay with its own
+    admins, who add them there again. A former owner's row has no Restore for an admin (only an owner gives the owner role) and reads
+    "An owner can restore them" in its place.
   - **Spaces** (owners and admins; the list under People): each space opens, and one the admin is not in has
     **Add me**. **No row has a Delete** (#1424): a space is deleted in its own settings, **Space settings › Delete space…**, the one way.
     The only row with a Delete is an encrypted space the admin cannot open (a company admin may delete it, never read it), which has no

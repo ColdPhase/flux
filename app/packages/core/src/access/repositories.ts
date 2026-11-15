@@ -37,10 +37,12 @@ export interface WorkspaceRepository {
   endSpaceAdmin(workspaceId: string, userId: string): Promise<void>;
   /** With `lock` the membership row is held `FOR SHARE` until the transaction ends (a person leaving the company waits for it). */
   isMember(workspaceId: string, userId: string, options?: { lock?: boolean }): Promise<boolean>;
-  /** Remembers someone who left or was removed, for Restore. */
+  /** Remembers someone who is leaving or being removed, with their role, spaces and direct messages, for Restore; before `deleteMember`. */
   recordRemoved(workspaceId: string, userId: string, removedBy: string): Promise<void>;
-  /** Everyone who left or was removed and has not joined again, newest first. */
-  removedPeople(workspaceId: string): Promise<{ userId: string; removedAt: Date; email: string; name: string }[]>;
+  /** Everyone who left or was removed and has not joined again, newest first, with what Restore brings back. */
+  removedPeople(workspaceId: string): Promise<RemovedPersonRecord[]>;
+  /** Puts back the kept spaces and direct messages that still exist (#1424 F); returns what was put back. */
+  restoreKept(workspaceId: string, userId: string, kept: RemovedPersonKept, restoredBy: string): Promise<{ spaces: { projectId: string; grantId: string; role: 'manager' | 'contributor' }[]; dms: string[] }>;
   isRemoved(workspaceId: string, userId: string): Promise<boolean>;
   /** A membership row `FOR UPDATE`. */
   lockMember(workspaceId: string, userId: string): Promise<MemberRecord | null>;
@@ -53,6 +55,11 @@ export interface WorkspaceRepository {
   /** Whether the workspace already holds a project (an encrypted space holds exactly one). */
   hasProject(workspaceId: string): Promise<boolean>;
 }
+
+/** What a removal kept for Restore (#1424 F): ids, roles and times only. */
+export interface RemovedPersonKept { spaces: { id: string; role: 'manager' | 'contributor' }[]; dms: { id: string; joinedAt: string }[] }
+/** A row of the removed list: `spaces` counts the kept spaces that still exist besides Everyone. */
+export interface RemovedPersonRecord { userId: string; removedAt: Date; email: string; name: string; role: WorkspaceRole; kept: RemovedPersonKept; spaces: number }
 
 /** A `workspace_invites` row (F-035). */
 export interface InviteRow {

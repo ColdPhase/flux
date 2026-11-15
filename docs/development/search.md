@@ -124,12 +124,14 @@ contrib extension) and one table, `search_documents`. Each row is one searchable
 
 ## Files (C-63)
 
-What is inside the files people send is searched too (#1382): PDF text, DOCX, Markdown, plain text, CSV/TSV (never images, audio or video,
-and never an OCR). Migration `0072_file_text.sql` adds kind `file`, the column `page`, the table `file_text_jobs` and the triggers; the
-worker (`apps/worker/src/file-text`) reads the files.
+Every file of a space is found by its name, and what is inside the files people send is searched too (#1382): PDF text, DOCX,
+Markdown, plain text, CSV/TSV (never the inside of images, audio or video, and never an OCR). Migration `0072_file_text.sql` adds kind
+`file`, the column `page`, the table `file_text_jobs` and the triggers; `0088_file_names.sql` gives every file its name row (founder
+decision, #1424 B, 2026-11-15); the worker (`apps/worker/src/file-text`) reads the files.
 
-- **Rows.** A file attached to a space's message whose name `file_text_extractable` accepts gets, at publication, one row for its name
-  (`doc_key` `file:<id>:0`, `version` 0, an empty body) and a job. The worker replaces the rest: one row for each part of about 4,000
+- **Rows.** Every file attached to a space's message gets, at publication, one row for its name (`doc_key` `file:<id>:0`, `version` 0,
+  an empty body, written by `search_put`), whatever its kind: "IMG_2041" finds IMG_2041.jpg. A file whose name `file_text_extractable`
+  accepts also gets a job, and the worker replaces the rest: one row for each part of about 4,000
   characters of the text (`file:<id>:<n>`, `version` n from 1, `page` the PDF page of the part: a part never crosses a page, so a page of more than
   4,000 characters is several parts and a file is at most about 150 rows). The audience is the message's
   space (`project:<id>`), `parent_id` its conversation, `author` the uploader, `at` the time it was sent. The 4,000 characters are what
@@ -141,14 +143,18 @@ worker (`apps/worker/src/file-text`) reads the files.
   caller may see and nothing else; `search-hidden-ranking.test.ts` pins that hidden files move no visible order.
 - **Dropping out.** The delete trigger on `project_files` removes a file's rows in the transaction that deletes it (a deleted message, a
   deleted space), and its job goes by the foreign key. Who finds a file is decided on every search from its audience, so a person who lost
-  access finds nothing the next moment. A file of an encrypted space gets no row and no job.
+  access finds nothing the next moment. A file of an encrypted space gets no job; its name row is a placeholder (`sealed`, empty title),
+  and the in-memory index of the unlocked space opens the sealed `project_files.name` for it (`contentOf` in `sealed-search.ts`), so its
+  name is found there and nowhere else, and its message is named for the result as on the SQL path.
 - **Limits and the sandbox.** 5 MiB, 100 PDF pages, 200,000 characters, 20 s, 320 MiB resident, in a child process with no network, no files and
   no children ([C-63](../product/decisions.md), [threat model B4](../security/threat-model.md#b4-database-and-files)). The worker wakes on
   `NOTIFY flux_file_text` and polls nothing; a job is claimed with a lease of two minutes, tried three times and given up.
 - **Agents.** `flux_search` takes `kind: "file"` and returns the file's name, a snippet with the matches in **bold**, the page, the
   message and a link; `flux_read_file` reads the text in pages of 12,000 (a run) or 20,000 characters from `offset`.
 - **Web.** A file hit is the Files group's row (the file's icon, its name and the snippet) and opens its message with the preview open at
-  the matched page (`?file=<id>&page=<n>`).
+  the matched page (`?file=<id>&page=<n>`); a photo opens in the photo viewer, a video in its player (`useFileLink`).
+- **Agents and a file without text.** `flux_read_file` on a photo or a video answers with no text and the note that a picture or a
+  file whose kind is not read has none.
 
 ## Access before ranking
 

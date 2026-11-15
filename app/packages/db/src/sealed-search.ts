@@ -532,6 +532,12 @@ async function contentOf(db: DbExecutor, kind: string, rows: Placeholder[]): Pro
     case 'thought':
       for (const r of await rowsOf(db, 'sketch_thoughts', sql`SELECT id, workspace_id, text FROM sketch_thoughts WHERE id = ANY(${uuids(ids)})`)) found.set(String(r.id), { title: str(r.text), body: '' });
       break;
+    // A file of an encrypted space is found by its name only (#1424 B, migration 0088): its row is the name's placeholder, never its text.
+    case 'file':
+      for (const r of await rowsOf(db, 'project_files', sql`SELECT id, workspace_id, name FROM project_files WHERE id = ANY(${uuids(ids)}) AND published_at IS NOT NULL`)) {
+        found.set(String(r.id), { title: str(r.name), body: '' });
+      }
+      break;
     default: break;
   }
   return found;
@@ -746,6 +752,10 @@ async function hydrate(db: DbExecutor, index: SealedSearchIndex, hits: Hit[], co
   const agents = agentIds.length ? new Map((await get<{ id: string; name: string }>(sql`SELECT id::text AS id, ${cleanName(sql`name`)} AS name FROM agents WHERE id = ANY(${uuids(agentIds)})`)).map((r) => [r.id, r.name])) : new Map<string, string>();
   const materialIds = ids((doc) => (doc.kind === 'material' || doc.kind === 'doc' ? doc.objectId : null));
   const versions = materialIds.length ? new Map((await get<{ id: string; current_version: number }>(sql`SELECT id::text AS id, current_version FROM project_materials WHERE id = ANY(${uuids(materialIds)})`)).map((r) => [r.id, Number(r.current_version)])) : new Map<string, number>();
+  // A file hit opens its message (the SQL path reads it beside the row).
+  const fileIds = ids((doc) => (doc.kind === 'file' ? doc.objectId : null));
+  const fileMessages = fileIds.length ? new Map((await get<{ id: string; message_id: string | null }>(sql`SELECT id::text AS id, message_id::text AS message_id FROM project_files
+    WHERE id = ANY(${uuids(fileIds)})`)).map((r) => [r.id, r.message_id])) : new Map<string, string | null>();
   // A DM is named by its title (sealed), else by the other people in it.
   const dmIds = ids((doc) => (doc.kind === 'dm_message' ? doc.parentId : null));
   const dmNames = new Map<string, string | null>();
@@ -775,6 +785,7 @@ async function hydrate(db: DbExecutor, index: SealedSearchIndex, hits: Hit[], co
       workNumber: doc.number, version: doc.version, currentVersion: versions.get(doc.objectId) ?? null, status: doc.status, title, snippet, hasBody: doc.body.length > 0,
       authorName: doc.author ? (doc.author.kind === 'human' ? people.get(doc.author.id) : agents.get(doc.author.id)) ?? null : null,
       author: doc.author, at: doc.at,
+      ...(doc.kind === 'file' ? { messageId: fileMessages.get(doc.objectId) ?? null } : {}),
     };
   });
 }
