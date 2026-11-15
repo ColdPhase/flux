@@ -126,6 +126,9 @@ export function useStateChange(saved: (item: WorkItem) => void, done: () => void
   return useStateChanges(saved, done).change;
 }
 
+/** Said on the window when a task's creation was undone from its toast: a panel showing that task closes (`AppLayout`). */
+export const WORK_CREATION_UNDONE_EVENT = 'flux:work-creation-undone';
+
 /**
  * The toast after a person creates a task (#763 B1, principle 6): "Task #13 created" with Undo (Z) on every create
  * path, while the server says this reader may still undo the creation. Undo is the #238 creation Undo: the task stays
@@ -148,6 +151,9 @@ export function useCreatedToast(done?: () => void) {
           void (async () => {
             try {
               await undoTaskCreation(item, commandId);
+              // An undone creation closes the task's panel when it shows that task (audit 3274a05 P3 4): a panel that only said "Creation
+              // undone" three times was left. The shell closes it; focus goes where closing gives it back (F-026 §4).
+              window.dispatchEvent(new CustomEvent(WORK_CREATION_UNDONE_EVENT, { detail: { workId: item.id } }));
               if (currentScope()) toast({ message: `${taskNumber(item)} creation undone` });
             } catch (cause) {
               if (!currentScope()) return;

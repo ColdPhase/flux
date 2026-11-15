@@ -376,5 +376,54 @@ class FocusModel(unittest.TestCase):
         expect(page.get_by_role("heading", name="Nothing needs you right now")).to_be_focused()
 
 
+    # ---------------------------------------------------------------- the UI audit of train 28 (3274a05)
+
+    def test_16_esc_from_an_empty_search_field_closes_the_panel_and_one_with_words_keeps_them(self) -> None:
+        page = self.page()
+        page.goto(f"/projects/{self.ids['shared']}/tasks?open=work:{self.ids['task2']}")
+        panel = page.locator("#details")
+        expect(panel).to_contain_text("Order a second mixer bowl")
+        search = page.get_by_role("searchbox", name="Search tasks")
+        search.fill("mixer")
+        search.focus()
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(400)
+        expect(panel).to_be_visible()
+        search.fill("")
+        search.focus()
+        page.keyboard.press("Escape")
+        expect(panel).to_be_hidden()
+
+    def test_17_undo_pressed_with_the_mouse_gives_focus_back_to_the_control_that_made_the_change(self) -> None:
+        page = self.page()
+        page.goto(f"/projects/{self.ids['shared']}/tasks?open=work:{self.ids['task2']}")
+        status = page.locator("#details").get_by_role("button", name=re.compile("^Status"))
+        status.focus()
+        page.keyboard.press("Enter")
+        page.keyboard.press("ArrowDown")
+        page.keyboard.press("Enter")
+        undo = page.locator(".ui-toast").get_by_role("button", name=re.compile("^Undo")).first
+        expect(undo).to_be_visible()
+        page.wait_for_timeout(400)
+        undo.click()
+        expect(status).to_be_focused(timeout=5000)
+
+    def test_18_undo_of_a_new_task_closes_its_panel(self) -> None:
+        page = self.page()
+        page.goto(f"/projects/{self.ids['shared']}")
+        expect(page.locator("#project-composer")).to_be_focused()
+        press_shortcut(page, "c")
+        title = f"Sweep the flour store {uuid.uuid4().hex[:4]}"
+        page.get_by_role("dialog", name="New task").get_by_role("textbox", name="Title").fill(title)
+        page.keyboard.press("Enter")
+        panel = page.locator("#details")
+        expect(panel).to_contain_text(title)
+        undo = page.locator(".ui-toast").filter(has_text="created").get_by_role("button", name=re.compile("^Undo"))
+        page.wait_for_timeout(400)
+        undo.click()
+        expect(panel).to_be_hidden()
+        self.assert_not_body(page, "undone task")
+
+
 if __name__ == "__main__":
     unittest.main()

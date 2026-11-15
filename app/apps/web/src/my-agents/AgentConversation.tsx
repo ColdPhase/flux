@@ -67,14 +67,14 @@ function Turn({ run, agent, chat, schedules, first, newDay }: { run: AssistantRu
   const prepared = run.answer ? schedules.jobs?.find((job) => job.preparedRunId === run.id) ?? null : null;
   return (
     <>
-      <li className="dm-msg is-mine agc__turn" data-run-id={run.id} data-chat-me="">
+      <li className="dm-msg is-mine agc__turn" data-run-id={run.id} data-chat-me="" tabIndex={-1}>
         {newDay ? <MessageDay as="p" label={day(run.createdAt)} /> : null}
         {/* The files its owner sent with it (#1438 point 10, C-64), as a message's: photos above, file rows in the bubble; no empty words above them. */}
         <div className="dm-msg__row"><div className="dm-msg__main is-mine">{run.files?.length
           ? <MessageContent files={run.files} body={run.prompt ? <div className="dm-msg__body">{run.prompt}</div> : null} context={{ author: 'You', at: run.createdAt, caption: run.prompt }} />
           : <MessageBubble><div className="dm-msg__body">{run.prompt}</div></MessageBubble>}</div></div>
       </li>
-      <li className="dm-msg agc__turn" data-run-id={run.id} data-chat-agent="" aria-live="polite">
+      <li className="dm-msg agc__turn" data-run-id={run.id} data-chat-agent="" aria-live="polite" tabIndex={-1}>
         <div className="dm-msg__row">
           <span className="dm-msg__face"><Kreska size={26} hue={agent.colour} /></span>
           <div className="dm-msg__main">

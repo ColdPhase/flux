@@ -34,6 +34,7 @@ import { LiveCue, LiveEntry, LiveNowRows } from '../live/LiveEntry';
 import '../live/live.css';
 import './project-header.css';
 import { WorkReadProvider, useProjectWorkSummary } from '../work/WorkReadContext';
+import { WORK_CREATION_UNDONE_EVENT } from '../work/taskState';
 import { OverviewContext } from '../project/OverviewContext';
 import { remember, remembered } from './remembered';
 import { rememberSpace } from './lastSpace';
@@ -66,7 +67,7 @@ function lastMapPath(userId: string, projectId: string, sketches: { items: { id:
  */
 function leaveComposer(field: HTMLElement) {
   const place = field.closest('.convo-split__stream, .dm, .agc, #content') ?? document.getElementById('content');
-  const messages = place ? [...place.querySelectorAll<HTMLElement>('[id^="message-"][tabindex]')] : [];
+  const messages = place ? [...place.querySelectorAll<HTMLElement>('[id^="message-"][tabindex], .agc__turn[tabindex]')] : [];
   const newest = messages.at(-1);
   field.blur();
   newest?.focus({ preventScroll: true });
@@ -649,6 +650,16 @@ function AppLayoutContent() {
     }
   };
   useLayoutEffect(() => { closeRef.current = closePanel; });
+  // A task whose creation was undone from its toast leaves the panel that shows it (audit 3274a05 P3 4).
+  useEffect(() => {
+    const onUndone = (event: Event) => {
+      const id = (event as CustomEvent<{ workId: string }>).detail?.workId;
+      const shown = now.current;
+      if (shown.detailsOpen && typeof shown.detailsView === 'object' && shown.detailsView.kind === 'work' && 'id' in shown.detailsView && shown.detailsView.id === id) closeRef.current();
+    };
+    window.addEventListener(WORK_CREATION_UNDONE_EVENT, onUndone);
+    return () => window.removeEventListener(WORK_CREATION_UNDONE_EVENT, onUndone);
+  }, []);
   // Esc (F-026 §4 "Where focus goes"): with a panel open it closes the panel wherever focus is, unless a window or a menu is open or the focused
   // control used Esc first (a title being edited, the `@` list); with none, Esc in a composer leaves it for the newest message, keeping the
   // draft, so the single keys work from there (persona round 27, P2 6 and 7). Esc inside the panel is the panel's own.
@@ -662,9 +673,12 @@ function AppLayoutContent() {
       if (target?.closest('[role="dialog"], [role="menu"], [role="listbox"], #details')) return;
       // A window, a calendar or a menu that is open takes Esc first, wherever focus is while it opens.
       if (document.querySelector('.ui-overlay[data-state="open"], [role="menu"], [role="dialog"]:not(#details)')) return;
-      // A field other than a composer keeps its Escape (a Wiki page being written, a search being typed).
+      // A field other than a composer keeps its Escape while it holds something (a search being typed) or writes a page; an empty one
+      // ("Search tasks" with nothing in it) does not stop Esc from closing the panel (audit 3274a05 P3 1).
       const field = target instanceof HTMLTextAreaElement && target.closest('.composer, .composer__box') ? target : null;
-      if (!field && target?.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return;
+      const other = field ? null : target?.closest<HTMLElement>('input, textarea, select, [contenteditable]:not([contenteditable="false"])');
+      if (other && (other.isContentEditable || other instanceof HTMLSelectElement || ((other instanceof HTMLInputElement || other instanceof HTMLTextAreaElement) && other.value !== ''))) return;
+      if (other && !panelShownRef.current) return;
       if (panelShownRef.current) { event.preventDefault(); closeRef.current(); return; }
       if (!field) return;
       event.preventDefault();

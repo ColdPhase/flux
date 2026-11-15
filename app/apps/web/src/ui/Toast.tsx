@@ -130,6 +130,8 @@ function ToastItem({ toast, onDone, onLeaving, registerAction, movedAt }: { toas
   const ran = useRef(false);
   const moments = useSmallMoments();
   const dismiss = useCallback(() => setLeaving(true), []);
+  const pressedFrom = useRef<HTMLElement | null>(null);
+  const notePress = () => { const active = document.activeElement; pressedFrom.current = active instanceof HTMLElement && active !== document.body && !ref.current?.contains(active) ? active : null; };
   const act = useCallback((event?: { detail: number }, second = false) => {
     const action = second ? toast.also : toast.action;
     if (!action || ran.current || leaving || toast.leaving) return;
@@ -138,6 +140,15 @@ function ToastItem({ toast, onDone, onLeaving, registerAction, movedAt }: { toas
     ran.current = true;
     action.onClick();
     dismiss();
+    // A press with the mouse leaves focus where the person was before it (the control that made the change), as Z and Enter do, never on the
+    // page's content once the toast is gone (F-026 §4).
+    const before = pressedFrom.current;
+    pressedFrom.current = null;
+    if (before) requestAnimationFrame(() => requestAnimationFrame(() => {
+      const active = document.activeElement;
+      const lost = !active || active === document.body || active.id === 'content' || !!ref.current?.contains(active);
+      if (lost && before.isConnected && !before.closest('.ui-toast, [inert]')) before.focus({ preventScroll: true });
+    }));
   }, [toast.action, toast.also, leaving, toast.leaving, dismiss, movedAt]);
   useEffect(() => {
     if (!toast.action?.key || leaving || toast.leaving) return undefined;
@@ -193,7 +204,7 @@ function ToastItem({ toast, onDone, onLeaving, registerAction, movedAt }: { toas
       {toast.action && !leaving && !toast.leaving ? (
         <>
           <span className="ui-toast__sep" aria-hidden="true" />
-          <button type="button" className="ui-toast__action" onClick={(event) => act(event)} aria-keyshortcuts={toast.action.key} title={toast.action.key ? `${toast.action.label} (${toast.action.key})` : undefined}>
+          <button type="button" className="ui-toast__action" onPointerDown={notePress} onClick={(event) => act(event)} aria-keyshortcuts={toast.action.key} title={toast.action.key ? `${toast.action.label} (${toast.action.key})` : undefined}>
             {toast.action.label}{toast.action.key ? <kbd aria-hidden="true">{toast.action.key}</kbd> : null}
           </button>
         </>
