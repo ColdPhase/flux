@@ -203,7 +203,7 @@ function PasswordForm({ onDone }: { onDone: (others: boolean) => void }) {
       <Input label="Current password" type="password" autoComplete="current-password" autoFocus value={currentPassword} error={errors.current}
         onChange={(event) => { setCurrent(event.target.value); setErrors({}); }} />
       <Input label="New password" type="password" autoComplete="new-password" value={next} error={errors.next}
-        hint={`At least ${PASSWORD_MIN_LENGTH} characters. A short sentence works well.`} onChange={(event) => { setNext(event.target.value); setErrors({}); }} />
+        hint={`At least ${PASSWORD_MIN_LENGTH} characters. You can use a few words.`} onChange={(event) => { setNext(event.target.value); setErrors({}); }} />
       {/* An on/off in Settings is always this switch (#872). */}
       <div className="sset-acct__switch"><SwitchRow label="Sign out my other devices" checked={others} onChange={setOthers} /></div>
       {errors.form ? <p className="people__notice" role="alert"><Icon name="alert" size={13} />{errors.form}</p> : null}

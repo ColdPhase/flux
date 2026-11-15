@@ -132,7 +132,7 @@ export const WORK_CREATION_UNDONE_EVENT = 'flux:work-creation-undone';
 /**
  * The toast after a person creates a task (#763 B1, principle 6): "Task #13 created" with Undo (Z) on every create
  * path, while the server says this reader may still undo the creation. Undo is the #238 creation Undo: the task stays
- * as read-only history and leaves the board, counts and choosers. A window that created it passes `another`: "Add another" then
+ * as read-only history and leaves the board, counts and choosers. A window that created it passes `another`: "Another task" then
  * follows Undo (#1235), so entering several tasks is one step each, with no switch to remember.
  */
 export function useCreatedToast(done?: () => void) {
@@ -140,7 +140,7 @@ export function useCreatedToast(done?: () => void) {
   const currentScope = useToastScope();
   return useCallback((item: WorkItem, another?: () => void) => {
     const message = `Task ${taskNumber(item)} created`;
-    const next = another ? { label: 'Add another', onClick: another } : undefined;
+    const next = another ? { label: 'Another task', onClick: another } : undefined;
     if (!item.creationUndo?.eligible) { toast({ message, tone: 'success', timeout: next ? 8000 : 4000, ...(next ? { action: next } : {}) }); return; }
     const commandId = crypto.randomUUID();
     toast({
@@ -154,7 +154,7 @@ export function useCreatedToast(done?: () => void) {
               // An undone creation closes the task's panel when it shows that task (audit 3274a05 P3 4): a panel that only said "Creation
               // undone" three times was left. The shell closes it; focus goes where closing gives it back (F-026 §4).
               window.dispatchEvent(new CustomEvent(WORK_CREATION_UNDONE_EVENT, { detail: { workId: item.id } }));
-              if (currentScope()) toast({ message: `${taskNumber(item)} creation undone` });
+              if (currentScope()) toast({ message: `Task ${taskNumber(item)} undone` });
             } catch (cause) {
               if (!currentScope()) return;
               toast({ tone: 'danger', message: cause instanceof ApiError && cause.status === 409

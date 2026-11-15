@@ -185,7 +185,7 @@ class WikiDecisionCards(unittest.TestCase):
         panel = page.locator("#details")
         button = panel.get_by_role("button", name="Add to a Wiki page")
         expect(button).to_be_disabled()
-        hint = panel.get_by_text("Accept it first to add it to the Wiki.")
+        hint = panel.get_by_text("You can add it once it is accepted.")
         expect(hint).to_be_visible()
         expect(button).to_have_attribute("aria-describedby", re.compile(r"^wd-docs-hint-"))
         # The hint is the button's own caption: directly under it, on the same left edge. Both boxes are read in one

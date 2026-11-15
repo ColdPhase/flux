@@ -163,10 +163,10 @@ class PersonaRound26Words(unittest.TestCase):
     def test_02_a_guest_is_offered_no_new_message_on_the_phone(self) -> None:
         page = self.page("gia", phone=True)
         page.goto("/projects")
-        messages = page.locator("section.proj-index__dms")
-        expect(messages.get_by_role("heading", name="Messages")).to_be_visible()
-        expect(messages).to_contain_text("No messages yet. When someone writes to you, it appears here.")
-        expect(messages.get_by_role("link", name="New message")).to_have_count(0)
+        # With no conversation and no agent a guest's Spaces tab has no Messages heading over nothing, as the sidebar (persona round 6).
+        expect(page.locator(".proj-index__row, .proj-index__empty").first).to_be_visible()
+        expect(page.locator("section.proj-index__dms")).to_have_count(0)
+        expect(page.get_by_role("link", name="New message")).to_have_count(0)
         shot(page, "persona26-guest-phone-spaces")
         mia = self.page("mia", phone=True)
         mia.goto("/projects")

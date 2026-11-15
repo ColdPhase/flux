@@ -11,7 +11,7 @@ import { useRegisterLiveHere } from '../live/LiveProvider';
 import { useCallLines } from '../live/callLines';
 import { audienceLine, useProjectShell } from '../project/data';
 import { useShellData } from './data';
-import { agentAuthorLabel, FORMER_MEMBER } from '../docs/format';
+import { agentAuthorLabel, personName } from '../docs/format';
 import { ConversationStream, streamPlace, useConversationRoots, useObjectNotices, useTaskNotices } from './ConversationStream';
 import { WORK_EVENT, useStreamEvents } from '../api/stream';
 import { useWithHeldProposals } from '../work/heldProposals';
@@ -116,9 +116,7 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
 
   const author = useCallback((message: ConversationMessage) => {
     if (message.authorId === null) return agentAuthorLabel(message.author);
-    if (message.authorId === me.user.id) return me.user.name;
-    return members.find((member) => member.userId === message.authorId)?.name
-      ?? people?.find((person) => person.kind === 'human' && person.id === message.authorId)?.name ?? FORMER_MEMBER;
+    return personName(message.authorId, { id: me.user.id, name: me.user.name }, members, people);
   }, [me.user.id, me.user.name, members, people]);
 
   // Call from the conversation, its stream or an open thread, is the space's call: "Call in Gesture lamp" (F-041). It never takes a message's
@@ -173,11 +171,9 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
   const audience = audienceLine(people, me.user.id);
   // The space's calls as lines of its conversation (F-041 point 6), with the names of who was in them.
   const calls = useCallLines(project.id);
-  const personName = useCallback((userId: string) => userId === me.user.id ? me.user.name
-    : members.find((member) => member.userId === userId)?.name ?? people?.find((person) => person.kind === 'human' && person.id === userId)?.name ?? FORMER_MEMBER,
-  [me.user.id, me.user.name, members, people]);
+  const nameOf = useCallback((userId: string) => personName(userId, { id: me.user.id, name: me.user.name }, members, people), [me.user.id, me.user.name, members, people]);
   const stream = (end: ReactNode) => (
-    <ConversationStream project={project} meId={me.user.id} meName={me.user.name} roots={roots} notices={notices} objects={objects} calls={calls} personName={personName} author={author}
+    <ConversationStream project={project} meId={me.user.id} meName={me.user.name} roots={roots} notices={notices} objects={objects} calls={calls} personName={nameOf} author={author}
       audience={audience} openId={thread?.id ?? null} reveal={reveal} arrived={arrived} endToken={endToken} restore={restore} onOpen={open} onDenied={onDenied} end={end} />
   );
   // Until the stream has the root (a link to an old one), the thread's newest sequence gives its size.

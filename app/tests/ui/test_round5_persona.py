@@ -155,7 +155,7 @@ class RoundFive(unittest.TestCase):
         page = self.page("piotr")
         page.goto(f"/projects/{self.ids['shift']}/tasks?open=work:{made['id']}")
         history = page.locator('[data-task-lifecycle="creation_reverted"]')
-        expect(history).to_contain_text("Creation undone by Piotr Nowak (you) today.")
+        expect(history).to_contain_text("Undone by Piotr Nowak (you) today.")
         # The history line beside it has the same form.
         expect(page.locator(".wd-act__item[data-activity='reverted']")).to_contain_text("Piotr Nowak (you)")
         # No draft was written: none is mentioned, and the panel does not say "undone" again at its foot (audit 3274a05).
@@ -235,7 +235,7 @@ class RoundFive(unittest.TestCase):
         page.goto(f"/projects/{self.ids['shift']}")
         decision = open_decision(page)
         expect(decision.get_by_placeholder("Why (optional)")).to_be_visible()
-        expect(decision).to_contain_text("Everyone who can accept it sees it in their Inbox")
+        expect(decision).to_contain_text("Everyone else in the space sees it in their Inbox")
         expect(decision).not_to_contain_text("right call")
         page.keyboard.press("Escape")
         page.get_by_role("complementary", name="Sidebar").get_by_role("button", name="New", exact=True).click()

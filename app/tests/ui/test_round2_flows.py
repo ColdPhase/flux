@@ -228,7 +228,7 @@ class Round2Flows(unittest.TestCase):
         page.get_by_role("dialog", name="New task").get_by_role("tab", name="Decision", exact=True).click()
         dialog = page.get_by_role("dialog", name="New decision")
         dialog.get_by_role("textbox", name="Decision", exact=True).fill(CLAUSE)
-        dialog.get_by_role("button", name="Replace an accepted decision…").click()
+        dialog.get_by_role("button", name="Replace an earlier decision…").click()
         expect(page.locator("#details")).to_have_count(0)
         expect(dialog.get_by_role("textbox", name="Decision", exact=True)).to_have_value(CLAUSE)
         expect(dialog.get_by_label("Does it replace an earlier decision?", exact=True)).to_be_visible()

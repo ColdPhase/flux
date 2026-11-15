@@ -190,7 +190,7 @@ export function waitingRows(items: NeedsYouItem[], limit = 3): WaitingRow[] {
 }
 
 /** One line of a Home card: a face, two lines of words and the arrow every row ends in. */
-function HomeRow({ to, state, face, title, meta, metaFirst = false, onClick }: { to: string; state?: unknown; face: ReactNode; title: ReactNode; meta?: ReactNode; metaFirst?: boolean; onClick?: (event: MouseEvent<HTMLAnchorElement>) => void }) {
+function HomeRow({ to, state, face, title, meta, metaFirst = false, line, onClick }: { to: string; state?: unknown; face: ReactNode; title: ReactNode; meta?: ReactNode; metaFirst?: boolean; line?: string; onClick?: (event: MouseEvent<HTMLAnchorElement>) => void }) {
   return (
     <li>
       <Link className="home__row" to={to} state={state} onClick={onClick}>
@@ -199,6 +199,7 @@ function HomeRow({ to, state, face, title, meta, metaFirst = false, onClick }: {
           {metaFirst && meta ? <span className="home__row-k">{meta}</span> : null}
           <span className="home__row-t">{title}</span>
           {!metaFirst && meta ? <span className="home__row-k">{meta}</span> : null}
+          {line ? <span className="home__row-k home__row-line">{line}</span> : null}
         </span>
         <Icon name="chevron-right" size={16} className="home__row-go" />
       </Link>
@@ -223,7 +224,10 @@ function WaitingItem({ row }: { row: WaitingRow }) {
   // A run's changes are always the viewer's own agent's; any other agent in the space can ask, so a question or a suggestion says only "Agent", as the Inbox does.
   const meta = (run ? [run.agentName, 'Your agent', project]
     : [kindWord(item), item.from?.name ?? null, item.from?.kind === 'agent' ? 'Agent' : null, project]).filter(Boolean).join(' · ');
-  return <HomeRow to="/inbox" state={{ select: item.key }} face={<Face item={item} />} title={item.title} meta={meta} metaFirst />;
+  // A blocked task says what it waits for under its title, in the words the board, the List and the Inbox use ("Waiting for Basia Wrona · the
+  // new seals", persona round 6): one blocked line everywhere.
+  return <HomeRow to="/inbox" state={{ select: item.key }} face={<Face item={item} />} title={item.title} meta={meta} metaFirst
+    line={item.kind === 'blocked' && item.detail ? item.detail : undefined} />;
 }
 
 type StepRow = { key: FirstStep | 'push' | `joined:${string}`; icon: 'edit' | 'people' | 'spark' | 'chat' | 'person' | 'bell'; title: string; meta: string; to?: string; state?: unknown };

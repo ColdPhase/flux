@@ -26,7 +26,7 @@ export interface ToastOptions {
   timeout?: number;
   /** One quiet action beside the message, e.g. Undo or Hand back. Taking it closes the toast. */
   action?: ToastAction;
-  /** A second quiet action after the first, e.g. "Add another" after Undo (#1235). Taking it closes the toast too. */
+  /** A second quiet action after the first, e.g. "Another task" after Undo (#1235). Taking it closes the toast too. */
   also?: ToastAction;
   /** A small moment: the wink after a task is closed. Shown only while Small moments is on; the message says it all. */
   mascot?: KreskaExpression;

@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { sql } from 'drizzle-orm';
-import { joinHyphenatedWords } from '@flux/contracts';
+import { isSearchStopWord, joinHyphenatedWords } from '@flux/contracts';
 import { AUDIENCE_KEYS, type SearchAudienceRows, type SearchKindRow, type SearchPlanRows, type SearchRowRecord, type SearchTextRow } from './repositories/search.js';
 import type { DbExecutor } from './repositories/push.js';
 import { openRows, sealOf } from './sealing.js';
@@ -333,6 +333,7 @@ function searchPartition(part: Partition, compiled: Compiled, plan: SearchPlanRo
   const weights = new Map<string, number>();
   if (compiled.any) for (const term of compiled.terms) { const held = lookup.both(term.word, term.prefix).size; weights.set(term.word, Math.log(1 + (part.live - held + 0.5) / (held + 0.5))); }
   const hits: Hit[] = [];
+  const at = new Map<Hit, number>();
   const queryGrams = compiled.queryGrams;
   for (const index of matched) {
     const doc = part.docs[index]!;
@@ -349,9 +350,16 @@ function searchPartition(part: Partition, compiled: Compiled, plan: SearchPlanRo
     const closeness = similarity.get(index) ?? (doc.title ? Math.max(0, ...(compiled.any ? compiled.typoGrams : [queryGrams]).map((grams) => wordSimilarity(grams, trigramsOf(doc.title)))) : 0);
     let score = Math.round((rank + 0.5 * closeness) * 1e6);
     if (plan.number !== null && doc.kind === 'work' && doc.body.split('\n', 1)[0] === `#${plan.number}`) score += 10 * 1e6;
-    hits.push({ doc, score, whole: whole.has(index), typoOnly: typoOnly.has(index) });
+    const hit: Hit = { doc, score, whole: whole.has(index), typoOnly: typoOnly.has(index) };
+    hits.push(hit);
+    at.set(hit, index);
   }
-  return hits;
+  // People's search cuts a hit that holds only the little words of the query while it has other words, as the BM25 statement does
+  // (`isSearchStopWord`, persona round 6): a hit holding whole words must hold one of the others (the word being typed as its prefix).
+  const content = compiled.terms.filter((term) => !isSearchStopWord(term.word));
+  if (!plan.cutWeak || !compiled.any || !content.length || content.length === compiled.terms.length) return hits;
+  const numbered = (hit: Hit) => plan.number !== null && hit.doc.kind === 'work' && hit.doc.body.split('\n', 1)[0] === `#${plan.number}`;
+  return hits.filter((hit) => !hit.whole || numbered(hit) || content.some((term) => lookup.both(term.word, term.prefix).has(at.get(hit)!)));
 }
 
 function mark(text: string, compiled: Compiled, range?: [number, number]): SearchTextRow {

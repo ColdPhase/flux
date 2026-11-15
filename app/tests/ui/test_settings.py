@@ -30,7 +30,7 @@ SECTIONS = ["Account", "Appearance", "Notifications", "AI", "Company", "Shortcut
 # Guide §4, in order: every shortcut and its action.
 SHORTCUTS = [
     ("C", "New (task by default)"), ("CtrlK", "Search"), ("GI", "Go to Inbox"), ("JorK", "Move in a list"), ("E", "Done"),
-    ("S", "Not now"), ("A", "Accept"), ("Z", "Undo"), ("R", "Reply in thread"), ("T", "Create a task from a message"),
+    ("S", "Not now"), ("A", "Accept"), ("Z", "Undo"), ("R", "Reply, or write about an Inbox item"), ("T", "Create a task from a message"),
     ("1to4", "Task state"), ("[", "Collapse the sidebar"), ("Esc", "Close a panel or menu"),
 ]
 

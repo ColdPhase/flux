@@ -1,5 +1,5 @@
 import { accessPorts, dmRows, fileRows, messageChangeRows, needsYouRows, schema, toDmMessageRecord, type DbExecutor, visibleFilter, accessReader, type Database, type Transaction } from '@flux/db';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, isNotNull, or } from 'drizzle-orm';
 import {
   createDmUseCases,
   getProject,
@@ -37,9 +37,14 @@ export function dmRepository(db: DbExecutor): DmRepository {
     },
     async editMessage(message, body) { await changes.editDm(message, body); },
     async removeMessage(message) { await changes.removeDm(message); },
-    /** The policy's own list condition (`visibleFilter`) is applied before the limit and in the total. */
+    /**
+     * The policy's own list condition (`visibleFilter`) is applied before the limit and in the total. A conversation nobody has written in
+     * is listed only for the person who started it (persona round 6): the others see it with its first message, never an empty "No
+     * messages yet" row someone opened and left. It is still theirs to open by its address.
+     */
     async listVisible(principal, workspaceId, page) {
-      return rows.list(workspaceId, await visibleFilter(principal, workspaceId, 'dm', db), page);
+      const started = or(isNotNull(schema.dms.lastMessageAt), eq(schema.dms.createdBy, principal.id))!;
+      return rows.list(workspaceId, and(await visibleFilter(principal, workspaceId, 'dm', db), started)!, page);
     },
   };
 }
