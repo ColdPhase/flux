@@ -110,7 +110,7 @@ class CreateWindow(unittest.TestCase):
             expect(window).to_be_visible()
             expect(title_field(page)).to_be_focused()
             for control in (window.get_by_label("Details"), window.get_by_role("combobox", name="Owner"),
-                            window.get_by_role("button", name="+ Link to a message or thought"), submit_button(page)):
+                            window.get_by_role("button", name="+ From a message or thought"), submit_button(page)):
                 expect(control).to_be_visible()
             # A new task is always To do, so there is no Status to choose (#1424), and so no Waiting for either.
             expect(window.get_by_role("combobox", name="Status")).to_have_count(0)
@@ -327,7 +327,7 @@ class CreateWindow(unittest.TestCase):
             choose(window.get_by_role("combobox", name="Space"), self.ids["other"])
             expect(title_field(page)).to_have_value("Print labels for the beds")
             for control in (window.get_by_label("Details"), window.get_by_role("combobox", name="Owner"),
-                            window.get_by_role("button", name="+ Link to a message or thought"), submit_button(page)):
+                            window.get_by_role("button", name="+ From a message or thought"), submit_button(page)):
                 expect(control).to_be_visible()
             expect(window.get_by_role("combobox", name="Status")).to_have_count(0)
             box = submit_button(page).bounding_box()
@@ -369,10 +369,10 @@ class CreateWindow(unittest.TestCase):
         self.assertFalse(tablist.evaluate("el => el.scrollWidth > el.clientWidth + 1"), "the tab bar has nothing to scroll to")
         self.assertLessEqual(page.evaluate("() => document.documentElement.scrollWidth"), 320, "no horizontal scroll")
         self.assertLessEqual(window.bounding_box()["y"] + window.bounding_box()["height"], 568.5)
-        # The Task tab: its title field has room around its words (the placeholder is not on the field's edge), and "+ Link to a message or thought" stays in its card.
+        # The Task tab: its title field has room around its words (the placeholder is not on the field's edge), and "+ From a message or thought" stays in its card.
         self.assertGreaterEqual(window.locator(".create__title:visible").evaluate("el => parseFloat(getComputedStyle(el).paddingLeft)"), 6, "room on the left of the words")
         card = window.locator(".create__props:visible").bounding_box()
-        link = window.get_by_role("button", name="+ Link to a message or thought").bounding_box()
+        link = window.get_by_role("button", name="+ From a message or thought").bounding_box()
         self.assertLessEqual(link["x"] + link["width"], card["x"] + card["width"] + 0.5, f"the link chip stays inside its card: {link} in {card}")
         shot(page, "1013-create-sheet-320")
 
@@ -1188,7 +1188,7 @@ class CreateWindow(unittest.TestCase):
 
     def test_30_a_task_a_person_makes_in_the_window_counts_under_the_thought_it_links(self) -> None:
         """#1013 P3: with Create task gone from the Map, a thought's task count is not only agents' and the API's: the window's
-        "+ Link to a message or thought" links a thought, and the Map counts the task under it."""
+        "+ From a message or thought" links a thought, and the Map counts the task under it."""
         self.ensure_account()
         page = self.page()
         words = f"Wire the second gateway {uuid.uuid4().hex[:6]}"
@@ -1198,7 +1198,7 @@ class CreateWindow(unittest.TestCase):
         field = open_from_tasks(page)
         title = f"Mount the gateway {uuid.uuid4().hex[:6]}"
         field.fill(title)
-        dialog(page).get_by_role("button", name="+ Link to a message or thought").click()
+        dialog(page).get_by_role("button", name="+ From a message or thought").click()
         dialog(page).get_by_role("searchbox", name="Search messages and thoughts").fill(words)
         dialog(page).get_by_role("list", name="Messages and thoughts").get_by_role("button", name=re.compile(words)).click()
         expect(linked_labels(page)).to_have_count(1)

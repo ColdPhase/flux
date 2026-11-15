@@ -228,7 +228,7 @@ class RoundFive(unittest.TestCase):
         page.get_by_role("group", name="Remove Basia Wrona").get_by_role("button", name="Remove", exact=True).click()
         expect(page.get_by_text("Basia Wrona is no longer in Bakery.", exact=True)).to_be_visible()
         page.get_by_role("list", name="People who were removed").get_by_role("button", name="Restore").click()
-        expect(page.get_by_text("Basia Wrona is back in Bakery as Member.", exact=True)).to_be_visible()
+        expect(page.get_by_text("Basia Wrona is back in Bakery as Member, in 1 space.", exact=True)).to_be_visible()
 
     def test_09_new_space_and_the_decision_form_say_it_plainly(self) -> None:
         page = self.page("jonas")

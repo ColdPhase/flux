@@ -118,7 +118,7 @@ class WaitingFor(unittest.TestCase):
                 expect(item.first.get_by_role("button", name="Unblock")).to_have_count(0)
                 if not phone: expect(open_item(item.first).get_by_role("button", name="Done", exact=True)).to_be_visible()
                 shot(page, f"waiting-for-inbox-{'phone' if phone else 'computer'}")
-                open_item(item.first).get_by_role("button", name="Open task").click()
+                open_item(item.first).get_by_role("button", name="Open", exact=True).click()
                 expect(page.locator(f".wd[data-detail-id='{task['id']}']")).to_be_visible()
                 expect(page.get_by_role("region", name="Blocker")).to_contain_text("Waiting for Kai Nowak")
 

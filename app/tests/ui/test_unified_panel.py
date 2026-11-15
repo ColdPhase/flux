@@ -210,7 +210,7 @@ class UnifiedPanel(unittest.TestCase):
                 expect(card).to_contain_text("Waiting for the probe dimensions")
                 expect(card.get_by_role("combobox", name="Waiting for", exact=True)).to_have_count(0)  # the field shows only while editing
                 actions = panel.get_by_role("group", name="Task actions")
-                for name in ("Link to a thought",):
+                for name in ("Add to a thought",):
                     box = actions.get_by_role("button", name=name).bounding_box()
                     self.assertAlmostEqual(box["height"], 32, delta=1, msg=f"{name} is a small action at the 32 px control height (#789)")
                 # Empty sections are not shown, a single page has no pagination, and nothing is a select.
@@ -234,7 +234,7 @@ class UnifiedPanel(unittest.TestCase):
         task = self.new_task("Calibrate the probes at two soil depths")
         page = self.page()
         panel = self.open_task(page, task)
-        names = ["Status", "Owner", "Link to a thought", "Close details"]
+        names = ["Status", "Owner", "Add to a thought", "Close details"]
         before = self.positions(page, names)
         # Owner: a menu of people and agents, no select; the choice is stored.
         owner = panel.get_by_role("button", name="Owner", exact=True)
@@ -318,7 +318,7 @@ class UnifiedPanel(unittest.TestCase):
         reason = activity.locator("li[data-message-id]")
         expect(reason).to_have_count(1)
         expect(reason).to_contain_text("Waiting for the replacement hinge")
-        expect(reason.locator("[data-contribution='blocker']")).to_have_text("Saved as the task blocker")
+        expect(reason.locator("[data-contribution='blocker']")).to_have_text("Saved as why it’s blocked")
         expect(activity).to_contain_text("marked it blocked")
         items = api(self.ada_ctx, "GET", f"/api/v1/work/{task['id']}/activity")["items"]
         self.assertEqual([(item["status"]["to"], item["status"]["blocker"]) for item in items if item["kind"] == "status"], [("blocked", None)])
@@ -353,7 +353,7 @@ class UnifiedPanel(unittest.TestCase):
         task = self.new_task("Write the wiring notes")
         page = self.page()
         panel = self.open_task(page, task)
-        panel.get_by_role("button", name="Link to a thought").click()
+        panel.get_by_role("button", name="Add to a thought").click()
         expect(panel.get_by_role("group", name=re.compile("^Thoughts to link to"))).to_be_visible()
         page.keyboard.press("Escape")
         expect(panel.get_by_role("group", name=re.compile("^Thoughts to link to"))).to_have_count(0)

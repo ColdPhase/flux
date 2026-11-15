@@ -258,6 +258,7 @@ describe('direct messages', () => {
     const leeView = expectStatus(await read(lee, pair.id), 200) as Dm;
     assert.deepEqual(leeView.audience.participantIds, [lee.id], 'only Lee is left');
     assert.deepEqual(leeView.counterpart, { id: max.id, name: 'dm-max' }, 'the pair still names the other person');
+    assert.equal(leeView.counterpartGone, 'conversation', 'they left the conversation, not the company: only they can reopen it');
     // The notice of Lee's message for Max is about a message sent while he took part, and may land after his leave: count after it.
     await noticesSettled(pair.id);
     const eventsBefore = (await pool.query('SELECT count(*)::int AS n FROM events WHERE object_id = $1', [pair.id])).rows[0].n;

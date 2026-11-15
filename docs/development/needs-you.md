@@ -39,10 +39,15 @@ as a `task` item, keyed `note:<notification id>` like a mention, while all of th
 - they can read its space.
 
 Its `from` is who gave it (the notification's sender), its `project` the space, its title the task ("#12 Seal the lids"), its `detail`
-empty, its `url` the task (`/projects/:id/tasks?open=work:<id>`) and `task: { workId, number }`. It leaves when the person **opens**
+empty, its `url` the task (`/projects/:id/tasks?open=work:<id>`) and `task: { workId, number, version }`. It leaves when the person **opens**
 the task (the web client marks the notification read when the task panel shows a task of theirs that is a `task` item, put off for
 later or not, wherever it was opened from; `/inbox/:id` from a notice, push or email reads it too), **starts or finishes** it (status), or when it is **given to
-someone else** (owner). Done reads the notification and Not now snoozes it, as for a mention; Undo of either brings it back. A blocked
+someone else** (owner). **Done finishes the task** (founder decision 2026-11-15, #1424): the Inbox's Done (the button, `E`, the phone's
+swipe) is the task's own change to Done, `PATCH /api/v1/work/:id` with `status: done` against `task.version`, said as everywhere ("#12 moved
+to Done", with its line in the conversation), so the item leaves as for any finished task and the person who gave it sees it done. Undo puts
+the task back to To do (`restore: true`, the line goes) and, the notification still unread, the item is back. The queue's own `done` action
+on the item's key only reads the notification; the web client does not use it for a Task item. Not now snoozes it, as for a mention; Undo
+brings it back. A blocked
 task given to you is its one `blocked` item. Push and email follow the person's level for `assigned`, unchanged.
 
 Home (README §7): Continue never offers what the Inbox holds, so a task given to you is "Waiting for you" until you open it, and

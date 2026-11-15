@@ -174,10 +174,15 @@ async function peopleOf(ports: DmPorts, record: DmRecord, messages: DmMessageRec
 async function detail(ports: DmPorts, record: DmRecord, self: string, window: { limit: number; beforeSequence: number | null }): Promise<Dm> {
   const { messages, hasMoreBefore } = await ports.dms.window(record.id, window);
   const items = messages.map(toMessage);
+  // The other person of a 1:1 who no longer takes part: left the conversation, or no longer in the company (personas-30), as a send would say.
+  const other = counterpartOf(record, self);
+  const gone = other && !record.participants.some((p) => p.id === other.id)
+    ? ((await ports.access.activePeople(record.workspaceId, [other.id])).has(other.id) ? 'conversation' as const : 'company' as const) : null;
   return {
     ...toSummary(record, self), messages: items, people: await peopleOf(ports, record, messages),
     messagePage: { hasMoreBefore, nextBeforeSequence: hasMoreBefore ? items[0]!.sequence : null, limit: window.limit },
     unreadFrom: await ports.dms.unreadFrom(record.id, self, null),
+    ...(gone ? { counterpartGone: gone } : {}),
   };
 }
 

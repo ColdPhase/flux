@@ -970,7 +970,7 @@ Community garden sensors, Rain barrel monitor and Tool library.
 - **Not now is one button, with no menu** (S11, #1367). It puts the item off until tomorrow at 08:00 and offers Undo ("Not now.
   Back tomorrow morning"); the item returns then. There is no "Ask me again" menu, no "Next week", no "When #N is done" and no
   "Decline for good" on a decision: a decision waits until someone accepts it. The one dark primary of the open item is its first
-  action (Accept, Approve all, Join).
+  action (Accept, Approve all, Join, and Open on a Task or a Blocked item, one word for both, personas-30).
 - **"2 for later" and "4 done today" open their lists** (founder decision, Hubert, 2026-11-15,
   [#1424](https://github.com/ColdPhase/flux/issues/1424) E). One quiet line under the list, the same in a full and an empty Inbox,
   says how many are put off and how many were marked done in the last 24 hours ("2 for later · 4 done today", each part only when it
@@ -986,7 +986,8 @@ Community garden sensors, Rain barrel monitor and Tool library.
 - **A task given to you** (founder decision, Hubert, 2026-11-15, [#1424](https://github.com/ColdPhase/flux/issues/1424) C). When
   someone else or an agent makes a task with you as its Owner, or changes its Owner to you, it is an item of your Inbox:
   **"Task · Jonas · Rain barrel monitor"**, titled by the task ("#12 Seal the lids"), with **Open** (it opens the task in the one
-  panel), Not now and Done like the other items. It leaves the Inbox when you open the task (from here, from Tasks, from Search, a
+  panel), Not now and Done like the other items. **Done finishes the task** (founder decision, Hubert, 2026-11-15, #1424): it moves to
+  Done for everyone, the toast says "#12 moved to Done · Undo", and Undo puts it back to To do and in your Inbox. It leaves the Inbox when you open the task (from here, from Tasks, from Search, a
   notice or a push), when you start it or finish it, and when it is given to someone else. Giving a task to yourself tells nobody and
   is no item. It reaches you by notice, push and email at your notification level, as a task always did; a task given to you that
   is blocked is the one Blocked item, not a Task too.
@@ -1127,7 +1128,7 @@ built. The contract is in [mobile and PWA](../../product/mobile-pwa.md#while-flu
   **Accepting a decision changes its card in place** (founder decision D, Hubert, 2026-11-15, [#1424](https://github.com/ColdPhase/flux/issues/1424)):
   the state word reads **Accepted** and one quiet line inside the card, under its row, says who accepted it and when ("Accepted by
   Kasia Wrona · 9:12", the day when it was not the day it was proposed). The conversation gets no line of its own for it, neither
-  "Ada accepted it" nor "Ada accepted the decision …"; the decision's panel keeps the record (its Decided row). A task's later step (blocked, can
+  "Ada accepted it" nor "Ada accepted the decision …"; the decision's panel keeps the record in the same words (its "Accepted by Kasia Wrona · today" row, personas-30). A task's later step (blocked, can
   continue) is one line, never a second card. One state has one word: a
   decision is **Proposed**, **Accepted** or **Replaced**, never "Proposed decision"; the panel's head already says "Decision", so its
   eyebrow is the state alone ("Proposed", "Accepted 14 Nov"), and the panel shows no row version ("Version 2" on a decision nobody edited
@@ -1422,6 +1423,8 @@ type, because a message is written in the composer. The phone's "+" opens that w
 sheet at once: it has no list of the types before the tabs (founder direction, Hubert, 2026-11-13,
 [#1438](https://github.com/ColdPhase/flux/issues/1438) point 8).
 
+- **Plain words in the Task tab** (persona round 30): the details field reads "Add details…", and the link to where it came from is
+  **+ From a message or thought**; the task panel's own action is **Add to a thought**.
 - **Create task closes the window, and the toast offers the next one** (founder decision, Hubert,
   2026-11-12, #1235). The footer has the hint line, which says what happens ("It goes to Tasks and the conversation", plain words since persona round 6,
   the one card of P5), and the one primary button, "Create task", and
@@ -1431,8 +1434,8 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
 - **A decision is one form** (founder decision, Hubert, 2026-11-13, [#1419](https://github.com/ColdPhase/flux/issues/1419)). New ›
   Decision and `/decide …` in a conversation open the same Create window on Decision, in the same words: "What is being decided?" with
   what was typed after `/decide`, "Why (optional)", the message it came from quoted as "From the message" (a
-  `/decide` typed in a thread keeps the thread's opening message as its source, as `/task` does), and a quiet **Replace an earlier
-  decision…** (plain words, persona round 6) that shows a "Replaces" choice of the space's accepted decisions in the same window, with Next and Previous when there
+  `/decide` typed in a thread keeps the thread's opening message as its source, as `/task` does), and a quiet **This replaces an older
+  decision…** (plain words, persona rounds 6 and 30) that shows a "Replaces" choice of the space's accepted decisions in the same window, with Next and Previous when there
   are more than one page of them. The footer says "Everyone else in the space sees it in their Inbox" (plain words, persona rounds 28 and 6) and the one primary is **Propose
   decision**; then the toast "Decision proposed · Undo". It reaches everyone at once, and Undo withdraws it for everyone
   ("Not proposed"; [Notices](#notices), founder decision L, #1424). There is no second form in the side panel: the words "A person with write
@@ -1509,7 +1512,7 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   Done button in the Inbox and in the panel, and the stream says "#4 can continue: the decision was
   accepted" when it resumes.
 - **The link buttons stay** (founder decision, Hubert, 2026-11-13, [#1438](https://github.com/ColdPhase/flux/issues/1438) point 13): the panel's
-  **Link to a thought** and Create's **+ Link to a message or thought** are the only way to make those links from a task, so they are not
+  **Add to a thought** and Create's **+ From a message or thought** are the only way to make those links from a task, so they are not
   removed or merged into another control, and no other place offers them.
 
 ### Wiki
@@ -1669,7 +1672,7 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
     soft chime of a call invitation and the short tone of a direct message, a mention or a question while Flux is open. At Nothing it
     says "Not used while you hear about Nothing". It shows on every server, with or without calls. (The API keeps its two stored
     fields, `sound.messages` and `sound.calls`; the switch writes both together and the page reads `calls`.)
-  - **Muted places** sit behind Change. They are the same mutes as the ⋯ menus' Mute
+  - **Muted spaces and messages** sit behind Change. They are the same mutes as the ⋯ menus' Mute
     ([Muting and following](#muting-a-place-and-following-a-thread)).
 - **Company:** only admins can change it.
   - The company name, shown on the sign-in page and in emails.
@@ -1705,8 +1708,8 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
     An owner sees it for everyone but themselves, an admin for members and guests. Nothing else on the page changes.
   - There is no AI switch here; AI is per space.
   - **Removed · N** (owners and admins; under the links waiting to be used): the people who left or were removed, each row a face, the
-    name and one line, "maja@example.org · Admin · 3 spaces" (the role they had and the spaces besides Everyone they were in, left
-    out at none), with a quiet **Restore**. **Restore brings a person back as they were** (founder decision, Hubert, 2026-11-15,
+    name and one line, "maja@example.org · Admin · 3 spaces" (the role they had and the spaces they were in, Everyone counted, as the sidebar counts
+    them, personas-30), with a quiet **Restore**. **Restore brings a person back as they were** (founder decision, Hubert, 2026-11-15,
     [#1424](https://github.com/ColdPhase/flux/issues/1424) F): the same role (an Admin comes back an Admin), the same spaces with the
     same role in each (a space deleted since is skipped), and their direct messages, so neither side reads "Maja left this
     conversation". The status line says so, as Remove says its own: "Maja Wiśniewska is back in Riverside as Admin, in 3 spaces." The note under the list is one line,
@@ -1737,6 +1740,10 @@ standard switch row in Settings › Notifications, and the rest of the page stay
   standard switch row (36 × 22, `--t1` when on) like Email me too, with the label **Hide previews** and, under it in the
   row's second line (`--t3`, `--fs-xs`), "Notifications show who and where, never the message". It is **off** by default and
   saves at once like every row on the page.
+- **Plain words, short sentences** (persona round 30, Ana): the empty Inbox says "When someone asks you something, it shows up here.";
+  the AI switch of a space, "Let AI agents help in this space"; a proposed decision's Wiki row, "Only an accepted decision can be
+  added."; a reason saved from a message, "Saved as why it’s blocked"; the notification settings' row, "Muted spaces and messages";
+  a server without AI, "AI is off on this server. Your agents start when it is turned on."
 - **Plain words, no jargon.** Not "payload", "preview mode" or "privacy level". At the level Nothing the second line reads
   "Not used while you hear about Nothing", like the two sound switches. A Flux server that cannot push shows no row at all
   (as it shows no On this device).
@@ -1762,7 +1769,7 @@ standard switch row in Settings › Notifications, and the rest of the page stay
 - **AI works right after install** (founder decision, Hubert, 2026-11-13, #1438): `./flux up` turns agents on API keys on with
   their key file, so an owner's first step is Connect AI in the app (Home's first-steps row leads there), never a settings file.
   Only an operator who chose `FLUX_PERSONAL_RUNS=off` makes Settings › AI the person's own Claude Code or Codex and one line,
-  "Off on this Flux server. Your agents wait until it is on." Nobody, owner or member, is told to ask an admin. The agent runtime
+  "AI is off on this server. Your agents start when it is turned on." Nobody, owner or member, is told to ask an admin. The agent runtime
   is on after install too where the host can run it (#1441). **No dead controls:** Connect AI leaves out a plan this server does
   not run (a plan waits as "Not ready yet" only while the runtime starts), and on a host that cannot run the runtime the company's
   owners and admins read one quiet line under Connect AI, "Claude and ChatGPT plans can't run on this Flux server: <why>."
@@ -1950,7 +1957,7 @@ standard switch row in Settings › Notifications, and the rest of the page stay
   message) while the person has connected no AI opens the one **Connect AI** window in place, the same window as Settings › AI and
   Home's Connect AI; the ask bar keeps "You haven't set up your assistant. **Connect your AI**", which opens the same window. There is no
   side panel of its own (the MCP explainer panel is gone). `/ai` is listed whenever it can do something, to ask or to connect: a server that
-  runs no AI (Settings › AI's "Off on this Flux server") does not offer it, and typed anyway the bar says "Off on this Flux server." with nothing
+  runs no AI (Settings › AI's "AI is off on this server") does not offer it, and typed anyway the bar says "AI is off on this server." with nothing
   to press. A guest is never offered it; typed, it says who can change that: "Guests don't have AI. An admin can make you a member."
   In a space with AI off, `/ai` shows one line, "AI is off in this space",
   and "Your agents" disappear from the task Owner picker, which lists people only. In a DM both people see one line, "Ada used AI here (Claude)".
@@ -2250,7 +2257,9 @@ Founder priorities (calm; plain words), decided by the agents for the v0.2.1 aud
 - **A person who is no longer in the company** (they left it or were removed, and are still signed in) is told so in the places that would
   otherwise say they have no spaces: Home's one card and the Spaces page say "You’re no longer in {company}" and "Ask an owner or admin of
   the company for an invite link to come back.", with no Create. Anyone else without a company (nobody has invited them yet) keeps "You’re
-  not in a company here yet" (persona walkthrough finding D-7, v0.2.1).
+  not in a company here yet" (persona walkthrough finding D-7, v0.2.1). Without a company there is nothing to make, so neither has New
+  (nor `C`), the phone's "+" or Messages' "+" (persona round 30). The other person of their direct message reads "Ola is no longer in
+  the company, so this conversation has nobody to send to.", with no offer to reopen it.
 - **The header names the place or nothing.** A Wiki page by its own address is "Wiki", a missing agent "Messages", a space that did not open "Spaces". "Home" with the company before it
   is only Home's own, and Home has no header row on the computer.
 - **A Wiki page by its address** (the old "material") is a card on the page: its back link, "Version 1", the title (`--fs-xl`), "You · Saved 13 Nov 2026, 09:00" in `--t3`, and its words (`--fs-base`) on `--el`.

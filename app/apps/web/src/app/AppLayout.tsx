@@ -1070,7 +1070,7 @@ function AppLayoutContent() {
         </div>
         {/* A locked space's place keeps the tab bar on the phone (LK-2), and offers no "+" there. */}
         {phone && !detailsOpen && (lockedHere || !phoneHidesDock(location.pathname) || phoneOffersCreate(location.pathname)) ? (
-          <PhoneDock places={places} onSearch={shell.openSearch} onCreate={() => shell.openCreate()} create={!lockedHere && phoneOffersCreate(location.pathname)} capsule={lockedHere || !phoneHidesDock(location.pathname)} />
+          <PhoneDock places={places} onSearch={shell.openSearch} onCreate={() => shell.openCreate()} create={!lockedHere && !!workspace && phoneOffersCreate(location.pathname)} capsule={lockedHere || !phoneHidesDock(location.pathname)} />
         ) : null}
       </div>
 

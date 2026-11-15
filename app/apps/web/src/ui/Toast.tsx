@@ -61,6 +61,8 @@ const MOVE_PX = 24;
 const ToastContext = createContext<(options: ToastOptions) => () => void>(() => () => {});
 const ToastScopeContext = createContext<() => boolean>(() => true);
 const ToastTopContext = createContext<number | null>(null);
+/** Takes the Undo toasts away now, as moving to another place does (#1424). */
+const LeaveUndoContext = createContext<() => void>(() => {});
 
 /** Actual top of the rendered feedback stack, or null while no feedback is shown. */
 export function useToastTop() { return useContext(ToastTopContext); }
@@ -119,6 +121,14 @@ export function useToast() {
 /** A captured action/result remains current only within this provider's original session epoch. */
 /** A pointer that hovers (a mouse or a trackpad); a touch screen's has none (`(hover: none)`, as elsewhere in the app). */
 const hovers = () => !window.matchMedia('(hover: none)').matches;
+
+/**
+ * Undo toasts leave now, as when the address changes: a window that lists what they would undo (the Inbox's "for later" and "done today")
+ * has its own way back, and a toast over it covered its rows on a phone (personas-30).
+ */
+export function useLeaveUndoToasts() {
+  return useContext(LeaveUndoContext);
+}
 
 export function useToastScope() {
   return useContext(ToastScopeContext);
@@ -333,12 +343,13 @@ export function ToastProvider({ children, scopeKey }: { children: ReactNode; sco
   // undoes there what was done here. Toasts without Undo keep their own short time.
   const { pathname } = useLocation();
   const shownAt = useRef(pathname);
+  const leaveUndo = useCallback(() => setToasts((current) => current.some((toast) => toast.undo && !toast.leaving)
+    ? current.map((toast) => (toast.undo && !toast.leaving ? { ...toast, leaving: true } : toast)) : current), []);
   useLayoutEffect(() => {
     if (shownAt.current === pathname) return;
     shownAt.current = pathname;
-    setToasts((current) => current.some((toast) => toast.undo && !toast.leaving)
-      ? current.map((toast) => (toast.undo && !toast.leaving ? { ...toast, leaving: true } : toast)) : current);
-  }, [pathname]);
+    leaveUndo();
+  }, [pathname, leaveUndo]);
   const isCurrent = useCallback(() => committedSession.current.epoch === sessionEpoch && committedSession.current.key === scopeKey, [scopeKey, sessionEpoch]);
   const show = useCallback((options: ToastOptions) => {
     if (!isCurrent()) { options.onLeave?.(); return () => {}; }
@@ -402,7 +413,7 @@ export function ToastProvider({ children, scopeKey }: { children: ReactNode; sco
     return () => { observer.disconnect(); window.removeEventListener('resize', measure); };
   }, [sessionEpoch, visible.length]);
   return (
-    <ToastStackContext.Provider value={stack}><ToastTopContext.Provider value={toastTop}><ToastScopeContext.Provider value={isCurrent}><ToastContext.Provider value={value}>
+    <ToastStackContext.Provider value={stack}><ToastTopContext.Provider value={toastTop}><ToastScopeContext.Provider value={isCurrent}><ToastContext.Provider value={value}><LeaveUndoContext.Provider value={leaveUndo}>
       {children}
       {createPortal(
         <div ref={stack} className="ui-toasts" style={lift.inset ? { '--toast-modal-inset': `${lift.inset}px` } as CSSProperties : undefined} role="status" aria-live="polite" aria-relevant="additions text">
@@ -410,6 +421,6 @@ export function ToastProvider({ children, scopeKey }: { children: ReactNode; sco
         </div>,
         document.body,
       )}
-    </ToastContext.Provider></ToastScopeContext.Provider></ToastTopContext.Provider></ToastStackContext.Provider>
+    </LeaveUndoContext.Provider></ToastContext.Provider></ToastScopeContext.Provider></ToastTopContext.Provider></ToastStackContext.Provider>
   );
 }

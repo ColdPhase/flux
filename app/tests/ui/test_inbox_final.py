@@ -389,7 +389,7 @@ class InboxFinal(unittest.TestCase):
         # A decision is open as its card in the right column; Discuss goes to where it is talked about.
         expect(self.item(page, DECISION).get_by_role("heading", level=2, name=DECISION)).to_be_visible()
         # A blocked task opens as the task; a question opens its message.
-        self.item(page, "Design a weatherproof enclosure").get_by_role("button", name="Open task").click()
+        self.item(page, "Design a weatherproof enclosure").get_by_role("button", name="Open", exact=True).click()
         expect(page.locator("#details")).to_contain_text("Design a weatherproof enclosure")
         page.keyboard.press("Escape")
         self.item(page, ASKED).get_by_role("button", name="Reply").click()
@@ -808,7 +808,8 @@ class InboxFinal(unittest.TestCase):
         page.goto("/inbox")
         card = self.card(page, "Design a weatherproof enclosure")
         self.item(page, "Design a weatherproof enclosure").get_by_role("button", name="Unblock").click()
-        expect(page.get_by_role("status").filter(has_text="Unblocked")).to_be_visible()
+        # One toast for Unblock in the Inbox and in the task panel (personas-30 P3): "#N moved to Doing".
+        expect(page.get_by_role("status").filter(has_text=re.compile(r"^#\d+ moved to Doing"))).to_be_visible()
         expect(card).to_have_count(0)
         work = lambda: self.contexts["ada"].request.get(f"/api/v1/work/{self.blocked['id']}").json()  # noqa: E731
         self.wait_for(lambda: work()["status"] == "in_progress", "the task to be unblocked")
@@ -859,7 +860,7 @@ class InboxFinal(unittest.TestCase):
         page = self.page()
         page.goto("/inbox")
         expect(page.get_by_role("heading", name="Nothing needs you right now")).to_be_visible()
-        expect(page.get_by_text("Enjoy the quiet.")).to_be_visible()
+        expect(page.get_by_text("When someone asks you something, it shows up here.")).to_be_visible()
         expect(page.get_by_text(re.compile(r"^\d+ done today$"))).to_be_visible()
         # #437 / E06: an empty Inbox is Kreska, one sentence and the settings link.
         expect(page.get_by_role("tab")).to_have_count(0)

@@ -171,7 +171,7 @@ export function InboxView() {
     <div className="nyq__clear">
       {moments ? <Kreska size={96} expression="done" /> : null}
       <h2 ref={clearRef} tabIndex={-1}>Nothing needs you right now</h2>
-      <p>Enjoy the quiet. Flux will ping you when a decision or question comes in.</p>
+      <p>When someone asks you something, it shows up here.</p>
       <div className="nyq__clear-actions">
         <Link className="ui-btn ui-btn--quiet" to="/settings/notifications">Notification settings</Link>
       </div>

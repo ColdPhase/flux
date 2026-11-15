@@ -122,12 +122,12 @@ class NativeDetailsJourney(unittest.TestCase):
         expect(field).to_have_value("My unfinished blocker explanation is private until saved")
 
     def test_04_all_current_rules_reachable_and_selected_rule_persists_on_another_page(self):
-        # The one decision form is the Create window's (#1419): its "Replace an earlier decision…" choice pages through every accepted rule.
+        # The one decision form is the Create window's (#1419): its "This replaces an older decision…" choice pages through every accepted rule.
         page=self.page();page.goto(f"/projects/{self.project}/tasks")
         window=open_decision(page)
         window.get_by_role("textbox",name="Decision",exact=True).fill("Keep a manual off switch after measuring both shields")
         why=window.get_by_role("textbox",name="Why",exact=True);why.fill("Retain the complete earlier measurements before changing the cable")
-        window.get_by_role("button",name="Replace an earlier decision…").click();self.choices_ready(window,"Decisions it can replace")
+        window.get_by_role("button",name="This replaces an older decision…").click();self.choices_ready(window,"Decisions it can replace")
         nav=window.get_by_role("navigation",name="Decisions it can replace");select=window.get_by_label("Does it replace an earlier decision?",exact=True);seen={value for value in values(select) if value}
         nav.get_by_role("button",name="Next",exact=True).click();self.choices_ready(window,"Decisions it can replace")
         seen.update(value for value in values(select) if value);self.assertEqual(seen,{item["id"] for item in self.rules})

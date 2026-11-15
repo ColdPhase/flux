@@ -230,7 +230,7 @@ function AccountNotificationSettings() {
       <div className="sset-card sset-gap">
         <div className="sset-row">
           <span className="sset-row__b">
-            <span className="sset-row__t">Muted places</span>
+            <span className="sset-row__t">Muted spaces and messages</span>
             <span className="sset-row__s">{mutedSummary(prefs.muted)}</span>
           </span>
           <Button variant="quiet" size="sm" aria-expanded={mutedOpen} aria-controls={ids.muted}

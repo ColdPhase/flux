@@ -259,7 +259,7 @@ class MuteAndFollowJourney(unittest.TestCase):
         first.goto("/settings/notifications")
         second.goto(f"/projects/{self.project_id}")
         row = self.sidebar_space(first, "Garden sensors")
-        expect(first.locator(".sset-row").filter(has=first.get_by_text("Muted places", exact=True))).to_contain_text("None")
+        expect(first.locator(".sset-row").filter(has=first.get_by_text("Muted spaces and messages", exact=True))).to_contain_text("None")
         # The stream is what carries it: nothing here reloads the first tab or polls.
         navigations: list[str] = []
         first.on("framenavigated", lambda frame: navigations.append(frame.url))
@@ -267,11 +267,11 @@ class MuteAndFollowJourney(unittest.TestCase):
         button.click()
         menu.get_by_role("menuitem", name=re.compile(r"^Mute space")).click()
         expect(row.locator("[data-muted-mark]")).to_be_visible()
-        expect(first.locator(".sset-row").filter(has=first.get_by_text("Muted places", exact=True))).to_contain_text("Garden sensors")
+        expect(first.locator(".sset-row").filter(has=first.get_by_text("Muted spaces and messages", exact=True))).to_contain_text("Garden sensors")
         button.click()
         menu.get_by_role("menuitem", name=re.compile(r"^Unmute space")).click()
         expect(row.locator("[data-muted-mark]")).to_have_count(0)
-        expect(first.locator(".sset-row").filter(has=first.get_by_text("Muted places", exact=True))).to_contain_text("None")
+        expect(first.locator(".sset-row").filter(has=first.get_by_text("Muted spaces and messages", exact=True))).to_contain_text("None")
         self.assertEqual(navigations, [], "the first tab was never reloaded")
 
     # ------------------------------------------------------------------ Follow and Following in a thread's header

@@ -417,7 +417,7 @@ function AiCard({ project, manager, onChanged }: { project: Project; manager: bo
   return (
     <>
       <div className="sset-card" data-ai-switch={on ? 'on' : 'off'}>
-        <SwitchRow label="AI" detail="Agents can work here, with each person’s own AI" checked={on} disabled={!manager} onChange={(next) => void change(next)} />
+        <SwitchRow label="AI" detail="Let AI agents help in this space" checked={on} disabled={!manager} onChange={(next) => void change(next)} />
       </div>
       {problem ? <p className="people__notice" role="alert"><Icon name="alert" size={13} />{problem}</p> : null}
     </>

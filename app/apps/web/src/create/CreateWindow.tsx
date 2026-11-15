@@ -376,7 +376,7 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
         aria-describedby={!prefilled && (draft.text || draft.storage === 'visit') ? noteId : undefined}
         onChange={(event) => setTitle(event.target.value)} />
       <textarea className="create__details" aria-label="Details" rows={2} value={outcome} maxLength={WORK_LIMITS.outcome} disabled={busy}
-        placeholder="Add details or what “done” means…" onChange={(event) => setOutcome(event.target.value)} />
+        placeholder="Add details…" onChange={(event) => setOutcome(event.target.value)} />
       <div className="create__props">
         <PickChip label="Owner" icon={<Icon name="person" size={14} />} shown={ownerLabel} value={owner} onChange={setOwner}>
           <Option value="">No owner</Option>
@@ -393,7 +393,7 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
                 <button type="button" className="create__chip-x" aria-label={`Remove link to ${source.label}`} onClick={() => setSources(sources.filter((s) => s !== source))}><Icon name="x" size={12} /></button>
               </span>
             ))}
-            <button type="button" className="create__chip create__chip--add" aria-expanded={linking} onClick={() => setLinking(!linking)}>+ Link to a message or thought</button>
+            <button type="button" className="create__chip create__chip--add" aria-expanded={linking} onClick={() => setLinking(!linking)}>+ From a message or thought</button>
           </div>
         </div>
       </div>
@@ -508,7 +508,7 @@ function DecisionForm({ ids, phone, carried, projectId, onProject, onClose, requ
   const revalidator = useRevalidator();
   const toast = useToast();
   const [why, setWhy] = useState('');
-  // "Replace an earlier decision…" shows its choice here, in the same window; the choice is of the space it was made in.
+  // "This replaces an older decision…" shows its choice here, in the same window; the choice is of the space it was made in.
   const [replacing, setReplacing] = useState(false);
   const [replaces, setReplaces] = useState<{ projectId: string; id: string; title: string } | null>(null);
   const supersedes = replacing && replaces?.projectId === projectId ? replaces : null;
@@ -585,7 +585,7 @@ function DecisionForm({ ids, phone, carried, projectId, onProject, onClose, requ
         <TooLong text={title} limit={WORK_LIMITS.title} />
         {error ? <p className="create__error" role="alert">{error}</p> : null}
         {replacing ? <ReplaceChoice key={project.id} projectId={project.id} value={supersedes?.id ?? ''} onChange={(next) => setReplaces(next ? { projectId: project.id, ...next } : null)} />
-          : <button type="button" className="create__more" onClick={() => setReplacing(true)}>Replace an earlier decision…</button>}
+          : <button type="button" className="create__more" onClick={() => setReplacing(true)}>This replaces an older decision…</button>}
       </> : <p className="create__note">{startsSpaces(workspace) ? 'There is no space yet. Make one with New space, then propose its decisions here.' : 'You’re not in a space yet. When someone adds you to one, you can propose its decisions here.'}</p>}
     </Panel>
   );
@@ -600,7 +600,7 @@ function ReplaceChoice({ projectId, value, onChange }: { projectId: string; valu
   const page = choices.page;
   const paged = !!page && (!!page.previousCursor || !!page.nextCursor || page.before > 0);
   const [kept, setKept] = useState<{ id: string; title: string } | null>(null);
-  // "Replace an earlier decision…" gave way to this choice: the keyboard goes on to it once its decisions are read.
+  // "This replaces an older decision…" gave way to this choice: the keyboard goes on to it once its decisions are read.
   const field = useRef<HTMLButtonElement>(null);
   const ready = !!page;
   useEffect(() => { if (ready) field.current?.focus(); }, [ready]);

@@ -92,7 +92,7 @@ button.ws-task__glyph:active { background: var(--hov); }
 /* The pinned title paints the panel's own surface, so it is not a box of its own (#693). */
 .wd-decision-identity { position: sticky; top: -20px; z-index: 2; padding: var(--s-2) 0 var(--s-1); background: var(--panel-bg, var(--el)); border-bottom: 1px solid var(--line); }
 .ui-sheet .wd-decision-identity { top: -18px; }
-/* "Proposed" and "Decided" are the task panel's rows (.wd-rows), a step under the lead. */
+/* "Proposed" and "Accepted by" are the task panel's rows (.wd-rows), a step under the lead. */
 .wd-rows.wd-decision-rows { margin-top: var(--s-3); }
 .wd-eyebrow { display: flex; align-items: center; gap: 6px; }
 .wd-eyebrow.wd-need { color: var(--t1); }

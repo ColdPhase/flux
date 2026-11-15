@@ -153,12 +153,12 @@ class InboxLists(unittest.TestCase):
         question = page.locator(".nyq__list .nyc", has_text=ASKED)
         expect(second).to_be_visible()
         expect(question).to_be_visible()
-        # Done on the task (E) and Not now on the question (S).
+        # Not now on the task (S) and Done on the question (E). Done on a task finishes it (test_02b), so it is never "done today".
         second.locator(".nyc__open").click()
-        page.locator(".nyq__col--open").get_by_role("button", name=re.compile("^Done")).click()
+        page.locator(".nyq__col--open").get_by_role("button", name=re.compile("^Not now")).click()
         expect(second).to_have_count(0)
         question.locator(".nyc__open").click()
-        page.locator(".nyq__col--open").get_by_role("button", name=re.compile("^Not now")).click()
+        page.locator(".nyq__col--open").get_by_role("button", name=re.compile("^Done")).click()
         expect(question).to_have_count(0)
         later = page.get_by_role("button", name="1 for later")
         done = page.get_by_role("button", name="1 done today")
@@ -171,11 +171,13 @@ class InboxLists(unittest.TestCase):
         page.keyboard.press("Enter")
         window = page.get_by_role("dialog", name="For later")
         expect(window).to_be_visible()
-        row = window.locator(".nyq-aside__row", has_text=ASKED)
-        expect(row).to_contain_text(f"Question · Jonas Berg · {SPACE}")
+        row = window.locator(".nyq-aside__row", has_text=SECOND)
+        expect(row).to_contain_text(f"Task · Jonas Berg · {SPACE}")
         expect(row).to_contain_text("Back tomorrow at 08:00")
         bring = row.get_by_role("button", name=re.compile("^Bring back now"))
         expect(bring).to_be_focused()
+        # The Undo toast of Not now leaves as the window opens: the window has its own way back, and nothing floats over it (personas-30).
+        expect(page.locator(".ui-toast").filter(has_text="Undo")).to_have_count(0)
         shot(page, "inbox-lists-for-later")
         # The Inbox's keys do nothing while the window is open: E is not Done on the open item.
         before = len(self.queue()["items"])
@@ -191,27 +193,56 @@ class InboxLists(unittest.TestCase):
         done.focus()
         page.keyboard.press("Enter")
         window = page.get_by_role("dialog", name="Done today")
-        row = window.locator(".nyq-aside__row", has_text=SECOND)
-        expect(row).to_contain_text(f"Task · Jonas Berg · {SPACE}")
+        row = window.locator(".nyq-aside__row", has_text=ASKED)
+        expect(row).to_contain_text(f"Question · Jonas Berg · {SPACE}")
         expect(row).to_contain_text(re.compile(r"Done today at \d\d:\d\d"))
         put = row.get_by_role("button", name=re.compile("^Put back"))
         expect(put).to_be_focused()
         shot(page, "inbox-lists-done-today")
         page.keyboard.press("Enter")
         expect(window).to_have_count(0)
-        expect(second).to_be_visible()
-        expect(second.locator(".nyc__open")).to_be_focused()
+        expect(question).to_be_visible()
+        expect(question.locator(".nyc__open")).to_be_focused()
         expect(page.get_by_role("button", name=re.compile("done today"))).to_have_count(0)
-        self.assertIsNotNone(self.task_item("second"), "put back: in the Inbox again")
+        self.assertTrue(any(ASKED in item["title"] for item in self.queue()["items"]), "put back: in the Inbox again")
 
         # Bring back now, with the mouse.
         page.get_by_role("button", name="1 for later").click()
         window = page.get_by_role("dialog", name="For later")
         window.get_by_role("button", name=re.compile("^Bring back now")).click()
         expect(window).to_have_count(0)
-        expect(question).to_be_visible()
+        expect(second).to_be_visible()
         expect(page.locator(".nyq-aside__line")).to_have_count(0)
         self.assertEqual(self.queue()["later"], 0)
+        self.assertIsNotNone(self.task_item("second"), "brought back: in the Inbox again")
+
+    def test_02b_done_on_a_given_task_finishes_it_and_undo_puts_it_back(self) -> None:
+        # Founder decision (2026-11-15, #1424): Done on a Task item finishes the task, not only the item; Undo puts it back.
+        task = self.tasks["second"]
+        work = lambda: self.contexts["jonas"].request.get(f"/api/v1/work/{task['id']}").json()  # noqa: E731
+        page = self.page()
+        page.goto("/inbox")
+        second = page.locator(".nyq__list .nyc--task", has_text=SECOND)
+        second.locator(".nyc__open").click()
+        page.locator(".nyq__col--open").get_by_role("button", name=re.compile("^Done")).click()
+        toast = page.get_by_role("status").filter(has_text=f"#{task['number']} moved to Done")
+        expect(toast).to_be_visible()
+        expect(second).to_have_count(0)
+        deadline = time.time() + 10
+        while work()["status"] != "done" and time.time() < deadline:
+            time.sleep(0.25)
+        self.assertEqual(work()["status"], "done", "Jonas, who gave it, sees it done")
+        self.assertIsNone(self.task_item("second"))
+        self.assertEqual(self.queue()["doneToday"], 0, "a finished task is not an Inbox item marked done")
+        shot(page, "inbox-lists-task-done")
+        # Undo (Z): the task is To do again and the item is back.
+        page.keyboard.press("z")
+        expect(second).to_be_visible()
+        deadline = time.time() + 10
+        while work()["status"] != "open" and time.time() < deadline:
+            time.sleep(0.25)
+        self.assertEqual(work()["status"], "open")
+        self.assertIsNotNone(self.task_item("second"), "Undo brings the item back")
 
     def test_03_the_arrow_keys_move_between_rows_and_focus_moves_on_when_a_row_leaves(self) -> None:
         for key in ("given", "second"):

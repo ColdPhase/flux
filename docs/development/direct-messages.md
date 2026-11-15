@@ -109,7 +109,9 @@ on their behalf and no message goes to an audience of one:
 - If both people left, whoever opens it first takes their own place back, and still cannot send
   until the other reopens it.
 - `counterpart` in DM responses names the other person of a 1:1 even after they left, so the UI
-  can explain the state.
+  can explain the state. `GET /api/v1/dms/:dmId` also says why they no longer take part (`counterpartGone`): `conversation` when
+  they left it ("Kai left this conversation. They can reopen it by messaging you."), `company` when they are no longer in the
+  company ("Kai is no longer in the company, so this conversation has nobody to send to.", with no offer to reopen, personas-30).
 
 ## Web
 

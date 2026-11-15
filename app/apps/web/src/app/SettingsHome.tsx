@@ -173,7 +173,7 @@ function AgentsAndAi() {
         </ul>
         {connections === null ? <p className="sset-note"><Spinner label="Loading your agents" /></p> : null}
         {failed ? <p className="sset-note" role="note">Your connected apps couldn’t be loaded. <button type="button" className="ui-link" onClick={() => loadConnections()}>Try again</button></p> : null}
-        <p className="sset-note">{SERVER_AI_OFF_LINE}. Your agents wait until it is on.</p>
+        <p className="sset-note">{SERVER_AI_OFF_LINE}. Your agents start when it is turned on.</p>
       </div>
     );
   }

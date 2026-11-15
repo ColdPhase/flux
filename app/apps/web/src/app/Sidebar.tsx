@@ -121,6 +121,9 @@ export function Sidebar({ directMessages, agents = [], user, onClose, titleId, i
   const dmUnread = useDmUnread();
   // The dot is for what needs the person: a space that holds an Inbox item (a question to them, a decision, a blocked task).
   const shell = useShellData();
+  // Someone in no company (removed, or not invited yet) can make nothing here (personas-30): no New, no C, no New message.
+  const company = !!shell.workspace;
+  const starts = company && startsConversations(shell.workspace);
   const needing = useNeedsYouSpaces(shell.me.user.id);
   // A call is on in the space (F-041): the call glyph after its name, before the muted mark and the unread mark.
   const calls = useLiveSpaces();
@@ -185,7 +188,7 @@ export function Sidebar({ directMessages, agents = [], user, onClose, titleId, i
     // "C" opens New from anywhere outside a field or dialog (F-026 §4 keyboard); the drawer has its own.
     if (onClose) return undefined;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key.toLowerCase() !== 'c' || event.metaKey || event.ctrlKey || event.altKey || event.defaultPrevented) return;
+      if (!company || event.key.toLowerCase() !== 'c' || event.metaKey || event.ctrlKey || event.altKey || event.defaultPrevented) return;
       const target = event.target as HTMLElement | null;
       // A menu that is open (Status, a message's ⋯) has the keys: C never opens New over it.
       if (isTyping(target) || target?.closest('[role="dialog"], [role="menu"]') || document.querySelector('[role="menu"]')) return;
@@ -194,7 +197,7 @@ export function Sidebar({ directMessages, agents = [], user, onClose, titleId, i
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, openCreate, projectId]);
+  }, [company, onClose, openCreate, projectId]);
   const onNew = () => openCreate(projectId ? { projectId } : {});
   // The arrow keys move between the sidebar's rows (F-026 §4); Enter or a click arrives in the place.
   const onRowKeys = (event: ReactKeyboardEvent<HTMLElement>) => {
@@ -214,7 +217,7 @@ export function Sidebar({ directMessages, agents = [], user, onClose, titleId, i
       <div className="side side--rail" onKeyDown={onRowKeys}>
         {/* The toggle is in the top row, where the expanded sidebar's collapse control is (S1, Spokój anchors). */}
         <IconButton icon="sidebar" label="Expand sidebar" aria-keyshortcuts="[" className="side__toggle" onClick={onToggleCollapsed} />
-        <NewMenu compact onNew={onNew} />
+        {company ? <NewMenu compact onNew={onNew} /> : null}
         {/* Places and the lists share one middle band: on a short window (a phone on its side) the whole band scrolls, so
             projects keep room; the toggle, New, Stop and the account stay put outside it, and their menus are not clipped (#727). */}
         <div className="side__rail-middle" ref={railMiddle}>
@@ -245,7 +248,7 @@ export function Sidebar({ directMessages, agents = [], user, onClose, titleId, i
           ))}
         </nav>
         <nav className="side__rail-dms" aria-label="Private conversations">
-          {directMessages.length || agents.length || startsConversations(shell.workspace)
+          {directMessages.length || agents.length || starts
             ? <Link to="/dm" className="side__ib" aria-label="Messages" aria-current={location.pathname === '/dm' ? 'page' : undefined}><Icon name="chat" size={18} /></Link> : null}
           {agents.map((agent) => <RailAgent key={agent.id} agent={agent} />)}
           {directMessages.map((dm) => (
@@ -277,7 +280,7 @@ export function Sidebar({ directMessages, agents = [], user, onClose, titleId, i
           : <IconButton icon="sidebar" label="Collapse sidebar" aria-keyshortcuts="[" className="side__toggle" onClick={onToggleCollapsed} />}
       </div>
       <div className="side__actions">
-        <NewMenu onNew={onNew} />
+        {company ? <NewMenu onNew={onNew} /> : null}
         <button type="button" className="side__search" aria-label="Search" aria-keyshortcuts={searchKeys} title={mac ? 'Search (⌘K)' : 'Search (Ctrl K)'} onClick={() => { onClose?.(); openSearch(); }}>
           <Icon name="search" size={16} />
         </button>
@@ -356,12 +359,12 @@ export function Sidebar({ directMessages, agents = [], user, onClose, titleId, i
 
         {/* A guest with no conversation and no agent has no Messages heading over nothing (audit P3 5): they start none, and the
             first one someone starts with them brings the heading with it. */}
-        {directMessages.length || agents.length || startsConversations(shell.workspace) ? <nav className="side__sec" aria-labelledby="side-dms">
+        {directMessages.length || agents.length || starts ? <nav className="side__sec" aria-labelledby="side-dms">
           <div className="side__head">
             <h2 className="side__h" id="side-dms"><Link to="/dm" className="side__h-link" aria-current={location.pathname === '/dm' ? 'page' : undefined} onClick={navigate}>Messages</Link></h2>
             {/* New (C) creates, in the drawer too (#1375); only a Messages heading over nothing offers its "+" (New message), on the computer and in the drawer alike (#1424).
                 A guest does not start conversations, so they are not offered one (#1424, as New space). */}
-            {!(directMessages.length || agents.length) && startsConversations(shell.workspace) ? <Link to="/dm/new" className="side__add" aria-label="New message" onClick={navigate}><Icon name="plus" size={14} /></Link> : null}
+            {!(directMessages.length || agents.length) && starts ? <Link to="/dm/new" className="side__add" aria-label="New message" onClick={navigate}><Icon name="plus" size={14} /></Link> : null}
           </div>
           {directMessages.length || agents.length ? (
             <ul className="side__list">

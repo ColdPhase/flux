@@ -83,6 +83,10 @@ describe('the Inbox needs-you queue', () => {
     // a member without access and a stranger are never asked.
     assert.equal(find(await queue(partner), key), undefined, 'your own proposal waits for someone else');
     assert.equal(find(await queue(outsider), key), undefined);
+    // Never in your own Inbox, also as the only person of a space who can accept it (personas-30): it stays on its card.
+    const alone = await createProject(outsider, ws.id, 'Only me here', 'restricted');
+    const mine = json<Decision>(await post(outsider, `/api/v1/projects/${alone.id}/decisions`, { title: 'Use the blue crates' }), 201);
+    assert.equal(find(await queue(outsider), `decision:${mine.id}`), undefined, 'the only member is not asked about their own proposal');
 
     // Accepting leaves everyone's queue.
     json(await post(owner, `/api/v1/decisions/${proposed.id}/accept`, {}, { 'if-match': '"1"' }), 200);
@@ -277,7 +281,7 @@ describe('the Inbox needs-you queue', () => {
     const created = await post(outsider, `/api/v1/workspaces/${ws.id}/dms`, { participantIds: [second.id] });
     assert.ok(created.status === 200 || created.status === 201, created.text);
     const dm = (created.json as { id: string }).id;
-    const say = (from: Person, body: string) => json<SentDmMessage>(await post(from, `/api/v1/dms/${dm}/messages`, { body, clientMessageId: randomUUID() }), 201);
+    const say = async (from: Person, body: string) => json<SentDmMessage>(await post(from, `/api/v1/dms/${dm}/messages`, { body, clientMessageId: randomUUID() }), 201);
     const plain = await say(outsider, 'The van is outside.');
     const asked = await say(outsider, 'When do I get my apron?');
     const item = await waitFor(async () => (await queue(second)).items.find((entry) => entry.url === `/dm/${dm}#message-${asked.id}`), 'the unnamed question reaches the other person\'s Inbox');
@@ -472,7 +476,7 @@ describe('the Inbox needs-you queue', () => {
     assert.deepEqual(item.from, { kind: 'human', id: partner.id, name: 'ny-partner' });
     assert.deepEqual(item.project, { id: lamp.id, name: 'Garden sensors' });
     assert.equal(item.url, `/projects/${lamp.id}/tasks?open=work:${lids.id}`);
-    assert.deepEqual(item.task, { workId: lids.id, number: lids.number });
+    assert.deepEqual(item.task, { workId: lids.id, number: lids.number, version: lids.version });
     assert.equal(item.reason, null);
     assert.equal(await taskItem(partner, lids.id), undefined, 'the giver is not asked');
 
@@ -518,6 +522,18 @@ describe('the Inbox needs-you queue', () => {
     assert.equal(await taskItem(second, marker.id), undefined);
     assert.equal((await restore(second, key)).status, 204);
     assert.ok(await taskItem(second, marker.id), 'Undo brings it back');
+
+    // The Inbox's Done finishes the task (founder decision 2026-11-15): the task's own change to Done, against the item's version. The giver
+    // sees it done and the item leaves; Undo (a restore to To do) brings it back, its notification still unread.
+    const apron = await give('Sew the aprons', second);
+    const given = await arrived(second, apron);
+    const doneWork = json<WorkItem>(await patch(second, `/api/v1/work/${apron.id}`, { status: 'done', expectedVersion: given.task!.version }), 200);
+    assert.equal(await taskItem(second, apron.id), undefined, 'finished from the Inbox, it leaves');
+    assert.equal(json<WorkItem>(await partner.browser.request('GET', `/api/v1/work/${apron.id}`), 200).status, 'done', 'the giver sees it done');
+    json(await patch(second, `/api/v1/work/${apron.id}`, { status: 'open', restore: true, expectedVersion: doneWork.version }), 200);
+    const back = await taskItem(second, apron.id);
+    assert.equal(back?.key, given.key, 'Undo puts the task back to To do and the item back in the Inbox');
+    assert.ok((back?.task?.version ?? 0) > doneWork.version, 'with the version Done would finish now');
   });
 
   test('"for later" and "done today" open their lists, and each item comes back from there (#1424 E)', async () => {

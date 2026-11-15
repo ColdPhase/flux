@@ -122,9 +122,10 @@ export interface NeedsYouItem {
   answer?: boolean;
   /**
    * Set for a `task` item (#1424 C): a task someone else or an agent gave you, which you have not opened, started or finished yet. Its key is
-   * the `note:<id>` of the notification that gave it to you; opening the task reads that notification.
+   * the `note:<id>` of the notification that gave it to you; opening the task reads that notification. `version` is the task's, so Done can
+   * finish it (founder decision 2026-11-15): Done on a Task item is the task's own change to Done.
    */
-  task?: { workId: string; number: number } | null;
+  task?: { workId: string; number: number; version: number } | null;
   /** Set for a call started in your space or an invitation to one (F-041): the call to Join. Listed only while someone is in it. */
   call?: { projectId: string; sessionId: string } | null;
   /** The task "Not now: when #N is done" waits for; null when the item has none. */

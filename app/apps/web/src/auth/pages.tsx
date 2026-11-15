@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Form, Link, Outlet, useActionData, useLoaderData, useLocation, useNavigate, useNavigation, useSearchParams } from 'react-router';
+import { Form, Link, Outlet, useActionData, useLoaderData, useLocation, useNavigate, useNavigation, useRevalidator, useSearchParams } from 'react-router';
 import type { IdentityCapabilities } from '@flux/contracts';
 import { PASSWORD_MIN_LENGTH, claimAddress, getCapabilities, getPendingClaim, getResetLinkAccount, startSso } from '../api/auth';
 import { whenPageLive } from '../api/pageLeaving';
@@ -226,6 +226,14 @@ export function SignUpPage() {
   const [passwordLength, setPasswordLength] = useState(0);
   const [editedAfter, setEditedAfter] = useState<typeof result>(undefined);
   const passwordError = editedAfter === result && passwordLength >= PASSWORD_MIN_LENGTH ? undefined : result?.fieldErrors?.password;
+  // A setup link pasted into a /setup tab that is already open changes only the fragment, which reads no loader again (personas-30): its
+  // token is read the moment it arrives, as when the link opens a new tab.
+  const revalidator = useRevalidator();
+  useEffect(() => {
+    const arrived = () => { if (window.location.pathname === '/setup' && window.location.hash.length > 1) void revalidator.revalidate(); };
+    window.addEventListener('hashchange', arrived);
+    return () => window.removeEventListener('hashchange', arrived);
+  }, [revalidator]);
   if (mode.kind === 'closed') {
     return (
       <>

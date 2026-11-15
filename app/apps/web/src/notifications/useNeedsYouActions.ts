@@ -6,6 +6,7 @@ import { ApiError } from '../api/client';
 import { useShellActions } from '../app/shellContext';
 import { useToast } from '../ui';
 import { resolveWaiting, updateWork } from '../work/api';
+import { restoreOf, stateWords } from '../work/taskState';
 import { useDiscussDecision } from '../work/discuss';
 import { applyRunChanges } from '../assistant/api';
 import { announceAcceptedInboxItem, announceInboxChange } from './api';
@@ -73,9 +74,37 @@ export function useNeedsYouActions(queue: Queue): CardHandlers {
     toast({ message: `#${blocked.number} can continue` });
   }, [toast]);
 
+  /**
+   * Done on a task given to you finishes it (founder decision, 2026-11-15, #1424): the task's own change to Done, in its words ("#12 moved to
+   * Done"). The item leaves as for any finished task; Undo puts the task back to To do, and its unread notification brings the item back.
+   */
+  const finishTask = useCallback((item: NeedsYouItem) => {
+    const current = latest.current;
+    const task = item.task;
+    if (!task) return;
+    const changed = updateWork({ id: task.workId, version: task.version }, { status: 'done' }, crypto.randomUUID());
+    const intent = current.hide(item.key, changed);
+    changed.then(announceInboxChange, (error: unknown) => {
+      if (!intent.isCurrent()) return;
+      current.show(item);
+      toast({ message: apiMessage(error, 'The task could not be finished. Open it to look again.'), tone: 'danger' });
+    });
+    toast({ message: stateWords(task, 'done'), action: { label: 'Undo', key: 'Z', onClick: () => {
+      const restored = changed.then((work) => updateWork(work, restoreOf({ status: 'open', blocker: null }), crypto.randomUUID())).then(announceInboxChange);
+      const undoIntent = current.show(item, restored);
+      restored.catch(() => {
+        if (!undoIntent.isCurrent()) return;
+        current.reload();
+        toast({ message: 'Undo did not work. Open the task to move it back.', tone: 'danger' });
+      });
+    } } });
+  }, [toast]);
+
   return useMemo<CardHandlers>(() => ({
-    // For the person a blocked task waits for, Done is what they were asked for: the task resumes. For anything else it only clears the item.
-    done: (item) => item.kind === 'blocked' && item.blocked?.waitedBy ? finishWait(item) : resolve(item, { action: 'done' }, 'Marked done'),
+    // For the person a blocked task waits for, Done is what they were asked for: the task resumes. On a task given to you it finishes the
+    // task. For anything else it only clears the item.
+    done: (item) => item.kind === 'blocked' && item.blocked?.waitedBy ? finishWait(item) : item.kind === 'task' && item.task ? finishTask(item)
+      : resolve(item, { action: 'done' }, 'Marked done'),
 
     snooze(item: NeedsYouItem, choice: SnoozeChoice) {
       if (choice === 'decline') { resolve(item, { action: 'decline' }, 'Declined for good. Only your Inbox changed'); return; }
@@ -177,7 +206,8 @@ export function useNeedsYouActions(queue: Queue): CardHandlers {
         current.show(item);
         toast({ message: apiMessage(error, 'The task could not be unblocked. Open it to look again.'), tone: 'danger' });
       });
-      toast({ message: 'Unblocked', action: { label: 'Undo', key: 'Z', onClick: () => {
+      // The words of the task panel's Unblock and of every state change (#763 C2, personas-30): "#6 moved to Doing".
+      toast({ message: stateWords(blocked, status), action: { label: 'Undo', key: 'Z', onClick: () => {
         const restored = changed.then((work) => updateWork(work, { status: 'blocked', ...(blocked.blocker ? { blocker: blocked.blocker } : {}), ...(blocked.waitingForUserId ? { waitingFor: { kind: 'human' as const, id: blocked.waitingForUserId } } : {}), ...(blocked.waitingOn ? { waitingOn: blocked.waitingOn } : {}), restore: true }, crypto.randomUUID())).then(announceInboxChange);
         const undoIntent = current.show(item, restored);
         restored.catch(() => {
@@ -187,5 +217,5 @@ export function useNeedsYouActions(queue: Queue): CardHandlers {
         });
       } } });
     },
-  }), [resolve, finishWait, toast, navigate, openDetails, discussDecision]);
+  }), [resolve, finishWait, finishTask, toast, navigate, openDetails, discussDecision]);
 }

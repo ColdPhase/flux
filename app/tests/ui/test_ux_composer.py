@@ -163,15 +163,15 @@ class UxSimplicityPartAComposer(unittest.TestCase):
         expect(window.get_by_placeholder("What is being decided?")).to_be_visible()
         expect(window.get_by_placeholder("Why (optional)")).to_be_visible()
         expect(window.locator(".create__source")).to_contain_text(OPENING)
-        expect(window.get_by_role("button", name="Replace an earlier decision…")).to_be_visible()
+        expect(window.get_by_role("button", name="This replaces an older decision…")).to_be_visible()
         expect(window).not_to_contain_text("write access")
         # The words stay in the composer until the decision is proposed (closing the window loses nothing).
         window.get_by_role("button", name="Close", exact=True).click()
         expect(reply).to_have_value("/decide Order from the second supplier")
         reply.press("Enter")
         window = page.get_by_role("dialog", name="New decision")
-        # Replace an earlier decision… is a choice in the same window, and the keyboard goes on to it.
-        window.get_by_role("button", name="Replace an earlier decision…").click()
+        # This replaces an older decision… is a choice in the same window, and the keyboard goes on to it.
+        window.get_by_role("button", name="This replaces an older decision…").click()
         expect(window.get_by_label("Does it replace an earlier decision?")).to_be_focused()
         window.get_by_role("button", name=re.compile("^Propose decision")).click()
         expect(page.locator(".ui-toast", has_text="Decision proposed")).to_be_visible()

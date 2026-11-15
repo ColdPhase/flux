@@ -103,7 +103,7 @@ test('a saved blocker, what came of a finished task and a handoff appear as mark
     const savedLine = page.getByRole('list', { name: 'Task activity' }).locator(`[data-message-id="${afterBlocker.rootMessageId}"]`);
     await savedLine.waitFor();
     assert.match(await savedLine.innerText(), /Waiting for the replacement hinge/);
-    assert.equal(await savedLine.locator('[data-contribution="blocker"]').innerText(), 'Saved as the task blocker');
+    assert.equal(await savedLine.locator('[data-contribution="blocker"]').innerText(), 'Saved as why it’s blocked');
 
     // 2. The line saved at Done ("What came of it") appears in the same conversation, once, with exactly the saved text.
     const finishedStatus = page.waitForResponse((response) => response.request().method() === 'PATCH' && new URL(response.url()).pathname === `/api/v1/work/${task.id}`);
@@ -141,7 +141,7 @@ test('a saved blocker, what came of a finished task and a handoff appear as mark
       const blockerLine = activity.locator(`[data-message-id="${afterBlocker.rootMessageId}"]`);
       await blockerLine.waitFor();
       assert.match(await blockerLine.innerText(), /Waiting for the replacement hinge/);
-      assert.equal(await blockerLine.locator('[data-contribution="blocker"]').innerText(), 'Saved as the task blocker');
+      assert.equal(await blockerLine.locator('[data-contribution="blocker"]').innerText(), 'Saved as why it’s blocked');
       const cameOfItLine = activity.locator(`[data-message-id="${afterResult.messages[1]!.id}"]`);
       await cameOfItLine.waitFor();
       assert.match(await cameOfItLine.innerText(), /The new hinge holds at 40 N/);

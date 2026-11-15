@@ -195,8 +195,8 @@ class WorkDecisionsJourney(unittest.TestCase):
         window = open_decision(page)
         window.get_by_role("textbox", name="Decision", exact=True).fill(IDEA)
         # The replace choice is in the same window, reachable by keyboard.
-        window.get_by_role("button", name="Replace an earlier decision…").focus()
-        expect(window.get_by_role("button", name="Replace an earlier decision…")).to_be_focused()
+        window.get_by_role("button", name="This replaces an older decision…").focus()
+        expect(window.get_by_role("button", name="This replaces an older decision…")).to_be_focused()
         window.get_by_role("textbox", name="Decision", exact=True).fill("Use a camera for gesture control")
         window.get_by_role("textbox", name="Why", exact=True).fill("It recognises the richest set of gestures")
         expect(window.get_by_role("button", name="Propose decision", exact=True)).to_be_enabled()

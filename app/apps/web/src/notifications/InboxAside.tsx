@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent } from 'react';
 import type { NeedsYouAsideEntry, NeedsYouItem } from '@flux/contracts';
-import { Button, IconButton, MEDIA, Overlay, Spinner, useMediaQuery, useToast } from '../ui';
+import { Button, IconButton, MEDIA, Overlay, Spinner, useLeaveUndoToasts, useMediaQuery, useToast } from '../ui';
 import { Face, kindWord } from './NeedsYouCard';
 import { announceInboxChange } from './api';
 import { getNeedsYouAside, restoreNeedsYou, type Queue } from './needsYou';
@@ -93,6 +93,9 @@ export function InboxAside({ queue }: { queue: Queue }) {
 function AsideWindow({ which, queue }: { which: Which | null; queue: Queue }) {
   const phone = useMediaQuery(MEDIA.phone);
   const close = useCallback(() => setOpenList(null), []);
+  // The window has its own way back (Bring back now, Put back): an Undo toast leaves as it opens, and never floats over its rows.
+  const leaveUndo = useLeaveUndoToasts();
+  useEffect(() => { if (which) leaveUndo(); }, [which, leaveUndo]);
   return (
     <Overlay open={which !== null} onClose={close} placement={phone ? 'bottom' : 'center'} labelledBy="nyq-aside-title" className="nyq-aside-win">
       {which ? <AsideList key={which} which={which} queue={queue} onClose={close} /> : null}

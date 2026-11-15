@@ -245,6 +245,9 @@ describe('in the company', () => {
     assert.equal(await removedFrom(member), null, 'someone still in it is told nothing');
     const refused = await colleague.browser.request('POST', `/api/v1/dms/${dm.id}/messages`, { body: { body: 'Still there?', clientMessageId: randomUUID() } });
     assert.equal(refused.status, 409, refused.text);
+    // The other side reads why, before writing (personas-30): no longer in the company, which only an admin's Restore undoes.
+    const gone = expectStatus(await colleague.browser.request('GET', `/api/v1/dms/${dm.id}`), 200) as Dm;
+    assert.equal(gone.counterpartGone, 'company');
     await pool.query('DELETE FROM projects WHERE id = $1', [doomed.id]);
 
     const listed = expectStatus(await admin.browser.request('GET', `/api/v1/workspaces/${companyId}/removed-people`), 200) as RemovedPerson[];
@@ -273,6 +276,7 @@ describe('in the company', () => {
     const again = expectStatus(await leaver.browser.request('GET', `/api/v1/dms/${dm.id}`), 200) as Dm;
     assert.deepEqual(again.messages.map((message) => message.body), ['Before I go']);
     assert.deepEqual(again.audience.participantIds.slice().sort(), [leaver.id, colleague.id].sort());
+    assert.equal((expectStatus(await colleague.browser.request('GET', `/api/v1/dms/${dm.id}`), 200) as Dm).counterpartGone, undefined, 'both take part again');
     expectStatus(await colleague.browser.request('POST', `/api/v1/dms/${dm.id}/messages`, { body: { body: 'Welcome back', clientMessageId: randomUUID() } }), 201,
       'the other side no longer reads that they left');
     const rejoined = (await pool.query<{ joined_at: Date }>('SELECT joined_at FROM dm_participants WHERE dm_id = $1 AND user_id = $2', [dm.id, leaver.id])).rows[0]!.joined_at;

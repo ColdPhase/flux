@@ -289,8 +289,8 @@ class DecisionFlows(unittest.TestCase):
         page = self.page()
         page.goto(f"/projects/{self.ids['project']}/tasks")
         window = open_decision(page)
-        # One form (#1419): "Replace an earlier decision…" shows its choice in this window, not in a second form in the panel.
-        window.get_by_role("button", name="Replace an earlier decision…").click()
+        # One form (#1419): "This replaces an older decision…" shows its choice in this window, not in a second form in the panel.
+        window.get_by_role("button", name="This replaces an older decision…").click()
         expect(page.locator("#details")).to_have_count(0)
         expect(page.get_by_role("heading", name="Propose a decision")).to_have_count(0)
         select = window.get_by_label("Does it replace an earlier decision?", exact=True)

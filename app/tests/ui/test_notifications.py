@@ -299,8 +299,8 @@ class NotificationJourney(unittest.TestCase):
         expect_value(page.get_by_label("Time zone"), "Europe/Warsaw")
         expect(quiet_row).to_contain_text("21:30–7:15 · no email or push then; the Inbox keeps everything")
 
-        # Muted places are behind a link row.
-        muted_row = page.locator(".sset-row").filter(has=page.get_by_text("Muted places", exact=True))
+        # Muted spaces and messages are behind a link row.
+        muted_row = page.locator(".sset-row").filter(has=page.get_by_text("Muted spaces and messages", exact=True))
         expect(muted_row).to_contain_text("None")
         expect(page.get_by_label("Place to mute")).to_have_count(0)
         page.get_by_role("button", name="Change muted places").click()

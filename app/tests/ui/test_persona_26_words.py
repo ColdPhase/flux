@@ -294,7 +294,7 @@ class PersonaRound26Words(unittest.TestCase):
             mine = people.locator(f"[data-person='{self.ids[who]}'] .spset__who b")
             expect(mine).to_have_text(f"{PEOPLE[who][0]} (you)")
             if who == "ola":
-                expect(page.locator("[data-ai-switch]")).to_contain_text("Agents can work here, with each person’s own AI")
+                expect(page.locator("[data-ai-switch]")).to_contain_text("Let AI agents help in this space")
 
     def test_10_the_company_role_is_a_menu_that_changes_it(self) -> None:
         page = self.page("ola")

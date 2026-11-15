@@ -402,7 +402,10 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
   function chooseWait(value: string) {
     const [kind, ...rest] = value.split(':');
     const id = rest.join(':');
-    void change(!value ? { waitingFor: null, waitingOn: null } : kind === 'human' ? { waitingFor: { kind: 'human', id } } : { waitingOn: { kind: kind as 'decision' | 'task', id } });
+    // The pick is saved at once; the reason being written is then based on that saved version, so its Save is never a conflict with the
+    // person's own pick (personas-30: "Someone changed this a moment ago…").
+    void change(!value ? { waitingFor: null, waitingOn: null } : kind === 'human' ? { waitingFor: { kind: 'human', id } } : { waitingOn: { kind: kind as 'decision' | 'task', id } },
+      item, undefined, (stored) => { if (blockerBase.current !== null) blockerBase.current = stored.version; });
   }
   // The person a blocked task waits for says they are done, and it goes back to Doing by itself (#868). Reading the space is enough.
   const waitedOnMe = item.status === 'blocked' && item.waitingFor?.id === me.user.id;
@@ -749,7 +752,8 @@ function DecisionPanel({ decision, context, detail, relations, reload, revision,
       ) : null}
       <dl className="wd-rows wd-decision-rows">
         <div className="wd-row"><dt>Proposed</dt><dd><span>{decision.proposedBy.kind === 'agent' ? <AgentIdentity name={decision.proposedBy.name} owner={agentAuthorOwner(decision.proposedBy, owners)} hue={decision.proposedBy.colour} /> : youOr(decision.proposedBy)} · {shortDate(decision.createdAt)}</span></dd></div>
-        {decision.decidedBy ? <div className="wd-row"><dt>Decided</dt><dd><span>{youOr(decision.decidedBy)} · {shortDate(decision.decidedAt!)}</span></dd></div> : null}
+        {/* The card's words (personas-30): "Accepted by Ola Nowicka · today", never a second word for the same thing. */}
+        {decision.decidedBy ? <div className="wd-row"><dt>Accepted by</dt><dd><span>{youOr(decision.decidedBy)} · {shortDate(decision.decidedAt!)}</span></dd></div> : null}
       </dl>
 
       {earlier ? (
@@ -774,7 +778,7 @@ function DecisionPanel({ decision, context, detail, relations, reload, revision,
       ) : null}
 
       <OtherRelationships object={decision} relations={relations} project={context.project} />
-      <InDocs object={decision} kind="decision" project={context.project} relations={relations} notYet={decision.status === 'proposed' ? 'You can add it once it is accepted.' : undefined} />
+      <InDocs object={decision} kind="decision" project={context.project} relations={relations} notYet={decision.status === 'proposed' ? 'Only an accepted decision can be added.' : undefined} />
     </div>
   );
 }

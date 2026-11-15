@@ -184,7 +184,8 @@ export function WorkspacePeople({ workspaceId, onBack, page = false }: { workspa
       {page ? (
         <>
           <p className="details__lead">Everyone in {workspace.name} works in this one Flux. Only admins can change this page.</p>
-          <CompanyName workspace={workspace} manager={manager} startEditing={params.get('name') === '1'} onChanged={() => { load(); revalidator.revalidate(); }} />
+          <CompanyName workspace={workspace} manager={manager} startEditing={params.get('name') === '1'} onChanged={() => { load(); revalidator.revalidate(); }}
+            onClosed={() => { if (params.has('name')) setParams((current) => { const next = new URLSearchParams(current); next.delete('name'); return next; }, { replace: true }); }} />
         </>
       ) : (
         <>
@@ -240,7 +241,7 @@ export function WorkspacePeople({ workspaceId, onBack, page = false }: { workspa
 
       {page && canAdd ? <WaitingLinks workspace={workspace} myRole={myRole} links={links} /> : null}
       {page && manager ? <RemovedPeople workspaceId={workspace.id} myRole={myRole} reload={reload}
-        onRestored={(person, more) => changed(`${person.name} is back in ${workspace.name} as ${ROLE_LABEL[person.role]}${person.spaces ? `, in ${spacesWord(person.spaces)}` : ''}.`, !more, false, person.userId)} /> : null}
+        onRestored={(person, more) => changed(`${person.name} is back in ${workspace.name} as ${ROLE_LABEL[person.role]}, in ${spacesWord(person)}.`, !more, false, person.userId)} /> : null}
       {page && manager ? <CompanySpaces workspaceId={workspace.id} /> : null}
 
       {/* Encrypted spaces (F-030, #655): Encryption comes before AI and keeps its place in every state; AI is off for good and has no switch. */}
@@ -254,11 +255,12 @@ export function WorkspacePeople({ workspaceId, onBack, page = false }: { workspa
   );
 }
 
-const spacesWord = (count: number) => (count === 1 ? '1 space' : `${count} spaces`);
+/** How many spaces, Everyone counted, as the sidebar counts them (personas-30): the server's `spaces` are those besides Everyone. */
+const spacesWord = (person: Pick<RemovedPerson, 'spaces'>) => (person.spaces + 1 === 1 ? '1 space' : `${person.spaces + 1} spaces`);
 
 /**
  * Who left or was removed: Restore brings them back as they were (founder decision, #1424 F, 2026-11-15): the role they had, the spaces they
- * were in and their direct messages. Each row says the role and how many spaces besides Everyone. Only an owner gives back the owner role.
+ * were in and their direct messages. Each row says the role and how many spaces, Everyone counted. Only an owner gives back the owner role.
  * `more`: another Restore took the focus (the next one in the list), so the restored person's row does not.
  */
 function RemovedPeople({ workspaceId, myRole, reload, onRestored }: { workspaceId: string; myRole: WorkspaceRole; reload: number; onRestored: (person: RemovedPerson, more: boolean) => void }) {
@@ -291,7 +293,7 @@ function RemovedPeople({ workspaceId, myRole, reload, onRestored }: { workspaceI
         {people.map((person) => (
           <li className="people__item" key={person.userId} data-removed={person.userId}><div className="people__row">
             <Avatar name={person.name} id={person.userId} size="md" />
-            <span className="people__who"><b>{person.name}</b><span>{[person.email, ROLE_LABEL[person.role], person.spaces ? spacesWord(person.spaces) : null].filter(Boolean).join(' · ')}</span></span>
+            <span className="people__who"><b>{person.name}</b><span>{[person.email, ROLE_LABEL[person.role], spacesWord(person)].filter(Boolean).join(' · ')}</span></span>
             {person.role === 'owner' && myRole !== 'owner'
               ? <span className="people__removed-note">An owner can restore them</span>
               : <Button variant="quiet" size="sm" className="access__invite" busy={busy === person.userId} onClick={() => void restore(person)}>Restore</Button>}
@@ -369,7 +371,8 @@ function CompanySpaces({ workspaceId }: { workspaceId: string }) {
 }
 
 /** The company's name (Settings › Company): shown on the sign-in page and in emails; owners and admins change it in place. */
-function CompanyName({ workspace, manager, startEditing = false, onChanged }: { workspace: Workspace; manager: boolean; startEditing?: boolean; onChanged: () => void }) {
+/** `onClosed`: the field closed (saved or cancelled), so an address that opened it (`?name=1`) no longer says so (personas-30). */
+function CompanyName({ workspace, manager, startEditing = false, onChanged, onClosed }: { workspace: Workspace; manager: boolean; startEditing?: boolean; onChanged: () => void; onClosed?: () => void }) {
   const [editing, setEditing] = useState(() => startEditing && manager);
   const [value, setValue] = useState(workspace.name);
   const [busy, setBusy] = useState(false);
@@ -377,7 +380,7 @@ function CompanyName({ workspace, manager, startEditing = false, onChanged }: { 
   const keys = useRef(attemptKeys());
   const changeRef = useRef<HTMLButtonElement>(null);
   const fieldRef = useRef<HTMLInputElement>(null);
-  const close = () => { setEditing(false); setProblem(''); };
+  const close = () => { setEditing(false); setProblem(''); onClosed?.(); };
   useFocusBack(changeRef, editing);
   // The name opens selected (#1424 persona P2): typing replaces it, so a first run's "Company" never becomes "CompanyNowak Bakery".
   useLayoutEffect(() => { if (editing) fieldRef.current?.select(); }, [editing]);
@@ -412,7 +415,7 @@ function CompanyName({ workspace, manager, startEditing = false, onChanged }: { 
         </form>
       ) : (
         <div className="sset-card"><div className="people__row people__name">
-          <span className="people__who"><b>{workspace.name}</b><span>Shown on the sign-in page and in emails</span></span>
+          <span className="people__who"><b>{workspace.name}</b><span>Shown on the sign-in page and in emails.</span></span>
           {manager ? <Button ref={changeRef} variant="quiet" size="sm" className="people__change" onClick={() => { setValue(workspace.name); setEditing(true); }}>Change<span className="ui-vh"> the company name</span></Button> : null}
         </div></div>
       )}

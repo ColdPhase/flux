@@ -110,7 +110,7 @@ export function ProjectsIndex() {
         <span className="ui-vh" role="status" aria-live="polite">{moves.status}</span>
         {/* Direct messages live in Projects on the phone, below the spaces (F-026 S2). A guest with no conversation and no agent has no
             Messages heading over nothing, as in the sidebar (audit P3 5, persona round 6): the first one someone starts with them brings it. */}
-        {phone && (directMessages.length || agents.length || startsConversations(workspace)) ? (
+        {phone && (directMessages.length || agents.length || (!!workspace && startsConversations(workspace))) ? (
           <section className="proj-index__dms" aria-labelledby="proj-index-dms">
             <h2 id="proj-index-dms">Messages</h2>
             {/* The same card and grid as the spaces, with a fixed time column, so a long preview never pushes the date out (#763 NV-5). */}
@@ -138,7 +138,7 @@ export function ProjectsIndex() {
               </ul>
             ) : <p className="proj-index__lead">No messages yet. Only the people in each conversation can read it.</p>}
             {/* A guest replies in conversations they are added to and starts none (#1424): no New message for them. */}
-            {startsConversations(workspace) ? <Link to="/dm/new" className="ui-btn ui-btn--secondary"><Icon name="plus" />New message</Link> : null}
+            {(!!workspace && startsConversations(workspace)) ? <Link to="/dm/new" className="ui-btn ui-btn--secondary"><Icon name="plus" />New message</Link> : null}
           </section>
         ) : null}
       </div>

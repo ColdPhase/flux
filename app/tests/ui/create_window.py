@@ -111,7 +111,7 @@ def propose_decision(page: Page, title: str, *, why: str | None = None, replaces
         decision.get_by_role("textbox", name="Why", exact=True).fill(why)
     if replaces:
         from app_select import choose
-        decision.get_by_role("button", name="Replace an earlier decision…").click()
+        decision.get_by_role("button", name="This replaces an older decision…").click()
         choose(decision.get_by_label("Does it replace an earlier decision?", exact=True), label=replaces)
     decision.get_by_role("button", name=re.compile("^Propose decision")).click()
     expect(decision).to_have_count(0)

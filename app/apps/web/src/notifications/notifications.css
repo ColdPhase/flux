@@ -75,7 +75,7 @@
 .nset__add input { min-height: var(--ctl); }
 .nset__add-error { display: flex; align-items: center; gap: 6px; flex: 1 1 100%; margin: 0; font-size: var(--fs-sm); color: var(--t1); }
 
-/* Muted places. */
+/* Muted spaces and messages. */
 .nset__panel .nset__lead { margin: 0 0 10px; }
 .nset__muted { list-style: none; margin: 0 0 10px; padding: 0; }
 .nset__muted li { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 40px; border-bottom: 1px solid var(--line); }

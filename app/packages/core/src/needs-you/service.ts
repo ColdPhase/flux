@@ -104,9 +104,9 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
       return works.get(id) ?? null;
     };
     for (const decision of decisions) {
-      // #763 FT-8: your own proposal waits for someone else; it asks you only when nobody else here can accept it.
-      if (decision.proposedBy.kind === 'human' && decision.proposedBy.id === userId
-        && (accepters.get(decision.projectId) ?? []).some((person) => !person.you)) continue;
+      // #763 FT-8: your own proposal waits for someone else, never in your Inbox, also when nobody else here can accept it (personas-30:
+      // the only person of a space found what they had just proposed there as something that needs them). It stays on its card.
+      if (decision.proposedBy.kind === 'human' && decision.proposedBy.id === userId) continue;
       const related = links(decision.id).filter((link) => link.from.id === decision.id);
       const basedOn = related.filter((link) => link.role === 'source' && link.toTitle).map((link) => link.toTitle).slice(0, 4);
       const affects: NeedsYouTaskRef[] = [];
@@ -246,7 +246,7 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
         project: { id: task.projectId, name: projectNames.get(task.projectId) ?? 'Space' },
         from: note.from?.id ? { kind: note.from.kind, id: note.from.id, name: note.from.name } : null,
         at: iso(note.createdAt), url: `/projects/${task.projectId}/tasks?open=work:${task.id}`, decision: null, blocked: null, reason: null, snoozeTask: null,
-        task: { workId: task.id, number: task.number },
+        task: { workId: task.id, number: task.number, version: task.version },
       });
     }
     // Suggestions agents you connected made through MCP (#661), one question each.

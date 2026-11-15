@@ -161,7 +161,7 @@ class PersonaAiAndGuests(unittest.TestCase):
         # Typed anyway, it says what Settings › AI says and offers nothing to connect.
         composer.fill("/ai ")
         bar = page.locator("#project-ask")
-        expect(bar).to_contain_text("Off on this Flux server.")
+        expect(bar).to_contain_text("AI is off on this server.")
         expect(bar.get_by_role("button", name="Connect your AI")).to_have_count(0)
 
     # ---------------------------------------------------------------- P2 #2: a guest is not offered a space

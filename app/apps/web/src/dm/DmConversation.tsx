@@ -472,7 +472,9 @@ function DmContent({ initial }: { initial: Dm }) {
     onDraft: (value) => change(value), onAsk: () => undefined,
     onCommand: (command) => { if (command === 'ai' && connectsFirst(askState(assistant.status))) openConnectAi(); } });
   const goneNotice = recipientGone
-    ? leftNotice || `${counterpart!.name.split(/\s+/)[0]} left this conversation. They can reopen it by messaging you.`
+    // Someone no longer in the company cannot reopen it (personas-30): the notice says where they went, as a send would answer.
+    ? leftNotice || (dm.counterpartGone === 'company' ? `${counterpart!.name.split(/\s+/)[0]} is no longer in the company, so this conversation has nobody to send to.`
+      : `${counterpart!.name.split(/\s+/)[0]} left this conversation. They can reopen it by messaging you.`)
     : '';
   const typing = useTyping(me.user.id, !gone ? { kind: 'dm', id: dm.id } : null, !recipientGone);
   const threadOpen = !!threadId && !!messages.length && !gone;

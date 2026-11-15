@@ -23,7 +23,7 @@ interface TaskThoughtLinksProps {
 const LINK_FAILURE = 'Could not link it. Try again.';
 
 /**
- * The task's thought linking as one state two places share (#488): the "Link to a thought" action in the panel's one row of
+ * The task's thought linking as one state two places share (#488): the "Add to a thought" action in the panel's one row of
  * actions, and the linked thoughts with their picker below it, which appear only once there is something to show.
  */
 export function useThoughtLinks({ item, project, links, reload }: TaskThoughtLinksProps) {
@@ -104,11 +104,11 @@ export function useThoughtLinks({ item, project, links, reload }: TaskThoughtLin
 
 export type ThoughtLinks = ReturnType<typeof useThoughtLinks>['links'];
 
-/** "Link to a thought": one small action beside Hand off and Result. */
+/** "Add to a thought": one small action beside Hand off and Result. */
 export function LinkThoughtButton({ links, toggle }: { links: ThoughtLinks; toggle: RefObject<HTMLButtonElement | null> }) {
   return (
     <Button ref={toggle} variant="secondary" size="sm" icon="link" disabled={links.busy} aria-expanded={links.open} aria-controls={links.panelId}
-      onKeyDown={links.onKeyDown} onClick={() => { links.setError(''); links.setStatus(''); links.setOpen((value) => !value); }}>Link to a thought</Button>
+      onKeyDown={links.onKeyDown} onClick={() => { links.setError(''); links.setStatus(''); links.setOpen((value) => !value); }}>Add to a thought</Button>
   );
 }
 

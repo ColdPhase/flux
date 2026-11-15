@@ -92,6 +92,11 @@ export interface Dm extends DmSummary {
   messagePage: { hasMoreBefore: boolean; nextBeforeSequence: number | null; limit: number };
   /** Where the caller left off among the roots (#1246). It may name a message older than this window. */
   unreadFrom?: UnreadFrom;
+  /**
+   * Set when the other person of a 1:1 no longer takes part: `conversation` when they left it (only they can reopen it), `company` when
+   * they are no longer in the company (removed or gone), so the notice says that and offers no reopening (personas-30).
+   */
+  counterpartGone?: 'conversation' | 'company';
 }
 
 /**

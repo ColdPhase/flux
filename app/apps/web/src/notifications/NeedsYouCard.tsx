@@ -132,7 +132,7 @@ export function NeedsYouCard({ item, selected = false, compact = false, list = f
   const label = run ? `${run.agentName}, your agent: ${item.title}`
     : `${[word, item.from?.name ? `from ${item.from.name}` : null, item.project ? `in ${item.project.name}` : null].filter(Boolean).join(' ')}: ${item.title}`;
   const meta = (run ? ['Your agent', project]
-    : decision ? ['Decision', project] : item.kind === 'blocked' ? [item.blocked?.waitedBy ? 'Waiting on you' : 'Your task', project, ago(item.at)] : [word, project]).filter(Boolean).join(' · ');
+    : decision ? ['Decision', project] : item.kind === 'blocked' ? [word, item.blocked?.waitedBy ? 'waits for you' : 'your task', project, ago(item.at)] : [word, project]).filter(Boolean).join(' · ');
   const who = run?.agentName ?? item.from?.name ?? null;
   const asked = item.agentQuestion ?? null;
   // A row of any kind is one muted line, "Kind · who · space", then the title (README §7 Inbox, #1424): a decision "Decision · Maja · Community garden
@@ -158,8 +158,7 @@ export function NeedsYouCard({ item, selected = false, compact = false, list = f
   const single = compact && !list ? (
     <div className="nyc__rowactions">
       {decision ? <Button variant="secondary" onClick={() => handlers.accept(item)}>Accept</Button>
-        : item.kind === 'blocked' ? <Button variant="secondary" onClick={() => handlers.open(item)}>Open task</Button>
-        : item.kind === 'task' ? <Button variant="secondary" onClick={() => handlers.open(item)}>Open</Button>
+        : item.kind === 'blocked' || item.kind === 'task' ? <Button variant="secondary" onClick={() => handlers.open(item)}>Open</Button>
         : answers ? <Button variant="secondary" onClick={() => onSelect?.()}>Answer</Button>
         : item.proposal ? <Button variant="secondary" onClick={() => handlers.open(item)}>Review</Button>
         : run ? <Button variant="secondary" onClick={() => handlers.applyChanges(item)}>Approve all</Button>
@@ -181,11 +180,12 @@ export function NeedsYouCard({ item, selected = false, compact = false, list = f
         </>
       ) : item.kind === 'blocked' ? (
         <>
-          <Button variant="secondary" onClick={() => handlers.open(item)}>Open task</Button>
+          {/* One word for opening a task, the open item's one primary (personas-30): "Open", as a Task item has it. */}
+          <Button variant="primary" onClick={() => handlers.open(item)}>Open</Button>
           {item.blocked?.waitedBy ? null : <Button variant="quiet" onClick={() => handlers.unblock(item)}>Unblock</Button>}
         </>
       ) : item.kind === 'task' ? (
-        <Button variant="secondary" onClick={() => handlers.open(item)}>Open</Button>
+        <Button variant="primary" onClick={() => handlers.open(item)}>Open</Button>
       ) : answers ? (
         <>{answers}</>
       ) : item.proposal ? (

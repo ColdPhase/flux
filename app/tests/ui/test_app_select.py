@@ -84,7 +84,7 @@ class AppSelect(unittest.TestCase):
         return json.loads(response.text()) if response.text() else {}
 
     def mute(self, **kwargs):
-        """Settings' "Place to mute": the same select at every width, behind the Muted places row's Change."""
+        """Settings' "Place to mute": the same select at every width, behind the Muted spaces and messages row's Change."""
         page = self.page(**kwargs)
         page.goto("/settings/notifications")
         page.get_by_role("button", name="Change muted places").click()
