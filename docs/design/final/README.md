@@ -897,7 +897,7 @@ Community garden sensors, Rain barrel monitor and Tool library.
     and is still in the company, newest first, and none for someone they already have a direct message with. The steps keep their rows first, so
     together there are at most three. Tapping the row opens the direct message with that person (made if there is none), which is what takes
     the row away. The card is still the steps: with none left it is done for good and so are these rows, which never keep it or bring it back.
-  - **A member:** **Write your first message** (the person has written none; opens Everyone with the composer ready), **Add your
+  - **A member:** **Write your first message** (the person has written none; opens the space their invite link added them to while they are in it, else Everyone, with the composer ready, and names it: "Say hello in Seed swap"), **Add your
     photo** (no profile photo; opens Settings › Account) and **Get notifications on this phone** (only beside one of those two rows,
     where push is available and this device is not subscribed; the same flow as the one-time offer, which then does not show
     separately).
@@ -1380,9 +1380,10 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   blocked task opens the same one field.
 - **A guest has no Space tab** (persona round, 2026-11-15, on the founder's "nothing appears that the user cannot use", [#1424](https://github.com/ColdPhase/flux/issues/1424)).
   A guest does not start spaces, so New shows them Task, Thought, Decision and Page only, and nothing in Flux offers them New space
-  (Home, the Spaces list, My tasks). With no space yet, the Task and Decision tabs say "You're not in a space yet. When someone adds you
-  to one, you can add its tasks here." (or "propose its decisions"), never "Make one with New space"; Home's line is only "When someone
-  adds you to a space, it appears here at once."
+  (Home, the Spaces list, My tasks). With no space yet a guest's New has Thought alone (it goes on My map; a task, a decision and a
+  page each need a space, persona round 26); Home's line is only "When someone adds you to a space, it appears under Spaces at once."
+  (the sidebar's heading and the phone's tab alike). Nor does a guest start a conversation: no New message (the Messages "+", the
+  Messages page, the phone's Spaces), and a person's name over a message is only their name for a guest, not a way to `/dm/new`.
 - **Batch entry is one step, and the space is kept.** **Add another** in the toast, or `C` pressed
   next, opens the window again on Task with the same space chosen, an empty title and no owner. `C` keeps the space the last task was created in until the person goes to another
   place.
@@ -1605,7 +1606,10 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
     that was used leaves the list with its sentence, so no line is left about a link that is no longer listed.
   - **Reset link and Remove are on the person's row** (founder decision, Hubert, 2026-11-14, [#1424](https://github.com/ColdPhase/flux/issues/1424)):
     after the role button, as quiet buttons, the same way Space settings shows Remove. Remove asks in place, **Remove** (danger) and
-    **Keep**, with the line of what it ends under the row; the role button "Member ▾" opens only the role.
+    **Keep**, with the line of what it ends under the row; the role "Member ▾" is the menu of roles it looks like, as in Space settings:
+    the role chosen is the role at once, and only an owner or admin of an encrypted company who stops being one is asked first, under
+    the row (persona round 26: the look matches what it does). A link locked to an address that is in the company already is not
+    "Waiting to be used".
   - **A reset link next to a person** (founder decision, Hubert, 2026-11-13, [#1471](https://github.com/ColdPhase/flux/issues/1471)).
     Without SSO, the row's quiet **Reset link** opens one group under the row:
     "Password" in the group's label style, the line "Make a one-time link that lets {first name} choose a new password." and a
