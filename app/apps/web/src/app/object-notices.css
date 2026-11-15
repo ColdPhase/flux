@@ -20,5 +20,5 @@
 .thread__list > .convo-object { margin: 14px 0; }
 /* The card of the decision open in the panel is the open one, with the open card's fill (the board's open card, --pick), from whatever
    opened it: the card, Search, the Inbox or a notification. High contrast keeps it as an outline. */
-.convo-notice__card:has(> .convo-object__card[aria-current="true"]) { background: var(--pick); }
-@media (forced-colors: active) { .convo-notice__card:has(> .convo-object__card[aria-current="true"]) { outline: 2px solid Highlight; outline-offset: 2px; } }
+.convo-notice__card.is-open { background: var(--pick); }
+@media (forced-colors: active) { .convo-notice__card.is-open { outline: 2px solid Highlight; outline-offset: 2px; } }

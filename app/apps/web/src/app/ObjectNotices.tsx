@@ -62,7 +62,7 @@ export function ObjectNoticeItem({ notice, meId, owners, authorOf, inThread = fa
   return (
     <li className={`convo-object${follows ? ' is-follow' : ''}${card ? '' : ' is-line'}`} id={`object-${notice.id}`} data-object-kind={notice.kind} data-object-id={target.id} data-object-state={state.state}>
       <AuthorFace kind={by.kind} id={by.id} name={name} mine={mine} hue={by.colour} />
-      {card ? <div className="convo-notice__body convo-notice__card">
+      {card ? <div className={`convo-notice__body convo-notice__card${current ? ' is-open' : ''}`}>
         {meta}
         <button type="button" className="convo-notice__task convo-object__card" onClick={() => open(target)} aria-label={`Open decision ${notice.title}, ${state.word.toLowerCase()}`}
           aria-current={current ? 'true' : undefined}>

@@ -89,9 +89,11 @@ class DecisionOnePlace(unittest.TestCase):
         card = self.card(page, proposal)
         expect(card, f"{how}: its card is the open one").to_have_attribute("aria-current", "true")
         expect(self.card(page, self.ids["rule"]), f"{how}: no other card is marked").not_to_have_attribute("aria-current", "true")
-        self.assertNotEqual(card.evaluate("el => getComputedStyle(el.closest('.convo-notice__card')).backgroundColor"),
-                            self.card(page, self.ids["rule"]).evaluate("el => getComputedStyle(el.closest('.convo-notice__card')).backgroundColor"),
-                            f"{how}: the open card is filled, the others are not")
+        # The fill comes in with the card's colour transition (--tr), so it is read once the transition has run.
+        page.wait_for_function("""([open, other]) => {
+            const fill = (id) => getComputedStyle(document.querySelector(`.convo-object[data-object-kind="decision.proposed"][data-object-id="${id}"] .convo-notice__card`)).backgroundColor;
+            return fill(open) !== fill(other);
+        }""", arg=[proposal, self.ids["rule"]], timeout=3000)
         if not phone:
             # On the computer the panel stands beside the conversation, so the open card is on screen beside it.
             expect(card).to_be_in_viewport()
