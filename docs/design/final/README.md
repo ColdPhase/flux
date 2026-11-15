@@ -550,14 +550,19 @@ The keys show next to their actions in menus.
   target). That thing has the focus: its panel, or the message, marked. A link to a message that has no replies marks it in the
   conversation and opens no thread panel; a link followed from inside an open panel (a task's "From: Message") keeps that panel and
   its way back ("‹ Task #4").
-- **An object opened by `?open=`** keeps that address while it is open: a reload opens it again, Back leaves with its panel or sheet,
-  and closing it takes `?open=` off the address in the same entry.
-- **A picker or a form** (New message's Find people, Invite, Add people) opens with its first field focused, in view; letters typed
-  while it opens go into it. Esc in a form's field closes the form and gives focus back to what opened it. In New message, Enter or
+- **A task or a decision in the panel or sheet has its own address, `?open=`,** however it was opened: a card on the board or in the
+  conversation, Create, Search, Home, the Inbox, a link. A reload opens it again. Opened in its space, it is its own history entry:
+  Back closes it first, and closing it goes Back. Followed from a link, it takes the link's entry: Back leaves with it, and closing it
+  takes `?open=` off the address. Discuss on the decision already open adds no entry.
+- **A picker or a form** (New message's Find people, Invite, Add people with its filter) opens with its first field focused, in view;
+  letters typed while it opens go into it, and so do the keys typed while a picker's Enter opens what it picked. Esc in a form's field closes the form and gives focus back to what opened it. In New message, Enter or
   the down arrow picks the one person found.
 - **R in the Inbox writes:** Reply, a decision's Discuss, or a blocked task's discussion. Where there is nothing to write to, the
   letters typed after R are held, never run as A, E or S.
-- **The sidebar's arrow keys** move between its rows. **G I** to an empty Inbox focuses its heading.
+- **The sidebar's arrow keys** move between its rows. **G I** lands on the Inbox's open item, or its heading when it is empty,
+  whatever had focus. After **Z** or Undo in the Inbox, the item that came back has the focus.
+- **A window closed to go somewhere** (a Search result, a place) leaves the focus to where it leads, never back to its opener.
+- **A page arrived at with nothing to focus** (Back to Home, a reload) gives the focus to its content, never to the page itself.
 - **Single keys** are never shortcuts while a field has focus, or while a menu is open. **Esc in a composer** leaves it for the
   newest message and keeps the draft; the single keys work from there. New shows its `C` only while `C` works (no field has focus).
 - **Esc with a panel open** closes the panel wherever focus is, an empty field included, unless a menu or a window is open or the
