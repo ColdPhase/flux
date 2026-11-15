@@ -327,8 +327,11 @@ class WorkDecisionsJourney(unittest.TestCase):
         rule = self.api(page, "POST", f"{base}/decisions", {"title": "Oldest rule: battery powered"}, status=201)
         self.api(page, "POST", f"/api/v1/decisions/{rule['id']}/accept", {"expectedVersion": 1}, status=200)
         expected=set()
+        # The proposals are the partner's: your own proposal is never in your own Inbox (personas-30), so the owner is asked about them.
+        self.api(page, "POST", f"{base}/grants", {"principal": {"kind": "human", "id": PARTNER["id"]}, "role": "contributor"}, status=201)
+        partner = self.page("partner")
         for index in range(1, 102):
-            self.api(page, "POST", f"{base}/decisions", {"title": f"Idea {index:03d}"}, status=201)
+            self.api(partner, "POST", f"{base}/decisions", {"title": f"Idea {index:03d}"}, status=201)
         for index in range(1, 102):
             item=self.api(page, "POST", f"{base}/work", {"title": f"Work item {index:03d}"}, status=201)
             expected.add(("work",item["id"]))

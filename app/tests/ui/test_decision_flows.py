@@ -122,9 +122,21 @@ class DecisionFlows(unittest.TestCase):
         message = root["messages"][0]["id"]
         rule = self.api(page, "POST", f"/api/v1/projects/{pid}/decisions", {"title": RULE, "rationale": "Ten minutes shows a watering"}, status=201)
         self.api(page, "POST", f"/api/v1/decisions/{rule['id']}/accept", {"expectedVersion": 1}, status=200)
-        sourced = self.api(page, "POST", f"/api/v1/projects/{pid}/decisions", {"title": FROM_MESSAGE, "rationale": "Capacitive probes do not corrode",
-                                                                                 "sources": [{"type": "message", "id": message}]}, status=201)
-        bare = self.api(page, "POST", f"/api/v1/projects/{pid}/decisions", {"title": NO_SOURCE, "rationale": "Less evaporation"}, status=201)
+        # The two proposals are Jonas's: your own proposal is never in your own Inbox (personas-30), so Ada is asked about his.
+        jonas = self.browser.new_context(base_url=ORIGIN)
+        self.addCleanup(jonas.close)
+        jonas_email = f"jonas.flows+{STAMP}@example.test"
+        signed = jonas.request.post(f"{ORIGIN}/api/auth/sign-up/email", data={"name": "Jonas Berg", "email": jonas_email, "password": PASSWORD}, headers={"origin": ORIGIN})
+        self.assertEqual(signed.status, 200, signed.text())
+        jonas_id = jonas.request.get(f"{ORIGIN}/api/v1/me").json()["user"]["id"]
+        self.api(page, "POST", f"/api/v1/workspaces/{ws['id']}/members", {"email": jonas_email, "role": "member"}, status=201)
+        self.api(page, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": jonas_id}, "role": "contributor"}, status=201)
+        def propose(body: dict) -> dict:
+            response = jonas.request.post(f"{ORIGIN}/api/v1/projects/{pid}/decisions", data=body, headers={"origin": ORIGIN})
+            self.assertEqual(response.status, 201, response.text())
+            return response.json()
+        sourced = propose({"title": FROM_MESSAGE, "rationale": "Capacitive probes do not corrode", "sources": [{"type": "message", "id": message}]})
+        bare = propose({"title": NO_SOURCE, "rationale": "Less evaporation"})
         # The proposal without a source is also in a Wiki page: that link to it is not what it is based on (D2). A page mentions
         # it in a sentence; "Add to a Wiki page" itself refuses a proposal (F-034).
         self.api(page, "POST", f"/api/v1/projects/{pid}/docs", {"title": "Watering", "body": f"We may water at dawn: [{NO_SOURCE}](flux:decision/{bare['id']})."}, status=201)
