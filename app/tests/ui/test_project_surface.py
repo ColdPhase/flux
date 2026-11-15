@@ -461,7 +461,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         page.locator(".sk-switch .wiki-switch").tap()
         switcher = page.get_by_role("dialog", name="Maps in this space")
         expect(switcher).to_be_visible()
-        self.assertGreaterEqual(switcher.locator(".wiki-menu__row").first.bounding_box()["height"], 44)
+        self.assertGreaterEqual(round(switcher.locator(".wiki-menu__row").first.bounding_box()["height"], 2), 44)  # sub-pixel layout (43.99998)
         self.assertLessEqual(switcher.bounding_box()["x"] + switcher.bounding_box()["width"], PHONE["width"])
         shot(page, "project-map-phone-390")
         page.keyboard.press("Escape")

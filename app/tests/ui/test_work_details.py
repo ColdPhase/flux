@@ -180,7 +180,8 @@ class NativeDetailsJourney(unittest.TestCase):
         # project; it closes there, and Back to the page it was opened on restores it with its own project's links.
         expect(page).to_have_url(re.compile(f"/projects/{second}$"));expect(panel).to_have_count(0)
         expect(page.locator(f"#details .wd[data-detail-id='{self.rules[1]['id']}']")).to_have_count(0)
-        page.go_back();expect(page).to_have_url(re.compile(f"/projects/{self.project}/tasks"));expect(panel).to_be_visible();self.ready(panel)
+        page.go_back();expect(page).to_have_url(re.compile(rf"/projects/{self.project}(\?.*)?$"));  # a decision opens over its space's Conversation (#1424)
+        expect(panel).to_be_visible();self.ready(panel)
         panel.get_by_role("region",name="Affects").get_by_role("button",name=re.compile("Compare both shielded")).click()
         panel=page.locator("#details .wd");expect(panel).to_have_attribute("data-detail-id",self.target["id"]);self.ready(panel)
         expect(panel).not_to_contain_text("Everyone in Library lighting measurements")

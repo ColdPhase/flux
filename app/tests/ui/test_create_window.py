@@ -297,7 +297,7 @@ class CreateWindow(unittest.TestCase):
         expect(page).to_have_url(re.compile(r"/tasks\?open=work:|/tasks$"))
         # The footer says what Search finds in one sentence; there are no scopes to name.
         palette, field = self.jump(page, "")
-        expect(palette.locator(".jump__foot")).to_contain_text("Finds spaces, people, messages, tasks, Wiki pages, files and thoughts you can see.")
+        expect(palette.locator(".jump__foot")).to_contain_text("Finds spaces, people, messages, tasks, decisions, Wiki pages, files and thoughts you can see.")
 
     # ---------------------------------------------------------------- the phone's sheet
 
@@ -919,7 +919,7 @@ class CreateWindow(unittest.TestCase):
         expect(options.first.locator(".jump__side")).to_have_text("Wiki")
         expect(listbox.locator(".jump__sh")).to_have_text(["Recent", "Actions"])
         expect(options.nth(2).locator(".jump__key")).to_have_text(["G", "I"])
-        expect(palette.locator(".jump__foot")).to_contain_text("Finds spaces, people, messages, tasks, Wiki pages, files and thoughts you can see.")
+        expect(palette.locator(".jump__foot")).to_contain_text("Finds spaces, people, messages, tasks, decisions, Wiki pages, files and thoughts you can see.")
         shot(page, "521-empty-palette-1440-light")
         # ↑↓ move (and wrap), Enter opens, Esc closes.
         selected = palette.locator("[role=option][aria-selected=true]")
@@ -1090,7 +1090,7 @@ class CreateWindow(unittest.TestCase):
         palette, field = self.jump(page, "")
         expect(palette.get_by_role("listbox", name="Actions")).to_be_visible()
         expect(palette.get_by_role("option", name=re.compile("Cargo bike co-op|^Home"))).to_have_count(0)
-        expect(palette.locator(".jump__foot")).to_contain_text("Finds spaces, people, messages, tasks, Wiki pages, files and thoughts you can see.")
+        expect(palette.locator(".jump__foot")).to_contain_text("Finds spaces, people, messages, tasks, decisions, Wiki pages, files and thoughts you can see.")
 
     def test_18b_the_phone_plus_of_someone_with_no_space_opens_new_space_and_a_thought_asked_for_opens_as_a_thought(self) -> None:
         """#866 review: a thought needs no space (it goes on My map). #1438 point 8: the phone's "+" opens Create, which for someone with no space is
