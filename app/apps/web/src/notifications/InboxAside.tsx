@@ -38,7 +38,7 @@ function whenLine(entry: NeedsYouAsideEntry) {
 /** "Kind · who · space", as every Inbox row starts (README §7 Inbox). */
 function rowLine(item: NeedsYouItem) {
   const run = item.assistantChanges ?? null;
-  return [run ? run.agentName : kindWord(item), run ? 'Your agent' : item.from?.name ?? (item.kind === 'blocked' ? 'your task' : null), item.project?.name ?? null]
+  return [run ? run.agentName : kindWord(item), run ? 'Your agent' : item.from?.name ?? (item.kind === 'blocked' ? 'your task' : null), item.about ? `about “${item.about.title}”` : item.project?.name ?? null]
     .filter(Boolean).join(' · ');
 }
 

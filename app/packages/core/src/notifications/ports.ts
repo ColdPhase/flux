@@ -47,6 +47,11 @@ export interface ProjectMessageFacts {
    * writers follow). Absent for a person who made no choice. Absent altogether when the store has none.
    */
   threadFollows?: { userId: string; following: boolean }[];
+  /**
+   * The decision this conversation is the one discussion of (#1424): its title (for the notice's words) and who a question that names
+   * nobody asks, its proposer or an agent proposer's owner (persona round 8 P2 3). Absent for any other conversation.
+   */
+  decision?: { title: string; askee: string | null } | null;
   /** Set when the message carries an agent's question card (#347 S14): the one person asked and the question text. */
   asked?: { userId: string; question: string } | null;
   /**

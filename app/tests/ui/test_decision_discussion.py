@@ -17,6 +17,7 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
+from create_window import window
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, start_forwarder
 
 PASSWORD = "one discussion in both places"
@@ -33,6 +34,9 @@ EDITED = "I ordered three to try in bed 5."
 BEN = {"name": "Ben Ortiz", "email": f"ben.discuss+{STAMP}@example.test"}
 SECOND = "Move the lamp sensor to the north wall"
 TO_BEN = "Ben, the north wall gets less sun. Does that work for you?"
+THIRD = "Paint the lamp base green"
+ASKED = "Who buys the paint?"
+FROM_BEN = "The north wall is fine by me."
 
 
 class DecisionDiscussion(unittest.TestCase):
@@ -42,6 +46,7 @@ class DecisionDiscussion(unittest.TestCase):
     browser: Browser
     state: dict = {}
     ids: dict = {}
+    ben: dict = {}
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -235,6 +240,8 @@ class DecisionDiscussion(unittest.TestCase):
         place = self.api(owner, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects", {"name": "Lamp", "visibility": "restricted", "people": [ben_id]}, status=201)
         decision = self.api(owner, "POST", f"/api/v1/projects/{place['id']}/decisions", {"title": SECOND, "rationale": "Less sun on the sensor"}, status=201)
         first = self.api(owner, "POST", f"/api/v1/decisions/{decision['id']}/discussion", {"body": TO_BEN, "clientMessageId": str(uuid.uuid4())}, status=201)
+        type(self).ids.update(lamp=place["id"], second=decision["id"], second_talk=first["conversationId"])
+        type(self).ben = ben_context.storage_state()
         page = ben_context.new_page()
         errors: list[str] = []
         page.on("pageerror", lambda error: errors.append(str(error)))
@@ -250,6 +257,75 @@ class DecisionDiscussion(unittest.TestCase):
         expect(divider).to_have_count(1)
         expect(thread.locator("[data-unread-start] + li")).to_contain_text(TO_BEN)
         expect(thread.locator("[data-unread-start] + li"), "the divider stands right above that first message").to_have_attribute("data-message-id", first["id"])
+
+
+    # ---------------------------------------------------------------- round 8: who a question asks, one form in both places
+
+    def ben_page(self, *, phone: bool = False) -> Page:
+        options: dict = {"base_url": ORIGIN, "locale": "en-GB", "timezone_id": "Europe/Warsaw", "viewport": PHONE if phone else DESKTOP, "service_workers": "block",
+                         "storage_state": self.ben}
+        context = self.browser.new_context(**options)
+        self.addCleanup(context.close)
+        return context.new_page()
+
+    def test_07_a_question_that_names_nobody_asks_the_proposer_about_the_decision(self) -> None:
+        ben = self.ben_page()
+        ben.goto("/")
+        third = self.api(ben, "POST", f"/api/v1/projects/{self.ids['lamp']}/decisions", {"title": THIRD}, status=201)
+        owner = self.page()
+        owner.goto("/")
+        # Ada writes first, then asks a question that names nobody: it asks Ben, who proposed the decision, never Ada, who wrote first.
+        self.api(owner, "POST", f"/api/v1/decisions/{third['id']}/discussion", {"body": "I like the idea.", "clientMessageId": str(uuid.uuid4())}, status=201)
+        self.api(owner, "POST", f"/api/v1/decisions/{third['id']}/discussion", {"body": ASKED, "clientMessageId": str(uuid.uuid4())}, status=201)
+        ben.goto("/inbox")
+        row = ben.locator(".nyc", has_text=ASKED)
+        expect(row).to_be_visible(timeout=15000)
+        expect(row).to_contain_text("Question")
+        expect(row).to_contain_text(ADA["name"])
+        expect(row, "the line says which decision it is about").to_contain_text(f"about “{THIRD}”")
+
+    def test_08_the_panel_names_people_as_the_thread_does_and_what_it_shows_is_read_there(self) -> None:
+        ben = self.ben_page()
+        ben.goto("/")
+        said = self.api(ben, "POST", f"/api/v1/decisions/{self.ids['second']}/discussion", {"body": FROM_BEN, "clientMessageId": str(uuid.uuid4())}, status=201)
+        page = self.page()
+        page.goto(f"/projects/{self.ids['lamp']}?open=decision:{self.ids['second']}")
+        panel = page.get_by_role("complementary", name="Details").locator(f".wd[data-detail-id='{self.ids['second']}']")
+        theirs = panel.locator(f'[data-message-id="{said["id"]}"]')
+        expect(theirs).to_contain_text(FROM_BEN)
+        expect(theirs.locator(".wd-act__who b"), "a full name, as the thread names him").to_have_text(BEN["name"])
+        expect(panel.locator(".wd-act__who b", has_text="(you)").first).to_have_text(f"{ADA['name']} (you)")
+        # Read in the panel: the thread does not call it new.
+        for _ in range(60):
+            if self.api(page, "GET", f"/api/v1/conversations/{self.ids['second_talk']}", status=200).get("unreadFrom") is None:
+                break
+            page.wait_for_timeout(250)
+        self.assertIsNone(self.api(page, "GET", f"/api/v1/conversations/{self.ids['second_talk']}", status=200).get("unreadFrom"), "the panel recorded it as read")
+        page.goto(f"/projects/{self.ids['lamp']}")
+        page.locator(f'[data-decision-replies="{self.ids["second"]}"]').first.click()
+        thread = page.locator("#thread")
+        expect(thread.locator(f'[data-message-id="{said["id"]}"]')).to_contain_text(FROM_BEN)
+        expect(thread.locator("[data-unread-start]"), "no New divider above what was read in the panel").to_have_count(0)
+        expect(thread.locator(f'[data-message-id="{said["id"]}"] .project-convo__message-meta')).to_contain_text(BEN["name"])
+
+    def test_09_on_a_phone_the_threads_composer_says_what_it_is_about(self) -> None:
+        page = self.page(phone=True)
+        page.goto(f"/projects/{self.ids['lamp']}/conversations/{self.ids['second_talk']}")
+        line = page.locator(".project-convo__current-thread")
+        expect(line).to_have_text(f"About “{SECOND}”")
+
+    def test_10_the_decision_window_says_the_true_thing_to_a_spaces_only_member(self) -> None:
+        for project, words in ((self.ids["project"], "Only you are in this space, so it waits in your Inbox"), (self.ids["lamp"], "Everyone else in the space sees it in their Inbox")):
+            with self.subTest(project=project):
+                page = self.page()
+                page.goto(f"/projects/{project}")
+                composer = page.locator("#project-composer")
+                expect(composer).to_be_visible()
+                composer.fill("/decide Try a new probe")
+                composer.press("Enter")
+                expect(window(page)).to_be_visible()
+                expect(window(page).locator(".create__note")).to_have_text(words)
+                page.keyboard.press("Escape")
 
 
 if __name__ == "__main__":

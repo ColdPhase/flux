@@ -14,6 +14,8 @@ import { useAgentHue } from '../agents/hues';
 import { useProjectShell } from '../project/data';
 import { useTyping } from '../typing/useTyping';
 import { TypingNotice } from '../typing/TypingNotice';
+import { useObservation } from '../app/receipts';
+import { observeProjectMessages } from '../conversations/api';
 import { DECISION_COMPOSER } from './discuss';
 
 
@@ -62,6 +64,12 @@ export function DecisionMessages({ state, composer, project, members, me }: {
   // The newest stays in view at the bottom, above the field, as a message arrives or is sent.
   const last = `${messages.at(-1)?.id ?? ''}:${composer.pending.length}`;
   useLayoutEffect(() => { list.current?.lastElementChild?.scrollIntoView({ block: 'nearest' }); }, [last]);
+  // What is read here is read in the thread too (persona round 8): the panel records what it shows as viewed, by the thread's own rule
+  // (60 % of a message in view for 700 ms), so the thread draws no New divider above a message already read in the panel.
+  const scroller = useRef<HTMLElement | null>(null);
+  useLayoutEffect(() => { scroller.current = list.current?.closest<HTMLElement>('.wd__scroll') ?? null; });
+  const others = stored.filter((message) => message.authorId !== me.id).map((message) => message.id);
+  useObservation({ scope: project.id, observe: (ids) => observeProjectMessages(project.id, ids), enabled: others.length > 0, feed: scroller, ids: others, depend: stored.length });
   if (!messages.length && !composer.pending.length && !state.failed) return null;
   return (
     <section className="details__sec wd-discussion" aria-labelledby="wd-discussion-head" data-decision-discussion={discussion?.conversationId ?? ''}>
@@ -73,12 +81,12 @@ export function DecisionMessages({ state, composer, project, members, me }: {
           const mine = message.authorId === me.id;
           const hue = message.author?.kind === 'agent' ? hueOf(message.author) : undefined;
           return (
-            <li key={message.id} className="wd-act__item wd-act__item--message" data-message-id={message.id}>
+            <li key={message.id} className="wd-act__item wd-act__item--message" data-message-id={message.id} {...(mine ? {} : { 'data-observe-id': message.id })}>
               <Face message={message} name={name} mine={mine} hue={hue} />
               <div className="wd-act__body">
                 <p className="wd-act__who">
                   {message.authorId === null ? <AgentIdentity name={name} owner={message.author.kind === 'agent' ? agentAuthorOwner(message.author, owners) : undefined} icon={false} hue={hue} />
-                    : <b title={name}>{mine ? `${name.trim().split(/\s+/)[0] || name} (you)` : name.trim().split(/\s+/)[0] || name}</b>}
+                    : <b>{mine ? `${name} (you)` : name}</b>}
                   <time dateTime={message.createdAt} title={when(message.createdAt)}>{day(message.createdAt)}, {clock(message.createdAt)}</time>
                   {message.editedAt ? <span className="message-edited" title={`Edited ${when(message.editedAt)}`}> · edited</span> : null}
                 </p>

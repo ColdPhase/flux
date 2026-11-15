@@ -1156,6 +1156,13 @@ built. The contract is in [mobile and PWA](../../product/mobile-pwa.md#while-flu
   read and written by everyone who reads and writes the space, a guest included, and an encrypted space seals its messages as it seals
   any thread's. Before anyone writes there is no thread and the card has no count. Words typed after Discuss never go to the space's
   own composer: that sent them as a plain message with no link to the decision (persona round 7, founder question 4).
+  **Who it asks** (persona round 8 P2 3, recommended to the founder and applied, 2026-11-15): the thread's starter, for a question that
+  names nobody, is the person who proposed the decision (an agent's owner for an agent's proposal), never whoever wrote in it first; the
+  question reaches them as "Question · Jonas · about “Stand closes at 15:00”" in the Inbox, and its notice says "Jonas asked you about
+  “Stand closes at 15:00”" (an encrypted space keeps its fixed words, "Jonas asked you in Garden club"). **One discussion reads the same
+  in both places** (round 8): the panel names people as the thread does, by their full name (and "Ola Nowicka (you)" for you); a message
+  read in the panel is read in the thread too, so no New divider stands above it there; and the thread's composer says what it is about,
+  **About “Stand closes at 15:00”**, where a message's thread says "Replying to · …".
 - The message toolbar sits at the bubble's top corner, as
   [Spokój](../spokoj/README.md#message-toolbar-and-selection) places it. A line in the ⋯ menu
   divides Add to map, Copy link and Copy text from Edit and Delete.
@@ -1456,7 +1463,8 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   what was typed after `/decide`, "Why (optional)", the message it came from quoted as "From the message" (a
   `/decide` typed in a thread keeps the thread's opening message as its source, as `/task` does), and a quiet **This replaces an older
   decision…** (plain words, persona rounds 6 and 30) that shows a "Replaces" choice of the space's accepted decisions in the same window, with Next and Previous when there
-  are more than one page of them. The footer says "Everyone else in the space sees it in their Inbox" (plain words, persona rounds 28 and 6) and the one primary is **Propose
+  are more than one page of them. The footer says "Everyone else in the space sees it in their Inbox" (plain words, persona rounds 28 and 6), and, when you are the
+  space's only member, the true thing: "Only you are in this space, so it waits in your Inbox" (persona round 8) and the one primary is **Propose
   decision**; then the toast "Decision proposed · Undo". It reaches everyone at once, and Undo withdraws it for everyone
   ("Not proposed"; [Notices](#notices), founder decision L, #1424). There is no second form in the side panel: the words "A person with write
   access accepts it" are gone. The composer keeps what was typed until the decision is proposed, as `/task` does.

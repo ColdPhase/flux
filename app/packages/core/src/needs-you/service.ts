@@ -207,6 +207,10 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
     const noteProjects = [...new Set(inbox.items.filter((note) => note.source.type === 'project' && !note.readAt).map((note) => note.source.id))].filter((id) => !projectNames.has(id));
     if (noteProjects.length) for (const [id, name] of await ports.access.projectNames(noteProjects)) projectNames.set(id, name);
     const unread = (note: (typeof inbox.items)[number]) => !note.readAt || keep.has(`note:${note.id}`);
+    // A question or a mention in a decision's discussion says which decision it is about (#1424, persona round 8).
+    const threadOf = (url: string | null) => /\/conversations\/([0-9a-f-]{36})#/i.exec(url ?? '')?.[1]?.toLowerCase() ?? null;
+    const asking = inbox.items.filter((note) => (note.reason === 'mention' || note.reason === 'question') && unread(note)).map((note) => threadOf(note.url)).filter((id): id is string => !!id);
+    const discussed = asking.length && ports.decisionsDiscussed ? await ports.decisionsDiscussed([...new Set(asking)]) : new Map<string, { decisionId: string; title: string }>();
     for (const note of inbox.items) {
       if ((note.reason !== 'mention' && note.reason !== 'question' && note.reason !== 'invitation') || !unread(note) || note.createdAt.getTime() < since) continue;
       const call = note.reason === 'invitation' ? callOf(note.url) : null;
@@ -225,10 +229,11 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
       const plain = words && (note.reason === 'mention' || note.reason === 'question');
       // An answer to a question the person asked (#1424 decision 1), as the generator recorded it: a Reply in a plain and an encrypted space alike.
       const answer = note.answer === true;
+      const about = note.reason === 'invitation' ? undefined : discussed.get(threadOf(note.url) ?? '');
       items.push({
         key: `note:${note.id}`, kind, title: plain ? words : note.title, detail: plain ? '' : excerpt(note.body), project, from,
         at: iso(note.createdAt), url: note.url ?? `/inbox/${note.id}`, decision: null, blocked: null, reason: note.reason, snoozeTask: null,
-        ...(call ? { call } : {}), ...(answer ? { answer: true } : {}),
+        ...(call ? { call } : {}), ...(answer ? { answer: true } : {}), ...(about ? { about } : {}),
       });
     }
     // A task someone else or an agent gave you (#1424 C), from the newest notification that gave it, while it is unread (opening the task

@@ -518,6 +518,17 @@ function DecisionForm({ ids, phone, carried, projectId, onProject, onClose, requ
   const [error, setError] = useState('');
   const titleRef = useRef<HTMLInputElement>(null);
   const project = projects.find((item) => item.id === projectId);
+  // Whether anyone else is in the space (persona round 8): the footer says the true thing, also to its only member.
+  const [alone, setAlone] = useState<{ projectId: string; alone: boolean } | null>(null);
+  useEffect(() => {
+    if (!projectId) return undefined;
+    const controller = new AbortController();
+    void listProjectPeople(projectId, controller.signal)
+      .then((people) => setAlone({ projectId, alone: !people.some((person) => person.kind === 'human' && person.id !== me.user.id) }))
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [projectId, me.user.id]);
+  const onlyMe = alone?.projectId === projectId && alone.alone;
   // A message source belongs to the project it was said in.
   const source = request.projectId === projectId ? request.sources?.find((item) => item.ref.type === 'message') ?? null : null;
   const title = oneLine(carried.text);
@@ -591,7 +602,7 @@ function DecisionForm({ ids, phone, carried, projectId, onProject, onClose, requ
   }
   return (
     <Panel ids={ids} where={<ProjectWhere ids={ids} projectId={projectId} onProject={onProject} phone={phone} />} onSubmit={submit}
-      foot={<><p className="create__note">{project ? 'Everyone else in the space sees it in their Inbox' : 'A decision belongs to a space'}</p><Go label="Propose decision" busy={busy} ready={ready} phone={phone} /></>}>
+      foot={<><p className="create__note">{!project ? 'A decision belongs to a space' : onlyMe ? 'Only you are in this space, so it waits in your Inbox' : 'Everyone else in the space sees it in their Inbox'}</p><Go label="Propose decision" busy={busy} ready={ready} phone={phone} /></>}>
       {project ? <>
         <input ref={titleRef} id={ids.field} className="create__name" aria-label="Decision" value={flat(carried.text)} maxLength={WORK_LIMITS.title} disabled={busy} placeholder="What is being decided?"
           onChange={(event) => { carried.set(event.target.value); setError(''); }} />

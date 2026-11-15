@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import {
-  NOTIFICATION_FOLLOWS_PATH, NOTIFICATION_PREFERENCES_PATH, decisionDiscussionPath,
+  NEEDS_YOU_PATH, NOTIFICATION_FOLLOWS_PATH, NOTIFICATION_PREFERENCES_PATH, decisionDiscussionPath, type NeedsYouResponse,
   type Conversation, type ConversationRootWindow, type Decision, type DecisionDiscussion, type ObjectNotice, type Page, type Project, type SentConversationMessage,
 } from '@flux/contracts';
 import { pool } from './support/db.js';
@@ -104,11 +104,13 @@ test('who reads and writes it: the space\'s people and its guest; nobody outside
 
 test('notifications follow the thread\'s rules, and whoever proposed the decision follows it from its first message', async () => {
   const f = await scene();
-  const first = await write(f.writer, f.decision.id, 'Is a ToF sensor bright enough at night?');
+  const first = await write(f.writer, f.decision.id, 'A ToF sensor should be bright enough at night.');
   const conversationId = first.conversationId;
   // The proposer did not write, yet follows: the first message reaches them as a reply in the thread.
   const toProposer = await waitFor(async () => (await notificationsOf(f.proposer, conversationId)).find((row) => row.url.endsWith(first.id)), 'the proposer is told');
   assert.equal(toProposer.reason, 'reply');
+  assert.equal((await pool.query<{ title: string }>('SELECT title FROM notifications WHERE user_id = $1 AND url LIKE $2', [f.proposer.id, `%${first.id}`])).rows[0]!.title,
+    'dd-writer replied about “Use a ToF sensor”', 'the notice names the decision, not the first comment');
   // A reply in the thread reaches its starter (the writer) and the proposer, never its author; the owner, who has not written, is not told.
   const answer = await reply(f.guest, conversationId, 'It has its own infrared light.');
   await waitFor(async () => (await notificationsOf(f.writer, conversationId)).find((row) => row.url.endsWith(answer.id)), 'the starter is told');
@@ -185,4 +187,54 @@ test('an agent\'s proposal is its owner\'s: the owner follows its discussion fro
   assert.equal(told.reason, 'reply');
   const follow = (await pool.query<{ following: boolean }>('SELECT following FROM notification_follows WHERE user_id = $1 AND conversation_id = $2', [f.owner.id, first.conversationId])).rows[0];
   assert.equal(follow?.following, true);
+});
+
+test('a question that names nobody asks the decision\'s proposer, not whoever wrote first, and says which decision it is about', async () => {
+  const f = await scene();
+  // The writer writes first; the guest then asks a question that names nobody.
+  await write(f.writer, f.decision.id, 'The lamp shade is 3 mm.');
+  const asked = await write(f.guest, f.decision.id, 'Who locks the hall after we close?');
+  const toProposer = await waitFor(async () => (await notificationsOf(f.proposer, asked.conversationId)).find((row) => row.url.endsWith(asked.id)), 'the proposer is asked');
+  assert.equal(toProposer.reason, 'question');
+  const title = (await pool.query<{ title: string }>('SELECT title FROM notifications WHERE user_id = $1 AND url LIKE $2', [f.proposer.id, `%${asked.id}`])).rows[0]!.title;
+  assert.equal(title, 'dd-guest asked you about “Use a ToF sensor”');
+  const toWriter = (await notificationsOf(f.writer, asked.conversationId)).find((row) => row.url.endsWith(asked.id));
+  assert.notEqual(toWriter?.reason, 'question', 'the first writer is not the one asked');
+  // The proposer's Inbox item says which decision it is about.
+  const queue = expectStatus(await f.proposer.browser.request('GET', NEEDS_YOU_PATH), 200) as NeedsYouResponse;
+  const item = queue.items.find((entry) => entry.url.endsWith(`#message-${asked.id}`));
+  assert.ok(item, 'the question is in the proposer\'s Inbox');
+  assert.equal(item.kind, 'question');
+  assert.deepEqual(item.about, { decisionId: f.decision.id, title: 'Use a ToF sensor' });
+  // An ordinary question in an ordinary thread carries no decision.
+  const root = expectStatus(await f.writer.browser.request('POST', `/api/v1/projects/${f.place.id}/conversations`, { body: { body: '@dd-proposer is the lamp done?', clientMessageId: randomUUID() } }), 201) as Conversation;
+  const plain = await waitFor(async () => (expectStatus(await f.proposer.browser.request('GET', NEEDS_YOU_PATH), 200) as NeedsYouResponse).items.find((entry) => entry.url.includes(root.id)), 'an ordinary question');
+  assert.equal(plain.about, undefined);
+});
+
+test('an agent\'s proposal: a question that names nobody asks the agent\'s owner', async () => {
+  const f = await scene();
+  const agentId = randomUUID();
+  await pool.query('INSERT INTO agents (id, workspace_id, name, owner_user_id, created_by) VALUES ($1, $2, $3, $4, $4)', [agentId, f.ws.id, 'Planner', f.proposer.id]);
+  const decisionId = randomUUID();
+  await pool.query(`INSERT INTO project_decisions (id, workspace_id, project_id, title, proposed_by_kind, proposed_by_id) VALUES ($1, $2, $3, 'Close at 15:00', 'agent', $4)`,
+    [decisionId, f.ws.id, f.place.id, agentId]);
+  await write(f.writer, decisionId, 'Fine by me.');
+  const asked = await write(f.guest, decisionId, 'Could we stay until 16:00?');
+  const told = await waitFor(async () => (await notificationsOf(f.proposer, asked.conversationId)).find((row) => row.url.endsWith(asked.id)), 'the agent\'s owner is asked');
+  assert.equal(told.reason, 'question');
+});
+
+test('in an encrypted space the question still asks the proposer, and its notice keeps its fixed words', async () => {
+  const [ada, ben, cy] = await Promise.all(['dd-sealed-q-ada', 'dd-sealed-q-ben', 'dd-sealed-q-cy'].map(person));
+  const ws = (await createSealed(ada, 'Sealed hall club', passphrase())).workspace.id;
+  for (const member of [ben, cy]) await addMember(ada, ws, member, 'member');
+  const place = expectStatus(await ada.browser.request('POST', `/api/v1/workspaces/${ws}/projects`, { body: { name: 'Hall', visibility: 'workspace' } }), 201) as Project;
+  const decision = expectStatus(await ada.browser.request('POST', `/api/v1/projects/${place.id}/decisions`, { body: { title: 'Lock at six' } }), 201) as Decision;
+  await write(ben, decision.id, 'Six works.');
+  const asked = await write(cy, decision.id, 'Who has the key?');
+  const row = await waitFor(async () => (await pool.query<{ reason: string; title: string; body: string }>('SELECT reason, title, body FROM notifications WHERE user_id = $1 AND url LIKE $2', [ada.id, `%${asked.id}`])).rows[0], 'the proposer is asked');
+  assert.deepEqual([row.reason, row.title, row.body], ['question', 'dd-sealed-q-cy asked you in Sealed hall club', '']);
+  const item = (expectStatus(await ada.browser.request('GET', NEEDS_YOU_PATH), 200) as NeedsYouResponse).items.find((entry) => entry.url.endsWith(`#message-${asked.id}`));
+  assert.equal(item?.about?.title, 'Lock at six', 'the reader\'s own Inbox opens the decision\'s title');
 });

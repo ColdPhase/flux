@@ -1,5 +1,5 @@
 import { and, eq, inArray, isNull } from 'drizzle-orm';
-import { accessPorts, needsYouRows, notificationPreferenceRows, returnRows, memberFilter, accessReader, schema, type Database } from '@flux/db';
+import { accessPorts, needsYouRows, notificationPreferenceRows, openRows, returnRows, memberFilter, accessReader, schema, type Database, type DbExecutor } from '@flux/db';
 import {
   createNeedsYou,
   preferenceRepository,
@@ -52,6 +52,14 @@ export const needsYouUseCases = (db: Database, assistant?: NeedsYouAssistant) =>
   inbox: { listReadable: async (userId, limit) => notificationRepository(db).listReadable(userId, limit, { from: true }) },
   level: async (userId) => (await preferenceRepository(notificationPreferenceRows(db)).get(userId)).level,
   work: workRepository(db),
+  // The decisions these conversations are the discussions of (#1424), with their titles opened for the reader's Inbox.
+  async decisionsDiscussed(conversationIds) {
+    const pd = schema.projectDecisions;
+    const dd = schema.projectDecisionDiscussions;
+    const rows = await openRows(db as unknown as DbExecutor, 'project_decisions', await db.select({ id: pd.id, workspaceId: pd.workspaceId, title: pd.title, conversationId: dd.conversationId })
+      .from(dd).innerJoin(pd, eq(pd.id, dd.decisionId)).where(inArray(dd.conversationId, conversationIds)));
+    return new Map(rows.map((row) => [row.conversationId, { decisionId: row.id, title: row.title }]));
+  },
   // A call is on while it is available and someone is in it: its room is not empty (F-041).
   async runningCalls(sessionIds) {
     const ls = schema.liveSessions;
