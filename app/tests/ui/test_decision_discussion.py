@@ -216,7 +216,8 @@ class DecisionDiscussion(unittest.TestCase):
         self.api(page, "PATCH", f"/api/v1/conversations/{talk['conversationId']}/messages/{live['id']}", {"body": EDITED}, status=200)
         expect(item).to_contain_text(EDITED, timeout=15000)
         expect(item).to_contain_text("edited")
-        self.api(page, "DELETE", f"/api/v1/conversations/{talk['conversationId']}/messages/{live['id']}", status=200)
+        removed = page.request.delete(f"{ORIGIN}/api/v1/conversations/{talk['conversationId']}/messages/{live['id']}", headers={"origin": ORIGIN})
+        self.assertEqual(removed.status, 200, removed.text())
         expect(item.locator(".message-body--removed")).to_be_visible(timeout=15000)
         expect(item).not_to_contain_text(EDITED)
 
