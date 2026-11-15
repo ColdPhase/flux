@@ -48,9 +48,11 @@ class PersonasTasksSearch(unittest.TestCase):
         cls.browser.close()
         cls.pw.stop()
 
-    def page(self, phone: bool = False, height: int = 900) -> Page:
-        ctx = self.browser.new_context(base_url=ORIGIN, storage_state=self.state, viewport={"width": 390 if phone else 1440, "height": 844 if phone else height},
-            device_scale_factor=2 if phone else 1, is_mobile=phone, has_touch=phone, locale="en-US", service_workers="block")
+    def page(self, phone: bool = False, height: int = 900, zoom: bool = False) -> Page:
+        # `zoom`: the persona's 200 % (Stefan): the browser zoomed to 200 % on a 1440 × 900 screen is a 720 × 450 window at twice the pixels.
+        size = {"width": 390, "height": 844} if phone else {"width": 720, "height": 450} if zoom else {"width": 1440, "height": height}
+        ctx = self.browser.new_context(base_url=ORIGIN, storage_state=self.state, viewport=size,
+            device_scale_factor=2 if phone or zoom else 1, is_mobile=phone, has_touch=phone, locale="en-US", service_workers="block")
         self.addCleanup(ctx.close)
         page = ctx.new_page()
         errors: list[str] = []
@@ -82,11 +84,10 @@ class PersonasTasksSearch(unittest.TestCase):
 
     # ------------------------------------------------------------------ P2 #7: the Status menu at 200 % text
 
-    def test_01_the_status_menu_fits_at_200_percent_text_and_done_can_be_chosen(self) -> None:
+    def test_01_the_status_menu_fits_at_200_percent_zoom_and_done_can_be_chosen(self) -> None:
         task = api(self.ctx, "POST", self.root + "/work", {"title": "Bake the rye for Saturday"}, 201)
-        page = self.page()
+        page = self.page(zoom=True)
         panel = self.open_task(page, task)
-        self.text_200(page)
         panel.get_by_role("button", name="Status", exact=True).click()
         menu = page.get_by_role("menu", name="Status")
         expect(menu).to_be_visible()
@@ -94,8 +95,8 @@ class PersonasTasksSearch(unittest.TestCase):
         expect(items).to_have_count(4)
         page.wait_for_function(SETTLED)
         box = menu.bounding_box()
-        self.assertLessEqual(box["y"] + box["height"], 900 + 0.5, f"the menu stays inside the window: {box}")
-        self.assert_reachable(items, "Status at 200 %", scroll=False)
+        self.assertLessEqual(box["y"] + box["height"], 450 + 0.5, f"the menu stays inside the window: {box}")
+        self.assert_reachable(items, "Status at 200 % zoom", scroll=False)
         shot(page, f"personas-status-menu-200-{UI_BROWSER}")
         items.filter(has_text="Done").click()
         expect(menu).to_have_count(0)
@@ -103,8 +104,9 @@ class PersonasTasksSearch(unittest.TestCase):
         self.assertEqual(api(self.ctx, "GET", f"/api/v1/work/{task['id']}")["status"], "done")
 
     def test_02_menus_fit_a_short_window_at_200_percent_text(self) -> None:
-        # The Owner menu in the panel and the space's ⋯ in a short window: under the control, over it, or scrolling, never past the edge.
-        page = self.page(height=640)
+        # The Owner menu in the panel and the space's ⋯ at 200 % zoom with the text at 200 % too: under the control, over it, or scrolling,
+        # never past the window's edge.
+        page = self.page(zoom=True)
         panel = self.open_task(page, self.unowned)
         self.text_200(page)
         panel.get_by_role("button", name="Owner", exact=True).click()
@@ -113,8 +115,8 @@ class PersonasTasksSearch(unittest.TestCase):
         page.wait_for_function(SETTLED)
         box = menu.bounding_box()
         self.assertGreaterEqual(box["y"], -0.5, box)
-        self.assertLessEqual(box["y"] + box["height"], 640 + 0.5, f"the Owner menu stays inside the window: {box}")
-        self.assert_reachable(menu.get_by_role("menuitemradio"), "Owner at 200 % in 640 px")
+        self.assertLessEqual(box["y"] + box["height"], 450 + 0.5, f"the Owner menu stays inside the window: {box}")
+        self.assert_reachable(menu.get_by_role("menuitemradio"), "Owner at 200 % zoom and text")
         page.keyboard.press("Escape")
         expect(menu).to_have_count(0)
         page.locator("header.top").get_by_role("button", name=re.compile("^More")).first.click()
@@ -122,8 +124,8 @@ class PersonasTasksSearch(unittest.TestCase):
         expect(more).to_be_visible()
         page.wait_for_function(SETTLED)
         box = more.bounding_box()
-        self.assertLessEqual(box["y"] + box["height"], 640 + 0.5, f"the space's More stays inside the window: {box}")
-        self.assert_reachable(more.locator("[role^=menuitem]:visible"), "More at 200 % in 640 px")
+        self.assertLessEqual(box["y"] + box["height"], 450 + 0.5, f"the space's More stays inside the window: {box}")
+        self.assert_reachable(more.locator("[role^=menuitem]:visible"), "More at 200 % zoom and text")
 
     def test_03_the_phone_status_sheet_reaches_every_state_at_200_percent_text(self) -> None:
         page = self.page(phone=True)
@@ -164,9 +166,9 @@ class PersonasTasksSearch(unittest.TestCase):
         page.keyboard.press("Escape")
 
     def test_05_the_owner_face_keeps_its_initials_on_one_line(self) -> None:
-        for text_200 in (False, True):
-            with self.subTest(text_200=text_200):
-                page = self.page()
+        for text_200, zoom in ((False, False), (True, False), (False, True)):
+            with self.subTest(text_200=text_200, zoom=zoom):
+                page = self.page(zoom=zoom)
                 panel = self.open_task(page, self.long)
                 if text_200:
                     self.text_200(page)
@@ -177,12 +179,11 @@ class PersonasTasksSearch(unittest.TestCase):
 
     # ------------------------------------------------------------------ the task card at 200 % text
 
-    def test_06_a_long_task_title_is_whole_on_its_card_at_200_percent_text(self) -> None:
-        page = self.page()
+    def test_06_a_long_task_title_is_whole_on_its_card_at_200_percent_zoom(self) -> None:
+        page = self.page(zoom=True)
         page.goto(f"/projects/{self.project}")
         card = page.locator(f'.convo-notice[data-work-id="{self.long["id"]}"] .convo-notice__task')
         expect(card).to_be_visible()
-        self.text_200(page)
         card.scroll_into_view_if_needed()
         title = card.locator(".convo-notice__title")
         expect(title).to_have_text(LONG)
