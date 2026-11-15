@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import {
-  SEARCH_FILTER_TYPES, SEARCH_LIMITS, WORK_STATUSES, viaName,
+  SEARCH_FILTER_TYPES, SEARCH_LIMITS, WORK_STATUSES, joinHyphenatedWords, viaName,
   type SearchFilterType, type SearchQuery, type SearchResponse, type SearchResult,
 } from '@flux/contracts';
 import { InvalidInputError } from '../access/errors.js';
@@ -204,12 +204,14 @@ export function createSearchUseCases<C>(ports: SearchPorts<C>) {
     const scope = cursorScope(search);
     const after = search.cursor ? ports.cursors.open(principal, scope, search.cursor) : null;
     if (search.cursor && !after) throw new CursorInvalidError();
+    // A hyphenated word is one word ("mock-up" is "mockup"): the words and the word being typed are taken from the joined text.
+    const joined = joinHyphenatedWords(search.text);
     const plan: SearchPlan = {
       text: search.text,
-      prefix: prefixQuery(search.text),
+      prefix: prefixQuery(joined),
       fuzzy: !usesSearchSyntax(search.text),
       number: taskNumberQuery(search.text),
-      words: (search.text.match(WORD) ?? []).map((word) => word.toLowerCase()).join(' '),
+      words: (joined.match(WORD) ?? []).map((word) => word.toLowerCase()).join(' '),
       kinds: search.type ? searchKindsOf(search.type) : null,
       place: search.place,
       author: search.author,

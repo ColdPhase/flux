@@ -19,3 +19,12 @@ export function searchWordStem(word: string): string {
   const letters = [...folded];
   return letters.length >= 6 ? letters.slice(0, -2).join('') : letters.length >= 4 ? letters.slice(0, -1).join('') : folded;
 }
+
+/**
+ * A word written with a hyphen is one word to search (v0.2.1 personas round: "mockup" did not find "mock-up"): the hyphens between two
+ * letters or digits go, so "mock-up", "mock‐up" and "mockup" are the same word. The BM25 index holds the same joined form of every title
+ * and body (migration 0085, `flux_joined_words`, the same rule in SQL), and the in-memory index of an encrypted space indexes it too.
+ */
+export function joinHyphenatedWords(text: string): string {
+  return text.replace(/([\p{L}\p{N}])[-‐‑]+(?=[\p{L}\p{N}])/gu, '$1');
+}

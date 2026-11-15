@@ -348,7 +348,7 @@ class NativeDetailsJourney(unittest.TestCase):
             menu.get_by_role("menuitemradio", name=re.compile("Ada Kowalska")).click()
         self.assertEqual(conflict.value.status, 409)
         expect(owner).to_contain_text("Ada Kowalska")
-        expect(panel).to_contain_text("Now: Nobody yet")
+        expect(panel).to_contain_text("Now: No owner")
         expect(panel.get_by_role("alert")).to_contain_text("Someone changed this")
         api(self.ctx, "PATCH", url, {"title": "The peer revised it again", "expectedVersion": current["version"]})
         expect(panel.get_by_title("Edit title", exact=True)).to_have_text("The peer revised it again")

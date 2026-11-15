@@ -99,7 +99,8 @@ export function HomeTasks() {
 
   return pulling(
     <section className="home-tasks" aria-labelledby="home-tasks-h">
-      <h2 id="home-tasks-h" className="home-tasks__h">Your tasks</h2>
+      {/* The page's header already says "My tasks": the list is named the same, for a screen reader only (one name for one place). */}
+      <h2 id="home-tasks-h" className="home-tasks__h ui-vh">My tasks</h2>
       {shown.failed ? (
         <p className="home-tasks__note" role="alert">Some of your tasks could not be loaded. <button type="button" className="ui-link" onClick={again}>Try again</button></p>
       ) : null}

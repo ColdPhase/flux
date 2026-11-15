@@ -359,7 +359,7 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
   );
   return (
     <Panel ids={ids} where={where} onSubmit={() => void submit()} foot={<>
-      <p className="create__note">Goes to Tasks · Conversation gets a one-line note</p>
+      <p className="create__note">Goes to Tasks and shows as a card in the conversation</p>
       <Go label="Create task" busy={busy} ready={ready} phone={phone} />
     </>}>
       <label className="ui-vh" htmlFor={ids.field}>Title</label>

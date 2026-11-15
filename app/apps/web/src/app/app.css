@@ -381,6 +381,9 @@ a.me__btn[aria-current="page"] { background: var(--sub); }
   width: max-content; min-width: 208px; max-width: min(320px, calc(100vw - 24px)); padding: 6px; border: 1px solid var(--line);
   border-radius: 14px; background: var(--el); box-shadow: var(--sh-pop); white-space: nowrap;
 }
+/* Taller than the room on its side, the menu scrolls (useFitInWindow); its rows keep their own height. */
+.top__more-menu > * { flex-shrink: 0; }
+.top__more-menu { overscroll-behavior: contain; }
 .top__more-menu .newmenu__item {
   display: flex; align-items: center; gap: 10px; width: 100%; min-height: 32px; padding: 0 10px; border-radius: var(--r-sm);
   color: var(--t1); font: inherit; font-size: var(--fs-sm); line-height: 1.25; text-align: left; text-decoration: none; cursor: pointer; transition: background-color var(--dur-1) var(--ease-out);

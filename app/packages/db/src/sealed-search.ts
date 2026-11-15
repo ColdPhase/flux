@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { sql } from 'drizzle-orm';
+import { joinHyphenatedWords } from '@flux/contracts';
 import { AUDIENCE_KEYS, type SearchAudienceRows, type SearchKindRow, type SearchPlanRows, type SearchRowRecord, type SearchTextRow } from './repositories/search.js';
 import type { DbExecutor } from './repositories/push.js';
 import { openRows, sealOf } from './sealing.js';
@@ -57,6 +58,9 @@ const REBUILD_AFTER_MS = 23 * 3_600_000;
 
 const WORD = /[\p{L}\p{N}]+/gu;
 const wordsOf = (text: string) => text.toLowerCase().match(WORD) ?? [];
+/** A hyphenated word's joined form ("mock-up" is also "mockup"), as the BM25 index's joined fields hold it (migration 0085). */
+const HYPHENATED = /[\p{L}\p{N}]+(?:[-\u2010\u2011]+[\p{L}\p{N}]+)+/gu;
+const joinedOf = (text: string) => (text.match(HYPHENATED) ?? []).map((word) => joinHyphenatedWords(word).toLowerCase());
 
 /** Trigrams of `text` in order, with duplicates, as pg_trgm pads each word: two spaces before, one after. */
 function trigramsOf(text: string): string[] {
@@ -213,8 +217,9 @@ export class Partition {
         if (list) { list.push(index); postings += POSTING_COST; } else { map.set(item, [index]); postings += POSTING_COST + TERM_COST + 2 * item.length; }
       }
     };
-    post(this.title, wordsOf(doc.title));
-    post(this.body, wordsOf(doc.body.slice(0, BODY_CHARS)));
+    post(this.title, [...wordsOf(doc.title), ...joinedOf(doc.title)]);
+    const body = doc.body.slice(0, BODY_CHARS);
+    post(this.body, [...wordsOf(body), ...joinedOf(body)]);
     post(this.grams, trigramsOf(doc.title));
     doc.indexCost = postings;
     this.cost += doc.cost + postings;
@@ -288,7 +293,8 @@ function clauseDocs(clause: Clause, lookup: Lookup): Set<number> {
   }));
 }
 
-interface Hit { doc: IndexDoc; score: number }
+/** `whole`: it holds one of the words whole; `typoOnly`: only a typo in its title found it (shown only when no hit holds a word whole). */
+interface Hit { doc: IndexDoc; score: number; whole?: boolean; typoOnly?: boolean }
 
 /** The matches of a plan in one partition (before kinds and the cursor), with their scores. */
 function searchPartition(part: Partition, compiled: Compiled, plan: SearchPlanRows, accept: (doc: IndexDoc) => boolean, work: SealedSearchWork): Hit[] {
@@ -300,6 +306,8 @@ function searchPartition(part: Partition, compiled: Compiled, plan: SearchPlanRo
     for (const clause of group.negative) for (const index of clauseDocs(clause, lookup)) found.delete(index);
     for (const index of found) matched.add(index);
   }
+  const whole = new Set(compiled.any ? matched : []);
+  const typoOnly = new Set<number>();
   if (compiled.prefix) {
     const sets = compiled.prefix.exact.map((word) => lookup.both(word, false));
     sets.push(lookup.both(compiled.prefix.last, true));
@@ -318,7 +326,7 @@ function searchPartition(part: Partition, compiled: Compiled, plan: SearchPlanRo
     for (const [index, count] of shared) {
       if (count < needed || matched.has(index)) continue;
       const value = wordSimilarity(grams, trigramsOf(part.docs[index]!.title));
-      if (value >= SIMILARITY) { matched.add(index); similarity.set(index, Math.max(similarity.get(index) ?? 0, value)); }
+      if (value >= SIMILARITY) { matched.add(index); typoOnly.add(index); similarity.set(index, Math.max(similarity.get(index) ?? 0, value)); }
     }
   }
   // Plain words: a word's weight is how rare it is among this audience's documents (the BM25 idf), so a document with the rare word ranks first.
@@ -341,7 +349,7 @@ function searchPartition(part: Partition, compiled: Compiled, plan: SearchPlanRo
     const closeness = similarity.get(index) ?? (doc.title ? Math.max(0, ...(compiled.any ? compiled.typoGrams : [queryGrams]).map((grams) => wordSimilarity(grams, trigramsOf(doc.title)))) : 0);
     let score = Math.round((rank + 0.5 * closeness) * 1e6);
     if (plan.number !== null && doc.kind === 'work' && doc.body.split('\n', 1)[0] === `#${plan.number}`) score += 10 * 1e6;
-    hits.push({ doc, score });
+    hits.push({ doc, score, whole: whole.has(index), typoOnly: typoOnly.has(index) });
   }
   return hits;
 }
@@ -453,7 +461,10 @@ export class SealedSearchIndex {
       if (!visible.has(audience) || !part.live) continue;
       hits.push(...searchPartition(part, compiled, plan, accept, work));
     }
-    return { hits, work };
+    // A hit found only by a typo in its title is left out when another (of the kinds asked for) holds one of the words whole: the BM25
+    // statement's rule ("price list" does not list "Kasia Lis", one edit from "list", beside the price list itself).
+    const anyWhole = hits.some((hit) => hit.whole && (!plan.kinds?.length || plan.kinds.includes(hit.doc.kind)));
+    return { hits: anyWhole ? hits.filter((hit) => !hit.typoOnly) : hits, work };
   }
 }
 

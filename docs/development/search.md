@@ -42,7 +42,15 @@ The service (`createSearchUseCases`) picks by `usesSearchSyntax(text)`; the curs
   the body fields (folded by `foldSearchWord`), and "sens" finds "sensors" and "kalibr" finds "kalibracja".
 - **A title tolerates a typo:** each plain word of four letters or more (at most six) also matches the title with one edit
   (`pdb.fuzzy(1)`), as the trigram match did ("ensor", "omparison", "comparisn" find "Sensor comparison"). A task number
-  names one task, so it gets no typo.
+  names one task, so it gets no typo. A typo is a way to find what the words did not (v0.2.1 personas round: "price list" listed the person "Kasia Lis", one
+  edit from "list", beside the price list itself): a hit found only by a typo in its title (no word whole, not the word being typed)
+  is shown only when no visible hit holds one of the words whole (`stats.whole` in the statement; the in-memory index of an encrypted
+  workspace keeps the same rule). "liss" alone still finds "Kasia Lis".
+- **A hyphenated word is one word** (v0.2.1 personas round: "mockup" did not find "mock-up"). Migration 0085 adds a title and a body
+  field to the BM25 index with the hyphens between two letters or digits taken out (`flux_joined_words`, English stems), and the
+  query joins its own words the same way (`joinHyphenatedWords`), so "mockup", "mock-up" and "mockups" find each other;
+  `markSearchWords` marks a hyphenated word whole when its joined form is what was asked. The word fields of a scan are three
+  clauses each (Polish, English, joined), which still fit their two bits.
 - **At most twelve words are looked up** (the first twelve and the word being typed), each a title and a body clause in each language;
   a search of up to five words is one scan and runs in a few milliseconds, a longer one a scan for each further five words. More
   words, or the longest words first, found nothing more on the research bench (#1387).
