@@ -78,7 +78,8 @@ class DecisionTrace(unittest.TestCase):
             "toMessage",  # the source link: brings the message it came from into view
             "() => onOpenThread(notice.conversationId!)",  # the thread link: opens that thread
             "() => open(target)",  # the card: opens the decision
-        ], "three buttons, each opening or linking (an acceptance changes the card in place and adds no line, #1424 D)")
+            "() => onOpenDiscussion(notice.discussion!.conversationId)",  # "N replies": opens the decision's discussion thread (#1424, founder 2026-11-15)
+        ], "four buttons, each opening or linking (an acceptance changes the card in place and adds no line, #1424 D)")
         self.assertEqual(len(re.findall(r"<button", component)), len(handlers), "no button without a known handler")
         # Opening never decides: it opens the decision, and a proposal of the reader's own whose request is still on its way
         # (it is sent at once, #1424 L) opens once it exists.
