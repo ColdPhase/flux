@@ -589,6 +589,85 @@ class PhoneFinal(unittest.TestCase):
         self.assertIn(more.evaluate("el => getComputedStyle(el).backgroundColor"), ("rgba(0, 0, 0, 0)", "transparent"), "an open More leaves no filled circle")
         shot(page, "1239-more-open-390")
 
+    # ------------------------------------------------------------------ personas-35: nothing under the floating "+"
+
+    UNDER_PLUS = """() => {
+      const fab = document.querySelector('.phone-fab');
+      if (!fab) return null;
+      const f = fab.getBoundingClientRect();
+      const seen = (element) => {
+        let r = element.getBoundingClientRect();
+        if (!r.width || !r.height || getComputedStyle(element).visibility === 'hidden') return null;
+        let box = { left: r.left, right: r.right, top: r.top, bottom: r.bottom };
+        for (let up = element.parentElement; up && up !== document.body; up = up.parentElement) {
+          const style = getComputedStyle(up);
+          if (style.overflowX === 'visible' && style.overflowY === 'visible') continue;
+          const c = up.getBoundingClientRect();
+          box = { left: Math.max(box.left, c.left), right: Math.min(box.right, c.right), top: Math.max(box.top, c.top), bottom: Math.min(box.bottom, c.bottom) };
+          if (box.right <= box.left || box.bottom <= box.top) return null;
+        }
+        return box;
+      };
+      const controls = document.querySelectorAll('.app__pane :is(a[href], button, [role="button"], [role="combobox"], input, select, textarea, [tabindex="0"])');
+      return [...controls].flatMap((element) => {
+        const box = seen(element);
+        if (!box || box.right <= f.left + 0.5 || box.left >= f.right - 0.5 || box.bottom <= f.top + 0.5 || box.top >= f.bottom - 0.5) return [];
+        return [(element.getAttribute('aria-label') || element.textContent || element.tagName).trim().slice(0, 60)];
+      });
+    }"""
+
+    def scroller_end(self, page):
+        page.evaluate("""() => { const pane = document.querySelector('.app__pane');
+          for (const element of [pane, ...pane.querySelectorAll('.pane-scroll')]) element.scrollTop = element.scrollHeight; }""")
+        page.wait_for_timeout(400)
+
+    def test_14_no_control_is_ever_left_under_the_plus(self):
+        """Personas-35 D11-35, D11-45: the floating "+" covered the expanded Inbox card's Discuss and part of a lower card's Reply. At the end
+        of every phone list that has the "+", the last controls clear it; and a lower Inbox card that opens is brought wholly above it. (While
+        a list scrolls, its content runs on under the "+", #763: what passes under it is one scroll away from clearing it.)"""
+        kai = self.browser.new_context(base_url=ORIGIN)
+        self.addCleanup(kai.close)
+        signed = kai.request.post("/api/auth/sign-in/email", data={"email": self.kai_email, "password": PASSWORD}, headers={"origin": ORIGIN})
+        self.assertEqual(signed.status, 200, signed.text())
+        owner = self.browser.new_context(base_url=ORIGIN, storage_state=self.state)
+        self.addCleanup(owner.close)
+
+        def post(context, path, body):
+            response = context.request.post(ORIGIN + path, data=body, headers={"origin": ORIGIN, "idempotency-key": str(uuid.uuid4())})
+            self.assertIn(response.status, (200, 201), f"{path}: {response.status} {response.text()}")
+            return response.json()
+        space = post(owner, f"/api/v1/workspaces/{self.workspace['id']}/projects", {"name": f"Workshop renovation {uuid.uuid4().hex[:4]}", "visibility": "restricted"})
+        post(owner, f"/api/v1/projects/{space['id']}/grants", {"principal": {"kind": "human", "id": self.kai_id}, "role": "contributor"})
+        ada_id = owner.request.get(ORIGIN + "/api/v1/me").json()["user"]["id"]
+        for index in range(24):
+            post(owner, f"/api/v1/projects/{space['id']}/work", {"title": f"Fit shelf bracket {index + 1} on the long wall", "owner": {"kind": "human", "id": ada_id}})
+        post(owner, f"/api/v1/projects/{space['id']}/docs", {"title": "Workshop rules", "body": "Sweep the floor before you leave."})
+        for index in range(8):
+            post(kai, f"/api/v1/projects/{space['id']}/decisions", {"title": f"Shop opens at {6 + index}:30 on fair day", "rationale": "Stands must be ready by 8, and the hall opens early."})
+        page = self.page(SIZES[0])
+        for path in ("/", "/inbox", "/projects", "/tasks", f"/projects/{space['id']}/tasks"):
+            with self.subTest(path=path):
+                page.goto(path)
+                expect(page.locator(".phone-fab")).to_have_count(1)
+                page.wait_for_timeout(1200)
+                self.scroller_end(page)
+                self.assertEqual(page.evaluate(self.UNDER_PLUS), [], f"{path}: at the end of the list no control is under the +")
+        # The Inbox: a lower card opened with a tap on its free space is wholly above the "+", its Accept, Not now and Discuss too.
+        page.goto("/inbox")
+        cards = page.locator(".nyq__list > .nyc")
+        expect(cards.filter(has_text="Shop opens at")).to_have_count(8)
+        lower = cards.nth(5)
+        lower.locator(".nyc__eyebrow").first.tap()
+        expect(lower).to_have_class(re.compile(r"\bis-selected\b"))
+        page.wait_for_timeout(1000)
+        fab = self.box(page.locator(".phone-fab"))
+        card = self.box(lower)
+        self.assertLessEqual(card["y"] + card["height"], fab["y"] - 4, "the expanded card ends above the +")
+        actions = lower.locator("button, a[href]").evaluate_all("""(els, fab) => els.filter((el) => { const r = el.getBoundingClientRect();
+          return r.width && r.height && r.right > fab.x && r.left < fab.x + fab.width && r.bottom > fab.y && r.top < fab.y + fab.height; }).map((el) => el.textContent.trim())""", fab)
+        self.assertEqual(actions, [], "none of its actions is under the +")
+        shot(page, "fab-clear-inbox-expanded-390")
+
 
 if __name__ == "__main__":
     unittest.main()

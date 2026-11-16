@@ -363,6 +363,9 @@ class DecisionDiscussion(unittest.TestCase):
                 earlier = page.locator("#details").get_by_role("button", name="Show earlier", exact=True)
                 # Something is missing between the first message and the newest page: "Show earlier" is at the top of the discussion.
                 expect(earlier).to_be_visible()
+                # And what is shown under it is whole, the newest page in order: never the first message alone, then a gap (personas-35).
+                shown = [text.strip() for text in bodies.all_inner_texts()]
+                self.assertEqual(shown, words[-len(shown):], "the page under Show earlier has no gap")
                 while earlier.count():
                     earlier.click()
                     page.wait_for_timeout(300)

@@ -12,6 +12,8 @@ import './unread-reading.css';
  *    nothing is new). Each surface says which message that is, from its own read; this file draws it and scrolls to it.
  *  - While they read above the end, what arrives is counted in "↓ 3 new" at the foot of the feed. A click or tap goes to the end, and so
  *    does End; the line goes when they reach the end. Nothing moves under a reader who is above it.
+ *  - Opening on the divider with some of what is new below the visible part shows the line at once, counting all that is new (personas-35:
+ *    a long conversation never opened says how much is below it, and End or the line leads to its end).
  * It makes no request of its own: every surface reads what it already reads.
  */
 
@@ -61,6 +63,21 @@ function newest(feed: HTMLElement): HTMLElement | null {
 }
 
 const holds = new WeakMap<HTMLElement, () => void>();
+/** The "↓ N new" of each feed, told what is new on opening: by `useNewBelow`, or kept here until it has the feed. */
+const counters = new WeakMap<HTMLElement, (ids: readonly string[]) => void>();
+const waiting = new WeakMap<HTMLElement, readonly string[]>();
+function countOnOpening(feed: HTMLElement, ids: readonly string[]) {
+  const add = counters.get(feed);
+  if (add) add(ids); else waiting.set(feed, ids);
+}
+
+/**
+ * What "↓ N new" counts on opening, in every feed: a message by someone else (not the reader's own, not a note that AI was used), a task line of a
+ * space and what an agent said. Each is counted by the key its feed counts arrivals with: its id, or an agent's line or run.
+ */
+const COUNTED = '[data-message-id]:not(.is-mine, .dm-notice), .convo-notice[id], [data-chat-agent]';
+const countKey = (element: HTMLElement) => element.id
+  || (element.dataset.lineId ? `line-${element.dataset.lineId}` : element.dataset.runId ? `run-${element.dataset.runId}` : '');
 /** The person moved to the end themselves (the line, End): opening no longer keeps the divider where it put it. */
 function endOpening(feed: HTMLElement) { holds.get(feed)?.(); }
 
@@ -70,6 +87,8 @@ function endOpening(feed: HTMLElement) { holds.get(feed)?.(); }
  * a direct message, a thread's root, an agent's note) is in view too. Layout settles for a
  * moment after a feed opens (previews, chips and fonts arrive), so this repeats until the reader acts or {@link HOLD_MS} passes, like
  * `openOnWholeMessages`. It does nothing when the feed has no divider. Returns the cleanup, or null when there was no divider.
+ * What stands after the divider is new: when any of it is below the visible part once the feed is placed, "↓ N new" counts all of it from
+ * the start (S23: "↓ N new leads to the end"; personas-35: a long conversation never opened said nothing of what was below it).
  */
 export function openAtUnread(feed: HTMLElement, column: HTMLElement | null): (() => void) | null {
   const divider = () => feed.querySelector<HTMLElement>('[data-unread-start]');
@@ -88,6 +107,12 @@ export function openAtUnread(feed: HTMLElement, column: HTMLElement | null): (()
     written = feed.scrollTop;
   };
   place();
+  const mark = divider();
+  if (mark) {
+    const fresh = [...feed.querySelectorAll<HTMLElement>(COUNTED)].filter((element) => !!(mark.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING) && countKey(element));
+    const bottom = feed.getBoundingClientRect().bottom;
+    if (fresh.some((element) => element.getBoundingClientRect().top >= bottom - 1)) countOnOpening(feed, [...new Set(fresh.map(countKey))]);
+  }
   const observer = new ResizeObserver(place);
   observer.observe(feed);
   if (column) observer.observe(column);
@@ -114,6 +139,15 @@ export function useNewBelow(feed: HTMLElement | null, onToEnd?: () => void, pres
   const add = useCallback((ids: readonly string[]) => {
     if (ids.length) setBelow((current) => [...current, ...ids.filter((id) => !current.includes(id))]);
   }, []);
+  useEffect(() => {
+    if (!feed) return;
+    counters.set(feed, add);
+    const kept = waiting.get(feed);
+    waiting.delete(feed);
+    // What opening counted before this feed was known here joins the line on the next frame.
+    const frame = kept ? requestAnimationFrame(() => { if (!atEnd(feed)) add(kept); }) : 0;
+    return () => { cancelAnimationFrame(frame); if (counters.get(feed) === add) counters.delete(feed); };
+  }, [feed, add]);
   useEffect(() => {
     if (!feed) return;
     const reached = () => { if (atEnd(feed)) setBelow([]); };

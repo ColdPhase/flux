@@ -3,6 +3,8 @@ import type { Location, NavigationType } from 'react-router';
 import { arrivalEntry, onFlush, recall, remember } from './memory';
 
 const SCROLL_KEYS = new Set(['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ']);
+/** The event a scroller gets when the place put back on arrival has settled by itself. */
+export const PLACE_SETTLED = 'flux:place-settled';
 
 /**
  * Puts `find()` at `top` as soon as its content is tall enough (a screen's data arrives after the screen shows), holds it
@@ -19,6 +21,8 @@ export function restoreTop(find: () => HTMLElement | null, top: number, ms = 300
   const started = performance.now();
   let stopped = false;
   const stop = () => { stopped = true; cancelAnimationFrame(frame); release(); };
+  // A place put back that settled by itself (not stopped by the reader) says so on its scroller, for what the page keeps in view on top of it.
+  const settle = () => { const element = watched; stop(); element?.dispatchEvent(new CustomEvent(PLACE_SETTLED)); };
   const watch = (element: HTMLElement) => {
     release();
     watched = element;
@@ -39,7 +43,7 @@ export function restoreTop(find: () => HTMLElement | null, top: number, ms = 300
         if (!appliedAt) appliedAt = performance.now();
       }
     }
-    if (performance.now() - started > ms || appliedAt && performance.now() - appliedAt > SETTLE_MS) { stop(); return; }
+    if (performance.now() - started > ms || appliedAt && performance.now() - appliedAt > SETTLE_MS) { settle(); return; }
     frame = requestAnimationFrame(step);
   };
   step();

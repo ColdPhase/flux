@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent, type RefObject } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type RefObject } from 'react';
 import type { ObjectLink, Project, Sketch, Thought } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { getSketch } from '../api/sketches';
@@ -69,6 +69,19 @@ export function useThoughtLinks({ item, project, links, reload }: TaskThoughtLin
   }, [open, mapId, reloads]);
 
   const close = () => { setOpen(false); toggle.current?.focus(); };
+  // After a link, focus goes back to "Add to a thought" once it can take it (personas-35 D11-32): the button is disabled while the link is
+  // saved and the thought chosen leaves with the picker, so focusing it at once left the focus to the page's content outside the panel. For a
+  // moment, while the panel reads its links again, focus that falls to nothing is given back to it; focus the person moved stays where it is.
+  const refocus = useRef(0);
+  useLayoutEffect(() => {
+    if (!refocus.current) return;
+    if (Date.now() - refocus.current > 2000) { refocus.current = 0; return; }
+    const button = toggle.current;
+    const active = document.activeElement;
+    const nowhere = !active || active === document.body || active === document.getElementById('content');
+    if (!button || button.disabled || !nowhere) return;
+    button.focus({ preventScroll: true });
+  });
   // Escape closes the open picker from its button as well as from inside it; the Details panel keeps its own Escape otherwise.
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (open && event.key === 'Escape' && !busy) { event.preventDefault(); event.stopPropagation(); close(); }
@@ -85,7 +98,7 @@ export function useThoughtLinks({ item, project, links, reload }: TaskThoughtLin
       setStatus(`Linked “${thought.text}” to this task.`);
       setOpen(false);
       reload();
-      toggle.current?.focus();
+      refocus.current = Date.now();
     } catch (cause) {
       if (cause instanceof ApiError && cause.status === 403) setError('You can read this task but not change it.');
       else if (cause instanceof ApiError && cause.status === 404) setError('That thought is no longer on a map you can read. Choose another.');

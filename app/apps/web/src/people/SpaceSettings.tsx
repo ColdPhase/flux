@@ -14,7 +14,7 @@ import { useShellActions } from '../app/shellContext';
 import { useWorkspaceEncryption } from '../encryption/state';
 import { Avatar, Button, Icon, Input, Option, Select, useFocusBack, useToast } from '../ui';
 import { SwitchRow } from '../ui/SwitchRow';
-import { attemptKeys, firstName, grantPerson, isManagerRole, joinNames, listGrants, listMembers, peopleOrder, problemText, revokeGrant } from './api';
+import { attemptKeys, firstName, grantPerson, isManagerRole, joinNames, listGrants, keepPlaces, listMembers, peopleOrder, problemText, revokeGrant } from './api';
 import { DeleteSpaceDialog } from './DeleteSpace';
 import { PersonLine } from './LastActive';
 import { PeoplePicker } from './PeoplePicker';
@@ -76,6 +76,7 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName, inviter
   // A space open to the whole company (Everyone) has no list to add to, and it cannot be left or deleted.
   const everyone = project.visibility === 'workspace' && !encrypted;
   const [roster, setRoster] = useState<{ members: WorkspaceMember[]; grants: ProjectGrant[] } | null>(null);
+  const [drawn, setDrawn] = useState<{ from: unknown; order: string[] }>({ from: null, order: [] });
   const [rosterFailed, setRosterFailed] = useState(false);
   const [reload, setReload] = useState(0);
   const [status, setStatus] = useState('');
@@ -149,7 +150,9 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName, inviter
   // A space's admins see its people from the server's read: when it failed the page says so and lists nobody, never both (#1272).
   const listFailed = manager && rosterFailed && !roster;
 
-  const rows: Row[] = (() => {
+  // The rows keep the places they were drawn in while the page is open (personas-33), as the company's people do: a role chosen moves no row.
+  const rowSource = manager && roster ? roster : people;
+  const sortedRows: Row[] = (() => {
     if (manager && roster) {
       const fromMember = (member: WorkspaceMember, grant: ProjectGrant | null): Row => ({
         userId: member.userId, name: member.name, email: member.email, role: grant?.role === 'manager' || isManagerRole(member.role) ? 'manager' : 'contributor',
@@ -167,6 +170,8 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName, inviter
       .map((person): Row => ({ userId: person.id, name: person.name, email: null, role: person.access === 'manager' ? 'manager' : 'contributor', company: false, guest: !!person.guest, owner: !!person.owner, grantId: null, lastActiveAt: person.lastActiveAt }))
       .sort(peopleOrder(meId, roleWord));
   })();
+  const rows = keepPlaces(drawn.order, sortedRows);
+  if (rowSource && drawn.from !== rowSource) setDrawn({ from: rowSource, order: rows.map((row) => row.userId) });
 
   // Any company person, the owner too (F-037 "chosen from the company"; the same list New space offers, #905).
   const candidates = (roster?.members ?? []).filter((member) => member.userId !== meId && !grantOf(member.userId));
@@ -179,7 +184,20 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName, inviter
       if (everyone && role === 'contributor') { if (row.grantId) await revokeGrant(project.id, row.grantId); }
       else await grantPerson(project.id, row.userId, role, keys.current.for(`${row.userId}:${role}`));
       keys.current.done();
-      changed(`${firstName(row.name)} is now ${role === 'manager' ? 'an admin' : 'a member'} of ${project.name}.`);
+      // At once, with a 10 s Undo that gives the role back, as the company's roles (personas-35). Your own role keeps its line: an admin who
+      // made themselves a member can no longer change it back.
+      const words = `${firstName(row.name)} is ${role === 'manager' ? 'an admin' : 'a member'} of ${project.name}`;
+      if (row.userId === meId) changed(`${firstName(row.name)} is now ${role === 'manager' ? 'an admin' : 'a member'} of ${project.name}.`);
+      else {
+        changed('');
+        const was = row.role;
+        toast({ message: `${words} now`, tone: 'success', action: { label: 'Undo', key: 'Z', onClick: () => {
+          const back = everyone && was === 'contributor'
+            ? listGrants(project.id).then((grants) => { const grant = grants.find((item) => item.principal.kind === 'human' && item.principal.id === row.userId); return grant ? revokeGrant(project.id, grant.id) : undefined; })
+            : grantPerson(project.id, row.userId, was, crypto.randomUUID());
+          void back.then(() => changed(''), (error: unknown) => { setProblem(lastAdmin(error) ?? problemText(error, { workspace: companyName, who: row.name })); load(); });
+        } } });
+      }
       focusOn(`[data-person="${row.userId}"] [role="combobox"]`, true);
     } catch (error) {
       keys.current.done();

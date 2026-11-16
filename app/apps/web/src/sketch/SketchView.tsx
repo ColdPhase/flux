@@ -201,14 +201,22 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
   // Focus moves after the next commit (a list row replaces its editor only then), and only if
   // focus is not already somewhere the person put it meanwhile.
   const pendingFocus = useRef<string | null>(null);
-  const focusThought = useCallback((selector: string) => { pendingFocus.current = selector; }, []);
+  const pendingSince = useRef(0);
+  const focusThought = useCallback((selector: string) => { pendingFocus.current = selector; pendingSince.current = Date.now(); }, []);
+  // Focus that fell to nothing meanwhile (the page itself, or the page's content, where a field disabled while it saves leaves it: the first
+  // thought of a new map, personas-35) is nowhere the person put it, so the new thought still takes it. Until the thought is drawn, the next
+  // commits ask again, for two seconds at most.
   useLayoutEffect(() => {
     const selector = pendingFocus.current;
     if (!selector) return;
-    pendingFocus.current = null;
     const active = document.activeElement;
-    if (active && active !== document.body && !active.matches('.sk-edit, .sk-li-edit') && rootRef.current?.contains(active) === false) return;
-    rootRef.current?.querySelector<HTMLElement>(selector)?.focus();
+    const nowhere = !active || active === document.body || active === document.getElementById('content');
+    if (!nowhere && !active.matches('.sk-edit, .sk-li-edit') && rootRef.current?.contains(active) === false) { pendingFocus.current = null; return; }
+    const target = rootRef.current?.querySelector<HTMLElement>(selector);
+    if (!target && Date.now() - pendingSince.current < 2000) return;
+    pendingFocus.current = null;
+    if (!target) return;
+    target.focus();
   });
 
   // Selection follows what exists: someone else may remove a selected thought meanwhile.

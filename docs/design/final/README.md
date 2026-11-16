@@ -1781,6 +1781,13 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
     the role chosen is the role at once, and only an owner or admin of an encrypted company who stops being one is asked first, under
     the row (persona round 26: the look matches what it does). A link locked to an address that is in the company already is not
     "Waiting to be used".
+  - **A role change has a 10 s Undo** (coordinator decision, personas-35, 2026-11-16), the app's pattern for an action taken at once,
+    not a confirmation: someone else's new role is said by a toast, "Tomek is a guest now · Undo" (`Z`), and not again in the status
+    line. Undo gives the role back and everything the change took away, as Restore brings a person back as they were: a member who
+    becomes a guest stops being an admin of their spaces, and those admin roles are held and come back whenever they are a member (or
+    more) again, as their agents and keys do (AG-2, C-50). An encrypted space's places stay with its admins, as for Restore. Your own
+    role and the asked-first change of an encrypted company keep their line in the status line and have no Undo: after them you may
+    not be allowed to change the role back. Space settings' Admin / Member menu does the same: "Lee is an admin of Kiln firmware now · Undo".
   - **A reset link next to a person** (founder decision, Hubert, 2026-11-13, [#1471](https://github.com/ColdPhase/flux/issues/1471)).
     Without SSO, the row's quiet **Reset link** opens one group under the row:
     "Password" in the group's label style, the line "Make a one-time link that lets {first name} choose a new password." and a

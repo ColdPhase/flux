@@ -3,7 +3,8 @@
 One behaviour in five surfaces: a space's conversation, a direct message, a thread, a task's discussion and an agent's chat (and a direct message's
 thread). Each opens on its first new message with a quiet "New" divider above it, or at its end when nothing is new, or at its very first message when
 the person has never opened it (founder decision on #1246); while the reader is above the end, what arrives is counted in "↓ N new", which a click or
-tap (and End) takes to the end; and nothing moves under the reader.
+tap (and End) takes to the end; and nothing moves under the reader. Opening with what is new running below the visible part shows that line at once,
+counting all of it (personas-35 D11-54: a long conversation never opened said nothing of what was below it).
 
 Ada reads and Bob writes. What Ada had seen is set through the API the app itself writes (a return point for the space, viewing observations for a
 direct message, a thread and a discussion), then Bob writes 30 more and Ada opens the surface. The agent's chat has no way to post a line from a test, so
@@ -224,14 +225,21 @@ class OpenWhereYouLeftOff(unittest.TestCase):
             self.assertGreater(feed.evaluate("el => el.scrollTop"), 100, f"{label}: it did not open at the top")
         self.assertGreater(self.at_end(feed), 200, f"{label}: it did not open at the end, 30 messages are new")
         self.assertTrue(divider.evaluate("(el, selector) => el.nextElementSibling?.matches(selector)", surface["first"]), f"{label}: the divider is right above the first new message")
-        expect(self.pill(feed)).to_have_count(0)
+        # What is new runs below the screen: the line says so from the start, counting all of it (personas-35): the 30, and in the agent's chat
+        # also what it answered in this test class's real runs since the time the chat was last read.
+        expect(self.pill(feed)).to_have_text(re.compile(r"^\d+ new$"))
+        opened = int(self.pill(feed).inner_text().split()[0])
+        if surface.get("starts"):
+            self.assertGreaterEqual(opened, NEW, f"{label}: all that is new is counted on opening")
+        else:
+            self.assertEqual(opened, NEW, f"{label}: all that is new is counted on opening")
         # Something arrives while Ada reads above the end: it is counted, and nothing moves under her.
         before = divider.evaluate("(el, feed) => el.getBoundingClientRect().top - feed.getBoundingClientRect().top", feed.element_handle())
         self.arrive(page, surface)
         pill = self.pill(feed)
-        expect(pill).to_have_text("1 new")
+        expect(pill).to_have_text(f"{opened + 1} new")
         expect(pill).to_be_visible()
-        self.assertEqual(pill.get_attribute("aria-label"), "1 new. Go to the newest")
+        self.assertEqual(pill.get_attribute("aria-label"), f"{opened + 1} new. Go to the newest")
         page.wait_for_timeout(600)
         after = divider.evaluate("(el, feed) => el.getBoundingClientRect().top - feed.getBoundingClientRect().top", feed.element_handle())
         self.assertLess(abs(after - before), 2.01, f"{label}: the reader stays put ({before} -> {after})")
@@ -371,11 +379,24 @@ class OpenWhereYouLeftOff(unittest.TestCase):
             expect(page.locator(f"#message-{sent[0]}")).to_be_in_viewport()
             expect(feed.locator(".dm__head")).to_be_in_viewport()
             self.assertLess(feed.evaluate("el => el.scrollTop"), 2, f"{label}: a direct message never opened opens at its very top")
+            # It says at once how much is new below, and leads to the end (personas-35 D11-54: nothing did until something arrived).
+            pill = self.pill(feed)
+            expect(pill).to_have_text("60 new")
+            expect(pill).to_be_in_viewport()
             name = f"unread-never-opened-dm-{'390' if phone else '1440'}"
             shot(page, f"{name}-light")
             page.emulate_media(color_scheme="dark")
             shot(page, f"{name}-dark")
             page.emulate_media(color_scheme="light")
+            if phone:
+                pill.tap()
+            else:
+                page.locator("body").evaluate("el => document.activeElement instanceof HTMLElement && document.activeElement.blur()")
+                page.keyboard.press("End")
+            expect(self.pill(feed)).to_have_count(0)
+            page.wait_for_timeout(300)
+            self.assertLess(self.at_end(feed), 48, f"{label}: {'the line' if phone else 'End'} took the reader to the end of the direct message")
+            expect(page.locator(f"#message-{sent[-1]}")).to_be_in_viewport()
             # A thread never opened opens at its root, whole, with the divider under it above the first reply.
             page, feed = self.open({"url": f"/projects/{project}/conversations/{root['id']}", "feed": ".thread__feed", "ready": f"#message-{replies[-1]}"}, phone=phone)
             divider = feed.get_by_role("separator", name="New")
@@ -384,12 +405,13 @@ class OpenWhereYouLeftOff(unittest.TestCase):
             self.assertLess(feed.evaluate("el => el.scrollTop"), 2, f"{label}: a thread never opened opens at its root")
             expect(feed.locator(".thread__root")).to_be_in_viewport()
             expect(page.locator(f"#message-{replies[0]}")).to_be_in_viewport()
-            # "↓ N new" leads to the end.
+            # "↓ N new" counts the 20 replies below from the start, then what arrives, and leads to the end.
+            pill = self.pill(feed)
+            expect(pill).to_have_text("20 new")
             page.evaluate("() => window.dispatchEvent(new Event('focus'))")
             self.call("bob", f"/api/v1/conversations/{root['id']}/messages", {"body": words("Later", 99), "clientMessageId": str(uuid.uuid4())})
             page.evaluate("() => window.dispatchEvent(new Event('focus'))")
-            pill = self.pill(feed)
-            expect(pill).to_have_text("1 new")
+            expect(pill).to_have_text("21 new")
             pill.tap() if phone else pill.click()
             expect(self.pill(feed)).to_have_count(0)
             page.wait_for_timeout(300)

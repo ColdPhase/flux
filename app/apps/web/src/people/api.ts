@@ -94,6 +94,15 @@ export function peopleOrder<T extends { userId: string; name: string }>(meId: st
   return (a: T, b: T) => (a.userId === meId ? -1 : b.userId === meId ? 1 : rank(a) - rank(b) || a.name.localeCompare(b.name));
 }
 
+/**
+ * `sorted` with each person already drawn in the place they had (`drawn`, their ids in order), newcomers after them: a role changed on the
+ * page moves no row under the pointer (personas-33). The next visit sorts by role again.
+ */
+export function keepPlaces<T extends { userId: string }>(drawn: readonly string[], sorted: T[]): T[] {
+  const at = new Map(drawn.map((id, index) => [id, index]));
+  return [...sorted].sort((a, b) => (at.get(a.userId) ?? Number.MAX_SAFE_INTEGER) - (at.get(b.userId) ?? Number.MAX_SAFE_INTEGER));
+}
+
 export const isManagerRole = (role: WorkspaceRole | null | undefined) => role === 'owner' || role === 'admin';
 
 /** A guest does not start spaces (AG-2, #555): nothing offers them New space, and no empty state points to it (#1424). */

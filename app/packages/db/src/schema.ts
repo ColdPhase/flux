@@ -586,6 +586,8 @@ export const projectGrants = pgTable('project_grants', {
   projectId: uuid('project_id').notNull(),
   userId: text('user_id').notNull(),
   role: text('role', { enum: ['manager', 'contributor'] }).notNull(),
+  /** Migration 0095: an admin grant its person lost by becoming a guest; it is theirs again when they stop being one. */
+  adminHeld: boolean('admin_held').notNull().default(false),
   createdBy: text('created_by').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

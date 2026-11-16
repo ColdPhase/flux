@@ -193,6 +193,21 @@ class TaskThoughtChooser(unittest.TestCase):
         self.assertEqual(pressed["scale"], "none", "under reduced motion a pressed thought choice does not scale")
         self.assertNotEqual(pressed["background"], rest["background"], "and still takes the pressed fill")
 
+    def test_04_after_linking_a_thought_the_focus_stays_on_add_to_a_thought(self) -> None:
+        """Personas-35 D11-32: linking a thought from the task panel left the focus on the page's content outside the panel (the button was
+        disabled while the link was saved). It comes back to "Add to a thought", in the panel. Last: it links a thought of the shared map."""
+        page = self.page(phone=False)
+        picker = self.chooser(page, phone=False)
+        card = page.locator(f".wd[data-detail-kind='work'][data-detail-id='{self.ids['task']}']")
+        picker.get_by_role("button", name=THOUGHTS[0]).click()
+        expect(card.get_by_role("status").filter(has_text=f"Linked “{THOUGHTS[0]}” to this task.")).to_be_visible()
+        control = card.get_by_role("button", name="Add to a thought")
+        expect(control).to_be_focused()
+        page.wait_for_timeout(900)
+        expect(control).to_be_focused()
+        self.assertTrue(page.evaluate("() => !!document.activeElement?.closest('#details')"), "the focus is in the panel")
+        expect(card.locator(".wd-links").first.get_by_role("link").filter(has_text=THOUGHTS[0])).to_have_count(1)
+
 
 if __name__ == "__main__":
     unittest.main()

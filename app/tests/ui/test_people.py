@@ -261,7 +261,9 @@ class PeopleJourney(unittest.TestCase):
         expect_value(role, "admin")
         shot(page, "people-desktop-1440-dark-change-role")
         choose(role, label="Member")
-        expect(page.locator(".people__done")).to_have_text("Lee Moreno is now a member.")
+        # At once, with a 10 s Undo (personas-35): the toast says it, the status line does not say it again.
+        expect(page.locator(".ui-toast").filter(has_text="Lee is a member now")).to_be_visible()
+        expect(page.locator(".people__done")).to_have_text("")
         expect(page.get_by_role("list", name="People in Riverside Makers").get_by_role("listitem").filter(has_text="Lee Moreno")).to_contain_text("Member")
         self.assertEqual(self.roles(page, self.riverside)[self.ids["lee"]], "member")
         shot(page, "people-desktop-1440-dark")
@@ -371,7 +373,7 @@ class PeopleJourney(unittest.TestCase):
         self.settings_page(page, self.kiln)
         card = self.people_card(page, RESTRICTED)
         choose(card.get_by_label("Role of Kai Tanaka"), label="Admin")
-        expect(page.locator(".spset__status")).to_have_text("Kai is now an admin of Kiln controller.")
+        expect(page.locator(".ui-toast").filter(has_text="Kai is an admin of Kiln controller now")).to_be_visible()
         self.assertEqual(self.api(self.page("kai"), f"/api/v1/projects/{self.kiln}")[1]["access"], "manager")
 
         # Removing someone waits for an OK: it names what happens, and Keep leaves them be.
@@ -577,8 +579,13 @@ class PeopleFocus(unittest.TestCase):
         page = self.people_page()
         role = page.get_by_role("combobox", name="Role of Noa Berg")
         choose(role, label="Guest")
-        expect(page.locator(".people__done")).to_have_text("Noa Berg is now a guest.")
+        toast = page.locator(".ui-toast").filter(has_text="Noa is a guest now")
+        expect(toast).to_be_visible()
         self.after_next_frames(page)
+        expect(page.get_by_role("combobox", name="Role of Noa Berg")).to_be_focused()
+        # Personas-35: a role that takes access away is never one click without a way back. Undo gives the role back, and focus stays on it.
+        toast.get_by_role("button", name="Undo").click()
+        expect(page.get_by_role("combobox", name="Role of Noa Berg")).to_contain_text("Member")
         expect(page.get_by_role("combobox", name="Role of Noa Berg")).to_be_focused()
 
     def test_3_a_role_changed_on_the_page_moves_no_row(self) -> None:
@@ -598,10 +605,19 @@ class PeopleFocus(unittest.TestCase):
         name = last.locator(".people__who b").inner_text().strip()
         role = page.get_by_role("combobox", name=f"Role of {name}")
         choose(role, label="Admin")
-        expect(page.locator(".people__done")).to_have_text(f"{name} is now an admin.")
+        toast = page.locator(".ui-toast").filter(has_text=f"{name.split()[0]} is an admin now")
+        expect(toast).to_be_visible()
+        expect(role).to_contain_text("Admin")
         self.after_next_frames(page)
         self.assertEqual(order(), before, "the row stays where the pointer is")
         expect(page.get_by_role("combobox", name=f"Role of {name}")).to_be_focused()
+        # Undo gives the role back (t35-p3), and the row stays put then too.
+        toast.get_by_role("button", name="Undo").click()
+        expect(role).not_to_contain_text("Admin")
+        self.after_next_frames(page)
+        self.assertEqual(order(), before, "Undo moves no row either")
+        choose(role, label="Admin")
+        expect(role).to_contain_text("Admin")
         # The next visit sorts by role: admins come before members.
         page.reload()
         expect(roster.get_by_role("combobox", name=f"Role of {name}")).to_be_visible()

@@ -35,6 +35,8 @@ export interface WorkspaceRepository {
   insertMember(row: { workspaceId: string; userId: string; role: WorkspaceRole; createdBy: string }): Promise<MemberRecord | null>;
   /** Someone who became a guest is no longer a space admin: their `manager` grants become plain membership. */
   endSpaceAdmin(workspaceId: string, userId: string): Promise<void>;
+  /** A guest who stops being one is an admin again of the spaces `endSpaceAdmin` took them out of as admin (migration 0095). */
+  restoreSpaceAdmin(workspaceId: string, userId: string): Promise<void>;
   /** With `lock` the membership row is held `FOR SHARE` until the transaction ends (a person leaving the company waits for it). */
   isMember(workspaceId: string, userId: string, options?: { lock?: boolean }): Promise<boolean>;
   /** Remembers someone who is leaving or being removed, with their role, spaces and direct messages, for Restore; before `deleteMember`. */

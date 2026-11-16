@@ -761,20 +761,21 @@ function DecisionPanel({ decision, context, detail, relations, reload, revision,
     observer.observe(identity);
     return () => observer.disconnect();
   }, []);
-  // Undo gives the focus back to the control that made the change (F-026 §4): Accept, drawn again as the decision is proposed again. On a
-  // phone the tap on Undo left it on the page or on what Accept had handed it to (personas-33/34): there it goes to Accept whenever no window
-  // or menu is open. On a computer only focus that was lost is put there; focus a key or a click put elsewhere stays.
-  const undone = useRef(false);
-  const acceptRef = useRef<HTMLButtonElement>(null);
+  // Undo gives the focus back to the control that made the change (F-026 §4): once the decision is proposed again, Accept has it, not the
+  // replaced decision's link the focus went on to (personas-35). Focus the person took out of the panel meanwhile stays where it is. On a
+  // phone the tap on Undo left it on the page or on the field Accept had handed it to (personas-33/34): there Accept has it whenever no
+  // window or menu is open.
+  const acceptButton = useRef<HTMLButtonElement>(null);
+  const acceptUndone = useRef(false);
   useEffect(() => {
-    if (!undone.current || decision.status !== 'proposed') return undefined;
-    undone.current = false;
-    const frame = requestAnimationFrame(() => requestAnimationFrame(() => {
-      const active = document.activeElement;
-      const lost = !active || active === document.body || active.id === 'content' || !active.isConnected;
-      if (window.matchMedia('(hover: none)').matches ? !windowOrMenuOpen() : lost) acceptRef.current?.focus({ preventScroll: true });
-    }));
-    return () => cancelAnimationFrame(frame);
+    if (!acceptUndone.current || decision.status !== 'proposed') return;
+    acceptUndone.current = false;
+    const button = acceptButton.current;
+    const active = document.activeElement;
+    const nowhere = !active || active === document.body || active.id === 'content' || !!active.closest('.ui-toast');
+    if (!button) return;
+    if (window.matchMedia('(hover: none)').matches ? windowOrMenuOpen() : isTyping(active) || (!nowhere && !button.closest('#details')?.contains(active))) return;
+    button.focus({ preventScroll: true });
     // Read again after the Undo: proposed once more, at a new version, also when the accepted state was never drawn here.
   }, [decision.status, decision.version]);
   // Accept works at once here as in the Inbox, with the same 10 s Undo that takes the acceptance back (round 8, #1424).
@@ -788,7 +789,7 @@ function DecisionPanel({ decision, context, detail, relations, reload, revision,
       // The toast says what happened; the panel reads the decision again.
       failed: (conflict) => { setBusy(false); if (isCurrent() && conflict) reload(); },
       // Taken back or kept, the panel shows the decision as it is now.
-      undoing: (back) => { undone.current = true; const again = () => { if (isCurrent()) reload(); }; back.then(again, again); },
+      undoing: (back) => { acceptUndone.current = true; const again = () => { if (isCurrent()) reload(); }; back.then(again, () => { acceptUndone.current = false; again(); }); },
     });
   }
   // Plain sentences, drawn only when they apply (#871): the decision this one replaces, and the one that replaced it. A proposed decision
@@ -815,7 +816,7 @@ function DecisionPanel({ decision, context, detail, relations, reload, revision,
         <section className="wd-decide" aria-label="Your answer">
           <div className="nyc__foot wd-decide__foot">
             <div className="nyc__actions">
-              <Button ref={acceptRef} variant="primary" busy={busy} onClick={() => void accept()}>Accept</Button>
+              <Button ref={acceptButton} variant="primary" busy={busy} onClick={() => void accept()}>Accept</Button>
               {need ? <NotNowButton onClick={() => handlers.snooze(need, 'tomorrow')} /> : null}
               <Button variant="quiet" onClick={() => void discuss(context.project.id, decision.id)}>Discuss</Button>
             </div>

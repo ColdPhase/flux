@@ -306,11 +306,11 @@ class PersonaRound26Words(unittest.TestCase):
         expect(role).to_contain_text("Member")
         expect(page.get_by_role("button", name=re.compile("^Change Mia Kran"))).to_have_count(0)
         choose(role, label="Guest")
-        expect(page.locator(".people__done")).to_have_text("Mia Kran is now a guest.")
+        expect(page.locator(".ui-toast").filter(has_text="Mia is a guest now")).to_be_visible()
         roles = {item["userId"]: item["role"] for item in self.api(page, "GET", f"/api/v1/workspaces/{self.ids['company']}/members", status=200)}
         self.assertEqual(roles[self.ids["mia"]], "guest")
         choose(page.get_by_role("combobox", name="Role of Mia Kran"), label="Member")
-        expect(page.locator(".people__done")).to_have_text("Mia Kran is now a member.")
+        expect(page.locator(".ui-toast").filter(has_text="Mia is a member now")).to_be_visible()
         # Your own role is the same menu; the last owner is told what to do first.
         mine = page.get_by_role("combobox", name="Your role")
         box = open_select(mine)

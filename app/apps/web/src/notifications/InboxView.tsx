@@ -15,6 +15,8 @@ import { InboxAside } from './InboxAside';
 import { inboxSettled, inboxSettling } from './settle';
 import { ApiError } from '../api/client';
 import { awaitField, focusFieldMatching, isTyping } from '../ui/keys';
+import { clearOfCreate } from '../app/PhoneChrome';
+import { PLACE_SETTLED } from '../place/scroll';
 import './notifications.css';
 import './needs-you.css';
 
@@ -125,6 +127,27 @@ export function InboxView() {
     if (document.activeElement?.closest('.nyq__list')) rowControl(key)?.focus({ preventScroll: true });
   }, [setSelected]);
   useQueueKeys(shown, current?.key ?? null, select, handlers);
+  // On the phone the open item is the expanded card, and none of it is ever under the floating "+" (personas-35 D11-45): whenever another card
+  // opens (a tap, a return, Undo), the list brings all of it above the "+", also once a place put back on arrival has settled.
+  const expandedKey = !two && queue.items !== null ? current?.key ?? null : null;
+  useEffect(() => {
+    if (!expandedKey) return;
+    const card = () => document.querySelector<HTMLElement>(`.nyc[data-key="${CSS.escape(expandedKey)}"]`);
+    const clear = () => { const element = card(); if (element) clearOfCreate(element); };
+    // The card grows as it opens: it is kept clear while it settles, until the reader scrolls themselves.
+    const growing = new ResizeObserver(clear);
+    const frame = requestAnimationFrame(() => { const element = card(); if (element) growing.observe(element); });
+    const settled = () => growing.disconnect();
+    const timer = window.setTimeout(settled, 800);
+    const scroller = listRef.current?.closest<HTMLElement>('.pane-scroll');
+    scroller?.addEventListener(PLACE_SETTLED, clear);
+    scroller?.addEventListener('touchmove', settled, { passive: true });
+    scroller?.addEventListener('wheel', settled, { passive: true });
+    return () => {
+      cancelAnimationFrame(frame); window.clearTimeout(timer); growing.disconnect();
+      scroller?.removeEventListener(PLACE_SETTLED, clear); scroller?.removeEventListener('touchmove', settled); scroller?.removeEventListener('wheel', settled);
+    };
+  }, [expandedKey]);
   // What "done today" or "for later" put back has the ring and is the open item, on the phone the expanded card (F-026 §4, personas-34 P2 2):
   // the ring and the open item stay together, so E acts on what came back.
   const cameBack = useCallback((key: string) => {

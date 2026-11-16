@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import os
 import re
+import time
 import unittest
 import uuid
 
@@ -125,6 +126,39 @@ class GateSimplicity(unittest.TestCase):
         # Back leaves the tab instead of returning to the empty canvas.
         page.go_back()
         expect(page).to_have_url(f"{ORIGIN}/")
+
+    def test_01b_the_first_thought_of_an_empty_map_keeps_the_focus_like_the_next(self):
+        """Personas-35 D11-30: after the first thought of an empty map, focus fell to the page's content instead of the new thought (its field
+        is disabled while it saves, and the page's arrival gave the focus away meanwhile); the second thought had it. Every save is held for a
+        moment here, as on a slow connection."""
+        page = self.page()
+        project = self.empty_space(page, f"Seed swap {uuid.uuid4().hex[:4]}")
+
+        def slow(route):
+            if route.request.method == "POST":
+                time.sleep(0.9)
+            route.continue_()
+        page.route(re.compile(r".*/api/v1/sketches/[0-9a-f-]{36}/thoughts(\?.*)?$"), slow)
+        page.goto(f"/projects/{project}/map")
+        tools = page.get_by_role("toolbar", name="Map tools")
+        tools.get_by_role("button", name="Thought", exact=True).click()
+        draft = page.get_by_role("textbox", name="Thought text")
+        expect(draft).to_be_focused()
+        draft.fill("Chairs: ask the school hall first")
+        draft.press("Enter")
+        first = page.locator(".sk-node").filter(has_text="Chairs: ask the school hall first")
+        expect(first).to_be_focused()
+        page.wait_for_timeout(800)
+        expect(first).to_be_focused()
+        self.assertEqual(page.evaluate("() => document.activeElement?.id"), "", "not the page's content")
+        # The second thought takes it the same way.
+        tools.get_by_role("button", name="Thought", exact=True).click()
+        draft = page.get_by_role("textbox", name="Thought text")
+        expect(draft).to_be_focused()
+        draft.fill("Tables: the fair committee has twelve")
+        draft.press("Enter")
+        second = page.locator(".sk-node").filter(has_text="Tables: the fair committee has twelve")
+        expect(second).to_be_focused()
 
     def test_02_a_double_click_on_the_empty_canvas_starts_the_map_too(self):
         page = self.page()

@@ -310,7 +310,7 @@ class SpaceSettings(unittest.TestCase):
         add.get_by_role("button", name="Add 1 person").click()
         expect(page.locator(".spset__status")).to_have_text("Lee is now in Kiln firmware.")
         choose(card.get_by_label("Role of Lee Moreno"), label="Admin")
-        expect(page.locator(".spset__status")).to_have_text("Lee is now an admin of Kiln firmware.")
+        expect(page.locator(".ui-toast").filter(has_text="Lee is an admin of Kiln firmware now")).to_be_visible()
         expect(card.get_by_label("Role of Lee Moreno").first).to_be_focused()
         # Remove asks first: focus moves into the confirmation, Escape closes it and gives focus back.
         remove = card.get_by_role("button", name="Remove Lee Moreno from Kiln firmware")

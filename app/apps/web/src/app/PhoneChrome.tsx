@@ -70,6 +70,21 @@ export function PhoneDock({ places, onSearch, onCreate, create, capsule = true }
   );
 }
 
+/**
+ * Scrolls the page so all of `element` is above the phone's floating "+", with 8 px to spare (personas-35: the "+" covered the expanded Inbox
+ * card's Discuss). Its top stays in view: a card taller than the room is brought to the top instead. Nothing happens without the "+".
+ */
+export function clearOfCreate(element: HTMLElement) {
+  const fab = document.querySelector<HTMLElement>('.phone-fab');
+  const scroller = element.closest<HTMLElement>('.pane-scroll');
+  if (!fab || !scroller) return;
+  const room = scroller.getBoundingClientRect();
+  const rect = element.getBoundingClientRect();
+  const over = rect.bottom - Math.min(room.bottom, fab.getBoundingClientRect().top - 8);
+  if (over <= 0) return;
+  scroller.scrollTop += Math.min(over, Math.max(0, rect.top - room.top - 8));
+}
+
 /** A plain chevron (no fill, a 44 px hit area) that leads back to where the person came from. */
 export function PhoneBack({ onBack }: { onBack: () => void }) {
   return <IconButton icon="chevron-left" label="Back" size={24} className="phead__round phead__back" data-tip-align="start" onClick={onBack} />;
