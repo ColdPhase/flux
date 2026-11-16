@@ -14,6 +14,7 @@ from playwright.sync_api import expect, sync_playwright
 from test_app_shell import ORIGIN, UI_BROWSER, UPSTREAM, shot, show_map_as, start_forwarder
 from test_work_pagination import api
 from native_touch import drag_touch, native_touch_driver
+from inbox_items import open_item
 
 PASSWORD = "One panel for every object"
 # Every finite animation (a sheet arriving) has finished; endless indicators are ignored.
@@ -590,6 +591,40 @@ class UnifiedPanel(unittest.TestCase):
                 api(self.jonas_ctx, "DELETE", f"/api/v1/needs-you/{key}", status=204)
                 stored = self.stored(task)
                 self.assertEqual((stored["status"], stored["waitingFor"]["id"], stored["blocker"]), ("blocked", self.jonas, "The new seals"))
+
+    def test_16_status_done_on_your_own_blocked_task_in_the_panel_is_the_inboxs_done(self):
+        """Sweep-34 C9: the owner opens their blocked task from the Inbox and chooses Status › Done in the panel: the result is the Inbox's
+        Done, "#N moved to Done" with Undo, the item in done today, and Undo puts it back Blocked with what it waited for and why."""
+        queue = lambda: api(self.ada_ctx, "GET", "/api/v1/needs-you")  # noqa: E731
+        for phone in (False, True):
+            with self.subTest(phone=phone):
+                tag = "phone" if phone else "computer"
+                title = f"Drill the overflow holes ({tag})"
+                task = self.new_task(title, blocker="The step drill")
+                key = f"blocked:{task['id']}"
+                before = queue()["doneToday"]
+                page = self.page(phone=phone)
+                if phone:
+                    panel = self.task_panel(page, task)
+                else:
+                    page.goto("/inbox")
+                    row = page.get_by_role("listitem").filter(has=page.get_by_role("button", name=re.compile(rf"^#{task['number']} ")))
+                    open_item(row.first).get_by_role("button", name="Open", exact=True).click()
+                    panel = page.locator(f".wd[data-detail-kind='work'][data-detail-id='{task['id']}']")
+                    expect(panel.locator("[data-detail-relations-phase]")).to_have_attribute("data-detail-relations-phase", "ready")
+                panel.get_by_role("button", name="Status", exact=True).click()
+                page.get_by_role("menu", name="Status").get_by_role("menuitemradio", name="Done").click()
+                toast = page.get_by_role("status").filter(has_text=f"#{task['number']} moved to Done")
+                expect(toast).to_be_visible()
+                stored = self.wait_until(lambda: self.stored(task), lambda value: value["status"] == "done", "the task is done")
+                self.assertEqual(stored["status"], "done")
+                self.assertEqual(queue()["doneToday"], before + 1, "Status › Done on your blocked task is in done today, as the Inbox's Done")
+                self.assertIn(key, [entry["item"]["key"] for entry in api(self.ada_ctx, "GET", "/api/v1/needs-you/aside")["done"]])
+                toast.get_by_role("button", name="Undo").click()
+                stored = self.wait_until(lambda: self.stored(task), lambda value: value["status"] == "blocked", "Undo puts it back")
+                self.assertEqual((stored["status"], stored["waitingFor"]["id"], stored["blocker"]), ("blocked", self.jonas, "The step drill"))
+                expect(panel.get_by_role("region", name="Blocker")).to_contain_text("Waiting for Jonas Berg · The step drill")
+                self.assertEqual(queue()["doneToday"], before, "Undo takes it out of done today")
 
 
 if __name__ == "__main__":

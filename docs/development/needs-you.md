@@ -53,8 +53,10 @@ task given to you is its one `blocked` item. Push and email follow the person's 
 **Done on your blocked task finishes it** (founder decision 2026-11-15, round 8, #1424). For the owner, the `blocked` item's Done (the button,
 `E`, the phone's swipe) is the same `POST /api/v1/needs-you/:key` `{ "action": "done" }`: the task's own change to Done against `blocked.version`,
 said as everywhere ("#6 moved to Done"). For the person the task waits for (`blocked.waitedBy`) it is what `POST /work/:id/waiting-done` does:
-they are done and the task resumes ("#6 can continue"). The task panel's Done for that person is this same call, with the same toast and Undo
-(persona round 10: one action, one result, wherever it is taken; on the phone a tap on the Inbox row opens the panel). Either way the item is in done today, and Undo and Put back (the `DELETE`) put the task
+they are done and the task resumes ("#6 can continue"). The task panel takes both through this same call, with the same toast and Undo
+(persona round 10 and sweep-34 C9: one action, one result, wherever it is taken; on the phone a tap on the Inbox row opens the panel): the
+waited-for person's Done on the Blocked card, and the owner's Done on their own blocked task (Status › Done, its key `4`, as a person Owner).
+Done from the Board or the List stays the task's own change (`PATCH`), since those are not the Inbox's item. Either way the item is in done today, and Undo and Put back (the `DELETE`) put the task
 back to Blocked with what it waited for (the person, decision or task the item carried) and the reason it had when it left Blocked (kept on
 the activity entry of that move, sealed with it), as `restore: true` (the "done" or "can continue" line, the activity entry and the owner's
 "can continue" notification go). The waited-for person's Put back needs only read access, as their Done did, and puts back only the wait
