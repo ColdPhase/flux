@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import datetime
 import re
+import time
 import unittest
 import uuid
 
@@ -65,8 +66,8 @@ class UnifiedPanel(unittest.TestCase):
         cls.browser.close()
         cls.pw.stop()
 
-    def page(self, phone=False, scheme="light"):
-        ctx = self.browser.new_context(base_url=ORIGIN, storage_state=self.ada_ctx.storage_state(), color_scheme=scheme,
+    def page(self, phone=False, scheme="light", who="ada"):
+        ctx = self.browser.new_context(base_url=ORIGIN, storage_state=(self.jonas_ctx if who == "jonas" else self.ada_ctx).storage_state(), color_scheme=scheme,
             viewport={"width": 390 if phone else 1440, "height": 844 if phone else 900},
             device_scale_factor=2 if phone else 1, is_mobile=phone, has_touch=phone, locale="en-GB", service_workers="block")
         self.addCleanup(ctx.close)
@@ -483,6 +484,112 @@ class UnifiedPanel(unittest.TestCase):
                     expect(page.locator("#details .wd[data-detail-kind='decision']")).to_be_visible()
                     page.wait_for_function(SETTLED)
                     shot(page, f"unified-panel-decision-{device}-{scheme}")
+
+    def task_panel(self, page, task):
+        """The task's panel on the computer or its sheet on the phone, once its rows and discussion are read."""
+        page.goto(f"/projects/{self.project}/tasks?open=work:{task['id']}")
+        panel = page.locator(f".wd[data-detail-kind='work'][data-detail-id='{task['id']}']")
+        expect(panel).to_be_visible()
+        expect(panel.locator("[data-detail-relations-phase]")).to_have_attribute("data-detail-relations-phase", "ready")
+        expect(panel.get_by_role("list", name="Task activity")).to_be_visible()
+        return panel
+
+    @staticmethod
+    def wait_until(read, done, message, seconds=10.0):
+        deadline = time.time() + seconds
+        value = read()
+        while not done(value) and time.time() < deadline:
+            time.sleep(0.25)
+            value = read()
+        return value
+
+    def test_14_another_persons_message_shows_live_in_the_open_task_panel(self):
+        """Persona round 10 P2 1 (S23): the task's discussion is live as the decision's and a thread are. Two people, two browser pages: a
+        message Jonas writes shows in Ada's open panel without a reload; at the end she sees it arrive, above it she is not moved and
+        "↓ 1 new" takes her there."""
+        task = self.new_task("Seal the barrel lids before the rain")
+        for index in range(24):
+            api(self.ada_ctx if index % 2 else self.jonas_ctx, "POST", f"/api/v1/work/{task['id']}/discussion",
+                {"body": f"Lid note {index + 1:02}: which seal fits the old barrels, and who has the drill.", "clientMessageId": str(uuid.uuid4())}, 201)
+        ada = self.page()
+        panel = self.task_panel(ada, task)
+        activity = panel.get_by_role("list", name="Task activity")
+        expect(activity).to_contain_text("Lid note 24")
+        scroller = panel.locator(".wd__scroll")
+        jonas = self.page(who="jonas")
+        theirs = self.task_panel(jonas, task)
+
+        def send(words):
+            theirs.get_by_placeholder("Write about this task…").fill(words)
+            theirs.get_by_role("button", name=re.compile("^Send to task$")).click()
+            expect(theirs.get_by_role("list", name="Task activity")).to_contain_text(words)
+
+        # At the end of the panel: Jonas's message arrives in view, with nothing to count.
+        scroller.evaluate("element => { element.scrollTop = element.scrollHeight; }")
+        send("The seals came today, I will fit them on Saturday.")
+        arrived = activity.locator("li[data-message-id]").filter(has_text="The seals came today")
+        expect(arrived).to_have_count(1)
+        expect(arrived).to_be_in_viewport()
+        expect(panel.locator(".convo-newbelow__b")).to_have_count(0)
+        # Above the end (the panel's top, on the task's rows): nothing moves, and the arrival is counted.
+        scroller.evaluate("element => { element.scrollTop = 0; }")
+        ada.wait_for_timeout(300)
+        send("Saturday works, the drill is in the shed.")
+        later = activity.locator("li[data-message-id]").filter(has_text="Saturday works")
+        expect(later).to_have_count(1)
+        pill = ada.locator(".convo-newbelow__b")
+        expect(pill).to_have_text(re.compile("1 new"))
+        self.assertEqual(scroller.evaluate("element => element.scrollTop"), 0, "a reader above the end is not moved")
+        shot(ada, "unified-panel-task-live-new-below")
+        pill.click()
+        expect(later).to_be_in_viewport()
+        expect(ada.locator(".convo-newbelow__b")).to_have_count(0)
+
+    def test_15_done_in_the_panel_by_the_person_waited_for_is_the_inboxs_done(self):
+        """Persona round 10 P2 2: the person a task waits for says Done in its panel (on the phone a tap on the Inbox row opens it) with
+        the result of the Inbox's Done: "#N can continue" with Undo (Z), the item in done today, and Undo or Put back make the task Blocked
+        again for them with the same reason, without the owner's "can continue" notice."""
+        queue = lambda: api(self.jonas_ctx, "GET", "/api/v1/needs-you")  # noqa: E731
+        notices = lambda task: [item for item in api(self.ada_ctx, "GET", "/api/v1/inbox?limit=100")["items"] if item["title"].startswith(f"#{task['number']} can continue")]  # noqa: E731
+        for phone in (False, True):
+            with self.subTest(phone=phone):
+                tag = "phone" if phone else "computer"
+                task = self.new_task(f"Fit the new lid seals ({tag})", blocker="The new seals")
+                key = f"blocked:{task['id']}"
+                before = queue()["doneToday"]
+                page = self.page(phone=phone, who="jonas")
+                panel = self.task_panel(page, task)
+                card = panel.get_by_role("region", name="Blocker")
+                expect(card).to_contain_text("Waiting for Jonas Berg · The new seals")
+                card.get_by_role("button", name="Done", exact=True).click()
+                expect(page.get_by_role("status").filter(has_text=f"#{task['number']} can continue")).to_be_visible()
+                stored = self.wait_until(lambda: self.stored(task), lambda value: value["status"] != "blocked", "the task resumes")
+                self.assertEqual((stored["status"], stored["waitingFor"], stored["blocker"]), ("in_progress", None, None))
+                expect(card).to_have_count(0)
+                # The same Done as the Inbox's: the choice is kept, so it is in done today and can be put back from there.
+                self.assertEqual(queue()["doneToday"], before + 1, "Done in the panel is in done today")
+                self.assertIn(key, [entry["item"]["key"] for entry in api(self.jonas_ctx, "GET", "/api/v1/needs-you/aside")["done"]])
+                self.wait_until(lambda: notices(task), bool, "Ada hears it can continue", seconds=15)
+                self.assertTrue(notices(task), "the owner hears the task can continue")
+                shot(page, f"unified-panel-waiter-done-{tag}")
+                # Undo (Z on the computer, the toast's button on the phone): Blocked again, for Jonas, with the same reason; the owner's
+                # notice goes with it.
+                if phone:
+                    page.get_by_role("status").filter(has_text=f"#{task['number']} can continue").get_by_role("button", name="Undo").click()
+                else:
+                    page.keyboard.press("z")
+                stored = self.wait_until(lambda: self.stored(task), lambda value: value["status"] == "blocked", "Undo puts the wait back")
+                self.assertEqual((stored["status"], stored["waitingFor"]["id"], stored["blocker"]), ("blocked", self.jonas, "The new seals"))
+                expect(panel.get_by_role("region", name="Blocker")).to_contain_text("Waiting for Jonas Berg · The new seals")
+                self.assertEqual(queue()["doneToday"], before, "Undo takes it out of done today")
+                self.wait_until(lambda: notices(task), lambda value: not value, "the notice goes", seconds=15)
+                self.assertEqual(notices(task), [], "the owner's can continue notice is gone")
+                # Done again, then Put back from done today (the same DELETE): the same wait comes back.
+                panel.get_by_role("region", name="Blocker").get_by_role("button", name="Done", exact=True).click()
+                self.wait_until(lambda: self.stored(task), lambda value: value["status"] != "blocked", "the task resumes again")
+                api(self.jonas_ctx, "DELETE", f"/api/v1/needs-you/{key}", status=204)
+                stored = self.stored(task)
+                self.assertEqual((stored["status"], stored["waitingFor"]["id"], stored["blocker"]), ("blocked", self.jonas, "The new seals"))
 
 
 if __name__ == "__main__":

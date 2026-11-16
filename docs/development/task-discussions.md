@@ -300,7 +300,11 @@ and its real discussion under [P5](../design/final/README.md#5-behaviour):
   composer is at the bottom of the panel. Before anyone has written, a person who can write starts the discussion
   there with `POST /api/v1/work/:id/discussion` (`kind: 'text'`); the message then shows in the timeline. Its draft and
   retry id are the task's own, `task:<id>` and `task:<id>:pending` in the browser's draft store, so a lost answer retried from
-  anywhere stores the message once.
+  anywhere stores the message once. **The discussion is live** (persona round 10, README S23): while the panel is open, a message
+  written, edited or deleted there by anyone shows without a reload. The stream carries identifiers only, so the panel reads its
+  discussion again on the space's message events (`project.message_sent.v1`, `…_edited`, `…_removed`, `project.conversation_created.v1`),
+  as an open thread does, never reading words from the event. A reader at the end sees the newest arrive; a reader above it is not moved,
+  and what arrived is counted in **↓ N new** over the foot of the panel (a click, a tap or End goes to the end).
 
 Still open in #154: unused-AI undo and real #152/#153 clients. The shared composer and stored-file UI slice below
 requires its own commit-specific functional and visual evaluation before delivery.

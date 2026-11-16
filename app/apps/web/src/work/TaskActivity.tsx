@@ -27,12 +27,15 @@ import { useSpaceAi } from '../ai/spaceAi';
 import { undoChange } from '../assistant/api';
 import { RefLink } from '../place/origin';
 import { useCreateWorkFromMessage } from './inline';
+import { ShowEarlier } from './DecisionDiscussion';
 import { getTaskActivity } from './api';
 import { STATUS_LABEL } from './format';
 import { dueLabel } from './TaskParts';
 import { useTyping } from '../typing/useTyping';
 import { TypingNotice } from '../typing/TypingNotice';
 import { callWords, useCallLines, useNow } from '../live/callLines';
+import { useStreamEvents } from '../api/stream';
+import { END_SLACK, NewBelow, arrivedBelow, useNewBelow } from '../app/unreadReading';
 
 // A task's one discussion (F-026 P10, #488, #1364): one timeline, oldest first with the newest at the bottom above the composer (every
 // discussion lists oldest first: founder decision, Hubert, 2026-11-15, round 8, #1424), of what changed and who said what. It has no heading
@@ -50,6 +53,11 @@ type Line =
 export type TaskComposerDraft = ReturnType<typeof useComposerDraft>;
 
 const MESSAGES = 20;
+/**
+ * What another person wrote, edited or deleted in a space (persona round 10): the open panel reads its discussion again, as an open thread does.
+ * The stream carries identifiers only, so no words are read from the event.
+ */
+const DISCUSSION_EVENT = /^project\.(conversation_created|message_sent|message_edited|message_removed)\.v1$/;
 /** How far back a page of the discussion reaches: the sequence it continues before, 0 once nothing is left before it. */
 const reach = (page: Discussion['messagePage']) => (page.hasMoreBefore ? page.nextBeforeSequence ?? Number.MAX_SAFE_INTEGER : 0);
 
@@ -138,6 +146,10 @@ export function useTaskActivity({ item, links, project, members, me, revision }:
     });
     return () => controller.abort();
   }, [item.id, project.id, me.id, attempt, revision]);
+  // The discussion is live (persona round 10, S23): a message by anyone shows while the panel is open, without a reload.
+  useStreamEvents(me.id, (event) => {
+    if (event.objectType === 'project' && event.objectId === project.id && DISCUSSION_EVENT.test(event.kind)) setAttempt((value) => value + 1);
+  }, () => setAttempt((value) => value + 1));
 
   // The root is always read with the newest page, so the oldest reply shown is where the earlier page begins: every message in between is
   // one "Show earlier" away, oldest first (founder decision, round 8, #1424; personas-33 P2 3).
@@ -240,16 +252,35 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
   const headingId = useId();
   const { discussion } = state;
   // The newest stays in view at the bottom, above the field, as a line arrives or is sent (round 8, #1424). Not on the first draw: the panel
-  // opens at its top, on the task's rows, and nothing moves while it loads.
+  // opens at its top, on the task's rows, and nothing moves while it loads. What another person wrote while this reader reads above the end
+  // does not move them: it is counted in "↓ N new" over the panel's foot (S23, persona round 10), as in every conversation.
   const section = useRef<HTMLElement>(null);
+  const timeline = useRef<HTMLOListElement>(null);
+  const [feed, setFeed] = useState<HTMLElement | null>(null);
+  useLayoutEffect(() => { setFeed(section.current?.closest<HTMLElement>('.wd__scroll') ?? null); }, []);
+  const lineKeys = useMemo(() => state.lines.map((line) => line.key), [state.lines]);
+  const below = useNewBelow(feed, undefined, lineKeys);
   const newest = `${state.lines.at(-1)?.key ?? ''}:${composer.pending.length}`;
   const shownNewest = useRef<string | null>(null);
+  const shownLines = useRef<Set<string> | null>(null);
+  const shownPending = useRef(0);
   useLayoutEffect(() => {
     if (state.loading) return;
+    const seen = shownLines.current;
+    shownLines.current = new Set(lineKeys);
+    const sent = composer.pending.length > shownPending.current;
+    shownPending.current = composer.pending.length;
     const before = shownNewest.current;
     shownNewest.current = newest;
-    if (before === null || before === newest) return;
+    if (before === null || seen === null || before === newest) return;
     const root = section.current;
+    const lineOf = (key: string) => root?.querySelector<HTMLElement>(`[data-line="${CSS.escape(key)}"]`) ?? null;
+    const added = state.lines.filter((line) => !seen.has(line.key));
+    const others = added.filter((line) => !lineIsMine(line, me.id)).map((line) => line.key);
+    // Where the reader was before these lines came: at the end, or above it.
+    const grew = added.reduce((sum, line) => sum + (lineOf(line.key)?.getBoundingClientRect().height ?? 0), 0);
+    const wasAtEnd = !feed || feed.scrollHeight - feed.scrollTop - feed.clientHeight - grew < END_SLACK;
+    if (!sent && others.length && !wasAtEnd) { below.add(arrivedBelow(feed, others, lineOf)); return; }
     const last = root?.querySelector<HTMLElement>('.wd-pending__item:last-child') ?? root?.querySelector<HTMLElement>('.wd-act')?.lastElementChild;
     if (last instanceof HTMLElement) last.scrollIntoView({ block: 'nearest' });
   }, [newest, state.loading]);
@@ -275,7 +306,7 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
     const done = state.lines.filter((line): line is Extract<typeof line, { kind: 'change' }> => line.kind === 'change' && line.entry.kind === 'status' && line.entry.status?.to === 'done');
     return (done.find((line) => line.entry.actor.kind === 'agent' && line.entry.actor.id === agentDone.agentId) ?? done[0])?.key ?? null;
   }, [agentDone, state.lines]);
-  return (
+  return (<>
     <section className="details__sec wd-activity" aria-labelledby={headingId} ref={section}>
       <div className="wd-sechead">
         <h4 id={headingId} className="ui-vh">Discussion</h4>
@@ -290,8 +321,8 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
       <PrivateAiLines own assistant={state.assistant} meId={me.id} meName={me.name} others={othersOf} composerId={composerId}
         lookups={{ projectId: project.id, messages: [], work: new Map(), author: () => '', people }} />
       {state.failed === 'changes' ? <p className="wd-error" role="alert">Some of the history could not be loaded. <button type="button" className="wd-inline" onClick={state.retry}>Retry</button></p> : null}
-      {state.hasEarlier ? <button type="button" className="wd-inline wd-act__earlier" disabled={state.busyEarlier} onClick={() => void state.loadEarlier()}>{state.busyEarlier ? 'Loading…' : 'Show earlier'}</button> : null}
-      <ol className="wd-act" aria-label="Task activity">
+      <ShowEarlier shown={state.hasEarlier} busy={state.busyEarlier} load={state.loadEarlier} list={timeline} />
+      <ol className="wd-act" aria-label="Task activity" ref={timeline}>
         {/* A call started from this task is one line of its discussion, in time order like the rest (F-041 point 6). */}
         {byTime((state.loading ? [] : state.lines.filter((line) => !(line.kind === 'change' && line.entry.actor.kind === 'agent'
           && clientChanges.some((change) => change.via !== null && Math.abs(Date.parse(change.createdAt) - Date.parse(line.at)) < 15_000)))).map((line) => ({ at: line.at, node: (() => {
@@ -305,7 +336,7 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
             // A shown answer carries its agent's colour, and an agent's own message its author's (#1528): the same for every reader.
             const faceHue = shown?.colour ?? (message.author?.kind === 'agent' ? hueOf(message.author) : undefined);
             return (
-              <li key={line.key} className="wd-act__item wd-act__item--message" data-message-id={message.id} {...(shown ? { 'data-shown-answer': '', 'aria-label': shownLabel(shown, name).spoken } : {})}>
+              <li key={line.key} className="wd-act__item wd-act__item--message" data-line={line.key} data-message-id={message.id} {...(shown ? { 'data-shown-answer': '', 'aria-label': shownLabel(shown, name).spoken } : {})}>
                 <Face actor={{ kind: agent || shown ? 'agent' : 'human', id: message.authorId, name }} mine={mine} {...(faceHue ? { hue: faceHue } : {})} />
                 <div className="wd-act__body">
                   <p className="wd-act__who">
@@ -332,7 +363,7 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
           const mine = actor.id === me.id && actor.kind === 'human';
           const text = line.kind === 'change' ? changeText(line.entry, me.id) : line.kind === 'reverted' ? 'undid its creation' : line.source ? FROM[line.source] : 'created the task';
           return (
-            <li key={line.key} className="wd-act__item" data-activity={line.kind === 'change' ? line.entry.kind : line.kind}>
+            <li key={line.key} className="wd-act__item" data-line={line.key} data-activity={line.kind === 'change' ? line.entry.kind : line.kind}>
               <Face actor={actor} mine={mine} hue={hueOf(actor.kind === 'agent' ? actor : null)} />
               <p className="wd-act__line">
                 {actor.kind === 'agent' ? <AgentIdentity name={actor.name} owner={agentAuthorOwner(actor, owners)} icon={false} hue={hueOf(actor)} /> : <b>{actor.name}{mine ? ' (you)' : ''}</b>}
@@ -353,7 +384,16 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
         </li>
       ))}</ol> : null}
     </section>
-  );
+    {/* The "↓ N new" line, held over the foot of the panel's scroll while the reader is above the end (S23). */}
+    <div className="wd-newbelow"><NewBelow count={below.count} onClick={below.toEnd} /></div>
+  </>);
+}
+
+/** A line this reader wrote or made: their own arrival is never counted as new. */
+function lineIsMine(line: Line, meId: string) {
+  if (line.kind === 'message') return line.message.authorId === meId && !shownAnswer(line.message);
+  const actor = line.kind === 'change' ? line.entry.actor : line.actor;
+  return actor.kind === 'human' && actor.id === meId;
 }
 
 /** The one composer, at the bottom of the panel: it writes to the task's discussion, which shows in the timeline above. */

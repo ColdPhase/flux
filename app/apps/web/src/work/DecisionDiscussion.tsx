@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type RefObject } from 'react';
 import type { ConversationMessage, DecisionDiscussion as Discussion, Project, WorkspaceMember } from '@flux/contracts';
 import { AgentIdentity, Avatar, Kreska, MEDIA, sendsOnEnter, useMediaQuery, type AgentHue } from '../ui';
 import { useComposerDraft, useComposerScope } from '../composer/draft';
@@ -63,6 +63,24 @@ export function useDecisionDiscussion(decisionId: string, revision: number | str
 }
 export type DecisionDiscussionState = ReturnType<typeof useDecisionDiscussion>;
 
+/**
+ * "Show earlier" at the top of a panel's discussion. Focus stays in the panel (persona round 10): the button keeps it while the page is read,
+ * and when nothing earlier is left and the button goes, the oldest line shown takes it, never the page or the conversation behind the panel.
+ */
+export function ShowEarlier({ shown, busy, load, list }: { shown: boolean; busy: boolean; load: () => Promise<void>; list: RefObject<HTMLElement | null> }) {
+  const handOn = useRef(false);
+  useLayoutEffect(() => {
+    if (!handOn.current) return;
+    if (shown) { if (!busy) handOn.current = false; return; }
+    handOn.current = false;
+    const first = list.current?.querySelector<HTMLElement>(':scope > li');
+    if (first) { first.tabIndex = -1; first.focus({ preventScroll: true }); }
+  }, [shown, busy, list]);
+  if (!shown) return null;
+  return <button type="button" className="wd-inline wd-act__earlier" aria-disabled={busy || undefined}
+    onClick={(event) => { if (busy) return; handOn.current = document.activeElement === event.currentTarget; void load(); }}>{busy ? 'Loading…' : 'Show earlier'}</button>;
+}
+
 function Face({ message, name, mine, hue }: { message: ConversationMessage; name: string; mine: boolean; hue?: AgentHue | undefined }) {
   return message.authorId === null ? <Kreska size={20} className="wd-act__face" {...(hue ? { hue } : {})} /> : <Avatar name={name} id={message.authorId} size="sm" tone={mine ? 'me' : 'neutral'} />;
 }
@@ -97,7 +115,7 @@ export function DecisionMessages({ state, composer, project, members, me }: {
     <section className="details__sec wd-discussion" aria-labelledby="wd-discussion-head" data-decision-discussion={discussion?.conversationId ?? ''}>
       <h4 id="wd-discussion-head">Discussion</h4>
       {state.failed ? <p className="wd-error" role="alert">The discussion could not be loaded. <button type="button" className="wd-inline" onClick={state.reload}>Retry</button></p> : null}
-      {state.hasEarlier ? <button type="button" className="wd-inline wd-act__earlier" disabled={state.busyEarlier} onClick={() => void state.loadEarlier()}>{state.busyEarlier ? 'Loading…' : 'Show earlier'}</button> : null}
+      <ShowEarlier shown={state.hasEarlier} busy={state.busyEarlier} load={state.loadEarlier} list={list} />
       <ol className="wd-act wd-discussion__list" aria-label="Messages about this decision" ref={list}>
         {messages.map((message) => {
           const name = author(message);

@@ -1,5 +1,5 @@
 import {
-  decisionAcceptPath, decisionUnacceptPath, decisionWithdrawPath, workspaceAgentsPath, taskActivityPath, projectDecisionsPath, projectLinksPath, projectWorkPath, workItemPath, workspaceAssignedWorkPath, taskCreationUndoPath, taskWaitingDonePath,
+  decisionAcceptPath, decisionUnacceptPath, decisionWithdrawPath, workspaceAgentsPath, taskActivityPath, projectDecisionsPath, projectLinksPath, projectWorkPath, workItemPath, workspaceAssignedWorkPath, taskCreationUndoPath,
   type CreateObjectLinkCommand, type CreateWorkCommand, type Decision, type ObjectLink, type Page,
   type ProposeDecisionCommand, type TaskActivityPage, type TaskActivityQuery, type UndoTaskCreationResult, type UpdateWorkCommand, type WorkItem, type Agent,
 } from '@flux/contracts';
@@ -39,9 +39,6 @@ export const linkObjects = (projectId: string, command: CreateObjectLinkCommand,
   request<ObjectLink>(projectLinksPath(projectId), { method: 'POST', body: command, headers: key(idempotencyKey) });
 export const listAgents = (workspaceId: string, signal?: AbortSignal) => request<Agent[]>(workspaceAgentsPath(workspaceId), { signal });
 
-/** The person a blocked task waits for says they are done (#868): the task goes back to Doing by itself. */
-export const resolveWaiting = (item: Pick<WorkItem, 'id' | 'version'>, signal?: AbortSignal) =>
-  request<WorkItem>(taskWaitingDonePath(item.id), { method: 'POST', headers: ifMatch(item.version), signal });
 
 export const undoTaskCreation = (item: Pick<WorkItem, 'id' | 'version'>, clientCommandId: string, signal?: AbortSignal) =>
   request<UndoTaskCreationResult>(taskCreationUndoPath(item.id), { method: 'POST', body: { clientCommandId, expectedVersion: item.version }, signal });

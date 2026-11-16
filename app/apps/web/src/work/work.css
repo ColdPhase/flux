@@ -291,6 +291,8 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
 .wd--task, .wd--decision { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; }
 .wd__scroll { flex: 1; min-height: 0; padding: 18px 22px 20px; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
 .wd__foot { flex: none; padding: 6px 16px 10px; padding-bottom: max(10px, env(safe-area-inset-bottom)); }
+/* A task's "↓ N new" line (S23): held at the foot of the panel's scroll, over what is there, taking no room. */
+.wd-newbelow { position: sticky; bottom: 0; z-index: 2; height: 0; }
 .wd__foot .composer__audience > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wd--task .details__title { margin: 2px 0 6px; font-size: var(--fs-xl); }
 .wd-row dd .ui-avatar { flex: none; }

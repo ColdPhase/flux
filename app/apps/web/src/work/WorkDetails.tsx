@@ -12,13 +12,14 @@ import { DetailsSkeleton } from '../app/SurfaceSkeletons';
 import { useRegisterLiveHere } from '../live/LiveProvider';
 import { LiveEntry } from '../live/LiveEntry';
 import { useShellActions, type ObjectView } from '../app/shellContext';
-import { useNeedsYou } from '../notifications/needsYou';
+import { resolveNeedsYou, restoreNeedsYou, useNeedsYou } from '../notifications/needsYou';
+import { announceInboxChange } from '../notifications/api';
 import { useNeedsYouActions } from '../notifications/useNeedsYouActions';
 import { NotNowButton, WaitingLine } from '../notifications/NeedsYouCard';
 import '../notifications/needs-you.css';
 import { useDiscussDecision } from './discuss';
 import { DecisionComposer, DecisionMessages, useDecisionDiscussion } from './DecisionDiscussion';
-import { resolveWaiting, undoTaskCreation, updateWork } from './api';
+import { undoTaskCreation, updateWork } from './api';
 import { useAcceptDecision } from './acceptDecision';
 import { STATUS_LABEL, blockedLine, decisionState, isFinished, linked, shortDate, statusPhrase, taskNumber } from './format';
 import { docsLinking } from '../docs/AddToDoc';
@@ -411,12 +412,26 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
       item, undefined, (stored) => { if (blockerBase.current !== null) blockerBase.current = stored.version; });
   }
   // The person a blocked task waits for says they are done, and it goes back to Doing by itself (#868). Reading the space is enough.
+  // It is the Inbox item's Done, through the same call (persona round 10: one action, one result, wherever it is taken): "#4 can continue"
+  // with Undo (Z), the item in done today, and Undo or Put back make the task Blocked again for this person with its reason.
   const waitedOnMe = item.status === 'blocked' && item.waitingFor?.id === me.user.id;
   async function waitingDone() {
     if (busy) return;
     setBusy(true); setError('');
-    try { await resolveWaiting(item); if (isCurrent()) reload(); }
-    catch (cause) { if (isCurrent()) { setError(readable(cause)); if (cause instanceof ApiError && cause.status === 409) reload(); } }
+    const key = `blocked:${item.id}`;
+    // A task of your own that waits for you is finished by its Done, as in the Inbox.
+    const words = item.owner?.kind === 'human' && item.owner.id === me.user.id ? stateWords(item, 'done') : `${taskNumber(item)} can continue`;
+    try {
+      await resolveNeedsYou(key, { action: 'done' });
+      announceInboxChange();
+      toast({ message: words, action: { label: 'Undo', key: 'Z', onClick: () => {
+        void restoreNeedsYou(key).then(() => { announceInboxChange(); if (isCurrent()) reload(); }, (cause: unknown) => {
+          toast({ message: cause instanceof ApiError && cause.message ? cause.message : 'Undo did not work. Open the task to look again.', tone: 'danger' });
+        });
+      } } });
+      if (isCurrent()) reload();
+    }
+    catch (cause) { if (isCurrent()) { setError(readable(cause)); if (cause instanceof ApiError && (cause.status === 409 || cause.status === 404)) reload(); } }
     finally { setBusy(false); }
   }
   const finished = isFinished(item);
