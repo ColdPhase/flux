@@ -256,6 +256,7 @@ function useModalLift(active: boolean, stack: RefObject<HTMLElement | null>): { 
     // all that time (test_connected_flow 08). The frame after is measured too, for what settles by then; one is asked at a time, and a change
     // never puts it off.
     const hooked = new WeakSet<Animation>();
+    const timers: number[] = [];
     const measure = () => { again = 0; run(); place(); };
     const place = () => {
       if (frame) return;
@@ -319,6 +320,11 @@ function useModalLift(active: boolean, stack: RefObject<HTMLElement | null>): { 
         if (hooked.has(animation) || animation.playState !== 'running' || !target?.closest('[aria-modal="true"]') || effect!.getComputedTiming().iterations === Infinity) continue;
         hooked.add(animation);
         animation.finished.then(measure, () => undefined);
+        // And by the clock: WebKit settles a finished motion only in a frame, and it can go a second without one while the surface already
+        // stands where the motion took it (CI, test_connected_flow 08).
+        const timing = effect!.getComputedTiming();
+        const left = Number(timing.endTime ?? 0) - Number(timing.localTime ?? 0);
+        timers.push(window.setTimeout(measure, Math.max(0, left) + 20));
       }
     };
     const observer = new MutationObserver(measure);
@@ -329,7 +335,7 @@ function useModalLift(active: boolean, stack: RefObject<HTMLElement | null>): { 
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ['style'] });
     window.addEventListener('resize', measure);
     measure();
-    return () => { cancelAnimationFrame(frame); observer.disconnect(); window.removeEventListener('resize', measure); };
+    return () => { cancelAnimationFrame(frame); for (const timer of timers) window.clearTimeout(timer); observer.disconnect(); window.removeEventListener('resize', measure); };
   }, [active, stack]);
   return active ? lift : { inset: 0, movedAt: lift.movedAt };
 }
