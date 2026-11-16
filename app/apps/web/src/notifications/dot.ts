@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useStreamEvents } from '../api/stream';
 import type { NeedsYouItem } from '@flux/contracts';
-import { INBOX_CHANGED, NEEDS_YOU_ACCEPTED, type AcceptedInboxItem } from './api';
-import { acceptingIds, answeringIds, onAcceptingChange } from './pendingAccept';
+import { INBOX_CHANGED, NEEDS_YOU_ACCEPTED, NEEDS_YOU_RETURNED, type AcceptedInboxItem } from './api';
+import { answeringIds, onAcceptingChange } from './pendingAccept';
 import { getNeedsYou } from './needsYou';
 
 /** The spaces that hold something that needs the person, from the same read as the count (#1250): the sidebar's dot. */
@@ -23,8 +23,8 @@ export function useNeedsYouSpaces(identity: string): ReadonlySet<string> {
 export function useInboxDot(identity: string, pathname: string): { count: number; notifying: number } {
   const [unread, setUnread] = useState<{ identity: string; count: number; notifying: number; items: readonly NeedsYouItem[] } | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Accepted or answered here (Accept and an answer wait out their Undo before they are sent, #1424): the count leaves them out at once, as
-  // the Inbox does, and until a read no longer has them.
+  // Accepted or answered here: the count leaves them out at once, as the Inbox does, and until a read no longer has them. An acceptance
+  // taken back with Undo (round 8, #1424) counts again at once.
   const [left, setLeft] = useState<ReadonlySet<string>>(new Set());
   const [, recount] = useState(0);
   useEffect(() => onAcceptingChange(() => recount((n) => n + 1)), []);
@@ -33,8 +33,13 @@ export function useInboxDot(identity: string, pathname: string): { count: number
       const detail = (event as CustomEvent<AcceptedInboxItem>).detail;
       if (detail.ownerId === identity) setLeft((keys) => new Set([...keys, detail.key]));
     };
+    const onReturned = (event: Event) => {
+      const detail = (event as CustomEvent<AcceptedInboxItem>).detail;
+      if (detail.ownerId === identity) setLeft((keys) => (keys.has(detail.key) ? new Set([...keys].filter((key) => key !== detail.key)) : keys));
+    };
     window.addEventListener(NEEDS_YOU_ACCEPTED, onAccepted);
-    return () => window.removeEventListener(NEEDS_YOU_ACCEPTED, onAccepted);
+    window.addEventListener(NEEDS_YOU_RETURNED, onReturned);
+    return () => { window.removeEventListener(NEEDS_YOU_ACCEPTED, onAccepted); window.removeEventListener(NEEDS_YOU_RETURNED, onReturned); };
   }, [identity]);
   const read = useCallback((fresh: boolean) => {
     void getNeedsYou(undefined, fresh).then((queue) => {
@@ -73,8 +78,7 @@ export function useInboxDot(identity: string, pathname: string): { count: number
   // Someone seeing a message changes nothing that waits for this person (#862).
   useStreamEvents(identity, (event) => { if (!event.kind.endsWith('observed.v1')) soon(); }, refresh);
   if (unread?.identity !== identity) return { count: 0, notifying: 0 };
-  const accepting = acceptingIds();
   const answering = answeringIds();
-  const handled = unread.items.filter((item) => left.has(item.key) || (item.decision && accepting.has(item.decision.id)) || (item.agentQuestion && answering.has(item.agentQuestion.id))).length;
+  const handled = unread.items.filter((item) => left.has(item.key) || (item.agentQuestion && answering.has(item.agentQuestion.id))).length;
   return { count: Math.max(0, unread.count - handled), notifying: unread.notifying };
 }

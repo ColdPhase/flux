@@ -233,7 +233,7 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
   .project-convo__feed .ws-chip__k, .thread__feed .ws-chip__k { grid-column: 2; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
 }
 /* Messages sent from Details wait here until stored (#264). */
-.wd-pending { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.wd-pending { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .wd-pending__item { padding: 8px 10px; border-radius: var(--r-sm); background: var(--hov); }
 .wd-pending__body { display: block; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--t1); font-size: var(--fs-md); line-height: 1.5; }
 
@@ -350,7 +350,7 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
 .wd-act__bubble { display: flex; flex-direction: column; align-items: flex-start; max-width: 100%; }
 .wd-act__bubble .message-bubble { max-width: 100%; background: var(--sub); box-shadow: none; }
 .wd-act__bubble .message-bubble :is(p, .message-body) { margin: 0; font-size: var(--fs-md); line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--t1); }
-.wd-act__earlier { margin-top: 10px; font-size: var(--fs-sm); }
+.wd-act__earlier { display: block; margin-bottom: 10px; font-size: var(--fs-sm); }
 .wd-act__none { margin: 14px 0 0; }
 .wd-activity .details__sec { margin-top: 10px; }
 .wd-activity > section.details__sec { margin-top: 12px; }

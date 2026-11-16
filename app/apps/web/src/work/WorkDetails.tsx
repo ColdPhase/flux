@@ -12,13 +12,14 @@ import { DetailsSkeleton } from '../app/SurfaceSkeletons';
 import { useRegisterLiveHere } from '../live/LiveProvider';
 import { LiveEntry } from '../live/LiveEntry';
 import { useShellActions, type ObjectView } from '../app/shellContext';
-import { useNeedsYou, announceInboxChange } from '../notifications/needsYou';
+import { useNeedsYou } from '../notifications/needsYou';
 import { useNeedsYouActions } from '../notifications/useNeedsYouActions';
 import { NotNowButton, WaitingLine } from '../notifications/NeedsYouCard';
 import '../notifications/needs-you.css';
 import { useDiscussDecision } from './discuss';
 import { DecisionComposer, DecisionMessages, useDecisionDiscussion } from './DecisionDiscussion';
-import { acceptDecision, resolveWaiting, undoTaskCreation, updateWork } from './api';
+import { resolveWaiting, undoTaskCreation, updateWork } from './api';
+import { useAcceptDecision } from './acceptDecision';
 import { STATUS_LABEL, blockedLine, decisionState, isFinished, linked, shortDate, statusPhrase, taskNumber } from './format';
 import { docsLinking } from '../docs/AddToDoc';
 import { agentAuthorOwner, useAgentOwners } from '../agents/owners';
@@ -698,8 +699,8 @@ function DecisionPanel({ decision, context, detail, relations, reload, revision,
   const { me } = useShellData();
   const earlierRead = useNativeOwn(me.user.id, context.project.id, 'decision', earlier?.id, true, revision);
   const earlierObject = earlierRead.value?.object.kind === 'decision' ? earlierRead.value.object : null;
-  const { busy, error, attempt } = commands.state;
-  const { setBusy, setError, setAttempt, isCurrent } = commands;
+  const { busy, error } = commands.state;
+  const { setBusy, setError, isCurrent } = commands;
   // The panel is the Inbox's decision card first (F-026 P4, S11; #763 D1): the reason, what it rests on,
   // Accept / Not now / Discuss and who else can accept. Not now and the waiting line are the Inbox item's, when it has one.
   const queue = useNeedsYou(me.user.id);
@@ -727,20 +728,19 @@ function DecisionPanel({ decision, context, detail, relations, reload, revision,
       .find((element) => element.getClientRects().length > 0 && Boolean(mark.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING));
     next?.focus({ preventScroll: true });
   }, [decision.status]);
-  async function accept(event?: FormEvent) {
+  // Accept works at once here as in the Inbox, with the same 10 s Undo that takes the acceptance back (round 8, #1424).
+  const acceptNow = useAcceptDecision(me.user.id);
+  function accept(event?: FormEvent) {
     event?.preventDefault();
     if (busy) return;
     setBusy(true); setError('');
-    try {
-      await acceptDecision(decision, attempt);
-      // The Inbox and Home read their queue again, so the decision leaves them too.
-      announceInboxChange();
-      if (isCurrent()) { accepted.current = true; reload(); }
-    } catch (cause) {
-      if (!isCurrent()) return;
-      setError(readable(cause));
-      if (cause instanceof ApiError && cause.status === 409) { setAttempt(crypto.randomUUID()); reload(); }
-    } finally { setBusy(false); }
+    acceptNow(decision, {
+      accepted: () => { setBusy(false); if (isCurrent()) { accepted.current = true; reload(); } },
+      // The toast says what happened; the panel reads the decision again.
+      failed: (conflict) => { setBusy(false); if (isCurrent() && conflict) reload(); },
+      // Taken back or kept, the panel shows the decision as it is now.
+      undoing: (back) => { const again = () => { if (isCurrent()) reload(); }; back.then(again, again); },
+    });
   }
   // Plain sentences, drawn only when they apply (#871): the decision this one replaces, and the one that replaced it. A proposed decision
   // whose earlier one is named below does not also say "replaces an earlier decision" in its top line: it is said once (#1058).

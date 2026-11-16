@@ -1,5 +1,5 @@
 import {
-  decisionAcceptPath, decisionWithdrawPath, workspaceAgentsPath, taskActivityPath, projectDecisionsPath, projectLinksPath, projectWorkPath, workItemPath, workspaceAssignedWorkPath, taskCreationUndoPath, taskWaitingDonePath,
+  decisionAcceptPath, decisionUnacceptPath, decisionWithdrawPath, workspaceAgentsPath, taskActivityPath, projectDecisionsPath, projectLinksPath, projectWorkPath, workItemPath, workspaceAssignedWorkPath, taskCreationUndoPath, taskWaitingDonePath,
   type CreateObjectLinkCommand, type CreateWorkCommand, type Decision, type ObjectLink, type Page,
   type ProposeDecisionCommand, type TaskActivityPage, type TaskActivityQuery, type UndoTaskCreationResult, type UpdateWorkCommand, type WorkItem, type Agent,
 } from '@flux/contracts';
@@ -28,6 +28,9 @@ export const proposeDecision = (projectId: string, command: ProposeDecisionComma
   request<Decision>(projectDecisionsPath(projectId), { method: 'POST', body: command, headers: key(idempotencyKey), keepalive });
 export const acceptDecision = (decision: Pick<Decision, 'id' | 'version'>, idempotencyKey: string, keepalive = false) =>
   request<Decision>(decisionAcceptPath(decision.id), { method: 'POST', body: {}, headers: { ...ifMatch(decision.version), ...key(idempotencyKey) }, keepalive });
+/** Its accepter takes an acceptance back with Undo (#1424 round 8): the decision is proposed again, as before it was accepted. */
+export const unacceptDecision = (decision: Pick<Decision, 'id' | 'version'>) =>
+  request<Decision>(decisionUnacceptPath(decision.id), { method: 'POST', body: {}, headers: ifMatch(decision.version) });
 /** Its proposer takes a proposal back (#1424 L): it is gone for everyone, with its notifications and Inbox items. */
 export const withdrawDecision = (decision: Pick<Decision, 'id' | 'version'>) =>
   request<void>(decisionWithdrawPath(decision.id), { method: 'POST', body: {}, headers: ifMatch(decision.version) });

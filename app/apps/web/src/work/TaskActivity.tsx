@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
 import type { AssistantChange, ConversationMessage, LiveCallLine, NamedPrincipal, ObjectLink, Project, TaskActivityEntry, TaskDiscussion as Discussion, WorkItem, WorkspaceMember } from '@flux/contracts';
 import { AgentIdentity, Avatar, Button, Kreska, MEDIA, sendsOnEnter, useMediaQuery, type AgentHue } from '../ui';
 import { useComposerScope, type useComposerDraft } from '../composer/draft';
@@ -34,7 +34,8 @@ import { useTyping } from '../typing/useTyping';
 import { TypingNotice } from '../typing/TypingNotice';
 import { callWords, useCallLines, useNow } from '../live/callLines';
 
-// A task's one discussion (F-026 P10, #488, #1364): one timeline, newest first, of what changed and who said what. It has no heading
+// A task's one discussion (F-026 P10, #488, #1364): one timeline, oldest first with the newest at the bottom above the composer (every
+// discussion lists oldest first: founder decision, Hubert, 2026-11-15, round 8, #1424), of what changed and who said what. It has no heading
 // of its own, "Activity" being removed by the design (§8); the region is named "Discussion" for a screen reader. Each line has its
 // real author and time: the task's creation, every change of its state, owner, due day and title that was recorded, and the
 // messages of the task's one discussion. The composer sits at the bottom of the panel and writes to the same discussion.
@@ -166,7 +167,8 @@ export function useTaskActivity({ item, links, project, members, me, revision }:
     if (item.lifecycle?.state === 'creation_reverted') out.push({ kind: 'reverted', key: 'reverted', at: item.lifecycle.revertedAt, actor: item.lifecycle.revertedBy });
     // The task's creation is the oldest line, shown once nothing older is left to load.
     if (!hasEarlier) out.push({ kind: 'created', key: 'created', at: item.createdAt, actor: item.createdBy, source: sourceOf(item, links) });
-    return out.sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
+    // Oldest first (round 8, #1424); the task's creation leads whatever shares its instant.
+    return out.sort((a, b) => Date.parse(a.at) - Date.parse(b.at) || (a.kind === 'created' ? -1 : b.kind === 'created' ? 1 : 0));
   }, [changes, messages, item, links, hasEarlier]);
 
   // `/ai` in the task's discussion (#842): the person's own agent answers them alone; Show everyone posts the answer in the discussion.
@@ -217,7 +219,7 @@ function PostedLine({ change, onChanged }: { change: AssistantChange; onChanged:
   );
 }
 
-/** The timeline: newest first, each line with its author and time. */
+/** The timeline: oldest first with the newest at the bottom, each line with its author and time. */
 export function ActivityTimeline({ state, composer, item, project, me, writable, composerId }: {
   state: TaskActivityState; composer: TaskComposerDraft; item: Pick<WorkItem, 'id' | 'version' | 'number' | 'title'>; project: Project; me: { id: string; name: string }; writable: boolean; composerId: string;
 }) {
@@ -229,6 +231,20 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
   const makeWork = useCreateWorkFromMessage(project);
   const headingId = useId();
   const { discussion } = state;
+  // The newest stays in view at the bottom, above the field, as a line arrives or is sent (round 8, #1424). Not on the first draw: the panel
+  // opens at its top, on the task's rows, and nothing moves while it loads.
+  const section = useRef<HTMLElement>(null);
+  const newest = `${state.lines.at(-1)?.key ?? ''}:${composer.pending.length}`;
+  const shownNewest = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    if (state.loading) return;
+    const before = shownNewest.current;
+    shownNewest.current = newest;
+    if (before === null || before === newest) return;
+    const root = section.current;
+    const last = root?.querySelector<HTMLElement>('.wd-pending__item:last-child') ?? root?.querySelector<HTMLElement>('.wd-act')?.lastElementChild;
+    if (last instanceof HTMLElement) last.scrollIntoView({ block: 'nearest' });
+  }, [newest, state.loading]);
   const people = useProjectShell()?.people ?? null;
   const othersOf = firstNames((people ?? []).filter((person) => person.kind === 'human' && person.id !== me.id).map((person) => person.name));
   // The calls started from this task (F-041 point 6), with the names of who was in them.
@@ -252,7 +268,7 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
     return (done.find((line) => line.entry.actor.kind === 'agent' && line.entry.actor.id === agentDone.agentId) ?? done[0])?.key ?? null;
   }, [agentDone, state.lines]);
   return (
-    <section className="details__sec wd-activity" aria-labelledby={headingId}>
+    <section className="details__sec wd-activity" aria-labelledby={headingId} ref={section}>
       <div className="wd-sechead">
         <h4 id={headingId} className="ui-vh">Discussion</h4>
         {thread ? <RefLink className="wd-inline wd-activity__open" to={thread} state={{ keepPanel: true }}>Open in Conversation</RefLink> : null}
@@ -266,15 +282,9 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
       <PrivateAiLines own assistant={state.assistant} meId={me.id} meName={me.name} others={othersOf} composerId={composerId}
         lookups={{ projectId: project.id, messages: [], work: new Map(), author: () => '', people }} />
       {state.failed === 'changes' ? <p className="wd-error" role="alert">Some of the history could not be loaded. <button type="button" className="wd-inline" onClick={state.retry}>Retry</button></p> : null}
-      {composer.pending.length ? <ol className="wd-pending" aria-label={writable ? 'Messages you are sending' : 'Pending messages kept'}>{composer.pending.map((pending) => (
-        <li key={pending.id} id={`pending-${pending.id}`} data-client-message-id={pending.id} data-send-state={pending.state} className={`wd-pending__item is-pending${pending.state === 'failed' ? ' is-failed-send' : ''}`}>
-          <PendingFiles body={pending.body ? <div className="wd-pending__body"><MessageText body={pending.body} linked={false} /></div> : null} files={pending.files} send={{ state: pending.state, ...(writable ? { onRetry: () => composer.retry(pending.id) } : {}) }} />
-          {writable ? <OutboxStatus item={pending} onRetry={() => composer.retry(pending.id)} onRemove={() => composer.remove(pending.id)} />
-            : <p className="wd-muted" role="status">{pending.state === 'failed' ? 'Unsent message kept.' : 'Send not confirmed. Your message is kept.'} You cannot send to this task.</p>}
-        </li>
-      ))}</ol> : null}
+      {state.hasEarlier ? <button type="button" className="wd-inline wd-act__earlier" disabled={state.busyEarlier} onClick={() => void state.loadEarlier()}>{state.busyEarlier ? 'Loading…' : 'Show earlier'}</button> : null}
       <ol className="wd-act" aria-label="Task activity">
-        {/* A call started from this task is one line of its discussion, newest first like the rest (F-041 point 6). */}
+        {/* A call started from this task is one line of its discussion, in time order like the rest (F-041 point 6). */}
         {byTime((state.loading ? [] : state.lines.filter((line) => !(line.kind === 'change' && line.entry.actor.kind === 'agent'
           && clientChanges.some((change) => change.via !== null && Math.abs(Date.parse(change.createdAt) - Date.parse(line.at)) < 15_000)))).map((line) => ({ at: line.at, node: (() => {
           if (line.kind === 'message') {
@@ -327,7 +337,13 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
         })() })), state.loading ? [] : calls.map((call) => ({ at: call.startedAt,
           node: <TaskCallLine key={call.id} line={call} nameOf={callName} mine={call.startedBy === me.id} /> })))}
       </ol>
-      {state.hasEarlier ? <button type="button" className="wd-inline wd-act__earlier" disabled={state.busyEarlier} onClick={() => void state.loadEarlier()}>{state.busyEarlier ? 'Loading…' : 'Show earlier'}</button> : null}
+      {composer.pending.length ? <ol className="wd-pending" aria-label={writable ? 'Messages you are sending' : 'Pending messages kept'}>{composer.pending.map((pending) => (
+        <li key={pending.id} id={`pending-${pending.id}`} data-client-message-id={pending.id} data-send-state={pending.state} className={`wd-pending__item is-pending${pending.state === 'failed' ? ' is-failed-send' : ''}`}>
+          <PendingFiles body={pending.body ? <div className="wd-pending__body"><MessageText body={pending.body} linked={false} /></div> : null} files={pending.files} send={{ state: pending.state, ...(writable ? { onRetry: () => composer.retry(pending.id) } : {}) }} />
+          {writable ? <OutboxStatus item={pending} onRetry={() => composer.retry(pending.id)} onRemove={() => composer.remove(pending.id)} />
+            : <p className="wd-muted" role="status">{pending.state === 'failed' ? 'Unsent message kept.' : 'Send not confirmed. Your message is kept.'} You cannot send to this task.</p>}
+        </li>
+      ))}</ol> : null}
     </section>
   );
 }
@@ -411,10 +427,10 @@ export function TaskComposer({ state, composer, meId, writable, readOnly, id }: 
   );
 }
 
-/** Activity lines and call lines in one timeline, newest first like the activity itself; at the same instant the activity line comes first. */
+/** Activity lines and call lines in one timeline, oldest first like the activity itself; at the same instant the activity line comes first. */
 function byTime(lines: { at: string; node: ReactNode }[], calls: { at: string; node: ReactNode }[]): ReactNode[] {
   return [...lines.map((entry, index) => ({ ...entry, order: index })), ...calls.map((entry, index) => ({ ...entry, order: lines.length + index }))]
-    .sort((a, b) => Date.parse(b.at) - Date.parse(a.at) || a.order - b.order).map((entry) => entry.node);
+    .sort((a, b) => Date.parse(a.at) - Date.parse(b.at) || a.order - b.order).map((entry) => entry.node);
 }
 
 /**

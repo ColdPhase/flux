@@ -11,7 +11,8 @@ import { applyRunChanges } from '../assistant/api';
 import { announceAcceptedInboxItem, announceInboxChange } from './api';
 import type { CardHandlers, SnoozeChoice } from './NeedsYouCard';
 import { tomorrowMorning } from './format';
-import { flushAccepts, startAccept, startAnswer } from './pendingAccept';
+import { flushAccepts, startAnswer } from './pendingAccept';
+import { useAcceptDecision } from '../work/acceptDecision';
 import { answerAgentQuestion } from '../agents/api';
 import { rememberQuestion } from '../agents/questions';
 import { restoreNeedsYou, resolveNeedsYou, type Queue } from './needsYou';
@@ -20,15 +21,16 @@ const apiMessage = (error: unknown, fallback: string) => (error instanceof ApiEr
 
 /**
  * What a person does with an item of the queue, shared by the Inbox and Home (#342, F-026 S9/S11).
- * Done, Not now (until tomorrow morning), Decline and Unblock apply at once and offer Undo (`Z`) as a real reversal. A decision
- * cannot be un-accepted, so Accept is a delayed command: the item leaves at once and is sent when the
- * Undo window ends, or when the person leaves this place (see `pendingAccept`).
+ * Done, Not now (until tomorrow morning), Decline, Unblock and Accept apply at once and offer Undo (`Z`) as a real reversal: Accept's
+ * Undo takes the acceptance back for everyone (founder decision, round 8, #1424; `useAcceptDecision`). Only an agent's question answered
+ * with its buttons is held for its window (see `pendingAccept`).
  */
 export function useNeedsYouActions(queue: Queue): CardHandlers {
   const toast = useToast();
   // An item opens its source as a reference: the Inbox is where Back returns to (#592).
   const navigate = useFollow();
   const discussDecision = useDiscussDecision();
+  const acceptNow = useAcceptDecision(queue.userId);
   // The latest queue without re-creating the handlers (and the keys that use them) on every answer.
   const latest = useRef(queue);
   useEffect(() => { latest.current = queue; });
@@ -98,11 +100,39 @@ export function useNeedsYouActions(queue: Queue): CardHandlers {
     } } });
   }, [toast]);
 
+  /**
+   * Done on your blocked task finishes it (founder decision, 2026-11-15, round 8, #1424), as on a task given to you: "#6 moved to Done". The
+   * item is derived from the status, so it leaves; Undo puts the task back to Blocked with what it waited for, and the item is back.
+   */
+  const finishBlocked = useCallback((item: NeedsYouItem) => {
+    const current = latest.current;
+    const blocked = item.blocked;
+    if (!blocked) return;
+    const changed = updateWork({ id: blocked.workId, version: blocked.version }, { status: 'done' }, crypto.randomUUID());
+    const intent = current.hide(item.key, changed);
+    changed.then(announceInboxChange, (error: unknown) => {
+      if (!intent.isCurrent()) return;
+      current.show(item);
+      toast({ message: apiMessage(error, 'The task could not be finished. Open it to look again.'), tone: 'danger' });
+    });
+    toast({ message: stateWords(blocked, 'done'), action: { label: 'Undo', key: 'Z', onClick: () => {
+      const restored = changed.then((work) => updateWork(work, { status: 'blocked', ...(blocked.blocker ? { blocker: blocked.blocker } : {}), ...(blocked.waitingForUserId ? { waitingFor: { kind: 'human' as const, id: blocked.waitingForUserId } } : {}), ...(blocked.waitingOn ? { waitingOn: blocked.waitingOn } : {}), restore: true }, crypto.randomUUID()))
+        .then((work) => { announceInboxChange(); return work; });
+      const undoIntent = current.show(item, restored);
+      // Back as it was, at its new version, so the next Done or Unblock on it is not refused as stale.
+      restored.then((work) => { if (undoIntent.isCurrent()) current.show({ ...item, blocked: { ...blocked, version: work.version } }); }, () => {
+        if (!undoIntent.isCurrent()) return;
+        current.reload();
+        toast({ message: 'Undo did not work. Open the task to block it again.', tone: 'danger' });
+      });
+    } } });
+  }, [toast]);
+
   return useMemo<CardHandlers>(() => ({
-    // For the person a blocked task waits for, Done is what they were asked for: the task resumes. On a task given to you it finishes the
-    // task. For anything else it only clears the item.
-    done: (item) => item.kind === 'blocked' && item.blocked?.waitedBy ? finishWait(item) : item.kind === 'task' && item.task ? finishTask(item)
-      : resolve(item, { action: 'done' }, 'Marked done'),
+    // For the person a blocked task waits for, Done is what they were asked for: the task resumes. On your blocked task and on a task given
+    // to you it finishes the task. For anything else it only clears the item.
+    done: (item) => item.kind === 'blocked' && item.blocked?.waitedBy ? finishWait(item) : item.kind === 'blocked' && item.blocked ? finishBlocked(item)
+      : item.kind === 'task' && item.task ? finishTask(item) : resolve(item, { action: 'done' }, 'Marked done'),
 
     snooze(item: NeedsYouItem, choice: SnoozeChoice) {
       if (choice === 'decline') { resolve(item, { action: 'decline' }, 'Declined for good. Only your Inbox changed'); return; }
@@ -114,25 +144,18 @@ export function useNeedsYouActions(queue: Queue): CardHandlers {
       const current = latest.current;
       const decision = item.decision;
       if (!decision) return;
-      // Not pending while the window is open: every read already hides a decision being accepted (acceptingIds).
-      const handle = startAccept({ id: decision.id, version: decision.version }, (outcome) => {
-        // acceptingIds is cleared before this callback; remove the cached item before any fresh read lands.
-        if (outcome === 'accepted') announceAcceptedInboxItem(current.userId, item.key);
-        announceInboxChange();
-        if (outcome === 'accepted') return;
-        current.show(item);
-        current.reload();
-        toast(outcome === 'conflict'
-          ? { message: 'This decision changed before it was accepted. Nothing was accepted. Open it to look again.', tone: 'danger' }
-          : { message: 'Could not accept. Nothing changed. Try again.', tone: 'danger' });
+      // Accepted at once, for everyone (round 8, #1424): the item leaves now, and Undo takes the acceptance back.
+      let intent: { isCurrent(): boolean } | null = null;
+      const sent = acceptNow({ id: decision.id, version: decision.version }, {
+        failed: () => { if (!intent?.isCurrent()) return; current.show(item); current.reload(); },
+        undoing: (back) => {
+          const undoIntent = current.show(item, back);
+          // Back at the version the Undo left, so Accept again is not refused as stale.
+          back.then((proposed) => { if (undoIntent.isCurrent()) current.show({ ...item, decision: { ...decision, version: proposed.version } }); },
+            () => { if (undoIntent.isCurrent()) { current.hide(item.key); current.reload(); } });
+        },
       });
-      current.hide(item.key);
-      // The toast is the window (#1424): the accept is sent when it leaves, so Undo never outlives it.
-      toast({ message: 'Accepted', tone: 'success', onLeave: handle.send, action: { label: 'Undo', key: 'Z', onClick: () => {
-        if (handle.undo()) { current.show(item); return; }
-        // It was already sent (the place was left, or the window ended): a decision is never un-accepted.
-        toast({ message: 'It is already accepted. To change direction, propose a new decision.' });
-      } } });
+      intent = current.hide(item.key, sent);
     },
 
     answer(item: NeedsYouItem, optionIndex: number) {
@@ -217,5 +240,5 @@ export function useNeedsYouActions(queue: Queue): CardHandlers {
         });
       } } });
     },
-  }), [resolve, finishWait, finishTask, toast, navigate, discussDecision]);
+  }), [resolve, finishWait, finishTask, finishBlocked, acceptNow, toast, navigate, discussDecision]);
 }
