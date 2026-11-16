@@ -337,17 +337,11 @@ input::placeholder, textarea::placeholder { color: var(--t3); opacity: 1; }
 :is(.project-convo__feed, .thread__feed, .dm__feed) > :is(.project-convo__in, .thread__in, .dm__in) { border-bottom: var(--toast-clear, 0px) solid transparent; }
 /* What is brought into view while the toast shows (a new decision's card that takes focus, a message followed to) stops above it too. */
 :is(.project-convo__feed, .thread__feed, .dm__feed) { scroll-padding-bottom: var(--toast-clear, 0px); }
-/* Where the stack stands with no sheet under it; `.ui-toasts-base` stands there too, with no size, so a sheet's measurement (Toast.tsx)
-   reads it without moving the stack itself (WebKit kept a stack that was moved and put back for a measurement where it was moved to). */
-.ui-toasts, .ui-toasts-base {
-  --toast-base: max(20px, calc(env(safe-area-inset-bottom) + 12px), calc(var(--ui-bottomnav-inset, 0px) + 12px), calc(var(--ui-fab-inset, 0px) + 8px), calc(var(--ui-map-dock-inset, 0px) + 8px), calc(var(--ui-composer-inset, 0px) + 8px));
-}
-.ui-toasts-base { position: fixed; left: 0; bottom: var(--toast-base); width: 1px; height: 0; visibility: hidden; pointer-events: none; }
 .ui-toasts {
   /* Above the bottom safe area, the capsule of places and the phone's Create control, each as measured: PhoneDock and
      BottomNav and the map's toolbar (sketch/DockRow.tsx) publish their top edges (edgeInset.ts), absent where the control is not drawn. Feedback keeps 8 px
      clear of the Create control (#639) so a persistent Undo toast cannot cover it, and of the highest composer drawn (#1424) so it never stands on its hint. */
-  --toast-bottom: max(var(--toast-base), var(--toast-modal-inset, 0px));
+  --toast-bottom: max(20px, calc(env(safe-area-inset-bottom) + 12px), calc(var(--ui-bottomnav-inset, 0px) + 12px), calc(var(--ui-fab-inset, 0px) + 8px), calc(var(--ui-map-dock-inset, 0px) + 8px), calc(var(--ui-composer-inset, 0px) + 8px), var(--toast-modal-inset, 0px));
   position: fixed; left: 50%; bottom: var(--toast-bottom); transform: translateX(-50%); z-index: var(--z-toast);
   display: flex; flex-direction: column; align-items: center; gap: 8px; width: max-content; max-width: calc(100vw - 32px); pointer-events: none;
 }

@@ -238,7 +238,7 @@ function ToastItem({ toast, onDone, onLeaving, registerAction, movedAt }: { toas
  * them never lands on a toast. Measured from the open modal surfaces while any toast shows; `movedAt` is when that last
  * changed, for the action's tap guard.
  */
-function useModalLift(active: boolean, stack: RefObject<HTMLElement | null>, base: RefObject<HTMLElement | null>): { inset: number; movedAt: number } {
+function useModalLift(active: boolean, stack: RefObject<HTMLElement | null>): { inset: number; movedAt: number } {
   const [lift, setLift] = useState({ inset: 0, movedAt: -Infinity });
   useLayoutEffect(() => {
     if (!active) return undefined;
@@ -247,84 +247,65 @@ function useModalLift(active: boolean, stack: RefObject<HTMLElement | null>, bas
     // showed them re-lays the sheet (a phone's Resolve removes the blocker card, #249), do not arm the tap guard. Only a
     // later change of MOVE_PX or more (a sheet opening while a toast shows) does, so an Undo tapped right away still works.
     let placedAt: number | null = null;
-    // Where the stack lands depends on the place it is given and on the other edges it stands above, which can change in the same frame
-    // (a composer in the sheet publishing its edge): a place that changed is measured again on the next frame, until two agree.
-    let placed: number | null = null;
-    let again = 0;
-    // A change is measured at once, not only on the next frame: WebKit can go a second and more without a frame while a sheet's content
-    // arrives (seen on CI: no frame from 5.7 s to 7.0 s while the decision's rows were already laid out), and the toast stood on its Message row
-    // all that time (test_connected_flow 08). The frame after is measured too, for what settles by then; one is asked at a time, and a change
-    // never puts it off.
-    const hooked = new WeakSet<Animation>();
-    const timers: number[] = [];
-    const measure = () => { again = 0; run(); place(); };
-    const place = () => {
-      if (frame) return;
-      frame = requestAnimationFrame(() => { frame = 0; run(); });
-    };
-    const run = () => {
-      let top = Infinity;
-      let surfaceTop = Infinity;
-      const controls: DOMRect[] = [];
-      for (const surface of document.querySelectorAll<HTMLElement>('[aria-modal="true"]')) {
-        const box = surface.getBoundingClientRect();
-        if (!box.height || box.bottom < window.innerHeight - 160) continue;
-        surfaceTop = Math.min(surfaceTop, box.top);
-        // The surface's footer actions, where they reach the band at the bottom of the screen that toasts use.
-        for (const control of surface.querySelectorAll<HTMLElement>('button, a[href], [role="button"], input, select, textarea, label:has(input[type="checkbox"], input[type="radio"])')) {
-          const rect = control.getBoundingClientRect();
-          if (!rect.height || rect.top >= window.innerHeight) continue;
-          controls.push(rect);
-          if (rect.bottom > Math.max(box.bottom - 120, window.innerHeight - 160)) top = Math.min(top, rect.top);
-        }
-      }
-      const band = Number.isFinite(top) ? Math.max(0, Math.round(window.innerHeight - top + 8)) : 0;
-      // The toast is also kept off any control it would stand on where it lands: it is as tall as its message and lands above the lowest
-      // control, which can put it on the one above (a phone sheet's "Dropped, not finished" and "What came of it", #1116). It is raised
-      // above each control it would cover until none is; a sheet whose controls leave no such place within the lower half of the
-      // window (a sheet is a stack of rows) has the toast stand above the sheet, over the page behind it, when there is room there.
-      const node = stack.current;
-      let inset = band;
-      const floor = base.current;
-      if (node && floor && controls.length) {
-        // Where the stack stands with no sheet under it, read from its zero-size twin rather than by moving the stack and putting it back.
-        const rest = { height: node.getBoundingClientRect().height, bottom: floor.getBoundingClientRect().top };
-        if (rest.height) {
-          const start = Math.max(band, window.innerHeight - rest.bottom);
-          let bottom = start;
-          for (let pass = 0; pass < 12; pass += 1) {
-            const over = controls.find((rect) => window.innerHeight - rect.top > bottom + 0.5 && window.innerHeight - rect.bottom < bottom + rest.height);
-            if (!over) break;
-            bottom = window.innerHeight - over.top + 8;
-          }
-          // Only a toast that would stand on a control is moved from where the band puts it.
-          if (bottom > start) {
-            if (bottom <= window.innerHeight / 2) inset = Math.round(bottom);
-            else if (surfaceTop >= rest.height + 16) inset = Math.round(window.innerHeight - surfaceTop + 8);
+    const measure = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        let top = Infinity;
+        let surfaceTop = Infinity;
+        const controls: DOMRect[] = [];
+        for (const surface of document.querySelectorAll<HTMLElement>('[aria-modal="true"]')) {
+          const box = surface.getBoundingClientRect();
+          if (!box.height || box.bottom < window.innerHeight - 160) continue;
+          surfaceTop = Math.min(surfaceTop, box.top);
+          // The surface's footer actions, where they reach the band at the bottom of the screen that toasts use.
+          for (const control of surface.querySelectorAll<HTMLElement>('button, a[href], [role="button"], input, select, textarea, label:has(input[type="checkbox"], input[type="radio"])')) {
+            const rect = control.getBoundingClientRect();
+            if (!rect.height || rect.top >= window.innerHeight) continue;
+            controls.push(rect);
+            if (rect.bottom > Math.max(box.bottom - 120, window.innerHeight - 160)) top = Math.min(top, rect.top);
           }
         }
-      }
-      const now = performance.now();
-      const settled = placedAt !== null && now - placedAt >= ACTION_ARMED_MS;
-      placedAt ??= now;
-      // A few pixels (a control re-rendering in the band) is not a move: a tap aimed at the toast still lands on it.
-      setLift((current) => current.inset === inset ? current
-        : { inset, movedAt: settled && Math.abs(inset - current.inset) >= MOVE_PX ? now : current.movedAt });
-      if (inset !== placed && again < 4) { again += 1; placed = inset; place(); } else placed = inset;
-      // A surface's content that is still moving (a panel taking the place of another enters a few pixels low and settles) is measured
-      // where it is going, not where it was: no DOM change follows its last frame, so measure again when each such motion ends (#1106).
-      for (const animation of document.getAnimations()) {
-        const effect = animation.effect;
-        const target = effect instanceof KeyframeEffect ? effect.target : null;
-        if (hooked.has(animation) || animation.playState !== 'running' || !target?.closest('[aria-modal="true"]') || effect!.getComputedTiming().iterations === Infinity) continue;
-        hooked.add(animation);
-        animation.finished.then(measure, () => undefined);
-        // And by the clock: WebKit settles a finished motion only in a frame, and it can go a second without one while the surface already
-        // stands where the motion took it (CI, test_connected_flow 08).
-        const timing = effect!.getComputedTiming();
-        const left = Number(timing.endTime ?? 0) - Number(timing.localTime ?? 0);
-        timers.push(window.setTimeout(measure, Math.max(0, left) + 20));
-      }
+        const band = Number.isFinite(top) ? Math.max(0, Math.round(window.innerHeight - top + 8)) : 0;
+        // The toast is also kept off any control it would stand on where it lands: it is as tall as its message and lands above the lowest
+        // control, which can put it on the one above (a phone sheet's "Dropped, not finished" and "What came of it", #1116). It is raised
+        // above each control it would cover until none is; a sheet whose controls leave no such place within the lower half of the
+        // window (a sheet is a stack of rows) has the toast stand above the sheet, over the page behind it, when there is room there.
+        const node = stack.current;
+        let inset = band;
+        if (node && controls.length) {
+          const kept = node.style.getPropertyValue('--toast-modal-inset');
+          node.style.setProperty('--toast-modal-inset', '0px');
+          const rest = node.getBoundingClientRect();
+          if (kept) node.style.setProperty('--toast-modal-inset', kept); else node.style.removeProperty('--toast-modal-inset');
+          if (rest.height) {
+            const start = Math.max(band, window.innerHeight - rest.bottom);
+            let bottom = start;
+            for (let pass = 0; pass < 12; pass += 1) {
+              const over = controls.find((rect) => window.innerHeight - rect.top > bottom + 0.5 && window.innerHeight - rect.bottom < bottom + rest.height);
+              if (!over) break;
+              bottom = window.innerHeight - over.top + 8;
+            }
+            // Only a toast that would stand on a control is moved from where the band puts it.
+            if (bottom > start) {
+              if (bottom <= window.innerHeight / 2) inset = Math.round(bottom);
+              else if (surfaceTop >= rest.height + 16) inset = Math.round(window.innerHeight - surfaceTop + 8);
+            }
+          }
+        }
+        const now = performance.now();
+        const settled = placedAt !== null && now - placedAt >= ACTION_ARMED_MS;
+        placedAt ??= now;
+        // A few pixels (a control re-rendering in the band) is not a move: a tap aimed at the toast still lands on it.
+        setLift((current) => current.inset === inset ? current
+          : { inset, movedAt: settled && Math.abs(inset - current.inset) >= MOVE_PX ? now : current.movedAt });
+        // A surface's content that is still moving (a panel taking the place of another enters a few pixels low and settles) is measured
+        // where it is going, not where it was: no DOM change follows its last frame, so measure again when each such motion ends (#1106).
+        for (const animation of document.getAnimations()) {
+          const effect = animation.effect;
+          const target = effect instanceof KeyframeEffect ? effect.target : null;
+          if (animation.playState === 'running' && target?.closest('[aria-modal="true"]') && effect!.getComputedTiming().iterations !== Infinity) animation.finished.then(measure, () => undefined);
+        }
+      });
     };
     const observer = new MutationObserver(measure);
     observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['aria-modal', 'data-state', 'data-height'] });
@@ -334,8 +315,8 @@ function useModalLift(active: boolean, stack: RefObject<HTMLElement | null>, bas
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ['style'] });
     window.addEventListener('resize', measure);
     measure();
-    return () => { cancelAnimationFrame(frame); for (const timer of timers) window.clearTimeout(timer); observer.disconnect(); window.removeEventListener('resize', measure); };
-  }, [active, stack, base]);
+    return () => { cancelAnimationFrame(frame); observer.disconnect(); window.removeEventListener('resize', measure); };
+  }, [active, stack]);
   return active ? lift : { inset: 0, movedAt: lift.movedAt };
 }
 
@@ -424,8 +405,7 @@ export function ToastProvider({ children, scopeKey }: { children: ReactNode; sco
   }, []);
   const value = useMemo(() => show, [show]);
   const visible = toasts.filter((toast) => toast.sessionEpoch === sessionEpoch);
-  const base = useRef<HTMLDivElement>(null);
-  const lift = useModalLift(visible.length > 0, stack, base);
+  const lift = useModalLift(visible.length > 0, stack);
   useLayoutEffect(() => {
     const node = stack.current;
     if (!node) return;
@@ -448,7 +428,6 @@ export function ToastProvider({ children, scopeKey }: { children: ReactNode; sco
         </div>,
         document.body,
       )}
-      {createPortal(<div ref={base} className="ui-toasts-base" aria-hidden="true" />, document.body)}
     </LeaveUndoContext.Provider></ToastContext.Provider></ToastScopeContext.Provider></ToastTopContext.Provider></ToastStackContext.Provider>
   );
 }
