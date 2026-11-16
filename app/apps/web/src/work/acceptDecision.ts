@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import type { Decision } from '@flux/contracts';
 import { ApiError } from '../api/client';
-import { useToast } from '../ui';
+import { useToast, type ToastOptions } from '../ui';
 import { announceAcceptedInboxItem, announceInboxChange, announceReturnedInboxItem } from '../notifications/api';
 import { acceptDecision, unacceptDecision } from './api';
 import { holdAccepting } from '../notifications/pendingAccept';
@@ -26,7 +26,8 @@ const conflicting = (error: unknown) => error instanceof ApiError && (error.stat
  */
 export function useAcceptDecision(userId: string) {
   const toast = useToast();
-  return useCallback((decision: Pick<Decision, 'id' | 'version'>, steps: AcceptSteps = {}) => {
+  /** `say`: how the place shows the "Accepted · Undo" toast; the Inbox joins it with the Undo of the action before it (personas-34). */
+  return useCallback((decision: Pick<Decision, 'id' | 'version'>, steps: AcceptSteps = {}, say: (options: ToastOptions) => void = toast) => {
     let refused = false;
     const key = `decision:${decision.id}`;
     // Every queue and count of this tab leaves it out while the accept is on its way, and drops it before its next read lands.
@@ -41,7 +42,7 @@ export function useAcceptDecision(userId: string) {
         : { message: 'Could not accept. Nothing changed. Try again.', tone: 'danger' });
     });
     let undone = false;
-    toast({ message: 'Accepted', tone: 'success', action: { label: 'Undo', key: 'Z', onClick: () => {
+    say({ message: 'Accepted', tone: 'success', action: { label: 'Undo', key: 'Z', onClick: () => {
       if (undone || refused) return;
       undone = true;
       // Pressed before the accept was answered, it is taken back as soon as it is accepted.

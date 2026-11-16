@@ -36,10 +36,14 @@ function whenLine(entry: NeedsYouAsideEntry) {
   return `${entry.state === 'declined' ? 'Declined' : 'Done'} ${moment(entry.at)}`;
 }
 
-/** "Kind · who · space", as every Inbox row starts (README §7 Inbox). */
+/**
+ * "Kind · who · space", as every Inbox row starts (README §7 Inbox), in the words of its row in the Inbox: a blocked task that waits for you is
+ * "Blocked · waits for you", only your own is "your task" (personas-34).
+ */
 function rowLine(item: NeedsYouItem) {
   const run = item.assistantChanges ?? null;
-  return [run ? run.agentName : kindWord(item), run ? 'Your agent' : item.from?.name ?? (item.kind === 'blocked' ? 'your task' : null), item.about ? `about “${item.about.title}”` : item.project?.name ?? null]
+  const blocked = item.kind === 'blocked' && !run ? (item.blocked?.waitedBy ? 'waits for you' : 'your task') : null;
+  return [run ? run.agentName : kindWord(item), run ? 'Your agent' : item.from?.name ?? null, blocked, item.about ? `about “${item.about.title}”` : item.project?.name ?? null]
     .filter(Boolean).join(' · ');
 }
 
@@ -51,15 +55,17 @@ const ACTION: Record<Which, string> = { later: 'Bring back now', done: 'Put back
  * put off, with when it comes back and Bring back now, and what was marked done in the last 24 hours, with Put back. Both are Undo of the
  * person's own choice (`DELETE /api/v1/needs-you/:key`). Nothing here touches the Inbox's own keys: while the window is open the Inbox is inert.
  */
-export function InboxAside({ queue }: { queue: Queue }) {
+export function InboxAside({ queue, onBack }: { queue: Queue; onBack: (key: string) => void }) {
   const which = useOpenList();
-  // Once the window is closed and the item it put back is in the list, that item's row takes focus (never the page itself).
+  // Once the window is closed and the item it put back is in the list, that item is the open one and its row takes focus (never the page
+  // itself): the ring and the open item stay together, so E acts on it (F-026 §4, personas-34 P2 2).
   useEffect(() => {
     if (!focusKey || which) return;
     const row = document.querySelector<HTMLElement>(`.nyq__list .nyc[data-key="${CSS.escape(focusKey)}"] .nyc__open`);
     if (!row) return;
+    const key = focusKey;
     focusKey = null;
-    row.focus({ preventScroll: false });
+    onBack(key);
   });
   // A window left open when the Inbox goes (another page) does not reopen when the Inbox is next shown; the line mounted again in another
   // place of the same Inbox keeps it.
