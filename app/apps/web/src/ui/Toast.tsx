@@ -247,7 +247,12 @@ function useModalLift(active: boolean, stack: RefObject<HTMLElement | null>): { 
     // showed them re-lays the sheet (a phone's Resolve removes the blocker card, #249), do not arm the tap guard. Only a
     // later change of MOVE_PX or more (a sheet opening while a toast shows) does, so an Undo tapped right away still works.
     let placedAt: number | null = null;
-    const measure = () => {
+    // Where the stack lands depends on the place it is given and on the other edges it stands above, which can change in the same frame
+    // (a composer in the sheet publishing its edge): a place that changed is measured again on the next frame, until two agree.
+    let placed: number | null = null;
+    let again = 0;
+    const measure = () => { again = 0; place(); };
+    const place = () => {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
         let top = Infinity;
@@ -298,6 +303,7 @@ function useModalLift(active: boolean, stack: RefObject<HTMLElement | null>): { 
         // A few pixels (a control re-rendering in the band) is not a move: a tap aimed at the toast still lands on it.
         setLift((current) => current.inset === inset ? current
           : { inset, movedAt: settled && Math.abs(inset - current.inset) >= MOVE_PX ? now : current.movedAt });
+        if (inset !== placed && again < 4) { again += 1; placed = inset; place(); } else placed = inset;
         // A surface's content that is still moving (a panel taking the place of another enters a few pixels low and settles) is measured
         // where it is going, not where it was: no DOM change follows its last frame, so measure again when each such motion ends (#1106).
         for (const animation of document.getAnimations()) {
