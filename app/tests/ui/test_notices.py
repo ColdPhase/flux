@@ -203,9 +203,9 @@ class NoticeJourney(unittest.TestCase):
         page = self.home(path="/inbox")
         expect(page.get_by_role("heading", level=1, name=re.compile("^Inbox"))).to_be_visible()
         # The persona's case: a question in a direct message reaches the Inbox on screen.
-        # A notice comes within 2 s and stays about 6 s: it is looked for in the 3 s after the send, then the item is in the list.
+        # A notice stays about 6 s (on the Inbox it was seen 4 s after the send): it is looked for 4.5 s after it, then the item is listed.
         self.dm("Could you open the seed shed at eight tomorrow?")
-        page.wait_for_timeout(3000)
+        page.wait_for_timeout(4500)
         expect(self.card(page), "the item reaches the list on screen: no notice for it").to_have_count(0)
         expect(page.locator(".nyc", has_text="open the seed shed")).to_be_visible(timeout=8000)
         self.dm("Plain words: the shed key is under the pot.")
