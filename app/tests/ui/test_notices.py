@@ -140,6 +140,9 @@ class NoticeJourney(unittest.TestCase):
 
     def test_01_a_direct_message_shows_a_notice_within_2_s_and_open_reads_it(self) -> None:
         page = self.home()
+        # Home gives the focus to its content once it has arrived with nothing else taking it (AppLayout, persona round 29); the stream can be
+        # ready before that, so what had the focus is read once the page has given it: the notice must leave it there.
+        page.wait_for_function("() => document.activeElement && document.activeElement !== document.body")
         focused = page.evaluate("() => document.activeElement?.tagName")
         # A plain message, not a question: in a direct message between two people every question is a Question for the other person
         # ("Jonas Berg asked you", founder decision 2026-11-15, #1424 A), and this journey is the ordinary direct message's notice.

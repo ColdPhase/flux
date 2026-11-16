@@ -18,8 +18,7 @@ import './home.css';
 import { RefLink } from '../place/origin';
 import { PushOffer } from '../notifications/PushOffer';
 import { enablePushNotifications, getPushState } from '../pwa/push';
-import type { AgentRuntimeStatus, FirstStep, FirstStepJoined, FirstSteps as FirstStepsRead } from '@flux/contracts';
-import { getRuntime } from '../agent-runtime/api';
+import type { AgentRuntimeClient, FirstStep, FirstStepJoined, FirstSteps as FirstStepsRead } from '@flux/contracts';
 import { openDm } from '../api/direct-messages';
 import { awaitField, stopAwaitingField } from '../ui/keys';
 import { attemptKeys, firstName, startsSpaces } from '../people/api';
@@ -238,12 +237,10 @@ type StepRow = { key: FirstStep | 'push' | `joined:${string}`; icon: 'edit' | 'p
 
 /**
  * What Connect AI offers on this server, in the step's one line (v0.2.1 release gate, O01): a plan only where the server runs it, else an API key or
- * the person's own Claude Code or Codex. Until the server's plans are read, a line that is true either way.
+ * the person's own Claude Code or Codex. The plans come with the first steps (`FirstSteps.plans`), so Home reads nothing more for them.
  */
-function connectOffer(runtime: AgentRuntimeStatus | null | undefined): string {
-  if (!runtime) return 'Choose what your agents run on';
-  const plan = (client: 'claude_code' | 'codex') => runtime.enabled && runtime.clients[client] === 'available';
-  const plans = [plan('claude_code') ? 'Claude' : null, plan('codex') ? 'ChatGPT' : null].filter(Boolean);
+function connectOffer(offered: AgentRuntimeClient[]): string {
+  const plans = [offered.includes('claude_code') ? 'Claude' : null, offered.includes('codex') ? 'ChatGPT' : null].filter(Boolean);
   return plans.length ? `A ${plans.join(' or ')} plan, or an API key` : 'An API key, or Claude Code or Codex on your computer';
 }
 
@@ -289,13 +286,10 @@ function FirstStepsCard({ phone, workspaceId, onPushRow }: { phone: boolean; wor
   const [pushKey, setPushKey] = useState<string | null>(null);
   const [hidden, setHidden] = useState(false);
   const [asking, setAsking] = useState(false);
-  // undefined: not read (no Connect AI step, or still reading); null: it could not be read.
-  const [runtime, setRuntime] = useState<AgentRuntimeStatus | null | undefined>(undefined);
   useEffect(() => {
     const controller = new AbortController();
     getFirstSteps(controller.signal).then(async (next) => {
       setRead(next);
-      if (next.steps.includes('connect_ai')) getRuntime(controller.signal).then(setRuntime, () => { if (!controller.signal.aborted) setRuntime(null); });
       // Notifications on this device are never a card of their own: only beside a step that is left (the server says so in `offerPush`).
       if (!next.offerPush || !next.steps.length) return;
       const push = await getPushState().catch(() => null);
@@ -305,7 +299,7 @@ function FirstStepsCard({ phone, workspaceId, onPushRow }: { phone: boolean; wor
   }, []);
   const { projects } = useShellData();
   const spaceName = (id: string | null) => projects.find((project) => project.id === id)?.name ?? 'your space';
-  const rows: StepRow[] = read && !hidden ? firstStepRows(read, spaceName, connectOffer(runtime)) : [];
+  const rows: StepRow[] = read && !hidden ? firstStepRows(read, spaceName, connectOffer(read.plans)) : [];
   if (read && !hidden && pushKey) rows.push({ key: 'push', icon: 'bell', title: `Get notifications on this ${phone ? 'phone' : 'computer'}`, meta: 'When someone writes to you or calls' });
   const shown = rows.slice(0, 3);
   const pushShown = shown.some((row) => row.key === 'push');

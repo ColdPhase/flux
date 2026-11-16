@@ -227,6 +227,10 @@ class ConnectedFlow(unittest.TestCase):
         toast = page.locator(".ui-toast", has_text=f"Added to “{PAGE}”")
         expect(toast).to_be_visible()
         page.wait_for_timeout(400)
+        # The toast's box is where it was last drawn, the controls' are where they are laid out now: WebKit can go a second without drawing a
+        # frame while the decision's rows arrive in the sheet (seen on CI and locally: the rows laid out and the toast's place already
+        # raised in its style, but nothing drawn yet). Both are read once the page has drawn what it laid out.
+        page.evaluate("() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(done))))")
         box = toast.bounding_box()
         assert box
         for control in page.locator("[aria-modal='true'] button:visible, [aria-modal='true'] a[href]:visible").evaluate_all("els => els.map(el => el.getBoundingClientRect().toJSON())"):
