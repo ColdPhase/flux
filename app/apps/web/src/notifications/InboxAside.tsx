@@ -5,6 +5,7 @@ import { Face, kindWord } from './NeedsYouCard';
 import { announceInboxChange } from './api';
 import { ApiError } from '../api/client';
 import { getNeedsYouAside, restoreNeedsYou, type Queue } from './needsYou';
+import { inboxActed, inboxSettling } from './settle';
 import './inbox-aside.css';
 
 type Which = 'later' | 'done';
@@ -150,7 +151,10 @@ function AsideList({ which, queue, onClose }: { which: Which; queue: Queue; onCl
   }, []);
 
   const bring = (entry: NeedsYouAsideEntry, button: HTMLElement) => {
-    if (!entries) return;
+    // One press, one action (F-026 §4, C4 of sweep 34): the next row slides up under the pointer as this one leaves, so the second click of a
+    // double-click on Put back or Bring back now lands on nothing, as in the Inbox itself.
+    if (!entries || inboxSettling()) return;
+    inboxActed();
     const at = entries.indexOf(entry);
     const rest = entries.filter((other) => other !== entry);
     // Focus goes to the next row's button where it was, else the previous one (F-026 §4); with no row left, the window closes.
