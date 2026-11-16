@@ -166,7 +166,9 @@ export function InboxView() {
   // empty Inbox's heading does, so focus is never on the page's body (persona round 26: A on the last decision left it there).
   const clearRef = useRef<HTMLHeadingElement>(null);
   const lastOpen = useRef(openKey);
-  useEffect(() => {
+  // Right after the row leaves the page, before the page's own lost-focus rule (keys.ts `watchLostFocus`, on a timer) can hand the focus to
+  // the next button it finds, such as a neighbour's Done in its tray (sweep 36b: × after Done in a blocked task's sheet).
+  useLayoutEffect(() => {
     const left = lastOpen.current !== null && !shown.some((item) => item.key === lastOpen.current);
     lastOpen.current = openKey;
     const active = document.activeElement;
