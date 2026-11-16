@@ -773,6 +773,14 @@ function AppLayoutContent() {
   // A thread's panel that is still opening is a panel shown too (`threadOpening`, below): Esc cancels it as its close control does.
   const panelShownRef = useRef(false);
   const cancelRef = useRef<(() => void) | null>(null);
+  // A question an Inbox item opened in a place with no panel of its own (a direct message, `openThread`): Esc goes Back to the Inbox with its
+  // open item, as closing a thread the Inbox opened does (F-026 §4, personas-34 P2 1). Words written in its field stay: Esc leaves the field
+  // first, keeping them, and the next Esc goes back.
+  const inboxBackRef = useRef<(() => void) | null>(null);
+  useLayoutEffect(() => {
+    const arrived = location.state as { openThread?: boolean; openPushed?: boolean } | null;
+    inboxBackRef.current = arrived?.openThread && arrived.openPushed ? () => navigate(-1) : null;
+  });
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing || event.metaKey || event.ctrlKey || event.altKey) return;
@@ -787,6 +795,8 @@ function AppLayoutContent() {
       if (other && (other.isContentEditable || other instanceof HTMLSelectElement || ((other instanceof HTMLInputElement || other instanceof HTMLTextAreaElement) && other.value !== ''))) return;
       if (other && !panelShownRef.current) return;
       if (panelShownRef.current) { event.preventDefault(); (cancelRef.current ?? closeRef.current)(); return; }
+      const inboxBack = inboxBackRef.current;
+      if (inboxBack && !other && (!field || field.value === '')) { event.preventDefault(); inboxBack(); return; }
       if (!field) return;
       event.preventDefault();
       leaveComposer(field);

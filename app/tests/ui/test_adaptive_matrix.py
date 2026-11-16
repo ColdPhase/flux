@@ -22,6 +22,7 @@ workspaces.md); those sessions remain separate acceptance evidence.
 
 from __future__ import annotations
 
+import os
 import re
 import time
 import unittest
@@ -286,7 +287,16 @@ SAFE_BOX = """(el, insets) => {
   return {inside, hit: !!at && (el === at || el.contains(at)), box: [r.left, r.top, r.right, r.bottom].map(Math.round), window: [innerWidth, innerHeight]};
 }"""
 
+LIVE = os.environ.get("FLUX_LIVE_EDITING", "on") != "off"
 CAMERA = "() => { const c = document.querySelector('.sk-canvas'); return {left: Math.round(c.scrollLeft), top: Math.round(c.scrollTop)}; }"
+# Scrolls the canvas to {left, top} (past its end: as far as it goes) and resolves after the scroll event that tells the page, and the
+# frame after it; a scroll that changes nothing has no event and resolves at once.
+SCROLLED = """(el, to) => new Promise((resolve) => {
+  const before = [el.scrollLeft, el.scrollTop];
+  el.addEventListener('scroll', () => requestAnimationFrame(() => resolve()), {once: true});
+  el.scrollLeft = to.left; el.scrollTop = to.top;
+  if (el.scrollLeft === before[0] && el.scrollTop === before[1]) resolve();
+})"""
 
 
 def explained_by_recorded_overlap(size: str, what: str, predicate: str, observed: dict) -> bool:
@@ -896,6 +906,12 @@ class AdaptiveTransitions(AdaptiveBase):
     def open_map(self, page: Page) -> Locator:
         page.goto(f"/projects/{self.ids['project']}/map/{self.ids['sketch']}")
         expect(page.locator(".sk-node")).to_have_count(len(fx.THOUGHTS))
+        # A camera is chosen on the map a person sees: once the shared map is confirmed (live editing gives the plane its edges then, #509)
+        # and the page has drawn it. The map places its first view in its first frame (its ResizeObservers); WebKit can have the nodes in
+        # the DOM before that frame, and a scroll made before it was replaced by the map's first view (train 33).
+        if LIVE:
+            expect(page.locator('[data-live-map-status="live"]')).to_be_visible()
+        page.evaluate("() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))")
         return page.locator(".sk-canvas")
 
     def resize(self, page: Page, width: int, height: int) -> None:
@@ -904,8 +920,10 @@ class AdaptiveTransitions(AdaptiveBase):
         page.wait_for_timeout(250)
 
     def set_camera(self, page: Page, left: int, top: int) -> dict:
-        page.locator(".sk-canvas").evaluate(f"el => {{ el.scrollLeft = {left}; el.scrollTop = {top}; }}")
-        page.wait_for_timeout(100)
+        """Scrolls the map as a person does and returns once the page has been told: the map keeps the camera its scroll event reports.
+        WebKit can hold a scroll event past a fixed wait; the next resize then reaches the page in the same event as the scroll, and the map
+        rightly keeps the clamped place as the one chosen (test_11, train 33: the corner's scroll and the turn arrived as one)."""
+        page.locator(".sk-canvas").evaluate(SCROLLED, {"left": left, "top": top})
         return page.evaluate(CAMERA)
 
     def in_canvas(self, page: Page, thought: str, what: str) -> None:
@@ -961,8 +979,7 @@ class AdaptiveTransitions(AdaptiveBase):
         tablet = self.page(1024, 768, coarse=True)
         canvas = self.open_map(tablet)
         tablet.get_by_role("button", name=re.compile(r"^Zoom \d+%, reset to 100%")).click()
-        corner = canvas.evaluate("el => { el.scrollLeft = el.scrollWidth; el.scrollTop = el.scrollHeight; return {left: Math.round(el.scrollLeft), top: Math.round(el.scrollTop)}; }")
-        tablet.wait_for_timeout(100)
+        corner = self.set_camera(tablet, *canvas.evaluate("el => [el.scrollWidth, el.scrollHeight]"))
         self.resize(tablet, 768, 1024)
         clamped = tablet.evaluate(CAMERA)
         self.assertLess(clamped["top"], corner["top"], f"the fixture makes the portrait canvas clamp the camera: {corner} → {clamped}")

@@ -474,6 +474,82 @@ class UndoAndOneCard(unittest.TestCase):
         shot(page, f"toast-clear-delete-row-{UI_BROWSER}")
         page.keyboard.press("Escape")
 
+    def test_07_a_double_click_acts_once_and_two_actions_share_one_undo(self) -> None:
+        """personas-34 P2 3: the open card swaps to the next item at once, so the second click of a double-click accepted (or finished) the
+        neighbour too, under one toast whose Undo took back only the second. One press is one action; two chosen actions share one Undo."""
+        project = self.ids["project"]
+        tag = uuid.uuid4().hex[:4]
+        first = self.call("ada", "POST", f"/api/v1/projects/{project}/decisions", {"title": f"Open the stall at eight {tag}"})
+        second = self.call("ada", "POST", f"/api/v1/projects/{project}/decisions", {"title": f"Bring the long table {tag}"})
+        asks = [f"can you bring the scales {tag}?", f"can you bring the paper bags {tag}?", f"can you bring the price tags {tag}?"]
+        for ask in asks:
+            self.root("ada", f"@Jonas Berg {ask}")
+        page = self.page("jonas")
+        items = lambda: page.request.get("/api/v1/needs-you").json()["items"]  # noqa: E731
+        waits = lambda text: any(text in item["title"] for item in items())  # noqa: E731
+        status = lambda decision: page.request.get(f"/api/v1/decisions/{decision['id']}").json()["status"]  # noqa: E731
+        for _ in range(80):
+            if all(waits(text) for text in [first["title"], second["title"], *asks]):
+                break
+            time.sleep(0.25)
+        page.goto("/inbox")
+        row = lambda text: page.locator(".nyq__list .nyc", has_text=text)  # noqa: E731
+
+        # A double-click on Accept: the decision below swaps in under the pointer, and the second click does nothing to it.
+        before = len(items())
+        open_item(row(second["title"])).get_by_role("button", name=re.compile("^Accept")).dblclick()
+        self.settled_toast(page, "Accepted")
+        page.wait_for_timeout(1500)
+        self.assertEqual(status(second), "accepted")
+        self.assertEqual(status(first), "proposed", "the neighbour that swapped in under the pointer is untouched")
+        self.assertEqual(len(items()), before - 1, "one click, one action")
+        expect(page.locator(".ui-toast")).to_have_count(1)
+        expect(page.locator(".ui-toast")).not_to_contain_text("more")
+
+        # A double-click on Done, and E pressed twice: each finishes only the item it was meant for.
+        open_item(row(asks[2])).get_by_role("button", name=re.compile("^Done")).dblclick()
+        self.settled_toast(page, "Marked done")
+        # The item that swapped in takes no key for a moment (README §4, 450 ms); once the person has had it in view, E is Done on it, and E
+        # pressed again at once does nothing to the next one.
+        open_item(row(asks[1]))
+        page.wait_for_timeout(600)
+        page.keyboard.press("e")
+        page.keyboard.press("e")
+        expect(row(asks[1])).to_have_count(0)
+        page.wait_for_timeout(1500)
+        self.assertFalse(waits(asks[2]))
+        self.assertFalse(waits(asks[1]))
+        self.assertTrue(waits(asks[0]), "the neighbour that swapped in after Done is untouched")
+        self.assertEqual(status(first), "proposed")
+
+        # Two actions the person chose, one after the other: one toast covers both, and its Undo takes both back. The toast of the Done
+        # actions above is closed first, or it would join them too ("and 3 more").
+        page.locator(".ui-toast .ui-toast__close").first.evaluate("el => el.click()")
+        expect(page.locator(".ui-toast")).to_have_count(0)
+        open_item(row(asks[0])).get_by_role("button", name=re.compile("^Done")).click()
+        expect(row(asks[0])).to_have_count(0)
+        open_item(row(first["title"]))
+        # It swapped in as the open item, so it takes a key once it has been in view a moment (450 ms).
+        page.wait_for_timeout(600)
+        page.keyboard.press("a")
+        toast = page.locator(".ui-toast").filter(has_text="Accepted, and 1 more")
+        expect(toast).to_be_visible()
+        shot(page, f"inbox-two-actions-one-undo-{UI_BROWSER}")
+        for _ in range(40):
+            if status(first) == "accepted":
+                break
+            time.sleep(0.25)
+        self.assertEqual(status(first), "accepted")
+        page.keyboard.press("z")
+        expect(row(asks[0])).to_be_visible()
+        expect(row(first["title"])).to_be_visible()
+        for _ in range(40):
+            if status(first) == "proposed" and waits(asks[0]):
+                break
+            time.sleep(0.25)
+        self.assertEqual(status(first), "proposed", "Undo took the acceptance back")
+        self.assertTrue(waits(asks[0]), "and the Done before it")
+
 
 if __name__ == "__main__":
     unittest.main()

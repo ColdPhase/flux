@@ -309,6 +309,10 @@ function useModalLift(active: boolean, stack: RefObject<HTMLElement | null>): { 
     };
     const observer = new MutationObserver(measure);
     observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['aria-modal', 'data-state', 'data-height'] });
+    // The stack also stands above the edges other controls publish on the root (a composer in the sheet, edgeInset.ts), and where it
+    // stands is what is measured against the sheet's controls: a composer whose edge is published after the sheet has settled moves the
+    // stack, so the place is measured again (WebKit: the toast stood on the link above a decision's composer, test_connected_flow 08).
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['style'] });
     window.addEventListener('resize', measure);
     measure();
     return () => { cancelAnimationFrame(frame); observer.disconnect(); window.removeEventListener('resize', measure); };

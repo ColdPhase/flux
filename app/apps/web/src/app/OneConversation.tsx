@@ -57,7 +57,7 @@ export interface PaneProps {
 
 /** `found`: a search result brought the person to this message (#1424). */
 /** `writeDecision`: Discuss on a decision (#1424), the cursor goes to the decision panel's field, never to this conversation's composer. */
-interface NavState { writeDecision?: boolean; fromStream?: boolean; backToStream?: boolean; focusComposer?: boolean; keepPanel?: boolean; sourceOf?: string; found?: boolean; origin?: unknown; opened?: boolean; openPushed?: boolean }
+interface NavState { writeDecision?: boolean; fromStream?: boolean; backToStream?: boolean; focusComposer?: boolean; keepPanel?: boolean; sourceOf?: string; found?: boolean; origin?: unknown; opened?: boolean; openPushed?: boolean; openThread?: boolean }
 
 /**
  * One project conversation (UI116-1, 2026-10-02): the stream of roots with its composer, and the open
@@ -84,8 +84,9 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
   // The same for any link to such a message (Copy link, a message link, Search, the Inbox; F-026 §4, persona round 27 P2 6): it is marked in
   // the conversation, and no empty "0 replies" thread opens beside it.
   // A link that asks to write (Reply) still opens the thread, to reply in it, and so does one followed from inside an open panel that asks to
-  // keep it (a task's "From: Message"): the panel stays with its way back to the task (F-026 §4).
-  const alone = !state?.focusComposer && !state?.keepPanel && !!conversation && !conversation.task && !conversation.decision && !!arrived && conversation.messages.length === 1 && conversation.messages[0]!.id === arrived;
+  // keep it (a task's "From: Message"): the panel stays with its way back to the task (F-026 §4). An Inbox item opens its thread however it is
+  // opened (Enter, R, Reply, a tap; `openThread`), also before anyone replied, so it opens and closes the same way every time (personas-34 P2 1).
+  const alone = !state?.focusComposer && !state?.keepPanel && !state?.openThread && !!conversation && !conversation.task && !conversation.decision && !!arrived && conversation.messages.length === 1 && conversation.messages[0]!.id === arrived;
   const [lone, setLone] = useState({ key: location.key, alone });
   if (lone.key !== location.key) setLone({ key: location.key, alone });
   const withheld = lone.key === location.key ? lone.alone : alone;

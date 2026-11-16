@@ -77,9 +77,12 @@ describe('bounded native work reads through HTTP and current native fences', () 
     assert.deepEqual(projected.relations, { edges: 6, sourceMessages: 1, sourceMaterials: 2, decisions: 1 });
     assert.equal(projected.rule?.id, oldRule.id);
     const mine = await get<ProjectWorkView>(`${base()}/work-view?mine=true`);
-    // Mine is the person's own task and the two tasks of their own agents (#865); the other human's and the same-name rows stay out.
-    assert.equal(mine.summary.mine.in_progress, 3); assert.equal(mine.summary.mine.rules, 0);
-    assert.equal(mine.total, 3);
+    // Mine is the person's own tasks and the two tasks of their own agents (#865); the other human's and the same-name rows stay out. The
+    // main task is made from the person's own message with no owner named, so it is theirs (#1424 M, work-decisions.md): one open task.
+    assert.equal(mine.summary.mine.in_progress, 3); assert.equal(mine.summary.mine.open, 1); assert.equal(mine.summary.mine.rules, 0);
+    assert.equal(mine.total, 4);
+    assert.deepEqual(mine.items.filter(({ status }) => status === 'open').map(({ id }) => id), [main.id], 'the task from their own message is theirs');
+    assert.equal(mine.items.some(({ title }) => title === `Active human ${other.id}`), false, 'the same-name other person\'s task stays out');
   });
 
   test('bounded counts follow open and finished work, dropped or not', async () => {

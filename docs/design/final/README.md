@@ -548,7 +548,11 @@ The keys show next to their actions in menus. In the Inbox, `R` on a decision op
   keeps its focus ([Underline tabs](#underline-tabs-the-views-switch)).
 - **Arriving to open one thing** (`?open=` a task or a decision, a message link or Copy link, a Search, Inbox or notification
   target). That thing has the focus: its panel, or the message, marked. A link to a message that has no replies marks it in the
-  conversation and opens no thread panel; a link followed from inside an open panel (a task's "From: Message") keeps that panel and
+  conversation and opens no thread panel. **An Inbox question, mention or reply opens where it is answered, the same way however it is opened**
+  (Enter, `R`, Reply, a tap on its title; personas-34): its thread, also before anyone has replied, or in a direct message the conversation
+  itself, with the cursor in the field there on a computer (on a touch screen only Reply focuses it). Esc, × and the phone sheet's × go back to
+  the Inbox with the item open and focused; in a direct message, which has no panel, Esc in its empty field (or with focus outside a field) goes
+  back, and Esc in a field with words leaves the field first, keeping them. A link followed from inside an open panel (a task's "From: Message") keeps that panel and
   its way back ("‹ Task #4").
 - **A task or a decision in the panel or sheet has its own address, `?open=`,** however it was opened: a card on the board or in the
   conversation or a thread, Create, Search, Home, the Inbox (Open, Enter, Discuss or R), a link. A reload opens it again, over the thread
@@ -563,7 +567,14 @@ The keys show next to their actions in menus. In the Inbox, `R` on a decision op
   row and it is a person, and no row was chosen with the arrows). In New message a second Enter opens the conversation, however fast it is typed.
 - **The Inbox's open item is chosen, never implied:** from the moment the Inbox opens, the item with the ring is the open one (the top
   one at first), on the phone the expanded card too. An item that arrives live never takes its place, so E acts only on what has the
-  ring. When the open item leaves (done, given away), its neighbour at its place is chosen, also on coming back to the Inbox.
+  ring. When the open item leaves (done, given away), its neighbour at its place is chosen, also on coming back to the Inbox. What Put back
+  or Bring back now returns is the open item as it takes the ring, whether the window was closed with Esc or closed by itself (personas-34).
+- **One press, one action in the Inbox** (personas-34): the open item's neighbour swaps in the moment an action takes it out, so for
+  450 ms after Accept, Done, Not now, Approve all, an answer or Unblock, every action of the Inbox (its buttons on the computer and in the
+  phone's tray, Join, Open, Reply, Discuss and the keys A, E, S, R and Enter) does nothing. The second click of a double-click, a double tap
+  or a key pressed twice lands on nothing. Choosing an item (J, K, a click on a row) or Undo ends the pause at once. 450 ms is shorter than
+  anyone needs to read the card that came in, and it follows the toast's own guard against a tap aimed at what was there (600 ms).
+  Nothing moves for it: no animation is added or held back ([motion](../motion.md)).
 - **R in the Inbox writes:** Reply, a decision's Discuss, or a blocked task's discussion. Where there is nothing to write to, the
   letters typed with R are held for half a second, never run as A, E or S, and then the keys are the Inbox's again.
 - **The sidebar's arrow keys** move between its rows. **G I** lands on the Inbox's open item, or its heading when it is empty,
@@ -978,7 +989,9 @@ Community garden sensors, Rain barrel monitor and Tool library.
   expanded inside the list, and the others stay one row with their one quiet action, as the phone is drawn.
   `J` and `K` move between items, and `A`, `R`, `E` and `S` act on the open one, each only where it shows that button (Accept, Reply,
   Done, Not now; a decision has no Done, #1424). `R` puts focus in the reply field, and what is typed from then on is the reply, never
-  Inbox keys. Arriving at the Inbox with focus nowhere (`G` `I`), the open item's row takes it. The keys are shown in menus and on their buttons
+  Inbox keys. Enter on a question, a mention or a reply does what `R` and Reply do (§4, personas-34). **Two actions in a row share one
+  Undo:** an action taken while the toast of the one before is still on screen says so ("Accepted, and 1 more · Undo"), and its Undo
+  (`Z`) takes all of them back, newest first, so a second toast never takes away the Undo of the first. Arriving at the Inbox with focus nowhere (`G` `I`), the open item's row takes it. The keys are shown in menus and on their buttons
   (Accept's `A`, Reply's `R`), never as a legend under the list ([#1419](https://github.com/ColdPhase/flux/issues/1419) item 13).
 - **Not now is one button, with no menu** (S11, #1367). It puts the item off until tomorrow at 08:00 and offers Undo ("Not now.
   Back tomorrow morning"); the item returns then. There is no "Ask me again" menu, no "Next week", no "When #N is done" and no
@@ -995,7 +1008,8 @@ Community garden sensors, Rain barrel monitor and Tool library.
   Keyboard (§4): the window opens with its first row's button focused; Tab and the arrow keys move between the rows' buttons; when a
   row leaves, focus goes to the next row's button, else the previous one; Esc closes the window and gives focus back to the line's
   button. When the last row leaves, the window closes. Whenever the window closes after something was put back, what came back is in
-  the list at its place and the last of it has focus there. Inbox keys (J, K, A, E, S, R) do nothing while the window is open.
+  the list at its place and the last of it has focus there and is the open item (on the phone the expanded card), so `E` acts on it
+  (personas-34). Each row says what its Inbox row says: a blocked task you are waited on is "Blocked · waits for you", your own "Blocked · your task". Inbox keys (J, K, A, E, S, R) do nothing while the window is open.
 - **A task given to you** (founder decision, Hubert, 2026-11-15, [#1424](https://github.com/ColdPhase/flux/issues/1424) C). When
   someone else or an agent makes a task with you as its Owner, or changes its Owner to you, it is an item of your Inbox:
   **"Task · Jonas · Rain barrel monitor"**, titled by the task ("#12 Seal the lids"), with **Open** (it opens the task in the one

@@ -141,7 +141,9 @@ class NoticeJourney(unittest.TestCase):
     def test_01_a_direct_message_shows_a_notice_within_2_s_and_open_reads_it(self) -> None:
         page = self.home()
         focused = page.evaluate("() => document.activeElement?.tagName")
-        sent = self.dm("Can you check the probe readings before Friday? Two of them look off since the rain.")
+        # A plain message, not a question: in a direct message between two people every question is a Question for the other person
+        # ("Jonas Berg asked you", founder decision 2026-11-15, #1424 A), and this journey is the ordinary direct message's notice.
+        sent = self.dm("Two of the probe readings look off since the rain. I would check them before Friday.")
         card = self.card(page)
         expect(card).to_be_visible(timeout=5000)
         took = time.monotonic() - sent

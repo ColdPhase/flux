@@ -312,8 +312,11 @@ class HomeFinal(unittest.TestCase):
         errors: list[str] = []
         page.on("pageerror", lambda error: errors.append(str(error)))
         self.addCleanup(lambda: self.assertEqual(errors, [], "no uncaught page errors"))
-        # A first visit starts the return point; what happens after it is what she returns to.
-        page.goto("/")
+        # A first visit starts the return point; what happens after it is what she returns to. The point is saved at the mark Home read,
+        # so the decision is proposed only once that save is answered: proposed earlier, it is before her point and not "since you left".
+        with page.expect_response(lambda response: response.request.method == "PUT" and response.url.endswith("/api/v1/return-points")) as saved:
+            page.goto("/")
+        self.assertTrue(saved.value.ok, f"the first visit's return point: {saved.value.status}")
         expect(page.get_by_role("heading", level=2, name=re.compile("^Good (morning|afternoon|evening), Ada$"))).to_be_visible()
         decision = call(jonas, "POST", f"/api/v1/projects/{project['id']}/decisions", {"title": "Mesh in front of the diverter", "rationale": "Leaves clog it."}, 201)
         queued = lambda: call(ada, "GET", "/api/v1/needs-you")["items"]  # noqa: E731

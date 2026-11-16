@@ -37,7 +37,9 @@ describe('the notice on an open tab (#1243)', () => {
     const jonasTab = await StreamClient.connect(jonas.browser);
     await Promise.all([adaTab.ready(), jonasTab.ready()]);
     try {
-      await send(jonas, dm.id, 'Can you check the probe readings before Friday?');
+      // A plain message, not a question: in a direct message between two people every question is a Question for the other person
+      // (founder decision 2026-11-15, #1424 A, notifications.md); this is the ordinary direct message's notice, the question is below.
+      await send(jonas, dm.id, 'Two of the probe readings look off. I would check them before Friday.');
       const notice = await adaTab.event(dm.id, 'dm.notice.v1', 10_000);
       const item = expectStatus(await ada.browser.request('GET', `/api/v1/inbox/${notice.id}`), 200) as InboxItem;
       assert.equal(item.reason, 'dm');
@@ -51,7 +53,7 @@ describe('the notice on an open tab (#1243)', () => {
 
       // Quiet hours: the Inbox keeps the row, the tab is not interrupted.
       await prefs(ada, { quietHours: quietNow() });
-      await send(jonas, dm.id, 'Still there?');
+      await send(jonas, dm.id, 'I am still at the bench.');
       await generatorCaughtUp();
       const rows = Number((await pool.query(`SELECT count(*) AS n FROM notifications WHERE user_id = $1 AND reason = 'dm'`, [ada.id])).rows[0].n);
       assert.equal(rows, 2, 'both messages are in the Inbox');
@@ -67,6 +69,16 @@ describe('the notice on an open tab (#1243)', () => {
       await prefs(ada, { level: 'needsYou' });
       await send(jonas, dm.id, 'Found it, thanks');
       await adaTab.until(() => adaTab.events.filter((event) => event.kind === 'dm.notice.v1').length === 2 || null, 10_000, 'the second notice');
+
+      // A question between two people is announced the same way, to its recipient alone, and reaches the Inbox as a Question (#1424 A).
+      await send(jonas, dm.id, 'Can you check the probe readings before Friday?');
+      const asked = await adaTab.until(() => adaTab.events.filter((event) => event.kind === 'dm.notice.v1')[2] ?? null, 10_000, 'the question\'s notice');
+      const question = expectStatus(await ada.browser.request('GET', `/api/v1/inbox/${asked.id}`), 200) as InboxItem;
+      assert.equal(question.reason, 'question');
+      assert.equal(question.source.id, dm.id);
+      assert.deepEqual(question.from, { kind: 'human', id: jonas.id, name: 'notice-jonas' }, 'the question names its asker');
+      await generatorCaughtUp();
+      assert.equal(jonasTab.events.filter((event) => event.kind.endsWith('.notice.v1')).length, 0, 'the asker is never told');
     } finally {
       await Promise.all([adaTab.close(), jonasTab.close()]);
     }
