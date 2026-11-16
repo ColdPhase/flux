@@ -170,7 +170,7 @@ class FirstStepsJourney(unittest.TestCase):
         """personas-26: three people joined beside one step left; the card has three rows, and the third person was dropped. The last
         joined row names who else joined, and each gets a row of their own once the one above is greeted."""
         import json
-        read = {"steps": ["connect_ai"], "offerPush": False, "everyoneSpaceId": None,
+        read = {"steps": ["connect_ai"], "offerPush": False, "everyoneSpaceId": None, "plans": [],
                 "joined": [{"userId": str(uuid.uuid4()), "name": name} for name in ("Ana Souza", "Leo Park", "Stefan Nowak")]}
         page = self.page("fia")
         page.route("**/api/v1/me/first-steps", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(read)))
