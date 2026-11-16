@@ -522,7 +522,10 @@ class UndoAndOneCard(unittest.TestCase):
         self.assertTrue(waits(asks[0]), "the neighbour that swapped in after Done is untouched")
         self.assertEqual(status(first), "proposed")
 
-        # Two actions the person chose, one after the other: one toast covers both, and its Undo takes both back.
+        # Two actions the person chose, one after the other: one toast covers both, and its Undo takes both back. The toast of the Done
+        # actions above is closed first, or it would join them too ("and 3 more").
+        page.locator(".ui-toast .ui-toast__close").first.click()
+        expect(page.locator(".ui-toast")).to_have_count(0)
         open_item(row(asks[0])).get_by_role("button", name=re.compile("^Done")).click()
         expect(row(asks[0])).to_have_count(0)
         open_item(row(first["title"]))
