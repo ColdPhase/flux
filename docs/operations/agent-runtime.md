@@ -241,7 +241,9 @@ how many agents can run at the same time:
 | 8 GB | about 6.4 GiB | 6 |
 | 16 GB | about 14 GiB | 14 |
 
-The others wait in order, and their task says "Waiting for room on the server". To choose the number yourself, set
+The others wait in order, and their task says "Waiting for room on the server". A run whose worker was lost (the worker
+restarted, say) gives its place back when the runtime has not reported it for two minutes after its last change, whether it
+runs on a plan or on an API key; the next waiting run then starts. To choose the number yourself, set
 `FLUX_RUNTIME_MAX_RUNS` in `docker/.env` and run `./flux up`; `./flux runtime status` shows the number in force. There is no
 setting in the app.
 

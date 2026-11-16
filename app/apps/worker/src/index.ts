@@ -71,7 +71,7 @@ const fileText = await startFileText({ db, connectionString });
 // Encrypted workspaces (F-030): the keyring heartbeat and the resume job sent with every unlock.
 const encryption = await startWorkspaceEncryption(boss, db, process.env, email.available);
 // The `runtime` transport (F-022 T3): reconciles slot bindings at start and periodically; off by default.
-const agentRuntime = startAgentRuntimeReconciler({ config: agentRuntimeConfig, db, pool, env: process.env });
+const agentRuntime = startAgentRuntimeReconciler({ config: agentRuntimeConfig, db, pool, env: process.env, startNext: personalRunRecovery.startNextRequests });
 console.log('Flux worker ready');
 const stop = async () => { await modelGateway.stop(); await searchVectors.stop(); await fileText.stop(); encryption.stop(); await agentRuntime.stop(); await personalRunRecovery.stop(); await generator.stop(); await boss.stop(); email.close(); await pool.end(); process.exit(0); };
 process.on('SIGTERM', stop);
