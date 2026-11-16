@@ -730,7 +730,8 @@ class SketchJourney(unittest.TestCase):
                     self.assertLessEqual(bounds["y"] + bounds["height"], viewport_box["y"] + viewport_box["height"] + 1)
                     self.assert_no_overlap(bounds, control_box, "the complete last thought and author stay clear of the Fit and zoom entry")
                 self.assert_no_overlap(box(page, corner), box(page, page.locator(".sk-phone")), "the last thought scrolls clear of the floating Thought button")
-                expect(corner.locator(".sk-p")).to_contain_text("From you")
+                # The reader is "Rae Morgan (you)" here as in every view (personas-33), never "From you".
+                expect(corner.locator(".sk-p")).to_contain_text("From Rae Morgan (you) · ")
                 self.assertGreaterEqual(corner.locator(".sk-t").evaluate("el => parseFloat(getComputedStyle(el).fontSize)"), 15)
                 self.assertGreaterEqual(corner.locator(".sk-p").evaluate("el => parseFloat(getComputedStyle(el).fontSize)"), 12.5)
                 expect(controls).to_be_in_viewport(ratio=1)

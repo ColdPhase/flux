@@ -369,6 +369,61 @@ class DecisionDiscussion(unittest.TestCase):
                 expect(bodies).to_have_count(len(words))
                 self.assertEqual([text.strip() for text in bodies.all_inner_texts()], words, "every message, once, oldest first")
 
+    # ---------------------------------------------------------------- personas-33/34 P3: one name, one way to open, the decision named
+
+    def test_12_the_task_panel_names_people_as_the_decision_panel_does(self) -> None:
+        """personas-33: the task panel said "Ada", "Jonas" where the decision panel and the thread said "Jonas Berg (you)", "Tomek Wiśniewski"."""
+        owner = self.page()
+        owner.goto("/")
+        task = self.api(owner, "POST", f"/api/v1/projects/{self.ids['lamp']}/work", {"title": "Mount the lamp sensor on the north wall"}, status=201)
+        ben = self.ben_page()
+        ben.goto("/")
+        said = self.api(ben, "POST", f"/api/v1/work/{task['id']}/discussion", {"body": "I can bring the ladder on Friday.", "clientMessageId": str(uuid.uuid4())}, status=201)
+        mine = self.api(owner, "POST", f"/api/v1/work/{task['id']}/discussion", {"body": "Thank you, Friday works.", "clientMessageId": str(uuid.uuid4())}, status=201)
+        owner.goto(f"/projects/{self.ids['lamp']}/tasks?open=work:{task['id']}")
+        panel = owner.locator("#details")
+        expect(panel.locator(f'[data-message-id="{said["id"]}"] .wd-act__who b'), "a full name, as the decision panel and the thread name him").to_have_text(BEN["name"])
+        expect(panel.locator(f'[data-message-id="{mine["id"]}"] .wd-act__who b'), "the reader as every view names her").to_have_text(f"{ADA['name']} (you)")
+
+    def test_13_a_reply_in_a_decisions_discussion_is_named_by_the_decision_on_home(self) -> None:
+        """personas-34: for someone who was not asked, Home said "Ben replied in “<its first message>”"; it is about the decision."""
+        owner = self.page()
+        owner.goto("/")
+        decision = self.api(owner, "POST", f"/api/v1/projects/{self.ids['lamp']}/decisions", {"title": "Put the tool library stand by the gate", "rationale": "Closer to the street"}, status=201)
+        mark = self.api(owner, "GET", "/api/v1/return?place=home", status=200)["mark"]
+        self.api(owner, "PUT", "/api/v1/return-points", {"place": {"type": "home"}, "mark": mark}, status=200)
+        ben = self.ben_page()
+        ben.goto("/")
+        self.api(ben, "POST", f"/api/v1/decisions/{decision['id']}/discussion", {"body": "First thought: the gate gets the morning sun.", "clientMessageId": str(uuid.uuid4())}, status=201)
+        texts: list[str] = []
+        for _ in range(40):
+            texts = [item["text"] for item in self.api(owner, "GET", "/api/v1/return?place=home", status=200)["items"] if item["kind"] == "message"]
+            if texts:
+                break
+            owner.wait_for_timeout(250)
+        self.assertIn(f"{BEN['name']} replied about “Put the tool library stand by the gate”", texts)
+        self.assertFalse([text for text in texts if "First thought" in text], "never named by its first message")
+
+    def test_14_the_task_panel_and_the_decision_panel_open_the_same_way_at_the_newest(self) -> None:
+        """personas-34: the task panel opened at its top and the decision panel at its newest message; both open at the newest."""
+        page = self.page()
+        page.goto("/")
+        pid = self.ids["lamp"]
+        task = self.api(page, "POST", f"/api/v1/projects/{pid}/work", {"title": "Seal the lamp housing"}, status=201)
+        decision = self.api(page, "POST", f"/api/v1/projects/{pid}/decisions", {"title": "Seal the housing with silicone", "rationale": "It keeps the rain out"}, status=201)
+        for n in range(1, 19):
+            self.api(page, "POST", f"/api/v1/work/{task['id']}/discussion", {"body": f"Housing note {n:02d}: the seam on the left side needs another pass.", "clientMessageId": str(uuid.uuid4())}, status=201)
+            self.api(page, "POST", f"/api/v1/decisions/{decision['id']}/discussion", {"body": f"Seal note {n:02d}: the seam on the left side needs another pass.", "clientMessageId": str(uuid.uuid4())}, status=201)
+        cases = ((f"/projects/{pid}/tasks?open=work:{task['id']}", ".wd-act .wd-act__item--message .message-body", "Housing note 18"),
+                 (f"/projects/{pid}?open=decision:{decision['id']}", ".wd-discussion__list .wd-act__item--message .message-body", "Seal note 18"))
+        for path, selector, newest in cases:
+            with self.subTest(path=path):
+                page.goto(path)
+                bodies = page.locator("#details").locator(selector)
+                expect(bodies.last).to_contain_text(newest)
+                page.wait_for_timeout(500)
+                expect(bodies.last, "the panel opens with its newest message in view").to_be_in_viewport()
+
 
 if __name__ == "__main__":
     unittest.main()

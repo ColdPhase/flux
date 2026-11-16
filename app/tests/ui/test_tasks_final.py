@@ -203,7 +203,7 @@ class TasksFinalJourney(unittest.TestCase):
                 supplier = self.card(page, SUPPLIER)
                 expect(supplier.locator(".ui-task-number")).to_have_text(f"#{self.numbers['supplier']}")
                 expect(supplier.get_by_role("button", name=SUPPLIER, exact=True)).to_be_visible()
-                expect(supplier.locator(".tb-card__name")).to_have_text("You")
+                expect(supplier.locator(".tb-card__name")).to_have_text(f"{ADA['name']} (you)")
                 self.assertEqual(supplier.locator(".tb-av").evaluate("el => [el.offsetWidth, el.offsetHeight]"), [20, 20])
                 expect(self.card(page, LABELS).locator(".tb-card__owner")).to_have_text("No owner")
                 enclosure = self.card(page.get_by_role("region", name="Blocked", exact=True), ENCLOSURE)

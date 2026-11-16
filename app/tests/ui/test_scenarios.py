@@ -659,7 +659,7 @@ class ScenarioJourney:
         with jonas.expect_file_chooser() as chooser:
             self.tap(jonas.get_by_role("button", name="Attach files", exact=True))
         chooser.value.set_files([{"name": "lux-readings.csv", "mimeType": "text/csv", "buffer": CSV}])
-        expect(jonas.get_by_text("Ready, private", exact=False)).to_have_count(1)
+        expect(jonas.get_by_text("Ready to send", exact=False)).to_have_count(1)
         self.tap(jonas.get_by_role("button", name="Send message", exact=True))
         expect(jonas.get_by_label("Write a message", exact=True)).to_have_value("")
         run = self.root_of("jonas", lamp, RUN_ROOT)

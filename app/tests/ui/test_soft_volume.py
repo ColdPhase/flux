@@ -190,7 +190,7 @@ class SoftVolume(unittest.TestCase):
                     chooser.value.set_files({"name": "delivery.csv", "mimeType": "text/csv", "buffer": b"batch,count\nnext,4\n"})
                     draft = replies.locator(".composer-files__name")
                     expect(draft).to_contain_text("delivery.csv")
-                    expect(draft).to_contain_text("Ready, private")
+                    expect(draft).to_contain_text("Ready to send")
                     self.assert_sans(draft)
                     draft_label = replies.locator(".composer-thumb:not(.is-photo) .file-icon__label")
                     expect(draft_label).to_have_text("CSV")

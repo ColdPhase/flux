@@ -105,6 +105,7 @@ class StreamFocusAndCards(unittest.TestCase):
                 tasks.append(cls.post("ada", f"/api/v1/projects/{pid}/work", {"title": title, "sources": [{"type": "message", "id": root["messages"][0]["id"]}], **owner})["id"])
         cls.ids["messages"] = [message["id"] for message in messages]
         cls.ids["long_task"] = tasks[1]
+        cls.ids["tasks"] = tasks
         # A thread: a root, Maja's reply, and a task made from that reply.
         thread_root = messages[20]
         reply = cls.post("maja", f"/api/v1/conversations/{thread_root['conversationId']}/messages",
@@ -320,6 +321,31 @@ class StreamFocusAndCards(unittest.TestCase):
         self.assertGreater(watch["frames"], 30, "frames were watched")
         self.assertEqual(watch["lost"], [], "no card lost its owner while it was read again")
         self.assertEqual(watch["heights"], [], "no card changed its height while it was read again")
+
+    def test_08_a_card_not_read_yet_never_says_to_do(self) -> None:
+        """personas-33: a card above the screen read "To do" with no owner until it was scrolled into view, for a task that was Doing with
+        an owner, and a screen reader read that too. Until its row is read a card states no state and no owner; then it says the true one."""
+        first = self.ids["tasks"][0]
+        context = self.api_contexts["ada"]
+        version = context.request.get(f"/api/v1/work/{first}").json()["version"]
+        moved = context.request.fetch(f"/api/v1/work/{first}", method="PATCH", data={"status": "in_progress", "clientCommandId": str(uuid.uuid4())},
+                                      headers={"origin": ORIGIN, "if-match": f'"{version}"'})
+        self.assertEqual(moved.status, 200, moved.text())
+        page = self.page()
+        page.goto(f"/projects/{self.ids['project']}")
+        feed = page.locator(".project-convo__feed.is-stream")
+        expect(feed).to_have_attribute("data-references-phase", SETTLED)
+        card = self.notice(page, first).locator(".convo-notice__task")
+        expect(card).to_have_count(1)
+        expect(card, "far above the screen, its row is not read yet").not_to_be_in_viewport()
+        expect(card).not_to_contain_text("To do")
+        expect(card).to_have_attribute("data-state-unknown", "")
+        expect(card.locator(".convo-notice__owner")).to_have_count(0)
+        expect(card.locator(".ui-glyph"), "no glyph that reads as To do").to_have_count(0)
+        card.scroll_into_view_if_needed()
+        expect(card.locator(".convo-notice__state")).to_have_text("Doing")
+        expect(card.locator(".convo-notice__owner-name")).to_have_text(PEOPLE["maja"][0])
+        expect(card).not_to_have_attribute("data-state-unknown", "")
 
 
 if __name__ == "__main__":

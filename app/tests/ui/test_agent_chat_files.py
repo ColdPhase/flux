@@ -92,7 +92,7 @@ class AgentChatFiles(unittest.TestCase):
             page.get_by_role("button", name="Attach files").click()
         chooser.value.set_files(files)
         draft = page.get_by_role("list", name="Files in your draft")
-        expect(draft.get_by_text("Ready, private", exact=False)).to_have_count(len(files))
+        expect(draft.get_by_text("Ready to send", exact=False)).to_have_count(len(files))
         kept = page.evaluate("""agent => Object.keys(localStorage).filter((key) => key.startsWith('flux:composer:') && key.endsWith(`:chat:${agent}`))
             .map((key) => JSON.parse(localStorage.getItem(key)))""", self.ids["agent"])
         return [file["staged"] for draft in kept for file in draft.get("files", []) if file.get("staged")]
@@ -150,7 +150,7 @@ class AgentChatFiles(unittest.TestCase):
             jo.get_by_role("button", name="Attach files").click()
         chooser.value.set_files([{"name": "alone.txt", "mimeType": "text/plain", "buffer": b"only a file"}])
         # One file joins the draft at once, as in a space (several are ordered in a sheet on the phone, #348).
-        expect(jo.get_by_role("list", name="Files in your draft").get_by_text("Ready, private", exact=False)).to_have_count(1)
+        expect(jo.get_by_role("list", name="Files in your draft").get_by_text("Ready to send", exact=False)).to_have_count(1)
         send = jo.get_by_role("button", name=f"Send to {self.ids['agent_name']}")
         expect(send).not_to_have_attribute("aria-disabled", "true")
         send.click()

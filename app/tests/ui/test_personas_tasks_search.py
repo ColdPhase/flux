@@ -228,6 +228,44 @@ class PersonasTasksSearch(unittest.TestCase):
         expect(page.get_by_role("button", name="Back to My tasks")).to_be_visible()
         expect(page.get_by_role("button", name="Back to Tasks")).to_have_count(0)
 
+    # ------------------------------------------------------------------ personas-33/34 P3: a task reads the same everywhere
+
+    def test_09_my_tasks_rows_carry_the_number_and_the_state_glyph(self) -> None:
+        """personas-33: My tasks listed "Doing  Order two frost sensors" with no #number and no glyph, unlike every other task list."""
+        page = self.page()
+        page.goto("/tasks")
+        row = page.get_by_role("region", name="My tasks").get_by_role("link", name=re.compile(re.escape(LONG)))
+        expect(row).to_contain_text(f"#{self.long['number']} {LONG}")
+        expect(row.locator(".home-tasks__status")).to_have_text("To do")
+        expect(row.locator(".home-tasks__status .ui-glyph--open")).to_have_count(1)
+
+    def test_10_a_tasks_discussion_opened_from_search_names_its_task_and_opens_it(self) -> None:
+        """personas-34: a task's discussion opened from Search read "Thread · 32 replies" with no sign that it belongs to a task."""
+        words = f"Antenna log {uuid.uuid4().hex[:6]}: the mast reading dropped at night"
+        api(self.ctx, "POST", f"/api/v1/work/{self.long['id']}/discussion", {"body": words, "clientMessageId": str(uuid.uuid4())}, 201)
+        page = self.page()
+        page.goto(f"/projects/{self.project}")
+        expect(page.get_by_role("button", name="Search", exact=True)).to_be_visible()
+        page.keyboard.press("Control+k")
+        dialog = page.get_by_role("dialog", name="Search", exact=True)
+        field = dialog.get_by_role("combobox", name="Search", exact=True)
+        option = dialog.locator("[role=option].sr", has_text=words.split(":")[0])
+        for _ in range(20):
+            field.fill(words.split(":")[0])
+            try:
+                expect(option.first).to_be_visible(timeout=1500)
+                break
+            except AssertionError:
+                field.fill("")
+        expect(option.first).to_be_visible()
+        option.first.click()
+        thread = page.locator("#thread")
+        head = thread.locator(f'[data-discussed-task="{self.long["id"]}"]')
+        expect(head).to_contain_text(f"#{self.long['number']}")
+        expect(head).to_contain_text(LONG)
+        head.get_by_role("button", name=f"Open task #{self.long['number']} {LONG}").click()
+        expect(page.locator("#details").get_by_role("heading", name=LONG)).to_be_visible()
+
 
 if __name__ == "__main__":
     unittest.main()

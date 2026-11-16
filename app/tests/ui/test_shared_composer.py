@@ -148,7 +148,7 @@ class SharedComposerJourney(unittest.TestCase):
         first = self.file("01-měřeni.bin")
         second = self.file("02-sensor.txt", b"negative result\r\nno fake caption")
         self.choose(owner, [first, second])
-        expect(owner.get_by_text("Ready, private", exact=False)).to_have_count(2)
+        expect(owner.get_by_text("Ready to send", exact=False)).to_have_count(2)
         staged = self.record(owner, project, a)["files"]
         for item in staged:
             self.assertEqual(writer.request.get(f"/api/v1/files/{item['staged']['id']}").status, 404, "private staging belongs only to uploader")
@@ -162,7 +162,7 @@ class SharedComposerJourney(unittest.TestCase):
         self.assertEqual([item["name"] for item in root["files"]], [first["name"], second["name"]])
         self.open_agents(writer, project, a)
         self.choose(writer, [self.file("reply.bin", b"\x01\x02 independently measured")])
-        expect(writer.get_by_text("Ready, private", exact=False)).to_have_count(1)
+        expect(writer.get_by_text("Ready to send", exact=False)).to_have_count(1)
         self.send_button(writer).click()
         expect(writer.get_by_role("list", name="Files in your draft")).to_have_count(0)
         self.stored(writer)
@@ -193,7 +193,7 @@ class SharedComposerJourney(unittest.TestCase):
         pane = self.cite(page, project, root["conversationId"])
         pane.get_by_label("Reply", exact=True).fill("Shared command keeps this reference and attachment")
         self.choose(page, [self.file()], pane)
-        expect(pane.get_by_text("Ready, private", exact=False)).to_have_count(1)
+        expect(pane.get_by_text("Ready to send", exact=False)).to_have_count(1)
         self.enter_agents(page, project)
         self.open_thread(page, project, a)
         expect(self.box(page)).to_have_value("Shared command keeps this reference and attachment")
@@ -246,7 +246,7 @@ class SharedComposerJourney(unittest.TestCase):
         pane = self.cite(page, project, root["conversationId"])
         pane.get_by_label("Reply", exact=True).fill("Keep the careful comparison")
         self.choose(page, [self.file("ready.bin")], pane)
-        expect(pane.get_by_text("Ready, private", exact=False)).to_have_count(1)
+        expect(pane.get_by_text("Ready to send", exact=False)).to_have_count(1)
         def fail_upload(route):
             route.fulfill(status=409, content_type="application/json", body=json.dumps({"code": "UPLOAD_CONFLICT", "message": "Different bytes for the same upload"}))
         page.route("**/api/v1/projects/*/files?*", fail_upload)
@@ -293,7 +293,7 @@ class SharedComposerJourney(unittest.TestCase):
         expect(page.get_by_text("held-a.bin", exact=False)).to_have_count(0)
         self.open_thread(page, project, a)
         expect(self.box(page)).to_have_value("A's held private bytes")
-        expect(page.get_by_text("Ready, private", exact=False)).to_have_count(1)
+        expect(page.get_by_text("Ready to send", exact=False)).to_have_count(1)
         pending = []
         def hold_send(route):
             if route.request.method == "POST" and not pending:
@@ -335,7 +335,7 @@ class SharedComposerJourney(unittest.TestCase):
         pane = self.cite(page, project, root["conversationId"])
         pane.get_by_label("Reply", exact=True).fill("Newest memory copy")
         self.choose(page, [self.file()], pane)
-        expect(pane.get_by_text("Ready, private", exact=False)).to_have_count(1)
+        expect(pane.get_by_text("Ready to send", exact=False)).to_have_count(1)
         expect(pane.get_by_text("This browser refused draft storage", exact=False)).to_be_visible()
         self.enter_agents(page, project)
         self.open_thread(page, project, a)
@@ -345,7 +345,7 @@ class SharedComposerJourney(unittest.TestCase):
         self.box(page).fill("B stays separate")
         self.open_thread(page, project, a)
         expect(self.box(page)).to_have_value("The newest second edit")
-        expect(page.get_by_text("Ready, private", exact=False)).to_have_count(1)
+        expect(page.get_by_text("Ready to send", exact=False)).to_have_count(1)
 
     def test_06_interrupted_upload_reselects_same_bytes_and_uuid_after_reload(self):
         page = self.page()
@@ -377,7 +377,7 @@ class SharedComposerJourney(unittest.TestCase):
         with page.expect_file_chooser() as chooser:
             page.get_by_role("button", name="Retry upload").click()
         chooser.value.set_files(self.file("uncertain.bin"))
-        expect(page.get_by_text("Ready, private", exact=False)).to_have_count(1)
+        expect(page.get_by_text("Ready to send", exact=False)).to_have_count(1)
         after = self.record(page, project, a)
         self.assertEqual(before["files"][0]["uploadId"], after["files"][0]["uploadId"])
         self.assertEqual(after["files"][0]["staged"]["uploadId"], before["files"][0]["uploadId"])
@@ -394,7 +394,7 @@ class SharedComposerJourney(unittest.TestCase):
         pane = self.cite(page, project, root["conversationId"])
         pane.get_by_label("Reply", exact=True).fill("Public task draft stays public only on send")
         self.choose(page, [self.file("public-on-send.bin")], pane)
-        expect(pane.get_by_text("Ready, private", exact=False)).to_have_count(1)
+        expect(pane.get_by_text("Ready to send", exact=False)).to_have_count(1)
         pane.get_by_label("Reply", exact=True).fill("/ai ")
         expect(pane.get_by_label("Ask your assistant", exact=True)).to_have_value("")
         pane.get_by_label("Ask your assistant", exact=True).fill("Private prompt never becomes the task root")
@@ -425,7 +425,7 @@ class SharedComposerJourney(unittest.TestCase):
                 box.press("Shift+Enter")
                 self.assertIn("\n", box.input_value())
                 self.choose(page, [self.file("a-very-long-readable-measurement-name-after-the-sensor-failed-in-the-dark.bin")])
-                expect(page.get_by_text("Ready, private", exact=False)).to_have_count(1)
+                expect(page.get_by_text("Ready to send", exact=False)).to_have_count(1)
                 page.get_by_role("button", name="Attach files", exact=True).focus()
                 self.assertTrue(page.get_by_role("button", name="Attach files", exact=True).evaluate("el => el === document.activeElement"))
                 if width < 681:
@@ -456,7 +456,7 @@ class SharedComposerJourney(unittest.TestCase):
                 pane = self.cite(page, project, discussion['conversationId'])
                 pane.get_by_label('Reply', exact=True).fill('Compare these two files with the saved measurements')
                 self.choose(page, [self.file('01-negative-measurement.bin'), self.file('02-sensor-wiring.bin')], pane)
-                expect(pane.get_by_text('Ready, private', exact=False)).to_have_count(2)
+                expect(pane.get_by_text('Ready to send', exact=False)).to_have_count(2)
                 self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth'), width)
                 shot(page, f'shared-reply-draft-{width}')
 
@@ -467,7 +467,7 @@ class SharedComposerJourney(unittest.TestCase):
         pane = self.cite(writer, project, root["conversationId"])
         pane.get_by_label("Reply", exact=True).fill("Retain the revoked writer's careful comparison")
         self.choose(writer, [self.file("retained.bin")], pane)
-        expect(pane.get_by_text("Ready, private", exact=False)).to_have_count(1)
+        expect(pane.get_by_text("Ready to send", exact=False)).to_have_count(1)
         before = self.record(writer, project, a, "writer")
         def access(role):
             self.api(owner, "POST", f"/api/v1/projects/{project['id']}/grants", {"principal": {"kind": "human", "id": self.people['writer']}, "role": role}, 201)
@@ -533,7 +533,7 @@ class SharedComposerJourney(unittest.TestCase):
         expect(box).to_be_enabled()
         box.fill("The Map-created task keeps this measurement file")
         self.choose(page, [self.file("map-measurement.bin")], details)
-        expect(details.get_by_text("Ready, private", exact=False)).to_have_count(1)
+        expect(details.get_by_text("Ready to send", exact=False)).to_have_count(1)
         lost = []
         def lose(route):
             if route.request.method == "POST" and not lost:
@@ -602,7 +602,7 @@ class SharedComposerJourney(unittest.TestCase):
         pane = self.cite(page, project, root["conversationId"])
         pane.get_by_label("Reply", exact=True).fill("Keep this text and version through staging expiry")
         self.choose(page, [self.file("expired.bin")], pane)
-        expect(pane.get_by_text("Ready, private", exact=False)).to_have_count(1)
+        expect(pane.get_by_text("Ready to send", exact=False)).to_have_count(1)
         original = self.record(page, project, a)
         key = f"flux:composer:{self.people['owner']}:{project['id']}:task:{a['id']}"
         page.evaluate("key => { const value = JSON.parse(localStorage.getItem(key)); value.files[0].staged.expiresAt = '1970-01-01T00:00:00.000Z'; localStorage.setItem(key, JSON.stringify(value)); }", key)
@@ -624,7 +624,7 @@ class SharedComposerJourney(unittest.TestCase):
         page.unroute(f"**/api/v1/work/{a['id']}/discussion", expire)
         pane.get_by_role("button", name="Remove expired.bin").click()
         self.choose(page, [self.file("expired.bin")], pane)
-        expect(pane.get_by_text("Ready, private", exact=False)).to_have_count(1)
+        expect(pane.get_by_text("Ready to send", exact=False)).to_have_count(1)
         recovered = self.record(page, project, a)
         self.assertNotEqual(recovered["commandId"], original["commandId"])
         self.assertNotEqual(recovered["files"][0]["staged"]["id"], original["files"][0]["staged"]["id"])
@@ -653,7 +653,7 @@ class SharedComposerJourney(unittest.TestCase):
             pane = self.cite(page, project, root['conversationId'])
             pane.get_by_label("Reply", exact=True).fill(f"The complete private draft for {task['id']}")
             self.choose(page, [self.file(f"{task['id']}.bin")], pane)
-            expect(pane.get_by_text("Ready, private", exact=False)).to_have_count(1)
+            expect(pane.get_by_text("Ready to send", exact=False)).to_have_count(1)
         before_a, before_b = self.record(page, project, a), self.record(page, project, b)
         self.open_agents(page, project, a)
         writes = []
@@ -748,7 +748,7 @@ class SharedComposerJourney(unittest.TestCase):
                 pane = self.cite(page, project, root['conversationId'])
                 pane.get_by_label("Reply", exact=True).fill("Private text with a saved source before signing out")
                 self.choose(page, [self.file("private-before-signout.bin")], pane)
-                expect(pane.get_by_text("Ready, private", exact=False)).to_have_count(1)
+                expect(pane.get_by_text("Ready to send", exact=False)).to_have_count(1)
                 persisted = self.record(page, project, task)
                 if refused_write:
                     page.evaluate("() => { Storage.prototype.setItem = function() { throw new DOMException('Refused', 'QuotaExceededError'); }; }")
@@ -812,7 +812,7 @@ class SharedComposerJourney(unittest.TestCase):
         text = 'Private source and bytes must leave every signed-out tab'
         pane.get_by_label('Reply', exact=True).fill(text)
         self.choose(page, [self.file('other-tab-private.bin')], pane)
-        expect(pane.get_by_text('Ready, private', exact=False)).to_have_count(1)
+        expect(pane.get_by_text('Ready to send', exact=False)).to_have_count(1)
         other = page.context.new_page()
         self.open_agents(other, project, task)
         expect(self.box(other)).to_have_value(text)

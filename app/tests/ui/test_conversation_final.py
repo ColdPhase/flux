@@ -315,7 +315,7 @@ class ConversationFinal(unittest.TestCase):
             page.get_by_role("listbox", name="Actions").get_by_role("option", selected=True).click()
         chooser.value.set_files({"name": "bed-readings.csv", "mimeType": "text/csv", "buffer": b"bed,dbm\nfar east,-112\n"})
         expect(page.get_by_text("bed-readings.csv")).to_be_visible()
-        expect(page.get_by_text("Ready, private", exact=False)).to_be_visible()
+        expect(page.get_by_text("Ready to send", exact=False)).to_be_visible()
         page.get_by_role("button", name="Remove bed-readings.csv").click()
         expect(composer).to_have_value("")
         # "@" lists people only (#1419); the chosen name goes in as a chip that sits on the text baseline.

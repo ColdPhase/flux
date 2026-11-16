@@ -175,7 +175,7 @@ async function stageDraft(page: Page, f: Scene, item: WorkItem) {
   await panel(page).getByRole('textbox', { name: 'Write to this task', exact: true }).fill('Unsent measurement notes stay with this task.');
   await panel(page).locator('.composer-files input[type=file]').first().setInputFiles({ name: 'trial-notes.txt', mimeType: 'text/plain', buffer: Buffer.from('Private staged measurement notes\n') });
   await panel(page).getByText(/trial-notes.txt/).waitFor();
-  await panel(page).getByText(/Ready, private/).waitFor();
+  await panel(page).getByText(/Ready to send/).waitFor();
   const value = await storedDraft(page, draftKey(f, item)); assert.equal(value.files[0]?.state, 'ready'); return value;
 }
 /** Read-only history: no Undo, no change, no live entry, no composer; the reverter and the time are named. */
