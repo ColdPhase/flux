@@ -5,13 +5,14 @@ import { Button, ErrorState, Kreska, MEDIA, Spinner, useMediaQuery, useRowMotion
 import { useSmallMoments } from '../app/smallMoments';
 import { NotAvailable } from '../app/NotAvailable';
 import { useShellData } from '../app/data';
-import { usePlaceState, useArrival } from '../place/memory';
+import { remember, usePlaceState, useArrival } from '../place/memory';
 import { announceInboxChange, getInboxItem, markInboxRead } from './api';
 import { NeedsYouCard, itemKeys, type CardHandlers } from './NeedsYouCard';
 import { useNeedsYou } from './needsYou';
 import { SecurityNotices } from '../encryption/SecurityNotices';
 import { useNeedsYouActions } from './useNeedsYouActions';
 import { InboxAside } from './InboxAside';
+import { inboxSettled, inboxSettling } from './settle';
 import { ApiError } from '../api/client';
 import { awaitField, focusFieldMatching, isTyping } from '../ui/keys';
 import './notifications.css';
@@ -43,6 +44,11 @@ function useQueueKeys(items: NeedsYouItem[], selected: string | null, select: (k
       const at = items.findIndex((item) => item.key === selected);
       const current = items[at] ?? null;
       const offers = current ? itemKeys(current, !!handlers.answer) : null;
+      // A key pressed again on the item that has just swapped in does nothing (personas-34 P2 3), nor do the letters typed with it.
+      if ((key === 'a' || key === 'r' || key === 'e' || key === 's' || event.key === 'Enter') && current && inboxSettling() && (!target || target === document.body || target.id === 'content' || !!target.closest('.nyq'))) {
+        event.preventDefault();
+        return;
+      }
       if (key === 'j' || key === 'k') {
         event.preventDefault();
         const next = items[key === 'j' ? Math.min(items.length - 1, at + 1) : Math.max(0, at < 0 ? 0 : at - 1)];
@@ -111,12 +117,21 @@ export function InboxView() {
     if (currentKey && currentKey !== selected) setSelected(currentKey);
   }, [currentKey, selected, setSelected]);
   const select = useCallback((key: string) => {
+    // The person chose this item: it acts at once, also right after an action (`settle.ts`).
+    inboxSettled();
     setSelected(key);
     document.querySelector<HTMLElement>(`.nyc[data-key="${CSS.escape(key)}"]`)?.scrollIntoView({ block: 'nearest' });
     // Focus in the list goes with the selection, so a keyboard or screen reader user is on the item J or K chose.
     if (document.activeElement?.closest('.nyq__list')) rowControl(key)?.focus({ preventScroll: true });
   }, [setSelected]);
   useQueueKeys(shown, current?.key ?? null, select, handlers);
+  // What "done today" or "for later" put back has the ring and is the open item, on the phone the expanded card (F-026 §4, personas-34 P2 2):
+  // the ring and the open item stay together, so E acts on what came back.
+  const cameBack = useCallback((key: string) => {
+    inboxSettled();
+    setSelected(key);
+    rowControl(key)?.focus({ preventScroll: false });
+  }, [setSelected]);
   // The open column: when what had focus in it leaves with its item (Accept, Not now, Done), focus goes to the next open item, not to the start
   // of the page, so a keyboard or screen reader user goes on from there.
   const paneRef = useRef<HTMLElement>(null);
@@ -177,14 +192,20 @@ export function InboxView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, location.key]);
 
+  // A card opened from the list (a tap on its title, its Reply or Open on the phone) is the open item too, so closing what it opened (×, Esc,
+  // Back) returns to the Inbox with that item open and focused (F-026 §4, personas-34 P2 1). Kept with the entry now, as it is left at once.
+  const cardHandlers = useMemo<CardHandlers>(() => ({ ...handlers, open: (item, reply) => {
+    if (!inboxSettling() && item.key !== currentKey) { remember('inbox.selected', item.key); setSelected(item.key); }
+    handlers.open(item, reply);
+  } }), [handlers, currentKey, setSelected]);
   // Put off for later and done today, said under the list; each opens its list (#1424 E).
-  const later = <InboxAside queue={queue} />;
+  const later = <InboxAside queue={queue} onBack={cameBack} />;
   const list = (
     <ul className="nyq__list" aria-label="Needs you" onFocus={() => { listFocused.current = true; }}
       onBlur={(event) => { if (event.relatedTarget) listFocused.current = event.currentTarget.contains(event.relatedTarget as Node); }}>
       {shown.map((item) => (
-        <NeedsYouCard key={item.key} item={item} selected={item.key === current?.key} handlers={handlers}
-          compact={two || item.key !== current?.key} list={two} onSelect={() => setSelected(item.key)} />
+        <NeedsYouCard key={item.key} item={item} selected={item.key === current?.key} handlers={cardHandlers}
+          compact={two || item.key !== current?.key} list={two} onSelect={() => { inboxSettled(); setSelected(item.key); }} />
       ))}
     </ul>
   );

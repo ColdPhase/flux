@@ -35,6 +35,8 @@ IN_THREAD = "could you bring the folding table too?"
 PHONE_ASKS = ["is the gazebo still at your brother's?", "do we have enough price tags?", "who keeps the cash box?"]
 # Two more for R in the Inbox (#1424 persona round, P2 #4): R replies to the open one, and the other stays untouched.
 R_ASKS = ["can you lock the shed after the market?", "could you print the price list?"]
+# Questions nobody has answered yet, opened from the Inbox (personas-34 P2 1): one in the space (R_ASKS[1]) and one in a direct message.
+DM_ASK = "Do you still have the key to the cash box?"
 THREAD_ROOT = "The stall needs a table, a gazebo and a price board."
 STREAM_ROOT = "Electricity at the stall: the town decides on Monday."
 STREAM_REPLY = "I asked them on Friday, no answer yet."
@@ -93,6 +95,8 @@ class ReplyFocus(unittest.TestCase):
         root = start("jonas", f"@Ada Kowalska {IN_ROOT}")
         phone = {ask: start("jonas", f"@Ada Kowalska {ask}")["id"] for ask in PHONE_ASKS}
         cls.r_asks = {ask: start("jonas", f"@Ada Kowalska {ask}")["id"] for ask in R_ASKS}
+        cls.ids["dm"] = cls.post("jonas", f"/api/v1/workspaces/{workspace}/dms", {"participantIds": [cls.ids["ada"]]})["id"]
+        cls.post("jonas", f"/api/v1/dms/{cls.ids['dm']}/messages", {"body": DM_ASK, "clientMessageId": str(uuid.uuid4())})
         cls.ids.update(project=project, stream=stream["id"], stream_root=stream["messages"][0]["id"], thread=thread["id"], root=root["id"])
         cls.phone = phone
         for key, context in cls.contexts.items():
@@ -100,7 +104,7 @@ class ReplyFocus(unittest.TestCase):
         # The worker writes the notifications shortly after the messages.
         for _ in range(120):
             titles = " ".join(item["title"] for item in cls.get("/api/v1/needs-you")["items"])
-            if all(ask in titles for ask in [IN_ROOT, IN_THREAD, *PHONE_ASKS, *R_ASKS]):
+            if all(ask in titles for ask in [IN_ROOT, IN_THREAD, *PHONE_ASKS, *R_ASKS, DM_ASK]):
                 break
             time.sleep(0.25)
         else:
@@ -252,6 +256,59 @@ class ReplyFocus(unittest.TestCase):
         queue = self.get("/api/v1/needs-you")
         self.assertTrue(any(other in item["title"] for item in queue["items"]), "the other question is still in the Inbox")
         self.assertEqual(queue["later"], 0, "nothing was put off by the typing")
+
+    # ---------------------------------------------------------------- personas-34 P2 1: the same item opened the same way
+
+    def test_06_enter_r_and_reply_open_where_it_is_answered_and_esc_returns_to_the_inbox(self) -> None:
+        # Enter on a question nobody had answered yet only marked the message: no thread, and Esc did nothing, while with one reply Enter opened
+        # the thread and Esc came back. In a direct message Enter and R both stayed there. From the Inbox, Enter, R and Reply open a question
+        # where it is answered, with the cursor there (its thread, also when empty; a direct message's own field), and Esc returns to the Inbox
+        # with the item open and focused.
+        page = self.page()
+        places = {
+            "space": (R_ASKS[1], rf"/projects/{self.ids['project']}/conversations/{self.r_asks[R_ASKS[1]]}", lambda: self.thread(page).get_by_label("Reply", exact=True)),
+            "dm": (DM_ASK, rf"/dm/{self.ids['dm']}", lambda: page.locator("#dm-composer")),
+        }
+        for place, (asked, address, field) in places.items():
+            for how in ("Enter", "r", "Reply"):
+                with self.subTest(place=place, how=how):
+                    page.goto("/inbox")
+                    row = page.locator(".nyq__list .nyc", has_text=asked)
+                    row.locator(".nyc__open").click()
+                    expect(row).to_have_attribute("aria-current", "true")
+                    expect(row.locator(".nyc__open")).to_be_focused()
+                    if how == "Reply":
+                        page.locator(".nyc--open").get_by_role("button", name="Reply", exact=True).click()
+                    else:
+                        page.keyboard.press(how)
+                    expect(page).to_have_url(re.compile(address))
+                    if place == "space":
+                        expect(self.thread(page), "the thread opens, although nobody has replied yet").to_be_visible()
+                    expect(field(), "the cursor is where the answer is written").to_be_focused()
+                    if how == "Enter":
+                        shot(page, f"reply-focus-enter-{place}-1440-{UI_BROWSER}")
+                    page.keyboard.press("Escape")
+                    expect(page).to_have_url(re.compile(r"/inbox$"))
+                    row = page.locator(".nyq__list .nyc", has_text=asked)
+                    expect(row).to_have_attribute("aria-current", "true")
+                    expect(row.locator(".nyc__open")).to_be_focused()
+        queue = " ".join(item["title"] for item in self.get("/api/v1/needs-you")["items"])
+        self.assertIn(R_ASKS[1], queue, "nothing was written, so the question still waits")
+        self.assertIn(DM_ASK, queue)
+
+    def test_07_phone_a_question_with_no_replies_opens_its_thread_and_x_returns(self) -> None:
+        page = self.page(phone=True)
+        asked = PHONE_ASKS[2]
+        page.goto("/inbox")
+        card = page.locator(".nyq__list .nyc", has_text=asked)
+        card.locator(".nyc__open").tap()
+        expect(page).to_have_url(re.compile(rf"/conversations/{self.phone[asked]}"))
+        sheet = self.thread(page)
+        expect(sheet, "the thread opens in its sheet, although nobody has replied yet").to_be_visible()
+        shot(page, f"reply-focus-phone-empty-thread-390-{UI_BROWSER}")
+        sheet.get_by_role("button", name="Close replies").click()
+        expect(page).to_have_url(re.compile(r"/inbox$"))
+        expect(page.locator(".nyq__list .nyc", has_text=asked)).to_have_attribute("aria-current", "true")
 
 
 if __name__ == "__main__":

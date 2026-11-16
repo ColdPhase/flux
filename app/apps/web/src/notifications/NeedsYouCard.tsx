@@ -7,6 +7,7 @@ import { peopleNamed } from '../assistant/peopleNamed';
 import { useJoinCall } from '../live/useJoinCall';
 import { useAgentHue } from '../agents/hues';
 import { bareAgent, fromWords } from './needsYou';
+import { inboxSettling } from './settle';
 
 /** How an item is put off: Not now (until tomorrow morning, S11) or an agent's suggestion declined. */
 export type SnoozeChoice = 'tomorrow' | 'decline';
@@ -29,7 +30,8 @@ export interface CardHandlers {
 function JoinCall({ call, variant }: { call: { projectId: string; sessionId: string }; variant: 'primary' | 'secondary' }) {
   const join = useJoinCall();
   const [busy, setBusy] = useState(false);
-  return <Button variant={variant} busy={busy} onClick={() => { setBusy(true); void join(call).finally(() => setBusy(false)); }}>Join</Button>;
+  // Join is a primary in the place of Accept: a second click of a double-click on the item before it does nothing here (personas-34 P2 3).
+  return <Button variant={variant} busy={busy} onClick={() => { if (inboxSettling()) return; setBusy(true); void join(call).finally(() => setBusy(false)); }}>Join</Button>;
 }
 
 export const KIND_WORD = { decision: 'Decision', question: 'Question', blocked: 'Blocked', mention: 'Mention', task: 'Task' } as const;
