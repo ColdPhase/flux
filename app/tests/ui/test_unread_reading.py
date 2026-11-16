@@ -441,12 +441,17 @@ class OpenWhereYouLeftOff(unittest.TestCase):
         seen = [say(index, "Panel") for index in range(4)]
         talk = self.call("ada", f"/api/v1/work/{task['id']}/discussion", method="GET")
         page = self.page()
-        # The panel opens at the newest line; what it shows is viewed after a moment, as in a thread.
-        with page.expect_response(lambda response: response.url.endswith(f"/api/v1/projects/{project}/observations") and response.request.method == "POST", timeout=15000) as viewed:
-            page.goto(f"/projects/{project}/tasks?open=work:{task['id']}")
-            expect(page.locator(f'.wd-act [data-message-id="{seen[-1]}"]')).to_be_in_viewport()
-        self.assertTrue(viewed.value.ok, viewed.value.status)
-        self.assertIn(seen[-1], viewed.value.request.post_data_json["messageIds"])
+        # The panel opens at the newest line; what it shows is viewed after a moment, as in a thread (in one write or a few).
+        viewed: list[str] = []
+        page.on("response", lambda response: viewed.extend(response.request.post_data_json["messageIds"])
+                if response.ok and response.request.method == "POST" and response.url.endswith(f"/api/v1/projects/{project}/observations") else None)
+        page.goto(f"/projects/{project}/tasks?open=work:{task['id']}")
+        expect(page.locator(f'.wd-act [data-message-id="{seen[-1]}"]')).to_be_in_viewport()
+        for _ in range(60):
+            if seen[-1] in viewed:
+                break
+            page.wait_for_timeout(250)
+        self.assertIn(seen[-1], viewed, "the panel viewed the newest line it showed")
         # Opened as a thread, what the panel showed is not new.
         thread = f"/projects/{project}/conversations/{talk['conversationId']}"
         page.goto(thread)
