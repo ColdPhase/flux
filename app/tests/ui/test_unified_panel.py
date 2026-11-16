@@ -588,7 +588,8 @@ class UnifiedPanel(unittest.TestCase):
                 # Done again, then Put back from done today (the same DELETE): the same wait comes back.
                 panel.get_by_role("region", name="Blocker").get_by_role("button", name="Done", exact=True).click()
                 self.wait_until(lambda: self.stored(task), lambda value: value["status"] != "blocked", "the task resumes again")
-                api(self.jonas_ctx, "DELETE", f"/api/v1/needs-you/{key}", status=204)
+                put_back = self.jonas_ctx.request.fetch(ORIGIN + f"/api/v1/needs-you/{key}", method="DELETE", headers={"origin": ORIGIN})
+                self.assertEqual(put_back.status, 204, put_back.text())
                 stored = self.stored(task)
                 self.assertEqual((stored["status"], stored["waitingFor"]["id"], stored["blocker"]), ("blocked", self.jonas, "The new seals"))
 
