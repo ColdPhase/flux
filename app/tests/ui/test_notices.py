@@ -200,12 +200,14 @@ class NoticeJourney(unittest.TestCase):
     def test_03b_nothing_over_the_inbox_for_an_item_it_lists(self) -> None:
         """personas-33: a question showed its notice over the Inbox it had just arrived in. The Inbox lists it in front of the person, so
         no notice repeats it there; a plain direct message is no Inbox item, so its notice still shows."""
-        page = self.home(path="/inbox")
+        # As the persona met it: the Inbox open a while, then a question in a direct message reaches it.
+        page = self.page("ada")
+        page.goto("/inbox")
         expect(page.get_by_role("heading", level=1, name=re.compile("^Inbox"))).to_be_visible()
-        # The persona's case: a question in a direct message reaches the Inbox on screen.
-        # A notice stays about 6 s (on the Inbox it was seen 4 s after the send): it is looked for 4.5 s after it, then the item is listed.
+        page.wait_for_timeout(3000)
         self.dm("Could you open the seed shed at eight tomorrow?")
-        page.wait_for_timeout(4500)
+        # A notice stays about 6 s; before this rule it stood over the Inbox 4 s after the send.
+        page.wait_for_timeout(4000)
         expect(self.card(page), "the item reaches the list on screen: no notice for it").to_have_count(0)
         expect(page.locator(".nyc", has_text="open the seed shed")).to_be_visible(timeout=8000)
         self.dm("Plain words: the shed key is under the pot.")
