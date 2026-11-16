@@ -1,23 +1,24 @@
 import { Link, Navigate, useLoaderData, useLocation } from 'react-router';
-import type { MaterialOrDoc, MaterialVersion } from '@flux/contracts';
+import type { MaterialOrDoc, MaterialVersion, ProjectPerson } from '@flux/contracts';
 import type { materialLoader } from './loader';
 import { useShellData } from '../app/data';
-import { agentAuthorLabel } from '../docs/format';
+import { agentAuthorLabel, personName, youLabel } from '../docs/format';
 import './material.css';
 
 export function MaterialView() {
   const data = useLoaderData() as Awaited<ReturnType<typeof materialLoader>>;
   const location = useLocation();
   if ('redirectTo' in data) return <Navigate to={data.redirectTo} replace state={location.state} />;
-  return <MaterialPage material={data.material} version={data.version} />;
+  return <MaterialPage material={data.material} version={data.version} people={data.people} />;
 }
 const saved = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 
 /** A page of the space's Wiki by its own address, in the app's type scale: its title, who saved which version when, then its words on a card (#1371). */
-function MaterialPage({ material, version }: { material: MaterialOrDoc; version: MaterialVersion }) {
+function MaterialPage({ material, version, people }: { material: MaterialOrDoc; version: MaterialVersion; people: ProjectPerson[] | null }) {
   const { me } = useShellData();
   // Plain materials are person-written; an agent author (only possible on docs, #152) is named as an agent.
-  const author = version.authorId === null ? agentAuthorLabel(version.author) : version.authorId === me.user.id ? `${me.user.name} (you)` : `Member ${version.authorId.slice(0, 8)}`;
+  const author = version.authorId === null ? agentAuthorLabel(version.author)
+    : youLabel(personName(version.authorId, { id: me.user.id, name: me.user.name }, [], people), version.authorId === me.user.id);
   const earlier = version.version !== material.version;
   return (
     <div className="pane-scroll"><article className="pane-in material-view">

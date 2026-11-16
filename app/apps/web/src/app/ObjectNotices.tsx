@@ -1,5 +1,5 @@
 import type { ObjectNotice } from '@flux/contracts';
-import { FORMER_MEMBER } from '../docs/format';
+import { FORMER_MEMBER, youLabel } from '../docs/format';
 import { AgentIdentity, Icon } from '../ui';
 import { agentAuthorOwner, type AgentOwners } from '../agents/owners';
 import { AuthorFace, clock, day, when } from './messageParts';
@@ -61,7 +61,7 @@ export function ObjectNoticeItem({ notice, meId, owners, authorOf, inThread = fa
       <AuthorFace kind={by.kind} id={by.id} name={name} mine={mine} hue={by.colour} />
       <div className={`convo-notice__body convo-notice__card${current ? ' is-open' : ''}`}>
         <p className="convo-notice__meta">
-          {by.kind === 'agent' ? <strong><AgentIdentity name={name} owner={agentAuthorOwner(by, owners)} icon={false} hue={by.colour} /></strong> : <strong>{name}{mine ? ' (you)' : ''}</strong>}
+          {by.kind === 'agent' ? <strong><AgentIdentity name={name} owner={agentAuthorOwner(by, owners)} icon={false} hue={by.colour} /></strong> : <strong>{youLabel(name, mine)}</strong>}
           <span className="convo-notice__what">{phrase.lead}{link ? <> {link}</> : null}</span>
           <time dateTime={notice.createdAt} title={when(notice.createdAt)}>{clock(notice.createdAt)}</time>
         </p>
@@ -72,7 +72,7 @@ export function ObjectNoticeItem({ notice, meId, owners, authorOf, inThread = fa
           <span className="convo-object__state" data-state={state.state}>{state.word}</span>
           <Icon name="chevron-right" size={14} />
         </button>
-        {decided ? <p className="convo-object__decided">Accepted by {decider}{decided.by.kind === 'human' && decided.by.id === meId ? ' (you)' : ''}
+        {decided ? <p className="convo-object__decided">Accepted by {youLabel(decider, decided.by.kind === 'human' && decided.by.id === meId)}
           {' · '}<time dateTime={decided.at} title={when(decided.at)}>{decidedWhen(decided.at, notice.createdAt)}</time></p> : null}
         {/* The decision's one discussion (founder decision, Hubert, 2026-11-15, #1424): the thread on this card, as a root's replies are. */}
         {notice.discussion && notice.discussion.replyCount && onOpenDiscussion ? <div className="convo-replies convo-object__replies">

@@ -202,6 +202,34 @@ const projectSeal = async (db: DbExecutor, projectId: string): Promise<FieldSeal
   return row ? sealOf(db, row.workspaceId, { write: false }) : null;
 };
 
+/**
+ * The names of `refs`, and which of the people are no longer in the company of `workspaceId` (left or removed, and not back; the same
+ * rule as `formerMembers`) as `human:<id>` keys, read in the same statement as their names, so a read that names a task's owner pays no
+ * extra round trip for saying "(removed)" (personas-33).
+ */
+async function namesIn(db: DbExecutor, refs: Actor[], workspaceId: string | null) {
+  const names = new Map<string, string>();
+  const gone = new Set<string>();
+  const users = [...new Set(refs.filter((ref) => ref.kind === 'human').map((ref) => ref.id))];
+  const agents = [...new Set(refs.filter((ref) => ref.kind === 'agent').map((ref) => ref.id))];
+  if (users.length) {
+    const u = schema.authUsers;
+    // The outer row's id written out in full: a column inside a selected expression is rendered bare ("id"), which in the subquery would be
+    // the workspace's own id.
+    const removed = workspaceId ? sql<boolean>`EXISTS (SELECT 1 FROM workspaces w JOIN workspace_removed_people r ON r.workspace_id = w.id OR r.workspace_id = w.company_workspace_id
+      WHERE w.id = ${workspaceId}::uuid AND r.user_id = "auth_users"."id")` : sql<boolean>`false`;
+    for (const row of await db.select({ id: u.id, name: u.name, removed }).from(u).where(inArray(u.id, users))) {
+      names.set(`human:${row.id}`, row.name);
+      if (row.removed) gone.add(`human:${row.id}`);
+    }
+  }
+  if (agents.length) {
+    for (const row of await db.select({ id: schema.agents.id, name: schema.agents.name }).from(schema.agents).where(inArray(schema.agents.id, agents)))
+      names.set(`agent:${row.id}`, row.name);
+  }
+  return { names, gone };
+}
+
 export function workRows(db: DbExecutor) {
   return {
     ...taskGraphRows(db),
@@ -753,18 +781,8 @@ export function workRows(db: DbExecutor) {
     },
 
     async names(refs: Actor[]) {
-      const names = new Map<string, string>();
-      const users = [...new Set(refs.filter((ref) => ref.kind === 'human').map((ref) => ref.id))];
-      const agents = [...new Set(refs.filter((ref) => ref.kind === 'agent').map((ref) => ref.id))];
-      if (users.length) {
-        for (const row of await db.select({ id: schema.authUsers.id, name: schema.authUsers.name }).from(schema.authUsers).where(inArray(schema.authUsers.id, users)))
-          names.set(`human:${row.id}`, row.name);
-      }
-      if (agents.length) {
-        for (const row of await db.select({ id: schema.agents.id, name: schema.agents.name }).from(schema.agents).where(inArray(schema.agents.id, agents)))
-          names.set(`agent:${row.id}`, row.name);
-      }
-      return names;
+      return (await namesIn(db, refs, null)).names;
     },
+    namesIn: (refs: Actor[], workspaceId: string | null) => namesIn(db, refs, workspaceId),
   };
 }

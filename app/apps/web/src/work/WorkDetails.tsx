@@ -40,6 +40,7 @@ import { ReadyToClose, TaskPullRequests } from '../github/TaskPullRequests';
 import { DueField, StatusControl, TitleField, useStateKeys } from './TaskParts';
 import { stateWords } from './taskState';
 import { personLabel } from '../people/api';
+import { named, youLabel } from '../docs/format';
 import { useGivenTaskOpened } from '../notifications/givenTask';
 import { MessageText } from '../app/MessageText';
 import { plainWords } from './messageWords';
@@ -388,7 +389,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
   // The label says "(you)"; the face is drawn from the name alone, never from that label (#763 H11-9: "M(").
   // A guest is marked as in every list of people (#1424): "Gia Mlyn · Guest".
   const people = context.spacePeople.length ? context.spacePeople.map((member) => ({ value: `human:${member.userId}`, name: member.name, label: personLabel(member, me.user.id) }))
-    : [{ value: `human:${me.user.id}`, name: me.user.name, label: `${me.user.name} (you)` }];
+    : [{ value: `human:${me.user.id}`, name: me.user.name, label: youLabel(me.user.name, true) }];
   if (item.owner && !people.some((person) => person.value === ownerValue) && item.owner.kind === 'human') people.push({ value: ownerValue, name: item.owner.name, label: item.owner.name });
   const waitingPeople = people.map((person) => ({ ...person, id: person.value.slice('human:'.length) }));
   if (item.waitingFor && !waitingPeople.some((person) => person.id === item.waitingFor!.id)) waitingPeople.push({ value: `human:${item.waitingFor.id}`, id: item.waitingFor.id, name: item.waitingFor.name, label: item.waitingFor.name });
@@ -469,7 +470,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
               ? <>
                 <PropertyMenu label="Owner" value={shownOwner} options={ownerOptions} disabled={busy} onOpen={() => { ownerBase.current ??= item.version; }}
                   onClose={() => { if (ownerDraft === null) ownerBase.current = null; }} onChoose={(value) => { setOwnerDraft(value); void saveOwner(value); }}>{ownerView}</PropertyMenu>
-                {ownerDraft !== null && !busy ? <><span className="wd-muted">Now: {item.owner?.name ?? NO_OWNER}</span><Button variant="quiet" size="sm" onClick={() => void saveOwner(ownerDraft)}>Retry owner change</Button></> : null}
+                {ownerDraft !== null && !busy ? <><span className="wd-muted">Now: {item.owner ? named(item.owner, me.user.id) : NO_OWNER}</span><Button variant="quiet" size="sm" onClick={() => void saveOwner(ownerDraft)}>Retry owner change</Button></> : null}
               </>
               : <span className="wd-value">{item.owner ? ownerView : <span className="wd-muted">{NO_OWNER}</span>}</span>}</dd>
           </div>
@@ -483,7 +484,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
             <dd><DueField value={item.dueOn} editable={writable} finished={finished} disabled={busy} onSave={(day) => change({ dueOn: day })} /></dd>
           </div> : null}
         </dl>
-        {reverted ? <p className="wd-muted wd-history" data-task-lifecycle="creation_reverted">Undone by {reverted.revertedBy.name}{reverted.revertedBy.kind === 'human' && reverted.revertedBy.id === me.user.id ? ' (you)' : ''} {shortDate(reverted.revertedAt) === 'today' ? 'today' : `on ${shortDate(reverted.revertedAt)}`}. This task stays here as history.</p> : null}
+        {reverted ? <p className="wd-muted wd-history" data-task-lifecycle="creation_reverted">Undone by {named(reverted.revertedBy, me.user.id)} {shortDate(reverted.revertedAt) === 'today' ? 'today' : `on ${shortDate(reverted.revertedAt)}`}. This task stays here as history.</p> : null}
 
         {item.status === 'blocked' ? (
           <section className="wd-blocker" aria-label="Blocker">
@@ -690,6 +691,7 @@ function Prerequisites({ item, openDetails }: { item: OwnWork; openDetails: Retu
 /** The tasks that are part of this one (#841): how many are done, and who has each. The parent does not wait for them. */
 function Subtasks({ item, openDetails }: { item: OwnWork; openDetails: ReturnType<typeof useShellActions>['openDetails'] }) {
   const subtasks = item.subtasks ?? [];
+  const meId = useShellData().me.user.id;
   const done = subtasks.filter((subtask) => subtask.status === 'done').length;
   return (
     <section className="details__sec" aria-labelledby={`wd-subtasks-${item.id}`} data-subtasks="">
@@ -700,7 +702,7 @@ function Subtasks({ item, openDetails }: { item: OwnWork; openDetails: ReturnTyp
             <button type="button" className="wd-link" onClick={() => openDetails({ kind: 'work', id: subtask.id, projectId: item.projectId })}>
               <StatusGlyph status={subtask.status} size={14} />
               <span>{subtask.title}</span>
-              <small>{STATUS_LABEL[subtask.status]}{subtask.owner ? ` · ${subtask.owner.name}` : ''}</small>
+              <small>{STATUS_LABEL[subtask.status]}{subtask.owner ? ` · ${named(subtask.owner, meId)}` : ''}</small>
               <Icon name="chevron-right" size={14} />
             </button>
           </li>
@@ -725,7 +727,7 @@ function DecisionPanel({ decision, context, detail, relations, reload, revision,
   // Accept / Not now / Discuss and who else can accept. Not now and the waiting line are the Inbox item's, when it has one.
   const queue = useNeedsYou(me.user.id);
   // A person is named as every list of people names them (personas-28): "Ada Kowalska (you)" for the reader.
-  const youOr = (who: { kind: string; id: string; name: string }) => (who.kind === 'human' && who.id === me.user.id ? `${who.name} (you)` : who.name);
+  const youOr = (who: { kind: string; id: string; name: string }) => named(who, me.user.id);
   const handlers = useNeedsYouActions(queue);
   const need = decision.status === 'proposed' ? queue.items?.find((entry) => entry.key === `decision:${decision.id}`) ?? null : null;
   const discuss = useDiscussDecision();

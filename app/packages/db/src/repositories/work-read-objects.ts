@@ -30,9 +30,19 @@ export function shortReason(rationale: string, max = 160): string {
 /** The composing adapter adds a task's "Let linked PRs move this task" rule (#74 G-1a), presented by core. */
 export type NativeWorkDetailObject = Exclude<WorkDetailObject, { kind: 'work' }> | Omit<Extract<WorkDetailObject, { kind: 'work' }>, 'githubRule'>;
 export function nativeWorkObjectRows(db: DbExecutor) {
-  async function names(refs: PrincipalRef[]) {
-    const found = await workRows(db).names(refs);
-    return (ref: PrincipalRef): NamedPrincipal => ({ ...ref, name: found.get(actorKey(ref)) ?? (ref.kind === 'agent' ? 'Agent' : 'Former member') });
+  /**
+   * Names `refs` for a reader. With the company of the rows (`workspaceId`), `named.assignee` names a task's owner or the person it waits for
+   * who left the company or was removed "Tomek Nowak (removed)" (personas-33), as the full work presenter does (core `work/service.ts`), so the
+   * board, the List and the panel say who is gone; who made, proposed or decided something keeps the plain name.
+   */
+  async function names(refs: PrincipalRef[], workspaceId: string | null = null) {
+    const found = await workRows(db).namesIn(refs, workspaceId);
+    const named = (ref: PrincipalRef): NamedPrincipal => ({ ...ref, name: found.names.get(actorKey(ref)) ?? (ref.kind === 'agent' ? 'Agent' : 'Former member') });
+    const assignee = (ref: PrincipalRef): NamedPrincipal => {
+      const person = named(ref);
+      return found.gone.has(actorKey(ref)) ? { ...person, name: `${person.name} (removed)` } : person;
+    };
+    return Object.assign(named, { assignee });
   }
   /** The tasks that are part of this one (#841), by number; a task whose creation was undone is no longer one. At most 50. */
   async function subtasks(projectId: string, parentId: string) {
@@ -41,9 +51,9 @@ export function nativeWorkObjectRows(db: DbExecutor) {
       ownerUserId: w.ownerUserId, ownerAgentId: w.ownerAgentId }).from(l).innerJoin(w, eq(w.id, l.fromId))
       .where(and(eq(l.projectId, projectId), eq(l.role, 'part_of'), eq(l.toType, 'work'), eq(l.toId, parentId), isNull(w.creationRevertedAt))).orderBy(asc(w.number)).limit(50));
     const owners = children.flatMap((child): PrincipalRef[] => child.ownerUserId ? [{ kind: 'human' as const, id: child.ownerUserId }] : child.ownerAgentId ? [{ kind: 'agent' as const, id: child.ownerAgentId }] : []);
-    const named = await names(owners);
+    const named = await names(owners, children[0]?.workspaceId ?? null);
     return children.map((child) => ({ id: child.id, number: child.number, title: child.title, status: child.status,
-      owner: child.ownerUserId ? named({ kind: 'human', id: child.ownerUserId }) : child.ownerAgentId ? named({ kind: 'agent', id: child.ownerAgentId }) : null }));
+      owner: child.ownerUserId ? named.assignee({ kind: 'human', id: child.ownerUserId }) : child.ownerAgentId ? named({ kind: 'agent', id: child.ownerAgentId }) : null }));
   }
   async function rows(projectId: string, objects: readonly NativeWorkReadObject[]): Promise<NativeWorkRow[]> {
     if (objects.length > 100) throw new Error('Native work hydration exceeds the global bound');
@@ -66,7 +76,7 @@ export function nativeWorkObjectRows(db: DbExecutor) {
       actors.push({ kind: decision.proposedByKind, id: decision.proposedById });
       if (decision.decidedBy) actors.push({ kind: 'human', id: decision.decidedBy });
     }
-    const named = await names(actors);
+    const named = await names(actors, works[0]?.workspaceId ?? null);
     const facts = new Map((await nativeWorkVisibilityRows(db).relations(projectId, requested)).map((fact) => [`${fact.kind}:${fact.id}`, fact]));
     const waitingOn = await workRows(db).waitingTargets(works.flatMap((work): { kind: 'decision' | 'task'; id: string }[] => work.waitingForDecisionId ? [{ kind: 'decision' as const, id: work.waitingForDecisionId }]
       : work.waitingForWorkId ? [{ kind: 'task' as const, id: work.waitingForWorkId }] : []));
@@ -78,10 +88,10 @@ export function nativeWorkObjectRows(db: DbExecutor) {
     };
     for (const work of works) {
       const projected: WorkRowProjection = { kind: 'work', id: work.id, number: work.number, projectId: work.projectId, workspaceId: work.workspaceId, title: work.title,
-        status: work.status, blocker: work.blocker, waitingFor: work.waitingForUserId ? named({ kind: 'human', id: work.waitingForUserId }) : null,
+        status: work.status, blocker: work.blocker, waitingFor: work.waitingForUserId ? named.assignee({ kind: 'human', id: work.waitingForUserId }) : null,
         waitingOn: waitingOn.get(work.waitingForDecisionId ? `decision:${work.waitingForDecisionId}` : `task:${work.waitingForWorkId}`) ?? null, dropped: work.dropped, cameOfIt: work.cameOfIt, dueOn: work.dueOn, version: work.version, ...audience(work), relations: counts('work', work.id),
         prerequisiteCounts: prerequisites.get(work.id)!,
-        owner: work.ownerUserId ? named({ kind: 'human', id: work.ownerUserId }) : work.ownerAgentId ? named({ kind: 'agent', id: work.ownerAgentId }) : null,
+        owner: work.ownerUserId ? named.assignee({ kind: 'human', id: work.ownerUserId }) : work.ownerAgentId ? named({ kind: 'agent', id: work.ownerAgentId }) : null,
         rule: facts.get(`work:${work.id}`)!.rule, updatedAt: iso(work.updatedAt),
         // An existing reference to a task whose creation was undone (#238) names it as history.
         lifecycle: work.revertedAt && work.revertedByKind && work.revertedById && work.reversionNoticeId

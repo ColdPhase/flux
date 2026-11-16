@@ -171,7 +171,8 @@ class FirstTimeUser(unittest.TestCase):
         basia_email = f"basia.ftu+{STAMP}@example.test"
         new.get_by_label("Someone new?").fill(basia_email); clicks += 1
         new.get_by_role("button", name="Invite").click(); clicks += 1
-        link = add.get_by_role("group", name="New invite link").get_by_role("textbox")
+        # The link is listed with the space's other links, under its people (personas-36), shown once in its row to read or select.
+        link = anna.locator("[data-space-links]").get_by_role("group", name="New invite link").get_by_role("textbox")
         expect(link).to_have_value(re.compile(r"/join#[A-Za-z0-9_-]{54}$"))
         # #1424 (persona B-4): one sentence says what happened and what to do; no hint repeats it, and no dead Add or Cancel stays under it.
         expect(add.get_by_role("status")).to_have_text(re.compile(r"^Invite link created( and copied)?\. .*paste it into your message to them"))

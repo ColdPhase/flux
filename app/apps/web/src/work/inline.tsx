@@ -4,6 +4,7 @@ import { messagePreview, type ConversationMessage, type NativeWorkRow, type Proj
 import { Avatar, Icon, Kreska, StatusGlyph } from '../ui';
 import { useShellActions } from '../app/shellContext';
 import { useShellData } from '../app/data';
+import { named } from '../docs/format';
 import { decisionPieces, firstClause, firstLine, STATUS_LABEL, taskNumber, workPieces, type StatePiece } from './format';
 import type { MessageWorkPreview } from './message-associations';
 import './work.css';
@@ -18,9 +19,10 @@ import './work.css';
  */
 export function DiscussedTask({ task, row }: { task: { workId: string; title: string; number?: number }; row: NativeWorkRow | null }) {
   const { openDetails } = useShellActions();
+  const { me } = useShellData();
   const item = row?.kind === 'work' && row.id === task.workId ? row : null;
   // The root carries the immutable number, so the chip does not grow when the reference row arrives (#367).
-  return <ObjectChip icon="tasks" number={item?.number ?? task.number} state={item ? workPieces(item) : [{ text: 'Task' }]} title={item?.title ?? task.title} label={(item?.number ?? task.number) ? `Discussion of task #${item?.number ?? task.number}` : 'Discussion of task'}
+  return <ObjectChip icon="tasks" number={item?.number ?? task.number} state={item ? workPieces(item, me.user.id) : [{ text: 'Task' }]} title={item?.title ?? task.title} label={(item?.number ?? task.number) ? `Discussion of task #${item?.number ?? task.number}` : 'Discussion of task'}
     objectKind="work" objectId={task.workId} nativeRef={`work:${task.workId}`} onOpen={() => openDetails({ kind: 'work', id: task.workId })} />;
 }
 
@@ -43,6 +45,7 @@ function ObjectChip({ icon, number, state, title, need, onOpen, label, objectKin
  */
 export function TaskObjectRow({ workId, number, title, row, reverted = false, onOpen }: { workId: string; number: number; title: string; row: WorkRowProjection | null; reverted?: boolean; onOpen: () => void }) {
   const owner = row?.owner ?? null;
+  const { me } = useShellData();
   // Until its row is read (a card off screen is read when it comes near, #155) the card never states a status or an owner it does not
   // know: the glyph's and the word's places stay, empty and quiet, so nothing reads "To do" with no owner and then changes (personas-33).
   const unknown = !row && !reverted;
@@ -53,7 +56,7 @@ export function TaskObjectRow({ workId, number, title, row, reverted = false, on
       {/* The immutable announcement number names the task before and after the current row arrives. */}
       <span className="convo-notice__num ui-task-number">#{number}</span>
       <span className="convo-notice__title">{title}</span>
-      {owner ? <span className="convo-notice__owner">{owner.kind === 'agent' ? <Kreska size={20} hue={owner.colour} /> : <Avatar name={owner.name} id={owner.id} size="sm" />}<span className="convo-notice__owner-name">{owner.name}</span></span>
+      {owner ? <span className="convo-notice__owner">{owner.kind === 'agent' ? <Kreska size={20} hue={owner.colour} /> : <Avatar name={owner.name} id={owner.id} size="sm" />}<span className="convo-notice__owner-name">{named(owner, me.user.id)}</span></span>
         // Nobody owns it: "No owner", the Board's and the panel's word, with the panel's person glyph where the face would be (F-026 §7).
         : row ? <span className="convo-notice__owner convo-notice__owner--none"><Icon name="person" size={16} /><span className="convo-notice__owner-name">No owner</span></span> : null}
       {/* A word always goes with the glyph, at the card's right edge like a decision's (#763 A8). */}
@@ -128,7 +131,7 @@ export function MessageObjects({ message, projectId, preview, thread = null, thr
   return (
     <div className="ws-attach">
       {discussed ? <DiscussedTask task={discussed} row={threadRow} /> : null}
-      {items.map((item) => <ObjectChip key={`${item.kind}:${item.id}`} objectKind={item.kind} objectId={item.id} icon={item.kind === 'work' ? 'tasks' : 'flag'} number={item.kind === 'work' ? item.number : undefined} state={item.kind === 'work' ? workPieces(item) : decisionPieces(item)} title={item.title} need={item.kind === 'decision' && item.status === 'proposed'} label={item.kind === 'work' ? `Task #${item.number}` : 'Decision'} onOpen={() => openDetails({ kind: item.kind, id: item.id })} />)}
+      {items.map((item) => <ObjectChip key={`${item.kind}:${item.id}`} objectKind={item.kind} objectId={item.id} icon={item.kind === 'work' ? 'tasks' : 'flag'} number={item.kind === 'work' ? item.number : undefined} state={item.kind === 'work' ? workPieces(item, me.user.id) : decisionPieces(item)} title={item.title} need={item.kind === 'decision' && item.status === 'proposed'} label={item.kind === 'work' ? `Task #${item.number}` : 'Decision'} onOpen={() => openDetails({ kind: item.kind, id: item.id })} />)}
       {/* CW-2: the thought made from this message, as its decisions are; it opens the map with the thought selected. */}
       {thoughts.map((thought) => <ObjectChip key={`thought:${thought.thoughtId}`} objectKind="thought" objectId={thought.thoughtId} icon="map" title={thought.text} state={[{ text: `On the map · ${thought.sketchTitle}` }]} label="On the map"
         onOpen={() => navigate(`/projects/${projectId}/map/${thought.sketchId}#thought-${thought.thoughtId}`)} />)}

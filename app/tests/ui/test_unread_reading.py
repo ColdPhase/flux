@@ -391,8 +391,21 @@ class OpenWhereYouLeftOff(unittest.TestCase):
             if phone:
                 pill.tap()
             else:
-                page.locator("body").evaluate("el => document.activeElement instanceof HTMLElement && document.activeElement.blur()")
+                # It opens with the cursor in its composer (F-026 §4), which is where a reader presses End first (personas-36 P3 4).
+                composer = page.locator("#dm-composer")
+                expect(composer).to_be_focused()
+                # With words in it, End is the field's own: the cursor goes to the end of the words, and the feed stays where it is.
+                page.keyboard.type("Reading first")
+                page.keyboard.press("Home")
                 page.keyboard.press("End")
+                self.assertEqual(composer.evaluate("el => [el.selectionStart, el.value.length]"), [13, 13], f"{label}: End in the words moves the cursor")
+                expect(pill).to_have_text("60 new")
+                self.assertLess(feed.evaluate("el => el.scrollTop"), 2, f"{label}: End in the words leaves the feed alone")
+                # Empty, End goes to the end of the conversation and the cursor stays in the composer.
+                composer.fill("")
+                expect(composer).to_be_focused()
+                page.keyboard.press("End")
+                expect(composer).to_be_focused()
             expect(self.pill(feed)).to_have_count(0)
             page.wait_for_timeout(300)
             self.assertLess(self.at_end(feed), 48, f"{label}: {'the line' if phone else 'End'} took the reader to the end of the direct message")
@@ -416,6 +429,45 @@ class OpenWhereYouLeftOff(unittest.TestCase):
             expect(self.pill(feed)).to_have_count(0)
             page.wait_for_timeout(300)
             self.assertLess(self.at_end(feed), 48, f"{label}: the line took the reader to the end")
+
+    # ------------------------------------------------------------------ the task panel reads the discussion too
+
+    def test_10_a_task_discussion_read_in_its_panel_is_read_when_opened_as_a_thread(self) -> None:
+        """personas-36 P3: reading a task's discussion in its panel did not count, so the same discussion opened as a thread (from Search) showed
+        "New" above lines Ada had already read. The panel views what it shows as the thread does: only what arrived after is new there."""
+        project = self.ids["project"]
+        task = self.call("ada", f"/api/v1/projects/{project}/work", {"title": "Calibrate the soil probes", "clientCommandId": str(uuid.uuid4())})
+        say = lambda index, kind: self.call("bob", f"/api/v1/work/{task['id']}/discussion", {"body": words(kind, index), "clientMessageId": str(uuid.uuid4())})["id"]  # noqa: E731
+        seen = [say(index, "Panel") for index in range(4)]
+        talk = self.call("ada", f"/api/v1/work/{task['id']}/discussion", method="GET")
+        page = self.page()
+        # The panel opens at the newest line; what it shows is viewed after a moment, as in a thread (in one write or a few).
+        viewed: list[str] = []
+        page.on("response", lambda response: viewed.extend(response.request.post_data_json["messageIds"])
+                if response.ok and response.request.method == "POST" and response.url.endswith(f"/api/v1/projects/{project}/observations") else None)
+        page.goto(f"/projects/{project}/tasks?open=work:{task['id']}")
+        expect(page.locator(f'.wd-act [data-message-id="{seen[-1]}"]')).to_be_in_viewport()
+        for _ in range(60):
+            if seen[-1] in viewed:
+                break
+            page.wait_for_timeout(250)
+        self.assertIn(seen[-1], viewed, "the panel viewed the newest line it showed")
+        # Opened as a thread, what the panel showed is not new.
+        thread = f"/projects/{project}/conversations/{talk['conversationId']}"
+        page.goto(thread)
+        expect(page.locator(f"#message-{seen[-1]}")).to_be_attached()
+        page.wait_for_timeout(600)
+        expect(page.locator(".thread__feed").get_by_role("separator", name="New")).to_have_count(0)
+        # What Bob writes after is: the divider stands right above it. (The open thread would view it as it arrives, so it is closed first.)
+        page.close()
+        later = say(9, "After")
+        other = self.page()
+        other.goto(thread)
+        feed = other.locator(".thread__feed")
+        expect(other.locator(f"#message-{later}")).to_be_attached()
+        divider = feed.get_by_role("separator", name="New")
+        expect(divider).to_have_count(1)
+        self.assertTrue(divider.evaluate("(el, id) => el.nextElementSibling?.id === `message-${id}`", later), "the divider is right above what came after")
 
 
 if __name__ == "__main__":

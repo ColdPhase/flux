@@ -342,6 +342,8 @@ export interface WorkRepository extends TaskGraphReader {
   names(refs: ActorRef[]): Promise<Map<string, string>>;
   /** People no longer in the company of each workspace (left or removed, not back), keyed `<workspaceId>:<userId>`; absent in plain fakes. */
   formerMembers?(workspaceIds: string[], userIds: string[]): Promise<Set<string>>;
+  /** `names`, with the people no longer in the company of `workspaceId` as `human:<id>` keys, read together; absent in plain fakes. */
+  namesIn?(refs: ActorRef[], workspaceId: string | null): Promise<{ names: Map<string, string>; gone: Set<string> }>;
 }
 
 export type WorkEventKind =

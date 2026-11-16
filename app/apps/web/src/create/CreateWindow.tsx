@@ -1,4 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type MouseEvent, type ReactNode } from 'react';
+import { youLabel } from '../docs/format';
 import { useSpaceAi } from '../ai/spaceAi';
 import { useLocation, useNavigate, useRevalidator } from 'react-router';
 import { SKETCH_LIMITS, WORK_LIMITS, type CreateWorkCommand, type ObjectRef, type Project, type ProjectPerson } from '@flux/contracts';
@@ -305,7 +306,7 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
   const loaded = context?.projectId === projectId ? context.value : null;
 
   const people = useMemo(() => (loaded?.members.length ? loaded.members.map((m) => ({ value: `human:${m.userId}`, label: personLabel(m, me.user.id) }))
-    : [{ value: `human:${me.user.id}`, label: `${me.user.name} (you)` }]), [loaded, me.user.id, me.user.name]);
+    : [{ value: `human:${me.user.id}`, label: youLabel(me.user.name, true) }]), [loaded, me.user.id, me.user.name]);
   // F-029 (#614): no agent owners while the workspace's AI is off.
   const aiOff = useSpaceAi(loaded?.project.id).blocked;
   const agents = (aiOff || !loaded ? [] : ownAgents).map((agent) => ({ value: `agent:${agent.id}`, label: `${agent.name} (agent)` }));

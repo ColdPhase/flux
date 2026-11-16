@@ -8,7 +8,7 @@ import { LinkPreviews, MessageText } from '../app/MessageText';
 import { ConnectionLine, OutboxStatus, PendingFiles, SendAnnouncer } from '../composer/Outbox';
 import { clock, day, when } from '../app/messageParts';
 import { getDecisionDiscussion } from '../composer/api';
-import { agentDisplayName, personName } from '../docs/format';
+import { agentDisplayName, personName, youLabel } from '../docs/format';
 import { agentAuthorOwner, useAgentOwners } from '../agents/owners';
 import { useAgentHue } from '../agents/hues';
 import { useProjectShell } from '../project/data';
@@ -127,7 +127,7 @@ export function DecisionMessages({ state, composer, project, members, me }: {
               <div className="wd-act__body">
                 <p className="wd-act__who">
                   {message.authorId === null ? <AgentIdentity name={name} owner={message.author.kind === 'agent' ? agentAuthorOwner(message.author, owners) : undefined} icon={false} hue={hue} />
-                    : <b>{mine ? `${name} (you)` : name}</b>}
+                    : <b>{youLabel(name, mine)}</b>}
                   <time dateTime={message.createdAt} title={when(message.createdAt)}>{day(message.createdAt)}, {clock(message.createdAt)}</time>
                   {message.editedAt ? <span className="message-edited" title={`Edited ${when(message.editedAt)}`}> · edited</span> : null}
                 </p>

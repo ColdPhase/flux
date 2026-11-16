@@ -484,11 +484,17 @@ class WikiPanesJourney(unittest.TestCase):
         expect(versions.first).to_contain_text("Edited the text")
         expect(versions.first).to_contain_text(PARTNER["name"])
         expect(versions.first).not_to_contain_text("Published")
+        # The reader is named as everywhere a person is (design "Naming people", personas-36): "Hubert Lis (you)", in the list and the sentence.
+        expect(versions.first.locator(".doc-version__s")).not_to_contain_text("(you)")
+        expect(versions.last.locator(".doc-version__s")).to_contain_text(f"v1 · {OWNER['name']} (you) ·")
+        expect(page.locator(".doc-changes__why")).to_contain_text(f"From the version by {OWNER['name']} (you) of ")
+        expect(page.locator(".doc-changes__why")).to_contain_text(f" to the one by {PARTNER['name']} of ")
         expect(page.get_by_label("Changes in the text").locator(".wiki-chg--added")).to_contain_text(["Privacy"])
         shot(page, "wiki-history-desktop-1440")
         page.get_by_role("link", name="Read version 1").click()
         expect(page).to_have_url(re.compile(re.escape(self.url("lamp", "/versions/1")) + "$"))
         expect(page.locator(".wiki-head__meta")).to_contain_text("Version 1")
+        expect(page.locator(".wiki-head__meta")).to_contain_text(f"{OWNER['name']} (you)")
         expect(page.locator(".doc-notice").first).to_contain_text("You are reading an earlier version")
         expect(page.locator(".doc-prose")).not_to_contain_text("Privacy")
         expect(page.locator(".cm-content")).to_have_count(0)  # an earlier version is read, not written

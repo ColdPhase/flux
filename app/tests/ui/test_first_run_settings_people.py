@@ -537,12 +537,25 @@ class FirstRunSettingsPeople(unittest.TestCase):
         new = win.get_by_role("form", name="Invite someone new")
         emails = [f"seeds{n}.new+{STAMP}@example.test" for n in (1, 2)]
         links = []
+        # Typed as a person types, one address after the other (personas-36): after each Enter the cursor is back in the empty field, so the
+        # next address is never lost, and Enter never submits the window.
+        new.get_by_label("Someone new?").focus()
         for email in emails:
-            new.get_by_label("Someone new?").fill(email)
-            new.get_by_label("Someone new?").press("Enter")
+            page.keyboard.type(email)
+            page.keyboard.press("Enter")
             field = win.get_by_label(f"Link for {email}", exact=True)
             expect(field).to_have_value(re.compile(f"^{re.escape(ORIGIN)}/join#"))
+            expect(new.get_by_label("Someone new?")).to_be_focused()
+            expect(new.get_by_label("Someone new?")).to_have_value("")
             links.append(field.input_value())
+        # Enter in a link's read-only field does nothing either: the window stays open on the space not yet made.
+        win.get_by_label(f"Link for {emails[0]}", exact=True).press("Enter")
+        expect(win.get_by_role("button", name="Create space")).to_be_visible()
+        self.assertNotIn(name, [item["name"] for item in self.api(page, "GET", f"/api/v1/workspaces/{self.ids['maria:space']}/projects", status=200)["items"]])
+        # Invite with the field empty says what to do with the cursor where it is to be done.
+        new.get_by_role("button", name="Invite", exact=True).click()
+        expect(new.locator("xpath=..").get_by_role("alert")).to_have_text("Enter their email address.")
+        expect(new.get_by_label("Someone new?")).to_be_focused()
         # The first link is still there with its own Copy link: the second did not replace it.
         expect(win.get_by_label(f"Link for {emails[0]}", exact=True)).to_have_value(links[0])
         expect(win.get_by_role("group", name="New invite link")).to_have_count(2)

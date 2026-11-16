@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { Link, useNavigate, useRevalidator } from 'react-router';
-import type { Project, ProjectGrant, ProjectPerson, WorkspaceMember } from '@flux/contracts';
+import { INVITE_CREATED_EVENT, INVITE_REVOKED_EVENT, type Project, type ProjectGrant, type ProjectPerson, type WorkspaceInvite, type WorkspaceMember } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
 import { whenPageLive } from '../api/pageLeaving';
 import { awaitField, isTyping } from '../ui/keys';
@@ -14,11 +14,11 @@ import { useShellActions } from '../app/shellContext';
 import { useWorkspaceEncryption } from '../encryption/state';
 import { Avatar, Button, Icon, Input, Option, Select, useFocusBack, useToast } from '../ui';
 import { SwitchRow } from '../ui/SwitchRow';
-import { attemptKeys, firstName, grantPerson, isManagerRole, joinNames, listGrants, keepPlaces, listMembers, peopleOrder, problemText, revokeGrant } from './api';
+import { attemptKeys, firstName, grantPerson, isManagerRole, joinNames, listGrants, listInvites, keepPlaces, listMembers, peopleOrder, problemText, revokeGrant } from './api';
 import { DeleteSpaceDialog } from './DeleteSpace';
 import { PersonLine } from './LastActive';
 import { PeoplePicker } from './PeoplePicker';
-import { SomeoneNew } from './SomeoneNew';
+import { SomeoneNew, SpaceLinks } from './SomeoneNew';
 import '../app/settings.css';
 import './space.css';
 import './people.css';
@@ -114,10 +114,26 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName, inviter
     return () => cancelAnimationFrame(frame);
   }, [project.id]);
   const changed = (message: string) => { setStatus(message); setProblem(''); load(); void revalidator.revalidate(); };
+  // The space's Someone new? links (personas-36), for a company owner or admin, read from the server: those made here or in New space, there
+  // when Add people is folded and after a reload. Read again when someone joins (a link used goes) and when a link is made or revoked.
+  const listsLinks = inviter && manager && !everyone;
+  const [links, setLinks] = useState<WorkspaceInvite[]>([]);
+  const [freshLink, setFreshLink] = useState<string | null>(null);
+  const [linksSeen, setLinksSeen] = useState(0);
   // Someone joined with a link made here, was added or removed elsewhere, or their role changed: the people listed are read again at once (#1424).
   useStreamEvents(meId, (event) => {
     if ((event.objectId === project.id && event.kind.startsWith('project.grant_')) || (event.objectId === project.workspaceId && event.kind.startsWith('workspace.member_'))) load();
+    if (event.objectId === project.workspaceId && (event.kind === INVITE_CREATED_EVENT || event.kind === INVITE_REVOKED_EVENT)) setLinksSeen((n) => n + 1);
   }, load);
+
+  useEffect(() => {
+    if (!listsLinks) return undefined;
+    const controller = new AbortController();
+    listInvites(project.workspaceId, controller.signal).then((list) => {
+      setLinks(list.filter((invite) => invite.space?.id === project.id).sort((a, b) => a.createdAt.localeCompare(b.createdAt)));
+    }, () => undefined);
+    return () => controller.abort();
+  }, [listsLinks, project.workspaceId, project.id, linksSeen, reload]);
 
   // A space's admins read the company's people and the space's grants: who is in it, and who could be added. A read that fails for a reason
   // that passes (see `transient`) is asked again on its own, twice; the notice comes only when that did not help (#1272).
@@ -275,7 +291,8 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName, inviter
             <PeoplePicker listOnly candidates={candidates} value={chosen} onChange={setChosen} disabled={busy === 'add'} companyName={companyName}
               none={roster.members.some((member) => member.userId !== meId) ? `Everyone in ${companyName} is already in ${project.name}.` : undefined} />
             {inviter ? <SomeoneNew workspaceId={project.workspaceId} spaceId={project.id} spaceName={project.name} members={roster.members} inSpace={(id) => !!grantOf(id)}
-              meId={meId} companyName={companyName} onTick={(id) => setChosen((list) => (list.includes(id) ? list : [...list, id]))} /> : null}
+              meId={meId} companyName={companyName} onTick={(id) => setChosen((list) => (list.includes(id) ? list : [...list, id]))} listed
+              onMade={(invite) => { setLinks((list) => [...list.filter((item) => item.id !== invite.id), invite]); setFreshLink(invite.id); }} /> : null}
             {/* No dead control (#1424, persona B-4): Add and Cancel while someone is ticked, otherwise one Close. */}
             <div className="newspace__foot">
               {chosen.length ? <>
@@ -318,6 +335,8 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName, inviter
             {manager && removing ? <li className="sset-row spset__removing" role="status"><span className="sset-row__s">{firstName(rows.find((row) => row.userId === removing)?.name ?? 'They')} stops seeing {project.name} at once, not even its name.</span></li> : null}
           </ul>
         )}
+        {listsLinks ? <SpaceLinks workspaceId={project.workspaceId} companyName={companyName} links={links} fresh={freshLink} meId={meId}
+          onRevoked={(id) => setLinks((list) => list.filter((invite) => invite.id !== id))} /> : null}
         {encrypted ? (
           <button type="button" className="sset-card spset__keys" data-encrypted-keys="" onClick={() => openDetails({ kind: 'people', workspaceId: project.workspaceId })}>
             <span className="sset-row"><Icon name="lock" size={16} /><span className="sset-row__b"><span className="sset-row__t">People and encryption</span>

@@ -1,4 +1,5 @@
 import type { PersonRef, Sketch, Thought } from '@flux/contracts';
+import { named } from '../docs/format';
 
 const time = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
 const day = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' });
@@ -13,15 +14,12 @@ export function firstName(name: string) {
 }
 
 /** A person as every view names them: the full name, and "Ada Kowalska (you)" for the reader (design §5 "Naming people"). */
-export function who(person: PersonRef, meId: string) {
-  return person.kind === 'human' && person.id === meId ? `${person.name} (you)` : person.name;
-}
+export const who = (person: PersonRef, meId: string) => named(person, meId);
 
 /** "From Kai Berg · 21:14" — quiet provenance under a thought: the message it came from, or who added it. */
 export function provenance(thought: Pick<Thought, 'source' | 'version' | 'createdBy' | 'createdAt'>, meId: string) {
   if (thought.source) {
-    const author = thought.source.author.id === meId ? `${thought.source.author.name} (you)` : thought.source.author.name;
-    return `From a message by ${author} · ${when(thought.source.sentAt)}`;
+    return `From a message by ${named(thought.source.author, meId)} · ${when(thought.source.sentAt)}`;
   }
   if (thought.version === 0) return `Added by ${who(thought.createdBy, meId)} · just now`;
   return `From ${who(thought.createdBy, meId)} · ${when(thought.createdAt)}`;
