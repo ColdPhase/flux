@@ -896,7 +896,9 @@ class FocusModel(unittest.TestCase):
         page = self.page()
         page.goto(f"/projects/{self.ids['shared']}")
         expect(page.locator("#project-composer")).to_be_focused()
-        # Where Esc in the composer leaves the focus: on a message of the conversation, here the newest.
+        # Where Esc in the composer leaves the focus: on a message of the conversation, here the newest, once the arrival has settled
+        # (the composer takes the cursor as the conversation is read in).
+        page.wait_for_timeout(1500)
         message = page.locator(f'{FEED} [id^="message-"][tabindex]').last
         message.focus()
         expect(message).to_be_focused()
