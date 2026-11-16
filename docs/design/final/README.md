@@ -656,6 +656,17 @@ The IDs come from the first Prostota canvas; rules that no longer apply are left
   10 on the phone. Neutral event rows retain their readable author column on the left.
 - Small 20 px avatars appear only as owners inside task rows.
 
+**Naming people** (personas-33, one rule for every view)
+- A person is named by their **full name** wherever they are named as the author or owner of something: a message or a line in a
+  conversation, a thread, a task's or a decision's discussion, a card on the Board or in a conversation, a List row, a panel's Owner,
+  a thought's "From …" on the map, a Wiki version and a call's line. The task panel and the decision panel name the same person the
+  same way, as the thread does.
+- **The reader** is "Ada Kowalska (you)" in every one of those places: on a Board card, in a panel, in a fold (S8), on the map ("From
+  Ada Kowalska (you) · 13:05"), never "You" alone, "From you" or a first name. A sentence spoken to the reader still says "you"
+  ("Jonas asked you", "Only you are in this space").
+- First names stay only in the short summaries drawn with them: a notice's preview ("Maja: I moved…"), "Seen by Maurycy", a finished
+  call's list of who was in it and an agent's one label ("Planner · Ada's agent", "Hubert's Assistant").
+
 **Connection labels on the map (#481, 2026-10-11)**
 
 - On the computer and tablet, click a connection line or its existing label to name it.
@@ -867,9 +878,10 @@ These functional rules from UI116-4 remain required:
   - **A video this browser cannot play** (its codec is not one the browser has) shows on the stage
     "This browser can't play this video." with Download as the one button, as a PDF does. A person
     who lost access sees "You no longer have access to this file." and nothing else.
-  - **The limits line** ("Private until sent · 5 MB each, videos 200 MB · 10 files / 20 MB per message") is not under
+  - **The limits line** ("Only you see these files until you send · 5 MB each, videos 200 MB · 10 files / 20 MB per message") is not under
     the composer the whole time files are attached ([#1424](https://github.com/ColdPhase/flux/issues/1424)): each row already
-    says "Ready, private". It shows below the files only when a file or the draft was refused, or when the draft is
+    says **"Ready to send"**, and the paperclip's tip "Attach files · only you see them until you send" (personas-33: "Ready, private"
+    and "private until sent" were read as "this file stays private"; the words say what happens). It shows below the files only when a file or the draft was refused, or when the draft is
     within two files of the count or at four fifths of the message's bytes (the videos together against their own cap).
     After the picker the focus is back in the message field on a computer (on a phone the field is tapped, so no keyboard
     rises over the files), and no single-key shortcut (`C`, `G` `I`, `[`, the Inbox's and a task's keys, `End`) fires anywhere
@@ -1118,7 +1130,9 @@ Drawn by the agents before it was built; the rules of what triggers a notice are
 - **How long.** About 6 s, paused while the pointer is over it or focus is in it. A call notice
   stays until the call ends or the person closes it.
 - **Calm.** Nothing for your own actions, and nothing for the place you are looking at (the space
-  or the direct message on screen). It follows your level and quiet hours; Nothing shows none. It
+  or the direct message on screen). On the Inbox, nothing for what the Inbox lists as an item (a question, a mention or an answer,
+  a task given to you, a decision, a call to join, an agent's run): it arrives in the list in front of you (personas-33); a plain
+  direct message or a reply in a thread still shows its notice there. It follows your level and quiet hours; Nothing shows none. It
   is announced politely (`role=status`) and never takes focus. Tab reaches its buttons (the actions, then
   Close), and Escape inside it closes it and gives focus back to where it came from.
 - **Motion** is the surfaces' ([motion](../motion.md#how-the-rules-apply-to-existing-motion)): it
@@ -1168,7 +1182,9 @@ built. The contract is in [mobile and PWA](../../product/mobile-pwa.md#while-flu
   in the author column with its maker's face. Its first line, quiet and beside the face, says who
   made it, from what and when ("Ada Kowalska created a task from Jonas’s message · 8:05"); under it, in the same card, the row is the
   object (the task's state glyph, `#1`, its title, its owner or "No owner", and its state word; a decision's flag, its title and its state word),
-  which opens it in the one panel. "Jonas’s message" is a link that brings
+  which opens it in the one panel. A card's row is read when the card comes near the screen; **until then it states no
+  state and no owner** (the glyph's and the word's places stay empty), never a wrong "To do" with no owner that changes as it
+  scrolls into view (personas-33). "Jonas’s message" is a link that brings
   that message into view, so the way from the message to the task stays on the card. There is no separate event line above the
   card, and the message it came from carries no chip of it. A thread shows a decision made in it as the same card among its
   replies; a task made from one of its messages (its root or a reply) shows there as the card under that message, its only place in the thread (a thread has no task notices).
@@ -1205,6 +1221,9 @@ built. The contract is in [mobile and PWA](../../product/mobile-pwa.md#while-flu
   in both places** (round 8): the panel names people as the thread does, by their full name (and "Ola Nowicka (you)" for you); a message
   read in the panel is read in the thread too, so no New divider stands above it there; and the thread's composer says what it is about,
   **About “Stand closes at 15:00”**, where a message's thread says "Replying to · …".
+- **A task's discussion opened as a thread** (from Search, a notice or a link) says whose it is (personas-34): above its first
+  message, the task's row, "#3" and its title, which opens the task in the one panel, as a decision's discussion has the decision's
+  row at its top.
 - The message toolbar sits at the bubble's top corner, as
   [Spokój](../spokoj/README.md#message-toolbar-and-selection) places it. A line in the ⋯ menu
   divides Add to map, Copy link and Copy text from Edit and Delete.
@@ -1566,6 +1585,8 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   Basia · the new seals"). A blocked task is said in these same words everywhere (persona round 28): the card, the panel, the List,
   Home's My tasks and the Inbox, where the task is the title ("#6 Seal the lids") and these words are the line under it. When that resolves, the task returns
   to Doing by itself.
+- **My tasks** lists a task as every other list does (personas-33): its state glyph with its word, then its number and title
+  ("Doing · #8 Order two frost sensors"), and a blocked task's line under it.
 - **An agent's label** is one line, "Planner · Ada's agent", on a card, in a List row, in the panel's
   Owner row and in its discussion (#1364). The word "agent" is in the label, so it has no separate "Agent"
   tag and no "for <owner>"; only while the owner is not known does the name carry the "Agent" tag.
@@ -1573,7 +1594,9 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   Your agents), Due and "In this task" (the people and their agents), then subtasks ("1 of 2
   done"), the one discussion and "Write about this task…". **Every discussion lists oldest first**, the newest at the bottom just
   above the field, a task's as a decision's and as a conversation (founder decision, Hubert, 2026-11-15, round 8, [#1424](https://github.com/ColdPhase/flux/issues/1424)):
-  "Show earlier" is at its top, and the newest stays in view as it arrives or is sent. The discussion has no heading ("Activity" is
+  "Show earlier" is at its top, and the newest stays in view as it arrives or is sent. **Both panels open the same way**
+  (personas-34): a task's panel opens as a decision's does, with the discussion's newest line in view just above the field, as
+  every conversation opens at its end (S23; a short discussion moves nothing, its rows stay at the top). The discussion has no heading ("Activity" is
   removed, §8) and is there from the first moment: a new task shows its own first line, "Ada created the
   task", above the composer, and its Send is "Send to task" whether or not anyone has written yet (#1364). At Done, an optional "What came of it"
   row: one line, edited where it is read ("Add a line"), with a "Dropped, not finished" check; a

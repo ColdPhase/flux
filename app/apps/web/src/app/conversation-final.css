@@ -30,6 +30,9 @@ button.convo-notice__src:focus-visible { outline: 2px solid var(--t1); outline-o
 .convo-notice__task:hover { background: var(--sub); }
 .convo-notice__task:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }
 .convo-notice__task > svg { flex: none; color: var(--t2); }
+/* A card whose row is not read yet keeps the glyph's and the state word's places, empty (personas-33: never a wrong "To do"). */
+.convo-notice__glyph-wait { flex: none; width: 16px; height: 16px; }
+.convo-notice__state--wait { min-width: 4ch; }
 .convo-notice__num { flex: none; color: var(--t3); }
 /* A long title wraps instead of being cut to one line: whole on a computer (at 200 % text one line cut it to its first words), at most
    two lines on a phone (#266 PF-6, below). */

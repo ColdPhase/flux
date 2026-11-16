@@ -17,7 +17,7 @@ const saved = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyl
 function MaterialPage({ material, version }: { material: MaterialOrDoc; version: MaterialVersion }) {
   const { me } = useShellData();
   // Plain materials are person-written; an agent author (only possible on docs, #152) is named as an agent.
-  const author = version.authorId === null ? agentAuthorLabel(version.author) : version.authorId === me.user.id ? 'You' : `Member ${version.authorId.slice(0, 8)}`;
+  const author = version.authorId === null ? agentAuthorLabel(version.author) : version.authorId === me.user.id ? `${me.user.name} (you)` : `Member ${version.authorId.slice(0, 8)}`;
   const earlier = version.version !== material.version;
   return (
     <div className="pane-scroll"><article className="pane-in material-view">

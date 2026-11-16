@@ -430,7 +430,9 @@ export function createReturnUseCases(ports: ReturnPorts) {
       items.push({
         id: `conversation:${conversationId}`, kind: 'message', at: latest.createdAt.toISOString(), actor: marked(nameOf(`${latest.author.kind}:${latest.author.id}`), latest),
         project: place(conversation.projectId),
-        text: started ? `${who} started ${quote(excerpt(conversation.opening, 70))}` : `${who} replied in ${quote(excerpt(conversation.opening, 70))}`,
+        // A decision's discussion is named by its decision, as the Inbox and the notice name it (personas-34): "Ola replied about “…”".
+        text: conversation.decision ? `${who} replied about ${quote(excerpt(conversation.decision.title, 70))}`
+          : started ? `${who} started ${quote(excerpt(conversation.opening, 70))}` : `${who} replied in ${quote(excerpt(conversation.opening, 70))}`,
         detail: excerpt(messagePreview(latest.body, latest.attachmentCount), 110), needsYou: false,
         // Opens on the first new message, a whole message and never mid-way.
         source: { type: 'message', projectId: conversation.projectId, conversationId, messageId: first.id },

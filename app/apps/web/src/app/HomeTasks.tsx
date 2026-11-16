@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { WorkItem } from '@flux/contracts';
 import { useStreamEvents } from '../api/stream';
-import { Button, EmptyState, ErrorState, Icon, MEDIA, PullToRefresh, Spinner, useMediaQuery } from '../ui';
+import { Button, EmptyState, ErrorState, Icon, MEDIA, PullToRefresh, Spinner, StatusGlyph, useMediaQuery } from '../ui';
 import { listAssignedWork } from '../work/api';
-import { STATUS_LABEL, blockedLine } from '../work/format';
+import { STATUS_LABEL, blockedLine, taskNumber } from '../work/format';
 import { getProject } from '../project/api';
 import { useShellData } from './data';
 import { startsSpaces } from '../people/api';
@@ -111,9 +111,10 @@ export function HomeTasks() {
             {group.items.map((item) => (
               <li key={item.id}>
                 <RefLink className="home-tasks__item" to={`/projects/${item.projectId}/tasks?open=work:${item.id}`}>
-                  <span className={`home-tasks__status is-${item.status}`}>{STATUS_LABEL[item.status]}</span>
+                  {/* A task reads as in every other list (personas-33): its state glyph with its word, then its number and title. */}
+                  <span className={`home-tasks__status is-${item.status}`}><StatusGlyph status={item.status} size={16} className="home-tasks__glyph" />{STATUS_LABEL[item.status]}</span>
                   <span className="home-tasks__body">
-                    <span className="home-tasks__title">{item.title}</span>
+                    <span className="home-tasks__title"><span className="home-tasks__num ui-task-number">{taskNumber(item)}</span> {item.title}</span>
                     {item.status === 'blocked' ? <span className="home-tasks__why">{blockedLine(item)}</span> : null}
                   </span>
                   <Icon name="chevron-right" size={14} className="home-tasks__go" />

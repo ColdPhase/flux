@@ -98,7 +98,7 @@ function changeText(entry: TaskActivityEntry, meId: string): string {
     if (entry.automation === 'agent_deleted' && to) return `deleted the agent${from ? ` ${from.name}` : ''}, so it came back to ${to.name}`;
     if (!to) return `removed the owner${from ? ` (${from.name})` : ''}${rule}`;
     // A person stopped the agent (v0.2.1 release gate, M21): a stop, not a take or a finish, in the words of the task's state line.
-    if (entry.automation === 'agent_stopped') return `stopped ${from?.name ?? 'the agent'}; the task is back with ${to.kind === 'human' && to.id === meId ? 'you' : firstName(to.name)}`;
+    if (entry.automation === 'agent_stopped') return `stopped ${from?.name ?? 'the agent'}; the task is back with ${to.kind === 'human' && to.id === meId ? `${to.name} (you)` : to.name}`;
     // A person who made themselves the owner took it: "Ana took it", never "Ana assigned it to Ana Souza" (personas-26).
     if (to.kind === entry.actor.kind && to.id === entry.actor.id) return `took it${from ? ` from ${from.name}` : ''}${rule}`;
     return `${to.kind === 'agent' ? 'handed it off to' : from ? 'reassigned it to' : 'assigned it to'} ${to.name}${rule}`;
@@ -112,8 +112,6 @@ function changeText(entry: TaskActivityEntry, meId: string): string {
 
 // A time is Geist with tabular figures (README §2 Typography), never a monospace: Geist Mono gives the colon a cell of its own ("17 : 48").
 function stamp(at: string) { return <>{day(at)}, {clock(at)}</>; }
-/** The name a line goes by: first names, as drawn; the full name is one hover away. */
-const firstName = (name: string) => name.trim().split(/\s+/)[0] || name;
 
 /** What the timeline and the composer share: the task's discussion and its recorded changes, read together. */
 export function useTaskActivity({ item, links, project, members, me, revision }: {
@@ -251,9 +249,10 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
   const makeWork = useCreateWorkFromMessage(project);
   const headingId = useId();
   const { discussion } = state;
-  // The newest stays in view at the bottom, above the field, as a line arrives or is sent (round 8, #1424). Not on the first draw: the panel
-  // opens at its top, on the task's rows, and nothing moves while it loads. What another person wrote while this reader reads above the end
-  // does not move them: it is counted in "↓ N new" over the panel's foot (S23, persona round 10), as in every conversation.
+  // The newest stays in view at the bottom, above the field, as a line arrives or is sent (round 8, #1424). The panel opens as a decision's
+  // does (personas-34, F-026 §7 "Tasks and the task panel"): once its discussion is read, its newest line is brought into view above the
+  // field, as at the end of any conversation (S23); a short discussion moves nothing. What another person wrote while this reader reads
+  // above the end does not move them: it is counted in "↓ N new" over the panel's foot (S23, persona round 10), as in every conversation.
   const section = useRef<HTMLElement>(null);
   const timeline = useRef<HTMLOListElement>(null);
   const [feed, setFeed] = useState<HTMLElement | null>(null);
@@ -272,8 +271,13 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
     shownPending.current = composer.pending.length;
     const before = shownNewest.current;
     shownNewest.current = newest;
-    if (before === null || seen === null || before === newest) return;
     const root = section.current;
+    if (before === null || seen === null) {
+      // The first draw of the read discussion: the panel opens at its newest line, as the decision's panel does.
+      if (state.lines.length) (root?.querySelector<HTMLElement>('.wd-act')?.lastElementChild as HTMLElement | null)?.scrollIntoView({ block: 'nearest' });
+      return;
+    }
+    if (before === newest) return;
     const lineOf = (key: string) => root?.querySelector<HTMLElement>(`[data-line="${CSS.escape(key)}"]`) ?? null;
     const added = state.lines.filter((line) => !seen.has(line.key));
     const others = added.filter((line) => !lineIsMine(line, me.id)).map((line) => line.key);
@@ -340,8 +344,8 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
                 <Face actor={{ kind: agent || shown ? 'agent' : 'human', id: message.authorId, name }} mine={mine} {...(faceHue ? { hue: faceHue } : {})} />
                 <div className="wd-act__body">
                   <p className="wd-act__who">
-                    {shown ? <><AgentIdentity name={shownLabel(shown, name).label} icon={false} hue={shown.colour} /><span className="ui-vh">, shown by {firstName(name)}</span></>
-                      : agent ? <AgentIdentity name={name} owner={message.author.kind === 'agent' ? agentAuthorOwner(message.author, owners) : undefined} icon={false} hue={faceHue} /> : <b title={name}>{firstName(name)}</b>}
+                    {shown ? <><AgentIdentity name={shownLabel(shown, name).label} icon={false} hue={shown.colour} /><span className="ui-vh">, shown by {name}</span></>
+                      : agent ? <AgentIdentity name={name} owner={message.author.kind === 'agent' ? agentAuthorOwner(message.author, owners) : undefined} icon={false} hue={faceHue} /> : <b>{mine ? `${name} (you)` : name}</b>}
                     {message.via && !shown ? <span className="project-convo__via">via {message.via}</span> : null}
                     <time dateTime={message.createdAt} title={when(message.createdAt)}>{stamp(message.createdAt)}</time>
                     {message.editedAt ? <span className="message-edited" title={`Edited ${when(message.editedAt)}`}> · edited</span> : null}
@@ -493,7 +497,7 @@ function TaskCallLine({ line, nameOf, mine }: { line: LiveCallLine; nameOf: (use
     <li className="wd-act__item" data-activity="call" id={`call-${line.id}`}>
       <Face actor={{ kind: 'human', id: line.startedBy, name: starter }} mine={mine} />
       <p className="wd-act__line">
-        {words.named ? <><b title={starter}>{firstName(starter)}</b>{' '}</> : null}{words.text}
+        {words.named ? <><b>{mine ? `${starter} (you)` : starter}</b>{' '}</> : null}{words.text}
         <time dateTime={line.startedAt} title={when(line.startedAt)}> · {stamp(line.startedAt)}</time>
       </p>
     </li>

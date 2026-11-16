@@ -330,7 +330,7 @@ export function conversationStore(db: Database, options: ConversationStoreOption
     const [opening] = openingInWindow ? [] : await openRows(db as unknown as DbExecutor, 'project_messages', await db.select({ id: schema.projectMessages.id,
       workspaceId: schema.projectMessages.workspaceId, body: schema.projectMessages.body, attachmentCount: schema.projectMessages.attachmentCount }).from(schema.projectMessages)
       .where(eq(schema.projectMessages.conversationId, row.id)).orderBy(asc(schema.projectMessages.sequence)).limit(1));
-    const [task] = await openAliased(db as unknown as DbExecutor, await db.select({ workId: schema.projectTaskDiscussions.workId, title: schema.projectWorkItems.title }).from(schema.projectTaskDiscussions)
+    const [task] = await openAliased(db as unknown as DbExecutor, await db.select({ workId: schema.projectTaskDiscussions.workId, number: schema.projectWorkItems.number, title: schema.projectWorkItems.title }).from(schema.projectTaskDiscussions)
       .innerJoin(schema.projectWorkItems, and(eq(schema.projectWorkItems.id, schema.projectTaskDiscussions.workId),
         eq(schema.projectWorkItems.projectId, row.projectId), eq(schema.projectWorkItems.workspaceId, row.workspaceId)))
       .innerJoin(schema.projectMessages, and(eq(schema.projectMessages.id, schema.projectTaskDiscussions.rootMessageId),

@@ -74,7 +74,7 @@ export function CallLineItem({ line, projectId, nameOf, meId, clock, title }: {
       <AuthorFace kind="human" id={line.startedBy} name={starter} mine={mine} />
       <div className="convo-notice__body">
         <p className="convo-notice__meta">
-          {words.named ? <strong title={starter}>{first(starter)}{mine ? ' (you)' : ''}</strong> : null}
+          {words.named ? <strong>{starter}{mine ? ' (you)' : ''}</strong> : null}
           <span className="convo-notice__what">{words.text}</span>
           {inCall.length ? <span className="lv-faces convo-call__faces" aria-hidden="true">{inCall.slice(0, 3).map((userId) => <Avatar key={userId} id={userId} name={nameOf(userId)} size="sm" />)}</span> : null}
           {running && !here && (line.inCall === null || line.inCall.length > 0) ? <Button variant="secondary" className="convo-call__join" onClick={() => void join({ projectId, sessionId: line.id })}>Join</Button> : null}

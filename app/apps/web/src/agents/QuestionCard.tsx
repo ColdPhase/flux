@@ -81,7 +81,7 @@ function Card({ question, meId, writable }: { question: AgentQuestion; meId: str
         <p className="qcard__answer" role="status">
           <Icon name="check" size={14} />
           <span><span className="ui-vh">Answered: </span>{answered.text}</span>
-          <span className="qcard__by">{answered.by.id === meId ? 'You' : answered.by.name} · <time dateTime={answered.at}>{time.format(new Date(answered.at))}</time></span>
+          <span className="qcard__by">{answered.by.id === meId ? `${answered.by.name} (you)` : answered.by.name} · <time dateTime={answered.at}>{time.format(new Date(answered.at))}</time></span>
         </p>
       ) : interactive ? (
         <>

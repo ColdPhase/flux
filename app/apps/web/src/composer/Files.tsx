@@ -15,7 +15,7 @@ const fileStatus = (file: DraftFile, unconfirmed: boolean) => file.state === 'up
   : file.state === 'failed' && file.refused ? (looksLikePhoto(file.name) ? 'Can’t be read' : 'Can’t be sent')
   : file.state === 'failed' ? 'Upload not confirmed'
     : unconfirmed ? 'Send unconfirmed; retry checks availability'
-      : Date.parse(file.staged!.expiresAt) <= Date.now() ? 'Staging expired; select this file again' : 'Ready, private';
+      : Date.parse(file.staged!.expiresAt) <= Date.now() ? 'Staging expired; select this file again' : 'Ready to send';
 
 /**
  * Files chosen in the system's picker attach at once, in the order it returns them (on a phone it numbers the choices itself as they are made;
@@ -53,7 +53,7 @@ export function AttachButton({ state, disabled = false, className, fieldId }: { 
         backToField(fieldId);
       }} />
     <button type="button" className={['composer__attach', className].filter(Boolean).join(' ')} disabled={blocked} onClick={() => input.current?.click()}
-      aria-label="Attach files" data-tip="Attach files · private until sent" data-tip-align="start"><Icon name="clip" size={16} /></button>
+      aria-label="Attach files" data-tip="Attach files · only you see them until you send" data-tip-align="start"><Icon name="clip" size={16} /></button>
   </>;
 }
 
@@ -97,14 +97,14 @@ function refusedLine(file: DraftFile) {
 }
 
 const megabytes = (bytes: number) => Math.round(bytes / (1024 * 1024));
-const limitsLine = (limits: FileLimits) => `Private until sent · ${megabytes(limits.fileBytes)} MB each, videos ${megabytes(limits.videoBytes)} MB · ${limits.messageFiles} files / ${megabytes(limits.messageBytes)} MB per message`;
+const limitsLine = (limits: FileLimits) => `Only you see these files until you send · ${megabytes(limits.fileBytes)} MB each, videos ${megabytes(limits.videoBytes)} MB · ${limits.messageFiles} files / ${megabytes(limits.messageBytes)} MB per message`;
 
 /** How close to a limit the draft is when its numbers are worth saying: two files short of the count, or four fifths of the bytes (#1424). */
 const NEAR_BYTES = 0.8;
 
 /**
  * The limits are said only when they matter: a file or the whole draft was refused, or the draft is near one. A draft of a file or two says
- * nothing about them (its rows already say "Ready, private"), so nothing stays under the composer the whole time files are attached.
+ * nothing about them (its rows already say "Ready to send"), so nothing stays under the composer the whole time files are attached.
  */
 function limitsMatter(state: ComposerState, limits: FileLimits): boolean {
   const files = state.draft.files;
