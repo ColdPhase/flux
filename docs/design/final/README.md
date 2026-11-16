@@ -569,9 +569,14 @@ The keys show next to their actions in menus. In the Inbox, `R` on a decision op
   one at first), on the phone the expanded card too. An item that arrives live never takes its place, so E acts only on what has the
   ring. When the open item leaves (done, given away), its neighbour at its place is chosen, also on coming back to the Inbox. What Put back
   or Bring back now returns is the open item as it takes the ring, whether the window was closed with Esc or closed by itself (personas-34).
+  **The same on a touch screen** (coordinator decision, sweep 34 C6 and C7, 2026-11-16): what Undo, `Z`, Put back or Bring back now
+  returns is the expanded card, and a card opened from the list (a tap on its title, its Reply or Open) is the open item, so ×, ‹ Inbox or
+  Back return with that card expanded, or, when it left meanwhile (a task given to you, Done or Accept in its sheet), with its neighbour
+  at its place expanded, never the card that was expanded before.
 - **One press, one action in the Inbox** (personas-34): the open item's neighbour swaps in the moment an action takes it out, so for
-  450 ms after Accept, Done, Not now, Approve all, an answer or Unblock, every action of the Inbox (its buttons on the computer and in the
-  phone's tray, Join, Open, Reply, Discuss and the keys A, E, S, R and Enter) does nothing. The second click of a double-click, a double tap
+  450 ms after Accept, Done, Not now, Approve all, an answer, Unblock, Put back or Bring back now, every action of the Inbox (its buttons
+  on the computer and in the phone's tray, Join, Open, Reply, Discuss, the rows' Put back and Bring back now, and the keys A, E, S, R and
+  Enter) does nothing (the next row of "done today" or "for later" slides up under the pointer as one leaves, sweep 34 C4). The second click of a double-click, a double tap
   or a key pressed twice lands on nothing. Choosing an item (J, K, a click on a row) or Undo ends the pause at once. 450 ms is shorter than
   anyone needs to read the card that came in, and it follows the toast's own guard against a tap aimed at what was there (600 ms).
   Nothing moves for it: no animation is added or held back ([motion](../motion.md)).
@@ -579,7 +584,7 @@ The keys show next to their actions in menus. In the Inbox, `R` on a decision op
   letters typed with R are held for half a second, never run as A, E or S, and then the keys are the Inbox's again.
 - **The sidebar's arrow keys** move between its rows. **G I** lands on the Inbox's open item, or its heading when it is empty,
   whatever had focus, also from inside the Inbox. Every arrival at the Inbox (G I, Back or Esc from an item opened from it) puts the
-  focus on its open item. After **Z** or Undo in the Inbox, the item that came back has the focus.
+  focus on its open item, also when the panel left behind still holds the cursor in its field as it closes (R or Discuss, then Back, sweep 34 C10). After **Z** or Undo in the Inbox, the item that came back has the focus.
 - **After Propose:** a `/decide` from the composer leaves the cursor in the composer, as `/task` does; Propose through New focuses the
   new decision's card once it is in the conversation.
 - **A window closed to go somewhere** (a Search result, a place) leaves the focus to where it leads, never back to its opener.

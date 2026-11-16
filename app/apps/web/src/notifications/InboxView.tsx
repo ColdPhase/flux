@@ -163,11 +163,13 @@ export function InboxView() {
     const now = new Set(shown.map((item) => item.key));
     const before = seenKeys.current;
     seenKeys.current = now;
-    if (!before || touch) return;
+    if (!before) return;
     for (const key of before) if (!now.has(key)) goneKeys.current.add(key);
     const back = [...goneKeys.current].find((key) => now.has(key));
     for (const key of [...goneKeys.current]) if (now.has(key)) goneKeys.current.delete(key);
     if (!back) return;
+    // On a touch screen the item that came back is the expanded card (F-026 §4, C6 of sweep 34); no focus moves there, as nothing was typed.
+    if (touch) { setSelected(back); return; }
     const active = document.activeElement;
     if (active && active !== document.body && active.id !== 'content' && !active.closest('.nyq')) return;
     setSelected(back);
@@ -185,7 +187,10 @@ export function InboxView() {
     // Inbox and a return from an item opened from it (Esc, Back) included, the open item has the focus: a sidebar link or a row that
     // kept it from before would let E act on another item than the one open (persona round 30 P2 3). A field keeps it.
     const onOpenItem = !!openKey && !!active && (!!active.closest(`.nyc[data-key="${CSS.escape(openKey)}"]`) || !!active.closest('.nyq__col--open'));
-    if (!active || active === document.body || active.id === 'content' || (!isTyping(active) && !onOpenItem)) {
+    // The panel of the page just left (Back from a task or a decision opened with R or Discuss) still holds its field while it closes: that
+    // is not a field of the Inbox, so the open item takes the focus as it does after Esc (C10, sweep 34), never the page once the panel goes.
+    const leaving = !!active?.closest('#details');
+    if (!active || active === document.body || active.id === 'content' || leaving || (!isTyping(active) && !onOpenItem)) {
       (openKey ? rowControl(openKey) : clearRef.current)?.focus({ preventScroll: true });
     }
     // Once per arrival: later changes of the list leave focus where the person put it.
