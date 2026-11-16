@@ -128,7 +128,9 @@ not verify it. A paid hosting service run by the Flux project keeps plan sign-in
   fixed pool of four slots goes: every person with Connect AI can have their agents ready. Flux
   works out from the server's memory how many agents can run at the same time, about 2 on 4 GB.
   The rest wait, and their task shows "Waiting for room on the server". The operator can change the
-  number in the config file; there is no setting in the app. An idle agent costs close to nothing:
+  number in the config file; there is no setting in the app. A run the runtime no longer reports, two
+  minutes after its last change, has lost its worker and ends, a plan's and an API key's in pi alike
+  (#1441): it gives its place back at once, and the runs waiting for room are offered it at once. An idle agent costs close to nothing:
   no CLI process and no model calls while it waits. Idle and per-run CPU and memory are measured
   against the 2 vCPU / 4 GB target (#862, [F-038](decisions.md#f-038--a-simpler-flux)), and the
   operator guide states what each active agent needs.

@@ -270,7 +270,7 @@ export interface PersonalRunRepository {
    * background sweep, so a run a crashed worker left behind ends without the owner's next invoke.
    */
   endStaleAny(olderThanSeconds: number, limit: number): Promise<RunRecord[]>;
-  /** Ends working runs on the runtime that are not in `running` and are older than this, one bounded batch. */
+  /** Ends working runs in the runtime (a plan's and an API key's, #1441) that are not in `running` and are older than this, one bounded batch. */
   endLostRuntime(running: readonly string[], olderThanSeconds: number, limit: number): Promise<RunRecord[]>;
   /** Holds the owner's lane until the transaction ends, so two claims of one owner never pass the lane check together. */
   lockLane(ownerUserId: string): Promise<void>;

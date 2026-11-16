@@ -15,7 +15,8 @@ const ID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/;
 describe('cite marks in what an agent writes (C-62, v0.2.1 real-model gate)', () => {
   let scene: AssistantScene;
   before(async () => { scene = await assistantScene('cite'); });
-  after(async () => { await scene.setMayDo('act'); });
+  // Nothing of this file stays at work on the suite's shared server (#860): its runs end, and the switch is back at Do it.
+  after(async () => { await scene.reset(); });
 
   async function objects() {
     const task = await scene.task(scene.owner, 'Order 200 printed flyers');

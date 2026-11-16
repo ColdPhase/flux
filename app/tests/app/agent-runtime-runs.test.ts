@@ -201,6 +201,54 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
     assert.deepEqual([ended.status, ended.end_reason], ['provider_failed', 'unknown']);
   });
 
+  test('#860, #1441: an API key\'s run the runtime no longer has stops holding a place after two minutes, and the run waiting for room starts by itself', async () => {
+    const uow = personalRunWorkerUnitOfWork(db);
+    const [ada, ben] = [await person('rt-run-lost-key-a'), await person('rt-run-lost-key-b')];
+    const done = (await ask('An earlier request')).run;
+    await pool.query(`UPDATE personal_runs SET status = 'stopped', completed_at = now(), cost_state = 'released', charged_micros = 0 WHERE id = $1`, [done.id]);
+    // Two colleagues' agents on their API keys, in pi in the runtime: one still reading, one at work that has spent and holds money.
+    const reading = randomUUID(); const working = randomUUID();
+    const keyRun = (id: string, ownerId: string, fields: Record<string, unknown>) => pool.query(`INSERT INTO personal_runs SELECT (jsonb_populate_record(r,
+      jsonb_build_object('id', $1::uuid, 'owner_user_id', $2::text, 'client_run_id', $3::uuid, 'engine', 'server', 'completed_at', NULL) || $5::jsonb)).*
+      FROM personal_runs r WHERE r.id = $4`, [id, ownerId, randomUUID(), done.id, JSON.stringify(fields)]);
+    await keyRun(reading, ada.id, { status: 'reading', cost_state: 'released', charged_micros: 0, reserved_micros: 0 });
+    await keyRun(working, ben.id, { status: 'dispatching', dispatched_at: new Date().toISOString(), cost_state: 'reserved', charged_micros: 1000,
+      reserved_micros: 5000, largest_request_micros: 2000 });
+    // The server is full: whatever else is at work, and these two, take every place (as in the test above, the suite shares the server).
+    const places = (await pool.query(`UPDATE agent_runtime_slots SET capacity = 2
+      + (SELECT count(*)::int FROM personal_runs WHERE engine IN ('runtime', 'server') AND status IN ('reading', 'dispatching') AND id <> ALL($2::uuid[]))
+      - (SELECT COALESCE(sum(capacity), 0)::int FROM agent_runtime_slots WHERE state = 'ready' AND slot <> $1) WHERE slot = $1 RETURNING capacity`,
+    [slotName, [reading, working]])).rows[0] as { capacity: number };
+    assert.ok(places.capacity >= 2, 'this slot holds the two colleagues\' places');
+    // The runtime's report: everything at work but the lost run (no earlier file's run is ended by this test).
+    const report = async (...lost: string[]) => (await pool.query(`SELECT id FROM personal_runs WHERE status IN ('reading', 'dispatching') AND id <> ALL($1::uuid[])`,
+      [lost])).rows.map((entry: { id: string }) => entry.id);
+    const offered = () => uow.run((ports) => ports.runs.startableQueued(20, true));
+    try {
+      const waiting = (await ask('Summarize the notes')).run;
+      assert.equal(await processor.process(waiting.id), 'skipped', 'no room');
+      assert.deepEqual([(await row(waiting.id)).status, (await row(waiting.id)).end_reason], ['queued', 'no_room']);
+      assert.equal(await recoverLostRuntimeRuns(uow, await report(reading, working)), 0, 'just started: the report may not have them yet');
+      await pool.query(`UPDATE personal_runs SET updated_at = now() - interval '3 minutes' WHERE id = ANY($1::uuid[])`, [[reading, working]]);
+      assert.equal((await offered()).includes(waiting.id), false, 'still full');
+      // Two minutes on: the key run the runtime no longer has ends; the one in the report keeps its place.
+      assert.equal(await recoverLostRuntimeRuns(uow, await report(reading)), 1);
+      const lost = await row(reading);
+      assert.deepEqual([lost.status, lost.cost_state, lost.end_reason, lost.reserved_micros], ['unavailable', 'released', null, 0]);
+      assert.equal((await row(working)).status, 'dispatching');
+      assert.ok((await offered()).includes(waiting.id), 'its place is free: the waiting run is offered as soon as the worker looks');
+      assert.equal(await processor.process(waiting.id), 'completed', 'and it starts by itself');
+      assert.equal((await row(waiting.id)).end_reason, null);
+      // The key run at work that the runtime then loses ends too, and what it spent and could still have spent stays counted (#854).
+      assert.equal(await recoverLostRuntimeRuns(uow, await report(working)), 1);
+      const ended = await row(working);
+      assert.deepEqual([ended.status, ended.cost_state, ended.end_reason, ended.reserved_micros], ['provider_failed', 'unknown', null, 3000]);
+    } finally {
+      await pool.query(`UPDATE agent_runtime_slots SET capacity = NULL WHERE slot = $1`, [slotName]);
+      await pool.query(`DELETE FROM personal_runs WHERE id = ANY($1::uuid[])`, [[reading, working]]);
+    }
+  });
+
   test('without a report of the runtime yet, a run is not held back and ends in its own words', async () => {
     await pool.query(`UPDATE agent_runtime_slots SET capacity = NULL WHERE slot = $1`, [slotName]);
     const { run } = await ask('Summarize the notes');

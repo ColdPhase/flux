@@ -270,13 +270,18 @@ export function personalRunRows(db: DbExecutor) {
       return [...undispatched, ...lost].map(toRun);
     },
 
+    /**
+     * Every run in the runtime: a plan's CLI and an API key's pi (#1441, RT-1), whose supervisor reports both. A lost key run ends as the
+     * crash sweep ends it: what it had spent and the most one more request could have cost stay counted, and its line stays its own.
+     */
     async endLostRuntime(running: readonly string[], olderThanSeconds: number, limit: number) {
       const rows = await db.update(r).set({
         status: sql`CASE WHEN ${r.status} = 'dispatching' THEN 'provider_failed' ELSE 'unavailable' END`,
         costState: sql`CASE WHEN ${r.status} = 'dispatching' THEN 'unknown' ELSE 'released' END`,
-        endReason: sql`CASE WHEN ${r.status} = 'dispatching' THEN 'unknown' ELSE ${r.endReason} END`,
+        endReason: sql`CASE WHEN ${r.status} = 'dispatching' AND ${r.engine} = 'runtime' THEN 'unknown' ELSE ${r.endReason} END`,
+        reservedMicros: sql`CASE WHEN ${r.status} = 'dispatching' THEN ${lostReservation} ELSE ${r.reservedMicros} END`,
         chargedMicros: 0, completedAt: new Date(), updatedAt: new Date(),
-      }).where(sql`${r.id} IN (SELECT id FROM personal_runs WHERE engine = 'runtime' AND status IN ('reading', 'dispatching')
+      }).where(sql`${r.id} IN (SELECT id FROM personal_runs WHERE engine IN ('runtime', 'server') AND status IN ('reading', 'dispatching')
         AND updated_at < now() - (${olderThanSeconds}::int * interval '1 second') AND id <> ALL(${sql.param([...running])}::uuid[])
         ORDER BY updated_at, id LIMIT ${limit} FOR UPDATE SKIP LOCKED)`).returning();
       return rows.map(toRun);
