@@ -28,6 +28,7 @@ import { WorkPagination } from '../work/WorkPagination';
 import { useCreatedToast, WORK_CREATION_UNDONE_EVENT } from '../work/taskState';
 import { SpaceFace } from '../ui/SpaceFace';
 import { leaveFocusToDestination } from '../ui/Overlay';
+import { returnFocusToObject } from '../ui/SidePanel';
 import './create.css';
 
 // The one Create window (F-026 S3, #345, #521): the computer's centred window and the phone's bottom sheet hold the
@@ -355,6 +356,7 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
       // The window closes to go to the new task's panel: focus is not handed back to what opened the window, so closing the panel gives
       // it to the task's own card, what stands for it, never to a message the window was opened over (F-026 §4, personas-36).
       leaveFocusToDestination();
+      returnFocusToObject();
       onClose();
       openDetails({ kind: 'work', id: item.id, projectId });
       // After the panel's own step (its `?open=` address), so that step does not drop the read that brings the new task's card.

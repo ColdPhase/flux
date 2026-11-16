@@ -11,7 +11,13 @@ const FIELD = 'input, textarea, select, [contenteditable]:not([contenteditable="
 
 function inField(target: EventTarget | null): boolean {
   if (!(target instanceof Element)) return false;
-  return (target instanceof HTMLElement && target.isContentEditable) || target.closest(FIELD) !== null || inComposer(target);
+  return writesHere(target) || inComposer(target);
+}
+
+/** A place the letters of a key go into (a text box, a list being picked from, an editable page), not a composer's button. */
+function writesHere(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false;
+  return (target instanceof HTMLElement && target.isContentEditable) || target.closest(FIELD) !== null;
 }
 
 /** How long a field asked for may take to arrive (a thread's route read on a slow line) before keys are shortcuts again. */
@@ -79,7 +85,9 @@ export function waitForField(ms = FIELD_WAIT_MS) {
   watching = true;
   // On the window, as the quiet keys of a view switch are (`useQuietViewKeys`, which stops them there): a key typed while the page changes is kept.
   window.addEventListener('keydown', (event) => {
-    if (!fieldOnItsWay() || inField(event.target) || event.metaKey || event.ctrlKey || event.altKey) return;
+    // Letters typed on a composer's button are kept too (personas-36: `/decide …`, Tab to Send, Space, and the rest of the sentence while
+    // the window opened was lost on Send).
+    if (!fieldOnItsWay() || writesHere(event.target) || event.metaKey || event.ctrlKey || event.altKey) return;
     // Enter after a sentence typed on the way sends it once it is in the field ("Message Piotr", then "can I swap…" and Enter, persona round
     // 28): it is kept too, never a press on the button that still has focus.
     if (event.key === 'Enter' && !event.shiftKey && typed) { event.preventDefault(); enterKept = true; return; }
