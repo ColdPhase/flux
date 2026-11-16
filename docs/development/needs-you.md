@@ -157,13 +157,13 @@ person's own choice (204; idempotent).
   later asks again.
 - `needs_you_states` rows cascade with the account.
 
-**Undo of Accept is the client's** (`app/apps/web/src/notifications/pendingAccept.ts`): the card shows accepted
-at once and sends the accept (`POST /api/v1/decisions/:id/accept` with `If-Match`) the moment its Undo toast leaves
-(the design's one toast rule, #1424: its 10 s, ×, a newer toast, another place) or when the person leaves the page: hiding
-the tab or closing it (with `keepalive`). Everyone else, the proposer first, sees it accepted as soon as it is sent: the accept
-records `project.decision_accepted.v1` and every open view of the decision re-reads on that event. Undo inside the window never sends it. After it was sent, Undo says the
-decision is accepted and that a change of direction is a new proposal. Done, Not now, Decline and Unblock are
-real reversals through the calls above.
+**Accept works at once, and its Undo takes it back** (founder decision 2026-11-15, round 8, #1424; `app/apps/web/src/work/acceptDecision.ts`):
+the card leaves at once and the accept (`POST /api/v1/decisions/:id/accept` with `If-Match`) is sent at once, so everyone, the proposer
+first, sees it accepted (`project.decision_accepted.v1`; every open view of the decision re-reads on that event). The toast's Undo is
+`POST /api/v1/decisions/:id/unaccept` ([work and decisions](work-decisions.md#accept-at-once-and-undo-takes-it-back-1424-round-8)): the item
+is back in the Inbox at once, and if the acceptance is in use by then it stays, and the toast says so. Done, Not now, Decline, Unblock and
+Accept are all real reversals through the calls above; only an agent's question answered with its buttons is held for its window
+(`pendingAccept.ts`).
 
 ## Counts
 

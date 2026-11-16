@@ -15,7 +15,7 @@ requests reconciliation independently, including failures. Aborted reads cannot
 apply after the instance's user or lifetime changes; asynchronous action callbacks
 retain the queue instance where the action began.
 
-Accept remains a delayed command during the Undo window. The shared accepting
+Accept is sent at once (round 8, #1424; it was a delayed command during the Undo window before). The shared accepting
 set hides the proposal until the command answers. Success synchronously broadcasts the originating user and item key to mounted
 queues, removing any cached proposal in Inbox or Home before announcing the
 change and requesting a fresh read; failure
@@ -23,5 +23,5 @@ restores it. There is no new request timeout or change to the Undo window.
 
 The maintained Inbox browser module covers reads begun before and after Undo,
 keyboard selection, unanswered writes with unrelated real updates and failure
-recovery, and Accept success while fresh reads are held. Browser clock control
-keeps the Accept-window scenario independent of wall-clock speed and toast hover.
+recovery, and Accept success while its request and fresh reads are held (the test holds the accept request itself, so it does
+not depend on wall-clock speed or toast hover).
