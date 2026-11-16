@@ -196,7 +196,8 @@ class StopAndQuestions(unittest.TestCase):
                 options.get_by_role("button", name="One value").click()
                 expect(card).to_have_attribute("data-state", "answered")
                 expect(card).to_contain_text("One value")
-                expect(card).to_contain_text("You")
+                # The reader is named by their full name with "(you)", never "You" alone (F-026 "Naming people", personas-33).
+                expect(card.locator(".qcard__by")).to_contain_text(f"{JONAS['name']} (you)")
                 self.assertEqual(sent, [{"optionIndex": 1}])
                 expect(card.get_by_role("button", name="Per bed")).to_have_count(0)
                 shot(page, "question-answered-desktop")

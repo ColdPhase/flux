@@ -371,7 +371,8 @@ class AgentTakesTask(unittest.TestCase):
         expect(view.get_by_role("complementary", name="Details").locator(".wd-act__item--message").filter(has_text="Stopped by Ada Kowalska.")).to_be_visible()
         # The history says a stop, not a take or a finish (v0.2.1 release gate, M21), to each reader in their words.
         history = view.get_by_role("complementary", name="Details").get_by_role("list", name="Task activity")
-        expect(history).to_contain_text("stopped Planner; the task is back with you")
+        # The owner is named by the full name, the reader with "(you)" (F-026 "Naming people", personas-33).
+        expect(history).to_contain_text(f"stopped Planner; the task is back with {KAI['name']} (you)")
         expect(history).not_to_contain_text("its agent finished")
         ada_view = self.open_task("ada", task["id"])
         expect(ada_view.get_by_role("complementary", name="Details").get_by_role("list", name="Task activity")).to_contain_text("stopped Planner; the task is back with Kai")

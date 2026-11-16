@@ -850,7 +850,7 @@ class EncryptedWorkspaces(Base):
                 member_row = page.get_by_role("list", name=f"People in {A_NAME}").get_by_role("listitem").filter(has_text="Cy Moreno")
                 member_row.get_by_role("button", name=re.compile("^Change")).click()
                 member_row.get_by_role("button", name=re.compile("^Remove from")).click()
-                expect(member_row.get_by_role("group", name="Remove Cy Moreno")).to_contain_text("Cy loses access to Garden club at once")
+                expect(member_row.get_by_role("group", name="Remove Cy Moreno")).to_contain_text("Cy loses access to Garden club and its spaces at once.")
                 expect(member_row.get_by_role("group", name="Remove Cy Moreno")).not_to_contain_text("new key")
 
     def test_26_demoting_an_admin_really_ends_their_unlock_password_and_leaving_says_the_key_changes(self) -> None:

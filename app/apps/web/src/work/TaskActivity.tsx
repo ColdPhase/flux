@@ -280,8 +280,16 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
     shownNewest.current = newest;
     const root = section.current;
     if (before === null || seen === null) {
-      // The first draw of the read discussion: the panel opens at its newest line, as the decision's panel does.
-      if (state.lines.length) (root?.querySelector<HTMLElement>('.wd-act')?.lastElementChild as HTMLElement | null)?.scrollIntoView({ block: 'nearest' });
+      // The first draw of the read discussion: the panel opens at its newest line, as the decision's panel does. A short discussion (one
+      // that fits in the panel's height) moves nothing: its rows stay at the top, where the skeleton drew them (F-026 §7 "Both panels open
+      // the same way"; #863 rule 6, no jump from the skeleton). Only the panel's own scroller moves, never the sheet or the page around it.
+      const scroller = root?.closest<HTMLElement>('.wd__scroll');
+      const list = root?.querySelector<HTMLElement>('.wd-act');
+      const last = list?.lastElementChild;
+      if (scroller && list && last instanceof HTMLElement && list.getBoundingClientRect().height > scroller.clientHeight) {
+        const over = last.getBoundingClientRect().bottom - scroller.getBoundingClientRect().bottom;
+        if (over > 0) scroller.scrollTop += over;
+      }
       return;
     }
     if (before === newest) return;
