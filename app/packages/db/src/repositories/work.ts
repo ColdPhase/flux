@@ -214,8 +214,10 @@ async function namesIn(db: DbExecutor, refs: Actor[], workspaceId: string | null
   const agents = [...new Set(refs.filter((ref) => ref.kind === 'agent').map((ref) => ref.id))];
   if (users.length) {
     const u = schema.authUsers;
+    // The outer row's id written out in full: a column inside a selected expression is rendered bare ("id"), which in the subquery would be
+    // the workspace's own id.
     const removed = workspaceId ? sql<boolean>`EXISTS (SELECT 1 FROM workspaces w JOIN workspace_removed_people r ON r.workspace_id = w.id OR r.workspace_id = w.company_workspace_id
-      WHERE w.id = ${workspaceId}::uuid AND r.user_id = ${u.id}::text)` : sql<boolean>`false`;
+      WHERE w.id = ${workspaceId}::uuid AND r.user_id = "auth_users"."id")` : sql<boolean>`false`;
     for (const row of await db.select({ id: u.id, name: u.name, removed }).from(u).where(inArray(u.id, users))) {
       names.set(`human:${row.id}`, row.name);
       if (row.removed) gone.add(`human:${row.id}`);

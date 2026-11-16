@@ -292,7 +292,7 @@ class MapTaskCountJourney(unittest.TestCase):
         expect(links).to_have_count(3)
         expected = [
             ("order", ORDER, "Doing", "Owner Nia Okafor"),
-            ("calibrate", CALIBRATE, "Blocked", "Owner Ada Lind"),
+            ("calibrate", CALIBRATE, "Blocked", "Owner Ada Lind (you)"),
             ("protocol", PROTOCOL, "To do", "No owner yet"),
         ]
         for index, (key, title, status, owner) in enumerate(expected):
@@ -301,7 +301,8 @@ class MapTaskCountJourney(unittest.TestCase):
             expect(link).to_contain_text(title)
             expect(link.locator(".sk-task__id")).to_have_text(f"#{self.numbers[key]}")
             expect(link).to_contain_text(f"#{self.numbers[key]} · {status}")
-            expect(link).to_contain_text(f"{owner} · added by Ada Lind")
+            # Ada reads it: she is "Ada Lind (you)", as everywhere a person is named (design "Naming people", personas-36).
+            expect(link).to_contain_text(f"{owner} · added by Ada Lind (you)")
             expect(link).to_have_attribute("title", f"Task {work_id}")
             expect(link).to_have_attribute("data-work-id", work_id)
             expect(link).to_have_attribute("href", f"/projects/{self.ids['project']}/tasks?open=work:{work_id}")
@@ -326,7 +327,7 @@ class MapTaskCountJourney(unittest.TestCase):
         drafted = self.chooser(page, DRAFTED)
         expect(drafted.get_by_role("link")).to_have_count(1)
         expect(drafted.get_by_role("link")).to_contain_text(f"#{self.numbers['diffuser']} · Done")
-        expect(drafted.get_by_role("link")).to_contain_text("Owner Nia Okafor · added by Ada Lind")
+        expect(drafted.get_by_role("link")).to_contain_text("Owner Nia Okafor · added by Ada Lind (you)")
         page.keyboard.press("Escape")
         expect(self.row_badge(page, "drafted")).to_be_focused()
         self.unchanged(page)
