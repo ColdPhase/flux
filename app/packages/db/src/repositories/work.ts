@@ -511,16 +511,21 @@ export function workRows(db: DbExecutor) {
       await db.execute(sql`DELETE FROM needs_you_states WHERE item_key = ${`decision:${id}`}`);
       return 'withdrawn';
     },
-    async recordResumptions(scope: { workspaceId: string; projectId: string }, decisionId: string, tasks: readonly { id: string; version: number }[]) {
+    async recordResumptions(scope: { workspaceId: string; projectId: string }, decisionId: string, tasks: readonly { id: string; version: number; blocker: string | null }[]) {
       const r = schema.projectDecisionResumptions;
       await db.delete(r).where(eq(r.decisionId, decisionId));
-      if (tasks.length) await db.insert(r).values(tasks.map((task) => ({ decisionId, workId: task.id, ...scope, version: task.version })));
+      if (!tasks.length) return;
+      // The reason each task waited with is its content: sealed in an encrypted space, as the task's own blocker is.
+      const seal = await sealOf(db, scope.workspaceId, { write: true });
+      await db.insert(r).values(tasks.map((task) => sealRow('project_decision_resumptions', { decisionId, workId: task.id, ...scope, version: task.version, blocker: task.blocker }, seal)));
     },
     async resumptions(decisionId: string, options: { clear?: boolean } = {}) {
       const r = schema.projectDecisionResumptions;
-      const rows = options.clear ? await db.delete(r).where(eq(r.decisionId, decisionId)).returning({ workId: r.workId, version: r.version })
-        : await db.select({ workId: r.workId, version: r.version }).from(r).where(eq(r.decisionId, decisionId));
-      return rows.sort((a, b) => a.workId.localeCompare(b.workId));
+      const columns = { decisionId: r.decisionId, workId: r.workId, workspaceId: r.workspaceId, version: r.version, blocker: r.blocker };
+      const rows = options.clear ? await db.delete(r).where(eq(r.decisionId, decisionId)).returning(columns)
+        : await db.select(columns).from(r).where(eq(r.decisionId, decisionId));
+      return (await openRows(db, 'project_decision_resumptions', rows)).map((row) => ({ workId: row.workId, version: row.version, blocker: row.blocker }))
+        .sort((a, b) => a.workId.localeCompare(b.workId));
     },
     async namedAsReplaced(id: string) {
       const found = await db.select({ id: d.id }).from(d).where(and(eq(d.supersedesId, id), sql`${d.id} <> ${id}`)).limit(1);

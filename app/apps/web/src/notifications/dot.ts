@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from '
 import { useStreamEvents } from '../api/stream';
 import type { NeedsYouItem } from '@flux/contracts';
 import { INBOX_CHANGED, NEEDS_YOU_ACCEPTED, NEEDS_YOU_RETURNED, type AcceptedInboxItem } from './api';
-import { answeringIds, onAcceptingChange } from './pendingAccept';
+import { acceptingIds, answeringIds, onAcceptingChange } from './pendingAccept';
 import { getNeedsYou } from './needsYou';
 
 /** The spaces that hold something that needs the person, from the same read as the count (#1250): the sidebar's dot. */
@@ -78,7 +78,8 @@ export function useInboxDot(identity: string, pathname: string): { count: number
   // Someone seeing a message changes nothing that waits for this person (#862).
   useStreamEvents(identity, (event) => { if (!event.kind.endsWith('observed.v1')) soon(); }, refresh);
   if (unread?.identity !== identity) return { count: 0, notifying: 0 };
+  const accepting = acceptingIds();
   const answering = answeringIds();
-  const handled = unread.items.filter((item) => left.has(item.key) || (item.agentQuestion && answering.has(item.agentQuestion.id))).length;
+  const handled = unread.items.filter((item) => left.has(item.key) || (item.decision && accepting.has(item.decision.id)) || (item.agentQuestion && answering.has(item.agentQuestion.id))).length;
   return { count: Math.max(0, unread.count - handled), notifying: unread.notifying };
 }

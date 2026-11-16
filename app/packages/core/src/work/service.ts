@@ -256,8 +256,9 @@ const waitingForOf = (value: unknown): ActorRef | null => {
  * a decision's acceptance and a pull request's rule (#1055).
  */
 export async function resumeWaiting(ports: Pick<WorkPorts, 'work' | 'events'>, principal: Principal, by: ActorRef, ids: readonly string[], stillWaits: (task: WorkRecord) => boolean,
-  because: { said: string; token: 'decision' | 'work' | 'person'; taskId?: string }): Promise<WorkRecord[]> {
-  const resumed: WorkRecord[] = [];
+  because: { said: string; token: 'decision' | 'work' | 'person'; taskId?: string }): Promise<{ task: WorkRecord; blocker: string | null }[]> {
+  // Each task resumed, as it is now, with the reason it waited with (an acceptance's Undo puts that back, #1424 round 8).
+  const resumed: { task: WorkRecord; blocker: string | null }[] = [];
   for (const id of ids) {
     const task = await ports.work.findWork(id, { lock: true });
     if (!task || task.creationRevertedAt || task.status !== 'blocked' || !stillWaits(task)) continue;
@@ -268,7 +269,7 @@ export async function resumeWaiting(ports: Pick<WorkPorts, 'work' | 'events'>, p
     await ports.work.insertTaskUpdate(record, { kind: 'task.resumed', by, waitingFor: null, reason: because.said });
     await ports.events.record(principal, task.workspaceId, 'project.work_updated.v1', task.projectId, { workId: id,
       ...(task.owner?.kind === 'human' ? { resumedFor: task.owner.id, reason: because.token, ...(because.taskId ? { taskId: because.taskId } : {}) } : {}) });
-    resumed.push(record);
+    resumed.push({ task: record, blocker: task.blocker });
   }
   return resumed;
 }
@@ -767,7 +768,7 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         await useFence.mark(used);
         const resumed = await resumeWaiting(ports, principal, by, waiters, (task) => task.waitingOn?.kind === 'decision' && task.waitingOn.id === id, { said: 'the decision was accepted', token: 'decision' });
         // Its Undo puts back exactly these, while none of them changed since (#1424 round 8).
-        await ports.work.recordResumptions(scope, id, resumed.map((task) => ({ id: task.id, version: task.version })));
+        await ports.work.recordResumptions(scope, id, resumed.map(({ task, blocker }) => ({ id: task.id, version: task.version, blocker })));
         const view = await presentDecision(ports, record);
         await ports.events.record(principal, workspaceId, 'project.decision_accepted.v1', projectId, { decisionId: id });
         return view;
@@ -808,12 +809,12 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         if (await ports.work.namedAsReplaced(id)) throw inUse();
         const earlier = current.supersedesId ? decisionRows.get(current.supersedesId) : undefined;
         if (current.supersedesId && (!earlier || earlier.status !== 'superseded' || earlier.supersededById !== id)) throw inUse();
-        const tasks: WorkRecord[] = [];
+        const tasks: { task: WorkRecord; blocker: string | null }[] = [];
         for (const entry of resumed) {
           const task = await ports.work.findWork(entry.workId, { lock: true });
           if (!task) continue;
           if (task.version !== entry.version || task.creationRevertedAt) throw inUse();
-          tasks.push(task);
+          tasks.push({ task, blocker: entry.blocker });
         }
         const scope = { workspaceId, projectId };
         if (earlier) {
@@ -823,11 +824,8 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         const record = await ports.work.updateDecision(id, { status: 'proposed', decidedBy: null, decidedAt: null });
         await ports.work.artifactUsed?.(scope, { kind: 'decision', id: record.id, revision: `${record.version}:${record.status}` }, useFence);
         await useFence.mark(used);
-        for (const task of tasks) {
-          // The reason it waited with, as its last move into Blocked kept it.
-          const history = await ports.work.listTaskActivity(task.id, { limit: 20, before: null });
-          const blockedWith = history.items.find((entry) => entry.kind === 'status' && entry.to === 'blocked');
-          const blocker = blockedWith?.kind === 'status' ? blockedWith.blocker : null;
+        for (const { task, blocker } of tasks) {
+          // The reason it waited with, as the acceptance kept it.
           const back = await ports.work.updateWork(task.id, { status: 'blocked', blocker, waitingFor: null, waitingOn: { kind: 'decision', id } }, by, undefined, { undoes: true });
           await ports.work.takeBackResumption(back, by, current.decidedAt);
           await ports.events.record(principal, workspaceId, 'project.work_updated.v1', projectId, { workId: task.id });

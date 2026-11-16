@@ -230,8 +230,8 @@ export interface WorkRepository extends TaskGraphReader {
    * The tasks an acceptance resumed (#1424 round 8), each with its version right after: kept by the accept (replacing what an earlier
    * acceptance of the same decision kept), read by its Undo, and cleared by `resumptions(id, { clear: true })`.
    */
-  recordResumptions(scope: { workspaceId: string; projectId: string }, decisionId: string, tasks: readonly { id: string; version: number }[]): Promise<void>;
-  resumptions(decisionId: string, options?: { clear?: boolean }): Promise<{ workId: string; version: number }[]>;
+  recordResumptions(scope: { workspaceId: string; projectId: string }, decisionId: string, tasks: readonly { id: string; version: number; blocker: string | null }[]): Promise<void>;
+  resumptions(decisionId: string, options?: { clear?: boolean }): Promise<{ workId: string; version: number; blocker: string | null }[]>;
   /** Whether a decision other than `replacing` (proposed or accepted) names this one as the decision it replaces (#1424 round 8). */
   namedAsReplaced(id: string): Promise<boolean>;
   /**

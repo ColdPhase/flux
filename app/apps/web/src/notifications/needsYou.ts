@@ -13,7 +13,7 @@ import { KEEP_MS, request } from '../api/client';
 import { noteLockedWorkspaces } from '../encryption/api';
 import { useStreamEvents } from '../api/stream';
 import { INBOX_CHANGED, NEEDS_YOU_ACCEPTED, announceAcceptedInboxItem, announceInboxChange, type AcceptedInboxItem } from './api';
-import { answeringIds } from './pendingAccept';
+import { acceptingIds, answeringIds } from './pendingAccept';
 import { onPlacesForgotten } from '../place/memory';
 import { useProjectAiBlocked } from '../ai/spaceAi';
 
@@ -149,10 +149,11 @@ export function useNeedsYou(userId: string, fromMemory = false): Queue {
   useStreamEvents(userId, (event) => { if (!event.kind.endsWith('observed.v1')) soon(); }, reload);
 
   const mine = state.userId === userId ? state : { userId, response: null, failed: false };
-  // A question this person just answered is not shown while the answer is waiting or on its way.
+  // A decision this person is accepting, or a question they just answered, is not shown while it is on its way.
+  const accepting = acceptingIds();
   const answering = answeringIds();
   // F-029 (#614): what an agent or assistant asks in a workspace whose AI is off is not shown, even from a read made before it was turned off.
-  const items = mine.response ? mine.response.items.filter((item) => !(item.agentQuestion && answering.has(item.agentQuestion.id))
+  const items = mine.response ? mine.response.items.filter((item) => !(item.decision && accepting.has(item.decision.id)) && !(item.agentQuestion && answering.has(item.agentQuestion.id))
     && !(item.project && aiOff(item.project.id) && (item.from?.kind === 'agent' || item.key.startsWith('assistant:')))) : null;
   return { userId, items, count: items?.length ?? 0, later: mine.response?.later ?? 0, doneToday: mine.response?.doneToday ?? 0, failed: mine.failed, reload, hide, show };
 }

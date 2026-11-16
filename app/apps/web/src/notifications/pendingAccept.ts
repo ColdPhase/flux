@@ -30,11 +30,24 @@ const waiting = new Map<string, Waiting>();
 /** Questions being answered by this person, from the click until the server answered. */
 const answering = new Set<string>();
 export const answeringIds = (): ReadonlySet<string> => answering;
+/**
+ * Decisions being accepted by this person, from the click until the server answered (`work/acceptDecision`): every queue and count of the
+ * tab leaves them out meanwhile, so a read that started before the accept never shows the proposal again (#541).
+ */
+const accepting = new Set<string>();
+export const acceptingIds = (): ReadonlySet<string> => accepting;
+/** Lists a decision as being accepted; the returned function ends that (once). */
+export function holdAccepting(decisionId: string): () => void {
+  accepting.add(decisionId);
+  changed();
+  let ended = false;
+  return () => { if (ended) return; ended = true; if (accepting.delete(decisionId)) changed(); };
+}
 
-/** Told when a question starts or stops being answered here: the Inbox count leaves it out at once. */
+/** Told when a question or decision starts or stops being answered or accepted here: the Inbox count leaves it out at once. */
 const changes = new Set<() => void>();
 export function onAcceptingChange(listener: () => void) { changes.add(listener); return () => { changes.delete(listener); }; }
-const changed = () => { for (const listener of [...changes]) listener(); };
+function changed() { for (const listener of [...changes]) listener(); }
 
 /** The set a waiting command is listed in. */
 const listOf = (kind: string) => (kind === 'question' ? answering : null);

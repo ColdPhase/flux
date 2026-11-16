@@ -3,8 +3,8 @@
 "Needs you" is the one queue: a decision the person can accept, a question to them, their blocked task
 and a mention, across spaces, as one list with no filters and no "Needs you" pill (#1367): the list on the
 left and the open item on the right at 1440, one column on a phone. Done (E), Not now (S, one button with
-no menu: back tomorrow morning) and Accept (A) apply at once and offer Undo (Z); a decision cannot be
-un-accepted, so Undo of Accept is a delayed command. Ada's view is checked at 1440x900 and 390x844 (touch),
+no menu: back tomorrow morning) and Accept (A) apply at once and offer Undo (Z); Undo of Accept takes the
+acceptance back (round 8, #1424). Ada's view is checked at 1440x900 and 390x844 (touch),
 light and dark, against the API. Screenshots (inbox-final-*.png) go to FLUX_UI_SCREENSHOTS when set.
 """
 
@@ -653,9 +653,11 @@ class InboxFinal(unittest.TestCase):
         expect(original).to_have_count(1)
         self.wait_for(lambda: any(item["key"] == f"decision:{self.decision['id']}" for item in self.queue(None)["items"]), "the latest Not now to be undone")
 
-    # ---------------------------------------------------------------- Accept with Undo (AC-2, DA-3)
+    # ---------------------------------------------------------------- Accept with Undo (round 8, #1424)
 
-    def test_06_accept_is_delayed_so_undo_is_real(self) -> None:
+    def test_06_accept_works_at_once_and_undo_takes_it_back(self) -> None:
+        """Accept works at once with a 10 s Undo (founder decision, round 8, #1424): accepted for everyone the moment it is pressed, and Undo
+        takes the acceptance back for everyone, so the decision is a proposal again in the Inbox."""
         page = self.page()
         page.goto("/inbox")
         decision = self.card(page, DECISION)
@@ -666,33 +668,33 @@ class InboxFinal(unittest.TestCase):
         toast = page.get_by_role("status").filter(has_text="Accepted")
         expect(toast).to_be_visible()
         expect(decision).to_have_count(0)
-        # The count leaves the accepted decision out at once, not when the accept is sent ~10 s later (#1424 persona round).
         expect(count).to_have_text(str(waiting - 1), timeout=2000)
-        self.assertEqual(self.decision_status(), "proposed", "nothing was sent while Undo is offered")
+        # Accepted at once, while Undo is still offered: nothing waits for the toast to leave.
+        self.wait_for(lambda: self.decision_status() == "accepted", "the accept to be sent at once", seconds=4)
+        expect(toast).to_be_visible()
         page.keyboard.press("z")
         expect(decision).to_have_count(1)
-        expect(count).to_have_text(str(waiting), timeout=2000)
-        time.sleep(7)
-        self.assertEqual(self.decision_status(), "proposed", "an undone accept is never sent")
+        expect(count).to_have_text(str(waiting), timeout=3000)
+        self.wait_for(lambda: self.decision_status() == "proposed", "Undo to take the acceptance back")
+        self.assertIsNone(self.contexts["ada"].request.get(f"/api/v1/decisions/{self.decision['id']}").json()["decidedBy"])
 
-        # A: accepted at once on the screen, and sent when the window ends.
+        # A on the decision that came back accepts it again, at once.
         page.keyboard.press("a")
         expect(decision).to_have_count(0)
         self.wait_for(lambda: self.decision_status() == "accepted", "the accept to be sent")
-        expect(page.get_by_role("status").filter(has_text="Accepted")).to_have_count(0)
         accepted = self.contexts["ada"].request.get(f"/api/v1/decisions/{self.decision['id']}").json()
         self.assertEqual(accepted["decidedBy"]["id"], self.ids["ada"])
         self.assertNotIn("decision", self.kinds())
 
-    def test_07_leaving_sends_the_accept(self) -> None:
+    def test_07_leaving_keeps_the_acceptance(self) -> None:
         proposed = self.post("jonas", f"/api/v1/projects/{self.project_id}/decisions", {"title": "Label every bed with a QR code", "rationale": "Volunteers scan, not guess."})
         self.wait_for(lambda: "decision" in self.kinds(), "the new decision")
         page = self.page()
         page.goto("/inbox")
         self.item(page, "Label every bed").get_by_role("button", name=re.compile("^Accept")).click()
-        # Going to Home inside the app sends it at once, and the Undo toast stays behind with the Inbox (#1424): Z on Home undoes nothing.
+        self.wait_for(lambda: self.contexts["ada"].request.get(f"/api/v1/decisions/{proposed['id']}").json()["status"] == "accepted", "the accept sent at once")
+        # The Undo toast stays behind with the Inbox (#1424): Z on Home undoes nothing.
         page.get_by_role("navigation", name="Places").get_by_role("link", name="Home").click()
-        self.wait_for(lambda: self.contexts["ada"].request.get(f"/api/v1/decisions/{proposed['id']}").json()["status"] == "accepted", "the accept sent on leaving")
         expect(page.locator(".ui-toast").filter(has_text="Accepted")).to_have_count(0)
         press_shortcut(page, "z")
         page.wait_for_timeout(1000)
@@ -700,19 +702,12 @@ class InboxFinal(unittest.TestCase):
         self.assertEqual(self.contexts["ada"].request.get(f"/api/v1/decisions/{proposed['id']}").json()["status"], "accepted")
 
     def test_07a_another_persons_item_shows_during_an_accept_window(self) -> None:
-        """An accept is not pending: while its Undo window is open, a new item from someone else shows at once (#519).
-
-        The page starts the read itself (focus), so the item must appear while the "Accepted" toast is still up.
-        It does not wait for the window to end, which a pending accept would make it do.
-        """
+        """While an acceptance's Undo is offered, a new item from someone else shows at once (#519)."""
         proposed = self.post("jonas", f"/api/v1/projects/{self.project_id}/decisions", {"title": "Sow the clover by the gate", "rationale": "It fixes nitrogen."})
         page = self.page()
         page.goto("/inbox")
         card = self.card(page, "Sow the clover")
         expect(card).to_have_count(1)
-        # Control the product's real Undo clock, independently of machine speed or toast hover.
-        page.clock.install(time=time.time())
-        page.clock.pause_at(time.time() + 1)
         self.item(page, "Sow the clover").get_by_role("button", name=re.compile("^Accept")).click()
         toast = page.get_by_role("status").filter(has_text="Accepted")
         expect(toast).to_be_visible()
@@ -720,11 +715,7 @@ class InboxFinal(unittest.TestCase):
         page.evaluate("() => window.dispatchEvent(new Event('focus'))")
         expect(self.card(page, "Mulch the paths")).to_have_count(1)
         expect(card).to_have_count(0)
-        self.assertEqual(self.contexts["ada"].request.get(f"/api/v1/decisions/{proposed['id']}").json()["status"], "proposed", "the incoming item appears before Accept is sent")
-        page.mouse.move(0, 0)
-        page.clock.run_for(10_001)  # an Undo toast's 10 s (#1424): the accept is sent when it leaves
         self.wait_for(lambda: self.contexts["ada"].request.get(f"/api/v1/decisions/{proposed['id']}").json()["status"] == "accepted", "the accept to be sent")
-        expect(toast).to_have_count(0)
 
     def test_07b_accept_success_never_reveals_the_cached_proposal(self) -> None:
         self.accept_success_preserves_hidden_proposal(home=False)
@@ -733,27 +724,27 @@ class InboxFinal(unittest.TestCase):
         self.accept_success_preserves_hidden_proposal(home=True)
 
     def accept_success_preserves_hidden_proposal(self, *, home: bool) -> None:
-        """A read during Accept caches the proposal; success must hide it before a fresh read (#541)."""
+        """A read made while the accept is on its way still has the proposal; it stays hidden, and success hides it before a fresh read (#541)."""
         proposed = self.post("jonas", f"/api/v1/projects/{self.project_id}/decisions", {"title": "Cover the rain gauge", "rationale": "Keep leaves out."})
         page = self.page()
         page.goto("/inbox")
         card = self.card(page, "Cover the rain gauge")
         expect(card).to_have_count(1)
         self.watch_queue_reads(page)
-        page.clock.install(time=time.time())
-        page.clock.pause_at(time.time() + 1)
+        accepted = []
+
+        def on_accept(route):
+            accepted.append(route)
+            mark(page, "acceptHeld")
+
+        page.route(re.compile(r"/api/v1/decisions/[^/]+/accept$"), on_accept)
+        self.addCleanup(lambda: [route.abort() for route in accepted])
         self.item(page, "Cover the rain gauge").get_by_role("button", name=re.compile("^Accept")).click()
+        seen(page, "acceptHeld")
+        if home:
+            page.get_by_role("navigation", name="Places").get_by_role("link", name="Home").click()
         held = []
         state = {"hold": False}
-        accepted = []
-        if home:
-            def on_accept(route):
-                accepted.append(route)
-                mark(page, "acceptHeld")
-            page.route(re.compile(r"/api/v1/decisions/[^/]+/accept$"), on_accept)
-            page.get_by_role("navigation", name="Places").get_by_role("link", name="Home").click()
-            seen(page, "acceptHeld")
-            self.addCleanup(lambda: [route.abort() for route in accepted])
 
         def on_queue(route):
             answer = route.fetch()
@@ -776,7 +767,6 @@ class InboxFinal(unittest.TestCase):
         page.evaluate("() => window.dispatchEvent(new Event('focus'))")
         seen(page, "cachedRead")
         page.wait_for_function("() => window.__needsYouPending === 0")
-        page.clock.run_for(1)
         expect(card).to_have_count(0)
         page.evaluate("""() => {
           window.__reappeared = false;
@@ -785,21 +775,15 @@ class InboxFinal(unittest.TestCase):
           }).observe(document.body, { childList: true, subtree: true, characterData: true });
         }""")
         state["hold"] = True
-        # Home navigation sends Accept; otherwise a real page-leave event sends it without advancing Undo.
-        if home:
-            accepted.pop().continue_()
-        else:
-            # The page is shown again at once (a restore from the back-forward cache): while it is left the web client
-            # starts no request (api/pageLeaving, #471), so the fresh queue read that follows Accept waits for this.
-            page.evaluate("() => { window.dispatchEvent(new Event('pagehide')); window.dispatchEvent(new Event('pageshow')); }")
+        accepted.pop().continue_()
         seen(page, "heldRead")
-        page.clock.run_for(1)
-        self.assertEqual(self.contexts["ada"].request.get(f"/api/v1/decisions/{proposed['id']}").json()["status"], "accepted")
+        self.wait_for(lambda: self.contexts["ada"].request.get(f"/api/v1/decisions/{proposed['id']}").json()["status"] == "accepted", "the accept to land")
         expect(card).to_have_count(0)
         self.assertFalse(page.evaluate("() => window.__reappeared"), "the cached proposal never reappears after success")
         release()
-        page.clock.run_for(1)
+        page.wait_for_timeout(300)
         expect(card).to_have_count(0)
+        self.assertFalse(page.evaluate("() => window.__reappeared"))
 
     # ---------------------------------------------------------------- blocked tasks and mentions
 
@@ -817,6 +801,36 @@ class InboxFinal(unittest.TestCase):
         expect(self.card(page, "Design a weatherproof enclosure")).to_have_count(1)
         self.wait_for(lambda: work()["status"] == "blocked", "Undo to block it again")
         self.assertEqual(work()["blocker"], "waiting for the probe dimensions")
+
+    def test_08b_done_finishes_a_blocked_task_and_undo_puts_it_back(self) -> None:
+        """Done on your blocked task in the Inbox finishes it; Undo puts it back to Blocked with what it waited for (round 8, #1424)."""
+        page = self.page()
+        page.goto("/inbox")
+        card = self.card(page, "Design a weatherproof enclosure")
+        work = lambda: self.contexts["ada"].request.get(f"/api/v1/work/{self.blocked['id']}").json()  # noqa: E731
+        self.item(page, "Design a weatherproof enclosure").get_by_role("button", name="Done").click()
+        # Said as every state change is: "#N moved to Done".
+        expect(page.get_by_role("status").filter(has_text=re.compile(r"^#\d+ moved to Done"))).to_be_visible()
+        expect(card).to_have_count(0)
+        self.wait_for(lambda: work()["status"] == "done", "the task to be finished")
+        self.assertNotIn("blocked", self.kinds())
+        page.keyboard.press("z")
+        expect(self.card(page, "Design a weatherproof enclosure")).to_have_count(1)
+        self.wait_for(lambda: work()["status"] == "blocked", "Undo to put it back to Blocked")
+        self.assertEqual(work()["blocker"], "waiting for the probe dimensions")
+        self.wait_for(lambda: "blocked" in self.kinds(), "the Blocked item to be back")
+        # E on it does the same, and the item's new version is used (not refused as stale).
+        item = self.card(page, "Design a weatherproof enclosure")
+        for _ in range(5):
+            if item.get_attribute("aria-current") == "true":
+                break
+            page.keyboard.press("j")
+        expect(item).to_have_attribute("aria-current", "true")
+        page.keyboard.press("e")
+        expect(item).to_have_count(0)
+        self.wait_for(lambda: work()["status"] == "done", "E to finish the task")
+        page.keyboard.press("z")
+        self.wait_for(lambda: work()["status"] == "blocked", "Undo to put it back again")
 
     def test_09_done_on_a_question_reads_it_and_nothing_is_lost(self) -> None:
         page = self.page()

@@ -6,7 +6,7 @@ by FLUX_UI_BROWSER (run it with chromium and with webkit), on a computer (1440 x
 phone (390 x 844, touch):
 
 * An Undo toast leaves on its own after 10 s, and not while the pointer is over it or focus is in it.
-* Going to another place ends it at once: `Z` there undoes nothing, and an Accept held for Undo is sent then, not 10 s later.
+* Going to another place ends it at once: `Z` there undoes nothing. Accept is not held: it applies at once (round 8, #1424).
 * While a toast shows, the conversation keeps its end clear of it: the new task's card and an inline Delete / Keep row in a direct
   message are above the toast, never under it.
 * A task and a decision made from a message show once in the space's conversation: one card with who made it, from which message
@@ -398,7 +398,8 @@ class UndoAndOneCard(unittest.TestCase):
                 state = (self.work(page, made["id"]).get("lifecycle") or {}).get("state")
                 self.assertNotEqual(state, "creation_reverted", "Z in another place undid nothing")
 
-    def test_05_an_accept_held_for_undo_is_sent_when_its_toast_leaves(self) -> None:
+    def test_05_an_accept_applies_at_once_and_leaving_keeps_it(self) -> None:
+        """Accept is not held (round 8, #1424): it is accepted at once, and leaving the place ends its toast and keeps the acceptance."""
         rule = self.call("ada", "POST", f"/api/v1/projects/{self.ids['project']}/decisions", {"title": f"Close the stall at four {uuid.uuid4().hex[:4]}"})
         page = self.page("jonas")
         for _ in range(60):
@@ -409,17 +410,17 @@ class UndoAndOneCard(unittest.TestCase):
         row = page.locator("li.nyc--decision").filter(has_text=rule["title"])
         open_item(row).get_by_role("button", name=re.compile("^Accept")).click()
         self.settled_toast(page, "Accepted")
-        status = lambda: page.request.get(f"/api/v1/projects/{self.ids['project']}/decisions?limit=100").json()["items"]
-        self.assertEqual(next(item for item in status() if item["id"] == rule["id"])["status"], "proposed", "held while Undo is offered")
-        left = time.monotonic()
-        page.get_by_role("complementary", name="Sidebar").get_by_role("link", name="Home").first.click()
-        expect(page.locator(".ui-toast").filter(has_text="Accepted")).to_have_count(0, timeout=3000)
+        status = lambda: next(item for item in page.request.get(f"/api/v1/projects/{self.ids['project']}/decisions?limit=100").json()["items"] if item["id"] == rule["id"])["status"]  # noqa: E731
         for _ in range(40):
-            if next(item for item in status() if item["id"] == rule["id"])["status"] == "accepted":
+            if status() == "accepted":
                 break
             time.sleep(0.1)
-        self.assertEqual(next(item for item in status() if item["id"] == rule["id"])["status"], "accepted")
-        self.assertLess(time.monotonic() - left, 5, "sent when the toast left, not at the end of its 10 s")
+        self.assertEqual(status(), "accepted", "accepted at once, while Undo is offered")
+        page.get_by_role("complementary", name="Sidebar").get_by_role("link", name="Home").first.click()
+        expect(page.locator(".ui-toast").filter(has_text="Accepted")).to_have_count(0, timeout=3000)
+        press_shortcut(page, "z")
+        page.wait_for_timeout(1000)
+        self.assertEqual(status(), "accepted", "Z in another place undoes nothing")
 
     def test_06_a_toast_never_covers_the_new_card_or_a_delete_row(self) -> None:
         for phone in (False, True):

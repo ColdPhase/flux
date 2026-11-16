@@ -258,14 +258,14 @@ class UnifiedPanel(unittest.TestCase):
         page.keyboard.press("4")
         expect(panel.get_by_role("button", name="Status", exact=True)).to_contain_text("Done")
         self.assertEqual(self.stored(task)["status"], "done")
-        # Activity: every change with its real author and time, newest first.
+        # Activity: every change with its real author and time, oldest first with the newest at the bottom (round 8, #1424).
         activity = panel.get_by_role("list", name="Task activity")
         expect(activity.locator("li")).to_have_count(4)
         lines = activity.locator("li").all_inner_texts()
-        self.assertIn("Ada Kowalska (you) marked it done", lines[0])
-        self.assertIn("set it due", lines[1])
-        self.assertIn("reassigned it to Jonas Berg", lines[2])
-        self.assertIn("Ada Kowalska (you) created it from a message", lines[3])
+        self.assertIn("Ada Kowalska (you) created it from a message", lines[0])
+        self.assertIn("reassigned it to Jonas Berg", lines[1])
+        self.assertIn("set it due", lines[2])
+        self.assertIn("Ada Kowalska (you) marked it done", lines[3])
         for line in activity.locator("time").all():
             expect(line).to_have_attribute("datetime", re.compile(r"^\d{4}-\d\d-\d\dT"))
         stored = api(self.ada_ctx, "GET", f"/api/v1/work/{task['id']}/activity")
@@ -280,7 +280,7 @@ class UnifiedPanel(unittest.TestCase):
         # Taking it yourself is "took it", never "Ada assigned it to Ada Kowalska" (personas-26).
         owner.click()
         page.get_by_role("menu", name="Owner").get_by_role("menuitemradio", name=re.compile(r"^Ada Kowalska")).click()
-        expect(activity.locator("li").first).to_contain_text("Ada Kowalska (you) took it from Jonas Berg")
+        expect(activity.locator("li").last).to_contain_text("Ada Kowalska (you) took it from Jonas Berg")
         expect(activity).not_to_contain_text("to Ada Kowalska")
 
     def test_07_the_blocker_is_a_card_edited_in_place_and_resolve_undoes(self):

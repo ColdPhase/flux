@@ -195,8 +195,12 @@ class HomeFinal(unittest.TestCase):
         expect(page.get_by_role("status").filter(has_text="Accepted")).to_be_visible()
         page.locator(".ui-toast", has_text="Accepted").get_by_role("button", name="Undo").click()
         expect(page.locator(".nyc")).to_have_count(3)
-        status = self.contexts["ada"].request.get(f"/api/v1/decisions/{self.decision['id']}").json()["status"]
-        self.assertEqual(status, "proposed", "Undo kept the decision proposed")
+        # Accepted at once, and Undo takes the acceptance back (round 8, #1424).
+        status = lambda: self.contexts["ada"].request.get(f"/api/v1/decisions/{self.decision['id']}").json()["status"]  # noqa: E731
+        deadline = time.monotonic() + 10
+        while status() != "proposed" and time.monotonic() < deadline:
+            time.sleep(0.2)
+        self.assertEqual(status(), "proposed", "Undo took the acceptance back")
 
     def test_04_nothing_to_do_is_calm(self) -> None:
         for item in self.queue()["items"]:

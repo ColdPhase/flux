@@ -1322,6 +1322,8 @@ export const projectDecisionResumptions = pgTable('project_decision_resumptions'
   workspaceId: uuid('workspace_id').notNull(),
   projectId: uuid('project_id').notNull(),
   version: integer('version').notNull(),
+  // The reason the task waited with (sealed in an encrypted space), put back by the Undo.
+  blocker: text('blocker'),
 }, (table) => [
   primaryKey({ columns: [table.decisionId, table.workId] }),
   index('project_decision_resumptions_work_idx').on(table.workId),

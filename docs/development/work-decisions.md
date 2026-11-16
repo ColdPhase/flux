@@ -109,13 +109,14 @@ send `POST /decisions/:id/accept` at once and the toast's Undo is `POST /api/v1/
 - **What it does,** in one transaction, under the project's graph lock and the decision rows in id order as Accept takes them: the
   decision is `proposed` again (`decidedBy`, `decidedAt` cleared, version + 1); a decision it replaced is `accepted` again (its
   `supersededBy`, `supersededAt` cleared); every task the acceptance resumed is `blocked` again, waiting for this decision with the reason it
-  had (read from its last move into Blocked), its "can continue" line in the conversation goes, its activity line of the resumption goes,
+  had (kept by the acceptance), its "can continue" line in the conversation goes, its activity line of the resumption goes,
   and the "can continue" notification its owner got is deleted with its queued email. The decision's Inbox items come back by themselves
   (they are derived from its status). One `project.decision_unaccepted.v1` (`{ decisionId }`) tells readers to refetch; the card changes
   back in place to Proposed.
-- **What the acceptance keeps for it.** `project_decision_resumptions` (migration 0091: `decision_id`, `work_id` and the task's
-  `version` right after it resumed; ids only, `ON DELETE CASCADE`) is written by the accept for each task it resumed and read and
-  cleared by the Undo. A later accept of the same decision writes its own rows.
+- **What the acceptance keeps for it.** `project_decision_resumptions` (migration 0091: `decision_id`, `work_id`, the task's
+  `version` right after it resumed and the `blocker` it waited with, sealed in an encrypted space as the task's own is; `ON DELETE
+  CASCADE`) is written by the accept for each task it resumed and read and cleared by the Undo. A later accept of the same decision
+  writes its own rows.
 - **Not done.** An agent whose task the acceptance resumed is woken as by any resumption; if it changed the task before the Undo, the
   task is in use and the acceptance stays. A push already delivered for "can continue" is not recalled.
 

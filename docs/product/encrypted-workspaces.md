@@ -768,6 +768,7 @@ its own [error-path rule](#error-paths).
 | `project_task_plan_intents` | — | `creation_fingerprint` | `intent_key` (client-chosen opaque key; the web client sends random UUIDs) |
 | `task_creation_undo_receipts`, `native_command_receipts` | — | `request_fingerprint` | operation names |
 | `project_decisions` | `title`, `rationale` | — | `status` |
+| `project_decision_resumptions` (#1424 round 8: what an acceptance's Undo puts back) | `blocker` | — | ids and a task version |
 | `project_object_links` | — | — | `role`, types |
 | `drafts` | `title`, `body` | — | `visibility` |
 | `draft_versions` (migration 0006, filled by `preserve_draft_version`) | `title`, `body` (written by the application for a sealed workspace) | — | `visibility` |

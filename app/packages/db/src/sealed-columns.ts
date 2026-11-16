@@ -120,6 +120,7 @@ export const SEALED_COLUMNS: Readonly<Record<string, SealedTable>> = Object.free
   table('project_work_items', ['id'], { title: 'text', outcome: 'text', blocker: 'text', criteria: 'json', creation_baseline: 'json', request_fingerprint: 'digest', came_of_it: 'text' }, 'S2a-2'),
   table('project_task_activity', ['id'], { detail: 'json' }, 'S2a-2'),
   table('project_task_updates', ['id'], { reason: 'text' }, 'S2a-2'),
+  table('project_decision_resumptions', ['decision_id', 'work_id'], { blocker: 'text' }, 'S2a-2'),
   table('project_task_plan_intents', ['project_id', 'material_id', 'material_version', 'intent_key'], { creation_fingerprint: 'digest' }, 'S2a-2'),
   table('task_creation_undo_receipts', ['project_id', 'actor_kind', 'actor_id', 'client_command_id'], { request_fingerprint: 'digest' }, 'S2a-2'),
   table('native_command_receipts', ['project_id', 'actor_kind', 'actor_id', 'operation', 'client_command_id'], { request_fingerprint: 'digest' }, 'S2a-2'),

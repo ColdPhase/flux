@@ -4,6 +4,7 @@ import { ApiError } from '../api/client';
 import { useToast } from '../ui';
 import { announceAcceptedInboxItem, announceInboxChange, announceReturnedInboxItem } from '../notifications/api';
 import { acceptDecision, unacceptDecision } from './api';
+import { holdAccepting } from '../notifications/pendingAccept';
 
 /** What the place that accepts does with each step: its own list or panel follows the decision. */
 export interface AcceptSteps {
@@ -28,10 +29,12 @@ export function useAcceptDecision(userId: string) {
   return useCallback((decision: Pick<Decision, 'id' | 'version'>, steps: AcceptSteps = {}) => {
     let refused = false;
     const key = `decision:${decision.id}`;
+    // Every queue and count of this tab leaves it out while the accept is on its way, and drops it before its next read lands.
+    const release = holdAccepting(decision.id);
     const sent = acceptDecision(decision, crypto.randomUUID());
-    // Every queue and count of this tab drops it before its next read lands.
-    sent.then((accepted) => { announceAcceptedInboxItem(userId, key); announceInboxChange(); steps.accepted?.(accepted); }, (error: unknown) => {
+    sent.then((accepted) => { announceAcceptedInboxItem(userId, key); release(); announceInboxChange(); steps.accepted?.(accepted); }, (error: unknown) => {
       refused = true;
+      release();
       const conflict = conflicting(error);
       steps.failed?.(conflict);
       toast(conflict ? { message: 'This decision changed before it was accepted. Nothing was accepted. Open it to look again.', tone: 'danger' }
