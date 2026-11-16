@@ -179,6 +179,9 @@ class DirectMessageJourney(unittest.TestCase):
         page.locator("header.phead").get_by_role("button", name="Back").tap()
         expect(page).to_have_url(f"{ORIGIN}/projects")
         expect(page.get_by_role("heading", level=1, name="New message")).to_have_count(0)
+        # A page arrived at with nothing to focus gives the focus to its content, on the phone too (personas-36: it stayed on the page body).
+        page.wait_for_timeout(800)
+        self.assertEqual(page.evaluate("() => document.activeElement?.id || document.activeElement?.tagName"), "content", "the Spaces page's content has the focus")
 
     def test_02_reply_from_a_second_browser_arrives_live(self) -> None:
         ada = self.page("ada")

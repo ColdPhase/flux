@@ -669,7 +669,8 @@ class FocusModel(unittest.TestCase):
         page.keyboard.type("/decide Move the oven to the back door")
         page.keyboard.press("Enter")
         title = page.get_by_role("dialog", name="New decision").get_by_role("textbox", name="Decision", exact=True)
-        expect(title).to_be_focused()
+        # The words are the whole title: the cursor goes on to Why (personas-36), and ⌘↵ / Ctrl+↵ proposes from there.
+        expect(page.get_by_role("dialog", name="New decision").get_by_label("Why", exact=True)).to_be_focused()
         expect(title).to_have_value("Move the oven to the back door")
         page.keyboard.press("Control+Enter")
         expect(page.get_by_role("dialog")).to_have_count(0)
@@ -856,6 +857,61 @@ class FocusModel(unittest.TestCase):
         back = read()
         self.assertEqual([back["status"], (back.get("waitingFor") or {}).get("id"), back["blocker"]], ["blocked", self.ids["ola"], "Which part number?"],
                          "Undo: Blocked again, waiting for Ola, with its reason")
+
+
+    # ---------------------------------------------------------------- personas-36 (new users)
+
+    def test_38_slash_decide_then_typing_on_writes_its_why_and_never_proposes_it_unfinished(self) -> None:
+        """personas-36 P3 6: Leo typed `/decide Bake rye on Tuesdays`, Tab (to Send) and "Fewer orders on Monday.": the Space on Send opened
+        the window with the cursor in its title, the rest went into the title, and Enter proposed a decision with no Why to everyone."""
+        page = self.page()
+        page.goto(f"/projects/{self.ids['shared']}")
+        composer = page.locator("#project-composer")
+        expect(composer).to_be_focused()
+        title = f"Bake rye on Tuesdays {uuid.uuid4().hex[:4]}"
+        page.keyboard.type(f"/decide {title}")
+        page.keyboard.press("Tab")
+        page.keyboard.type("Fewer orders on Monday.", delay=30)
+        page.keyboard.press("Enter")
+        window = page.get_by_role("dialog", name="New decision")
+        expect(window).to_be_visible()
+        why = window.get_by_label("Why", exact=True)
+        expect(why).to_be_focused()
+        expect(why).to_have_value(re.compile(r"orders on Monday\.\n?$"))
+        expect(window.get_by_role("textbox", name="Decision", exact=True)).to_have_value(title)
+        page.wait_for_timeout(600)
+        expect(window).to_be_visible()
+        proposed = self.contexts["piotr"].request.get(f"/api/v1/projects/{self.ids['shared']}/decisions").json()
+        items = proposed.get("items", proposed) if isinstance(proposed, dict) else proposed
+        self.assertFalse(any(title in (item.get("title") or "") for item in items), "nothing was proposed while the person was still writing")
+        page.keyboard.press("Escape")
+        expect(window).to_have_count(0)
+        composer.fill("")
+
+    def test_39_esc_from_a_new_task_s_panel_gives_the_focus_to_the_task_s_card(self) -> None:
+        """personas-36 note: Esc in the composer, C, a title and Ctrl+Enter, then Esc from the new task's panel focused a message (the one
+        Esc had left the composer for), not the task the panel showed."""
+        page = self.page()
+        page.goto(f"/projects/{self.ids['shared']}")
+        expect(page.locator("#project-composer")).to_be_focused()
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(300)
+        self.assertTrue(page.evaluate("() => /^message-/.test(document.activeElement.id)"), "Esc left the composer for a message")
+        page.keyboard.press("c")
+        window = page.get_by_role("dialog", name="New task")
+        expect(window).to_be_visible()
+        title = f"Wipe the proofing shelves {uuid.uuid4().hex[:4]}"
+        page.keyboard.type(title)
+        page.keyboard.press("Control+Enter")
+        panel = page.locator("#details")
+        expect(panel.get_by_role("heading", name=title)).to_be_visible()
+        expect(window).to_have_count(0)
+        card = page.locator(f"#content [data-native-ref^='work:'][aria-label$='{title}']")
+        expect(card).to_have_count(1)
+        page.wait_for_timeout(400)
+        page.keyboard.press("Escape")
+        expect(panel).to_be_hidden()
+        expect(card).to_be_focused()
 
 
 if __name__ == "__main__":

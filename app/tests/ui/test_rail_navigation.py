@@ -287,6 +287,127 @@ class RailNavigation(unittest.TestCase):
                     "el => { const r = el.getBoundingClientRect(); return el.contains(document.elementFromPoint(r.left + 4, r.top + r.height / 2)); }"), "and so is the message just sent")
                 shot(page, f"p3b-decision-r-200-{engine}")
 
+    # ---------------------------------------------------------------- personas-36 (200 %)
+
+    ROOM = """(root) => {
+      const scroller = root.querySelector('.wd__scroll'); const box = scroller.getBoundingClientRect();
+      const clear = (el) => { if (!el) return false; const r = el.getBoundingClientRect(); const x = r.left + Math.min(r.width / 2, 24), y = r.top + r.height / 2;
+        return y > box.top && y < box.bottom && el.contains(document.elementFromPoint(x, y)); };
+      const named = (name) => [...root.querySelectorAll('.wd-decide button')].find((b) => b.textContent.trim() === name);
+      const buttons = Object.fromEntries(['Accept', 'Not now', 'Discuss'].filter(named).map((name) => [name, clear(named(name))]));
+      const lines = [...root.querySelectorAll('.wd-discussion__list .wd-act__item')].filter((li) => clear(li.querySelector('.message-bubble') ?? li)).length;
+      // What stays pinned at the top of the scrolling area: the title and the answer, where they stick.
+      let pinned = box.top;
+      for (const el of root.querySelectorAll('.wd-decision-identity, .wd-decide')) {
+        const r = el.getBoundingClientRect(); if (r.bottom > box.top + 1 && r.top < box.top + 2) pinned = Math.max(pinned, r.bottom); }
+      const field = root.querySelector('#decision-composer');
+      return { buttons, lines, room: Math.round(box.bottom - pinned), height: Math.round(box.height), field: clear(field) };
+    }"""
+
+    def assert_discussion_room(self, page, label, *, long):
+        panel = page.locator("#details")
+        expect(panel.locator(".wd-discussion__list .wd-act__item").last).to_be_visible()
+        page.wait_for_timeout(600)
+        seen = panel.evaluate(self.ROOM)
+        self.assertTrue(seen["buttons"] and all(seen["buttons"].values()), f"{label}: Accept, Not now and Discuss are in view: {seen}")
+        self.assertTrue(seen["field"], f"{label}: “Write about this decision…” is in view: {seen}")
+        self.assertGreaterEqual(seen["lines"], 2 if long else 1, f"{label}: the discussion shows its lines: {seen}")
+        if long:
+            self.assertGreaterEqual(seen["room"], seen["height"] * 0.5, f"{label}: the discussion keeps at least half of the scrolling room: {seen}")
+        return seen
+
+    def test_08_at_200_percent_a_decision_s_answer_leaves_its_discussion_room(self):
+        """personas-36 P2: at 200 % a decision with 14 messages, opened by R or directly, showed Accept, Not now and Discuss and not one line of
+        its discussion: the pinned title and answer filled the panel's 209 px. They stick only while they leave the discussion its room; then
+        the answer is a bar of its buttons. At 100 % and 200 %, short and long, on the computer and on a phone with large text."""
+        for engine in self.browsers:
+            with self.subTest(engine=engine):
+                page, ids = self.setup_owner(engine, zoom=2)
+                pid = ids["projects"][0]["id"]
+                self.api(page, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": ids["peer_id"]}, "role": "contributor"}, 201)
+
+                def propose(title, lines):
+                    decision = self.api(ids["peer"], "POST", f"/api/v1/projects/{pid}/decisions", {"title": title,
+                        "rationale": "Flour costs more since October.\n\nThe ovens use more power in winter, and the rolls stay as they are."}, 201)
+                    for line in lines:
+                        said = ids["peer"].request.post(f"/api/v1/decisions/{decision['id']}/discussion", data={"body": line, "clientMessageId": str(uuid.uuid4())}, headers={"origin": ORIGIN})
+                        self.assertIn(said.status, (200, 201), said.text())
+                    return decision
+
+                short = propose("The shop opens at 7 on Saturdays", ["Fine by me."])
+                long = propose("Bread prices go up by 10 % from December", [f"Line {n + 1}: the supplier wrote again about the rye." for n in range(14)])
+                # By R from the Inbox, at 200 %.
+                page.goto("/inbox")
+                item = page.locator(".nyq__list .nyc", has_text="Bread prices go up")
+                expect(item).to_be_visible()
+                for _ in range(4):
+                    if item.get_attribute("aria-current") == "true":
+                        break
+                    page.keyboard.press("j")
+                expect(item).to_have_attribute("aria-current", "true")
+                page.keyboard.press("r")
+                expect(page.locator("#decision-composer")).to_be_focused()
+                self.assert_discussion_room(page, "200 %, R", long=True)
+                shot(page, f"p3b-decision-room-r-200-{engine}")
+                # Directly by its address, at 200 % and at 100 %, the long one scrolled to its newest line and the short one as it opens.
+                state = page.context.storage_state()
+                for zoom in (2, 1):
+                    context = self.browsers[engine].new_context(base_url=ORIGIN, viewport={"width": 1440 // zoom, "height": 900 // zoom}, device_scale_factor=zoom,
+                        storage_state=state, service_workers="block")
+                    self.addCleanup(context.close)
+                    other = context.new_page()
+                    for decision, is_long in ((long, True), (short, False)):
+                        other.goto(f"/projects/{pid}?open=decision:{decision['id']}")
+                        expect(other.locator("#details .wd-decide")).to_be_visible()
+                        other.locator("#details .wd__scroll").evaluate("el => { el.scrollTop = el.scrollHeight; }")
+                        self.assert_discussion_room(other, f"{zoom * 100} %, direct, {'long' if is_long else 'short'}", long=is_long)
+                    shot(other, f"p3b-decision-room-direct-{zoom * 100}-{engine}")
+                # A phone with large text (the root at 200 % from the first frame), its sheet opened directly and read to the end.
+                phone = self.browsers[engine].new_context(base_url=ORIGIN, viewport={"width": 390, "height": 844}, device_scale_factor=3, is_mobile=engine == "chromium",
+                    has_touch=True, storage_state=state, service_workers="block")
+                self.addCleanup(phone.close)
+                phone.add_init_script("document.addEventListener('DOMContentLoaded', () => { document.documentElement.style.fontSize = '200%'; })")
+                sheet = phone.new_page()
+                sheet.goto(f"/projects/{pid}?open=decision:{long['id']}")
+                expect(sheet.locator("#details .wd-decide")).to_be_visible()
+                sheet.locator("#details .wd__scroll").evaluate("el => { el.scrollTop = el.scrollHeight; }")
+                self.assert_discussion_room(sheet, "phone, large text", long=True)
+                shot(sheet, f"p3b-decision-room-phone-large-{engine}")
+
+    def test_09_at_200_percent_no_place_in_the_rail_is_half_under_search(self):
+        """personas-36 P3 5: on a space page at 200 % the rail's middle band scrolled to the space and Home stood half under Search. The band
+        rests with a whole place or tile at its top, unfaded, after the page brings the space into view and after the person scrolls it."""
+        for engine in self.browsers:
+            with self.subTest(engine=engine):
+                page, ids = self.setup_owner(engine, many=True, zoom=2)
+                check = """() => { const band = document.querySelector('.side--rail .side__rail-middle'); const b = band.getBoundingClientRect();
+                  const top = b.top + band.clientTop; const fade = parseFloat(getComputedStyle(band).getPropertyValue('--fade-top')) || 0; const found = [];
+                  for (const el of band.querySelectorAll('a[href], button')) { const r = el.getBoundingClientRect(); if (!r.height) continue;
+                    if (r.top < top - 0.5 && r.bottom > top + 0.5) found.push(`${el.getAttribute('aria-label')} cut by the band's top`);
+                    else if (fade && r.top < top + fade && r.bottom > top) found.push(`${el.getAttribute('aria-label')} under the top fade`); }
+                  const search = document.querySelector('.side--rail button[aria-label="Search"]').getBoundingClientRect();
+                  if (search.bottom > top + 0.5) found.push('Search reaches into the band');
+                  return { found, scrolled: band.scrollTop }; }"""
+                for index in (len(ids["projects"]) - 1, len(ids["projects"]) // 2):
+                    page.goto(f"/projects/{ids['projects'][index]['id']}")
+                    expect(page.locator(".side--rail .side__rail-project.is-open")).to_be_visible()
+                    page.wait_for_timeout(700)
+                    seen = page.evaluate(check)
+                    self.assertGreater(seen["scrolled"], 0, "the band brought the space into view")
+                    self.assertEqual(seen["found"], [], f"nothing in the rail is half out of view on the space page: {seen}")
+                    shown = page.locator(".side--rail .side__rail-project.is-open").evaluate(
+                        "el => { const r = el.getBoundingClientRect(); return el.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)); }")
+                    self.assertTrue(shown, "the open space is in view")
+                band = page.locator(".side--rail .side__rail-middle")
+                box = band.bounding_box()
+                for delta in (-23, 37, -61):
+                    page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+                    page.mouse.wheel(0, delta)
+                    page.wait_for_timeout(900)
+                    seen = page.evaluate(check)
+                    self.assertEqual(seen["found"], [], f"nothing in the rail is half out of view after a scroll of {delta}: {seen}")
+                shot(page, f"p3b-rail-200-band-{engine}")
+
 
 if __name__ == "__main__":
     unittest.main()
