@@ -202,10 +202,15 @@ class NoticeJourney(unittest.TestCase):
         no notice repeats it there; a plain direct message is no Inbox item, so its notice still shows."""
         page = self.home(path="/inbox")
         expect(page.get_by_role("heading", level=1, name=re.compile("^Inbox"))).to_be_visible()
+        # The first item is the open one; what arrives next comes in above it, unread, as the question in personas-33 did.
         self.say("@Ada Kowalska could you read the north bed gauge before noon")
         expect(page.locator(".nyc", has_text="north bed gauge")).to_be_visible(timeout=8000)
         page.wait_for_timeout(2500)
         expect(self.card(page), "the item is in the list on screen: no notice for it").to_have_count(0)
+        self.say("@Ada Kowalska could you also check the south bed gauge after lunch")
+        expect(page.locator(".nyc", has_text="south bed gauge")).to_be_visible(timeout=8000)
+        page.wait_for_timeout(2500)
+        expect(self.card(page), "nor for the next one, which arrives above the open item").to_have_count(0)
         self.dm("Plain words: the shed key is under the pot.")
         expect(self.card(page)).to_contain_text("Jonas Berg sent you a message", timeout=5000)
         self.card(page).get_by_role("button", name="Close").click()
