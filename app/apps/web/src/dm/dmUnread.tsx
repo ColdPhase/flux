@@ -29,21 +29,16 @@ export function DmUnreadProvider({ identity, children }: { identity: string; chi
   const last = useRef(0);
   const known = useRef(new Set<string>());
   useEffect(() => { known.current = new Set(directMessages.map((dm) => dm.id)); }, [directMessages]);
-  // The conversation just left was read here: it stays read until a read of the list asked after leaving it answers, so it never turns
-  // bold again in between from what was known while it was open (the shell's list, or a read asked before its reading was saved).
+  // The conversation just left was read here: it stays read until a new message arrives in it, so it never turns bold again from what was
+  // known while it was open (the shell's list read again on arrival, or a read asked before its reading was saved).
   const [shown, setShown] = useState(open);
   const [justRead, setJustRead] = useState<string | null>(null);
   if (shown !== open) { setShown(open); if (shown) setJustRead(shown); }
-  const leftRef = useRef<string | null>(null);
-  useEffect(() => { leftRef.current = justRead; }, [justRead]);
   const read = useCallback(() => {
     last.current = Date.now();
     const base = directMessages;
-    const asked = leftRef.current;
-    void listAllDms(undefined, workspaces).then((list) => {
-      setFetched({ identity, base, counts: new Map(list.flatMap((dm) => (dm.unread ?? 0) > 0 ? [[dm.id, dm.unread!] as const] : [])) });
-      if (asked) setJustRead((current) => (current === asked ? null : current));
-    }, () => undefined);
+    void listAllDms(undefined, workspaces).then((list) => setFetched({ identity, base,
+      counts: new Map(list.flatMap((dm) => (dm.unread ?? 0) > 0 ? [[dm.id, dm.unread!] as const] : [])) }), () => undefined);
   }, [directMessages, workspaces, identity]);
   const soon = useCallback((wait = 1200) => {
     if (timer.current) return;
@@ -59,15 +54,18 @@ export function DmUnreadProvider({ identity, children }: { identity: string; chi
     // A hidden tab asks nothing; it looks again when it is shown.
     const visible = () => { if (document.visibilityState === 'visible') soon(0); };
     const now = () => soon(0);
+    // Read or put back from outside a conversation (Mark all as read and its Undo): what the list says next is the person's own choice.
+    const changed = () => { setJustRead(null); soon(0); };
     window.addEventListener('focus', now);
-    window.addEventListener(DM_UNREAD_CHANGED, now);
+    window.addEventListener(DM_UNREAD_CHANGED, changed);
     document.addEventListener('visibilitychange', visible);
     return () => {
-      window.removeEventListener('focus', now); window.removeEventListener(DM_UNREAD_CHANGED, now); document.removeEventListener('visibilitychange', visible);
+      window.removeEventListener('focus', now); window.removeEventListener(DM_UNREAD_CHANGED, changed); document.removeEventListener('visibilitychange', visible);
       if (timer.current) { clearTimeout(timer.current); timer.current = null; }
     };
   }, [soon]);
   useStreamEvents(identity, (event) => {
+    if (event.objectType === 'dm' && event.kind === 'dm.message_sent.v1') setJustRead((current) => (current === event.objectId ? null : current));
     if (event.objectType === 'dm' && EVENTS.has(event.kind) && known.current.has(event.objectId) && document.visibilityState === 'visible') soon();
   }, () => soon(0));
   const counts = useMemo(() => {
