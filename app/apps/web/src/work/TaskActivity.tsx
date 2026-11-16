@@ -36,6 +36,8 @@ import { TypingNotice } from '../typing/TypingNotice';
 import { callWords, useCallLines, useNow } from '../live/callLines';
 import { useStreamEvents } from '../api/stream';
 import { END_SLACK, NewBelow, arrivedBelow, useNewBelow } from '../app/unreadReading';
+import { useObservation } from '../app/receipts';
+import { observeProjectMessages } from '../conversations/api';
 
 // A task's one discussion (F-026 P10, #488, #1364): one timeline, oldest first with the newest at the bottom above the composer (every
 // discussion lists oldest first: founder decision, Hubert, 2026-11-15, round 8, #1424), of what changed and who said what. It has no heading
@@ -263,7 +265,12 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
   const section = useRef<HTMLElement>(null);
   const timeline = useRef<HTMLOListElement>(null);
   const [feed, setFeed] = useState<HTMLElement | null>(null);
-  useLayoutEffect(() => { setFeed(section.current?.closest<HTMLElement>('.wd__scroll') ?? null); }, []);
+  const scroller = useRef<HTMLElement | null>(null);
+  useLayoutEffect(() => { scroller.current = section.current?.closest<HTMLElement>('.wd__scroll') ?? null; setFeed(scroller.current); }, []);
+  // Reading here is reading the discussion (personas-36): what another person wrote, seen in the panel, moves this reader's place in it as
+  // the thread does, so the same discussion opened as a thread (from Search, a notice) shows "New" only above what was not seen here.
+  const others = useMemo(() => state.lines.flatMap((line) => line.kind === 'message' && line.message.authorId !== me.id ? [line.message.id] : []), [state.lines, me.id]);
+  useObservation({ scope: project.id, observe: (ids) => observeProjectMessages(project.id, ids), enabled: !state.loading && others.length > 0, feed: scroller, ids: others, depend: state.lines.length });
   const lineKeys = useMemo(() => state.lines.map((line) => line.key), [state.lines]);
   const below = useNewBelow(feed, undefined, lineKeys);
   const newest = `${state.lines.at(-1)?.key ?? ''}:${composer.pending.length}`;
@@ -347,7 +354,7 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
             // A shown answer carries its agent's colour, and an agent's own message its author's (#1528): the same for every reader.
             const faceHue = shown?.colour ?? (message.author?.kind === 'agent' ? hueOf(message.author) : undefined);
             return (
-              <li key={line.key} className="wd-act__item wd-act__item--message" data-line={line.key} data-message-id={message.id} {...(shown ? { 'data-shown-answer': '', 'aria-label': shownLabel(shown, name).spoken } : {})}>
+              <li key={line.key} className="wd-act__item wd-act__item--message" data-line={line.key} data-message-id={message.id} {...(message.authorId !== me.id ? { 'data-observe-id': message.id } : {})} {...(shown ? { 'data-shown-answer': '', 'aria-label': shownLabel(shown, name).spoken } : {})}>
                 <Face actor={{ kind: agent || shown ? 'agent' : 'human', id: message.authorId, name }} mine={mine} {...(faceHue ? { hue: faceHue } : {})} />
                 <div className="wd-act__body">
                   <p className="wd-act__who">
