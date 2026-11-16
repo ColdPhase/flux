@@ -329,18 +329,23 @@ class RoundFive(unittest.TestCase):
         expect(page.locator(".convo-fold .convo-fold__s")).to_have_text(" · Piotr Nowak (you) created 3 tasks")
         page.goto(f"/projects/{space}?open=decision:{decision['id']}")
         expect(page.locator(".wd-decision-rows")).to_contain_text("Piotr Nowak (you)")
-        # Jonas accepts: the line under the card is in the card line's type.
+        # Jonas accepts. The card changes in place (#1424 D): its own quiet line under the row says who accepted it, in the card line's
+        # type and in the one form of a name, as the panel's "Accepted by" row does; the conversation gets no second line for it.
         context = self.browser.new_context(base_url=ORIGIN, storage_state=self.states["jonas"], service_workers="block")
         accepted = context.request.post(f"/api/v1/decisions/{decision['id']}/accept", data={}, headers={"origin": ORIGIN, "If-Match": f"\"{decision['version']}\""})
         context.close()
         self.assertEqual(accepted.status, 200, accepted.text)
         jonas = self.page("jonas")
         jonas.goto(f"/projects/{space}")
-        line = jonas.locator(".convo-object.is-follow .convo-notice__meta strong")
-        expect(line).to_contain_text("Jonas Berg (you)")
-        card = jonas.locator(".convo-notice__card > .convo-notice__meta strong").first
+        notice = jonas.locator(f".convo-object[data-object-kind='decision.proposed'][data-object-id='{decision['id']}']")
+        line = notice.locator(".convo-object__decided")
+        expect(line).to_contain_text("Accepted by Jonas Berg (you)")
+        expect(jonas.locator(f".convo-object[data-object-id='{decision['id']}']")).to_have_count(1)
+        card = notice.locator(".convo-notice__card > .convo-notice__meta")
         look = "(el) => { const s = getComputedStyle(el); return [s.fontSize, s.fontWeight, s.color]; }"
         self.assertEqual(line.evaluate(look), card.evaluate(look), "the acceptance line and the card's line share their type")
+        jonas.goto(f"/projects/{space}?open=decision:{decision['id']}")
+        expect(jonas.locator(".wd-decision-rows")).to_contain_text("Jonas Berg (you)")
 
     def test_14_people_are_listed_in_one_order(self) -> None:
         page = self.page("piotr")

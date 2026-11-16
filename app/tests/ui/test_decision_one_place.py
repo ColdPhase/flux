@@ -1,7 +1,7 @@
 """Browser tests for one place for a decision (v0.2.1, the founder's bar: the same object opens in the same place from everywhere).
 
 Runs through scripts/check_ui.sh against the running Compose application, on the engine named by FLUX_UI_BROWSER (run it with
-chromium and with webkit). One person owns a space with a message, an accepted rule and a proposal that waits for her. The
+chromium and with webkit). One person owns a space with a message, an accepted rule and a proposal a member made that waits for her. The
 proposal opens from the Inbox, from Search and from an old `/tasks?open=decision:` link (a bookmark), on a computer (1440 x 900)
 and on a phone (390 x 844, touch), and each time it is the same place: the space's Conversation with the decision in the one
 panel (a sheet on the phone), its card in the conversation marked as the open one and in view, and no other card marked.
@@ -23,6 +23,7 @@ from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, start_f
 PASSWORD = "one decision opens in one place"
 STAMP = int(time.time() * 1000)
 ADA = {"name": "Ada Lind", "email": f"ada.oneplace+{STAMP}@example.test"}
+BO = {"name": "Bo Strand", "email": f"bo.oneplace+{STAMP}@example.test"}
 MESSAGE = "Should the probes in bed 5 be replaced before the frost?"
 PROPOSAL = "Replace the bed 5 probes with capacitive ones"
 RULE = "Log moisture every ten minutes"
@@ -111,13 +112,17 @@ class DecisionOnePlace(unittest.TestCase):
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
         type(self).state = page.context.storage_state()
         ws = self.api(page, "POST", "/api/v1/workspaces", {"name": "Riverside garden"}, status=201)
-        project = self.api(page, "POST", f"/api/v1/workspaces/{ws['id']}/projects", {"name": "Garden sensors", "visibility": "restricted"}, status=201)
+        project = self.api(page, "POST", f"/api/v1/workspaces/{ws['id']}/projects", {"name": "Garden sensors", "visibility": "workspace"}, status=201)
         pid = project["id"]
         self.api(page, "POST", f"/api/v1/projects/{pid}/conversations", {"body": MESSAGE, "clientMessageId": str(uuid.uuid4())})
         rule = self.api(page, "POST", f"/api/v1/projects/{pid}/decisions", {"title": RULE, "rationale": "Ten minutes shows a watering"}, status=201)
         self.api(page, "POST", f"/api/v1/decisions/{rule['id']}/accept", {"expectedVersion": 1}, status=200)
-        # Nobody else here can accept it, so it waits in Ada's own Inbox (#763 FT-8).
-        proposal = self.api(page, "POST", f"/api/v1/projects/{pid}/decisions", {"title": PROPOSAL, "rationale": "Capacitive probes do not corrode"}, status=201)
+        # Bo, a member, proposes, so it waits in Ada's Inbox: a person's own proposal never does, even when nobody else can accept it
+        # (#763 FT-8, personas-30).
+        bo = self.context(signed_in=False).new_page()
+        self.api(bo, "POST", "/api/auth/sign-up/email", {"name": BO["name"], "email": BO["email"], "password": PASSWORD}, status=200)
+        self.api(page, "POST", f"/api/v1/workspaces/{ws['id']}/members", {"email": BO["email"], "role": "member"})
+        proposal = self.api(bo, "POST", f"/api/v1/projects/{pid}/decisions", {"title": PROPOSAL, "rationale": "Capacitive probes do not corrode"}, status=201)
         type(self).ids = {"project": pid, "rule": rule["id"], "proposal": proposal["id"]}
         queue = self.api(page, "GET", "/api/v1/needs-you", status=200)
         item = next(entry for entry in queue["items"] if entry["key"] == f"decision:{proposal['id']}")
