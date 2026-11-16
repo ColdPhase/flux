@@ -286,6 +286,42 @@ class DecisionFlows(unittest.TestCase):
             expect(menu.get_by_role("menuitem", name=gone, exact=True)).to_have_count(0)
         page.keyboard.press("Escape")
 
+    def test_09_accept_in_the_panel_works_at_once_and_undo_brings_back_what_it_replaced(self) -> None:
+        """Accept works at once in the panel as in the Inbox, with a 10 s Undo (founder decision, round 8, #1424): the acceptance reaches
+        everyone at once, and Undo takes it back, so the decision it replaced is the current one again and the task that waited for it
+        waits again, with its reason."""
+        page = self.page()
+        pid = self.ids["project"]
+        proposal = self.api(page, "POST", f"/api/v1/projects/{pid}/decisions", {"title": "Water for twelve minutes at dawn", "rationale": "Dawn loses less to the sun",
+                                                                               "supersedes": self.ids["rule"]}, status=201)
+        task = self.api(page, "POST", f"/api/v1/projects/{pid}/work", {"title": "Reset the timers", "status": "blocked", "blocker": "Which length?",
+                                                                     "waitingOn": {"kind": "decision", "id": proposal["id"]}}, status=201)
+        get = lambda path: self.api(page, "GET", path, status=200)  # noqa: E731
+        page.goto(f"/projects/{pid}?open=decision:{proposal['id']}")
+        panel = self.panel(page)
+        expect(panel).to_contain_text("Water for twelve minutes at dawn")
+        panel.get_by_role("button", name=re.compile("^Accept")).click()
+        toast = page.locator(".ui-toast").filter(has_text="Accepted")
+        expect(toast).to_be_visible()
+        # At once, for everyone: nothing waits for the toast to leave.
+        deadline = time.monotonic() + 5
+        while get(f"/api/v1/decisions/{proposal['id']}")["status"] != "accepted" and time.monotonic() < deadline:
+            time.sleep(0.1)
+        self.assertEqual(get(f"/api/v1/decisions/{proposal['id']}")["status"], "accepted")
+        self.assertEqual(get(f"/api/v1/decisions/{self.ids['rule']}")["status"], "superseded")
+        self.assertEqual(get(f"/api/v1/work/{task['id']}")["status"], "in_progress")
+        expect(toast).to_be_visible()
+        toast.get_by_role("button", name="Undo").click()
+        # Undo takes it back for everyone: proposed again, the rule current again, the task waiting again with its reason.
+        expect(panel.get_by_role("button", name=re.compile("^Accept"))).to_be_visible()
+        deadline = time.monotonic() + 5
+        while get(f"/api/v1/decisions/{proposal['id']}")["status"] != "proposed" and time.monotonic() < deadline:
+            time.sleep(0.1)
+        self.assertEqual(get(f"/api/v1/decisions/{proposal['id']}")["status"], "proposed")
+        self.assertEqual(get(f"/api/v1/decisions/{self.ids['rule']}")["status"], "accepted")
+        waiting = get(f"/api/v1/work/{task['id']}")
+        self.assertEqual((waiting["status"], waiting["blocker"], (waiting["waitingOn"] or {}).get("id")), ("blocked", "Which length?", proposal["id"]))
+
     def test_10_a_task_from_a_message_is_titled_with_its_first_clause_selected(self) -> None:
         page = self.page()
         page.goto(f"/projects/{self.ids['project']}")

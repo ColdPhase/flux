@@ -244,6 +244,9 @@ class TaskAnnouncements(unittest.TestCase):
         composer.fill("Numbers at 5 lux: 97% of waves caught.")
         page.locator("#details").get_by_role("button", name="Send to task").click()
         expect(activity.locator("li[data-message-id]").filter(has_text="Numbers at 5 lux")).to_be_visible()
+        # Every discussion lists oldest first (round 8, #1424): the root first, the newest at the bottom above the field.
+        expect(activity.locator("li[data-message-id]").first).to_contain_text(FIRST_WORD)
+        expect(activity.locator("li[data-message-id]").last).to_contain_text("Numbers at 5 lux")
         # Sending is instant (#264): the message shows at once and is stored a moment later.
         expect(page.locator("#details [data-client-message-id]")).to_have_count(0)
         discussion = self.api(page, "GET", f"/api/v1/work/{self.ids['measure']}/discussion", status=200)

@@ -217,6 +217,21 @@ class WaitingFor(unittest.TestCase):
                 self.assertEqual((stored["status"], stored["waitingFor"], stored["blocker"]), ("in_progress", None, None))
                 self.notice(self.page("ada", phone), task["number"], f"#{task['number']} can continue: Kai Nowak is done")
 
+    def test_01b_enter_with_one_person_found_picks_that_person(self):
+        """In every person picker, Enter with exactly one person found picks that person (founder decision, round 8, #1424)."""
+        task = self.block(self.task("Order the reading lamps"), blocker="Waiting for the quote")
+        page = self.page("ada"); panel = self.panel(page, task)
+        card = panel.get_by_role("region", name="Blocker")
+        card.get_by_role("button", name="Edit").click()
+        field = card.get_by_role("combobox", name="Waiting for")
+        field.fill("Kai")
+        expect(card.get_by_role("option", name="Kai Nowak")).to_be_visible()
+        with page.expect_response(lambda r: r.request.method == "PATCH" and r.url.endswith(f"/api/v1/work/{task['id']}")) as saved:
+            field.press("Enter")
+        self.assertEqual(saved.value.status, 200)
+        expect(card.get_by_role("button", name="Stop waiting for Kai Nowak")).to_be_visible()
+        self.assertEqual(api(self.ada_ctx, "GET", f"/api/v1/work/{task['id']}")["waitingFor"]["id"], self.kai)
+
     def test_08_the_panel_waits_for_a_decision_or_a_task_and_the_card_says_what(self):
         for phone in (False, True):
             with self.subTest(phone=phone):
