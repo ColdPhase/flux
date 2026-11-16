@@ -256,7 +256,8 @@ const waitingForOf = (value: unknown): ActorRef | null => {
  * a decision's acceptance and a pull request's rule (#1055).
  */
 export async function resumeWaiting(ports: Pick<WorkPorts, 'work' | 'events'>, principal: Principal, by: ActorRef, ids: readonly string[], stillWaits: (task: WorkRecord) => boolean,
-  because: { said: string; token: 'decision' | 'work' | 'person'; taskId?: string }): Promise<void> {
+  because: { said: string; token: 'decision' | 'work' | 'person'; taskId?: string }): Promise<WorkRecord[]> {
+  const resumed: WorkRecord[] = [];
   for (const id of ids) {
     const task = await ports.work.findWork(id, { lock: true });
     if (!task || task.creationRevertedAt || task.status !== 'blocked' || !stillWaits(task)) continue;
@@ -267,8 +268,13 @@ export async function resumeWaiting(ports: Pick<WorkPorts, 'work' | 'events'>, p
     await ports.work.insertTaskUpdate(record, { kind: 'task.resumed', by, waitingFor: null, reason: because.said });
     await ports.events.record(principal, task.workspaceId, 'project.work_updated.v1', task.projectId, { workId: id,
       ...(task.owner?.kind === 'human' ? { resumedFor: task.owner.id, reason: because.token, ...(because.taskId ? { taskId: because.taskId } : {}) } : {}) });
+    resumed.push(record);
   }
+  return resumed;
 }
+
+/** How long after an acceptance its Undo can take it back (#1424 round 8): the toast's 10 s, paused while pointed at or focused. */
+export const ACCEPT_UNDO_MS = 10 * 60 * 1000;
 
 function linkRows(scope: { workspaceId: string; projectId: string }, from: NewObjectLink['from'], role: NewObjectLink['role'], targets: ObjectRef[], by: ActorRef): NewObjectLink[] {
   return targets.map((to) => ({ id: randomUUID(), ...scope, role, from, to, createdBy: by }));
@@ -759,9 +765,76 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         const scope = { workspaceId, projectId };
         await ports.work.artifactUsed?.(scope,{kind:'decision',id:record.id,revision:`${record.version}:${record.status}`},useFence);
         await useFence.mark(used);
-        await resumeWaiting(ports, principal, by, waiters, (task) => task.waitingOn?.kind === 'decision' && task.waitingOn.id === id, { said: 'the decision was accepted', token: 'decision' });
+        const resumed = await resumeWaiting(ports, principal, by, waiters, (task) => task.waitingOn?.kind === 'decision' && task.waitingOn.id === id, { said: 'the decision was accepted', token: 'decision' });
+        // Its Undo puts back exactly these, while none of them changed since (#1424 round 8).
+        await ports.work.recordResumptions(scope, id, resumed.map((task) => ({ id: task.id, version: task.version })));
         const view = await presentDecision(ports, record);
         await ports.events.record(principal, workspaceId, 'project.decision_accepted.v1', projectId, { decisionId: id });
+        return view;
+      });
+    },
+
+    /**
+     * The accepter's Undo takes an acceptance back (founder decision, Hubert, 2026-11-15, round 8, #1424): Accept works at once with a 10 s
+     * Undo. Only the person who accepted it, with write access now, while it is accepted and unchanged (`If-Match`), within
+     * {@link ACCEPT_UNDO_MS} of the acceptance and while nothing rests on it: a task it resumed changed since, or a newer proposal names it
+     * as the decision it replaces (`DECISION_IN_USE`). The decision is proposed again, a decision it replaced is accepted again, and the tasks
+     * it resumed wait for it again as they were (the reason from their last move into Blocked), without their "can continue" line and
+     * notification. Under the project's graph lock and the decision rows in id order, as Accept takes them.
+     */
+    async unacceptDecision(principal: Principal, decisionId: string, expected: number | undefined): Promise<Decision> {
+      const by = actor(principal);
+      const version = valid.expectedVersion(expected);
+      return uow.run(async (ports) => {
+        const { id, projectId, workspaceId } = await authorized(ports, principal, 'decision', decisionId, 'write');
+        const located = await ports.work.findDecision(id);
+        if (!located) throw notFound('decision');
+        if (by.kind !== 'human' || (located.decidedBy !== null && located.decidedBy !== by.id)) throw new ForbiddenError('Only the person who accepted it can take it back', 'DECISION_NOT_YOURS');
+        await lockProjectGraphs(ports.work, [projectId]);
+        const resumed = await ports.work.resumptions(id);
+        const used = sortedIds(await ports.work.taskUseTargets([{ type: 'decision', id }, ...(located.supersedesId ? [{ type: 'decision' as const, id: located.supersedesId }] : [])]), 'taskIds');
+        const useFence = await ports.work.lockPreparedTaskUse(sortedIds([...new Set([...used, ...resumed.map((task) => task.workId)])], 'taskIds'));
+        const decisionRows = new Map<string, DecisionRecord>();
+        for (const rowId of [...new Set([id, ...(located.supersedesId ? [located.supersedesId] : [])])].sort()) {
+          const retained = await ports.work.findDecision(rowId, { lock: true });
+          if (retained) decisionRows.set(rowId, retained);
+        }
+        const current = decisionRows.get(id);
+        if (!current) throw notFound('decision');
+        if (current.version !== version) throw new VersionConflictError(current.version, await presentDecision(ports, current));
+        if (current.status !== 'accepted' || current.decidedBy !== by.id || !current.decidedAt) throw new ConflictError('This decision is not accepted now', 'DECISION_NOT_ACCEPTED');
+        if (Date.now() - current.decidedAt.getTime() > ACCEPT_UNDO_MS) throw new ConflictError('It was accepted too long ago to undo; propose a new decision to change direction', 'DECISION_UNDO_ENDED');
+        const inUse = () => new ConflictError('Something rests on this acceptance now, so it stays accepted', 'DECISION_IN_USE');
+        if (await ports.work.namedAsReplaced(id)) throw inUse();
+        const earlier = current.supersedesId ? decisionRows.get(current.supersedesId) : undefined;
+        if (current.supersedesId && (!earlier || earlier.status !== 'superseded' || earlier.supersededById !== id)) throw inUse();
+        const tasks: WorkRecord[] = [];
+        for (const entry of resumed) {
+          const task = await ports.work.findWork(entry.workId, { lock: true });
+          if (!task) continue;
+          if (task.version !== entry.version || task.creationRevertedAt) throw inUse();
+          tasks.push(task);
+        }
+        const scope = { workspaceId, projectId };
+        if (earlier) {
+          const restored = await ports.work.updateDecision(earlier.id, { status: 'accepted', supersededById: null, supersededAt: null });
+          await ports.work.artifactUsed?.(scope, { kind: 'decision', id: restored.id, revision: `${restored.version}:${restored.status}` }, useFence);
+        }
+        const record = await ports.work.updateDecision(id, { status: 'proposed', decidedBy: null, decidedAt: null });
+        await ports.work.artifactUsed?.(scope, { kind: 'decision', id: record.id, revision: `${record.version}:${record.status}` }, useFence);
+        await useFence.mark(used);
+        for (const task of tasks) {
+          // The reason it waited with, as its last move into Blocked kept it.
+          const history = await ports.work.listTaskActivity(task.id, { limit: 20, before: null });
+          const blockedWith = history.items.find((entry) => entry.kind === 'status' && entry.to === 'blocked');
+          const blocker = blockedWith?.kind === 'status' ? blockedWith.blocker : null;
+          const back = await ports.work.updateWork(task.id, { status: 'blocked', blocker, waitingFor: null, waitingOn: { kind: 'decision', id } }, by, undefined, { undoes: true });
+          await ports.work.takeBackResumption(back, by, current.decidedAt);
+          await ports.events.record(principal, workspaceId, 'project.work_updated.v1', projectId, { workId: task.id });
+        }
+        await ports.work.resumptions(id, { clear: true });
+        const view = await presentDecision(ports, record);
+        await ports.events.record(principal, workspaceId, 'project.decision_unaccepted.v1', projectId, { decisionId: id });
         return view;
       });
     },

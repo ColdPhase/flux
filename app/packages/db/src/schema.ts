@@ -1313,6 +1313,23 @@ export const projectDecisionDiscussions = pgTable('project_decision_discussions'
 ]);
 
 /**
+ * The tasks an acceptance resumed (#1424 round 8, migration 0091), with each one's version right after: the acceptance's Undo puts exactly
+ * those back to Blocked, and only while none of them changed since.
+ */
+export const projectDecisionResumptions = pgTable('project_decision_resumptions', {
+  decisionId: uuid('decision_id').notNull(),
+  workId: uuid('work_id').notNull(),
+  workspaceId: uuid('workspace_id').notNull(),
+  projectId: uuid('project_id').notNull(),
+  version: integer('version').notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.decisionId, table.workId] }),
+  index('project_decision_resumptions_work_idx').on(table.workId),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.decisionId], foreignColumns: [projectDecisions.workspaceId, projectDecisions.projectId, projectDecisions.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.workId], foreignColumns: [projectWorkItems.workspaceId, projectWorkItems.projectId, projectWorkItems.id] }).onDelete('cascade'),
+]);
+
+/**
  * One receipt per real actor, project, operation and client command UUID (#154, migration 0040). It keeps the
  * produced object, the produced task version and the contribution messages for an exact replay; it is not the
  * #152 connection-command ledger and never debits a grant.

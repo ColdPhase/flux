@@ -293,7 +293,8 @@ and its real discussion under [P5](../design/final/README.md#5-behaviour):
   Opening a link to a message of a task's discussion (`/projects/:id/conversations/:conversationId#message-…`) opens its thread at once;
   the stream does not read back through its older roots looking for it, since the discussion is not one of them.
 
-- **Details of a task (#488).** The panel's Activity is one newest-first timeline: the task's creation, its recorded
+- **Details of a task (#488).** The panel's discussion is one timeline, oldest first with the newest at the bottom above the composer
+  (founder decision, Hubert, 2026-11-15, round 8, #1424: every discussion lists oldest first; "Show earlier" at its top): the task's creation, its recorded
   changes (`GET /api/v1/work/:id/activity`: state, owner, due day and title, each with its author and time) and the
   messages of its discussion (`GET /api/v1/work/:id/discussion`), with "Open in Conversation" into the thread. The
   composer is at the bottom of the panel. Before anyone has written, a person who can write starts the discussion

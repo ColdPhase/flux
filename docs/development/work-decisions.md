@@ -57,6 +57,7 @@ In Details, a person without write access sees **Who decides** in place of the A
 | `GET /api/v1/work/:workId/activity` | The task's history of status, owner, due date and title changes, newest first: `?limit=` 1-50 (30 when omitted) and `?before=` (the `nextBefore` of the page before). Read by exactly those who can read the task ([below](#due-date-and-activity-488)). |
 | `GET/POST /api/v1/projects/:projectId/decisions`, `GET /api/v1/decisions/:id` | Propose with `sources`, `affects`, `supersedes`. |
 | `POST /api/v1/decisions/:id/accept` | Needs `If-Match`; no body (`{ expectedVersion? }` is the same as the header). |
+| `POST /api/v1/decisions/:id/unaccept` | Its accepter's Undo ([below](#accept-at-once-and-undo-takes-it-back-1424-round-8)). Needs `If-Match` (the version the accept returned); `200` with the decision, proposed again. |
 | `POST /api/v1/decisions/:id/withdraw` | Its proposer's Undo ([below](#a-proposal-reaches-everyone-at-once-and-undo-withdraws-it-1424-l)). Needs `If-Match`; `204`. |
 | `GET/POST /api/v1/decisions/:id/discussion` | The decision's one discussion ([below](#a-decisions-discussion-1424)): its messages, or a message written in it. |
 | `POST /api/v1/projects/:projectId/links` | A `related` link between any two objects of the project. |
@@ -76,7 +77,7 @@ toast's Undo is `POST /api/v1/decisions/:id/withdraw`:
 - **Who.** Only the person who proposed it (`403 DECISION_NOT_YOURS` for anyone else, the company's owner included; an agent's
   proposal goes back only through its run's Undo), with write access to the space now (`404` without it, as for a missing decision).
 - **When.** While it is still proposed and unchanged (`If-Match`: `428` without it, `409 VERSION_CONFLICT` when stale,
-  `409 DECISION_NOT_PROPOSED` once accepted, since a decision is never un-accepted) and while nothing else names it: a link to it
+  `409 DECISION_NOT_PROPOSED` once accepted) and while nothing else names it: a link to it
   (a task related to it, a Wiki page that mentions it), a task that waits for it or a decision that replaces it are `409 DECISION_IN_USE`,
   and it stays. So is a decision someone has written about ([its discussion](#a-decisions-discussion-1424)).
 - **What goes.** The decision row, its own `source`/`affects` links, its notifications (their queued emails go with them) and the
@@ -90,8 +91,36 @@ toast's Undo is `POST /api/v1/decisions/:id/withdraw`:
 - **Not done.** A notification the generator is writing in the same instant may outlive the decision (its link then opens nothing);
   the generator writes none for a decision that is already gone.
 
-Accept stays held for its Undo window (the existing rule, design §5 Notices): it cannot be withdrawn, because accepting replaces an
-earlier decision and resumes the tasks that wait for it, so its toast's Undo means it was never sent.
+## Accept at once, and Undo takes it back (#1424 round 8)
+
+Founder decision (Hubert, 2026-11-15, round 8, #1424): Accept works at once everywhere, in the Inbox (`A`, the button) and in the
+decision's panel, with a 10 s Undo; Undo of an acceptance that replaced an earlier decision brings that one back too. Before it, the
+Inbox held the accept until its toast left (so others saw nothing for 10 s) while the panel accepted at once with no Undo. Now both
+send `POST /decisions/:id/accept` at once and the toast's Undo is `POST /api/v1/decisions/:id/unaccept`:
+
+- **Who.** Only the person who accepted it (`decidedBy`; `403 DECISION_NOT_YOURS` for anyone else, the company's owner included), with
+  write access to the space now (`404` without it, as for a missing decision).
+- **When.** While it is still accepted and unchanged (`If-Match` with the version the accept returned: `428` without it, `409
+  VERSION_CONFLICT` when stale; `409 DECISION_NOT_ACCEPTED` once it is proposed again or replaced), within 10 minutes of the acceptance
+  (`409 DECISION_UNDO_ENDED`: the toast's 10 s pause while it is pointed at or focused, so the server allows more, but an Undo is not a
+  way to change direction later), and while nothing rests on it (`409 DECISION_IN_USE`): a task the acceptance let continue was changed
+  since (its version is no longer the one the acceptance left), or a newer proposal names it as the decision it replaces. A message in its
+  discussion, a link or a Wiki mention does not rest on the acceptance and does not stop the Undo.
+- **What it does,** in one transaction, under the project's graph lock and the decision rows in id order as Accept takes them: the
+  decision is `proposed` again (`decidedBy`, `decidedAt` cleared, version + 1); a decision it replaced is `accepted` again (its
+  `supersededBy`, `supersededAt` cleared); every task the acceptance resumed is `blocked` again, waiting for this decision with the reason it
+  had (read from its last move into Blocked), its "can continue" line in the conversation goes, its activity line of the resumption goes,
+  and the "can continue" notification its owner got is deleted with its queued email. The decision's Inbox items come back by themselves
+  (they are derived from its status). One `project.decision_unaccepted.v1` (`{ decisionId }`) tells readers to refetch; the card changes
+  back in place to Proposed.
+- **What the acceptance keeps for it.** `project_decision_resumptions` (migration 0091: `decision_id`, `work_id` and the task's
+  `version` right after it resumed; ids only, `ON DELETE CASCADE`) is written by the accept for each task it resumed and read and
+  cleared by the Undo. A later accept of the same decision writes its own rows.
+- **Not done.** An agent whose task the acceptance resumed is woken as by any resumption; if it changed the task before the Undo, the
+  task is in use and the acceptance stays. A push already delivered for "can continue" is not recalled.
+
+The web client (`useAcceptDecision`, `work/acceptDecision.ts`) is the one way both places accept: the item leaves the Inbox at once,
+the toast is "Accepted" with Undo (`Z`); Undo restores the item and the card, or says "It is in use now, so it stays accepted" on `409`.
 
 ## A decision's discussion (#1424)
 

@@ -56,6 +56,12 @@ export const decisionAcceptPath = (decisionId: string) => `${decisionPath(decisi
  */
 export const decisionWithdrawPath = (decisionId: string) => `${decisionPath(decisionId)}/withdraw`;
 /**
+ * Its accepter takes an acceptance back with Undo (founder decision, Hubert, 2026-11-15, round 8, #1424): Accept works at once, and Undo
+ * makes the decision proposed again, brings back a decision it replaced and puts the tasks it resumed back to waiting. `If-Match` is the
+ * version the accept returned; 200 with the decision. Refused once something rests on the acceptance (`409 DECISION_IN_USE`).
+ */
+export const decisionUnacceptPath = (decisionId: string) => `${decisionPath(decisionId)}/unaccept`;
+/**
  * A decision's one discussion (founder decision, Hubert, 2026-11-15, #1424): a thread on its card in the space's conversation, which its
  * panel shows too. `GET` reads its messages, `POST` (a `SendMessageCommand`) writes one; the first creates the thread.
  */

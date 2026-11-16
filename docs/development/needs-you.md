@@ -50,6 +50,13 @@ on the item's key only reads the notification; the web client does not use it fo
 brings it back. A blocked
 task given to you is its one `blocked` item. Push and email follow the person's level for `assigned`, unchanged.
 
+**Done on your blocked task finishes it** (founder decision 2026-11-15, round 8, #1424). For the owner, the `blocked` item's Done (the button,
+`E`, the phone's swipe) is the task's own change to Done, `PATCH /api/v1/work/:id` with `status: done` against `blocked.version`, said as
+everywhere ("#6 moved to Done"); the item is derived from the task's status, so it leaves. Undo is the same `PATCH` with `status: blocked`, the
+blocker, `waitingFor` or `waitingOn` the item carried, and `restore: true` (the "done" line goes), so the item is back as it was. For the person
+the task waits for (`blocked.waitedBy`), Done stays `POST /work/:id/waiting-done` (they are done, the task resumes). The queue's own `done` action
+on a `blocked:<id>` key is no longer used by the web client.
+
 Home (README §7): Continue never offers what the Inbox holds, so a task given to you is "Waiting for you" until you open it, and
 "Pick up “…” · Jonas added it for you" only after that.
 
@@ -91,7 +98,8 @@ The starter's reply in the thread answers it (#1170), and the asker hears the an
 ## One person accepts
 
 Acceptance is **single-person** ([decision-authority.md](../product/decision-authority.md), DA-2): the first
-person with write access who accepts decides, and there is no un-accept (DA-3). The card therefore does not
+person with write access who accepts decides; only its own Undo, by that person and while nothing rests on it, takes it back
+([work and decisions](work-decisions.md#accept-at-once-and-undo-takes-it-back-1424-round-8), round 8). The card therefore does not
 show "who has accepted". It shows `decision.accepters`: the people who can still accept it now, you first
 (at most six), as "Waiting for you · Jonas can accept too": whose turn it is in words, you first, with no face of your own (persona
 round 28: your face beside "waiting for you" read as that person waiting for you). Accepting takes the decision out of everyone's

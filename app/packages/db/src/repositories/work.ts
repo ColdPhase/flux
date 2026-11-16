@@ -511,6 +511,34 @@ export function workRows(db: DbExecutor) {
       await db.execute(sql`DELETE FROM needs_you_states WHERE item_key = ${`decision:${id}`}`);
       return 'withdrawn';
     },
+    async recordResumptions(scope: { workspaceId: string; projectId: string }, decisionId: string, tasks: readonly { id: string; version: number }[]) {
+      const r = schema.projectDecisionResumptions;
+      await db.delete(r).where(eq(r.decisionId, decisionId));
+      if (tasks.length) await db.insert(r).values(tasks.map((task) => ({ decisionId, workId: task.id, ...scope, version: task.version })));
+    },
+    async resumptions(decisionId: string, options: { clear?: boolean } = {}) {
+      const r = schema.projectDecisionResumptions;
+      const rows = options.clear ? await db.delete(r).where(eq(r.decisionId, decisionId)).returning({ workId: r.workId, version: r.version })
+        : await db.select({ workId: r.workId, version: r.version }).from(r).where(eq(r.decisionId, decisionId));
+      return rows.sort((a, b) => a.workId.localeCompare(b.workId));
+    },
+    async namedAsReplaced(id: string) {
+      const found = await db.select({ id: d.id }).from(d).where(and(eq(d.supersedesId, id), sql`${d.id} <> ${id}`)).limit(1);
+      return found.length > 0;
+    },
+    async takeBackResumption(work: ReturnType<typeof toWorkRecord>, by: Actor, since: Date) {
+      const u = schema.projectTaskUpdates;
+      const [latest] = await db.select({ id: u.id }).from(u)
+        .where(and(eq(u.workId, work.id), eq(u.kind, 'task.resumed'), eq(u.createdByKind, by.kind), eq(u.createdById, by.id)))
+        .orderBy(desc(u.createdAt), desc(u.id)).limit(1);
+      if (latest) await db.delete(u).where(eq(u.id, latest.id));
+      // The owner's "#4 can continue: the decision was accepted", made from the resumption's own event (its queued email goes with it).
+      if (work.owner?.kind === 'human') await db.execute(sql`DELETE FROM notifications n WHERE n.user_id = ${work.owner.id} AND n.reason = 'assigned'
+        AND n.source_type = 'project' AND n.source_id = ${work.projectId} AND n.created_at >= ${since}
+        AND n.url = ${`/projects/${work.projectId}/tasks?open=work:${work.id}`}
+        AND n.event_id IN (SELECT e.id FROM events e WHERE e.kind = 'project.work_updated.v1' AND e.object_id = ${work.projectId}
+          AND e.created_at >= ${since} AND e.data ? 'resumedFor')`);
+    },
     async messageWrittenBy(projectId: string, messageIds: readonly string[], userId: string) {
       if (!messageIds.length) return false;
       const m = schema.projectMessages;

@@ -557,9 +557,10 @@ The keys show next to their actions in menus. In the Inbox, `R` on a decision op
   takes `?open=` off the address. Discuss on the decision already open (in its space or over a thread) adds no entry and only puts the
   cursor in "Write about this decision…".
 - **A picker or a form** (New message's Find people, Invite, Add people with its filter) opens with its first field focused, in view;
-  letters typed while it opens go into it, and so do the keys typed while a picker's Enter opens what it picked. Esc in a form's field closes the form and gives focus back to what opened it. Enter picks
-  the one person found, in New message (also the down arrow) and in Add people's filter; in New message a second Enter opens the
-  conversation, however fast it is typed.
+  letters typed while it opens go into it, and so do the keys typed while a picker's Enter opens what it picked. Esc in a form's field closes the form and gives focus back to what opened it. **In every person
+  picker, Enter with exactly one person found picks that person** (founder decision, Hubert, 2026-11-15, round 8, [#1424](https://github.com/ColdPhase/flux/issues/1424)):
+  New message's Find people (also the down arrow), Add people's filter and a blocked task's "Waiting for" (where the words typed found one
+  row and it is a person, and no row was chosen with the arrows). In New message a second Enter opens the conversation, however fast it is typed.
 - **The Inbox's open item is chosen, never implied:** from the moment the Inbox opens, the item with the ring is the open one (the top
   one at first), on the phone the expanded card too. An item that arrives live never takes its place, so E acts only on what has the
   ring. When the open item leaves (done, given away), its neighbour at its place is chosen, also on coming back to the Inbox.
@@ -1003,6 +1004,17 @@ Community garden sensors, Rain barrel monitor and Tool library.
   notice or a push), when you start it or finish it, and when it is given to someone else. Giving a task to yourself tells nobody and
   is no item. It reaches you by notice, push and email at your notification level, as a task always did; a task given to you that
   is blocked is the one Blocked item, not a Task too.
+- **Done on your blocked task finishes it** (founder decision, Hubert, 2026-11-15, round 8, [#1424](https://github.com/ColdPhase/flux/issues/1424)),
+  as on a task given to you: the Blocked item's Done (the button, `E`, the phone's swipe) moves the task to Done for everyone, the toast says
+  "#6 moved to Done · Undo", and Undo puts it back to Blocked with what it waited for (the person, decision or task and the reason) and in
+  your Inbox. For the person a task waits for, its Done stays theirs: they are done, and the task can continue.
+- **Accept works at once, with Undo** (founder decision, Hubert, 2026-11-15, round 8, [#1424](https://github.com/ColdPhase/flux/issues/1424)):
+  in the Inbox (the button, `A`) and in the decision's panel alike, Accept accepts the decision at once, for everyone: its card reads
+  Accepted, it leaves every Inbox, a decision it replaces is marked replaced and the tasks that waited for it continue. The toast says
+  "Accepted · Undo" for its 10 s. Undo takes the acceptance back for everyone: the decision is Proposed again, in the Inbox of those who
+  can accept it, a decision it replaced is the current one again, and the tasks that continued because of it wait for it again, as they
+  were. Only the person who accepted can undo, and only while nothing rests on the acceptance yet (a task it let continue was changed
+  since, or a newer proposal replaces it); then it stays and the toast says "It is in use now, so it stays accepted".
 - **An answer to your question reaches you** (founder decision, Hubert, 2026-11-14, [#1424](https://github.com/ColdPhase/flux/issues/1424)
   decision 1). When you ask someone something (a message that names them and asks, which reached their Inbox as a Question) and they
   answer in that thread (Inbox › Reply, or in the thread itself) or, in a direct message, in that conversation, the answer is an item of
@@ -1049,9 +1061,10 @@ Drawn by the agents before it was built; the rules of what triggers a notice are
   place (the address changes: another space, view, page or thread, Back). The 10 s pause while the pointer is over it or focus is in
   it, as a notice's do, so Undo can always be reached with Tab or a screen reader; they run on when the pointer or focus leaves.
   `Z` undoes only the Undo toast on screen: once it has left, `Z` does nothing, and an action done in another place is never undone
-  from here. A change held for Undo (Accept, an answer) is sent the moment its toast leaves, for whichever reason
-  (its 10 s, ×, a newer toast, another place, the page closing): a decision is never un-accepted and an answer is never unsaid, so
-  they wait. **A proposed decision is not held** (founder decision L, Hubert, 2026-11-15, [#1424](https://github.com/ColdPhase/flux/issues/1424)):
+  from here. A change held for Undo (an agent's question answered with its buttons) is sent the moment its toast leaves, for whichever
+  reason (its 10 s, ×, a newer toast, another place, the page closing): an answer is never unsaid, so it waits. **Accept is not held**
+  (founder decision, Hubert, 2026-11-15, round 8, #1424): it applies at once and its Undo takes the acceptance back
+  ([Inbox](#inbox)). **A proposed decision is not held** (founder decision L, Hubert, 2026-11-15, [#1424](https://github.com/ColdPhase/flux/issues/1424)):
   like a new task, it reaches everyone at once, and its Undo withdraws it, so it disappears for everyone, with its notifications and
   Inbox items. Its proposer withdraws it while it is still proposed and nothing else names it (a task that waits for it, a link to it);
   accepted or used by then, it stays, and the toast says so. A toast without Undo keeps its own short time (about 5 s, 8 s with
@@ -1537,7 +1550,9 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   tag and no "for <owner>"; only while the owner is not known does the name carry the "Agent" tag.
 - **The task panel**: "#4 · Rain barrel monitor", the title, then Status, Owner (people, then
   Your agents), Due and "In this task" (the people and their agents), then subtasks ("1 of 2
-  done"), the one discussion and "Write about this task…". The discussion has no heading ("Activity" is
+  done"), the one discussion and "Write about this task…". **Every discussion lists oldest first**, the newest at the bottom just
+  above the field, a task's as a decision's and as a conversation (founder decision, Hubert, 2026-11-15, round 8, [#1424](https://github.com/ColdPhase/flux/issues/1424)):
+  "Show earlier" is at its top, and the newest stays in view as it arrives or is sent. The discussion has no heading ("Activity" is
   removed, §8) and is there from the first moment: a new task shows its own first line, "Ada created the
   task", above the composer, and its Send is "Send to task" whether or not anyone has written yet (#1364). At Done, an optional "What came of it"
   row: one line, edited where it is read ("Add a line"), with a "Dropped, not finished" check; a

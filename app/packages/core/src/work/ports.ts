@@ -226,6 +226,19 @@ export interface WorkRepository extends TaskGraphReader {
    * it and the Inbox choices made on it are deleted.
    */
   withdrawDecision(id: string): Promise<'withdrawn' | 'used'>;
+  /**
+   * The tasks an acceptance resumed (#1424 round 8), each with its version right after: kept by the accept (replacing what an earlier
+   * acceptance of the same decision kept), read by its Undo, and cleared by `resumptions(id, { clear: true })`.
+   */
+  recordResumptions(scope: { workspaceId: string; projectId: string }, decisionId: string, tasks: readonly { id: string; version: number }[]): Promise<void>;
+  resumptions(decisionId: string, options?: { clear?: boolean }): Promise<{ workId: string; version: number }[]>;
+  /** Whether a decision other than `replacing` (proposed or accepted) names this one as the decision it replaces (#1424 round 8). */
+  namedAsReplaced(id: string): Promise<boolean>;
+  /**
+   * An acceptance's Undo takes back what its resumption of this task left (#1424 round 8): the task's "can continue" line by `by` in the
+   * conversation, and the "can continue" notifications its owner got from it since `since` (with their queued emails).
+   */
+  takeBackResumption(work: WorkRecord, by: ActorRef, since: Date): Promise<void>;
   /** Whether one of these messages of the project was written by this person (#1424 M: a task made from your own message is yours). */
   messageWrittenBy(projectId: string, messageIds: readonly string[], userId: string): Promise<boolean>;
   /**
@@ -334,6 +347,8 @@ export type WorkEventKind =
   | 'project.decision_accepted.v1'
   /** Its proposer withdrew a proposal with Undo (#1424 L): readers refetch, and the card is gone. */
   | 'project.decision_withdrawn.v1'
+  /** Its accepter took an acceptance back with Undo (#1424 round 8): readers refetch, and the card reads Proposed again. */
+  | 'project.decision_unaccepted.v1'
   | 'project.link_created.v1'
   /** A person's change of Owner ended a local client's hold (#985); the same event as a Stop. */
   | 'project.agent_stopped.v1';
