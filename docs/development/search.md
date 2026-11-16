@@ -64,6 +64,12 @@ The service (`createSearchUseCases`) picks by `usesSearchSyntax(text)`; the curs
 - **At most twelve words are looked up** (the first twelve and the word being typed), each a title and a body clause in each language;
   a search of up to five words is one scan and runs in a few milliseconds, a longer one a scan for each further five words. More
   words, or the longest words first, found nothing more on the research bench (#1387).
+- **The BM25 index writes whole segments** (migration `0093_search_index_segments.sql`, `mutable_segment_rows = 0`). pg_search 0.26
+  otherwise keeps new rows in a mutable segment that every reader tokenizes again, once for each clause, when it plans (its estimates)
+  and when it runs: with the text of a few files there (372 parts, about 1 MB), a two-word search planned for a second and a six-word
+  one for more than the API's 2 s statement limit, so Search said it was unavailable (train 33, 2026-11-16: 67 ms to plan one clause
+  with the rows mutable, 0.6 ms once written; the six-word search 3.2 s and a 500 before, 35 ms after). Each write is now a written
+  segment, merged in the background. An index that replaces this one keeps the option (`WITH (mutable_segment_rows = 0)`).
 - **The score** in a position is `rank / (rank + 10)`, in (0, 1) and in the same order, so that the rows of an encrypted space,
   which the in-memory index ranks from 0 to 1.5, merge with them.
 - **Encrypted spaces** answer plain words the same way, without stems and accents (`plan.anyWord`, `sealed-search.ts`): their content is

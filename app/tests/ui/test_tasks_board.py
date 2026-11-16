@@ -439,10 +439,21 @@ class TasksBoardJourney(unittest.TestCase):
     # ---------------------------------------------------------------- refused moves
 
     def test_07_a_refused_move_restores_the_stored_state(self) -> None:
-        page = self.board("ada")
+        # Kai changes the task meanwhile; Ada's board still shows the earlier version. Her tab hears changes on the live stream and reads
+        # the board again at once, so "meanwhile" is made exact: the stream's work changes wait while she moves the card (WebKit read
+        # Kai's change before the keys and the move it refused was never made).
+        held = {"on": True}
+
+        def stream(socket) -> None:
+            server = socket.connect_to_server()
+            server.on_message(lambda message: None if held["on"] and isinstance(message, str) and '"kind":"project.work_' in message else socket.send(message))
+
+        page = self.page("ada")
+        page.route_web_socket(re.compile(r".*/api/v1/stream.*"), stream)
+        page.goto(f"/projects/{self.ids['project']}/tasks")
+        expect(page.locator(".tb-board")).to_be_visible()
         open_, doing = self.column(page, "To do"), self.column(page, "Doing")
         expect(self.card(open_, DIFFUSER)).to_be_visible()
-        # Kai changes the task meanwhile; Ada's board still shows the earlier version.
         kai = self.page("kai")
         before = self.task(kai, "diffuser")
         self.api(kai, "PATCH", f"/api/v1/work/{self.ids['diffuser']}", {"status": "in_progress", "clientCommandId": str(uuid.uuid4())}, status=200,
@@ -456,6 +467,7 @@ class TasksBoardJourney(unittest.TestCase):
         with page.expect_response(lambda response: response.request.method == "PATCH" and response.url.endswith(f"/api/v1/work/{self.ids['diffuser']}")) as refused:
             page.keyboard.press("Space")
         self.assertEqual(refused.value.status, 409)
+        held["on"] = False
         alert = page.get_by_role("alert").filter(has_text=DIFFUSER)
         expect(alert).to_contain_text("was changed by someone else a moment ago, so it was not moved")
         # The true, stored state: in progress, as Kai left it, and not done.

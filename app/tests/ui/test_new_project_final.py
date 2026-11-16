@@ -199,6 +199,10 @@ class NewProject(unittest.TestCase):
         expect(sheet).to_be_visible()
         tile = sheet.get_by_role("tablist", name="Create").get_by_role("tab", name="Space", exact=True)
         expect(tile).to_be_visible()
+        # Measured once the sheet has come up: while it rises it is moved by a fractional translate, and the 44 px tab then measures
+        # 43.99997 px in Chromium (float arithmetic of the moving layer, not its layout; its computed height is 44 px throughout).
+        tile.evaluate("""el => Promise.all(el.closest('.ui-overlay__surface').getAnimations({subtree: true})
+          .filter((animation) => animation.effect.getComputedTiming().iterations !== Infinity).map((animation) => animation.finished))""")
         self.assertGreaterEqual(tile.bounding_box()["height"], 44)
         tile.tap()
         window = new_space_window(page)

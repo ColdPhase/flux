@@ -809,6 +809,45 @@ class LightMotionJourney(unittest.TestCase):
         if (performance.now() - start < ms) requestAnimationFrame(step); };
       requestAnimationFrame(step); }"""
 
+    # The exit read on the animation's own timeline, not on sampled frames: a loaded WebKit can skip every frame of a 120 ms fade (frames
+    # at 107 and 344 ms, the fade between them), so "it fades" and "it is gone within 120 ms and a few frames" are read from the exit itself.
+    # The fade on the panel's surface is sought to its start and middle in the task that starts it (no frame is painted in between, so the
+    # person never sees the seek), and the frames are counted from the fade's end until the panel is gone.
+    EXIT_WATCH = """() => {
+      const panel = document.getElementById('details');
+      const surface = panel.closest('.ui-overlay__surface') || panel;
+      const out = window.__exit = { fades: [], removed: null };
+      const animate = Element.prototype.animate;
+      let frames = null;
+      const read = () => ({ opacity: Number(getComputedStyle(surface).opacity), present: panel.isConnected,
+        text: panel.querySelector('.ui-panel__body')?.innerText.trim().length ?? 0 });
+      Element.prototype.animate = function (keyframes, options) {
+        const animation = animate.call(this, keyframes, options);
+        const last = Array.isArray(keyframes) ? keyframes[keyframes.length - 1] : null;
+        if (this === surface && last && last.opacity !== undefined && Number(last.opacity) === 0) {
+          const duration = Number(animation.effect.getComputedTiming().duration);
+          const at = (time) => { animation.currentTime = time; return read(); };
+          const fade = { duration, start: at(0), middle: at(duration / 2), finished: false };
+          animation.currentTime = 0;
+          out.fades.push(fade);
+          animation.finished.then(() => {
+            fade.finished = true;
+            frames = 0;
+            const tick = () => { if (frames === null || out.removed) return; frames += 1; requestAnimationFrame(tick); };
+            requestAnimationFrame(tick);
+          }, () => { fade.cancelled = true; });
+        }
+        return animation;
+      };
+      const observer = new MutationObserver(() => {
+        if (document.getElementById('details')) return;
+        out.removed = { framesAfterTheFade: frames };
+        observer.disconnect();
+        Element.prototype.animate = animate;
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+    }"""
+
     def test_10k_a_thread_panel_leaves_with_its_content_in_120_ms_on_a_computer_and_a_phone(self):
         """Closing a thread's panel used to empty it on the first frame and fade a blank box on a computer, and take the phone's sheet away with no fade at
         all, because the thread is the view's own and goes with its route (#901, motion rule 3). The panel now keeps what it showed through its exit."""
@@ -823,6 +862,7 @@ class LightMotionJourney(unittest.TestCase):
                 expect(panel.locator(".thread__feed")).to_contain_text("Moisture first")
                 settled(page)
                 page.evaluate(self.CLOSE_FRAMES, 800)
+                page.evaluate(self.EXIT_WATCH)
                 if how == "escape":
                     page.keyboard.press("Escape")
                 else:
@@ -835,9 +875,18 @@ class LightMotionJourney(unittest.TestCase):
                 self.assertTrue(shown, f"the panel's exit was seen: {frames[:6]}")
                 for frame in shown:
                     self.assertGreater(frame["text"], 40, f"the thread's text stays until the panel is gone, never an empty box: {frame}")
-                fading = [frame for frame in shown if frame["opacity"] is not None and 0 < frame["opacity"] < 1]
-                self.assertTrue(fading, f"it fades out instead of vanishing: {shown}")
-                self.assertLessEqual(shown[-1]["t"] - shown[0]["t"], 260, f"within the exit's 120 ms and a few frames: {shown}")
+                exit_ = page.evaluate("window.__exit")
+                self.assertEqual(len(exit_["fades"]), 1, f"the panel's surface fades out once: {exit_}")
+                fade = exit_["fades"][0]
+                self.assertTrue(fade["start"]["present"] and fade["middle"]["present"], f"the panel is there while it fades: {exit_}")
+                self.assertEqual(fade["start"]["opacity"], 1, f"the fade starts from the panel as shown: {exit_}")
+                self.assertTrue(0 < fade["middle"]["opacity"] < 1, f"it fades out instead of vanishing: {exit_}")
+                self.assertGreater(fade["middle"]["text"], 40, f"the thread's text stays through the fade, never an empty box: {exit_}")
+                self.assertLessEqual(fade["duration"], 120, f"the exit's 120 ms: {exit_}")
+                self.assertTrue(fade["finished"], f"the fade runs to its end before the panel goes: {exit_}")
+                self.assertIsNotNone(exit_["removed"], f"the panel is gone: {exit_}")
+                self.assertIsNotNone(exit_["removed"]["framesAfterTheFade"], f"the panel goes after its fade, not before: {exit_}")
+                self.assertLessEqual(exit_["removed"]["framesAfterTheFade"], 2, f"and within a few frames of its end: {exit_}")
                 self.assertEqual(page.locator("[data-exiting]").count(), 0, "the copy that carried the content through the exit is gone with the panel")
         calm = self.page(phone=False, reduced=True)
         self.open(calm, self.fx.project_url())
