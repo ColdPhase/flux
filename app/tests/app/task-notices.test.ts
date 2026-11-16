@@ -95,8 +95,9 @@ test('no-source and no-key creation are atomic; a genuine agent remains the noti
   const page = await f.notices();
   assert.equal(page.total, 2);
   assert.deepEqual(page.items.find((notice) => notice.workId === keyless.id)!.sources, []);
+  // The agent is named with its owner, who reads this space, for every reader (#339 AC-2, "Measurement agent · notice-owner's agent").
   assert.deepEqual(page.items.find((notice) => notice.workId === created.id)!.createdBy,
-    { kind: 'agent', id: agent.id, name: 'Measurement agent' });
+    { kind: 'agent', id: agent.id, name: 'Measurement agent', projectOwner: { kind: 'human', id: f.owner.id } });
   assert.deepEqual([(await f.counts()).messages, (await f.counts()).conversations], [2, 2]);
 });
 
