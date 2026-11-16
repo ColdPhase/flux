@@ -238,7 +238,7 @@ function ToastItem({ toast, onDone, onLeaving, registerAction, movedAt }: { toas
  * them never lands on a toast. Measured from the open modal surfaces while any toast shows; `movedAt` is when that last
  * changed, for the action's tap guard.
  */
-function useModalLift(active: boolean, stack: RefObject<HTMLElement | null>): { inset: number; movedAt: number } {
+function useModalLift(active: boolean, stack: RefObject<HTMLElement | null>, base: RefObject<HTMLElement | null>): { inset: number; movedAt: number } {
   const [lift, setLift] = useState({ inset: 0, movedAt: -Infinity });
   useLayoutEffect(() => {
     if (!active) return undefined;
@@ -285,11 +285,10 @@ function useModalLift(active: boolean, stack: RefObject<HTMLElement | null>): { 
       // window (a sheet is a stack of rows) has the toast stand above the sheet, over the page behind it, when there is room there.
       const node = stack.current;
       let inset = band;
-      if (node && controls.length) {
-        const kept = node.style.getPropertyValue('--toast-modal-inset');
-        node.style.setProperty('--toast-modal-inset', '0px');
-        const rest = node.getBoundingClientRect();
-        if (kept) node.style.setProperty('--toast-modal-inset', kept); else node.style.removeProperty('--toast-modal-inset');
+      const floor = base.current;
+      if (node && floor && controls.length) {
+        // Where the stack stands with no sheet under it, read from its zero-size twin rather than by moving the stack and putting it back.
+        const rest = { height: node.getBoundingClientRect().height, bottom: floor.getBoundingClientRect().top };
         if (rest.height) {
           const start = Math.max(band, window.innerHeight - rest.bottom);
           let bottom = start;
@@ -336,7 +335,7 @@ function useModalLift(active: boolean, stack: RefObject<HTMLElement | null>): { 
     window.addEventListener('resize', measure);
     measure();
     return () => { cancelAnimationFrame(frame); for (const timer of timers) window.clearTimeout(timer); observer.disconnect(); window.removeEventListener('resize', measure); };
-  }, [active, stack]);
+  }, [active, stack, base]);
   return active ? lift : { inset: 0, movedAt: lift.movedAt };
 }
 
@@ -425,7 +424,8 @@ export function ToastProvider({ children, scopeKey }: { children: ReactNode; sco
   }, []);
   const value = useMemo(() => show, [show]);
   const visible = toasts.filter((toast) => toast.sessionEpoch === sessionEpoch);
-  const lift = useModalLift(visible.length > 0, stack);
+  const base = useRef<HTMLDivElement>(null);
+  const lift = useModalLift(visible.length > 0, stack, base);
   useLayoutEffect(() => {
     const node = stack.current;
     if (!node) return;
@@ -448,6 +448,7 @@ export function ToastProvider({ children, scopeKey }: { children: ReactNode; sco
         </div>,
         document.body,
       )}
+      {createPortal(<div ref={base} className="ui-toasts-base" aria-hidden="true" />, document.body)}
     </LeaveUndoContext.Provider></ToastContext.Provider></ToastScopeContext.Provider></ToastTopContext.Provider></ToastStackContext.Provider>
   );
 }
