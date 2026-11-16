@@ -341,6 +341,24 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
     });
     if (ok) { ownerBase.current = null; delete rebase.current.owner; setOwnerDraft(null); }
   }
+  /** The blocked task's Inbox Done (`POST /needs-you/blocked:<id>`), kept with the person's choice so it is in done today and Undo puts it back. */
+  async function doneAsInbox(words: string, mascot?: 'wink') {
+    if (busy) return;
+    setBusy(true); setError('');
+    const key = `blocked:${item.id}`;
+    try {
+      await resolveNeedsYou(key, { action: 'done' });
+      announceInboxChange();
+      toast({ message: words, ...(mascot ? { mascot } : {}), action: { label: 'Undo', key: 'Z', onClick: () => {
+        void restoreNeedsYou(key).then(() => { announceInboxChange(); if (isCurrent()) reload(); }, (cause: unknown) => {
+          toast({ message: cause instanceof ApiError && cause.message ? cause.message : 'Undo did not work. Open the task to look again.', tone: 'danger' });
+        });
+      } } });
+      if (isCurrent()) reload();
+    }
+    catch (cause) { if (isCurrent()) { setError(readable(cause)); if (cause instanceof ApiError && (cause.status === 409 || cause.status === 404)) reload(); } }
+    finally { setBusy(false); }
+  }
   // One tap or a key changes the state at once, and the toast takes it back (S9).
   async function setState(next: WorkStatus) {
     if (!writable || busy || next === item.status) return;
@@ -421,24 +439,6 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
   const waitedOnMe = item.status === 'blocked' && item.waitingFor?.id === me.user.id;
   // A task of your own that waits for you is finished by its Done, as in the Inbox.
   const waitingDone = () => doneAsInbox(item.owner?.kind === 'human' && item.owner.id === me.user.id ? stateWords(item, 'done') : `${taskNumber(item)} can continue`);
-  /** The blocked task's Inbox Done (`POST /needs-you/blocked:<id>`), kept with the person's choice so it is in done today and Undo puts it back. */
-  async function doneAsInbox(words: string, mascot?: 'wink') {
-    if (busy) return;
-    setBusy(true); setError('');
-    const key = `blocked:${item.id}`;
-    try {
-      await resolveNeedsYou(key, { action: 'done' });
-      announceInboxChange();
-      toast({ message: words, ...(mascot ? { mascot } : {}), action: { label: 'Undo', key: 'Z', onClick: () => {
-        void restoreNeedsYou(key).then(() => { announceInboxChange(); if (isCurrent()) reload(); }, (cause: unknown) => {
-          toast({ message: cause instanceof ApiError && cause.message ? cause.message : 'Undo did not work. Open the task to look again.', tone: 'danger' });
-        });
-      } } });
-      if (isCurrent()) reload();
-    }
-    catch (cause) { if (isCurrent()) { setError(readable(cause)); if (cause instanceof ApiError && (cause.status === 409 || cause.status === 404)) reload(); } }
-    finally { setBusy(false); }
-  }
   const finished = isFinished(item);
   const { toggle: thoughtToggle, links: thoughts } = useThoughtLinks({ item, project: context.project, links: relations.links, reload });
   const composer = useComposerDraft(me.user.id, context.project.id, `task:${item.id}`);
