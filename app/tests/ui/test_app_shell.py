@@ -874,11 +874,18 @@ class AppShellJourney(unittest.TestCase):
         page.get_by_role("button", name="Save new password").click()
         expect(page.get_by_text("That password is too easy to guess.")).to_be_visible()
         expect(page.get_by_role("link", name="Request a new link")).to_have_count(0)
+        expect(page.get_by_text(f"Reset the password for {EMAIL}.")).to_be_visible()
         page.get_by_label("New password", exact=True).fill(NEW_PASSWORD)
         page.get_by_label("Repeat new password").fill(NEW_PASSWORD)
+        requests: list[str] = []
+        page.on("request", lambda request: requests.append(request.url))
         page.get_by_role("button", name="Save new password").click()
         expect(page).to_have_url(f"{ORIGIN}/sign-in")
         expect(page.get_by_role("status").filter(has_text="Your password was changed")).to_be_visible()
+        # The address the reset page named is filled in, so only the new password is left to type (personas-35); it travels in no address.
+        expect(page.get_by_label("Email")).to_have_value(EMAIL)
+        expect(page.get_by_label("Password")).to_be_focused()
+        self.assertFalse([url for url in requests + [page.url] if "jo.marsh" in url], "no address carries the email")
 
         # Resetting signs out every session, including the saved one.
         old = self.page()

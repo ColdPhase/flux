@@ -168,8 +168,13 @@ export function InboxView() {
     const back = [...goneKeys.current].find((key) => now.has(key));
     for (const key of [...goneKeys.current]) if (now.has(key)) goneKeys.current.delete(key);
     if (!back) return;
-    // On a touch screen the item that came back is the expanded card (F-026 §4, C6 of sweep 34); no focus moves there, as nothing was typed.
-    if (touch) { setSelected(back); return; }
+    // On a touch screen the item that came back is the expanded card (F-026 §4, C6 of sweep 34), and it has the focus too (personas-35): focus
+    // was left on the neighbour that had taken its place, or on the page. A field being typed in keeps it.
+    if (touch) {
+      setSelected(back);
+      if (!isTyping(document.activeElement)) requestAnimationFrame(() => rowControl(back)?.focus({ preventScroll: true }));
+      return;
+    }
     const active = document.activeElement;
     if (active && active !== document.body && active.id !== 'content' && !active.closest('.nyq')) return;
     setSelected(back);
@@ -178,10 +183,11 @@ export function InboxView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [keysShown]);
   // Arriving with focus nowhere (G I, a link that keeps no focus): the open item's row takes it, so the keyboard starts in the list, never on
-  // the page's body. A field, a button or a link that has focus keeps it.
+  // the page's body. A field, a button or a link that has focus keeps it. The same on a touch screen (personas-33/34/35: Back or × to the Inbox
+  // left the focus on the page): the expanded card's title takes it, which raises no keyboard.
   const ready = queue.items !== null;
   useEffect(() => {
-    if (!ready || touch) return;
+    if (!ready) return;
     const active = document.activeElement;
     // An empty Inbox (G I with nothing waiting): its heading takes the focus, never the page body (F-026 §4). On every arrival, G I in the
     // Inbox and a return from an item opened from it (Esc, Back) included, the open item has the focus: a sidebar link or a row that

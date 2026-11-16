@@ -302,6 +302,17 @@ export async function forgotPasswordAction({ request }: ActionFunctionArgs): Pro
   return { sentTo: email };
 }
 
+/**
+ * The address whose password was just changed (personas-35): the sign-in page that follows fills its Email with it, as the reset page had
+ * named it. Kept in this tab's memory only, never in an address that could be logged, and given once.
+ */
+let changedFor: string | null = null;
+export function takePasswordChangedFor(): string | null {
+  const email = changedFor;
+  changedFor = null;
+  return email;
+}
+
 export async function resetPasswordAction({ request }: ActionFunctionArgs): Promise<FormResult | Response> {
   const form = await request.formData();
   const token = text(form, 'token');
@@ -319,6 +330,8 @@ export async function resetPasswordAction({ request }: ActionFunctionArgs): Prom
     const message = describeAuthError(error, 'reset');
     return { formError: message, invalidToken: error instanceof ApiError && error.code === 'INVALID_TOKEN' };
   }
+  const account = text(form, 'account').trim();
+  changedFor = account && looksLikeEmail(account) ? account : null;
   return redirect('/sign-in?notice=password-changed');
 }
 

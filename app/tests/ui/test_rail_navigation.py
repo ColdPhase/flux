@@ -40,8 +40,11 @@ class RailNavigation(unittest.TestCase):
         self.assertEqual(response.status, status, f"{path}: {response.status} {response.text()}")
         return response.json() if response.text() else None
 
-    def setup_owner(self, engine, *, coarse=False, many=False):
-        context = self.browsers[engine].new_context(base_url=ORIGIN, viewport={"width": 1280 if coarse else 1440, "height": 800 if coarse else 900},
+    def setup_owner(self, engine, *, coarse=False, many=False, zoom=1):
+        # `zoom` emulates browser zoom as the browser reports it (test_adaptive_matrix AdaptiveReflow): the window divided by it, with the
+        # device pixel ratio multiplied by it. 1440×900 at 200 % is the 720×450 CSS viewport the persona rounds used.
+        width, height = (1280, 800) if coarse else (1440, 900)
+        context = self.browsers[engine].new_context(base_url=ORIGIN, viewport={"width": width // zoom, "height": height // zoom}, device_scale_factor=zoom,
             color_scheme="dark" if coarse else "light", has_touch=coarse, service_workers="block")
         self.addCleanup(context.close)
         page = context.new_page()
@@ -67,9 +70,11 @@ class RailNavigation(unittest.TestCase):
         self.api(peer, "POST", f"/api/v1/dms/{dm['id']}/messages", {"body": "Bring the ToF boards for Friday’s dark-room test.", "clientMessageId": str(uuid.uuid4())}, 201)
         page.goto("/")
         expect(page.get_by_role("heading", name="Home", exact=True)).to_be_visible()
-        page.get_by_role("button", name="Collapse sidebar").click()
+        # A window under 900 px has the rail already.
+        if zoom == 1:
+            page.get_by_role("button", name="Collapse sidebar").click()
         expect(page.locator(".side--rail")).to_be_visible()
-        return page, {"email": email, "user": identity["user"]["id"], "workspace": space["id"], "dm": dm["id"], "projects": projects}
+        return page, {"email": email, "user": identity["user"]["id"], "workspace": space["id"], "dm": dm["id"], "projects": projects, "peer": peer, "peer_id": peer_id}
 
     def assert_native_target(self, page, locator, coarse):
         self.assertEqual(locator.evaluate("el => ['A','BUTTON'].includes(el.tagName)"), True)
@@ -194,6 +199,93 @@ class RailNavigation(unittest.TestCase):
                 self.assertTrue(current["stopRequested"] or current["status"] == "stopped", str(current["status"]))
                 expect(rail.locator(".agentlive")).to_have_count(0, timeout=25000)
                 expect(rail.get_by_role("link", name=re.compile("Ada Kowalska, Settings"))).to_be_in_viewport()
+
+    # ---------------------------------------------------------------- 200 % (personas-33/34/35 P3s)
+
+    def test_05_at_200_percent_the_rail_count_and_search_are_clear(self):
+        """The Inbox count sat on its icon, and Search was half under New once the rail's band scrolled to the open space."""
+        for engine in self.browsers:
+            with self.subTest(engine=engine):
+                page, ids = self.setup_owner(engine, many=True, zoom=2)
+                self.api(ids["peer"], "POST", f"/api/v1/dms/{ids['dm']}/messages", {"body": "Can you bring the boards on Friday?", "clientMessageId": str(uuid.uuid4())}, 201)
+                page.goto(f"/projects/{ids['projects'][-1]['id']}")
+                rail = page.locator(".side--rail")
+                inbox = rail.get_by_role("link", name=re.compile(r"^Inbox, \d+ new$"))
+                expect(inbox).to_be_visible()
+                page.wait_for_timeout(400)
+                count = page.evaluate("""() => { const link = document.querySelector('.side--rail a[href="/inbox"]'); const c = link.querySelector('.side__count--rail').getBoundingClientRect();
+                  const i = link.querySelector('svg').getBoundingClientRect();
+                  return { overlap: Math.min(c.right, i.right) - Math.max(c.left, i.left) > 0.5 && Math.min(c.bottom, i.bottom) - Math.max(c.top, i.top) > 0.5,
+                    count: [c.left, c.top, c.right, c.bottom], icon: [i.left, i.top, i.right, i.bottom] }; }""")
+                self.assertFalse(count["overlap"], f"the Inbox count stands beside its icon, not on it: {count}")
+                problems = page.evaluate("""() => { const search = document.querySelector('.side--rail button[aria-label="Search"]'); const r = search.getBoundingClientRect(); const found = [];
+                  for (let up = search.parentElement; up && up !== document.body; up = up.parentElement) {
+                    const style = getComputedStyle(up); if (style.overflowY === 'visible' && style.overflowX === 'visible') continue;
+                    const b = up.getBoundingClientRect(); const top = up.hasAttribute('data-scroll-up') ? 24 : 0; const bottom = up.hasAttribute('data-scroll-down') ? 28 : 0;
+                    if (r.top < b.top + top - 0.5 || r.bottom > b.bottom - bottom + 0.5) found.push(`cut or faded by ${up.className}`); }
+                  const add = document.querySelector('.side--rail .side__new'); if (add) { const k = add.getBoundingClientRect(); if (Math.min(k.bottom, r.bottom) - Math.max(k.top, r.top) > 0.5) found.push('under New'); }
+                  if (!search.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2))) found.push('its middle is covered');
+                  return found; }""")
+                self.assertEqual(problems, [], "Search is whole and clear of New")
+                shot(page, f"p3b-rail-200-{engine}")
+
+    def test_06_at_200_percent_a_toast_does_not_cover_the_new_task_s_panel(self):
+        """The toast "Task #12 created · Undo · Another task" stood on the new task's Due row."""
+        for engine in self.browsers:
+            with self.subTest(engine=engine):
+                page, ids = self.setup_owner(engine, zoom=2)
+                page.goto(f"/projects/{ids['projects'][0]['id']}")
+                expect(page.locator(".project-convo")).to_be_visible()
+                page.evaluate("() => document.activeElement instanceof HTMLElement && document.activeElement.blur()")
+                page.keyboard.press("c")
+                dialog = page.get_by_role("dialog", name="New task")
+                expect(dialog).to_be_visible()
+                dialog.get_by_label("Title", exact=True).fill("Wipe the big letters board")
+                dialog.get_by_role("button", name=re.compile("^Create task")).click()
+                toast = page.locator(".ui-toast").filter(has_text=re.compile(r"Task #\d+ created"))
+                expect(toast).to_be_visible()
+                panel = page.locator("#details")
+                expect(panel).to_contain_text("Wipe the big letters board")
+                page.wait_for_timeout(800)
+                apart = page.evaluate("""() => { const t = document.querySelector('.ui-toast:not([data-leaving])').getBoundingClientRect(); const p = document.getElementById('details').getBoundingClientRect();
+                  return { apart: t.right <= p.left + 0.5 || t.left >= p.right - 0.5 || t.bottom <= p.top + 0.5 || t.top >= p.bottom - 0.5, toast: [t.left, t.top, t.right, t.bottom], panel: [p.left, p.top, p.right, p.bottom],
+                    inWindow: t.left >= 0 && t.right <= innerWidth }; }""")
+                self.assertTrue(apart["apart"], f"the toast stands beside the panel, not on it: {apart}")
+                self.assertTrue(apart["inWindow"], f"the toast stays in the window: {apart}")
+                expect(toast.get_by_role("button", name="Undo")).to_be_visible()
+                shot(page, f"p3b-toast-beside-panel-200-{engine}")
+
+    def test_07_at_200_percent_r_on_a_decision_keeps_accept_in_view(self):
+        """R on a decision in the Inbox opened its panel scrolled to the discussion, with Accept, Not now and Discuss out of view above it."""
+        for engine in self.browsers:
+            with self.subTest(engine=engine):
+                page, ids = self.setup_owner(engine, zoom=2)
+                pid = ids["projects"][0]["id"]
+                self.api(page, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": ids["peer_id"]}, "role": "contributor"}, 201)
+                decision = self.api(ids["peer"], "POST", f"/api/v1/projects/{pid}/decisions", {"title": "Bread prices go up by 10 % from December",
+                    "rationale": "Flour costs more since October.\n\nThe ovens use more power in winter, and the rolls stay as they are."}, 201)
+                for line in ("The supplier wrote on Monday.", "Rye flour is up the most.", "We could keep the small loaf as it is.", "Let us decide this week."):
+                    said = ids["peer"].request.post(f"/api/v1/decisions/{decision['id']}/discussion", data={"body": line, "clientMessageId": str(uuid.uuid4())}, headers={"origin": ORIGIN})
+                    self.assertIn(said.status, (200, 201), said.text())
+                page.goto("/inbox")
+                item = page.locator(".nyq__list .nyc", has_text="Bread prices go up")
+                expect(item).to_be_visible()
+                expect(item.locator(".nyc__open")).to_be_focused()
+                page.keyboard.press("r")
+                field = page.locator("#decision-composer")
+                expect(field).to_be_focused()
+                page.keyboard.type("Do the rolls go up too?")
+                page.keyboard.press("Enter")
+                panel = page.locator("#details")
+                expect(panel.get_by_text("Do the rolls go up too?")).to_be_visible()
+                page.wait_for_timeout(600)
+                for name in ("Accept", "Discuss"):
+                    button = panel.get_by_role("button", name=name, exact=True)
+                    shown = button.evaluate("el => { const r = el.getBoundingClientRect(); return el.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)); }")
+                    self.assertTrue(shown, f"{name} is in view with the discussion")
+                self.assertTrue(panel.get_by_text("Do the rolls go up too?").evaluate(
+                    "el => { const r = el.getBoundingClientRect(); return el.contains(document.elementFromPoint(r.left + 4, r.top + r.height / 2)); }"), "and so is the message just sent")
+                shot(page, f"p3b-decision-r-200-{engine}")
 
 
 if __name__ == "__main__":

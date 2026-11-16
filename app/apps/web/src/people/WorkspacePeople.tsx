@@ -51,6 +51,9 @@ async function fetchRoster(workspaceId: string, signal: AbortSignal): Promise<Ro
 export function WorkspacePeople({ workspaceId, onBack, page = false }: { workspaceId: string; onBack: () => void; page?: boolean }) {
   const { me } = useShellData();
   const [roster, setRoster] = useState<Roster | null>(null);
+  // The order the rows were drawn in: a row keeps its place while the page is open (personas-33: Admin chosen for someone moved their row
+  // under the pointer). Someone who joins meanwhile comes after them; the next visit sorts by role again.
+  const [drawn, setDrawn] = useState<{ members: WorkspaceMember[] | null; order: string[] }>({ members: null, order: [] });
   const [failed, setFailed] = useState('');
   const [editing, setEditing] = useState<string | null>(null);
   const [done, setDone] = useState('');
@@ -161,7 +164,8 @@ export function WorkspacePeople({ workspaceId, onBack, page = false }: { workspa
   const myRole = workspace.role ?? 'guest';
   const manager = isManagerRole(myRole);
   const owners = members?.filter((member) => member.role === 'owner').length ?? 0;
-  const ordered = members ? [...members].sort(peopleOrder(me.user.id, (member: WorkspaceMember) => ROLE_LABEL[member.role])) : null;
+  const ordered = members ? keepPlaces(drawn.order, [...members].sort(peopleOrder(me.user.id, (member: WorkspaceMember) => ROLE_LABEL[member.role]))) : null;
+  if (members && ordered && drawn.members !== members) setDrawn({ members, order: ordered.map((member) => member.userId) });
 
   const guests = ordered?.filter((member) => member.role === 'guest') ?? [];
   // On the company's page the people come first, as drawn: one Invite above them, or with single sign-on one line saying who
@@ -583,7 +587,7 @@ function MemberRow({ member, self, workspace, myRole, page, column = false, edit
           </div>
         </div>
       ) : null}
-      {open === 'remove' && !holder ? <p className="people__removing" role="status">{first} loses access to {workspace.name} at once: its spaces, and anything given to them there.</p> : null}
+      {open === 'remove' && !holder ? <p className="people__removing" role="status">{removalWords(first, workspace.name)}</p> : null}
       {/* F-030 (#655): removing an owner or admin of an encrypted workspace changes its key, which is said before it happens. */}
       {open === 'remove' && holder ? (
         <div className="details__confirm people__confirm" role="group" aria-label={`Remove ${member.name}`} data-rotation-confirm="remove" ref={confirmRef}
@@ -606,6 +610,19 @@ function MemberRow({ member, self, workspace, myRole, page, column = false, edit
     </li>
   );
 }
+
+/** `sorted` with each person already drawn in the place they had (`drawn`, their ids in order): a role changed on the page moves no row. */
+function keepPlaces(drawn: string[], sorted: WorkspaceMember[]): WorkspaceMember[] {
+  const at = new Map(drawn.map((id, index) => [id, index]));
+  return [...sorted].sort((a, b) => (at.get(a.userId) ?? Number.MAX_SAFE_INTEGER) - (at.get(b.userId) ?? Number.MAX_SAFE_INTEGER));
+}
+
+/**
+ * What Remove does, in plain words for that person (personas-33/34): what they lose, what stays, and that Restore undoes it all. Their tasks
+ * keep them as owner, marked "(removed)", until someone gives them to another person.
+ */
+const removalWords = (first: string, company: string) =>
+  `${first} loses access to ${company} and its spaces at once. Tasks given to ${first} stay; you can give them to someone else. Restore brings everything back.`;
 
 /** What removing or demoting an owner or admin of an encrypted workspace does to its key (F-030, #655). */
 const rotationText = (workspace: Workspace, first: string) => `${workspace.name} gets a new key, and everything in it is encrypted again in the background. When that finishes, ${first}’s unlock password opens nothing made from then on. The recovery code stops working, and an owner makes a new one. A copy ${first} may already have, such as an old backup, still opens with their old password.`;
@@ -690,7 +707,7 @@ function MemberEditor({ id, member, self, workspace, myRole, withRemove, onClose
           </div>
         ) : (
           <div className="details__confirm people__confirm" role="group" aria-label={`Remove ${member.name}`}>
-            <p>{first} loses access to {workspace.name} at once: its spaces, and anything given to them there.</p>
+            <p>{removalWords(first, workspace.name)}</p>
             <div className="details__actions">
               <Button variant="danger" busy={busy === 'remove'} onClick={() => void remove()}>Remove {first}</Button>
               <Button variant="secondary" onClick={() => setConfirm(null)}>Keep</Button>

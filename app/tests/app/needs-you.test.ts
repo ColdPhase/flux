@@ -4,7 +4,7 @@ import { before, describe, test } from 'node:test';
 import type { Conversation, Decision, InboxResponse, Material, NeedsYouAsideResponse, NeedsYouItem, NeedsYouResponse, Project, SentConversationMessage, SentDmMessage, Workspace, WorkItem } from '@flux/contracts';
 import type { ClientResponse } from './support/http.js';
 import { register } from './support/http.js';
-import { addMember, expectStatus, grant, password, person, project as createProject, workspace, type Person } from './support/people.js';
+import { addMember, expectStatus, grant, password, person, project as createProject, removeMember, workspace, type Person } from './support/people.js';
 import { waitFor } from './support/push.js';
 import { pool } from './support/db.js';
 
@@ -660,5 +660,35 @@ describe('the Inbox needs-you queue', () => {
     const now = json<WorkItem>(await someone.browser.request('GET', `/api/v1/work/${older.id}`), 200);
     json(await patch(someone, `/api/v1/work/${older.id}`, { blocker: 'Waiting for the oak frames', expectedVersion: now.version }), 200);
     assert.deepEqual((await order()).map(([key, at]) => [key, at]), first.map(([key, at]) => [key, at]), 'a new reason keeps its place');
+  });
+
+  test('Remove then Restore keeps what the person put off for later and marked done (personas-35, founder decision F)', async () => {
+    const away = await person('ny-away');
+    await addMember(owner, ws.id, away, 'member');
+    await grant(owner, lamp.id, away, 'contributor');
+    const putOff = json<Decision>(await post(partner, `/api/v1/projects/${lamp.id}/decisions`, { title: 'Water the beds at dawn' }), 201);
+    const finished = json<Decision>(await post(partner, `/api/v1/projects/${lamp.id}/decisions`, { title: 'Mulch the beds in May' }), 201);
+    const own = json<WorkItem>(await post(away, `/api/v1/projects/${lamp.id}/work`, { title: 'Fix the leaking hose', owner: { kind: 'human', id: away.id } }), 201);
+    json(await patch(away, `/api/v1/work/${own.id}`, { status: 'blocked', blocker: 'Waiting for a new clamp', expectedVersion: own.version }), 200);
+    const keys = { later: `decision:${putOff.id}`, done: `decision:${finished.id}`, blocked: `blocked:${own.id}` };
+    const first = await queue(away);
+    for (const key of Object.values(keys)) assert.ok(find(first, key), `${key} needs them`);
+    json(await resolve(away, keys.later, { action: 'snooze', until: inHours(20) }), 200);
+    json(await resolve(away, keys.blocked, { action: 'snooze', until: inHours(20) }), 200);
+    json(await resolve(away, keys.done, { action: 'done' }), 200);
+    const before = await queue(away);
+    assert.deepEqual([before.later, before.doneToday], [2, 1]);
+
+    await removeMember(owner, ws.id, away);
+    // Their Inbox was open: it is read again while they are out, as the page does when the removal reaches it.
+    assert.deepEqual((await queue(away)).items, [], 'nothing needs someone who is no longer in the company');
+    expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/removed-people/${away.id}/restore`), 201);
+
+    const back = await queue(away);
+    for (const key of Object.values(keys)) assert.equal(find(back, key), undefined, `${key} stays where they put it`);
+    assert.deepEqual([back.later, back.doneToday], [2, 1], 'for later and done today are as they were');
+    const lists = await aside(away);
+    assert.deepEqual(new Set(lists.later.map((entry) => entry.item.key)), new Set([keys.later, keys.blocked]));
+    assert.deepEqual(lists.done.map((entry) => entry.item.key), [keys.done]);
   });
 });

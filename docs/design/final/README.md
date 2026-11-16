@@ -435,6 +435,10 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
   card lies over the work's right edge; on the phone it is the sheet below.
   A reply the person has just sent stays whole above the field in a thread, also in the phone's sheet, whatever the
   engine does with the list as the reply is stored ([#1424](https://github.com/ColdPhase/flux/issues/1424)).
+  **A toast never stands on the open panel** (personas-33/34, 200 %): one that would is centred over the work beside the panel instead, as
+  narrow as that work, its actions on a second line where needed. **A proposed decision's answer stays in view:** Accept, Not now and
+  Discuss stick under the decision's pinned title while its discussion scrolls, so R or Discuss, which bring the newest message into view
+  above the field, never hide them (personas-35, 200 %).
 - **Search.** ⌘K, the sidebar's Search and the phone's Search open the same tool (S16).
 - **Settings.** One list of sections on the left and the section on the right, under a header that
   never changes. No section is lost at 820 px.
@@ -560,6 +564,10 @@ The keys show next to their actions in menus. In the Inbox, `R` on a decision op
   Back closes it first, and closing it goes Back. Followed from a link, it takes the link's entry: Back leaves with it, and closing it
   takes `?open=` off the address. Discuss on the decision already open (in its space or over a thread) adds no entry and only puts the
   cursor in "Write about this decision…".
+- **A page opened like a panel** (Space settings, from the header's faces or ⋯ › Settings) takes the focus on its heading, as any opened
+  panel does; focus is never left on the button that opened it (personas-33).
+- **New message is a step, not a place:** the conversation it opens takes its place in the history, so Back goes to where the person
+  started, never to the picker (personas-34, the phone's Back).
 - **A picker or a form** (New message's Find people, Invite, Add people with its filter) opens with its first field focused, in view;
   letters typed while it opens go into it, and so do the keys typed while a picker's Enter opens what it picked. Esc in a form's field closes the form and gives focus back to what opened it. **In every person
   picker, Enter with exactly one person found picks that person** (founder decision, Hubert, 2026-11-15, round 8, [#1424](https://github.com/ColdPhase/flux/issues/1424)):
@@ -572,7 +580,10 @@ The keys show next to their actions in menus. In the Inbox, `R` on a decision op
   **The same on a touch screen** (coordinator decision, sweep 34 C6 and C7, 2026-11-16): what Undo, `Z`, Put back or Bring back now
   returns is the expanded card, and a card opened from the list (a tap on its title, its Reply or Open) is the open item, so ×, ‹ Inbox or
   Back return with that card expanded, or, when it left meanwhile (a task given to you, Done or Accept in its sheet), with its neighbour
-  at its place expanded, never the card that was expanded before.
+  at its place expanded, never the card that was expanded before. **That card has the focus too** (founder direction, Hubert, 2026-11-16,
+  personas-33 to 35): its title, which raises no keyboard, never the page or the neighbour that stood in for it. Reply puts the cursor in
+  the reply field at once and it stays there while the sheet settles around it, the first time too; Undo of Accept in a decision's sheet
+  gives the focus back to Accept.
 - **One press, one action in the Inbox** (personas-34): the open item's neighbour swaps in the moment an action takes it out, so for
   450 ms after Accept, Done, Not now, Approve all, an answer, Unblock, Put back or Bring back now, every action of the Inbox (its buttons
   on the computer and in the phone's tray, Join, Open, Reply, Discuss, the rows' Put back and Bring back now, and the keys A, E, S, R and
@@ -1779,12 +1790,19 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
     round, 2026-11-15, #1424: the field has no second hint saying it again).
     An owner sees it for everyone but themselves, an admin for members and guests. Nothing else on the page changes.
   - There is no AI switch here; AI is per space.
+  - **Remove** asks on the row in plain words for that person (personas-33/34): "Tomek loses access to Riverside and its spaces at once.
+    Tasks given to Tomek stay; you can give them to someone else. Restore brings everything back." Their tasks keep them as owner or as the
+    person waited for, and every place that names them there (the panel, the board, a card, a row) says "Tomek Wiśniewski (removed)" until
+    Restore or until the task is given to someone else (personas-33). A removed person's Home makes no offer to turn notifications on
+    (personas-34). A role chosen on a row moves no row while the page is open (personas-33: Admin sorted the row up under the pointer); the
+    next visit sorts by role again.
   - **Removed · N** (owners and admins; under the links waiting to be used): the people who left or were removed, each row a face, the
     name and one line, "maja@example.org · Admin · 3 spaces" (the role they had and the spaces they were in, Everyone counted, as the sidebar counts
     them, personas-30), with a quiet **Restore**. **Restore brings a person back as they were** (founder decision, Hubert, 2026-11-15,
     [#1424](https://github.com/ColdPhase/flux/issues/1424) F): the same role (an Admin comes back an Admin), the same spaces with the
     same role in each (a space deleted since is skipped), and their direct messages, so neither side reads "Maja left this
-    conversation". The status line says so, as Remove says its own: "Maja Wiśniewska is back in Riverside as Admin, in 3 spaces." The note under the list is one line,
+    conversation". Their Inbox choices are kept through it too: what they put off for later or marked done is where they left it
+    (personas-35: 26 items put off came back into the Inbox). The status line says so, as Remove says its own: "Maja Wiśniewska is back in Riverside as Admin, in 3 spaces." The note under the list is one line,
     "Restore brings someone back with the role, spaces and direct messages they had." An encrypted space's people stay with its own
     admins, who add them there again. A former owner's row has no Restore for an admin (only an owner gives the owner role) and reads
     "An owner can restore them" in its place.
@@ -2150,7 +2168,11 @@ On the phone the Assistant conversation is a normal conversation. Its header lis
   same Someone new? row as Space settings, the same component and flow (the link is made, copied and shown in place), and Create space
   ties each link made in the window to the new space. **A window closed without Create revokes the links it made** (Cancel, ×,
   Escape; and an encrypted space, which takes no link): a link made for a space that was never made would otherwise go on working as a
-  company link nobody asked for (persona round, 2026-11-15, #1424). AI is a switch, on by
+  company link nobody asked for (persona round, 2026-11-15, #1424). **Several links live side by side and the window says what Cancel does
+  before it is pressed** (personas-33 to 35, 2026-11-16): each Someone new? link stays listed with its own "Link for …" and Copy link (a new
+  one never hides an earlier one, which still works), and under People, also with Add people folded, one quiet line lists who is waiting:
+  "Invited with a link: ana@…, leo@…. The links add them to Bakery floor once you create it; Cancel turns them off." Space settings lists
+  the links it made the same way. AI is a switch, on by
   default, and Encrypted a switch, off by default ("Can't be turned off later"). Cancel and
   Create space have the same height.
 - **With Encrypted on,** the AI row is dimmed ("No AI in encrypted spaces"). The window adds the
@@ -2286,6 +2308,10 @@ the toast with Undo, the tokens and the existing icons. No new setting, mode or 
 | | | |
 | --- | --- | --- |
 | ![Sign in](screens/desktop-signin.webp) Sign in | ![Sign in on the phone](screens/phone-signin.webp) Sign in, phone | ![Splash](screens/phone-splash.webp) Splash |
+
+After a password reset, Sign in says "Your password was changed. Sign in with the new one." with Email already filled with the address the
+reset page named, and the cursor in Password (personas-35). The address goes with the reset form and is kept in the tab's memory only, never
+in an address that could be logged.
 
 ### The invite page
 

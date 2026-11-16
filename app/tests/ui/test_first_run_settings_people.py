@@ -522,6 +522,49 @@ class FirstRunSettingsPeople(unittest.TestCase):
                 expect(newcomer).to_have_url(f"{ORIGIN}/projects/{pid}")
                 expect(newcomer.get_by_role("heading", level=1, name=name)).to_be_visible()
 
+    def test_11e_new_space_lists_every_link_it_made_and_says_what_cancel_does(self) -> None:
+        """personas-33/34/35 P3: in New space each Someone new? link stays listed beside the earlier ones (each still works), the window lists
+        who is invited with Add people closed too, and it says before Cancel that cancelling turns the links off, which Cancel then does."""
+        page = self.page("maria")
+        page.goto("/")
+        expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+        page.keyboard.press("c")
+        create_other(page, "Space")
+        win = new_space_window(page)
+        name = f"Seed swap {STAMP}"
+        win.get_by_label("Space name").fill(name)
+        win.get_by_role("button", name="Add people").click()
+        new = win.get_by_role("form", name="Invite someone new")
+        emails = [f"seeds{n}.new+{STAMP}@example.test" for n in (1, 2)]
+        links = []
+        for email in emails:
+            new.get_by_label("Someone new?").fill(email)
+            new.get_by_label("Someone new?").press("Enter")
+            field = win.get_by_label(f"Link for {email}", exact=True)
+            expect(field).to_have_value(re.compile(f"^{re.escape(ORIGIN)}/join#"))
+            links.append(field.input_value())
+        # The first link is still there with its own Copy link: the second did not replace it.
+        expect(win.get_by_label(f"Link for {emails[0]}", exact=True)).to_have_value(links[0])
+        expect(win.get_by_role("group", name="New invite link")).to_have_count(2)
+        invited = win.locator("[data-new-space-invites]")
+        expect(invited).to_have_text(re.compile(rf"^Invited with a link: {re.escape(emails[0])}, {re.escape(emails[1])}\. .*Cancel turns them off\.$"))
+        # Add people folded away: who is invited is still said.
+        win.get_by_role("button", name="Add people").click()
+        expect(new).to_have_count(0)
+        expect(invited).to_be_visible()
+        waiting = [item for item in self.api(page, "GET", f"/api/v1/workspaces/{self.ids['maria:space']}/invites", status=200) if item["email"] in emails]
+        self.assertEqual(len(waiting), 2, "both links work while the window is open")
+        shot(page, f"p3b-new-space-two-links-1440-{UI_BROWSER}")
+        win.get_by_role("button", name="Cancel", exact=True).click()
+        expect(win).to_have_count(0)
+        left: list = []
+        for _ in range(50):
+            left = [item for item in self.api(page, "GET", f"/api/v1/workspaces/{self.ids['maria:space']}/invites", status=200) if item["email"] in emails]
+            if not left:
+                break
+            page.wait_for_timeout(100)
+        self.assertEqual(left, [], "Cancel turned off the links, as the window said it would")
+
     def test_11b_the_sign_in_page_names_the_company(self) -> None:
         """The guide: the company's name is on the sign-in page, and the name setup gave it says nothing."""
         fresh = self.page()

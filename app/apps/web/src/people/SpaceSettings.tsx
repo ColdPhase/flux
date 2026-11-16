@@ -3,7 +3,7 @@ import { Link, useNavigate, useRevalidator } from 'react-router';
 import type { Project, ProjectGrant, ProjectPerson, WorkspaceMember } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
 import { whenPageLive } from '../api/pageLeaving';
-import { awaitField } from '../ui/keys';
+import { awaitField, isTyping } from '../ui/keys';
 import { useStreamEvents } from '../api/stream';
 import { useGithubSetUp } from '../github/useGithubSetUp';
 import { useShellData } from '../app/data';
@@ -101,6 +101,17 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName, inviter
   useEffect(() => { if (leaving) focusOn('.spset__leaving button:last-child'); }, [leaving]);
   // The search or the first person, else "Someone new?" when nobody else is in the company (F-026 §4).
   useEffect(() => { if (adding) focusOn('.spset__add input:not([disabled])'); }, [adding]);
+  // Opened from the header's faces or ⋯ › Settings, the settings take the focus as any opened panel does (F-026 §4, personas-33): the button
+  // that opened them is no longer where the person works. A control inside them, or a field being typed in, keeps it.
+  const headRef = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      const active = document.activeElement;
+      if (active?.closest('[data-space-settings]') || isTyping(active)) return;
+      headRef.current?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [project.id]);
   const changed = (message: string) => { setStatus(message); setProblem(''); load(); void revalidator.revalidate(); };
   // Someone joined with a link made here, was added or removed elsewhere, or their role changed: the people listed are read again at once (#1424).
   useStreamEvents(meId, (event) => {
@@ -227,7 +238,7 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName, inviter
     <div className="pane-scroll">
       <div className="pane-in sset-in spset" data-space-settings="">
         <div className="sset-head">
-          <h2>Space settings</h2>
+          <h2 ref={headRef} tabIndex={-1}>Space settings</h2>
           <p>{encrypted ? 'Only the people added here see this space, and only its admins hold the keys. Not even the company’s admins can open it.'
             : everyone ? `Everyone in ${companyName} is in this space.`
               : 'Only people added here, and the company’s owners and admins, can open this space.'}</p>

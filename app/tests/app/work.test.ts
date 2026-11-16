@@ -6,7 +6,7 @@ import type { Agent, Conversation, Decision, Material, Page, Project, TaskDiscus
 import { workUseCases } from '../../apps/server/src/work/adapters.js';
 import { db, pool } from './support/db.js';
 import type { ClientResponse } from './support/http.js';
-import { addMember, expectStatus, grant, person, project as createProject, workspace, type Person } from './support/people.js';
+import { addMember, expectStatus, grant, person, project as createProject, removeMember, workspace, type Person } from './support/people.js';
 import { StreamClient } from './support/stream.js';
 
 // Work items, decisions and results linked to conversations (issue #101): access for two
@@ -320,5 +320,28 @@ describe('work, decisions and results in a project', () => {
       assert.equal(after.total, 0, 'the list filter hides work in projects the owner can no longer read');
       assert.equal((await patch(partner, `/api/v1/work/${work.id}`, { status: 'done' }, { 'if-match': '"1"' })).status, 404);
     } finally { await Promise.all([partnerLive.close(), outsiderLive.close()]); }
+  });
+
+  test('a task owned by, or waiting for, someone removed from the company says so where the name is shown, until Restore (personas-33)', async () => {
+    const bench = await createProject(owner, ws.id, 'Removed people', 'restricted');
+    const tomek = await person('work-tomek');
+    await addMember(owner, ws.id, tomek, 'member');
+    await grant(owner, bench.id, tomek, 'contributor');
+    const given = json<WorkItem>(await post(owner, `/api/v1/projects/${bench.id}/work`, { title: 'Sand the lamp base', owner: { kind: 'human', id: tomek.id } }), 201);
+    const waiting = json<WorkItem>(await post(owner, `/api/v1/projects/${bench.id}/work`, { title: 'Paint the lamp base' }), 201);
+    json(await patch(owner, `/api/v1/work/${waiting.id}`, { status: 'blocked', waitingFor: { kind: 'human', id: tomek.id } }, { 'if-match': `"${waiting.version}"` }), 200);
+    const names = async () => {
+      const one = json<WorkItem>(await get(owner, `/api/v1/work/${given.id}`), 200);
+      const other = json<WorkItem>(await get(owner, `/api/v1/work/${waiting.id}`), 200);
+      const listed = json<{ items: WorkItem[] }>(await get(owner, `/api/v1/projects/${bench.id}/work`), 200).items;
+      return [one.owner?.name, other.waitingFor?.name, listed.find((item) => item.id === given.id)?.owner?.name, listed.find((item) => item.id === waiting.id)?.waitingFor?.name];
+    };
+    assert.deepEqual(await names(), ['work-tomek', 'work-tomek', 'work-tomek', 'work-tomek']);
+    await removeMember(owner, ws.id, tomek);
+    assert.deepEqual(await names(), Array(4).fill('work-tomek (removed)'), 'the panel, the board and the cards say who is gone');
+    const still = json<WorkItem>(await get(owner, `/api/v1/work/${given.id}`), 200);
+    assert.equal(still.owner?.id, tomek.id, 'the task stays theirs until someone gives it to another person');
+    expectStatus(await post(owner, `/api/v1/workspaces/${ws.id}/removed-people/${tomek.id}/restore`, {}), 201);
+    assert.deepEqual(await names(), ['work-tomek', 'work-tomek', 'work-tomek', 'work-tomek'], 'Restore brings the plain name back');
   });
 });

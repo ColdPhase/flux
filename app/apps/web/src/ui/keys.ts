@@ -126,9 +126,42 @@ export function focusFieldMatching(selector: string): () => void {
   return focusFieldBy(() => document.querySelector<HTMLElement>(selector));
 }
 
+/** How long a field that was given the focus keeps it against the page taking it away as it settles (a sheet still opening, personas-35). */
+const HOLD_MS = 1200;
+
+/**
+ * Keeps `field` focused for a moment after it took the focus: a sheet or panel that finishes opening around it can leave the focus on the page
+ * (a phone's first Reply from the Inbox left it there, personas-33/35). Only focus that fell to the page is put back; a press anywhere, or the
+ * focus moving to another control, ends it. Returns the end.
+ */
+function holdFocus(field: HTMLElement): () => void {
+  const until = performance.now() + HOLD_MS;
+  let frame = 0;
+  const end = () => {
+    cancelAnimationFrame(frame);
+    window.clearTimeout(timer);
+    field.removeEventListener('focusout', lost);
+    document.removeEventListener('pointerdown', end, true);
+  };
+  const lost = (event: FocusEvent) => {
+    if (event.relatedTarget) { end(); return; }
+    frame = requestAnimationFrame(() => {
+      const active = document.activeElement;
+      // Another field asked for meanwhile (New message's Enter blurs its search for the conversation's composer) is left to come.
+      if (performance.now() > until || !field.isConnected || fieldOnItsWay()) { end(); return; }
+      if (!active || active === document.body) field.focus({ preventScroll: true }); else end();
+    });
+  };
+  const timer = window.setTimeout(end, HOLD_MS);
+  field.addEventListener('focusout', lost);
+  document.addEventListener('pointerdown', end, true);
+  return end;
+}
+
 function focusFieldBy(find: () => HTMLElement | null): () => void {
   waitForField();
   let frame = 0;
+  let release: (() => void) | null = null;
   const attempt = () => {
     const field = find();
     if (field && document.activeElement !== field) {
@@ -140,12 +173,18 @@ function focusFieldBy(find: () => HTMLElement | null): () => void {
       }
     }
     // The field has focus (perhaps it had it already, and no focus came to end the wait): keys are its own from now on.
-    if (field && document.activeElement === field) { frame = 0; fieldDue = 0; return; }
+    if (field && document.activeElement === field) {
+      frame = 0; fieldDue = 0;
+      // On a touch screen the sheet the field is in may still be opening around it.
+      if (window.matchMedia('(hover: none)').matches) release = holdFocus(field);
+      return;
+    }
     if (!fieldOnItsWay()) { frame = 0; return; }
     frame = requestAnimationFrame(attempt);
   };
   attempt();
   return () => {
+    release?.();
     if (!frame) return;
     cancelAnimationFrame(frame);
     fieldDue = 0;

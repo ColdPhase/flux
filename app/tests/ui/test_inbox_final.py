@@ -947,9 +947,11 @@ class InboxFinal(unittest.TestCase):
         expect(self.card(page, "Mulch the north beds")).to_have_attribute("aria-current", "true")
         page.get_by_role("button", name="Undo").tap()
         expect(self.card(page, GATE)).to_have_count(1)
-        # What came back is the open item, on the phone its expanded card (README §4; sweep 34 C6: the neighbour stayed expanded).
+        # What came back is the open item, on the phone its expanded card (README §4; sweep 34 C6: the neighbour stayed expanded), and it has
+        # the focus (personas-35: focus stayed on the neighbour's title).
         expect(self.card(page, GATE)).to_have_attribute("aria-current", "true")
         expect(self.card(page, "Mulch the north beds")).not_to_have_attribute("aria-current", "true")
+        expect(self.card(page, GATE).locator(".nyc__open")).to_be_focused()
         # Not now in the tray is one button with no menu: it puts the item off until tomorrow morning (S11).
         question = self.card(page, GATE)
         question.locator(".nyc__scroll").evaluate("element => element.scrollTo({ left: element.scrollWidth, behavior: 'instant' })")
@@ -960,6 +962,19 @@ class InboxFinal(unittest.TestCase):
         expect(question).to_have_count(0)
         page.get_by_role("button", name="Undo").tap()
         expect(self.card(page, GATE)).to_have_count(1)
+        expect(self.card(page, GATE).locator(".nyc__open")).to_be_focused()
+        # Accept in the decision's sheet, then Undo: focus goes back to Accept, drawn again, never to the page (personas-33/34, F-026 §4).
+        self.card(page, "Mulch the north beds").locator(".nyc__open").tap()
+        sheet = page.locator("#details")
+        expect(sheet.get_by_role("button", name="Accept", exact=True)).to_be_visible()
+        sheet.get_by_role("button", name="Accept", exact=True).tap()
+        expect(page.get_by_role("status").filter(has_text="Accepted")).to_be_visible()
+        page.get_by_role("button", name="Undo").tap()
+        expect(sheet.get_by_role("button", name="Accept", exact=True)).to_be_focused()
+        page.go_back()
+        expect(page).to_have_url(re.compile(r"/inbox$"))
+        # Back in the Inbox, the open item has the focus, not the page (personas-33/34/35).
+        expect(page.locator(".nyq__list .nyc[aria-current='true'] .nyc__open")).to_be_focused()
         # One column on a phone, and no filters.
         expect(page.locator(".nyq--two")).to_have_count(0)
         expect(page.get_by_role("tablist", name="Show")).to_have_count(0)

@@ -76,6 +76,8 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
   const notifyingOf = new WeakMap<NeedsYouItem[], number>();
   /** The spaces the person could read for the read of `candidates` that made the list. */
   const projectsOf = new WeakMap<NeedsYouItem[], Set<string>>();
+  /** Whether the person was in any company for that read: someone removed is in none, and keeps their choices for Restore (personas-35). */
+  const memberOf = new WeakMap<NeedsYouItem[], boolean>();
   /**
    * Everything that needs the person now. `keep`: `note:` keys listed even though their notification is read, so the "done today" list
    * can show a mention, a question or a task the person marked done (Done reads it, #1424 E). `finished`: `note:` keys of tasks given to the
@@ -302,6 +304,7 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
     const sorted = items.sort((a, b) => b.at.localeCompare(a.at) || a.key.localeCompare(b.key));
     notifyingOf.set(sorted, notifying);
     projectsOf.set(sorted, projects);
+    memberOf.set(sorted, workspaceIds.length > 0);
     return sorted;
   }
 
@@ -357,9 +360,12 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
       const item = await doneBlockedItem(entry.key, entry.restore, projectsOf.get(all) ?? new Set());
       if (item) { done.push({ item, entry }); keys.add(entry.key); }
     }
-    // A snooze that ended, and a choice about a decision or task that is no longer a need, are forgotten.
+    // A snooze that ended, and a choice about a decision or task that is no longer a need, are forgotten. Someone removed from the company
+    // sees no need at all while they are out, yet their choices are kept: Restore brings back everything Remove took (founder decision F,
+    // personas-35: 26 items put off for later came back into the Inbox after Remove and Restore).
+    const member = memberOf.get(all) ?? true;
     const stale = stored.filter((entry) => (entry.state === 'snoozed' && !holds(entry, at, statuses)) || moved.has(entry.key)
-      || (!entry.key.startsWith('note:') && !keys.has(entry.key))).map((entry) => entry.key);
+      || (member && !entry.key.startsWith('note:') && !keys.has(entry.key))).map((entry) => entry.key);
     await ports.repository.deleteStates(userId, stale);
     return { items: shown.slice(0, MAX_ITEMS), all, later, done, notifying };
   }

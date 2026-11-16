@@ -426,7 +426,10 @@ class PeopleJourney(unittest.TestCase):
         expect(remove).to_be_visible()
         remove.click()
         confirm = row.get_by_role("group", name="Remove Mia Novak")
-        expect(row).to_contain_text("Mia loses access to Riverside Makers at once: its spaces, and anything given to them there.")
+        # Plain words for that person (personas-33/34): what she loses, what stays, and that Restore undoes it.
+        expect(row.locator(".people__removing")).to_have_text(
+            "Mia loses access to Riverside Makers and its spaces at once. Tasks given to Mia stay; you can give them to someone else. Restore brings everything back.")
+        expect(row).not_to_contain_text("anything given to them there")
         expect(confirm.get_by_role("button", name="Keep")).to_be_focused()
         page.keyboard.press("Escape")
         expect(confirm).to_have_count(0)
@@ -577,6 +580,32 @@ class PeopleFocus(unittest.TestCase):
         expect(page.locator(".people__done")).to_have_text("Noa Berg is now a guest.")
         self.after_next_frames(page)
         expect(page.get_by_role("combobox", name="Role of Noa Berg")).to_be_focused()
+
+    def test_3_a_role_changed_on_the_page_moves_no_row(self) -> None:
+        """personas-33 P3: choosing Admin for someone sorted their row up under the pointer. The rows keep their places until the page is
+        visited again."""
+        page = self.people_page()
+        for key in ("lee", "mia"):
+            added = page.request.post(f"{ORIGIN}/api/v1/workspaces/{self.workspace}/members", data={"email": self.emails[key], "role": "member"},
+                                      headers={"origin": ORIGIN, "idempotency-key": str(uuid.uuid4())})
+            self.assertIn(added.status, (200, 201, 409), added.text())
+        page.reload()
+        roster = page.get_by_role("list", name="People in Fern Hollow")
+        expect(roster.get_by_role("combobox", name="Role of Mia Novak")).to_be_visible()
+        order = lambda: roster.locator(":scope > li[data-person]").evaluate_all("rows => rows.map((row) => row.dataset.person)")
+        before = order()
+        last = roster.locator(":scope > li[data-person]").last
+        name = last.locator(".people__who b").inner_text().strip()
+        role = page.get_by_role("combobox", name=f"Role of {name}")
+        choose(role, label="Admin")
+        expect(page.locator(".people__done")).to_have_text(f"{name} is now an admin.")
+        self.after_next_frames(page)
+        self.assertEqual(order(), before, "the row stays where the pointer is")
+        expect(page.get_by_role("combobox", name=f"Role of {name}")).to_be_focused()
+        # The next visit sorts by role: admins come before members.
+        page.reload()
+        expect(roster.get_by_role("combobox", name=f"Role of {name}")).to_be_visible()
+        self.assertLess(order().index(last_id := before[-1]), len(before) - 1, f"{last_id} is listed among the admins on the next visit")
 
 
 if __name__ == "__main__":

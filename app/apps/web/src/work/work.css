@@ -381,6 +381,8 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
 /* A proposed decision's answer, as on its Inbox card (F-026 P4, S11; #763 D1): Accept / Not now / Discuss and who else can accept,
    directly under the reason, so a phone's half sheet shows it without scrolling. */
 .wd-decide { position: relative; margin-top: var(--s-3); }
+/* It stays in view under the pinned title while the discussion below scrolls (personas-35: at 200 % R scrolled the answer out of view). */
+.wd-decide { position: sticky; top: var(--wd-decide-top, 0px); z-index: 1; background: var(--panel-bg, var(--el)); padding-bottom: var(--s-2); }
 .wd-decide > .wd-muted { margin: 0 0 var(--s-2); }
 .wd-decide__foot { padding-top: var(--s-3); }
 .wd-decide .wd-error { margin-top: var(--s-2); }

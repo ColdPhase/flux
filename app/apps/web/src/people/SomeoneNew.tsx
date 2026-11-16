@@ -16,17 +16,22 @@ async function copyText(text: string): Promise<boolean> {
  * Space settings and New space. The email of someone not in the company makes the company's invite link (Member, 7 days, locked to that
  * address) that also adds them to the space when they join. It is copied at once and shown in place with Copy link, under one sentence; Flux
  * sends no email. In Space settings the link names the space at once (`spaceId`); in New space the space does not exist yet, so the window
- * collects the links (`onMade`) and Create space ties them to it. An address of someone already in the company ticks them in the list instead.
+ * collects the links (`onMade`, `links`) and Create space ties them to it. An address of someone already in the company ticks them in the list
+ * instead. Each link made stays listed with its Copy link (personas-33): a second one never hides the first, which still works.
  */
-export function SomeoneNew({ workspaceId, spaceId, spaceName, companyName, members, inSpace, meId, onTick, onMade }: {
+export function SomeoneNew({ workspaceId, spaceId, spaceName, companyName, members, inSpace, meId, onTick, onMade, links }: {
   workspaceId: string; spaceId: string | null; spaceName: string; companyName: string; members: WorkspaceMember[];
   inSpace: (userId: string) => boolean; meId: string; onTick: (userId: string) => void; onMade?: (invite: WorkspaceInvite) => void;
+  /** The links already made where the parent keeps them (New space), so closing Add people and opening it again lists them still. */
+  links?: WorkspaceInvite[];
 }) {
   const [email, setEmail] = useState('');
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState('');
   const [status, setStatus] = useState('');
-  const [fresh, setFresh] = useState<WorkspaceInvite | null>(null);
+  const [own, setOwn] = useState<WorkspaceInvite[]>([]);
+  const made = links ?? own;
+  const fresh = made.at(-1) ?? null;
   const keys = useRef(attemptKeys());
   const linkRef = useRef<HTMLInputElement>(null);
   async function invite(event: SyntheticEvent) {
@@ -45,7 +50,7 @@ export function SomeoneNew({ workspaceId, spaceId, spaceName, companyName, membe
     try {
       const made = await createInvite(workspaceId, { role: 'member', email: address, expiresInDays: 7, spaceId }, keys.current.for(`space:${spaceId ?? 'new'}:${address}`));
       keys.current.done();
-      setFresh(made); setEmail('');
+      setOwn((list) => [...list, made]); setEmail('');
       onMade?.(made);
       // One sentence says what happened and what to do (#1424, persona B-4): the link's field has no second hint.
       setStatus(await copyText(made.link) ? 'Invite link created and copied. It works once, for 7 days: paste it into your message to them.'
@@ -66,13 +71,14 @@ export function SomeoneNew({ workspaceId, spaceId, spaceName, companyName, membe
       </div>
       {problem ? <p className="people__notice" role="alert"><Icon name="alert" size={13} />{problem}</p>
         : fresh ? null : <p className="people__hint" id="spset-new-hint">They join {companyName} and {spaceName} with the link.</p>}
-      {fresh ? (
-        <div className="people__link" role="group" aria-label="New invite link">
-          <Input ref={linkRef} id="spset-new-link" label={`Link for ${fresh.email ?? 'anyone'}`} readOnly value={fresh.link}
+      {made.map((invite, at) => (
+        <div key={invite.id} className="people__link" role="group" aria-label="New invite link">
+          <Input ref={invite === fresh ? linkRef : undefined} id={`spset-new-link-${at}`} label={`Link for ${invite.email ?? 'anyone'}`} readOnly value={invite.link}
             onFocus={(event) => event.currentTarget.select()} />
-          <div className="details__actions"><Button variant="secondary" onClick={() => void copyText(fresh.link).then((ok) => setStatus(ok ? 'Link copied.' : 'Copying isn’t allowed here. Select the link and copy it.'))}><Icon name="copy" size={14} />Copy link</Button></div>
+          <div className="details__actions"><Button variant="secondary" aria-label={`Copy link for ${invite.email ?? 'anyone'}`}
+            onClick={() => void copyText(invite.link).then((ok) => setStatus(ok ? 'Link copied.' : 'Copying isn’t allowed here. Select the link and copy it.'))}><Icon name="copy" size={14} />Copy link</Button></div>
         </div>
-      ) : null}
+      ))}
       <p className="people__invite-status" role="status">{status ? <><Icon name="check" size={13} />{status}</> : null}</p>
     </div>
   );

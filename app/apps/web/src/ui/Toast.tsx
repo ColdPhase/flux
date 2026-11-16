@@ -238,8 +238,33 @@ function ToastItem({ toast, onDone, onLeaving, registerAction, movedAt }: { toas
  * them never lands on a toast. Measured from the open modal surfaces while any toast shows; `movedAt` is when that last
  * changed, for the action's tap guard.
  */
-function useModalLift(active: boolean, stack: RefObject<HTMLElement | null>): { inset: number; movedAt: number } {
-  const [lift, setLift] = useState({ inset: 0, movedAt: -Infinity });
+/** Where the toasts stand beside an open detail panel, centred over the work left of it (`left`, px) and no wider than it (`width`). */
+type Beside = { left: number; width: number } | null;
+
+/**
+ * The open detail panel on a computer or tablet (never modal, F-026 §4) keeps its rows clear of a toast: a toast that would stand on the panel
+ * is centred over the work beside it instead, as narrow as that work, when there is room there (personas-33/34: at 200 % the toast covered
+ * the new task's Due row). The phone's sheet is a modal surface, which `useModalLift` already keeps clear.
+ */
+function besidePanel(node: HTMLElement | null): Beside {
+  const panel = document.getElementById('details');
+  if (!node || !panel || window.innerWidth <= 640 || document.querySelector('[aria-modal="true"]')) return null;
+  const box = panel.getBoundingClientRect();
+  if (!box.width || !box.height || box.left >= window.innerWidth) return null;
+  const kept = [node.style.getPropertyValue('--toast-left'), node.style.getPropertyValue('--toast-max')] as const;
+  node.style.removeProperty('--toast-left'); node.style.removeProperty('--toast-max');
+  const natural = node.getBoundingClientRect();
+  if (kept[0]) node.style.setProperty('--toast-left', kept[0]);
+  if (kept[1]) node.style.setProperty('--toast-max', kept[1]);
+  if (!natural.height || natural.right <= box.left || natural.left >= box.right || natural.bottom <= box.top || natural.top >= box.bottom) return null;
+  const work = document.querySelector('.app__main')?.getBoundingClientRect();
+  const left = (work?.left ?? 0) + 12;
+  const right = box.left - 12;
+  return right - left >= 200 ? { left: Math.round((left + right) / 2), width: Math.floor(right - left) } : null;
+}
+
+function useModalLift(active: boolean, stack: RefObject<HTMLElement | null>): { inset: number; movedAt: number; beside: Beside } {
+  const [lift, setLift] = useState<{ inset: number; movedAt: number; beside: Beside }>({ inset: 0, movedAt: -Infinity, beside: null });
   useLayoutEffect(() => {
     if (!active) return undefined;
     let frame = 0;
@@ -296,8 +321,9 @@ function useModalLift(active: boolean, stack: RefObject<HTMLElement | null>): { 
         const settled = placedAt !== null && now - placedAt >= ACTION_ARMED_MS;
         placedAt ??= now;
         // A few pixels (a control re-rendering in the band) is not a move: a tap aimed at the toast still lands on it.
-        setLift((current) => current.inset === inset ? current
-          : { inset, movedAt: settled && Math.abs(inset - current.inset) >= MOVE_PX ? now : current.movedAt });
+        const beside = besidePanel(node);
+        setLift((current) => current.inset === inset && current.beside?.left === beside?.left && current.beside?.width === beside?.width ? current
+          : { inset, beside, movedAt: settled && (Math.abs(inset - current.inset) >= MOVE_PX || Math.abs((beside?.left ?? 0) - (current.beside?.left ?? 0)) >= MOVE_PX) ? now : current.movedAt });
         // A surface's content that is still moving (a panel taking the place of another enters a few pixels low and settles) is measured
         // where it is going, not where it was: no DOM change follows its last frame, so measure again when each such motion ends (#1106).
         for (const animation of document.getAnimations()) {
@@ -317,7 +343,7 @@ function useModalLift(active: boolean, stack: RefObject<HTMLElement | null>): { 
     measure();
     return () => { cancelAnimationFrame(frame); observer.disconnect(); window.removeEventListener('resize', measure); };
   }, [active, stack]);
-  return active ? lift : { inset: 0, movedAt: lift.movedAt };
+  return active ? lift : { inset: 0, movedAt: lift.movedAt, beside: null };
 }
 
 /** Short confirmations and recoverable errors, announced politely, bottom centre, one at a time: a newer one replaces the older. */
@@ -423,7 +449,9 @@ export function ToastProvider({ children, scopeKey }: { children: ReactNode; sco
     <ToastStackContext.Provider value={stack}><ToastTopContext.Provider value={toastTop}><ToastScopeContext.Provider value={isCurrent}><ToastContext.Provider value={value}><LeaveUndoContext.Provider value={leaveUndo}>
       {children}
       {createPortal(
-        <div ref={stack} className="ui-toasts" style={lift.inset ? { '--toast-modal-inset': `${lift.inset}px` } as CSSProperties : undefined} role="status" aria-live="polite" aria-relevant="additions text">
+        <div ref={stack} className={`ui-toasts${lift.beside ? ' ui-toasts--beside' : ''}`} role="status" aria-live="polite" aria-relevant="additions text"
+          style={lift.inset || lift.beside ? { ...(lift.inset ? { '--toast-modal-inset': `${lift.inset}px` } : {}),
+            ...(lift.beside ? { '--toast-left': `${lift.beside.left}px`, '--toast-max': `${lift.beside.width}px` } : {}) } as CSSProperties : undefined}>
           {visible.map((toast) => <ToastItem key={toast.id} toast={toast} onDone={remove} onLeaving={end} registerAction={registerAction} movedAt={lift.movedAt} />)}
         </div>,
         document.body,

@@ -253,7 +253,9 @@ body:has(.app) { background: var(--side); }
 .side__ib { position: relative; display: grid; place-items: center; width: var(--ctl); height: var(--ctl); border-radius: var(--r-pill); color: var(--t2); transition: var(--tr); }
 .side__ib:hover { background: var(--hov); color: var(--t1); }
 .side__ib[aria-current="page"] { background: var(--el); color: var(--t1); box-shadow: var(--sh-1); }
-.side__count--rail { position: absolute; top: 0; right: 0; margin: 0; min-width: 18px; height: 18px; padding: 0 5px; }
+/* The rail's Inbox count sits beside the icon's corner, on the rail's own colour, never on the icon's lines (personas-33/34, 200 %). */
+.side__count--rail { position: absolute; top: -5px; right: -11px; margin: 0; min-width: 18px; height: 18px; padding: 0 5px; background: var(--side); box-shadow: 0 0 0 2px var(--side); }
+@media (pointer: coarse) { .side__count--rail { right: -9px; } }
 .side__rail-project { position: relative; display: grid; place-items: center; width: var(--ctl); height: var(--ctl); border-radius: 10px; text-decoration: none; }
 .side__rail-project.is-open { background: var(--el); box-shadow: var(--sh-1); }
 /* The same traveling highlight as the expanded list's (#155): one tile-sized mark that moves to the chosen project while it loads. */

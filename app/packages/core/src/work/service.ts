@@ -104,16 +104,25 @@ export async function linkReader(repo: Pick<WorkRepository, 'links' | 'titles'>,
 const NO_PLAN: TaskPlanRecord = { prerequisites: [], planIntent: null };
 
 /** Links and names needed to present a set of records to one reader. `plans` adds the task graph of work. */
-async function presenter(ports: WorkPorts, ids: string[], actors: (ActorRef | null)[], plans = false, waits: readonly { kind: 'decision' | 'task'; id: string }[] = []) {
+async function presenter(ports: WorkPorts, ids: string[], actors: (ActorRef | null)[], plans = false, waits: readonly { kind: 'decision' | 'task'; id: string }[] = [],
+  people: readonly WorkRecord[] = []) {
   const rules = plans && ids.length ? await ports.work.githubRules(ids) : new Map<string, GithubRuleReading>();
   const ruleAuthors = [...rules.values()].flatMap((rule): ActorRef[] => rule.authorUserId ? [{ kind: 'human', id: rule.authorUserId }] : []);
-  const [linksOf, names, planOf, waitingOn] = await Promise.all([
+  // A task's owner or the person it waits for who is no longer in the company says so where their name is shown (personas-33).
+  const assigned = people.flatMap((record) => [record.owner, record.waitingFor]).filter((ref): ref is ActorRef => ref?.kind === 'human');
+  const [linksOf, names, planOf, waitingOn, gone] = await Promise.all([
     linkReader(ports.work, ids),
     ports.work.names([...actors.filter((item): item is ActorRef => item !== null), ...ruleAuthors]),
     plans && ids.length ? ports.work.taskPlans(ids) : Promise.resolve(new Map<string, TaskPlanRecord>()),
     waits.length ? ports.work.waitingTargets(waits) : Promise.resolve(new Map<string, WaitingOn>()),
+    assigned.length && ports.work.formerMembers ? ports.work.formerMembers(people.map((record) => record.workspaceId), assigned.map((ref) => ref.id)) : Promise.resolve(new Set<string>()),
   ]);
   const named = (ref: ActorRef): NamedPrincipal => ({ ...ref, name: names.get(key(ref)) ?? (ref.kind === 'agent' ? 'Agent' : 'Former member') });
+  /** "Tomek Nowak (removed)": the owner or the person waited for who left the company or was removed, so the task is not left with nobody. */
+  const assignee = (ref: ActorRef, workspaceId: string): NamedPrincipal => {
+    const person = named(ref);
+    return ref.kind === 'human' && gone.has(`${workspaceId}:${ref.id}`) && names.has(key(ref)) ? { ...person, name: `${person.name} (removed)` } : person;
+  };
   const base = (record: { id: string; projectId: string; workspaceId: string; createdAt: Date }) => ({
     id: record.id, projectId: record.projectId, workspaceId: record.workspaceId,
     audience: { kind: 'project' as const, projectId: record.projectId }, links: linksOf(record.id), createdAt: iso(record.createdAt),
@@ -128,14 +137,14 @@ async function presenter(ports: WorkPorts, ids: string[], actors: (ActorRef | nu
       const plan = planOf.get(record.id) ?? NO_PLAN;
       return {
         ...base(record), number: record.number, title: record.title, outcome: record.outcome, criteria: record.criteria, status: record.status, blocker: record.blocker,
-        waitingFor: record.waitingFor ? named(record.waitingFor) : null,
+        waitingFor: record.waitingFor ? assignee(record.waitingFor, record.workspaceId) : null,
         waitingOn: record.waitingOn ? waitingOn.get(`${record.waitingOn.kind}:${record.waitingOn.id}`) ?? null : null,
         dropped: record.dropped, cameOfIt: record.cameOfIt,
         dueOn: record.dueOn,
         dependencyIds: plan.prerequisites.map((item) => item.id),
         prerequisites: plan.prerequisites.map((item) => ({ ...item, met: item.status === 'done' })),
         planIntent: plan.planIntent,
-        owner: record.owner ? named(record.owner) : null,
+        owner: record.owner ? assignee(record.owner, record.workspaceId) : null,
         lifecycle: record.creationRevertedAt && record.creationRevertedBy && record.creationReversionNoticeId
           ? { state: 'creation_reverted', noticeId: record.creationReversionNoticeId, revertedAt: iso(record.creationRevertedAt), revertedBy: named(record.creationRevertedBy) } : { state: 'active' },
         createdBy: named(record.createdBy), githubRule: githubRule(record), version: record.version, updatedAt: iso(record.updatedAt),
@@ -155,7 +164,7 @@ const workActors = (records: WorkRecord[]) => records.flatMap((record) => [recor
 const decisionActors = (records: DecisionRecord[]) => records.flatMap((record) => [record.proposedBy, record.decidedBy ? { kind: 'human' as const, id: record.decidedBy } : null]);
 
 async function presentWork(ports: WorkPorts, record: WorkRecord) {
-  return (await presenter(ports, [record.id], workActors([record]), true, waitsOf([record]))).work(record);
+  return (await presenter(ports, [record.id], workActors([record]), true, waitsOf([record]), [record])).work(record);
 }
 async function presentDecision(ports: WorkPorts, record: DecisionRecord) {
   return (await presenter(ports, [record.id], decisionActors([record]))).decision(record);
@@ -334,7 +343,7 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
       return { items: await present(ports, items), total, ...window, limit: Math.max(window.limit, items.length) };
     });
   }
-  const presentWorks = async (ports: WorkPorts, items: WorkRecord[]) => { const view = await presenter(ports, items.map((i) => i.id), workActors(items), true, waitsOf(items)); return items.map(view.work); };
+  const presentWorks = async (ports: WorkPorts, items: WorkRecord[]) => { const view = await presenter(ports, items.map((i) => i.id), workActors(items), true, waitsOf(items), items); return items.map(view.work); };
   const presentDecisions = async (ports: WorkPorts, items: DecisionRecord[]) => { const view = await presenter(ports, items.map((i) => i.id), decisionActors(items)); return items.map(view.decision); };
 
   return {

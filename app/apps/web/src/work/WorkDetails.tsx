@@ -748,6 +748,32 @@ function DecisionPanel({ decision, context, detail, relations, reload, revision,
       .find((element) => element.getClientRects().length > 0 && Boolean(mark.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING));
     next?.focus({ preventScroll: true });
   }, [decision.status]);
+  // The answer stays in view under the pinned title while the discussion scrolls (personas-35, 200 %: R scrolled to the newest message and
+  // Accept, Not now and Discuss went out of view above it): it sticks right under the title, whose height it follows.
+  const identityRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const identity = identityRef.current;
+    const scroller = identity?.closest<HTMLElement>('.wd__scroll');
+    if (!identity || !scroller) return undefined;
+    const place = () => scroller.style.setProperty('--wd-decide-top', `${Math.round(identity.offsetHeight + (parseFloat(getComputedStyle(identity).top) || 0))}px`);
+    place();
+    const observer = new ResizeObserver(place);
+    observer.observe(identity);
+    return () => observer.disconnect();
+  }, []);
+  // Undo gives the focus back to the control that made the change (F-026 §4): Accept, drawn again as the decision is proposed again. On a
+  // phone the tap on Undo left it on the page (personas-33/34). Focus the person or another step put elsewhere stays there.
+  const undone = useRef(false);
+  const acceptRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!undone.current || decision.status !== 'proposed') return undefined;
+    undone.current = false;
+    const frame = requestAnimationFrame(() => requestAnimationFrame(() => {
+      const active = document.activeElement;
+      if (!active || active === document.body || active.id === 'content' || !active.isConnected) acceptRef.current?.focus({ preventScroll: true });
+    }));
+    return () => cancelAnimationFrame(frame);
+  }, [decision.status]);
   // Accept works at once here as in the Inbox, with the same 10 s Undo that takes the acceptance back (round 8, #1424).
   const acceptNow = useAcceptDecision(me.user.id);
   function accept(event?: FormEvent) {
@@ -759,7 +785,7 @@ function DecisionPanel({ decision, context, detail, relations, reload, revision,
       // The toast says what happened; the panel reads the decision again.
       failed: (conflict) => { setBusy(false); if (isCurrent() && conflict) reload(); },
       // Taken back or kept, the panel shows the decision as it is now.
-      undoing: (back) => { const again = () => { if (isCurrent()) reload(); }; back.then(again, again); },
+      undoing: (back) => { undone.current = true; const again = () => { if (isCurrent()) reload(); }; back.then(again, again); },
     });
   }
   // Plain sentences, drawn only when they apply (#871): the decision this one replaces, and the one that replaced it. A proposed decision
@@ -769,7 +795,7 @@ function DecisionPanel({ decision, context, detail, relations, reload, revision,
   return (
     <div className="details wd wd--decision" data-detail-kind="decision" data-detail-id={decision.id}>
       <div className="wd__scroll">
-      <div className="wd-decision-identity">
+      <div className="wd-decision-identity" ref={identityRef}>
         <p className={`details__eyebrow wd-eyebrow${decision.status === 'proposed' ? ' wd-need' : ''}`}><Icon name="flag" size={13} /><Morph value={decision.status}>{earlier ? decisionState({ ...decision, supersedes: null }) : decisionState(decision)}</Morph></p>
         <h3 className={`details__title${decision.status === 'superseded' ? ' wd-was' : ''}`}>{decision.title}</h3>
       </div>
@@ -786,7 +812,7 @@ function DecisionPanel({ decision, context, detail, relations, reload, revision,
         <section className="wd-decide" aria-label="Your answer">
           <div className="nyc__foot wd-decide__foot">
             <div className="nyc__actions">
-              <Button variant="primary" busy={busy} onClick={() => void accept()}>Accept</Button>
+              <Button ref={acceptRef} variant="primary" busy={busy} onClick={() => void accept()}>Accept</Button>
               {need ? <NotNowButton onClick={() => handlers.snooze(need, 'tomorrow')} /> : null}
               <Button variant="quiet" onClick={() => void discuss(context.project.id, decision.id)}>Discuss</Button>
             </div>

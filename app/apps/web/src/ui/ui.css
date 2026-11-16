@@ -342,9 +342,11 @@ input::placeholder, textarea::placeholder { color: var(--t3); opacity: 1; }
      BottomNav and the map's toolbar (sketch/DockRow.tsx) publish their top edges (edgeInset.ts), absent where the control is not drawn. Feedback keeps 8 px
      clear of the Create control (#639) so a persistent Undo toast cannot cover it, and of the highest composer drawn (#1424) so it never stands on its hint. */
   --toast-bottom: max(20px, calc(env(safe-area-inset-bottom) + 12px), calc(var(--ui-bottomnav-inset, 0px) + 12px), calc(var(--ui-fab-inset, 0px) + 8px), calc(var(--ui-map-dock-inset, 0px) + 8px), calc(var(--ui-composer-inset, 0px) + 8px), var(--toast-modal-inset, 0px));
-  position: fixed; left: 50%; bottom: var(--toast-bottom); transform: translateX(-50%); z-index: var(--z-toast);
-  display: flex; flex-direction: column; align-items: center; gap: 8px; width: max-content; max-width: calc(100vw - 32px); pointer-events: none;
+  position: fixed; left: var(--toast-left, 50%); bottom: var(--toast-bottom); transform: translateX(-50%); z-index: var(--z-toast);
+  display: flex; flex-direction: column; align-items: center; gap: 8px; width: max-content; max-width: var(--toast-max, calc(100vw - 32px)); pointer-events: none;
 }
+/* Beside an open detail panel (Toast.tsx `besidePanel`): over the work left of it, its actions on a second line where that is narrow. */
+.ui-toasts--beside .ui-toast { flex-wrap: wrap; row-gap: 2px; border-radius: var(--r-lg); }
 .ui-toast {
   display: flex; align-items: center; gap: 10px; min-height: 44px; max-width: 100%; padding: 4px 6px 4px 16px; border-radius: var(--r-pill);
   background-color: var(--inv); background-image: var(--grad-inv); color: var(--oninv); font-size: var(--fs-base); font-weight: 500; line-height: 1.4; box-shadow: var(--sh-pop); pointer-events: auto;

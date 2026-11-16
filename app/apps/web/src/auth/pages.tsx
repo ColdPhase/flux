@@ -5,7 +5,7 @@ import { PASSWORD_MIN_LENGTH, claimAddress, getCapabilities, getPendingClaim, ge
 import { whenPageLive } from '../api/pageLeaving';
 import { ApiError, NetworkError } from '../api/client';
 import { Button, ErrorState, FluxLogo, Icon, Input } from '../ui';
-import { safeNext, signedOauthQuery, type FormResult, type SignUpMode, type forgotPasswordLoader } from './logic';
+import { safeNext, signedOauthQuery, takePasswordChangedFor, type FormResult, type SignUpMode, type forgotPasswordLoader } from './logic';
 
 /** The plain Flux logo tile and wordmark, large above the page's title (#351, F-026 S-D/S-P sign-in). */
 function Brand() {
@@ -166,6 +166,8 @@ export function SignInPage() {
   // One-time notices arrive as a query flag and drop it from the address. What they say stays on the page until the person signs in (#1424):
   // "Your password was changed" is the answer to the reset just made, not a toast that may pass unseen.
   const [said, setSaid] = useState<string | null>(() => (notice && NOTICES[notice]) || null);
+  // After a reset the address it was for is filled in (personas-35), so only the new password is left to type.
+  const [changedFor] = useState(() => (notice === 'password-changed' ? takePasswordChangedFor() : null));
   useEffect(() => {
     if (!notice || !NOTICES[notice] || shownRef.current === notice) return;
     shownRef.current = notice;
@@ -198,9 +200,9 @@ export function SignInPage() {
         <Form method="post" className="auth__form" noValidate ref={formRef} aria-label="Sign in">
           <FormError message={result?.formError ?? (ssoFailed ? ssoMessage : undefined)} />
           <Input label="Email" name="email" type="email" autoComplete="email" inputMode="email" autoCapitalize="none" spellCheck={false}
-            defaultValue={result?.values?.email} error={result?.fieldErrors?.email} autoFocus />
+            defaultValue={result?.values?.email ?? changedFor ?? undefined} error={result?.fieldErrors?.email} autoFocus={!changedFor || !!result} />
           <Input label="Password" name="password" type="password" autoComplete="current-password" error={result?.fieldErrors?.password}
-            labelAside={<Link className="ui-link" to="/forgot-password">Forgot password?</Link>} />
+            labelAside={<Link className="ui-link" to="/forgot-password">Forgot password?</Link>} autoFocus={!!changedFor && !result} />
           <Button type="submit" variant="primary" size="lg" block busy={submitting}>{submitting ? 'Signing in…' : 'Sign in'}</Button>
         </Form>
       </div>
@@ -431,6 +433,8 @@ export function ResetPasswordPage() {
           {result?.invalidToken ? <p><Link className="ui-link" to="/forgot-password">Request a new link</Link></p> : null}
         </FormError>
         <input type="hidden" name="token" value={token} />
+        {/* The address named above goes with the form, not in a link: the sign-in page after it fills Email with it (personas-35). */}
+        {account ? <input type="hidden" name="account" value={account} /> : null}
         <Input label="New password" name="password" type="password" autoComplete="new-password" error={result?.fieldErrors?.password}
           hint={`At least ${PASSWORD_MIN_LENGTH} characters.`} autoFocus />
         <Input label="Repeat new password" name="confirm" type="password" autoComplete="new-password" error={result?.fieldErrors?.confirm} />

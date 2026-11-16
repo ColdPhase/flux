@@ -218,11 +218,13 @@ export function Sidebar({ directMessages, agents = [], user, onClose, titleId, i
         {/* The toggle is in the top row, where the expanded sidebar's collapse control is (S1, Spokój anchors). */}
         <IconButton icon="sidebar" label="Expand sidebar" aria-keyshortcuts="[" className="side__toggle" onClick={onToggleCollapsed} />
         {company ? <NewMenu compact onNew={onNew} /> : null}
+        {/* Search stays beside New, outside the band that scrolls: on a short window (200 % zoom) it was half under New, cut by the band's
+            edge as the band brought the open space into view (personas-33/34). */}
+        <button type="button" className="side__ib side__rail-search" aria-label="Search" aria-keyshortcuts={searchKeys} onClick={openSearch}><Icon name="search" size={18} /></button>
         {/* Places and the lists share one middle band: on a short window (a phone on its side) the whole band scrolls, so
-            projects keep room; the toggle, New, Stop and the account stay put outside it, and their menus are not clipped (#727). */}
+            projects keep room; the toggle, New, Search, Stop and the account stay put outside it, and their menus are not clipped (#727). */}
         <div className="side__rail-middle" ref={railMiddle}>
         <nav className="side__rail-places" aria-label="Places">
-          <button type="button" className="side__ib" aria-label="Search" aria-keyshortcuts={searchKeys} onClick={openSearch}><Icon name="search" size={18} /></button>
           <Link to="/" className="side__ib" aria-label="Home" aria-current={home ? 'page' : undefined}><Icon name="home" size={18} /></Link>
           <Link to="/inbox" className="side__ib" aria-label={inboxUnread ? `Inbox, ${inboxUnread} new` : 'Inbox'} aria-current={inbox ? 'page' : undefined}>
             <Icon name="inbox" size={18} />{inboxUnread ? <span className="side__count side__count--rail" aria-hidden="true">{inboxUnread}</span> : null}

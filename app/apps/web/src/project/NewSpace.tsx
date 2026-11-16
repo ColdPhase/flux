@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
-import type { Project } from '@flux/contracts';
+import type { Project, WorkspaceInvite } from '@flux/contracts';
 import { PeoplePicker } from '../people/PeoplePicker';
 import { SomeoneNew } from '../people/SomeoneNew';
 import { isManagerRole, revokeInvite } from '../people/api';
@@ -29,11 +29,11 @@ export function NewSpaceForm({ initialName = '', onCancel, onCreated }: { initia
   const { me } = useShellData();
   // #1424: a company owner or admin also invites someone new here, as in Space settings; the links made wait for Create space.
   const inviter = !!space && isManagerRole(space.role ?? 'guest');
-  const [invites, setInvites] = useState<string[]>([]);
+  const [invites, setInvites] = useState<WorkspaceInvite[]>([]);
   // A link made here belongs to the space this window makes (#1424): closed without Create (Cancel, ×, Escape), or made encrypted, which takes no
   // link, the window revokes the links it made, so none is left working for the company alone.
   const made = useRef<{ workspaceId: string | null; ids: string[]; tied: boolean }>({ workspaceId: null, ids: [], tied: false });
-  useEffect(() => { made.current.workspaceId = space?.id ?? null; made.current.ids = invites; });
+  useEffect(() => { made.current.workspaceId = space?.id ?? null; made.current.ids = invites.map((invite) => invite.id); });
   useEffect(() => {
     const kept = made.current;
     return () => {
@@ -96,7 +96,7 @@ export function NewSpaceForm({ initialName = '', onCancel, onCreated }: { initia
     if (!name.trim()) { setMissing(true); return; }
     const chosen = people.filter((id) => candidates.some((member) => member.userId === id));
     if (!encrypted) {
-      const project = await create(name, { ai, people: chosen, invites });
+      const project = await create(name, { ai, people: chosen, invites: invites.map((invite) => invite.id) });
       if (project) { made.current.tied = true; onCreated(project); }
       return;
     }
@@ -128,8 +128,16 @@ export function NewSpaceForm({ initialName = '', onCancel, onCreated }: { initia
             {/* An encrypted space takes only people of the company (C-24): no link joins it. */}
             {inviter && space && !encrypted ? <SomeoneNew workspaceId={space.id} spaceId={null} spaceName={name.trim() || 'this space'} companyName={companyName} members={members}
               inSpace={(id) => people.includes(id)} meId={me.user.id} onTick={(id) => setPeople((list) => (list.includes(id) ? list : [...list, id]))}
-              onMade={(invite) => setInvites((list) => [...list, invite.id])} /> : null}
+              onMade={(invite) => setInvites((list) => [...list, invite])} links={invites} /> : null}
           </PeoplePicker>}
+        {/* The links made here are listed while the window is open, also with Add people closed, and the window says what Cancel does to
+            them before it is pressed (personas-33/34): a link already copied is never turned off without a word. */}
+        {inviter && !encrypted && invites.length ? (
+          <p className="newspace__hint newspace__invited" data-new-space-invites="">
+            Invited with a link: {invites.map((invite) => invite.email ?? 'anyone').join(', ')}. The {invites.length === 1 ? 'link adds them' : 'links add them'} to {spaceName} once
+            you create it; Cancel turns {invites.length === 1 ? 'it' : 'them'} off.
+          </p>
+        ) : null}
       </div>
       <div className="newspace__switches">
         {/* An encrypted space has no AI: the row stays, dimmed and off, and says so (F-026 §7 Spaces). */}

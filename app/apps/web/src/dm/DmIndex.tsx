@@ -140,8 +140,9 @@ export function NewDm() {
     if (!touch) { if (searching) (document.activeElement as HTMLElement).blur(); waitForField(); }
     try {
       const dm = await openDm(workspaceId, ids, attempt.current.key, name || undefined);
-      // A person's name opens their conversation in place of this page, which keeps the origin it was followed from (#592).
-      navigate(`/dm/${dm.id}`, { replace: Boolean(direct), ...(direct ? { state: arrivalState } : {}) });
+      // The conversation takes this page's place in the history: Back from it goes to where the person started, never to the picker they
+      // used (personas-34). A person's name keeps the origin it was followed from (#592).
+      navigate(`/dm/${dm.id}`, { replace: true, ...(direct ? { state: arrivalState } : {}) });
     } catch (cause) {
       stopAwaitingField();
       if (searching) document.getElementById('dm-people-search')?.focus();

@@ -28,6 +28,21 @@ ADA_EMAIL = f"ada.spaceset+{STAMP}@example.test"
 KAI_EMAIL = f"kai.spaceset+{STAMP}@example.test"
 LEE_EMAIL = f"lee.spaceset+{STAMP}@example.test"
 SPACE = "Kiln controller"
+# A real P-256 public key in the form the server gives (base64url), and the browser's permission and PushManager stubbed as push-offer.e2e.ts
+# does: headless Chromium reports "denied" even unasked, and its push service is outside this network. `%s` is the person's id.
+PUSH_KEY = "BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA_0QTpQtUbVlUls0VJXg7A8u-Ts1XbjhazAkj7I99e8QcYP7DkM"
+PUSH_STUB = """(() => {
+  try { localStorage.setItem('flux:push-offer:%s', JSON.stringify({ready: true})); } catch (e) {}
+  if (typeof PushManager === 'undefined' || typeof Notification === 'undefined') return;
+  // This server has no push keys in the checks: the page is told it has one (no route, so the page's own worker stays allowed).
+  const fetched = window.fetch.bind(window);
+  window.fetch = (input, init) => String(input instanceof Request ? input.url : input).endsWith('/api/v1/push/public-key')
+    ? Promise.resolve(new Response(JSON.stringify({status: 'available', publicKey: '%s'}), {status: 200, headers: {'content-type': 'application/json'}}))
+    : fetched(input, init);
+  PushManager.prototype.getSubscription = async () => null;
+  PushManager.prototype.permissionState = async () => 'prompt';
+  Object.defineProperty(Notification, 'permission', {configurable: true, get: () => 'default'});
+})();"""
 
 UI_BROWSER = os.environ.get("FLUX_UI_BROWSER", "chromium")
 if UI_BROWSER not in ("chromium", "webkit"):
@@ -315,6 +330,22 @@ class SpaceSettings(unittest.TestCase):
         self.api(self.page("lee"), "GET", f"/api/v1/projects/{pid}", status=404)
         type(self).ids["people"] = self.names(page.get_by_role("list", name="People in Kiln firmware"))
         shot(page, "874-space-settings-admin")
+
+    def test_02h_the_settings_opened_from_the_header_take_the_focus(self) -> None:
+        """personas-33 P3: the header's faces opened Space settings with the focus left on the faces button. The settings take it, as any
+        opened panel does (F-026 §4), whether opened from the faces or from ⋯ › Settings."""
+        self.ensure_world()
+        pid = self.ids["space"]
+        page = self.page("ada")
+        page.goto(f"/projects/{pid}")
+        faces = page.locator("header.top .top__audience")
+        faces.click()
+        expect(page).to_have_url(re.compile(rf"/projects/{pid}/settings$"))
+        expect(page.get_by_role("heading", name="Space settings")).to_be_focused()
+        self.assertTrue(page.evaluate("!!document.activeElement.closest('[data-space-settings]')"))
+        page.goto(f"/projects/{pid}")
+        self.settings(page)
+        expect(page.get_by_role("heading", name="Space settings")).to_be_focused()
 
     def test_02b_conversation_from_the_settings_opens_the_conversation_last_open_there(self) -> None:
         """#1169: on a space's settings the view switch's Conversation leads to the conversation last open in the space, on the computer
@@ -769,6 +800,33 @@ class SpaceSettings(unittest.TestCase):
         expect(noa.get_by_role("heading", level=1, name="New message")).to_be_visible()
         expect(noa.get_by_role("heading", name="New message")).to_have_count(1)
         expect(noa.get_by_text("Ada Kowalska")).to_have_count(0)
+
+    def test_12_someone_removed_from_the_company_is_not_offered_notifications(self) -> None:
+        """personas-34 P3: a removed person's Home said they are no longer in the company, and still offered "Get notified when someone writes
+        to you or calls". Push is stubbed as push-offer.e2e.ts does (the page, its worker and the API are real; the server's key is stubbed)."""
+        self.ensure_world()
+        ada = self.page("ada")
+        email = f"ona.spaceset+{STAMP}@example.test"
+        self.sign_up("ona", "Ona Berg", email)
+        self.api(ada, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/members", {"email": email, "role": "member"}, status=201)
+        ona_id = self.api(self.page("ona"), "GET", "/api/v1/me")["user"]["id"]
+        context = self.browser.new_context(base_url=ORIGIN, locale="en-GB", viewport=DESKTOP, storage_state=self.states["ona"])  # sw-allowed: no route here; the offer needs the page's own worker
+        self.addCleanup(context.close)
+        context.add_init_script(PUSH_STUB % (ona_id, PUSH_KEY))
+        page = context.new_page()
+        page.goto("/")
+        expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+        if not page.evaluate("typeof PushManager !== 'undefined'"):
+            self.skipTest("this engine has no PushManager, so no offer is made to anyone here")
+        offer = page.locator("section.push-offer")
+        expect(offer).to_contain_text("Get notified when someone writes to you or calls")
+        gone = ada.request.delete(f"{ORIGIN}/api/v1/workspaces/{self.ids['workspace']}/members/{ona_id}", headers={"origin": ORIGIN})
+        self.assertEqual(gone.status, 204, gone.text())
+        page.reload()
+        expect(page.get_by_text(re.compile(r"^You’re no longer in ")).first).to_be_visible()
+        page.wait_for_load_state("networkidle")
+        page.wait_for_timeout(500)
+        expect(offer).to_have_count(0)
 
 
 if __name__ == "__main__":

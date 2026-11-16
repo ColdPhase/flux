@@ -156,6 +156,20 @@ class DirectMessageJourney(unittest.TestCase):
         self.assertEqual(sorted(dm["audience"]["participantIds"]), sorted([self.ids["ada"], self.ids["kai"]]))
         self.assertEqual([m["sequence"] for m in dm["messages"]], [1, 2])
 
+    def test_01b_back_from_a_new_conversation_goes_where_the_person_started(self) -> None:
+        """personas-34 P3: on the phone, Back from a conversation just made with New message landed on the New message picker. The
+        conversation takes the picker's place, so Back goes to Spaces, where the person started."""
+        page = self.page("lee", phone=True)
+        page.goto("/projects")
+        page.get_by_role("link", name="New message").first.tap()
+        expect(page.get_by_role("heading", level=1, name="New message")).to_be_visible()
+        page.get_by_role("list", name="People").get_by_text("Ada Kowalska").tap()
+        page.get_by_role("button", name="Message Ada").tap()
+        expect(page).to_have_url(re.compile(r"/dm/[0-9a-f-]{36}$"))
+        page.locator("header.phead").get_by_role("button", name="Back").tap()
+        expect(page).to_have_url(f"{ORIGIN}/projects")
+        expect(page.get_by_role("heading", level=1, name="New message")).to_have_count(0)
+
     def test_02_reply_from_a_second_browser_arrives_live(self) -> None:
         ada = self.page("ada")
         ada.goto(self.dm_path)

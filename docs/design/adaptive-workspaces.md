@@ -130,6 +130,12 @@ Separately test:
   text enlargement. Confirm text really grew; a changed root size that leaves
   fixed-pixel text unchanged is not evidence. Respect applicable two-dimensional
   content exceptions without exempting surrounding navigation/forms/actions.
+  At 1440×900 with 200 % zoom (the 720×450 CSS viewport) no control is covered or
+  cut (personas-33 to 35, 2026-11-16): the rail keeps New and Search outside its
+  scrolling band, its Inbox count beside the icon rather than on it; a toast
+  stands beside an open detail panel, never on its rows; and a proposed
+  decision's Accept, Not now and Discuss stay in view under its title while its
+  discussion scrolls (`tests/ui/test_rail_navigation.py` 05 to 07).
 - Keyboard focus and reading order after composition changes, modal containment,
   screen-reader names, touch/coarse input, mouse/trackpad and mixed touch/keyboard
   devices. Viewport width alone does not establish whether hover is available.

@@ -738,6 +738,20 @@ export function workRows(db: DbExecutor) {
       return titles;
     },
 
+    /**
+     * Who of `userIds` is no longer in the company of each of `workspaceIds` (left or removed, and not back): `<workspaceId>:<userId>`. An
+     * encrypted space's own workspace asks its company's list too, as leaving the company ends a place there.
+     */
+    async formerMembers(workspaceIds: string[], userIds: string[]) {
+      const spaces = [...new Set(workspaceIds)];
+      const people = [...new Set(userIds)];
+      if (!spaces.length || !people.length) return new Set<string>();
+      const rows = (await db.execute(sql`SELECT w.id::text AS workspace_id, r.user_id FROM workspaces w
+        JOIN workspace_removed_people r ON r.workspace_id = w.id OR r.workspace_id = w.company_workspace_id
+        WHERE w.id = ANY(${sql.param(spaces)}::uuid[]) AND r.user_id = ANY(${sql.param(people)}::text[])`)).rows as { workspace_id: string; user_id: string }[];
+      return new Set(rows.map((row) => `${row.workspace_id}:${row.user_id}`));
+    },
+
     async names(refs: Actor[]) {
       const names = new Map<string, string>();
       const users = [...new Set(refs.filter((ref) => ref.kind === 'human').map((ref) => ref.id))];

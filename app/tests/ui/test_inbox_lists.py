@@ -432,7 +432,29 @@ class InboxLists(unittest.TestCase):
         expect(card(task["title"]), "opened, the task left the Inbox").to_have_count(0)
         expect(card(below), "its neighbour at its place is the expanded card").to_have_attribute("aria-current", "true")
         expect(card(above)).not_to_have_attribute("aria-current", "true")
+        # And it has the focus, as on a computer (F-026 §4; personas-33/34/35: × or Back left it on the page).
+        expect(card(below).locator(".nyc__open")).to_be_focused()
         shot(page, "inbox-lists-phone-task-opened-neighbour")
+
+    def test_06_phone_the_first_reply_puts_the_cursor_in_the_thread(self) -> None:
+        # personas-33/35 P3: the first Reply on a phone, on a page just opened, left the focus on the page (the next ones had the cursor).
+        tag = uuid.uuid4().hex[:4]
+        asked = f"can you check the drain {tag}?"
+        self.call("jonas", "POST", f"/api/v1/projects/{self.project_id}/conversations", {"body": f"@Ada Kowalska {asked}", "clientMessageId": str(uuid.uuid4())})
+        for _ in range(80):
+            if any(asked in item["title"] for item in self.queue()["items"]):
+                break
+            time.sleep(0.25)
+        page = self.page(phone=True)
+        page.goto("/inbox")
+        card = page.locator(".nyq__list .nyc", has_text=asked)
+        expect(card).to_have_attribute("aria-current", "true")
+        card.get_by_role("button", name=re.compile("^Reply")).first.tap()
+        field = page.locator("#thread-composer")
+        expect(field).to_be_focused()
+        # It keeps the cursor once the sheet has settled around it.
+        page.wait_for_timeout(1500)
+        expect(field).to_be_focused()
 
 
 if __name__ == "__main__":

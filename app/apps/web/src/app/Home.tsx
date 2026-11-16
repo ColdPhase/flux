@@ -442,7 +442,8 @@ export function Home() {
       {/* Nothing appears twice (#1424 C): Continue offers nothing the Inbox holds, its rows here or the items beyond them. */}
       <ContinueSection reads={reads} covered={queue.items === null && !queue.failed ? null : waitingIds(waitingRows(queue.items ?? [], Infinity))} />
       {/* The one-time offer to turn notifications on (#1243): last on the page, since it may not come (motion rule 6). */}
-      <PushOffer userId={me.user.id} hidden={pushRow} ready={(queue.items ?? []).some((item) => item.kind === 'mention' || item.reason === 'question')} />
+      {/* Someone removed from the company (or not in one yet) is told nothing here: the offer is not made to them (personas-34). */}
+      <PushOffer userId={me.user.id} hidden={pushRow || !workspace} ready={(queue.items ?? []).some((item) => item.kind === 'mention' || item.reason === 'question')} />
     </div></div>
   );
 }
