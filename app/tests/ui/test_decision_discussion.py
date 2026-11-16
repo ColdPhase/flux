@@ -339,6 +339,36 @@ class DecisionDiscussion(unittest.TestCase):
                 expect(window(page).get_by_text(words, exact=True)).to_be_visible()
                 page.keyboard.press("Escape")
 
+    # ---------------------------------------------------------------- personas-33 P2 3: every message reachable, oldest first
+
+    def test_11_a_long_discussion_shows_every_message_oldest_first_with_show_earlier_in_both_panels(self) -> None:
+        page = self.page()
+        page.goto("/")
+        pid = self.ids["project"]
+        task = self.api(page, "POST", f"/api/v1/projects/{pid}/work", {"title": "Label every probe"}, status=201)
+        decision = self.api(page, "POST", f"/api/v1/projects/{pid}/decisions", {"title": "Label probes with their bed", "rationale": "Easier to find"}, status=201)
+        task_words = [f"Probe label {n:02d}" for n in range(1, 26)]
+        decision_words = [f"Bed note {n:02d}" for n in range(1, 56)]
+        for words in task_words:
+            self.api(page, "POST", f"/api/v1/work/{task['id']}/discussion", {"body": words, "clientMessageId": str(uuid.uuid4())}, status=201)
+        for words in decision_words:
+            self.api(page, "POST", f"/api/v1/decisions/{decision['id']}/discussion", {"body": words, "clientMessageId": str(uuid.uuid4())}, status=201)
+        cases = ((f"/projects/{pid}/tasks?open=work:{task['id']}", ".wd-act .wd-act__item--message .message-body", task_words),
+                 (f"/projects/{pid}?open=decision:{decision['id']}", ".wd-discussion__list .wd-act__item--message .message-body", decision_words))
+        for path, selector, words in cases:
+            with self.subTest(path=path):
+                page.goto(path)
+                bodies = page.locator("#details").locator(selector)
+                expect(bodies.last).to_have_text(words[-1])
+                earlier = page.locator("#details").get_by_role("button", name="Show earlier", exact=True)
+                # Something is missing between the first message and the newest page: "Show earlier" is at the top of the discussion.
+                expect(earlier).to_be_visible()
+                while earlier.count():
+                    earlier.click()
+                    page.wait_for_timeout(300)
+                expect(bodies).to_have_count(len(words))
+                self.assertEqual([text.strip() for text in bodies.all_inner_texts()], words, "every message, once, oldest first")
+
 
 if __name__ == "__main__":
     unittest.main()

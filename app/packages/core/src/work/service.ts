@@ -712,6 +712,37 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
       });
     },
 
+    /**
+     * The Undo of the Inbox's Done for the person a task waited for (personas-33): the task waits for them again, Blocked with the reason it
+     * had, without its "can continue" line, activity entry and the owner's notification since `since`. Only that person, as reading the space
+     * was enough for their Done, and only while the task is unchanged since (`expected`, the version their Done left).
+     */
+    async undoWaitingDone(principal: Principal, workId: string, expected: number, since: Date): Promise<WorkItem> {
+      const by = actor(principal);
+      if (by.kind !== 'human') throw new ForbiddenError('Only the person a task waited for can take back that they are done', 'WAITING_DONE_NEEDS_PERSON');
+      const version = valid.expectedVersion(expected);
+      return uow.run(async (ports) => {
+        const { id, projectId, workspaceId } = await authorized(ports, principal, 'work', workId, 'read');
+        await lockProjectGraphs(ports.work, [projectId]);
+        await ports.work.lockPreparedTaskUse([id]);
+        const current = await ports.work.findWork(id, { lock: true });
+        if (!current) throw notFound('work');
+        if (current.version !== version || current.creationRevertedAt || (current.status !== 'in_progress' && current.status !== 'open'))
+          throw new VersionConflictError(current.version, await presentWork(ports, current));
+        const blocker = await ports.work.reasonLeftBlockedWith(id);
+        const back = await ports.work.updateWork(id, { status: 'blocked', blocker, waitingFor: by, waitingOn: null }, by, undefined, { undoes: true });
+        await ports.work.takeBackResumption(back, by, since);
+        await ports.events.record(principal, workspaceId, 'project.work_updated.v1', projectId, { workId: id });
+        return presentWork(ports, back);
+      });
+    },
+
+    /** The reason a task had when it last left Blocked, for an Undo that puts it back (personas-33); reading the task is enough. */
+    reasonLeftBlockedWith: (principal: Principal, workId: string): Promise<string | null> => uow.run(async (ports) => {
+      const { id } = await authorized(ports, principal, 'work', workId, 'read');
+      return ports.work.reasonLeftBlockedWith(id);
+    }),
+
     /** People and agents may propose; the proposal names its sources and the work it affects. */
     async proposeDecision(principal: Principal, projectId: string, command: ProposeDecisionCommand): Promise<Decision> {
       const by = actor(principal);

@@ -11,17 +11,31 @@ import type { NotificationRecord } from '../push/ports.js';
 
 export type StoredNeedsYouState = 'done' | 'declined' | 'snoozed';
 
+/**
+ * What a Done that changed a task puts back (personas-33): the task, its version right after the Done, the state it returns to and what it
+ * waited for. `wait`: the person it waited for said they were done, so it waits for them again. Ids and numbers only, never words.
+ */
+export interface NeedsYouRestore {
+  workId: string;
+  version: number;
+  to: 'open' | 'blocked';
+  waitingForUserId?: string;
+  waitingOn?: { kind: 'decision' | 'task'; id: string };
+  wait?: true;
+}
+
 export interface StoredNeedsYou {
   key: string;
   state: StoredNeedsYouState;
   until: Date | null;
   untilWorkId: string | null;
+  restore?: NeedsYouRestore | null;
   updatedAt: Date;
 }
 
 export interface NeedsYouRepository {
   states(userId: string): Promise<StoredNeedsYou[]>;
-  putState(userId: string, key: string, value: { state: StoredNeedsYouState; until: Date | null; untilWorkId: string | null }): Promise<void>;
+  putState(userId: string, key: string, value: { state: StoredNeedsYouState; until: Date | null; untilWorkId: string | null; restore?: NeedsYouRestore | null }): Promise<void>;
   deleteStates(userId: string, keys: string[]): Promise<void>;
   /** Proposed decisions of exactly these (already readable) projects, newest first. */
   proposedDecisions(projectIds: string[], limit: number): Promise<DecisionRecord[]>;
@@ -67,8 +81,22 @@ export interface NeedsYouAssistant {
   waiting(userId: string): Promise<AssistantChange[]>;
 }
 
+/**
+ * The task changes the Inbox's Done makes for the person (personas-33), through the work use cases with every check they make. Each returns the
+ * task's version after the change; `putBack` answers a conflict when the task changed since `restore.version`.
+ */
+export interface NeedsYouTasks {
+  /** The task to Done, as the person's own change. */
+  finish(principal: Principal, workId: string, version: number): Promise<{ version: number }>;
+  /** The person a blocked task waits for is done: the task resumes (`waiting-done`). */
+  waitDone(principal: Principal, workId: string, version: number): Promise<{ version: number }>;
+  /** Undo of either, `since` the time of the Done. */
+  putBack(principal: Principal, restore: NeedsYouRestore, since: Date): Promise<void>;
+}
+
 export interface NeedsYouPorts {
   access: NeedsYouAccess;
+  tasks?: NeedsYouTasks;
   assistant?: NeedsYouAssistant;
   /** F-029: whether AI may be shown in this project; agent suggestions of a blocked workspace are left out. */
   aiAllowed?(projectId: string): Promise<boolean>;

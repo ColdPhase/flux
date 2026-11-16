@@ -50,6 +50,8 @@ type Line =
 export type TaskComposerDraft = ReturnType<typeof useComposerDraft>;
 
 const MESSAGES = 20;
+/** How far back a page of the discussion reaches: the sequence it continues before, 0 once nothing is left before it. */
+const reach = (page: Discussion['messagePage']) => (page.hasMoreBefore ? page.nextBeforeSequence ?? Number.MAX_SAFE_INTEGER : 0);
 
 function mergeMessages(current: ConversationMessage[], incoming: ConversationMessage[]) {
   const byId = new Map(current.map((message) => [message.id, message]));
@@ -126,7 +128,9 @@ export function useTaskActivity({ item, links, project, members, me, revision }:
       if (controller.signal.aborted) return;
       if (activity.status === 'fulfilled') { setChanges(activity.value.items); setNextBefore(activity.value.nextBefore); }
       if (talk.status === 'fulfilled') {
-        setDiscussion(talk.value);
+        // A read again (a new message, a change) brings the newest page; the earlier pages already shown stay, with how far back they reach.
+        setDiscussion((current) => current && current.workId === talk.value.workId && reach(current.messagePage) < reach(talk.value.messagePage)
+          ? { ...talk.value, messagePage: current.messagePage } : talk.value);
         setMessages((current) => mergeMessages(current, [...(talk.value.root ? [talk.value.root] : []), ...talk.value.messages]));
       }
       setFailed(activity.status === 'rejected' && talk.status === 'rejected' ? 'all' : activity.status === 'rejected' ? 'changes' : null);
@@ -135,8 +139,10 @@ export function useTaskActivity({ item, links, project, members, me, revision }:
     return () => controller.abort();
   }, [item.id, project.id, me.id, attempt, revision]);
 
-  const oldest = messages[0];
-  const olderMessages = !!discussion?.messagePage.hasMoreBefore && !!oldest && oldest.sequence > 1;
+  // The root is always read with the newest page, so the oldest reply shown is where the earlier page begins: every message in between is
+  // one "Show earlier" away, oldest first (founder decision, round 8, #1424; personas-33 P2 3).
+  const oldest = messages.find((message) => message.sequence > 1);
+  const olderMessages = !!discussion?.messagePage.hasMoreBefore && !!oldest && oldest.sequence > 2;
   const hasEarlier = !!nextBefore || olderMessages;
   const loadEarlier = useCallback(async () => {
     setBusyEarlier(true);

@@ -32,3 +32,11 @@ export const mentionsSomeone = (body: string) => /(^|[^\p{L}\p{N}_])@\p{L}/u.tes
  */
 export const asksStarter = (body: string, authorId: string | null, starterId: string | null) =>
   !!starterId && authorId !== starterId && isQuestion(body) && !mentionsSomeone(body);
+
+/**
+ * Who a thread's question that names nobody asks: its starter, a person (`asksStarter`). A decision's discussion has no starter of its own: it
+ * asks the decision's proposer, an agent's owner for an agent's proposal, never whoever wrote in it first (#1424, persona round 8 P2 3). One
+ * rule for the Inbox and its notifications and for Home's Continue (personas-33 P2 5).
+ */
+export const threadAskee = (thread: { createdBy: { kind: 'human' | 'agent'; id: string }; decision?: { askee: string | null } | null }): string | null =>
+  thread.decision ? thread.decision.askee : thread.createdBy.kind === 'human' ? thread.createdBy.id : null;

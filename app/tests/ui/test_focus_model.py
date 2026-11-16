@@ -768,6 +768,65 @@ class FocusModel(unittest.TestCase):
         expect(page.locator("#dm-people-search")).to_have_count(0)
         composer.fill("")
 
+    # ---------------------------------------------------------------- personas-33
+
+    def test_36_a_question_opened_from_the_inbox_closes_back_to_the_inbox_and_its_open_item(self) -> None:
+        # Kasia starts a thread; Lee asks in it with no name: a Question for Kasia (personas-27), "Question · Lee Moreno · Bakery floor".
+        thread = self.post("kasia", f"/api/v1/projects/{self.ids['shared']}/conversations", {"body": "The sourdough starter needs feeding twice a day.", "clientMessageId": str(uuid.uuid4())})
+        asked = self.post("lee", f"/api/v1/conversations/{thread['id']}/messages", {"body": "Who feeds it on Sunday?", "clientMessageId": str(uuid.uuid4())})
+        self.wait_for_item("kasia", lambda item: item["url"].endswith(f"#message-{asked['id']}"))
+        page = self.page()
+        for how in ("R then Esc", "Enter then Close replies"):
+            with self.subTest(how=how):
+                page.goto("/inbox")
+                row = page.locator(".nyq__list .nyc", has_text="Who feeds it on Sunday?")
+                row.locator(".nyc__open").focus()
+                expect(row).to_have_attribute("aria-current", "true")
+                key = row.get_attribute("data-key")
+                if how.startswith("R"):
+                    page.keyboard.press("r")
+                    expect(page.locator("#thread-composer")).to_be_focused()
+                    page.keyboard.press("Escape")
+                else:
+                    page.keyboard.press("Enter")
+                    expect(page).to_have_url(re.compile(f"/conversations/{thread['id']}"))
+                    page.get_by_role("button", name="Close replies").click()
+                # Back in the Inbox with the item open and focused, as a decision opened from it (F-026 §4), not left in the space.
+                expect(page).to_have_url(re.compile(r"/inbox$"))
+                page.wait_for_timeout(600)
+                self.assertTrue(page.evaluate("(key) => document.querySelector(`.nyq__list .nyc[data-key=\"${key}\"]`)?.contains(document.activeElement)", key),
+                                "focus is back on the question in the Inbox")
+
+    def test_37_done_on_waits_for_you_has_an_undo_that_makes_the_task_wait_again(self) -> None:
+        task = self.post("piotr", f"/api/v1/projects/{self.ids['shared']}/work", {"title": "Fix the dough mixer", "owner": {"kind": "human", "id": self.ids["piotr"]},
+                                                                                  "status": "blocked", "blocker": "Which part number?", "waitingFor": {"kind": "human", "id": self.ids["ola"]}})
+        self.wait_for_item("ola", lambda item: item["key"] == f"blocked:{task['id']}")
+        page = self.page("ola")
+        page.goto("/inbox")
+        row = page.locator(f'.nyq__list .nyc[data-key="blocked:{task["id"]}"]')
+        row.locator(".nyc__open").focus()
+        expect(row).to_have_attribute("aria-current", "true")
+        page.keyboard.press("e")
+        toast = page.locator(".ui-toast", has_text=f"#{task['number']} can continue")
+        expect(toast).to_be_visible()
+        expect(toast.get_by_role("button", name=re.compile("^Undo"))).to_be_visible()
+        expect(row).to_have_count(0)
+        read = lambda: self.contexts["piotr"].request.get(f"/api/v1/work/{task['id']}").json()  # noqa: E731
+        for _ in range(40):
+            if read()["status"] != "blocked":
+                break
+            time.sleep(0.25)
+        self.assertEqual(read()["status"], "in_progress", "the task continues")
+        page.keyboard.press("z")
+        expect(row).to_have_count(1)
+        for _ in range(40):
+            if read()["status"] == "blocked":
+                break
+            time.sleep(0.25)
+        back = read()
+        self.assertEqual([back["status"], (back.get("waitingFor") or {}).get("id"), back["blocker"]], ["blocked", self.ids["ola"], "Which part number?"],
+                         "Undo: Blocked again, waiting for Ola, with its reason")
+
 
 if __name__ == "__main__":
     unittest.main()

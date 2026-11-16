@@ -5,7 +5,7 @@ import type { NotificationReason } from '@flux/contracts';
 import type { JobRetryPolicy } from '../push/config.js';
 import { readsSource } from '../push/notifications.js';
 import type { SourceLookup } from '../push/ports.js';
-import { asksStarter, isQuestion, mentions } from './addressing.js';
+import { asksStarter, isQuestion, mentions, threadAskee } from './addressing.js';
 import type { GeneratorEvent, GeneratorPorts, GeneratorUnitOfWork, NoticeAnnouncement, NotificationFacts } from './ports.js';
 import { channelsOf, inQuietHours } from './preferences.js';
 
@@ -160,10 +160,9 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
       const url = `/projects/${message.projectId}/conversations/${message.conversationId}#message-${message.id}`;
       // A person's message answers what was asked of them here (#1424 decision 1): the asker is told as if named.
       const answered = authorId ? askersAnswered(message.since) : new Set<string>();
-      // One rule with Home (personas-27): a question in a thread that names nobody asks the thread's starter.
-      // A decision's discussion has no opening message: its starter, for a question, is the decision's proposer (an agent's owner), never
-      // whoever wrote in it first (#1424, persona round 8 P2 3).
-      const starter = message.decision ? message.decision.askee : message.conversationCreatedBy.kind === 'human' ? message.conversationCreatedBy.id : null;
+      // One rule with Home (personas-27): a question in a thread that names nobody asks the thread's starter, and a question in a decision's
+      // discussion its proposer (`threadAskee`, personas-33 P2 5).
+      const starter = threadAskee({ createdBy: message.conversationCreatedBy, decision: message.decision ?? null });
       // Its notice says which decision it is about: "Jonas asked you about “Stand closes at 15:00”" (a sealed space keeps its fixed words).
       const place = message.decision ? `about ${quote(excerpt(message.decision.title, 60))}` : `in ${message.projectName}`;
       const toStarter = asksStarter(message.body, authorId, starter) ? starter : null;

@@ -13,8 +13,12 @@ export const contributeToTask = (workId: string, command: TaskContributionComman
   request<SentConversationMessage>(taskDiscussionPath(workId), { method: 'POST', body: command });
 
 /** A decision's one discussion (#1424): the thread on its card, which its panel shows too. */
-export const getDecisionDiscussion = (decisionId: string, options: { limit?: number; signal?: AbortSignal } = {}) =>
-  request<DecisionDiscussion>(`${decisionDiscussionPath(decisionId)}${options.limit ? `?limit=${options.limit}` : ''}`, { signal: options.signal });
+export const getDecisionDiscussion = (decisionId: string, options: { limit?: number; beforeSequence?: number; signal?: AbortSignal } = {}) => {
+  const query = new URLSearchParams();
+  if (options.limit) query.set('limit', String(options.limit));
+  if (options.beforeSequence) query.set('beforeSequence', String(options.beforeSequence));
+  return request<DecisionDiscussion>(`${decisionDiscussionPath(decisionId)}${query.size ? `?${query}` : ''}`, { signal: options.signal });
+};
 /** A message about a decision (#1424), from its panel or from the thread on its card: the first one starts that thread. */
 export const discussDecision = (decisionId: string, command: SendMessageCommand) =>
   request<SentConversationMessage>(decisionDiscussionPath(decisionId), { method: 'POST', body: command });

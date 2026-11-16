@@ -2,7 +2,7 @@ import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useMemo, useR
 import { isTyping } from '../ui/keys';
 import { useSpaceAi } from '../ai/spaceAi';
 import { useRevalidator } from 'react-router';
-import { waitingPhrase, type ObjectLink, type Project, type ProjectPerson, type WorkspaceMember, type WorkStatus, type WorkDetailObject, type WorkDetailProjection } from '@flux/contracts';
+import { NO_BLOCK_REASON, waitingPhrase, type ObjectLink, type Project, type ProjectPerson, type WorkspaceMember, type WorkStatus, type WorkDetailObject, type WorkDetailProjection } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { useStreamEvents } from '../api/stream';
 import { AgentIdentity, Avatar, Button, Icon, Kreska, Morph, PanelGlyph, StatusGlyph, useToast } from '../ui';
@@ -488,7 +488,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
                 {/* One field (#1438 point 12): the reason as words, or a person, a decision or a task picked from its list. */}
                 <WaitingField choices={waitingOptions.filter((option) => option.value !== '')} choice={waitingValue} choiceLabel={waitingName} text={blocker} pickDisabled={busy} autoFocus maxLength={2000}
                   onChoice={chooseWait} onText={(value) => { fieldEdits.current.blocker++; blockerBase.current ??= item.version; setBlocker(value); }} />
-                {commands.state.blocker !== undefined && item.blocker !== blocker ? <p className="wd-muted">Now: {item.blocker || 'No blocker written.'}</p> : null}
+                {commands.state.blocker !== undefined && item.blocker !== blocker ? <p className="wd-muted">Now: {item.blocker || NO_BLOCK_REASON}</p> : null}
                 <div className="wd-blocker__form-acts">
                   <Button variant="secondary" size="sm" onClick={() => { blockerBase.current = null; setBlocker(undefined); setEditingBlocker(false); }}>Cancel</Button>
                   <Button type="submit" variant="secondary" size="sm" busy={busy} disabled={blocker.trim() === (item.blocker ?? '')}>Save</Button>

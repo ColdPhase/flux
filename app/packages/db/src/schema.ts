@@ -651,6 +651,8 @@ export const needsYouStates = pgTable('needs_you_states', {
   state: text('state', { enum: ['done', 'declined', 'snoozed'] }).notNull(),
   until: timestamp('until', { withTimezone: true }),
   untilWorkId: uuid('until_work_id'),
+  /** What a Done that changed a task puts back on Undo or Put back (migration 0092): ids and numbers only. */
+  restore: jsonb('restore').$type<{ workId: string; version: number; to: 'open' | 'blocked'; waitingForUserId?: string; waitingOn?: { kind: 'decision' | 'task'; id: string }; wait?: true }>(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [primaryKey({ columns: [table.userId, table.itemKey] })]);

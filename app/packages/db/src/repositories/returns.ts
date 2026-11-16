@@ -68,6 +68,10 @@ const SUMMARY_DECISIONS = `SELECT id, workspace_id AS "workspaceId", project_id 
 const SUMMARY_CONVERSATIONS = `SELECT c.id, c.workspace_id AS "workspaceId", c.project_id AS "projectId", c.created_by AS "createdBy", c.created_by_agent_id AS "createdByAgentId",
   m.id AS "openingId", m.body AS opening, m.attachment_count AS "attachmentCount"
   FROM project_conversations c LEFT JOIN project_messages m ON m.conversation_id = c.id AND m.sequence = 1 WHERE c.id = ANY($1::uuid[])`;
+// The decisions these conversations are the discussions of (#1424), with who a question there asks: the proposer, an agent's owner.
+const SUMMARY_DISCUSSED = `SELECT dd.conversation_id AS "conversationId", d.id, d.workspace_id AS "workspaceId", d.title, d.proposed_by_kind AS "proposedByKind",
+  d.proposed_by_id AS "proposedById", a.owner_user_id AS "agentOwner" FROM project_decision_discussions dd JOIN project_decisions d ON d.id = dd.decision_id
+  LEFT JOIN agents a ON d.proposed_by_kind = 'agent' AND a.id::text = d.proposed_by_id WHERE dd.conversation_id = ANY($1::uuid[])`;
 const LAST_POSTS = `SELECT conversation_id AS id, max(created_at) AS at FROM project_messages WHERE author_id = $1 AND conversation_id = ANY($2::uuid[])
   GROUP BY conversation_id`;
 const SUMMARY_MATERIALS = `SELECT pm.id, pm.workspace_id AS "workspaceId", pm.project_id AS "projectId", v.title, pm.current_version AS version
@@ -203,8 +207,12 @@ export function returnRows(db: DbExecutor) {
         openingId: string | null; opening: string | null; attachmentCount: number | null }>(db, SUMMARY_CONVERSATIONS, [ids])).rows;
       const rows = await openAliased(db, read, { table: 'project_messages', column: 'body', key: 'opening', workspace: (row) => row.workspaceId,
         identity: (row) => (row.openingId ? [row.openingId] : null) });
+      // A decision's discussion asks its proposer (personas-33 P2 5), as the Inbox does: the same rule, `threadAskee`.
+      const discussed = new Map((await openRows(db, 'project_decisions', (await queryPrepared<{ conversationId: string; id: string; workspaceId: string; title: string;
+        proposedByKind: string; proposedById: string; agentOwner: string | null }>(db, SUMMARY_DISCUSSED, [ids])).rows))
+        .map((row) => [row.conversationId, { title: row.title, askee: row.proposedByKind === 'human' ? row.proposedById : row.agentOwner }]));
       return byId(rows.map(({ createdBy, createdByAgentId, id, projectId, opening, attachmentCount }) => ({ id, projectId, attachmentCount,
-        createdBy: actor(createdBy, createdByAgentId), opening: excerpt(messagePreview(opening ?? '', attachmentCount ?? 0)) })));
+        createdBy: actor(createdBy, createdByAgentId), opening: excerpt(messagePreview(opening ?? '', attachmentCount ?? 0)), decision: discussed.get(id) ?? null })));
     },
 
     async lastPosts(userId: string, conversationIds: string[]) {

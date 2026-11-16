@@ -4,8 +4,8 @@ import { awaitField } from '../ui/keys';
 import { decisionAppPath, type NeedsYouItem, type ResolveNeedsYouCommand } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { useToast } from '../ui';
-import { resolveWaiting, updateWork } from '../work/api';
-import { restoreOf, stateWords } from '../work/taskState';
+import { updateWork } from '../work/api';
+import { stateWords } from '../work/taskState';
 import { useDiscussDecision } from '../work/discuss';
 import { applyRunChanges } from '../assistant/api';
 import { announceAcceptedInboxItem, announceInboxChange } from './api';
@@ -37,102 +37,42 @@ export function useNeedsYouActions(queue: Queue): CardHandlers {
   // Leaving the place sends what is waiting, so nothing the person said is lost.
   useEffect(() => () => flushAccepts(), []);
 
-  /** Stores the choice, shows the toast, and reverses the choice on Undo. */
+  /**
+   * Stores the choice, shows the toast, and reverses the choice on Undo. Done on a task given to you and on your blocked task finishes the
+   * task, and for the person a blocked task waits for it lets the task continue (#1424, round 8): the queue makes that change of the task
+   * with the choice, so Undo, `Z` and Put back in "done today" change it back, Blocked again with what it waited for (personas-33).
+   */
   const resolve = useCallback((item: NeedsYouItem, command: ResolveNeedsYouCommand, message: string) => {
     const current = latest.current;
+    const changesTask = command.action === 'done' && (item.kind === 'task' || item.kind === 'blocked');
     const stored = resolveNeedsYou(item.key, command).then(announceInboxChange);
     const intent = current.hide(item.key, stored);
     stored.catch((error: unknown) => {
       if (!intent.isCurrent()) return;
       current.show(item);
-      toast({ message: apiMessage(error, 'That did not work. Try again.'), tone: 'danger' });
+      toast({ message: apiMessage(error, changesTask ? 'That did not work. Open the task to look again.' : 'That did not work. Try again.'), tone: 'danger' });
     });
     toast({ message, action: { label: 'Undo', key: 'Z', onClick: () => {
       // Undo may come while the choice is still on its way: the DELETE follows it, and the item is pending until then.
       const restored = stored.then(() => restoreNeedsYou(item.key)).then(announceInboxChange);
       const undoIntent = current.show(item, restored);
-      restored.catch(() => {
+      restored.catch((error: unknown) => {
         if (!undoIntent.isCurrent()) return;
+        current.hide(item.key);
         current.reload();
-        toast({ message: 'Undo did not work. The item is back after a refresh.', tone: 'danger' });
+        toast({ message: apiMessage(error, changesTask ? 'Undo did not work. Open the task to look again.' : 'Undo did not work. The item is back after a refresh.'), tone: 'danger' });
       });
     } } });
   }, [toast]);
 
-  /** The person a task waits for says they are done (#868): the task goes back to Doing by itself and its owner is told once. */
-  const finishWait = useCallback((item: NeedsYouItem) => {
-    const current = latest.current;
-    const blocked = item.blocked;
-    if (!blocked) return;
-    const done = resolveWaiting({ id: blocked.workId, version: blocked.version });
-    const intent = current.hide(item.key, done);
-    done.then(announceInboxChange, (error: unknown) => {
-      if (!intent.isCurrent()) return;
-      current.show(item);
-      toast({ message: apiMessage(error, 'That did not work. Open the task to look again.'), tone: 'danger' });
-    });
-    toast({ message: `#${blocked.number} can continue` });
-  }, [toast]);
-
-  /**
-   * Done on a task given to you finishes it (founder decision, 2026-11-15, #1424): the task's own change to Done, in its words ("#12 moved to
-   * Done"). The item leaves as for any finished task; Undo puts the task back to To do, and its unread notification brings the item back.
-   */
-  const finishTask = useCallback((item: NeedsYouItem) => {
-    const current = latest.current;
-    const task = item.task;
-    if (!task) return;
-    const changed = updateWork({ id: task.workId, version: task.version }, { status: 'done' }, crypto.randomUUID());
-    const intent = current.hide(item.key, changed);
-    changed.then(announceInboxChange, (error: unknown) => {
-      if (!intent.isCurrent()) return;
-      current.show(item);
-      toast({ message: apiMessage(error, 'The task could not be finished. Open it to look again.'), tone: 'danger' });
-    });
-    toast({ message: stateWords(task, 'done'), action: { label: 'Undo', key: 'Z', onClick: () => {
-      const restored = changed.then((work) => updateWork(work, restoreOf({ status: 'open', blocker: null }), crypto.randomUUID())).then(announceInboxChange);
-      const undoIntent = current.show(item, restored);
-      restored.catch(() => {
-        if (!undoIntent.isCurrent()) return;
-        current.reload();
-        toast({ message: 'Undo did not work. Open the task to move it back.', tone: 'danger' });
-      });
-    } } });
-  }, [toast]);
-
-  /**
-   * Done on your blocked task finishes it (founder decision, 2026-11-15, round 8, #1424), as on a task given to you: "#6 moved to Done". The
-   * item is derived from the status, so it leaves; Undo puts the task back to Blocked with what it waited for, and the item is back.
-   */
-  const finishBlocked = useCallback((item: NeedsYouItem) => {
-    const current = latest.current;
-    const blocked = item.blocked;
-    if (!blocked) return;
-    const changed = updateWork({ id: blocked.workId, version: blocked.version }, { status: 'done' }, crypto.randomUUID());
-    const intent = current.hide(item.key, changed);
-    changed.then(announceInboxChange, (error: unknown) => {
-      if (!intent.isCurrent()) return;
-      current.show(item);
-      toast({ message: apiMessage(error, 'The task could not be finished. Open it to look again.'), tone: 'danger' });
-    });
-    toast({ message: stateWords(blocked, 'done'), action: { label: 'Undo', key: 'Z', onClick: () => {
-      const restored = changed.then((work) => updateWork(work, { status: 'blocked', ...(blocked.blocker ? { blocker: blocked.blocker } : {}), ...(blocked.waitingForUserId ? { waitingFor: { kind: 'human' as const, id: blocked.waitingForUserId } } : {}), ...(blocked.waitingOn ? { waitingOn: blocked.waitingOn } : {}), restore: true }, crypto.randomUUID()))
-        .then((work) => { announceInboxChange(); return work; });
-      const undoIntent = current.show(item, restored);
-      // Back as it was, at its new version, so the next Done or Unblock on it is not refused as stale.
-      restored.then((work) => { if (undoIntent.isCurrent()) current.show({ ...item, blocked: { ...blocked, version: work.version } }); }, () => {
-        if (!undoIntent.isCurrent()) return;
-        current.reload();
-        toast({ message: 'Undo did not work. Open the task to block it again.', tone: 'danger' });
-      });
-    } } });
-  }, [toast]);
+  /** The toast of Done, in the words of the change it makes: "#12 moved to Done", "#6 can continue", else "Marked done". */
+  const doneWords = (item: NeedsYouItem) => item.kind === 'task' && item.task ? stateWords(item.task, 'done')
+    : item.kind === 'blocked' && item.blocked ? (item.blocked.waitedBy ? `#${item.blocked.number} can continue` : stateWords(item.blocked, 'done')) : 'Marked done';
 
   return useMemo<CardHandlers>(() => ({
     // For the person a blocked task waits for, Done is what they were asked for: the task resumes. On your blocked task and on a task given
-    // to you it finishes the task. For anything else it only clears the item.
-    done: (item) => item.kind === 'blocked' && item.blocked?.waitedBy ? finishWait(item) : item.kind === 'blocked' && item.blocked ? finishBlocked(item)
-      : item.kind === 'task' && item.task ? finishTask(item) : resolve(item, { action: 'done' }, 'Marked done'),
+    // to you it finishes the task. For anything else it only clears the item. Each has its Undo (personas-33).
+    done: (item) => resolve(item, { action: 'done' }, doneWords(item)),
 
     snooze(item: NeedsYouItem, choice: SnoozeChoice) {
       if (choice === 'decline') { resolve(item, { action: 'decline' }, 'Declined for good. Only your Inbox changed'); return; }
@@ -188,8 +128,10 @@ export function useNeedsYouActions(queue: Queue): CardHandlers {
       else if (item.kind === 'blocked' && item.blocked && item.project) void navigate(`/projects/${item.project.id}/tasks?open=work:${item.blocked.workId}`, { state: { openPushed: true } });
       // A task given to you: opening it takes it out of the Inbox (#1424 C, `useGivenTaskOpened`).
       else if (item.kind === 'task' && item.task && item.project) void navigate(`/projects/${item.project.id}/tasks?open=work:${item.task.workId}`, { state: { openPushed: true } });
-      else if (reply) { awaitField(); void navigate(item.url, { state: { focusComposer: true } }); }
-      else void navigate(item.url);
+      // A question, a mention or a reply opens its thread with its own entry too: closing it (Esc, × "Close replies", the sheet's ×) goes Back to
+      // the Inbox with its open item, as a decision does (F-026 §4, personas-33 P2 1).
+      else if (reply) { awaitField(); void navigate(item.url, { state: { focusComposer: true, openPushed: true } }); }
+      else void navigate(item.url, { state: { openPushed: true } });
     },
 
     applyChanges(item: NeedsYouItem) {
@@ -240,5 +182,5 @@ export function useNeedsYouActions(queue: Queue): CardHandlers {
         });
       } } });
     },
-  }), [resolve, finishWait, finishTask, finishBlocked, acceptNow, toast, navigate, discussDecision]);
+  }), [resolve, acceptNow, toast, navigate, discussDecision]);
 }

@@ -3,6 +3,7 @@ import type { NeedsYouAsideEntry, NeedsYouItem } from '@flux/contracts';
 import { Button, IconButton, MEDIA, Overlay, Spinner, useLeaveUndoToasts, useMediaQuery, useToast } from '../ui';
 import { Face, kindWord } from './NeedsYouCard';
 import { announceInboxChange } from './api';
+import { ApiError } from '../api/client';
 import { getNeedsYouAside, restoreNeedsYou, type Queue } from './needsYou';
 import './inbox-aside.css';
 
@@ -153,10 +154,11 @@ function AsideList({ which, queue, onClose }: { which: Which; queue: Queue; onCl
     setEntries(rest);
     const restored = restoreNeedsYou(entry.item.key);
     back.current.push({ item: entry.item, restored });
-    restored.catch(() => {
+    restored.catch((error: unknown) => {
       back.current = back.current.filter((other) => other.item.key !== entry.item.key);
       setEntries((list) => (list && !list.includes(entry) ? [...list.slice(0, at), entry, ...list.slice(at)] : list));
-      toast({ message: 'That did not work. Try again.', tone: 'danger' });
+      // A task changed since its Done says so in its own words (personas-33).
+      toast({ message: error instanceof ApiError && error.code === 'NEEDS_YOU_TASK_CHANGED' ? error.message : 'That did not work. Try again.', tone: 'danger' });
     });
     if (!rest.length) onClose();
   };

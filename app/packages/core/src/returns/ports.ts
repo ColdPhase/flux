@@ -68,7 +68,11 @@ export interface ReturnMessage {
   /** `via` names an agent whose answer its author showed everyone, not a local client: the summary says "Ada's Assistant" (#1424). */
   viaAgent?: boolean;
 }
-export interface ReturnConversation { id: string; projectId: string; createdBy: ActorRef; opening: string }
+export interface ReturnConversation {
+  id: string; projectId: string; createdBy: ActorRef; opening: string;
+  /** The decision this conversation is the discussion of (#1424): its title, and who its questions ask (`threadAskee`). */
+  decision?: { title: string; askee: string | null } | null;
+}
 export interface ReturnMaterial { id: string; projectId: string; title: string; version: number }
 export interface ReturnSketch { id: string; workspaceId: string; projectId: string | null; title: string }
 /** A project doc (#112) as it reads now: its current version and that version's reason. */

@@ -18,7 +18,7 @@ import { ForbiddenError, InvalidInputError, NotFoundError } from '../access/erro
 import type { Principal } from '../principal.js';
 import { linkReader } from '../work/service.js';
 import type { WorkRecord } from '../work/ports.js';
-import type { NeedsYouPorts, StoredNeedsYou } from './ports.js';
+import type { NeedsYouPorts, NeedsYouRestore, StoredNeedsYou } from './ports.js';
 import { channelsOf } from '../notifications/preferences.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -69,11 +69,14 @@ function holds(state: StoredNeedsYou, now: Date, statuses: Map<string, string>) 
 export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new Date()) {
   /** Unread notifications that would notify the person, counted by the read of `candidates` that made the list (#1243). */
   const notifyingOf = new WeakMap<NeedsYouItem[], number>();
+  /** The spaces the person could read for the read of `candidates` that made the list. */
+  const projectsOf = new WeakMap<NeedsYouItem[], Set<string>>();
   /**
    * Everything that needs the person now. `keep`: `note:` keys listed even though their notification is read, so the "done today" list
-   * can show a mention, a question or a task the person marked done (Done reads it, #1424 E).
+   * can show a mention, a question or a task the person marked done (Done reads it, #1424 E). `finished`: `note:` keys of tasks given to the
+   * person that their own Done finished, with the version it left, listed while the task is still as that Done left it (personas-33).
    */
-  async function candidates(principal: Principal, keep: ReadonlySet<string> = new Set()): Promise<NeedsYouItem[]> {
+  async function candidates(principal: Principal, keep: ReadonlySet<string> = new Set(), finished: ReadonlyMap<string, number> = new Map()): Promise<NeedsYouItem[]> {
     const userId = human(principal);
     const items: NeedsYouItem[] = [];
     const workspaceIds = await ports.access.workspaceIds(principal);
@@ -244,7 +247,8 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
       givenSeen.add(note.given);
       if (!unread(note)) continue;
       const task = await work(note.given);
-      if (!task || !projects.has(task.projectId) || task.owner?.kind !== 'human' || task.owner.id !== userId || task.status !== 'open' || task.creationRevertedAt) continue;
+      const doneByYou = task?.status === 'done' && finished.get(`note:${note.id}`) === task.version;
+      if (!task || !projects.has(task.projectId) || task.owner?.kind !== 'human' || task.owner.id !== userId || (task.status !== 'open' && !doneByYou) || task.creationRevertedAt) continue;
       if (!projectNames.has(task.projectId)) for (const [id, name] of await ports.access.projectNames([task.projectId])) projectNames.set(id, name);
       items.push({
         key: `note:${note.id}`, kind: 'task', title: `#${task.number} ${excerpt(task.title, 120)}`, detail: '',
@@ -287,7 +291,24 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
     // One list, newest first (README §7 Inbox, founder decision 2026-11-13); the key keeps two items of the same moment in a steady order.
     const sorted = items.sort((a, b) => b.at.localeCompare(a.at) || a.key.localeCompare(b.key));
     notifyingOf.set(sorted, notifying);
+    projectsOf.set(sorted, projects);
     return sorted;
+  }
+
+  /** The row of done today for a blocked task the person's Done finished or let continue, from the task as that Done left it. */
+  async function doneBlockedItem(key: string, restore: NeedsYouRestore, projects: ReadonlySet<string>): Promise<NeedsYouItem | null> {
+    const task = await ports.work.findWork(restore.workId);
+    if (!task || task.version !== restore.version || task.creationRevertedAt || !projects.has(task.projectId)) return null;
+    const asker = task.owner ?? task.createdBy;
+    const waitedBy = restore.wait ? (await ports.work.names([asker])).get(`${asker.kind}:${asker.id}`) ?? 'Someone' : null;
+    const name = (await ports.access.projectNames([task.projectId])).get(task.projectId) ?? 'Space';
+    return {
+      key, kind: 'blocked', title: waitedBy ? `${waitedBy} is waiting for you: #${task.number} ${excerpt(task.title, 80)}` : `#${task.number} ${excerpt(task.title, 120)}`,
+      detail: '', project: { id: task.projectId, name }, from: null, at: iso(task.updatedAt), url: `/projects/${task.projectId}/tasks?open=work:${task.id}`,
+      decision: null, reason: null, snoozeTask: null,
+      blocked: { workId: task.id, number: task.number, version: task.version, blocker: null, since: iso(task.updatedAt), waitingForUserId: restore.waitingForUserId ?? null,
+        waitingFor: null, waitingDecision: null, waitingOn: restore.waitingOn ?? null, ...(waitedBy ? { waitedBy } : {}) },
+    };
   }
 
   /**
@@ -300,22 +321,34 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
     const at = now();
     const dayAgo = at.getTime() - DAY_MS;
     const doneLately = (entry: StoredNeedsYou) => entry.state !== 'snoozed' && entry.updatedAt.getTime() >= dayAgo;
-    const all = await candidates(principal, new Set(stored.filter((entry) => doneLately(entry) && entry.key.startsWith('note:')).map((entry) => entry.key)));
+    const finished = new Map(stored.flatMap((entry) => (entry.restore && doneLately(entry) && entry.key.startsWith('note:') ? [[entry.key, entry.restore.version] as const] : [])));
+    const all = await candidates(principal, new Set(stored.filter((entry) => doneLately(entry) && entry.key.startsWith('note:')).map((entry) => entry.key)), finished);
     const notifying = notifyingOf.get(all) ?? 0;
     const statuses = await ports.repository.workStatuses(stored.flatMap((entry) => (entry.untilWorkId ? [entry.untilWorkId] : [])));
     const byKey = new Map(stored.map((entry) => [entry.key, entry]));
     const shown: NeedsYouItem[] = [];
     const later: { item: NeedsYouItem; entry: StoredNeedsYou }[] = [];
     const done: { item: NeedsYouItem; entry: StoredNeedsYou }[] = [];
+    // A Done that changed a task holds while the task is as it left it (personas-33); changed since (blocked again, reopened), the item is a
+    // need again, or no longer anything, and the choice is forgotten.
+    const versionOf = (item: NeedsYouItem) => item.task?.version ?? item.blocked?.version;
+    const moved = new Set<string>();
     for (const item of all) {
       const entry = byKey.get(item.key);
-      if (!entry || !holds(entry, at, statuses)) { shown.push(item); continue; }
+      if (entry?.restore && versionOf(item) !== entry.restore.version) moved.add(entry.key);
+      if (!entry || moved.has(entry.key) || !holds(entry, at, statuses)) { shown.push(item); continue; }
       if (entry.state === 'snoozed') later.push({ item, entry });
       else if (doneLately(entry)) done.push({ item, entry });
     }
-    // A snooze that ended, and a choice about a decision or task that is no longer a need, are forgotten.
+    // A blocked task the person's Done finished or let continue is no need any more, yet it is in done today until Put back (personas-33).
     const keys = new Set(all.map((item) => item.key));
-    const stale = stored.filter((entry) => (entry.state === 'snoozed' && !holds(entry, at, statuses))
+    for (const entry of stored) {
+      if (!entry.restore || keys.has(entry.key) || !entry.key.startsWith('blocked:') || !doneLately(entry)) continue;
+      const item = await doneBlockedItem(entry.key, entry.restore, projectsOf.get(all) ?? new Set());
+      if (item) { done.push({ item, entry }); keys.add(entry.key); }
+    }
+    // A snooze that ended, and a choice about a decision or task that is no longer a need, are forgotten.
+    const stale = stored.filter((entry) => (entry.state === 'snoozed' && !holds(entry, at, statuses)) || moved.has(entry.key)
       || (!entry.key.startsWith('note:') && !keys.has(entry.key))).map((entry) => entry.key);
     await ports.repository.deleteStates(userId, stale);
     return { items: shown.slice(0, MAX_ITEMS), all, later, done, notifying };
@@ -352,7 +385,22 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
       const extra = (command as { until?: unknown; untilWorkId?: unknown });
       if (command.action !== 'snooze' && (extra.until !== undefined || extra.untilWorkId !== undefined)) throw new InvalidInputError('Only a snooze has a time or a task');
       if (command.action === 'snooze' && (extra.until === undefined) === (extra.untilWorkId === undefined)) throw new InvalidInputError('Snooze until a time or until a task is done, not both', 'NEEDS_YOU_SNOOZE_CHOICE');
-      if (command.action === 'done') value = { state: 'done', until: null, untilWorkId: null };
+      let restore: NeedsYouRestore | null = null;
+      if (command.action === 'done') {
+        value = { state: 'done', until: null, untilWorkId: null };
+        // Done on a task given to you finishes it; on your blocked task too; for the person a task waits for, the task continues
+        // (#1424, round 8). The change is the task's own, and what it changed is kept so Undo and Put back change it back (personas-33).
+        if (item.kind === 'task' && item.task && ports.tasks) {
+          const after = await ports.tasks.finish(principal, item.task.workId, item.task.version);
+          restore = { workId: item.task.workId, version: after.version, to: 'open' };
+        } else if (item.kind === 'blocked' && item.blocked && ports.tasks) {
+          const blocked = item.blocked;
+          const waited = blocked.waitedBy !== undefined && blocked.waitedBy !== null;
+          const after = waited ? await ports.tasks.waitDone(principal, blocked.workId, blocked.version) : await ports.tasks.finish(principal, blocked.workId, blocked.version);
+          restore = { workId: blocked.workId, version: after.version, to: 'blocked', ...(waited ? { waitingForUserId: userId, wait: true as const }
+            : { ...(blocked.waitingForUserId ? { waitingForUserId: blocked.waitingForUserId } : {}), ...(blocked.waitingOn ? { waitingOn: { kind: blocked.waitingOn.kind, id: blocked.waitingOn.id } } : {}) }) };
+        }
+      }
       else if (command.action === 'decline') value = { state: 'declined', until: null, untilWorkId: null };
       else if (typeof extra.untilWorkId === 'string') {
         if (!UUID.test(extra.untilWorkId) || item.snoozeTask?.id !== extra.untilWorkId) throw new InvalidInputError('This item has no such task to wait for', 'NEEDS_YOU_TASK_UNKNOWN');
@@ -365,7 +413,7 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
         }
         value = { state: 'snoozed', until, untilWorkId: null };
       }
-      await ports.repository.putState(userId, item.key, value);
+      await ports.repository.putState(userId, item.key, { ...value, restore });
       // Done is also "read" for a mention or question, so the notification history agrees.
       const noteId = item.key.startsWith('note:') ? item.key.slice(5) : questionNotes.get(item);
       if (noteId && value.state !== 'snoozed') await ports.repository.setNotificationRead(userId, noteId, true);
@@ -379,6 +427,8 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
       const lower = key.toLowerCase();
       const own = (await ports.repository.states(userId)).find((entry) => entry.key === lower);
       if (!own) return;
+      // What the Done changed goes back first: a task changed since answers a conflict and the choice stays (personas-33).
+      if (own.restore && own.state === 'done' && ports.tasks) await ports.tasks.putBack(principal, own.restore, new Date(own.updatedAt.getTime() - 60_000));
       await ports.repository.deleteStates(userId, [lower]);
       if (lower.startsWith('note:') && own.state !== 'snoozed') await ports.repository.setNotificationRead(userId, lower.slice(5), false);
       if (lower.startsWith('question:') && own.state !== 'snoozed') {

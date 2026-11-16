@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import type { ConversationMessage, DecisionDiscussion as Discussion, Project, WorkspaceMember } from '@flux/contracts';
 import { AgentIdentity, Avatar, Kreska, MEDIA, sendsOnEnter, useMediaQuery, type AgentHue } from '../ui';
 import { useComposerDraft, useComposerScope } from '../composer/draft';
@@ -28,6 +28,9 @@ const MESSAGES = 50;
  */
 export function useDecisionDiscussion(decisionId: string, revision: number | string) {
   const [discussion, setDiscussion] = useState<Discussion | null>(null);
+  // The earlier pages read with "Show earlier", kept across the reads of the newest page (personas-33 P2 3): every message stays reachable.
+  const [earlier, setEarlier] = useState<{ decisionId: string; messages: ConversationMessage[]; page: Discussion['messagePage'] } | null>(null);
+  const [busyEarlier, setBusyEarlier] = useState(false);
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
@@ -38,7 +41,25 @@ export function useDecisionDiscussion(decisionId: string, revision: number | str
     return () => controller.abort();
   }, [decisionId, revision, attempt]);
   const reload = useCallback(() => setAttempt((value) => value + 1), []);
-  return { discussion, failed, reload };
+  const current = discussion?.decisionId === decisionId ? discussion : null;
+  const kept = earlier?.decisionId === decisionId ? earlier : null;
+  const messages = useMemo(() => {
+    const bySequence = new Map<number, ConversationMessage>();
+    for (const message of [...(kept?.messages ?? []), ...(current?.messages ?? [])]) bySequence.set(message.sequence, message);
+    return [...bySequence.values()].sort((a, b) => a.sequence - b.sequence);
+  }, [kept, current]);
+  const oldest = messages[0];
+  const hasEarlier = !!oldest && oldest.sequence > 1 && (kept ? kept.page.hasMoreBefore : !!current?.messagePage.hasMoreBefore);
+  const loadEarlier = useCallback(async () => {
+    if (!oldest) return;
+    setBusyEarlier(true);
+    try {
+      const page = await getDecisionDiscussion(decisionId, { limit: MESSAGES, beforeSequence: oldest.sequence });
+      setEarlier((was) => ({ decisionId, messages: [...page.messages, ...(was?.decisionId === decisionId ? was.messages : [])], page: page.messagePage }));
+    } catch { setFailed(true); }
+    finally { setBusyEarlier(false); }
+  }, [decisionId, oldest]);
+  return { discussion: current, messages, hasEarlier, loadEarlier, busyEarlier, failed, reload };
 }
 export type DecisionDiscussionState = ReturnType<typeof useDecisionDiscussion>;
 
@@ -54,8 +75,9 @@ export function DecisionMessages({ state, composer, project, members, me }: {
   const owners = useAgentOwners(project);
   const hueOf = useAgentHue();
   const { discussion } = state;
-  // What this person sent stays in its place until the read that has it comes back, so nothing blinks out (#1424).
-  const stored = discussion?.messages ?? [];
+  // What this person sent stays in its place until the read that has it comes back, so nothing blinks out (#1424). Oldest first, with
+  // "Show earlier" at the top while older messages are still to read (personas-33 P2 3).
+  const stored = state.messages;
   const messages = [...stored, ...composer.sent.map((item) => item.message)
     .filter((message) => !stored.some((other) => other.id === message.id) && (!discussion?.conversationId || message.conversationId === discussion.conversationId))]
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
@@ -75,6 +97,7 @@ export function DecisionMessages({ state, composer, project, members, me }: {
     <section className="details__sec wd-discussion" aria-labelledby="wd-discussion-head" data-decision-discussion={discussion?.conversationId ?? ''}>
       <h4 id="wd-discussion-head">Discussion</h4>
       {state.failed ? <p className="wd-error" role="alert">The discussion could not be loaded. <button type="button" className="wd-inline" onClick={state.reload}>Retry</button></p> : null}
+      {state.hasEarlier ? <button type="button" className="wd-inline wd-act__earlier" disabled={state.busyEarlier} onClick={() => void state.loadEarlier()}>{state.busyEarlier ? 'Loading…' : 'Show earlier'}</button> : null}
       <ol className="wd-act wd-discussion__list" aria-label="Messages about this decision" ref={list}>
         {messages.map((message) => {
           const name = author(message);

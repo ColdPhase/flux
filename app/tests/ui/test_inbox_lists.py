@@ -153,7 +153,7 @@ class InboxLists(unittest.TestCase):
         question = page.locator(".nyq__list .nyc", has_text=ASKED)
         expect(second).to_be_visible()
         expect(question).to_be_visible()
-        # Not now on the task (S) and Done on the question (E). Done on a task finishes it (test_02b), so it is never "done today".
+        # Not now on the task (S) and Done on the question (E). Done on a task finishes it and is in done today too (test_02b).
         second.locator(".nyc__open").click()
         page.locator(".nyq__col--open").get_by_role("button", name=re.compile("^Not now")).click()
         expect(second).to_have_count(0)
@@ -220,6 +220,7 @@ class InboxLists(unittest.TestCase):
         # Founder decision (2026-11-15, #1424): Done on a Task item finishes the task, not only the item; Undo puts it back.
         task = self.tasks["second"]
         work = lambda: self.contexts["jonas"].request.get(f"/api/v1/work/{task['id']}").json()  # noqa: E731
+        done_before = self.queue()["doneToday"]
         page = self.page()
         page.goto("/inbox")
         second = page.locator(".nyq__list .nyc--task", has_text=SECOND)
@@ -233,7 +234,8 @@ class InboxLists(unittest.TestCase):
             time.sleep(0.25)
         self.assertEqual(work()["status"], "done", "Jonas, who gave it, sees it done")
         self.assertIsNone(self.task_item("second"))
-        self.assertEqual(self.queue()["doneToday"], 0, "a finished task is not an Inbox item marked done")
+        # It is in done today, so it can be put back from there too (personas-33 P2 2).
+        self.assertEqual(self.queue()["doneToday"], done_before + 1, "a task Done finished from the Inbox is in done today")
         shot(page, "inbox-lists-task-done")
         # Undo (Z): the task is To do again and the item is back.
         page.keyboard.press("z")
