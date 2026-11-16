@@ -223,7 +223,7 @@ when a prerequisite is still open, since Doing needs every one done):
 | --- | --- | --- |
 | a decision | the decision is accepted (`POST /decisions/:id/accept`) | the decision was accepted |
 | a task | that task becomes done, by `PATCH`, by a linked pull request's rule (#1055) or dropped | #7 is done / #7 was dropped |
-| a person | they say they are done: `POST /work/:id/waiting-done` (the Inbox item's Done, or the panel's) | Jonas is done |
+| a person | they say they are done: `POST /work/:id/waiting-done` (the panel's Done; the Inbox item's Done does the same through the queue, [needs you](needs-you.md), and its Undo puts the wait back) | Jonas is done |
 
 A task that is Blocked when its agent's run ends is left as it is (the report says "Blocked: #4 …" in the agent's chat), in both "Do it and tell me" and "Ask me first": the drain does not mark it Done or hand it back, so the tasks that wait for it do not resume on a false Done. The agent takes the task up again when its wait is resolved and when a person moves it from Blocked to Doing (Resolve), as when it was given the task; moving it to To do does not start it.
 

@@ -2,8 +2,9 @@ import { useState } from 'react';
 import { photoSources, usePhotoOf } from '../people/photos';
 
 export function initials(name: string): string {
-  // Only words that start with a letter or a digit: a "(you)" or "·" never becomes an initial (#763 H11-9).
-  const parts = name.trim().split(/\s+/).filter((part) => /^[\p{L}\p{N}]/u.test(part));
+  // Only words that start with a letter or a digit: a "(you)" or "·" never becomes an initial (#763 H11-9), and what follows " · " is about the
+  // person, not their name ("Gosia Mlyn · Guest" is GM, personas-33).
+  const parts = name.split(' · ')[0]!.trim().split(/\s+/).filter((part) => /^[\p{L}\p{N}]/u.test(part));
   if (!parts.length) return '?';
   const first = parts[0]!.charAt(0);
   const last = parts.length > 1 ? parts[parts.length - 1]!.charAt(0) : '';

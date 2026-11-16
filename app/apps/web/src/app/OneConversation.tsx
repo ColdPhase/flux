@@ -161,18 +161,20 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
     navigate(`/projects/${project.id}/conversations/${conversationId}`,
       { state: { fromStream: true, backToStream, focusComposer: !touch } satisfies NavState, replace: !!thread && backToStream });
   }, [navigate, project.id, reopenPanel, state?.backToStream, thread, touch]);
-  // Closing never adds an entry (A-1): a thread opened from the stream is one step back; one a link opened (the Inbox's Reply, a search
+  // Closing never adds an entry (A-1): a thread opened from the stream or from an Inbox item is one step back; one a link opened (a search
   // result, a notice) gives its entry to the conversation, with the origin it was followed from. Back, and the header's "‹", then leave the
   // conversation for that origin instead of opening the thread again.
   const backToStream = state?.backToStream === true;
+  // A thread an Inbox item opened has its own entry (`openPushed`, F-026 §4): closing it is Back to the Inbox, with its open item (personas-33).
+  const closesBack = backToStream || state?.openPushed === true;
   const origin = state?.origin;
   const close = useCallback((options?: { keepPanel?: boolean }) => {
     if (!thread) return;
     if (!opener.current) opener.current = root?.message.id ?? null;
     setClosing(thread.id);
-    if (backToStream && !options?.keepPanel) navigate(-1);
+    if (closesBack && !options?.keepPanel) navigate(-1);
     else navigate(`/projects/${project.id}`, { replace: true, state: { fromStream: true, ...(options?.keepPanel ? { keepPanel: true } : {}), ...(origin ? { origin } : {}) } satisfies NavState });
-  }, [navigate, project.id, root?.message.id, backToStream, origin, thread]);
+  }, [navigate, project.id, root?.message.id, closesBack, origin, thread]);
   // Closing gives focus back to the root's replies, where the person opened the thread. Not when the panel showed something else by then
   // (a task opened from its card): the panel has given focus back to that card, and the root may be far from where the reader is (P2 #5).
   useEffect(() => {

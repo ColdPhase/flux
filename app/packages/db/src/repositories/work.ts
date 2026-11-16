@@ -94,7 +94,9 @@ async function recordTaskActivity(db: DbExecutor, before: ReturnType<typeof toWo
     // What a move into Blocked said: the reason and the person waited for; nothing for any other state.
     const blocked = after.status === 'blocked';
     entries.push({ kind: 'status', detail: { from: before.status, to: after.status, blocker: blocked ? after.blocker : null, waitingForUserId: blocked ? after.waitingFor?.id ?? null : null,
-      waitingOn: blocked ? await waitingLabel(db, after.waitingOn) : null, dropped: after.status === 'done' && after.dropped } });
+      waitingOn: blocked ? await waitingLabel(db, after.waitingOn) : null, dropped: after.status === 'done' && after.dropped,
+      // The reason it had as it leaves Blocked, so the Inbox's Undo of a Done puts that one back (personas-33); never shown.
+      ...(before.status === 'blocked' && !blocked && before.blocker ? { wasBlocker: before.blocker } : {}) } });
   }
   if (!sameActor(before.owner, after.owner)) entries.push({ kind: 'owner', detail: { from: before.owner, to: after.owner } });
   if (before.dueOn !== after.dueOn) entries.push({ kind: 'due', detail: { from: before.dueOn, to: after.dueOn } });
@@ -543,6 +545,13 @@ export function workRows(db: DbExecutor) {
         AND n.url = ${`/projects/${work.projectId}/tasks?open=work:${work.id}`}
         AND n.event_id IN (SELECT e.id FROM events e WHERE e.kind = 'project.work_updated.v1' AND e.object_id = ${work.projectId}
           AND e.data ? 'resumedFor')`);
+    },
+    async reasonLeftBlockedWith(workId: string) {
+      const a = schema.projectTaskActivity;
+      const [latest] = await openRows(db, 'project_task_activity', await db.select().from(a).where(and(eq(a.workId, workId), eq(a.kind, 'status')))
+        .orderBy(desc(a.createdAt), desc(a.id)).limit(1));
+      const detail = latest?.detail as { from?: string; wasBlocker?: string } | undefined;
+      return detail?.from === 'blocked' && typeof detail.wasBlocker === 'string' ? detail.wasBlocker : null;
     },
     async messageWrittenBy(projectId: string, messageIds: readonly string[], userId: string) {
       if (!messageIds.length) return false;

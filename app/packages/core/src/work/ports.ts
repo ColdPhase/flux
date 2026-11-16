@@ -239,6 +239,8 @@ export interface WorkRepository extends TaskGraphReader {
    * conversation, and the "can continue" notifications its owner got from it since `since` (with their queued emails).
    */
   takeBackResumption(work: WorkRecord, by: ActorRef, since: Date): Promise<void>;
+  /** The reason the task had when its latest change of state took it out of Blocked, or null (personas-33: the Inbox's Undo of a Done). */
+  reasonLeftBlockedWith(workId: string): Promise<string | null>;
   /** Whether one of these messages of the project was written by this person (#1424 M: a task made from your own message is yours). */
   messageWrittenBy(projectId: string, messageIds: readonly string[], userId: string): Promise<boolean>;
   /**

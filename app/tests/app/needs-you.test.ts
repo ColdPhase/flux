@@ -523,17 +523,24 @@ describe('the Inbox needs-you queue', () => {
     assert.equal((await restore(second, key)).status, 204);
     assert.ok(await taskItem(second, marker.id), 'Undo brings it back');
 
-    // The Inbox's Done finishes the task (founder decision 2026-11-15): the task's own change to Done, against the item's version. The giver
-    // sees it done and the item leaves; Undo (a restore to To do) brings it back, its notification still unread.
+    // The Inbox's Done finishes the task (founder decision 2026-11-15): the queue's Done is the task's own change to Done. The giver sees it
+    // done, the item leaves and is in done today (personas-33 P2 2); Undo and Put back (the DELETE) put the task back to To do and the item back.
     const apron = await give('Sew the aprons', second);
     const given = await arrived(second, apron);
-    const doneWork = json<WorkItem>(await patch(second, `/api/v1/work/${apron.id}`, { status: 'done', expectedVersion: given.task!.version }), 200);
-    assert.equal(await taskItem(second, apron.id), undefined, 'finished from the Inbox, it leaves');
+    const before = await queue(second);
+    json(await resolve(second, given.key, { action: 'done' }), 200);
     assert.equal(json<WorkItem>(await partner.browser.request('GET', `/api/v1/work/${apron.id}`), 200).status, 'done', 'the giver sees it done');
-    json(await patch(second, `/api/v1/work/${apron.id}`, { status: 'open', restore: true, expectedVersion: doneWork.version }), 200);
+    const doneNow = await queue(second);
+    assert.equal(find(doneNow, given.key), undefined, 'finished from the Inbox, it leaves');
+    assert.equal(doneNow.doneToday, before.doneToday + 1, 'and is counted in done today');
+    const listed = (await aside(second)).done.find((entry) => entry.item.key === given.key);
+    assert.equal(listed?.item.title, `#${apron.number} Sew the aprons`, 'listed there, so it can be put back');
+    assert.equal((await restore(second, given.key)).status, 204);
+    assert.equal(json<WorkItem>(await partner.browser.request('GET', `/api/v1/work/${apron.id}`), 200).status, 'open', 'Put back: To do again');
     const back = await taskItem(second, apron.id);
-    assert.equal(back?.key, given.key, 'Undo puts the task back to To do and the item back in the Inbox');
-    assert.ok((back?.task?.version ?? 0) > doneWork.version, 'with the version Done would finish now');
+    assert.equal(back?.key, given.key, 'and the item is back in the Inbox');
+    assert.ok((back?.task?.version ?? 0) > given.task!.version, 'with the version Done would finish now');
+    assert.equal((await queue(second)).doneToday, before.doneToday);
   });
 
   test('"for later" and "done today" open their lists, and each item comes back from there (#1424 E)', async () => {
@@ -576,8 +583,10 @@ describe('the Inbox needs-you queue', () => {
     assert.deepEqual(rest.later, []);
     assert.deepEqual(rest.done.map((entry) => entry.item.key), [drying.key]);
 
-    // Done on an item that is no longer a need is not counted: the task started since would not come back.
-    json(await patch(someone, `/api/v1/work/${second2.id}`, { status: 'in_progress', expectedVersion: second2.version }), 200);
+    // Done on an item that is no longer a need is not counted: the task someone else started since would not come back.
+    const finished = json<WorkItem>(await partner.browser.request('GET', `/api/v1/work/${second2.id}`), 200);
+    assert.equal(finished.status, 'done', 'Done on a task given to you finished it');
+    json(await patch(partner, `/api/v1/work/${second2.id}`, { status: 'in_progress', expectedVersion: finished.version }), 200);
     assert.equal((await queue(someone)).doneToday, 0);
     assert.deepEqual((await aside(someone)).done, []);
   });

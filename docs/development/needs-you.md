@@ -43,19 +43,27 @@ empty, its `url` the task (`/projects/:id/tasks?open=work:<id>`) and `task: { wo
 the task (the web client marks the notification read when the task panel shows a task of theirs that is a `task` item, put off for
 later or not, wherever it was opened from; `/inbox/:id` from a notice, push or email reads it too), **starts or finishes** it (status), or when it is **given to
 someone else** (owner). **Done finishes the task** (founder decision 2026-11-15, #1424): the Inbox's Done (the button, `E`, the phone's
-swipe) is the task's own change to Done, `PATCH /api/v1/work/:id` with `status: done` against `task.version`, said as everywhere ("#12 moved
-to Done", with its line in the conversation), so the item leaves as for any finished task and the person who gave it sees it done. Undo puts
-the task back to To do (`restore: true`, the line goes) and, the notification still unread, the item is back. The queue's own `done` action
-on the item's key only reads the notification; the web client does not use it for a Task item. Not now snoozes it, as for a mention; Undo
-brings it back. A blocked
+swipe) is the queue's own `POST /api/v1/needs-you/:key` with `{ "action": "done" }`, which makes the task's own change to Done for the person
+(as `PATCH /api/v1/work/:id` with `status: done` against `task.version`, said as everywhere: "#12 moved to Done", with its line in the
+conversation), reads the notification and keeps the choice, so the person who gave it sees it done and the item is in **done today**
+(personas-33 P2 2). Undo and Put back are the `DELETE` below: the task goes back to To do (`restore: true`, the line goes) and the item is
+back. Not now snoozes it, as for a mention; Undo brings it back. A blocked
 task given to you is its one `blocked` item. Push and email follow the person's level for `assigned`, unchanged.
 
 **Done on your blocked task finishes it** (founder decision 2026-11-15, round 8, #1424). For the owner, the `blocked` item's Done (the button,
-`E`, the phone's swipe) is the task's own change to Done, `PATCH /api/v1/work/:id` with `status: done` against `blocked.version`, said as
-everywhere ("#6 moved to Done"); the item is derived from the task's status, so it leaves. Undo is the same `PATCH` with `status: blocked`, the
-blocker, `waitingFor` or `waitingOn` the item carried, and `restore: true` (the "done" line goes), so the item is back as it was. For the person
-the task waits for (`blocked.waitedBy`), Done stays `POST /work/:id/waiting-done` (they are done, the task resumes). The queue's own `done` action
-on a `blocked:<id>` key is no longer used by the web client.
+`E`, the phone's swipe) is the same `POST /api/v1/needs-you/:key` `{ "action": "done" }`: the task's own change to Done against `blocked.version`,
+said as everywhere ("#6 moved to Done"). For the person the task waits for (`blocked.waitedBy`) it is what `POST /work/:id/waiting-done` does:
+they are done and the task resumes ("#6 can continue"). Either way the item is in done today, and Undo and Put back (the `DELETE`) put the task
+back to Blocked with what it waited for (the person, decision or task the item carried) and the reason it had when it left Blocked (kept on
+the activity entry of that move, sealed with it), as `restore: true` (the "done" or "can continue" line, the activity entry and the owner's
+"can continue" notification go). The waited-for person's Put back needs only read access, as their Done did, and puts back only the wait
+they ended: themselves as the person waited for (personas-33 P2 4).
+
+**What Done changed is kept with the choice** (migration 0092): `needs_you_states.restore` holds, for a Done that changed a task, ids and
+numbers only (`{ workId, version, to: "open" | "blocked", waitingForUserId?, waitingOn?, wait? }`, never words). The `DELETE` puts the task
+back only while it is unchanged since (`version`); otherwise it answers 409 `NEEDS_YOU_TASK_CHANGED` and the choice stays, so the person
+opens the task. Such an item stays in done today for 24 hours although it is no longer a need, built from the task as it is now; a task the
+person can no longer read is not listed.
 
 Home (README §7): Continue never offers what the Inbox holds, so a task given to you is "Waiting for you" until you open it, and
 "Pick up “…” · Jonas added it for you" only after that.
@@ -169,8 +177,9 @@ Accept are all real reversals through the calls above; only an agent's question 
 
 `GET /api/v1/needs-you` returns `{ items, count, later, doneToday, notifying }`: `count` is what the sidebar, the phone's
 tab bar and Home's "Needs you" badge show; `later` counts snoozed items, `doneToday` what was marked done or
-declined in the last 24 hours and would come back if put back ("4 done today"): an item that is no longer a need (a task started
-since, a notification older than 14 days) is not counted.
+declined in the last 24 hours and would come back if put back ("4 done today"): an item that is no longer a need for another reason (a
+task started or finished by someone else since, a notification older than 14 days) is not counted. A task that the person's own Done
+finished or let continue is counted, since Put back brings it back as it was (above).
 
 **The two lists** (founder decision 2026-11-15, #1424 E). `GET /api/v1/needs-you/aside` returns `{ later, done }`, each a list of
 `{ item, state, until, untilTask, at }` with exactly the items the two counts count: `later` the snoozed ones, soonest back first, with

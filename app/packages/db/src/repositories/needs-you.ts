@@ -14,6 +14,7 @@ import { openRows } from '../sealing.js';
 const s = schema.needsYouStates;
 const d = schema.projectDecisions;
 const n = schema.notifications;
+type NeedsYouRestore = NonNullable<typeof schema.needsYouStates.$inferSelect['restore']>;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 export function needsYouRows(db: DbExecutor) {
@@ -21,7 +22,7 @@ export function needsYouRows(db: DbExecutor) {
   const takeOut = async (userId: string, ids: string[]): Promise<string[]> => {
     if (!ids.length) return [];
     await db.update(n).set({ readAt: sql`now()` }).where(and(eq(n.userId, userId), inArray(n.id, ids), isNull(n.readAt)));
-    const done = { state: 'done' as const, until: null, untilWorkId: null };
+    const done = { state: 'done' as const, until: null, untilWorkId: null, restore: null };
     await db.insert(s).values(ids.map((id) => ({ userId, itemKey: `note:${id}`, ...done }))).onConflictDoUpdate({
       target: [s.userId, s.itemKey], set: { ...done, updatedAt: sql`now()` },
     });
@@ -30,12 +31,13 @@ export function needsYouRows(db: DbExecutor) {
   return {
     async states(userId: string) {
       const rows = await db.select().from(s).where(eq(s.userId, userId));
-      return rows.map((row) => ({ key: row.itemKey, state: row.state, until: row.until, untilWorkId: row.untilWorkId, updatedAt: row.updatedAt }));
+      return rows.map((row) => ({ key: row.itemKey, state: row.state, until: row.until, untilWorkId: row.untilWorkId, restore: row.restore ?? null, updatedAt: row.updatedAt }));
     },
 
-    async putState(userId: string, key: string, value: { state: 'done' | 'declined' | 'snoozed'; until: Date | null; untilWorkId: string | null }) {
-      await db.insert(s).values({ userId, itemKey: key, ...value }).onConflictDoUpdate({
-        target: [s.userId, s.itemKey], set: { ...value, updatedAt: sql`now()` },
+    async putState(userId: string, key: string, value: { state: 'done' | 'declined' | 'snoozed'; until: Date | null; untilWorkId: string | null; restore?: NeedsYouRestore | null }) {
+      const row = { ...value, restore: value.restore ?? null };
+      await db.insert(s).values({ userId, itemKey: key, ...row }).onConflictDoUpdate({
+        target: [s.userId, s.itemKey], set: { ...row, updatedAt: sql`now()` },
       });
     },
 

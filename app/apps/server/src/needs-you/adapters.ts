@@ -5,12 +5,15 @@ import {
   preferenceRepository,
   evaluateProject,
   listWorkspaces,
+  ConflictError,
+  VersionConflictError,
   type NeedsYouAccess,
   type NeedsYouAssistant,
+  type NeedsYouTasks,
 } from '@flux/core';
 import { notificationRepository } from '../push/adapters.js';
 import { aiAllowedInProject } from '../access/ai-gate.js';
-import { workRepository } from '../work/adapters.js';
+import { workRepository, workUseCases } from '../work/adapters.js';
 
 // Adapters that connect the core "Needs you" queue (#342) to the access policy and the Drizzle rows.
 // Core defines the ports (#46); every decision here comes from the single policy choke point.
@@ -42,9 +45,34 @@ export function policyNeedsYouAccess(db: Database): NeedsYouAccess {
   };
 }
 
+/**
+ * The task changes of the Inbox's Done and of its Undo (personas-33), each the work use case with all its checks, lines and events. A task
+ * changed since the Done is a conflict the Inbox says in its own words.
+ */
+export function needsYouTasks(db: Database): NeedsYouTasks {
+  const work = workUseCases(db);
+  const changedSince = (error: unknown) => error instanceof VersionConflictError
+    ? new ConflictError('This task changed since. Open it to look again.', 'NEEDS_YOU_TASK_CHANGED') : error;
+  return {
+    finish: (principal, workId, version) => work.updateWork(principal, workId, { status: 'done' }, version),
+    waitDone: (principal, workId, version) => work.resolveWaiting(principal, workId, version),
+    async putBack(principal, restore, since) {
+      try {
+        if (restore.wait) { await work.undoWaitingDone(principal, restore.workId, restore.version, since); return; }
+        if (restore.to === 'open') { await work.updateWork(principal, restore.workId, { status: 'open', restore: true }, restore.version); return; }
+        const blocker = await work.reasonLeftBlockedWith(principal, restore.workId);
+        await work.updateWork(principal, restore.workId, { status: 'blocked', ...(blocker ? { blocker } : {}),
+          ...(restore.waitingForUserId ? { waitingFor: { kind: 'human' as const, id: restore.waitingForUserId } } : {}),
+          ...(restore.waitingOn ? { waitingOn: restore.waitingOn } : {}), restore: true }, restore.version);
+      } catch (error) { throw changedSince(error); }
+    },
+  };
+}
+
 /** The "Needs you" use cases bound to a connection. */
 export const needsYouUseCases = (db: Database, assistant?: NeedsYouAssistant) => createNeedsYou({
   access: policyNeedsYouAccess(db),
+  tasks: needsYouTasks(db),
   aiAllowed: (projectId) => aiAllowedInProject(db, projectId),
   ...(assistant ? { assistant } : {}),
   repository: needsYouRows(db),

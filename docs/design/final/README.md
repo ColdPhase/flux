@@ -1007,7 +1007,9 @@ Community garden sensors, Rain barrel monitor and Tool library.
 - **Done on your blocked task finishes it** (founder decision, Hubert, 2026-11-15, round 8, [#1424](https://github.com/ColdPhase/flux/issues/1424)),
   as on a task given to you: the Blocked item's Done (the button, `E`, the phone's swipe) moves the task to Done for everyone, the toast says
   "#6 moved to Done · Undo", and Undo puts it back to Blocked with what it waited for (the person, decision or task and the reason) and in
-  your Inbox. For the person a task waits for, its Done stays theirs: they are done, and the task can continue.
+  your Inbox. For the person a task waits for, its Done stays theirs: they are done, and the task can continue; the toast says "#6 can
+  continue · Undo", and Undo puts it back to Blocked, waiting for them with its reason (personas-33). Every Done here, on a task given to
+  you and on a blocked item alike, is in "done today", where Put back does what Undo does.
 - **Accept works at once, with Undo** (founder decision, Hubert, 2026-11-15, round 8, [#1424](https://github.com/ColdPhase/flux/issues/1424)):
   in the Inbox (the button, `A`) and in the decision's panel alike, Accept accepts the decision at once, for everyone: its card reads
   Accepted, it leaves every Inbox, a decision it replaces is marked replaced and the tasks that waited for it continue. The toast says

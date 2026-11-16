@@ -212,6 +212,23 @@ test('a question that names nobody asks the decision\'s proposer, not whoever wr
   assert.equal(plain.about, undefined);
 });
 
+test('Home asks the same person as the Inbox: the proposer, never whoever wrote first in the discussion (personas-33 P2 5)', async () => {
+  const f = await scene();
+  type Home = { items: { kind: string; text: string; detail: string | null; source: { messageId?: string } | null }[]; nextStep: { text: string; reason: string } | null };
+  const home = async (who: Person) => expectStatus(await who.browser.request('GET', `/api/v1/return?place=project&id=${f.place.id}`), 200) as Home;
+  await write(f.writer, f.decision.id, 'We have a 15 m cable at the school.');
+  const asked = await write(f.guest, f.decision.id, 'Is it waterproof?');
+  await waitFor(async () => (await notificationsOf(f.proposer, asked.conversationId)).find((row) => row.url.endsWith(asked.id)), 'the proposer is asked');
+  const writerHome = await home(f.writer);
+  assert.equal(writerHome.items.some((entry) => entry.kind === 'question' && entry.source?.messageId === asked.id), false, 'the first writer is not asked on Home');
+  const proposerHome = await home(f.proposer);
+  const question = proposerHome.items.find((entry) => entry.kind === 'question' && entry.source?.messageId === asked.id);
+  assert.ok(question, 'the proposer is asked on Home, as in the Inbox');
+  assert.equal(question.detail, 'About “Use a ToF sensor”', 'named by its decision, as the Inbox names it');
+  assert.deepEqual([proposerHome.nextStep?.text, proposerHome.nextStep?.reason], ['Answer dd-guest\'s question', '“Is it waterproof?” dd-guest asked you about “Use a ToF sensor”.']);
+  assert.notEqual(writerHome.nextStep?.text, 'Answer dd-guest\'s question');
+});
+
 test('an agent\'s proposal: a question that names nobody asks the agent\'s owner', async () => {
   const f = await scene();
   const agentId = randomUUID();
