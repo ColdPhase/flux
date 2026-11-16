@@ -496,7 +496,8 @@ function AppLayoutContent() {
       if (kept.open && kept.scroll > 0) setPanelScrollTo({ top: kept.scroll });
     }
     if (arrival) { const height = recall<unknown>('sheet', arrival); setSheetStart(typeof height === 'boolean' ? height : null); }
-    if (closingBack) { setClosingBack(false); setDetailsOpen(false); }
+    // Only the Back that closing took ends the panel; a newer step taken before it (opening something) keeps what it opened.
+    if (closingBack) { setClosingBack(false); if (navType === 'POP') setDetailsOpen(false); }
   }
   const trailNow = useRef(trail);
   useEffect(() => { trailNow.current = trail; });
@@ -737,8 +738,11 @@ function AppLayoutContent() {
     if (params.has('open') && !ownedShown && (location.state as { openPushed?: boolean } | null)?.openPushed) {
       // Back once the panel has closed and handed the focus back, so the step does not land while focus is still inside it.
       // A Back to an address with a #message- fragment lets the browser put focus on that message: the control closing gave it to keeps it.
+      // Opened again, or moved on, before then (a click on the same row a moment later): the person's newer step stands and no Back is taken.
+      const entry = (window.history.state as { key?: string } | null)?.key;
       setClosingBack(true);
       requestAnimationFrame(() => requestAnimationFrame(() => {
+        if (now.current.detailsOpen || (window.history.state as { key?: string } | null)?.key !== entry) { setClosingBack(false); return; }
         const kept = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
         const after = () => requestAnimationFrame(() => { if (kept?.isConnected && document.activeElement !== kept) kept.focus({ preventScroll: true }); });
         window.addEventListener('popstate', after, { once: true });
