@@ -810,6 +810,9 @@ class SpaceSettings(unittest.TestCase):
         self.sign_up("ona", "Ona Berg", email)
         self.api(ada, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/members", {"email": email, "role": "member"}, status=201)
         ona_id = self.api(self.page("ona"), "GET", "/api/v1/me")["user"]["id"]
+        # A new member's first-steps card carries the same offer as its row, and the one-time offer then does not show (F-026 §7 Home,
+        # #1438): which of the two came first was a race. Ona hides the card, so the one-time offer is the one to look for.
+        self.api(self.page("ona"), "POST", "/api/v1/me/first-steps/hide", {}, status=204)
         context = self.browser.new_context(base_url=ORIGIN, locale="en-GB", viewport=DESKTOP, storage_state=self.states["ona"])  # sw-allowed: no route here; the offer needs the page's own worker
         self.addCleanup(context.close)
         context.add_init_script(PUSH_STUB % (ona_id, PUSH_KEY))
