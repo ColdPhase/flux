@@ -257,8 +257,16 @@ export function notificationFactRows(db: DbExecutor) {
         .orderBy(desc(pm.sequence)).limit(20);
       const since = message.authorId === null ? [] : await askedOf(message.authorId, 'project', message.projectId,
         sinceRows.map((item) => ({ authorId: item.authorId!, url: `/projects/${message.projectId}/conversations/${message.conversationId}#message-${item.id}` })));
+      // A decision's one discussion (#1424): a question in it that names nobody asks the decision's proposer, an agent's owner for an
+      // agent's proposal (persona round 8 P2 3), and its notice names the decision.
+      const pd = schema.projectDecisions;
+      const [bound] = await openRows(db, 'project_decisions', await db.select({ id: pd.id, workspaceId: pd.workspaceId, title: pd.title, proposedByKind: pd.proposedByKind, proposedById: pd.proposedById })
+        .from(schema.projectDecisionDiscussions).innerJoin(pd, eq(pd.id, schema.projectDecisionDiscussions.decisionId))
+        .where(eq(schema.projectDecisionDiscussions.conversationId, message.conversationId)));
+      const askee = !bound ? null : bound.proposedByKind === 'human' ? bound.proposedById
+        : (await db.select({ owner: schema.agents.ownerUserId }).from(schema.agents).where(eq(schema.agents.id, bound.proposedById)))[0]?.owner ?? null;
       return {
-        asked: asked ?? null,
+        asked: asked ?? null, ...(bound ? { decision: { title: bound.title, askee } } : {}),
         id: message.id, workspaceId: message.workspaceId, projectId: message.projectId, projectName: await projectName(message.projectId),
         conversationId: message.conversationId, opening: messagePreview(opening?.body ?? message.body, opening?.attachmentCount ?? message.attachmentCount), conversationCreatedBy: row.createdBy !== null ? { kind: 'human' as const, id: row.createdBy } : { kind: 'agent' as const, id: row.createdByAgentId! },
         author: message.authorId !== null ? { kind: 'human' as const, id: message.authorId } : { kind: 'agent' as const, id: message.authorAgentId! },

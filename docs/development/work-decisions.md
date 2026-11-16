@@ -128,10 +128,17 @@ it is not a root of the stream (`conversation-roots` and the receipts' runs of r
   panel its messages, and no words travel on the stream.
 - **Where you left off.** The thread has no opening message (its head is the decision), so its `unreadFrom` may be its first message:
   the New divider stands above the first message by someone else that the reader has not seen, from sequence 1, as above any reply.
+  The decision's panel records what it shows as viewed (`POST /projects/:id/observations`, the same 60 % for 700 ms rule as the thread),
+  so a message read in the panel is not new in the thread.
 - **The card's count.** The decision's object notice carries `discussion: { conversationId, replyCount, lastReplyAt } | null`: how many
   messages the thread has (every one is a reply to the card) and when the newest was written.
 - **Notifications** follow a thread's rules (#1249): its starter and earlier writers follow it, Follow and Unfollow win, and a name or a
-  question in it reaches whom it names. Whoever proposed the decision follows it from its first message: binding the thread writes their
+  question in it reaches whom it names. **A question that names nobody asks the decision's proposer** (an agent's owner for an agent's
+  proposal), not the thread's first writer (persona round 8 P2 3, 2026-11-15): the generator's fact for the message carries the decision
+  (`decision: { title, askee }`), and its title says "Jonas asked you about “…”", a reply's "Jonas replied about “…”" (never the first
+  comment's words; a sealed space keeps its fixed words). The Inbox item of
+  a question or a mention in a decision's discussion carries `about: { decisionId, title }` (`NeedsYouItem.about`, read from the binding of
+  the notification's conversation), so its line reads "Question · Jonas · about “…”". Whoever proposed the decision follows it from its first message: binding the thread writes their
   follow (`notification_follows`, only when they have made no choice), so they get its replies as its starter does. An agent's proposal
   is its owner's: the agent's owner follows it the same way.
 - **Withdraw.** A proposal that has a discussion is in use (`409 DECISION_IN_USE`), as one that something names: what was written about

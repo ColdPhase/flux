@@ -122,7 +122,8 @@ export function NeedsYouCard({ item, selected = false, compact = false, list = f
   // Every row says the same on every device (personas-26: the phone dropped the space and the reason): "Kind · who · space", its title and
   // one line of what it says, each cut short with "…" where the width ends.
   const row = compact || list;
-  const project = item.project?.name ?? null;
+  // A question or a mention in a decision's discussion says which decision it is about, in the place of its space (#1424, persona round 8).
+  const project = item.about ? `about “${item.about.title}”` : item.project?.name ?? null;
   // One agent run's waiting changes (F-036 AG-7): "Assistant · Your agent", then "3 things wait for you · Approve all · Open".
   const run = item.assistantChanges ?? null;
   // A call's notice or an invitation to a call is a Call (F-041), with Join.
@@ -130,7 +131,7 @@ export function NeedsYouCard({ item, selected = false, compact = false, list = f
   // Its name says who and where as its muted line does ("Question from Jonas in Rain barrel monitor: …"), also on a phone row, which has no room
   // to draw the space (#1424): a question's title is what was asked, not a sentence that names them.
   const label = run ? `${run.agentName}, your agent: ${item.title}`
-    : `${[word, item.from?.name ? `from ${item.from.name}` : null, item.project ? `in ${item.project.name}` : null].filter(Boolean).join(' ')}: ${item.title}`;
+    : `${[word, item.from?.name ? `from ${item.from.name}` : null, item.about ? `about “${item.about.title}”` : item.project ? `in ${item.project.name}` : null].filter(Boolean).join(' ')}: ${item.title}`;
   const meta = (run ? ['Your agent', project]
     : decision ? ['Decision', project] : item.kind === 'blocked' ? [word, item.blocked?.waitedBy ? 'waits for you' : 'your task', project, ago(item.at)] : [word, project]).filter(Boolean).join(' · ');
   const who = run?.agentName ?? item.from?.name ?? null;

@@ -220,7 +220,8 @@ function WaitingItem({ row }: { row: WaitingRow }) {
   }
   const { item } = row;
   const run = item.assistantChanges ?? null;
-  const project = item.project?.name ?? null;
+  // A question in a decision's discussion says which decision it is about, as the Inbox does (#1424, persona round 8).
+  const project = item.about ? `about “${item.about.title}”` : item.project?.name ?? null;
   // A run's changes are always the viewer's own agent's; any other agent in the space can ask, so a question or a suggestion says only "Agent", as the Inbox does.
   const meta = (run ? [run.agentName, 'Your agent', project]
     : [kindWord(item), item.from?.name ?? null, item.from?.kind === 'agent' ? 'Agent' : null, project]).filter(Boolean).join(' · ');

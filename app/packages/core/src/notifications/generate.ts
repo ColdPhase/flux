@@ -161,7 +161,11 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
       // A person's message answers what was asked of them here (#1424 decision 1): the asker is told as if named.
       const answered = authorId ? askersAnswered(message.since) : new Set<string>();
       // One rule with Home (personas-27): a question in a thread that names nobody asks the thread's starter.
-      const starter = message.conversationCreatedBy.kind === 'human' ? message.conversationCreatedBy.id : null;
+      // A decision's discussion has no opening message: its starter, for a question, is the decision's proposer (an agent's owner), never
+      // whoever wrote in it first (#1424, persona round 8 P2 3).
+      const starter = message.decision ? message.decision.askee : message.conversationCreatedBy.kind === 'human' ? message.conversationCreatedBy.id : null;
+      // Its notice says which decision it is about: "Jonas asked you about “Stand closes at 15:00”" (a sealed space keeps its fixed words).
+      const place = message.decision ? `about ${quote(excerpt(message.decision.title, 60))}` : `in ${message.projectName}`;
       const toStarter = asksStarter(message.body, authorId, starter) ? starter : null;
       const result: Candidate[] = [];
       for (const userId of people) {
@@ -173,9 +177,9 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
         const addressed = named || answered.has(userId);
         const reason: NotificationReason | null = askedThis ? 'question' : addressed ? (isQuestion(message.body) ? 'question' : 'mention') : follows(userId) ? 'reply' : null;
         if (!reason) continue;
-        const title = reason === 'question' ? `${author} asked you in ${message.projectName}`
-          : reason === 'mention' ? `${author} ${named ? 'mentioned' : 'answered'} you in ${message.projectName}`
-            : `${author} replied in ${quote(excerpt(message.opening, 60))}`;
+        const title = reason === 'question' ? `${author} asked you ${place}`
+          : reason === 'mention' ? `${author} ${named ? 'mentioned' : 'answered'} you ${place}`
+            : message.decision ? `${author} replied about ${quote(excerpt(message.decision.title, 60))}` : `${author} replied in ${quote(excerpt(message.opening, 60))}`;
         result.push({ userId, reason, source: { type: 'project', id: message.projectId }, title,
           body: askedThis ? excerpt(message.asked!.question) : excerpt(messagePreview(message.body, message.attachmentCount)), url,
           aiOrigin: message.author.kind === 'agent' || !!message.via, who: authorId ? names.get(authorId) ?? 'Someone' : 'An agent', where: message.projectName,

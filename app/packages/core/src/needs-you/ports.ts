@@ -76,6 +76,8 @@ export interface NeedsYouPorts {
   inbox: NeedsYouInbox;
   /** The person's notification level, for `notifying` (#1243); without it every unread reason that needs you counts. */
   level?(userId: string): Promise<NotificationLevel>;
+  /** Of these conversations, the decisions' discussions (#1424): which decision each is about, with its title. */
+  decisionsDiscussed?(conversationIds: string[]): Promise<Map<string, { decisionId: string; title: string }>>;
   /** Of these calls, the ones still on with someone in them (F-041): a call's notice asks nothing once it is over. */
   runningCalls?(sessionIds: string[]): Promise<Set<string>>;
   work: Pick<WorkRepository, 'listAssignedVisible' | 'listBlockedFor' | 'links' | 'titles' | 'names' | 'findWork' | 'findDecision' | 'taskPlans'>;

@@ -121,6 +121,11 @@ export interface NeedsYouItem {
    */
   answer?: boolean;
   /**
+   * Set on a question or a mention written in a decision's one discussion (#1424, persona round 8): the decision it is about, so its line
+   * reads "Question · Jonas · about “Stand closes at 15:00”".
+   */
+  about?: { decisionId: string; title: string } | null;
+  /**
    * Set for a `task` item (#1424 C): a task someone else or an agent gave you, which you have not opened, started or finished yet. Its key is
    * the `note:<id>` of the notification that gave it to you; opening the task reads that notification. `version` is the task's, so Done can
    * finish it (founder decision 2026-11-15): Done on a Task item is the task's own change to Done.
