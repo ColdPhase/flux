@@ -331,6 +331,20 @@ class UnifiedPanel(unittest.TestCase):
         expect(panel.get_by_role("list", name="Task activity")).to_contain_text("marked it blocked: Waiting for the supplier")
         expect(panel.get_by_role("list", name="Task activity").locator("li[data-message-id]")).to_have_count(0)
 
+    def test_07c_a_blocked_task_with_no_reason_says_it_one_way_in_the_card_and_its_form(self):
+        # personas-33: Status › Blocked said "No reason was recorded." and the form then said "Now: No blocker written.": one phrasing.
+        task = self.new_task("Oil the gate hinge")
+        page = self.page()
+        panel = self.open_task(page, task)
+        panel.get_by_role("button", name="Status", exact=True).click()
+        page.get_by_role("menu", name="Status").get_by_role("menuitemradio", name="Blocked").click()
+        card = panel.get_by_role("region", name="Blocker")
+        expect(card).to_contain_text("No reason was recorded.")
+        card.get_by_role("button", name="Edit", exact=True).click()
+        card.get_by_role("combobox", name="Waiting for", exact=True).fill("Waiting for the oil")
+        expect(card.locator(".wd-blocker-form > .wd-muted")).to_have_text("Now: No reason was recorded.")
+        expect(panel).not_to_contain_text("No blocker written")
+
     def test_08_the_composer_writes_to_the_activity_with_its_author_and_time(self):
         task = self.new_task("Choose the mast height")
         page = self.page()
@@ -340,7 +354,8 @@ class UnifiedPanel(unittest.TestCase):
         panel.get_by_role("button", name=re.compile("^Send to task$")).click()
         item = panel.get_by_role("list", name="Task activity").locator("li[data-message-id]")
         expect(item).to_have_count(1)
-        expect(item.locator(".wd-act__who b")).to_have_text("Ada")
+        # The task panel names people as the decision panel and the thread do (personas-33): the full name, "(you)" for the reader.
+        expect(item.locator(".wd-act__who b")).to_have_text("Ada Kowalska (you)")
         expect(item).to_contain_text("Did the supplier send the sizes?")
         expect(item.locator("time")).to_have_attribute("datetime", re.compile(r"^\d{4}-"))
         stored = api(self.ada_ctx, "GET", f"/api/v1/work/{task['id']}/discussion")

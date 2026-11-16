@@ -40,6 +40,15 @@ function looksAt(pathname: string, type: string, id: string) {
   return type === 'dm' ? pathname === `/dm/${id}` || pathname.startsWith(`/dm/${id}/`) : pathname === `/projects/${id}` || pathname.startsWith(`/projects/${id}/`);
 }
 
+/**
+ * What the Inbox lists as an item of its own (needs-you: a question, a mention or an answer, a task given to you, a decision, a call to join,
+ * an agent's run): a person on the Inbox sees it arrive there, so no notice repeats it over the list (personas-33). A plain direct message
+ * or a reply in a thread is no Inbox item, so its notice still shows there.
+ */
+const INBOX_REASONS = new Set(['mention', 'question', 'assigned', 'review', 'invitation', 'approval']);
+const onInbox = (pathname: string) => pathname === '/inbox' || pathname.startsWith('/inbox/');
+const inInboxView = (pathname: string, item: InboxItem) => onInbox(pathname) && INBOX_REASONS.has(item.reason ?? '');
+
 const firstName = (name: string) => name.trim().split(/\s+/)[0] ?? name;
 
 const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -216,7 +225,7 @@ export function Notices({ identity, meName, placeName, first }: { identity: stri
       if (hidden.current || age > STALE_MS) return;
       if (looksAt(here.current, event.objectType, event.objectId)) return;
       void getInboxItem(event.id).then((item) => {
-        if (item.readAt || looksAt(here.current, item.source.type, item.source.id)) return;
+        if (item.readAt || looksAt(here.current, item.source.type, item.source.id) || inInboxView(here.current, item)) return;
         add(item);
       }, () => undefined);
       return;
@@ -242,7 +251,7 @@ export function Notices({ identity, meName, placeName, first }: { identity: stri
   useEffect(() => {
     const current = shown.current;
     const newest = current?.items.at(-1);
-    if (newest && looksAt(location.pathname, newest.source.type, newest.source.id)) dismiss();
+    if (newest && (looksAt(location.pathname, newest.source.type, newest.source.id) || current!.items.every((item) => inInboxView(location.pathname, item)))) dismiss();
   }, [location.pathname, dismiss]);
 
   const modal = useModalOpen(!!notice);

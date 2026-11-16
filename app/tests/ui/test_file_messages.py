@@ -727,7 +727,7 @@ class FilesReferencesPhotos(unittest.TestCase):
                 self.assertEqual(page.get_by_role("dialog").count(), 0, "Flux adds no screen after the system's picker")
                 draft = page.get_by_role("list", name="Files in your draft")
                 expect(draft.get_by_role("listitem")).to_have_count(3)
-                expect(draft.get_by_text("Ready, private", exact=False)).to_have_count(3)
+                expect(draft.get_by_text("Ready to send", exact=False)).to_have_count(3)
                 expect(draft.locator(".composer-thumb.is-photo img[src^='blob:']")).to_have_count(2)
                 expect(draft.locator(".composer-thumb:not(.is-photo) .file-icon__label")).to_have_text("XLSX")
                 expect(draft.locator(".composer-files__name")).to_contain_text(["IMG_3001.png", "IMG_3002.png", "probe-offsets.xlsx"])
@@ -939,7 +939,7 @@ class FilesReferencesPhotos(unittest.TestCase):
                 expect(page.get_by_text("Choose files to send")).to_have_count(0)
                 expect(draft.locator(".composer-files__name")).to_contain_text(["IMG_7003.png", "IMG_7001.png", "plan-notes.xlsx"])
                 expect(draft.locator(".composer-thumb__order")).to_have_text(["Sends 1.", "Sends 2.", "Sends 3."])
-                expect(draft.get_by_text("Ready, private", exact=False)).to_have_count(3)
+                expect(draft.get_by_text("Ready to send", exact=False)).to_have_count(3)
                 # The phone's field is tapped, not focused for the person: no keyboard rises over the files they just chose.
                 self.assertFalse(page.evaluate("() => document.activeElement && document.activeElement.tagName === 'TEXTAREA'"), "the phone's keyboard is not raised")
                 self.shot(page, f"phone-files-attached-{'dark' if dark else 'light'}-390")
@@ -988,16 +988,16 @@ class FilesReferencesPhotos(unittest.TestCase):
         draft = page.get_by_role("list", name="Files in your draft")
         choose([{**text, "name": f"notes-{index}.txt"} for index in range(3)])
         expect(draft.get_by_role("listitem")).to_have_count(3)
-        expect(draft.get_by_text("Ready, private", exact=False)).to_have_count(3)
+        expect(draft.get_by_text("Ready to send", exact=False)).to_have_count(3)
         expect(limits).to_have_count(0)
         # Near the count (8 of 10): the limits are said once, in full.
         choose([{**text, "name": f"more-{index}.txt"} for index in range(5)])
         expect(draft.get_by_role("listitem")).to_have_count(8)
-        expect(limits).to_have_text(re.compile(r"^Private until sent · 5 MB each, videos \d+ MB · 10 files / 20 MB per message$"))
-        # Each press waits for the draft to settle, as a person's eye does: a row's line changes from "Uploading" to "Ready, private" (the
+        expect(limits).to_have_text(re.compile(r"^Only you see these files until you send · 5 MB each, videos \d+ MB · 10 files / 20 MB per message$"))
+        # Each press waits for the draft to settle, as a person's eye does: a row's line changes from "Uploading" to "Ready to send" (the
         # rows wrap again), and at 7 files the limits line goes and the composer, anchored at the bottom, moves the rows down. A press
         # aimed before either landed beside the × (WebKit, trains 28 and 29).
-        expect(draft.get_by_text("Ready, private", exact=False)).to_have_count(8)
+        expect(draft.get_by_text("Ready to send", exact=False)).to_have_count(8)
         draft.get_by_role("button", name="Remove more-0.txt").click()
         expect(draft.get_by_role("listitem")).to_have_count(7)
         expect(limits).to_have_count(0)
@@ -1020,7 +1020,7 @@ class FilesReferencesPhotos(unittest.TestCase):
         with page.expect_file_chooser() as chooser:
             page.get_by_role("button", name="Attach files").click()
         chooser.value.set_files([{"name": "IMG_4001.png", "mimeType": "image/png", "buffer": SHED}])
-        expect(page.get_by_role("list", name="Files in your draft").get_by_text("Ready, private", exact=False)).to_have_count(1)
+        expect(page.get_by_role("list", name="Files in your draft").get_by_text("Ready to send", exact=False)).to_have_count(1)
         page.get_by_label("Write a message", exact=True).fill("Shed sensor, once I am back in range")
         page.context.set_offline(True)
         page.get_by_label("Write a message", exact=True).press("Enter")
@@ -1101,7 +1101,7 @@ class FilesReferencesPhotos(unittest.TestCase):
         with page.expect_file_chooser() as chooser:
             page.get_by_role("button", name="Attach files").click()
         chooser.value.set_files([{"name": "IMG_4002.png", "mimeType": "image/png", "buffer": SHED}])
-        expect(page.get_by_role("list", name="Files in your draft").get_by_text("Ready, private", exact=False)).to_have_count(1)
+        expect(page.get_by_role("list", name="Files in your draft").get_by_text("Ready to send", exact=False)).to_have_count(1)
         page.get_by_label("Write a message", exact=True).fill(caption)
         page.context.set_offline(True)
         page.get_by_label("Write a message", exact=True).press("Enter")

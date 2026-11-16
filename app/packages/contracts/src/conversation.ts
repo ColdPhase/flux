@@ -186,8 +186,8 @@ export interface ConversationFields {
   createdAt: string;
   /** Stable discussion label from the opening message. */
   firstMessageBody: string;
-  /** The current canonical task binding, including windows that do not contain its root (#154). */
-  task?: { workId: string; title: string };
+  /** The current canonical task binding, including windows that do not contain its root (#154), with its number ("#3") so a thread names it. */
+  task?: { workId: string; number: number; title: string };
   /** The decision this conversation is the one discussion of (#1424): the thread on its card. */
   decision?: { decisionId: string; title: string };
   messages: ConversationMessage[];

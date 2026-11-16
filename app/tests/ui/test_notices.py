@@ -108,12 +108,12 @@ class NoticeJourney(unittest.TestCase):
         self.addCleanup(lambda: self.assertEqual(errors, [], "no uncaught page errors"))
         return page
 
-    def home(self, who: str = "ada", **kwargs) -> Page:
+    def home(self, who: str = "ada", path: str = "/", **kwargs) -> Page:
         page = self.page(who, **kwargs)
         # The live stream is open before anyone writes (the notice rides on it, #1243): wait for its socket's first frame.
         frames: list[str] = []
         page.on("websocket", lambda socket: socket.on("framereceived", lambda payload: frames.append(str(payload))) if "/api/v1/stream" in socket.url else None)
-        page.goto("/")
+        page.goto(path)
         expect(page.locator(".app__pane")).to_be_visible()
         for _ in range(150):
             if any('"ready"' in frame for frame in frames):
@@ -196,6 +196,25 @@ class NoticeJourney(unittest.TestCase):
         expect(page.get_by_text("I'm in the shed now.")).to_be_visible()
         page.wait_for_timeout(2500)
         expect(self.card(page)).to_have_count(0)
+
+    def test_03b_nothing_over_the_inbox_for_an_item_it_lists(self) -> None:
+        """personas-33: a question showed its notice over the Inbox it had just arrived in. The Inbox lists it in front of the person, so
+        no notice repeats it there; a plain direct message is no Inbox item, so its notice still shows."""
+        # As the persona met it: the Inbox open a while, then a question in a direct message reaches it.
+        page = self.page("ada")
+        page.goto("/inbox")
+        expect(page.get_by_role("heading", level=1, name=re.compile("^Inbox"))).to_be_visible()
+        page.wait_for_timeout(3000)
+        self.dm("Could you open the seed shed at eight tomorrow?")
+        # Before this rule its notice stood over the Inbox from about 0.5 s to 6 s after the send. Sampled, not awaited: a retrying
+        # expectation would wait for the card to leave by itself.
+        for _ in range(14):
+            self.assertEqual(self.card(page).count(), 0, "the item reaches the list on screen: no notice for it")
+            page.wait_for_timeout(500)
+        expect(page.locator(".nyc", has_text="open the seed shed")).to_be_visible(timeout=8000)
+        self.dm("Plain words: the shed key is under the pot.")
+        expect(self.card(page)).to_contain_text("Jonas Berg sent you a message", timeout=5000)
+        self.card(page).get_by_role("button", name="Close").click()
 
     # ---------------------------------------------------------------- a mention, a task, a burst
 

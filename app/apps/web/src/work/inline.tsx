@@ -43,9 +43,13 @@ function ObjectChip({ icon, number, state, title, need, onOpen, label, objectKin
  */
 export function TaskObjectRow({ workId, number, title, row, reverted = false, onOpen }: { workId: string; number: number; title: string; row: WorkRowProjection | null; reverted?: boolean; onOpen: () => void }) {
   const owner = row?.owner ?? null;
+  // Until its row is read (a card off screen is read when it comes near, #155) the card never states a status or an owner it does not
+  // know: the glyph's and the word's places stay, empty and quiet, so nothing reads "To do" with no owner and then changes (personas-33).
+  const unknown = !row && !reverted;
   return (
-    <button type="button" className="convo-notice__task" data-native-ref={`work:${workId}`} onClick={onOpen} aria-label={`Open task #${number} ${title}`}>
-      <StatusGlyph status={row?.status} size={16} />
+    <button type="button" className="convo-notice__task" data-native-ref={`work:${workId}`} onClick={onOpen} aria-label={`Open task #${number} ${title}`}
+      {...(unknown ? { 'data-state-unknown': '' } : {})}>
+      {unknown ? <span className="convo-notice__glyph-wait" aria-hidden="true" /> : <StatusGlyph status={row?.status} size={16} />}
       {/* The immutable announcement number names the task before and after the current row arrives. */}
       <span className="convo-notice__num ui-task-number">#{number}</span>
       <span className="convo-notice__title">{title}</span>
@@ -53,7 +57,8 @@ export function TaskObjectRow({ workId, number, title, row, reverted = false, on
         // Nobody owns it: "No owner", the Board's and the panel's word, with the panel's person glyph where the face would be (F-026 §7).
         : row ? <span className="convo-notice__owner convo-notice__owner--none"><Icon name="person" size={16} /><span className="convo-notice__owner-name">No owner</span></span> : null}
       {/* A word always goes with the glyph, at the card's right edge like a decision's (#763 A8). */}
-      <span className="convo-object__state convo-notice__state">{reverted ? 'Undone' : STATUS_LABEL[row?.status ?? 'open']}</span>
+      {unknown ? <span className="convo-object__state convo-notice__state convo-notice__state--wait" aria-hidden="true" />
+        : <span className="convo-object__state convo-notice__state">{reverted ? 'Undone' : STATUS_LABEL[row?.status ?? 'open']}</span>}
       <Icon name="chevron-right" size={14} />
     </button>
   );

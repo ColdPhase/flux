@@ -248,7 +248,7 @@ class VideoPlayback(unittest.TestCase):
         expect(too_long).to_contain_text("Can’t be sent")
         expect(page.locator("[data-refused-file]")).to_have_text("A video can be at most 12 MB. Remove Too long.mp4 to send the rest.")
         long = draft.get_by_role("listitem").filter(has_text="Long walk.webm")
-        expect(long).to_contain_text("Ready, private")
+        expect(long).to_contain_text("Ready to send")
         expect(long).to_contain_text("Video · ")
         expect(page.get_by_text("videos 12 MB", exact=False)).to_be_visible()
         too_long.get_by_role("button", name="Remove Too long.mp4").click()

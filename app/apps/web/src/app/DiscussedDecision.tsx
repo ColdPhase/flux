@@ -30,3 +30,22 @@ export function DiscussedDecision({ decision, notice, replies, firstDay }: {
     </>
   );
 }
+
+/**
+ * The task a thread is the discussion of (personas-34): opened from Search, a notice or a link, a task's discussion says whose it is, "#3"
+ * and the task's title, above its first message, and that row opens the task in the one panel as its card does.
+ */
+export function DiscussedTaskHead({ task }: { task: { workId: string; number: number; title: string } }) {
+  const { openDetails } = useShellActions();
+  return (
+    <article className="thread__root thread__root--decision thread__root--task" aria-label={`Discussion of task #${task.number} ${task.title}`} data-discussed-task={task.workId}>
+      <button type="button" className="convo-notice__task convo-object__card" onClick={() => openDetails({ kind: 'work', id: task.workId })}
+        aria-label={`Open task #${task.number} ${task.title}`}>
+        <Icon name="tasks" size={16} />
+        <span className="convo-notice__num ui-task-number">#{task.number}</span>
+        <span className="convo-notice__title">{task.title}</span>
+        <Icon name="chevron-right" size={14} />
+      </button>
+    </article>
+  );
+}

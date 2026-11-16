@@ -456,7 +456,9 @@ a.me__btn[aria-current="page"] { background: var(--sub); }
 }
 .home-tasks__item:hover { background: var(--hov); }
 .home-tasks__item:focus-visible { outline: 2px solid var(--t1); outline-offset: -2px; }
-.home-tasks__status { flex: none; min-width: 88px; color: var(--t3); font-size: var(--fs-sm); }
+.home-tasks__status { display: inline-flex; flex: none; align-items: center; align-self: flex-start; gap: 6px; min-width: 88px; min-height: calc(var(--fs-md) * 1.45); color: var(--t3); font-size: var(--fs-sm); }
+.home-tasks__glyph { flex: none; }
+.home-tasks__num { color: var(--t3); }
 .home-tasks__status.is-blocked { color: var(--t1); }
 .home-tasks__body { display: flex; flex: 1; flex-direction: column; min-width: 0; }
 .home-tasks__title { overflow-wrap: anywhere; }

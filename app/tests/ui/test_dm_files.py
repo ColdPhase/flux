@@ -101,7 +101,7 @@ class DirectMessageFiles(unittest.TestCase):
                 expect(ada.get_by_text("Choose files to send")).to_have_count(0)
                 draft = ada.get_by_role("list", name="Files in your draft")
                 expect(draft.get_by_role("listitem")).to_have_count(2)
-                expect(draft.get_by_text("Ready, private", exact=False)).to_have_count(2)
+                expect(draft.get_by_text("Ready to send", exact=False)).to_have_count(2)
                 field.fill(f"The readings and the bed {'phone' if phone else 'desk'}")
                 shot(ada, f"dm-files-draft-{'390' if phone else '1440'}")
                 ada.get_by_role("button", name="Send message").click()

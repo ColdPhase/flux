@@ -262,7 +262,10 @@ class PersonaRound26Words(unittest.TestCase):
         stored = staged.value.json()["size"]
         self.assertLess(stored, len(picture), "the cleaned picture is smaller than the one picked")
         item = page.get_by_role("list", name="Files in your draft").get_by_role("listitem")
-        expect(item).to_contain_text("Ready, private")
+        # personas-33 P3: "Ready, private" read literally as "this file stays private"; the row says what happens, in plain words.
+        expect(item).to_contain_text("Ready to send")
+        expect(item).not_to_contain_text(re.compile("private", re.I))
+        expect(page.get_by_role("button", name="Attach files").first).to_have_attribute("data-tip", "Attach files · only you see them until you send")
         expect(item).to_contain_text(file_size(stored))
         expect(item).not_to_contain_text(file_size(len(picture)))
 

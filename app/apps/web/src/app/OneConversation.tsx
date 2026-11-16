@@ -16,7 +16,7 @@ import { ConversationStream, streamPlace, useConversationRoots, useObjectNotices
 import { WORK_EVENT, useStreamEvents } from '../api/stream';
 import { useWithHeldProposals } from '../work/heldProposals';
 import { ThreadRoot } from './ThreadRoot';
-import { DiscussedDecision } from './DiscussedDecision';
+import { DiscussedDecision, DiscussedTaskHead } from './DiscussedDecision';
 import { DECISION_COMPOSER } from '../work/discuss';
 import { SourceOfContext } from './messageParts';
 import { OwnedPanelContent, useOwnedPanel } from './ownedPanel';
@@ -265,9 +265,9 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
           <ThreadFollow conversationId={thread.id} projectId={project.id} />
           <Pane key={thread.id} data={data} variant="thread" rootMessageId={discussed ? null : rootMessage?.id ?? null} objects={objects}
             onThreadSize={roots.threadSize} onOpenDiscussion={openDiscussion}
-            rootHeader={({ preview, firstDay }) => discussed ? <DiscussedDecision decision={discussed} notice={objects.find((item) => item.decisionId === discussed.decisionId) ?? null} replies={replies} firstDay={firstDay} /> : <ThreadRoot firstDay={firstDay} message={rootMessage} projectId={project.id} body={rootMessage?.body ?? thread.firstMessageBody} author={rootMessage ? author(rootMessage) : null}
+            rootHeader={({ preview, firstDay }) => discussed ? <DiscussedDecision decision={discussed} notice={objects.find((item) => item.decisionId === discussed.decisionId) ?? null} replies={replies} firstDay={firstDay} /> : <>{thread.task ? <DiscussedTaskHead task={thread.task} /> : null}<ThreadRoot firstDay={firstDay} message={rootMessage} projectId={project.id} body={rootMessage?.body ?? thread.firstMessageBody} author={rootMessage ? author(rootMessage) : null}
               agentOwner={rootMessage?.authorId === null ? agentAuthorOwner(rootMessage.author, owners) ?? null : null} meId={me.user.id} writable replies={replies} preview={preview} onDenied={onDenied}
-              photo={{ place: project.name, onReply: () => document.getElementById('thread-composer')?.focus(), onCreateTask: rootMessage ? () => void makeWork.create(rootMessage) : undefined }} />} />
+              photo={{ place: project.name, onReply: () => document.getElementById('thread-composer')?.focus(), onCreateTask: rootMessage ? () => void makeWork.create(rootMessage) : undefined }} /></>} />
         </OwnedPanelContent>) : null}
     </div>
     </SourceOfContext.Provider>

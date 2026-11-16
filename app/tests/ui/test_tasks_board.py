@@ -220,7 +220,8 @@ class TasksBoardJourney(unittest.TestCase):
         expect(self.card(blocked_column, SOLDER).locator(".tb-card__id")).to_have_text(f"Task #{self.numbers['solder']}")
         expect(order.get_by_role("button", name=ORDER, exact=True)).to_be_visible()
         expect(order.locator(".tb-card__owner")).to_contain_text("Kai Berg")
-        expect(self.card(doing, CALIBRATE).locator(".tb-card__name")).to_have_text("You")
+        # The reader is named as every view names them (personas-33): the full name and "(you)", never "You" alone.
+        expect(self.card(doing, CALIBRATE).locator(".tb-card__name")).to_have_text(f"{ADA['name']} (you)")
         expect(self.card(doing, CALIBRATE).locator(".tb-av")).to_have_css("width", "20px")
         owner = self.card(open_, DIFFUSER).locator(".tb-card__owner")
         expect(owner.locator(".agent-id__name")).to_have_text("Codex")
