@@ -384,7 +384,8 @@ function AppLayoutContent() {
     document.addEventListener('focusin', onFocus, true);
     const timer = window.setTimeout(() => {
       const active = document.activeElement;
-      if (!taken && (!active || active === document.body) && !document.querySelector('.ui-overlay[data-state="open"]')) document.getElementById('content')?.focus({ preventScroll: true });
+      // A field asked for and still on its way (Reply from the Inbox while the thread is read in) gives the focus itself.
+      if (!taken && (!active || active === document.body) && !isTyping(null) && !document.querySelector('.ui-overlay[data-state="open"]')) document.getElementById('content')?.focus({ preventScroll: true });
     }, 400);
     return () => { window.clearTimeout(timer); document.removeEventListener('focusin', onFocus, true); };
   }, [location.key]);
