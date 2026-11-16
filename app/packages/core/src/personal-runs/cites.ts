@@ -1,4 +1,4 @@
-import type { AssistantSourceRef, CiteKind } from '@flux/contracts';
+import { CITE_MARK_SOURCE, type AssistantSourceRef, type CiteKind } from '@flux/contracts';
 import type { Principal } from '../principal.js';
 import type { PersonalRunPorts, RunRecord } from './ports.js';
 
@@ -17,8 +17,8 @@ export type { CiteKind };
 export interface FluxMark { key: string; kind: CiteKind; id: string; section: number | null }
 
 const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
-/** The text of one mark; group 1 is its kind, 2 its id and 3 its section. No nested or repeated quantifier: a mark is read in one step. */
-const MARK_SOURCE = String.raw`\[(doc|task|decision|message):(${UUID})(?:#([1-9][0-9]{0,2}))?\]`;
+/** The text of one mark; group 1 is its kind, 2 its id and 3 its section (the one definition, in the contracts). */
+const MARK_SOURCE = CITE_MARK_SOURCE;
 /** The most different marks of one answer that are looked up; any further one is taken out. */
 export const CITES_MAX = 20;
 
@@ -82,8 +82,9 @@ export interface CitedObject {
   title: string;
   /** A message's conversation. */
   conversationId?: string;
-  /** A task's version. */
+  /** A task's version, and its number in its space. */
   revision?: number;
+  number?: number;
   /** A page's current version and, when a section was asked for, its headings in order. */
   version?: number;
   headings?: string[];

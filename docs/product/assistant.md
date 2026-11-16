@@ -187,7 +187,9 @@ in words:
 where the agent works, and as one Inbox item per run (AG-7). Only the owner (or the person it
 waits for) approves, edits or skips it, in their own signed-in session (see Never possible).
 Approving re-checks the owner's rights and the target's version; if the target changed, it
-applies nothing and says "Changed since you asked".
+applies nothing and says "Changed since you asked". If something it names is not there (its target
+was deleted, or a task it says it affects does not exist), it applies nothing and says that:
+"Something this refers to isn't there any more, so it wasn't made" (v0.2.1 real-model gate).
 
 **Undo.**
 
@@ -334,7 +336,12 @@ retried; it is reported as "Skipped #4: Jonas changed it while I worked".
   turned off is the task's own state line, not a report). The count and Undo are what still stands of
   the run's changes when the line is read. Undo on a "Done: #4 …" line takes back the whole finish: the
   run's changes and the Done its agent marked, so the task is back with its owner in Doing, as the task's
-  own Done Undo leaves it, while it is still Done and still the agent's (v0.2.1 release gate). The agent's row in Messages and in the sidebar shows an
+  own Done Undo leaves it, while it is still Done and still the agent's (v0.2.1 release gate); the line then says so,
+  "Undid 1 change. #4 is back with you". Every change a run made counts, a new page, decision or map too; only the
+  agent's own line in the task's thread does not (it is deleted at the line). An agent that marks its task Done itself
+  reports the same way: its words in the task and "Done: #4 …" in its chat (v0.2.1 real-model gate). The report's
+  words in the task and in the chat drop the bare `[1]` numbers of sources they cannot list, as Show everyone does.
+  The agent's row in Messages and in the sidebar shows an
   unread dot until its owner opens the chat (#919).
 - **Notifications.** "Only what needs me" includes an agent waiting for you: when a run (or a local
   client) starts waiting for your OK, you alone are told once, and the notification opens its Inbox
@@ -588,6 +595,12 @@ searching ([F-042](decisions.md#f-042--agents-find-what-they-need-with-bm25-sear
   heading), task, decision or message, and its label says which. Each time the answer is read, a source in another space than the answer's (a private chat's or schedule's)
   is checked against its owner's access again: one they no longer read keeps its number, says only what kind of thing it was and opens nothing. Show everyone keeps the
   words and drops the marks, as before. The access rules of the tools are unchanged.
+- **Marks in what an agent writes** (v0.2.1 real-model gate rows 28 and 37). A mark is for the answer only. When an agent's change (a decision's
+  title and reasons, a task, a page, a thought, a local client's line in a task) carries one, Flux writes it, before the change is made or held for
+  the owner's OK, the way a person names that object in the change's space: a task of the space as `#12`, a Wiki page as `[[Title]]`, a decision as
+  its title in quotes; a message, an object of another space (the change's readers may not read it) and a mark that names nothing leave only the
+  words around them. A decision's reasons are drawn by the message renderer (lists, `#12`, `[[Page]]`); plain one-line places (the Inbox, a card's
+  reason, a change line, a notification, a push) show plain words, and no surface shows a mark's id.
 - **What may be found** is decided at the moment of the search, never stored in the index: a lost grant, a space whose AI was
   turned off, a removed or edited message is reflected by the very next search. Encrypted spaces are never indexed for AI.
 - **Embeddings** are an optional local container, off by default, for larger servers; with it on, ranking fuses BM25 and the

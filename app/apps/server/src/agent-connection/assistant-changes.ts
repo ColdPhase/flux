@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { ASSISTANT_CHANGE_LIMITS, assistantChangeWords, assistantWorkChangeArgs, plainMessageText, type AgentJsonValue, type AgentMayDo, type AgentOperation, type AgentPostcondition,
+import { ASSISTANT_CHANGE_LIMITS, assistantChangeWords, assistantWorkChangeArgs, plainPreviewText, type AgentJsonValue, type AgentMayDo, type AgentOperation, type AgentPostcondition,
   type AssistantObjectType, type AuthenticatedAgentRuntime } from '@flux/contracts';
 import { agentExecutionRows, agentProjectObjectRows, assistantChangeRows, assistantRemovalRows, eventRepository, sketchRows, taskDiscussionRows, type AssistantChangeRow, type DbExecutor, loadActor, accessReader, type Database, type Transaction } from '@flux/db';
 import { ASSISTANT_REFUSALS, changedParagraphs, classifyAssistantChange, DomainError, fieldWords, principalKey, type UndoRecord, evaluateProject, redactSecrets, requireSpaceAi, SpaceAiOffError, WAITING_CHANGE_EVENT } from '@flux/core';
@@ -65,7 +65,7 @@ const created = (title: string): UndoRecord => ({ plan: { kind: 'created' }, bef
 const removal = (title: string, plan: Omit<Extract<UndoRecord['plan'], { kind: 'removal' }>, 'kind'> = {}): UndoRecord => ({ plan: { kind: 'removal', ...plan }, before: null, after: title || null });
 /** A message's words in its change line: its plain text on one line, never a cut-off "**W" of its formatting (v0.2.1 release gate, row 23). */
 const plainExcerpt = (body: string) => {
-  const plain = plainMessageText(body).replace(/\s+/g, ' ').trim();
+  const plain = plainPreviewText(body).replace(/\s+/g, ' ').trim();
   return plain.length > 80 ? `${plain.slice(0, 79).trimEnd()}…` : plain;
 };
 const enforceRead = (allowed: boolean) => { if (!allowed) throw new DomainError(404, 'PROJECT_NOT_FOUND', 'Project not found'); };

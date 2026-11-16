@@ -245,6 +245,25 @@ export function parseMessage(body: string): MessageBlock[] {
 const inlineText = (nodes: MessageInline[]): string => nodes.map((node) => (node.kind === 'text' || node.kind === 'code' ? node.text : inlineText(node.children))).join('');
 
 /**
+ * A Flux cite mark as an agent copies it from a tool result (C-62): `[doc:ID]`, `[doc:ID#2]`, `[task:ID]`, `[decision:ID]`, `[message:ID]`. Group 1 is its
+ * kind, 2 its id, 3 a page's section. No nested or repeated quantifier: a mark is read in one step.
+ */
+export const CITE_MARK_SOURCE = String.raw`\[(doc|task|decision|message):([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:#([1-9][0-9]{0,2}))?\]`;
+
+/** The text without its cite marks, the space before each going with it: an id is never words for a reader (v0.2.1 real-model gate). */
+export function withoutCiteMarks(text: string): string {
+  return text.includes('[') ? text.replace(new RegExp(String.raw`[ \t]?${CITE_MARK_SOURCE}`, 'gu'), '') : text;
+}
+
+/**
+ * Words for a plain one-line place (an Inbox preview, a card's reason, a change line, a notification): what `plainMessageText` gives, a Wiki page
+ * `[[Title]]` as its title, and no cite mark.
+ */
+export function plainPreviewText(body: string): string {
+  return plainMessageText(withoutCiteMarks(body)).replace(/\[\[([^\]\n]{1,120})\]\]/g, '$1').trim();
+}
+
+/**
  * What a reader sees, as plain text and with none of the marks: `**bold**` is bold, a fence is its code, a quote has no `>` and keeps
  * its attribution line, a list keeps "- " and "1. ". Previews, notifications and Copy text use it; nothing is added to the words.
  */

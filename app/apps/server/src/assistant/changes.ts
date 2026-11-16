@@ -37,6 +37,8 @@ import { workUseCases } from '../work/adapters.js';
 
 const missing = () => new NotFoundError('Assistant change', 'ASSISTANT_CHANGE_NOT_FOUND');
 const STALE = 'Changed since you asked';
+/** What Approve says when something the change names is not there: its target was deleted, or a task it says it affects never existed (v0.2.1 real-model gate row 24). */
+const GONE = 'Something this refers to isn\'t there any more, so it wasn\'t made';
 /** What Approve says when its owner can no longer use the space the change is in: not that the target changed (#930). */
 const LOST_SPACE = 'You no longer have access to this space, so this wasn’t made';
 /** What a client's unit or transfer says when its Approve comes after the claim or session it was made under ended (a 300 s lease). */
@@ -86,7 +88,9 @@ export async function reexecuteChange(db: Database, change: AssistantChangeRow, 
     return { ok: false, code: parsed.code ?? 'MCP_TOOL_UNAVAILABLE', error: parsed.error ?? 'Not applied' };
   } catch { return { ok: false, code: 'MCP_TOOL_UNAVAILABLE', error: 'Not applied' }; }
 }
-const stale = (code: string) => /VERSION_CONFLICT|STALE|CHANGED|DOC_UNCHANGED|NOT_FOUND/.test(code) && code !== 'ASSISTANT_CHANGE_UNAVAILABLE';
+const stale = (code: string) => /VERSION_CONFLICT|STALE|CHANGED|DOC_UNCHANGED/.test(code) && code !== 'ASSISTANT_CHANGE_UNAVAILABLE';
+/** A target or a named task that is not there is no change since the ask: it is said as what it is (GONE). */
+const gone = (code: string) => /NOT_FOUND/.test(code);
 
 /** Where a hand-off's unit stands, for the row of the run's message; null for every other change. */
 function handoffLine(row: AssistantChangeRow, units: Map<string, { state: string; generation: number }>): string | null {
@@ -324,7 +328,7 @@ export function assistantChangeUseCases(db: Database, clock: () => Date = () => 
     const outcome = await reexecuteChange(db, row, owner(principal), github);
     if (outcome.ok) return { change: await viewOne((await rows().find(row.id))!), message: null };
     if (outcome.code === 'ASSISTANT_PAUSED') throw new DomainError(409, outcome.code, outcome.error);
-    const message = row.operation.startsWith('cowork.') && CLAIM_ENDED_CODES.has(outcome.code) ? CLAIM_ENDED : stale(outcome.code) ? STALE : outcome.error;
+    const message = row.operation.startsWith('cowork.') && CLAIM_ENDED_CODES.has(outcome.code) ? CLAIM_ENDED : stale(outcome.code) ? STALE : gone(outcome.code) ? GONE : outcome.error;
     // Stale, invalidated or refused intent is closed: it needs Ask again, never a second Approve.
     await refuse(row, message);
     return { change: await viewOne((await rows().find(row.id))!), message };
@@ -410,6 +414,7 @@ export function assistantChangeUseCases(db: Database, clock: () => Date = () => 
     async apply(principal: Principal, changeId: string, expected?: number): Promise<AssistantChangeDecision> {
       const decided = await decideApply(principal, await own(principal, changeId), expected);
       if (decided.message === STALE) throw new ConflictError(STALE, 'ASSISTANT_CHANGE_STALE');
+      if (decided.message === GONE) throw new ConflictError(GONE, 'ASSISTANT_CHANGE_GONE');
       if (decided.message) throw new DomainError(403, 'ASSISTANT_CHANGE_INVALIDATED', decided.message);
       return decided;
     },
@@ -476,9 +481,9 @@ export function assistantChangeUseCases(db: Database, clock: () => Date = () => 
         changes.push({ change: await viewOne((await rows().find(row.id))!, principal), message });
       }
       // The report's Undo takes back the whole finish (AG-3, AG-5): with its changes, the Done its agent marked, as the task's own Done Undo does.
-      const back = list.length && undone > 0 ? await takeBackFinish(principal, runId) : null;
+      const back = list.length > 0 && undone > 0 ? await takeBackFinish(principal, runId) : null;
       const said = undoSentence(undone, changedSince);
-      return { changes, undone, changedSince, message: back ? `${said}. #${back} is back with you` : said };
+      return { changes, undone, changedSince, back, message: back ? `${said}. #${back} is back with you` : said };
     },
     /**
      * The owner's waiting changes in projects they can still read; the Inbox groups them into one item per run (AG-7). A guest

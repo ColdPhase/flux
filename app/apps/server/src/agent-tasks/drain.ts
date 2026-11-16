@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { AGENT_TASK_EVENT_ATTEMPTS, AGENT_TASK_GIVE_UP_ATTEMPTS, agentTaskRows, assistantChangeRows, assistantRemovalRows, personalRunRows, personalRunWebReadRows, workRows, type Database, type DbExecutor, type Transaction } from '@flux/db';
-import { agentLabel, answerLines, askableLines, createPersonalRunUseCases, DomainError, MAX_EXCHANGE_TURNS, noPersonalConnections, reportTaskRun, resolveAsked, stopRunBy, TAKEN_WORDS, takeAsk, taskRunClientId, endedSourcesLine,
+import { plainPreviewText } from '@flux/contracts';
+import { agentLabel, answerLines, askableLines, createPersonalRunUseCases, DomainError, withoutCitationMarks, MAX_EXCHANGE_TURNS, noPersonalConnections, reportTaskRun, resolveAsked, stopRunBy, TAKEN_WORDS, takeAsk, taskRunClientId, endedSourcesLine,
   taskRunPrompt, uuidFrom, type AgentQuestion, type Askable, type Principal, type TaskStart, type UndoRecord, type WorkRecord } from '@flux/core';
 import { personalRunPorts, type PersonalRunComposition, type PersonalRunQueueFactory } from '../personal-runs/adapters.js';
 import { taskDiscussionUseCases } from '../work/task-discussions.js';
@@ -76,7 +77,9 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
     const clientCommandId = uuidFrom(`agent-task:change:${key}`);
     if (await rows.byCommand(run.id, clientCommandId)) return;
     if (!(await assistantRemovalRows(tx as unknown as DbExecutor).messageIsUndoable(message.id, run.agentId))) return;
-    const title = message.body.replace(/\s+/g, ' ').trim().slice(0, 80);
+    // Its plain words on one line, as every change line says a message (no `**What I did** -`, v0.2.1 real-model gate row 22).
+    const plain = plainPreviewText(message.body).replace(/\s+/g, ' ').trim();
+    const title = plain.length > 80 ? `${plain.slice(0, 79).trimEnd()}…` : plain;
     // `thread`: a line of the task's thread, deleted by its owner with no condition. The plan keeps no excerpt of the line: once it is
     // deleted nothing of its text should be left (`after` is cleared with it).
     const undo: UndoRecord = { plan: { kind: 'removal', thread: true }, before: null, after: title || null };
@@ -288,7 +291,14 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
       const line = endedSourcesLine(await personalRunWebReadRows(tx).forRun(run.id), await personalRunWebReadRows(tx).searches(run.id));
       if (line) await say(tx, work, run.agentId, line, `web:${run.id}`);
     }
-    if (FINISHED.has(work.status)) return;
+    // The agent may close its task itself in its run (v0.2.1 real-model gate row 13): its report is still said, in the task and in its chat, as Done.
+    if (FINISHED.has(work.status)) {
+      if (run.kind === 'task' && (run.status === 'completed' || run.status === 'truncated') && work.owner?.kind === 'agent' && work.owner.id === run.agentId) {
+        await say(tx, work, run.agentId, reportWords(run) || '(No answer text.)', `report:${run.id}`, run);
+        await reportTaskRun(personalRunPorts(tx, queue), run, 'done');
+      }
+      return;
+    }
     if (run.kind === 'task_answer') return answered(tx, work, run);
     // The task is still the agent's. If its owner took it back or gave it away meanwhile, there is nothing to finish.
     const holds = work.owner?.kind === 'agent' && work.owner.id === run.agentId;
@@ -296,7 +306,8 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
     if (ended === 'completed' || ended === 'truncated') {
       if (!holds) return;
       // A report may end with a question for another person's agent (TA-3); the task then waits for the answer instead of finishing.
-      const { body, ask } = takeAsk(run.answerBody ?? '');
+      const { ask } = takeAsk(run.answerBody ?? '');
+      const body = reportWords(run);
       if (body || !ask) await say(tx, work, run.agentId, body || '(No answer text.)', `report:${run.id}`, run);
       if (ask) return asking(tx, work, run, ask);
       // The row of the agent that worked the task, not the owner's first agent: each agent has its own (AG-3, AG-5).
@@ -340,6 +351,12 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
     // A run that failed keeps the task with the agent: its owner chooses Try again or Take it back.
     await say(tx, work, run.agentId, 'I couldn\'t finish this.', `failed:${run.id}`);
   }
+
+  /**
+   * The words of a run's report in the task: its answer without a question for another agent, and without the `[1]` numbers of its sources, which
+   * only its owner's card lists (AG-7; the same as Show everyone).
+   */
+  const reportWords = (run: RunRow) => { const { body } = takeAsk(run.answerBody ?? ''); return body && withoutCitationMarks(body, run.answerSources.length); };
 
   /** An exchange that stops returns to the people: one line, and the task goes back to its owner. */
   async function toThePeople(tx: Transaction, work: WorkRecord, asker: { id: string; ownerUserId: string }, line: string, key: string) {
@@ -394,7 +411,7 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
     }
     // An answer asks nothing: a block it ends with is taken out of what people read and of what the asker is given, so it is not shown
     // as markup and does not start another question (#924).
-    const answer = takeAsk(run.answerBody ?? '').body || '(No answer text.)';
+    const answer = reportWords(run) || '(No answer text.)';
     await say(tx, work, run.agentId, answer, `answer:${run.id}`, run);
     if (!holds) return;
     const { ports, runs } = useCases(tx);

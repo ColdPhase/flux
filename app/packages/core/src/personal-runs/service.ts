@@ -1019,7 +1019,8 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
           if (!run || !label) { enriched.push(line); continue; }
           if (!readable.has(label.projectId)) readable.set(label.projectId, await ports.access.canUseProject(reader, 'read', label.projectId));
           if (!readable.get(label.projectId)) { enriched.push(line); continue; }
-          const words = run.status === 'completed' || run.status === 'truncated' ? takeAsk(run.answerBody ?? '').body.trim().slice(0, 2000) : '';
+          // Without the `[1]` numbers of sources this line cannot list (AG-7, as Show everyone).
+          const words = run.status === 'completed' || run.status === 'truncated' ? withoutCitationMarks(takeAsk(run.answerBody ?? '').body, run.answerSources.length).trim().slice(0, 2000) : '';
           enriched.push({ ...line, words: words || null, task: { id: run.workId!, number: label.number, title: label.title, projectId: label.projectId, projectName: label.projectName } });
         }
         return enriched;

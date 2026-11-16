@@ -1,5 +1,5 @@
 import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
-import type { DecisionRowProjection, NamedPrincipal, NativeWorkRow, PrincipalRef, WorkDetailObject, WorkRowProjection } from '@flux/contracts';
+import { withoutCiteMarks, type DecisionRowProjection, type NamedPrincipal, type NativeWorkRow, type PrincipalRef, type WorkDetailObject, type WorkRowProjection } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 import { workRows } from './work.js';
@@ -20,7 +20,8 @@ const actorKey = (ref: PrincipalRef) => `${ref.kind}:${ref.id}`;
 /** F-034: a decision's short reason for its card, the first sentence of the rationale as plain words. */
 export function shortReason(rationale: string, max = 160): string {
   // A rationale may be 20,000 characters and the link pattern is quadratic in what it reads (v0.2.1 audit #1270): the first sentence needs far fewer.
-  const flat = rationale.slice(0, 2_000).replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/^\s{0,3}(#{1,6}|>|[-*+]|\d+[.)])\s+/gm, '').replace(/[*_`~\\]/g, '').replace(/\s+/g, ' ').trim();
+  // No cite mark (an id is never words) and a Wiki page `[[Title]]` as its title.
+  const flat = withoutCiteMarks(rationale.slice(0, 2_000)).replace(/\[\[([^\]\n]{1,120})\]\]/g, '$1').replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/^\s{0,3}(#{1,6}|>|[-*+]|\d+[.)])\s+/gm, '').replace(/[*_`~\\]/g, '').replace(/\s+/g, ' ').trim();
   const sentence = /^(.+?[.!?])(\s|$)/.exec(flat)?.[1] ?? flat;
   return sentence.length > max ? `${sentence.slice(0, max - 1).trimEnd()}…` : sentence;
 }

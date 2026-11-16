@@ -51,6 +51,9 @@ export function TaskAgentState({ item, projectId, conversationId, revision, onCh
   const changes = useAssistantChanges(conversationId, `${state?.runId}:${tick}`, !!state?.runId);
   const here = state?.runId ? changes.byRun.get(state.runId)?.filter((change) => !elsewhere?.(change)) : undefined;
   const runChanges = here?.length ? here : undefined;
+  // An Approve or Skip may end the wait: the line above the cards ("Waiting for your OK") is read again with them, not at the next reload.
+  const refreshChanges = changes.refresh;
+  const decided = useCallback(async () => { setTick((value) => value + 1); await refreshChanges(); }, [refreshChanges]);
 
   const act = useCallback(async (key: string, action: () => Promise<unknown>) => {
     setBusy(key); setError('');
@@ -72,7 +75,7 @@ export function TaskAgentState({ item, projectId, conversationId, revision, onCh
   // Done is said once, by the task's history line (personas-26, #856): no state line for it.
   if (!state?.line || !state.agent || state.line === 'done') {
     return runChanges || error ? <div className="wd-agent">{error ? <p className="wd-error" role="alert">{error}</p> : null}
-      {runChanges ? <WaitingChanges changes={runChanges} onChanged={changes.refresh} meId={me.user.id} standalone /> : null}</div> : null;
+      {runChanges ? <WaitingChanges changes={runChanges} onChanged={decided} meId={me.user.id} standalone /> : null}</div> : null;
   }
   // Back with you to check (mockup AgentStates 8): the owner closes it from the line once it is checked.
   const markDone = () => act('done', async () => updateWork(await getWork(item.id), { status: 'done' }, crypto.randomUUID()));
@@ -90,7 +93,7 @@ export function TaskAgentState({ item, projectId, conversationId, revision, onCh
         </span>
       </div>
       {error ? <p className="wd-error" role="alert">{error}</p> : null}
-      {runChanges ? <WaitingChanges changes={runChanges} onChanged={changes.refresh} meId={me.user.id} standalone /> : null}
+      {runChanges ? <WaitingChanges changes={runChanges} onChanged={decided} meId={me.user.id} standalone /> : null}
     </div>
   );
 }

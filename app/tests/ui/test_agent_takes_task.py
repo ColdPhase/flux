@@ -247,6 +247,26 @@ class AgentTakesTask(unittest.TestCase):
         page.wait_for_timeout(1500)
         self.assertEqual(self.api(page, "GET", f"/api/v1/work/{self.ids['task']}", status=200)["owner"]["kind"], "human")
 
+    def test_05a_a_new_page_is_a_change_and_undo_on_the_done_line_says_the_task_is_back(self) -> None:
+        """v0.2.1 real-model gate rows 10, 15, 17: the run's only change is a new Wiki page. The chat's Done line counts it with Undo, and its
+        Undo takes the page and the Done back and says "#N is back with you"."""
+        mock("/__script", {"reset": True, "text": "Wrote the plan as a Wiki page.",
+                           "tool": {"name": "flux_create_doc", "input": {"clientCommandId": str(uuid.uuid4()), "doc": {"title": "Shift plan", "body": "Two half-shifts."}}}})
+        task = self.task(self.page("ada"), "Draft the shift plan", KAI["id"])
+        self.give(task)
+        self.agent_line(self.page("kai"), task["id"], "done")
+        kai = self.page("kai")
+        kai.goto("/dm")
+        kai.locator(f".dm-index [data-agent='{self.ids['agent']}']").click()
+        line = kai.locator("[data-chat-agent][data-run-id]").filter(has_text=f"Done: #{task['number']} Draft the shift plan")
+        expect(line.locator(".agc__line")).to_contain_text(f"Done: #{task['number']} Draft the shift plan · 1 change")
+        line.get_by_role("button", name="Undo").click()
+        expect(line.locator(".agc__line-note")).to_have_text(f"Undid 1 change. #{task['number']} is back with you")
+        expect(line.locator(".agc__line")).to_contain_text("Undone by you")
+        shot(kai, "agent-chat-done-undo-back-1440")
+        current = self.api(kai, "GET", f"/api/v1/work/{task['id']}", status=200)
+        self.assertEqual((current["status"], current["owner"]["id"]), ("in_progress", KAI["id"]))
+
     # ---------------------------------------------------------------- Ask me first: handed back to check
 
     def test_06_with_ask_me_first_the_task_comes_back_to_check(self) -> None:
@@ -275,6 +295,34 @@ class AgentTakesTask(unittest.TestCase):
         line.get_by_role("button", name="Mark done").click()
         expect(line).to_have_count(0)
         self.assertEqual(self.api(kai, "GET", f"/api/v1/work/{task['id']}", status=200)["status"], "done")
+
+    def test_06a_after_the_last_approve_the_line_says_back_with_you_without_a_reload(self) -> None:
+        """v0.2.1 real-model gate row 19: with Ask me first on, the run's two new tasks wait for Kai's OK. He approves one and skips the other
+        (a Skip changes nothing in the space, so nothing else tells the panel): the line above the cards is read again, "Back with you to
+        check", not "Waiting for your OK" until a reload."""
+        kai = self.page("kai")
+        mock("/__script", {"reset": True, "text": REPORT, "tool": [
+            {"name": "flux_create_task", "input": {"clientCommandId": str(uuid.uuid4()), "task": {"title": "Get three print quotes"}}},
+            {"name": "flux_create_task", "input": {"clientCommandId": str(uuid.uuid4()), "task": {"title": "Pick up the flyers on 10 April"}}}]})
+        task = self.task(self.page("ada"), "Plan the flyer print run", KAI["id"])
+        self.give(task)
+        self.agent_line(kai, task["id"], "waiting_for_ok")
+        # The run has ended and handed the task back with both changes waiting.
+        deadline = time.time() + 60
+        while time.time() < deadline and self.api(kai, "GET", f"/api/v1/work/{task['id']}", status=200)["owner"]["kind"] != "human":
+            kai.wait_for_timeout(500)
+        page = self.open_task("kai", task["id"])
+        panel = page.get_by_role("complementary", name="Details")
+        expect(panel.locator("[data-agent-line='waiting_for_ok']")).to_contain_text("Waiting for your OK")
+        cards = panel.locator(".assistant-waiting__card")
+        expect(cards).to_have_count(2)
+        cards.filter(has_text="Get three print quotes").get_by_role("button", name="Approve").click()
+        expect(cards).to_have_count(1)
+        expect(panel.locator("[data-agent-line='waiting_for_ok']")).to_contain_text("Waiting for your OK")
+        cards.filter(has_text="Pick up the flyers on 10 April").get_by_role("button", name="Skip").click()
+        expect(cards).to_have_count(0)
+        expect(panel.locator("[data-agent-line='handed_back']")).to_contain_text("Back with you to check")
+        expect(panel.locator("[data-agent-line='waiting_for_ok']")).to_have_count(0)
 
     # ---------------------------------------------------------------- a task assigned to a person stays with them
 

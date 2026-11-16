@@ -104,7 +104,8 @@ export function personalRunRows(db: DbExecutor) {
     if (!runIds.length) return counts;
     const rows = await db.select({ runId: c.runId, state: c.state, count: sql<number>`count(*)::int` }).from(c)
       .where(and(inArray(c.runId, runIds), inArray(c.state, ['applied', 'applied_after_wait', 'undone']), sql`jsonb_typeof(${c.receipt} -> 'undo') = 'object'`,
-        sql`NOT (${c.receipt} #>> '{undo,plan,kind}' = 'removal' AND ${c.receipt} #>> '{undo,plan,thread}' = 'true')`))
+        // `IS DISTINCT FROM`, not `NOT (… = …)`: most plans have no `thread` (a new page, decision or map), and NULL would leave them uncounted.
+        sql`(${c.receipt} #>> '{undo,plan,kind}' IS DISTINCT FROM 'removal' OR ${c.receipt} #>> '{undo,plan,thread}' IS DISTINCT FROM 'true')`))
       .groupBy(c.runId, c.state);
     for (const row of rows) {
       if (!row.runId) continue;
@@ -535,7 +536,7 @@ export function personalRunRows(db: DbExecutor) {
      * decision (the use case asks the policy per space). Only a page cited by section is read whole, for its headings.
      */
     async cites(scope: { workspaceId: string; projectId: string | null }, refs: readonly { kind: 'doc' | 'task' | 'decision' | 'message'; id: string; section?: number }[]) {
-      const found: { kind: 'doc' | 'task' | 'decision' | 'message'; id: string; projectId: string; title: string; conversationId?: string; revision?: number; version?: number; headings?: string[] }[] = [];
+      const found: { kind: 'doc' | 'task' | 'decision' | 'message'; id: string; projectId: string; title: string; conversationId?: string; revision?: number; number?: number; version?: number; headings?: string[] }[] = [];
       const ids = (kind: string) => [...new Set(refs.filter((ref) => ref.kind === kind).map((ref) => ref.id))];
       const within = (column: AnyPgColumn) => (scope.projectId === null ? undefined : eq(column, scope.projectId));
       const docs = ids('doc');
@@ -557,9 +558,9 @@ export function personalRunRows(db: DbExecutor) {
       const tasks = ids('task');
       if (tasks.length) {
         const w = schema.projectWorkItems;
-        for (const row of await db.select({ id: w.id, projectId: w.projectId, version: w.version, title: w.title }).from(w)
+        for (const row of await db.select({ id: w.id, projectId: w.projectId, version: w.version, number: w.number, title: w.title }).from(w)
           .where(and(eq(w.workspaceId, scope.workspaceId), inArray(w.id, tasks), sql`${w.creationRevertedAt} IS NULL`, within(w.projectId))))
-          found.push({ kind: 'task', id: row.id, projectId: row.projectId, title: row.title, revision: row.version });
+          found.push({ kind: 'task', id: row.id, projectId: row.projectId, title: row.title, revision: row.version, number: row.number });
       }
       const decisions = ids('decision');
       if (decisions.length) {

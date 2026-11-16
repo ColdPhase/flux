@@ -4,6 +4,7 @@ import {
   decisionAppPath,
   type AssistantChange,
   MAX_SNOOZE_DAYS,
+  plainPreviewText,
   type NeedsYouAsideEntry,
   type NeedsYouAsideResponse,
   type NeedsYouItem,
@@ -122,7 +123,7 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
       const name = authors.get(`${by.kind}:${by.id}`) ?? (by.kind === 'agent' ? 'Agent' : 'Someone');
       const supersedes = decision.supersedesId ? (await ports.work.findDecision(decision.supersedesId))?.title ?? null : null;
       items.push({
-        key: `decision:${decision.id}`, kind: 'decision', title: decision.title, detail: excerpt(decision.rationale),
+        key: `decision:${decision.id}`, kind: 'decision', title: decision.title, detail: excerpt(plainPreviewText(decision.rationale)),
         project: { id: decision.projectId, name: projectNames.get(decision.projectId) ?? 'Space' },
         from: { kind: by.kind, id: by.id, name }, at: iso(decision.createdAt),
         url: decisionAppPath(decision.projectId, decision.id),

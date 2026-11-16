@@ -192,6 +192,26 @@ class DecisionSurfaces(unittest.TestCase):
     def test_04_a_replacing_proposal_has_one_surface_and_one_left_edge(self) -> None:
         self.check_proposal("replacing", self.pivot_id)
 
+    # ---------------------------------------------------------------- v0.2.1 real-model gate rows 28, 37: reasons read as written
+
+    def test_05_reasons_show_their_list_and_page_and_never_an_id(self) -> None:
+        """An agent's reasons carry a list, a Wiki page `[[Title]]` and, from an older run, a cite mark: the panel shows the list as a list, the
+        page as its chip, and no id."""
+        page = self.context(view=DESKTOP, phone=False, scheme="light").new_page()
+        mark = "[message:40dc2d89-b0f0-411e-aa08-39e39094c2fa]"
+        reasons = f"Why 200 and not 500:\n- It fits the flyers line of the budget {mark}\n- [[Fair contacts]] names the order task\n- The stand hands them out one at a time"
+        decision = self.api(page, "POST", f"/api/v1/projects/{self.project_id}/decisions", {"title": "Print 200 flyers, not 500", "rationale": reasons}, status=201)
+        page, panel = self.opened(f"/projects/{self.project_id}?open=decision:{decision['id']}", phone=False, scheme="light", view=DESKTOP)
+        lead = panel.locator(".details__lead")
+        expect(lead).to_contain_text("Why 200 and not 500:")
+        items = lead.get_by_role("listitem")
+        expect(items).to_have_count(3)
+        expect(items.nth(0)).to_have_text("It fits the flyers line of the budget")
+        expect(lead.locator("[data-ref='wiki']")).to_have_text("Fair contacts")
+        self.assertNotIn("40dc2d89", lead.inner_text())
+        self.assertNotIn("[[", lead.inner_text())
+        shot(page, "decision-reasons-list-1440")
+
 
 if __name__ == "__main__":
     unittest.main()

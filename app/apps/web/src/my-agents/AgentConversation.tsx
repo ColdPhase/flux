@@ -151,8 +151,8 @@ function ReportLine({ line, agent, newDay, onChanged }: { line: AgentChatMessage
     setUndoing(true); setFailed(false); setNote('');
     try {
       const result = await undoRunChanges(line.runId);
-      // What changed since is not taken back: say which, as a task's change line does.
-      if (result.changedSince.length) setNote(result.message);
+      // What changed since is not taken back: say which, as a task's change line does. When the Done went with it, say the task is back (AG-7).
+      if (result.changedSince.length || result.back !== null) setNote(result.message);
       onChanged();
     } catch { setFailed(true); } finally { setUndoing(false); }
   };

@@ -2,7 +2,7 @@ import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useMemo, useR
 import { isTyping } from '../ui/keys';
 import { useSpaceAi } from '../ai/spaceAi';
 import { useRevalidator } from 'react-router';
-import { NO_BLOCK_REASON, waitingPhrase, type ObjectLink, type Project, type ProjectPerson, type WorkspaceMember, type WorkStatus, type WorkDetailObject, type WorkDetailProjection } from '@flux/contracts';
+import { NO_BLOCK_REASON, waitingPhrase, withoutCiteMarks, type ObjectLink, type Project, type ProjectPerson, type WorkspaceMember, type WorkStatus, type WorkDetailObject, type WorkDetailProjection } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { useStreamEvents } from '../api/stream';
 import { AgentIdentity, Avatar, Button, Icon, Kreska, Morph, PanelGlyph, StatusGlyph, useToast } from '../ui';
@@ -40,6 +40,8 @@ import { DueField, StatusControl, TitleField, useStateKeys } from './TaskParts';
 import { stateWords } from './taskState';
 import { personLabel } from '../people/api';
 import { useGivenTaskOpened } from '../notifications/givenTask';
+import { MessageText } from '../app/MessageText';
+import { plainWords } from './messageWords';
 
 /** The user id in an owner choice's value (`human:<id>`), for the person's photo (F-039); null for an agent or nobody. */
 const humanId = (value: string | null | undefined) => value?.startsWith('human:') ? value.slice('human:'.length) : null;
@@ -753,7 +755,8 @@ function DecisionPanel({ decision, context, detail, relations, reload, revision,
         <p className={`details__eyebrow wd-eyebrow${decision.status === 'proposed' ? ' wd-need' : ''}`}><Icon name="flag" size={13} /><Morph value={decision.status}>{earlier ? decisionState({ ...decision, supersedes: null }) : decisionState(decision)}</Morph></p>
         <h3 className={`details__title${decision.status === 'superseded' ? ' wd-was' : ''}`}>{decision.title}</h3>
       </div>
-      {decision.rationale ? <p className="details__lead">{decision.rationale}</p> : null}
+      {/* The reasons as formatted text, the one message renderer (lists, `#12`, `[[Page]]`), never a cite mark's id (v0.2.1 real-model gate rows 28, 37). */}
+      {decision.rationale ? <div className="details__lead wd-reasons" data-decision-reasons=""><MessageText body={withoutCiteMarks(decision.rationale)} /></div> : null}
       {sources.length ? (
         <section className="details__sec" aria-labelledby="wd-based">
           <h4 id="wd-based">Based on</h4>
@@ -783,7 +786,7 @@ function DecisionPanel({ decision, context, detail, relations, reload, revision,
       {earlier ? (
         <div className="details__sec wd-replaces">
           <p className="wd-sentence">This replaces the decision <button type="button" className="wd-inline" onClick={() => openDetails({ kind: 'decision', id: earlier.id, projectId: context.project.id })}>{earlier.title}</button>{earlierDay}.</p>
-          {earlierObject?.rationale ? <p className="wd-quote">Earlier reason: {earlierObject.rationale}</p> : null}
+          {earlierObject?.rationale ? <p className="wd-quote">Earlier reason: {plainWords(earlierObject.rationale)}</p> : null}
           {earlierRead.read.phase === 'unavailable' ? <p className="wd-error" role="alert">Earlier reason could not be loaded. <button type="button" className="wd-inline" onClick={reload}>Try again</button></p> : null}
         </div>
       ) : null}

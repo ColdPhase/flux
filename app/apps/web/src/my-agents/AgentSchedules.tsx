@@ -103,6 +103,15 @@ export function ScheduleHeader({ agent, state }: { agent: MyAgent; state: AgentS
 }
 
 /**
+ * What the schedule will do, in a person's words: the instruction the agent wrote for itself may name its tools (`flux_list_work`, v0.2.1
+ * real-model gate row 30). An aside that names them is left out, and a tool named in a sentence reads as words ("list work"). Change still
+ * edits the instruction as it is.
+ */
+function plainInstruction(text: string): string {
+  return text.replace(/[ \t]*\([^()\n]{0,300}\bflux_[a-z_]+[^()\n]{0,300}\)/g, '').replace(/\bflux_([a-z_]+)/g, (_tool, name: string) => name.replace(/_/g, ' '));
+}
+
+/**
  * Under the agent's answer in its chat, as drawn: the schedule that sentence prepared, what it will do, the one tap that turns it on (AG-9 "confirms it
  * there"), and Change.
  */
@@ -111,7 +120,7 @@ export function ReadySchedule({ job, state, agent }: { job: AssistantJob; state:
   return (
     <div className="agc__ready" data-prepared-schedule={job.id}>
       <p className="agc__ready-when"><Icon name="clock" size={15} /><b>{scheduleWhen(job)}</b><span> · {job.title}</span></p>
-      <p className="agc__ready-text">{job.text}</p>
+      <p className="agc__ready-text">{plainInstruction(job.text)}</p>
       <div className="agc__ready-actions">
         {job.enabled
           ? <span className="agc__on"><Icon name="check" size={14} />Turned on</span>

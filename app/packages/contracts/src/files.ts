@@ -1,4 +1,4 @@
-import { plainMessageText } from './message-format.js';
+import { plainPreviewText } from './message-format.js';
 
 /**
  * Stored files (#154): bytes a person stages privately, then attaches to exactly one message. Contract:
@@ -186,9 +186,9 @@ function ebmlDocType(head: Uint8Array): string | null {
 
 const attachedFiles = (count: number) => (count === 1 ? '1 attached file' : count > 1 ? `${count} attached files` : '');
 
-/** A system preview: the message's words without its formatting marks (#1247). The stored authored message body remains unchanged. */
+/** A system preview: the message's words without its formatting marks (#1247) or a cite mark's id (C-62). The stored authored message body remains unchanged. */
 export function messagePreview(body: string, count = 0): string {
-  return plainMessageText(body) || attachedFiles(count);
+  return plainPreviewText(body) || attachedFiles(count);
 }
 
 /** A conversation's opening words as they were typed (its first message, or what it attached): the text drawn again as a message, or kept on a map. */

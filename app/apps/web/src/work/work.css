@@ -170,6 +170,8 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
 .wd-plan code { padding: 1px 4px; border-radius: var(--r-sm); background: var(--hov); font-size: .92em; }
 .wd-quote { margin-top: 6px; padding-left: 12px; border-left: 2px solid var(--line2); font-size: var(--fs-sm) !important; }
 /* A plain sentence drawn only where it applies: "This replaces the decision …", "Shown on the Wiki page …" (#871). */
+/* A decision's reasons: the message renderer's paragraphs and lists, in the lead's size and colour (v0.2.1 real-model gate). */
+.wd-reasons { white-space: pre-wrap; overflow-wrap: anywhere; }
 .wd-sentence { margin: 0; font-size: var(--fs-md); line-height: 1.5; color: var(--t2); overflow-wrap: anywhere; }
 .wd-docs > .wd-actions:first-child { margin-top: 0; }
 .wd-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }

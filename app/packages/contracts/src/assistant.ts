@@ -124,7 +124,11 @@ export interface AssistantChangeDecision {
 }
 export interface AssistantChangesDecided { changes: AssistantChangeDecision[] }
 /** Undo of a whole run's message: each item's result and the sentence "Undid 5 changes. 2 changed since: #4, #7". */
-export interface AssistantRunUndone { changes: AssistantChangeDecision[]; undone: number; changedSince: string[]; message: string }
+/**
+ * The message's Undo: what it took back, what changed since, and `back`, the number of the task whose Done went with it (AG-7: a "Done: #4 …"
+ * report's Undo takes back the whole finish), null when no Done was taken back. `message` says it all: "Undid 1 change. #4 is back with you".
+ */
+export interface AssistantRunUndone { changes: AssistantChangeDecision[]; undone: number; changedSince: string[]; back: number | null; message: string }
 /** `POST …/edit`: the owner changes a task proposed for another person before approving it (F-036 AG-3 [Edit]). */
 export interface EditAssistantChangeCommand { expectedVersion: number; title: string }
 
