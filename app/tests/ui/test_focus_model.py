@@ -67,6 +67,7 @@ class FocusModel(unittest.TestCase):
             cls.contexts[key] = context
             cls.states[key] = context.storage_state()
         workspace = cls.post("piotr", "/api/v1/workspaces", {"name": "Riverside Bakery"})["id"]
+        cls.ids["workspace"] = workspace
         for who in ("kasia", "lee", "ola"):
             cls.post("piotr", f"/api/v1/workspaces/{workspace}/members", {"email": PEOPLE[who][1], "role": "member"})
         shared = cls.post("piotr", f"/api/v1/workspaces/{workspace}/projects", {"name": SHARED, "visibility": "workspace"})["id"]
@@ -919,6 +920,47 @@ class FocusModel(unittest.TestCase):
         # The task's card, or the fold ("3 task updates") it is folded into, which stands for it (F-026 S8).
         page.wait_for_function("""(selector) => { const card = document.querySelector(selector); const active = document.activeElement;
           return !!card && (active === card || (!!active?.matches('.convo-fold__b') && !!active.closest('.convo-fold')?.contains(card))); }""", arg=selector, timeout=10000)
+
+    def test_39b_esc_after_create_in_a_long_conversation_brings_the_new_task_s_card_into_view(self) -> None:
+        """personas-37 P3: in a long conversation read above its end, Create task on a message, Ctrl+Enter and Esc focused the new task's
+        card while it stood below the window (y=940 in 900 px): the conversation kept the place read before as the panel left, and Enter
+        would have reopened a task the person could not see."""
+        space = self.post("piotr", f"/api/v1/workspaces/{self.ids['workspace']}/projects", {"name": f"Tool library {uuid.uuid4().hex[:4]}", "visibility": "workspace"})["id"]
+        for index in range(1, 31):
+            self.post("kasia", f"/api/v1/projects/{space}/conversations",
+                      {"body": f"Round 1 note {index}: the shelf by the door needs a label and the drill bits go back in the blue box", "clientMessageId": str(uuid.uuid4())})
+        page = self.page()
+        page.goto(f"/projects/{space}")
+        expect(page.locator(FEED).get_by_text("Round 1 note 30:")).to_be_visible()
+        page.wait_for_timeout(1500)
+        # Read above the end: the message the task is made from is in the middle of the conversation.
+        message = page.locator(f"{FEED} .project-convo__message").filter(has_text="Round 1 note 14:").first
+        message.scroll_into_view_if_needed()
+        page.mouse.move(700, 300)
+        page.mouse.wheel(0, -60)
+        page.wait_for_timeout(600)
+        message.hover()
+        message.get_by_role("button", name="Create task").click()
+        window = page.get_by_role("dialog", name="New task")
+        expect(window).to_be_visible()
+        page.keyboard.press("Control+Enter")
+        panel = page.locator("#details")
+        expect(panel.get_by_role("heading", name=re.compile("Round 1 note 14"))).to_be_visible()
+        page.wait_for_timeout(400)
+        page.keyboard.press("Escape")
+        expect(panel).to_be_hidden()
+        selector = f"#content [data-native-ref^='work:'][aria-label*='Round 1 note 14']"
+        page.wait_for_function("""(selector) => { const card = document.querySelector(selector); const active = document.activeElement;
+          return !!card && (active === card || (!!active?.matches('.convo-fold__b') && !!active.closest('.convo-fold')?.contains(card))); }""", arg=selector, timeout=10000)
+        # It is in view, and stays there once the panel has gone and the conversation has settled.
+        in_view = """() => { const active = document.activeElement; const feed = document.querySelector('.project-convo__feed');
+          if (!active || !feed) return null; const a = active.getBoundingClientRect(), f = feed.getBoundingClientRect();
+          return { top: Math.round(a.top), bottom: Math.round(a.bottom), feedTop: Math.round(f.top), feedBottom: Math.round(f.bottom), height: innerHeight,
+                   inside: a.top >= f.top - 1 && a.bottom <= f.bottom + 1 && a.bottom <= innerHeight }; }"""
+        for wait in (100, 1500):
+            page.wait_for_timeout(wait)
+            where = page.evaluate(in_view)
+            self.assertTrue(where and where["inside"], f"the focused card is in view after {wait} ms: {where}")
 
 
 if __name__ == "__main__":
