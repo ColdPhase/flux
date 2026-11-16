@@ -797,6 +797,36 @@ class FocusModel(unittest.TestCase):
                 self.assertTrue(page.evaluate("(key) => document.querySelector(`.nyq__list .nyc[data-key=\"${key}\"]`)?.contains(document.activeElement)", key),
                                 "focus is back on the question in the Inbox")
 
+    def test_36b_r_or_discuss_from_the_inbox_then_back_lands_on_the_open_item_as_esc_does(self) -> None:
+        # Sweep 34 C10: R or Discuss on a decision or a blocked task, then the browser's Back. The open item was right, but the panel's field
+        # still had the cursor as the Inbox arrived, so the Inbox left the focus alone; the panel then closed and focus went to the page's
+        # content, with no ring. Back lands on the open item, as Esc does.
+        decision = self.post("piotr", f"/api/v1/projects/{self.ids['shared']}/decisions", {"title": "Sell day-old bread at half price", "rationale": "Less waste."})["id"]
+        task = self.post("piotr", f"/api/v1/projects/{self.ids['shared']}/work", {"title": "Descale the steam oven", "owner": {"kind": "human", "id": self.ids["kasia"]},
+                                                                                  "status": "blocked", "blocker": "Which descaler?", "waitingFor": {"kind": "human", "id": self.ids["lee"]}})["id"]
+        self.wait_for_item("kasia", lambda item: item["key"] == f"decision:{decision}")
+        self.wait_for_item("kasia", lambda item: item["key"] == f"blocked:{task}")
+        page = self.page()
+        for key, how, field in ((f"decision:{decision}", "R", "#decision-composer"), (f"decision:{decision}", "Discuss", "#decision-composer"),
+                                (f"blocked:{task}", "R", "#details textarea[placeholder^='Write']")):
+            with self.subTest(key=key, how=how):
+                page.goto("/inbox")
+                row = page.locator(f'.nyq__list .nyc[data-key="{key}"]')
+                row.locator(".nyc__open").click()
+                expect(row).to_have_attribute("aria-current", "true")
+                if how == "R":
+                    page.keyboard.press("r")
+                else:
+                    page.locator(".nyq__col--open").get_by_role("button", name="Discuss", exact=True).click()
+                expect(page.locator(field).first).to_be_focused()
+                page.go_back()
+                expect(page).to_have_url(re.compile(r"/inbox$"))
+                # The panel closes after the Inbox has arrived: the focus must still be on the open item once it has gone.
+                page.wait_for_timeout(1200)
+                expect(row).to_have_attribute("aria-current", "true")
+                self.assertTrue(page.evaluate("(key) => document.querySelector(`.nyq__list .nyc[data-key=\"${key}\"]`)?.contains(document.activeElement)", key),
+                                f"{how} then Back: focus is on the open item, not {page.evaluate('() => document.activeElement?.tagName')}")
+
     def test_37_done_on_waits_for_you_has_an_undo_that_makes_the_task_wait_again(self) -> None:
         task = self.post("piotr", f"/api/v1/projects/{self.ids['shared']}/work", {"title": "Fix the dough mixer", "owner": {"kind": "human", "id": self.ids["piotr"]},
                                                                                   "status": "blocked", "blocker": "Which part number?", "waitingFor": {"kind": "human", "id": self.ids["ola"]}})

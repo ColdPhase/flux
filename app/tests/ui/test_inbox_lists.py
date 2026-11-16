@@ -335,6 +335,47 @@ class InboxLists(unittest.TestCase):
         self.assertEqual(self.queue()["doneToday"], 1)
         put_back_then_e(self.page(), closes_itself=True)
 
+    def test_03c_a_double_click_on_put_back_or_bring_back_now_brings_back_one_item(self) -> None:
+        # Sweep 34 C4: the next row slides up under the pointer as a row leaves, so the second click of a double-click on Put back (or Bring
+        # back now) brought that row back too. One press, one action (README §4), as in the Inbox itself.
+        tag = uuid.uuid4().hex[:4]
+        asks = {which: [f"can you check the {thing} {which} {tag}?" for thing in ("hose", "tap")] for which in ("done", "later")}
+        for texts in asks.values():
+            for text in texts:
+                self.call("jonas", "POST", f"/api/v1/projects/{self.project_id}/conversations", {"body": f"@Ada Kowalska {text}", "clientMessageId": str(uuid.uuid4())})
+        items: dict[str, dict] = {}
+        for _ in range(80):
+            queue = self.queue()["items"]
+            items = {text: item for text in asks["done"] + asks["later"] for item in queue if text in item["title"]}
+            if len(items) == 4:
+                break
+            time.sleep(0.25)
+        self.assertEqual(len(items), 4, "the four questions reached Ada")
+        for text in asks["done"]:
+            self.call("ada", "POST", f"/api/v1/needs-you/{items[text]['key']}", {"action": "done"})
+        until = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() + 86400))
+        for text in asks["later"]:
+            self.call("ada", "POST", f"/api/v1/needs-you/{items[text]['key']}", {"action": "snooze", "until": until})
+        waiting = lambda: [item["title"] for item in self.queue()["items"]]  # noqa: E731
+        page = self.page()
+        for which, line, title, action in (("done", r"done today$", "Done today", "Put back"), ("later", r"for later$", "For later", "Bring back now")):
+            with self.subTest(which=which):
+                page.goto("/inbox")
+                page.get_by_role("button", name=re.compile(rf"^\d+ {line}")).click()
+                window = page.get_by_role("dialog", name=title)
+                rows = window.locator(".nyq-aside__row")
+                expect(rows.first).to_be_visible()
+                count = rows.count()
+                self.assertGreaterEqual(count, 2, "a row below slides up as the first leaves")
+                window.get_by_role("button", name=re.compile(f"^{action}")).first.dblclick()
+                expect(rows).to_have_count(count - 1)
+                page.wait_for_timeout(1000)
+                expect(rows, "the row that slid up under the pointer stays").to_have_count(count - 1)
+                page.keyboard.press("Escape")
+                expect(window).to_have_count(0)
+                back = [text for text in asks[which] if any(text in title for title in waiting())]
+                self.assertEqual(len(back), 1, f"one press, one item back: {back}")
+
     def test_04_phone_the_line_opens_a_sheet(self) -> None:
         page = self.page(phone=True)
         page.goto("/inbox")
@@ -356,6 +397,42 @@ class InboxLists(unittest.TestCase):
         shot(page, "inbox-lists-phone-sheet")
         window.get_by_role("button", name="Close done today").tap()
         expect(window).to_have_count(0)
+
+    def test_05_phone_a_task_opened_from_a_compact_card_comes_back_as_its_neighbour_at_its_place(self) -> None:
+        # Sweep 34 C7: a card opened from the phone's list is the open item, so closing what it opened returns with it expanded (README §4).
+        # A task given to you leaves the Inbox as it opens: its neighbour at its place is the expanded card then, not the card that was
+        # expanded before the task was opened.
+        tag = uuid.uuid4().hex[:4]
+        below, above = f"can you oil the hinges {tag}?", f"can you sweep the yard {tag}?"
+        self.call("jonas", "POST", f"/api/v1/projects/{self.project_id}/conversations", {"body": f"@Ada Kowalska {below}", "clientMessageId": str(uuid.uuid4())})
+        task = self.call("jonas", "POST", f"/api/v1/projects/{self.project_id}/work", {"title": f"Fit the rain cap {tag}", "owner": {"kind": "human", "id": self.ids["ada"]}})
+        time.sleep(1.1)
+        self.call("jonas", "POST", f"/api/v1/projects/{self.project_id}/conversations", {"body": f"@Ada Kowalska {above}", "clientMessageId": str(uuid.uuid4())})
+        titles: list[str] = []
+        for _ in range(80):
+            titles = [item["title"] for item in self.queue()["items"]]
+            at = lambda text: next((index for index, title in enumerate(titles) if text in title), -1)  # noqa: E731
+            if min(at(above), at(task["title"]), at(below)) >= 0:
+                break
+            time.sleep(0.25)
+        order = [next(index for index, title in enumerate(titles) if text in title) for text in (above, task["title"], below)]
+        self.assertEqual(order, sorted(order), f"newest first: {titles}")
+        self.assertEqual(order[1] + 1, order[2], "the question below is the task's neighbour")
+        page = self.page(phone=True)
+        page.goto("/inbox")
+        card = lambda text: page.locator(".nyq__list .nyc", has_text=text)  # noqa: E731
+        # The top card is expanded; the task's card is compact, with Open.
+        expect(card(above)).to_have_attribute("aria-current", "true")
+        expect(card(task["title"])).not_to_have_attribute("aria-current", "true")
+        card(task["title"]).locator(".nyc__rowactions").get_by_role("button", name="Open").tap()
+        expect(page).to_have_url(re.compile(r"/tasks\?open=work"))
+        expect(page.locator("#details")).to_contain_text(task["title"])
+        page.locator("#details").get_by_role("button", name="Close details").tap()
+        expect(page).to_have_url(re.compile(r"/inbox$"))
+        expect(card(task["title"]), "opened, the task left the Inbox").to_have_count(0)
+        expect(card(below), "its neighbour at its place is the expanded card").to_have_attribute("aria-current", "true")
+        expect(card(above)).not_to_have_attribute("aria-current", "true")
+        shot(page, "inbox-lists-phone-task-opened-neighbour")
 
 
 if __name__ == "__main__":

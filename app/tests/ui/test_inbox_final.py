@@ -943,8 +943,13 @@ class InboxFinal(unittest.TestCase):
         tray.get_by_role("button", name="Done").tap()
         expect(page.get_by_role("status").filter(has_text="Marked done")).to_be_visible()
         expect(question).to_have_count(0)
+        # The card that took its place is the expanded one while it is gone (README §4).
+        expect(self.card(page, "Mulch the north beds")).to_have_attribute("aria-current", "true")
         page.get_by_role("button", name="Undo").tap()
         expect(self.card(page, GATE)).to_have_count(1)
+        # What came back is the open item, on the phone its expanded card (README §4; sweep 34 C6: the neighbour stayed expanded).
+        expect(self.card(page, GATE)).to_have_attribute("aria-current", "true")
+        expect(self.card(page, "Mulch the north beds")).not_to_have_attribute("aria-current", "true")
         # Not now in the tray is one button with no menu: it puts the item off until tomorrow morning (S11).
         question = self.card(page, GATE)
         question.locator(".nyc__scroll").evaluate("element => element.scrollTo({ left: element.scrollWidth, behavior: 'instant' })")
