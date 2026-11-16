@@ -29,6 +29,11 @@ export function DmUnreadProvider({ identity, children }: { identity: string; chi
   const last = useRef(0);
   const known = useRef(new Set<string>());
   useEffect(() => { known.current = new Set(directMessages.map((dm) => dm.id)); }, [directMessages]);
+  // The conversation just left was read here: it stays read until a new message arrives in it, so it never turns bold again from what was
+  // known while it was open (the shell's list read again on arrival, or a read asked before its reading was saved).
+  const [shown, setShown] = useState(open);
+  const [justRead, setJustRead] = useState<string | null>(null);
+  if (shown !== open) { setShown(open); if (shown) setJustRead(shown); }
   const read = useCallback(() => {
     last.current = Date.now();
     const base = directMessages;
@@ -49,22 +54,25 @@ export function DmUnreadProvider({ identity, children }: { identity: string; chi
     // A hidden tab asks nothing; it looks again when it is shown.
     const visible = () => { if (document.visibilityState === 'visible') soon(0); };
     const now = () => soon(0);
+    // Read or put back from outside a conversation (Mark all as read and its Undo): what the list says next is the person's own choice.
+    const changed = () => { setJustRead(null); soon(0); };
     window.addEventListener('focus', now);
-    window.addEventListener(DM_UNREAD_CHANGED, now);
+    window.addEventListener(DM_UNREAD_CHANGED, changed);
     document.addEventListener('visibilitychange', visible);
     return () => {
-      window.removeEventListener('focus', now); window.removeEventListener(DM_UNREAD_CHANGED, now); document.removeEventListener('visibilitychange', visible);
+      window.removeEventListener('focus', now); window.removeEventListener(DM_UNREAD_CHANGED, changed); document.removeEventListener('visibilitychange', visible);
       if (timer.current) { clearTimeout(timer.current); timer.current = null; }
     };
   }, [soon]);
   useStreamEvents(identity, (event) => {
+    if (event.objectType === 'dm' && event.kind === 'dm.message_sent.v1') setJustRead((current) => (current === event.objectId ? null : current));
     if (event.objectType === 'dm' && EVENTS.has(event.kind) && known.current.has(event.objectId) && document.visibilityState === 'visible') soon();
   }, () => soon(0));
   const counts = useMemo(() => {
     const current = fetched && fetched.identity === identity && fetched.base === directMessages ? fetched.counts
       : new Map(directMessages.flatMap((dm) => dm.unread > 0 ? [[dm.id, dm.unread] as const] : []));
-    return open && current.has(open) ? new Map([...current].filter(([id]) => id !== open)) : current;
-  }, [fetched, identity, directMessages, open]);
+    return (open && current.has(open)) || (justRead && current.has(justRead)) ? new Map([...current].filter(([id]) => id !== open && id !== justRead)) : current;
+  }, [fetched, identity, directMessages, open, justRead]);
   return <Unread.Provider value={counts}>{children}</Unread.Provider>;
 }
 
