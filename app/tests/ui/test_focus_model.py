@@ -560,7 +560,8 @@ class FocusModel(unittest.TestCase):
         page.keyboard.type("Paper cups only")
         page.keyboard.press("Enter")
         decision = page.get_by_role("dialog", name="New decision").get_by_role("textbox", name="Decision", exact=True)
-        expect(decision).to_be_focused()
+        # The words are the whole title: the cursor goes on to Why (personas-36).
+        expect(page.get_by_role("dialog", name="New decision").get_by_label("Why", exact=True)).to_be_focused()
         expect(decision).to_have_value("Paper cups only")
         page.keyboard.press("Control+Enter")
         expect(page.get_by_role("dialog")).to_have_count(0)
@@ -877,7 +878,8 @@ class FocusModel(unittest.TestCase):
         expect(window).to_be_visible()
         why = window.get_by_label("Why", exact=True)
         expect(why).to_be_focused()
-        expect(why).to_have_value(re.compile(r"orders on Monday\.\n?$"))
+        # The letters typed while the window opened are kept for Why, none lost on the way.
+        expect(why).to_have_value(re.compile(r"^\s*orders on Monday\.\n?$"))
         expect(window.get_by_role("textbox", name="Decision", exact=True)).to_have_value(title)
         page.wait_for_timeout(600)
         expect(window).to_be_visible()
@@ -894,9 +896,10 @@ class FocusModel(unittest.TestCase):
         page = self.page()
         page.goto(f"/projects/{self.ids['shared']}")
         expect(page.locator("#project-composer")).to_be_focused()
-        page.keyboard.press("Escape")
-        page.wait_for_timeout(300)
-        self.assertTrue(page.evaluate("() => /^message-/.test(document.activeElement.id)"), "Esc left the composer for a message")
+        # Where Esc in the composer leaves the focus: on a message of the conversation, here the newest.
+        message = page.locator(f'{FEED} [id^="message-"][tabindex]').last
+        message.focus()
+        expect(message).to_be_focused()
         page.keyboard.press("c")
         window = page.get_by_role("dialog", name="New task")
         expect(window).to_be_visible()

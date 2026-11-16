@@ -6,6 +6,7 @@ import { useShellActions } from '../app/shellContext';
 import { getProject } from '../project/api';
 import type { useTyping } from '../typing/useTyping';
 import { sendsOnEnter } from '../ui';
+import { awaitField } from '../ui/keys';
 import { firstLine } from '../work/format';
 import type { AssistantAsk } from './useAssistantAsk';
 import type { ComposerDrafts } from './useComposerDrafts';
@@ -40,6 +41,8 @@ export function useComposerSend({ project, conversation, writable, aiOff, guest,
     // The composer keeps its words until the task or decision exists: closing the window loses nothing (and a newer draft is never consumed).
     // A task from your own `/task` words is yours (#1424 M).
     // A `/decide` goes on in Why: a decision reaches everyone, so the words typed after it are its reason, not more of its title (personas-36).
+    // What is typed while the window opens is kept for Why, so no letter is lost on the way (F-026 §4, a form's first field).
+    if (name === 'decide') awaitField();
     openCreate({ kind: name === 'decide' ? 'decision' : 'task', projectId: project.id, title: firstLine(text), onCreated: consume, ...(name === 'task' ? { ownerMe: true } : { afterTitle: true }),
       ...(fromThread ? { sources: [{ ref: { type: 'message' as const, id: fromThread.messageId }, label: firstLine(plainMessageText(fromThread.text)), conversationId: fromThread.conversationId }] } : {}) });
   }
