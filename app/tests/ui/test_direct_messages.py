@@ -159,8 +159,17 @@ class DirectMessageJourney(unittest.TestCase):
     def test_01b_back_from_a_new_conversation_goes_where_the_person_started(self) -> None:
         """personas-34 P3: on the phone, Back from a conversation just made with New message landed on the New message picker. The
         conversation takes the picker's place, so Back goes to Spaces, where the person started."""
-        # Kai, whose conversation with Ada exists (test_01): Lee stays without one for test_04.
-        page = self.page("kai", phone=True)
+        # Someone of their own, with no conversation yet: Lee stays without one for test_04, and Kai's with Ada opens at once.
+        email = f"oli.dm+{uuid.uuid4().hex[:8]}@example.test"
+        context = self.browser.new_context(service_workers="block", base_url=ORIGIN)
+        self.addCleanup(context.close)
+        signed = context.request.post("/api/auth/sign-up/email", data={"email": email, "password": PASSWORD, "name": "Oli Brandt"}, headers={"origin": ORIGIN})
+        self.assertEqual(signed.status, 200, signed.text())
+        type(self).states["oli"] = context.storage_state()
+        ada = self.context("ada")
+        added = ada.request.post(f"/api/v1/workspaces/{self.workspace_id}/members", data={"email": email, "role": "member"}, headers={"origin": ORIGIN})
+        self.assertEqual(added.status, 201, added.text())
+        page = self.page("oli", phone=True)
         page.goto("/projects")
         page.get_by_role("link", name="New message").first.tap()
         expect(page.get_by_role("heading", level=1, name="New message")).to_be_visible()
