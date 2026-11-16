@@ -203,16 +203,20 @@ class HomeFinal(unittest.TestCase):
         self.assertEqual(status(), "proposed", "Undo took the acceptance back")
 
     def test_04_nothing_to_do_is_calm(self) -> None:
+        # Done on a task given to her or on her blocked task finishes the task (#1424): those are put back after, as the done-today list does.
+        finished = []
         for item in self.queue()["items"]:
             response = self.contexts["ada"].request.post(f"/api/v1/needs-you/{urllib.parse.quote(item['key'], safe='')}", data={"action": "done"}, headers={"origin": ORIGIN})
             self.assertEqual(response.status, 200, response.text())
+            if item["kind"] in ("task", "blocked"):
+                finished.append(item["key"])
         page = self.page()
         page.goto("/")
         expect(page.get_by_text("Nothing is waiting for you.")).to_be_visible()
         expect(page.get_by_role("heading", name=re.compile(r"^Waiting for you$"))).to_be_visible()
         shot(page, "home-final-desktop-1440-clear")
         # Bring the queue back for the phone.
-        for key in (f"decision:{self.decision['id']}",):
+        for key in (f"decision:{self.decision['id']}", *finished):
             self.contexts["ada"].request.delete(f"/api/v1/needs-you/{urllib.parse.quote(key, safe='')}", headers={"origin": ORIGIN})
         self.post("jonas", f"/api/v1/projects/{self.project_id}/conversations", {"body": "@Ada Kowalska is the gate code still 1234?", "clientMessageId": str(uuid.uuid4())})
         self.wait_for(lambda: {"decision", "question"} <= {item["kind"] for item in self.queue()["items"]}, "things that need her again")

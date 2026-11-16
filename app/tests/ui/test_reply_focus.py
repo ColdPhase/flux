@@ -5,8 +5,9 @@ typed next went to single-key shortcuts: "Sure, I can do it by Friday." became "
 opened Create (C) and the rest became a task. The same happened when a thread was opened from its "1 reply". Reply, and opening a thread
 on a computer, put focus in the reply field and keep it there; no single key is a shortcut while focus is in, or on its way to, a field.
 
-A-1 (phone): Inbox › Reply › × › the header's "‹" opened the thread again, without end. Closing a thread gives its history entry to the
-conversation, so Back leaves the conversation as the header promises, and never reopens what was just closed.
+A-1 (phone): Inbox › Reply › × › the header's "‹" opened the thread again, without end. Closing a thread the Inbox opened goes back to the
+Inbox (personas-33 P2 1); one opened from the stream is one step back, and Back then leaves the conversation as the header promises. Neither
+reopens what was just closed.
 
 The engine is FLUX_UI_BROWSER (chromium or webkit). Screenshots (reply-focus-*.png) go to FLUX_UI_SCREENSHOTS when set.
 """
@@ -197,28 +198,18 @@ class ReplyFocus(unittest.TestCase):
 
     def test_04_phone_back_after_closing_a_thread_leaves_the_conversation(self) -> None:
         page = self.page(phone=True)
-        # Inbox › Reply › × › the header's "‹": the Inbox, not the thread again.
-        self.reply_from_inbox(page, PHONE_ASKS[0])
-        expect(page).to_have_url(re.compile(rf"/conversations/{self.phone[PHONE_ASKS[0]]}"))
-        sheet = self.thread(page)
-        expect(sheet).to_be_visible()
-        sheet.get_by_role("button", name="Close replies").click()
-        expect(sheet).to_have_count(0)
-        expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}$"))
-        back = page.locator("header.phead").get_by_role("button", name=re.compile(r"^Back"))
-        expect(back).to_be_visible()
-        shot(page, f"reply-focus-phone-closed-390-{UI_BROWSER}")
-        back.click()
-        expect(page).to_have_url(re.compile(r"/inbox$"))
-        expect(self.thread(page)).to_have_count(0)
-        # The same with the browser's (or the phone's) Back.
-        self.reply_from_inbox(page, PHONE_ASKS[1])
-        expect(self.thread(page)).to_be_visible()
-        self.thread(page).get_by_role("button", name="Close replies").click()
-        expect(self.thread(page)).to_have_count(0)
-        page.go_back()
-        expect(page).to_have_url(re.compile(r"/inbox$"))
-        expect(self.thread(page)).to_have_count(0)
+        # Inbox › Reply › ×: back in the Inbox with its open item (F-026 §4, personas-33 P2 1), never the thread again.
+        for ask in PHONE_ASKS[:2]:
+            self.reply_from_inbox(page, ask)
+            expect(page).to_have_url(re.compile(rf"/conversations/{self.phone[ask]}"))
+            sheet = self.thread(page)
+            expect(sheet).to_be_visible()
+            sheet.get_by_role("button", name="Close replies").click()
+            expect(sheet).to_have_count(0)
+            expect(page).to_have_url(re.compile(r"/inbox$"))
+            shot(page, f"reply-focus-phone-closed-390-{UI_BROWSER}")
+            page.wait_for_timeout(400)
+            expect(self.thread(page)).to_have_count(0)
         # A thread opened from its replies in the stream: × is one step back, and Back then leaves the space for the list of spaces.
         page.goto(f"/projects/{self.ids['project']}")
         page.locator(f"#message-{self.ids['stream_root']}").get_by_role("button", name=re.compile(r"^\d+ repl")).click()
