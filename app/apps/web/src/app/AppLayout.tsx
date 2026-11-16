@@ -665,7 +665,13 @@ function AppLayoutContent() {
   const onWiki = /^\/projects\/[^/]+\/docs(\/|$)/.test(location.pathname);
   useEffect(() => {
     if (!projectId || (!onConversation && !onMap)) return;
-    remember(onMap ? 'map' : 'conversation', me.user.id, projectId, `${location.pathname}${location.search}`);
+    // The view's place, not the object open over it: a task's `?open=` is the panel's entry (persona round 29), and the panel goes with the
+    // person across the space's views by itself. Kept here, the tab would open a task again that was closed on another view, and the Map tab
+    // would not open the map alone (#1438 point 7); the Tasks view remembers only its own view too.
+    const search = new URLSearchParams(location.search);
+    search.delete('open');
+    const rest = search.toString();
+    remember(onMap ? 'map' : 'conversation', me.user.id, projectId, `${location.pathname}${rest ? `?${rest}` : ''}`);
   }, [me.user.id, projectId, onConversation, onMap, location.pathname, location.search]);
   const shellProject = useProjectShell();
   const project = shellProject && shellProject.project.id === projectId ? shellProject : undefined;
