@@ -116,6 +116,15 @@ function PanelContent({ title, titleId, closeLabel, back, chip, context, onClose
 }
 
 /** Non-modal panel at the right edge of the app frame, under the header. Esc inside it closes it. `float` lays it over the work instead of beside it. */
+/**
+ * Set by Create as it closes to open what it made in the panel (F-026 §4, personas-36): what opened that panel is gone, so closing it gives
+ * the focus to the object's own card, never to the control the window was opened over or wherever the focus fell meanwhile. For the next
+ * panel that opens or changes within a few seconds.
+ */
+let objectTakesFocusBackUntil = 0;
+export function returnFocusToObject() { objectTakesFocusBackUntil = performance.now() + 5000; }
+function takeObjectReturn() { const due = objectTakesFocusBackUntil > performance.now(); objectTakesFocusBackUntil = 0; return due; }
+
 function DockedPanel({ open, onClose, title, closeLabel, back, chip, context, id, contentKey, float, focusBack, children }: SidePanelProps & { float?: boolean }) {
   const { mounted, unmount } = usePresence(open);
   const focusBackRef = useRef(focusBack);
@@ -130,8 +139,11 @@ function DockedPanel({ open, onClose, title, closeLabel, back, chip, context, id
   // Something opened into the open panel from outside it (a task card in the stream while a thread is shown): closing gives focus back to
   // that control, not to what opened the panel first (a message the link arrived at, far above, or nothing).
   const shownKey = contentKey ?? `${chip ?? ''}|${title}`;
+  const opened = useRef(false);
+  const toObject = useRef(false);
   useLayoutEffect(() => {
     if (!open || !mounted) return;
+    if (takeObjectReturn()) { returnRef.current = null; if (!opened.current) toObject.current = true; return; }
     const active = document.activeElement;
     if (active instanceof HTMLElement && active !== document.body && !ref.current?.contains(active)) returnRef.current = active;
     // Only a change of what the panel shows; opening is the effect below.
@@ -140,8 +152,10 @@ function DockedPanel({ open, onClose, title, closeLabel, back, chip, context, id
 
   useLayoutEffect(() => {
     if (!open || !mounted) return;
-    // Remember the opener before focus moves into the surface.
-    returnRef.current = document.activeElement as HTMLElement | null;
+    // Remember the opener before focus moves into the surface; a panel Create opened has none left (its object's card stands for it).
+    returnRef.current = toObject.current || takeObjectReturn() ? null : document.activeElement as HTMLElement | null;
+    toObject.current = false;
+    opened.current = true;
     const panel = ref.current;
     panel?.classList.remove('is-leaving');
     // Opening while it is leaving continues from where the exit had got to; opening at first paint does not move.
@@ -151,6 +165,7 @@ function DockedPanel({ open, onClose, title, closeLabel, back, chip, context, id
     const active = document.activeElement;
     if (!(active instanceof HTMLElement && !panel?.contains(active) && active.closest('.composer, .composer__box')) && !isTyping(null)) bodyRef.current?.focus({ preventScroll: true });
     return () => {
+      opened.current = false;
       const target = returnRef.current;
       returnRef.current = null;
       // The work area takes the space back at once while the panel fades out over it; focus has already returned.

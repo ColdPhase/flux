@@ -89,8 +89,18 @@ function useCurrentInView(ref: RefObject<HTMLElement | null>, key: string, deps:
     shown.current = { list, key };
     const box = list.getBoundingClientRect();
     const at = current.getBoundingClientRect();
-    if (at.top < box.top + 28) list.scrollTop += at.top - box.top - 28;
-    else if (at.bottom > box.bottom - 32) list.scrollTop += at.bottom - box.bottom + 32;
+    let by = at.top < box.top + 28 ? at.top - box.top - 28 : at.bottom > box.bottom - 32 ? at.bottom - box.bottom + 32 : 0;
+    if (!by) return;
+    // A band that rests only on a whole tile (the short rail, app.css) goes to the tile's resting place at or beyond that, so the snap
+    // that follows never pulls the current place back under the fade.
+    if (getComputedStyle(list).scrollSnapType.includes('mandatory')) {
+      const pad = parseFloat(getComputedStyle(list).scrollPaddingTop) || 0;
+      const stops = [...list.querySelectorAll<HTMLElement>('.side__ib, .side__rail-project, .side__rail-dm')]
+        .map((tile) => Math.round(tile.getBoundingClientRect().top - box.top - list.clientTop - pad));
+      const stop = by > 0 ? Math.min(...stops.filter((offset) => offset >= by)) : Math.max(...stops.filter((offset) => offset <= by));
+      if (Number.isFinite(stop)) by = stop;
+    }
+    list.scrollTop += by;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ref, key, ...deps]);
 }

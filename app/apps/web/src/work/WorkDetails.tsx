@@ -750,19 +750,47 @@ function DecisionPanel({ decision, context, detail, relations, reload, revision,
       .find((element) => element.getClientRects().length > 0 && Boolean(mark.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING));
     next?.focus({ preventScroll: true });
   }, [decision.status]);
-  // The answer stays in view under the pinned title while the discussion scrolls (personas-35, 200 %: R scrolled to the newest message and
-  // Accept, Not now and Discuss went out of view above it): it sticks right under the title, whose height it follows.
+  // The answer stays in view while the discussion scrolls (personas-35, 200 %: R scrolled to the newest message and Accept, Not now and
+  // Discuss went out of view above it), and the discussion keeps the room to be read (personas-36, 200 %: the pinned title and answer filled
+  // the panel's 209 px and no message showed). F-026 §4: the title and the whole answer stick while they take at most two fifths of the
+  // scrolling room; otherwise the title scrolls with the rest and only the row of Accept, Not now and Discuss stays, as a bar at the top;
+  // and where even that row would take more, nothing sticks. Read again whenever the panel, the title or the answer changes size.
   const identityRef = useRef<HTMLDivElement>(null);
+  const answerRef = useRef<HTMLElement>(null);
+  const proposed = decision.status === 'proposed';
   useLayoutEffect(() => {
     const identity = identityRef.current;
     const scroller = identity?.closest<HTMLElement>('.wd__scroll');
     if (!identity || !scroller) return undefined;
-    const place = () => scroller.style.setProperty('--wd-decide-top', `${Math.round(identity.offsetHeight + (parseFloat(getComputedStyle(identity).top) || 0))}px`);
+    const PINNED_SHARE = 0.4;
+    const place = () => {
+      const answer = answerRef.current;
+      const actions = answer?.querySelector<HTMLElement>('.nyc__actions');
+      const room = scroller.clientHeight;
+      // The part of the title that stays in view when it sticks (its own `top` takes its upper padding out of view).
+      const title = identity.offsetHeight + (parseFloat(getComputedStyle(identity).top) || 0);
+      const bar = actions ? actions.offsetHeight + 16 : 0;
+      // A bar goes back to the whole answer only with some room to spare, so a size at the edge never switches it back and forth.
+      const limit = room * PINNED_SHARE;
+      const pin = !answer || !actions ? (title <= limit ? 'all' : 'none')
+        : title + answer.offsetHeight <= (scroller.dataset.pin === 'bar' ? limit * 0.9 : limit) ? 'all' : bar <= limit ? 'bar' : 'none';
+      if (scroller.dataset.pin !== pin) scroller.dataset.pin = pin;
+      // As a bar, the answer sticks with its waiting line out of view above the scrolling area (whose top padding a sticky `top` counts
+      // from), so only its row of buttons stays.
+      const hidden = pin === 'bar' && answer && actions ? Math.max(0, actions.getBoundingClientRect().top - answer.getBoundingClientRect().top - 8) : 0;
+      const padding = parseFloat(getComputedStyle(scroller).paddingTop) || 0;
+      scroller.style.setProperty('--wd-decide-top', `${Math.round(pin === 'bar' ? -hidden - padding : title)}px`);
+    };
     place();
-    const observer = new ResizeObserver(place);
+    // Placed again in the next frame, never inside the observer's own delivery: what it changes resizes what it observes (WebKit reports
+    // "ResizeObserver loop completed with undelivered notifications" as a page error).
+    let frame = 0;
+    const observer = new ResizeObserver(() => { cancelAnimationFrame(frame); frame = requestAnimationFrame(place); });
+    observer.observe(scroller);
     observer.observe(identity);
-    return () => observer.disconnect();
-  }, []);
+    if (answerRef.current) observer.observe(answerRef.current);
+    return () => { cancelAnimationFrame(frame); observer.disconnect(); delete scroller.dataset.pin; };
+  }, [proposed]);
   // Undo gives the focus back to the control that made the change (F-026 §4): once the decision is proposed again, Accept has it, not the
   // replaced decision's link the focus went on to (personas-35). Focus the person took out of the panel meanwhile stays where it is. On a
   // phone the tap on Undo left it on the page or on the field Accept had handed it to (personas-33/34): there Accept has it whenever no
@@ -816,7 +844,7 @@ function DecisionPanel({ decision, context, detail, relations, reload, revision,
       ) : null}
       <span ref={decideMark} hidden />
       {decision.status === 'proposed' ? (
-        <section className="wd-decide" aria-label="Your answer">
+        <section className="wd-decide" aria-label="Your answer" ref={answerRef}>
           <div className="nyc__foot wd-decide__foot">
             <div className="nyc__actions">
               <Button ref={acceptButton} variant="primary" busy={busy} onClick={() => void accept()}>Accept</Button>

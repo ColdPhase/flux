@@ -981,6 +981,42 @@ class InboxFinal(unittest.TestCase):
         expect(page.locator(".nyc__chip")).to_have_count(0)
         self.assertEqual(proposed["status"], "proposed")
 
+    def test_12b_phone_tray_done_or_not_now_on_the_last_card_focuses_the_card_that_expands(self) -> None:
+        """personas-36 P3-N1 (40 sweep cells): a tap on the last card's words expands it and leaves the focus on the page's content; Done or
+        Not now in its tray then expanded the card above and left the focus there. The card that expands has it, on its title (F-026 §4)."""
+        stamp = uuid.uuid4().hex[:6]
+        lines = [f"@Ada Kowalska the hose by the shed leaks {stamp}", f"@Ada Kowalska the rain gauge is full {stamp}"]
+        for body in lines:
+            self.post("jonas", f"/api/v1/projects/{self.project_id}/conversations", {"body": body, "clientMessageId": str(uuid.uuid4())})
+            time.sleep(0.05)
+        self.wait_for(lambda: sum(stamp in str(item) for item in self.queue(None)["items"]) >= 2, "both mentions")
+        page = self.page(phone=True)
+        page.goto("/inbox")
+        for action in ("Done", "Not now"):
+            with self.subTest(action=action):
+                cards = page.locator(".nyq__list .nyc")
+                expect(cards.filter(has_text=stamp)).to_have_count(2)
+                # The lower of the two, so a card that is not the open one first.
+                key = cards.filter(has_text=stamp).last.get_attribute("data-key")
+                last = page.locator(f'.nyq__list .nyc[data-key="{key}"]')
+                # A tap on its words, not on its title, as a person reading it does.
+                last.locator(".nyc__eyebrow:visible").first.tap()
+                page.wait_for_timeout(300)
+                expect(last).to_have_attribute("aria-current", "true")
+                last.locator(".nyc__scroll").evaluate("element => element.scrollTo({ left: element.scrollWidth, behavior: 'instant' })")
+                # As the sweep presses it: a click that moves no focus (a tap on a button keeps focus where it was in WebKit).
+                last.locator(".nyc__tray").get_by_role("button", name=action, exact=True).evaluate("button => button.click()")
+                expect(page.get_by_role("status").filter(has_text=re.compile("Marked done|Back tomorrow morning"))).to_be_visible()
+                expect(last).to_have_count(0)
+                # The card that expands in its place (the one below it, or above it when it was the last) has the focus on its title.
+                expect(page.locator(".nyq__list .nyc[aria-current='true'] .nyc__open")).to_be_focused()
+                page.get_by_role("button", name="Undo").tap()
+                expect(cards.filter(has_text=stamp)).to_have_count(2)
+                page.wait_for_timeout(600)
+        for item in self.queue(None)["items"]:
+            if stamp in str(item):
+                self.contexts["ada"].request.post(f"/api/v1/needs-you/{requests_quote(item['key'])}", data={"action": "done"}, headers={"origin": ORIGIN})
+
     def test_13_dark_inbox(self) -> None:
         page = self.page(dark=True)
         page.goto("/inbox")

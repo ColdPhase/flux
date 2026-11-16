@@ -169,11 +169,15 @@ export function InboxView() {
   // empty Inbox's heading does, so focus is never on the page's body (persona round 26: A on the last decision left it there).
   const clearRef = useRef<HTMLHeadingElement>(null);
   const lastOpen = useRef(openKey);
-  useEffect(() => {
+  // Right after the row leaves the page, before the page's own lost-focus rule (keys.ts `watchLostFocus`, on a timer) can hand the focus to
+  // the next button it finds, such as a neighbour's Done in its tray (sweep 36b: × after Done in a blocked task's sheet).
+  useLayoutEffect(() => {
     const left = lastOpen.current !== null && !shown.some((item) => item.key === lastOpen.current);
     lastOpen.current = openKey;
     const active = document.activeElement;
-    if (active && active !== document.body) return;
+    // The page's content holds no place either: on a phone a tap on a card's words (to expand it) leaves the focus there, and the tray's
+    // Done or Not now on that card then left it there as the card above expanded (personas-36 P3-N1); its title takes it (F-026 §4).
+    if (active && active !== document.body && active.id !== 'content') return;
     if (paneFocused.current && paneRef.current) paneRef.current.focus({ preventScroll: true });
     else if ((listFocused.current || left) && openKey) rowControl(openKey)?.focus({ preventScroll: true });
     else if (left && !openKey) clearRef.current?.focus({ preventScroll: true });

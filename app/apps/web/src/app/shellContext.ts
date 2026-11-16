@@ -89,6 +89,9 @@ export interface CreateRequest {
   sources?: { ref: ObjectRef; label: string; conversationId?: string }[];
   /** The task starts with you as its Owner: it is made from your own message or your own `/task` words (founder decision M, #1424). */
   ownerMe?: boolean;
+  /** The words of a `/decide` command are the whole title: the window opens with the cursor in the next field, Why, so what a keyboard
+   *  user types on is its reason and Enter there starts a line, never a proposal sent unfinished (F-026 §4, personas-36). */
+  afterTitle?: boolean;
   /** Called once the task or decision exists, e.g. a `/task` or `/decide` command consumes its composer text only then (closing the window keeps it). */
   onCreated?: () => void;
 }

@@ -381,8 +381,15 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
 /* A proposed decision's answer, as on its Inbox card (F-026 P4, S11; #763 D1): Accept / Not now / Discuss and who else can accept,
    directly under the reason, so a phone's half sheet shows it without scrolling. */
 .wd-decide { position: relative; margin-top: var(--s-3); }
-/* It stays in view under the pinned title while the discussion below scrolls (personas-35: at 200 % R scrolled the answer out of view). */
+/* It stays in view under the pinned title while the discussion below scrolls (personas-35: at 200 % R scrolled the answer out of view).
+   Where the title and the answer would take more than two fifths of the scrolling room (200 %, large text, a phone's half sheet), the title
+   scrolls and the answer is a bar of its buttons: its waiting line goes before them and out of view above as it sticks, so the discussion
+   keeps its room (personas-36). Where even the buttons would take more, nothing sticks (WorkDetails.tsx `data-pin`). */
 .wd-decide { position: sticky; top: var(--wd-decide-top, 0px); z-index: 1; background: var(--panel-bg, var(--el)); padding-bottom: var(--s-2); }
+.wd__scroll:is([data-pin="bar"], [data-pin="none"]) .wd-decision-identity { position: static; }
+.wd__scroll[data-pin="none"] .wd-decide { position: relative; top: auto; }
+.wd__scroll[data-pin="bar"] .wd-decide .nyc__waiting { order: -1; }
+.wd__scroll[data-pin="bar"] .wd-decide { box-shadow: 0 1px 0 var(--line); }
 .wd-decide > .wd-muted { margin: 0 0 var(--s-2); }
 .wd-decide__foot { padding-top: var(--s-3); }
 .wd-decide .wd-error { margin-top: var(--s-2); }

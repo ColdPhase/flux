@@ -375,20 +375,20 @@ function AppLayoutContent() {
   // What had focus went away under it: the next control takes it, never the page itself (F-026 §4).
   useEffect(() => watchLostFocus(), []);
   // A page arrived at with nothing that takes the focus (Back to Home, a reload of the board) gives it to its content, never the page itself
-  // (persona round 29), once the page's own focus (a composer, the Inbox's item, a marked message) has had its turn.
-  const touchScreen = useMediaQuery(MEDIA.touch);
+  // (persona round 29), once the page's own focus (a composer, the Inbox's item, a marked message) has had its turn. The same on a touch
+  // screen, where the content raises no keyboard (personas-36: Back from a new conversation left the phone's Spaces page with no focus).
   useEffect(() => {
-    if (touchScreen) return undefined;
     // Anything that took the focus since (the page's own, or the person) ends it: this is only for a page that gave it to nothing.
     let taken = false;
     const onFocus = () => { taken = true; };
     document.addEventListener('focusin', onFocus, true);
     const timer = window.setTimeout(() => {
       const active = document.activeElement;
-      if (!taken && (!active || active === document.body) && !document.querySelector('.ui-overlay[data-state="open"]')) document.getElementById('content')?.focus({ preventScroll: true });
+      // A field asked for and still on its way (Reply from the Inbox while the thread is read in) gives the focus itself.
+      if (!taken && (!active || active === document.body) && !isTyping(null) && !document.querySelector('.ui-overlay[data-state="open"]')) document.getElementById('content')?.focus({ preventScroll: true });
     }, 400);
     return () => { window.clearTimeout(timer); document.removeEventListener('focusin', onFocus, true); };
-  }, [location.key, touchScreen]);
+  }, [location.key]);
   // The computer's sidebar collapses to its 64px rail with "[" (F-026 S19), remembered on this device.
   const [railed, setRailed] = useState(() => { try { return localStorage.getItem(SIDEBAR_KEY) === 'rail'; } catch { return false; } });
   const toggleRail = useCallback(() => setRailed((current) => {
