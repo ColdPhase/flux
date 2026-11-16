@@ -665,7 +665,8 @@ The IDs come from the first Prostota canvas; rules that no longer apply are left
   Ada Kowalska (you) · 13:05"), never "You" alone, "From you" or a first name. A sentence spoken to the reader still says "you"
   ("Jonas asked you", "Only you are in this space").
 - First names stay only in the short summaries drawn with them: a notice's preview ("Maja: I moved…"), "Seen by Maurycy", a finished
-  call's list of who was in it and an agent's one label ("Planner · Ada's agent", "Hubert's Assistant").
+  call's list of who was in it, Home's "since you were away" lines ("Ari and Kai replied in …", [return view](../../development/return-view.md))
+  and an agent's one label ("Planner · Ada's agent", "Hubert's Assistant").
 
 **Connection labels on the map (#481, 2026-10-11)**
 

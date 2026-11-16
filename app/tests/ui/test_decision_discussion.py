@@ -401,7 +401,8 @@ class DecisionDiscussion(unittest.TestCase):
             if texts:
                 break
             owner.wait_for_timeout(250)
-        self.assertIn(f"{BEN['name']} replied about “Put the tool library stand by the gate”", texts)
+        # Home's summary lines say who by first name ("Ari and Kai replied in …", return-view.md), as the persona read "Ola replied in".
+        self.assertIn("Ben replied about “Put the tool library stand by the gate”", texts)
         self.assertFalse([text for text in texts if "First thought" in text], "never named by its first message")
 
     def test_14_the_task_panel_and_the_decision_panel_open_the_same_way_at_the_newest(self) -> None:
