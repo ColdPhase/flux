@@ -134,17 +134,20 @@ export function InboxView() {
     if (!expandedKey) return;
     const card = () => document.querySelector<HTMLElement>(`.nyc[data-key="${CSS.escape(expandedKey)}"]`);
     const clear = () => { const element = card(); if (element) clearOfCreate(element); };
-    // The card grows as it opens: it is kept clear while it settles, until the reader scrolls themselves.
-    const growing = new ResizeObserver(clear);
+    // The card grows as it opens: it is kept clear while it settles, until the reader scrolls themselves. The scroll waits for the next
+    // frame: moving the list inside the observer's own callback changes the layout it is delivering, which WebKit reports as an uncaught
+    // "ResizeObserver loop completed with undelivered notifications".
+    let pending = 0;
+    const growing = new ResizeObserver(() => { cancelAnimationFrame(pending); pending = requestAnimationFrame(clear); });
     const frame = requestAnimationFrame(() => { const element = card(); if (element) growing.observe(element); });
-    const settled = () => growing.disconnect();
+    const settled = () => { growing.disconnect(); cancelAnimationFrame(pending); };
     const timer = window.setTimeout(settled, 800);
     const scroller = listRef.current?.closest<HTMLElement>('.pane-scroll');
     scroller?.addEventListener(PLACE_SETTLED, clear);
     scroller?.addEventListener('touchmove', settled, { passive: true });
     scroller?.addEventListener('wheel', settled, { passive: true });
     return () => {
-      cancelAnimationFrame(frame); window.clearTimeout(timer); growing.disconnect();
+      cancelAnimationFrame(frame); cancelAnimationFrame(pending); window.clearTimeout(timer); growing.disconnect();
       scroller?.removeEventListener(PLACE_SETTLED, clear); scroller?.removeEventListener('touchmove', settled); scroller?.removeEventListener('wheel', settled);
     };
   }, [expandedKey]);
