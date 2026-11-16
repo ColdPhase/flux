@@ -13,7 +13,7 @@ import { DraftSaveNotSentError, useSketchDoc, type Op } from './doc';
 import { useLiveSketchDoc, type LiveSketchDoc } from './live-doc';
 import { useEditingCapability } from '../editing/capability';
 import { audience, quote, sketchHref } from './format';
-import { freeSpot, freeSpotNear, rectOf, type Rect } from './geometry';
+import { freeSpot, freeSpotNear, PAD, rectOf, type Rect } from './geometry';
 import { SketchList } from './SketchList';
 import { SketchMap } from './SketchMap';
 import { ConnectionLabels, type ConnectionTarget } from './ConnectionLabels';
@@ -348,8 +348,9 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
 
   /**
    * Where a thought from a message, or a new one with no parent, lands (CW-12): in free space inside the part of the map in view, clear of the
-   * breadcrumb, the dock, the minimap and the zoom, measured from the drawn thoughts. With nothing drawn yet, or on the phone's columns, the
-   * first free place, and the map shows it.
+   * breadcrumb, the dock, the minimap and the zoom, measured from the drawn thoughts. The first thought of an empty map takes the top left of
+   * the part in view, under the breadcrumb, where Fit would frame it: the map's camera and the thought agree, so it is never drawn outside the
+   * view, under the minimap, the zoom, the dock or the toast (personas-37). On the phone's columns, the first free place, and the map shows it.
    */
   const arrivalSpot = () => {
     const size = { w: DEFAULT_THOUGHT_SIZE.width, h: DEFAULT_THOUGHT_SIZE.height + 60 };
@@ -375,8 +376,15 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
         ?? freeSpotNear(rects, plane(view.left + view.width / 2, view.top + view.height / 2), size);
       if (spot) return spot;
     }
-    // Nothing measurable yet: under everything on the map, at its left edge, which is always free.
     const all = (sketch?.thoughts ?? []).map((t) => rectOf(t, heights));
+    const zoomed = rootRef.current?.querySelector<HTMLElement>('.sk-zoomed[data-origin-x]');
+    if (!phone && canvas && zoomed && !all.length) {
+      const at = zoomed.getBoundingClientRect(), view = canvas.getBoundingClientRect();
+      const zoom = Number(zoomed.dataset.zoom) || 1;
+      const top = parseFloat(getComputedStyle(canvas).paddingTop) || 0;
+      return { x: Math.round(Number(zoomed.dataset.originX) + (view.left + PAD - at.left) / zoom), y: Math.round(Number(zoomed.dataset.originY) + (view.top + top + PAD - at.top) / zoom) };
+    }
+    // Nothing measurable yet: under everything on the map, at its left edge, which is always free.
     if (!phone && all.length) return { x: Math.min(...all.map((r) => r.x)), y: Math.max(...all.map((r) => r.y + r.h)) + 48 };
     return spots(null, 1, size)[0]!;
   };

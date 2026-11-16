@@ -1670,7 +1670,10 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   matched), and Search has no "Material" kind or word. The server ranks the
   results and the groups follow it: **the group of the best match comes first**, then the one that holds the next best, so a
   task that shares a word with a plain question never stands above the message that answers it
-  ([#1424](https://github.com/ColdPhase/flux/issues/1424)); inside a group the server's order stands.
+  ([#1424](https://github.com/ColdPhase/flux/issues/1424)); inside a group the server's order stands. **A result that matches all the
+  words, or the exact phrase, ranks above one that matches fewer, whatever its kind** (persona round 37: "Antenna log 30" selected a
+  decision that holds only "30" before the message itself); among results that match as many, the rarer words decide, and the little
+  words of a longer search are not counted ([search](../../development/search.md)).
   Each row is 48 px: a tile, the matching text and one line of where it lives. The first result is
   selected, and `↵` opens it. A list that is too long is narrowed by typing more words; there is
   no second page. **A match with a typo shows only when nothing matches a searched word exactly** (founder decision H, Hubert,
@@ -1742,7 +1745,9 @@ sheet at once: it has no list of the types before the tabs (founder direction, H
   and the toolbar with **Thought** alone (the phone's one **Thought**, the same word on every device (principle 7), with no floating "+" beside it: a "+" never means two things on one screen); Select, Move around, Undo and the zoom are not drawn
   until there is something for them to act on. **The map is made, silently, on the first thought**: Thought (or a double click on the
   canvas) makes it with the name "Untitled map" and opens it on a draft thought ready to type, with nothing to name first, so a visit
-  that adds nothing leaves no map. A map made from the switcher's "+ New map" still opens with its name ready to type. **A map shows one
+  that adds nothing leaves no map. **A new thought lands in plain view** (persona round 37): the first one of an empty map at the top left
+  of what is shown, under the header, where Fit frames a map, so the view does not move to find it; a later one with no parent in free
+  space in the view; never under the minimap, the zoom, the dock or its "Added … · Saved" line, on the computer at any zoom and on the phone. A map made from the switcher's "+ New map" still opens with its name ready to type. **A map shows one
   hint at a time:** the "Drag empty space to move around · Drag a dot to connect…" line waits until there is a thought to drag, so
   it never stands beside the empty map's own hint. My map is one map: its header names it and has no switcher.
 - A space's map has the same **Copy link** for one selected thought, `/projects/:p/map/:id#thought-:id`, and no Cite: Copy link
