@@ -530,6 +530,15 @@ class ReturnToOrigin(unittest.TestCase):
         self.assertEqual(page.evaluate("history.length"), history + 1)
         back = self.origin_back(page, "Inbox")
         expect(back).to_have_count(1)
+        if size == "phone":
+            # Discuss opens the decision in the sheet (#1424), which covers the header and its control: the sheet's own back names the
+            # Inbox and goes there (the one back pattern, as a thread's sheet does, #592 rule 7), and nothing covers it.
+            back = page.locator("#details .ui-panel__back")
+            expect(back).to_have_text("Inbox")
+            # The sheet is still rising as it opens (WebKit moves it between a read of the back's place and a hit test there): the back's
+            # middle is read and hit-tested in the same instant, until the sheet has arrived.
+            page.wait_for_function("""() => { const back = document.querySelector('#details .ui-panel__back'); if (!back) return false;
+              const at = back.getBoundingClientRect(); return !!document.elementFromPoint(at.left + at.width / 2, at.top + at.height / 2)?.closest('.ui-panel__back'); }""")
         shot(page, f"592-inbox-item-{engine}-{size}")
         self.activate(back, tap)
         expect(page).to_have_url(f"{ORIGIN}/inbox")
