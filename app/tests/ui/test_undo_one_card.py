@@ -509,7 +509,10 @@ class UndoAndOneCard(unittest.TestCase):
         # A double-click on Done, and E pressed twice: each finishes only the item it was meant for.
         open_item(row(asks[2])).get_by_role("button", name=re.compile("^Done")).dblclick()
         self.settled_toast(page, "Marked done")
+        # The item that swapped in takes no key for a moment (README §4, 450 ms); once the person has had it in view, E is Done on it, and E
+        # pressed again at once does nothing to the next one.
         open_item(row(asks[1]))
+        page.wait_for_timeout(600)
         page.keyboard.press("e")
         page.keyboard.press("e")
         expect(row(asks[1])).to_have_count(0)

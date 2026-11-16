@@ -5,7 +5,7 @@ import { Button, ErrorState, Kreska, MEDIA, Spinner, useMediaQuery, useRowMotion
 import { useSmallMoments } from '../app/smallMoments';
 import { NotAvailable } from '../app/NotAvailable';
 import { useShellData } from '../app/data';
-import { usePlaceState, useArrival } from '../place/memory';
+import { remember, usePlaceState, useArrival } from '../place/memory';
 import { announceInboxChange, getInboxItem, markInboxRead } from './api';
 import { NeedsYouCard, itemKeys, type CardHandlers } from './NeedsYouCard';
 import { useNeedsYou } from './needsYou';
@@ -192,13 +192,19 @@ export function InboxView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, location.key]);
 
+  // A card opened from the list (a tap on its title, its Reply or Open on the phone) is the open item too, so closing what it opened (×, Esc,
+  // Back) returns to the Inbox with that item open and focused (F-026 §4, personas-34 P2 1). Kept with the entry now, as it is left at once.
+  const cardHandlers = useMemo<CardHandlers>(() => ({ ...handlers, open: (item, reply) => {
+    if (!inboxSettling() && item.key !== currentKey) { remember('inbox.selected', item.key); setSelected(item.key); }
+    handlers.open(item, reply);
+  } }), [handlers, currentKey, setSelected]);
   // Put off for later and done today, said under the list; each opens its list (#1424 E).
   const later = <InboxAside queue={queue} onBack={cameBack} />;
   const list = (
     <ul className="nyq__list" aria-label="Needs you" onFocus={() => { listFocused.current = true; }}
       onBlur={(event) => { if (event.relatedTarget) listFocused.current = event.currentTarget.contains(event.relatedTarget as Node); }}>
       {shown.map((item) => (
-        <NeedsYouCard key={item.key} item={item} selected={item.key === current?.key} handlers={handlers}
+        <NeedsYouCard key={item.key} item={item} selected={item.key === current?.key} handlers={cardHandlers}
           compact={two || item.key !== current?.key} list={two} onSelect={() => { inboxSettled(); setSelected(item.key); }} />
       ))}
     </ul>
