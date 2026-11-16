@@ -909,12 +909,14 @@ class FocusModel(unittest.TestCase):
         panel = page.locator("#details")
         expect(panel.get_by_role("heading", name=title)).to_be_visible()
         expect(window).to_have_count(0)
-        card = page.locator(f"#content [data-native-ref^='work:'][aria-label$='{title}']")
-        expect(card).to_have_count(1)
+        selector = f"#content [data-native-ref^='work:'][aria-label$='{title}']"
+        expect(page.locator(selector)).to_have_count(1)
         page.wait_for_timeout(400)
         page.keyboard.press("Escape")
         expect(panel).to_be_hidden()
-        expect(card).to_be_focused()
+        # The task's card, or the fold ("3 task updates") it is folded into, which stands for it (F-026 S8).
+        page.wait_for_function("""(selector) => { const card = document.querySelector(selector); const active = document.activeElement;
+          return !!card && (active === card || (!!active?.matches('.convo-fold__b') && !!active.closest('.convo-fold')?.contains(card))); }""", arg=selector, timeout=10000)
 
 
 if __name__ == "__main__":

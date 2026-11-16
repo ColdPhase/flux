@@ -768,8 +768,10 @@ function DecisionPanel({ decision, context, detail, relations, reload, revision,
       // The part of the title that stays in view when it sticks (its own `top` takes its upper padding out of view).
       const title = identity.offsetHeight + (parseFloat(getComputedStyle(identity).top) || 0);
       const bar = actions ? actions.offsetHeight + 16 : 0;
-      const pin = !answer || !actions ? (title <= room * PINNED_SHARE ? 'all' : 'none')
-        : title + answer.offsetHeight <= room * PINNED_SHARE ? 'all' : bar <= room * PINNED_SHARE ? 'bar' : 'none';
+      // A bar goes back to the whole answer only with some room to spare, so a size at the edge never switches it back and forth.
+      const limit = room * PINNED_SHARE;
+      const pin = !answer || !actions ? (title <= limit ? 'all' : 'none')
+        : title + answer.offsetHeight <= (scroller.dataset.pin === 'bar' ? limit * 0.9 : limit) ? 'all' : bar <= limit ? 'bar' : 'none';
       if (scroller.dataset.pin !== pin) scroller.dataset.pin = pin;
       // As a bar, the answer sticks with its waiting line out of view above the scrolling area (whose top padding a sticky `top` counts
       // from), so only its row of buttons stays.
@@ -778,11 +780,14 @@ function DecisionPanel({ decision, context, detail, relations, reload, revision,
       scroller.style.setProperty('--wd-decide-top', `${Math.round(pin === 'bar' ? -hidden - padding : title)}px`);
     };
     place();
-    const observer = new ResizeObserver(place);
+    // Placed again in the next frame, never inside the observer's own delivery: what it changes resizes what it observes (WebKit reports
+    // "ResizeObserver loop completed with undelivered notifications" as a page error).
+    let frame = 0;
+    const observer = new ResizeObserver(() => { cancelAnimationFrame(frame); frame = requestAnimationFrame(place); });
     observer.observe(scroller);
     observer.observe(identity);
     if (answerRef.current) observer.observe(answerRef.current);
-    return () => { observer.disconnect(); delete scroller.dataset.pin; };
+    return () => { cancelAnimationFrame(frame); observer.disconnect(); delete scroller.dataset.pin; };
   }, [proposed]);
   // Undo gives the focus back to the control that made the change (F-026 §4): once the decision is proposed again, Accept has it, not the
   // replaced decision's link the focus went on to (personas-35). Focus the person took out of the panel meanwhile stays where it is. On a
