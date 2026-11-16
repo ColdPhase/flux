@@ -54,6 +54,8 @@ export interface NeedsYouRepository {
   }[]>;
   /** Sets or clears the read time of the person's own notification; false when it is not theirs. */
   setNotificationRead(userId: string, id: string, read: boolean): Promise<boolean>;
+  /** When each of these tasks last changed status, by id; a task that never changed status since it was made is absent (C11). */
+  statusChangedAt(ids: string[]): Promise<Map<string, Date>>;
   /** The status of each task that exists, by id. */
   workStatuses(ids: string[]): Promise<Map<string, string>>;
 }
@@ -72,8 +74,15 @@ export interface NeedsYouAccess {
 }
 
 export interface NeedsYouInbox {
-  /** The recipient's notifications whose source they may still read, newest first. */
-  listReadable(userId: string, limit: number): Promise<{ items: NotificationRecord[] }>;
+  /**
+   * Of the recipient's notifications whose source they may still read, newest first and however many other notifications are newer
+   * (sweep-34 C1): `items`, at most `limit` that can be items of the queue, with who each comes from and the task an `assigned` one gave
+   * (mentions and invitations since `since` that are unread or whose ids are in `keep`, questions since `since` read or not, `assigned` ones
+   * unread or in `keep`, with the read ones that gave the same task later); `unreadNewest`, the unread ones among their newest `newest`.
+   */
+  needs(userId: string, options: { since: Date; keep: readonly string[]; limit: number; newest: number }): Promise<{
+    items: NotificationRecord[]; unreadNewest: Pick<NotificationRecord, 'reason' | 'url'>[];
+  }>;
 }
 
 /** The owner's undecided waiting assistant changes that belong in Inbox now (F-027 AST-5.6). */

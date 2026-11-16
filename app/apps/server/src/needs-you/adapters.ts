@@ -1,5 +1,5 @@
 import { and, eq, inArray, isNull } from 'drizzle-orm';
-import { accessPorts, needsYouRows, notificationPreferenceRows, openRows, returnRows, memberFilter, accessReader, schema, type Database, type DbExecutor } from '@flux/db';
+import { accessPorts, needsYouRows, notificationPreferenceRows, notificationRows, openRows, returnRows, memberFilter, accessReader, schema, type Database, type DbExecutor } from '@flux/db';
 import {
   createNeedsYou,
   preferenceRepository,
@@ -11,7 +11,7 @@ import {
   type NeedsYouAssistant,
   type NeedsYouTasks,
 } from '@flux/core';
-import { notificationRepository } from '../push/adapters.js';
+import { inboxAudience } from '../push/adapters.js';
 import { aiAllowedInProject } from '../access/ai-gate.js';
 import { workRepository, workUseCases } from '../work/adapters.js';
 
@@ -77,7 +77,15 @@ export const needsYouUseCases = (db: Database, assistant?: NeedsYouAssistant) =>
   ...(assistant ? { assistant } : {}),
   repository: needsYouRows(db),
   // The Inbox's rows say who they come from ("Question · Maja · Community garden sensors", #1424).
-  inbox: { listReadable: async (userId, limit) => notificationRepository(db).listReadable(userId, limit, { from: true }) },
+  // Every notification that can be an item, however many ordinary ones are newer (sweep-34 C1), and for `notifying` the unread ones among the
+  // person's newest; the audience is read once for both.
+  inbox: {
+    async needs(userId, options) {
+      const audience = await inboxAudience(db, userId);
+      const rows = notificationRows(db);
+      return { items: await rows.listNeeds(userId, audience, options), unreadNewest: await rows.unreadAmongNewest(userId, audience, options.newest) };
+    },
+  },
   level: async (userId) => (await preferenceRepository(notificationPreferenceRows(db)).get(userId)).level,
   work: workRepository(db),
   // The decisions these conversations are the discussions of (#1424), with their titles opened for the reader's Inbox.
