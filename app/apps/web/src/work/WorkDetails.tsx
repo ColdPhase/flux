@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { isTyping } from '../ui/keys';
+import { isTyping, windowOrMenuOpen } from '../ui/keys';
 import { useSpaceAi } from '../ai/spaceAi';
 import { useRevalidator } from 'react-router';
 import { NO_BLOCK_REASON, waitingPhrase, withoutCiteMarks, type ObjectLink, type Project, type ProjectPerson, type WorkspaceMember, type WorkStatus, type WorkDetailObject, type WorkDetailProjection } from '@flux/contracts';
@@ -762,7 +762,8 @@ function DecisionPanel({ decision, context, detail, relations, reload, revision,
     return () => observer.disconnect();
   }, []);
   // Undo gives the focus back to the control that made the change (F-026 §4): Accept, drawn again as the decision is proposed again. On a
-  // phone the tap on Undo left it on the page (personas-33/34). Focus the person or another step put elsewhere stays there.
+  // phone the tap on Undo left it on the page or on what Accept had handed it to (personas-33/34): there it goes to Accept whenever no window
+  // or menu is open. On a computer only focus that was lost is put there; focus a key or a click put elsewhere stays.
   const undone = useRef(false);
   const acceptRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -770,10 +771,12 @@ function DecisionPanel({ decision, context, detail, relations, reload, revision,
     undone.current = false;
     const frame = requestAnimationFrame(() => requestAnimationFrame(() => {
       const active = document.activeElement;
-      if (!active || active === document.body || active.id === 'content' || !active.isConnected) acceptRef.current?.focus({ preventScroll: true });
+      const lost = !active || active === document.body || active.id === 'content' || !active.isConnected;
+      if (window.matchMedia('(hover: none)').matches ? !windowOrMenuOpen() : lost) acceptRef.current?.focus({ preventScroll: true });
     }));
     return () => cancelAnimationFrame(frame);
-  }, [decision.status]);
+    // Read again after the Undo: proposed once more, at a new version, also when the accepted state was never drawn here.
+  }, [decision.status, decision.version]);
   // Accept works at once here as in the Inbox, with the same 10 s Undo that takes the acceptance back (round 8, #1424).
   const acceptNow = useAcceptDecision(me.user.id);
   function accept(event?: FormEvent) {
