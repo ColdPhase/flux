@@ -401,7 +401,7 @@ describe('search: plain words are ranked by BM25, the web search syntax stays ex
     await inBatches(29, (index) => say(ari, log.id, `Antenna log ${index + 2}`));
     json<Decision>(await post(ari, `/api/v1/projects/${space.id}/decisions`, { title: 'Shop opens at 6:30 on fair day', rationale: 'The fair starts at 7.' }), 201, 'decision');
     for (const q of ['Antenna log 30', 'antenna log 30 ', 'log 30 antenna']) {
-      const answer = await search(ari, { q, place: `project:${space.id}` });
+      const answer = await search(ari, { q, place: `project:${space.id}`, limit: 50 });
       assert.equal(text(answer.items[0]!.title), 'Antenna log 30', `${q}: the message with every word first`);
       assert.equal(answer.items[0]!.kind, 'message');
       const decision = answer.items.findIndex((item) => item.kind === 'decision');
