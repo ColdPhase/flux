@@ -225,15 +225,21 @@ class OpenWhereYouLeftOff(unittest.TestCase):
             self.assertGreater(feed.evaluate("el => el.scrollTop"), 100, f"{label}: it did not open at the top")
         self.assertGreater(self.at_end(feed), 200, f"{label}: it did not open at the end, 30 messages are new")
         self.assertTrue(divider.evaluate("(el, selector) => el.nextElementSibling?.matches(selector)", surface["first"]), f"{label}: the divider is right above the first new message")
-        # What is new runs below the screen: the line says so from the start, counting all 30 (personas-35).
-        expect(self.pill(feed)).to_have_text(f"{NEW} new")
+        # What is new runs below the screen: the line says so from the start, counting all of it (personas-35): the 30, and in the agent's chat
+        # also what it answered in this test class's real runs since the time the chat was last read.
+        expect(self.pill(feed)).to_have_text(re.compile(r"^\d+ new$"))
+        opened = int(self.pill(feed).inner_text().split()[0])
+        if surface.get("starts"):
+            self.assertGreaterEqual(opened, NEW, f"{label}: all that is new is counted on opening")
+        else:
+            self.assertEqual(opened, NEW, f"{label}: all that is new is counted on opening")
         # Something arrives while Ada reads above the end: it is counted, and nothing moves under her.
         before = divider.evaluate("(el, feed) => el.getBoundingClientRect().top - feed.getBoundingClientRect().top", feed.element_handle())
         self.arrive(page, surface)
         pill = self.pill(feed)
-        expect(pill).to_have_text(f"{NEW + 1} new")
+        expect(pill).to_have_text(f"{opened + 1} new")
         expect(pill).to_be_visible()
-        self.assertEqual(pill.get_attribute("aria-label"), f"{NEW + 1} new. Go to the newest")
+        self.assertEqual(pill.get_attribute("aria-label"), f"{opened + 1} new. Go to the newest")
         page.wait_for_timeout(600)
         after = divider.evaluate("(el, feed) => el.getBoundingClientRect().top - feed.getBoundingClientRect().top", feed.element_handle())
         self.assertLess(abs(after - before), 2.01, f"{label}: the reader stays put ({before} -> {after})")
