@@ -530,6 +530,13 @@ class ReturnToOrigin(unittest.TestCase):
         self.assertEqual(page.evaluate("history.length"), history + 1)
         back = self.origin_back(page, "Inbox")
         expect(back).to_have_count(1)
+        if size == "phone":
+            # Discuss opens the decision in the sheet (#1424), which covers the header and its control: the sheet's own back names the
+            # Inbox and goes there (the one back pattern, as a thread's sheet does, #592 rule 7), and nothing covers it.
+            back = page.locator("#details .ui-panel__back")
+            expect(back).to_have_text("Inbox")
+            box = back.bounding_box()
+            self.assertTrue(page.evaluate("([x, y]) => !!document.elementFromPoint(x, y)?.closest('.ui-panel__back')", [box["x"] + box["width"] / 2, box["y"] + box["height"] / 2]), "the back is not covered by anything")
         shot(page, f"592-inbox-item-{engine}-{size}")
         self.activate(back, tap)
         expect(page).to_have_url(f"{ORIGIN}/inbox")

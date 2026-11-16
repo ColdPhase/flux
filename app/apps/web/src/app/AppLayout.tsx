@@ -414,7 +414,11 @@ function AppLayoutContent() {
   // A task or decision opened afresh in its space (a card on the board or in the conversation, Create) gets its own address, `?open=`,
   // as one opened from Search, Home or the Inbox does (founder question B, persona round 29): a reload keeps it, Back closes it first.
   // The address then opens it (the `?open=` effect below); true when it was given one.
-  const addressFor = useRef<(kind: 'work' | 'decision', id: string, projectId: string | undefined) => boolean>(() => false);
+  const addressFor = useRef<(kind: 'work' | 'decision', id: string, projectId: string | undefined, title: string | undefined) => boolean>(() => false);
+  // The title the opener knew (a task's row or card) for the object it gave an address: the `?open=` effect below opens it with that title,
+  // so its loading panel shows the real title in its own place and nothing moves when the task arrives (#863 rule 6). Kept in memory for
+  // that one opening, never in the entry's state: a reload or a Back reads the task afresh.
+  const addressedTitle = useRef<{ open: string; title: string } | null>(null);
   const shell = useMemo(() => ({
     openDetails(view: DetailsView = 'place', options?: { back?: 'push' | 'keep' }) {
       if (detailsScope.current !== detailsOwner) return;
@@ -423,7 +427,7 @@ function AppLayoutContent() {
       // Also over a thread (a task card in it, a task made from a reply): the task has its address there too (persona round 30 P2 2).
       const afresh = !options?.back;
       if (afresh && typeof next === 'object' && 'id' in next && (next.kind === 'work' || next.kind === 'decision')
-        && addressFor.current(next.kind, next.id, (next as { projectId?: string }).projectId)) return;
+        && addressFor.current(next.kind, next.id, (next as { projectId?: string }).projectId, (next as { title?: string }).title)) return;
       // Opened from the panel, an object replaces the one shown and keeps the way back; so does anything that takes the place of a
       // thread or an agent a view owns, which has no other way back. Any other opening starts afresh.
       const covers = current.detailsOpen && isOwned(current.detailsView) && ownedRef.current && !isOwned(next);
@@ -518,10 +522,11 @@ function AppLayoutContent() {
   // page's data: that navigation finishes at once, so no load of this page is left running that
   // could land after the person has moved on or signed out.
   const navigate = useNavigate();
-  useLayoutEffect(() => { addressFor.current = (kind, id, objectProject) => {
+  useLayoutEffect(() => { addressFor.current = (kind, id, objectProject, title) => {
     if (!projectId || (objectProject && objectProject !== projectId)) return false;
     const params = new URLSearchParams(location.search);
     if (params.get('open') === `${kind}:${id}`) return false;
+    addressedTitle.current = title ? { open: `${kind}:${id}`, title } : null;
     params.delete('open');
     const rest = params.toString();
     // The entry's own asks (write in the composer, keep a panel, a found message) are not the object's: they would act again on its entry.
@@ -547,7 +552,9 @@ function AppLayoutContent() {
     const kind = match[1]!.toLowerCase() as 'work' | 'decision';
     const id = match[2]!.toLowerCase();
     if (openShown.current?.kind === kind && openShown.current.id === id) return;
-    shell.openDetails({ kind, id });
+    const known = addressedTitle.current?.open === `${kind}:${id}` ? addressedTitle.current.title : undefined;
+    addressedTitle.current = null;
+    shell.openDetails({ kind, id, ...(known ? { title: known } : {}) });
   }, [location.key, location.search, shell]);
   // A return to a place that is gone lands on its nearest parent with one line saying so (#592); the line is said once.
   const notedAt = useRef<string | null>(null);
@@ -708,8 +715,12 @@ function AppLayoutContent() {
     if (typeof view === 'object' && view.kind === 'owned' && !ownedRef.current) return;
     shell.openDetails(view, { back: 'keep' });
   };
+  // A task or decision a reference opened in the phone's sheet (the Inbox's Discuss or Open, a Home item) covers the header where the
+  // "‹ Inbox" control sits, as a thread's sheet does: the panel's one back carries it, with no step of its own before it (#592 rule 7).
+  const objectOrigin = !ownedShown && routeOrigin && panelMode === 'sheet' && typeof detailsView === 'object' && (detailsView.kind === 'work' || detailsView.kind === 'decision')
+    ? { label: routeOrigin.label, onClick: goToOrigin } : undefined;
   const back = ownedShown?.back ? { label: ownedShown.back.label, onClick: ownedShown.back.run } : trailTop ? { label: trailTop.label, onClick: stepBack }
-    : ownedShown?.origin ? { label: ownedShown.origin.label, onClick: ownedShown.origin.run } : undefined;
+    : ownedShown?.origin ? { label: ownedShown.origin.label, onClick: ownedShown.origin.run } : objectOrigin;
   // Esc and × close the whole panel; a thread or an agent a view owns also leaves its address.
   const closePanel = () => {
     if (panelGuard.current?.()) return;
